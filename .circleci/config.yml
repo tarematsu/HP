@@ -1,0 +1,78 @@
+version: 2.1
+
+orbs:
+  win: circleci/windows@5.1.1
+
+jobs:
+  cloud-exhaustive:
+    docker:
+      - image: cimg/node:22.16
+    steps:
+      - checkout
+      - run:
+          name: Require full-test marker
+          command: |
+            if ! git log -1 --pretty=%B | grep -q '\[ci full\]'; then
+              echo "This commit is not a full validation run; halting."
+              circleci-agent step halt
+            fi
+      - restore_cache:
+          keys:
+            - homepanel-cloud-v5-{{ checksum "cloud/package.json" }}
+      - run:
+          name: Install Worker dependencies
+          command: |
+            set -eo pipefail
+            cd cloud
+            npm install --no-fund --no-audit 2>&1 | tee -a ../circleci-cloud.log
+      - save_cache:
+          key: homepanel-cloud-v5-{{ checksum "cloud/package.json" }}
+          paths:
+            - cloud/node_modules
+      - run:
+          name: TypeScript and deployment-script checks
+          command: |
+            set -eo pipefail
+            cd cloud
+            npm run check 2>&1 | tee -a ../circleci-cloud.log
+      - run:
+          name: Worker unit and integration tests
+          command: |
+            set -eo pipefail
+            cd cloud
+            npm test -- --reporter=verbose 2>&1 | tee -a ../circleci-cloud.log
+      - run:
+          name: Dependency vulnerability audit
+          command: |
+            set -eo pipefail
+            cd cloud
+            npm audit --audit-level=high 2>&1 | tee -a ../circleci-cloud.log
+      - run:
+          name: Wrangler dry-run bundle validation
+          command: |
+            set -eo pipefail
+            cd cloud
+            rm -rf .wrangler-ci-output
+            npx wrangler deploy --dry-run --outdir .wrangler-ci-output 2>&1 | tee -a ../circleci-cloud.log
+            test -n "$(find .wrangler-ci-output -type f -size +0c -print -quit)"
+      - run:
+          name: Apply D1 migrations to isolated local database
+          command: |
+            set -eo pipefail
+            cd cloud
+            rm -rf .wrangler-ci-state
+            HOMEPANEL_D1_DATABASE_NAME=ci-homepanel-db npm run migrate:local 2>&1 | tee -a ../circleci-cloud.log
+            npx wrangler d1 execute ci-homepanel-db --local --persist-to .wrangler-ci-state --command "SELECT value AS schema_version FROM schema_meta WHERE key = 'schema_version';" 2>&1 | tee -a ../circleci-cloud.log
+      - run:
+          name: Post Worker failure log to GitHub pull request
+          when: on_fail
+          command: |
+            node cloud/scripts/post-circleci-failure.mjs
+      - store_artifacts:
+          path: circleci-cloud.log
+          destination: logs/circleci-cloud.log
+
+workflows:
+  daily-exhaustive-validation:
+    jobs:
+      - cloud-exhaustive

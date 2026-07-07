@@ -1,0 +1,4 @@
+#pragma once
+namespace hp {
+constexpr wchar_t kVersion[] = L"@HOMEPANEL_BUILD_VERSION@";
+}

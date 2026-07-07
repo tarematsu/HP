@@ -1,0 +1,35 @@
+#include <windows.h>
+#include <winver.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @HOMEPANEL_VERSION_COMMA@
+ PRODUCTVERSION @HOMEPANEL_VERSION_COMMA@
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041104B0"
+    BEGIN
+      VALUE "CompanyName", "HomePanel Project\0"
+      VALUE "FileDescription", "HomePanel verified updater\0"
+      VALUE "FileVersion", "@HOMEPANEL_BUILD_VERSION@\0"
+      VALUE "InternalName", "HomePanelUpdater\0"
+      VALUE "LegalCopyright", "Copyright (C) 2026 HomePanel Project\0"
+      VALUE "OriginalFilename", "HomePanelUpdater.exe\0"
+      VALUE "ProductName", "HomePanel\0"
+      VALUE "ProductVersion", "@HOMEPANEL_BUILD_VERSION@\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0411, 1200
+  END
+END

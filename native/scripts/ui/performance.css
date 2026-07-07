@@ -1,0 +1,131 @@
+.panel {
+  background: rgba(9, 14, 21, .92);
+  box-shadow: none !important;
+  contain: layout paint style;
+}
+
+body {
+  text-rendering: auto;
+}
+
+body::before,
+body::after {
+  display: none !important;
+}
+
+.air.co2-good,
+.air.co2-warn,
+.air.co2-bad {
+  box-shadow: none !important;
+}
+
+button,
+.status-dot {
+  transition: none !important;
+}
+
+.sp-progress-fill {
+  background: #1ed760;
+}
+
+.panel,
+button,
+.sp-live-badge,
+.radar-legend,
+.radar-play-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+.radar-stage {
+  isolation: auto !important;
+}
+
+.radar-play-overlay {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 4;
+  min-width: 72px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 999px;
+  background: rgba(5, 10, 17, .94);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.radar-legend {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 5px;
+  transform: translateY(-50%);
+  display: grid;
+  gap: 2px;
+  min-width: 35px;
+  padding: 4px 5px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 6px;
+  background: rgba(5, 10, 17, .94);
+  color: rgba(255, 255, 255, .92);
+  font-size: 7px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.radar-legend-title {
+  color: rgba(255, 255, 255, .72);
+  text-align: center;
+  font-size: 6px;
+}
+
+.radar-legend span:not(.radar-legend-title) {
+  display: grid;
+  grid-template-columns: 11px 1fr;
+  align-items: center;
+  gap: 3px;
+}
+
+.radar-legend i {
+  display: block;
+  width: 11px;
+  height: 6px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  background: var(--rain);
+}
+
+.stationhead-meta-row,
+.sp-progress-bar,
+.sp-progress-track {
+  width: 100%;
+}
+
+.wx-hour-card b {
+  display: none;
+}
+
+.wx-icon-img {
+  width: 36px;
+  height: 36px;
+}
+
+.wx-emoji-fallback {
+  font-size: 27px;
+}
+
+.wx-rain {
+  font-size: 12px;
+}
+
+@media (max-height: 760px) {
+  .radar-play-overlay {
+    min-height: 30px;
+    min-width: 64px;
+    padding: 0 11px;
+  }
+}

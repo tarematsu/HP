@@ -1,0 +1,216 @@
+name: Native Windows Build
+
+on:
+  pull_request:
+    paths:
+      - "native/**"
+      - ".github/workflows/native-windows-build.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "native/**"
+      - ".github/workflows/native-windows-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: native-windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Define release version
+        id: version
+        shell: pwsh
+        run: |
+          $tz = [TimeZoneInfo]::FindSystemTimeZoneById("Tokyo Standard Time")
+          $version = [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz).ToString("yyMMddHHmm")
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Configure native project
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force native/ci-logs | Out-Null
+          cmake -S native -B native/build-ci `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DHOMEPANEL_CI_STRICT=OFF `
+            -DHOMEPANEL_CI_STATIC_ANALYSIS=OFF `
+            2>&1 | Tee-Object native/ci-logs/configure.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify configure did not modify sources
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain -- native/src native/scripts
+          $changes | Set-Content native/ci-logs/source-changes.log
+          if ($changes) {
+            $changes | Write-Error
+            throw "Native configure modified checked-in source files."
+          }
+
+      - name: Verify static Stationhead source build
+        shell: pwsh
+        run: |
+          $generatedDir = "native/build-ci/generated/stationhead"
+          if (Test-Path -LiteralPath $generatedDir) {
+            throw "Stationhead generated source directory should not be created."
+          }
+          $cmake = Get-Content -LiteralPath "native/CMakeLists.txt" -Raw
+          foreach ($token in @("generate_stationhead_sources", "stationhead.generated.cpp", "secondary_stationhead.generated.cpp")) {
+            if ($cmake.Contains($token)) {
+              throw "Unexpected Stationhead generation token '$token' remains in CMake."
+            }
+          }
+          foreach ($path in @("native/scripts/generate_stationhead_sources.ps1")) {
+            if (Test-Path -LiteralPath $path) {
+              throw "Removed generator '$path' still exists."
+            }
+          }
+          $ui = Get-Content -LiteralPath "native/scripts/ui/index.html" -Raw
+          foreach ($token in @('data-action="maintenance"', 'data-action="exit"', 'id="diagnostic-grid"')) {
+            if ($ui.Contains($token)) {
+              throw "Removed control token '$token' remains in the dashboard UI."
+            }
+          }
+
+      - name: Build native project
+        shell: pwsh
+        run: |
+          cmake --build native/build-ci --config Release --parallel `
+            2>&1 | Tee-Object native/ci-logs/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package native release
+        if: success()
+        shell: pwsh
+        run: |
+          $packageRoot = "native/package/HomePanel"
+          $zipPath = "native/HomePanel-native-windows.zip"
+          Remove-Item -Recurse -Force "native/package" -ErrorAction SilentlyContinue
+          Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
+          cmake --install native/build-ci --config Release --prefix $packageRoot `
+            2>&1 | Tee-Object native/ci-logs/package.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath $zipPath -Force
+          Get-FileHash -Algorithm SHA256 $zipPath | ForEach-Object {
+            "$($_.Hash)  HomePanel-native-windows.zip" | Set-Content "native/HomePanel-native-windows.zip.sha256"
+          }
+
+      - name: Prepare release assets
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $manual = Join-Path $PWD "release-manual"
+          $tools = Join-Path $PWD "release-tools"
+          New-Item -ItemType Directory -Force -Path $manual, $tools | Out-Null
+          Copy-Item native/build-ci/Release/HomePanel.exe $manual
+          Copy-Item native/build-ci/Release/HomePanelUpdater.exe $manual
+          Copy-Item native/build-ci/Release/WebView2Loader.dll $manual
+          Copy-Item native/config.example.json $manual
+          Copy-Item THIRD_PARTY_NOTICES.md $manual
+          Copy-Item native/build-ci/Release/HomePanel.exe HomePanel.exe
+          Copy-Item native/build-ci/Release/HomePanelUpdater.exe HomePanelUpdater.exe
+          Copy-Item native/build-ci/Release/WebView2Loader.dll WebView2Loader.dll
+          Copy-Item native/scripts $tools/scripts -Recurse
+          "HomePanel optional administration tools" | Set-Content -Encoding utf8 (Join-Path $tools "README.txt")
+          Compress-Archive -Path "$manual/*" -DestinationPath HomePanel-win-x64.zip -Force
+          Compress-Archive -Path "$tools/*" -DestinationPath HomePanel-tools-win-x64.zip -Force
+
+          $homePanelHash = (Get-FileHash HomePanel.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $updaterHash = (Get-FileHash HomePanelUpdater.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $loaderHash = (Get-FileHash WebView2Loader.dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          $zipHash = (Get-FileHash HomePanel-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $toolsHash = (Get-FileHash HomePanel-tools-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          [ordered]@{
+            version = $env:HOMEPANEL_BUILD_VERSION
+            signed = $false
+            files = @(
+              [ordered]@{ name = "HomePanel.exe"; sha256 = $homePanelHash; size = (Get-Item HomePanel.exe).Length; requireAuthenticode = $false },
+              [ordered]@{ name = "HomePanelUpdater.exe"; sha256 = $updaterHash; size = (Get-Item HomePanelUpdater.exe).Length; requireAuthenticode = $false },
+              [ordered]@{ name = "WebView2Loader.dll"; sha256 = $loaderHash; size = (Get-Item WebView2Loader.dll).Length; requireAuthenticode = $true }
+            )
+          } | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 update-manifest.json
+
+          $homePanelHash | Set-Content -Encoding ascii HomePanel.exe.sha256
+          $updaterHash | Set-Content -Encoding ascii HomePanelUpdater.exe.sha256
+          $loaderHash | Set-Content -Encoding ascii WebView2Loader.dll.sha256
+          $zipHash | Set-Content -Encoding ascii HomePanel-win-x64.sha256
+          $toolsHash | Set-Content -Encoding ascii HomePanel-tools-win-x64.sha256
+
+      - name: Install Cloudflare CLI dependencies
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          npm ci --prefix cloud --no-audit --no-fund
+
+      - name: Resolve Cloudflare settings
+        if: github.ref == 'refs/heads/main'
+        id: resolve
+        shell: pwsh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HOMEPANEL_UPDATE_BUCKET: ${{ vars.HOMEPANEL_UPDATE_BUCKET }}
+        run: |
+          node .github/scripts/resolve-cloudflare-config.mjs
+
+      - name: Upload update assets to R2
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+          HOMEPANEL_UPDATE_BUCKET: ${{ steps.resolve.outputs.update_bucket }}
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if (-not $env:CLOUDFLARE_API_TOKEN) { throw "CLOUDFLARE_API_TOKEN is required." }
+          if (-not $env:CLOUDFLARE_ACCOUNT_ID) { throw "CLOUDFLARE_ACCOUNT_ID is required." }
+          if (-not $env:HOMEPANEL_UPDATE_BUCKET) { throw "HOMEPANEL_UPDATE_BUCKET is required." }
+
+          $bucket = $env:HOMEPANEL_UPDATE_BUCKET
+          $version = $env:HOMEPANEL_BUILD_VERSION
+          $wrangler = Join-Path $PWD "cloud/node_modules/wrangler/bin/wrangler.js"
+
+          $uploads = @(
+            @{ key = "updates/releases/$version/HomePanel.exe"; file = "HomePanel.exe"; type = "application/octet-stream" },
+            @{ key = "updates/releases/$version/HomePanelUpdater.exe"; file = "HomePanelUpdater.exe"; type = "application/octet-stream" },
+            @{ key = "updates/releases/$version/WebView2Loader.dll"; file = "WebView2Loader.dll"; type = "application/octet-stream" },
+            @{ key = "updates/releases/$version/update-manifest.json"; file = "update-manifest.json"; type = "application/json; charset=utf-8" },
+            @{ key = "updates/latest/update-manifest.json"; file = "update-manifest.json"; type = "application/json; charset=utf-8" }
+          )
+
+          foreach ($upload in $uploads) {
+            node $wrangler r2 object put "$bucket/$($upload.key)" --file $upload.file --content-type $upload.type
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload native release package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-native-windows
+          path: |
+            native/HomePanel-native-windows.zip
+            native/HomePanel-native-windows.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-failure-logs
+          path: native/ci-logs
+          if-no-files-found: warn
+          retention-days: 7

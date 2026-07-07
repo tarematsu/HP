@@ -1,0 +1,42 @@
+name: Stationhead Playback API Check
+
+on:
+  pull_request:
+    paths:
+      - "native/scripts/verify_stationhead_playback_api.ps1"
+      - ".github/workflows/stationhead-playback-api.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "17 */6 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stationhead-playback-api-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Verify both playback endpoints and CORS
+        shell: pwsh
+        run: |
+          ./native/scripts/verify_stationhead_playback_api.ps1
+
+      - name: Upload failure details
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-playback-api-failure
+          path: native/ci-logs/stationhead-playback-api.log
+          if-no-files-found: warn
+          retention-days: 7

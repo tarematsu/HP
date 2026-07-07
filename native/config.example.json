@@ -1,0 +1,16 @@
+{
+  "mineo": {
+    "enabled": true,
+    "url": "https://my.mineo.jp/",
+    "morningHour": 6,
+    "morningMinute": 58,
+    "nightHour": 22,
+    "nightMinute": 58,
+    "yuzuEnabled": true,
+    "showOnFirstRun": true,
+    "dataSelector": "",
+    "yuzuSelector": "",
+    "yuzuReadyText": "",
+    "yuzuDeclaredText": "宣言中"
+  }
+}

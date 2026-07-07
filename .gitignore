@@ -1,0 +1,46 @@
+# Runtime data and local profiles
+native/build/
+native/build-*/
+native/build-ci/
+native/packages/
+native/data/
+data/
+webview2-*/
+**/webview2-*/
+*.dat
+*.log
+*.ndjson
+*.sqlite
+*.sqlite3
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+credentials.json
+secrets.json
+
+# Cloudflare
+cloud/node_modules/
+cloud/.wrangler/
+cloud/dist/
+cloud/package-lock.json
+
+# Local release artifacts
+*.zip
+*.sha256
+update-manifest.json
+
+# Editors/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,22 @@
+{
+  "name": "homepanel-cloud-worker",
+  "private": true,
+  "version": "2.5.0",
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit && node --check scripts/deploy-existing.mjs",
+    "test": "vitest run --reporter=verbose",
+    "test:integration": "vitest run test/worker.integration.test.ts --reporter=verbose",
+    "prepare:existing": "node scripts/deploy-existing.mjs --prepare-only",
+    "deploy": "node scripts/deploy-existing.mjs",
+    "migrate:local": "node scripts/deploy-existing.mjs --migrate-local",
+    "migrate:remote": "node scripts/deploy-existing.mjs --migrate-only"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.0",
+    "@cloudflare/workers-types": "^4.20260620.0",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.103.0"
+  }
+}

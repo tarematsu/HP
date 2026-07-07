@@ -1,0 +1,61 @@
+#include <windows.h>
+#include <winver.h>
+
+101 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/index.html"
+102 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/styles.css"
+103 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/app.js"
+104 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/texts.json"
+105 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/air-history.css"
+106 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/air-history.js"
+107 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/performance.css"
+109 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/ui-overrides.css"
+110 RCDATA "@HOMEPANEL_RADAR_SATELLITE@"
+112 RCDATA "@HOMEPANEL_RADAR_MAP@"
+113 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/canvas-transparency.js"
+114 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/spotify-panel-runtime.js"
+115 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/runtime-performance.js"
+116 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/sh-volume-click-guard.js"
+117 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-core.js"
+118 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-clock.js"
+119 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-news.js"
+120 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-weather.js"
+121 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-energy.js"
+122 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-switchbot.js"
+123 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-sh.js"
+124 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-air.js"
+125 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-radar.js"
+126 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/homepanel-runtime.js"
+128 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/scripts/ui/sh-audio-controls.css"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @HOMEPANEL_VERSION_COMMA@
+ PRODUCTVERSION @HOMEPANEL_VERSION_COMMA@
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS 0x0L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "041104B0"
+    BEGIN
+      VALUE "CompanyName", "HomePanel Project\0"
+      VALUE "FileDescription", "HomePanel native dashboard\0"
+      VALUE "FileVersion", "@HOMEPANEL_BUILD_VERSION@\0"
+      VALUE "InternalName", "HomePanel\0"
+      VALUE "LegalCopyright", "Copyright (C) 2026 HomePanel Project\0"
+      VALUE "OriginalFilename", "HomePanel.exe\0"
+      VALUE "ProductName", "HomePanel\0"
+      VALUE "ProductVersion", "@HOMEPANEL_BUILD_VERSION@\0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0411, 1200
+  END
+END

@@ -1,0 +1,129 @@
+/* Keep Stationhead A/B audio controls visible in cramped dashboard cells. */
+.spotify-panel .stationhead-player-row {
+  padding: 5px 6px;
+}
+
+.spotify-panel .spotify-now {
+  grid-template-columns: 48px minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.spotify-panel .stationhead-compact-media,
+.spotify-panel #stationhead-a-artwork,
+.spotify-panel #stationhead-b-artwork,
+.spotify-panel #stationhead-b-artwork-shell,
+.spotify-panel .stationhead-artwork-fallback {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 8px;
+}
+
+.spotify-panel .stationhead-compact-media,
+.spotify-panel .stationhead-compact-body {
+  align-self: center;
+}
+
+.spotify-panel .stationhead-compact-body {
+  display: grid !important;
+  grid-template-rows: min-content min-content min-content;
+  align-content: center;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.spotify-panel .stationhead-track {
+  font-size: 13px !important;
+  line-height: 1.15 !important;
+  -webkit-line-clamp: 1 !important;
+}
+
+.spotify-panel .stationhead-artist {
+  font-size: 10px !important;
+  line-height: 1.15 !important;
+  -webkit-line-clamp: 1 !important;
+}
+
+.spotify-panel .sp-live-row {
+  display: none !important;
+}
+
+.spotify-panel .stationhead-audio-controls {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 20px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  order: 1;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.spotify-panel .stationhead-audio-toggle {
+  display: inline-flex !important;
+  min-height: 20px;
+  padding: 0 5px;
+  font-size: 8px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.spotify-panel .stationhead-audio-toggle.is-muted {
+  border-color: rgba(74, 179, 244, .35);
+  color: var(--blue);
+}
+
+.spotify-panel .stationhead-volume-control {
+  display: grid !important;
+  grid-template-columns: minmax(34px, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.spotify-panel .stationhead-volume-control > span {
+  display: none;
+}
+
+.spotify-panel .stationhead-volume-slider {
+  display: block !important;
+  width: 100%;
+  min-width: 34px;
+  height: 16px;
+  accent-color: var(--blue);
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+.spotify-panel .stationhead-volume-control b {
+  min-width: 25px;
+  color: var(--faint);
+  font-size: 7px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.spotify-panel .stationhead-progress {
+  display: none !important;
+}
+
+@media (min-height: 860px) {
+  .spotify-panel .sp-live-row {
+    display: flex !important;
+    min-height: 14px;
+    margin-top: 2px;
+    font-size: 8px;
+  }
+}
