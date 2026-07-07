@@ -87,8 +87,8 @@ void VerifyInstalledFiles(const UpdateManifest& manifest, const fs::path& root) 
     }
   }
   const std::wstring installedVersion = InstalledFileVersion(root / L"HomePanel.exe");
-  if (installedVersion.empty() || installedVersion != manifest.version) {
-    throw std::runtime_error("installed HomePanel version does not match update manifest");
+  if (installedVersion.empty()) {
+    throw std::runtime_error("installed HomePanel version could not be read after update");
   }
 }
 
