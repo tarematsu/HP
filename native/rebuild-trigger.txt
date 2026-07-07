@@ -1,3 +1,4 @@
 Trigger native build after source updates.
 Cloud Spotify integration merged in the current release branch.
 Release verification requested through PR merge.
+Auto-release verification on 2026-07-08.
