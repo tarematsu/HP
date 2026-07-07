@@ -1,4 +1,5 @@
 #include "shared_webview_environment.h"
+#include <WebView2EnvironmentOptions.h>
 
 namespace hp {
 namespace {
@@ -70,10 +71,17 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     return;
   }
 
+  // The WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS environment variable is only
+  // honored on a best-effort basis by the loader in some runtime versions,
+  // so also set AdditionalBrowserArguments explicitly on the environment
+  // options object, which is the documented, reliable mechanism.
   ApplyWebView2ProcessHints();
+  ComPtr<CoreWebView2EnvironmentOptions> options =
+      Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+  if (options) options->put_AdditionalBrowserArguments(kWebView2Arguments);
   const auto key = std::make_shared<std::wstring>(requestedKey);
   const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
-      nullptr, folderForCreation.c_str(), nullptr,
+      nullptr, folderForCreation.c_str(), options.Get(),
       Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
           [this, key](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
             Complete(*key, FAILED(result) || !environment
