@@ -187,6 +187,22 @@ std::wstring FetchPlaybackJson(const wchar_t* rawUrl, std::wstring* payload) {
   }
   return LastWinHttpError("WinHTTP native playback request");
 }
+
+void SaveNativePlaybackSnapshot(const fs::path& dataDir, const wchar_t* source,
+                                const std::wstring& payload,
+                                const std::wstring& error,
+                                int64_t fetchedAt) {
+  if (!source || !*source) return;
+  std::wostringstream json;
+  json << L"{\"source\":" << JsonQuote(source)
+       << L",\"fetchedAt\":" << fetchedAt
+       << L",\"ok\":" << (error.empty() ? L"true" : L"false");
+  if (!error.empty()) json << L",\"error\":" << JsonQuote(error);
+  if (!payload.empty()) json << L",\"payload\":" << payload;
+  json << L"}";
+  AtomicWriteText(dataDir / (std::wstring(L"native-playback-") + source + L".json"),
+                  WideToUtf8(json.str()));
+}
 }  // namespace
 
 void Renderer::StartNativePlaybackBridge() {
@@ -217,6 +233,9 @@ void Renderer::NativePlaybackLoop() {
         update.fetchedAt = UnixMillis();
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
+        SaveNativePlaybackSnapshot(
+            dataDir_, update.source.c_str(), update.payload, update.error,
+            update.fetchedAt);
       }
       InvalidateRect(window_, nullptr, FALSE);
     }
