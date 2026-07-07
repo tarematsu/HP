@@ -32,7 +32,6 @@ secrets.json
 cloud/node_modules/
 cloud/.wrangler/
 cloud/dist/
-cloud/package-lock.json
 
 # Local release artifacts
 *.zip
