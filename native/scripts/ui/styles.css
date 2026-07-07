@@ -288,16 +288,16 @@ button:disabled { opacity: .38; cursor: default; }
   display: block;
   margin-bottom: 3px;
   color: var(--muted);
-  font-size: calc(var(--font-xs) * 1.2);
+  font-size: calc(var(--font-xs) * 1.5);
 }
 .air-metrics b {
-  font-size: calc(var(--font-xl) * 1.2);
+  font-size: calc(var(--font-xl) * 1.5);
   font-weight: 400;
 }
 .air-metrics em {
   margin-left: 2px;
   color: var(--muted);
-  font-size: calc(var(--font-xs) * 1.2);
+  font-size: calc(var(--font-xs) * 1.5);
   font-style: normal;
   font-weight: 400;
 }
@@ -329,7 +329,7 @@ button:disabled { opacity: .38; cursor: default; }
 }
 .clock {
   color: #fff;
-  font-size: var(--font-clock);
+  font-size: calc(var(--font-clock) * 1.5);
   font-weight: 300;
   line-height: 1;
   letter-spacing: .01em;
@@ -664,7 +664,7 @@ button:disabled { opacity: .38; cursor: default; }
 }
 .energy-summary strong { font-size: calc(var(--font-lg) * 1.2); font-weight: 500; }
 .energy-summary span { margin-left: 3px; color: var(--muted); font-size: calc(var(--font-2xs) * 1.2); }
-.energy-cost { display: block; margin-left: 0; margin-top: 1px; color: var(--faint); font-size: calc(9px * 1.2); }
+.energy-cost { display: block; margin-left: 0; margin-top: 1px; color: var(--faint); font-size: calc(9px * 1.5); }
 .energy-chart-shell {
   flex: 1;
   min-height: 0;
@@ -867,7 +867,7 @@ button:disabled { opacity: .38; cursor: default; }
 @media (max-height: 760px) {
   .dashboard { width: 99vw; height: min(99vh, 840px); }
   .panel { padding: 6px 8px; border-radius: 13px; }
-  .clock { font-size: 34px; }
+  .clock { font-size: calc(34px * 1.5); }
   .control-grid { gap: 4px; padding-top: 5px; }
   .control-grid button, .volume-step { min-height: 30px; }
   .weather-hour b { margin: 4px 0 3px; font-size: 13px; }
@@ -966,8 +966,8 @@ button:disabled { opacity: .38; cursor: default; }
   position: relative;
   display: grid;
   align-self: stretch;
-  grid-template-columns: 164px minmax(0, 1fr);
-  min-height: 164px;
+  grid-template-columns: 131px minmax(0, 1fr);
+  min-height: 131px;
   gap: 16px;
   margin: 0;
 }
@@ -983,14 +983,14 @@ button:disabled { opacity: .38; cursor: default; }
 .spotify-now #stationhead-b-artwork,
 .spotify-now #stationhead-a-artwork,
 .spotify-now .stationhead-artwork-fallback {
-  width: 164px;
-  height: 164px;
+  width: 131px;
+  height: 131px;
   border-radius: 14px;
 }
 #stationhead-b-artwork-shell {
   position: relative;
-  width: 164px;
-  height: 164px;
+  width: 131px;
+  height: 131px;
   overflow: hidden;
   border-radius: 14px;
   isolation: isolate;
@@ -1038,16 +1038,16 @@ button:disabled { opacity: .38; cursor: default; }
   -webkit-line-clamp: 1;
 }
 .spotify-now .sp-live-row { margin-top: 6px; }
+/* Audio on/off toggle lives at the right end of the live-status row. */
 .stationhead-audio-controls {
   display: flex;
   align-items: center;
   gap: 8px;
   width: auto;
   min-width: 0;
-  min-height: 28px;
-  margin-top: 8px;
+  min-height: 24px;
+  margin: 0 0 0 auto;
   flex: 0 0 auto;
-  order: 20;
 }
 .stationhead-audio-toggle {
   min-height: 28px;
@@ -1198,17 +1198,17 @@ button:disabled { opacity: .38; cursor: default; }
   .stationhead-dual-list { gap: 5px; }
   .stationhead-player-row { padding: 6px 8px; }
   .spotify-now {
-    grid-template-columns: 88px minmax(0, 1fr);
-    min-height: 88px;
+    grid-template-columns: 70px minmax(0, 1fr);
+    min-height: 70px;
     gap: 10px;
   }
   .spotify-now #stationhead-b-artwork,
   .spotify-now #stationhead-a-artwork,
   .spotify-now .stationhead-artwork-fallback {
-    width: 88px;
-    height: 88px;
+    width: 70px;
+    height: 70px;
   }
-  #stationhead-b-artwork-shell { width: 88px; height: 88px; }
+  #stationhead-b-artwork-shell { width: 70px; height: 70px; }
   .spotify-now .stationhead-track {
     font-size: 15px;
     line-height: 1.2;
@@ -1218,7 +1218,7 @@ button:disabled { opacity: .38; cursor: default; }
   .spotify-now .sp-live-row { min-height: 14px; margin-top: 2px; font-size: 8px; }
   .sp-live-badge { min-width: 44px; padding: 1px 5px; font-size: 8px; }
   .stationhead-artwork-spinner { width: 23px; height: 23px; border-width: 2px; }
-  .stationhead-audio-controls { gap: 4px; min-height: 22px; margin-top: 3px; }
+  .stationhead-audio-controls { gap: 4px; min-height: 20px; }
   .stationhead-audio-toggle { min-height: 20px; padding: 0 5px; font-size: 8px; }
   .stationhead-volume-control { grid-template-columns: auto minmax(38px, 1fr) auto; gap: 4px; font-size: 8px; }
   .stationhead-volume-slider { min-width: 38px; height: 16px; }

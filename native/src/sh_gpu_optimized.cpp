@@ -17,7 +17,6 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
   const pausedVideos = new Set();
   let nextTimerId = 0x61000000;
   let frozen = Boolean(patch.frozen);
-  let lastLogSignature = '';
 
   const sourceOf = callback => {
     try {
@@ -167,14 +166,6 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
     return { total: timers.size, active, paused, critical };
   };
 
-  const logStats = () => {
-    const stats = timerStats();
-    const signature = JSON.stringify(stats);
-    if (signature === lastLogSignature) return;
-    lastLogSignature = signature;
-    try { console.info('[HomePanel] Stationhead runtime', stats); } catch (_) {}
-  };
-
   const baseFreeze = patch.freeze.bind(patch);
   const baseUnfreeze = patch.unfreeze.bind(patch);
   patch.freeze = () => {
@@ -183,7 +174,6 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
     for (const record of timers.values()) pause(record);
     suspendVisualMedia();
     baseFreeze();
-    logStats();
   };
   patch.unfreeze = () => {
     if (!frozen) return;
@@ -191,10 +181,8 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
     frozen = false;
     restoreVisualMedia();
     for (const record of timers.values()) resume(record);
-    logStats();
   };
 
-  native.interval(() => { if (frozen) logStats(); }, 5 * 60 * 1000);
   window.__homepanelGpuRuntime = {
     get frozen() { return frozen; },
     timerStats,

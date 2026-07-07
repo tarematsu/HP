@@ -366,10 +366,7 @@
     updateAudioControls(source === PLAYBACK_SOURCES.b ? 'b' : 'a');
   }
 
-  function renderAll() {
-    removePanelHeaderMeta();
-    renderPlugs(dashboard.switchbot || {});
-
+  function renderPlayers() {
     const sourceA = PLAYBACK_SOURCES.a;
     const snapshotA = playbackSnapshot(playbackStates.a.value);
     renderStationheadPlayer({ source: sourceA, snapshot: snapshotA, status: sourceStatus(playbackStates.a, snapshotA) });
@@ -384,6 +381,14 @@
       status: sourceStatus(playbackStates.b, snapshotB).kind === 'live' ? sourceStatus(playbackStates.b, snapshotB) : spotifyStatus,
       grayOut: spotifyStatus.offline && !snapshotB.hasTrack,
     });
+  }
+
+  // Plug Mini status only changes on state pushes, so keep it out of the
+  // per-second progress tick; players advance every second for queue timing.
+  function renderAll() {
+    removePanelHeaderMeta();
+    renderPlugs(dashboard.switchbot || {});
+    renderPlayers();
   }
 
   function applyNativePlayback(message) {
@@ -402,7 +407,7 @@
     if (progressTimer) clearTimeout(progressTimer);
     progressTimer = setTimeout(() => {
       progressTimer = 0;
-      if (!document.hidden) renderAll();
+      if (!document.hidden) renderPlayers();
       scheduleProgress();
     }, 1000);
   }
