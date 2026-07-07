@@ -169,7 +169,7 @@ set(HOMEPANEL_UPDATER_SOURCES
 
 add_executable(HomePanelUpdater WIN32 ${HOMEPANEL_UPDATER_SOURCES})
 homepanel_configure_common_target(HomePanelUpdater)
-target_link_libraries(HomePanelUpdater PRIVATE winhttp bcrypt wintrust crypt32 shell32 ole32 user32 windowsapp runtimeobject)
+target_link_libraries(HomePanelUpdater PRIVATE winhttp bcrypt wintrust crypt32 shell32 ole32 user32 windowsapp runtimeobject iphlpapi)
 
 install(TARGETS HomePanel HomePanelUpdater RUNTIME DESTINATION .)
 install(FILES config.example.json "${CMAKE_CURRENT_SOURCE_DIR}/../THIRD_PARTY_NOTICES.md" DESTINATION .)
