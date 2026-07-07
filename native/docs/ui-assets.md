@@ -11,10 +11,9 @@ When adding a browser-loaded UI file:
 3. Add the same resource ID and output filename to `kUiAssets` in `native/src/embedded_ui.cpp`.
 4. Reference the file from `index.html` if the browser needs to load it.
 
-## Generated exceptions
+## Runtime exception
 
-Only keep generation for data that cannot be represented as checked-in source:
+Only keep runtime output for data that cannot exist as a checked-in static asset:
 
 - `wallpaper.css`: written at runtime because it depends on the current Windows wallpaper and screen size.
-- Radar base PNG files: produced during native configure from `scripts/build_radar_base.ps1`.
-- Stationhead native compatibility sources: still produced during native configure; consolidate these separately before removing that generator chain.
+- Wallpaper image derivatives: written at runtime next to `wallpaper.css` for the same reason.

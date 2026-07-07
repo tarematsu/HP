@@ -593,3 +593,12 @@
   margin-top: 3px !important;
   font-size: 8px !important;
 }
+
+@media (min-height: 860px) {
+  .spotify-panel .sp-live-row {
+    display: flex !important;
+    min-height: 14px;
+    margin-top: 2px;
+    font-size: 8px;
+  }
+}
