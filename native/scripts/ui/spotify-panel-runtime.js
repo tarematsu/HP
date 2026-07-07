@@ -159,7 +159,7 @@
   }
 
   function ensureProgress(prefix, bodySelector) {
-    const body = $(bodySelector);
+    const body = bodySelector ? $(bodySelector) : compactBody(prefix);
     if (!body) return null;
     let root = $(`#${prefix}-progress`);
     if (root) return root;
@@ -169,6 +169,14 @@
     root.innerHTML = `<div class="stationhead-progress-track"><div id="${prefix}-progress-fill" class="stationhead-progress-fill"></div></div><div class="stationhead-progress-time"><span id="${prefix}-progress-current">0:00</span><span id="${prefix}-progress-duration">0:00</span></div>`;
     body.appendChild(root);
     return root;
+  }
+
+  function playerRow(prefix) {
+    return document.getElementById(`${prefix}-track`)?.closest('.stationhead-player-row') || null;
+  }
+
+  function compactBody(prefix) {
+    return playerRow(prefix)?.querySelector('.stationhead-compact-body') || null;
   }
 
   function asObject(value) {
@@ -275,13 +283,14 @@
 
   function mergeSnapshots(primary, fallback) {
     if (!fallback?.hasTrack) return primary;
-    if (primary?.hasTrack && primary?.artwork) return primary;
     return {
       title: primary?.title || fallback.title,
       artist: primary?.artist || fallback.artist,
       artwork: primary?.artwork || fallback.artwork,
-      durationMs: primary?.durationMs || fallback.durationMs,
-      progressMs: primary?.progressMs || fallback.progressMs,
+      durationMs: primary?.durationMs > 0 ? primary.durationMs : fallback.durationMs,
+      progressMs: (primary?.durationMs > 0 || primary?.progressMs > 0)
+        ? primary.progressMs
+        : fallback.progressMs,
       playing: primary?.playing === true || fallback.playing === true,
       hasTrack: Boolean(primary?.hasTrack || fallback.hasTrack),
     };
@@ -334,8 +343,8 @@
     return { kind: 'offline', detail: 'Spotify再生なし', offline: true };
   }
 
-  function setPanelOffline(rowSelector, offline) {
-    const row = $(rowSelector);
+  function setPanelOffline(prefix, offline) {
+    const row = playerRow(prefix);
     if (!row) return;
     row.classList.toggle('is-api-offline', Boolean(offline));
     row.style.filter = offline ? 'grayscale(1) saturate(.2)' : '';
@@ -344,13 +353,13 @@
   }
 
   function renderStationheadPlayer({ source, snapshot, status, grayOut = false }) {
-    const bodySelector = `${source.rowSelector} .stationhead-compact-body`;
+    const bodySelector = null;
     setText(`#${source.prefix}-track`, snapshot.title || `${source.channel}曲情報待ち`);
     setText(`#${source.prefix}-artist`, snapshot.artist || '--');
     setArtwork(`#${source.prefix}-artwork`, `#${source.prefix}-artwork-fallback`, snapshot.artwork);
     renderProgress(source.prefix, bodySelector, snapshot);
     setBadge(source.prefix, status.kind, status.detail);
-    setPanelOffline(source.rowSelector, grayOut);
+    setPanelOffline(source.prefix, grayOut);
     updateAudioControls(source === PLAYBACK_SOURCES.b ? 'b' : 'a');
   }
 

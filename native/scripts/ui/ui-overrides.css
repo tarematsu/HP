@@ -78,9 +78,9 @@
   position: relative;
   display: grid;
   align-self: stretch;
-  grid-template-columns: 72px minmax(0, 1fr);
-  min-height: 72px;
-  gap: 10px;
+  grid-template-columns: 82px minmax(0, 1fr);
+  min-height: 82px;
+  gap: 8px;
   margin: 0;
 }
 
@@ -93,22 +93,22 @@
   display: flex;
   min-height: 0;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   overflow: hidden;
 }
 
 .spotify-now #stationhead-b-artwork,
 .spotify-now #stationhead-a-artwork,
 .spotify-now .stationhead-artwork-fallback {
-  width: 72px;
-  height: 72px;
+  width: 82px;
+  height: 82px;
   border-radius: 10px;
 }
 
 #stationhead-b-artwork-shell {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 82px;
+  height: 82px;
   overflow: hidden;
   border-radius: 10px;
   isolation: isolate;
@@ -155,12 +155,12 @@
 }
 
 .spotify-now .stationhead-track {
-  font-size: 15px;
+  font-size: 16px;
   -webkit-line-clamp: 2;
 }
 
 .spotify-now .stationhead-artist {
-  font-size: 12px;
+  font-size: 13px;
   -webkit-line-clamp: 1;
 }
 
@@ -509,11 +509,11 @@
 
 .spotify-panel .spotify-now {
   display: grid !important;
-  grid-template-columns: 42px minmax(0, 1fr) !important;
+  grid-template-columns: 58px minmax(0, 1fr) !important;
   min-height: 0 !important;
   height: 100% !important;
-  gap: 5px !important;
-  align-items: center !important;
+  gap: 6px !important;
+  align-items: start !important;
 }
 
 .spotify-panel .stationhead-compact-media,
@@ -521,29 +521,30 @@
 .spotify-panel #stationhead-b-artwork,
 .spotify-panel #stationhead-b-artwork-shell,
 .spotify-panel .stationhead-artwork-fallback {
-  width: 42px !important;
-  height: 42px !important;
-  border-radius: 7px !important;
+  width: 58px !important;
+  height: 58px !important;
+  border-radius: 8px !important;
 }
 
 .spotify-panel .stationhead-compact-body {
   display: grid !important;
-  grid-template-rows: minmax(0, auto) minmax(0, auto) min-content !important;
-  align-content: center !important;
-  gap: 1px !important;
+  grid-template-rows: minmax(0, auto) minmax(0, auto) min-content min-content !important;
+  align-content: start !important;
+  justify-items: start !important;
+  gap: 2px !important;
   min-height: 0 !important;
   overflow: hidden !important;
 }
 
 .spotify-panel .stationhead-track {
-  font-size: 12px !important;
-  line-height: 1.05 !important;
-  -webkit-line-clamp: 1 !important;
+  font-size: 13px !important;
+  line-height: 1.12 !important;
+  -webkit-line-clamp: 2 !important;
 }
 
 .spotify-panel .stationhead-artist {
-  font-size: 9px !important;
-  line-height: 1.05 !important;
+  font-size: 10px !important;
+  line-height: 1.12 !important;
   -webkit-line-clamp: 1 !important;
 }
 
@@ -576,4 +577,19 @@
 
 .spotify-panel .stationhead-progress {
   display: grid !important;
+  width: 100% !important;
+  margin-top: 3px !important;
+  justify-self: stretch !important;
+}
+
+.spotify-panel .stationhead-progress-track {
+  height: 3px !important;
+}
+
+.spotify-panel .stationhead-progress-time {
+  display: flex !important;
+  width: 100% !important;
+  justify-content: space-between !important;
+  margin-top: 3px !important;
+  font-size: 8px !important;
 }
