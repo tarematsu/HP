@@ -1,2 +1,0 @@
-GitHub Actions smoke test marker for the Native workflow.
-No runtime behavior is changed.

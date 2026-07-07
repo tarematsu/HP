@@ -17,7 +17,9 @@
       canvas.width = width;
       canvas.height = height;
     }
-    const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
+    // Keep alpha but avoid `desynchronized`, which WebView2 promotes to an
+    // opaque surface and makes the energy graph render as a solid rectangle.
+    const context = canvas.getContext('2d', { alpha: true });
     if (!context) return null;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     return { context, width: rect.width, height: rect.height };

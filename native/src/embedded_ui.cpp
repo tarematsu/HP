@@ -57,13 +57,9 @@ constexpr UiAsset kUiAssets[] = {
     {104, L"texts.json", true},
     {105, L"air-history.css", true},
     {106, L"air-history.js", true},
-    {107, L"performance.css", true},
-    {109, L"ui-overrides.css", true},
     {110, L"radar-satellite.png", false},
     {112, L"radar-map.png", false},
-    {113, L"canvas-transparency.js", true},
     {114, L"spotify-panel-runtime.js", true},
-    {115, L"runtime-performance.js", true},
     {137, L"playback-shared.js", true},
     {117, L"homepanel-core.js", true},
     {118, L"homepanel-clock.js", true},
@@ -74,7 +70,6 @@ constexpr UiAsset kUiAssets[] = {
     {124, L"homepanel-air.js", true},
     {125, L"homepanel-radar.js", true},
     {126, L"homepanel-runtime.js", true},
-    {127, L"radar-monochrome.js", true},
     {129, L"vendor/wx-icons/100.svg", true},
     {130, L"vendor/wx-icons/101.svg", true},
     {131, L"vendor/wx-icons/200.svg", true},
@@ -183,6 +178,11 @@ void RemoveObsoleteGeneratedFiles(const hp::fs::path& folder) {
       L"stationhead-playback.js",
       L"radar-direct.js",
       L"radar-base.png",
+      L"performance.css",
+      L"ui-overrides.css",
+      L"canvas-transparency.js",
+      L"runtime-performance.js",
+      L"radar-monochrome.js",
   };
   std::error_code error;
   for (const wchar_t* name : kFiles) {

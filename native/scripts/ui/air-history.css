@@ -37,7 +37,7 @@
   align-items: center;
   gap: 4px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: calc(8px * 1.5);
   font-weight: 650;
   letter-spacing: .03em;
 }
@@ -56,7 +56,7 @@
 
 .air-trend-range {
   color: var(--faint);
-  font-size: 8px;
+  font-size: calc(8px * 1.5);
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -82,7 +82,7 @@
   display: flex;
   justify-content: space-between;
   color: rgba(255,255,255,.40);
-  font-size: 9px;
+  font-size: calc(9px * 1.5);
   padding: 0 2px;
   margin-top: 2px;
   line-height: 1.2;
@@ -90,9 +90,4 @@
 
 .air .presence-line {
   margin-top: 3px;
-}
-
-.energy-chart-shell {
-  background: transparent !important;
-  border-color: rgba(255, 255, 255, .08);
 }

@@ -113,7 +113,7 @@
 
     const { context, width, height } = canvas;
     context.clearRect(0, 0, width, height);
-    const plot = { left: 31, right: Math.max(32, width - 31), top: 3, bottom: Math.max(4, height - 3) };
+    const plot = { left: 42, right: Math.max(43, width - 42), top: 3, bottom: Math.max(4, height - 3) };
     plot.width = Math.max(1, plot.right - plot.left);
     plot.height = Math.max(1, plot.bottom - plot.top);
 
@@ -141,7 +141,7 @@
     drawLine(context, history, 'humidity', bounds.humidity, cutoff, plot, metrics[2].color, metrics[2].width);
     drawLine(context, history, 'co2', bounds.co2, cutoff, plot, metrics[0].color, metrics[0].width);
 
-    context.font = '8px sans-serif';
+    context.font = '12px sans-serif';
     context.textBaseline = 'middle';
     for (let index = 0; index < 4; index += 1) {
       const ratio = index / 3;

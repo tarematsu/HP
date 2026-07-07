@@ -13,35 +13,10 @@ endif()
 option(HOMEPANEL_CI_STRICT "Treat compiler and linker warnings as errors" OFF)
 option(HOMEPANEL_CI_STATIC_ANALYSIS "Run MSVC native code analysis" OFF)
 
-set(HOMEPANEL_BUILD_VERSION "$ENV{HOMEPANEL_BUILD_VERSION}")
-if(NOT HOMEPANEL_BUILD_VERSION)
-  string(TIMESTAMP HOMEPANEL_BUILD_VERSION "%y%m%d%H%M")
-endif()
-if(HOMEPANEL_BUILD_VERSION MATCHES "^([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{4})$")
-  set(HOMEPANEL_VERSION_COMMA "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},${CMAKE_MATCH_4}")
-elseif(HOMEPANEL_BUILD_VERSION MATCHES "^[0-9]+\.[0-9]+\.[0-9]+$")
-  string(REPLACE "." "," HOMEPANEL_VERSION_COMMA "${HOMEPANEL_BUILD_VERSION}")
-  set(HOMEPANEL_VERSION_COMMA "${HOMEPANEL_VERSION_COMMA},0")
-else()
-  message(FATAL_ERROR "HOMEPANEL_BUILD_VERSION must use yymmddhhmm or numeric major.minor.patch format")
-endif()
+# version.h and the .rc resources are generated at build time by
+# cmake/write_version_files.cmake, the single source of truth for the build
+# number. Nothing else in this file needs to parse the version.
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
-
-find_program(HOMEPANEL_POWERSHELL NAMES pwsh powershell REQUIRED)
-set(HOMEPANEL_SCRIPT_OUTPUT "")
-function(homepanel_run_script description script)
-  cmake_parse_arguments(HP "" "" "ARGS" ${ARGN})
-  execute_process(
-    COMMAND "${HOMEPANEL_POWERSHELL}" -NoLogo -NoProfile -ExecutionPolicy Bypass
-            -File "${script}" ${HP_ARGS}
-    RESULT_VARIABLE HP_RESULT
-    OUTPUT_VARIABLE HP_OUTPUT
-    ERROR_VARIABLE HP_ERROR)
-  if(NOT HP_RESULT EQUAL 0)
-    message(FATAL_ERROR "${description} failed.\nstdout: ${HP_OUTPUT}\nstderr: ${HP_ERROR}")
-  endif()
-  set(HOMEPANEL_SCRIPT_OUTPUT "${HOMEPANEL_SCRIPT_OUTPUT}${HP_OUTPUT}" PARENT_SCOPE)
-endfunction()
 
 set(HOMEPANEL_RADAR_SATELLITE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-satellite.png")
 set(HOMEPANEL_RADAR_MAP "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-map.png")

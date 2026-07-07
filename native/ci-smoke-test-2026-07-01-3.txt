@@ -1,2 +1,0 @@
-Native GitHub Actions smoke test marker.
-This file does not change HomePanel runtime behavior.
