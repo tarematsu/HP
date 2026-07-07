@@ -104,25 +104,6 @@ AppConfig LoadConfig(const fs::path& path) {
       }
       config.deviceId = GetString(root, L"deviceId", config.deviceId);
 
-      const auto mineo = GetObject(root, L"mineo");
-      config.mineo.enabled = GetBoolean(mineo, L"enabled", config.mineo.enabled);
-      config.mineo.url = GetString(mineo, L"url", config.mineo.url);
-      config.mineo.morningHour = GetInteger(
-          mineo, L"morningHour", config.mineo.morningHour, 0, 23);
-      config.mineo.nightHour = GetInteger(
-          mineo, L"nightHour", config.mineo.nightHour, 0, 23);
-      config.mineo.yuzuEnabled = GetBoolean(
-          mineo, L"yuzuEnabled", config.mineo.yuzuEnabled);
-      config.mineo.showOnFirstRun = GetBoolean(
-          mineo, L"showOnFirstRun", config.mineo.showOnFirstRun);
-      config.mineo.dataSelector = GetString(
-          mineo, L"dataSelector", config.mineo.dataSelector);
-      config.mineo.yuzuSelector = GetString(
-          mineo, L"yuzuSelector", config.mineo.yuzuSelector);
-      config.mineo.yuzuReadyText = GetString(
-          mineo, L"yuzuReadyText", config.mineo.yuzuReadyText);
-      config.mineo.yuzuDeclaredText = GetString(
-          mineo, L"yuzuDeclaredText", config.mineo.yuzuDeclaredText);
     } catch (...) {
       // Invalid local bootstrap data falls back to compiled defaults.
     }

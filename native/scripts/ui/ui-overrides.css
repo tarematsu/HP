@@ -52,14 +52,14 @@
   flex: 1 1 auto;
   min-height: 0;
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .stationhead-player-row {
   display: grid;
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
-  padding: 7px 8px;
+  padding: 10px 12px;
   overflow: hidden;
   border: 1px solid var(--inner-border);
   border-radius: 10px;
@@ -78,15 +78,15 @@
   position: relative;
   display: grid;
   align-self: stretch;
-  grid-template-columns: 82px minmax(0, 1fr);
-  min-height: 82px;
-  gap: 8px;
+  grid-template-columns: 164px minmax(0, 1fr);
+  min-height: 164px;
+  gap: 16px;
   margin: 0;
 }
 
 .spotify-now .stationhead-compact-media,
 .spotify-now .stationhead-compact-body {
-  align-self: center;
+  align-self: stretch;
 }
 
 .spotify-now .stationhead-compact-body {
@@ -100,17 +100,17 @@
 .spotify-now #stationhead-b-artwork,
 .spotify-now #stationhead-a-artwork,
 .spotify-now .stationhead-artwork-fallback {
-  width: 82px;
-  height: 82px;
-  border-radius: 10px;
+  width: 164px;
+  height: 164px;
+  border-radius: 14px;
 }
 
 #stationhead-b-artwork-shell {
   position: relative;
-  width: 82px;
-  height: 82px;
+  width: 164px;
+  height: 164px;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: 14px;
   isolation: isolate;
 }
 
@@ -155,37 +155,38 @@
 }
 
 .spotify-now .stationhead-track {
-  font-size: 16px;
+  font-size: 22px;
+  line-height: 1.15;
   -webkit-line-clamp: 2;
 }
 
 .spotify-now .stationhead-artist {
-  font-size: 13px;
+  font-size: 17px;
+  line-height: 1.2;
   -webkit-line-clamp: 1;
 }
 
 .spotify-now .sp-live-row {
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .stationhead-audio-controls {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
+  gap: 8px;
+  width: auto;
   min-width: 0;
-  min-height: 24px;
-  margin-top: 4px;
+  min-height: 28px;
+  margin-top: 8px;
   flex: 0 0 auto;
   order: 20;
 }
 
 .stationhead-audio-toggle {
-  min-height: 22px;
-  padding: 0 7px;
+  min-height: 28px;
+  padding: 0 10px;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -222,8 +223,8 @@
 
 .stationhead-progress {
   width: 100%;
-  margin-top: 3px;
-  padding-top: 3px;
+  margin-top: 10px;
+  padding-top: 2px;
   flex: 0 0 auto;
   order: 30;
 }
@@ -234,7 +235,7 @@
 
 .stationhead-progress-track {
   width: 100%;
-  height: 4px;
+  height: 8px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, .12);
@@ -256,9 +257,9 @@
 .stationhead-progress-time {
   display: flex;
   justify-content: space-between;
-  margin-top: 2px;
+  margin-top: 6px;
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -382,35 +383,35 @@
   }
 
   .stationhead-player-row {
-    padding: 5px 6px;
+    padding: 6px 8px;
   }
 
   .spotify-now {
-    grid-template-columns: 52px minmax(0, 1fr);
-    min-height: 52px;
-    gap: 7px;
+    grid-template-columns: 88px minmax(0, 1fr);
+    min-height: 88px;
+    gap: 10px;
   }
 
   .spotify-now #stationhead-b-artwork,
   .spotify-now #stationhead-a-artwork,
   .spotify-now .stationhead-artwork-fallback {
-    width: 52px;
-    height: 52px;
+    width: 88px;
+    height: 88px;
   }
 
   #stationhead-b-artwork-shell {
-    width: 52px;
-    height: 52px;
+    width: 88px;
+    height: 88px;
   }
 
   .spotify-now .stationhead-track {
-    font-size: 13px;
+    font-size: 15px;
     line-height: 1.2;
-    -webkit-line-clamp: 1;
+    -webkit-line-clamp: 2;
   }
 
   .spotify-now .stationhead-artist {
-    font-size: 10px;
+    font-size: 11px;
     line-height: 1.2;
   }
 
@@ -466,11 +467,11 @@
   }
 
   .stationhead-progress-track {
-    height: 2px;
+    height: 4px;
   }
 
   .stationhead-progress-time {
-    display: none;
+    font-size: 9px;
   }
 
   .energy-plug {
@@ -493,112 +494,3 @@
   }
 }
 
-/* Final Stationhead audio controls fail-safe.
-   This file is bundled into generated styles.css by embedded_ui.cpp, so these rules
-   actually reach the runtime WebView. Keep controls visible before everything else. */
-.spotify-panel .stationhead-player-row {
-  padding: 4px 6px !important;
-  overflow: hidden !important;
-}
-
-.spotify-panel .stationhead-window-label {
-  margin-bottom: 2px !important;
-  font-size: 8px !important;
-  line-height: 1.05 !important;
-}
-
-.spotify-panel .spotify-now {
-  display: grid !important;
-  grid-template-columns: 58px minmax(0, 1fr) !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  gap: 6px !important;
-  align-items: start !important;
-}
-
-.spotify-panel .stationhead-compact-media,
-.spotify-panel #stationhead-a-artwork,
-.spotify-panel #stationhead-b-artwork,
-.spotify-panel #stationhead-b-artwork-shell,
-.spotify-panel .stationhead-artwork-fallback {
-  width: 58px !important;
-  height: 58px !important;
-  border-radius: 8px !important;
-}
-
-.spotify-panel .stationhead-compact-body {
-  display: grid !important;
-  grid-template-rows: minmax(0, auto) minmax(0, auto) min-content min-content !important;
-  align-content: start !important;
-  justify-items: start !important;
-  gap: 2px !important;
-  min-height: 0 !important;
-  overflow: hidden !important;
-}
-
-.spotify-panel .stationhead-track {
-  font-size: 13px !important;
-  line-height: 1.12 !important;
-  -webkit-line-clamp: 2 !important;
-}
-
-.spotify-panel .stationhead-artist {
-  font-size: 10px !important;
-  line-height: 1.12 !important;
-  -webkit-line-clamp: 1 !important;
-}
-
-.spotify-panel .sp-live-row {
-  display: none !important;
-}
-
-.spotify-panel .stationhead-audio-controls {
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  width: auto !important;
-  min-height: 20px !important;
-  margin-top: 1px !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-.spotify-panel .stationhead-audio-toggle {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  min-width: 42px !important;
-  min-height: 19px !important;
-  padding: 0 5px !important;
-  font-size: 8px !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
-}
-
-.spotify-panel .stationhead-progress {
-  display: grid !important;
-  width: 100% !important;
-  margin-top: 3px !important;
-  justify-self: stretch !important;
-}
-
-.spotify-panel .stationhead-progress-track {
-  height: 3px !important;
-}
-
-.spotify-panel .stationhead-progress-time {
-  display: flex !important;
-  width: 100% !important;
-  justify-content: space-between !important;
-  margin-top: 3px !important;
-  font-size: 8px !important;
-}
-
-@media (min-height: 860px) {
-  .spotify-panel .sp-live-row {
-    display: flex !important;
-    min-height: 14px;
-    margin-top: 2px;
-    font-size: 8px;
-  }
-}

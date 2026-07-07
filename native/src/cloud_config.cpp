@@ -92,26 +92,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     // Keep this authoritative even when an older cloud cache still contains 57 minutes.
     config.stationhead.secondaryReloadIntervalMinutes = 52;
 
-    const auto mineo = Object(root, L"mineo");
-    config.mineo.enabled = Boolean(mineo, L"enabled", config.mineo.enabled);
-    config.mineo.url = Text(mineo, L"url", config.mineo.url);
-    config.mineo.morningHour = Number(
-        mineo, L"morningHour", config.mineo.morningHour, 0, 23);
-    config.mineo.nightHour = Number(
-        mineo, L"nightHour", config.mineo.nightHour, 0, 23);
-    config.mineo.yuzuEnabled = Boolean(
-        mineo, L"yuzuEnabled", config.mineo.yuzuEnabled);
-    config.mineo.showOnFirstRun = Boolean(
-        mineo, L"showOnFirstRun", config.mineo.showOnFirstRun);
-    config.mineo.dataSelector = Text(
-        mineo, L"dataSelector", config.mineo.dataSelector);
-    config.mineo.yuzuSelector = Text(
-        mineo, L"yuzuSelector", config.mineo.yuzuSelector);
-    config.mineo.yuzuReadyText = Text(
-        mineo, L"yuzuReadyText", config.mineo.yuzuReadyText);
-    config.mineo.yuzuDeclaredText = Text(
-        mineo, L"yuzuDeclaredText", config.mineo.yuzuDeclaredText);
-
     return true;
   } catch (...) {
     return false;

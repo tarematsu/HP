@@ -17,6 +17,7 @@
   let panelHeaderMetaHandled = false;
   const shared = window.__homepanelPlaybackShared || {};
   const asObject = shared.asObject || (value => value && typeof value === 'object' && !Array.isArray(value) ? value : {});
+  const normalizePlaybackPayload = shared.normalizePlaybackPayload || ((value) => value);
   const formatTime = shared.formatTime || (milliseconds => {
     const seconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -291,6 +292,13 @@
     };
   }
 
+  function spotifyStateMatchesSecondary(value) {
+    const state = asObject(value);
+    const host = asObject(state.host);
+    const handle = String(host.handle || state.hostHandle || '').replace(/^@/, '').toLowerCase();
+    return handle === 'buddy46';
+  }
+
   function renderProgress(prefix, bodySelector, snapshot) {
     const root = ensureProgress(prefix, bodySelector);
     if (!root) return;
@@ -367,8 +375,9 @@
     renderStationheadPlayer({ source: sourceA, snapshot: snapshotA, status: sourceStatus(playbackStates.a, snapshotA) });
 
     const sourceB = PLAYBACK_SOURCES.b;
-    const snapshotB = mergeSnapshots(playbackSnapshot(playbackStates.b.value), spotifySnapshot(spotifyState));
-    const spotifyStatus = spotifyAvailability(spotifyState);
+    const secondarySpotifyState = spotifyStateMatchesSecondary(spotifyState) ? spotifyState : {};
+    const snapshotB = mergeSnapshots(playbackSnapshot(playbackStates.b.value), spotifySnapshot(secondarySpotifyState));
+    const spotifyStatus = spotifyAvailability(secondarySpotifyState);
     renderStationheadPlayer({
       source: sourceB,
       snapshot: snapshotB,
@@ -384,7 +393,7 @@
     playbackStates[key].error = String(message.error || '');
     playbackStates[key].revision += 1;
     playbackStates[key].value = message.payload && typeof message.payload === 'object'
-      ? unwrapPlaybackPayload(message.payload)
+      ? normalizePlaybackPayload(unwrapPlaybackPayload(message.payload), playbackStates[key].fetchedAt)
       : {};
     renderAll();
   }

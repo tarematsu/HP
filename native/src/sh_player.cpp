@@ -1,5 +1,4 @@
 #include "sh.h"
-#include "mn_automation.h"
 #include "shared_webview_environment.h"
 #include "sh_shared.h"
 #include <psapi.h>
@@ -157,7 +156,6 @@ void StationheadPlayer::Start() {
 
 void StationheadPlayer::Stop() {
   shuttingDown_ = true;
-  ShutdownMineoAutomation();
   StopSpotifyStateWatcher();
   CloseAuthWebView();
   CloseWebView();
@@ -1065,7 +1063,6 @@ void StationheadPlayer::RefreshSpotifyState(bool notify) {
 
 void StationheadPlayer::Tick(int64_t nowMs, bool diagnosticsVisible) {
   if (shuttingDown_) return;
-  TickMineoAutomation(window_, nowMs, userDataFolder_, log_);
   if (nowMs < nextTickAt_ && !recreating_.load(std::memory_order_relaxed) && !spotifyStateDirty_.load(std::memory_order_relaxed)) return;
   nextTickAt_ = nowMs + 60'000;
   if (recreating_.exchange(false)) {
