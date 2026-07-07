@@ -4,6 +4,7 @@ namespace hp {
 namespace {
 constexpr wchar_t kWebView2Arguments[] =
     L"--disable-component-update --disable-domain-reliability "
+    L"--autoplay-policy=no-user-gesture-required "
     L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
 
 void ApplyWebView2ProcessHints() noexcept {
