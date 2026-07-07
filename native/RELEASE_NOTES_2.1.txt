@@ -1,2 +1,2 @@
 HomePanel 2.1 release series.
-Build versions use 2.1.<CircleCI build number> so installations on 2.0.594 can update normally.
+Build versions use the repository CI versioning scheme so installations on 2.0.594 can update normally.
