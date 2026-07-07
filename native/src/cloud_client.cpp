@@ -1,5 +1,6 @@
 #include "cloud_client.h"
 #include <winrt/Windows.Data.Json.h>
+#include <iphlpapi.h>
 
 namespace hp {
 namespace {
@@ -105,12 +106,53 @@ CloudClient::~CloudClient() {
 void CloudClient::Start() {
   stopping_ = false;
   thread_ = std::thread([this] { Loop(); });
+  StartNetworkChangeWatcher();
 }
 
 void CloudClient::Stop() {
   stopping_ = true;
   wake_.notify_all();
   if (thread_.joinable()) thread_.join();
+  StopNetworkChangeWatcher();
+}
+
+void CloudClient::StartNetworkChangeWatcher() {
+  // Cloud sync/Spotify polling back off up to 15 minutes after repeated
+  // failures (see Loop()). If the device's network was actually down (DNS
+  // unreachable, Wi-Fi drop, etc.), that backoff can leave the app stuck
+  // for a long time even after the network comes back. Watch for Windows
+  // network configuration changes and force an immediate retry when one
+  // is detected, instead of waiting out the fixed backoff timer.
+  networkChangeStopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+  if (!networkChangeStopEvent_) return;
+  networkChangeThread_ = std::thread([this] {
+    for (;;) {
+      OVERLAPPED overlapped{};
+      overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+      if (!overlapped.hEvent) return;
+      HANDLE notifyHandle = nullptr;
+      const DWORD requested = NotifyAddrChange(&notifyHandle, &overlapped);
+      if (requested != NO_ERROR && GetLastError() != ERROR_IO_PENDING) {
+        CloseHandle(overlapped.hEvent);
+        return;
+      }
+      HANDLE waitHandles[2] = {networkChangeStopEvent_, overlapped.hEvent};
+      const DWORD wait = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+      CloseHandle(overlapped.hEvent);
+      if (wait != WAIT_OBJECT_0 + 1) return;  // stop requested or wait failed
+      RefreshNow();
+      RequestSpotifyPollNow();
+    }
+  });
+}
+
+void CloudClient::StopNetworkChangeWatcher() {
+  if (networkChangeStopEvent_) SetEvent(networkChangeStopEvent_);
+  if (networkChangeThread_.joinable()) networkChangeThread_.join();
+  if (networkChangeStopEvent_) {
+    CloseHandle(networkChangeStopEvent_);
+    networkChangeStopEvent_ = nullptr;
+  }
 }
 
 void CloudClient::RefreshNow() {

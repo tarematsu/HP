@@ -125,6 +125,8 @@ class CloudClient {
   void ResetHttpHandlesLocked();
   std::vector<uint8_t> LocalizeRadarTiles(const std::vector<uint8_t>& body);
 
+  void StartNetworkChangeWatcher();
+  void StopNetworkChangeWatcher();
   void SpotifyLoop();
   void PollSpotify();
   bool LoadSpotifyTokens();
@@ -143,6 +145,8 @@ class CloudClient {
   Logger& log_;
   std::thread thread_;
   std::thread spotifyThread_;
+  std::thread networkChangeThread_;
+  HANDLE networkChangeStopEvent_{};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> immediate_{false};
   std::atomic<bool> spotifyImmediate_{false};
