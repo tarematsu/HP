@@ -101,6 +101,10 @@ struct BootstrapWebResult {
   std::string body;
 };
 
+std::string BootstrapWinHttpErrorText(const char* action) {
+  return std::string(action) + " failed (" + std::to_string(GetLastError()) + ")";
+}
+
 BootstrapWebResult BootstrapWebRequest(
     const std::wstring& method, const std::wstring& url,
     const std::wstring& bearer, const std::string& body = {}) {
@@ -121,70 +125,100 @@ BootstrapWebResult BootstrapWebRequest(
     requestPath.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
   }
 
-  HINTERNET session = WinHttpOpen(
-      L"HomePanel-Spotify-Bootstrap/2.0",
-      WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
-      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-  if (!session) throw std::runtime_error("bootstrap WinHttpOpen failed");
-  HINTERNET connection = WinHttpConnect(
-      session, std::wstring(host, parts.dwHostNameLength).c_str(),
-      parts.nPort, 0);
-  if (!connection) {
-    WinHttpCloseHandle(session);
-    throw std::runtime_error("bootstrap WinHttpConnect failed");
-  }
-  HINTERNET request = WinHttpOpenRequest(
-      connection, method.c_str(), requestPath.c_str(), nullptr,
-      WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-      parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
-  if (!request) {
-    WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
-    throw std::runtime_error("bootstrap request creation failed");
-  }
-  WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
-  std::wstring headers = L"Accept: application/json\r\n";
-  if (!bearer.empty()) {
-    headers += L"Authorization: Bearer " + bearer + L"\r\n";
-  }
-  if (!body.empty()) {
-    headers += L"Content-Type: application/json\r\n";
-  }
-  const BOOL sent = WinHttpSendRequest(
-      request, headers.c_str(), static_cast<DWORD>(headers.size()),
-      body.empty() ? WINHTTP_NO_REQUEST_DATA
-                   : const_cast<char*>(body.data()),
-      static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0);
-  if (!sent || !WinHttpReceiveResponse(request, nullptr)) {
+  // Tablets frequently sit on networks where WPAD/PAC autodetection never
+  // resolves (no proxy service, or a proxy the automatic scan can't see),
+  // which used to make every bootstrap request fail outright. Mirror the
+  // AUTOMATIC_PROXY -> NO_PROXY fallback already used for cloud sync and
+  // Spotify playback polling so bootstrap status checks recover the same way.
+  for (DWORD accessType : {WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY}) {
+    HINTERNET session = WinHttpOpen(
+        L"HomePanel-Spotify-Bootstrap/2.0", accessType,
+        WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!session) {
+      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) {
+        throw std::runtime_error(BootstrapWinHttpErrorText("bootstrap WinHttpOpen"));
+      }
+      continue;
+    }
+    HINTERNET connection = WinHttpConnect(
+        session, std::wstring(host, parts.dwHostNameLength).c_str(),
+        parts.nPort, 0);
+    if (!connection) {
+      WinHttpCloseHandle(session);
+      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) {
+        throw std::runtime_error(BootstrapWinHttpErrorText("bootstrap WinHttpConnect"));
+      }
+      continue;
+    }
+    HINTERNET request = WinHttpOpenRequest(
+        connection, method.c_str(), requestPath.c_str(), nullptr,
+        WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+        parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
+    if (!request) {
+      WinHttpCloseHandle(connection);
+      WinHttpCloseHandle(session);
+      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) {
+        throw std::runtime_error(BootstrapWinHttpErrorText("bootstrap request creation"));
+      }
+      continue;
+    }
+    WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
+    std::wstring headers = L"Accept: application/json\r\n";
+    if (!bearer.empty()) {
+      headers += L"Authorization: Bearer " + bearer + L"\r\n";
+    }
+    if (!body.empty()) {
+      headers += L"Content-Type: application/json\r\n";
+    }
+    const BOOL sent = WinHttpSendRequest(
+        request, headers.c_str(), static_cast<DWORD>(headers.size()),
+        body.empty() ? WINHTTP_NO_REQUEST_DATA
+                     : const_cast<char*>(body.data()),
+        static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0);
+    if (!sent || !WinHttpReceiveResponse(request, nullptr)) {
+      const std::string detail = BootstrapWinHttpErrorText("bootstrap request");
+      WinHttpCloseHandle(request);
+      WinHttpCloseHandle(connection);
+      WinHttpCloseHandle(session);
+      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error(detail);
+      continue;
+    }
+
+    BootstrapWebResult result;
+    DWORD statusSize = sizeof(result.status);
+    WinHttpQueryHeaders(
+        request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX, &result.status, &statusSize,
+        WINHTTP_NO_HEADER_INDEX);
+    bool ok = true;
+    std::string failure;
+    for (;;) {
+      DWORD available = 0;
+      if (!WinHttpQueryDataAvailable(request, &available)) {
+        ok = false;
+        failure = BootstrapWinHttpErrorText("bootstrap response query");
+        break;
+      }
+      if (!available) break;
+      const size_t offset = result.body.size();
+      result.body.resize(offset + available);
+      DWORD read = 0;
+      if (!WinHttpReadData(request, result.body.data() + offset,
+                           available, &read)) {
+        ok = false;
+        failure = BootstrapWinHttpErrorText("bootstrap response read");
+        break;
+      }
+      result.body.resize(offset + read);
+      if (!read) break;
+    }
     WinHttpCloseHandle(request);
     WinHttpCloseHandle(connection);
     WinHttpCloseHandle(session);
-    throw std::runtime_error("bootstrap request failed");
+    if (ok) return result;
+    if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) throw std::runtime_error(failure);
   }
-
-  BootstrapWebResult result;
-  DWORD statusSize = sizeof(result.status);
-  WinHttpQueryHeaders(
-      request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-      WINHTTP_HEADER_NAME_BY_INDEX, &result.status, &statusSize,
-      WINHTTP_NO_HEADER_INDEX);
-  for (;;) {
-    DWORD available = 0;
-    if (!WinHttpQueryDataAvailable(request, &available) || !available) break;
-    const size_t offset = result.body.size();
-    result.body.resize(offset + available);
-    DWORD read = 0;
-    if (!WinHttpReadData(request, result.body.data() + offset,
-                         available, &read)) {
-      break;
-    }
-    result.body.resize(offset + read);
-    if (!read) break;
-  }
-  WinHttpCloseHandle(request);
-  WinHttpCloseHandle(connection);
-  WinHttpCloseHandle(session);
-  return result;
+  throw std::runtime_error("bootstrap request failed");
 }
 
 void WriteBootstrapState(const fs::path& dataDirectory,
