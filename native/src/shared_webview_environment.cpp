@@ -6,7 +6,7 @@ namespace {
 constexpr wchar_t kWebView2Arguments[] =
     L"--disable-component-update --disable-domain-reliability "
     L"--autoplay-policy=no-user-gesture-required "
-    L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication";
+    L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment,HardwareSecureDecryptionFallback";
 
 void ApplyWebView2ProcessHints() noexcept {
   static std::once_flag once;
