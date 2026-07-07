@@ -3,8 +3,17 @@
 
 namespace hp {
 namespace {
+// --disable-component-update used to be included here to cut down on
+// background network chatter, but it also blocks Chromium's component
+// updater from ever installing/updating the Widevine CDM inside this
+// app's isolated WebView2 user-data folder. Stationhead/Spotify playback
+// requires Widevine (EME); regular Edge (component updates enabled, CDM
+// already provisioned) plays audio fine, while this isolated profile with
+// component updates disabled produces silent Media Foundation Protected
+// Media Path (mfpmp.exe) output. Leave component updates enabled so the
+// CDM can be installed/kept current.
 constexpr wchar_t kWebView2Arguments[] =
-    L"--disable-component-update --disable-domain-reliability "
+    L"--disable-domain-reliability "
     L"--autoplay-policy=no-user-gesture-required "
     L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment,HardwareSecureDecryptionFallback";
 
