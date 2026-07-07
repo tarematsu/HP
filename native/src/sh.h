@@ -123,6 +123,7 @@ class StationheadPlayer {
   EventRegistrationToken webMessageToken_{};
   EventRegistrationToken processFailedToken_{};
   EventRegistrationToken resourceRequestedToken_{};
+  std::atomic<bool> resourceBlockingArmed_{false};
   EventRegistrationToken authNavigationToken_{};
   EventRegistrationToken authMessageToken_{};
   EventRegistrationToken authProcessFailedToken_{};

@@ -434,7 +434,7 @@ void StationheadPlayer::ConfigureWebView() {
     ComPtr<ICoreWebView2Settings3> settings3;
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
-  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceRequestedToken_);
+  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceBlockingArmed_, resourceRequestedToken_);
   webview_->add_NavigationCompleted(
       Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
@@ -576,7 +576,9 @@ void StationheadPlayer::ConfigureWebView() {
           }).Get(), &processFailedToken_);
   ComPtr<ICoreWebView2_19> v19;
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
-    v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+    // Was set to NORMAL (the default) instead of LOW, silently making this a
+    // no-op whenever low-memory mode was actually requested.
+    v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
   {
     std::lock_guard lock(mutex_);
@@ -636,6 +638,7 @@ void StationheadPlayer::CloseWebView() {
   webMessageToken_ = {};
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
+  resourceBlockingArmed_ = false;
   if (controller_) controller_->Close();
   webview_.Reset();
   controller_.Reset();
@@ -805,6 +808,7 @@ void StationheadPlayer::HandleStartupStateResult(HRESULT error, LPCWSTR result) 
         status_.audioPlaying = true;
       }
       audioPlaying_ = true;
+      resourceBlockingArmed_ = true;
       waitingForStartTransition_ = false;
       startupScanUntil_ = 0;
       SetVisible(false);

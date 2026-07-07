@@ -439,7 +439,11 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
     ComPtr<ICoreWebView2Settings3> settings3;
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
-  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceRequestedToken_);
+  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceBlockingArmed_, resourceRequestedToken_);
+  ComPtr<ICoreWebView2_19> v19;
+  if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
+    v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+  }
   ComPtr<ICoreWebView2Controller2> controller2;
   if (SUCCEEDED(controller_.As(&controller2))) {
     COREWEBVIEW2_COLOR background{255, 0, 0, 0};
@@ -529,6 +533,7 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             const int64_t now = UnixMillis();
             if (message == L"secondary-playing") {
               audioPlaying_ = true;
+              resourceBlockingArmed_ = true;
               lastAudioAt_ = now;
               audioStoppedAt_ = 0;
               retryAt_ = 0;
@@ -684,6 +689,7 @@ void SecondaryStationheadPlayer::CloseWebView() {
   messageToken_ = {};
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
+  resourceBlockingArmed_ = false;
   if (controller_) controller_->Close();
   webview_.Reset();
   controller_.Reset();

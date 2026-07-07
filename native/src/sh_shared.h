@@ -12,18 +12,23 @@ inline int64_t StationheadReloadIntervalMs(int intervalMinutes) noexcept {
   return intervalMinutes > 0 ? static_cast<int64_t>(intervalMinutes) * 60'000 : 0;
 }
 
-// Blocks image/font network requests for the lifetime of a Stationhead
-// WebView starting from webview creation, instead of only after playback
-// begins. These are long-running, audio-only kiosk WebViews, so images and
-// fonts are pure bandwidth/CPU overhead. Controlled by the existing
-// blockImagesAfterPlayback/blockFontsAfterPlayback config flags (previously
-// loaded from cloud config but never actually applied). Shared by both the
-// primary and secondary Stationhead players so the two windows apply the
-// same rule the same way. The registered token must be removed via
-// webview->remove_WebResourceRequested(token) when the webview is closed.
+// Blocks image/font network requests once a Stationhead WebView has
+// confirmed playback (armed set true by the caller at that point), matching
+// the blockImagesAfterPlayback/blockFontsAfterPlayback config flags' actual
+// names (previously loaded from cloud config but never actually applied).
+// The filter is registered from webview creation, but the handler only
+// blocks once armed is true: the pre-playback "click Start Listening"
+// automation depends on getBoundingClientRect() of on-page controls, and
+// blocking images before that point can collapse icon-only buttons to zero
+// size, breaking auto-play detection and leaving the window stuck visible.
+// Shared by both the primary and secondary Stationhead players so the two
+// windows apply the same rule the same way. The registered token must be
+// removed via webview->remove_WebResourceRequested(token) when the webview
+// is closed, and armed should be reset to false at that point too.
 inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environment,
                                               ICoreWebView2* webview,
                                               const StationheadConfig& config,
+                                              std::atomic<bool>& armed,
                                               EventRegistrationToken& token) {
   if (!environment || !webview) return;
   if (!config.blockImagesAfterPlayback && !config.blockFontsAfterPlayback) return;
@@ -36,8 +41,8 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args) return S_OK;
+          [env, &armed](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            if (!args || !armed.load(std::memory_order_relaxed)) return S_OK;
             ComPtr<ICoreWebView2WebResourceResponse> response;
             if (SUCCEEDED(env->CreateWebResourceResponse(nullptr, 403, L"Blocked", L"", &response))) {
               args->put_Response(response.Get());
