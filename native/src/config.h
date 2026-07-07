@@ -15,7 +15,7 @@ struct StationheadConfig {
   bool blockImagesAfterPlayback = true;
   bool blockFontsAfterPlayback = true;
   bool hideChatAfterPlayback = true;
-  bool lowMemoryMode = false;
+  bool lowMemoryMode = true;
   size_t memoryLimitMb = 450;
   int viewportWidth = 1280;
   int viewportHeight = 12000;

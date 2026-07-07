@@ -66,7 +66,7 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.stationhead.blockImagesAfterPlayback = Boolean(station, L"blockImagesAfterPlayback", config.stationhead.blockImagesAfterPlayback);
     config.stationhead.blockFontsAfterPlayback = Boolean(station, L"blockFontsAfterPlayback", config.stationhead.blockFontsAfterPlayback);
     config.stationhead.hideChatAfterPlayback = Boolean(station, L"hideChatAfterPlayback", config.stationhead.hideChatAfterPlayback);
-    config.stationhead.lowMemoryMode = false;
+    config.stationhead.lowMemoryMode = Boolean(station, L"lowMemoryMode", config.stationhead.lowMemoryMode);
     config.stationhead.memoryLimitMb = static_cast<size_t>(Number(
         station, L"memoryLimitMb", static_cast<int>(config.stationhead.memoryLimitMb), 128, 4096));
 
