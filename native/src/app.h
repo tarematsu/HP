@@ -148,15 +148,21 @@ class AppStationheadHandle {
     HWND host = player_->ActiveHostWindowForAccountSetup();
     if (!host || !IsWindow(host)) return;
     const StationheadStatus status = player_->Status();
-    const bool compactPlayback = status.lightweight &&
-        selectedTab_ == StationheadTabKind::None;
+    // selectedTab_ here only reflects tab changes made through this wrapper's
+    // own SelectTab(); internal transitions such as ShowForLogin() change the
+    // player's visibility without going through it, leaving selectedTab_
+    // stale at None and sending the host to the bottom even while a login
+    // prompt or auth flow is actively shown. Use the player's live status
+    // instead, matching the secondary handle's RaiseActiveHost().
+    const bool interactive = status.visible || status.loginRequired || status.authAvailable;
+    const bool compactPlayback = status.lightweight && !interactive;
     const int width = compactPlayback
         ? 2
         : std::max(1L, workspaceBounds_.right - workspaceBounds_.left);
     const int height = compactPlayback
         ? 2
         : std::max(1L, workspaceBounds_.bottom - workspaceBounds_.top);
-    const HWND placement = selectedTab_ == StationheadTabKind::None ? HWND_BOTTOM : HWND_TOP;
+    const HWND placement = interactive ? HWND_TOP : HWND_BOTTOM;
     SetWindowPos(host, placement, workspaceBounds_.left, workspaceBounds_.top,
                  width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
   }
