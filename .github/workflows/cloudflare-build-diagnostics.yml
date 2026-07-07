@@ -2,6 +2,11 @@ name: Cloudflare build diagnostics
 
 on:
   push:
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloudflare-build-diagnostics.yml"
+      - ".github/scripts/cloudflare-build-diagnostics.mjs"
+      - ".github/scripts/resolve-cloudflare-config.mjs"
   workflow_dispatch:
 
 permissions:
