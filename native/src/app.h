@@ -18,9 +18,85 @@ enum class WorkspaceTab {
   Auth = 2,
 };
 
+// Shared boilerplate for the two Stationhead window handles: bounds/audio
+// state plumbing and raising the playback surface above or below the
+// dashboard. The primary and secondary players have very different startup
+// and auth flows (kept in the derived classes below), but the "how do we
+// apply bounds/mute/volume and decide whether the window should be on top"
+// logic was duplicated near-verbatim between them. Derived classes supply
+// IsInteractive(status) for the one rule that differs (which status fields
+// count as "the user is looking at this window right now").
+template <typename Derived, typename PlayerT>
+class StationheadHandleBase {
+ public:
+  explicit operator bool() const noexcept { return static_cast<bool>(player_); }
+  Derived* operator->() noexcept { return static_cast<Derived*>(this); }
+  const Derived* operator->() const noexcept { return static_cast<const Derived*>(this); }
+
+  void Stop() { if (player_) player_->Stop(); }
+
+  void SetAudioMuted(bool muted) noexcept {
+    audioMuted_ = muted;
+    ApplyAudioState();
+  }
+  void ToggleAudioMuted() noexcept { SetAudioMuted(!audioMuted_); }
+  bool AudioMuted() const noexcept { return audioMuted_; }
+  void SetAudioVolume(double volume) noexcept {
+    audioVolume_ = std::clamp(volume, 0.0, 1.0);
+    ApplyAudioState();
+  }
+  double AudioVolume() const noexcept { return audioVolume_; }
+
+  void SetBounds(const RECT& bounds) {
+    workspaceBounds_ = bounds;
+    ApplyBounds();
+  }
+
+ protected:
+  void ApplyAudioState() const noexcept {
+    if (!player_) return;
+    player_->SetMuted(audioMuted_);
+    player_->SetVolume(audioVolume_);
+  }
+
+  void RaiseActiveHost() const {
+    if (!player_) return;
+    HWND host = player_->ActiveHostWindowForAccountSetup();
+    if (!host || !IsWindow(host)) return;
+    const auto status = player_->Status();
+    const bool interactive = static_cast<const Derived*>(this)->IsInteractive(status);
+    const bool compactPlayback = status.lightweight && !interactive;
+    const int width = compactPlayback
+        ? 2
+        : std::max(1L, workspaceBounds_.right - workspaceBounds_.left);
+    const int height = compactPlayback
+        ? 2
+        : std::max(1L, workspaceBounds_.bottom - workspaceBounds_.top);
+    const HWND placement = interactive ? HWND_TOP : HWND_BOTTOM;
+    SetWindowPos(host, placement, workspaceBounds_.left, workspaceBounds_.top,
+                 width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  }
+
+  void ApplyInteractiveBounds() {
+    if (player_) player_->SetBounds(workspaceBounds_);
+  }
+
+  void ApplyBounds() {
+    if (!player_) return;
+    ApplyAudioState();
+    player_->SetBounds(workspaceBounds_);
+    RaiseActiveHost();
+  }
+
+  std::unique_ptr<PlayerT> player_;
+  RECT workspaceBounds_{0, 0, 1, 1};
+  bool audioMuted_ = false;
+  double audioVolume_ = 1.0;
+};
+
 // App-facing owner for the primary player. Its playback surface remains behind
 // the dashboard unless the user explicitly opens the Stationhead or auth tab.
-class AppStationheadHandle {
+class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, StationheadPlayer> {
  public:
   AppStationheadHandle() = default;
   AppStationheadHandle(const AppStationheadHandle&) = delete;
@@ -33,9 +109,6 @@ class AppStationheadHandle {
     return *this;
   }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(player_); }
-  AppStationheadHandle* operator->() noexcept { return this; }
-  const AppStationheadHandle* operator->() const noexcept { return this; }
   void reset() noexcept {
     player_.reset();
     selectedTab_ = StationheadTabKind::None;
@@ -48,7 +121,6 @@ class AppStationheadHandle {
     ApplyAudioState();
     ApplyBounds();
   }
-  void Stop() { if (player_) player_->Stop(); }
   void Tick(int64_t nowMs, bool diagnosticsVisible = false) {
     if (!player_) return;
     player_->Tick(nowMs, diagnosticsVisible);
@@ -110,22 +182,6 @@ class AppStationheadHandle {
     ApplyAudioState();
     ApplyBounds();
   }
-  void SetAudioMuted(bool muted) noexcept {
-    audioMuted_ = muted;
-    ApplyAudioState();
-  }
-  void ToggleAudioMuted() noexcept { SetAudioMuted(!audioMuted_); }
-  bool AudioMuted() const noexcept { return audioMuted_; }
-  void SetAudioVolume(double volume) noexcept {
-    audioVolume_ = std::clamp(volume, 0.0, 1.0);
-    ApplyAudioState();
-  }
-  double AudioVolume() const noexcept { return audioVolume_; }
-
-  void SetBounds(const RECT& bounds) {
-    workspaceBounds_ = bounds;
-    ApplyBounds();
-  }
 
   void SelectTab(StationheadTabKind tab) {
     selectedTab_ = tab;
@@ -136,58 +192,23 @@ class AppStationheadHandle {
     ApplyBounds();
   }
 
+  // selectedTab_ here only reflects tab changes made through this wrapper's
+  // own SelectTab(); internal transitions such as ShowForLogin() change the
+  // player's visibility without going through it, leaving selectedTab_ stale
+  // at None and sending the host to the bottom even while a login prompt or
+  // auth flow is actively shown. Use the player's live status instead.
+  bool IsInteractive(const StationheadStatus& status) const noexcept {
+    return status.visible || status.loginRequired || status.authAvailable;
+  }
+
  private:
-  void ApplyAudioState() const noexcept {
-    if (!player_) return;
-    player_->SetMuted(audioMuted_);
-    player_->SetVolume(audioVolume_);
-  }
-
-  void RaiseActiveHost() const {
-    if (!player_) return;
-    HWND host = player_->ActiveHostWindowForAccountSetup();
-    if (!host || !IsWindow(host)) return;
-    const StationheadStatus status = player_->Status();
-    // selectedTab_ here only reflects tab changes made through this wrapper's
-    // own SelectTab(); internal transitions such as ShowForLogin() change the
-    // player's visibility without going through it, leaving selectedTab_
-    // stale at None and sending the host to the bottom even while a login
-    // prompt or auth flow is actively shown. Use the player's live status
-    // instead, matching the secondary handle's RaiseActiveHost().
-    const bool interactive = status.visible || status.loginRequired || status.authAvailable;
-    const bool compactPlayback = status.lightweight && !interactive;
-    const int width = compactPlayback
-        ? 2
-        : std::max(1L, workspaceBounds_.right - workspaceBounds_.left);
-    const int height = compactPlayback
-        ? 2
-        : std::max(1L, workspaceBounds_.bottom - workspaceBounds_.top);
-    const HWND placement = interactive ? HWND_TOP : HWND_BOTTOM;
-    SetWindowPos(host, placement, workspaceBounds_.left, workspaceBounds_.top,
-                 width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-  }
-
-  void ApplyInteractiveBounds() {
-    if (player_) player_->SetBounds(workspaceBounds_);
-  }
-
-  void ApplyBounds() {
-    if (!player_) return;
-    ApplyAudioState();
-    player_->SetBounds(workspaceBounds_);
-    RaiseActiveHost();
-  }
-
-  std::unique_ptr<StationheadPlayer> player_;
-  RECT workspaceBounds_{0, 0, 1, 1};
   StationheadTabKind selectedTab_ = StationheadTabKind::None;
-  bool audioMuted_ = false;
-  double audioVolume_ = 1.0;
 };
 
 // The secondary player retains its isolated WebView2 profile. Its audio output
 // is user-toggleable and its surface is temporarily raised for account setup.
-class AppSecondaryStationheadHandle {
+class AppSecondaryStationheadHandle
+    : public StationheadHandleBase<AppSecondaryStationheadHandle, SecondaryStationheadPlayer> {
  public:
   AppSecondaryStationheadHandle() = default;
   AppSecondaryStationheadHandle(const AppSecondaryStationheadHandle&) = delete;
@@ -203,9 +224,6 @@ class AppSecondaryStationheadHandle {
     return *this;
   }
 
-  explicit operator bool() const noexcept { return static_cast<bool>(player_); }
-  AppSecondaryStationheadHandle* operator->() noexcept { return this; }
-  const AppSecondaryStationheadHandle* operator->() const noexcept { return this; }
   void reset() noexcept {
     player_.reset();
     stationheadAuthorizationSeen_ = false;
@@ -219,7 +237,6 @@ class AppSecondaryStationheadHandle {
     ApplyAudioState();
     ApplyBounds();
   }
-  void Stop() { if (player_) player_->Stop(); }
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
@@ -271,66 +288,15 @@ class AppSecondaryStationheadHandle {
     status.audioMuted = audioMuted_;
     return status;
   }
-  void SetAudioMuted(bool muted) noexcept {
-    audioMuted_ = muted;
-    ApplyAudioState();
-  }
-  void ToggleAudioMuted() noexcept { SetAudioMuted(!audioMuted_); }
-  bool AudioMuted() const noexcept { return audioMuted_; }
-  void SetAudioVolume(double volume) noexcept {
-    audioVolume_ = std::clamp(volume, 0.0, 1.0);
-    ApplyAudioState();
-  }
-  double AudioVolume() const noexcept { return audioVolume_; }
 
-  void SetBounds(const RECT& bounds) {
-    workspaceBounds_ = bounds;
-    ApplyBounds();
+  bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
+    return status.visible || status.loginRequired ||
+        status.spotifyAuthorization || status.apiAuthorization;
   }
 
  private:
-  void ApplyAudioState() const noexcept {
-    if (!player_) return;
-    player_->SetMuted(audioMuted_);
-    player_->SetVolume(audioVolume_);
-  }
-
-  void RaiseActiveHost() const {
-    if (!player_) return;
-    HWND host = player_->ActiveHostWindowForAccountSetup();
-    if (!host || !IsWindow(host)) return;
-    const SecondaryStationheadStatus status = player_->Status();
-    const bool interactive = status.visible || status.loginRequired ||
-        status.spotifyAuthorization || status.apiAuthorization;
-    const bool compactPlayback = status.lightweight && !interactive;
-    const int width = compactPlayback
-        ? 2
-        : std::max(1L, workspaceBounds_.right - workspaceBounds_.left);
-    const int height = compactPlayback
-        ? 2
-        : std::max(1L, workspaceBounds_.bottom - workspaceBounds_.top);
-    const HWND placement = interactive ? HWND_TOP : HWND_BOTTOM;
-    SetWindowPos(host, placement, workspaceBounds_.left, workspaceBounds_.top,
-                 width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-  }
-
-  void ApplyInteractiveBounds() {
-    if (player_) player_->SetBounds(workspaceBounds_);
-  }
-
-  void ApplyBounds() {
-    if (!player_) return;
-    ApplyAudioState();
-    player_->SetBounds(workspaceBounds_);
-    RaiseActiveHost();
-  }
-
-  std::unique_ptr<SecondaryStationheadPlayer> player_;
-  RECT workspaceBounds_{0, 0, 1, 1};
   bool stationheadAuthorizationSeen_ = false;
   bool apiAuthorizationActive_ = false;
-  bool audioMuted_ = false;
-  double audioVolume_ = 1.0;
 };
 
 class App {
