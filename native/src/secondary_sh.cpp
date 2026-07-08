@@ -31,7 +31,7 @@ constexpr wchar_t kStartupScript[] = LR"JS(
   const NativeMutationObserver = window.MutationObserver;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const startPattern = /\b(start|join|resume)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b/i;
+  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|続ける|続行|次へ)$/i;
   const loginPattern = /^(log\s*in|sign\s*in|login)(?:\s+.*)?$/i;
   let observer = null;
   let scanQueued = false;

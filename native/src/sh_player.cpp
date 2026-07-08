@@ -19,7 +19,7 @@ const wchar_t* kStartupScanScript = LR"JS(
 (() => {
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const startPattern = /\b(start|join|resume)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b/i;
+  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|続ける|続行|次へ)$/i;
   const labelOf = element => [
     element?.innerText,
     element?.getAttribute?.('aria-label'),

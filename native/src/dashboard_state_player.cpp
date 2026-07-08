@@ -29,6 +29,8 @@ std::wstring Player(const StationheadStatus& value) {
        << L",\"spotifyConfigured\":" << (value.spotifyConfigured ? L"true" : L"false")
        << L",\"authAvailable\":" << (value.authAvailable ? L"true" : L"false")
        << L",\"audioSilent\":" << (value.audioSilent ? L"true" : L"false")
+       << L",\"audioMuted\":" << (value.audioMuted ? L"true" : L"false")
+       << L",\"secondaryAudioMuted\":" << (value.secondaryAudioMuted ? L"true" : L"false")
        << L",\"sampledAt\":" << value.sampledAt
        << L",\"expectedEndAt\":" << value.expectedEndAt
        << L",\"trackDurationMs\":" << value.trackDurationMs
