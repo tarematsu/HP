@@ -84,9 +84,7 @@ void App::ClearDisplayCache() {
   radar_->ReloadMetadata();
   cloud_->RefreshNow();
   renderState_.toast = L"表示キャッシュを削除しました。ログイン情報と履歴は保持しています";
-  toastUntil_ = UnixMillis() + 5000;
-  MarkRenderStateDirty();
-  InvalidateAll();
+  ShowToast(std::move(renderState_.toast), 5000);
   logger_->Info(L"Display cache cleared; WebView user data and telemetry outbox preserved");
 }
 

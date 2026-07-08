@@ -60,8 +60,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
 
       renderState_.toast = L"表示データを更新しました";
       const int64_t now = UnixMillis();
-      toastUntil_ = now + 4000;
-      MarkRenderStateDirty();
+      ShowToast(std::move(renderState_.toast), 4000, false);
 
       const int count = renderer_->NewsCount();
       if (count != newsCount_) {
@@ -116,18 +115,13 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       if (layoutChanged) LayoutWorkspace();
       const StationheadStatus nextStationheadState =
           BuildRenderStationheadState(stationhead_, secondaryStationhead_);
-      if (!SameStationheadStatus(renderState_.stationhead, nextStationheadState)) {
-        renderState_.stationhead = nextStationheadState;
-        MarkRenderStateDirty();
-      }
+      UpdateRenderStationheadState(nextStationheadState);
       Invalidate(renderer_->StationheadRect());
       return 0;
     }
     case WM_HP_CONFIG_UPDATED:
       renderState_.toast = L"クラウド設定を保存しました。再起動時に適用します";
-      toastUntil_ = UnixMillis() + 5000;
-      MarkRenderStateDirty();
-      InvalidateAll();
+      ShowToast(std::move(renderState_.toast), 5000);
       return 0;
     case WM_HP_COMMANDS_UPDATED:
       ProcessRemoteCommands();
@@ -136,9 +130,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       std::unique_ptr<wchar_t[]> updateMessage(reinterpret_cast<wchar_t*>(lParam));
       if (updateMessage && updateMessage[0] != L'\0') {
         renderState_.toast = updateMessage.get();
-        toastUntil_ = UnixMillis() + 7000;
-        MarkRenderStateDirty();
-        InvalidateAll();
+        ShowToast(updateMessage.get(), 7000);
       }
       return 0;
     }

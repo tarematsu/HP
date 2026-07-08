@@ -294,10 +294,7 @@ void App::Tick() {
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
   StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
-  if (!SameStationheadStatus(renderState_.stationhead, nextStationheadState)) {
-    renderState_.stationhead = std::move(nextStationheadState);
-    MarkRenderStateDirty();
-  }
+  UpdateRenderStationheadState(nextStationheadState);
   StartDeferredServices(now, stationheadStatus);
 
   if (cloudStarted_ &&
@@ -347,6 +344,20 @@ void App::Draw() {
     renderer_->Render(paint.rcPaint, renderState_);
   }
   EndPaint(window_, &paint);
+}
+
+void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
+  renderState_.toast = std::move(message);
+  toastUntil_ = durationMs > 0 ? UnixMillis() + durationMs : 0;
+  MarkRenderStateDirty();
+  if (invalidate) InvalidateAll();
+}
+
+bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
+  if (SameStationheadStatus(renderState_.stationhead, nextState)) return false;
+  renderState_.stationhead = nextState;
+  MarkRenderStateDirty();
+  return true;
 }
 
 void App::LayoutWorkspace() {

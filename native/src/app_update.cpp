@@ -10,18 +10,14 @@ void App::CheckForUpdateAsync(bool install) {
   if (updateBusy_.exchange(true)) {
     if (install) {
       renderState_.toast = L"更新確認はすでに実行中です";
-      toastUntil_ = UnixMillis() + 4000;
-      MarkRenderStateDirty();
-      InvalidateAll();
+      ShowToast(std::move(renderState_.toast), 4000);
     }
     return;
   }
   if (updateThread_.joinable()) updateThread_.join();
   if (install) {
     renderState_.toast = L"署名・ハッシュを確認して更新を準備しています";
-    toastUntil_ = UnixMillis() + 15'000;
-    MarkRenderStateDirty();
-    InvalidateAll();
+    ShowToast(std::move(renderState_.toast), 15'000);
   }
 
   updateThread_ = std::thread([this, install] {
