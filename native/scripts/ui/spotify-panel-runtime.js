@@ -146,14 +146,14 @@
   function setBadge(prefix, kind, detail) {
     const badge = $(`#${prefix}-live-badge`);
     const text = $(`#${prefix}-live-text`);
-    const labels = { live: 'LIVE', paused: 'PAUSED', stale: 'STALE', offline: 'OFFLINE' };
     if (badge) {
-      const className = `sp-live-badge ${kind}`;
-      if (badge.className !== className) badge.className = className;
-      const label = labels[kind] || labels.offline;
-      if (badge.textContent !== label) badge.textContent = label;
+      badge.hidden = true;
+      if (badge.textContent) badge.textContent = '';
     }
-    if (text && text.textContent !== detail) text.textContent = detail;
+    if (text) {
+      text.hidden = true;
+      if (text.textContent) text.textContent = '';
+    }
   }
 
   function setArtwork(imageSelector, fallbackSelector, source) {
@@ -323,7 +323,7 @@
     if (source.error && stale) return { kind: 'stale', detail: `${source.error}` };
     if (source.error) return { kind: 'offline', detail: `${source.error}` };
     if (stale) return { kind: 'stale', detail: 'native更新待ち' };
-    if (snapshot.playing && snapshot.hasTrack) return { kind: 'live', detail: 'native playback' };
+    if (snapshot.playing && snapshot.hasTrack) return { kind: 'live', detail: '' };
     if (snapshot.hasTrack) return { kind: 'paused', detail: '停止中' };
     return { kind: 'offline', detail: '情報待ち' };
   }
@@ -339,7 +339,7 @@
     const apiError = Boolean(value?.error);
     const connected = value?.connected !== false;
     const live = !stale && !authRequired && !apiError && connected && value?.playing === true;
-    if (live) return { kind: 'live', detail: 'Spotify API / buddy46', offline: false };
+    if (live) return { kind: 'live', detail: '', offline: false };
     if (authRequired) return { kind: 'offline', detail: 'Spotify再連携が必要です', offline: true };
     if (apiError || !connected) return { kind: 'offline', detail: 'Spotify API取得エラー', offline: true };
     if (stale) return { kind: 'offline', detail: 'Spotify API更新待ち', offline: true };

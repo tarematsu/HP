@@ -366,6 +366,7 @@ void StationheadPlayer::Tick(int64_t nowMs) {
   if (reloadInterval > 0 && nowMs - lastReloadAt_ >= reloadInterval) {
     lastReloadAt_ = nowMs;
     NavigatePrimaryUrl(nowMs, L"scheduled reload");
+    PostChange(StationheadChangeScheduledReload);
     nextTickAt_ = nowMs + 1'000;
     return;
   }

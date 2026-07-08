@@ -14,6 +14,10 @@
 namespace hp {
 namespace {
 
+bool VersionsEqual(const std::wstring& left, const std::wstring& right) {
+  return !IsVersionNewer(left, right) && !IsVersionNewer(right, left);
+}
+
 using InstallPresence = std::map<std::wstring, bool>;
 
 std::vector<uint8_t> ReadFileBytes(
@@ -113,6 +117,12 @@ int HardenedRunStandalone(const fs::path& root) {
   if (IsVersionNewer(installedVersion, initialManifest.version)) {
     throw std::runtime_error("server update version is older than installed HomePanel");
   }
+  if (VersionsEqual(initialManifest.version, installedVersion)) {
+    Log(root, L"Authenticated update skipped because HomePanel is already current");
+    MessageBoxW(nullptr, L"すでに最新バージョンです。",
+                L"HomePanel Updater", MB_ICONINFORMATION | MB_OK);
+    return 0;
+  }
 
   const bool initiallyNewer = IsVersionNewer(initialManifest.version, installedVersion);
   const std::wstring prompt = initiallyNewer
@@ -159,6 +169,13 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
       InstalledFileVersion(arguments.root / L"HomePanel.exe");
   if (!currentVersion.empty() && IsVersionNewer(currentVersion, manifest.version)) {
     throw std::runtime_error("refusing to downgrade installed HomePanel");
+  }
+  if (!currentVersion.empty() && VersionsEqual(currentVersion, manifest.version)) {
+    Log(arguments.root, L"Verified update skipped because installed version already matches manifest");
+    std::error_code ignored;
+    fs::remove(arguments.manifest, ignored);
+    RestartHomePanel(arguments.root);
+    return;
   }
 
   const fs::path staging =

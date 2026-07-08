@@ -15,6 +15,7 @@ enum StationheadChangeFlags : uint32_t {
   StationheadChangeReturnMain = 1u << 0,
   StationheadChangeReleaseAuth = 1u << 1,
   StationheadChangeShowPlayer = 1u << 2,
+  StationheadChangeScheduledReload = 1u << 3,
 };
 
 struct StationheadStatus {

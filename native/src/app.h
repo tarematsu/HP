@@ -395,6 +395,7 @@ class App {
   void Draw();
   void MarkRenderStateDirty() noexcept { renderStateDirty_ = true; }
   void ScheduleNextTick(uint32_t milliseconds);
+  void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
   void PublishRenderState();
   void InvalidateAll();
   void Invalidate(const RECT& rect);
@@ -445,6 +446,7 @@ class App {
   int newsCount_ = 0;
   int64_t lastNewsRotateAt_ = 0;
   bool renderStateDirty_ = true;
+  bool scheduledPrimaryAudioAudible_ = true;
   WorkspaceTab selectedTab_ = WorkspaceTab::Main;
   RECT workspaceBounds_{0, 0, 1, 1};
   inline static App* current_ = nullptr;

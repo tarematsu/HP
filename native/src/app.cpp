@@ -1,3 +1,5 @@
+#pragma comment(lib, "version.lib")
+
 #include "app.h"
 #include "cloud_config.h"
 #include "version.h"
@@ -14,6 +16,27 @@ constexpr uint32_t kFastTickMs = 1000;
 constexpr uint32_t kIdleTickMs = 5000;
 
 std::wstring Quote(const fs::path& path) { return L"\"" + path.wstring() + L"\""; }
+
+std::wstring InstalledHomePanelVersion(const fs::path& executable) {
+  DWORD handle = 0;
+  const DWORD size = GetFileVersionInfoSizeW(executable.c_str(), &handle);
+  if (!size) return {};
+  std::vector<BYTE> data(size);
+  if (!GetFileVersionInfoW(executable.c_str(), 0, size, data.data())) return {};
+  VS_FIXEDFILEINFO* info = nullptr;
+  UINT infoSize = 0;
+  if (!VerQueryValueW(data.data(), L"\\", reinterpret_cast<void**>(&info), &infoSize) ||
+      !info || infoSize < sizeof(VS_FIXEDFILEINFO) || info->dwSignature != 0xfeef04bd) {
+    return {};
+  }
+  std::wostringstream version;
+  version << HIWORD(info->dwFileVersionMS) << L'.'
+          << LOWORD(info->dwFileVersionMS) << L'.'
+          << HIWORD(info->dwFileVersionLS);
+  const WORD revision = LOWORD(info->dwFileVersionLS);
+  if (revision) version << L'.' << revision;
+  return version.str();
+}
 
 }  // namespace
 
@@ -136,6 +159,7 @@ void App::StartServices() {
     secondaryStarted_ = true;
     logger_->Info(L"Secondary Stationhead started alongside primary");
   }
+  ApplyScheduledStationheadAudioProfile(true);
 
   const std::wstring deviceToken = LoadProtectedToken(dataDir_ / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   const std::wstring actionToken = LoadProtectedToken(dataDir_ / L"action-token.dat", L"HOMEPANEL_ACTION_TOKEN");
@@ -321,6 +345,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         selectedTab_ = WorkspaceTab::Main;
         layoutChanged = true;
       }
+      if ((changes & StationheadChangeScheduledReload) != 0) {
+        ApplyScheduledStationheadAudioProfile(!scheduledPrimaryAudioAudible_);
+      }
       if (layoutChanged) LayoutWorkspace();
       renderState_.stationhead = stationhead_->Status();
       MarkRenderStateDirty();
@@ -452,6 +479,18 @@ void App::PublishRenderState() {
   if (!renderer_ || !renderStateDirty_) return;
   renderer_->UpdateState(renderState_);
   renderStateDirty_ = false;
+}
+
+void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept {
+  scheduledPrimaryAudioAudible_ = primaryAudible;
+  if (stationhead_) stationhead_->SetAudioMuted(!primaryAudible);
+  if (secondaryStationhead_) secondaryStationhead_->SetAudioMuted(primaryAudible);
+  if (renderState_.stationhead.audioMuted != !primaryAudible ||
+      renderState_.stationhead.secondaryAudioMuted != primaryAudible) {
+    renderState_.stationhead.audioMuted = !primaryAudible;
+    renderState_.stationhead.secondaryAudioMuted = primaryAudible;
+    MarkRenderStateDirty();
+  }
 }
 
 void App::ScheduleNextTick(uint32_t milliseconds) {
@@ -741,9 +780,13 @@ void App::CheckForUpdateAsync(bool install) {
     try {
       const std::string manifestJson = cloud_->FetchUpdateManifest();
       const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
-      if (!IsVersionNewer(manifest.version, kVersion)) {
+      const std::wstring currentVersion = [] (const fs::path& rootDir) {
+        const std::wstring installed = InstalledHomePanelVersion(rootDir / L"HomePanel.exe");
+        return installed.empty() ? std::wstring(kVersion) : installed;
+      }(rootDir_);
+      if (!IsVersionNewer(manifest.version, currentVersion)) {
         if (install) {
-          message = L"すでに最新バージョンです (v" + std::wstring(kVersion) + L")";
+          message = L"すでに最新バージョンです (v" + currentVersion + L")";
         }
       } else if (!install) {
         message = L"HomePanel " + manifest.version + L" が利用できます";
