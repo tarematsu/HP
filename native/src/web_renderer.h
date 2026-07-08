@@ -92,9 +92,11 @@ class Renderer {
     std::wstring airHistory = L"[]";
     std::wstring sensors = L"{}";
     std::wstring stationhead = L"{}";
+    std::wstring diagnostics = L"{}";
     std::wstring toast;
     SensorSnapshot sensorsSource;
     StationheadStatus stationheadSource;
+    DiagnosticsState diagnosticsSource;
     uint64_t dashboardSourceRevision = 0;
     uint64_t spotifySourceRevision = 0;
     size_t airHistorySourceCount = 0;
@@ -104,6 +106,7 @@ class Renderer {
     uint64_t airHistoryRevision = 0;
     uint64_t sensorsRevision = 0;
     uint64_t stationheadRevision = 0;
+    uint64_t diagnosticsRevision = 0;
     uint64_t newsRevision = 0;
     int workspaceTab = 0;
     int newsIndex = 0;

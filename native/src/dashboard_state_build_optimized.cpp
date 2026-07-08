@@ -45,6 +45,14 @@ std::wstring Renderer::BuildStateJson(const RenderState& state, bool full) {
     changedFields |= kStationheadSlice;
   }
 
+  if (firstState ||
+      !SameDiagnostics(stateJsonCache_.diagnosticsSource, state.diagnostics)) {
+    stateJsonCache_.diagnosticsSource = state.diagnostics;
+    stateJsonCache_.diagnostics = statejson::Diagnostics(state.diagnostics);
+    ++stateJsonCache_.diagnosticsRevision;
+    changedFields |= kDiagnosticsSlice;
+  }
+
   if (firstState || stateJsonCache_.workspaceTab != state.workspaceTab) {
     changedFields |= kWorkspaceScalar;
   }
