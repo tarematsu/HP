@@ -26,11 +26,8 @@
 
 - Spotify Web API is authoritative for track metadata.
 - Display artwork, title, artist, elapsed time, duration and progress.
-- Advance elapsed time locally between API reads.
-- Keep the normal one-minute refresh.
-- Schedule an additional refresh at the predicted end of the current item.
-- Only while waiting for the next item after the predicted end, refresh every ten seconds.
-- Stop the ten-second transition polling immediately after a new URI or restarted progress is observed.
+- Poll the playback API every ten minutes.
+- Infer the active station item and elapsed time locally between API reads using the queue status timestamps.
 - Stationhead WebView2 remains responsible for playback.
 
 ### Stationhead WebView2 viewport
