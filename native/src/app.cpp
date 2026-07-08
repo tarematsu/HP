@@ -14,6 +14,7 @@ constexpr int kRestartExitCode = 42;
 constexpr int64_t kSecondaryDashboardSettleMs = 15'000;
 constexpr uint32_t kFastTickMs = 1000;
 constexpr uint32_t kIdleTickMs = 5000;
+constexpr uint32_t kMaxIdleTickMs = 30'000;
 
 std::wstring Quote(const fs::path& path) { return L"\"" + path.wstring() + L"\""; }
 
@@ -36,6 +37,45 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   const WORD revision = LOWORD(info->dwFileVersionLS);
   if (revision) version << L'.' << revision;
   return version.str();
+}
+
+bool SameStationheadStatus(const StationheadStatus& left, const StationheadStatus& right) {
+  return left.created == right.created &&
+         left.navigating == right.navigating &&
+         left.playing == right.playing &&
+         left.loginRequired == right.loginRequired &&
+         left.spotifyAuthorization == right.spotifyAuthorization &&
+         left.apiAuthorization == right.apiAuthorization &&
+         left.lightweight == right.lightweight &&
+         left.visible == right.visible &&
+         left.processFailed == right.processFailed &&
+         left.spotifyConfigured == right.spotifyConfigured &&
+         left.authAvailable == right.authAvailable &&
+         left.audioPlaying == right.audioPlaying &&
+         left.audioSilent == right.audioSilent &&
+         left.audioMuted == right.audioMuted &&
+         left.secondaryAudioMuted == right.secondaryAudioMuted &&
+         left.healthMisses == right.healthMisses &&
+         left.lastPlaybackConfirmedAt == right.lastPlaybackConfirmedAt &&
+         left.processWorkingSet == right.processWorkingSet &&
+         left.processCpuPercent == right.processCpuPercent &&
+         left.blockedResources == right.blockedResources &&
+         left.url == right.url &&
+         left.detail == right.detail &&
+         left.trackTitle == right.trackTitle &&
+         left.trackArtist == right.trackArtist &&
+         left.deviceName == right.deviceName &&
+         left.artworkUrl == right.artworkUrl &&
+         left.sampledAt == right.sampledAt &&
+         left.expectedEndAt == right.expectedEndAt &&
+         left.trackDurationMs == right.trackDurationMs;
+}
+
+uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
+  if (deadline <= 0) return fallbackMs;
+  if (deadline <= now) return kFastTickMs;
+  const int64_t delta = deadline - now;
+  return static_cast<uint32_t>(std::clamp<int64_t>(delta, kFastTickMs, fallbackMs));
 }
 
 }  // namespace
@@ -390,14 +430,17 @@ void App::Tick() {
   stationhead_->Tick(now);
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
-  renderState_.stationhead = stationheadStatus;
+  StationheadStatus nextStationheadState = stationheadStatus;
   // secondaryAudioMuted rides along on the primary status struct so the
   // dashboard can read both windows' mute state from one object; it was
   // declared but never populated, so Window B's mute button never reflected
   // its real state.
-  renderState_.stationhead.secondaryAudioMuted =
+  nextStationheadState.secondaryAudioMuted =
       secondaryStationhead_ && secondaryStationhead_->AudioMuted();
-  MarkRenderStateDirty();
+  if (!SameStationheadStatus(renderState_.stationhead, nextStationheadState)) {
+    renderState_.stationhead = std::move(nextStationheadState);
+    MarkRenderStateDirty();
+  }
   StartDeferredServices(now, stationheadStatus);
 
   if (cloudStarted_ &&
@@ -418,10 +461,23 @@ void App::Tick() {
     MarkRenderStateDirty();
     InvalidateAll();
   }
-  const bool fastTick = !rendererStarted_ || renderState_.maintenance || toastUntil_ > 0 ||
-                        (newsCount_ > 1 && lastNewsRotateAt_ > 0) ||
-                        StationheadNeedsForeground(renderState_.stationhead);
-  ScheduleNextTick(fastTick ? kFastTickMs : kIdleTickMs);
+  uint32_t nextTickMs = kMaxIdleTickMs;
+  if (!rendererStarted_ || renderState_.maintenance || StationheadNeedsForeground(renderState_.stationhead)) {
+    nextTickMs = kFastTickMs;
+  } else {
+    nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, stationhead_->NextWakeAt(), kMaxIdleTickMs));
+    if (secondaryStarted_ && secondaryStationhead_) {
+      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, secondaryStationhead_->NextWakeAt(), kMaxIdleTickMs));
+    }
+    if (toastUntil_ > 0) nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, toastUntil_, kMaxIdleTickMs));
+    if (newsCount_ > 1 && lastNewsRotateAt_ > 0) {
+      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, lastNewsRotateAt_ + 30'000, kMaxIdleTickMs));
+    }
+    if (secondaryStationhead_ && !secondaryStarted_ && secondaryEligibleAt_ > 0) {
+      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, secondaryEligibleAt_, kMaxIdleTickMs));
+    }
+  }
+  ScheduleNextTick(nextTickMs);
 }
 
 void App::Draw() {

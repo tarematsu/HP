@@ -57,6 +57,7 @@ class StationheadPlayer {
   void Start();
   void Stop();
   void Tick(int64_t nowMs);
+  [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void Reconnect();
   void RefreshSpotifyState(bool notify = true);
   void RefreshLocalMetadata(int64_t) noexcept {}

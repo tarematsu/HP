@@ -139,7 +139,6 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
-    ApplyAudioState();
     ApplyBounds();
   }
   void Reconnect() {
@@ -188,6 +187,9 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   }
   bool HasAuthTab() const { return player_ && player_->HasAuthTab(); }
   StationheadStatus Status() const;
+  int64_t NextWakeAt() const noexcept {
+    return player_ ? player_->NextWakeAt() : 0;
+  }
   void NotifyMonitorHandle(const std::wstring& handle) {
     if (!player_) return;
     player_->NotifyMonitorHandle(handle);
@@ -250,7 +252,6 @@ class AppSecondaryStationheadHandle
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
-    ApplyAudioState();
 
     const SecondaryStationheadStatus status = player_->Status();
     if (status.spotifyAuthorization && !status.apiAuthorization) {
@@ -297,6 +298,9 @@ class AppSecondaryStationheadHandle
     SecondaryStationheadStatus status = player_ ? player_->Status() : SecondaryStationheadStatus{};
     status.audioMuted = audioMuted_;
     return status;
+  }
+  int64_t NextWakeAt() const noexcept {
+    return player_ ? player_->NextWakeAt() : 0;
   }
 
   bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {

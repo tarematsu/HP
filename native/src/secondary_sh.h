@@ -53,6 +53,7 @@ class SecondaryStationheadPlayer {
   void Start();
   void Stop();
   void Tick(int64_t nowMs);
+  [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void Reconnect();
   bool OpenSpotifyApiAuthorization(const std::wstring& url);
   void SetBounds(const RECT& bounds);
