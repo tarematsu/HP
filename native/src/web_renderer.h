@@ -138,7 +138,6 @@ class Renderer {
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();
   void ComposeRadarFrame();
-  bool EnsureWallpaperBitmap();
   RECT ClientBounds() const;
   void ParseDashboardMetadata(const std::wstring& json);
 

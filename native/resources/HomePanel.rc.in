@@ -1,9 +1,6 @@
 #include <windows.h>
 #include <winver.h>
 
-101 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/index.html"
-102 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/styles.css"
-103 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/app.js"
 110 RCDATA "@HOMEPANEL_RADAR_SATELLITE@"
 112 RCDATA "@HOMEPANEL_RADAR_MAP@"
 
