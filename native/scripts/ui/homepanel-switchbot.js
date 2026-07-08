@@ -77,6 +77,38 @@
       : `<div class="empty">${escapeHtml(T('empty.switchbot'))}</div>`;
   }
 
+  function renderEnergyPlugs(value = {}) {
+    const container = $('#energy-plugs');
+    if (!container) return;
+
+    const devices = Array.isArray(value.devices) ? value.devices : [];
+    const plugs = devices.filter(device => /Plug Mini/i.test(String(device.deviceType || '')));
+    const signature = JSON.stringify([
+      value?.serviceAvailable, value?.__status, value?.degradedReason, value?.__error,
+      plugs.map(device => [device.deviceId, device.deviceName, device.watts, device.power, device.error]),
+    ]);
+    if (container.dataset.signature === signature) return;
+    container.dataset.signature = signature;
+
+    const available = value?.serviceAvailable !== false &&
+      !['stale', 'error', 'waiting'].includes(value?.__status);
+    if (!plugs.length) {
+      container.innerHTML = `<div class="plug-empty">${available ? 'Plug Mini情報なし' : 'Plug Mini情報を取得できません'}</div>`;
+      return;
+    }
+
+    container.innerHTML = plugs.map(device => {
+      const online = available && !device.error;
+      const raw = online ? String(device.power || '').trim().toUpperCase() : '';
+      const state = raw === 'ON' ? 'ON' : raw === 'OFF' ? 'OFF' : '--';
+      const watts = online && finite(device.watts) ? `${Number(device.watts).toFixed(1)} W` : '-- W';
+      const name = device.deviceName || device.deviceId || 'Plug Mini';
+      const reason = device.error || value?.degradedReason || value?.__error || '';
+      const title = reason ? ` title="${escapeHtml(reason)}"` : '';
+      return `<div class="energy-plug${online ? '' : ' is-unavailable'}"${title}><span class="energy-plug-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="energy-plug-watts">${escapeHtml(watts)}</span><b class="energy-plug-state ${state === 'ON' ? 'is-on' : state === 'OFF' ? 'is-off' : 'is-unknown'}">${state}</b></div>`;
+    }).join('');
+  }
+
   root.panels = root.panels || {};
-  root.panels.switchbot = { renderSwitchBot };
+  root.panels.switchbot = { renderSwitchBot, renderEnergyPlugs };
 })();

@@ -14,6 +14,7 @@
   let panelHeaderMetaHandled = false;
   const shared = window.__homepanelPlaybackShared;
   const utils = window.HomePanel?.utils || {};
+  const panels = window.HomePanel?.panels || {};
   const asObject = shared.asObject;
   const normalizePlaybackPayload = shared.normalizePlaybackPayload;
   const formatTime = shared.formatTime;
@@ -35,10 +36,6 @@
   };
 
   const $ = utils.$ || (selector => document.querySelector(selector));
-  const finite = utils.finite || (value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)));
-  const escapeHtml = utils.escapeHtml || (value => String(value ?? '').replace(/[&<>'"]/g, character => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-  }[character])));
 
   function removePanelHeaderMeta() {
     if (panelHeaderMetaHandled) return;
@@ -60,9 +57,9 @@
     button.classList.toggle('is-muted', Boolean(state.muted));
     button.setAttribute('aria-pressed', state.muted ? 'true' : 'false');
     const label = button.querySelector('span') || button;
-    const next = state.muted ? '髻ｳ螢ｰOFF' : '髻ｳ螢ｰON';
+    const next = state.muted ? '音声OFF' : '音声ON';
     if (label.textContent !== next) label.textContent = next;
-    button.title = state.muted ? '繧ｯ繝ｪ繝・け縺ｧ髻ｳ螢ｰON' : '繧ｯ繝ｪ繝・け縺ｧ髻ｳ螢ｰOFF';
+    button.title = state.muted ? 'クリックで音声ON' : 'クリックで音声OFF';
   }
 
   function syncAudioControlsFromRuntime(state) {
@@ -84,34 +81,6 @@
     });
     updateAudioControls('a');
     updateAudioControls('b');
-  }
-
-  function renderPlugs(value) {
-    const container = $('#energy-plugs');
-    if (!container) return;
-    const devices = Array.isArray(value?.devices) ? value.devices : [];
-    const plugs = devices.filter(device => /Plug Mini/i.test(String(device.deviceType || '')));
-    const signature = JSON.stringify([
-      value?.serviceAvailable, value?.__status, value?.degradedReason, value?.__error,
-      plugs.map(device => [device.deviceId, device.deviceName, device.watts, device.power, device.error]),
-    ]);
-    if (container.dataset.signature === signature) return;
-    container.dataset.signature = signature;
-    const available = value?.serviceAvailable !== false && !['stale', 'error', 'waiting'].includes(value?.__status);
-    if (!plugs.length) {
-      container.innerHTML = `<div class="plug-empty">${available ? 'Plug Mini諠・ｱ縺ｪ縺・' : 'Plug Mini諠・ｱ繧貞叙蠕励〒縺阪∪縺帙ｓ'}</div>`;
-      return;
-    }
-    container.innerHTML = plugs.map(device => {
-      const online = available && !device.error;
-      const raw = online ? String(device.power || '').trim().toUpperCase() : '';
-      const state = raw === 'ON' ? 'ON' : raw === 'OFF' ? 'OFF' : '--';
-      const watts = online && finite(device.watts) ? `${Number(device.watts).toFixed(1)} W` : '-- W';
-      const name = device.deviceName || device.deviceId || 'Plug Mini';
-      const reason = device.error || value?.degradedReason || value?.__error || '';
-      const title = reason ? ` title="${escapeHtml(reason)}"` : '';
-      return `<div class="energy-plug${online ? '' : ' is-unavailable'}"${title}><span class="energy-plug-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="energy-plug-watts">${escapeHtml(watts)}</span><b class="energy-plug-state ${state === 'ON' ? 'is-on' : state === 'OFF' ? 'is-off' : 'is-unknown'}">${state}</b></div>`;
-    }).join('');
   }
 
   function setText(selector, value) {
@@ -333,14 +302,14 @@
     const stale = sourceIsStale(source, now);
     if (source.error && stale) return { kind: 'stale', detail: `${source.error}` };
     if (source.error) return { kind: 'offline', detail: `${source.error}` };
-    if (stale) return { kind: 'stale', detail: 'native譖ｴ譁ｰ蠕・■' };
+    if (stale) return { kind: 'stale', detail: 'native更新待ち' };
     if (snapshot.playing && snapshot.hasTrack) return { kind: 'live', detail: '' };
-    if (snapshot.hasTrack) return { kind: 'paused', detail: '蛛懈ｭ｢荳ｭ' };
-    return { kind: 'offline', detail: '諠・ｱ蠕・■' };
+    if (snapshot.hasTrack) return { kind: 'paused', detail: '停止中' };
+    return { kind: 'offline', detail: '情報待ち' };
   }
 
   function renderStationheadPlayer({ key, source, snapshot, status }) {
-    setText(`#${source.prefix}-track`, snapshot.title || `${source.channel}譖ｲ諠・ｱ蠕・■`);
+    setText(`#${source.prefix}-track`, snapshot.title || `${source.channel}曲情報待ち`);
     setText(`#${source.prefix}-artist`, snapshot.artist || '--');
     setArtwork(`#${source.prefix}-artwork`, `#${source.prefix}-artwork-fallback`, snapshot.artwork);
     renderProgress(source.prefix, snapshot);
@@ -392,7 +361,7 @@
 
   function renderAll() {
     removePanelHeaderMeta();
-    renderPlugs(dashboard.switchbot || {});
+    panels.switchbot?.renderEnergyPlugs?.(dashboard.switchbot || {});
     renderPlayers();
   }
 
