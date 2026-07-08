@@ -4,32 +4,64 @@ namespace hp {
 namespace {
 constexpr UINT_PTR kClockTimerId = 1;
 constexpr UINT kClockTimerMs = 1000;
+constexpr int kNativeAirId = 101;
+constexpr int kNativeControlsId = 102;
 
-RECT NativeClockRectFromBounds(const RECT& bounds) {
+struct DashboardGrid {
+  int left = 0;
+  int top = 0;
+  int width = 1;
+  int height = 1;
+  int columnWidth = 1;
+  int rowHeight = 1;
+  int gap = 8;
+};
+
+DashboardGrid NativeDashboardGridFromBounds(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
-  const int dashboardWidth = std::min(static_cast<int>(clientWidth * 99LL / 100), 1660);
-  const int dashboardHeight = std::min(static_cast<int>(clientHeight * 99LL / 100), 940);
-  const int gap = 8;
-  const int columnWidth = (dashboardWidth - gap * 2) / 3;
-  const int rowHeight = (dashboardHeight - gap) / 2;
-  const int dashboardLeft = bounds.left + (clientWidth - dashboardWidth) / 2;
-  const int dashboardTop = bounds.top + (clientHeight - dashboardHeight) / 2;
-  const int panelLeft = dashboardLeft + columnWidth + gap;
-  const int panelTop = dashboardTop;
+  DashboardGrid grid;
+  grid.width = std::min(static_cast<int>(clientWidth * 99LL / 100), 1660);
+  grid.height = std::min(static_cast<int>(clientHeight * 99LL / 100), 940);
+  grid.columnWidth = (grid.width - grid.gap * 2) / 3;
+  grid.rowHeight = (grid.height - grid.gap) / 2;
+  grid.left = bounds.left + (clientWidth - grid.width) / 2;
+  grid.top = bounds.top + (clientHeight - grid.height) / 2;
+  return grid;
+}
+
+RECT NativePanelRectFromBounds(const RECT& bounds, int column, int row) {
+  const DashboardGrid grid = NativeDashboardGridFromBounds(bounds);
+  const int left = grid.left + column * (grid.columnWidth + grid.gap);
+  const int top = grid.top + row * (grid.rowHeight + grid.gap);
+  return RECT{left, top, left + grid.columnWidth, top + grid.rowHeight};
+}
+
+RECT NativeClockRectFromBounds(const RECT& bounds) {
+  const RECT panel = NativePanelRectFromBounds(bounds, 1, 0);
 
   RECT rect{
-      panelLeft + 12,
-      panelTop + 34,
-      panelLeft + columnWidth - 12,
-      panelTop + std::max(96, rowHeight - 94),
+      panel.left + 12,
+      panel.top + 34,
+      panel.right - 12,
+      panel.top + std::max(96L, panel.bottom - panel.top - 94),
   };
   if (rect.right <= rect.left) rect.right = rect.left + 1;
   if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
   return rect;
 }
 
-HFONT CreateClockFont(int height, int weight) {
+RECT NativeAirRectFromBounds(const RECT& bounds) {
+  const RECT panel = NativePanelRectFromBounds(bounds, 0, 0);
+  return RECT{panel.left + 10, panel.top + 34, panel.right - 10, panel.top + 104};
+}
+
+RECT NativeControlsRectFromBounds(const RECT& bounds) {
+  const RECT panel = NativePanelRectFromBounds(bounds, 2, 1);
+  return RECT{panel.left, panel.top, panel.right, panel.bottom};
+}
+
+HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                      DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
@@ -47,6 +79,16 @@ std::wstring TimeText(const SYSTEMTIME& now) {
   wchar_t text[32]{};
   swprintf_s(text, L"%02u:%02u:%02u", now.wHour, now.wMinute, now.wSecond);
   return text;
+}
+
+void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
+  DrawTextW(dc, text.c_str(), -1, &rect, format | DT_NOPREFIX);
+}
+
+std::wstring Fixed(double value, int digits) {
+  std::wostringstream output;
+  output << std::fixed << std::setprecision(digits) << value;
+  return output.str();
 }
 }  // namespace
 
@@ -77,6 +119,74 @@ bool Renderer::EnsureNativeClockWindow() {
   return true;
 }
 
+bool Renderer::EnsureNativeStaticWindows() {
+  if (!window_ || !IsWindow(window_)) return false;
+  static constexpr wchar_t kStaticClassName[] = L"HomePanelNativeStaticPanel";
+  static std::once_flag classOnce;
+  std::call_once(classOnce, [] {
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = Renderer::NativeStaticWndProc;
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpszClassName = kStaticClassName;
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    windowClass.hbrBackground = nullptr;
+    RegisterClassW(&windowClass);
+  });
+
+  if (!nativeAirWindow_ || !IsWindow(nativeAirWindow_)) {
+    const RECT rect = NativeAirRectFromBounds(bounds_);
+    nativeAirWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeAir",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeAirId)),
+        GetModuleHandleW(nullptr), this);
+  }
+  if (!nativeControlsWindow_ || !IsWindow(nativeControlsWindow_)) {
+    const RECT rect = NativeControlsRectFromBounds(bounds_);
+    nativeControlsWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeControls",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeControlsId)),
+        GetModuleHandleW(nullptr), this);
+  }
+  ApplyNativeStaticBounds();
+  return nativeAirWindow_ && nativeControlsWindow_;
+}
+
+void Renderer::ApplyNativeStaticBounds() {
+  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) {
+    const RECT rect = NativeAirRectFromBounds(bounds_);
+    SetWindowPos(nativeAirWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeAirWindow_, nullptr, FALSE);
+  }
+  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) {
+    const RECT rect = NativeControlsRectFromBounds(bounds_);
+    SetWindowPos(nativeControlsWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
+  }
+}
+
+void Renderer::DestroyNativeStaticWindows() {
+  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) DestroyWindow(nativeAirWindow_);
+  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) DestroyWindow(nativeControlsWindow_);
+  nativeAirWindow_ = nullptr;
+  nativeControlsWindow_ = nullptr;
+}
+
+void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
+  nativeSensors_ = state.sensors;
+  nativeAppVersion_ = state.appVersion;
+  if (!EnsureNativeStaticWindows()) return;
+  InvalidateRect(nativeAirWindow_, nullptr, FALSE);
+  InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
+}
+
 void Renderer::ApplyNativeClockBounds() {
   if (!nativeClockWindow_ || !IsWindow(nativeClockWindow_)) return;
   const RECT rect = NativeClockRectFromBounds(bounds_);
@@ -105,6 +215,17 @@ LRESULT CALLBACK Renderer::NativeClockWndProc(HWND hwnd, UINT message, WPARAM wp
   return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
+LRESULT CALLBACK Renderer::NativeStaticWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  Renderer* renderer = reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  if (message == WM_NCCREATE) {
+    auto* createstruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
+    renderer = reinterpret_cast<Renderer*>(createstruct->lpCreateParams);
+    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(renderer));
+  }
+  if (renderer) return renderer->HandleNativeStaticMessage(hwnd, message, wparam, lparam);
+  return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
 LRESULT Renderer::HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
   switch (message) {
     case WM_ERASEBKGND:
@@ -121,6 +242,41 @@ LRESULT Renderer::HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wpara
     case WM_NCDESTROY:
       KillTimer(hwnd, kClockTimerId);
       if (nativeClockWindow_ == hwnd) nativeClockWindow_ = nullptr;
+      SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+      break;
+  }
+  return DefWindowProcW(hwnd, message, wparam, lparam);
+}
+
+LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  switch (message) {
+    case WM_ERASEBKGND:
+      return 1;
+    case WM_LBUTTONUP:
+      if (GetDlgCtrlID(hwnd) == kNativeControlsId) {
+        RECT bounds{};
+        GetClientRect(hwnd, &bounds);
+        const int width = std::max(1L, bounds.right - bounds.left);
+        const int height = std::max(1L, bounds.bottom - bounds.top);
+        const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
+        const int totalWidth = buttonWidth * 2 + 10;
+        const int left = (width - totalWidth) / 2;
+        const int top = std::max(48, height / 2 - 22);
+        const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+        RECT updateRect{left, top, left + buttonWidth, top + 44};
+        RECT restartRect{left + buttonWidth + 10, top, left + totalWidth, top + 44};
+        if (PtInRect(&updateRect, point)) QueueAction(UiAction::AppUpdate);
+        else if (PtInRect(&restartRect, point)) QueueAction(UiAction::Restart);
+        return 0;
+      }
+      break;
+    case WM_PAINT:
+      if (GetDlgCtrlID(hwnd) == kNativeAirId) PaintNativeAir(hwnd);
+      else PaintNativeControls(hwnd);
+      return 0;
+    case WM_NCDESTROY:
+      if (nativeAirWindow_ == hwnd) nativeAirWindow_ = nullptr;
+      if (nativeControlsWindow_ == hwnd) nativeControlsWindow_ = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
       break;
   }
@@ -152,7 +308,7 @@ void Renderer::PaintNativeClock(HWND hwnd) {
 
   RECT dateRect = bounds;
   dateRect.bottom = bounds.top + height / 2 - clockHeight / 2;
-  HFONT dateFont = CreateClockFont(dateHeight, FW_NORMAL);
+  HFONT dateFont = CreateUiFont(dateHeight, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, dateFont);
   DrawTextW(memoryDc, DateText(now).c_str(), -1, &dateRect,
             DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_NOPREFIX);
@@ -162,12 +318,130 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   SetTextColor(memoryDc, RGB(255, 255, 255));
   RECT timeRect = bounds;
   timeRect.top = dateRect.bottom + 4;
-  HFONT clockFont = CreateClockFont(clockHeight, FW_LIGHT);
+  HFONT clockFont = CreateUiFont(clockHeight, FW_LIGHT);
   previousFont = SelectObject(memoryDc, clockFont);
   DrawTextW(memoryDc, TimeText(now).c_str(), -1, &timeRect,
             DT_CENTER | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
   SelectObject(memoryDc, previousFont);
   DeleteObject(clockFont);
+
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeAir(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(9, 14, 21));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  const int width = std::max(1L, bounds.right - bounds.left);
+  const int gap = 5;
+  const int cardWidth = (width - gap * 2) / 3;
+  const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
+      {L"CO2", nativeSensors_.co2Connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm"},
+      {L"温度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃"},
+      {L"湿度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%"},
+  }};
+  HPEN border = CreatePen(PS_SOLID, 1, RGB(43, 51, 63));
+  HGDIOBJ previousPen = SelectObject(memoryDc, border);
+  HBRUSH card = CreateSolidBrush(RGB(21, 29, 39));
+  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
+  HFONT labelFont = CreateUiFont(15, FW_NORMAL);
+  HFONT valueFont = CreateUiFont(29, FW_NORMAL);
+  for (int i = 0; i < 3; ++i) {
+    RECT rect{i * (cardWidth + gap), 0, i * (cardWidth + gap) + cardWidth, bounds.bottom};
+    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
+    RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 25};
+    SetTextColor(memoryDc, RGB(184, 195, 208));
+    HGDIOBJ previousFont = SelectObject(memoryDc, labelFont);
+    DrawTextInRect(memoryDc, values[i].first, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    RECT valueRect{rect.left + 2, rect.top + 26, rect.right - 2, rect.bottom - 4};
+    SetTextColor(memoryDc, RGB(255, 255, 255));
+    SelectObject(memoryDc, valueFont);
+    DrawTextInRect(memoryDc, values[i].second, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(memoryDc, previousFont);
+  }
+  DeleteObject(labelFont);
+  DeleteObject(valueFont);
+  SelectObject(memoryDc, previousBrush);
+  SelectObject(memoryDc, previousPen);
+  DeleteObject(card);
+  DeleteObject(border);
+
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeControls(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(9, 14, 21));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
+  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
+  SetTextColor(memoryDc, RGB(255, 255, 255));
+  RECT titleRect{12, 8, bounds.right - 12, 31};
+  DrawTextInRect(memoryDc, L"操作", titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  SetTextColor(memoryDc, RGB(184, 195, 208));
+  const std::wstring version = nativeAppVersion_.empty() ? L"" : L"v" + nativeAppVersion_;
+  DrawTextInRect(memoryDc, version, titleRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(headerFont);
+
+  const int width = std::max(1L, bounds.right - bounds.left);
+  const int height = std::max(1L, bounds.bottom - bounds.top);
+  const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
+  const int totalWidth = buttonWidth * 2 + 10;
+  const int left = (width - totalWidth) / 2;
+  const int top = std::max(48, height / 2 - 22);
+  const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
+      {L"更新", RECT{left, top, left + buttonWidth, top + 44}},
+      {L"再起動", RECT{left + buttonWidth + 10, top, left + totalWidth, top + 44}},
+  }};
+  HPEN border = CreatePen(PS_SOLID, 1, RGB(58, 67, 80));
+  HBRUSH fill = CreateSolidBrush(RGB(24, 34, 47));
+  HGDIOBJ previousPen = SelectObject(memoryDc, border);
+  HGDIOBJ previousBrush = SelectObject(memoryDc, fill);
+  HFONT buttonFont = CreateUiFont(14, FW_SEMIBOLD);
+  previousFont = SelectObject(memoryDc, buttonFont);
+  SetTextColor(memoryDc, RGB(242, 247, 250));
+  for (const auto& [label, rect] : buttons) {
+    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
+    RECT textRect = rect;
+    DrawTextInRect(memoryDc, label, textRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  }
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(buttonFont);
+  SelectObject(memoryDc, previousBrush);
+  SelectObject(memoryDc, previousPen);
+  DeleteObject(fill);
+  DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);

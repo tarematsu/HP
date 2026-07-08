@@ -25,6 +25,7 @@ UiAction Renderer::HitTest(POINT, float* seekFraction) {
 }
 
 void Renderer::UpdateState(const RenderState& state) {
+  UpdateNativeStaticPanels(state);
   const std::wstring json = BuildStateJson(state);
   PostState(json);
   statePublishedForPendingPaint_ = !json.empty();

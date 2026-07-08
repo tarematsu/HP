@@ -29,12 +29,14 @@ Renderer::~Renderer() {
   shuttingDown_ = true;
   StopNativePlaybackBridge();
   CloseWebView();
+  DestroyNativeStaticWindows();
   DestroyNativeClockWindow();
 }
 
 void Renderer::Initialize() {
   PrepareParentWindow(window_);
   EnsureNativeClockWindow();
+  EnsureNativeStaticWindows();
   StartNativePlaybackBridge();
   CreateWebView();
 }
@@ -72,6 +74,7 @@ void Renderer::ApplyDashboardHostBounds() {
     SetWindowPos(dashboardHost_, HWND_TOP, bounds_.left, bounds_.top, width, height, flags);
   }
   ApplyNativeClockBounds();
+  ApplyNativeStaticBounds();
   const RECT controllerBounds{0, 0, width, height};
   if (controller_ && (!controllerBoundsValid_ || !EqualRect(&appliedControllerBounds_, &controllerBounds))) {
     if (SUCCEEDED(controller_->put_Bounds(controllerBounds))) {
@@ -115,6 +118,13 @@ void Renderer::SetVisible(bool visible) {
     ShowWindow(nativeClockWindow_, visible ? SW_SHOWNA : SW_HIDE);
     if (visible) ApplyNativeClockBounds();
   }
+  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) {
+    ShowWindow(nativeAirWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
+  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) {
+    ShowWindow(nativeControlsWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
+  if (visible) ApplyNativeStaticBounds();
 }
 
 bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {

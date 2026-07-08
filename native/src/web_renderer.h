@@ -111,9 +111,17 @@ class Renderer {
   bool EnsureNativeClockWindow();
   void ApplyNativeClockBounds();
   void DestroyNativeClockWindow();
+  bool EnsureNativeStaticWindows();
+  void ApplyNativeStaticBounds();
+  void DestroyNativeStaticWindows();
+  void UpdateNativeStaticPanels(const RenderState& state);
   static LRESULT CALLBACK NativeClockWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  static LRESULT CALLBACK NativeStaticWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  LRESULT HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   void PaintNativeClock(HWND hwnd);
+  void PaintNativeAir(HWND hwnd);
+  void PaintNativeControls(HWND hwnd);
   void QueueAction(UiAction action, float seekFraction = 0.0f);
   std::wstring BuildStateJson(const RenderState& state, bool full = false);
   std::wstring BuildCachedStateJson(uint32_t changedSlices, bool full) const;
@@ -133,6 +141,10 @@ class Renderer {
   HWND window_{};
   HWND dashboardHost_{};
   HWND nativeClockWindow_{};
+  HWND nativeAirWindow_{};
+  HWND nativeControlsWindow_{};
+  SensorSnapshot nativeSensors_{};
+  std::wstring nativeAppVersion_;
   int width_ = 0;
   int height_ = 0;
   RECT bounds_{};
