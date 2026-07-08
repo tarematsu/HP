@@ -136,7 +136,7 @@ class Renderer {
   bool EnsureDashboardHostWindow();
   void ApplyDashboardHostBounds();
   void DestroyDashboardHostWindow();
-  QueueAction(UiAction action, float seekFraction = 0.0f);
+  void QueueAction(UiAction action, float seekFraction = 0.0f);
   std::wstring BuildStateJson(const RenderState& state, bool full = false);
   std::wstring BuildCachedStateJson(uint32_t changedSlices, bool full) const;
   std::wstring AirHistoryJson(const std::vector<AirHistorySample>& history) const;
