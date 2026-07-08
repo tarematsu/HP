@@ -104,10 +104,11 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
 //     unconditionally, including at startup - they are never needed by the
 //     "click Start Listening" automation or by playback, so cutting them
 //     early reduces startup CPU/network/memory.
-//   * Image and font requests are dropped only once armed is true (playback
-//     confirmed by the caller). Blocking them earlier can collapse icon-only
-//     controls to zero size and break getBoundingClientRect()-based auto-play
-//     detection, leaving the window stuck visible; the config flags
+//   * Third-party images (artwork/avatars) are dropped from startup; same-site
+//     stationhead.com images and all fonts are dropped only once armed is true
+//     (playback confirmed). Blocking same-site images earlier can collapse
+//     icon-only controls to zero size and break getBoundingClientRect()-based
+//     auto-play detection, leaving the window stuck visible. The config flags
 //     blockImagesAfterPlayback/blockFontsAfterPlayback still gate this tier.
 // Shared by the primary and secondary players so both apply the same rules.
 // The token must be removed via remove_WebResourceRequested(token) on close,
@@ -128,21 +129,31 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
           [env, &armed, blockImages, blockFonts](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
-            bool block = false;
+            std::wstring lower;
             ComPtr<ICoreWebView2WebResourceRequest> request;
             if (SUCCEEDED(args->get_Request(&request)) && request) {
               LPWSTR uriRaw = nullptr;
               if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                const std::wstring lower = StationheadLowerAscii(uriRaw);
+                lower = StationheadLowerAscii(uriRaw);
                 CoTaskMemFree(uriRaw);
-                block = StationheadRequestIsBlockable(lower);
               }
             }
-            if (!block && (blockImages || blockFonts) && armed.load(std::memory_order_relaxed)) {
+            bool block = StationheadRequestIsBlockable(lower);
+            if (!block && (blockImages || blockFonts)) {
               COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
               if (SUCCEEDED(args->get_ResourceContext(&context))) {
-                block = (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
-                        (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+                const bool armedNow = armed.load(std::memory_order_relaxed);
+                if (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) {
+                  // Third-party artwork/avatars are never the auto-play button
+                  // and are dropped from startup. Same-site (stationhead)
+                  // images are kept until playback is armed so icon-only
+                  // controls keep their geometry for the coordinate-based
+                  // auto-play click.
+                  block = armedNow ||
+                          (!lower.empty() && lower.find(L"stationhead.com") == std::wstring::npos);
+                } else if (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) {
+                  block = armedNow;
+                }
               }
             }
             if (block) {

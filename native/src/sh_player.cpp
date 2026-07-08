@@ -234,15 +234,17 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     status_.visible = false;
     return;
   }
-  const int width = std::max(1L, bounds_.right - bounds_.left);
-  const int height = std::max(1L, bounds_.bottom - bounds_.top);
+  // Collapse the backgrounded player to a 1x1 surface: the GPU process stops
+  // compositing a full-size hidden WebView, and a 1x1 child window can no
+  // longer paint over the dashboard. Audio playback is independent of the
+  // surface size; interactive states resize back via LayoutControllers().
   controller_->put_ZoomFactor(1.0);
-  controller_->put_Bounds(RECT{0, 0, width, height});
+  controller_->put_Bounds(RECT{0, 0, 1, 1});
   controller_->put_IsVisible(TRUE);
   ApplyMute();
   SetWindowRgn(hostWindow_, nullptr, FALSE);
   ShowWindow(hostWindow_, SW_SHOWNOACTIVATE);
-  SetWindowPos(hostWindow_, HWND_BOTTOM, bounds_.left, bounds_.top, width, height,
+  SetWindowPos(hostWindow_, HWND_BOTTOM, bounds_.left, bounds_.top, 1, 1,
                SWP_NOACTIVATE | SWP_SHOWWINDOW);
   backgroundHostPlaced_ = true;
   controllerLayoutValid_ = false;
@@ -293,7 +295,13 @@ void StationheadPlayer::SetVisible(bool visible) {
 void StationheadPlayer::LayoutControllers() {
   const int width = std::max(1L, bounds_.right - bounds_.left);
   const int height = std::max(1L, bounds_.bottom - bounds_.top);
-  const RECT controllerBounds{0, 0, width, height};
+  // A background (not visible) player collapses to 1x1 so the GPU stops
+  // compositing a full-size hidden WebView and its child window can't paint
+  // over the dashboard. Audio is size-independent; the auth/foreground states
+  // keep the full size below.
+  const int hostWidth = viewVisible_ ? width : 1;
+  const int hostHeight = viewVisible_ ? height : 1;
+  const RECT controllerBounds{0, 0, hostWidth, hostHeight};
   const bool showAuth = selectedTab_ == StationheadTabKind::Auth && authController_;
   if (controller_) {
     controller_->put_Bounds(controllerBounds);
@@ -304,7 +312,7 @@ void StationheadPlayer::LayoutControllers() {
     else {
       ShowWindow(hostWindow_, SW_SHOWNOACTIVATE);
       SetWindowPos(hostWindow_, viewVisible_ ? HWND_TOP : HWND_BOTTOM,
-                   bounds_.left, bounds_.top, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                   bounds_.left, bounds_.top, hostWidth, hostHeight, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
   }
   if (authController_) {

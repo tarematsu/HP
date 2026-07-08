@@ -238,7 +238,12 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
   const bool authWasVisible = authHostWindow_ && IsWindow(authHostWindow_) && IsWindowVisible(authHostWindow_);
   const int width = std::max(1L, bounds_.right - bounds_.left);
   const int height = std::max(1L, bounds_.bottom - bounds_.top);
-  const RECT controllerBounds{0, 0, width, height};
+  // Background (non-interactive) players collapse to 1x1 so the GPU stops
+  // compositing a full-size hidden WebView and the child window can't paint
+  // over the dashboard. Audio is size-independent; interactive/auth keep full.
+  const int hostWidth = interactive ? width : 1;
+  const int hostHeight = interactive ? height : 1;
+  const RECT controllerBounds{0, 0, hostWidth, hostHeight};
   const bool showAuth = interactive && spotifyAuthorization_ && authController_;
   if (controller_) {
     controller_->put_Bounds(controllerBounds);
@@ -250,7 +255,7 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
     } else {
       ShowWindow(hostWindow_, SW_SHOWNOACTIVATE);
       SetWindowPos(hostWindow_, interactive ? HWND_TOP : HWND_BOTTOM,
-                   bounds_.left, bounds_.top, width, height,
+                   bounds_.left, bounds_.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
   }
