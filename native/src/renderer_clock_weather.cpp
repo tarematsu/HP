@@ -8,6 +8,7 @@ constexpr int kNativeAirId = 101;
 constexpr int kNativeControlsId = 102;
 constexpr int kNativeNewsId = 103;
 constexpr int kNativeWeatherId = 104;
+constexpr int kNativeEnergyId = 105;
 
 struct DashboardGrid {
   int left = 0;
@@ -71,6 +72,10 @@ RECT NativeNewsRectFromBounds(const RECT& bounds) {
 RECT NativeWeatherRectFromBounds(const RECT& bounds) {
   const RECT panel = NativePanelRectFromBounds(bounds, 1, 0);
   return RECT{panel.left + 12, panel.bottom - 108, panel.right - 12, panel.bottom - 8};
+}
+
+RECT NativeEnergyRectFromBounds(const RECT& bounds) {
+  return NativePanelRectFromBounds(bounds, 2, 0);
 }
 
 HFONT CreateUiFont(int height, int weight) {
@@ -186,8 +191,17 @@ bool Renderer::EnsureNativeStaticWindows() {
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeWeatherId)),
         GetModuleHandleW(nullptr), this);
   }
+  if (!nativeEnergyWindow_ || !IsWindow(nativeEnergyWindow_)) {
+    const RECT rect = NativeEnergyRectFromBounds(bounds_);
+    nativeEnergyWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeEnergy",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeEnergyId)),
+        GetModuleHandleW(nullptr), this);
+  }
   ApplyNativeStaticBounds();
-  return nativeAirWindow_ && nativeControlsWindow_ && nativeNewsWindow_ && nativeWeatherWindow_;
+  return nativeAirWindow_ && nativeControlsWindow_ && nativeNewsWindow_ && nativeWeatherWindow_ && nativeEnergyWindow_;
 }
 
 void Renderer::ApplyNativeStaticBounds() {
@@ -219,6 +233,13 @@ void Renderer::ApplyNativeStaticBounds() {
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
   }
+  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) {
+    const RECT rect = NativeEnergyRectFromBounds(bounds_);
+    SetWindowPos(nativeEnergyWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
+  }
 }
 
 void Renderer::DestroyNativeStaticWindows() {
@@ -226,10 +247,12 @@ void Renderer::DestroyNativeStaticWindows() {
   if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) DestroyWindow(nativeControlsWindow_);
   if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) DestroyWindow(nativeNewsWindow_);
   if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) DestroyWindow(nativeWeatherWindow_);
+  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) DestroyWindow(nativeEnergyWindow_);
   nativeAirWindow_ = nullptr;
   nativeControlsWindow_ = nullptr;
   nativeNewsWindow_ = nullptr;
   nativeWeatherWindow_ = nullptr;
+  nativeEnergyWindow_ = nullptr;
 }
 
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
@@ -241,6 +264,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
   InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
   InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
+  InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
 }
 
 void Renderer::ApplyNativeClockBounds() {
@@ -330,13 +354,15 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       if (GetDlgCtrlID(hwnd) == kNativeAirId) PaintNativeAir(hwnd);
       else if (GetDlgCtrlID(hwnd) == kNativeControlsId) PaintNativeControls(hwnd);
       else if (GetDlgCtrlID(hwnd) == kNativeNewsId) PaintNativeNews(hwnd);
-      else PaintNativeWeather(hwnd);
+      else if (GetDlgCtrlID(hwnd) == kNativeWeatherId) PaintNativeWeather(hwnd);
+      else PaintNativeEnergy(hwnd);
       return 0;
     case WM_NCDESTROY:
       if (nativeAirWindow_ == hwnd) nativeAirWindow_ = nullptr;
       if (nativeControlsWindow_ == hwnd) nativeControlsWindow_ = nullptr;
       if (nativeNewsWindow_ == hwnd) nativeNewsWindow_ = nullptr;
       if (nativeWeatherWindow_ == hwnd) nativeWeatherWindow_ = nullptr;
+      if (nativeEnergyWindow_ == hwnd) nativeEnergyWindow_ = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
       break;
   }
@@ -639,6 +665,133 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   SelectObject(memoryDc, previousBrush);
   SelectObject(memoryDc, previousPen);
   DeleteObject(popBrush);
+  DeleteObject(border);
+
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeEnergy(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(9, 14, 21));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
+  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
+  SetTextColor(memoryDc, RGB(255, 255, 255));
+  RECT headerRect{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 31};
+  DrawTextInRect(memoryDc, L"Octopus Energy", headerRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(headerFont);
+
+  const auto usageText = [](double value) {
+    return std::isfinite(value) ? Fixed(value, 1) + L" kWh" : L"-- kWh";
+  };
+  const auto costText = [](double value) {
+    if (!std::isfinite(value) || value <= 0) return std::wstring{};
+    return L"約¥" + std::to_wstring(static_cast<int>(std::round(value * 32.0)));
+  };
+
+  const std::array<std::tuple<std::wstring, std::wstring, std::wstring>, 2> summary{{
+      {L"先月", usageText(nativeDashboard_.lastMonthUsage), costText(nativeDashboard_.lastMonthUsage)},
+      {L"今月見込み", usageText(nativeDashboard_.projectedUsage), costText(nativeDashboard_.projectedUsage)},
+  }};
+
+  HPEN border = CreatePen(PS_SOLID, 1, RGB(43, 51, 63));
+  HBRUSH card = CreateSolidBrush(RGB(21, 29, 39));
+  HGDIOBJ previousPen = SelectObject(memoryDc, border);
+  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
+  HFONT labelFont = CreateUiFont(11, FW_NORMAL);
+  HFONT valueFont = CreateUiFont(20, FW_NORMAL);
+  const int summaryTop = 38;
+  const int summaryGap = 8;
+  const int summaryWidth = (std::max(1L, bounds.right - bounds.left) - 24 - summaryGap) / 2;
+  for (int i = 0; i < 2; ++i) {
+    RECT rect{bounds.left + 12 + i * (summaryWidth + summaryGap), summaryTop,
+              bounds.left + 12 + i * (summaryWidth + summaryGap) + summaryWidth, summaryTop + 72};
+    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
+    SetTextColor(memoryDc, RGB(184, 195, 208));
+    previousFont = SelectObject(memoryDc, labelFont);
+    RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 24};
+    DrawTextInRect(memoryDc, std::get<0>(summary[i]), labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(memoryDc, RGB(255, 255, 255));
+    SelectObject(memoryDc, valueFont);
+    RECT valueRect{rect.left, rect.top + 25, rect.right, rect.top + 51};
+    DrawTextInRect(memoryDc, std::get<1>(summary[i]), valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(memoryDc, RGB(184, 195, 208));
+    SelectObject(memoryDc, labelFont);
+    RECT costRect{rect.left, rect.top + 52, rect.right, rect.bottom - 4};
+    DrawTextInRect(memoryDc, std::get<2>(summary[i]), costRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(memoryDc, previousFont);
+  }
+
+  RECT chart{bounds.left + 12, summaryTop + 86, bounds.right - 12, bounds.bottom - 56};
+  if (chart.bottom > chart.top + 20 && !nativeDashboard_.octopusHistory.empty()) {
+    double maximum = 1.0;
+    for (const auto& item : nativeDashboard_.octopusHistory) {
+      if (std::isfinite(item.value)) maximum = std::max(maximum, item.value);
+    }
+    const int count = static_cast<int>(nativeDashboard_.octopusHistory.size());
+    const int step = std::max(1, static_cast<int>(chart.right - chart.left) / std::max(1, count));
+    const int barWidth = std::max(2, step * 7 / 10);
+    HBRUSH bar = CreateSolidBrush(RGB(255, 184, 72));
+    HBRUSH previousBarBrush = static_cast<HBRUSH>(SelectObject(memoryDc, bar));
+    SetTextColor(memoryDc, RGB(205, 212, 222));
+    HFONT chartFont = CreateUiFont(8, FW_NORMAL);
+    previousFont = SelectObject(memoryDc, chartFont);
+    for (int i = 0; i < count; ++i) {
+      const double value = std::isfinite(nativeDashboard_.octopusHistory[i].value)
+          ? nativeDashboard_.octopusHistory[i].value : 0.0;
+      const int barHeight = static_cast<int>((chart.bottom - chart.top - 18) * value / maximum);
+      const int x = chart.left + i * step + (step - barWidth) / 2;
+      RECT barRect{x, chart.bottom - 18 - barHeight, x + barWidth, chart.bottom - 18};
+      FillRect(memoryDc, &barRect, bar);
+      RECT valueRect{x - 6, barRect.top - 13, x + barWidth + 6, barRect.top};
+      DrawTextInRect(memoryDc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
+                     DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
+    SelectObject(memoryDc, previousFont);
+    DeleteObject(chartFont);
+    SelectObject(memoryDc, previousBarBrush);
+    DeleteObject(bar);
+  }
+
+  const int plugTop = std::max(static_cast<int>(bounds.bottom) - 48, summaryTop + 164);
+  HFONT plugFont = CreateUiFont(10, FW_NORMAL);
+  previousFont = SelectObject(memoryDc, plugFont);
+  SetTextColor(memoryDc, RGB(184, 195, 208));
+  RECT plugRect{bounds.left + 12, plugTop, bounds.right - 12, bounds.bottom - 8};
+  std::wstring plugs = L"Plug Mini情報なし";
+  if (!nativeDashboard_.switchBotDevices.empty()) {
+    plugs.clear();
+    const size_t count = std::min<size_t>(2, nativeDashboard_.switchBotDevices.size());
+    for (size_t i = 0; i < count; ++i) {
+      if (i) plugs += L"  ";
+      plugs += nativeDashboard_.switchBotDevices[i].name + L": " + nativeDashboard_.switchBotDevices[i].state;
+    }
+  }
+  DrawTextInRect(memoryDc, plugs, plugRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(plugFont);
+
+  DeleteObject(labelFont);
+  DeleteObject(valueFont);
+  SelectObject(memoryDc, previousBrush);
+  SelectObject(memoryDc, previousPen);
+  DeleteObject(card);
   DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);

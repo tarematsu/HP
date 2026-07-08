@@ -130,6 +130,9 @@ void Renderer::SetVisible(bool visible) {
   if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) {
     ShowWindow(nativeWeatherWindow_, visible ? SW_SHOWNA : SW_HIDE);
   }
+  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) {
+    ShowWindow(nativeEnergyWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
   if (visible) ApplyNativeStaticBounds();
 }
 

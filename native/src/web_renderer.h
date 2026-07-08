@@ -125,6 +125,7 @@ class Renderer {
   void PaintNativeControls(HWND hwnd);
   void PaintNativeNews(HWND hwnd);
   void PaintNativeWeather(HWND hwnd);
+  void PaintNativeEnergy(HWND hwnd);
   void QueueAction(UiAction action, float seekFraction = 0.0f);
   std::wstring BuildStateJson(const RenderState& state, bool full = false);
   std::wstring BuildCachedStateJson(uint32_t changedSlices, bool full) const;
@@ -148,6 +149,7 @@ class Renderer {
   HWND nativeControlsWindow_{};
   HWND nativeNewsWindow_{};
   HWND nativeWeatherWindow_{};
+  HWND nativeEnergyWindow_{};
   SensorSnapshot nativeSensors_{};
   DashboardSnapshot nativeDashboard_{};
   std::wstring nativeAppVersion_;

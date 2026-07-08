@@ -45,6 +45,7 @@
 - The clock/date surface is native-owned and drawn in a sibling child window above the dashboard WebView.
 - News headline and hourly weather summary surfaces are native-owned and read from the parsed dashboard snapshot.
 - Air current metrics are native-owned; the browser still renders the 24-hour air history chart.
+- Octopus Energy summary and history chart are native-owned and read from the parsed dashboard snapshot.
 - Controls are native-owned and dispatch the existing update/restart actions through the renderer action queue.
 - Keep the browser-side second pulse only for panels that still need local interpolation, such as Spotify progress.
 - Do not reintroduce browser-side clock DOM updates once a static surface has moved to native rendering.
