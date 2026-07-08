@@ -67,6 +67,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <string_view>
 
 namespace hp {
 using Microsoft::WRL::Callback;
@@ -118,6 +119,19 @@ inline std::wstring JsonQuote(const std::wstring& value) {
   }
   output.push_back(L'\"');
   return output;
+}
+inline uint64_t Fnv1a64(std::string_view value) noexcept {
+  uint64_t hash = 14695981039346656037ull;
+  for (unsigned char byte : value) {
+    hash ^= byte;
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+inline std::wstring Hex64(uint64_t value) {
+  std::wostringstream output;
+  output << std::hex << std::setfill(L'0') << std::setw(16) << value;
+  return output.str();
 }
 inline int64_t UnixMillis() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();

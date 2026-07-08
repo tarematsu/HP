@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "artwork_cache.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -97,7 +98,7 @@ std::wstring FirstText(const JsonObject& object, std::initializer_list<const wch
   return {};
 }
 
-JsonObject NormalizeItem(const JsonObject& raw) {
+JsonObject NormalizeItem(const fs::path& dataDir, const JsonObject& raw) {
   JsonObject source = raw;
   JsonObject nested = AsObject(raw, L"track");
   if (nested.Size() == 0) nested = AsObject(raw, L"song");
@@ -145,13 +146,13 @@ JsonObject NormalizeItem(const JsonObject& raw) {
       }
     }
   }
-  item.SetNamedValue(L"artwork", JsonValue::CreateStringValue(artwork));
+  item.SetNamedValue(L"artwork", JsonValue::CreateStringValue(CacheArtworkUrl(dataDir, artwork)));
   item.SetNamedValue(L"durationMs", JsonValue::CreateNumberValue(std::max(
       0.0, FirstNumber(source, {L"durationMs", L"duration_ms", L"lengthMs"}))));
   return item;
 }
 
-std::wstring ResolvePlaybackPayload(const std::wstring& payload, int64_t fetchedAt) {
+std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring& payload, int64_t fetchedAt) {
   if (payload.empty()) return L"{}";
   try {
     JsonObject root = JsonObject::Parse(payload);
@@ -212,7 +213,7 @@ std::wstring ResolvePlaybackPayload(const std::wstring& payload, int64_t fetched
       while (index >= 0 && index < static_cast<int>(queue.Size())) {
         if (queue.GetAt(index).ValueType() != JsonValueType::Object) break;
         itemSource = queue.GetAt(index).GetObject();
-        JsonObject normalized = NormalizeItem(itemSource);
+        JsonObject normalized = NormalizeItem(dataDir, itemSource);
         const int64_t queueDuration = static_cast<int64_t>(NumberValue(normalized, L"durationMs"));
         if (!playing || queueDuration <= 0 || elapsed <= queueDuration) {
           durationMs = queueDuration;
@@ -234,7 +235,7 @@ std::wstring ResolvePlaybackPayload(const std::wstring& payload, int64_t fetched
       else if (playing && sampledAt > 0) progressMs += std::max<int64_t>(0, fetchedAt - sampledAt);
     }
 
-    JsonObject item = NormalizeItem(itemSource);
+    JsonObject item = NormalizeItem(dataDir, itemSource);
     if (durationMs <= 0) durationMs = static_cast<int64_t>(NumberValue(item, L"durationMs"));
     if (durationMs > 0) progressMs = std::clamp<int64_t>(progressMs, 0, durationMs);
 
@@ -447,7 +448,7 @@ void Renderer::NativePlaybackLoop() {
         update.payload = std::move(payload);
         update.error = error;
         update.fetchedAt = UnixMillis();
-        update.resolved = update.payload.empty() ? L"{}" : ResolvePlaybackPayload(update.payload, update.fetchedAt);
+        update.resolved = update.payload.empty() ? L"{}" : ResolvePlaybackPayload(dataDir_, update.payload, update.fetchedAt);
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
         SaveNativePlaybackSnapshot(

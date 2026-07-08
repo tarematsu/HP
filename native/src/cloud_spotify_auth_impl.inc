@@ -1,4 +1,5 @@
 #include "cloud_client.h"
+#include "artwork_cache.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -473,7 +474,8 @@ void CloudClient::PollSpotify() {
       }
       normalized.SetNamedValue(
           L"artwork",
-          winrt::Windows::Data::Json::JsonValue::CreateStringValue(artwork));
+          winrt::Windows::Data::Json::JsonValue::CreateStringValue(
+              CacheArtworkUrl(dataDir_, artwork)));
       output.SetNamedValue(L"item", normalized);
     }
 
