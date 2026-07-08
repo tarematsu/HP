@@ -254,7 +254,9 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
       ShowWindow(hostWindow_, SW_HIDE);
     } else {
       ShowWindow(hostWindow_, SW_SHOWNOACTIVATE);
-      SetWindowPos(hostWindow_, interactive ? HWND_TOP : HWND_BOTTOM,
+      // Stationhead content always stays behind the dashboard WebView so it
+      // never covers it; auto-play works while occluded (layout + CDP input).
+      SetWindowPos(hostWindow_, HWND_BOTTOM,
                    bounds_.left, bounds_.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }

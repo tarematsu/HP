@@ -284,10 +284,11 @@ void StationheadPlayer::SetVisible(bool visible) {
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
-  HWND targetWindow = selectedTab_ == StationheadTabKind::Auth ? authHostWindow_ : hostWindow_;
-  if (targetWindow && IsWindow(targetWindow)) {
-    ShowWindow(targetWindow, SW_SHOWNOACTIVATE);
-    SetWindowPos(targetWindow, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+  // Only the Spotify auth window is brought to the front; the Stationhead
+  // content window stays behind the dashboard (placed by LayoutControllers).
+  if (selectedTab_ == StationheadTabKind::Auth && authHostWindow_ && IsWindow(authHostWindow_)) {
+    ShowWindow(authHostWindow_, SW_SHOWNOACTIVATE);
+    SetWindowPos(authHostWindow_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   }
   if (!wasVisible && controller_) controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
 }
@@ -311,7 +312,11 @@ void StationheadPlayer::LayoutControllers() {
     if (showAuth) ShowWindow(hostWindow_, SW_HIDE);
     else {
       ShowWindow(hostWindow_, SW_SHOWNOACTIVATE);
-      SetWindowPos(hostWindow_, viewVisible_ ? HWND_TOP : HWND_BOTTOM,
+      // Stationhead content always stays behind the dashboard WebView (a
+      // sibling child of the same parent) so it never covers the dashboard.
+      // Auto-play relies on layout geometry + CDP input, which work while the
+      // window is occluded/behind, so it never needs to come to the front.
+      SetWindowPos(hostWindow_, HWND_BOTTOM,
                    bounds_.left, bounds_.top, hostWidth, hostHeight, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
   }

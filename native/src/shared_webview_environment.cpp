@@ -15,6 +15,9 @@ namespace {
 constexpr wchar_t kWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--autoplay-policy=no-user-gesture-required "
+    // Stationhead windows are kept behind the dashboard (occluded); keep their
+    // renderer running so auto-play and audio continue while not on screen.
+    L"--disable-backgrounding-occluded-windows "
     L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment,HardwareSecureDecryptionFallback";
 
 void ApplyWebView2ProcessHints() noexcept {
