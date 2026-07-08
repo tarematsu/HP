@@ -59,7 +59,7 @@ inline HBITMAP DecodeImageFileToBitmap(const fs::path& file, int width, int heig
 }
 
 inline HBITMAP DecodeImageBytesToBitmap(const void* data, size_t size, int width, int height) {
-  if (!data || !size || size > MAXUINT32) return nullptr;
+  if (!data || !size || size > UINT32_MAX) return nullptr;
   ComPtr<IWICImagingFactory> factory;
   if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
                               IID_PPV_ARGS(&factory)))) {
