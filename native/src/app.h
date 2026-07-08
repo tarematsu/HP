@@ -202,12 +202,11 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyBounds();
   }
 
-  // The primary Stationhead surface must never rise above the dashboard. Keep
-  // both the content and auth hosts on the background side regardless of
-  // internal login/auth state or app-selected tabs.
+  // The primary Stationhead surface stays behind the dashboard during normal
+  // playback. Only explicit login/auth flows may temporarily raise it so the
+  // user can complete Stationhead or Spotify sign-in.
   bool IsInteractive(const StationheadStatus& status) const noexcept {
-    (void)status;
-    return false;
+    return status.loginRequired || status.authAvailable;
   }
 
  private:

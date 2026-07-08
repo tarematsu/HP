@@ -112,12 +112,11 @@ void StationheadPlayer::SetVisible(bool visible) {
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
-  // Primary Stationhead A never comes to the front. Even the Spotify auth
-  // surface stays behind the dashboard and is driven by automation/state
-  // transitions rather than direct foreground interaction.
+  // Spotify auth is the only foreground exception for primary Stationhead A.
+  // Normal Stationhead playback/content remains behind the dashboard.
   if (selectedTab_ == StationheadTabKind::Auth && authHostWindow_ && IsWindow(authHostWindow_)) {
     ShowWindow(authHostWindow_, SW_SHOWNOACTIVATE);
-    SetWindowPos(authHostWindow_, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SetWindowPos(authHostWindow_, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   }
   if (!wasVisible && controller_) controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
 }
@@ -156,7 +155,7 @@ void StationheadPlayer::LayoutControllers() {
   if (authHostWindow_ && IsWindow(authHostWindow_)) {
     if (showAuth) {
       ShowWindow(authHostWindow_, SW_SHOWNOACTIVATE);
-      SetWindowPos(authHostWindow_, HWND_BOTTOM, bounds_.left, bounds_.top, width, height,
+      SetWindowPos(authHostWindow_, HWND_TOP, bounds_.left, bounds_.top, width, height,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
     } else {
       ShowWindow(authHostWindow_, SW_HIDE);
