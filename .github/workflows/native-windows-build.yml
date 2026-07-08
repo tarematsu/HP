@@ -52,6 +52,8 @@ jobs:
 
       - name: Configure native project
         shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           New-Item -ItemType Directory -Force native/ci-logs | Out-Null
           cmake -S native -B native/build-ci `
@@ -98,14 +100,31 @@ jobs:
 
       - name: Build native project
         shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           cmake --build native/build-ci --config Release --parallel `
             2>&1 | Tee-Object native/ci-logs/build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Verify built binary versions
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $expected = $env:HOMEPANEL_BUILD_VERSION
+          foreach ($path in @("native/build-ci/Release/HomePanel.exe", "native/build-ci/Release/HomePanelUpdater.exe")) {
+            $actual = (Get-Item $path).VersionInfo.FileVersion
+            if ($actual -ne $expected) {
+              throw "Built file version mismatch for ${path}: expected $expected, got $actual"
+            }
+          }
+
       - name: Package native release
         if: success()
         shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           $packageRoot = "native/package/HomePanel"
           $zipPath = "native/HomePanel-native-windows.zip"
