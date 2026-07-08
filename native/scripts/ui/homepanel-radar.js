@@ -16,6 +16,23 @@
   let radarFrame = null;
   let baseLayersPromise = null;
 
+  function buildFallbackFrame(baseLayers) {
+    const frame = document.createElement('canvas');
+    frame.width = RADAR_WIDTH;
+    frame.height = RADAR_HEIGHT;
+    const context = frame.getContext('2d', { alpha: false });
+    if (!context) return null;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, RADAR_WIDTH, RADAR_HEIGHT);
+    context.globalCompositeOperation = 'source-over';
+    context.globalAlpha = 1;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(baseLayers.satellite, 0, 0, RADAR_WIDTH, RADAR_HEIGHT);
+    context.drawImage(baseLayers.map, 0, 0, RADAR_WIDTH, RADAR_HEIGHT);
+    return frame;
+  }
+
   function loadRadarImage(url) {
     return new Promise(resolve => {
       const image = new Image();
@@ -92,19 +109,10 @@
 
     const overlayImages = await Promise.all(overlayTiles.map(tile => loadRadarImage(tile.url)));
 
-    const frame = document.createElement('canvas');
-    frame.width = RADAR_WIDTH;
-    frame.height = RADAR_HEIGHT;
+    const frame = buildFallbackFrame(baseLayers);
+    if (!frame) return;
     const context = frame.getContext('2d', { alpha: false });
     if (!context) return;
-
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, RADAR_WIDTH, RADAR_HEIGHT);
-    context.globalCompositeOperation = 'source-over';
-    context.globalAlpha = 1;
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
-    context.drawImage(baseLayers.satellite, 0, 0, RADAR_WIDTH, RADAR_HEIGHT);
 
     context.imageSmoothingEnabled = false;
     overlayTiles.forEach((tile, index) => {
@@ -120,7 +128,7 @@
     });
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = 'high';
-    context.drawImage(baseLayers.map, 0, 0, RADAR_WIDTH, RADAR_HEIGHT);
+    if (overlayTiles.length) context.drawImage(baseLayers.map, 0, 0, RADAR_WIDTH, RADAR_HEIGHT);
 
     const when = radarDateFromMillis(frameData?.validAt);
     if (when) {
@@ -128,7 +136,7 @@
         hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Tokyo',
       }));
     } else {
-      text('#radar-time', '--:--');
+      text('#radar-time', overlayTiles.length ? '--:--' : '待機中');
     }
 
     radarSignatureValue = signature;
@@ -140,7 +148,19 @@
     if (radarRefreshPromise) return radarRefreshPromise;
     radarRefreshPromise = buildRadarFrame()
       .catch(() => {
-        if (!radarFrame) text('#radar-time', '--:--');
+        if (!radarFrame) {
+          loadBaseLayers()
+            .then(baseLayers => {
+              radarFrame = buildFallbackFrame(baseLayers);
+              if (radarFrame) {
+                text('#radar-time', '待機中');
+                presentRadar();
+              }
+            })
+            .catch(() => {
+              text('#radar-time', '--:--');
+            });
+        }
       })
       .finally(() => {
         radarRefreshPromise = null;

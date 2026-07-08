@@ -54,6 +54,13 @@
     a: { muted: false },
     b: { muted: false },
   };
+  const snapshotCache = {
+    key: '',
+    a: null,
+    b: null,
+    spotifySecondary: null,
+    mergedB: null,
+  };
 
   const $ = selector => document.querySelector(selector);
   const finite = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
@@ -366,28 +373,52 @@
   }
 
   function renderPlayers() {
+    const snapshots = currentSnapshots();
     const sourceA = PLAYBACK_SOURCES.a;
-    const snapshotA = playbackSnapshot(playbackStates.a.value);
-    renderStationheadPlayer({ source: sourceA, snapshot: snapshotA, status: sourceStatus(playbackStates.a, snapshotA) });
+    renderStationheadPlayer({ source: sourceA, snapshot: snapshots.a, status: sourceStatus(playbackStates.a, snapshots.a) });
 
     const sourceB = PLAYBACK_SOURCES.b;
-    const secondarySpotifyState = spotifyStateMatchesSecondary(spotifyState) ? spotifyState : {};
-    const snapshotB = mergeSnapshots(playbackSnapshot(playbackStates.b.value), spotifySnapshot(secondarySpotifyState));
-    const spotifyStatus = spotifyAvailability(secondarySpotifyState);
+    const spotifyStatus = spotifyAvailability(snapshots.spotifySecondary);
     renderStationheadPlayer({
       source: sourceB,
-      snapshot: snapshotB,
-      status: sourceStatus(playbackStates.b, snapshotB).kind === 'live' ? sourceStatus(playbackStates.b, snapshotB) : spotifyStatus,
-      grayOut: spotifyStatus.offline && !snapshotB.hasTrack,
+      snapshot: snapshots.mergedB,
+      status: sourceStatus(playbackStates.b, snapshots.mergedB).kind === 'live'
+        ? sourceStatus(playbackStates.b, snapshots.mergedB)
+        : spotifyStatus,
+      grayOut: spotifyStatus.offline && !snapshots.mergedB.hasTrack,
     });
   }
 
+  function currentSnapshots() {
+    const cacheKey = JSON.stringify([
+      playbackStates.a.revision,
+      playbackStates.a.fetchedAt,
+      playbackStates.b.revision,
+      playbackStates.b.fetchedAt,
+      spotifyState?.sampledAt || 0,
+      spotifyState?.expectedEndAt || 0,
+      spotifyState?.progressMs || spotifyState?.positionMs || 0,
+      spotifyState?.playing === true,
+      spotifyState?.host?.handle || spotifyState?.hostHandle || '',
+      Math.floor(Date.now() / 1000),
+    ]);
+    if (snapshotCache.key === cacheKey &&
+        snapshotCache.a &&
+        snapshotCache.b &&
+        snapshotCache.spotifySecondary &&
+        snapshotCache.mergedB) return snapshotCache;
+    snapshotCache.key = cacheKey;
+    snapshotCache.a = playbackSnapshot(playbackStates.a.value);
+    snapshotCache.b = playbackSnapshot(playbackStates.b.value);
+    snapshotCache.spotifySecondary = spotifyStateMatchesSecondary(spotifyState) ? spotifyState : {};
+    snapshotCache.mergedB = mergeSnapshots(snapshotCache.b, spotifySnapshot(snapshotCache.spotifySecondary));
+    return snapshotCache;
+  }
+
   function hasActiveProgress() {
-    const snapshotA = playbackSnapshot(playbackStates.a.value);
-    if (snapshotA.hasTrack && snapshotA.durationMs > 0) return true;
-    const secondarySpotifyState = spotifyStateMatchesSecondary(spotifyState) ? spotifyState : {};
-    const snapshotB = mergeSnapshots(playbackSnapshot(playbackStates.b.value), spotifySnapshot(secondarySpotifyState));
-    return snapshotB.hasTrack && snapshotB.durationMs > 0;
+    const snapshots = currentSnapshots();
+    return (snapshots.a.hasTrack && snapshots.a.durationMs > 0) ||
+      (snapshots.mergedB.hasTrack && snapshots.mergedB.durationMs > 0);
   }
 
   // Plug Mini status only changes on state pushes, so keep it out of the
