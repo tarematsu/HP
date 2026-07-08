@@ -15,6 +15,7 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
   const timers = new Map();
   const webglContexts = new Set();
   const pausedVideos = new Set();
+  let motionStyle = null;
   let nextTimerId = 0x61000000;
   let frozen = Boolean(patch.frozen);
 
@@ -141,9 +142,23 @@ constexpr wchar_t kStationheadGpuRuntimePostlude[] = LR"HPJS(
         try { video.pause(); } catch (_) {}
       }
     }
+    // Halt CSS animations, transitions and smooth scrolling so the background
+    // window stops doing layout/paint work. Audio playback is unaffected.
+    if (!motionStyle) {
+      try {
+        motionStyle = document.createElement('style');
+        motionStyle.setAttribute('data-homepanel', 'freeze');
+        motionStyle.textContent = '*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}';
+        (document.head || document.documentElement).appendChild(motionStyle);
+      } catch (_) { motionStyle = null; }
+    }
   };
 
   const restoreVisualMedia = () => {
+    if (motionStyle) {
+      try { motionStyle.remove(); } catch (_) {}
+      motionStyle = null;
+    }
     for (const entry of Array.from(webglContexts)) {
       try { entry.context.getExtension?.('WEBGL_lose_context')?.restoreContext?.(); } catch (_) {}
     }

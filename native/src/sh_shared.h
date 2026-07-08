@@ -34,40 +34,122 @@ inline std::wstring StationheadVolumeScript(int percent) {
   return script.str();
 }
 
-// Blocks image/font network requests once a Stationhead WebView has
-// confirmed playback (armed set true by the caller at that point), matching
-// the blockImagesAfterPlayback/blockFontsAfterPlayback config flags' actual
-// names (previously loaded from cloud config but never actually applied).
-// The filter is registered from webview creation, but the handler only
-// blocks once armed is true: the pre-playback "click Start Listening"
-// automation depends on getBoundingClientRect() of on-page controls, and
-// blocking images before that point can collapse icon-only buttons to zero
-// size, breaking auto-play detection and leaving the window stuck visible.
-// Shared by both the primary and secondary Stationhead players so the two
-// windows apply the same rule the same way. The registered token must be
-// removed via webview->remove_WebResourceRequested(token) when the webview
-// is closed, and armed should be reset to false at that point too.
+// ASCII-lowercases a URI for case-insensitive substring matching without
+// pulling in locale-aware towlower; request paths such as "chatHistory" mix
+// case while hostnames are already lowercase.
+inline std::wstring StationheadLowerAscii(const wchar_t* text) {
+  std::wstring lower;
+  if (text) {
+    for (const wchar_t* p = text; *p; ++p) {
+      const wchar_t c = *p;
+      lower.push_back((c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c - L'A' + L'a') : c);
+    }
+  }
+  return lower;
+}
+
+// True for requests that a background audio-only Stationhead window never
+// needs: third-party analytics/crash/marketing/push telemetry, and the
+// social surfaces of the Stationhead API (chat, tipping, emoji, trending
+// threads). Derived from an actual startup network capture; the audio
+// stream, the Pusher realtime WebSocket (WebSocket upgrades don't raise
+// WebResourceRequested), and the core playback endpoints
+// (/timestamp, /pusher/presenceAuth, /channels/alias/*, /me/country) are all
+// left untouched. Matched as case-insensitive substrings of the full URI.
+inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
+  static constexpr const wchar_t* kNeedles[] = {
+      // Analytics / remote-config / crash / marketing / push telemetry.
+      L"firebaseinstallations.googleapis.com",
+      L"firebaseremoteconfig.googleapis.com",
+      L"firebase.googleapis.com",
+      L"firebaselogging.googleapis.com",
+      L"firestore.googleapis.com",
+      L"crashlytics",
+      L"amplitude.com",
+      L"google-analytics.com",
+      L"analytics.google.com",
+      L"googletagmanager.com",
+      L"doubleclick.net",
+      L"sentry.io",
+      L"bugsnag.com",
+      L"branch.io",
+      L"segment.io",
+      L"segment.com",
+      L"mixpanel.com",
+      L"hotjar.com",
+      L"fullstory.com",
+      L"appsflyer.com",
+      L"adjust.com",
+      L"braze.com",
+      L"onesignal.com",
+      L"intercom.io",
+      // Non-playback Stationhead surfaces (chat / tipping / social threads).
+      L"/chathistory",
+      L"/tippingstatus",
+      L"/posts/trending",
+      L"/threads/",
+      L"/tipping",
+      L"/emoji",
+      L"/gifts",
+  };
+  for (const wchar_t* needle : kNeedles) {
+    if (uriLower.find(needle) != std::wstring::npos) return true;
+  }
+  return false;
+}
+
+// Strips resource requests from a Stationhead WebView down to what background
+// audio playback needs. Two tiers:
+//   * Analytics/social requests (StationheadRequestIsBlockable) are dropped
+//     unconditionally, including at startup - they are never needed by the
+//     "click Start Listening" automation or by playback, so cutting them
+//     early reduces startup CPU/network/memory.
+//   * Image and font requests are dropped only once armed is true (playback
+//     confirmed by the caller). Blocking them earlier can collapse icon-only
+//     controls to zero size and break getBoundingClientRect()-based auto-play
+//     detection, leaving the window stuck visible; the config flags
+//     blockImagesAfterPlayback/blockFontsAfterPlayback still gate this tier.
+// Shared by the primary and secondary players so both apply the same rules.
+// The token must be removed via remove_WebResourceRequested(token) on close,
+// and armed reset to false at that point.
 inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environment,
                                               ICoreWebView2* webview,
                                               const StationheadConfig& config,
                                               std::atomic<bool>& armed,
                                               EventRegistrationToken& token) {
   if (!environment || !webview) return;
-  if (!config.blockImagesAfterPlayback && !config.blockFontsAfterPlayback) return;
-  if (config.blockImagesAfterPlayback) {
-    webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-  }
-  if (config.blockFontsAfterPlayback) {
-    webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
-  }
+  // One filter across every context so the handler can see analytics/social
+  // requests (any context) as well as image/font subresources.
+  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+  const bool blockImages = config.blockImagesAfterPlayback;
+  const bool blockFonts = config.blockFontsAfterPlayback;
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env, &armed](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args || !armed.load(std::memory_order_relaxed)) return S_OK;
-            ComPtr<ICoreWebView2WebResourceResponse> response;
-            if (SUCCEEDED(env->CreateWebResourceResponse(nullptr, 403, L"Blocked", L"", &response))) {
-              args->put_Response(response.Get());
+          [env, &armed, blockImages, blockFonts](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            if (!args) return S_OK;
+            bool block = false;
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (SUCCEEDED(args->get_Request(&request)) && request) {
+              LPWSTR uriRaw = nullptr;
+              if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
+                const std::wstring lower = StationheadLowerAscii(uriRaw);
+                CoTaskMemFree(uriRaw);
+                block = StationheadRequestIsBlockable(lower);
+              }
+            }
+            if (!block && (blockImages || blockFonts) && armed.load(std::memory_order_relaxed)) {
+              COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+              if (SUCCEEDED(args->get_ResourceContext(&context))) {
+                block = (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
+                        (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+              }
+            }
+            if (block) {
+              ComPtr<ICoreWebView2WebResourceResponse> response;
+              if (SUCCEEDED(env->CreateWebResourceResponse(nullptr, 403, L"Blocked", L"", &response))) {
+                args->put_Response(response.Get());
+              }
             }
             return S_OK;
           }).Get(),
