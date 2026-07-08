@@ -124,6 +124,12 @@ void Renderer::SetVisible(bool visible) {
   if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) {
     ShowWindow(nativeControlsWindow_, visible ? SW_SHOWNA : SW_HIDE);
   }
+  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) {
+    ShowWindow(nativeNewsWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
+  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) {
+    ShowWindow(nativeWeatherWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
   if (visible) ApplyNativeStaticBounds();
 }
 
@@ -137,6 +143,9 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     if (text == dashboardUtf8_) return true;
     const std::wstring wide = Utf8ToWide(text);
     ParseDashboardMetadata(wide);
+    DashboardSnapshot snapshot;
+    LoadDashboardSnapshot(jsonPath, snapshot);
+    nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = text;
     dashboardJson_ = wide;
     ++dashboardSourceRevision_;

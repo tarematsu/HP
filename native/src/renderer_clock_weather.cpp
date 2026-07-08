@@ -6,6 +6,8 @@ constexpr UINT_PTR kClockTimerId = 1;
 constexpr UINT kClockTimerMs = 1000;
 constexpr int kNativeAirId = 101;
 constexpr int kNativeControlsId = 102;
+constexpr int kNativeNewsId = 103;
+constexpr int kNativeWeatherId = 104;
 
 struct DashboardGrid {
   int left = 0;
@@ -61,6 +63,16 @@ RECT NativeControlsRectFromBounds(const RECT& bounds) {
   return RECT{panel.left, panel.top, panel.right, panel.bottom};
 }
 
+RECT NativeNewsRectFromBounds(const RECT& bounds) {
+  const RECT panel = NativePanelRectFromBounds(bounds, 1, 0);
+  return RECT{panel.left + 12, panel.top + 8, panel.right - 12, panel.top + 92};
+}
+
+RECT NativeWeatherRectFromBounds(const RECT& bounds) {
+  const RECT panel = NativePanelRectFromBounds(bounds, 1, 0);
+  return RECT{panel.left + 12, panel.bottom - 108, panel.right - 12, panel.bottom - 8};
+}
+
 HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -89,6 +101,11 @@ std::wstring Fixed(double value, int digits) {
   std::wostringstream output;
   output << std::fixed << std::setprecision(digits) << value;
   return output.str();
+}
+
+std::wstring NumberOrDash(double value, int digits = 0) {
+  if (!std::isfinite(value)) return L"--";
+  return Fixed(value, digits);
 }
 }  // namespace
 
@@ -151,8 +168,26 @@ bool Renderer::EnsureNativeStaticWindows() {
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeControlsId)),
         GetModuleHandleW(nullptr), this);
   }
+  if (!nativeNewsWindow_ || !IsWindow(nativeNewsWindow_)) {
+    const RECT rect = NativeNewsRectFromBounds(bounds_);
+    nativeNewsWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeNews",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeNewsId)),
+        GetModuleHandleW(nullptr), this);
+  }
+  if (!nativeWeatherWindow_ || !IsWindow(nativeWeatherWindow_)) {
+    const RECT rect = NativeWeatherRectFromBounds(bounds_);
+    nativeWeatherWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeWeather",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeWeatherId)),
+        GetModuleHandleW(nullptr), this);
+  }
   ApplyNativeStaticBounds();
-  return nativeAirWindow_ && nativeControlsWindow_;
+  return nativeAirWindow_ && nativeControlsWindow_ && nativeNewsWindow_ && nativeWeatherWindow_;
 }
 
 void Renderer::ApplyNativeStaticBounds() {
@@ -170,21 +205,42 @@ void Renderer::ApplyNativeStaticBounds() {
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
   }
+  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) {
+    const RECT rect = NativeNewsRectFromBounds(bounds_);
+    SetWindowPos(nativeNewsWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
+  }
+  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) {
+    const RECT rect = NativeWeatherRectFromBounds(bounds_);
+    SetWindowPos(nativeWeatherWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
+  }
 }
 
 void Renderer::DestroyNativeStaticWindows() {
   if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) DestroyWindow(nativeAirWindow_);
   if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) DestroyWindow(nativeControlsWindow_);
+  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) DestroyWindow(nativeNewsWindow_);
+  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) DestroyWindow(nativeWeatherWindow_);
   nativeAirWindow_ = nullptr;
   nativeControlsWindow_ = nullptr;
+  nativeNewsWindow_ = nullptr;
+  nativeWeatherWindow_ = nullptr;
 }
 
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   nativeSensors_ = state.sensors;
   nativeAppVersion_ = state.appVersion;
+  nativeNewsIndex_ = state.newsIndex;
   if (!EnsureNativeStaticWindows()) return;
   InvalidateRect(nativeAirWindow_, nullptr, FALSE);
   InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
+  InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
+  InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
 }
 
 void Renderer::ApplyNativeClockBounds() {
@@ -272,11 +328,15 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       break;
     case WM_PAINT:
       if (GetDlgCtrlID(hwnd) == kNativeAirId) PaintNativeAir(hwnd);
-      else PaintNativeControls(hwnd);
+      else if (GetDlgCtrlID(hwnd) == kNativeControlsId) PaintNativeControls(hwnd);
+      else if (GetDlgCtrlID(hwnd) == kNativeNewsId) PaintNativeNews(hwnd);
+      else PaintNativeWeather(hwnd);
       return 0;
     case WM_NCDESTROY:
       if (nativeAirWindow_ == hwnd) nativeAirWindow_ = nullptr;
       if (nativeControlsWindow_ == hwnd) nativeControlsWindow_ = nullptr;
+      if (nativeNewsWindow_ == hwnd) nativeNewsWindow_ = nullptr;
+      if (nativeWeatherWindow_ == hwnd) nativeWeatherWindow_ = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
       break;
   }
@@ -441,6 +501,144 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   SelectObject(memoryDc, previousBrush);
   SelectObject(memoryDc, previousPen);
   DeleteObject(fill);
+  DeleteObject(border);
+
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeNews(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(15, 22, 32));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  HPEN border = CreatePen(PS_SOLID, 1, RGB(43, 51, 63));
+  HBRUSH card = CreateSolidBrush(RGB(18, 27, 38));
+  HGDIOBJ previousPen = SelectObject(memoryDc, border);
+  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
+  RoundRect(memoryDc, bounds.left, bounds.top, bounds.right, bounds.bottom, 10, 10);
+  SelectObject(memoryDc, previousBrush);
+  SelectObject(memoryDc, previousPen);
+  DeleteObject(card);
+  DeleteObject(border);
+
+  const NewsItemData* item = nullptr;
+  if (!nativeDashboard_.newsItems.empty()) {
+    const size_t index = static_cast<size_t>(std::max(0, nativeNewsIndex_)) % nativeDashboard_.newsItems.size();
+    item = &nativeDashboard_.newsItems[index];
+  }
+  const std::wstring title = item ? item->title : L"ニュース取得待ち";
+  const std::wstring detail = item ? item->description : L"";
+
+  HFONT titleFont = CreateUiFont(15, FW_SEMIBOLD);
+  HGDIOBJ previousFont = SelectObject(memoryDc, titleFont);
+  SetTextColor(memoryDc, RGB(245, 248, 252));
+  RECT titleRect{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 30};
+  DrawTextInRect(memoryDc, title, titleRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(titleFont);
+
+  HFONT detailFont = CreateUiFont(11, FW_NORMAL);
+  previousFont = SelectObject(memoryDc, detailFont);
+  SetTextColor(memoryDc, RGB(184, 195, 208));
+  RECT detailRect{bounds.left + 12, bounds.top + 34, bounds.right - 12, bounds.bottom - 8};
+  DrawTextInRect(memoryDc, detail, detailRect, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(detailFont);
+
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeWeather(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(9, 14, 21));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  const auto& hours = nativeDashboard_.weatherHours;
+  const size_t count = std::min<size_t>(5, hours.size());
+  double maxPop = 0;
+  for (size_t i = 0; i < count; ++i) {
+    if (std::isfinite(hours[i].precipitationProbability)) maxPop = std::max(maxPop, hours[i].precipitationProbability);
+  }
+
+  RECT popRect{bounds.left, bounds.top, bounds.left + 72, bounds.bottom};
+  HBRUSH popBrush = CreateSolidBrush(RGB(21, 29, 39));
+  HPEN border = CreatePen(PS_SOLID, 1, RGB(43, 51, 63));
+  HGDIOBJ previousBrush = SelectObject(memoryDc, popBrush);
+  HGDIOBJ previousPen = SelectObject(memoryDc, border);
+  RoundRect(memoryDc, popRect.left, popRect.top, popRect.right, popRect.bottom, 8, 8);
+
+  HFONT smallFont = CreateUiFont(9, FW_NORMAL);
+  HGDIOBJ previousFont = SelectObject(memoryDc, smallFont);
+  SetTextColor(memoryDc, RGB(184, 195, 208));
+  RECT labelRect{popRect.left, popRect.top + 18, popRect.right, popRect.top + 34};
+  DrawTextInRect(memoryDc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(smallFont);
+
+  HFONT popFont = CreateUiFont(28, FW_BOLD);
+  previousFont = SelectObject(memoryDc, popFont);
+  SetTextColor(memoryDc, maxPop >= 70 ? RGB(74, 179, 244) : maxPop >= 40 ? RGB(120, 190, 235) : RGB(165, 174, 186));
+  RECT valueRect{popRect.left, popRect.top + 36, popRect.right, popRect.bottom - 10};
+  DrawTextInRect(memoryDc, std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%", valueRect,
+                 DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(popFont);
+
+  HFONT hourFont = CreateUiFont(10, FW_NORMAL);
+  HFONT rainFont = CreateUiFont(13, FW_NORMAL);
+  const int rightLeft = popRect.right + 6;
+  const int cardGap = 2;
+  const int availableWidth = std::max(1L, bounds.right - rightLeft);
+  const int cardWidth = (availableWidth - cardGap * 4) / 5;
+  for (int i = 0; i < 5; ++i) {
+    RECT cardRect{rightLeft + i * (cardWidth + cardGap), bounds.top,
+                  rightLeft + i * (cardWidth + cardGap) + cardWidth, bounds.bottom};
+    RoundRect(memoryDc, cardRect.left, cardRect.top, cardRect.right, cardRect.bottom, 6, 6);
+    SetTextColor(memoryDc, RGB(184, 195, 208));
+    previousFont = SelectObject(memoryDc, hourFont);
+    RECT hourRect{cardRect.left, cardRect.top + 8, cardRect.right, cardRect.top + 24};
+    const std::wstring hour = i < static_cast<int>(count) ? std::to_wstring(hours[i].hour) + L"時" : L"--";
+    DrawTextInRect(memoryDc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(memoryDc, RGB(116, 184, 229));
+    SelectObject(memoryDc, rainFont);
+    RECT rainRect{cardRect.left, cardRect.top + 45, cardRect.right, cardRect.bottom - 8};
+    const std::wstring rain = i < static_cast<int>(count) ? NumberOrDash(hours[i].rainMm, 0) + L"mm" : L"--";
+    DrawTextInRect(memoryDc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(memoryDc, previousFont);
+  }
+  DeleteObject(hourFont);
+  DeleteObject(rainFont);
+  SelectObject(memoryDc, previousBrush);
+  SelectObject(memoryDc, previousPen);
+  DeleteObject(popBrush);
   DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);

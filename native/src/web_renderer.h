@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "dashboard_data.h"
 #include "radar.h"
 #include "sensors.h"
 #include "sh.h"
@@ -122,6 +123,8 @@ class Renderer {
   void PaintNativeClock(HWND hwnd);
   void PaintNativeAir(HWND hwnd);
   void PaintNativeControls(HWND hwnd);
+  void PaintNativeNews(HWND hwnd);
+  void PaintNativeWeather(HWND hwnd);
   void QueueAction(UiAction action, float seekFraction = 0.0f);
   std::wstring BuildStateJson(const RenderState& state, bool full = false);
   std::wstring BuildCachedStateJson(uint32_t changedSlices, bool full) const;
@@ -143,8 +146,12 @@ class Renderer {
   HWND nativeClockWindow_{};
   HWND nativeAirWindow_{};
   HWND nativeControlsWindow_{};
+  HWND nativeNewsWindow_{};
+  HWND nativeWeatherWindow_{};
   SensorSnapshot nativeSensors_{};
+  DashboardSnapshot nativeDashboard_{};
   std::wstring nativeAppVersion_;
+  int nativeNewsIndex_ = 0;
   int width_ = 0;
   int height_ = 0;
   RECT bounds_{};
