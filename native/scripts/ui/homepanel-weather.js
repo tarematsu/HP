@@ -5,6 +5,7 @@
   const { $, text, finite, number, escapeHtml, statusLabel, hourSuffix, degree } = root.utils;
   const WX_ICON_BASE = 'vendor/wx-icons';
   const LOCAL_ICON_CODES = new Set([100, 101, 200, 206, 212, 300, 313, 400]);
+  let weatherRenderSignature = '';
 
   function wxYahooCode(iconCode) {
     const c = parseInt(iconCode, 10);
@@ -37,12 +38,27 @@
 
   function weatherHours(weather) {
     const hourly = weather.hourly || {};
-    return Object.keys(hourly)
-      .map(Number)
-      .filter(Number.isFinite)
-      .sort((a, b) => a - b)
-      .slice(0, 5)
-      .map(hour => ({ hour, ...(hourly[String(hour)] || {}) }));
+    const keys = [];
+    for (const key of Object.keys(hourly)) {
+      const hour = Number(key);
+      if (Number.isFinite(hour)) keys.push(hour);
+    }
+    keys.sort((a, b) => a - b);
+    return keys.slice(0, 5).map(hour => ({ hour, ...(hourly[String(hour)] || {}) }));
+  }
+
+  function weatherSignature(weather, hours) {
+    const parts = [weather?.forecastDate || '', weather?.__status || '', weather?.__error || ''];
+    for (const hour of hours) {
+      parts.push(
+        String(hour.hour),
+        String(hour.icon ?? ''),
+        String(hour.temp ?? ''),
+        String(hour.pop ?? ''),
+        String(hour.rainMm ?? ''),
+      );
+    }
+    return parts.join('|');
   }
 
   function renderWeather(weather = {}) {
@@ -51,6 +67,10 @@
     if (!container) return;
 
     const hours = weatherHours(weather);
+    const signature = weatherSignature(weather, hours);
+    if (weatherRenderSignature === signature) return;
+    weatherRenderSignature = signature;
+
     if (!hours.length) {
       container.innerHTML = `<div class="empty">${escapeHtml(root.utils.T('empty.weather'))}</div>`;
       return;

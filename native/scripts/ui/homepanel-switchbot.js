@@ -3,6 +3,8 @@
 
   const root = window.HomePanel;
   const { $, text, finite, number, escapeHtml, icon, T, statusLabel } = root.utils;
+  let switchBotRenderSignature = '';
+  let energyPlugsRenderSignature = '';
 
   function switchState(device) {
     const type = String(device.deviceType || '');
@@ -50,11 +52,58 @@
     return 'i-bot';
   }
 
+  function switchBotSignature(value, devices) {
+    const parts = [
+      value?.presence || '',
+      value?.brightness || '',
+      value?.doorOpen ? '1' : '0',
+      value?.motion ? '1' : '0',
+      value?.__status || '',
+      value?.__error || '',
+    ];
+    for (const device of devices) {
+      parts.push(
+        String(device.deviceId || ''),
+        String(device.deviceName || ''),
+        String(device.deviceType || ''),
+        String(device.power || ''),
+        String(device.openState || ''),
+        String(device.motion ?? ''),
+        String(device.battery ?? ''),
+        String(device.watts ?? ''),
+      );
+    }
+    return parts.join('|');
+  }
+
+  function energyPlugsSignature(value, plugs) {
+    const parts = [
+      value?.serviceAvailable === false ? '0' : '1',
+      value?.__status || '',
+      value?.degradedReason || '',
+      value?.__error || '',
+    ];
+    for (const device of plugs) {
+      parts.push(
+        String(device.deviceId || ''),
+        String(device.deviceName || ''),
+        String(device.watts ?? ''),
+        String(device.power || ''),
+        String(device.error || ''),
+      );
+    }
+    return parts.join('|');
+  }
+
   function renderSwitchBot(value = {}) {
     const summary = $('#switchbot-summary');
     const devicesNode = $('#switchbot-devices');
     text('#switchbot-status', statusLabel(value));
     if (!summary || !devicesNode) return;
+    const devices = Array.isArray(value.devices) ? value.devices.slice(0, 6) : [];
+    const signature = switchBotSignature(value, devices);
+    if (switchBotRenderSignature === signature) return;
+    switchBotRenderSignature = signature;
 
     const summaryItems = [
       { key: 'presence', label: value.presence === 'home' ? T('switchbot.presence.home') : value.presence === 'away' ? T('switchbot.presence.away') : T('switchbot.presence.unknown') },
@@ -66,7 +115,6 @@
       `<span class="summary-chip ${summaryClass(key, value)}">${icon(summaryIcon(label))}<span>${escapeHtml(label)}</span></span>`
     ).join('');
 
-    const devices = Array.isArray(value.devices) ? value.devices.slice(0, 6) : [];
     devicesNode.innerHTML = devices.length
       ? devices.map(device => `
         <div class="device">
@@ -83,12 +131,9 @@
 
     const devices = Array.isArray(value.devices) ? value.devices : [];
     const plugs = devices.filter(device => /Plug Mini/i.test(String(device.deviceType || '')));
-    const signature = JSON.stringify([
-      value?.serviceAvailable, value?.__status, value?.degradedReason, value?.__error,
-      plugs.map(device => [device.deviceId, device.deviceName, device.watts, device.power, device.error]),
-    ]);
-    if (container.dataset.signature === signature) return;
-    container.dataset.signature = signature;
+    const signature = energyPlugsSignature(value, plugs);
+    if (energyPlugsRenderSignature === signature) return;
+    energyPlugsRenderSignature = signature;
 
     const available = value?.serviceAvailable !== false &&
       !['stale', 'error', 'waiting'].includes(value?.__status);
