@@ -114,8 +114,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         ApplyScheduledStationheadAudioProfile(!scheduledPrimaryAudioAudible_);
       }
       if (layoutChanged) LayoutWorkspace();
-      renderState_.stationhead = stationhead_->Status();
-      MarkRenderStateDirty();
+      const StationheadStatus nextStationheadState =
+          BuildRenderStationheadState(stationhead_, secondaryStationhead_);
+      if (!SameStationheadStatus(renderState_.stationhead, nextStationheadState)) {
+        renderState_.stationhead = nextStationheadState;
+        MarkRenderStateDirty();
+      }
       Invalidate(renderer_->StationheadRect());
       return 0;
     }

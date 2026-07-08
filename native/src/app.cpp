@@ -78,6 +78,13 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, kFastTickMs, fallbackMs));
 }
 
+StationheadStatus BuildRenderStationheadState(const AppStationheadHandle& stationhead,
+                                              const AppSecondaryStationheadHandle& secondary) {
+  StationheadStatus state = stationhead.Status();
+  state.secondaryAudioMuted = static_cast<bool>(secondary) && secondary.AudioMuted();
+  return state;
+}
+
 }  // namespace
 
 App::App(HINSTANCE instance) : instance_(instance) { current_ = this; }
@@ -288,13 +295,7 @@ void App::Tick() {
   stationhead_->Tick(now);
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
-  StationheadStatus nextStationheadState = stationheadStatus;
-  // secondaryAudioMuted rides along on the primary status struct so the
-  // dashboard can read both windows' mute state from one object; it was
-  // declared but never populated, so Window B's mute button never reflected
-  // its real state.
-  nextStationheadState.secondaryAudioMuted =
-      secondaryStationhead_ && secondaryStationhead_->AudioMuted();
+  StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
   if (!SameStationheadStatus(renderState_.stationhead, nextStationheadState)) {
     renderState_.stationhead = std::move(nextStationheadState);
     MarkRenderStateDirty();

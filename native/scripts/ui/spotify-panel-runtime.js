@@ -102,8 +102,7 @@
       if (!button || button.disabled) return;
       const key = button.dataset.audioWindow;
       if (!audioUiState[key]) return;
-      audioUiState[key].muted = !audioUiState[key].muted;
-      updateAudioControls(key);
+      postNativeAction(key === 'a' ? 'stationhead-audio-a' : 'stationhead-audio-b');
     });
     updateAudioControls('a');
     updateAudioControls('b');
@@ -383,6 +382,14 @@
     });
   }
 
+  function hasActiveProgress() {
+    const snapshotA = playbackSnapshot(playbackStates.a.value);
+    if (snapshotA.hasTrack && snapshotA.durationMs > 0) return true;
+    const secondarySpotifyState = spotifyStateMatchesSecondary(spotifyState) ? spotifyState : {};
+    const snapshotB = mergeSnapshots(playbackSnapshot(playbackStates.b.value), spotifySnapshot(secondarySpotifyState));
+    return snapshotB.hasTrack && snapshotB.durationMs > 0;
+  }
+
   // Plug Mini status only changes on state pushes, so keep it out of the
   // per-second progress tick; players advance every second for queue timing.
   function renderAll() {
@@ -409,7 +416,7 @@
       progressTimer = 0;
       if (!document.hidden) renderPlayers();
       scheduleProgress();
-    }, 1000);
+    }, hasActiveProgress() ? 1000 : 30000);
   }
 
   function applyState(state) {
