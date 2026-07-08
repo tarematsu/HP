@@ -4,7 +4,7 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kNativePlaybackPollMs = 5 * 60'000;
+constexpr int64_t kNativePlaybackPollMs = 60'000;
 constexpr size_t kMaxPlaybackResponseBytes = 4 * 1024 * 1024;
 constexpr int64_t kPlaybackTransitionHoldMs = 1'000;
 using winrt::Windows::Data::Json::JsonArray;
@@ -99,6 +99,15 @@ double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t
   return 0;
 }
 
+double FirstNumberOr(const JsonObject& object, std::initializer_list<const wchar_t*> names,
+                     double fallback) {
+  for (const wchar_t* name : names) {
+    const double value = NumberValue(object, name, std::numeric_limits<double>::quiet_NaN());
+    if (std::isfinite(value)) return value;
+  }
+  return fallback;
+}
+
 std::wstring FirstText(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
   for (const wchar_t* name : names) {
     std::wstring value = StringValue(object, name);
@@ -178,16 +187,36 @@ std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring&
       }
     }
 
-    const bool playing = BoolValue(value, L"playing") ||
-        (BoolValue(value, L"is_broadcasting") && !BoolValue(value, L"is_paused"));
+    JsonObject queueStatus = AsObject(value, L"queue_status");
+    if (queueStatus.Size() == 0) queueStatus = AsObject(value, L"queueStatus");
+
+    const bool statusPaused = BoolValue(queueStatus, L"is_paused");
+    const bool playing = BoolValue(queueStatus, L"playing", BoolValue(value, L"playing")) ||
+        (BoolValue(value, L"is_broadcasting") && !BoolValue(value, L"is_paused") && !statusPaused);
     const int64_t sampledAt = static_cast<int64_t>(std::max(
-        0.0, FirstNumber(value, {L"sampledAt", L"monitorSampledAt", L"updatedAt"})));
-    const int64_t anchorAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"anchorAt")));
-    const int64_t queueEndAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"queueEndAt")));
+        0.0, FirstNumber(value, {L"sampledAt", L"monitorSampledAt", L"updatedAt",
+                                 L"generated_at", L"latest_observed_at", L"queue_observed_at"})));
+    const int64_t serverReferenceAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"generated_at", L"latest_observed_at", L"queue_observed_at",
+                                 L"sampledAt", L"monitorSampledAt", L"updatedAt"})));
+    const int64_t anchorAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"anchorAt", L"anchor_at"})));
+    const int64_t statusAnchorAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(queueStatus, {L"anchorAt", L"anchor_at"})));
+    const int64_t queueEndAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"queueEndAt", L"queue_end_at"})));
+    const int64_t statusQueueEndAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(queueStatus, {L"queueEndAt", L"queue_end_at"})));
     int64_t durationMs = static_cast<int64_t>(std::max(
-        0.0, FirstNumber(value, {L"durationMs", L"trackDurationMs"})));
+        0.0, FirstNumber(value, {L"durationMs", L"duration_ms", L"trackDurationMs"})));
     int64_t progressMs = static_cast<int64_t>(std::max(
-        0.0, FirstNumber(value, {L"progressMs", L"positionMs"})));
+        0.0, FirstNumber(value, {L"progressMs", L"progress_ms", L"positionMs"})));
+    if (progressMs <= 0) {
+      progressMs = static_cast<int64_t>(std::max(
+          0.0, FirstNumber(queueStatus, {L"progressMs", L"progress_ms", L"positionMs"})));
+    }
+    const int64_t effectiveAnchorAt = anchorAt > 0 ? anchorAt : statusAnchorAt;
+    const int64_t effectiveQueueEndAt = queueEndAt > 0 ? queueEndAt : statusQueueEndAt;
 
     JsonArray queue = AsArray(value, L"queue");
     JsonObject itemSource = AsObject(value, L"item");
@@ -196,9 +225,10 @@ std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring&
     if (itemSource.Size() == 0) itemSource = AsObject(value, L"track");
 
     if (queue.Size() > 0) {
-      int index = static_cast<int>(FirstNumber(value, {L"currentIndex", L"current_index"}));
-      JsonObject queueStatus = AsObject(value, L"queue_status");
-      if (index < 0) index = static_cast<int>(FirstNumber(queueStatus, {L"currentIndex", L"current_index"}));
+      int index = static_cast<int>(FirstNumberOr(value, {L"currentIndex", L"current_index"}, -1));
+      if (index < 0) {
+        index = static_cast<int>(FirstNumberOr(queueStatus, {L"currentIndex", L"current_index"}, -1));
+      }
       if (index < 0 || index >= static_cast<int>(queue.Size())) {
         index = 0;
         for (uint32_t queueIndex = 0; queueIndex < queue.Size(); ++queueIndex) {
@@ -215,7 +245,10 @@ std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring&
 
       int64_t elapsed = progressMs;
       if (playing) {
-        if (anchorAt > 0) elapsed = std::max<int64_t>(0, fetchedAt - anchorAt);
+        if (effectiveAnchorAt > 0 && serverReferenceAt > 0) {
+          elapsed = std::max<int64_t>(0, serverReferenceAt - effectiveAnchorAt) +
+              std::max<int64_t>(0, fetchedAt - serverReferenceAt);
+        } else if (effectiveAnchorAt > 0) elapsed = std::max<int64_t>(0, fetchedAt - effectiveAnchorAt);
         else if (sampledAt > 0) elapsed += std::max<int64_t>(0, fetchedAt - sampledAt);
       }
 
@@ -262,7 +295,7 @@ std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring&
     resolved.SetNamedValue(L"sampledAt", JsonValue::CreateNumberValue(static_cast<double>(fetchedAt)));
     resolved.SetNamedValue(L"anchorAt", JsonValue::CreateNumberValue(
         static_cast<double>(playing ? fetchedAt - progressMs : 0)));
-    resolved.SetNamedValue(L"queueEndAt", JsonValue::CreateNumberValue(static_cast<double>(queueEndAt)));
+    resolved.SetNamedValue(L"queueEndAt", JsonValue::CreateNumberValue(static_cast<double>(effectiveQueueEndAt)));
     return resolved.Stringify().c_str();
   } catch (...) {
     return L"{}";
