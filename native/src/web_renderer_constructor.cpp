@@ -86,6 +86,9 @@ void Renderer::SetVisible(bool visible) {
   if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
     ShowWindow(nativeStationheadWindow_, visible ? SW_SHOWNA : SW_HIDE);
   }
+  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
+    ShowWindow(nativeRadarWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  }
   if (visible) ApplyNativeStaticBounds();
 }
 
