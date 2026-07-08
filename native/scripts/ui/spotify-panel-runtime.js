@@ -8,6 +8,7 @@
     a: Object.freeze({ channel: 'buddies', prefix: 'stationhead-a' }),
     b: Object.freeze({ channel: 'buddy46', prefix: 'stationhead-b' }),
   });
+  const PLAYBACK_SOURCE_KEYS = Object.freeze(Object.keys(PLAYBACK_SOURCES));
 
   let dashboard = {};
   let panelHeaderMetaHandled = false;
@@ -315,37 +316,39 @@
 
   function renderPlayers() {
     const snapshots = currentSnapshots();
-    renderStationheadPlayer({
-      source: PLAYBACK_SOURCES.a,
-      snapshot: snapshots.a,
-      status: sourceStatus(playbackStates.a, snapshots.a),
-    });
-    renderStationheadPlayer({
-      source: PLAYBACK_SOURCES.b,
-      snapshot: snapshots.b,
-      status: sourceStatus(playbackStates.b, snapshots.b),
-    });
+    for (const key of PLAYBACK_SOURCE_KEYS) {
+      const snapshot = snapshots[key];
+      renderStationheadPlayer({
+        source: PLAYBACK_SOURCES[key],
+        snapshot,
+        status: sourceStatus(playbackStates[key], snapshot),
+      });
+    }
   }
 
   function currentSnapshots() {
     const cacheKey = JSON.stringify([
-      playbackStates.a.revision,
-      playbackStates.a.fetchedAt,
-      playbackStates.b.revision,
-      playbackStates.b.fetchedAt,
+      ...PLAYBACK_SOURCE_KEYS.flatMap(key => [
+        playbackStates[key].revision,
+        playbackStates[key].fetchedAt,
+      ]),
       Math.floor(Date.now() / 1000),
     ]);
-    if (snapshotCache.key === cacheKey && snapshotCache.a && snapshotCache.b) return snapshotCache;
+    if (snapshotCache.key === cacheKey &&
+        PLAYBACK_SOURCE_KEYS.every(key => Boolean(snapshotCache[key]))) return snapshotCache;
     snapshotCache.key = cacheKey;
-    snapshotCache.a = playbackSnapshot(playbackStates.a.value);
-    snapshotCache.b = playbackSnapshot(playbackStates.b.value);
+    for (const key of PLAYBACK_SOURCE_KEYS) {
+      snapshotCache[key] = playbackSnapshot(playbackStates[key].value);
+    }
     return snapshotCache;
   }
 
   function hasActiveProgress() {
     const snapshots = currentSnapshots();
-    return (snapshots.a.hasTrack && snapshots.a.durationMs > 0) ||
-      (snapshots.b.hasTrack && snapshots.b.durationMs > 0);
+    return PLAYBACK_SOURCE_KEYS.some(key => {
+      const snapshot = snapshots[key];
+      return snapshot.hasTrack && snapshot.durationMs > 0;
+    });
   }
 
   function renderAll() {
