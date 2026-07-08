@@ -4,6 +4,8 @@ namespace hp {
 namespace {
 constexpr UINT_PTR kClockTimerId = 1;
 constexpr UINT kClockTimerMs = 1000;
+constexpr UINT_PTR kPlaybackTimerId = 2;
+constexpr UINT kPlaybackTimerMs = 1000;
 constexpr int kNativeAirId = 101;
 constexpr int kNativeAirHistoryId = 102;
 constexpr int kNativeControlsId = 103;
@@ -93,6 +95,77 @@ HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                      DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+}
+
+std::wstring TrackTimeText(int64_t milliseconds) {
+  const int64_t seconds = std::max<int64_t>(0, milliseconds / 1000);
+  wchar_t text[32]{};
+  swprintf_s(text, L"%lld:%02lld", seconds / 60, seconds % 60);
+  return text;
+}
+
+HBITMAP DecodeImageFileToBitmap(const fs::path& file, int width, int height) {
+  if (width <= 0 || height <= 0) return nullptr;
+  ComPtr<IWICImagingFactory> factory;
+  if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_PPV_ARGS(&factory)))) {
+    return nullptr;
+  }
+  ComPtr<IWICBitmapDecoder> decoder;
+  if (FAILED(factory->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ,
+                                                WICDecodeMetadataCacheOnDemand, &decoder))) {
+    return nullptr;
+  }
+  ComPtr<IWICBitmapFrameDecode> frame;
+  if (FAILED(decoder->GetFrame(0, &frame))) return nullptr;
+  ComPtr<IWICBitmapScaler> scaler;
+  if (FAILED(factory->CreateBitmapScaler(&scaler))) return nullptr;
+  if (FAILED(scaler->Initialize(frame.Get(), static_cast<UINT>(width), static_cast<UINT>(height),
+                                WICBitmapInterpolationModeFant))) {
+    return nullptr;
+  }
+  ComPtr<IWICFormatConverter> converter;
+  if (FAILED(factory->CreateFormatConverter(&converter))) return nullptr;
+  if (FAILED(converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppPBGRA,
+                                   WICBitmapDitherTypeNone, nullptr, 0.0,
+                                   WICBitmapPaletteTypeCustom))) {
+    return nullptr;
+  }
+
+  BITMAPINFO info{};
+  info.bmiHeader.biSize = sizeof(info.bmiHeader);
+  info.bmiHeader.biWidth = width;
+  info.bmiHeader.biHeight = -height;
+  info.bmiHeader.biPlanes = 1;
+  info.bmiHeader.biBitCount = 32;
+  info.bmiHeader.biCompression = BI_RGB;
+  void* pixels = nullptr;
+  HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
+  if (!bitmap || !pixels) {
+    if (bitmap) DeleteObject(bitmap);
+    return nullptr;
+  }
+  const UINT stride = static_cast<UINT>(width) * 4;
+  if (FAILED(converter->CopyPixels(nullptr, stride, stride * static_cast<UINT>(height),
+                                   static_cast<BYTE*>(pixels)))) {
+    DeleteObject(bitmap);
+    return nullptr;
+  }
+  return bitmap;
+}
+
+void DrawPremultipliedBitmap(HDC dc, HBITMAP bitmap, const RECT& target) {
+  if (!bitmap) return;
+  const int width = target.right - target.left;
+  const int height = target.bottom - target.top;
+  if (width <= 0 || height <= 0) return;
+  HDC sourceDc = CreateCompatibleDC(dc);
+  if (!sourceDc) return;
+  HGDIOBJ previousBitmap = SelectObject(sourceDc, bitmap);
+  const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
+  AlphaBlend(dc, target.left, target.top, width, height, sourceDc, 0, 0, width, height, blend);
+  SelectObject(sourceDc, previousBitmap);
+  DeleteDC(sourceDc);
 }
 
 std::wstring DateText(const SYSTEMTIME& now) {
@@ -262,6 +335,9 @@ bool Renderer::EnsureNativeStaticWindows() {
         std::max(1L, rect.bottom - rect.top), window_,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeStationheadId)),
         GetModuleHandleW(nullptr), this);
+    if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
+      SetTimer(nativeStationheadWindow_, kPlaybackTimerId, kPlaybackTimerMs, nullptr);
+    }
   }
   ApplyNativeStaticBounds();
   return nativeAirWindow_ && nativeAirHistoryWindow_ && nativeControlsWindow_ && nativeNewsWindow_ &&
@@ -327,7 +403,14 @@ void Renderer::DestroyNativeStaticWindows() {
   if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) DestroyWindow(nativeNewsWindow_);
   if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) DestroyWindow(nativeWeatherWindow_);
   if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) DestroyWindow(nativeEnergyWindow_);
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) DestroyWindow(nativeStationheadWindow_);
+  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
+    KillTimer(nativeStationheadWindow_, kPlaybackTimerId);
+    DestroyWindow(nativeStationheadWindow_);
+  }
+  for (auto& [key, bitmap] : nativeArtworkBitmaps_) {
+    if (bitmap) DeleteObject(bitmap);
+  }
+  nativeArtworkBitmaps_.clear();
   nativeAirWindow_ = nullptr;
   nativeAirHistoryWindow_ = nullptr;
   nativeControlsWindow_ = nullptr;
@@ -446,6 +529,14 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
         return 0;
       }
       break;
+    case WM_TIMER:
+      if (wparam == kPlaybackTimerId) {
+        if (GetDlgCtrlID(hwnd) == kNativeStationheadId && NativePlaybackActive(UnixMillis())) {
+          InvalidateRect(hwnd, nullptr, FALSE);
+        }
+        return 0;
+      }
+      break;
     case WM_PAINT:
       if (GetDlgCtrlID(hwnd) == kNativeAirId) PaintNativeAir(hwnd);
       else if (GetDlgCtrlID(hwnd) == kNativeAirHistoryId) PaintNativeAirHistory(hwnd);
@@ -456,6 +547,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       else PaintNativeStationhead(hwnd);
       return 0;
     case WM_NCDESTROY:
+      if (nativeStationheadWindow_ == hwnd) KillTimer(hwnd, kPlaybackTimerId);
       if (nativeAirWindow_ == hwnd) nativeAirWindow_ = nullptr;
       if (nativeAirHistoryWindow_ == hwnd) nativeAirHistoryWindow_ = nullptr;
       if (nativeControlsWindow_ == hwnd) nativeControlsWindow_ = nullptr;
@@ -1027,7 +1119,8 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   HFONT buttonFont = CreateUiFont(12, FW_SEMIBOLD);
 
   const auto drawRow = [&](int row, const std::wstring& label, bool muted,
-                           const std::wstring& title, const std::wstring& artist,
+                           const NativePlaybackRender& playback,
+                           const std::wstring& fallbackTitle, const std::wstring& fallbackArtist,
                            const std::wstring& detail) {
     const int top = bounds.top + 38 + row * 94;
     RECT rowRect{bounds.left + 12, top, bounds.right - 12, top + 82};
@@ -1039,11 +1132,27 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
     RoundRect(memoryDc, art.left, art.top, art.right, art.bottom, 10, 10);
     SelectObject(memoryDc, oldBrush);
     DeleteObject(artBrush);
+    if (playback.hasTrack) {
+      DrawPremultipliedBitmap(memoryDc,
+                              NativeArtworkBitmap(playback.track.artwork, art.right - art.left,
+                                                  art.bottom - art.top),
+                              art);
+    }
+
+    const std::wstring title = playback.hasTrack ? playback.track.title : fallbackTitle;
+    const std::wstring artist = playback.hasTrack ? playback.track.artist : fallbackArtist;
+    const bool withProgress = playback.hasTrack && playback.track.durationMs > 0;
 
     SetTextColor(memoryDc, RGB(184, 195, 208));
     previousFont = SelectObject(memoryDc, labelFont);
     RECT labelRect{art.right + 12, rowRect.top + 8, rowRect.right - 112, rowRect.top + 25};
     DrawTextInRect(memoryDc, label, labelRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    if (withProgress) {
+      DrawTextInRect(memoryDc,
+                     TrackTimeText(playback.progressMs) + L" / " +
+                         TrackTimeText(playback.track.durationMs),
+                     labelRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+    }
 
     SetTextColor(memoryDc, RGB(245, 248, 252));
     SelectObject(memoryDc, titleFont);
@@ -1053,9 +1162,28 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     SetTextColor(memoryDc, RGB(184, 195, 208));
     SelectObject(memoryDc, artistFont);
-    RECT artistRect{art.right + 12, rowRect.top + 54, rowRect.right - 112, rowRect.bottom - 8};
+    RECT artistRect{art.right + 12, rowRect.top + 54, rowRect.right - 112,
+                    withProgress ? rowRect.bottom - 18 : rowRect.bottom - 8};
     DrawTextInRect(memoryDc, artist.empty() ? detail : artist, artistRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+
+    if (withProgress) {
+      RECT barRect{art.right + 12, rowRect.bottom - 14, rowRect.right - 112, rowRect.bottom - 10};
+      HBRUSH barBrush = CreateSolidBrush(RGB(34, 44, 56));
+      FillRect(memoryDc, &barRect, barBrush);
+      DeleteObject(barBrush);
+      const double ratio = std::clamp(
+          static_cast<double>(playback.progressMs) / static_cast<double>(playback.track.durationMs),
+          0.0, 1.0);
+      RECT fillRect = barRect;
+      fillRect.right = barRect.left +
+          static_cast<int>((barRect.right - barRect.left) * ratio);
+      if (fillRect.right > fillRect.left) {
+        HBRUSH fillBrush = CreateSolidBrush(RGB(114, 224, 162));
+        FillRect(memoryDc, &fillRect, fillBrush);
+        DeleteObject(fillBrush);
+      }
+    }
 
     HBRUSH buttonBrush = CreateSolidBrush(muted ? RGB(42, 33, 35) : RGB(24, 46, 34));
     oldBrush = SelectObject(memoryDc, buttonBrush);
@@ -1069,15 +1197,21 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   };
 
+  const int64_t nowMs = UnixMillis();
+  const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
+  const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
+
   const std::wstring detail = nativeStationhead_.loginRequired ? L"ログイン待ち"
       : nativeStationhead_.processFailed ? L"WebView再起動待ち"
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, L"StationheadウインドウA", nativeStationhead_.audioMuted,
+  drawRow(0, L"StationheadウインドウA", nativeStationhead_.audioMuted, playbackA,
           nativeStationhead_.trackTitle, nativeStationhead_.trackArtist, detail);
-  drawRow(1, L"StationheadウインドウB", nativeStationhead_.secondaryAudioMuted,
-          L"Buddy46", L"", nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
+  drawRow(1, L"StationheadウインドウB", nativeStationhead_.secondaryAudioMuted, playbackB,
+          L"Buddy46", L"",
+          playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
+              : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
 
   SelectObject(memoryDc, previousFont);
   DeleteObject(labelFont);
@@ -1094,5 +1228,34 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   DeleteObject(bitmap);
   DeleteDC(memoryDc);
   EndPaint(hwnd, &paint);
+}
+
+HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int height) {
+  if (url.empty() || width <= 0 || height <= 0) return nullptr;
+  static constexpr wchar_t kDataHostPrefix[] = L"https://data.homepanel/";
+  if (url.rfind(kDataHostPrefix, 0) != 0) return nullptr;
+
+  std::wostringstream keyStream;
+  keyStream << url << L'#' << width << L'x' << height;
+  const std::wstring key = keyStream.str();
+  const auto found = nativeArtworkBitmaps_.find(key);
+  if (found != nativeArtworkBitmaps_.end()) return found->second;
+
+  std::wstring relative = url.substr(std::size(kDataHostPrefix) - 1);
+  if (relative.empty() || relative.find(L"..") != std::wstring::npos) return nullptr;
+  for (auto& character : relative) {
+    if (character == L'/') character = L'\\';
+  }
+
+  HBITMAP bitmap = DecodeImageFileToBitmap(dataDir_ / relative, width, height);
+  if (!bitmap) return nullptr;
+  if (nativeArtworkBitmaps_.size() >= 48) {
+    for (auto& [cachedKey, cachedBitmap] : nativeArtworkBitmaps_) {
+      if (cachedBitmap) DeleteObject(cachedBitmap);
+    }
+    nativeArtworkBitmaps_.clear();
+  }
+  nativeArtworkBitmaps_[key] = bitmap;
+  return bitmap;
 }
 }  // namespace hp

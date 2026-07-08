@@ -59,8 +59,6 @@ constexpr UiAsset kUiAssets[] = {
     {106, L"air-history.js", true},
     {110, L"radar-satellite.png", false},
     {112, L"radar-map.png", false},
-    {114, L"spotify-panel-runtime.js", true},
-    {137, L"playback-shared.js", true},
     {117, L"homepanel-core.js", true},
     {118, L"homepanel-clock.js", true},
     {119, L"homepanel-news.js", true},

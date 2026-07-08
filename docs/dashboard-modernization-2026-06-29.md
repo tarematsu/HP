@@ -46,9 +46,9 @@
 - News headline and hourly weather summary surfaces are native-owned and read from the parsed dashboard snapshot.
 - Air current metrics and the 24-hour air history chart are native-owned.
 - Octopus Energy summary and history chart are native-owned and read from the parsed dashboard snapshot.
-- Stationhead panel shell, primary metadata fallback, and audio toggles are native-owned; playback API queue projection still runs in the browser until that parser is moved.
+- Stationhead panel shell, metadata, artwork, progress, and audio toggles are native-owned; the playback API queue projection is parsed and advanced natively on a one-second panel timer.
 - Controls are native-owned and dispatch the existing update/restart actions through the renderer action queue.
-- Keep the browser-side second pulse only for panels that still need local interpolation, such as Spotify progress.
+- The browser-side second pulse has been removed; no browser panel performs local interpolation.
 - Do not reintroduce browser-side clock DOM updates once a static surface has moved to native rendering.
 
 ## Radar

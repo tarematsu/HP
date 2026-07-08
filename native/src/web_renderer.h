@@ -44,6 +44,33 @@ struct RenderState {
   bool maintenance = false;
 };
 
+struct NativePlaybackTrack {
+  std::wstring title;
+  std::wstring artist;
+  std::wstring artwork;
+  int64_t durationMs = 0;
+};
+
+struct NativePlaybackProjection {
+  bool available = false;
+  bool playing = false;
+  int currentIndex = 0;
+  int64_t progressMs = 0;
+  int64_t anchorAt = 0;
+  int64_t sampledAt = 0;
+  int64_t queueEndAt = 0;
+  int64_t fetchedAt = 0;
+  std::vector<NativePlaybackTrack> queue;
+};
+
+struct NativePlaybackRender {
+  bool available = false;
+  bool hasTrack = false;
+  bool playing = false;
+  int64_t progressMs = 0;
+  NativePlaybackTrack track;
+};
+
 class Renderer {
  public:
   Renderer(HWND window, int width, int height, RadarManager& radar);
@@ -70,7 +97,7 @@ class Renderer {
   struct NativePlaybackUpdate {
     std::wstring source;
     std::wstring payload;
-    std::wstring resolved;
+    NativePlaybackProjection projection;
     std::wstring error;
     int64_t fetchedAt = 0;
     uint64_t revision = 0;
@@ -137,7 +164,10 @@ class Renderer {
   void StartNativePlaybackBridge();
   void StopNativePlaybackBridge() noexcept;
   void NativePlaybackLoop();
-  void FlushNativePlaybackMessages();
+  NativePlaybackRender ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const;
+  NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
+  bool NativePlaybackActive(int64_t nowMs) const;
+  HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   void SetWebViewError(const std::wstring& stage, HRESULT result);
   void DrawStartupFallback(const RECT& dirty) const;
   void AppendWebViewDiagnostic(const std::wstring& message) const;
@@ -207,9 +237,9 @@ class Renderer {
   std::thread nativePlaybackThread_;
   std::condition_variable nativePlaybackWake_;
   std::mutex nativePlaybackWakeMutex_;
-  std::mutex nativePlaybackMutex_;
+  mutable std::mutex nativePlaybackMutex_;
   std::array<NativePlaybackUpdate, 2> nativePlaybackUpdates_{};
-  std::array<uint64_t, 2> nativePlaybackPostedRevisions_{};
+  std::map<std::wstring, HBITMAP> nativeArtworkBitmaps_;
   std::atomic<uint64_t> nativePlaybackRevision_{0};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};

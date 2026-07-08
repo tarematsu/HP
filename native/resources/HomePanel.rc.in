@@ -9,8 +9,6 @@
 106 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/air-history.js"
 110 RCDATA "@HOMEPANEL_RADAR_SATELLITE@"
 112 RCDATA "@HOMEPANEL_RADAR_MAP@"
-114 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/spotify-panel-runtime.js"
-137 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/playback-shared.js"
 117 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-core.js"
 118 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-clock.js"
 119 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-news.js"

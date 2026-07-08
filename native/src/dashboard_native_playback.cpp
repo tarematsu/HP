@@ -116,15 +116,14 @@ std::wstring FirstText(const JsonObject& object, std::initializer_list<const wch
   return {};
 }
 
-JsonObject NormalizeItem(const fs::path& dataDir, const JsonObject& raw) {
+NativePlaybackTrack NormalizeTrack(const fs::path& dataDir, const JsonObject& raw) {
   JsonObject source = raw;
   JsonObject nested = AsObject(raw, L"track");
   if (nested.Size() == 0) nested = AsObject(raw, L"song");
   if (nested.Size() != 0) source = nested;
 
-  JsonObject item;
-  item.SetNamedValue(L"title", JsonValue::CreateStringValue(
-      FirstText(source, {L"name", L"title", L"trackTitle"})));
+  NativePlaybackTrack track;
+  track.title = FirstText(source, {L"name", L"title", L"trackTitle"});
 
   std::wstring artist = FirstText(source, {L"trackArtist", L"artist"});
   if (artist.empty()) {
@@ -146,7 +145,7 @@ JsonObject NormalizeItem(const fs::path& dataDir, const JsonObject& raw) {
     }
     artist = joined;
   }
-  item.SetNamedValue(L"artist", JsonValue::CreateStringValue(artist));
+  track.artist = artist;
 
   std::wstring artwork = FirstText(source, {
       L"artwork", L"artworkUrl", L"albumArtUrl", L"image", L"imageUrl",
@@ -164,14 +163,16 @@ JsonObject NormalizeItem(const fs::path& dataDir, const JsonObject& raw) {
       }
     }
   }
-  item.SetNamedValue(L"artwork", JsonValue::CreateStringValue(CacheArtworkUrl(dataDir, artwork)));
-  item.SetNamedValue(L"durationMs", JsonValue::CreateNumberValue(std::max(
-      0.0, FirstNumber(source, {L"durationMs", L"duration_ms", L"lengthMs"}))));
-  return item;
+  track.artwork = CacheArtworkUrl(dataDir, artwork);
+  track.durationMs = static_cast<int64_t>(std::max(
+      0.0, FirstNumber(source, {L"durationMs", L"duration_ms", L"lengthMs"})));
+  return track;
 }
 
-std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring& payload, int64_t fetchedAt) {
-  if (payload.empty()) return L"{}";
+NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const std::wstring& payload, int64_t fetchedAt) {
+  NativePlaybackProjection projection;
+  projection.fetchedAt = fetchedAt;
+  if (payload.empty()) return projection;
   try {
     JsonObject root = JsonObject::Parse(payload);
     JsonObject value = root;
@@ -252,53 +253,48 @@ std::wstring ResolvePlaybackPayload(const fs::path& dataDir, const std::wstring&
         else if (sampledAt > 0) elapsed += std::max<int64_t>(0, fetchedAt - sampledAt);
       }
 
-      while (index >= 0 && index < static_cast<int>(queue.Size())) {
-        if (queue.GetAt(index).ValueType() != JsonValueType::Object) break;
-        itemSource = queue.GetAt(index).GetObject();
-        JsonObject normalized = NormalizeItem(dataDir, itemSource);
-        const int64_t queueDuration = static_cast<int64_t>(NumberValue(normalized, L"durationMs"));
-        if (!playing || queueDuration <= 0 || elapsed < queueDuration + kPlaybackTransitionHoldMs) {
-          durationMs = queueDuration;
-          progressMs = std::min<int64_t>(queueDuration, std::max<int64_t>(0, elapsed));
-          break;
+      for (uint32_t queueIndex = 0; queueIndex < queue.Size(); ++queueIndex) {
+        try {
+          if (queue.GetAt(queueIndex).ValueType() == JsonValueType::Object) {
+            projection.queue.push_back(NormalizeTrack(dataDir, queue.GetAt(queueIndex).GetObject()));
+            continue;
+          }
+        } catch (...) {
         }
-        elapsed -= queueDuration;
-        ++index;
-        if (index >= static_cast<int>(queue.Size())) {
-          itemSource = JsonObject{};
-          durationMs = 0;
-          progressMs = 0;
-          break;
-        }
+        projection.queue.emplace_back();
       }
+      projection.currentIndex = std::clamp(index, 0, static_cast<int>(queue.Size()) - 1);
+      projection.progressMs = std::max<int64_t>(0, elapsed);
     } else {
+      NativePlaybackTrack track = NormalizeTrack(dataDir, itemSource);
+      if (durationMs > 0) track.durationMs = durationMs;
       const int64_t expectedEndAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"expectedEndAt")));
-      if (durationMs > 0 && expectedEndAt > 0) {
-        progressMs = durationMs - std::max<int64_t>(0, expectedEndAt + kPlaybackTransitionHoldMs - fetchedAt);
+      if (track.durationMs > 0 && expectedEndAt > 0) {
+        progressMs = track.durationMs -
+            std::max<int64_t>(0, expectedEndAt + kPlaybackTransitionHoldMs - fetchedAt);
+      } else if (playing && sampledAt > 0) {
+        progressMs += std::max<int64_t>(0, fetchedAt - sampledAt);
       }
-      else if (playing && sampledAt > 0) progressMs += std::max<int64_t>(0, fetchedAt - sampledAt);
+      if (track.durationMs > 0) progressMs = std::clamp<int64_t>(progressMs, 0, track.durationMs);
+      projection.currentIndex = 0;
+      projection.progressMs = std::max<int64_t>(0, progressMs);
+      projection.queue.push_back(std::move(track));
     }
 
-    JsonObject item = NormalizeItem(dataDir, itemSource);
-    if (durationMs <= 0) durationMs = static_cast<int64_t>(NumberValue(item, L"durationMs"));
-    if (durationMs > 0) progressMs = std::clamp<int64_t>(progressMs, 0, durationMs);
-
-    JsonObject resolved;
-    const std::wstring title = StringValue(item, L"title");
-    resolved.SetNamedValue(L"title", JsonValue::CreateStringValue(title));
-    resolved.SetNamedValue(L"artist", JsonValue::CreateStringValue(StringValue(item, L"artist")));
-    resolved.SetNamedValue(L"artwork", JsonValue::CreateStringValue(StringValue(item, L"artwork")));
-    resolved.SetNamedValue(L"durationMs", JsonValue::CreateNumberValue(static_cast<double>(durationMs)));
-    resolved.SetNamedValue(L"progressMs", JsonValue::CreateNumberValue(static_cast<double>(progressMs)));
-    resolved.SetNamedValue(L"playing", JsonValue::CreateBooleanValue(playing));
-    resolved.SetNamedValue(L"hasTrack", JsonValue::CreateBooleanValue(!title.empty()));
-    resolved.SetNamedValue(L"sampledAt", JsonValue::CreateNumberValue(static_cast<double>(fetchedAt)));
-    resolved.SetNamedValue(L"anchorAt", JsonValue::CreateNumberValue(
-        static_cast<double>(playing ? fetchedAt - progressMs : 0)));
-    resolved.SetNamedValue(L"queueEndAt", JsonValue::CreateNumberValue(static_cast<double>(effectiveQueueEndAt)));
-    return resolved.Stringify().c_str();
+    projection.available = !projection.queue.empty();
+    projection.playing = playing;
+    projection.sampledAt = fetchedAt;
+    projection.anchorAt = playing ? fetchedAt - projection.progressMs : 0;
+    if (effectiveQueueEndAt > 0 && serverReferenceAt > 0) {
+      projection.queueEndAt = fetchedAt + std::max<int64_t>(0, effectiveQueueEndAt - serverReferenceAt);
+    } else {
+      projection.queueEndAt = effectiveQueueEndAt;
+    }
+    return projection;
   } catch (...) {
-    return L"{}";
+    NativePlaybackProjection failed;
+    failed.fetchedAt = fetchedAt;
+    return failed;
   }
 }
 
@@ -465,7 +461,7 @@ void SaveNativePlaybackSnapshot(const fs::path& dataDir, const wchar_t* source,
 struct NativePlaybackSnapshot {
   std::wstring source;
   std::wstring payload;
-  std::wstring resolved;
+  NativePlaybackProjection projection;
   std::wstring error;
   int64_t fetchedAt = 0;
   bool hasPayload = false;
@@ -490,8 +486,7 @@ bool LoadNativePlaybackSnapshot(const fs::path& dataDir, const wchar_t* source,
     snapshot->payload = payload;
     snapshot->error = error;
     snapshot->fetchedAt = fetchedAt;
-    snapshot->resolved =
-        payload.empty() ? L"{}" : ResolvePlaybackPayload(dataDir, payload, fetchedAt);
+    snapshot->projection = ParsePlaybackProjection(dataDir, payload, fetchedAt);
     snapshot->hasPayload = error.empty() && !payload.empty();
     return snapshot->hasPayload || !error.empty();
   } catch (...) {
@@ -516,7 +511,7 @@ void Renderer::StartNativePlaybackBridge() {
       update.payload = std::move(loaded.payload);
       update.error = std::move(loaded.error);
       update.fetchedAt = loaded.fetchedAt;
-      update.resolved = std::move(loaded.resolved);
+      update.projection = std::move(loaded.projection);
       update.hasPayload = loaded.hasPayload;
       update.revision = ++nativePlaybackRevision_;
     }
@@ -537,24 +532,32 @@ void Renderer::NativePlaybackLoop() {
       if (nativePlaybackStopping_.load(std::memory_order_acquire)) break;
       std::wstring payload;
       const std::wstring error = FetchPlaybackJson(kPlaybackEndpoints[index].url, &payload);
-      bool changed = false;
+      {
+        std::lock_guard lock(nativePlaybackMutex_);
+        const auto& update = nativePlaybackUpdates_[index];
+        if (update.payload == payload && update.error == error) continue;
+      }
+      const int64_t fetchedAt = UnixMillis();
+      NativePlaybackProjection projection =
+          ParsePlaybackProjection(dataDir_, payload, fetchedAt);
+      SaveNativePlaybackSnapshot(
+          dataDir_, kPlaybackEndpoints[index].source, payload, error, fetchedAt);
       {
         std::lock_guard lock(nativePlaybackMutex_);
         auto& update = nativePlaybackUpdates_[index];
-        changed = update.payload != payload || update.error != error;
-        if (!changed) continue;
         update.source = kPlaybackEndpoints[index].source;
         update.payload = std::move(payload);
         update.error = error;
-        update.fetchedAt = UnixMillis();
-        update.resolved = update.payload.empty() ? L"{}" : ResolvePlaybackPayload(dataDir_, update.payload, update.fetchedAt);
+        update.fetchedAt = fetchedAt;
+        update.projection = std::move(projection);
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
-        SaveNativePlaybackSnapshot(
-            dataDir_, update.source.c_str(), update.payload, update.error,
-            update.fetchedAt);
       }
-      if (changed) InvalidateRect(window_, nullptr, FALSE);
+      InvalidateRect(window_, nullptr, FALSE);
+      const HWND stationheadWindow = nativeStationheadWindow_;
+      if (stationheadWindow && IsWindow(stationheadWindow)) {
+        InvalidateRect(stationheadWindow, nullptr, FALSE);
+      }
     }
 
     std::unique_lock waitLock(nativePlaybackWakeMutex_);
@@ -565,38 +568,4 @@ void Renderer::NativePlaybackLoop() {
   }
 }
 
-void Renderer::FlushNativePlaybackMessages() {
-  if (!ready_ || !uiReady_ || !webview_) return;
-
-  std::array<NativePlaybackUpdate, 2> pending;
-  std::array<bool, 2> hasPending{};
-  {
-    std::lock_guard lock(nativePlaybackMutex_);
-    for (size_t index = 0; index < nativePlaybackUpdates_.size(); ++index) {
-      if (nativePlaybackUpdates_[index].revision > nativePlaybackPostedRevisions_[index]) {
-        pending[index] = nativePlaybackUpdates_[index];
-        hasPending[index] = true;
-      }
-    }
-  }
-
-  for (size_t index = 0; index < pending.size(); ++index) {
-    if (!hasPending[index]) continue;
-    const auto& update = pending[index];
-    std::wostringstream message;
-    message << L"{\"type\":\"native-playback\""
-            << L",\"source\":" << JsonQuote(update.source)
-            << L",\"fetchedAt\":" << update.fetchedAt;
-    if (update.hasPayload) message << L",\"payload\":" << update.payload;
-    if (!update.resolved.empty()) message << L",\"resolved\":" << update.resolved;
-    if (!update.error.empty()) message << L",\"error\":" << JsonQuote(update.error);
-    message << L"}";
-
-    if (SUCCEEDED(webview_->PostWebMessageAsJson(message.str().c_str()))) {
-      std::lock_guard lock(nativePlaybackMutex_);
-      nativePlaybackPostedRevisions_[index] = std::max(
-          nativePlaybackPostedRevisions_[index], update.revision);
-    }
-  }
-}
 }  // namespace hp

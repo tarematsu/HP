@@ -13,7 +13,6 @@
   async function initialize() {
     let initialized = false;
     let queuedState = null;
-    let secondPulseTimer = 0;
 
     if (window.chrome?.webview) {
       window.chrome.webview.addEventListener('message', event => {
@@ -36,25 +35,6 @@
     else if (queuedState) renderRuntime(queuedState);
     window.chrome?.webview?.postMessage({ type: 'ready' });
 
-    const dispatchSecondPulse = () => {
-      if (document.hidden) return;
-      window.dispatchEvent(new CustomEvent('homepanel-second', {
-        detail: { now: Date.now() },
-      }));
-    };
-
-    const scheduleSecondPulse = () => {
-      if (secondPulseTimer) clearTimeout(secondPulseTimer);
-      const delay = 1000 - (Date.now() % 1000) || 1000;
-      secondPulseTimer = setTimeout(() => {
-        secondPulseTimer = 0;
-        dispatchSecondPulse();
-        scheduleSecondPulse();
-      }, delay);
-    };
-
-    dispatchSecondPulse();
-    scheduleSecondPulse();
     window.addEventListener('online', () => panels.radar?.refreshRadar());
     window.addEventListener('resize', () => {
       panels.energy?.drawEnergyChart();

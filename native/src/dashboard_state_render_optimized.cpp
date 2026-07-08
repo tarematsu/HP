@@ -8,12 +8,7 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
     DrawStartupFallback(dirty);
     return;
   }
-  if (statePublishedForPendingPaint_) {
-    statePublishedForPendingPaint_ = false;
-    FlushNativePlaybackMessages();
-    return;
-  }
-  FlushNativePlaybackMessages();
+  statePublishedForPendingPaint_ = false;
 }
 
 void Renderer::NotifyRadarUpdated() {
