@@ -12,6 +12,11 @@
 namespace hp {
 class App;
 
+template <typename StatusT>
+inline bool StationheadNeedsForeground(const StatusT& status) noexcept {
+  return status.loginRequired || status.spotifyAuthorization || status.apiAuthorization;
+}
+
 enum class WorkspaceTab {
   Main = 0,
   Stationhead = 1,
@@ -206,7 +211,7 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   // playback. Only explicit login/auth flows may temporarily raise it so the
   // user can complete Stationhead or Spotify sign-in.
   bool IsInteractive(const StationheadStatus& status) const noexcept {
-    return status.loginRequired || status.authAvailable;
+    return StationheadNeedsForeground(status);
   }
 
  private:
@@ -298,8 +303,7 @@ class AppSecondaryStationheadHandle
   }
 
   bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
-    return status.visible || status.loginRequired ||
-        status.spotifyAuthorization || status.apiAuthorization;
+    return StationheadNeedsForeground(status);
   }
 
  private:

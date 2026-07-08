@@ -23,6 +23,8 @@ struct StationheadStatus {
   bool navigating = false;
   bool playing = false;
   bool loginRequired = false;
+  bool spotifyAuthorization = false;
+  bool apiAuthorization = false;
   bool lightweight = false;
   bool visible = false;
   bool processFailed = false;

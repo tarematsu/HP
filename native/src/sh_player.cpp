@@ -169,6 +169,8 @@ StationheadStatus StationheadPlayer::Status() const {
   std::lock_guard lock(mutex_);
   StationheadStatus copy = status_;
   copy.authAvailable = authController_ != nullptr || !authPendingUrl_.empty();
+  copy.spotifyAuthorization = copy.authAvailable;
+  copy.apiAuthorization = false;
   copy.audioPlaying = audioPlaying_.load(std::memory_order_relaxed);
   copy.audioSilent = false;
   copy.lightweight = false;
