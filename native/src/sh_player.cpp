@@ -140,7 +140,7 @@ std::wstring HResultHex(HRESULT hr) {
 
 StationheadPlayer::StationheadPlayer(HWND window, StationheadConfig config, fs::path userDataFolder, Logger& log)
     : window_(window), config_(std::move(config)), userDataFolder_(std::move(userDataFolder)),
-      spotifyStatePath_(userDataFolder_.parent_path() / L"stationhead.json"), log_(log) {
+      log_(log) {
   bounds_ = RECT{0, 0, 1, 1};
 }
 
@@ -149,14 +149,11 @@ StationheadPlayer::~StationheadPlayer() { Stop(); }
 void StationheadPlayer::Start() {
   shuttingDown_ = false;
   ResetNavigationRouteState(UnixMillis());
-  RefreshSpotifyState();
-  StartSpotifyStateWatcher();
   Create();
 }
 
 void StationheadPlayer::Stop() {
   shuttingDown_ = true;
-  StopSpotifyStateWatcher();
   CloseAuthWebView();
   CloseWebView();
   if (authHostWindow_ && IsWindow(authHostWindow_)) DestroyWindow(authHostWindow_);
@@ -797,123 +794,15 @@ void StationheadPlayer::ShowAfterAudioStop() {
   log_.Warn(L"Stationhead audio stopped; restored the player");
 }
 
-void StationheadPlayer::StartSpotifyStateWatcher() {
-  StopSpotifyStateWatcher();
-  spotifyWatchStopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-  if (!spotifyWatchStopEvent_) return;
-  const fs::path directory = spotifyStatePath_.parent_path();
-  spotifyWatchThread_ = std::thread([this, directory] {
-    HANDLE change = FindFirstChangeNotificationW(directory.c_str(), FALSE,
-        FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE);
-    if (change == INVALID_HANDLE_VALUE) return;
-    std::optional<fs::file_time_type> lastSeen;
-    std::error_code error;
-    if (fs::exists(spotifyStatePath_, error)) lastSeen = fs::last_write_time(spotifyStatePath_, error);
-    HANDLE waits[] = {spotifyWatchStopEvent_, change};
-    for (;;) {
-      const DWORD wait = WaitForMultipleObjects(2, waits, FALSE, INFINITE);
-      if (wait == WAIT_OBJECT_0 || wait != WAIT_OBJECT_0 + 1) break;
-      error.clear();
-      std::optional<fs::file_time_type> current;
-      if (fs::exists(spotifyStatePath_, error)) current = fs::last_write_time(spotifyStatePath_, error);
-      if (current != lastSeen) {
-        lastSeen = current;
-        spotifyStateDirty_ = true;
-        PostChange(StationheadChangeSpotifyState);
-      }
-      if (!FindNextChangeNotification(change)) break;
-    }
-    FindCloseChangeNotification(change);
-  });
-}
-
-void StationheadPlayer::StopSpotifyStateWatcher() {
-  if (spotifyWatchStopEvent_) SetEvent(spotifyWatchStopEvent_);
-  if (spotifyWatchThread_.joinable()) spotifyWatchThread_.join();
-  if (spotifyWatchStopEvent_) CloseHandle(spotifyWatchStopEvent_);
-  spotifyWatchStopEvent_ = nullptr;
-}
-
 void StationheadPlayer::ReleaseCompletedAuth() {
   if (!spotifyAuthorization_ && authController_) CloseAuthWebView();
 }
 
-void StationheadPlayer::RefreshSpotifyState(bool notify) {
-  spotifyStateDirty_ = false;
-  std::error_code error;
-  if (!fs::exists(spotifyStatePath_, error)) return;
-  const auto writeTime = fs::last_write_time(spotifyStatePath_, error);
-  if (error || (spotifyStateWriteTime_ && *spotifyStateWriteTime_ == writeTime)) return;
-  try {
-    std::ifstream input(spotifyStatePath_, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return;
-    auto root = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(text));
-    const bool clientConfigured = root.GetNamedBoolean(L"configured", false);
-    const bool connected = root.GetNamedBoolean(L"connected", clientConfigured);
-    const bool playing = connected && root.GetNamedBoolean(L"playing", false);
-    const int64_t sampledAt = static_cast<int64_t>(OptionalNumber(root, L"monitorSampledAt", OptionalNumber(root, L"spotifySampledAt", OptionalNumber(root, L"sampledAt"))));
-    const int64_t expectedEndAt = static_cast<int64_t>(OptionalNumber(root, L"expectedEndAt"));
-    const int64_t trackDurationMs = static_cast<int64_t>(OptionalNumber(root, L"durationMs"));
-    std::wstring deviceName, itemName, artist, artwork, hostHandle;
-    if (root.HasKey(L"device") && root.GetNamedValue(L"device").ValueType() == winrt::Windows::Data::Json::JsonValueType::Object) {
-      deviceName = root.GetNamedObject(L"device").GetNamedString(L"name", L"").c_str();
-    }
-    if (root.HasKey(L"host") && root.GetNamedValue(L"host").ValueType() == winrt::Windows::Data::Json::JsonValueType::Object) {
-      hostHandle = root.GetNamedObject(L"host").GetNamedString(L"handle", L"").c_str();
-      if (!hostHandle.empty() && hostHandle.front() != L'@') hostHandle = L"@" + hostHandle;
-      if (deviceName.empty()) deviceName = hostHandle;
-    }
-    if (root.HasKey(L"item") && root.GetNamedValue(L"item").ValueType() == winrt::Windows::Data::Json::JsonValueType::Object) {
-      auto item = root.GetNamedObject(L"item");
-      itemName = item.GetNamedString(L"name", L"").c_str();
-      artist = item.GetNamedString(L"artist", L"").c_str();
-      artwork = item.GetNamedString(L"artwork", L"").c_str();
-      if (artwork.empty()) artwork = item.GetNamedString(L"albumArtUrl", L"").c_str();
-      if (artwork.empty()) artwork = item.GetNamedString(L"image", L"").c_str();
-      if (artwork.empty()) artwork = item.GetNamedString(L"imageUrl", L"").c_str();
-    }
-    std::wstring detail;
-    if (!clientConfigured) detail = L"Spotify client ID not configured";
-    else if (!connected) detail = L"Spotify not connected";
-    else if (playing) {
-      detail = L"Spotify: " + (itemName.empty() ? L"playing" : itemName);
-      if (!artist.empty()) detail += L" / " + artist;
-      if (!deviceName.empty()) detail += L" @ " + deviceName;
-    } else {
-      detail = deviceName.empty() ? L"Spotify: not playing" : L"Spotify: not playing @ " + deviceName;
-    }
-    bool changed = false;
-    {
-      std::lock_guard lock(mutex_);
-      changed = status_.spotifyConfigured != connected || status_.playing != playing ||
-          status_.trackTitle != itemName || status_.trackArtist != artist ||
-          status_.deviceName != deviceName || status_.artworkUrl != artwork ||
-          status_.expectedEndAt != expectedEndAt || status_.trackDurationMs != trackDurationMs ||
-          status_.detail != detail;
-      status_.spotifyConfigured = connected;
-      status_.playing = playing;
-      status_.healthMisses = 0;
-      status_.trackTitle = itemName;
-      status_.trackArtist = artist;
-      status_.deviceName = deviceName;
-      status_.artworkUrl = artwork;
-      status_.sampledAt = sampledAt;
-      status_.expectedEndAt = expectedEndAt;
-      status_.trackDurationMs = trackDurationMs;
-      status_.detail = detail;
-      if (playing) status_.lastPlaybackConfirmedAt = UnixMillis();
-    }
-    spotifyStateWriteTime_ = writeTime;
-    if (notify && changed) PostChange();
-  } catch (...) {
-    log_.Warn(L"Spotify playback cache parse failed");
-  }
-}
+void StationheadPlayer::RefreshSpotifyState(bool) {}
 
 void StationheadPlayer::Tick(int64_t nowMs, bool diagnosticsVisible) {
   if (shuttingDown_) return;
-  if (nowMs < nextTickAt_ && !recreating_.load(std::memory_order_relaxed) && !spotifyStateDirty_.load(std::memory_order_relaxed)) return;
+  if (nowMs < nextTickAt_ && !recreating_.load(std::memory_order_relaxed)) return;
   nextTickAt_ = nowMs + 60'000;
   if (recreating_.exchange(false)) {
     CloseWebView();
@@ -963,12 +852,6 @@ void StationheadPlayer::Tick(int64_t nowMs, bool diagnosticsVisible) {
     std::lock_guard lock(mutex_);
     if (status_.navigating || status_.created) status_.detail = L"起動していません";
   }
-  const bool spotifyStateChanged = spotifyStateDirty_.exchange(false);
-  const bool spotifyFallbackPollDue = nowMs - lastSpotifyCheckAt_ >= 15 * 60'000;
-  if (spotifyStateChanged || spotifyFallbackPollDue) {
-    lastSpotifyCheckAt_ = nowMs;
-    RefreshSpotifyState();
-  }
   const int64_t memoryCheckInterval = diagnosticsVisible ? 15'000 : 60 * 60'000;
   if (nowMs - lastMemoryCheckAt_ >= memoryCheckInterval) {
     lastMemoryCheckAt_ = nowMs;
@@ -983,7 +866,6 @@ void StationheadPlayer::Tick(int64_t nowMs, bool diagnosticsVisible) {
   };
   if (reloadInterval > 0) consider(lastReloadAt_ + reloadInterval);
   if (nowMs <= startupScanUntil_) consider(lastScanAt_ + 1'500);
-  consider(lastSpotifyCheckAt_ + 15 * 60'000);
   consider(lastMemoryCheckAt_ + memoryCheckInterval);
   if (fallbackSec > 0 && createdForAudioCheckAt_ > 0) consider(createdForAudioCheckAt_ + static_cast<int64_t>(fallbackSec) * 1'000);
   nextTickAt_ = std::max(nowMs + 1'000, next);

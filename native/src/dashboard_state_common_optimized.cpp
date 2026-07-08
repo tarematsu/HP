@@ -1,7 +1,6 @@
 #include "web_renderer.h"
 
 namespace hp {
-void SchedulePlaybackInvalidate(HWND window, int64_t delayMs);
 namespace statejson {
 std::wstring Sensors(const SensorSnapshot& value);
 std::wstring Player(const StationheadStatus& value);

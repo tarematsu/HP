@@ -137,7 +137,6 @@ add_executable(HomePanel WIN32
   ${HOMEPANEL_RESOURCE_SOURCES})
 homepanel_configure_common_target(HomePanel)
 add_dependencies(HomePanel homepanel_version_files)
-target_compile_definitions(HomePanel PRIVATE HOMEPANEL_ENABLE_SPOTIFY_RUNTIME)
 target_link_libraries(HomePanel PRIVATE
   "${WEBVIEW2_NATIVE_DIR}/WebView2Loader.dll.lib"
   d2d1 dwrite d3d11 dcomp dxgi windowscodecs winhttp bcrypt wintrust setupapi psapi shell32

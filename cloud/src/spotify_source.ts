@@ -58,7 +58,8 @@ function finite(value: unknown, fallback = 0): number {
 function playbackFeedUrl(value: string): string {
   const url = new URL(value);
   if (url.pathname.endsWith("/api/dashboard")) {
-    url.pathname = url.pathname.slice(0, -"/api/dashboard".length) + "/api/playback";
+    url.pathname =
+      url.pathname.slice(0, -"/api/dashboard".length) + "/api/playback";
   } else if (!url.pathname.endsWith("/api/playback")) {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/api/playback`;
   }
@@ -73,14 +74,18 @@ async function readMonitor(env: Env): Promise<MonitorPayload | null> {
   const payload = await fetchJson<MonitorPayload>(playbackFeedUrl(configured), {
     headers: { Accept: "application/json" },
   });
-  if (payload.ok === false) throw new Error(payload.error || "Stationhead playback feed failed");
+  if (payload.ok === false) {
+    throw new Error(payload.error || "Stationhead playback feed failed");
+  }
   return payload;
 }
 
 function monitorQueue(payload: MonitorPayload | null): QueueItem[] {
   return (payload?.queue ?? []).map((track, index) => {
     const id = String(track.spotify_id ?? "").trim();
-    const name = String(track.title || track.display_title || id || "曲情報なし").trim();
+    const name = String(
+      track.title || track.display_title || id || "Unknown track",
+    ).trim();
     return {
       spotifyId: id,
       name,
@@ -89,7 +94,9 @@ function monitorQueue(payload: MonitorPayload | null): QueueItem[] {
       uri: id ? `spotify:track:${id}` : String(track.spotify_url ?? "").trim(),
       durationMs: Math.max(0, finite(track.duration_ms)),
       position: finite(track.position, index),
-      metadataFetchedAt: Number.isFinite(Number(track.metadata_fetched_at)) ? Number(track.metadata_fetched_at) : null,
+      metadataFetchedAt: Number.isFinite(Number(track.metadata_fetched_at))
+        ? Number(track.metadata_fetched_at)
+        : null,
     };
   });
 }
@@ -98,20 +105,33 @@ function monitorCurrentIndex(payload: MonitorPayload | null): number {
   const queue = payload?.queue ?? [];
   if (!queue.length) return -1;
   const generatedAt = finite(payload?.generated_at);
-  const queueEndAt = finite(payload?.queue_status?.queue_end_at);
-  if (generatedAt > 0 && queueEndAt > 0 && generatedAt >= queueEndAt) return -1;
-  const statusIndex = Math.trunc(finite(payload?.queue_status?.current_index, -1));
+  const queueEnd = finite(payload?.queue_status?.queue_end_at);
+  if (generatedAt > 0 && queueEnd > 0 && generatedAt >= queueEnd) return -1;
+  const statusIndex = Math.trunc(
+    finite(payload?.queue_status?.current_index, -1),
+  );
   if (statusIndex < 0 || statusIndex >= queue.length) return -1;
-  const explicit = queue.findIndex(track => track.is_current);
+  const explicit = queue.findIndex((track) => track.is_current);
   return explicit >= 0 ? explicit : statusIndex;
 }
 
-function queueEndAt(queue: QueueItem[], currentIndex: number, anchorAt: number): number | null {
-  if (currentIndex < 0 || currentIndex >= queue.length || !Number.isFinite(anchorAt)) return null;
-  return queue.slice(currentIndex).reduce((end, track) => end + track.durationMs, anchorAt);
+function queueEndAt(
+  queue: QueueItem[],
+  currentIndex: number,
+  anchorAt: number,
+): number | null {
+  if (
+    currentIndex < 0 ||
+    currentIndex >= queue.length ||
+    !Number.isFinite(anchorAt)
+  ) {
+    return null;
+  }
+  return queue
+    .slice(currentIndex)
+    .reduce((end, track) => end + track.durationMs, anchorAt);
 }
 
-/** Stationhead Monitorが追跡するBuddiesチャンネル。Spotify Web APIは端末側だけで扱う。 */
 export async function fetchStationhead(env: Env): Promise<SourceResult> {
   const sampledAt = Date.now();
   let monitor: MonitorPayload | null = null;
@@ -125,18 +145,31 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
   const queue = monitorQueue(monitor);
   const currentIndex = monitorCurrentIndex(monitor);
   const monitorGeneratedAt = Math.max(0, finite(monitor?.generated_at));
-  const monitorProgressMs = currentIndex >= 0 ? Math.max(0, finite(
-    monitor?.queue?.[currentIndex]?.progress_ms,
-    finite(monitor?.queue_status?.progress_ms),
-  )) : 0;
-  const anchorAt = currentIndex >= 0
-    ? finite(monitor?.queue_status?.anchor_at, monitorGeneratedAt - monitorProgressMs)
-    : 0;
+  const monitorProgressMs =
+    currentIndex >= 0
+      ? Math.max(
+          0,
+          finite(
+            monitor?.queue?.[currentIndex]?.progress_ms,
+            finite(monitor?.queue_status?.progress_ms),
+          ),
+        )
+      : 0;
+  const anchorAt =
+    currentIndex >= 0
+      ? finite(
+          monitor?.queue_status?.anchor_at,
+          monitorGeneratedAt - monitorProgressMs,
+        )
+      : 0;
   const playing = Boolean(monitor?.playing && currentIndex >= 0);
 
   const currentItem = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
   const durationMs = currentItem?.durationMs ?? 0;
-  const expectedEndAt = playing && durationMs > monitorProgressMs ? anchorAt + durationMs : null;
+  const expectedEndAt =
+    playing && durationMs > monitorProgressMs
+      ? anchorAt + durationMs
+      : null;
   const calculatedQueueEndAt = queueEndAt(queue, currentIndex, anchorAt);
 
   return {
@@ -151,6 +184,24 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
       error: monitor ? null : (monitorError || "Stationhead monitor unavailable"),
       monitorError,
       sampledAt,
+      host: monitor
+        ? {
+            accountId: monitor.host_account_id ?? null,
+            handle: monitor.host_handle ?? "",
+            broadcastStartTime: monitor.broadcast_start_time ?? null,
+          }
+        : null,
+      item: currentItem
+        ? {
+            name: currentItem.name,
+            artist: currentItem.artist,
+            artwork: currentItem.artwork,
+            uri: currentItem.uri,
+            spotifyId: currentItem.spotifyId,
+            durationMs: currentItem.durationMs,
+          }
+        : null,
+      /*
       monitorSampledAt: monitorGeneratedAt || null,
       progressMs: monitorProgressMs,
       durationMs,
@@ -159,20 +210,8 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
       queueEndAt: calculatedQueueEndAt ?? monitor?.queue_status?.queue_end_at ?? null,
       currentIndex,
       queueRevision: monitor?.queue_revision ?? null,
-      host: monitor ? {
-        accountId: monitor.host_account_id ?? null,
-        handle: monitor.host_handle ?? "",
-        broadcastStartTime: monitor.broadcast_start_time ?? null,
-      } : null,
-      item: currentItem ? {
-        name: currentItem.name,
-        artist: currentItem.artist,
-        artwork: currentItem.artwork,
-        uri: currentItem.uri,
-        spotifyId: currentItem.spotifyId,
-        durationMs: currentItem.durationMs,
-      } : null,
       queue,
+      */
     },
     observedAt: sampledAt,
   };

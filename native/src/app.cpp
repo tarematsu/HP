@@ -303,9 +303,6 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       if ((changes & StationheadChangeReleaseAuth) != 0) {
         stationhead_->ReleaseCompletedAuth();
       }
-      if ((changes & StationheadChangeSpotifyState) != 0) {
-        stationhead_->RefreshSpotifyState(false);
-      }
       if ((changes & StationheadChangeShowPlayer) != 0) {
         stationhead_->ShowAfterAudioStop();
         if (selectedTab_ != WorkspaceTab::Stationhead) {

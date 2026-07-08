@@ -149,9 +149,6 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyAudioState();
     ApplyBounds();
   }
-  void RefreshSpotifyState(bool notify = true) {
-    if (player_) player_->RefreshSpotifyState(notify);
-  }
   void ShowForLogin() {
     if (!player_) return;
     ApplyInteractiveBounds();

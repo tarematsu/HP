@@ -133,8 +133,6 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     dashboardJson_ = L"{}";
     newsCount_ = 0;
     monitorHostHandle_.clear();
-    cloudPlayback_ = CloudPlaybackState{};
-    lastResolvedPlaybackIndex_ = -2;
     ++dashboardSourceRevision_;
     return false;
   }

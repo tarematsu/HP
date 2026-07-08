@@ -5,8 +5,6 @@
 #include "web_renderer_diagnostics.cpp"
 #include "dashboard_native_playback.cpp"
 #include "dashboard_playback_parse.cpp"
-#include "dashboard_playback_resolve.cpp"
-#include "dashboard_playback_timer.cpp"
 #include "dashboard_state_common_optimized.cpp"
 #include "dashboard_state_build_optimized.cpp"
 #include "dashboard_state_render_optimized.cpp"

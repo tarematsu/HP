@@ -14,8 +14,7 @@ enum StationheadChangeFlags : uint32_t {
   StationheadChangeNone = 0,
   StationheadChangeReturnMain = 1u << 0,
   StationheadChangeReleaseAuth = 1u << 1,
-  StationheadChangeSpotifyState = 1u << 2,
-  StationheadChangeShowPlayer = 1u << 3,
+  StationheadChangeShowPlayer = 1u << 2,
 };
 
 struct StationheadStatus {
@@ -87,8 +86,6 @@ class StationheadPlayer {
   void LayoutHostWindow(bool background);
   void CloseWebView();
   void CloseAuthWebView();
-  void StartSpotifyStateWatcher();
-  void StopSpotifyStateWatcher();
   void PostChange(uint32_t flags = StationheadChangeNone);
   void ConfigureWebView();
   void ConfigureAuthWebView();
@@ -109,7 +106,6 @@ class StationheadPlayer {
   HWND authHostWindow_{};
   StationheadConfig config_;
   fs::path userDataFolder_;
-  fs::path spotifyStatePath_;
   Logger& log_;
   mutable std::mutex mutex_;
   RECT bounds_{};
@@ -134,20 +130,16 @@ class StationheadPlayer {
   std::atomic<bool> recreating_{false};
   std::atomic<bool> scanPending_{false};
   std::atomic<bool> shuttingDown_{false};
-  std::atomic<bool> spotifyStateDirty_{true};
   std::atomic<bool> audioPlaying_{false};
   std::atomic<bool> audioStateKnown_{false};
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
   std::atomic<uint32_t> pendingChangeFlags_{0};
   std::atomic<bool> changeMessagePending_{false};
-  std::thread spotifyWatchThread_;
-  HANDLE spotifyWatchStopEvent_{};
   std::wstring targetSignature_;
   std::wstring pendingAuthorizationUrl_;
   int stableTargetCount_ = 0;
   int64_t createdAt_ = 0;
-  int64_t lastSpotifyCheckAt_ = 0;
   int64_t lastMemoryCheckAt_ = 0;
   int64_t lastReloadAt_ = 0;
   int64_t lastScanAt_ = 0;
@@ -155,7 +147,6 @@ class StationheadPlayer {
   int64_t lastAudioAtMs_ = 0;
   int64_t nextTickAt_ = 0;
   int64_t lastProcessSampleAt_ = 0;
-  std::optional<fs::file_time_type> spotifyStateWriteTime_;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
   bool loginSessionActive_ = false;

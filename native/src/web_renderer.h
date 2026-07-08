@@ -66,7 +66,6 @@ class Renderer {
   bool IsUiReady() const noexcept { return ready_ && uiReady_; }
   HWND DashboardHostWindow() const noexcept { return dashboardHost_; }
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
-  bool TickPlayback(int64_t nowMs);
   int NewsCount() const { return newsCount_; }
   std::wstring MonitorHostHandle() const { return monitorHostHandle_; }
   void Render(const RECT& dirty, const RenderState& state);
@@ -78,25 +77,6 @@ class Renderer {
   RECT StationheadRect() const;
 
  private:
-  struct CloudPlaybackItem {
-    std::wstring key;
-    std::wstring name;
-    std::wstring artist;
-    std::wstring artwork;
-    int64_t durationMs = 0;
-  };
-
-  struct CloudPlaybackState {
-    bool available = false;
-    bool playing = false;
-    int currentIndex = -1;
-    int64_t sampledAt = 0;
-    int64_t anchorAt = 0;
-    int64_t progressMs = 0;
-    int64_t queueEndAt = 0;
-    std::vector<CloudPlaybackItem> queue;
-  };
-
   struct NativePlaybackUpdate {
     std::wstring source;
     std::wstring payload;
@@ -151,8 +131,6 @@ class Renderer {
   void AppendWebViewDiagnostic(const std::wstring& message) const;
   RECT ClientBounds() const;
   void ParseDashboardMetadata(const std::wstring& json);
-  int ResolvePlaybackIndex(int64_t nowMs, int64_t* elapsedMs = nullptr) const;
-  StationheadStatus ResolveStationhead(const StationheadStatus& local, int64_t nowMs) const;
 
   HWND window_{};
   HWND dashboardHost_{};
@@ -185,7 +163,6 @@ class Renderer {
   std::string spotifyUtf8_;
   std::wstring spotifyJson_ = L"{}";
   uint64_t spotifySourceRevision_ = 0;
-  std::optional<fs::file_time_type> spotifyWriteTime_;
   std::wstring postedState_;
   StateJsonCache stateJsonCache_;
   std::wstring runtimeVersion_;
@@ -193,9 +170,6 @@ class Renderer {
   int64_t webViewStartedAt_ = 0;
   int newsCount_ = 0;
   std::wstring monitorHostHandle_;
-  CloudPlaybackState cloudPlayback_;
-  int lastResolvedPlaybackIndex_ = -2;
-  mutable int64_t scheduledPlaybackEndAt_ = 0;
   mutable std::mutex actionMutex_;
   mutable std::mutex diagnosticMutex_;
   UiAction pendingAction_ = UiAction::None;
