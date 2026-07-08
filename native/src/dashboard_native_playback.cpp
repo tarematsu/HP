@@ -3,7 +3,7 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kNativePlaybackPollMs = 5 * 60'000;
+constexpr int64_t kNativePlaybackPollMs = 60 * 60'000;
 constexpr size_t kMaxPlaybackResponseBytes = 4 * 1024 * 1024;
 
 struct PlaybackEndpoint {
@@ -224,9 +224,12 @@ void Renderer::NativePlaybackLoop() {
       if (nativePlaybackStopping_.load(std::memory_order_acquire)) break;
       std::wstring payload;
       const std::wstring error = FetchPlaybackJson(kPlaybackEndpoints[index].url, &payload);
+      bool changed = false;
       {
         std::lock_guard lock(nativePlaybackMutex_);
         auto& update = nativePlaybackUpdates_[index];
+        changed = update.payload != payload || update.error != error;
+        if (!changed) continue;
         update.source = kPlaybackEndpoints[index].source;
         update.payload = std::move(payload);
         update.error = error;
@@ -237,7 +240,7 @@ void Renderer::NativePlaybackLoop() {
             dataDir_, update.source.c_str(), update.payload, update.error,
             update.fetchedAt);
       }
-      InvalidateRect(window_, nullptr, FALSE);
+      if (changed) InvalidateRect(window_, nullptr, FALSE);
     }
 
     std::unique_lock waitLock(nativePlaybackWakeMutex_);

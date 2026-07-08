@@ -4,16 +4,29 @@
 namespace hp {
 std::wstring Renderer::BuildStateJson(const RenderState& state, bool full) {
   try {
-    std::ifstream input(dataDir_ / L"spotify.json", std::ios::binary);
-    if (input) {
-      const std::string text((std::istreambuf_iterator<char>(input)), {});
-      if (!text.empty() && text != spotifyUtf8_) {
-        const std::wstring wide = Utf8ToWide(text);
-        winrt::Windows::Data::Json::JsonObject::Parse(wide);
-        spotifyUtf8_ = text;
-        spotifyJson_ = wide;
-        ++spotifySourceRevision_;
+    const fs::path spotifyPath = dataDir_ / L"spotify.json";
+    std::error_code error;
+    if (fs::exists(spotifyPath, error)) {
+      const auto writeTime = fs::last_write_time(spotifyPath, error);
+      if (!error && (!spotifyWriteTime_ || *spotifyWriteTime_ != writeTime)) {
+        std::ifstream input(spotifyPath, std::ios::binary);
+        if (input) {
+          const std::string text((std::istreambuf_iterator<char>(input)), {});
+          if (!text.empty() && text != spotifyUtf8_) {
+            const std::wstring wide = Utf8ToWide(text);
+            winrt::Windows::Data::Json::JsonObject::Parse(wide);
+            spotifyUtf8_ = text;
+            spotifyJson_ = wide;
+            ++spotifySourceRevision_;
+          }
+          spotifyWriteTime_ = writeTime;
+        }
       }
+    } else if (!error && spotifyWriteTime_) {
+      spotifyWriteTime_.reset();
+      spotifyUtf8_.clear();
+      spotifyJson_ = L"{}";
+      ++spotifySourceRevision_;
     }
   } catch (...) {
     // Atomic replacement can briefly race with a repaint. Keep the last valid state.

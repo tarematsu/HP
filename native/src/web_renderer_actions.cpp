@@ -25,18 +25,23 @@ UiAction Renderer::HitTest(POINT, float* seekFraction) {
 }
 
 void Renderer::UpdateState(const RenderState& state) {
-  PostState(BuildStateJson(state));
+  const std::wstring json = BuildStateJson(state);
+  PostState(json);
   FlushNativePlaybackMessages();
-  statePublishedForPendingPaint_ = true;
+  statePublishedForPendingPaint_ = !json.empty();
 }
 
 void Renderer::PostState(const std::wstring& json) {
   if (json.empty() || !ready_ || !uiReady_ || !webview_) return;
+  if (json == postedState_) return;
   webview_->PostWebMessageAsJson(json.c_str());
+  postedState_ = json;
 }
 
 void Renderer::PostFullState() {
-  PostState(BuildCachedStateJson(0, true));
+  const std::wstring json = BuildCachedStateJson(0, true);
+  if (!json.empty()) postedState_.clear();
+  PostState(json);
   FlushNativePlaybackMessages();
 }
 

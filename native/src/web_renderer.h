@@ -185,6 +185,7 @@ class Renderer {
   std::string spotifyUtf8_;
   std::wstring spotifyJson_ = L"{}";
   uint64_t spotifySourceRevision_ = 0;
+  std::optional<fs::file_time_type> spotifyWriteTime_;
   std::wstring postedState_;
   StateJsonCache stateJsonCache_;
   std::wstring runtimeVersion_;

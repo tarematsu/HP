@@ -2,6 +2,7 @@
 
 namespace hp {
 void Renderer::Render(const RECT& dirty, const RenderState& state) {
+  (void)state;
   if (!ready_) {
     statePublishedForPendingPaint_ = false;
     DrawStartupFallback(dirty);
@@ -12,7 +13,6 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
     FlushNativePlaybackMessages();
     return;
   }
-  PostState(BuildStateJson(state));
   FlushNativePlaybackMessages();
 }
 }  // namespace hp
