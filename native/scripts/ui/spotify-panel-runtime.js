@@ -13,7 +13,6 @@
   let runtime = {};
   let dashboard = {};
   let spotifyState = {};
-  let progressTimer = 0;
   let panelHeaderMetaHandled = false;
   const shared = window.__homepanelPlaybackShared || {};
   const asObject = shared.asObject || (value => value && typeof value === 'object' && !Array.isArray(value) ? value : {});
@@ -441,15 +440,6 @@
     renderAll();
   }
 
-  function scheduleProgress() {
-    if (progressTimer) clearTimeout(progressTimer);
-    progressTimer = setTimeout(() => {
-      progressTimer = 0;
-      if (!document.hidden) renderPlayers();
-      scheduleProgress();
-    }, hasActiveProgress() ? 1000 : 30000);
-  }
-
   function applyState(state) {
     const incoming = state || {};
     runtime = { ...runtime, ...incoming };
@@ -464,6 +454,10 @@
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) renderAll();
   });
+  window.addEventListener('homepanel-second', event => {
+    if (document.hidden || !hasActiveProgress()) return;
+    renderPlayers();
+  });
   window.chrome?.webview?.addEventListener('message', event => {
     const message = event.data || {};
     if (message.type === 'native-playback') applyNativePlayback(message);
@@ -473,5 +467,4 @@
   removePanelHeaderMeta();
   installAudioControlHandlers();
   renderAll();
-  scheduleProgress();
 })();
