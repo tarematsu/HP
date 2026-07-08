@@ -377,21 +377,26 @@
     updateAudioControls(source === PLAYBACK_SOURCES.b ? 'b' : 'a');
   }
 
+  function playerRenderState(key, snapshots) {
+    const source = PLAYBACK_SOURCES[key];
+    const playbackState = playbackStates[key];
+    const snapshot = key === 'b' ? snapshots.mergedB : snapshots[key];
+    const primaryStatus = sourceStatus(playbackState, snapshot);
+    if (key !== 'b') return { source, snapshot, status: primaryStatus, grayOut: false };
+
+    const spotifyStatus = spotifyAvailability(snapshots.spotifySecondary);
+    return {
+      source,
+      snapshot,
+      status: primaryStatus.kind === 'live' ? primaryStatus : spotifyStatus,
+      grayOut: spotifyStatus.offline && !snapshot.hasTrack,
+    };
+  }
+
   function renderPlayers() {
     const snapshots = currentSnapshots();
-    const sourceA = PLAYBACK_SOURCES.a;
-    renderStationheadPlayer({ source: sourceA, snapshot: snapshots.a, status: sourceStatus(playbackStates.a, snapshots.a) });
-
-    const sourceB = PLAYBACK_SOURCES.b;
-    const spotifyStatus = spotifyAvailability(snapshots.spotifySecondary);
-    renderStationheadPlayer({
-      source: sourceB,
-      snapshot: snapshots.mergedB,
-      status: sourceStatus(playbackStates.b, snapshots.mergedB).kind === 'live'
-        ? sourceStatus(playbackStates.b, snapshots.mergedB)
-        : spotifyStatus,
-      grayOut: spotifyStatus.offline && !snapshots.mergedB.hasTrack,
-    });
+    renderStationheadPlayer(playerRenderState('a', snapshots));
+    renderStationheadPlayer(playerRenderState('b', snapshots));
   }
 
   function currentSnapshots() {
