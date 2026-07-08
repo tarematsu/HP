@@ -215,48 +215,71 @@
     };
   }
 
+  function projectedElapsedMs({ playing, progressMs, anchorAt, sampledAt }, now) {
+    if (!playing) return progressMs;
+    if (anchorAt > 0) return Math.max(0, now - anchorAt);
+    if (sampledAt > 0) return progressMs + Math.max(0, now - sampledAt);
+    return progressMs;
+  }
+
+  function resolveQueueSnapshot(value, queue, playback, now) {
+    let index = Number(value.currentIndex ?? value.current_index ?? value.queue_status?.current_index ?? -1);
+    if (!Number.isInteger(index) || index < 0 || index >= queue.length) {
+      index = queue.findIndex(item => item?.is_current === true);
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= queue.length) index = 0;
+
+    let elapsed = projectedElapsedMs(playback, now);
+    while (index < queue.length) {
+      const queueItem = normalizedItem(queue[index]);
+      if (!playback.playing ||
+          queueItem.durationMs <= 0 ||
+          elapsed < queueItem.durationMs + TRACK_TRANSITION_HOLD_MS) {
+        break;
+      }
+      elapsed -= queueItem.durationMs;
+      index += 1;
+    }
+
+    if (index >= queue.length) {
+      return { itemSource: {}, durationMs: 0, progressMs: 0 };
+    }
+
+    const itemSource = queue[index];
+    const queueItem = normalizedItem(itemSource);
+    return {
+      itemSource,
+      durationMs: queueItem.durationMs,
+      progressMs: Math.min(queueItem.durationMs, Math.max(0, elapsed)),
+    };
+  }
+
   function rawPlaybackSnapshot(value, now) {
     const playing = value.playing === true || (value.is_broadcasting === true && value.is_paused !== true);
     const sampledAt = Number(value.sampledAt ?? value.monitorSampledAt ?? value.updatedAt ?? 0) || 0;
     const anchorAt = Number(value.anchorAt ?? 0) || 0;
+    const playback = {
+      playing,
+      progressMs: Math.max(0, Number(value.progressMs ?? value.positionMs ?? 0) || 0),
+      anchorAt,
+      sampledAt,
+    };
     let itemSource = value.item || value.currentItem || value.currentTrack || value.track || {};
     let durationMs = Math.max(0, Number(value.durationMs ?? value.trackDurationMs ?? asObject(itemSource).durationMs ?? 0) || 0);
-    let progressMs = Math.max(0, Number(value.progressMs ?? value.positionMs ?? 0) || 0);
+    let progressMs = playback.progressMs;
     const queue = queueFrom(value);
 
     if (queue.length) {
-      let index = Number(value.currentIndex ?? value.current_index ?? value.queue_status?.current_index ?? -1);
-      if (!Number.isInteger(index) || index < 0 || index >= queue.length) {
-        index = queue.findIndex(item => item?.is_current === true);
-      }
-      if (!Number.isInteger(index) || index < 0 || index >= queue.length) index = 0;
-      let elapsed = progressMs;
-      if (playing) {
-        if (anchorAt > 0) elapsed = Math.max(0, now - anchorAt);
-        else if (sampledAt > 0) elapsed += Math.max(0, now - sampledAt);
-      }
-      while (index < queue.length) {
-        const queueItem = normalizedItem(queue[index]);
-        if (!playing || queueItem.durationMs <= 0 || elapsed < queueItem.durationMs + TRACK_TRANSITION_HOLD_MS) break;
-        elapsed -= queueItem.durationMs;
-        index += 1;
-      }
-      if (index < queue.length) {
-        itemSource = queue[index];
-        const queueItem = normalizedItem(itemSource);
-        durationMs = queueItem.durationMs;
-        progressMs = Math.min(queueItem.durationMs, Math.max(0, elapsed));
-      } else {
-        itemSource = {};
-        durationMs = 0;
-        progressMs = 0;
-      }
+      const queueSnapshot = resolveQueueSnapshot(value, queue, playback, now);
+      itemSource = queueSnapshot.itemSource;
+      durationMs = queueSnapshot.durationMs;
+      progressMs = queueSnapshot.progressMs;
     } else {
       const expectedEndAt = Number(value.expectedEndAt ?? 0) || 0;
       if (durationMs > 0 && expectedEndAt > 0) {
         progressMs = durationMs - Math.max(0, expectedEndAt + TRACK_TRANSITION_HOLD_MS - now);
       } else if (playing && sampledAt > 0) {
-        progressMs += Math.max(0, now - sampledAt);
+        progressMs = projectedElapsedMs(playback, now);
       }
     }
 
