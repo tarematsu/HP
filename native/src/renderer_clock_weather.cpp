@@ -404,6 +404,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   nativeAirHistory_ = state.airHistory;
   nativeStationhead_ = state.stationhead;
   nativeAppVersion_ = state.appVersion;
+  nativeToast_ = state.toast;
   nativeNewsIndex_ = state.newsIndex;
   if (!EnsureNativeStaticWindows()) return;
   InvalidateRect(nativeAirWindow_, nullptr, FALSE);
@@ -791,6 +792,16 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   }
   SelectObject(memoryDc, previousFont);
   DeleteObject(buttonFont);
+  if (!nativeToast_.empty()) {
+    HFONT toastFont = CreateUiFont(12, FW_NORMAL);
+    previousFont = SelectObject(memoryDc, toastFont);
+    SetTextColor(memoryDc, RGB(255, 209, 140));
+    RECT toastRect{12, top + 54, bounds.right - 12, std::max(top + 76L, bounds.bottom - 8)};
+    DrawTextInRect(memoryDc, nativeToast_, toastRect,
+                   DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
+    SelectObject(memoryDc, previousFont);
+    DeleteObject(toastFont);
+  }
   SelectObject(memoryDc, previousBrush);
   SelectObject(memoryDc, previousPen);
   DeleteObject(fill);

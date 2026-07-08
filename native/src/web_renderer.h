@@ -198,6 +198,7 @@ class Renderer {
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
   std::wstring nativeAppVersion_;
+  std::wstring nativeToast_;
   int nativeNewsIndex_ = 0;
   int width_ = 0;
   int height_ = 0;

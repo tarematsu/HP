@@ -48,7 +48,9 @@
 - Octopus Energy summary and history chart are native-owned and read from the parsed dashboard snapshot.
 - Stationhead panel shell, metadata, artwork, progress, and audio toggles are native-owned; the playback API queue projection is parsed and advanced natively on a one-second panel timer.
 - Controls are native-owned and dispatch the existing update/restart actions through the renderer action queue.
+- Toast feedback is native-owned and drawn in the controls panel.
 - The browser-side second pulse has been removed; no browser panel performs local interpolation.
+- All panel scripts have been removed from the dashboard page; the WebView only hosts the wallpaper backdrop and the ready handshake.
 - Do not reintroduce browser-side clock DOM updates once a static surface has moved to native rendering.
 
 ## Radar
