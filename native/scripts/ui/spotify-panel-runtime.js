@@ -193,31 +193,29 @@
     return {};
   }
 
-  function playbackSnapshot(rawValue, now = Date.now()) {
-    const value = unwrapPlaybackPayload(rawValue);
-    if (Object.prototype.hasOwnProperty.call(value, 'hasTrack') &&
-        Object.prototype.hasOwnProperty.call(value, 'durationMs')) {
-      const durationMs = Math.max(0, Number(value.durationMs ?? 0) || 0);
-      let progressMs = Math.max(0, Number(value.progressMs ?? value.positionMs ?? 0) || 0);
-      const playing = value.playing === true;
-      const anchorAt = Number(value.anchorAt ?? 0) || 0;
-      const sampledAt = Number(value.sampledAt ?? 0) || 0;
-      if (playing) {
-        if (anchorAt > 0) progressMs = Math.max(0, now - anchorAt);
-        else if (sampledAt > 0) progressMs += Math.max(0, now - sampledAt);
-      }
-      if (durationMs > 0) progressMs = Math.min(Math.max(0, progressMs), durationMs);
-      return {
-        title: String(value.title || '').trim(),
-        artist: String(value.artist || '').trim(),
-        artwork: String(value.artwork || '').trim(),
-        durationMs,
-        progressMs,
-        playing,
-        hasTrack: value.hasTrack === true || Boolean(value.title),
-      };
+  function resolvedPlaybackSnapshot(value, now) {
+    const durationMs = Math.max(0, Number(value.durationMs ?? 0) || 0);
+    let progressMs = Math.max(0, Number(value.progressMs ?? value.positionMs ?? 0) || 0);
+    const playing = value.playing === true;
+    const anchorAt = Number(value.anchorAt ?? 0) || 0;
+    const sampledAt = Number(value.sampledAt ?? 0) || 0;
+    if (playing) {
+      if (anchorAt > 0) progressMs = Math.max(0, now - anchorAt);
+      else if (sampledAt > 0) progressMs += Math.max(0, now - sampledAt);
     }
+    if (durationMs > 0) progressMs = Math.min(Math.max(0, progressMs), durationMs);
+    return {
+      title: String(value.title || '').trim(),
+      artist: String(value.artist || '').trim(),
+      artwork: String(value.artwork || '').trim(),
+      durationMs,
+      progressMs,
+      playing,
+      hasTrack: value.hasTrack === true || Boolean(value.title),
+    };
+  }
 
+  function rawPlaybackSnapshot(value, now) {
     const playing = value.playing === true || (value.is_broadcasting === true && value.is_paused !== true);
     const sampledAt = Number(value.sampledAt ?? value.monitorSampledAt ?? value.updatedAt ?? 0) || 0;
     const anchorAt = Number(value.anchorAt ?? 0) || 0;
@@ -274,6 +272,15 @@
       playing,
       hasTrack: Boolean(item.name),
     };
+  }
+
+  function playbackSnapshot(rawValue, now = Date.now()) {
+    const value = unwrapPlaybackPayload(rawValue);
+    if (Object.prototype.hasOwnProperty.call(value, 'hasTrack') &&
+        Object.prototype.hasOwnProperty.call(value, 'durationMs')) {
+      return resolvedPlaybackSnapshot(value, now);
+    }
+    return rawPlaybackSnapshot(value, now);
   }
 
   function renderProgress(prefix, snapshot) {
