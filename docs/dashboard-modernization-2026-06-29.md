@@ -58,5 +58,8 @@
 - Remove previous, play/pause, next and seek controls.
 - Cloudflare continues to provide frame and tile metadata; the sync client localizes tiles into the radar cache.
 - The current frame is composed natively on a worker thread from the bundled base layers and cached tiles, then painted in a native child window.
+- Native radar composition does not fetch remote tile URLs; missing or uncached tiles are skipped so network work stays in the sync client.
+- The last composed radar frame is cached on disk and reused when the radar metadata/base-layer signature has not changed.
+- Failed tile decodes are suppressed briefly to avoid repeated decode attempts during cache misses.
 - Keep the last successfully rendered frame when a tile fails.
 - Recomposition happens only when radar metadata updates; no browser canvas or animation loop remains.

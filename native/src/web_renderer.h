@@ -259,10 +259,9 @@ class Renderer {
   std::mutex radarComposeWakeMutex_;
   mutable std::mutex radarFrameMutex_;
   HBITMAP radarFrameBitmap_ = nullptr;
-  HBITMAP radarSatelliteBitmap_ = nullptr;
-  HBITMAP radarMapBitmap_ = nullptr;
   std::wstring radarTimeText_ = L"--:--";
   std::wstring radarSignature_;
+  std::map<std::wstring, int64_t> radarFailedTiles_;
   bool radarComposePending_ = false;
   std::atomic<bool> radarComposeStarted_{false};
   std::atomic<bool> radarComposeStopping_{false};
