@@ -325,8 +325,12 @@
     setText(`#${prefix}-progress-duration`, formatTime(snapshot.durationMs));
   }
 
+  function sourceIsStale(source, now = Date.now()) {
+    return source.fetchedAt <= 0 || now - source.fetchedAt > PLAYBACK_STALE_MS;
+  }
+
   function sourceStatus(source, snapshot, now = Date.now()) {
-    const stale = source.fetchedAt <= 0 || now - source.fetchedAt > PLAYBACK_STALE_MS;
+    const stale = sourceIsStale(source, now);
     if (source.error && stale) return { kind: 'stale', detail: `${source.error}` };
     if (source.error) return { kind: 'offline', detail: `${source.error}` };
     if (stale) return { kind: 'stale', detail: 'native譖ｴ譁ｰ蠕・■' };
@@ -335,24 +339,29 @@
     return { kind: 'offline', detail: '諠・ｱ蠕・■' };
   }
 
-  function renderStationheadPlayer({ source, snapshot, status }) {
+  function renderStationheadPlayer({ key, source, snapshot, status }) {
     setText(`#${source.prefix}-track`, snapshot.title || `${source.channel}譖ｲ諠・ｱ蠕・■`);
     setText(`#${source.prefix}-artist`, snapshot.artist || '--');
     setArtwork(`#${source.prefix}-artwork`, `#${source.prefix}-artwork-fallback`, snapshot.artwork);
     renderProgress(source.prefix, snapshot);
     setBadge(source.prefix, status.kind, status.detail);
-    updateAudioControls(source === PLAYBACK_SOURCES.b ? 'b' : 'a');
+    updateAudioControls(key);
+  }
+
+  function playerRenderModel(key, snapshots) {
+    const snapshot = snapshots[key];
+    return {
+      key,
+      source: PLAYBACK_SOURCES[key],
+      snapshot,
+      status: sourceStatus(playbackStates[key], snapshot),
+    };
   }
 
   function renderPlayers() {
     const snapshots = currentSnapshots();
     for (const key of PLAYBACK_SOURCE_KEYS) {
-      const snapshot = snapshots[key];
-      renderStationheadPlayer({
-        source: PLAYBACK_SOURCES[key],
-        snapshot,
-        status: sourceStatus(playbackStates[key], snapshot),
-      });
+      renderStationheadPlayer(playerRenderModel(key, snapshots));
     }
   }
 
