@@ -16,7 +16,6 @@
 121 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-energy.js"
 122 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-switchbot.js"
 124 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-air.js"
-125 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-radar.js"
 126 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/homepanel-runtime.js"
 129 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/vendor/wx-icons/100.svg"
 130 RCDATA "@HOMEPANEL_SOURCE_DIR@/scripts/ui/vendor/wx-icons/101.svg"

@@ -28,6 +28,7 @@ Renderer::Renderer(HWND window, int width, int height, RadarManager& radar)
 Renderer::~Renderer() {
   shuttingDown_ = true;
   StopNativePlaybackBridge();
+  StopRadarCompose();
   CloseWebView();
   DestroyNativeStaticWindows();
   DestroyNativeClockWindow();
@@ -38,6 +39,7 @@ void Renderer::Initialize() {
   EnsureNativeClockWindow();
   EnsureNativeStaticWindows();
   StartNativePlaybackBridge();
+  StartRadarCompose();
   CreateWebView();
 }
 

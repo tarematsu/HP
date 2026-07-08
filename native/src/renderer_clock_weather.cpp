@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "wic_image.h"
 
 namespace hp {
 namespace {
@@ -13,6 +14,7 @@ constexpr int kNativeNewsId = 104;
 constexpr int kNativeWeatherId = 105;
 constexpr int kNativeEnergyId = 106;
 constexpr int kNativeStationheadId = 107;
+constexpr int kNativeRadarId = 108;
 
 struct DashboardGrid {
   int left = 0;
@@ -91,6 +93,10 @@ RECT NativeStationheadRectFromBounds(const RECT& bounds) {
   return NativePanelRectFromBounds(bounds, 0, 1);
 }
 
+RECT NativeRadarRectFromBounds(const RECT& bounds) {
+  return NativePanelRectFromBounds(bounds, 1, 1);
+}
+
 HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -102,56 +108,6 @@ std::wstring TrackTimeText(int64_t milliseconds) {
   wchar_t text[32]{};
   swprintf_s(text, L"%lld:%02lld", seconds / 60, seconds % 60);
   return text;
-}
-
-HBITMAP DecodeImageFileToBitmap(const fs::path& file, int width, int height) {
-  if (width <= 0 || height <= 0) return nullptr;
-  ComPtr<IWICImagingFactory> factory;
-  if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-                              IID_PPV_ARGS(&factory)))) {
-    return nullptr;
-  }
-  ComPtr<IWICBitmapDecoder> decoder;
-  if (FAILED(factory->CreateDecoderFromFilename(file.c_str(), nullptr, GENERIC_READ,
-                                                WICDecodeMetadataCacheOnDemand, &decoder))) {
-    return nullptr;
-  }
-  ComPtr<IWICBitmapFrameDecode> frame;
-  if (FAILED(decoder->GetFrame(0, &frame))) return nullptr;
-  ComPtr<IWICBitmapScaler> scaler;
-  if (FAILED(factory->CreateBitmapScaler(&scaler))) return nullptr;
-  if (FAILED(scaler->Initialize(frame.Get(), static_cast<UINT>(width), static_cast<UINT>(height),
-                                WICBitmapInterpolationModeFant))) {
-    return nullptr;
-  }
-  ComPtr<IWICFormatConverter> converter;
-  if (FAILED(factory->CreateFormatConverter(&converter))) return nullptr;
-  if (FAILED(converter->Initialize(scaler.Get(), GUID_WICPixelFormat32bppPBGRA,
-                                   WICBitmapDitherTypeNone, nullptr, 0.0,
-                                   WICBitmapPaletteTypeCustom))) {
-    return nullptr;
-  }
-
-  BITMAPINFO info{};
-  info.bmiHeader.biSize = sizeof(info.bmiHeader);
-  info.bmiHeader.biWidth = width;
-  info.bmiHeader.biHeight = -height;
-  info.bmiHeader.biPlanes = 1;
-  info.bmiHeader.biBitCount = 32;
-  info.bmiHeader.biCompression = BI_RGB;
-  void* pixels = nullptr;
-  HBITMAP bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
-  if (!bitmap || !pixels) {
-    if (bitmap) DeleteObject(bitmap);
-    return nullptr;
-  }
-  const UINT stride = static_cast<UINT>(width) * 4;
-  if (FAILED(converter->CopyPixels(nullptr, stride, stride * static_cast<UINT>(height),
-                                   static_cast<BYTE*>(pixels)))) {
-    DeleteObject(bitmap);
-    return nullptr;
-  }
-  return bitmap;
 }
 
 void DrawPremultipliedBitmap(HDC dc, HBITMAP bitmap, const RECT& target) {
@@ -339,9 +295,18 @@ bool Renderer::EnsureNativeStaticWindows() {
       SetTimer(nativeStationheadWindow_, kPlaybackTimerId, kPlaybackTimerMs, nullptr);
     }
   }
+  if (!nativeRadarWindow_ || !IsWindow(nativeRadarWindow_)) {
+    const RECT rect = NativeRadarRectFromBounds(bounds_);
+    nativeRadarWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeRadar",
+        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
+        rect.left, rect.top, std::max(1L, rect.right - rect.left),
+        std::max(1L, rect.bottom - rect.top), window_,
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeRadarId)),
+        GetModuleHandleW(nullptr), this);
+  }
   ApplyNativeStaticBounds();
   return nativeAirWindow_ && nativeAirHistoryWindow_ && nativeControlsWindow_ && nativeNewsWindow_ &&
-         nativeWeatherWindow_ && nativeEnergyWindow_ && nativeStationheadWindow_;
+         nativeWeatherWindow_ && nativeEnergyWindow_ && nativeStationheadWindow_ && nativeRadarWindow_;
 }
 
 void Renderer::ApplyNativeStaticBounds() {
@@ -394,6 +359,13 @@ void Renderer::ApplyNativeStaticBounds() {
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
   }
+  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
+    const RECT rect = NativeRadarRectFromBounds(bounds_);
+    SetWindowPos(nativeRadarWindow_, HWND_TOP, rect.left, rect.top,
+                 std::max(1L, rect.right - rect.left), std::max(1L, rect.bottom - rect.top),
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(nativeRadarWindow_, nullptr, FALSE);
+  }
 }
 
 void Renderer::DestroyNativeStaticWindows() {
@@ -407,10 +379,16 @@ void Renderer::DestroyNativeStaticWindows() {
     KillTimer(nativeStationheadWindow_, kPlaybackTimerId);
     DestroyWindow(nativeStationheadWindow_);
   }
+  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) DestroyWindow(nativeRadarWindow_);
   for (auto& [key, bitmap] : nativeArtworkBitmaps_) {
     if (bitmap) DeleteObject(bitmap);
   }
   nativeArtworkBitmaps_.clear();
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
+    radarFrameBitmap_ = nullptr;
+  }
   nativeAirWindow_ = nullptr;
   nativeAirHistoryWindow_ = nullptr;
   nativeControlsWindow_ = nullptr;
@@ -418,6 +396,7 @@ void Renderer::DestroyNativeStaticWindows() {
   nativeWeatherWindow_ = nullptr;
   nativeEnergyWindow_ = nullptr;
   nativeStationheadWindow_ = nullptr;
+  nativeRadarWindow_ = nullptr;
 }
 
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
@@ -434,6 +413,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
   InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
   InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
+  InvalidateRect(nativeRadarWindow_, nullptr, FALSE);
 }
 
 void Renderer::ApplyNativeClockBounds() {
@@ -544,6 +524,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       else if (GetDlgCtrlID(hwnd) == kNativeNewsId) PaintNativeNews(hwnd);
       else if (GetDlgCtrlID(hwnd) == kNativeWeatherId) PaintNativeWeather(hwnd);
       else if (GetDlgCtrlID(hwnd) == kNativeEnergyId) PaintNativeEnergy(hwnd);
+      else if (GetDlgCtrlID(hwnd) == kNativeRadarId) PaintNativeRadar(hwnd);
       else PaintNativeStationhead(hwnd);
       return 0;
     case WM_NCDESTROY:
@@ -555,6 +536,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       if (nativeWeatherWindow_ == hwnd) nativeWeatherWindow_ = nullptr;
       if (nativeEnergyWindow_ == hwnd) nativeEnergyWindow_ = nullptr;
       if (nativeStationheadWindow_ == hwnd) nativeStationheadWindow_ = nullptr;
+      if (nativeRadarWindow_ == hwnd) nativeRadarWindow_ = nullptr;
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
       break;
   }
@@ -1223,6 +1205,70 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   DeleteObject(card);
   DeleteObject(border);
 
+  BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
+  SelectObject(memoryDc, previousBitmap);
+  DeleteObject(bitmap);
+  DeleteDC(memoryDc);
+  EndPaint(hwnd, &paint);
+}
+
+void Renderer::PaintNativeRadar(HWND hwnd) {
+  PAINTSTRUCT paint{};
+  HDC dc = BeginPaint(hwnd, &paint);
+  if (!dc) return;
+
+  RECT bounds{};
+  GetClientRect(hwnd, &bounds);
+  HDC memoryDc = CreateCompatibleDC(dc);
+  HBITMAP bitmap = CreateCompatibleBitmap(dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+  HBRUSH background = CreateSolidBrush(RGB(9, 14, 21));
+  FillRect(memoryDc, &bounds, background);
+  DeleteObject(background);
+  SetBkMode(memoryDc, TRANSPARENT);
+
+  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
+  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
+  SetTextColor(memoryDc, RGB(255, 255, 255));
+  RECT header{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 31};
+  DrawTextInRect(memoryDc, L"リアルタイム雨雲", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    SetTextColor(memoryDc, RGB(184, 195, 208));
+    DrawTextInRect(memoryDc, radarTimeText_.empty() ? L"--:--" : radarTimeText_, header,
+                   DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+
+    RECT stage{bounds.left + 10, bounds.top + 34, bounds.right - 10, bounds.bottom - 10};
+    const int stageWidth = std::max(1L, stage.right - stage.left);
+    const int stageHeight = std::max(1L, stage.bottom - stage.top);
+    if (radarFrameBitmap_) {
+      const double scale = std::min(
+          static_cast<double>(stageWidth) / kRadarCanvasWidth,
+          static_cast<double>(stageHeight) / kRadarCanvasHeight);
+      const int drawWidth = std::max(1, static_cast<int>(kRadarCanvasWidth * scale));
+      const int drawHeight = std::max(1, static_cast<int>(kRadarCanvasHeight * scale));
+      const int drawLeft = stage.left + (stageWidth - drawWidth) / 2;
+      const int drawTop = stage.top + (stageHeight - drawHeight) / 2;
+      HDC frameDc = CreateCompatibleDC(memoryDc);
+      if (frameDc) {
+        HGDIOBJ previousFrame = SelectObject(frameDc, radarFrameBitmap_);
+        SetStretchBltMode(memoryDc, HALFTONE);
+        SetBrushOrgEx(memoryDc, 0, 0, nullptr);
+        StretchBlt(memoryDc, drawLeft, drawTop, drawWidth, drawHeight, frameDc, 0, 0,
+                   kRadarCanvasWidth, kRadarCanvasHeight, SRCCOPY);
+        SelectObject(frameDc, previousFrame);
+        DeleteDC(frameDc);
+      }
+    } else {
+      SetTextColor(memoryDc, RGB(184, 195, 208));
+      DrawTextInRect(memoryDc, L"待機中", stage,
+                     DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
+  }
+
+  SelectObject(memoryDc, previousFont);
+  DeleteObject(headerFont);
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
   DeleteObject(bitmap);

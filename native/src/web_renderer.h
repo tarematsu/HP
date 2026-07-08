@@ -71,6 +71,9 @@ struct NativePlaybackRender {
   NativePlaybackTrack track;
 };
 
+inline constexpr int kRadarCanvasWidth = 800;
+inline constexpr int kRadarCanvasHeight = 520;
+
 class Renderer {
  public:
   Renderer(HWND window, int width, int height, RadarManager& radar);
@@ -155,6 +158,7 @@ class Renderer {
   void PaintNativeWeather(HWND hwnd);
   void PaintNativeEnergy(HWND hwnd);
   void PaintNativeStationhead(HWND hwnd);
+  void PaintNativeRadar(HWND hwnd);
   void QueueAction(UiAction action, float seekFraction = 0.0f);
   std::wstring BuildStateJson(const RenderState& state, bool full = false);
   std::wstring BuildCachedStateJson(uint32_t changedSlices, bool full) const;
@@ -168,6 +172,10 @@ class Renderer {
   NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
   bool NativePlaybackActive(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
+  void StartRadarCompose();
+  void StopRadarCompose() noexcept;
+  void RadarComposeLoop();
+  void ComposeRadarFrame();
   void SetWebViewError(const std::wstring& stage, HRESULT result);
   void DrawStartupFallback(const RECT& dirty) const;
   void AppendWebViewDiagnostic(const std::wstring& message) const;
@@ -184,6 +192,7 @@ class Renderer {
   HWND nativeWeatherWindow_{};
   HWND nativeEnergyWindow_{};
   HWND nativeStationheadWindow_{};
+  HWND nativeRadarWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
   StationheadStatus nativeStationhead_{};
@@ -212,7 +221,6 @@ class Renderer {
   bool statePublishedForPendingPaint_ = false;
   bool controllerVisible_ = false;
   bool controllerBoundsValid_ = false;
-  bool radarUpdatePending_ = false;
   RECT appliedControllerBounds_{};
   std::string dashboardUtf8_;
   std::wstring dashboardJson_ = L"{}";
@@ -243,5 +251,17 @@ class Renderer {
   std::atomic<uint64_t> nativePlaybackRevision_{0};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
+  std::thread radarComposeThread_;
+  std::condition_variable radarComposeWake_;
+  std::mutex radarComposeWakeMutex_;
+  mutable std::mutex radarFrameMutex_;
+  HBITMAP radarFrameBitmap_ = nullptr;
+  HBITMAP radarSatelliteBitmap_ = nullptr;
+  HBITMAP radarMapBitmap_ = nullptr;
+  std::wstring radarTimeText_ = L"--:--";
+  std::wstring radarSignature_;
+  bool radarComposePending_ = false;
+  std::atomic<bool> radarComposeStarted_{false};
+  std::atomic<bool> radarComposeStopping_{false};
 };
 }  // namespace hp

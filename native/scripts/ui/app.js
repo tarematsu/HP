@@ -20,30 +20,24 @@
           queuedState = event.data;
           return;
         }
-        if (event.data?.type === 'radar-updated') panels.radar?.refreshRadar();
-        else renderRuntime(event.data);
+        renderRuntime(event.data);
       });
     }
 
     await loadTexts();
     setStaticLabels();
-    panels.radar?.refreshRadar();
     panels.energy?.drawEnergyChart();
 
     initialized = true;
-    if (queuedState?.type === 'radar-updated') panels.radar?.refreshRadar();
-    else if (queuedState) renderRuntime(queuedState);
+    if (queuedState) renderRuntime(queuedState);
     window.chrome?.webview?.postMessage({ type: 'ready' });
 
-    window.addEventListener('online', () => panels.radar?.refreshRadar());
     window.addEventListener('resize', () => {
       panels.energy?.drawEnergyChart();
-      panels.radar?.presentRadar();
     });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         panels.energy?.drawEnergyChart();
-        panels.radar?.presentRadar();
       }
     });
   }

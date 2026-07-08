@@ -12,9 +12,11 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
 }
 
 void Renderer::NotifyRadarUpdated() {
-  radarUpdatePending_ = true;
-  if (!ready_ || !uiReady_ || !webview_) return;
-  webview_->PostWebMessageAsJson(L"{\"type\":\"radar-updated\"}");
-  radarUpdatePending_ = false;
+  if (!radarComposeStarted_.load(std::memory_order_acquire)) return;
+  {
+    std::lock_guard lock(radarComposeWakeMutex_);
+    radarComposePending_ = true;
+  }
+  radarComposeWake_.notify_all();
 }
 }  // namespace hp

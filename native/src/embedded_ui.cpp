@@ -66,7 +66,6 @@ constexpr UiAsset kUiAssets[] = {
     {121, L"homepanel-energy.js", true},
     {122, L"homepanel-switchbot.js", true},
     {124, L"homepanel-air.js", true},
-    {125, L"homepanel-radar.js", true},
     {126, L"homepanel-runtime.js", true},
     {129, L"vendor/wx-icons/100.svg", true},
     {130, L"vendor/wx-icons/101.svg", true},

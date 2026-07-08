@@ -54,8 +54,7 @@
 ## Radar
 
 - Remove previous, play/pause, next and seek controls.
-- Start animation automatically and loop continuously.
-- Cloudflare continues to provide frame and tile metadata.
-- The client composes the current frame and preloads the next one.
+- Cloudflare continues to provide frame and tile metadata; the sync client localizes tiles into the radar cache.
+- The current frame is composed natively on a worker thread from the bundled base layers and cached tiles, then painted in a native child window.
 - Keep the last successfully rendered frame when a tile fails.
-- Stop animation and decoding while the monitor is off, then resume with fresh frame metadata.
+- Recomposition happens only when radar metadata updates; no browser canvas or animation loop remains.
