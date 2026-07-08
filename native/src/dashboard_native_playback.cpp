@@ -5,6 +5,10 @@ namespace hp {
 namespace {
 constexpr int64_t kNativePlaybackPollMs = 60 * 60'000;
 constexpr size_t kMaxPlaybackResponseBytes = 4 * 1024 * 1024;
+using winrt::Windows::Data::Json::JsonArray;
+using winrt::Windows::Data::Json::JsonObject;
+using winrt::Windows::Data::Json::JsonValue;
+using winrt::Windows::Data::Json::JsonValueType;
 
 struct PlaybackEndpoint {
   const wchar_t* source;
@@ -25,6 +29,233 @@ struct NativeHttpHandle {
   NativeHttpHandle& operator=(const NativeHttpHandle&) = delete;
   operator HINTERNET() const noexcept { return value; }
 };
+
+JsonObject AsObject(const JsonObject& parent, const wchar_t* name) {
+  try {
+    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Object) {
+      return parent.GetNamedObject(name);
+    }
+  } catch (...) {
+  }
+  return JsonObject{};
+}
+
+JsonArray AsArray(const JsonObject& parent, const wchar_t* name) {
+  try {
+    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Array) {
+      return parent.GetNamedArray(name);
+    }
+  } catch (...) {
+  }
+  return JsonArray{};
+}
+
+std::wstring StringValue(const JsonObject& object, const wchar_t* name) {
+  try {
+    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::String) {
+      return object.GetNamedString(name).c_str();
+    }
+  } catch (...) {
+  }
+  return {};
+}
+
+double NumberValue(const JsonObject& object, const wchar_t* name, double fallback = 0) {
+  try {
+    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::Number) {
+      return object.GetNamedNumber(name);
+    }
+  } catch (...) {
+  }
+  return fallback;
+}
+
+bool BoolValue(const JsonObject& object, const wchar_t* name, bool fallback = false) {
+  try {
+    if (object.HasKey(name) &&
+        object.GetNamedValue(name).ValueType() == JsonValueType::Boolean) {
+      return object.GetNamedBoolean(name);
+    }
+  } catch (...) {
+  }
+  return fallback;
+}
+
+double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
+  for (const wchar_t* name : names) {
+    const double value = NumberValue(object, name, std::numeric_limits<double>::quiet_NaN());
+    if (std::isfinite(value)) return value;
+  }
+  return 0;
+}
+
+std::wstring FirstText(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
+  for (const wchar_t* name : names) {
+    std::wstring value = StringValue(object, name);
+    if (!value.empty()) return value;
+  }
+  return {};
+}
+
+JsonObject NormalizeItem(const JsonObject& raw) {
+  JsonObject source = raw;
+  JsonObject nested = AsObject(raw, L"track");
+  if (nested.Size() == 0) nested = AsObject(raw, L"song");
+  if (nested.Size() != 0) source = nested;
+
+  JsonObject item;
+  item.SetNamedValue(L"title", JsonValue::CreateStringValue(
+      FirstText(source, {L"name", L"title", L"trackTitle"})));
+
+  std::wstring artist = FirstText(source, {L"trackArtist", L"artist"});
+  if (artist.empty()) {
+    const JsonArray artists = AsArray(source, L"artists");
+    std::wstring joined;
+    for (uint32_t index = 0; index < artists.Size(); ++index) {
+      try {
+        std::wstring part;
+        const auto value = artists.GetAt(index);
+        if (value.ValueType() == JsonValueType::String) part = value.GetString().c_str();
+        else if (value.ValueType() == JsonValueType::Object) {
+          part = StringValue(value.GetObject(), L"name");
+        }
+        if (part.empty()) continue;
+        if (!joined.empty()) joined += L", ";
+        joined += part;
+      } catch (...) {
+      }
+    }
+    artist = joined;
+  }
+  item.SetNamedValue(L"artist", JsonValue::CreateStringValue(artist));
+
+  std::wstring artwork = FirstText(source, {
+      L"artwork", L"artworkUrl", L"albumArtUrl", L"image", L"imageUrl",
+      L"thumbnail_url",
+  });
+  if (artwork.empty()) {
+    JsonObject album = AsObject(source, L"album");
+    JsonArray images = AsArray(album, L"images");
+    if (images.Size() > 0) {
+      try {
+        if (images.GetAt(0).ValueType() == JsonValueType::Object) {
+          artwork = StringValue(images.GetAt(0).GetObject(), L"url");
+        }
+      } catch (...) {
+      }
+    }
+  }
+  item.SetNamedValue(L"artwork", JsonValue::CreateStringValue(artwork));
+  item.SetNamedValue(L"durationMs", JsonValue::CreateNumberValue(std::max(
+      0.0, FirstNumber(source, {L"durationMs", L"duration_ms", L"lengthMs"}))));
+  return item;
+}
+
+std::wstring ResolvePlaybackPayload(const std::wstring& payload, int64_t fetchedAt) {
+  if (payload.empty()) return L"{}";
+  try {
+    JsonObject root = JsonObject::Parse(payload);
+    JsonObject value = root;
+    for (const wchar_t* name : {L"playback", L"data", L"stationhead", L"result"}) {
+      JsonObject child = AsObject(value, name);
+      if (child.Size() != 0) {
+        value = child;
+        if (name == std::wstring(L"data")) {
+          JsonObject nested = AsObject(value, L"playback");
+          if (nested.Size() != 0) value = nested;
+        }
+        break;
+      }
+    }
+
+    const bool playing = BoolValue(value, L"playing") ||
+        (BoolValue(value, L"is_broadcasting") && !BoolValue(value, L"is_paused"));
+    const int64_t sampledAt = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"sampledAt", L"monitorSampledAt", L"updatedAt"})));
+    const int64_t anchorAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"anchorAt")));
+    const int64_t queueEndAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"queueEndAt")));
+    int64_t durationMs = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"durationMs", L"trackDurationMs"})));
+    int64_t progressMs = static_cast<int64_t>(std::max(
+        0.0, FirstNumber(value, {L"progressMs", L"positionMs"})));
+
+    JsonArray queue = AsArray(value, L"queue");
+    JsonObject itemSource = AsObject(value, L"item");
+    if (itemSource.Size() == 0) itemSource = AsObject(value, L"currentItem");
+    if (itemSource.Size() == 0) itemSource = AsObject(value, L"currentTrack");
+    if (itemSource.Size() == 0) itemSource = AsObject(value, L"track");
+
+    if (queue.Size() > 0) {
+      int index = static_cast<int>(FirstNumber(value, {L"currentIndex", L"current_index"}));
+      JsonObject queueStatus = AsObject(value, L"queue_status");
+      if (index < 0) index = static_cast<int>(FirstNumber(queueStatus, {L"currentIndex", L"current_index"}));
+      if (index < 0 || index >= static_cast<int>(queue.Size())) {
+        index = 0;
+        for (uint32_t queueIndex = 0; queueIndex < queue.Size(); ++queueIndex) {
+          try {
+            if (queue.GetAt(queueIndex).ValueType() == JsonValueType::Object &&
+                BoolValue(queue.GetAt(queueIndex).GetObject(), L"is_current")) {
+              index = static_cast<int>(queueIndex);
+              break;
+            }
+          } catch (...) {
+          }
+        }
+      }
+
+      int64_t elapsed = progressMs;
+      if (playing) {
+        if (anchorAt > 0) elapsed = std::max<int64_t>(0, fetchedAt - anchorAt);
+        else if (sampledAt > 0) elapsed += std::max<int64_t>(0, fetchedAt - sampledAt);
+      }
+
+      while (index >= 0 && index < static_cast<int>(queue.Size())) {
+        if (queue.GetAt(index).ValueType() != JsonValueType::Object) break;
+        itemSource = queue.GetAt(index).GetObject();
+        JsonObject normalized = NormalizeItem(itemSource);
+        const int64_t queueDuration = static_cast<int64_t>(NumberValue(normalized, L"durationMs"));
+        if (!playing || queueDuration <= 0 || elapsed <= queueDuration) {
+          durationMs = queueDuration;
+          progressMs = std::max<int64_t>(0, elapsed);
+          break;
+        }
+        elapsed -= queueDuration;
+        ++index;
+        if (index >= static_cast<int>(queue.Size())) {
+          itemSource = JsonObject{};
+          durationMs = 0;
+          progressMs = 0;
+          break;
+        }
+      }
+    } else {
+      const int64_t expectedEndAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"expectedEndAt")));
+      if (durationMs > 0 && expectedEndAt > 0) progressMs = durationMs - std::max<int64_t>(0, expectedEndAt - fetchedAt);
+      else if (playing && sampledAt > 0) progressMs += std::max<int64_t>(0, fetchedAt - sampledAt);
+    }
+
+    JsonObject item = NormalizeItem(itemSource);
+    if (durationMs <= 0) durationMs = static_cast<int64_t>(NumberValue(item, L"durationMs"));
+    if (durationMs > 0) progressMs = std::clamp<int64_t>(progressMs, 0, durationMs);
+
+    JsonObject resolved;
+    const std::wstring title = StringValue(item, L"title");
+    resolved.SetNamedValue(L"title", JsonValue::CreateStringValue(title));
+    resolved.SetNamedValue(L"artist", JsonValue::CreateStringValue(StringValue(item, L"artist")));
+    resolved.SetNamedValue(L"artwork", JsonValue::CreateStringValue(StringValue(item, L"artwork")));
+    resolved.SetNamedValue(L"durationMs", JsonValue::CreateNumberValue(static_cast<double>(durationMs)));
+    resolved.SetNamedValue(L"progressMs", JsonValue::CreateNumberValue(static_cast<double>(progressMs)));
+    resolved.SetNamedValue(L"playing", JsonValue::CreateBooleanValue(playing));
+    resolved.SetNamedValue(L"hasTrack", JsonValue::CreateBooleanValue(!title.empty()));
+    resolved.SetNamedValue(L"sampledAt", JsonValue::CreateNumberValue(static_cast<double>(fetchedAt)));
+    resolved.SetNamedValue(L"anchorAt", JsonValue::CreateNumberValue(
+        static_cast<double>(playing ? fetchedAt - progressMs : 0)));
+    resolved.SetNamedValue(L"queueEndAt", JsonValue::CreateNumberValue(static_cast<double>(queueEndAt)));
+    return resolved.Stringify().c_str();
+  } catch (...) {
+    return L"{}";
+  }
+}
 
 std::wstring ShortError(const std::string& value) {
   std::wstring output = Utf8ToWide(value);
@@ -216,6 +447,7 @@ void Renderer::NativePlaybackLoop() {
         update.payload = std::move(payload);
         update.error = error;
         update.fetchedAt = UnixMillis();
+        update.resolved = update.payload.empty() ? L"{}" : ResolvePlaybackPayload(update.payload, update.fetchedAt);
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
         SaveNativePlaybackSnapshot(
@@ -256,6 +488,7 @@ void Renderer::FlushNativePlaybackMessages() {
             << L",\"source\":" << JsonQuote(update.source)
             << L",\"fetchedAt\":" << update.fetchedAt;
     if (update.hasPayload) message << L",\"payload\":" << update.payload;
+    if (!update.resolved.empty()) message << L",\"resolved\":" << update.resolved;
     if (!update.error.empty()) message << L",\"error\":" << JsonQuote(update.error);
     message << L"}";
 

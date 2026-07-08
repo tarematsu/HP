@@ -211,6 +211,8 @@
 
   function unwrapPlaybackPayload(raw) {
     const root = asObject(raw);
+    if (typeof root.title === 'string' || typeof root.hasTrack === 'boolean') return root;
+    if (root.resolved && typeof root.resolved === 'object') return asObject(root.resolved);
     const candidates = [root.playback, asObject(root.data).playback, root.data, root.stationhead, root.result, root];
     for (const candidate of candidates) {
       const value = asObject(candidate);
@@ -221,6 +223,28 @@
 
   function playbackSnapshot(rawValue, now = Date.now()) {
     const value = unwrapPlaybackPayload(rawValue);
+    if (Object.prototype.hasOwnProperty.call(value, 'hasTrack') &&
+        Object.prototype.hasOwnProperty.call(value, 'durationMs')) {
+      const durationMs = Math.max(0, Number(value.durationMs ?? 0) || 0);
+      let progressMs = Math.max(0, Number(value.progressMs ?? value.positionMs ?? 0) || 0);
+      const playing = value.playing === true;
+      const anchorAt = Number(value.anchorAt ?? 0) || 0;
+      const sampledAt = Number(value.sampledAt ?? 0) || 0;
+      if (playing) {
+        if (anchorAt > 0) progressMs = Math.max(0, now - anchorAt);
+        else if (sampledAt > 0) progressMs += Math.max(0, now - sampledAt);
+      }
+      if (durationMs > 0) progressMs = Math.min(Math.max(0, progressMs), durationMs);
+      return {
+        title: String(value.title || '').trim(),
+        artist: String(value.artist || '').trim(),
+        artwork: String(value.artwork || '').trim(),
+        durationMs,
+        progressMs,
+        playing,
+        hasTrack: value.hasTrack === true || Boolean(value.title),
+      };
+    }
     const playing = value.playing === true || (value.is_broadcasting === true && value.is_paused !== true);
     const sampledAt = Number(value.sampledAt ?? value.monitorSampledAt ?? value.updatedAt ?? 0) || 0;
     const anchorAt = Number(value.anchorAt ?? 0) || 0;
@@ -434,9 +458,13 @@
     playbackStates[key].fetchedAt = Number(message.fetchedAt) || Date.now();
     playbackStates[key].error = String(message.error || '');
     playbackStates[key].revision += 1;
-    playbackStates[key].value = message.payload && typeof message.payload === 'object'
-      ? normalizePlaybackPayload(unwrapPlaybackPayload(message.payload), playbackStates[key].fetchedAt)
-      : {};
+    if (message.resolved && typeof message.resolved === 'object') {
+      playbackStates[key].value = message.resolved;
+    } else {
+      playbackStates[key].value = message.payload && typeof message.payload === 'object'
+        ? normalizePlaybackPayload(unwrapPlaybackPayload(message.payload), playbackStates[key].fetchedAt)
+        : {};
+    }
     renderAll();
   }
 

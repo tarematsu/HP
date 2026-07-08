@@ -68,6 +68,7 @@ class Renderer {
   struct NativePlaybackUpdate {
     std::wstring source;
     std::wstring payload;
+    std::wstring resolved;
     std::wstring error;
     int64_t fetchedAt = 0;
     uint64_t revision = 0;
