@@ -68,8 +68,9 @@ void Renderer::ApplyDashboardHostBounds() {
   const int width = std::max(1L, bounds_.right - bounds_.left);
   const int height = std::max(1L, bounds_.bottom - bounds_.top);
   if (dashboardHost_ && IsWindow(dashboardHost_)) {
-    SetWindowPos(dashboardHost_, HWND_TOP, bounds_.left, bounds_.top, width, height,
-                 SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    UINT flags = SWP_NOACTIVATE;
+    if (controllerVisible_) flags |= SWP_SHOWWINDOW;
+    SetWindowPos(dashboardHost_, HWND_TOP, bounds_.left, bounds_.top, width, height, flags);
   }
   const RECT controllerBounds{0, 0, width, height};
   if (controller_ && (!controllerBoundsValid_ || !EqualRect(&appliedControllerBounds_, &controllerBounds))) {
@@ -101,13 +102,14 @@ void Renderer::SetBounds(const RECT& bounds) {
 }
 
 void Renderer::SetVisible(bool visible) {
+  if (controller_ && controllerVisible_ != visible) {
+    if (SUCCEEDED(controller_->put_IsVisible(visible ? TRUE : FALSE))) {
+      controllerVisible_ = visible;
+    }
+  }
   if (dashboardHost_ && IsWindow(dashboardHost_)) {
     if (visible) ApplyDashboardHostBounds();
     else ShowWindow(dashboardHost_, SW_HIDE);
-  }
-  if (!controller_ || controllerVisible_ == visible) return;
-  if (SUCCEEDED(controller_->put_IsVisible(visible ? TRUE : FALSE))) {
-    controllerVisible_ = visible;
   }
 }
 
