@@ -60,6 +60,38 @@ void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
   ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
 }
 
+struct ControlsButtonRects {
+  RECT update{};
+  RECT restart{};
+  int toastTop = 0;
+};
+
+ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
+  const int width = std::max(1L, bounds.right - bounds.left);
+  const int height = std::max(1L, bounds.bottom - bounds.top);
+  const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
+  const int totalWidth = buttonWidth * 2 + 10;
+  const int left = bounds.left + (width - totalWidth) / 2;
+  const int top = bounds.top + std::max(48, height / 2 - 22);
+  return ControlsButtonRects{
+      RECT{left, top, left + buttonWidth, top + 44},
+      RECT{left + buttonWidth + 10, top, left + totalWidth, top + 44},
+      top + 54,
+  };
+}
+
+struct StationheadButtonRects {
+  RECT primaryAudio{};
+  RECT secondaryAudio{};
+};
+
+StationheadButtonRects StationheadButtonsFromBounds(const RECT& bounds) {
+  return StationheadButtonRects{
+      RECT{bounds.right - 108, bounds.top + 48, bounds.right - 16, bounds.top + 78},
+      RECT{bounds.right - 108, bounds.top + 142, bounds.right - 16, bounds.top + 172},
+  };
+}
+
 HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
@@ -424,27 +456,19 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       if (GetDlgCtrlID(hwnd) == kNativeControlsId) {
         RECT bounds{};
         GetClientRect(hwnd, &bounds);
-        const int width = std::max(1L, bounds.right - bounds.left);
-        const int height = std::max(1L, bounds.bottom - bounds.top);
-        const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
-        const int totalWidth = buttonWidth * 2 + 10;
-        const int left = (width - totalWidth) / 2;
-        const int top = std::max(48, height / 2 - 22);
         const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-        RECT updateRect{left, top, left + buttonWidth, top + 44};
-        RECT restartRect{left + buttonWidth + 10, top, left + totalWidth, top + 44};
-        if (PtInRect(&updateRect, point)) QueueAction(UiAction::AppUpdate);
-        else if (PtInRect(&restartRect, point)) QueueAction(UiAction::Restart);
+        const ControlsButtonRects buttons = ControlsButtonsFromBounds(bounds);
+        if (PtInRect(&buttons.update, point)) QueueAction(UiAction::AppUpdate);
+        else if (PtInRect(&buttons.restart, point)) QueueAction(UiAction::Restart);
         return 0;
       }
       if (GetDlgCtrlID(hwnd) == kNativeStationheadId) {
         RECT bounds{};
         GetClientRect(hwnd, &bounds);
         const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-        RECT firstButton{bounds.right - 108, bounds.top + 48, bounds.right - 16, bounds.top + 78};
-        RECT secondButton{bounds.right - 108, bounds.top + 142, bounds.right - 16, bounds.top + 172};
-        if (PtInRect(&firstButton, point)) QueueAction(UiAction::StationheadAudioToggleA);
-        else if (PtInRect(&secondButton, point)) QueueAction(UiAction::StationheadAudioToggleB);
+        const StationheadButtonRects buttons = StationheadButtonsFromBounds(bounds);
+        if (PtInRect(&buttons.primaryAudio, point)) QueueAction(UiAction::StationheadAudioToggleA);
+        else if (PtInRect(&buttons.secondaryAudio, point)) QueueAction(UiAction::StationheadAudioToggleB);
         return 0;
       }
       break;
@@ -706,15 +730,10 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   SelectObject(memoryDc, previousFont);
   DeleteObject(headerFont);
 
-  const int width = std::max(1L, bounds.right - bounds.left);
-  const int height = std::max(1L, bounds.bottom - bounds.top);
-  const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
-  const int totalWidth = buttonWidth * 2 + 10;
-  const int left = (width - totalWidth) / 2;
-  const int top = std::max(48, height / 2 - 22);
+  const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(bounds);
   const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
-      {L"更新", RECT{left, top, left + buttonWidth, top + 44}},
-      {L"再起動", RECT{left + buttonWidth + 10, top, left + totalWidth, top + 44}},
+      {L"更新", controlButtons.update},
+      {L"再起動", controlButtons.restart},
   }};
   HPEN border = CreatePen(PS_SOLID, 1, RGB(58, 67, 80));
   HBRUSH fill = CreateSolidBrush(RGB(24, 34, 47));
@@ -734,7 +753,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     HFONT toastFont = CreateUiFont(12, FW_NORMAL);
     previousFont = SelectObject(memoryDc, toastFont);
     SetTextColor(memoryDc, RGB(255, 209, 140));
-    RECT toastRect{12, top + 54, bounds.right - 12, std::max(top + 76L, bounds.bottom - 8)};
+    RECT toastRect{12, controlButtons.toastTop, bounds.right - 12,
+                   std::max(static_cast<LONG>(controlButtons.toastTop + 22), bounds.bottom - 8)};
     DrawTextInRect(memoryDc, nativeToast_, toastRect,
                    DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
     SelectObject(memoryDc, previousFont);
@@ -1118,7 +1138,8 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     HBRUSH buttonBrush = CreateSolidBrush(muted ? RGB(42, 33, 35) : RGB(24, 46, 34));
     oldBrush = SelectObject(memoryDc, buttonBrush);
-    RECT button{rowRect.right - 96, rowRect.top + 10, rowRect.right - 8, rowRect.top + 40};
+    const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(bounds);
+    RECT button = row == 0 ? stationButtons.primaryAudio : stationButtons.secondaryAudio;
     RoundRect(memoryDc, button.left, button.top, button.right, button.bottom, 7, 7);
     SelectObject(memoryDc, oldBrush);
     DeleteObject(buttonBrush);
