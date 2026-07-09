@@ -98,6 +98,8 @@ class StationheadPlayer {
   void ClickTarget(double x, double y);
   void ResetNavigationRouteState(int64_t nowMs);
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
+  void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
+                              const std::wstring& reason, bool fallbackActive);
   bool NeedsInteractiveWindow() const;
   void KeepPlaybackBehindDashboard();
   void SetStartupBounds();
@@ -150,6 +152,7 @@ class StationheadPlayer {
   int64_t lastScanAt_ = 0;
   int64_t startupScanUntil_ = 0;
   int64_t lastAudioAtMs_ = 0;
+  int64_t noAudioSinceAt_ = 0;
   int64_t nextTickAt_ = 0;
   int64_t lastProcessSampleAt_ = 0;
   std::wstring authPendingUrl_;

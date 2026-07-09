@@ -100,10 +100,7 @@ set(HOMEPANEL_SPOTIFY_SOURCES
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
   src/stationhead_window_layout.cpp
-  src/sh_player.cpp
-  src/sh_audio.cpp
-  src/sh_selection.cpp
-  src/sh_state.cpp
+  src/sh.cpp
   src/secondary_sh.cpp
   src/secondary_sh_audio.cpp)
 
