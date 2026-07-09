@@ -115,23 +115,6 @@ function monitorCurrentIndex(payload: MonitorPayload | null): number {
   return explicit >= 0 ? explicit : statusIndex;
 }
 
-function queueEndAt(
-  queue: QueueItem[],
-  currentIndex: number,
-  anchorAt: number,
-): number | null {
-  if (
-    currentIndex < 0 ||
-    currentIndex >= queue.length ||
-    !Number.isFinite(anchorAt)
-  ) {
-    return null;
-  }
-  return queue
-    .slice(currentIndex)
-    .reduce((end, track) => end + track.durationMs, anchorAt);
-}
-
 export async function fetchStationhead(env: Env): Promise<SourceResult> {
   const sampledAt = Date.now();
   let monitor: MonitorPayload | null = null;
@@ -144,33 +127,8 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
 
   const queue = monitorQueue(monitor);
   const currentIndex = monitorCurrentIndex(monitor);
-  const monitorGeneratedAt = Math.max(0, finite(monitor?.generated_at));
-  const monitorProgressMs =
-    currentIndex >= 0
-      ? Math.max(
-          0,
-          finite(
-            monitor?.queue?.[currentIndex]?.progress_ms,
-            finite(monitor?.queue_status?.progress_ms),
-          ),
-        )
-      : 0;
-  const anchorAt =
-    currentIndex >= 0
-      ? finite(
-          monitor?.queue_status?.anchor_at,
-          monitorGeneratedAt - monitorProgressMs,
-        )
-      : 0;
   const playing = Boolean(monitor?.playing && currentIndex >= 0);
-
   const currentItem = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
-  const durationMs = currentItem?.durationMs ?? 0;
-  const expectedEndAt =
-    playing && durationMs > monitorProgressMs
-      ? anchorAt + durationMs
-      : null;
-  const calculatedQueueEndAt = queueEndAt(queue, currentIndex, anchorAt);
 
   return {
     source: "stationhead",
@@ -201,17 +159,6 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
             durationMs: currentItem.durationMs,
           }
         : null,
-      /*
-      monitorSampledAt: monitorGeneratedAt || null,
-      progressMs: monitorProgressMs,
-      durationMs,
-      anchorAt: anchorAt || null,
-      expectedEndAt,
-      queueEndAt: calculatedQueueEndAt ?? monitor?.queue_status?.queue_end_at ?? null,
-      currentIndex,
-      queueRevision: monitor?.queue_revision ?? null,
-      queue,
-      */
     },
     observedAt: sampledAt,
   };

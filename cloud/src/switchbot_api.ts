@@ -106,6 +106,3 @@ export async function loadSwitchBotSnapshot(env: SwitchBotEnv): Promise<SwitchBo
   }
 }
 
-export async function loadSwitchBotState(env: SwitchBotEnv): Promise<SwitchBotState | null> {
-  return (await loadSwitchBotSnapshot(env)).state;
-}
