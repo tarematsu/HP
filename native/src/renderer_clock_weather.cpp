@@ -1176,11 +1176,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
     const int artSize = std::clamp(static_cast<int>(rowRect.bottom - rowRect.top) - 20, 42, 60);
     RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 10 + artSize,
              rowRect.top + 10 + artSize};
-    HBRUSH artBrush = CreateSolidBrush(kWidgetSurfaceAlt);
-    HGDIOBJ oldBrush = SelectObject(memoryDc, artBrush);
-    RoundRect(memoryDc, art.left, art.top, art.right, art.bottom, 10, 10);
-    SelectObject(memoryDc, oldBrush);
-    DeleteObject(artBrush);
+    DrawWidgetCard(memoryDc, art, kWidgetSurfaceAlt, 8);
     if (playback.hasTrack) {
       DrawPremultipliedBitmap(memoryDc,
                               NativeArtworkBitmap(playback.track.artwork, art.right - art.left,
@@ -1236,11 +1232,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
       }
     }
 
-    HBRUSH buttonBrush = CreateSolidBrush(muted ? RGB(42, 33, 35) : RGB(24, 46, 34));
-    oldBrush = SelectObject(memoryDc, buttonBrush);
-    RoundRect(memoryDc, button.left, button.top, button.right, button.bottom, 7, 7);
-    SelectObject(memoryDc, oldBrush);
-    DeleteObject(buttonBrush);
+    DrawWidgetCard(memoryDc, button, muted ? RGB(42, 33, 35) : RGB(24, 46, 34), 7);
     SetTextColor(memoryDc, muted ? RGB(255, 128, 140) : kWidgetGreen);
     SelectObject(memoryDc, buttonFont);
     DrawTextInRect(memoryDc, muted ? L"音声OFF" : L"音声ON", button,
