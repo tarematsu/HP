@@ -194,8 +194,11 @@ void Renderer::ComposeRadarFrame() {
   int64_t validAt = 0;
   std::wstring signature;
   std::vector<RadarTile> tiles;
-  const fs::path satellitePath = uiDir_ / L"radar-satellite.png";
-  const fs::path mapPath = uiDir_ / L"radar-map.png";
+  // Bundled radar layers are extracted next to the executable under "ui" by
+  // embedded_ui.cpp (executable.parent_path()/"ui"); rootDir_ is that exe dir.
+  const fs::path uiDir = rootDir_ / L"ui";
+  const fs::path satellitePath = uiDir / L"radar-satellite.png";
+  const fs::path mapPath = uiDir / L"radar-map.png";
   if (!json.empty()) {
     try {
       const JsonObject root = JsonObject::Parse(json);
