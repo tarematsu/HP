@@ -1336,6 +1336,16 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
                    DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
     RECT stage{content.left, content.top + 26, content.right, content.bottom};
+    HPEN stageBorder = CreatePen(PS_SOLID, 1, RGB(34, 44, 56));
+    HBRUSH stageBrush = CreateSolidBrush(RGB(11, 16, 23));
+    HGDIOBJ previousStagePen = SelectObject(memoryDc, stageBorder);
+    HGDIOBJ previousStageBrush = SelectObject(memoryDc, stageBrush);
+    RoundRect(memoryDc, stage.left, stage.top, stage.right, stage.bottom, 8, 8);
+    SelectObject(memoryDc, previousStageBrush);
+    SelectObject(memoryDc, previousStagePen);
+    DeleteObject(stageBrush);
+    DeleteObject(stageBorder);
+    stage = NormalizeInsetRect(stage, 6, 6, 6, 6);
     const int stageWidth = std::max(1L, stage.right - stage.left);
     const int stageHeight = std::max(1L, stage.bottom - stage.top);
     if (radarFrameBitmap_) {
