@@ -1,4 +1,5 @@
 #include "cloud_client.h"
+#include "winhttp_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 #include <iphlpapi.h>
 
@@ -11,13 +12,7 @@ using winrt::Windows::Data::Json::JsonValue;
 using winrt::Windows::Data::Json::JsonValueType;
 
 std::wstring HeaderValue(HINTERNET request, DWORD query) {
-  DWORD size = 0;
-  WinHttpQueryHeaders(request, query, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &size, WINHTTP_NO_HEADER_INDEX);
-  if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || !size) return {};
-  std::wstring value(size / sizeof(wchar_t), L'\0');
-  if (!WinHttpQueryHeaders(request, query, WINHTTP_HEADER_NAME_BY_INDEX, value.data(), &size, WINHTTP_NO_HEADER_INDEX)) return {};
-  value.resize(wcsnlen(value.c_str(), value.size()));
-  return value;
+  return QueryHeaderValue(request, query);
 }
 
 std::wstring IsoLocalNow() {

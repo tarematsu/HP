@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "winhttp_helpers.h"
 
 namespace hp {
 inline std::wstring ArtworkCacheRequestPathFromUrl(
@@ -14,22 +15,6 @@ inline std::wstring ArtworkCacheRequestPathFromUrl(
     path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
   }
   return path;
-}
-
-inline std::wstring ArtworkCacheHeaderValue(HINTERNET request, DWORD query) {
-  DWORD size = 0;
-  WinHttpQueryHeaders(
-      request, query, WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &size,
-      WINHTTP_NO_HEADER_INDEX);
-  if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || !size) return {};
-  std::wstring value(size / sizeof(wchar_t), L'\0');
-  if (!WinHttpQueryHeaders(
-          request, query, WINHTTP_HEADER_NAME_BY_INDEX, value.data(), &size,
-          WINHTTP_NO_HEADER_INDEX)) {
-    return {};
-  }
-  value.resize(wcsnlen(value.c_str(), value.size()));
-  return value;
 }
 
 inline std::wstring GuessArtworkExtension(const std::wstring& contentType,
@@ -139,7 +124,7 @@ inline bool DownloadUrlBytes(const wchar_t* rawUrl, size_t maximumBytes,
     }
 
     if (contentType) {
-      *contentType = ArtworkCacheHeaderValue(request, WINHTTP_QUERY_CONTENT_TYPE);
+      *contentType = QueryHeaderValue(request, WINHTTP_QUERY_CONTENT_TYPE);
     }
     bool ok = true;
     for (;;) {
