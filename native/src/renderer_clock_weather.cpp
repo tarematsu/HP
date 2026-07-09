@@ -677,6 +677,7 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
   const int width = std::max(1L, content.right - content.left);
+  const int height = std::max(1L, content.bottom - content.top);
   const int gap = 5;
   const int cardWidth = (width - gap * 2) / 3;
   const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
@@ -688,17 +689,17 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   HGDIOBJ previousPen = SelectObject(memoryDc, border);
   HBRUSH card = CreateSolidBrush(kWidgetSurfaceAlt);
   HGDIOBJ previousBrush = SelectObject(memoryDc, card);
-  HFONT labelFont = CreateUiFont(15, FW_NORMAL);
-  HFONT valueFont = CreateUiFont(29, FW_NORMAL);
+  HFONT labelFont = CreateUiFont(std::clamp(height / 5, 10, 15), FW_NORMAL);
+  HFONT valueFont = CreateUiFont(std::clamp(height / 3, 18, 29), FW_NORMAL);
   for (int i = 0; i < 3; ++i) {
     RECT rect{content.left + i * (cardWidth + gap), content.top,
               content.left + i * (cardWidth + gap) + cardWidth, content.bottom};
     RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
-    RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 25};
+    RECT labelRect{rect.left, rect.top + 6, rect.right, rect.top + std::clamp(height / 3, 20, 26)};
     SetTextColor(memoryDc, kWidgetMuted);
     HGDIOBJ previousFont = SelectObject(memoryDc, labelFont);
     DrawTextInRect(memoryDc, values[i].first, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    RECT valueRect{rect.left + 2, rect.top + 26, rect.right - 2, rect.bottom - 4};
+    RECT valueRect{rect.left + 2, labelRect.bottom, rect.right - 2, rect.bottom - 4};
     SetTextColor(memoryDc, kWidgetText);
     SelectObject(memoryDc, valueFont);
     DrawTextInRect(memoryDc, values[i].second, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
@@ -937,22 +938,25 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
     if (std::isfinite(hours[i].precipitationProbability)) maxPop = std::max(maxPop, hours[i].precipitationProbability);
   }
 
-  RECT popRect{content.left, content.top, content.left + 72, content.bottom};
+  const int contentWidth = std::max(1L, content.right - content.left);
+  const int popWidth = std::clamp(contentWidth / 4, 58, 72);
+  RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
   HBRUSH popBrush = CreateSolidBrush(kWidgetSurfaceAlt);
   HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
   HGDIOBJ previousBrush = SelectObject(memoryDc, popBrush);
   HGDIOBJ previousPen = SelectObject(memoryDc, border);
   RoundRect(memoryDc, popRect.left, popRect.top, popRect.right, popRect.bottom, 8, 8);
 
-  HFONT smallFont = CreateUiFont(9, FW_NORMAL);
+  const int popHeight = std::max(1, static_cast<int>(popRect.bottom - popRect.top));
+  HFONT smallFont = CreateUiFont(std::clamp(popHeight / 9, 8, 10), FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, smallFont);
   SetTextColor(memoryDc, kWidgetMuted);
-  RECT labelRect{popRect.left, popRect.top + 18, popRect.right, popRect.top + 34};
+  RECT labelRect{popRect.left, popRect.top + 14, popRect.right, popRect.top + 32};
   DrawTextInRect(memoryDc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
   DeleteObject(smallFont);
 
-  HFONT popFont = CreateUiFont(28, FW_BOLD);
+  HFONT popFont = CreateUiFont(std::clamp(popHeight / 3, 20, 30), FW_BOLD);
   previousFont = SelectObject(memoryDc, popFont);
   SetTextColor(memoryDc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? RGB(120, 190, 235) : kWidgetMuted);
   RECT valueRect{popRect.left, popRect.top + 36, popRect.right, popRect.bottom - 10};
@@ -964,10 +968,11 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   HFONT hourFont = CreateUiFont(10, FW_NORMAL);
   HFONT rainFont = CreateUiFont(13, FW_NORMAL);
   const int rightLeft = popRect.right + 6;
-  const int cardGap = 2;
+  const int cardGap = 3;
   const int availableWidth = std::max(1L, content.right - rightLeft);
-  const int cardWidth = (availableWidth - cardGap * 4) / 5;
-  for (int i = 0; i < 5; ++i) {
+  const int slotCount = std::clamp(availableWidth / 42, 2, 5);
+  const int cardWidth = std::max(1, (availableWidth - cardGap * (slotCount - 1)) / slotCount);
+  for (int i = 0; i < slotCount; ++i) {
     RECT cardRect{rightLeft + i * (cardWidth + cardGap), content.top,
                   rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
     RoundRect(memoryDc, cardRect.left, cardRect.top, cardRect.right, cardRect.bottom, 6, 6);
