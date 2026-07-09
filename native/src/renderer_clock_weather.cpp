@@ -1054,29 +1054,33 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   }
 
   const int contentWidth = std::max(1L, content.right - content.left);
-  const int popWidth = std::clamp(contentWidth / 4, 58, 72);
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  const int popWidth = std::clamp(contentWidth * 28 / 100, 72, 104);
   RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
 
   const int popHeight = std::max(1, static_cast<int>(popRect.bottom - popRect.top));
-  HFONT smallFont = CachedUiFont(std::clamp(popHeight / 9, 8, 10), FW_NORMAL);
+  HFONT smallFont = CachedUiFont(std::clamp(popHeight / 7, 12, 18), FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, smallFont);
   SetTextColor(memoryDc, kWidgetMuted);
-  RECT labelRect{popRect.left, popRect.top + 14, popRect.right, popRect.top + 32};
+  RECT labelRect{popRect.left, popRect.top + std::clamp(popHeight / 10, 10, 18),
+                 popRect.right, popRect.top + std::clamp(popHeight / 4, 32, 48)};
   DrawTextInRect(memoryDc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
 
-  HFONT popFont = CachedUiFont(std::clamp(popHeight / 3, 20, 30), FW_BOLD);
+  HFONT popFont = CachedUiFont(std::clamp(popHeight * 42 / 100, 38, 64), FW_BOLD);
   previousFont = SelectObject(memoryDc, popFont);
   SetTextColor(memoryDc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
-  RECT valueRect{popRect.left, popRect.top + 36, popRect.right, popRect.bottom - 10};
+  RECT valueRect{popRect.left, labelRect.bottom + std::clamp(popHeight / 12, 8, 16),
+                 popRect.right, popRect.bottom - std::clamp(popHeight / 10, 10, 18)};
   DrawTextInRect(memoryDc, std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%", valueRect,
                  DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
 
-  HFONT hourFont = CachedUiFont(10, FW_NORMAL);
-  HFONT rainFont = CachedUiFont(13, FW_NORMAL);
-  const int rightLeft = popRect.right + 18;
-  const int cardGap = 12;
+  HFONT hourFont = CachedUiFont(std::clamp(contentHeight / 10, 13, 20), FW_SEMIBOLD);
+  HFONT tempFont = CachedUiFont(std::clamp(contentHeight / 9, 14, 22), FW_SEMIBOLD);
+  HFONT rainFont = CachedUiFont(std::clamp(contentHeight / 11, 12, 18), FW_SEMIBOLD);
+  const int rightLeft = popRect.right + std::clamp(contentWidth / 25, 12, 22);
+  const int cardGap = std::clamp(contentWidth / 45, 8, 14);
   const int availableWidth = std::max(1L, content.right - rightLeft);
   const int slotCount = std::clamp(availableWidth / 42, 2, 5);
   const int cardWidth = std::max(1, (availableWidth - cardGap * (slotCount - 1)) / slotCount);
@@ -1085,22 +1089,35 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
                   rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, hourFont);
-    RECT hourRect{cardRect.left, cardRect.top + 4, cardRect.right, cardRect.top + 20};
+    const int topPad = std::clamp(contentHeight / 18, 8, 16);
+    const int hourHeight = std::clamp(contentHeight / 8, 18, 28);
+    RECT hourRect{cardRect.left, cardRect.top + topPad, cardRect.right,
+                  cardRect.top + topPad + hourHeight};
     const std::wstring hour = i < static_cast<int>(count) ? std::to_wstring(hours[i].hour) + L"時" : L"--";
     DrawTextInRect(memoryDc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     if (i < static_cast<int>(count) && !hours[i].icon.empty()) {
-      const int iconWidth = std::clamp(cardWidth - 4, 34, 54);
+      const int iconWidth = std::clamp(std::min(cardWidth + 8, contentHeight * 42 / 100), 48, 82);
       const int iconHeight = std::max(18, iconWidth * 48 / 90);
-      RECT iconRect{cardRect.left + (cardWidth - iconWidth) / 2, hourRect.bottom + 5,
-                    cardRect.left + (cardWidth + iconWidth) / 2, hourRect.bottom + 5 + iconHeight};
+      const int iconTop = hourRect.bottom + std::clamp(contentHeight / 18, 8, 16);
+      RECT iconRect{cardRect.left + (cardWidth - iconWidth) / 2, iconTop,
+                    cardRect.left + (cardWidth + iconWidth) / 2, iconTop + iconHeight};
       DrawPremultipliedBitmap(memoryDc,
                               NativeWeatherIconBitmap(hours[i].icon, IsWeatherNightHour(hours[i].hour),
                                                       iconWidth, iconHeight),
                               iconRect);
     }
+    if (i < static_cast<int>(count) && std::isfinite(hours[i].temperature)) {
+      SetTextColor(memoryDc, kWidgetText);
+      SelectObject(memoryDc, tempFont);
+      RECT tempRect{cardRect.left, cardRect.bottom - std::clamp(contentHeight / 3, 48, 72),
+                    cardRect.right, cardRect.bottom - std::clamp(contentHeight / 6, 26, 42)};
+      DrawTextInRect(memoryDc, NumberOrDash(hours[i].temperature, 0) + L"℃",
+                     tempRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
     SetTextColor(memoryDc, kWidgetBlue);
     SelectObject(memoryDc, rainFont);
-    RECT rainRect{cardRect.left, cardRect.bottom - 28, cardRect.right, cardRect.bottom - 6};
+    RECT rainRect{cardRect.left, cardRect.bottom - std::clamp(contentHeight / 7, 20, 34),
+                  cardRect.right, cardRect.bottom - std::clamp(contentHeight / 26, 6, 12)};
     const std::wstring rain = i < static_cast<int>(count) ? NumberOrDash(hours[i].rainMm, 0) + L"mm" : L"--";
     DrawTextInRect(memoryDc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(memoryDc, previousFont);
