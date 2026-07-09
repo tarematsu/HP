@@ -105,6 +105,7 @@ bool LoadDashboardSnapshot(const fs::path& path, DashboardSnapshot& output, std:
         const JsonObject item = hourly.GetNamedObject(key);
         next.weatherHours.push_back({
             hour,
+            StringOr(item, L"icon"),
             NumberOrNaN(item, L"temp"),
             NumberOrNaN(item, L"pop"),
             NumberOrNaN(item, L"rainMm"),

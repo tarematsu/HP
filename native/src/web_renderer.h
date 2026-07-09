@@ -248,6 +248,7 @@ class Renderer {
   NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
   bool NativePlaybackActive(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
+  HBITMAP NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height);
   void StartRadarCompose();
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();

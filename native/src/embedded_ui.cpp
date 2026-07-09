@@ -37,6 +37,8 @@ struct RuntimeAsset {
   const wchar_t* name;
 };
 
+#include "weather_icon_assets.h"
+
 constexpr RuntimeAsset kRuntimeAssets[] = {
     {110, L"radar-satellite.png"},
     {112, L"radar-map.png"},
@@ -61,12 +63,19 @@ std::string ExecutableStamp(const hp::fs::path& executable) {
     const std::string content = ReadResource(asset.id);
     stamp << '|' << asset.id << ':' << content.size() << ':' << std::hex << HashBytes(content) << std::dec;
   }
+  for (const RuntimeAsset& asset : kWeatherIconAssets) {
+    const std::string content = ReadResource(asset.id);
+    stamp << '|' << asset.id << ':' << content.size() << ':' << std::hex << HashBytes(content) << std::dec;
+  }
   return stamp.str();
 }
 
 bool RuntimeAssetsReady(const hp::fs::path& folder, const std::string& stamp) {
   if (!FileMatches(folder / L"native-assets.signature", stamp)) return false;
   for (const RuntimeAsset& asset : kRuntimeAssets) {
+    if (!NonEmptyFile(folder / asset.name)) return false;
+  }
+  for (const RuntimeAsset& asset : kWeatherIconAssets) {
     if (!NonEmptyFile(folder / asset.name)) return false;
   }
   return true;
@@ -128,6 +137,10 @@ struct RuntimeAssetInstaller {
     if (!RuntimeAssetsReady(folder, signature)) {
       bool installed = true;
       for (const RuntimeAsset& asset : kRuntimeAssets) {
+        installed = WriteContent(folder / asset.name, ReadResource(asset.id)) && installed;
+      }
+      hp::fs::create_directories(folder / L"weather-icons", error);
+      for (const RuntimeAsset& asset : kWeatherIconAssets) {
         installed = WriteContent(folder / asset.name, ReadResource(asset.id)) && installed;
       }
       if (installed) WriteContent(folder / L"native-assets.signature", signature);

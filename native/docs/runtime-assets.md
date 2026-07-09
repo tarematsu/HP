@@ -9,6 +9,8 @@ Current assets:
   `seamlessphoto` tile composite centered on Kawagoe Suna-shinden 1-chome.
 - `native/scripts/ui/radar-map.png`: 1920x1280 transparent municipality
   boundary overlay generated from GSI `experimental_bvmap` vector tiles.
+- `native/scripts/ui/weather-icons/*.png`: Yahoo weather icons embedded at
+  build time and extracted under `ui/weather-icons`.
 
 When adding a runtime asset:
 

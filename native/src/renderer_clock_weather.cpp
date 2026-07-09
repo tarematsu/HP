@@ -16,8 +16,8 @@ constexpr COLORREF kWidgetSurface = RGB(18, 23, 31);
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
 // Label hierarchy follows iOS dark-mode label/secondaryLabel/tertiaryLabel.
 constexpr COLORREF kWidgetText = RGB(255, 255, 255);
-constexpr COLORREF kWidgetMuted = RGB(152, 152, 157);
-constexpr COLORREF kWidgetSubtle = RGB(99, 99, 102);
+constexpr COLORREF kWidgetMuted = RGB(255, 255, 255);
+constexpr COLORREF kWidgetSubtle = RGB(255, 255, 255);
 // Accents follow iOS dark-mode system colors (systemBlue/Green/Orange/Yellow/Red).
 constexpr COLORREF kWidgetBlue = RGB(10, 132, 255);
 constexpr COLORREF kWidgetBlueMuted = RGB(64, 156, 255);
@@ -259,6 +259,10 @@ std::wstring Fixed(double value, int digits) {
 std::wstring NumberOrDash(double value, int digits = 0) {
   if (!std::isfinite(value)) return L"--";
   return Fixed(value, digits);
+}
+
+bool IsWeatherNightHour(int hour) {
+  return hour < 6 || hour >= 18;
 }
 
 double RangeMin(const std::vector<double>& values, double fallback) {
@@ -1081,12 +1085,22 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
                   rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, hourFont);
-    RECT hourRect{cardRect.left, cardRect.top + 8, cardRect.right, cardRect.top + 24};
+    RECT hourRect{cardRect.left, cardRect.top + 4, cardRect.right, cardRect.top + 20};
     const std::wstring hour = i < static_cast<int>(count) ? std::to_wstring(hours[i].hour) + L"時" : L"--";
     DrawTextInRect(memoryDc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    if (i < static_cast<int>(count) && !hours[i].icon.empty()) {
+      const int iconWidth = std::clamp(cardWidth - 4, 34, 54);
+      const int iconHeight = std::max(18, iconWidth * 48 / 90);
+      RECT iconRect{cardRect.left + (cardWidth - iconWidth) / 2, hourRect.bottom + 5,
+                    cardRect.left + (cardWidth + iconWidth) / 2, hourRect.bottom + 5 + iconHeight};
+      DrawPremultipliedBitmap(memoryDc,
+                              NativeWeatherIconBitmap(hours[i].icon, IsWeatherNightHour(hours[i].hour),
+                                                      iconWidth, iconHeight),
+                              iconRect);
+    }
     SetTextColor(memoryDc, kWidgetBlue);
     SelectObject(memoryDc, rainFont);
-    RECT rainRect{cardRect.left, cardRect.top + 45, cardRect.right, cardRect.bottom - 8};
+    RECT rainRect{cardRect.left, cardRect.bottom - 28, cardRect.right, cardRect.bottom - 6};
     const std::wstring rain = i < static_cast<int>(count) ? NumberOrDash(hours[i].rainMm, 0) + L"mm" : L"--";
     DrawTextInRect(memoryDc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(memoryDc, previousFont);
@@ -1348,6 +1362,45 @@ HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int he
   HBITMAP bitmap = DecodeImageFileToBitmap(dataDir_ / relative, width, height);
   if (!bitmap) return nullptr;
   if (nativeArtworkBitmaps_.size() >= 48) {
+    auto oldest = nativeArtworkBitmaps_.begin();
+    for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {
+      if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
+    }
+    if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
+    nativeArtworkBitmaps_.erase(oldest);
+  }
+  nativeArtworkBitmaps_[key] = ArtworkBitmapCacheEntry{bitmap, ++nativeArtworkUseCounter_};
+  return bitmap;
+}
+
+HBITMAP Renderer::NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height) {
+  if (icon.empty() || width <= 0 || height <= 0) return nullptr;
+  for (wchar_t ch : icon) {
+    if (ch < L'0' || ch > L'9') return nullptr;
+  }
+  const std::wstring fileName = icon + (night ? L"_night.png" : L"_day.png");
+  const std::wstring key = L"weather-icon:" + fileName + L"#" +
+                           std::to_wstring(width) + L"x" + std::to_wstring(height);
+  auto found = nativeArtworkBitmaps_.find(key);
+  if (found != nativeArtworkBitmaps_.end()) {
+    found->second.lastUsed = ++nativeArtworkUseCounter_;
+    return found->second.bitmap;
+  }
+
+  const auto decodeIcon = [&](const std::wstring& name) {
+    return DecodeImageFileToBitmap(rootDir_ / L"ui" / L"weather-icons" / name, width, height);
+  };
+  HBITMAP bitmap = decodeIcon(fileName);
+  if (!bitmap && night) bitmap = decodeIcon(icon + L"_day.png");
+  if (!bitmap) {
+    const wchar_t family = icon.front();
+    const std::wstring fallback = family == L'2' ? L"200" : family == L'3' ? L"300" :
+                                  family == L'4' ? L"400" : L"100";
+    bitmap = decodeIcon(fallback + (night ? L"_night.png" : L"_day.png"));
+    if (!bitmap && night) bitmap = decodeIcon(fallback + L"_day.png");
+  }
+  if (!bitmap) return nullptr;
+  if (nativeArtworkBitmaps_.size() >= 64) {
     auto oldest = nativeArtworkBitmaps_.begin();
     for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {
       if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;

@@ -14,6 +14,7 @@ struct PanelDataStatus {
 
 struct WeatherHourData {
   int hour = 0;
+  std::wstring icon;
   double temperature = std::numeric_limits<double>::quiet_NaN();
   double precipitationProbability = std::numeric_limits<double>::quiet_NaN();
   double rainMm = std::numeric_limits<double>::quiet_NaN();
