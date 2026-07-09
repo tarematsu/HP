@@ -106,8 +106,6 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
 
 set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_core.cpp
-  src/renderer_visuals.cpp
-  src/renderer_animation.cpp
   src/renderer_clock_weather.cpp
   src/renderer_radar_ui.cpp)
 
