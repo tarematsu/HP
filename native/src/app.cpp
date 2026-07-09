@@ -305,16 +305,15 @@ void App::Tick() {
   if (toastUntil_ && now >= toastUntil_) {
     toastUntil_ = 0;
     renderState_.toast.clear();
-    MarkRenderStateDirty();
-    InvalidateAll();
+    PublishRenderStateNow();
   }
   if (newsCount_ > 1 && lastNewsRotateAt_ > 0 && now - lastNewsRotateAt_ >= 30'000) {
     lastNewsRotateAt_ = now;
     newsIndex_ = (newsIndex_ + 1) % newsCount_;
     renderState_.newsIndex = newsIndex_;
-    MarkRenderStateDirty();
-    InvalidateAll();
+    PublishRenderStateNow();
   }
+  PublishRenderState();
   if (rendererStarted_) renderer_->TickNativePanels(now);
   uint32_t nextTickMs = kMaxIdleTickMs;
   if (!rendererStarted_ || selectedTab_ == WorkspaceTab::Main ||
@@ -351,8 +350,8 @@ void App::Draw() {
 void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
   renderState_.toast = std::move(message);
   toastUntil_ = durationMs > 0 ? UnixMillis() + durationMs : 0;
-  MarkRenderStateDirty();
-  if (invalidate) InvalidateAll();
+  if (invalidate) PublishRenderStateNow();
+  else MarkRenderStateDirty();
 }
 
 bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
@@ -406,6 +405,12 @@ void App::PublishRenderState() {
   renderStateDirty_ = false;
 }
 
+void App::PublishRenderStateNow() {
+  MarkRenderStateDirty();
+  if (!rendererStarted_) return;
+  PublishRenderState();
+}
+
 void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept {
   scheduledPrimaryAudioAudible_ = primaryAudible;
   if (stationhead_) stationhead_->SetAudioMuted(!primaryAudible);
@@ -449,16 +454,14 @@ void App::HandleAction(UiAction action, float seekFraction) {
       } else {
         renderState_.toast = L"認証タブが開いていません";
         toastUntil_ = UnixMillis() + 3000;
-        MarkRenderStateDirty();
-        InvalidateAll();
+        PublishRenderStateNow();
       }
       break;
     case UiAction::DataRefresh:
       renderState_.toast = cloud_->RequestRemoteRefresh()
         ? L"Cloudflareへ更新を要求しました" : L"更新要求に失敗しました";
       toastUntil_ = UnixMillis() + 4000;
-      MarkRenderStateDirty();
-      InvalidateAll();
+      PublishRenderStateNow();
       break;
     case UiAction::AppUpdate:
       CheckForUpdateAsync(true);
@@ -469,8 +472,7 @@ void App::HandleAction(UiAction action, float seekFraction) {
       break;
     case UiAction::Maintenance:
       renderState_.maintenance = !renderState_.maintenance;
-      MarkRenderStateDirty();
-      InvalidateAll();
+      PublishRenderStateNow();
       break;
     case UiAction::StationheadReconnect:
       stationhead_->Reconnect();
@@ -490,8 +492,7 @@ void App::HandleAction(UiAction action, float seekFraction) {
       break;
     case UiAction::CloseMaintenance:
       renderState_.maintenance = false;
-      MarkRenderStateDirty();
-      InvalidateAll();
+      PublishRenderStateNow();
       break;
     case UiAction::RadarToggle:
       radar_->TogglePlayback();

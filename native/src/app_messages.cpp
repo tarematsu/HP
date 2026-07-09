@@ -43,12 +43,10 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_KEYDOWN:
       if (wParam == VK_F12) {
         renderState_.maintenance = !renderState_.maintenance;
-        MarkRenderStateDirty();
-        InvalidateAll();
+        PublishRenderStateNow();
       } else if (wParam == VK_ESCAPE && renderState_.maintenance) {
         renderState_.maintenance = false;
-        MarkRenderStateDirty();
-        InvalidateAll();
+        PublishRenderStateNow();
       }
       return 0;
     case WM_HP_CLOUD_UPDATED: {
@@ -68,14 +66,14 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         newsIndex_ = 0;
         lastNewsRotateAt_ = count > 1 ? now : 0;
         renderState_.newsIndex = 0;
-        MarkRenderStateDirty();
+        PublishRenderStateNow();
       }
 
       const std::wstring monitorHandle = renderer_->MonitorHostHandle();
       if (!monitorHandle.empty() && stationhead_) {
         stationhead_->NotifyMonitorHandle(monitorHandle);
       }
-      InvalidateAll();
+      PublishRenderStateNow();
       return 0;
     }
     case WM_HP_RADAR_UPDATED:
@@ -84,14 +82,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_HP_SWITCHBOT_UPDATED:
       sensors_->ApplyCloudSwitchBot(dataDir_ / L"switchbot.json");
       renderState_.sensors = sensors_->Snapshot();
-      MarkRenderStateDirty();
-      InvalidateAll();
+      PublishRenderStateNow();
       return 0;
     case WM_HP_SENSOR_UPDATED:
       renderState_.sensors = sensors_->Snapshot();
       UpdateAirHistory(renderState_.sensors);
-      MarkRenderStateDirty();
-      InvalidateAll();
+      PublishRenderStateNow();
       return 0;
     case WM_HP_STATIONHEAD_CHANGED: {
       const uint32_t changes = stationhead_->ConsumeChangeFlags();
@@ -117,7 +113,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       const StationheadStatus nextStationheadState =
           BuildRenderStationheadState(stationhead_, secondaryStationhead_);
       UpdateRenderStationheadState(nextStationheadState);
-      Invalidate(renderer_->StationheadRect());
+      PublishRenderStateNow();
       return 0;
     }
     case WM_HP_CONFIG_UPDATED:

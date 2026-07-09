@@ -409,6 +409,7 @@ class App {
   void ScheduleNextTick(uint32_t milliseconds);
   void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
   void PublishRenderState();
+  void PublishRenderStateNow();
   void InvalidateAll();
   void Invalidate(const RECT& rect);
   void LoadAirHistory();
