@@ -1047,13 +1047,16 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   HBRUSH card = CreateSolidBrush(kWidgetSurfaceAlt);
   HGDIOBJ previousPen = SelectObject(memoryDc, border);
   HGDIOBJ previousBrush = SelectObject(memoryDc, card);
-  HFONT labelFont = CreateUiFont(11, FW_NORMAL);
-  HFONT valueFont = CreateUiFont(20, FW_NORMAL);
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  const int summaryHeight = std::clamp(contentHeight / 3, 58, 72);
+  HFONT labelFont = CreateUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
+  HFONT valueFont = CreateUiFont(std::clamp(summaryHeight / 4, 16, 20), FW_NORMAL);
   const int summaryGap = 8;
   const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
   for (int i = 0; i < 2; ++i) {
     RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 30,
-              content.left + i * (summaryWidth + summaryGap) + summaryWidth, content.top + 102};
+              content.left + i * (summaryWidth + summaryGap) + summaryWidth,
+              content.top + 30 + summaryHeight};
     RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, labelFont);
@@ -1061,7 +1064,8 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     DrawTextInRect(memoryDc, std::get<0>(summary[i]), labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SetTextColor(memoryDc, kWidgetText);
     SelectObject(memoryDc, valueFont);
-    RECT valueRect{rect.left, rect.top + 25, rect.right, rect.top + 51};
+    RECT valueRect{rect.left, rect.top + 24, rect.right,
+                   rect.top + std::clamp(summaryHeight * 3 / 4, 44, 54)};
     DrawTextInRect(memoryDc, std::get<1>(summary[i]), valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SetTextColor(memoryDc, kWidgetMuted);
     SelectObject(memoryDc, labelFont);
@@ -1070,7 +1074,9 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     SelectObject(memoryDc, previousFont);
   }
 
-  RECT chart{content.left, content.top + 116, content.right, content.bottom - 46};
+  const int plugHeight = std::clamp(contentHeight / 7, 26, 38);
+  RECT chart{content.left, content.top + 30 + summaryHeight + 14,
+             content.right, content.bottom - plugHeight - 8};
   if (chart.bottom > chart.top + 20 && !nativeDashboard_.octopusHistory.empty()) {
     double maximum = 1.0;
     for (const auto& item : nativeDashboard_.octopusHistory) {
@@ -1101,9 +1107,9 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     DeleteObject(bar);
   }
 
-  const int plugTop = std::max(static_cast<int>(content.bottom) - 38,
-                               static_cast<int>(content.top) + 164);
-  HFONT plugFont = CreateUiFont(10, FW_NORMAL);
+  const int plugTop = std::max(static_cast<int>(content.bottom) - plugHeight,
+                               static_cast<int>(chart.bottom) + 6);
+  HFONT plugFont = CreateUiFont(std::clamp(plugHeight / 3, 9, 11), FW_NORMAL);
   previousFont = SelectObject(memoryDc, plugFont);
   SetTextColor(memoryDc, kWidgetMuted);
   RECT plugRect{content.left, plugTop, content.right, content.bottom};
