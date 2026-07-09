@@ -749,7 +749,6 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   const int width = std::max(1L, content.right - content.left);
   const int height = std::max(1L, content.bottom - content.top);
   const int gap = 5;
-  const int cardWidth = (width - gap * 2) / 3;
   const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
       {L"CO2", nativeSensors_.co2Connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm"},
       {L"温度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃"},
@@ -757,9 +756,21 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   }};
   HFONT labelFont = CreateUiFont(std::clamp(height / 5, 10, 15), FW_NORMAL);
   HFONT valueFont = CreateUiFont(std::clamp(height / 3, 18, 29), FW_NORMAL);
+  const bool compact = width < 230 && height >= 56;
   for (int i = 0; i < 3; ++i) {
-    RECT rect{content.left + i * (cardWidth + gap), content.top,
-              content.left + i * (cardWidth + gap) + cardWidth, content.bottom};
+    RECT rect{};
+    if (compact && i == 0) {
+      rect = RECT{content.left, content.top, content.right, content.top + std::max(28, height / 2)};
+    } else if (compact) {
+      const int lowerTop = content.top + std::max(28, height / 2) + gap;
+      const int lowerWidth = (width - gap) / 2;
+      rect = RECT{content.left + (i - 1) * (lowerWidth + gap), lowerTop,
+                  content.left + (i - 1) * (lowerWidth + gap) + lowerWidth, content.bottom};
+    } else {
+      const int cardWidth = (width - gap * 2) / 3;
+      rect = RECT{content.left + i * (cardWidth + gap), content.top,
+                  content.left + i * (cardWidth + gap) + cardWidth, content.bottom};
+    }
     DrawWidgetCard(memoryDc, rect);
     RECT labelRect{rect.left, rect.top + 6, rect.right, rect.top + std::clamp(height / 3, 20, 26)};
     SetTextColor(memoryDc, kWidgetMuted);
@@ -876,7 +887,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
   const std::wstring version = nativeAppVersion_.empty() ? L"" : L"v" + nativeAppVersion_;
-  DrawWidgetHeader(memoryDc, L"操作", version, content);
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  if (contentHeight >= 70) DrawWidgetHeader(memoryDc, L"操作", version, content);
 
   const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(content);
   const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
