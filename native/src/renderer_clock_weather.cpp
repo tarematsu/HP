@@ -72,33 +72,37 @@ void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
 struct ControlsButtonRects {
   RECT update{};
   RECT restart{};
-  int toastTop = 0;
+  RECT toast{};
 };
 
+// Buttons hug the bottom-right corner of the panel, matching how the other
+// corner panels' cards extend flush to their margin; the toast message uses
+// whatever space is left above them.
 ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   if (width < 330) {
     const int buttonHeight = std::clamp(height / 5, 34, 42);
     const int buttonWidth = std::min(190, std::max(120, width - 8));
-    const int left = bounds.left + (width - buttonWidth) / 2;
-    const int top = bounds.top + std::max(34, (height - buttonHeight * 2 - 8) / 2);
+    const int left = bounds.right - buttonWidth;
+    const int secondTop = bounds.bottom - buttonHeight;
+    const int firstTop = secondTop - buttonHeight - 8;
     return ControlsButtonRects{
-        RECT{left, top, left + buttonWidth, top + buttonHeight},
-        RECT{left, top + buttonHeight + 8, left + buttonWidth, top + buttonHeight * 2 + 8},
-        top + buttonHeight * 2 + 18,
+        RECT{left, firstTop, left + buttonWidth, firstTop + buttonHeight},
+        RECT{left, secondTop, left + buttonWidth, secondTop + buttonHeight},
+        RECT{bounds.left, bounds.top, bounds.right, firstTop - 6},
     };
   }
 
   const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
   const int buttonHeight = std::clamp(height / 4, 38, 44);
   const int totalWidth = buttonWidth * 2 + 10;
-  const int left = bounds.left + (width - totalWidth) / 2;
-  const int top = bounds.top + std::max(42, height / 2 - buttonHeight / 2);
+  const int left = bounds.right - totalWidth;
+  const int top = bounds.bottom - buttonHeight;
   return ControlsButtonRects{
       RECT{left, top, left + buttonWidth, top + buttonHeight},
       RECT{left + buttonWidth + 10, top, left + totalWidth, top + buttonHeight},
-      top + buttonHeight + 10,
+      RECT{bounds.left, bounds.top, bounds.right, top - 6},
   };
 }
 
@@ -180,9 +184,25 @@ void FillWidgetBackground(HDC dc, const RECT& bounds) {
   DeleteObject(background);
 }
 
+void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha);
+
+// Fills a rounded-rect region with an alpha-blended solid color instead of an
+// opaque brush, so the panel's sampled radar background shows through.
+void FillRoundRectTranslucent(HDC dc, const RECT& rect, COLORREF color, int radius, BYTE alpha) {
+  HRGN clip = CreateRoundRectRgn(rect.left, rect.top, rect.right + 1, rect.bottom + 1, radius, radius);
+  SelectClipRgn(dc, clip);
+  AlphaBlendSolidColor(dc, rect, color, alpha);
+  SelectClipRgn(dc, nullptr);
+  DeleteObject(clip);
+}
+
 void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt,
-                    int radius = 14) {
+                    int radius = 14, BYTE alpha = 255) {
   if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+  if (alpha < 255) {
+    FillRoundRectTranslucent(dc, rect, color, radius, alpha);
+    return;
+  }
   HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousPen = SelectObject(dc, GetStockObject(NULL_PEN));
   HGDIOBJ previousBrush = SelectObject(dc, fill);
@@ -192,12 +212,16 @@ void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt
   DeleteObject(fill);
 }
 
-void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color) {
+void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color, BYTE alpha = 255) {
   if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+  const int radius = std::max(2L, rect.bottom - rect.top);
+  if (alpha < 255) {
+    FillRoundRectTranslucent(dc, rect, color, radius, alpha);
+    return;
+  }
   HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousPen = SelectObject(dc, GetStockObject(NULL_PEN));
   HGDIOBJ previousBrush = SelectObject(dc, fill);
-  const int radius = std::max(2L, rect.bottom - rect.top);
   RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
   SelectObject(dc, previousBrush);
   SelectObject(dc, previousPen);
@@ -544,6 +568,10 @@ bool Renderer::EnsureNativeStaticWindows() {
         GetModuleHandleW(nullptr), this);
   }
   ApplyNativeStaticBounds();
+  // ApplyNativeStaticBounds() raises every static panel (including the
+  // full-screen radar) to the top of the z-order, so re-raise the clock on
+  // top of those every time this runs, not just on first creation.
+  ApplyNativeClockBounds();
   return nativeAirWindow_ && nativeControlsWindow_ && nativeNewsWindow_ &&
          nativeWeatherWindow_ && nativeEnergyWindow_ && nativeStationheadWindow_ && nativeRadarWindow_;
 }
@@ -913,9 +941,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     HFONT toastFont = CachedUiFont(12, FW_NORMAL);
     previousFont = SelectObject(memoryDc, toastFont);
     SetTextColor(memoryDc, kWidgetWarning);
-    RECT toastRect{content.left, controlButtons.toastTop, content.right,
-                   std::max(static_cast<LONG>(controlButtons.toastTop + 22), content.bottom)};
-    DrawTextInRect(memoryDc, nativeToast_, toastRect,
+    DrawTextInRect(memoryDc, nativeToast_, controlButtons.toast,
                    DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
     SelectObject(memoryDc, previousFont);
   }
@@ -1069,7 +1095,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       const int barHeight = static_cast<int>((chart.bottom - chart.top - 18) * value / maximum);
       const int x = chart.left + i * step + (step - barWidth) / 2;
       RECT barRect{x, chart.bottom - 18 - barHeight, x + barWidth, chart.bottom - 18};
-      DrawWidgetPill(memoryDc, barRect, kWidgetOrange);
+      DrawWidgetPill(memoryDc, barRect, kWidgetOrange, /*alpha=*/190);
       RECT valueRect{x - 6, barRect.top - 13, x + barWidth + 6, barRect.top};
       DrawTextInRect(memoryDc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
                      DT_CENTER | DT_SINGLELINE | DT_VCENTER);
@@ -1122,7 +1148,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
                            const std::wstring& detail) {
     const int top = rowTop + row * (rowHeight + rowGap);
     RECT rowRect{content.left, top, content.right, std::min<LONG>(top + rowHeight, content.bottom)};
-    DrawWidgetCard(memoryDc, rowRect, kWidgetSurface);
+    DrawWidgetCard(memoryDc, rowRect, kWidgetSurface, /*radius=*/14, /*alpha=*/160);
 
     const int artSize = std::clamp(static_cast<int>(rowRect.bottom - rowRect.top) - 20, 42, 60);
     RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 10 + artSize,

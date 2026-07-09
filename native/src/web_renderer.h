@@ -109,25 +109,27 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   NativeDashboardLayout layout;
   layout.radar = bounds;
 
-  const int cornerWidth = std::clamp(clientWidth * 24 / 100, 260, 440);
-  const int topCornerHeight = std::clamp(clientHeight * 40 / 100, 260, 420);
-  const int stationheadHeight = std::clamp(clientHeight * 40 / 100, 260, 420);
+  // Air/Energy/Stationhead share the same footprint as the centered weather
+  // card, stretched a little taller for breathing room, instead of their own
+  // oversized corner dimensions.
+  const int centerWidth = std::clamp(clientWidth * 30 / 100, 320, 480);
+  const int weatherHeight = std::clamp(clientHeight * 19 / 100, 150, 210);
+  const int cornerWidth = centerWidth;
+  const int cornerHeight = weatherHeight + std::clamp(shortSide * 8 / 100, 40, 70);
   const int controlsHeight = std::clamp(clientHeight * 14 / 100, 100, 140);
 
   layout.air = RECT{bounds.left + margin, bounds.top + margin,
-                    bounds.left + margin + cornerWidth, bounds.top + margin + topCornerHeight};
+                    bounds.left + margin + cornerWidth, bounds.top + margin + cornerHeight};
   layout.energy = RECT{bounds.right - margin - cornerWidth, bounds.top + margin,
-                       bounds.right - margin, bounds.top + margin + topCornerHeight};
-  layout.stationhead = RECT{bounds.left + margin, bounds.bottom - margin - stationheadHeight,
+                       bounds.right - margin, bounds.top + margin + cornerHeight};
+  layout.stationhead = RECT{bounds.left + margin, bounds.bottom - margin - cornerHeight,
                             bounds.left + margin + cornerWidth, bounds.bottom - margin};
   layout.controls = RECT{bounds.right - margin - cornerWidth, bounds.bottom - margin - controlsHeight,
                          bounds.right - margin, bounds.bottom - margin};
 
-  const int centerWidth = std::clamp(clientWidth * 30 / 100, 320, 480);
   const int centerLeft = bounds.left + (clientWidth - centerWidth) / 2;
   const int centerRight = centerLeft + centerWidth;
   const int clockHeight = std::clamp(clientHeight * 15 / 100, 100, 160);
-  const int weatherHeight = std::clamp(clientHeight * 19 / 100, 150, 210);
   const int newsHeight = std::clamp(clientHeight * 6 / 100, 36, 52);
   const int centerBlockHeight = clockHeight + gap + weatherHeight + gap + newsHeight;
   const int centerTop = bounds.top + std::max(margin, (clientHeight - centerBlockHeight) / 2);
