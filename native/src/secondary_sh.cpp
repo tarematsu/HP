@@ -4,8 +4,6 @@
 namespace hp {
 namespace {
 constexpr wchar_t kProfileName[] = L"stationhead-secondary";
-constexpr int64_t kAudioRecoveryMs = 10'000;
-constexpr int64_t kNavigationTimeoutMs = 60'000;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
@@ -220,8 +218,6 @@ void SecondaryStationheadPlayer::Reconnect() {
     return;
   }
   audioPlaying_ = false;
-  lastAudioAt_ = 0;
-  audioStoppedAt_ = 0;
   loginRequired_ = false;
   retryAt_ = 0;
   SetStartupBounds();
@@ -232,7 +228,6 @@ void SecondaryStationheadPlayer::Reconnect() {
     status_.loginRequired = false;
     status_.detail = L"reconnecting secondary station";
   }
-  createdAt_ = UnixMillis();
   const HRESULT result = webview_->Navigate(config_.secondaryUrl.c_str());
   if (FAILED(result)) ScheduleRetry(L"reconnect navigation failed " + HResultHex(result), 1'000);
 }
@@ -255,17 +250,6 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
-  if (!audioPlaying_.load(std::memory_order_relaxed) && audioStoppedAt_ > 0 &&
-      nowMs - audioStoppedAt_ >= kAudioRecoveryMs && !loginRequired_) {
-    log_.Warn(L"Secondary Stationhead audio stopped; reconnecting");
-    Reconnect();
-    return;
-  }
-  if (retryAt_ == 0 && !loginRequired_ && createdAt_ > 0 &&
-      nowMs - createdAt_ >= kNavigationTimeoutMs && !audioPlaying_) {
-    ScheduleRetry(L"audio startup timeout", 5'000);
-    return;
-  }
   const int64_t reloadInterval = StationheadReloadIntervalMs(std::max(5, config_.secondaryReloadIntervalMinutes));
   if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 &&
       nowMs - lastReloadAt_ >= reloadInterval) {
@@ -280,12 +264,6 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (retryAt_ > 0) consider(retryAt_);
-  if (!audioPlaying_.load(std::memory_order_relaxed) && audioStoppedAt_ > 0 && !loginRequired_) {
-    consider(audioStoppedAt_ + kAudioRecoveryMs);
-  }
-  if (retryAt_ == 0 && !loginRequired_ && createdAt_ > 0 && !audioPlaying_) {
-    consider(createdAt_ + kNavigationTimeoutMs);
-  }
   if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 && reloadInterval > 0) {
     consider(lastReloadAt_ + reloadInterval);
   }
@@ -331,9 +309,6 @@ void SecondaryStationheadPlayer::CloseWebView() {
   authClosePending_ = false;
   audioPlaying_ = false;
   loginRequired_ = false;
-  createdAt_ = 0;
-  lastAudioAt_ = 0;
-  audioStoppedAt_ = 0;
   lastReloadAt_ = 0;
   retryAt_ = 0;
   nextTickAt_ = 0;

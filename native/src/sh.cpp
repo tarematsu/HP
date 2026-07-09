@@ -266,7 +266,6 @@ void StationheadPlayer::ConfigureWebView() {
                 resourceBlockingArmed_ = true;
                 noAudioSinceAt_ = 0;
                 loginSessionActive_ = false;
-                const bool wasVisible = viewVisible_;
                 {
                   std::lock_guard lock(mutex_);
                   status_.audioPlaying = true;
@@ -276,7 +275,10 @@ void StationheadPlayer::ConfigureWebView() {
                   status_.detail = usedFallback_ ? L"fallback audio detected" : L"audio detected";
                   status_.lastPlaybackConfirmedAt = now;
                 }
-                if (wasVisible) SetVisible(false);
+                // Re-assert the z-order exactly once per confirmed playback
+                // (each scheduled reload), instead of every tick. The startup
+                // split preview stays up until App hands over to the dashboard.
+                if (!startupPreviewActive_) SetVisible(false);
                 PostChange(StationheadChangeReturnMain);
                 return S_OK;
               }

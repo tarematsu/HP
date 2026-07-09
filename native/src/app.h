@@ -165,10 +165,15 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyAudioState();
     ApplyBounds();
   }
+  // The periodic tick only converges audio state (cheap, deduplicated in the
+  // player). Bounds and z-order are re-asserted on explicit events only:
+  // startup/layout changes via SetBounds/SelectTab, login prompts via
+  // ShowForLogin, and each playback confirmation after a (re)load, where the
+  // player itself drops its window behind the dashboard again.
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
-    ApplyBounds();
+    ApplyAudioState();
   }
   void Reconnect() {
     if (!player_) return;
@@ -269,10 +274,11 @@ class AppSecondaryStationheadHandle
     ApplyAudioState();
     ApplyBounds();
   }
+  // See AppStationheadHandle::Tick: periodic ticks only converge audio state.
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
-    ApplyBounds();
+    ApplyAudioState();
   }
   void Reconnect() {
     if (!player_) return;

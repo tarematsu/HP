@@ -120,19 +120,18 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             if (!args || FAILED(args->TryGetWebMessageAsString(&raw)) || !raw) return S_OK;
             const std::wstring message(raw);
             CoTaskMemFree(raw);
-            const int64_t now = UnixMillis();
             if (message == L"secondary-playing") {
               audioPlaying_ = true;
               resourceBlockingArmed_ = true;
-              lastAudioAt_ = now;
-              audioStoppedAt_ = 0;
               retryAt_ = 0;
-              const bool wasLoginInteractive = loginRequired_.exchange(false, std::memory_order_acq_rel);
-              if (wasLoginInteractive && !spotifyAuthorization_) ShowInteractive(false);
+              loginRequired_.store(false, std::memory_order_release);
+              // Re-assert the z-order exactly once per confirmed playback
+              // (each scheduled reload), instead of every tick. The startup
+              // split preview stays up until App hands over to the dashboard.
+              if (!spotifyAuthorization_ && !startupPreviewActive_) ShowInteractive(false);
               SetStatus(L"audio detected");
             } else if (message == L"secondary-stopped") {
               audioPlaying_ = false;
-              if (audioStoppedAt_ == 0) audioStoppedAt_ = now;
             } else if (message == L"secondary-login-required") {
               loginRequired_ = true;
               ShowInteractive(true);
@@ -175,8 +174,7 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             return S_OK;
           }).Get(), &processFailedToken_);
   SetStartupBounds();
-  createdAt_ = UnixMillis();
-  lastReloadAt_ = createdAt_;
+  lastReloadAt_ = UnixMillis();
   {
     std::lock_guard lock(mutex_);
     status_.created = true;

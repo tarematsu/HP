@@ -20,22 +20,6 @@ struct SecondaryStationheadStatus {
   std::wstring url;
 };
 
-struct SecondaryStationheadTimestamp {
-  int64_t value = 0;
-
-  SecondaryStationheadTimestamp& operator=(int64_t next) noexcept {
-    value = next;
-    return *this;
-  }
-  operator int64_t() const noexcept { return value; }
-  bool operator==(int other) const noexcept { return value == other; }
-  bool operator>(int) const noexcept { return false; }
-};
-
-inline int64_t operator-(int64_t lhs, const SecondaryStationheadTimestamp& rhs) noexcept {
-  return lhs - rhs.value;
-}
-
 class SecondaryStationheadPlayer {
  public:
   SecondaryStationheadPlayer(HWND window, StationheadConfig config,
@@ -127,9 +111,6 @@ class SecondaryStationheadPlayer {
   bool spotifyAuthorization_ = false;
   std::atomic<bool> loginRequired_{false};
   ICoreWebView2* identityWebview_ = nullptr;
-  SecondaryStationheadTimestamp createdAt_;
-  int64_t lastAudioAt_ = 0;
-  SecondaryStationheadTimestamp audioStoppedAt_;
   int64_t lastReloadAt_ = 0;
   int64_t nextTickAt_ = 0;
   int64_t retryAt_ = 0;
