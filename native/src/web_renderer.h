@@ -101,8 +101,8 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
   const bool roomy = clientWidth >= 1200 && clientHeight >= 700;
-  const int margin = roomy ? 18 : 8;
-  const int gap = roomy ? 12 : 6;
+  const int margin = roomy ? 24 : 10;
+  const int gap = roomy ? 16 : 8;
   const int gridWidth = std::max(1, clientWidth - margin * 2);
   const int gridHeight = std::max(1, clientHeight - margin * 2);
   const int left = bounds.left + margin;
@@ -137,29 +137,47 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
     return layout;
   }
 
-  const int columnWidth = std::max(1, (gridWidth - gap * 3) / 4);
-  const int rowHeight = std::max(1, (gridHeight - gap * 2) / 3);
-  const auto panel = [&](int column, int row, int columnSpan = 1, int rowSpan = 1) {
-    const int panelLeft = left + column * (columnWidth + gap);
-    const int panelTop = top + row * (rowHeight + gap);
-    return RECT{panelLeft, panelTop,
-                panelLeft + columnWidth * columnSpan + gap * (columnSpan - 1),
-                panelTop + rowHeight * rowSpan + gap * (rowSpan - 1)};
+  const int heroHeight = std::clamp(gridHeight * 28 / 100, 150, 230);
+  const int bottomHeight = std::clamp(gridHeight * 27 / 100, 150, 230);
+  const int middleHeight = std::max(1, gridHeight - heroHeight - bottomHeight - gap * 2);
+  const int heroWide = std::clamp(gridWidth * 46 / 100, 360, std::max(361, gridWidth - 260));
+  const int sideWidth = std::max(1, (gridWidth - heroWide - gap * 2) / 2);
+  const int middleLeftWidth = std::clamp(gridWidth * 23 / 100, 220, 340);
+  const int middleRightWidth = std::max(1, gridWidth - middleLeftWidth - gap);
+  const int bottomLeftWidth = std::clamp(gridWidth * 42 / 100, 360, std::max(361, gridWidth - 320));
+  const int bottomRightWidth = std::max(1, gridWidth - bottomLeftWidth - gap);
+  const int row0 = top;
+  const int row1 = row0 + heroHeight + gap;
+  const int row2 = row1 + middleHeight + gap;
+  const auto rect = [](int rectLeft, int rectTop, int rectWidth, int rectHeight) {
+    return RECT{rectLeft, rectTop, rectLeft + std::max(1, rectWidth),
+                rectTop + std::max(1, rectHeight)};
   };
 
-  const RECT airPanel = panel(3, 1);
-  layout.clock = panel(0, 0, 2);
-  layout.weather = panel(2, 0);
-  layout.controls = panel(3, 0);
-  layout.stationhead = panel(0, 1);
-  layout.radar = panel(1, 1, 2);
-  layout.energy = panel(0, 2, 2);
-  layout.news = panel(2, 2, 2);
+  layout.clock = rect(left, row0, heroWide, heroHeight);
+  layout.weather = rect(layout.clock.right + gap, row0, sideWidth, heroHeight);
+  const RECT utilityPanel = rect(layout.weather.right + gap, row0,
+                                 gridWidth - heroWide - sideWidth - gap * 2, heroHeight);
+  const int controlsHeight = std::clamp(heroHeight * 38 / 100, 58, 88);
+  layout.controls = rect(utilityPanel.left, utilityPanel.top,
+                         utilityPanel.right - utilityPanel.left, controlsHeight);
+  layout.stationhead = rect(left, row1, middleLeftWidth, middleHeight);
+  layout.radar = rect(layout.stationhead.right + gap, row1, middleRightWidth, middleHeight);
+  layout.energy = rect(left, row2, bottomLeftWidth, bottomHeight);
+  layout.news = rect(layout.energy.right + gap, row2, bottomRightWidth, bottomHeight);
+
+  const RECT airPanel = NormalizeInsetRect(
+      RECT{utilityPanel.left, layout.controls.bottom + gap / 2, utilityPanel.right, utilityPanel.bottom},
+      0, 0, 0, 0);
+  const int airPanelHeight = std::max(1L, airPanel.bottom - airPanel.top);
+  const int airMetricsHeight = std::clamp(airPanelHeight * 42 / 100, 44, 70);
   layout.air = NormalizeInsetRect(
-      RECT{airPanel.left + 10, airPanel.top + 22, airPanel.right - 10, airPanel.top + 92},
+      RECT{airPanel.left + 10, airPanel.top, airPanel.right - 10,
+           airPanel.top + airMetricsHeight},
       0, 0, 0, 0);
   layout.airHistory = NormalizeInsetRect(
-      RECT{airPanel.left + 10, airPanel.top + 100, airPanel.right - 10, airPanel.bottom - 10},
+      RECT{airPanel.left + 10, layout.air.bottom + gap / 2, airPanel.right - 10,
+           airPanel.bottom},
       0, 0, 0, 0);
   return layout;
 }
