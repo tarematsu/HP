@@ -1,4 +1,4 @@
-import { configuredIds, loadSwitchBotSnapshot } from "./switchbot_api";
+import { configuredIds, loadSwitchBotSnapshot, numberValue } from "./switchbot_api";
 import { applyAwayControls, deriveSwitchBotState } from "./switchbot_state";
 import { updateState } from "./snapshot";
 import type { Env } from "./sources";
@@ -29,12 +29,6 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-function numberValue(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  const result = Number(value);
-  return Number.isFinite(result) ? result : null;
 }
 
 function publicWorkerUrl(env: Env): string {

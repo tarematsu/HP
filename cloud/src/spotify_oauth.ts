@@ -1,6 +1,6 @@
+import { DEVICE_ID_PATTERN } from "./auth";
 import type { Env } from "./sources";
 
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const TOKEN_SKEW_MS = 60 * 1000;
 const SCOPES = "user-read-playback-state";

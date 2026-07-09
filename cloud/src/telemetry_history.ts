@@ -1,3 +1,4 @@
+import { DEVICE_ID_PATTERN } from "./auth";
 import { readState, updateState, type StateRow } from "./snapshot";
 import type { Env } from "./sources";
 import type { EnvironmentHistoryRow } from "./telemetry_bucket";
@@ -8,7 +9,6 @@ interface EnvironmentDeviceHistory {
   history: EnvironmentHistoryRow[];
 }
 
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 const ENVIRONMENT_HISTORY_MS = 24 * 60 * 60 * 1000;
 
 function environmentPoint(value: unknown): EnvironmentHistoryRow | null {

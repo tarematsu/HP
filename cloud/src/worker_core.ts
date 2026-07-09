@@ -1,8 +1,9 @@
 import { adminPage } from "./admin";
-import { authorizedAction, authorizedAnyDevice, authorizedDevice, DEVICE_ID_PATTERN } from "./auth";
+import { authorizedAction, authorizedAnyDevice, authorizedDevice, deviceIdFromRequest } from "./auth";
+import { json } from "./http";
 import { methodNotAllowed, etagResponse, unauthorized } from "./response";
 import { requestRefresh, runScheduler } from "./scheduler";
-import { buildMeta, ensureDashboard, readState, sha256Hex, updateState, WORKER_VERSION, type StateRow } from "./snapshot";
+import { buildMeta, ensureDashboard, readState, sha256Hex, updateState, WORKER_VERSION } from "./snapshot";
 import { constantTimeEqual } from "./crypto_cache";
 import { updateFileResponse, updateManifestResponse } from "./update_proxy";
 import { handleSwitchBotWebhook, webhookToken } from "./switchbot";
@@ -18,40 +19,6 @@ import {
 import type { Env } from "./sources";
 import { fetchStationhead } from "./spotify_source";
 import { receiveTelemetryOptimized } from "./telemetry_route";
-
-interface EnvironmentHistoryRow {
-  t: number;
-  co2: number | null;
-  temperature: number | null;
-  humidity: number | null;
-}
-
-interface EnvironmentPoint {
-  t: number;
-  co2: number | null;
-  temperature: number | null;
-  humidity: number | null;
-}
-
-interface EnvironmentDeviceHistory {
-  deviceId: string;
-  bucketMinutes: number;
-  history: EnvironmentPoint[];
-}
-
-const ENVIRONMENT_HISTORY_MS = 24 * 60 * 60 * 1000;
-
-function json(value: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(value), { ...init, headers });
-}
-
-function deviceIdFromRequest(request: Request): string | null {
-  const deviceId = new URL(request.url).searchParams.get("deviceId")?.trim() ?? "";
-  return DEVICE_ID_PATTERN.test(deviceId) ? deviceId : null;
-}
 
 async function dashboardJsonResponse(request: Request, env: Env): Promise<Response> {
   const snapshot = await ensureDashboard(env);
@@ -71,107 +38,6 @@ async function stationheadState(request: Request, env: Env, ctx: ExecutionContex
     .then(result => updateState(env, result))
     .catch(error => console.error("Stationhead warm-up failed", error instanceof Error ? error.message : String(error))));
   return json({ configured: false, connected: false, playing: false }, { status: 503 });
-}
-
-function environmentPoint(value: unknown): EnvironmentPoint | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const input = value as Record<string, unknown>;
-  const t = Number(input.t);
-  if (!Number.isSafeInteger(t)) return null;
-  const nullable = (field: string): number | null => {
-    if (input[field] === null || input[field] === undefined) return null;
-    const number = Number(input[field]);
-    return Number.isFinite(number) ? number : null;
-  };
-  return { t, co2: nullable("co2"), temperature: nullable("temperature"), humidity: nullable("humidity") };
-}
-
-function previousEnvironmentDevices(previous: StateRow | null, cutoff: number): Record<string, EnvironmentDeviceHistory> {
-  if (!previous?.payload) return {};
-  let payload: Record<string, unknown>;
-  try {
-    const parsed = JSON.parse(previous.payload) as unknown;
-    payload = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-
-  const devices: Record<string, EnvironmentDeviceHistory> = {};
-  const add = (deviceId: string, value: unknown): void => {
-    if (!DEVICE_ID_PATTERN.test(deviceId) || !value || typeof value !== "object" || Array.isArray(value)) return;
-    const history = Array.isArray((value as Record<string, unknown>).history)
-      ? ((value as Record<string, unknown>).history as unknown[])
-        .map(environmentPoint)
-        .filter((point): point is EnvironmentPoint => point !== null && point.t >= cutoff)
-      : [];
-    if (history.length) devices[deviceId] = { deviceId, bucketMinutes: 5, history };
-  };
-
-  const rawDevices = payload.devices;
-  if (rawDevices && typeof rawDevices === "object" && !Array.isArray(rawDevices)) {
-    for (const [deviceId, value] of Object.entries(rawDevices as Record<string, unknown>)) add(deviceId, value);
-  }
-  const rootDeviceId = String(payload.deviceId ?? "");
-  if (!devices[rootDeviceId] && Array.isArray(payload.history)) add(rootDeviceId, payload);
-  return devices;
-}
-
-async function updateEnvironmentHistory(
-  env: Env,
-  fallbackDeviceId: string,
-  affectedBucketAts: number[],
-  now: number,
-): Promise<void> {
-  const cutoff = now - ENVIRONMENT_HISTORY_MS;
-  const recentBucketAts = [...new Set(affectedBucketAts.filter(bucketAt => bucketAt >= cutoff))].sort((left, right) => left - right);
-  if (!recentBucketAts.length) return;
-  const placeholders = recentBucketAts.map((_, index) => `?${index + 2}`).join(",");
-  const rows = await env.DB.prepare(
-    `SELECT bucket_at AS t,
-            CASE WHEN co2_count > 0 THEN co2_sum / co2_count ELSE NULL END AS co2,
-            CASE WHEN temperature_count > 0 THEN temperature_sum / temperature_count ELSE NULL END AS temperature,
-            CASE WHEN humidity_count > 0 THEN humidity_sum / humidity_count ELSE NULL END AS humidity
-       FROM environment_buckets
-      WHERE device_id=?1 AND bucket_at IN (${placeholders})
-      ORDER BY bucket_at`,
-  ).bind(fallbackDeviceId, ...recentBucketAts).all<EnvironmentHistoryRow>();
-  if (!rows.results?.length) return;
-
-  const previous = await readState(env, "environment");
-  const devices = previousEnvironmentDevices(previous, cutoff);
-  const target = devices[fallbackDeviceId] ?? { deviceId: fallbackDeviceId, bucketMinutes: 5, history: [] };
-  const points = new Map(target.history.map(point => [point.t, point]));
-  for (const row of rows.results) {
-    points.set(Number(row.t), {
-      t: Number(row.t),
-      co2: row.co2 === null ? null : Math.round(Number(row.co2)),
-      temperature: row.temperature === null ? null : Number(Number(row.temperature).toFixed(2)),
-      humidity: row.humidity === null ? null : Number(Number(row.humidity).toFixed(2)),
-    });
-  }
-  target.history = [...points.values()].filter(point => point.t >= cutoff).sort((left, right) => left.t - right.t);
-  devices[fallbackDeviceId] = target;
-  for (const [deviceId, device] of Object.entries(devices)) {
-    device.history = device.history.filter(point => point.t >= cutoff).sort((left, right) => left.t - right.t);
-    if (!device.history.length) delete devices[deviceId];
-  }
-
-  let previousDeviceId = "";
-  if (previous?.payload) {
-    try { previousDeviceId = String((JSON.parse(previous.payload) as { deviceId?: unknown }).deviceId ?? ""); } catch { /* ignore */ }
-  }
-  const preferred = env.HOMEPANEL_PRIMARY_DEVICE_ID?.trim() ?? "";
-  const selectedId = devices[preferred]
-    ? preferred
-    : devices[previousDeviceId] ? previousDeviceId
-      : devices[fallbackDeviceId] ? fallbackDeviceId
-        : Object.keys(devices).sort()[0] ?? fallbackDeviceId;
-  const selected = devices[selectedId] ?? { deviceId: selectedId, bucketMinutes: 5, history: [] };
-  await updateState(env, {
-    source: "environment",
-    observedAt: now,
-    payload: { ...selected, devices },
-  }, undefined, previous);
 }
 
 async function route(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {

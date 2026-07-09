@@ -3,19 +3,29 @@ import type { Env } from "./sources";
 
 export const DEVICE_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
+// HOMEPANEL_DEVICE_TOKENS is static per Worker isolate, so the parsed map is
+// cached by raw string value to avoid re-parsing it on every request.
+const deviceTokenMapCache = new Map<string, Map<string, string>>();
+
 function parseMappedDeviceTokens(raw: string): Map<string, string> {
+  const cached = deviceTokenMapCache.get(raw);
+  if (cached) return cached;
+  let parsed: Map<string, string>;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return new Map();
-    return new Map(
-      Object.entries(parsed as Record<string, unknown>)
-        .filter((entry): entry is [string, string] =>
-          DEVICE_ID_PATTERN.test(entry[0]) && typeof entry[1] === "string" && entry[1].trim().length > 0)
-        .map(([deviceId, token]) => [deviceId, token.trim()] as const),
-    );
+    const value = JSON.parse(raw) as unknown;
+    parsed = !value || typeof value !== "object" || Array.isArray(value)
+      ? new Map()
+      : new Map(
+        Object.entries(value as Record<string, unknown>)
+          .filter((entry): entry is [string, string] =>
+            DEVICE_ID_PATTERN.test(entry[0]) && typeof entry[1] === "string" && entry[1].trim().length > 0)
+          .map(([deviceId, token]) => [deviceId, token.trim()] as const),
+      );
   } catch {
-    return new Map();
+    parsed = new Map();
   }
+  deviceTokenMapCache.set(raw, parsed);
+  return parsed;
 }
 
 export function bearerToken(request: Request): string {
@@ -26,6 +36,11 @@ export function bearerToken(request: Request): string {
 export function configuredDeviceTokens(env: Env): Map<string, string> | null {
   const raw = env.HOMEPANEL_DEVICE_TOKENS?.trim() ?? "";
   return raw ? parseMappedDeviceTokens(raw) : null;
+}
+
+export function deviceIdFromRequest(request: Request): string | null {
+  const deviceId = new URL(request.url).searchParams.get("deviceId")?.trim() ?? "";
+  return DEVICE_ID_PATTERN.test(deviceId) ? deviceId : null;
 }
 
 export function matchesAnyToken(supplied: string, expected: Array<string | undefined>): boolean {

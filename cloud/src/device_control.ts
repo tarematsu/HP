@@ -1,4 +1,6 @@
 import type { Env } from "./sources";
+import { DEVICE_ID_PATTERN, deviceIdFromRequest as deviceIdFrom } from "./auth";
+import { json } from "./http";
 import {
   dashboardPayload,
   dashboardVersion,
@@ -14,7 +16,6 @@ const ALLOWED_COMMANDS = new Set([
   "check_update",
 ]);
 const COMMAND_REDELIVERY_MS = 90_000;
-const DEVICE_ID_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 
 interface DeviceConfigRow {
   version: number;
@@ -43,18 +44,6 @@ interface SyncRow {
   content_hash: string | null;
   updated_at: number | null;
   pending: number;
-}
-
-function json(value: unknown, init: ResponseInit = {}): Response {
-  const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(value), { ...init, headers });
-}
-
-function deviceIdFrom(request: Request): string | null {
-  const value = new URL(request.url).searchParams.get("deviceId")?.trim() ?? "";
-  return DEVICE_ID_PATTERN.test(value) ? value : null;
 }
 
 function configEtag(deviceId: string, version: number): string {

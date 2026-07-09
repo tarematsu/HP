@@ -26,7 +26,7 @@ export function configuredIds(value?: string): string[] {
   return [...new Set((value ?? "").split(/[\s,;]+/).map(item => item.trim()).filter(Boolean))];
 }
 
-function numberValue(value: unknown): number | null {
+export function numberValue(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const result = Number(value);
   return Number.isFinite(result) ? result : null;
