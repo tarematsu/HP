@@ -53,10 +53,15 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is not configured"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured"; exit 1; }
 
+      - name: Prepare Cloudflare config
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+        run: npm run prepare:existing
+
       - name: Show pending migrations
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
-        run: npx wrangler d1 migrations list "${{ steps.resolve.outputs.database_name }}" --remote --config wrangler.jsonc
+        run: npx wrangler d1 migrations list "${{ steps.resolve.outputs.database_name }}" --remote --config .wrangler/generated/homepanel-existing.jsonc
 
       - name: Apply pending migrations
         env:
@@ -67,5 +72,5 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
         run: |
-          npx wrangler d1 migrations list "${{ steps.resolve.outputs.database_name }}" --remote --config wrangler.jsonc
-          npx wrangler d1 execute "${{ steps.resolve.outputs.database_name }}" --remote --config wrangler.jsonc --command "SELECT key, value FROM schema_meta WHERE key = 'schema_version';"
+          npx wrangler d1 migrations list "${{ steps.resolve.outputs.database_name }}" --remote --config .wrangler/generated/homepanel-existing.jsonc
+          npx wrangler d1 execute "${{ steps.resolve.outputs.database_name }}" --remote --config .wrangler/generated/homepanel-existing.jsonc --command "SELECT key, value FROM schema_meta WHERE key = 'schema_version';"
