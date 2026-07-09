@@ -45,8 +45,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (url.pathname === "/admin") return request.method === "GET" ? adminPage() : methodNotAllowed(["GET"]);
 
   if (request.method === "GET" && url.pathname === "/v1/health") {
-    const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
-    return json({ ok: row?.ok === 1, workerVersion: WORKER_VERSION, now: new Date().toISOString() });
+    return json({ ok: true, d1: "unchecked", workerVersion: WORKER_VERSION, now: new Date().toISOString() });
   }
 
   if (request.method === "GET" && url.pathname.startsWith("/v1/radar/tile/")) return proxyRadarTile(request);

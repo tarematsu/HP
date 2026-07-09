@@ -70,11 +70,12 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
   if (!authorizedDevice(request, env, deviceId)) return unauthorized();
 
   const now = Date.now();
-  const normalized = input.samples.map(sample => normalizeSample(sample, now));
-  if (normalized.some(sample => sample === null)) {
-    return json({ error: "invalid telemetry sample" }, { status: 400 });
+  const samples: TelemetrySample[] = [];
+  for (const sample of input.samples) {
+    const normalized = normalizeSample(sample, now);
+    if (!normalized) return json({ error: "invalid telemetry sample" }, { status: 400 });
+    samples.push(normalized);
   }
-  const samples = normalized as TelemetrySample[];
   const previous = await env.DB.prepare(
     `SELECT last_seen_at,app_version,stationhead_ok,outbox_count,last_sequence
        FROM device_heartbeats WHERE device_id=?1`,

@@ -9,6 +9,11 @@ interface EnvironmentDeviceHistory {
   history: EnvironmentHistoryRow[];
 }
 
+interface PreviousEnvironmentState {
+  deviceId: string;
+  devices: Record<string, EnvironmentDeviceHistory>;
+}
+
 const ENVIRONMENT_HISTORY_MS = 24 * 60 * 60 * 1000;
 
 function environmentPoint(value: unknown): EnvironmentHistoryRow | null {
@@ -32,8 +37,8 @@ function environmentPoint(value: unknown): EnvironmentHistoryRow | null {
 function previousDevices(
   previous: StateRow | null,
   cutoff: number,
-): Record<string, EnvironmentDeviceHistory> {
-  if (!previous?.payload) return {};
+): PreviousEnvironmentState {
+  if (!previous?.payload) return { deviceId: "", devices: {} };
   let payload: Record<string, unknown>;
   try {
     const parsed = JSON.parse(previous.payload) as unknown;
@@ -41,7 +46,7 @@ function previousDevices(
       ? parsed as Record<string, unknown>
       : {};
   } catch {
-    return {};
+    return { deviceId: "", devices: {} };
   }
 
   const devices: Record<string, EnvironmentDeviceHistory> = {};
@@ -61,7 +66,7 @@ function previousDevices(
   }
   const rootDeviceId = String(payload.deviceId ?? "");
   if (!devices[rootDeviceId] && Array.isArray(payload.history)) add(rootDeviceId, payload);
-  return devices;
+  return { deviceId: rootDeviceId, devices };
 }
 
 export async function mergeEnvironmentRows(
@@ -75,7 +80,8 @@ export async function mergeEnvironmentRows(
   if (!rows.length) return;
 
   const previous = await readState(env, "environment");
-  const devices = previousDevices(previous, cutoff);
+  const previousState = previousDevices(previous, cutoff);
+  const devices = previousState.devices;
   const target = devices[fallbackDeviceId] ?? {
     deviceId: fallbackDeviceId,
     bucketMinutes: 5,
@@ -96,25 +102,14 @@ export async function mergeEnvironmentRows(
   devices[fallbackDeviceId] = target;
 
   for (const [deviceId, device] of Object.entries(devices)) {
-    device.history = device.history
-      .filter(point => point.t >= cutoff)
-      .sort((left, right) => left.t - right.t);
     if (!device.history.length) delete devices[deviceId];
   }
 
-  let previousDeviceId = "";
-  if (previous?.payload) {
-    try {
-      previousDeviceId = String((JSON.parse(previous.payload) as { deviceId?: unknown }).deviceId ?? "");
-    } catch {
-      previousDeviceId = "";
-    }
-  }
   const preferred = env.HOMEPANEL_PRIMARY_DEVICE_ID?.trim() ?? "";
   const selectedId = devices[preferred]
     ? preferred
-    : devices[previousDeviceId]
-      ? previousDeviceId
+    : devices[previousState.deviceId]
+      ? previousState.deviceId
       : devices[fallbackDeviceId]
         ? fallbackDeviceId
         : Object.keys(devices).sort()[0] ?? fallbackDeviceId;
