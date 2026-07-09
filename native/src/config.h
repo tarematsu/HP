@@ -6,24 +6,12 @@ namespace hp {
 struct StationheadConfig {
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
   std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
-  std::wstring sakurazakaUrl = L"https://www.stationhead.com/sakurazaka46jp";
-  std::wstring sakurazakaHandle = L"sakurazaka46jp";
-  int audioFallbackSeconds = 0;
   int reloadIntervalMinutes = 50;
-  int healthCheckIntervalSeconds = 60;
-  int restartAfterHealthMisses = 3;
   bool blockImagesAfterPlayback = true;
   bool blockFontsAfterPlayback = true;
-  bool hideChatAfterPlayback = true;
   bool lowMemoryMode = true;
-  size_t memoryLimitMb = 450;
-  int viewportWidth = 1280;
-  int viewportHeight = 12000;
   bool secondaryEnabled = true;
   std::wstring secondaryUrl = L"https://www.stationhead.com/buddy46";
-  int secondaryStartDelaySeconds = 3;
-  int secondaryViewportWidth = 800;
-  int secondaryViewportHeight = 1000;
   int secondaryReloadIntervalMinutes = 52;
 };
 

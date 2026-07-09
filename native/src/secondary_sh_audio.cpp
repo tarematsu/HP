@@ -11,14 +11,6 @@ bool SecondaryStationheadPlayer::Muted() const noexcept {
   return audioMuted_.load(std::memory_order_relaxed);
 }
 
-void SecondaryStationheadPlayer::EnsureMuted() noexcept {
-  SetMuted(true);
-}
-
-void SecondaryStationheadPlayer::EnsureAudioState() noexcept {
-  ApplyAudioState();
-}
-
 void SecondaryStationheadPlayer::SetVolume(double volume) noexcept {
   audioVolume_.store(std::clamp(volume, 0.0, 1.0), std::memory_order_relaxed);
   ApplyVolume();

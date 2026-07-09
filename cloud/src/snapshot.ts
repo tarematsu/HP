@@ -1,9 +1,8 @@
-import type { Env, SourceResult } from "./sources";
+import { jstDayKey, type Env, type SourceResult } from "./sources";
 
 export const WORKER_VERSION = "2.11.0";
 
 const EMPTY_OBJECT_HASH = "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
-const JST_MS = 9 * 60 * 60 * 1000;
 
 export interface StateRow {
   source: string;
@@ -57,11 +56,6 @@ export async function readStates(env: Env, sources: readonly string[]): Promise<
        FROM current_state WHERE source IN (${placeholders})`,
   ).bind(...sources).all<StateRow>();
   return Object.fromEntries((rows.results ?? []).map(row => [row.source, row]));
-}
-
-function jstDayKey(timestamp: number): string {
-  const date = new Date(timestamp + JST_MS);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function dashboardSourcePayload(name: string, payload: Record<string, unknown>): Record<string, unknown> {

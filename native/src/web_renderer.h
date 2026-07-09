@@ -1,7 +1,6 @@
 #pragma once
 #include "common.h"
 #include "dashboard_data.h"
-#include "radar.h"
 #include "sensors.h"
 #include "sh.h"
 
@@ -18,10 +17,6 @@ enum class UiAction {
   ClearCache,
   ShowLog,
   CloseMaintenance,
-  RadarToggle,
-  RadarPrevious,
-  RadarNext,
-  RadarSeek,
   StationheadAudioToggleA,
   StationheadAudioToggleB
 };
@@ -31,6 +26,8 @@ struct AirHistorySample {
   int co2 = 0;
   double temperature = 0;
   double humidity = 0;
+
+  bool operator==(const AirHistorySample&) const = default;
 };
 
 struct RenderState {
@@ -144,7 +141,7 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
 
 class Renderer {
  public:
-  Renderer(HWND window, int width, int height, RadarManager& radar);
+  Renderer(HWND window, int width, int height);
   ~Renderer();
   void Initialize();
   void Resize(int width, int height);
@@ -153,16 +150,11 @@ class Renderer {
   bool IsUiReady() const noexcept { return true; }
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
   int NewsCount() const { return newsCount_; }
-  std::wstring MonitorHostHandle() const { return monitorHostHandle_; }
   void Render(const RECT& dirty, const RenderState& state);
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs);
   void NotifyRadarUpdated();
-  UiAction HitTest(POINT point, float* seekFraction = nullptr);
-  RECT ClockRect() const;
-  RECT SensorRect() const;
-  RECT RadarRect() const;
-  RECT StationheadRect() const;
+  UiAction HitTest(POINT point);
 
  private:
   struct NativePlaybackUpdate {
@@ -240,7 +232,7 @@ class Renderer {
   void PaintNativeRadar(HWND hwnd);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
-  void QueueAction(UiAction action, float seekFraction = 0.0f);
+  void QueueAction(UiAction action);
   void StartNativePlaybackBridge();
   void StopNativePlaybackBridge() noexcept;
   void NativePlaybackLoop();
@@ -249,6 +241,7 @@ class Renderer {
   bool NativePlaybackActive(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   HBITMAP NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height);
+  HBITMAP CacheNativeBitmap(const std::wstring& key, HBITMAP bitmap);
   void StartRadarCompose();
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();
@@ -256,6 +249,17 @@ class Renderer {
   void InvalidateAllNativePanels();
   RECT ClientBounds() const;
   void ParseDashboardMetadata(const std::wstring& json);
+
+  // One entry per static native panel window (the clock has its own window
+  // class and is handled separately). Radar comes first so placement loops
+  // stack every later panel above the full-screen radar background.
+  struct NativePanelSlot {
+    HWND Renderer::* window;
+    RECT NativeDashboardLayout::* rect;
+    const wchar_t* title;
+    int id;
+  };
+  static const std::array<NativePanelSlot, 7>& NativePanelSlots();
 
   HWND window_{};
   HWND nativeClockWindow_{};
@@ -278,7 +282,6 @@ class Renderer {
   int height_ = 0;
   RECT bounds_{};
   bool nativeDashboardVisible_ = true;
-  RadarManager& radar_;
   fs::path rootDir_;
   fs::path dataDir_;
   std::atomic<bool> shuttingDown_{false};
@@ -286,10 +289,8 @@ class Renderer {
   uint64_t dashboardSourceRevision_ = 0;
   uint64_t spotifySourceRevision_ = 0;
   int newsCount_ = 0;
-  std::wstring monitorHostHandle_;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
-  float pendingSeekFraction_ = 0.0f;
   std::thread nativePlaybackThread_;
   std::condition_variable nativePlaybackWake_;
   std::mutex nativePlaybackWakeMutex_;

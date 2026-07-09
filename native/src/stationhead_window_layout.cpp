@@ -109,19 +109,7 @@ bool StationheadPlayer::EnsureAuthHostWindow() {
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
   authHostWindow_ = CreateStationheadChildHost(window_, L"HomePanelSpotifyAuthHost",
                                                L"SpotifyAuthHost", bounds_);
-  controllerLayoutValid_ = false;
   return authHostWindow_ && IsWindow(authHostWindow_);
-}
-
-void StationheadPlayer::LayoutHostWindow(bool background) {
-  if (!EnsureHostWindow()) return;
-  if (background) KeepPlaybackBehindDashboard();
-  else {
-    LayoutControllers();
-    viewVisible_ = true;
-    std::lock_guard lock(mutex_);
-    status_.visible = true;
-  }
 }
 
 void StationheadPlayer::KeepPlaybackBehindDashboard() {
@@ -136,8 +124,6 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
   selectedTab_ = StationheadTabKind::None;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(),
                               bounds_, false, false, false);
-  backgroundHostPlaced_ = true;
-  controllerLayoutValid_ = false;
   std::lock_guard lock(mutex_);
   status_.visible = false;
 }
@@ -145,21 +131,18 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
 void StationheadPlayer::SetStartupBounds() {
   selectedTab_ = StationheadTabKind::None;
   viewVisible_ = false;
-  controllerLayoutValid_ = false;
   LayoutControllers();
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
   startupPreviewActive_ = true;
   bounds_ = bounds;
-  controllerLayoutValid_ = false;
   LayoutControllers();
 }
 
 void StationheadPlayer::ClearStartupPreviewBounds() {
   if (!startupPreviewActive_) return;
   startupPreviewActive_ = false;
-  controllerLayoutValid_ = false;
   SetStartupBounds();
 }
 
@@ -203,11 +186,6 @@ void StationheadPlayer::LayoutControllers() {
   const bool showAuth = !preview && selectedTab_ == StationheadTabKind::Auth && authController_;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(),
                               bounds_, viewVisible_, showAuth, preview);
-  backgroundHostPlaced_ = !(preview || viewVisible_);
-  controllerLayoutValid_ = true;
-  lastControllerLayoutBounds_ = bounds_;
-  lastControllerLayoutTab_ = selectedTab_;
-  lastLayoutHadAuthController_ = authController_ != nullptr;
   std::lock_guard lock(mutex_);
   status_.visible = preview || viewVisible_;
 }
@@ -257,7 +235,6 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
     std::lock_guard lock(mutex_);
     status_.visible = preview || interactive;
     status_.spotifyAuthorization = spotifyAuthorization_;
-    status_.apiAuthorization = apiAuthorization_;
   }
   FocusStationheadSurface(!preview && interactive && (!wasInteractive || (showAuth && !authWasVisible)),
                           showAuth, hostWindow_, authHostWindow_, controller_.Get(), authController_.Get());

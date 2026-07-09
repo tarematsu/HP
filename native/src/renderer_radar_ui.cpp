@@ -15,18 +15,6 @@ struct RadarTile {
   POINT destination{};
 };
 
-JsonArray RadarChildArray(const JsonObject& parent, const wchar_t* name) {
-  return json::Array(parent, name);
-}
-
-std::wstring RadarText(const JsonObject& object, const wchar_t* name) {
-  return json::Text(object, name);
-}
-
-double RadarNumber(const JsonObject& object, const wchar_t* name, double fallback = 0) {
-  return json::Number(object, name, fallback);
-}
-
 std::wstring RadarTimeFromMillis(int64_t milliseconds) {
   if (milliseconds <= 0) return {};
   const time_t seconds = static_cast<time_t>(milliseconds / 1000);
@@ -184,18 +172,18 @@ void Renderer::ComposeRadarFrame() {
   if (!json.empty()) {
     try {
       const JsonObject root = JsonObject::Parse(json);
-      sourceWidth = std::max(1, static_cast<int>(RadarNumber(root, L"width", 480)));
-      sourceHeight = std::max(1, static_cast<int>(RadarNumber(root, L"height", 320)));
-      const JsonArray frames = RadarChildArray(root, L"frames");
+      sourceWidth = std::max(1, static_cast<int>(json::Number(root, L"width", 480)));
+      sourceHeight = std::max(1, static_cast<int>(json::Number(root, L"height", 320)));
+      const JsonArray frames = json::Array(root, L"frames");
       if (frames.Size() > 0 && frames.GetAt(0).ValueType() == JsonValueType::Object) {
         const JsonObject frame = frames.GetAt(0).GetObject();
-        validAt = static_cast<int64_t>(std::max(0.0, RadarNumber(frame, L"validAt")));
-        const JsonArray frameTiles = RadarChildArray(frame, L"tiles");
+        validAt = static_cast<int64_t>(std::max(0.0, json::Number(frame, L"validAt")));
+        const JsonArray frameTiles = json::Array(frame, L"tiles");
         std::wostringstream signatureStream;
         signatureStream << L"native-radar-v4|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
                         << L"|source:" << sourceWidth << L'x' << sourceHeight
-                        << L"|" << RadarText(frame, L"baseTime")
-                        << L"|" << RadarText(frame, L"validTime")
+                        << L"|" << json::Text(frame, L"baseTime")
+                        << L"|" << json::Text(frame, L"validTime")
                         << L"|" << validAt
                         << L"|sat:" << Utf8ToWide(FileStamp(satellitePath))
                         << L"|map:" << Utf8ToWide(FileStamp(mapPath))
@@ -203,10 +191,10 @@ void Renderer::ComposeRadarFrame() {
         for (uint32_t index = 0; index < frameTiles.Size(); ++index) {
           if (frameTiles.GetAt(index).ValueType() != JsonValueType::Object) continue;
           const JsonObject tile = frameTiles.GetAt(index).GetObject();
-          const std::wstring url = RadarText(tile, L"url");
+          const std::wstring url = json::Text(tile, L"url");
           const POINT destination{
-              static_cast<LONG>(RadarNumber(tile, L"destX")),
-              static_cast<LONG>(RadarNumber(tile, L"destY")),
+              static_cast<LONG>(json::Number(tile, L"destX")),
+              static_cast<LONG>(json::Number(tile, L"destY")),
           };
           tiles.push_back(RadarTile{url, destination});
           signatureStream << L"|" << url << L"@" << destination.x << L"," << destination.y;
@@ -246,8 +234,6 @@ void Renderer::ComposeRadarFrame() {
         radarSignature_ = signature;
       }
       if (previousFrame) DeleteObject(previousFrame);
-      const HWND radarWindow = nativeRadarWindow_;
-      if (radarWindow && IsWindow(radarWindow)) InvalidateRect(radarWindow, nullptr, FALSE);
       InvalidateAllNativePanels();
       return;
     }
@@ -340,9 +326,6 @@ void Renderer::ComposeRadarFrame() {
     radarSignature_ = signature;
   }
   if (previousFrame) DeleteObject(previousFrame);
-
-  const HWND radarWindow = nativeRadarWindow_;
-  if (radarWindow && IsWindow(radarWindow)) InvalidateRect(radarWindow, nullptr, FALSE);
   InvalidateAllNativePanels();
 }
 }  // namespace hp

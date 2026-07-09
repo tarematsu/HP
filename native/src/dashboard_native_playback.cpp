@@ -1,6 +1,7 @@
 #include "web_renderer.h"
 #include "artwork_cache.h"
 #include "json_helpers.h"
+#include "winhttp_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -23,43 +24,9 @@ constexpr PlaybackEndpoint kPlaybackEndpoints[] = {
     {L"b", L"https://skrzk.pages.dev/api/playback?channel=buddy46"},
 };
 
-struct NativeHttpHandle {
-  HINTERNET value = nullptr;
-  ~NativeHttpHandle() { if (value) WinHttpCloseHandle(value); }
-  NativeHttpHandle() = default;
-  explicit NativeHttpHandle(HINTERNET handle) : value(handle) {}
-  NativeHttpHandle(const NativeHttpHandle&) = delete;
-  NativeHttpHandle& operator=(const NativeHttpHandle&) = delete;
-  operator HINTERNET() const noexcept { return value; }
-};
-
-JsonObject AsObject(const JsonObject& parent, const wchar_t* name) {
-  return json::Object(parent, name);
-}
-
-JsonArray AsArray(const JsonObject& parent, const wchar_t* name) {
-  return json::Array(parent, name);
-}
-
-std::wstring StringValue(const JsonObject& object, const wchar_t* name) {
-  return json::Text(object, name);
-}
-
-std::wstring JsonTextValue(const JsonObject& object, const wchar_t* name) {
-  return json::Stringify(object, name);
-}
-
-double NumberValue(const JsonObject& object, const wchar_t* name, double fallback = 0) {
-  return json::Number(object, name, fallback);
-}
-
-bool BoolValue(const JsonObject& object, const wchar_t* name, bool fallback = false) {
-  return json::Boolean(object, name, fallback);
-}
-
 double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
   for (const wchar_t* name : names) {
-    const double value = NumberValue(object, name, std::numeric_limits<double>::quiet_NaN());
+    const double value = json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
     if (std::isfinite(value)) return value;
   }
   return 0;
@@ -68,7 +35,7 @@ double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t
 double FirstNumberOr(const JsonObject& object, std::initializer_list<const wchar_t*> names,
                      double fallback) {
   for (const wchar_t* name : names) {
-    const double value = NumberValue(object, name, std::numeric_limits<double>::quiet_NaN());
+    const double value = json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
     if (std::isfinite(value)) return value;
   }
   return fallback;
@@ -76,7 +43,7 @@ double FirstNumberOr(const JsonObject& object, std::initializer_list<const wchar
 
 std::wstring FirstText(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
   for (const wchar_t* name : names) {
-    std::wstring value = StringValue(object, name);
+    std::wstring value = json::Text(object, name);
     if (!value.empty()) return value;
   }
   return {};
@@ -84,8 +51,8 @@ std::wstring FirstText(const JsonObject& object, std::initializer_list<const wch
 
 NativePlaybackTrack NormalizeTrack(const fs::path& dataDir, const JsonObject& raw) {
   JsonObject source = raw;
-  JsonObject nested = AsObject(raw, L"track");
-  if (nested.Size() == 0) nested = AsObject(raw, L"song");
+  JsonObject nested = json::Object(raw, L"track");
+  if (nested.Size() == 0) nested = json::Object(raw, L"song");
   if (nested.Size() != 0) source = nested;
 
   NativePlaybackTrack track;
@@ -93,7 +60,7 @@ NativePlaybackTrack NormalizeTrack(const fs::path& dataDir, const JsonObject& ra
 
   std::wstring artist = FirstText(source, {L"trackArtist", L"artist"});
   if (artist.empty()) {
-    const JsonArray artists = AsArray(source, L"artists");
+    const JsonArray artists = json::Array(source, L"artists");
     std::wstring joined;
     for (uint32_t index = 0; index < artists.Size(); ++index) {
       try {
@@ -101,7 +68,7 @@ NativePlaybackTrack NormalizeTrack(const fs::path& dataDir, const JsonObject& ra
         const auto value = artists.GetAt(index);
         if (value.ValueType() == JsonValueType::String) part = value.GetString().c_str();
         else if (value.ValueType() == JsonValueType::Object) {
-          part = StringValue(value.GetObject(), L"name");
+          part = json::Text(value.GetObject(), L"name");
         }
         if (part.empty()) continue;
         if (!joined.empty()) joined += L", ";
@@ -118,12 +85,12 @@ NativePlaybackTrack NormalizeTrack(const fs::path& dataDir, const JsonObject& ra
       L"thumbnail_url",
   });
   if (artwork.empty()) {
-    JsonObject album = AsObject(source, L"album");
-    JsonArray images = AsArray(album, L"images");
+    JsonObject album = json::Object(source, L"album");
+    JsonArray images = json::Array(album, L"images");
     if (images.Size() > 0) {
       try {
         if (images.GetAt(0).ValueType() == JsonValueType::Object) {
-          artwork = StringValue(images.GetAt(0).GetObject(), L"url");
+          artwork = json::Text(images.GetAt(0).GetObject(), L"url");
         }
       } catch (...) {
       }
@@ -143,23 +110,23 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const 
     JsonObject root = JsonObject::Parse(payload);
     JsonObject value = root;
     for (const wchar_t* name : {L"playback", L"data", L"stationhead", L"result"}) {
-      JsonObject child = AsObject(value, name);
+      JsonObject child = json::Object(value, name);
       if (child.Size() != 0) {
         value = child;
         if (name == std::wstring(L"data")) {
-          JsonObject nested = AsObject(value, L"playback");
+          JsonObject nested = json::Object(value, L"playback");
           if (nested.Size() != 0) value = nested;
         }
         break;
       }
     }
 
-    JsonObject queueStatus = AsObject(value, L"queue_status");
-    if (queueStatus.Size() == 0) queueStatus = AsObject(value, L"queueStatus");
+    JsonObject queueStatus = json::Object(value, L"queue_status");
+    if (queueStatus.Size() == 0) queueStatus = json::Object(value, L"queueStatus");
 
-    const bool statusPaused = BoolValue(queueStatus, L"is_paused");
-    const bool playing = BoolValue(queueStatus, L"playing", BoolValue(value, L"playing")) ||
-        (BoolValue(value, L"is_broadcasting") && !BoolValue(value, L"is_paused") && !statusPaused);
+    const bool statusPaused = json::Boolean(queueStatus, L"is_paused");
+    const bool playing = json::Boolean(queueStatus, L"playing", json::Boolean(value, L"playing")) ||
+        (json::Boolean(value, L"is_broadcasting") && !json::Boolean(value, L"is_paused") && !statusPaused);
     const int64_t sampledAt = static_cast<int64_t>(std::max(
         0.0, FirstNumber(value, {L"sampledAt", L"monitorSampledAt", L"updatedAt",
                                  L"generated_at", L"latest_observed_at", L"queue_observed_at"})));
@@ -185,11 +152,11 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const 
     const int64_t effectiveAnchorAt = anchorAt > 0 ? anchorAt : statusAnchorAt;
     const int64_t effectiveQueueEndAt = queueEndAt > 0 ? queueEndAt : statusQueueEndAt;
 
-    JsonArray queue = AsArray(value, L"queue");
-    JsonObject itemSource = AsObject(value, L"item");
-    if (itemSource.Size() == 0) itemSource = AsObject(value, L"currentItem");
-    if (itemSource.Size() == 0) itemSource = AsObject(value, L"currentTrack");
-    if (itemSource.Size() == 0) itemSource = AsObject(value, L"track");
+    JsonArray queue = json::Array(value, L"queue");
+    JsonObject itemSource = json::Object(value, L"item");
+    if (itemSource.Size() == 0) itemSource = json::Object(value, L"currentItem");
+    if (itemSource.Size() == 0) itemSource = json::Object(value, L"currentTrack");
+    if (itemSource.Size() == 0) itemSource = json::Object(value, L"track");
 
     if (queue.Size() > 0) {
       int index = static_cast<int>(FirstNumberOr(value, {L"currentIndex", L"current_index"}, -1));
@@ -201,7 +168,7 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const 
         for (uint32_t queueIndex = 0; queueIndex < queue.Size(); ++queueIndex) {
           try {
             if (queue.GetAt(queueIndex).ValueType() == JsonValueType::Object &&
-                BoolValue(queue.GetAt(queueIndex).GetObject(), L"is_current")) {
+                json::Boolean(queue.GetAt(queueIndex).GetObject(), L"is_current")) {
               index = static_cast<int>(queueIndex);
               break;
             }
@@ -234,7 +201,7 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const 
     } else {
       NativePlaybackTrack track = NormalizeTrack(dataDir, itemSource);
       if (durationMs > 0) track.durationMs = durationMs;
-      const int64_t expectedEndAt = static_cast<int64_t>(std::max(0.0, NumberValue(value, L"expectedEndAt")));
+      const int64_t expectedEndAt = static_cast<int64_t>(std::max(0.0, json::Number(value, L"expectedEndAt")));
       if (track.durationMs > 0 && expectedEndAt > 0) {
         progressMs = track.durationMs -
             std::max<int64_t>(0, expectedEndAt + kPlaybackTransitionHoldMs - fetchedAt);
@@ -264,148 +231,31 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir, const 
   }
 }
 
-std::wstring ShortError(const std::string& value) {
-  std::wstring output = Utf8ToWide(value);
-  if (output.size() > 160) output.resize(160);
-  return output;
-}
-
-std::wstring LastWinHttpError(const char* stage) {
-  std::ostringstream output;
-  output << stage << " failed: " << GetLastError();
-  return ShortError(output.str());
-}
-
-std::wstring RequestPathFromUrl(const URL_COMPONENTS& parts) {
-  std::wstring path;
-  if (parts.lpszUrlPath && parts.dwUrlPathLength) {
-    path.assign(parts.lpszUrlPath, parts.dwUrlPathLength);
-  }
-  if (path.empty()) path = L"/";
-  if (parts.lpszExtraInfo && parts.dwExtraInfoLength) {
-    path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
-  }
-  return path;
-}
-
 std::wstring FetchPlaybackJson(const wchar_t* rawUrl, std::wstring* payload) {
   if (!rawUrl || !*rawUrl || !payload) return L"playback URL missing";
   payload->clear();
 
-  URL_COMPONENTS parts{sizeof(parts)};
-  wchar_t host[256]{};
-  wchar_t path[4096]{};
-  wchar_t extra[2048]{};
-  parts.lpszHostName = host;
-  parts.dwHostNameLength = _countof(host);
-  parts.lpszUrlPath = path;
-  parts.dwUrlPathLength = _countof(path);
-  parts.lpszExtraInfo = extra;
-  parts.dwExtraInfoLength = _countof(extra);
-  if (!WinHttpCrackUrl(rawUrl, 0, 0, &parts)) return LastWinHttpError("WinHttpCrackUrl");
-
-  const std::wstring requestPath = RequestPathFromUrl(parts);
-
-  // Tablets can sit on networks where WPAD/PAC autodetection never resolves,
-  // so try automatic proxy detection first and fall back to a direct
-  // connection instead of failing the poll outright.
-  for (DWORD accessType : {WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY}) {
-    NativeHttpHandle session(WinHttpOpen(
-        L"HomePanel-Native-Playback/1.0",
-        accessType,
-        WINHTTP_NO_PROXY_NAME,
-        WINHTTP_NO_PROXY_BYPASS,
-        0));
-    if (!session) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) return LastWinHttpError("WinHttpOpen");
-      continue;
-    }
-    DWORD protocols = WINHTTP_PROTOCOL_FLAG_HTTP2;
-    WinHttpSetOption(session, WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &protocols, sizeof(protocols));
-
-    NativeHttpHandle connection(WinHttpConnect(
-        session,
-        std::wstring(host, parts.dwHostNameLength).c_str(),
-        parts.nPort,
-        0));
-    if (!connection) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) return LastWinHttpError("WinHttpConnect");
-      continue;
-    }
-
-    NativeHttpHandle request(WinHttpOpenRequest(
-        connection,
-        L"GET",
-        requestPath.c_str(),
-        nullptr,
-        WINHTTP_NO_REFERER,
-        WINHTTP_DEFAULT_ACCEPT_TYPES,
-        parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
-    if (!request) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) return LastWinHttpError("WinHttpOpenRequest");
-      continue;
-    }
-
-    WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
-    DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
-    WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
-    const wchar_t headers[] = L"Accept: application/json\r\nCache-Control: no-cache\r\nPragma: no-cache\r\n";
-    if (!WinHttpSendRequest(
-            request,
-            headers,
-            static_cast<DWORD>(wcslen(headers)),
-            WINHTTP_NO_REQUEST_DATA,
-            0,
-            0,
-            0) ||
-        !WinHttpReceiveResponse(request, nullptr)) {
-      if (accessType == WINHTTP_ACCESS_TYPE_NO_PROXY) return LastWinHttpError("WinHttpReceiveResponse");
-      continue;
-    }
-
-    DWORD status = 0;
-    DWORD statusSize = sizeof(status);
-    WinHttpQueryHeaders(
-        request,
-        WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-        WINHTTP_HEADER_NAME_BY_INDEX,
-        &status,
-        &statusSize,
-        WINHTTP_NO_HEADER_INDEX);
-    if (status != 200) {
-      return L"HTTP " + std::to_wstring(status);
-    }
-
-    std::string body;
-    for (;;) {
-      DWORD available = 0;
-      if (!WinHttpQueryDataAvailable(request, &available)) return LastWinHttpError("WinHttpQueryDataAvailable");
-      if (!available) break;
-      if (body.size() + available > kMaxPlaybackResponseBytes) return L"playback response too large";
-      const size_t offset = body.size();
-      body.resize(offset + available);
-      DWORD read = 0;
-      if (!WinHttpReadData(request, body.data() + offset, available, &read)) return LastWinHttpError("WinHttpReadData");
-      body.resize(offset + read);
-      if (!read) break;
-    }
-    if (body.empty()) return L"empty playback response";
-
-    const std::wstring wide = Utf8ToWide(body);
-    if (wide.empty()) return L"invalid UTF-8 playback response";
-    try {
-      const auto value = winrt::Windows::Data::Json::JsonValue::Parse(wide);
-      if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) {
-        return L"playback response is not a JSON object";
-      }
-    } catch (...) {
-      return L"invalid playback JSON";
-    }
-
-    *payload = wide;
-    return {};
+  std::vector<uint8_t> body;
+  std::wstring error;
+  if (!WinHttpDownload(rawUrl, kMaxPlaybackResponseBytes, &body, nullptr, &error,
+                       L"HomePanel-Native-Playback/1.0",
+                       L"Accept: application/json\r\nCache-Control: no-cache\r\nPragma: no-cache\r\n")) {
+    return error.empty() ? L"playback download failed" : error;
   }
-  return LastWinHttpError("WinHTTP native playback request");
+
+  const std::wstring wide = Utf8ToWide(std::string(body.begin(), body.end()));
+  if (wide.empty()) return L"invalid UTF-8 playback response";
+  try {
+    const auto value = winrt::Windows::Data::Json::JsonValue::Parse(wide);
+    if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) {
+      return L"playback response is not a JSON object";
+    }
+  } catch (...) {
+    return L"invalid playback JSON";
+  }
+
+  *payload = wide;
+  return {};
 }
 
 void SaveNativePlaybackSnapshot(const fs::path& dataDir, const wchar_t* source,
@@ -444,10 +294,10 @@ bool LoadNativePlaybackSnapshot(const fs::path& dataDir, const wchar_t* source,
     const std::string text((std::istreambuf_iterator<char>(input)), {});
     if (text.empty()) return false;
     const JsonObject root = JsonObject::Parse(Utf8ToWide(text));
-    const std::wstring payload = JsonTextValue(root, L"payload");
-    const std::wstring error = StringValue(root, L"error");
+    const std::wstring payload = json::Stringify(root, L"payload");
+    const std::wstring error = json::Text(root, L"error");
     const int64_t fetchedAt = static_cast<int64_t>(std::max(
-        0.0, NumberValue(root, L"fetchedAt")));
+        0.0, json::Number(root, L"fetchedAt")));
     snapshot->source = source;
     snapshot->payload = payload;
     snapshot->error = error;

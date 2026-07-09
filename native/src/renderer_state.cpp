@@ -1,4 +1,9 @@
+// Renderer lifecycle and shared state: construction, window visibility,
+// dashboard cache loading/metadata, queued UI actions, and the main-window
+// background paint. Compiled as part of renderer_core.cpp's translation unit.
 #include "web_renderer.h"
+#include "json_helpers.h"
+#include <winrt/Windows.Data.Json.h>
 
 namespace hp {
 namespace {
@@ -14,8 +19,8 @@ void PrepareParentWindow(HWND window) {
 }
 }  // namespace
 
-Renderer::Renderer(HWND window, int width, int height, RadarManager& radar)
-    : window_(window), width_(width), height_(height), radar_(radar) {
+Renderer::Renderer(HWND window, int width, int height)
+    : window_(window), width_(width), height_(height) {
   wchar_t executable[MAX_PATH * 4]{};
   GetModuleFileNameW(nullptr, executable, _countof(executable));
   rootDir_ = fs::path(executable).parent_path();
@@ -66,26 +71,9 @@ void Renderer::SetVisible(bool visible) {
   if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) {
     ShowWindow(nativeClockWindow_, visible ? SW_SHOWNA : SW_HIDE);
   }
-  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) {
-    ShowWindow(nativeAirWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) {
-    ShowWindow(nativeControlsWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) {
-    ShowWindow(nativeNewsWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) {
-    ShowWindow(nativeWeatherWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) {
-    ShowWindow(nativeEnergyWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
-    ShowWindow(nativeStationheadWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
-  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
-    ShowWindow(nativeRadarWindow_, visible ? SW_SHOWNA : SW_HIDE);
+  for (const NativePanelSlot& slot : NativePanelSlots()) {
+    const HWND hwnd = this->*slot.window;
+    if (hwnd && IsWindow(hwnd)) ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
   }
   if (visible) {
     // Static panels first, then the clock, so the clock ends up on top of
@@ -115,11 +103,59 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
   } catch (...) {
     dashboardUtf8_.clear();
     newsCount_ = 0;
-    monitorHostHandle_.clear();
     ++dashboardSourceRevision_;
     return false;
   }
 }
 
 RECT Renderer::ClientBounds() const { return bounds_; }
+
+void Renderer::QueueAction(UiAction action) {
+  {
+    std::lock_guard lock(actionMutex_);
+    pendingAction_ = action;
+  }
+  PostMessageW(window_, WM_LBUTTONUP, 0, MAKELPARAM(0, 0));
+}
+
+UiAction Renderer::HitTest(POINT) {
+  std::lock_guard lock(actionMutex_);
+  const UiAction action = pendingAction_;
+  pendingAction_ = UiAction::None;
+  return action;
+}
+
+void Renderer::UpdateState(const RenderState& state) {
+  UpdateNativeStaticPanels(state);
+}
+
+void Renderer::Render(const RECT& dirty, const RenderState& state) {
+  (void)dirty;
+  (void)state;
+  if (!window_ || !nativeDashboardVisible_) return;
+  HDC dc = GetDC(window_);
+  if (!dc) return;
+  RECT bounds{};
+  GetClientRect(window_, &bounds);
+  HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
+  FillRect(dc, &bounds, background);
+  DeleteObject(background);
+  ReleaseDC(window_, dc);
+}
+
+void Renderer::NotifyRadarUpdated() {
+  if (!radarComposeStarted_.load(std::memory_order_acquire)) return;
+  {
+    std::lock_guard lock(radarComposeWakeMutex_);
+    radarComposePending_ = true;
+  }
+  radarComposeWake_.notify_all();
+}
+
+using winrt::Windows::Data::Json::JsonObject;
+
+void Renderer::ParseDashboardMetadata(const std::wstring& json) {
+  const JsonObject root = JsonObject::Parse(json);
+  newsCount_ = static_cast<int>(json::Array(json::Object(root, L"news"), L"items").Size());
+}
 }  // namespace hp

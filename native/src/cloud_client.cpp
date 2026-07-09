@@ -136,9 +136,6 @@ void CloudClient::StartNetworkChangeWatcher() {
       CloseHandle(overlapped.hEvent);
       if (wait != WAIT_OBJECT_0 + 1) return;  // stop requested or wait failed
       RefreshNow();
-#ifdef HOMEPANEL_ENABLE_SPOTIFY_RUNTIME
-      RequestSpotifyPollNow();
-#endif
     }
   });
 }

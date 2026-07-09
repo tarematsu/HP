@@ -2,7 +2,6 @@
 #include "cloud_client.h"
 #include "config.h"
 #include "logger.h"
-#include "radar.h"
 #include "web_renderer.h"
 #include "sensors.h"
 #include "sh.h"
@@ -220,12 +219,6 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   int64_t NextWakeAt() const noexcept {
     return player_ ? player_->NextWakeAt() : 0;
   }
-  void NotifyMonitorHandle(const std::wstring& handle) {
-    if (!player_) return;
-    player_->NotifyMonitorHandle(handle);
-    ApplyAudioState();
-    ApplyBounds();
-  }
 
   void SelectTab(StationheadTabKind tab) {
     selectedTab_ = tab;
@@ -279,42 +272,10 @@ class AppSecondaryStationheadHandle
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
-
-    const SecondaryStationheadStatus status = player_->Status();
-    if (status.spotifyAuthorization && !status.apiAuthorization) {
-      stationheadAuthorizationSeen_ = true;
-    }
-    if (status.apiAuthorization) {
-      apiAuthorizationActive_ = true;
-    } else if (apiAuthorizationActive_) {
-      apiAuthorizationActive_ = false;
-      stationheadAuthorizationSeen_ = false;
-      if (status.detail.find(L"Spotify API authentication completed") !=
-          std::wstring::npos) {
-        if (CloudClient* cloud = CloudClient::Current()) cloud->RefreshNow();
-      }
-    } else if (stationheadAuthorizationSeen_ && !status.spotifyAuthorization) {
-      const bool stationheadConnected =
-          status.detail.find(L"Spotify authentication completed") !=
-          std::wstring::npos;
-      stationheadAuthorizationSeen_ = false;
-      if (stationheadConnected) {
-        if (CloudClient* cloud = CloudClient::Current()) {
-          const std::wstring authorizationUrl = cloud->BeginSpotifyAuthorization();
-          if (!authorizationUrl.empty() &&
-              player_->OpenSpotifyApiAuthorization(authorizationUrl)) {
-            apiAuthorizationActive_ = true;
-          }
-        }
-      }
-    }
-
     ApplyBounds();
   }
   void Reconnect() {
     if (!player_) return;
-    stationheadAuthorizationSeen_ = false;
-    apiAuthorizationActive_ = false;
     ApplyInteractiveBounds();
     player_->Reconnect();
     ApplyAudioState();
@@ -333,10 +294,6 @@ class AppSecondaryStationheadHandle
   bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
     return StationheadNeedsForeground(status);
   }
-
- private:
-  bool stationheadAuthorizationSeen_ = false;
-  bool apiAuthorizationActive_ = false;
 };
 
 class App {
@@ -440,11 +397,10 @@ class App {
   void PublishRenderState();
   void PublishRenderStateNow();
   void InvalidateAll();
-  void Invalidate(const RECT& rect);
   void LoadAirHistory();
   void SaveAirHistory() const;
   void UpdateAirHistory(const SensorSnapshot& sensors);
-  void HandleAction(UiAction action, float seekFraction);
+  void HandleAction(UiAction action);
   void LayoutWorkspace();
   void ProcessRemoteCommands();
   void SendTelemetryAsync();
@@ -459,7 +415,6 @@ class App {
   fs::path dataDir_;
   AppConfig config_;
   std::unique_ptr<Logger> logger_;
-  std::unique_ptr<RadarManager> radar_;
   std::unique_ptr<Renderer> renderer_;
   std::unique_ptr<CloudClient> cloud_;
   std::unique_ptr<SensorHub> sensors_;

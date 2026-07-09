@@ -19,6 +19,8 @@ struct SensorSnapshot {
   bool doorOpen = false;
   size_t outboxCount = 0;
   std::wstring lastError;
+
+  bool operator==(const SensorSnapshot&) const = default;
 };
 
 class SensorHub {

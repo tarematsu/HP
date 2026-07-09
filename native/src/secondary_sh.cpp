@@ -6,14 +6,9 @@ namespace {
 constexpr wchar_t kProfileName[] = L"stationhead-secondary";
 constexpr int64_t kAudioRecoveryMs = 10'000;
 constexpr int64_t kNavigationTimeoutMs = 60'000;
-constexpr int64_t kApiAuthTimeoutMs = 10 * 60'000;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
-}
-
-bool WindowOwnsFocus(HWND host, HWND focused) {
-  return host && focused && IsWindow(host) && (host == focused || IsChild(host, focused));
 }
 
 std::wstring HResultHex(HRESULT value) {
@@ -22,120 +17,6 @@ std::wstring HResultHex(HRESULT value) {
   return output.str();
 }
 
-constexpr wchar_t kStartupScript[] = LR"JS(
-(() => {
-  const host = String(location.hostname || '').toLowerCase();
-  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
-  if (window.__homepanelSecondaryStationhead) return;
-  const nativeTimeout = window.setTimeout.bind(window);
-  const NativeMutationObserver = window.MutationObserver;
-  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|続ける|続行|次へ)$/i;
-  const loginPattern = /^(log\s*in|sign\s*in|login)(?:\s+.*)?$/i;
-  let observer = null;
-  let scanQueued = false;
-  let scanTimer = 0;
-  let attempts = 0;
-  let retryAt = 0;
-  let loginReported = false;
-  let lastTargetSignature = '';
-  let lastPlaying = null;
-  const observedAt = Date.now();
-  const labelOf = element => [
-    element?.innerText,
-    element?.getAttribute?.('aria-label'),
-    element?.textContent,
-    element?.getAttribute?.('title'),
-    element?.getAttribute?.('value'),
-    element?.getAttribute?.('data-testid')
-  ].map(normalize).find(Boolean) || '';
-  const visible = element => {
-    if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
-        element.getAttribute?.('aria-hidden') === 'true') return false;
-    const rect = element.getBoundingClientRect?.();
-    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
-    const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
-  };
-  const playing = () => {
-    if (navigator.mediaSession?.playbackState === 'playing') return true;
-    return Array.from(document.querySelectorAll('audio,video')).some(element =>
-      !element.paused && !element.ended && element.readyState >= 2);
-  };
-  const publishAudio = () => {
-    const current = playing();
-    if (current === lastPlaying) return current;
-    lastPlaying = current;
-    try { window.chrome?.webview?.postMessage(current ? 'secondary-playing' : 'secondary-stopped'); } catch (_) {}
-    return current;
-  };
-  const scan = () => {
-    scanQueued = false;
-    scanTimer = 0;
-    const ready = document.readyState !== 'loading' && !!document.body;
-    const isPlaying = publishAudio();
-    if (!ready || !document.body) return;
-    if (isPlaying) {
-      observer?.disconnect?.();
-      observer = null;
-      return;
-    }
-    let start = null;
-    let login = false;
-    for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element)) continue;
-      const label = labelOf(element);
-      if (!start && startPattern.test(label)) start = element;
-      if (!login && loginPattern.test(label)) login = true;
-      if (start && login) break;
-    }
-    if (start && attempts < 2 && Date.now() >= retryAt) {
-      const target = start.closest?.("button,[role='button'],a,input[type='button'],input[type='submit'],[tabindex]") || start;
-      const rect = target.getBoundingClientRect();
-      const signature = `${labelOf(target)}:${Math.round(rect.left)}:${Math.round(rect.top)}`;
-      if (signature !== lastTargetSignature) {
-        lastTargetSignature = signature;
-        attempts = 0;
-        retryAt = 0;
-      }
-      attempts += 1;
-      retryAt = Date.now() + 1500;
-      try { target.click?.(); } catch (_) {}
-      if (attempts < 2) nativeTimeout(schedule, 1500);
-    } else if (!start && login && !loginReported && Date.now() - observedAt >= 15000) {
-      loginReported = true;
-      try { window.chrome?.webview?.postMessage('secondary-login-required'); } catch (_) {}
-    }
-  };
-  const schedule = () => {
-    if (scanQueued) return;
-    scanQueued = true;
-    scanTimer = nativeTimeout(scan, 250);
-  };
-  const relevant = record => {
-    if (record.type === 'attributes') return Boolean(record.target?.matches?.(selector) || record.target?.closest?.(selector));
-    if (record.type === 'characterData') return Boolean(record.target?.parentElement?.closest?.(selector));
-    return [...(record.addedNodes || []), ...(record.removedNodes || [])].some(node =>
-      node instanceof Element && (node.matches?.(selector) || node.querySelector?.(selector)));
-  };
-  window.__homepanelSecondaryStationhead = { scan: schedule };
-  if (NativeMutationObserver) {
-    observer = new NativeMutationObserver(records => { if (records.some(relevant)) schedule(); });
-    observer.observe(document, {
-      childList: true, subtree: true
-    });
-  }
-  for (const eventName of ['play','playing','canplay','pause','ended','stalled','waiting','error']) {
-    document.addEventListener(eventName, publishAudio, true);
-  }
-  document.addEventListener('DOMContentLoaded', schedule, { once: true });
-  window.addEventListener('load', schedule, { once: true });
-  schedule();
-  nativeTimeout(schedule, 15000);
-})()
-)JS";
 }  // namespace
 
 SecondaryStationheadPlayer::SecondaryStationheadPlayer(
@@ -162,7 +43,6 @@ void SecondaryStationheadPlayer::Stop() {
   if (shuttingDown_.exchange(true, std::memory_order_acq_rel)) return;
   callbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
-  StopSpotifyApiAuthorizationWorker();
   CloseWebView();
   if (authHostWindow_ && IsWindow(authHostWindow_)) DestroyWindow(authHostWindow_);
   if (hostWindow_ && IsWindow(hostWindow_)) DestroyWindow(hostWindow_);
@@ -371,18 +251,10 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     Create();
     return;
   }
-  if (apiAuthorization_ && apiAuthStartedAt_ > 0 && !apiAuthExchangePending_ &&
-      nowMs - apiAuthStartedAt_ >= kApiAuthTimeoutMs) {
-    log_.Warn(L"Spotify API authorization timed out; restoring secondary Stationhead");
-    ResetSpotifyApiAuthorization(L"Spotify API authentication timed out; returning to buddy46", false);
-    RestoreSecondaryAfterSpotifyApiAuthorization();
-    return;
-  }
   if (!webview_) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
-  MaybeStartSpotifyApiAuthorization(this);
   if (!audioPlaying_.load(std::memory_order_relaxed) && audioStoppedAt_ > 0 &&
       nowMs - audioStoppedAt_ >= kAudioRecoveryMs && !loginRequired_) {
     log_.Warn(L"Secondary Stationhead audio stopped; reconnecting");
@@ -408,7 +280,6 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (retryAt_ > 0) consider(retryAt_);
-  if (apiAuthorization_ && apiAuthStartedAt_ > 0) consider(apiAuthStartedAt_ + kApiAuthTimeoutMs);
   if (!audioPlaying_.load(std::memory_order_relaxed) && audioStoppedAt_ > 0 && !loginRequired_) {
     consider(audioStoppedAt_ + kAudioRecoveryMs);
   }
@@ -430,7 +301,6 @@ void SecondaryStationheadPlayer::ScheduleRetry(const std::wstring& reason, int64
 }
 
 void SecondaryStationheadPlayer::CloseWebView() {
-  if (apiAuthorization_) ResetSpotifyApiAuthorization(L"", false);
   callbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
   CloseAuthWebView();

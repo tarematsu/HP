@@ -1,9 +1,8 @@
 // Part of secondary_sh.cpp's translation unit (see the #include at the end of
 // that file). Main WebView2 configuration for the secondary Stationhead player:
-// settings, resource blocking, the injected kStartupScript, and the new-window /
+// settings, resource blocking, the injected autoplay script, and the new-window /
 // message / navigation / process-failed handlers. Uses the anonymous-namespace
-// helpers (kStartupScript, kProfileName, HResultHex, CallbackAlive) from
-// secondary_sh.cpp.
+// helpers (kProfileName, HResultHex, CallbackAlive) from secondary_sh.cpp.
 #include "secondary_sh.h"
 #include "sh_shared.h"
 
@@ -34,8 +33,10 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
     COREWEBVIEW2_COLOR background{255, 0, 0, 0};
     controller2->put_DefaultBackgroundColor(background);
   }
+  static const std::wstring startupScript =
+      StationheadAutoplayScript(L"__homepanelSecondaryStationhead", L"secondary");
   webview_->AddScriptToExecuteOnDocumentCreated(
-      kStartupScript,
+      startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
           [this, alive](HRESULT result, LPCWSTR) -> HRESULT {
             if (CallbackAlive(alive) && FAILED(result)) log_.Warn(L"Secondary Stationhead startup script registration failed");
@@ -143,7 +144,6 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
       Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || shuttingDown_) return S_OK;
-            if (apiAuthorization_) return S_OK;
             BOOL success = FALSE;
             if (args) args->get_IsSuccess(&success);
             {

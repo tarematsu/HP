@@ -81,7 +81,6 @@ void App::ClearDisplayCache() {
   fs::remove(dataDir_ / L"dashboard.json", ignored);
   fs::remove(dataDir_ / L"radar.json", ignored);
   fs::remove_all(dataDir_ / L"radar-cache", ignored);
-  radar_->ReloadMetadata();
   cloud_->RefreshNow();
   renderState_.toast = L"表示キャッシュを削除しました。ログイン情報と履歴は保持しています";
   ShowToast(std::move(renderState_.toast), 5000);

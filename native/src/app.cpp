@@ -36,37 +36,6 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   return version.str();
 }
 
-bool SameStationheadStatus(const StationheadStatus& left, const StationheadStatus& right) {
-  return left.created == right.created &&
-         left.navigating == right.navigating &&
-         left.playing == right.playing &&
-         left.loginRequired == right.loginRequired &&
-         left.spotifyAuthorization == right.spotifyAuthorization &&
-         left.apiAuthorization == right.apiAuthorization &&
-         left.lightweight == right.lightweight &&
-         left.visible == right.visible &&
-         left.processFailed == right.processFailed &&
-         left.spotifyConfigured == right.spotifyConfigured &&
-         left.authAvailable == right.authAvailable &&
-         left.audioPlaying == right.audioPlaying &&
-         left.audioSilent == right.audioSilent &&
-         left.audioMuted == right.audioMuted &&
-         left.secondaryAudioMuted == right.secondaryAudioMuted &&
-         left.healthMisses == right.healthMisses &&
-         left.lastPlaybackConfirmedAt == right.lastPlaybackConfirmedAt &&
-         left.processWorkingSet == right.processWorkingSet &&
-         left.processCpuPercent == right.processCpuPercent &&
-         left.blockedResources == right.blockedResources &&
-         left.url == right.url &&
-         left.detail == right.detail &&
-         left.trackTitle == right.trackTitle &&
-         left.trackArtist == right.trackArtist &&
-         left.deviceName == right.deviceName &&
-         left.artworkUrl == right.artworkUrl &&
-         left.sampledAt == right.sampledAt &&
-         left.expectedEndAt == right.expectedEndAt &&
-         left.trackDurationMs == right.trackDurationMs;
-}
 
 uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
   if (deadline <= 0) return fallbackMs;
@@ -168,8 +137,7 @@ void App::CreateMainWindow(int showCommand) {
 
 void App::StartServices() {
   startupAt_ = UnixMillis();
-  radar_ = std::make_unique<RadarManager>(dataDir_, *logger_);
-  renderer_ = std::make_unique<Renderer>(window_, config_.screenWidth, config_.screenHeight, *radar_);
+  renderer_ = std::make_unique<Renderer>(window_, config_.screenWidth, config_.screenHeight);
   if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json")) {
     logger_->Warn(L"No valid dashboard cache; local layers will remain available");
   }
@@ -321,11 +289,10 @@ void App::StopServices() {
   cloud_.reset();
   sensors_.reset();
   renderer_.reset();
-  radar_.reset();
 }
 
 void App::Tick() {
-  if (!renderer_ || !sensors_ || !stationhead_ || !radar_ || !cloud_) return;
+  if (!renderer_ || !sensors_ || !stationhead_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
   stationhead_->Tick(now);
@@ -390,7 +357,7 @@ void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
 }
 
 bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
-  if (SameStationheadStatus(renderState_.stationhead, nextState)) return false;
+  if (renderState_.stationhead == nextState) return false;
   renderState_.stationhead = nextState;
   MarkRenderStateDirty();
   return true;
@@ -471,12 +438,8 @@ void App::InvalidateAll() {
   ::InvalidateRect(window_, nullptr, FALSE);
 }
 
-void App::Invalidate(const RECT& rect) {
-  ::InvalidateRect(window_, &rect, FALSE);
-}
 
-
-void App::HandleAction(UiAction action, float seekFraction) {
+void App::HandleAction(UiAction action) {
   switch (action) {
     case UiAction::WorkspaceMain:
       selectedTab_ = WorkspaceTab::Main;
@@ -528,22 +491,6 @@ void App::HandleAction(UiAction action, float seekFraction) {
     case UiAction::CloseMaintenance:
       renderState_.maintenance = false;
       PublishRenderStateNow();
-      break;
-    case UiAction::RadarToggle:
-      radar_->TogglePlayback();
-      Invalidate(renderer_->RadarRect());
-      break;
-    case UiAction::RadarPrevious:
-      radar_->Previous();
-      Invalidate(renderer_->RadarRect());
-      break;
-    case UiAction::RadarNext:
-      radar_->Next();
-      Invalidate(renderer_->RadarRect());
-      break;
-    case UiAction::RadarSeek:
-      radar_->SeekFraction(seekFraction);
-      Invalidate(renderer_->RadarRect());
       break;
     default:
       break;

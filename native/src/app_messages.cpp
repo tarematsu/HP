@@ -36,8 +36,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONUP: {
       if (!renderer_) return 0;
       POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-      float seek = 0;
-      HandleAction(renderer_->HitTest(point, &seek), seek);
+      HandleAction(renderer_->HitTest(point));
       return 0;
     }
     case WM_KEYDOWN:
@@ -69,10 +68,6 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         PublishRenderStateNow();
       }
 
-      const std::wstring monitorHandle = renderer_->MonitorHostHandle();
-      if (!monitorHandle.empty() && stationhead_) {
-        stationhead_->NotifyMonitorHandle(monitorHandle);
-      }
       PublishRenderStateNow();
       return 0;
     }

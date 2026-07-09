@@ -57,18 +57,10 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
       config.stationhead.url = L"https://www.stationhead.com/sakuramankai";
     }
     config.stationhead.fallbackUrl = Text(station, L"fallbackUrl", config.stationhead.fallbackUrl);
-    config.stationhead.sakurazakaUrl = Text(station, L"sakurazakaUrl", config.stationhead.sakurazakaUrl);
-    config.stationhead.sakurazakaHandle = Text(station, L"sakurazakaHandle", config.stationhead.sakurazakaHandle);
-    config.stationhead.audioFallbackSeconds = 0;
     config.stationhead.reloadIntervalMinutes = Number(station, L"reloadIntervalMinutes", config.stationhead.reloadIntervalMinutes, 1, 1440);
-    config.stationhead.healthCheckIntervalSeconds = Number(station, L"healthCheckIntervalSeconds", config.stationhead.healthCheckIntervalSeconds, 5, 3600);
-    config.stationhead.restartAfterHealthMisses = Number(station, L"restartAfterHealthMisses", config.stationhead.restartAfterHealthMisses, 1, 100);
     config.stationhead.blockImagesAfterPlayback = Boolean(station, L"blockImagesAfterPlayback", config.stationhead.blockImagesAfterPlayback);
     config.stationhead.blockFontsAfterPlayback = Boolean(station, L"blockFontsAfterPlayback", config.stationhead.blockFontsAfterPlayback);
-    config.stationhead.hideChatAfterPlayback = Boolean(station, L"hideChatAfterPlayback", config.stationhead.hideChatAfterPlayback);
     config.stationhead.lowMemoryMode = Boolean(station, L"lowMemoryMode", config.stationhead.lowMemoryMode);
-    config.stationhead.memoryLimitMb = static_cast<size_t>(Number(
-        station, L"memoryLimitMb", static_cast<int>(config.stationhead.memoryLimitMb), 128, 4096));
 
     const auto secondary = Object(station, L"secondary");
     config.stationhead.secondaryEnabled = Boolean(secondary, L"enabled", config.stationhead.secondaryEnabled);
@@ -82,12 +74,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryStationheadUrl) != 0) {
       config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
     }
-    config.stationhead.secondaryStartDelaySeconds = Number(
-        secondary, L"startDelaySeconds", config.stationhead.secondaryStartDelaySeconds, 1, 120);
-    config.stationhead.secondaryViewportWidth = Number(
-        secondary, L"viewportWidth", config.stationhead.secondaryViewportWidth, 320, 1920);
-    config.stationhead.secondaryViewportHeight = Number(
-        secondary, L"viewportHeight", config.stationhead.secondaryViewportHeight, 480, 4000);
     // Window B is intentionally staggered two minutes after the 50-minute primary reload.
     // Keep this authoritative even when an older cloud cache still contains 57 minutes.
     config.stationhead.secondaryReloadIntervalMinutes = 52;

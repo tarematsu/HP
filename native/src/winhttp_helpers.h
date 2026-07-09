@@ -15,4 +15,132 @@ inline std::wstring QueryHeaderValue(HINTERNET request, DWORD query) {
   value.resize(wcsnlen(value.c_str(), value.size()));
   return value;
 }
+
+struct WinHttpHandle {
+  HINTERNET value = nullptr;
+  WinHttpHandle() = default;
+  explicit WinHttpHandle(HINTERNET handle) : value(handle) {}
+  ~WinHttpHandle() { if (value) WinHttpCloseHandle(value); }
+  WinHttpHandle(const WinHttpHandle&) = delete;
+  WinHttpHandle& operator=(const WinHttpHandle&) = delete;
+  operator HINTERNET() const noexcept { return value; }
+};
+
+inline std::wstring WinHttpRequestPathFromUrl(const URL_COMPONENTS& parts) {
+  std::wstring path;
+  if (parts.lpszUrlPath && parts.dwUrlPathLength) {
+    path.assign(parts.lpszUrlPath, parts.dwUrlPathLength);
+  }
+  if (path.empty()) path = L"/";
+  if (parts.lpszExtraInfo && parts.dwExtraInfoLength) {
+    path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
+  }
+  return path;
+}
+
+// One-shot WinHTTP GET shared by the artwork cache and the native playback
+// bridge. Tries automatic proxy detection first and falls back to a direct
+// connection (tablets can sit on networks where WPAD never resolves).
+// Returns true with *body filled on HTTP 200; otherwise returns false and,
+// when error is non-null, stores a short description of the last failure.
+inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
+                            std::vector<uint8_t>* body,
+                            std::wstring* contentType = nullptr,
+                            std::wstring* error = nullptr,
+                            const wchar_t* userAgent = L"HomePanel/1.0",
+                            const wchar_t* extraHeaders = nullptr) {
+  const auto fail = [error](std::wstring message) {
+    if (error) *error = std::move(message);
+    return false;
+  };
+  const auto lastError = [](const wchar_t* stage) {
+    return std::wstring(stage) + L" failed: " + std::to_wstring(GetLastError());
+  };
+  if (!rawUrl || !*rawUrl || !body) return fail(L"URL missing");
+  body->clear();
+  if (contentType) contentType->clear();
+
+  URL_COMPONENTS parts{sizeof(parts)};
+  wchar_t host[256]{};
+  wchar_t path[4096]{};
+  wchar_t extra[2048]{};
+  parts.lpszHostName = host;
+  parts.dwHostNameLength = _countof(host);
+  parts.lpszUrlPath = path;
+  parts.dwUrlPathLength = _countof(path);
+  parts.lpszExtraInfo = extra;
+  parts.dwExtraInfoLength = _countof(extra);
+  if (!WinHttpCrackUrl(rawUrl, 0, 0, &parts)) return fail(lastError(L"WinHttpCrackUrl"));
+  const std::wstring requestPath = WinHttpRequestPathFromUrl(parts);
+
+  std::wstring failure = L"WinHTTP request failed";
+  for (DWORD accessType : {WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY}) {
+    WinHttpHandle session(WinHttpOpen(userAgent, accessType,
+                                      WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+    if (!session) { failure = lastError(L"WinHttpOpen"); continue; }
+    DWORD protocols = WINHTTP_PROTOCOL_FLAG_HTTP2;
+    WinHttpSetOption(session, WINHTTP_OPTION_ENABLE_HTTP_PROTOCOL, &protocols, sizeof(protocols));
+
+    WinHttpHandle connection(WinHttpConnect(
+        session, std::wstring(host, parts.dwHostNameLength).c_str(), parts.nPort, 0));
+    if (!connection) { failure = lastError(L"WinHttpConnect"); continue; }
+
+    WinHttpHandle request(WinHttpOpenRequest(
+        connection, L"GET", requestPath.c_str(), nullptr, WINHTTP_NO_REFERER,
+        WINHTTP_DEFAULT_ACCEPT_TYPES,
+        parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
+    if (!request) { failure = lastError(L"WinHttpOpenRequest"); continue; }
+
+    WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
+    DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
+    WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
+    if (!WinHttpSendRequest(request, extraHeaders,
+                            extraHeaders ? static_cast<DWORD>(wcslen(extraHeaders)) : 0,
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(request, nullptr)) {
+      failure = lastError(L"WinHttpReceiveResponse");
+      continue;
+    }
+
+    DWORD status = 0;
+    DWORD statusSize = sizeof(status);
+    WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                        WINHTTP_HEADER_NAME_BY_INDEX, &status, &statusSize, WINHTTP_NO_HEADER_INDEX);
+    if (status != 200) {
+      failure = L"HTTP " + std::to_wstring(status);
+      continue;
+    }
+    if (contentType) *contentType = QueryHeaderValue(request, WINHTTP_QUERY_CONTENT_TYPE);
+
+    bool readOk = true;
+    for (;;) {
+      DWORD available = 0;
+      if (!WinHttpQueryDataAvailable(request, &available)) {
+        failure = lastError(L"WinHttpQueryDataAvailable");
+        readOk = false;
+        break;
+      }
+      if (!available) break;
+      if (body->size() + available > maximumBytes) {
+        failure = L"response too large";
+        readOk = false;
+        break;
+      }
+      const size_t offset = body->size();
+      body->resize(offset + available);
+      DWORD read = 0;
+      if (!WinHttpReadData(request, body->data() + offset, available, &read)) {
+        failure = lastError(L"WinHttpReadData");
+        readOk = false;
+        break;
+      }
+      body->resize(offset + read);
+      if (!read) break;
+    }
+    if (readOk && !body->empty()) return true;
+    if (readOk) failure = L"empty response";
+    body->clear();
+  }
+  return fail(std::move(failure));
+}
 }  // namespace hp

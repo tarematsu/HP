@@ -48,6 +48,8 @@ struct StationheadStatus {
   int64_t sampledAt = 0;
   int64_t expectedEndAt = 0;
   int64_t trackDurationMs = 0;
+
+  bool operator==(const StationheadStatus&) const = default;
 };
 
 class StationheadPlayer {
@@ -59,8 +61,6 @@ class StationheadPlayer {
   void Tick(int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void Reconnect();
-  void RefreshSpotifyState(bool notify = true);
-  void RefreshLocalMetadata(int64_t) noexcept {}
   void ShowForLogin();
   void ShowAfterAudioStop();
   void OpenSpotifyAuthorization(const std::wstring& url);
@@ -78,7 +78,6 @@ class StationheadPlayer {
   bool HasAuthTab() const;
   StationheadStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
-  void NotifyMonitorHandle(const std::wstring& handle);
 
  private:
   void ApplyMute() const noexcept;
@@ -87,16 +86,12 @@ class StationheadPlayer {
   void EnsureAuthController(const std::wstring& url);
   bool EnsureHostWindow();
   bool EnsureAuthHostWindow();
-  void LayoutHostWindow(bool background);
   void CloseWebView();
   void CloseAuthWebView();
   void PostChange(uint32_t flags = StationheadChangeNone);
   void ConfigureWebView();
   void ConfigureAuthWebView();
-  void EvaluateStartupState();
-  void HandleStartupStateResult(HRESULT error, LPCWSTR result);
-  void ClickTarget(double x, double y);
-  void ResetNavigationRouteState(int64_t nowMs);
+  void ResetNavigationRouteState();
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
   void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                               const std::wstring& reason, bool fallbackActive);
@@ -135,10 +130,8 @@ class StationheadPlayer {
   EventRegistrationToken authCloseToken_{};
   std::atomic<bool> creating_{false};
   std::atomic<bool> recreating_{false};
-  std::atomic<bool> scanPending_{false};
   std::atomic<bool> shuttingDown_{false};
   std::atomic<bool> audioPlaying_{false};
-  std::atomic<bool> audioStateKnown_{false};
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
   // Last mute/volume actually pushed into the WebViews (-1 = never pushed).
@@ -148,32 +141,17 @@ class StationheadPlayer {
   mutable std::atomic<int> appliedVolumePercent_{-1};
   std::atomic<uint32_t> pendingChangeFlags_{0};
   std::atomic<bool> changeMessagePending_{false};
-  std::wstring targetSignature_;
   std::wstring pendingAuthorizationUrl_;
-  int stableTargetCount_ = 0;
   int64_t createdAt_ = 0;
   int64_t lastMemoryCheckAt_ = 0;
   int64_t lastReloadAt_ = 0;
-  int64_t lastScanAt_ = 0;
-  int64_t startupScanUntil_ = 0;
-  int64_t lastAudioAtMs_ = 0;
   int64_t noAudioSinceAt_ = 0;
   int64_t nextTickAt_ = 0;
-  int64_t lastProcessSampleAt_ = 0;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
   bool loginSessionActive_ = false;
-  bool showAfterNavigation_ = false;
   bool viewVisible_ = false;
   bool startupPreviewActive_ = false;
-  bool backgroundHostPlaced_ = false;
-  bool controllerLayoutValid_ = false;
-  bool lastLayoutHadAuthController_ = false;
-  RECT lastControllerLayoutBounds_{};
-  StationheadTabKind lastControllerLayoutTab_ = StationheadTabKind::None;
   bool usedFallback_ = false;
-  bool usedSakurazaka_ = false;
-  int64_t createdForAudioCheckAt_ = 0;
-  bool waitingForStartTransition_ = false;
 };
 }  // namespace hp

@@ -1,5 +1,5 @@
 import { fetchJson } from "./http";
-import { JST_MS, type Env, type SourceResult } from "./sources";
+import { JST_MS, jstDayKey as jstDayKeyMs, type Env, type SourceResult } from "./sources";
 
 const OCTOPUS_TOKEN_TTL_MS = 55 * 60_000;
 
@@ -144,11 +144,6 @@ function jstBoundary(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month, day) - JST_MS);
 }
 
-function jstDayKey(date: Date): string {
-  const jst = new Date(date.getTime() + JST_MS);
-  return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, "0")}-${String(jst.getUTCDate()).padStart(2, "0")}`;
-}
-
 type OctopusReading = { startAt: string; value: string | number; supplyPoint: string };
 type OctopusReadingPayload = {
   account?: {
@@ -233,14 +228,14 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     const date = new Date(reading.startAt);
     const value = Number(reading.value ?? 0);
     if (!Number.isFinite(date.getTime()) || !Number.isFinite(value)) continue;
-    const key = jstDayKey(date);
+    const key = jstDayKeyMs(date.getTime());
     daily[key] = (daily[key] ?? 0) + value;
     if (date >= previousStart && date < currentStart) { monthly.previous += value; previousSlots += 1; }
     if (date >= currentStart && date < now) monthly.current += value;
   }
   const history = Array.from({ length: 14 }, (_, index) => {
     const date = new Date(jstBoundary(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate()).getTime() - (14 - index) * 86_400_000);
-    const key = jstDayKey(date);
+    const key = jstDayKeyMs(date.getTime());
     return { date: key, value: daily[key] === undefined ? null : Number(daily[key].toFixed(3)) };
   });
   const elapsed = Math.max(1, now.getTime() - currentStart.getTime());

@@ -1,7 +1,4 @@
-#include "web_renderer_constructor.cpp"
-#include "web_renderer_actions.cpp"
+#include "renderer_state.cpp"
 #include "dashboard_native_playback.cpp"
-#include "dashboard_playback_parse.cpp"
 #include "dashboard_playback_resolve.cpp"
-#include "dashboard_state_render_optimized.cpp"
 #include "embedded_ui.cpp"

@@ -116,12 +116,7 @@ set(HOMEPANEL_CORE_SOURCES
   src/cloud_client.cpp
   src/dashboard_data.cpp
   src/update_client.cpp
-  src/radar.cpp
   src/sensors.cpp)
-
-set(HOMEPANEL_SPOTIFY_SOURCES
-  src/cloud_spotify_auth.cpp
-  src/secondary_spotify_api.cpp)
 
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
@@ -143,7 +138,6 @@ set_source_files_properties("${HOMEPANEL_GENERATED_HOME_RC}" PROPERTIES
 
 add_executable(HomePanel WIN32
   ${HOMEPANEL_CORE_SOURCES}
-  ${HOMEPANEL_SPOTIFY_SOURCES}
   ${HOMEPANEL_STATIONHEAD_SOURCES}
   ${HOMEPANEL_RENDERER_SOURCES}
   ${HOMEPANEL_RESOURCE_SOURCES})

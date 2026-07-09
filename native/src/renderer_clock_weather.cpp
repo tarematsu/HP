@@ -30,38 +30,6 @@ constexpr COLORREF kWidgetDanger = RGB(255, 69, 58);
 constexpr COLORREF kWidgetDangerSurface = RGB(42, 33, 35);
 constexpr COLORREF kWidgetSuccessSurface = RGB(24, 46, 34);
 
-RECT NativeClockRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).clock;
-}
-
-RECT NativeAirRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).air;
-}
-
-RECT NativeControlsRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).controls;
-}
-
-RECT NativeNewsRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).news;
-}
-
-RECT NativeWeatherRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).weather;
-}
-
-RECT NativeEnergyRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).energy;
-}
-
-RECT NativeStationheadRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).stationhead;
-}
-
-RECT NativeRadarRectFromBounds(const RECT& bounds) {
-  return ComputeNativeDashboardLayout(bounds).radar;
-}
-
 void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
   SetWindowPos(hwnd, HWND_TOP, rect.left, rect.top,
                std::max(1L, rect.right - rect.left),
@@ -273,67 +241,6 @@ double RangeMax(const std::vector<double>& values, double fallback) {
   return values.empty() ? fallback : *std::max_element(values.begin(), values.end());
 }
 
-bool SameSensorSnapshot(const SensorSnapshot& left, const SensorSnapshot& right) {
-  return left.co2Connected == right.co2Connected &&
-         left.co2 == right.co2 &&
-         left.temperatureRaw == right.temperatureRaw &&
-         left.humidityRaw == right.humidityRaw &&
-         left.temperatureCorrected == right.temperatureCorrected &&
-         left.humidityCorrected == right.humidityCorrected &&
-         left.observedAt == right.observedAt &&
-         left.presence == right.presence &&
-         left.light == right.light &&
-         left.motion == right.motion &&
-         left.doorOpen == right.doorOpen &&
-         left.outboxCount == right.outboxCount &&
-         left.lastError == right.lastError;
-}
-
-bool SameAirHistory(const std::vector<AirHistorySample>& left,
-                    const std::vector<AirHistorySample>& right) {
-  if (left.size() != right.size()) return false;
-  for (size_t index = 0; index < left.size(); ++index) {
-    const AirHistorySample& a = left[index];
-    const AirHistorySample& b = right[index];
-    if (a.timestamp != b.timestamp || a.co2 != b.co2 ||
-        a.temperature != b.temperature || a.humidity != b.humidity) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool SameNativeStationhead(const StationheadStatus& left, const StationheadStatus& right) {
-  return left.created == right.created &&
-         left.navigating == right.navigating &&
-         left.playing == right.playing &&
-         left.loginRequired == right.loginRequired &&
-         left.spotifyAuthorization == right.spotifyAuthorization &&
-         left.apiAuthorization == right.apiAuthorization &&
-         left.lightweight == right.lightweight &&
-         left.visible == right.visible &&
-         left.processFailed == right.processFailed &&
-         left.spotifyConfigured == right.spotifyConfigured &&
-         left.authAvailable == right.authAvailable &&
-         left.audioPlaying == right.audioPlaying &&
-         left.audioSilent == right.audioSilent &&
-         left.audioMuted == right.audioMuted &&
-         left.secondaryAudioMuted == right.secondaryAudioMuted &&
-         left.healthMisses == right.healthMisses &&
-         left.lastPlaybackConfirmedAt == right.lastPlaybackConfirmedAt &&
-         left.processWorkingSet == right.processWorkingSet &&
-         left.processCpuPercent == right.processCpuPercent &&
-         left.blockedResources == right.blockedResources &&
-         left.url == right.url &&
-         left.detail == right.detail &&
-         left.trackTitle == right.trackTitle &&
-         left.trackArtist == right.trackArtist &&
-         left.deviceName == right.deviceName &&
-         left.artworkUrl == right.artworkUrl &&
-         left.sampledAt == right.sampledAt &&
-         left.expectedEndAt == right.expectedEndAt &&
-         left.trackDurationMs == right.trackDurationMs;
-}
 
 void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
                      int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
@@ -482,6 +389,26 @@ void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha) 
 }
 }  // namespace
 
+const std::array<Renderer::NativePanelSlot, 7>& Renderer::NativePanelSlots() {
+  static const std::array<NativePanelSlot, 7> slots{{
+      {&Renderer::nativeRadarWindow_, &NativeDashboardLayout::radar,
+       L"HomePanelNativeRadar", kNativeRadarId},
+      {&Renderer::nativeAirWindow_, &NativeDashboardLayout::air,
+       L"HomePanelNativeAir", kNativeAirId},
+      {&Renderer::nativeControlsWindow_, &NativeDashboardLayout::controls,
+       L"HomePanelNativeControls", kNativeControlsId},
+      {&Renderer::nativeNewsWindow_, &NativeDashboardLayout::news,
+       L"HomePanelNativeNews", kNativeNewsId},
+      {&Renderer::nativeWeatherWindow_, &NativeDashboardLayout::weather,
+       L"HomePanelNativeWeather", kNativeWeatherId},
+      {&Renderer::nativeEnergyWindow_, &NativeDashboardLayout::energy,
+       L"HomePanelNativeEnergy", kNativeEnergyId},
+      {&Renderer::nativeStationheadWindow_, &NativeDashboardLayout::stationhead,
+       L"HomePanelNativeStationhead", kNativeStationheadId},
+  }};
+  return slots;
+}
+
 Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND hwnd,
     const RECT& absoluteRect, BYTE tintAlpha, int cornerRadius, COLORREF tintColor)
     : hwnd(hwnd), paintDc(BeginPaint(hwnd, &paint)) {
@@ -539,7 +466,7 @@ bool Renderer::EnsureNativeClockWindow() {
     RegisterClassW(&windowClass);
   });
 
-  const RECT rect = NativeClockRectFromBounds(bounds_);
+  const RECT rect = ComputeNativeDashboardLayout(bounds_).clock;
   nativeClockWindow_ = CreateWindowExW(0, kClockClassName, L"HomePanelNativeClock",
       WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
       rect.left, rect.top, std::max(1L, rect.right - rect.left),
@@ -564,76 +491,26 @@ bool Renderer::EnsureNativeStaticWindows() {
     RegisterClassW(&windowClass);
   });
 
-  if (!nativeAirWindow_ || !IsWindow(nativeAirWindow_)) {
-    const RECT rect = NativeAirRectFromBounds(bounds_);
-    nativeAirWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeAir",
+  const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
+  bool allCreated = true;
+  for (const NativePanelSlot& slot : NativePanelSlots()) {
+    HWND& hwnd = this->*slot.window;
+    if (hwnd && IsWindow(hwnd)) continue;
+    const RECT rect = layout.*slot.rect;
+    hwnd = CreateWindowExW(0, kStaticClassName, slot.title,
         WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
         rect.left, rect.top, std::max(1L, rect.right - rect.left),
         std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeAirId)),
+        reinterpret_cast<HMENU>(static_cast<INT_PTR>(slot.id)),
         GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeControlsWindow_ || !IsWindow(nativeControlsWindow_)) {
-    const RECT rect = NativeControlsRectFromBounds(bounds_);
-    nativeControlsWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeControls",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeControlsId)),
-        GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeNewsWindow_ || !IsWindow(nativeNewsWindow_)) {
-    const RECT rect = NativeNewsRectFromBounds(bounds_);
-    nativeNewsWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeNews",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeNewsId)),
-        GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeWeatherWindow_ || !IsWindow(nativeWeatherWindow_)) {
-    const RECT rect = NativeWeatherRectFromBounds(bounds_);
-    nativeWeatherWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeWeather",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeWeatherId)),
-        GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeEnergyWindow_ || !IsWindow(nativeEnergyWindow_)) {
-    const RECT rect = NativeEnergyRectFromBounds(bounds_);
-    nativeEnergyWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeEnergy",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeEnergyId)),
-        GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeStationheadWindow_ || !IsWindow(nativeStationheadWindow_)) {
-    const RECT rect = NativeStationheadRectFromBounds(bounds_);
-    nativeStationheadWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeStationhead",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeStationheadId)),
-        GetModuleHandleW(nullptr), this);
-  }
-  if (!nativeRadarWindow_ || !IsWindow(nativeRadarWindow_)) {
-    const RECT rect = NativeRadarRectFromBounds(bounds_);
-    nativeRadarWindow_ = CreateWindowExW(0, kStaticClassName, L"HomePanelNativeRadar",
-        WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-        rect.left, rect.top, std::max(1L, rect.right - rect.left),
-        std::max(1L, rect.bottom - rect.top), window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(kNativeRadarId)),
-        GetModuleHandleW(nullptr), this);
+    allCreated = allCreated && hwnd && IsWindow(hwnd);
   }
   ApplyNativeStaticBounds();
   // ApplyNativeStaticBounds() raises every static panel (including the
   // full-screen radar) to the top of the z-order, so re-raise the clock on
   // top of those every time this runs, not just on first creation.
   ApplyNativeClockBounds();
-  return nativeAirWindow_ && nativeControlsWindow_ && nativeNewsWindow_ &&
-         nativeWeatherWindow_ && nativeEnergyWindow_ && nativeStationheadWindow_ && nativeRadarWindow_;
+  return allCreated;
 }
 
 void Renderer::ApplyNativeStaticBounds() {
@@ -641,58 +518,27 @@ void Renderer::ApplyNativeStaticBounds() {
   // Radar is placed first so every subsequent PlaceNativeWindow (which moves
   // its window to the top of the z-order) stacks that panel above it; radar
   // fills the whole client area as the background the other panels float on.
-  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
-    PlaceNativeWindow(nativeRadarWindow_, layout.radar, nativeDashboardVisible_);
-    InvalidateRect(nativeRadarWindow_, nullptr, FALSE);
-  }
-  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) {
-    PlaceNativeWindow(nativeAirWindow_, layout.air, nativeDashboardVisible_);
-    InvalidateRect(nativeAirWindow_, nullptr, FALSE);
-  }
-  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) {
-    PlaceNativeWindow(nativeControlsWindow_, layout.controls, nativeDashboardVisible_);
-    InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
-  }
-  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) {
-    PlaceNativeWindow(nativeNewsWindow_, layout.news, nativeDashboardVisible_);
-    InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
-  }
-  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) {
-    PlaceNativeWindow(nativeWeatherWindow_, layout.weather, nativeDashboardVisible_);
-    InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
-  }
-  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) {
-    PlaceNativeWindow(nativeEnergyWindow_, layout.energy, nativeDashboardVisible_);
-    InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
-  }
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
-    PlaceNativeWindow(nativeStationheadWindow_, layout.stationhead, nativeDashboardVisible_);
-    InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
+  for (const NativePanelSlot& slot : NativePanelSlots()) {
+    const HWND hwnd = this->*slot.window;
+    if (!hwnd || !IsWindow(hwnd)) continue;
+    PlaceNativeWindow(hwnd, layout.*slot.rect, nativeDashboardVisible_);
+    InvalidateRect(hwnd, nullptr, FALSE);
   }
 }
 
 void Renderer::InvalidateAllNativePanels() {
   if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) InvalidateRect(nativeClockWindow_, nullptr, FALSE);
-  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) InvalidateRect(nativeAirWindow_, nullptr, FALSE);
-  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
-  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
-  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
-  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
-    InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
+  for (const NativePanelSlot& slot : NativePanelSlots()) {
+    const HWND hwnd = this->*slot.window;
+    if (hwnd && IsWindow(hwnd)) InvalidateRect(hwnd, nullptr, FALSE);
   }
 }
 
 void Renderer::DestroyNativeStaticWindows() {
-  if (nativeAirWindow_ && IsWindow(nativeAirWindow_)) DestroyWindow(nativeAirWindow_);
-  if (nativeControlsWindow_ && IsWindow(nativeControlsWindow_)) DestroyWindow(nativeControlsWindow_);
-  if (nativeNewsWindow_ && IsWindow(nativeNewsWindow_)) DestroyWindow(nativeNewsWindow_);
-  if (nativeWeatherWindow_ && IsWindow(nativeWeatherWindow_)) DestroyWindow(nativeWeatherWindow_);
-  if (nativeEnergyWindow_ && IsWindow(nativeEnergyWindow_)) DestroyWindow(nativeEnergyWindow_);
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_)) {
-    DestroyWindow(nativeStationheadWindow_);
+  for (const NativePanelSlot& slot : NativePanelSlots()) {
+    const HWND hwnd = this->*slot.window;
+    if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
   }
-  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) DestroyWindow(nativeRadarWindow_);
   for (auto& [hwnd, buffer] : nativeBackBuffers_) {
     if (buffer.bitmap) DeleteObject(buffer.bitmap);
   }
@@ -707,19 +553,13 @@ void Renderer::DestroyNativeStaticWindows() {
     if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
     radarFrameBitmap_ = nullptr;
   }
-  nativeAirWindow_ = nullptr;
-  nativeControlsWindow_ = nullptr;
-  nativeNewsWindow_ = nullptr;
-  nativeWeatherWindow_ = nullptr;
-  nativeEnergyWindow_ = nullptr;
-  nativeStationheadWindow_ = nullptr;
-  nativeRadarWindow_ = nullptr;
+  for (const NativePanelSlot& slot : NativePanelSlots()) this->*slot.window = nullptr;
 }
 
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
-  const bool sensorsChanged = !SameSensorSnapshot(nativeSensors_, state.sensors);
-  const bool historyChanged = !SameAirHistory(nativeAirHistory_, state.airHistory);
-  const bool stationheadChanged = !SameNativeStationhead(nativeStationhead_, state.stationhead);
+  const bool sensorsChanged = nativeSensors_ != state.sensors;
+  const bool historyChanged = nativeAirHistory_ != state.airHistory;
+  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
   const bool controlsChanged = nativeAppVersion_ != state.appVersion || nativeToast_ != state.toast;
   const bool newsChanged = nativeNewsIndex_ != state.newsIndex;
   const bool dashboardChanged = nativeRenderedDashboardRevision_ != dashboardSourceRevision_;
@@ -1379,17 +1219,7 @@ HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int he
   // A failed decode is cached as a nullptr entry too: the stationhead panel
   // repaints every second during playback, and retrying the disk read + WIC
   // decode on each paint would burn CPU for a file that stays missing.
-  HBITMAP bitmap = DecodeImageFileToBitmap(dataDir_ / relative, width, height);
-  if (nativeArtworkBitmaps_.size() >= 64) {
-    auto oldest = nativeArtworkBitmaps_.begin();
-    for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {
-      if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
-    }
-    if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
-    nativeArtworkBitmaps_.erase(oldest);
-  }
-  nativeArtworkBitmaps_[key] = ArtworkBitmapCacheEntry{bitmap, ++nativeArtworkUseCounter_};
-  return bitmap;
+  return CacheNativeBitmap(key, DecodeImageFileToBitmap(dataDir_ / relative, width, height));
 }
 
 HBITMAP Renderer::NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height) {
@@ -1420,6 +1250,12 @@ HBITMAP Renderer::NativeWeatherIconBitmap(const std::wstring& icon, bool night, 
   }
   // Cache decode failures as nullptr entries so repaints don't retry the
   // whole fallback chain of disk reads on every frame.
+  return CacheNativeBitmap(key, bitmap);
+}
+
+// Inserts a decoded (or failed: nullptr) bitmap into the shared LRU cache,
+// evicting the least recently used entry once the cache is full.
+HBITMAP Renderer::CacheNativeBitmap(const std::wstring& key, HBITMAP bitmap) {
   if (nativeArtworkBitmaps_.size() >= 64) {
     auto oldest = nativeArtworkBitmaps_.begin();
     for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {

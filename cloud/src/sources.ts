@@ -41,6 +41,11 @@ export interface SourceResult {
 
 export const JST_MS = 9 * 60 * 60 * 1000;
 
+export function jstDayKey(timestampMs: number): string {
+  const date = new Date(timestampMs + JST_MS);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
 function numberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);

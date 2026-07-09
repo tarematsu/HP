@@ -7,120 +7,6 @@
 namespace hp {
 namespace {
 constexpr int64_t kPrimaryNoAudioFallbackMs = 360'000;
-constexpr int64_t kPrimaryStartupTimeoutMs = 60'000;
-
-const wchar_t* kPrimaryStartupScript = LR"JS(
-(() => {
-  const host = String(location.hostname || '').toLowerCase();
-  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
-  if (window.__homepanelPrimaryStationhead) return;
-  const nativeTimeout = window.setTimeout.bind(window);
-  const NativeMutationObserver = window.MutationObserver;
-  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
-  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|続ける|続行|次へ)$/i;
-  const loginPattern = /^(log\s*in|sign\s*in|login)(?:\s+.*)?$/i;
-  let observer = null;
-  let scanQueued = false;
-  let scanTimer = 0;
-  let attempts = 0;
-  let retryAt = 0;
-  let loginReported = false;
-  let lastTargetSignature = '';
-  let lastPlaying = null;
-  const observedAt = Date.now();
-  const labelOf = element => [
-    element?.innerText,
-    element?.getAttribute?.('aria-label'),
-    element?.textContent,
-    element?.getAttribute?.('title'),
-    element?.getAttribute?.('value'),
-    element?.getAttribute?.('data-testid')
-  ].map(normalize).find(Boolean) || '';
-  const visible = element => {
-    if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
-        element.getAttribute?.('aria-hidden') === 'true') return false;
-    const rect = element.getBoundingClientRect?.();
-    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
-    const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
-  };
-  const playing = () => {
-    if (navigator.mediaSession?.playbackState === 'playing') return true;
-    return Array.from(document.querySelectorAll('audio,video')).some(element =>
-      !element.paused && !element.ended && element.readyState >= 2);
-  };
-  const publishAudio = () => {
-    const current = playing();
-    if (current === lastPlaying) return current;
-    lastPlaying = current;
-    try { window.chrome?.webview?.postMessage(current ? 'stationhead-playing' : 'stationhead-stopped'); } catch (_) {}
-    return current;
-  };
-  const scan = () => {
-    scanQueued = false;
-    scanTimer = 0;
-    const ready = document.readyState !== 'loading' && !!document.body;
-    const isPlaying = publishAudio();
-    if (!ready || !document.body) return;
-    if (isPlaying) {
-      observer?.disconnect?.();
-      observer = null;
-      return;
-    }
-    let start = null;
-    let login = false;
-    for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element)) continue;
-      const label = labelOf(element);
-      if (!start && startPattern.test(label)) start = element;
-      if (!login && loginPattern.test(label)) login = true;
-      if (start && login) break;
-    }
-    if (start && attempts < 2 && Date.now() >= retryAt) {
-      const target = start.closest?.("button,[role='button'],a,input[type='button'],input[type='submit'],[tabindex]") || start;
-      const rect = target.getBoundingClientRect();
-      const signature = `${labelOf(target)}:${Math.round(rect.left)}:${Math.round(rect.top)}`;
-      if (signature !== lastTargetSignature) {
-        lastTargetSignature = signature;
-        attempts = 0;
-        retryAt = 0;
-      }
-      attempts += 1;
-      retryAt = Date.now() + 1500;
-      try { target.click?.(); } catch (_) {}
-      if (attempts < 2) nativeTimeout(schedule, 1500);
-    } else if (!start && login && !loginReported && Date.now() - observedAt >= 15000) {
-      loginReported = true;
-      try { window.chrome?.webview?.postMessage('stationhead-login-required'); } catch (_) {}
-    }
-  };
-  const schedule = () => {
-    if (scanQueued) return;
-    scanQueued = true;
-    scanTimer = nativeTimeout(scan, 250);
-  };
-  const relevant = record => {
-    if (record.type === 'attributes') return Boolean(record.target?.matches?.(selector) || record.target?.closest?.(selector));
-    if (record.type === 'characterData') return Boolean(record.target?.parentElement?.closest?.(selector));
-    return [...(record.addedNodes || []), ...(record.removedNodes || [])].some(node =>
-      node instanceof Element && (node.matches?.(selector) || node.querySelector?.(selector)));
-  };
-  window.__homepanelPrimaryStationhead = { scan: schedule };
-  if (NativeMutationObserver) {
-    observer = new NativeMutationObserver(records => { if (records.some(relevant)) schedule(); });
-    observer.observe(document, { childList: true, subtree: true });
-  }
-  for (const eventName of ['play','playing','canplay','pause','ended','stalled','waiting','error']) {
-    document.addEventListener(eventName, publishAudio, true);
-  }
-  document.addEventListener('DOMContentLoaded', schedule, { once: true });
-  window.addEventListener('load', schedule, { once: true });
-  schedule();
-  nativeTimeout(schedule, 15000);
-})()
-)JS";
 
 std::wstring HResultHex(HRESULT hr) {
   std::wostringstream output;
@@ -142,7 +28,7 @@ StationheadPlayer::~StationheadPlayer() { Stop(); }
 void StationheadPlayer::Start() {
   shuttingDown_ = false;
   usedFallback_ = false;
-  ResetNavigationRouteState(UnixMillis());
+  ResetNavigationRouteState();
   Create();
 }
 
@@ -171,18 +57,9 @@ StationheadStatus StationheadPlayer::Status() const {
   return copy;
 }
 
-void StationheadPlayer::ResetNavigationRouteState(int64_t nowMs) {
-  usedSakurazaka_ = false;
-  waitingForStartTransition_ = false;
-  startupScanUntil_ = nowMs + kPrimaryStartupTimeoutMs;
-  lastScanAt_ = 0;
-  createdForAudioCheckAt_ = nowMs;
-  lastAudioAtMs_ = 0;
+void StationheadPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
-  audioStateKnown_ = false;
   nextTickAt_ = 0;
-  targetSignature_.clear();
-  stableTargetCount_ = 0;
 }
 
 void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
@@ -194,7 +71,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
                                                bool fallbackActive) {
   if (!webview_ || url.empty()) return;
   SetStartupBounds();
-  ResetNavigationRouteState(nowMs);
+  ResetNavigationRouteState();
   usedFallback_ = fallbackActive;
   noAudioSinceAt_ = fallbackActive ? 0 : nowMs;
   resourceBlockingArmed_ = false;
@@ -270,7 +147,6 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
                                return S_OK;
                              }
                              authController_ = controller;
-                             controllerLayoutValid_ = false;
                              authController_->put_IsVisible(FALSE);
                              authController_->get_CoreWebView2(&authWebview_);
                              ConfigureAuthWebView();
@@ -304,8 +180,10 @@ void StationheadPlayer::ConfigureWebView() {
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
+  static const std::wstring startupScript =
+      StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead");
   webview_->AddScriptToExecuteOnDocumentCreated(
-      kPrimaryStartupScript,
+      startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
           [this](HRESULT result, LPCWSTR) -> HRESULT {
             if (FAILED(result)) {
@@ -385,9 +263,7 @@ void StationheadPlayer::ConfigureWebView() {
               const int64_t now = UnixMillis();
               if (message == L"stationhead-playing") {
                 audioPlaying_ = true;
-                audioStateKnown_ = true;
                 resourceBlockingArmed_ = true;
-                lastAudioAtMs_ = now;
                 noAudioSinceAt_ = 0;
                 loginSessionActive_ = false;
                 const bool wasVisible = viewVisible_;
@@ -406,7 +282,6 @@ void StationheadPlayer::ConfigureWebView() {
               }
               if (message == L"stationhead-stopped") {
                 audioPlaying_ = false;
-                audioStateKnown_ = true;
                 if (!usedFallback_ && noAudioSinceAt_ == 0) noAudioSinceAt_ = now;
                 {
                   std::lock_guard lock(mutex_);
@@ -445,7 +320,6 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               spotifyAuthorization_ = false;
-              showAfterNavigation_ = false;
               {
                 std::lock_guard lock(mutex_);
                 status_.navigating = false;
@@ -563,7 +437,6 @@ void StationheadPlayer::ConfigureAuthWebView() {
       Callback<ICoreWebView2WindowCloseRequestedEventHandler>(
           [this](ICoreWebView2*, IUnknown*) -> HRESULT {
             spotifyAuthorization_ = false;
-            showAfterNavigation_ = false;
             authPendingUrl_.clear();
             SelectTab(StationheadTabKind::None);
             PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);
@@ -581,7 +454,6 @@ void StationheadPlayer::ConfigureAuthWebView() {
               const std::wstring type = message.GetNamedString(L"type", L"").c_str();
               if (type != L"spotify-connected" && type != L"spotify-error") return S_OK;
               spotifyAuthorization_ = false;
-              showAfterNavigation_ = false;
               authPendingUrl_.clear();
               {
                 std::lock_guard lock(mutex_);
@@ -609,7 +481,6 @@ void StationheadPlayer::ConfigureAuthWebView() {
 }
 
 void StationheadPlayer::CloseWebView() {
-  controllerLayoutValid_ = false;
   if (webview_) {
     if (navigationToken_.value) webview_->remove_NavigationCompleted(navigationToken_);
     if (newWindowToken_.value) webview_->remove_NewWindowRequested(newWindowToken_);
@@ -630,10 +501,8 @@ void StationheadPlayer::CloseWebView() {
   appliedMuted_.store(-1, std::memory_order_relaxed);
   appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   if (hostWindow_ && IsWindow(hostWindow_)) ShowWindow(hostWindow_, SW_HIDE);
-  scanPending_ = false;
   spotifyAuthorization_ = false;
   loginSessionActive_ = false;
-  showAfterNavigation_ = false;
   noAudioSinceAt_ = 0;
   std::lock_guard lock(mutex_);
   status_.created = false;
@@ -641,7 +510,6 @@ void StationheadPlayer::CloseWebView() {
 }
 
 void StationheadPlayer::CloseAuthWebView() {
-  controllerLayoutValid_ = false;
   if (authWebview_) {
     if (authNavigationToken_.value) authWebview_->remove_NavigationCompleted(authNavigationToken_);
     if (authMessageToken_.value) authWebview_->remove_WebMessageReceived(authMessageToken_);
@@ -721,8 +589,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
 
 void StationheadPlayer::Reconnect() { ScheduleRecreate(L"manual reconnect"); }
 
-void StationheadPlayer::RefreshSpotifyState(bool) {}
-
 void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   if (url.empty()) return;
   if (!webview_) {
@@ -733,7 +599,6 @@ void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   }
   spotifyAuthorization_ = true;
   loginSessionActive_ = false;
-  showAfterNavigation_ = true;
   EnsureAuthController(url);
   SelectTab(StationheadTabKind::Auth);
   {
@@ -851,7 +716,6 @@ void StationheadPlayer::ApplyVolume() const noexcept {
 void StationheadPlayer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
-  controllerLayoutValid_ = false;
   if (startupPreviewActive_ || viewVisible_ || NeedsInteractiveWindow()) LayoutControllers();
   else KeepPlaybackBehindDashboard();
 }
@@ -866,7 +730,6 @@ void StationheadPlayer::SelectTab(StationheadTabKind tab) {
     return;
   }
   selectedTab_ = tab;
-  controllerLayoutValid_ = false;
   SetVisible(tab != StationheadTabKind::None);
 }
 
@@ -883,11 +746,6 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
 
 bool StationheadPlayer::NeedsInteractiveWindow() const {
   return selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_ || loginSessionActive_;
-}
-
-void StationheadPlayer::NotifyMonitorHandle(const std::wstring&) {
-  // A is now a fixed primary URL with a single buddy46 fallback. Monitor-handle
-  // driven sakurazaka switching is intentionally disabled so A/B differ only by URL.
 }
 
 void StationheadPlayer::ScheduleRecreate(const std::wstring& reason) {
@@ -914,9 +772,5 @@ size_t StationheadPlayer::MeasureProcessWorkingSet() {
   CloseHandle(process);
   return ok ? counters.WorkingSetSize : 0;
 }
-
-void StationheadPlayer::EvaluateStartupState() {}
-void StationheadPlayer::HandleStartupStateResult(HRESULT, LPCWSTR) {}
-void StationheadPlayer::ClickTarget(double, double) {}
 
 }  // namespace hp
