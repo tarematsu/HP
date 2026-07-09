@@ -190,6 +190,7 @@ RECT DrawWidgetSurface(HDC dc, const RECT& bounds, COLORREF color = kWidgetSurfa
 
 void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt,
                     int radius = 8) {
+  if (rect.right <= rect.left || rect.bottom <= rect.top) return;
   HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
   HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousPen = SelectObject(dc, border);
@@ -202,6 +203,7 @@ void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt
 }
 
 void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color) {
+  if (rect.right <= rect.left || rect.bottom <= rect.top) return;
   HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousBrush = SelectObject(dc, fill);
   HPEN pen = CreatePen(PS_SOLID, 1, color);
