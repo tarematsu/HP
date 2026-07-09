@@ -23,6 +23,7 @@ constexpr COLORREF kWidgetBlue = RGB(10, 132, 255);
 constexpr COLORREF kWidgetBlueMuted = RGB(64, 156, 255);
 constexpr COLORREF kWidgetGreen = RGB(48, 209, 88);
 constexpr COLORREF kWidgetOrange = RGB(255, 159, 10);
+constexpr COLORREF kWidgetCyan = RGB(50, 173, 230);
 constexpr COLORREF kWidgetTrack = RGB(34, 44, 56);
 constexpr COLORREF kWidgetWarning = RGB(255, 214, 10);
 constexpr COLORREF kWidgetDanger = RGB(255, 69, 58);
@@ -75,16 +76,15 @@ struct ControlsButtonRects {
   RECT toast{};
 };
 
-// Buttons hug the bottom-right corner of the panel, matching how the other
-// corner panels' cards extend flush to their margin; the toast message uses
-// whatever space is left above them.
+// Buttons are centered horizontally and pinned to the bottom of the panel;
+// the toast message uses whatever space is left above them.
 ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   if (width < 330) {
     const int buttonHeight = std::clamp(height / 5, 34, 42);
     const int buttonWidth = std::min(190, std::max(120, width - 8));
-    const int left = bounds.right - buttonWidth;
+    const int left = bounds.left + (width - buttonWidth) / 2;
     const int secondTop = bounds.bottom - buttonHeight;
     const int firstTop = secondTop - buttonHeight - 8;
     return ControlsButtonRects{
@@ -97,7 +97,7 @@ ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
   const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
   const int buttonHeight = std::clamp(height / 4, 38, 44);
   const int totalWidth = buttonWidth * 2 + 10;
-  const int left = bounds.right - totalWidth;
+  const int left = bounds.left + (width - totalWidth) / 2;
   const int top = bounds.bottom - buttonHeight;
   return ControlsButtonRects{
       RECT{left, top, left + buttonWidth, top + buttonHeight},
@@ -228,20 +228,6 @@ void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color, BYTE alpha = 255) 
   DeleteObject(fill);
 }
 
-void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& trailing,
-                      const RECT& content) {
-  HFONT font = CachedUiFont(13, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(dc, font);
-  RECT header{content.left, content.top, content.right, content.top + 23};
-  SetTextColor(dc, kWidgetText);
-  DrawTextInRect(dc, title, header, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-  if (!trailing.empty()) {
-    SetTextColor(dc, kWidgetMuted);
-    DrawTextInRect(dc, trailing, header, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-  }
-  SelectObject(dc, previousFont);
-}
-
 std::wstring Fixed(double value, int digits) {
   std::wostringstream output;
   output << std::fixed << std::setprecision(digits) << value;
@@ -358,6 +344,22 @@ void DrawShadowedText(HDC dc, const std::wstring& text, RECT rect, int format, C
   OffsetRect(&shadowRect, 0, 2);
   SetTextColor(dc, RGB(0, 0, 0));
   DrawTextInRect(dc, text, shadowRect, format);
+  SetTextColor(dc, color);
+  DrawTextInRect(dc, text, rect, format);
+}
+
+// Draws a thick black outline (8 offset copies) behind the text instead of a
+// single drop shadow, so the clock stays legible over the busy radar map.
+void DrawOutlinedText(HDC dc, const std::wstring& text, RECT rect, int format, COLORREF color) {
+  static constexpr POINT kOffsets[] = {
+      {-2, -2}, {0, -2}, {2, -2}, {-2, 0}, {2, 0}, {-2, 2}, {0, 2}, {2, 2},
+  };
+  SetTextColor(dc, RGB(0, 0, 0));
+  for (const POINT& offset : kOffsets) {
+    RECT shadowRect = rect;
+    OffsetRect(&shadowRect, offset.x, offset.y);
+    DrawTextInRect(dc, text, shadowRect, format);
+  }
   SetTextColor(dc, color);
   DrawTextInRect(dc, text, rect, format);
 }
@@ -799,14 +801,14 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   SYSTEMTIME now{};
   GetLocalTime(&now);
   const int height = std::max(1L, content.bottom - content.top);
-  const int dateHeight = std::clamp(height / 8, 14, 22);
+  const int dateHeight = std::clamp(height / 8, 14, 22) * 3 / 2;
   const int clockHeight = std::clamp(height / 2, 52, 86);
 
   RECT dateRect = content;
   dateRect.bottom = content.top + dateHeight + 6;
   HFONT dateFont = CachedUiFont(dateHeight, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, dateFont);
-  DrawShadowedText(memoryDc, DateText(now), dateRect,
+  DrawOutlinedText(memoryDc, DateText(now), dateRect,
                    DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX, kWidgetMuted);
   SelectObject(memoryDc, previousFont);
 
@@ -814,7 +816,7 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   timeRect.top = dateRect.bottom + std::max(2, height / 12);
   HFONT clockFont = CachedUiFont(clockHeight, FW_LIGHT);
   previousFont = SelectObject(memoryDc, clockFont);
-  DrawShadowedText(memoryDc, TimeText(now), timeRect,
+  DrawOutlinedText(memoryDc, TimeText(now), timeRect,
                    DT_CENTER | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX, kWidgetText);
   SelectObject(memoryDc, previousFont);
 }
@@ -826,10 +828,8 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   HDC memoryDc = scope.dc;
   const RECT content = PanelContentRect(scope.bounds);
 
-  DrawWidgetHeader(memoryDc, L"空気環境", L"", content);
-
   const int width = std::max(1L, content.right - content.left);
-  const int statsTop = content.top + 30;
+  const int statsTop = content.top + 6;
   const int statsHeight = std::clamp(static_cast<int>(content.bottom - content.top) * 22 / 100, 50, 70);
   const int gap = 16;
   const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
@@ -932,7 +932,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   HGDIOBJ previousFont = SelectObject(memoryDc, buttonFont);
   SetTextColor(memoryDc, kWidgetText);
   for (const auto& [label, rect] : buttons) {
-    DrawWidgetCard(memoryDc, rect, kWidgetSurfaceAlt);
+    DrawWidgetCard(memoryDc, rect, kWidgetSurfaceAlt, /*radius=*/14, /*alpha=*/170);
     RECT textRect = rect;
     DrawTextInRect(memoryDc, label, textRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
@@ -952,7 +952,7 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   NativePanelPaintScope scope(*this, hwnd, absoluteRect, /*tintAlpha=*/130, /*cornerRadius=*/16);
   if (!scope.Valid()) return;
   HDC memoryDc = scope.dc;
-  const RECT content = NormalizeInsetRect(scope.bounds, 16, 4, 16, 4);
+  const RECT content = NormalizeInsetRect(scope.bounds, 16, 8, 16, 8);
 
   const NewsItemData* item = nullptr;
   if (!nativeDashboard_.newsItems.empty()) {
@@ -960,12 +960,25 @@ void Renderer::PaintNativeNews(HWND hwnd) {
     item = &nativeDashboard_.newsItems[index];
   }
   const std::wstring title = item ? item->title : L"ニュース取得待ち";
+  const std::wstring description = item ? item->description : L"";
 
-  HFONT titleFont = CachedUiFont(std::clamp(static_cast<int>(content.bottom - content.top) * 45 / 100, 13, 16), FW_NORMAL);
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  const int titleHeight = std::clamp(contentHeight * 40 / 100, 18, 24);
+  RECT titleRect{content.left, content.top, content.right, content.top + titleHeight};
+  HFONT titleFont = CachedUiFont(std::clamp(titleHeight * 70 / 100, 13, 16), FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, titleFont);
   SetTextColor(memoryDc, kWidgetText);
-  DrawTextInRect(memoryDc, title, content, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  DrawTextInRect(memoryDc, title, titleRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
+
+  if (!description.empty()) {
+    RECT descRect{content.left, titleRect.bottom + 2, content.right, content.bottom};
+    HFONT descFont = CachedUiFont(12, FW_NORMAL);
+    previousFont = SelectObject(memoryDc, descFont);
+    SetTextColor(memoryDc, kWidgetMuted);
+    DrawTextInRect(memoryDc, description, descRect, DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
+    SelectObject(memoryDc, previousFont);
+  }
 }
 
 void Renderer::PaintNativeWeather(HWND hwnd) {
@@ -1033,8 +1046,6 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   HDC memoryDc = scope.dc;
   const RECT content = PanelContentRect(scope.bounds);
 
-  DrawWidgetHeader(memoryDc, L"Octopus Energy", L"", content);
-
   const auto usageText = [](double value) {
     return std::isfinite(value) ? Fixed(value, 1) + L" kWh" : L"-- kWh";
   };
@@ -1056,9 +1067,9 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   const int summaryGap = 20;
   const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
   for (int i = 0; i < 2; ++i) {
-    RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 30,
+    RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 6,
               content.left + i * (summaryWidth + summaryGap) + summaryWidth,
-              content.top + 30 + summaryHeight};
+              content.top + 6 + summaryHeight};
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, labelFont);
     RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 24};
@@ -1076,7 +1087,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   }
 
   const int plugHeight = std::clamp(contentHeight / 7, 26, 38);
-  RECT chart{content.left, content.top + 30 + summaryHeight + 14,
+  RECT chart{content.left, content.top + 6 + summaryHeight + 14,
              content.right, content.bottom - plugHeight - 8};
   if (chart.bottom > chart.top + 20 && !nativeDashboard_.octopusHistory.empty()) {
     double maximum = 1.0;
@@ -1095,7 +1106,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       const int barHeight = static_cast<int>((chart.bottom - chart.top - 18) * value / maximum);
       const int x = chart.left + i * step + (step - barWidth) / 2;
       RECT barRect{x, chart.bottom - 18 - barHeight, x + barWidth, chart.bottom - 18};
-      DrawWidgetPill(memoryDc, barRect, kWidgetOrange, /*alpha=*/190);
+      DrawWidgetCard(memoryDc, barRect, kWidgetCyan, /*radius=*/3, /*alpha=*/190);
       RECT valueRect{x - 6, barRect.top - 13, x + barWidth + 6, barRect.top};
       DrawTextInRect(memoryDc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
                      DT_CENTER | DT_SINGLELINE | DT_VCENTER);

@@ -97,8 +97,10 @@ inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bott
 }
 
 // Overlay layout: the radar map fills the entire client area as a living
-// background, the clock/weather/news stack floats centered on top of it,
-// and the remaining widgets float as translucent cards in the four corners.
+// background. Air/Energy/Stationhead/Weather float as translucent cards in
+// the four corners (all sharing one footprint), while News/Clock/Controls
+// stack down the center: news up top, the clock centered in the remaining
+// middle space, and the update/restart buttons pinned to the bottom.
 inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
@@ -109,36 +111,34 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   NativeDashboardLayout layout;
   layout.radar = bounds;
 
-  // Air/Energy/Stationhead share the same footprint as the centered weather
-  // card, stretched a little taller for breathing room, instead of their own
-  // oversized corner dimensions.
   const int centerWidth = std::clamp(clientWidth * 30 / 100, 320, 480);
-  const int weatherHeight = std::clamp(clientHeight * 19 / 100, 150, 210);
-  const int cornerWidth = centerWidth;
-  const int cornerHeight = weatherHeight + std::clamp(shortSide * 8 / 100, 40, 70);
-  const int controlsHeight = std::clamp(clientHeight * 14 / 100, 100, 140);
-
-  layout.air = RECT{bounds.left + margin, bounds.top + margin,
-                    bounds.left + margin + cornerWidth, bounds.top + margin + cornerHeight};
-  layout.energy = RECT{bounds.right - margin - cornerWidth, bounds.top + margin,
-                       bounds.right - margin, bounds.top + margin + cornerHeight};
-  layout.stationhead = RECT{bounds.left + margin, bounds.bottom - margin - cornerHeight,
-                            bounds.left + margin + cornerWidth, bounds.bottom - margin};
-  layout.controls = RECT{bounds.right - margin - cornerWidth, bounds.bottom - margin - controlsHeight,
-                         bounds.right - margin, bounds.bottom - margin};
-
+  const int cornerHeight = std::clamp(clientHeight * 19 / 100, 150, 210) +
+                           std::clamp(shortSide * 8 / 100, 40, 70);
   const int centerLeft = bounds.left + (clientWidth - centerWidth) / 2;
   const int centerRight = centerLeft + centerWidth;
-  const int clockHeight = std::clamp(clientHeight * 15 / 100, 100, 160);
-  const int newsHeight = std::clamp(clientHeight * 6 / 100, 36, 52);
-  const int centerBlockHeight = clockHeight + gap + weatherHeight + gap + newsHeight;
-  const int centerTop = bounds.top + std::max(margin, (clientHeight - centerBlockHeight) / 2);
 
-  layout.clock = RECT{centerLeft, centerTop, centerRight, centerTop + clockHeight};
-  layout.weather = RECT{centerLeft, layout.clock.bottom + gap,
-                        centerRight, layout.clock.bottom + gap + weatherHeight};
-  layout.news = RECT{centerLeft, layout.weather.bottom + gap,
-                     centerRight, layout.weather.bottom + gap + newsHeight};
+  layout.air = RECT{bounds.left + margin, bounds.top + margin,
+                    bounds.left + margin + centerWidth, bounds.top + margin + cornerHeight};
+  layout.energy = RECT{bounds.right - margin - centerWidth, bounds.top + margin,
+                       bounds.right - margin, bounds.top + margin + cornerHeight};
+  layout.stationhead = RECT{bounds.left + margin, bounds.bottom - margin - cornerHeight,
+                            bounds.left + margin + centerWidth, bounds.bottom - margin};
+  layout.weather = RECT{bounds.right - margin - centerWidth, bounds.bottom - margin - cornerHeight,
+                        bounds.right - margin, bounds.bottom - margin};
+
+  const int newsHeight = std::clamp(clientHeight * 9 / 100, 56, 84);
+  layout.news = RECT{centerLeft, bounds.top + margin, centerRight, bounds.top + margin + newsHeight};
+
+  const int controlsHeight = std::clamp(clientHeight * 14 / 100, 100, 140);
+  layout.controls = RECT{centerLeft, bounds.bottom - margin - controlsHeight,
+                         centerRight, bounds.bottom - margin};
+
+  const int clockHeight = std::clamp(clientHeight * 15 / 100, 100, 160);
+  const int clockAreaTop = layout.news.bottom + gap;
+  const int clockAreaBottom = layout.controls.top - gap;
+  const int clockTop = clockAreaTop + std::max(0, (clockAreaBottom - clockAreaTop - clockHeight) / 2);
+  layout.clock = RECT{centerLeft, clockTop, centerRight, clockTop + clockHeight};
+
   return layout;
 }
 
