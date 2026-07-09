@@ -192,7 +192,8 @@ void Renderer::ComposeRadarFrame() {
         validAt = static_cast<int64_t>(std::max(0.0, RadarNumber(frame, L"validAt")));
         const JsonArray frameTiles = RadarChildArray(frame, L"tiles");
         std::wostringstream signatureStream;
-        signatureStream << L"native-radar-v2|" << sourceWidth << L'x' << sourceHeight
+        signatureStream << L"native-radar-v3|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
+                        << L"|source:" << sourceWidth << L'x' << sourceHeight
                         << L"|" << RadarText(frame, L"baseTime")
                         << L"|" << RadarText(frame, L"validTime")
                         << L"|" << validAt
