@@ -674,8 +674,9 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
-  const int width = std::max(1L, bounds.right - bounds.left);
+  const int width = std::max(1L, content.right - content.left);
   const int gap = 5;
   const int cardWidth = (width - gap * 2) / 3;
   const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
@@ -690,7 +691,8 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   HFONT labelFont = CreateUiFont(15, FW_NORMAL);
   HFONT valueFont = CreateUiFont(29, FW_NORMAL);
   for (int i = 0; i < 3; ++i) {
-    RECT rect{i * (cardWidth + gap), 0, i * (cardWidth + gap) + cardWidth, bounds.bottom};
+    RECT rect{content.left + i * (cardWidth + gap), content.top,
+              content.left + i * (cardWidth + gap) + cardWidth, content.bottom};
     RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
     RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 25};
     SetTextColor(memoryDc, kWidgetMuted);
@@ -729,16 +731,7 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
-
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HBRUSH card = CreateSolidBrush(kWidgetSurface);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
-  RoundRect(memoryDc, bounds.left, bounds.top, bounds.right, bounds.bottom, 8, 8);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(card);
-  DeleteObject(border);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
   const int64_t now = UnixMillis();
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
@@ -762,12 +755,12 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
   HFONT font = CreateUiFont(11, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, font);
   SetTextColor(memoryDc, kWidgetMuted);
-  RECT legend{bounds.left + 8, bounds.top + 5, bounds.right - 8, bounds.top + 23};
+  RECT legend{content.left, content.top, content.right, content.top + 18};
   DrawTextInRect(memoryDc, L"CO2   温度   湿度", legend, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-  RECT plot{bounds.left + 34, bounds.top + 28, bounds.right - 10, bounds.bottom - 22};
+  RECT plot{content.left + 26, content.top + 22, content.right, content.bottom - 20};
   HPEN gridPen = CreatePen(PS_SOLID, 1, RGB(32, 40, 52));
-  previousPen = SelectObject(memoryDc, gridPen);
+  HGDIOBJ previousPen = SelectObject(memoryDc, gridPen);
   for (int i = 0; i < 4; ++i) {
     const int y = plot.top + (plot.bottom - plot.top) * i / 3;
     MoveToEx(memoryDc, plot.left, y, nullptr);
@@ -790,12 +783,12 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
     DrawHistoryLine(memoryDc, samples, plot, cutoff, kWindowMs, humMin, humMax, kWidgetBlue, 1,
                     [](const AirHistorySample& s) { return s.humidity; });
   } else {
-    RECT empty{bounds.left, bounds.top, bounds.right, bounds.bottom};
+    RECT empty = content;
     DrawTextInRect(memoryDc, L"履歴を取得中", empty, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
   SetTextColor(memoryDc, kWidgetSubtle);
-  RECT axis{bounds.left + 8, bounds.bottom - 20, bounds.right - 8, bounds.bottom - 4};
+  RECT axis{content.left, content.bottom - 18, content.right, content.bottom};
   DrawTextInRect(memoryDc, L"24時間前", axis, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   DrawTextInRect(memoryDc, L"現在", axis, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
@@ -889,16 +882,7 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
-
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HBRUSH card = CreateSolidBrush(kWidgetSurface);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
-  RoundRect(memoryDc, bounds.left, bounds.top, bounds.right, bounds.bottom, 10, 10);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(card);
-  DeleteObject(border);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
   const NewsItemData* item = nullptr;
   if (!nativeDashboard_.newsItems.empty()) {
@@ -911,7 +895,7 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   HFONT titleFont = CreateUiFont(15, FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, titleFont);
   SetTextColor(memoryDc, kWidgetText);
-  RECT titleRect{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 30};
+  RECT titleRect{content.left, content.top, content.right, content.top + 22};
   DrawTextInRect(memoryDc, title, titleRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
   DeleteObject(titleFont);
@@ -919,7 +903,7 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   HFONT detailFont = CreateUiFont(11, FW_NORMAL);
   previousFont = SelectObject(memoryDc, detailFont);
   SetTextColor(memoryDc, kWidgetMuted);
-  RECT detailRect{bounds.left + 12, bounds.top + 34, bounds.right - 12, bounds.bottom - 8};
+  RECT detailRect{content.left, content.top + 26, content.right, content.bottom};
   DrawTextInRect(memoryDc, detail, detailRect, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
   SelectObject(memoryDc, previousFont);
   DeleteObject(detailFont);
@@ -944,6 +928,7 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
   const auto& hours = nativeDashboard_.weatherHours;
   const size_t count = std::min<size_t>(5, hours.size());
@@ -952,7 +937,7 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
     if (std::isfinite(hours[i].precipitationProbability)) maxPop = std::max(maxPop, hours[i].precipitationProbability);
   }
 
-  RECT popRect{bounds.left, bounds.top, bounds.left + 72, bounds.bottom};
+  RECT popRect{content.left, content.top, content.left + 72, content.bottom};
   HBRUSH popBrush = CreateSolidBrush(kWidgetSurfaceAlt);
   HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
   HGDIOBJ previousBrush = SelectObject(memoryDc, popBrush);
@@ -980,11 +965,11 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   HFONT rainFont = CreateUiFont(13, FW_NORMAL);
   const int rightLeft = popRect.right + 6;
   const int cardGap = 2;
-  const int availableWidth = std::max(1L, bounds.right - rightLeft);
+  const int availableWidth = std::max(1L, content.right - rightLeft);
   const int cardWidth = (availableWidth - cardGap * 4) / 5;
   for (int i = 0; i < 5; ++i) {
-    RECT cardRect{rightLeft + i * (cardWidth + cardGap), bounds.top,
-                  rightLeft + i * (cardWidth + cardGap) + cardWidth, bounds.bottom};
+    RECT cardRect{rightLeft + i * (cardWidth + cardGap), content.top,
+                  rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
     RoundRect(memoryDc, cardRect.left, cardRect.top, cardRect.right, cardRect.bottom, 6, 6);
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, hourFont);
