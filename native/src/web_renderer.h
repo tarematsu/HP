@@ -244,14 +244,9 @@ class Renderer {
   RadarManager& radar_;
   fs::path rootDir_;
   fs::path dataDir_;
-  fs::path uiDir_;
-  fs::path userDataDir_;
   std::atomic<bool> shuttingDown_{false};
   std::string dashboardUtf8_;
-  std::wstring dashboardJson_ = L"{}";
   uint64_t dashboardSourceRevision_ = 0;
-  std::string spotifyUtf8_;
-  std::wstring spotifyJson_ = L"{}";
   uint64_t spotifySourceRevision_ = 0;
   int newsCount_ = 0;
   std::wstring monitorHostHandle_;
