@@ -86,15 +86,14 @@ jobs:
               throw "Unexpected Stationhead generation token '$token' remains in CMake."
             }
           }
-          foreach ($path in @("native/scripts/generate_stationhead_sources.ps1")) {
+          foreach ($path in @(
+            "native/scripts/generate_stationhead_sources.ps1",
+            "native/scripts/ui/index.html",
+            "native/scripts/ui/styles.css",
+            "native/scripts/ui/app.js"
+          )) {
             if (Test-Path -LiteralPath $path) {
-              throw "Removed generator '$path' still exists."
-            }
-          }
-          $ui = Get-Content -LiteralPath "native/scripts/ui/index.html" -Raw
-          foreach ($token in @('data-action="maintenance"', 'data-action="exit"', 'id="diagnostic-grid"')) {
-            if ($ui.Contains($token)) {
-              throw "Removed control token '$token' remains in the dashboard UI."
+              throw "Removed Stationhead/browser dashboard source '$path' still exists."
             }
           }
 
@@ -238,12 +237,3 @@ jobs:
             native/HomePanel-native-windows.zip.sha256
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload failure diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-windows-failure-logs
-          path: native/ci-logs
-          if-no-files-found: warn
-          retention-days: 7
