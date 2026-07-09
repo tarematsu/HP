@@ -42,12 +42,25 @@ constexpr RuntimeAsset kRuntimeAssets[] = {
     {112, L"radar-map.png"},
 };
 
+uint64_t HashBytes(const std::string& content) {
+  uint64_t hash = 1469598103934665603ULL;
+  for (const unsigned char byte : content) {
+    hash ^= byte;
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
 std::string ExecutableStamp(const hp::fs::path& executable) {
   std::error_code error;
   const auto size = hp::fs::file_size(executable, error);
   std::ostringstream stamp;
-  stamp << hp::WideToUtf8(hp::kVersion) << "|native-assets-v1";
+  stamp << hp::WideToUtf8(hp::kVersion) << "|native-assets-v2";
   if (!error) stamp << '|' << size;
+  for (const RuntimeAsset& asset : kRuntimeAssets) {
+    const std::string content = ReadResource(asset.id);
+    stamp << '|' << asset.id << ':' << content.size() << ':' << std::hex << HashBytes(content) << std::dec;
+  }
   return stamp.str();
 }
 
