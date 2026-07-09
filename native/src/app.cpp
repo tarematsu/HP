@@ -11,7 +11,7 @@ constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr UINT_PTR kCentralTimer = 1;
 constexpr UINT WM_HP_UPDATE_RESULT = WM_APP + 20;
 constexpr int kRestartExitCode = 42;
-constexpr int64_t kSecondaryDashboardSettleMs = 15'000;
+constexpr int64_t kDashboardStartupDelayMs = 1'500;
 constexpr uint32_t kFastTickMs = 1000;
 constexpr uint32_t kIdleTickMs = 5000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
@@ -186,7 +186,7 @@ void App::StartServices() {
   if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
     secondaryStationhead_ = std::make_unique<SecondaryStationheadPlayer>(
         window_, config_.stationhead, stationheadData, *logger_);
-    logger_->Info(L"Secondary Stationhead prepared; startup waits for primary audio");
+    logger_->Info(L"Secondary Stationhead prepared to start alongside primary");
   }
   RECT client{};
   if (GetClientRect(window_, &client) && client.right > client.left && client.bottom > client.top) {
@@ -195,15 +195,14 @@ void App::StartServices() {
   }
   stationhead_->Start();
   logger_->Info(L"Stationhead startup was prioritized before native dashboard initialization");
-  // Windows A and B are started together rather than staggering B behind A's
-  // confirmed audio + dashboard settle: both are independent WebView2
-  // profiles, so there is no real startup-burst contention to avoid, and the
-  // user wants both up at the same time.
+  // Windows A and B are started together and then temporarily shown as a split
+  // preview, so startup order is visually deterministic: A/B first, dashboard next.
   if (secondaryStationhead_) {
     secondaryStationhead_->Start();
     secondaryStarted_ = true;
     logger_->Info(L"Secondary Stationhead started alongside primary");
   }
+  ApplyStartupStationheadPreview();
   ApplyScheduledStationheadAudioProfile(true);
 
   const std::wstring deviceToken = LoadProtectedToken(dataDir_ / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
@@ -222,17 +221,62 @@ void App::StartServices() {
   InvalidateAll();
 }
 
+void App::ApplyStartupStationheadPreview() {
+  if (!stationhead_) return;
+  RECT bounds = workspaceBounds_;
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+    GetClientRect(window_, &bounds);
+  }
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
+    bounds = RECT{0, 0, std::max(1, config_.screenWidth), std::max(1, config_.screenHeight)};
+  }
+
+  if (!secondaryStationhead_) {
+    stationhead_->SetStartupPreviewBounds(bounds);
+    logger_->Info(L"Stationhead startup preview applied full-screen before dashboard");
+    return;
+  }
+
+  const LONG clientWidth = std::max<LONG>(1, bounds.right - bounds.left);
+  const LONG gap = std::clamp<LONG>(clientWidth / 100, 8, 24);
+  const LONG mid = bounds.left + clientWidth / 2;
+  const LONG halfGap = std::min<LONG>(gap / 2, std::max<LONG>(0, clientWidth / 2 - 1));
+  RECT left{bounds.left, bounds.top, mid - halfGap, bounds.bottom};
+  RECT right{mid + halfGap, bounds.top, bounds.right, bounds.bottom};
+  if (left.right <= left.left) left.right = left.left + 1;
+  if (right.right <= right.left) right.right = right.left + 1;
+
+  stationhead_->SetStartupPreviewBounds(left);
+  secondaryStationhead_->SetStartupPreviewBounds(right);
+  logger_->Info(L"Stationhead startup preview applied: A left, B right");
+}
+
+void App::ClearStartupStationheadPreview() {
+  if (stationhead_) stationhead_->ClearStartupPreviewBounds();
+  if (secondaryStationhead_) secondaryStationhead_->ClearStartupPreviewBounds();
+}
+
 void App::StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus) {
   const bool audioReady = stationheadStatus.audioPlaying || stationheadStatus.lightweight;
+  const bool stationheadWindowsStarted = !secondaryStationhead_ || secondaryStarted_;
+  const bool dashboardDelayReached = stationheadWindowsStarted && now - startupAt_ >= kDashboardStartupDelayMs;
   const bool startupDeadlineReached = now - startupAt_ >= 30'000;
   if (audioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ && (audioReady || startupDeadlineReached || stationheadStatus.loginRequired)) {
+  if (!rendererStarted_ &&
+      (dashboardDelayReached || audioReady || startupDeadlineReached || stationheadStatus.loginRequired)) {
     renderer_->Initialize();
     rendererStarted_ = true;
-    logger_->Info(audioReady
-        ? L"Native dashboard started after Stationhead audio confirmation"
-        : L"Native dashboard started after startup fallback deadline");
+    ClearStartupStationheadPreview();
+    LayoutWorkspace();
+    PublishRenderStateNow();
+    renderer_->TickNativePanels(now);
+    InvalidateAll();
+    logger_->Info(dashboardDelayReached && !audioReady && !startupDeadlineReached && !stationheadStatus.loginRequired
+        ? L"Native dashboard started after Stationhead A/B startup preview"
+        : (audioReady
+            ? L"Native dashboard started after Stationhead audio confirmation"
+            : L"Native dashboard started after startup fallback deadline"));
   }
 
   if (!cloudStarted_ && (audioReady || startupDeadlineReached)) {
@@ -241,23 +285,6 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     logger_->Info(audioReady
         ? L"Cloud synchronization started after Stationhead audio confirmation"
         : L"Cloud synchronization started after startup fallback deadline");
-  }
-
-  // Do not compete with the primary player or native dashboard during their
-  // startup burst. The secondary player is armed only after primary audio has
-  // been confirmed and the dashboard has had time to finish its own launch.
-  const bool dashboardSettled = rendererStarted_ && playbackReadyAt_ > 0 &&
-      now - playbackReadyAt_ >= kSecondaryDashboardSettleMs;
-  if (secondaryStationhead_ && audioReady && dashboardSettled && secondaryEligibleAt_ == 0) {
-    secondaryEligibleAt_ = now + static_cast<int64_t>(
-        std::max(1, config_.stationhead.secondaryStartDelaySeconds)) * 1000;
-    logger_->Info(L"Secondary Stationhead queued after primary audio and dashboard startup");
-  }
-  if (secondaryStationhead_ && !secondaryStarted_ && secondaryEligibleAt_ > 0 &&
-      now >= secondaryEligibleAt_) {
-    secondaryStationhead_->Start();
-    secondaryStarted_ = true;
-    logger_->Info(L"Secondary Stationhead startup began after dashboard settle delay");
   }
 
   const bool updateDelayElapsed = playbackReadyAt_ > 0
@@ -327,9 +354,6 @@ void App::Tick() {
     if (toastUntil_ > 0) nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, toastUntil_, kMaxIdleTickMs));
     if (newsCount_ > 1 && lastNewsRotateAt_ > 0) {
       nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, lastNewsRotateAt_ + 30'000, kMaxIdleTickMs));
-    }
-    if (secondaryStationhead_ && !secondaryStarted_ && secondaryEligibleAt_ > 0) {
-      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, secondaryEligibleAt_, kMaxIdleTickMs));
     }
   }
   ScheduleNextTick(nextTickMs);
