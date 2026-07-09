@@ -9,9 +9,10 @@
 namespace hp {
 
 void StationheadPlayer::ConfigureWebView() {
-  selectedTab_ = StationheadTabKind::Stationhead;
-  viewVisible_ = true;
-  SetVisible(true);
+  // Primary Stationhead keeps the default profile, but its surface follows the
+  // same startup rule as B: start hidden/behind unless App is holding the shared
+  // A/B startup preview or an explicit login/auth flow is active.
+  SetStartupBounds();
   ComPtr<ICoreWebView2Controller2> controller2;
   if (SUCCEEDED(controller_.As(&controller2))) {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
