@@ -72,6 +72,8 @@ class StationheadPlayer {
   void SetVolume(double volume) noexcept;
   double Volume() const noexcept;
   void SetBounds(const RECT& bounds);
+  void SetStartupPreviewBounds(const RECT& bounds);
+  void ClearStartupPreviewBounds();
   void SelectTab(StationheadTabKind tab);
   bool HasAuthTab() const;
   StationheadStatus Status() const;
@@ -98,6 +100,7 @@ class StationheadPlayer {
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
   bool NeedsInteractiveWindow() const;
   void KeepPlaybackBehindDashboard();
+  void SetStartupBounds();
   void SetVisible(bool visible);
   void ScheduleRecreate(const std::wstring& reason);
   size_t MeasureProcessWorkingSet();
@@ -154,6 +157,7 @@ class StationheadPlayer {
   bool loginSessionActive_ = false;
   bool showAfterNavigation_ = false;
   bool viewVisible_ = false;
+  bool startupPreviewActive_ = false;
   bool backgroundHostPlaced_ = false;
   bool controllerLayoutValid_ = false;
   bool lastLayoutHadAuthController_ = false;
