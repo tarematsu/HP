@@ -1,5 +1,6 @@
 #include "sh.h"
 #include "secondary_sh.h"
+#include <set>
 
 namespace hp {
 namespace {
