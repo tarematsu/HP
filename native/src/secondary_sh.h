@@ -57,6 +57,8 @@ class SecondaryStationheadPlayer {
   void Reconnect();
   bool OpenSpotifyApiAuthorization(const std::wstring& url);
   void SetBounds(const RECT& bounds);
+  void SetStartupPreviewBounds(const RECT& bounds);
+  void ClearStartupPreviewBounds();
   [[nodiscard]] SecondaryStationheadStatus Status() const;
   [[nodiscard]] bool HasLocalSpotifyToken() const noexcept {
     std::error_code error;
@@ -138,6 +140,7 @@ class SecondaryStationheadPlayer {
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
   bool interactive_ = false;
+  bool startupPreviewActive_ = false;
   bool spotifyAuthorization_ = false;
   bool apiAuthorization_ = false;
   std::atomic<bool> loginRequired_{false};
