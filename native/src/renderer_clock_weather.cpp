@@ -861,16 +861,12 @@ void Renderer::PaintNativeControls(HWND hwnd) {
       {L"更新", controlButtons.update},
       {L"再起動", controlButtons.restart},
   }};
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HBRUSH fill = CreateSolidBrush(kWidgetSurfaceAlt);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, fill);
   const int buttonHeight = std::max(1L, controlButtons.update.bottom - controlButtons.update.top);
   HFONT buttonFont = CreateUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, buttonFont);
   SetTextColor(memoryDc, kWidgetText);
   for (const auto& [label, rect] : buttons) {
-    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
+    DrawWidgetCard(memoryDc, rect, kWidgetSurfaceAlt, 7);
     RECT textRect = rect;
     DrawTextInRect(memoryDc, label, textRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
@@ -887,11 +883,6 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     SelectObject(memoryDc, previousFont);
     DeleteObject(toastFont);
   }
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(fill);
-  DeleteObject(border);
-
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
   DeleteDC(memoryDc);
