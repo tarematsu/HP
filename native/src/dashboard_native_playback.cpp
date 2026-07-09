@@ -1,5 +1,6 @@
 #include "web_renderer.h"
 #include "artwork_cache.h"
+#include "json_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -33,62 +34,27 @@ struct NativeHttpHandle {
 };
 
 JsonObject AsObject(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Object) {
-      return parent.GetNamedObject(name);
-    }
-  } catch (...) {
-  }
-  return JsonObject{};
+  return json::Object(parent, name);
 }
 
 JsonArray AsArray(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Array) {
-      return parent.GetNamedArray(name);
-    }
-  } catch (...) {
-  }
-  return JsonArray{};
+  return json::Array(parent, name);
 }
 
 std::wstring StringValue(const JsonObject& object, const wchar_t* name) {
-  try {
-    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::String) {
-      return object.GetNamedString(name).c_str();
-    }
-  } catch (...) {
-  }
-  return {};
+  return json::Text(object, name);
 }
 
 std::wstring JsonTextValue(const JsonObject& object, const wchar_t* name) {
-  try {
-    if (object.HasKey(name)) return object.GetNamedValue(name).Stringify().c_str();
-  } catch (...) {
-  }
-  return {};
+  return json::Stringify(object, name);
 }
 
 double NumberValue(const JsonObject& object, const wchar_t* name, double fallback = 0) {
-  try {
-    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::Number) {
-      return object.GetNamedNumber(name);
-    }
-  } catch (...) {
-  }
-  return fallback;
+  return json::Number(object, name, fallback);
 }
 
 bool BoolValue(const JsonObject& object, const wchar_t* name, bool fallback = false) {
-  try {
-    if (object.HasKey(name) &&
-        object.GetNamedValue(name).ValueType() == JsonValueType::Boolean) {
-      return object.GetNamedBoolean(name);
-    }
-  } catch (...) {
-  }
-  return fallback;
+  return json::Boolean(object, name, fallback);
 }
 
 double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t*> names) {

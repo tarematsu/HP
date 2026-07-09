@@ -1,4 +1,5 @@
 #include "dashboard_data.h"
+#include "json_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -8,53 +9,23 @@ using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
 JsonObject ObjectOrEmpty(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Object) {
-      return parent.GetNamedObject(name);
-    }
-  } catch (...) {
-  }
-  return JsonObject{};
+  return json::Object(parent, name);
 }
 
 JsonArray ArrayOrEmpty(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) && parent.GetNamedValue(name).ValueType() == JsonValueType::Array) {
-      return parent.GetNamedArray(name);
-    }
-  } catch (...) {
-  }
-  return JsonArray{};
+  return json::Array(parent, name);
 }
 
 std::wstring StringOr(const JsonObject& object, const wchar_t* name, const std::wstring& fallback = {}) {
-  try {
-    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::String) {
-      return object.GetNamedString(name).c_str();
-    }
-  } catch (...) {
-  }
-  return fallback;
+  return json::Text(object, name, fallback);
 }
 
 double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
-  try {
-    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::Number) {
-      return object.GetNamedNumber(name);
-    }
-  } catch (...) {
-  }
-  return std::numeric_limits<double>::quiet_NaN();
+  return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
 
 bool BoolOr(const JsonObject& object, const wchar_t* name, bool fallback = false) {
-  try {
-    if (object.HasKey(name) && object.GetNamedValue(name).ValueType() == JsonValueType::Boolean) {
-      return object.GetNamedBoolean(name);
-    }
-  } catch (...) {
-  }
-  return fallback;
+  return json::Boolean(object, name, fallback);
 }
 
 PanelDataStatus ReadStatus(const JsonObject& object) {

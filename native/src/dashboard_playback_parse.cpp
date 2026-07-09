@@ -1,43 +1,22 @@
 #include "web_renderer.h"
+#include "json_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
 namespace {
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
-using winrt::Windows::Data::Json::JsonValueType;
 
 JsonObject ChildObject(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) &&
-        parent.GetNamedValue(name).ValueType() == JsonValueType::Object) {
-      return parent.GetNamedObject(name);
-    }
-  } catch (...) {
-  }
-  return JsonObject{};
+  return json::Object(parent, name);
 }
 
 JsonArray ChildArray(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) &&
-        parent.GetNamedValue(name).ValueType() == JsonValueType::Array) {
-      return parent.GetNamedArray(name);
-    }
-  } catch (...) {
-  }
-  return JsonArray{};
+  return json::Array(parent, name);
 }
 
 std::wstring TextValue(const JsonObject& object, const wchar_t* name) {
-  try {
-    if (object.HasKey(name) &&
-        object.GetNamedValue(name).ValueType() == JsonValueType::String) {
-      return object.GetNamedString(name).c_str();
-    }
-  } catch (...) {
-  }
-  return {};
+  return json::Text(object, name);
 }
 }  // namespace
 

@@ -1,5 +1,6 @@
 #include "web_renderer.h"
 #include "wic_image.h"
+#include "json_helpers.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -15,36 +16,15 @@ struct RadarTile {
 };
 
 JsonArray RadarChildArray(const JsonObject& parent, const wchar_t* name) {
-  try {
-    if (parent.HasKey(name) &&
-        parent.GetNamedValue(name).ValueType() == JsonValueType::Array) {
-      return parent.GetNamedArray(name);
-    }
-  } catch (...) {
-  }
-  return JsonArray{};
+  return json::Array(parent, name);
 }
 
 std::wstring RadarText(const JsonObject& object, const wchar_t* name) {
-  try {
-    if (object.HasKey(name) &&
-        object.GetNamedValue(name).ValueType() == JsonValueType::String) {
-      return object.GetNamedString(name).c_str();
-    }
-  } catch (...) {
-  }
-  return {};
+  return json::Text(object, name);
 }
 
 double RadarNumber(const JsonObject& object, const wchar_t* name, double fallback = 0) {
-  try {
-    if (object.HasKey(name) &&
-        object.GetNamedValue(name).ValueType() == JsonValueType::Number) {
-      return object.GetNamedNumber(name);
-    }
-  } catch (...) {
-  }
-  return fallback;
+  return json::Number(object, name, fallback);
 }
 
 std::wstring RadarTimeFromMillis(int64_t milliseconds) {
