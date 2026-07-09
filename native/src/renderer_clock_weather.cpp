@@ -181,6 +181,21 @@ RECT DrawWidgetSurface(HDC dc, const RECT& bounds, COLORREF color = kWidgetSurfa
   return NormalizeInsetRect(bounds, 12, 10, 12, 10);
 }
 
+void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& trailing,
+                      const RECT& content) {
+  HFONT font = CreateUiFont(13, FW_NORMAL);
+  HGDIOBJ previousFont = SelectObject(dc, font);
+  RECT header{content.left, content.top, content.right, content.top + 23};
+  SetTextColor(dc, kWidgetText);
+  DrawTextInRect(dc, title, header, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  if (!trailing.empty()) {
+    SetTextColor(dc, kWidgetMuted);
+    DrawTextInRect(dc, trailing, header, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  }
+  SelectObject(dc, previousFont);
+  DeleteObject(font);
+}
+
 std::wstring Fixed(double value, int digits) {
   std::wostringstream output;
   output << std::fixed << std::setprecision(digits) << value;
@@ -833,16 +848,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
-  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
-  SetTextColor(memoryDc, kWidgetText);
-  RECT titleRect{content.left, content.top, content.right, content.top + 23};
-  DrawTextInRect(memoryDc, L"操作", titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  SetTextColor(memoryDc, kWidgetMuted);
   const std::wstring version = nativeAppVersion_.empty() ? L"" : L"v" + nativeAppVersion_;
-  DrawTextInRect(memoryDc, version, titleRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
-  DeleteObject(headerFont);
+  DrawWidgetHeader(memoryDc, L"操作", version, content);
 
   const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(content);
   const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
@@ -855,7 +862,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   HGDIOBJ previousBrush = SelectObject(memoryDc, fill);
   const int buttonHeight = std::max(1L, controlButtons.update.bottom - controlButtons.update.top);
   HFONT buttonFont = CreateUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
-  previousFont = SelectObject(memoryDc, buttonFont);
+  HGDIOBJ previousFont = SelectObject(memoryDc, buttonFont);
   SetTextColor(memoryDc, kWidgetText);
   for (const auto& [label, rect] : buttons) {
     RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 7, 7);
@@ -1030,13 +1037,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
-  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
-  SetTextColor(memoryDc, kWidgetText);
-  RECT headerRect{content.left, content.top, content.right, content.top + 23};
-  DrawTextInRect(memoryDc, L"Octopus Energy", headerRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
-  DeleteObject(headerFont);
+  DrawWidgetHeader(memoryDc, L"Octopus Energy", L"", content);
 
   const auto usageText = [](double value) {
     return std::isfinite(value) ? Fixed(value, 1) + L" kWh" : L"-- kWh";
@@ -1059,6 +1060,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   const int summaryHeight = std::clamp(contentHeight / 3, 58, 72);
   HFONT labelFont = CreateUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
   HFONT valueFont = CreateUiFont(std::clamp(summaryHeight / 4, 16, 20), FW_NORMAL);
+  HGDIOBJ previousFont = nullptr;
   const int summaryGap = 8;
   const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
   for (int i = 0; i < 2; ++i) {
@@ -1161,13 +1163,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
-  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
-  SetTextColor(memoryDc, kWidgetText);
-  RECT header{content.left, content.top, content.right, content.top + 23};
-  DrawTextInRect(memoryDc, L"Spotify WebView2", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
-  DeleteObject(headerFont);
+  DrawWidgetHeader(memoryDc, L"Spotify WebView2", L"", content);
 
   HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
   HBRUSH card = CreateSolidBrush(kWidgetSurface);
@@ -1177,6 +1173,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   HFONT titleFont = CreateUiFont(18, FW_SEMIBOLD);
   HFONT artistFont = CreateUiFont(12, FW_NORMAL);
   HFONT buttonFont = CreateUiFont(12, FW_SEMIBOLD);
+  HGDIOBJ previousFont = nullptr;
   const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(content);
   const int contentHeight = std::max(1L, content.bottom - content.top);
   const int rowGap = 8;
@@ -1311,18 +1308,10 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
-  HFONT headerFont = CreateUiFont(13, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
-  SetTextColor(memoryDc, kWidgetText);
-  RECT header{content.left, content.top, content.right, content.top + 23};
-  DrawTextInRect(memoryDc, L"リアルタイム雨雲", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-
   {
     std::lock_guard lock(radarFrameMutex_);
-    SetTextColor(memoryDc, kWidgetMuted);
-    DrawTextInRect(memoryDc, radarTimeText_.empty() ? L"--:--" : radarTimeText_, header,
-                   DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-
+    DrawWidgetHeader(memoryDc, L"リアルタイム雨雲",
+                     radarTimeText_.empty() ? L"--:--" : radarTimeText_, content);
     RECT stage{content.left, content.top + 26, content.right, content.bottom};
     HPEN stageBorder = CreatePen(PS_SOLID, 1, RGB(34, 44, 56));
     HBRUSH stageBrush = CreateSolidBrush(RGB(11, 16, 23));
@@ -1361,8 +1350,6 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
     }
   }
 
-  SelectObject(memoryDc, previousFont);
-  DeleteObject(headerFont);
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
   DeleteDC(memoryDc);
