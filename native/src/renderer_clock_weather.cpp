@@ -22,6 +22,13 @@ constexpr COLORREF kWidgetSubtle = RGB(124, 137, 154);
 constexpr COLORREF kWidgetBlue = RGB(110, 190, 246);
 constexpr COLORREF kWidgetGreen = RGB(114, 224, 162);
 constexpr COLORREF kWidgetOrange = RGB(255, 184, 72);
+constexpr COLORREF kWidgetPanelHero = RGB(14, 18, 26);
+constexpr COLORREF kWidgetStage = RGB(11, 16, 23);
+constexpr COLORREF kWidgetTrack = RGB(34, 44, 56);
+constexpr COLORREF kWidgetWarning = RGB(255, 209, 140);
+constexpr COLORREF kWidgetDanger = RGB(255, 128, 140);
+constexpr COLORREF kWidgetDangerSurface = RGB(42, 33, 35);
+constexpr COLORREF kWidgetSuccessSurface = RGB(24, 46, 34);
 
 RECT NativeClockRectFromBounds(const RECT& bounds) {
   return ComputeNativeDashboardLayout(bounds).clock;
@@ -687,7 +694,7 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
   FillWidgetBackground(memoryDc, bounds);
-  const RECT content = DrawWidgetSurface(memoryDc, bounds, RGB(14, 18, 26));
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetPanelHero);
 
   SetBkMode(memoryDc, TRANSPARENT);
   SetTextColor(memoryDc, kWidgetMuted);
@@ -811,7 +818,7 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
   DrawTextInRect(memoryDc, L"CO2   温度   湿度", legend, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
   RECT plot{content.left + 26, content.top + 22, content.right, content.bottom - 20};
-  HPEN gridPen = CreatePen(PS_SOLID, 1, RGB(32, 40, 52));
+  HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
   HGDIOBJ previousPen = SelectObject(memoryDc, gridPen);
   for (int i = 0; i < 4; ++i) {
     const int y = plot.top + (plot.bottom - plot.top) * i / 3;
@@ -888,7 +895,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   if (!nativeToast_.empty()) {
     HFONT toastFont = CreateUiFont(12, FW_NORMAL);
     previousFont = SelectObject(memoryDc, toastFont);
-    SetTextColor(memoryDc, RGB(255, 209, 140));
+    SetTextColor(memoryDc, kWidgetWarning);
     RECT toastRect{content.left, controlButtons.toastTop, content.right,
                    std::max(static_cast<LONG>(controlButtons.toastTop + 22), content.bottom)};
     DrawTextInRect(memoryDc, nativeToast_, toastRect,
@@ -1216,7 +1223,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     if (withProgress) {
       RECT barRect{art.right + 12, rowRect.bottom - 14, textRight, rowRect.bottom - 10};
-      DrawWidgetPill(memoryDc, barRect, RGB(34, 44, 56));
+      DrawWidgetPill(memoryDc, barRect, kWidgetTrack);
       const double ratio = std::clamp(
           static_cast<double>(playback.progressMs) / static_cast<double>(playback.track.durationMs),
           0.0, 1.0);
@@ -1228,8 +1235,8 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
       }
     }
 
-    DrawWidgetCard(memoryDc, button, muted ? RGB(42, 33, 35) : RGB(24, 46, 34), 7);
-    SetTextColor(memoryDc, muted ? RGB(255, 128, 140) : kWidgetGreen);
+    DrawWidgetCard(memoryDc, button, muted ? kWidgetDangerSurface : kWidgetSuccessSurface, 7);
+    SetTextColor(memoryDc, muted ? kWidgetDanger : kWidgetGreen);
     SelectObject(memoryDc, buttonFont);
     DrawTextInRect(memoryDc, muted ? L"音声OFF" : L"音声ON", button,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
@@ -1282,7 +1289,7 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
     DrawWidgetHeader(memoryDc, L"リアルタイム雨雲",
                      radarTimeText_.empty() ? L"--:--" : radarTimeText_, content);
     RECT stage{content.left, content.top + 26, content.right, content.bottom};
-    DrawWidgetCard(memoryDc, stage, RGB(11, 16, 23));
+    DrawWidgetCard(memoryDc, stage, kWidgetStage);
     stage = NormalizeInsetRect(stage, 6, 6, 6, 6);
     const int stageWidth = std::max(1L, stage.right - stage.left);
     const int stageHeight = std::max(1L, stage.bottom - stage.top);
