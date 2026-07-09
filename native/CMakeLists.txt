@@ -111,20 +111,11 @@ set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_core.cpp
   src/renderer_visuals.cpp
   src/renderer_animation.cpp
-  src/renderer_button.cpp
-  src/renderer_panel.cpp
-  src/renderer_status.cpp
-  src/renderer_dashboard_base.cpp
-  src/renderer_news.cpp
+  src/dashboard_state_sensors.cpp
+  src/dashboard_state_player.cpp
+  src/dashboard_state_history.cpp
   src/renderer_clock_weather.cpp
-  src/renderer_metrics.cpp
-  src/renderer_co2_graph.cpp
-  src/renderer_spotify.cpp
-  src/renderer_energy.cpp
-  src/renderer_switchbot_panel.cpp
-  src/renderer_radar_ui.cpp
-  src/renderer_diagnostics_ui.cpp
-  src/renderer_runtime.cpp)
+  src/renderer_radar_ui.cpp)
 
 set(HOMEPANEL_RESOURCE_SOURCES
   "${HOMEPANEL_GENERATED_HOME_RC}"
