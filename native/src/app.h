@@ -57,6 +57,20 @@ class StationheadHandleBase {
     ApplyBounds();
   }
 
+  void SetStartupPreviewBounds(const RECT& bounds) {
+    startupPreviewBounds_ = bounds;
+    startupPreviewActive_ = true;
+    ApplyBounds();
+  }
+
+  void ClearStartupPreviewBounds() {
+    if (!startupPreviewActive_) return;
+    startupPreviewActive_ = false;
+    ApplyBounds();
+  }
+
+  bool StartupPreviewActive() const noexcept { return startupPreviewActive_; }
+
  protected:
   void ApplyAudioState() const noexcept {
     if (!player_) return;
@@ -79,17 +93,19 @@ class StationheadHandleBase {
     if (!host || !IsWindow(host)) return;
     const auto status = player_->Status();
     const bool interactive = static_cast<const Derived*>(this)->IsInteractive(status);
-    const bool compactPlayback = status.lightweight && !interactive;
+    const bool preview = startupPreviewActive_;
+    const RECT activeBounds = preview ? startupPreviewBounds_ : workspaceBounds_;
+    const bool compactPlayback = !preview && status.lightweight && !interactive;
     const int width = compactPlayback
         ? 2
-        : std::max(1L, workspaceBounds_.right - workspaceBounds_.left);
+        : std::max(1L, activeBounds.right - activeBounds.left);
     const int height = compactPlayback
         ? 2
-        : std::max(1L, workspaceBounds_.bottom - workspaceBounds_.top);
-    const HWND placement = interactive ? HWND_TOP : HWND_BOTTOM;
-    SetWindowPos(host, placement, workspaceBounds_.left, workspaceBounds_.top,
+        : std::max(1L, activeBounds.bottom - activeBounds.top);
+    const HWND placement = (interactive || preview) ? HWND_TOP : HWND_BOTTOM;
+    SetWindowPos(host, placement, activeBounds.left, activeBounds.top,
                  width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    BringMainWindowToFront(host);
+    if (!preview) BringMainWindowToFront(host);
   }
 
   void ApplyInteractiveBounds() {
@@ -99,12 +115,14 @@ class StationheadHandleBase {
   void ApplyBounds() {
     if (!player_) return;
     ApplyAudioState();
-    player_->SetBounds(workspaceBounds_);
+    player_->SetBounds(startupPreviewActive_ ? startupPreviewBounds_ : workspaceBounds_);
     RaiseActiveHost();
   }
 
   std::unique_ptr<PlayerT> player_;
   RECT workspaceBounds_{0, 0, 1, 1};
+  RECT startupPreviewBounds_{0, 0, 1, 1};
+  bool startupPreviewActive_ = false;
   bool audioMuted_ = false;
   double audioVolume_ = 1.0;
 };
@@ -400,6 +418,8 @@ class App {
   void CreateMainWindow(int showCommand);
   void StartServices();
   void StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus);
+  void ApplyStartupStationheadPreview();
+  void ClearStartupStationheadPreview();
   void StopServices();
   void Tick();
   void Draw();
