@@ -16,7 +16,6 @@ class RadarManager {
   void SeekFraction(float fraction);
   bool Playing() const;
   std::wstring CurrentTimeText() const;
-  std::wstring WebSnapshotJson() const;
   size_t DecodedFrameCount() const { return 0; }
   uint64_t RenderVersion() const;
 
