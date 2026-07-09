@@ -5,7 +5,7 @@ void StationheadPlayer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
   controllerLayoutValid_ = false;
-  if (viewVisible_ || NeedsInteractiveWindow()) LayoutControllers();
+  if (startupPreviewActive_ || viewVisible_ || NeedsInteractiveWindow()) LayoutControllers();
   else KeepPlaybackBehindDashboard();
 }
 
