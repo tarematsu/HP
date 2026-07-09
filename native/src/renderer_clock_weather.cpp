@@ -76,14 +76,27 @@ struct ControlsButtonRects {
 ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
+  if (width < 330) {
+    const int buttonHeight = std::clamp(height / 5, 34, 42);
+    const int buttonWidth = std::min(190, std::max(120, width - 8));
+    const int left = bounds.left + (width - buttonWidth) / 2;
+    const int top = bounds.top + std::max(34, (height - buttonHeight * 2 - 8) / 2);
+    return ControlsButtonRects{
+        RECT{left, top, left + buttonWidth, top + buttonHeight},
+        RECT{left, top + buttonHeight + 8, left + buttonWidth, top + buttonHeight * 2 + 8},
+        top + buttonHeight * 2 + 18,
+    };
+  }
+
   const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
+  const int buttonHeight = std::clamp(height / 4, 38, 44);
   const int totalWidth = buttonWidth * 2 + 10;
   const int left = bounds.left + (width - totalWidth) / 2;
-  const int top = bounds.top + std::max(48, height / 2 - 22);
+  const int top = bounds.top + std::max(42, height / 2 - buttonHeight / 2);
   return ControlsButtonRects{
-      RECT{left, top, left + buttonWidth, top + 44},
-      RECT{left + buttonWidth + 10, top, left + totalWidth, top + 44},
-      top + 54,
+      RECT{left, top, left + buttonWidth, top + buttonHeight},
+      RECT{left + buttonWidth + 10, top, left + totalWidth, top + buttonHeight},
+      top + buttonHeight + 10,
   };
 }
 
@@ -842,7 +855,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   HBRUSH fill = CreateSolidBrush(kWidgetSurfaceAlt);
   HGDIOBJ previousPen = SelectObject(memoryDc, border);
   HGDIOBJ previousBrush = SelectObject(memoryDc, fill);
-  HFONT buttonFont = CreateUiFont(14, FW_SEMIBOLD);
+  const int buttonHeight = std::max(1L, controlButtons.update.bottom - controlButtons.update.top);
+  HFONT buttonFont = CreateUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
   previousFont = SelectObject(memoryDc, buttonFont);
   SetTextColor(memoryDc, kWidgetText);
   for (const auto& [label, rect] : buttons) {
