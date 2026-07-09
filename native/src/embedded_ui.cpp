@@ -6,7 +6,7 @@ std::string ReadResource(int id) {
   HMODULE module = GetModuleHandleW(nullptr);
   HRSRC resource = FindResourceW(module, MAKEINTRESOURCEW(id), RT_RCDATA);
   if (!resource) return {};
-  HGLOBAL loaded = LoadResource(resource);
+  HGLOBAL loaded = ::LoadResource(module, resource);
   const char* bytes = loaded ? static_cast<const char*>(LockResource(loaded)) : nullptr;
   const DWORD size = SizeofResource(module, resource);
   if (!bytes || !size) return {};
