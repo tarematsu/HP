@@ -194,6 +194,19 @@ void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt
   DeleteObject(border);
 }
 
+void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color) {
+  HBRUSH fill = CreateSolidBrush(color);
+  HGDIOBJ previousBrush = SelectObject(dc, fill);
+  HPEN pen = CreatePen(PS_SOLID, 1, color);
+  HGDIOBJ previousPen = SelectObject(dc, pen);
+  const int radius = std::max(2L, rect.bottom - rect.top);
+  RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
+  SelectObject(dc, previousPen);
+  SelectObject(dc, previousBrush);
+  DeleteObject(pen);
+  DeleteObject(fill);
+}
+
 void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& trailing,
                       const RECT& content) {
   HFONT font = CreateUiFont(13, FW_NORMAL);
@@ -1207,9 +1220,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     if (withProgress) {
       RECT barRect{art.right + 12, rowRect.bottom - 14, textRight, rowRect.bottom - 10};
-      HBRUSH barBrush = CreateSolidBrush(RGB(34, 44, 56));
-      FillRect(memoryDc, &barRect, barBrush);
-      DeleteObject(barBrush);
+      DrawWidgetPill(memoryDc, barRect, RGB(34, 44, 56));
       const double ratio = std::clamp(
           static_cast<double>(playback.progressMs) / static_cast<double>(playback.track.durationMs),
           0.0, 1.0);
@@ -1217,9 +1228,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
       fillRect.right = barRect.left +
           static_cast<int>((barRect.right - barRect.left) * ratio);
       if (fillRect.right > fillRect.left) {
-        HBRUSH fillBrush = CreateSolidBrush(kWidgetGreen);
-        FillRect(memoryDc, &fillRect, fillBrush);
-        DeleteObject(fillBrush);
+        DrawWidgetPill(memoryDc, fillRect, kWidgetGreen);
       }
     }
 
