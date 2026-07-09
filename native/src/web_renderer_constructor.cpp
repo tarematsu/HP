@@ -20,8 +20,6 @@ Renderer::Renderer(HWND window, int width, int height, RadarManager& radar)
   GetModuleFileNameW(nullptr, executable, _countof(executable));
   rootDir_ = fs::path(executable).parent_path();
   dataDir_ = rootDir_ / L"data";
-  uiDir_ = rootDir_ / L"ui";
-  userDataDir_ = dataDir_ / L"webview2-stationhead";
   bounds_ = RECT{0, 0, width_, height_};
 }
 
@@ -107,13 +105,11 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     LoadDashboardSnapshot(jsonPath, snapshot);
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = text;
-    dashboardJson_ = wide;
     ++dashboardSourceRevision_;
     if (changed) *changed = true;
     return true;
   } catch (...) {
     dashboardUtf8_.clear();
-    dashboardJson_ = L"{}";
     newsCount_ = 0;
     monitorHostHandle_.clear();
     ++dashboardSourceRevision_;
