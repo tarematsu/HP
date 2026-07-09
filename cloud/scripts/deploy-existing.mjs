@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stripJsonc } from "./jsonc.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = join(root, "..");
@@ -36,48 +37,6 @@ function wrangler(args, capture = false) {
     env: cloudflareEnvironment(),
     stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit",
   });
-}
-
-function stripJsonc(text) {
-  let output = "";
-  let inString = false;
-  let quote = "";
-  let escaped = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-    if (inString) {
-      output += char;
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        inString = false;
-      }
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      inString = true;
-      quote = char;
-      output += char;
-      continue;
-    }
-    if (char === "/" && next === "/") {
-      while (index < text.length && text[index] !== "\n") index += 1;
-      output += "\n";
-      continue;
-    }
-    if (char === "/" && next === "*") {
-      index += 2;
-      while (index < text.length && !(text[index] === "*" && text[index + 1] === "/")) index += 1;
-      index += 1;
-      output += " ";
-      continue;
-    }
-    output += char;
-  }
-  return output.replace(/,\s*([}\]])/g, "$1");
 }
 
 function parseJsonc(text, label) {
