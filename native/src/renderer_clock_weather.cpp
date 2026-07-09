@@ -1092,8 +1092,6 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     const int count = static_cast<int>(nativeDashboard_.octopusHistory.size());
     const int step = std::max(1, static_cast<int>(chart.right - chart.left) / std::max(1, count));
     const int barWidth = std::max(2, step * 7 / 10);
-    HBRUSH bar = CreateSolidBrush(kWidgetOrange);
-    HBRUSH previousBarBrush = static_cast<HBRUSH>(SelectObject(memoryDc, bar));
     SetTextColor(memoryDc, kWidgetMuted);
     HFONT chartFont = CreateUiFont(8, FW_NORMAL);
     previousFont = SelectObject(memoryDc, chartFont);
@@ -1103,15 +1101,13 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       const int barHeight = static_cast<int>((chart.bottom - chart.top - 18) * value / maximum);
       const int x = chart.left + i * step + (step - barWidth) / 2;
       RECT barRect{x, chart.bottom - 18 - barHeight, x + barWidth, chart.bottom - 18};
-      FillRect(memoryDc, &barRect, bar);
+      DrawWidgetPill(memoryDc, barRect, kWidgetOrange);
       RECT valueRect{x - 6, barRect.top - 13, x + barWidth + 6, barRect.top};
       DrawTextInRect(memoryDc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
                      DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     }
     SelectObject(memoryDc, previousFont);
     DeleteObject(chartFont);
-    SelectObject(memoryDc, previousBarBrush);
-    DeleteObject(bar);
   }
 
   const int plugTop = std::max(static_cast<int>(content.bottom) - plugHeight,
