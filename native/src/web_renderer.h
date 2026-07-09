@@ -247,8 +247,19 @@ class Renderer {
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
   void UpdateNativeStaticPanels(const RenderState& state);
-  static LRESULT CALLBACK NativeClockWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-  static LRESULT CALLBACK NativeStaticWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  // Shared WM_NCCREATE/GWLP_USERDATA thunk for the native panel window
+  // classes; Handler picks which instance method a given class dispatches to.
+  template <LRESULT (Renderer::*Handler)(HWND, UINT, WPARAM, LPARAM)>
+  static LRESULT CALLBACK NativeWndProcThunk(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    Renderer* renderer = reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+      auto* createstruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
+      renderer = reinterpret_cast<Renderer*>(createstruct->lpCreateParams);
+      SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(renderer));
+    }
+    if (renderer) return (renderer->*Handler)(hwnd, message, wparam, lparam);
+    return DefWindowProcW(hwnd, message, wparam, lparam);
+  }
   LRESULT HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   void PaintNativeClock(HWND hwnd);

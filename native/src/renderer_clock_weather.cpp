@@ -372,7 +372,7 @@ bool Renderer::EnsureNativeClockWindow() {
   static std::once_flag classOnce;
   std::call_once(classOnce, [] {
     WNDCLASSW windowClass{};
-    windowClass.lpfnWndProc = Renderer::NativeClockWndProc;
+    windowClass.lpfnWndProc = Renderer::NativeWndProcThunk<&Renderer::HandleNativeClockMessage>;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = kClockClassName;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -397,7 +397,7 @@ bool Renderer::EnsureNativeStaticWindows() {
   static std::once_flag classOnce;
   std::call_once(classOnce, [] {
     WNDCLASSW windowClass{};
-    windowClass.lpfnWndProc = Renderer::NativeStaticWndProc;
+    windowClass.lpfnWndProc = Renderer::NativeWndProcThunk<&Renderer::HandleNativeStaticMessage>;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = kStaticClassName;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -621,28 +621,6 @@ void Renderer::DestroyNativeClockWindow() {
     DestroyWindow(nativeClockWindow_);
   }
   nativeClockWindow_ = nullptr;
-}
-
-LRESULT CALLBACK Renderer::NativeClockWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  Renderer* renderer = reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-  if (message == WM_NCCREATE) {
-    auto* createstruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
-    renderer = reinterpret_cast<Renderer*>(createstruct->lpCreateParams);
-    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(renderer));
-  }
-  if (renderer) return renderer->HandleNativeClockMessage(hwnd, message, wparam, lparam);
-  return DefWindowProcW(hwnd, message, wparam, lparam);
-}
-
-LRESULT CALLBACK Renderer::NativeStaticWndProc(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  Renderer* renderer = reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-  if (message == WM_NCCREATE) {
-    auto* createstruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
-    renderer = reinterpret_cast<Renderer*>(createstruct->lpCreateParams);
-    SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(renderer));
-  }
-  if (renderer) return renderer->HandleNativeStaticMessage(hwnd, message, wparam, lparam);
-  return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
 LRESULT Renderer::HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
