@@ -4,7 +4,7 @@ namespace hp {
 void Renderer::Render(const RECT& dirty, const RenderState& state) {
   (void)dirty;
   (void)state;
-  if (!window_) return;
+  if (!window_ || !nativeDashboardVisible_) return;
   HDC dc = GetDC(window_);
   if (!dc) return;
   RECT bounds{};

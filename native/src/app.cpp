@@ -237,17 +237,15 @@ void App::ApplyStartupStationheadPreview() {
   }
 
   const LONG clientWidth = std::max<LONG>(1, bounds.right - bounds.left);
-  const LONG gap = std::clamp<LONG>(clientWidth / 100, 8, 24);
   const LONG mid = bounds.left + clientWidth / 2;
-  const LONG halfGap = std::min<LONG>(gap / 2, std::max<LONG>(0, clientWidth / 2 - 1));
-  RECT left{bounds.left, bounds.top, mid - halfGap, bounds.bottom};
-  RECT right{mid + halfGap, bounds.top, bounds.right, bounds.bottom};
+  RECT left{bounds.left, bounds.top, mid, bounds.bottom};
+  RECT right{mid, bounds.top, bounds.right, bounds.bottom};
   if (left.right <= left.left) left.right = left.left + 1;
   if (right.right <= right.left) right.right = right.left + 1;
 
   stationhead_->SetStartupPreviewBounds(left);
   secondaryStationhead_->SetStartupPreviewBounds(right);
-  logger_->Info(L"Stationhead startup preview applied: A left, B right");
+  logger_->Info(L"Stationhead startup preview applied without dashboard gap: A left, B right");
 }
 
 void App::ClearStartupStationheadPreview() {
@@ -375,7 +373,7 @@ void App::Tick() {
 void App::Draw() {
   PAINTSTRUCT paint{};
   BeginPaint(window_, &paint);
-  if (renderer_) {
+  if (renderer_ && rendererStarted_) {
     PublishRenderState();
     // Message handlers own state updates. Avoid sensor locks and Stationhead status
     // reconstruction on every incidental WM_PAINT.
@@ -404,7 +402,7 @@ void App::LayoutWorkspace() {
   GetClientRect(window_, &client);
   workspaceBounds_ = client;
   renderer_->SetBounds(workspaceBounds_);
-  renderer_->SetVisible(selectedTab_ == WorkspaceTab::Main);
+  renderer_->SetVisible(rendererStarted_ && selectedTab_ == WorkspaceTab::Main);
 
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);

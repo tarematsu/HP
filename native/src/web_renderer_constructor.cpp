@@ -3,8 +3,8 @@
 namespace hp {
 namespace {
 void PrepareParentWindow(HWND window) {
-  SetClassLongPtrW(window, GCLP_HBRBACKGROUND,
-                   reinterpret_cast<LONG_PTR>(GetStockObject(BLACK_BRUSH)));
+  static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
+  SetClassLongPtrW(window, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR>(background));
   const LONG_PTR style = GetWindowLongPtrW(window, GWL_EXSTYLE);
   if ((style & WS_EX_NOREDIRECTIONBITMAP) != 0) {
     SetWindowLongPtrW(window, GWL_EXSTYLE, style & ~WS_EX_NOREDIRECTIONBITMAP);
