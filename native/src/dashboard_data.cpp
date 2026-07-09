@@ -97,12 +97,12 @@ bool LoadDashboardSnapshot(const fs::path& path, DashboardSnapshot& output, std:
     const JsonObject weather = ObjectOrEmpty(root, L"weather");
     next.weatherStatus = ReadStatus(weather);
     next.city = StringOr(weather, L"city");
-    const JsonObject average = ObjectOrEmpty(weather, L"average");
+    const JsonObject hourly = ObjectOrEmpty(weather, L"hourly");
     for (int hour = 0; hour < 24 && next.weatherHours.size() < 8; ++hour) {
       const std::wstring key = std::to_wstring(hour);
       try {
-        if (!average.HasKey(key) || average.GetNamedValue(key).ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = average.GetNamedObject(key);
+        if (!hourly.HasKey(key) || hourly.GetNamedValue(key).ValueType() != JsonValueType::Object) continue;
+        const JsonObject item = hourly.GetNamedObject(key);
         next.weatherHours.push_back({
             hour,
             NumberOrNaN(item, L"temp"),

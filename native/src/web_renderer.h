@@ -142,8 +142,9 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int middleHeight = std::max(1, gridHeight - heroHeight - bottomHeight - gap * 2);
   const int heroWide = std::clamp(gridWidth * 46 / 100, 360, std::max(361, gridWidth - 260));
   const int sideWidth = std::max(1, (gridWidth - heroWide - gap * 2) / 2);
-  const int middleLeftWidth = std::clamp(gridWidth * 23 / 100, 220, 340);
-  const int middleRightWidth = std::max(1, gridWidth - middleLeftWidth - gap);
+  const int middleAirWidth = std::clamp(gridWidth * 22 / 100, 220, 320);
+  const int middleLeftWidth = std::clamp(gridWidth * 20 / 100, 200, 300);
+  const int middleRightWidth = std::max(1, gridWidth - middleLeftWidth - middleAirWidth - gap * 2);
   const int bottomLeftWidth = std::clamp(gridWidth * 42 / 100, 360, std::max(361, gridWidth - 320));
   const int bottomRightWidth = std::max(1, gridWidth - bottomLeftWidth - gap);
   const int row0 = top;
@@ -156,27 +157,22 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
 
   layout.clock = rect(left, row0, heroWide, heroHeight);
   layout.weather = rect(layout.clock.right + gap, row0, sideWidth, heroHeight);
-  const RECT utilityPanel = rect(layout.weather.right + gap, row0,
-                                 gridWidth - heroWide - sideWidth - gap * 2, heroHeight);
-  const int controlsHeight = std::clamp(heroHeight * 38 / 100, 58, 88);
-  layout.controls = rect(utilityPanel.left, utilityPanel.top,
-                         utilityPanel.right - utilityPanel.left, controlsHeight);
+  layout.controls = rect(layout.weather.right + gap, row0,
+                         gridWidth - heroWide - sideWidth - gap * 2, heroHeight);
   layout.stationhead = rect(left, row1, middleLeftWidth, middleHeight);
   layout.radar = rect(layout.stationhead.right + gap, row1, middleRightWidth, middleHeight);
+  const RECT airPanel = rect(layout.radar.right + gap, row1, middleAirWidth, middleHeight);
   layout.energy = rect(left, row2, bottomLeftWidth, bottomHeight);
   layout.news = rect(layout.energy.right + gap, row2, bottomRightWidth, bottomHeight);
 
-  const RECT airPanel = NormalizeInsetRect(
-      RECT{utilityPanel.left, layout.controls.bottom + gap / 2, utilityPanel.right, utilityPanel.bottom},
-      0, 0, 0, 0);
   const int airPanelHeight = std::max(1L, airPanel.bottom - airPanel.top);
-  const int airMetricsHeight = std::clamp(airPanelHeight * 42 / 100, 44, 70);
+  const int airMetricsHeight = std::clamp(airPanelHeight * 28 / 100, 56, 90);
   layout.air = NormalizeInsetRect(
-      RECT{airPanel.left + 10, airPanel.top, airPanel.right - 10,
+      RECT{airPanel.left, airPanel.top, airPanel.right,
            airPanel.top + airMetricsHeight},
       0, 0, 0, 0);
   layout.airHistory = NormalizeInsetRect(
-      RECT{airPanel.left + 10, layout.air.bottom + gap / 2, airPanel.right - 10,
+      RECT{airPanel.left, layout.air.bottom + gap, airPanel.right,
            airPanel.bottom},
       0, 0, 0, 0);
   return layout;

@@ -63,7 +63,11 @@ void StationheadPlayer::ConfigureWebView() {
   webview_->add_NewWindowRequested(
       Callback<ICoreWebView2NewWindowRequestedEventHandler>(
           [this](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
-            if (!args || !environment_ || !EnsureAuthHostWindow()) return S_OK;
+            if (!args) return S_OK;
+            // Always mark the request handled so a failure below never falls through to
+            // WebView2's default behavior of opening an uncontrolled top-level popup window.
+            args->put_Handled(TRUE);
+            if (!environment_ || !EnsureAuthHostWindow()) return S_OK;
             LPWSTR uriRaw = nullptr;
             args->get_Uri(&uriRaw);
             const std::wstring uri = uriRaw ? uriRaw : L"";

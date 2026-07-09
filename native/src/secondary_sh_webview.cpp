@@ -41,7 +41,11 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
   webview_->add_NewWindowRequested(
       Callback<ICoreWebView2NewWindowRequestedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
-            if (!CallbackAlive(alive) || shuttingDown_ || !args || !environment_) return S_OK;
+            if (!args) return S_OK;
+            // Always mark the request handled so a failure below never falls through to
+            // WebView2's default behavior of opening an uncontrolled top-level popup window.
+            args->put_Handled(TRUE);
+            if (!CallbackAlive(alive) || shuttingDown_ || !environment_) return S_OK;
             LPWSTR uriRaw = nullptr;
             args->get_Uri(&uriRaw);
             const std::wstring uri = uriRaw ? uriRaw : L"";
