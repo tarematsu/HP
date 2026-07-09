@@ -1,7 +1,7 @@
 import { fetchJson } from "./http";
 import type { Env, SourceResult } from "./sources";
 
-const DEFAULT_RADAR_CENTER = { lat: 35, lon: 139 };
+const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const DEFAULT_RADAR_ZOOM = 10;
 
 function jmaTimestampToMillis(value: string): number {
@@ -44,7 +44,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   ]);
   const current = observed.find(entry => entry.elements?.includes("hrpns"));
   if (!current) throw new Error("JMA nowcast current frame is unavailable");
-  const width = 400, height = 260;
+  const width = 480, height = 320;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
   const center = {
     lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),

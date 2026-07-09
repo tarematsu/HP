@@ -5,8 +5,10 @@ that native code still loads from disk.
 
 Current assets:
 
-- `native/scripts/ui/radar-satellite.png`
-- `native/scripts/ui/radar-map.png`
+- `native/scripts/ui/radar-satellite.png`: 1920x1280 GSI
+  `seamlessphoto` tile composite centered on Kawagoe Suna-shinden 1-chome.
+- `native/scripts/ui/radar-map.png`: 1920x1280 GSI `pale` tile composite
+  converted to an inverted transparent overlay for roads, labels, and contours.
 
 When adding a runtime asset:
 

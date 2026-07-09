@@ -171,8 +171,8 @@ void Renderer::ComposeRadarFrame() {
   } catch (...) {
   }
 
-  int sourceWidth = 400;
-  int sourceHeight = 260;
+  int sourceWidth = 480;
+  int sourceHeight = 320;
   int64_t validAt = 0;
   std::wstring signature;
   std::vector<RadarTile> tiles;
@@ -184,15 +184,15 @@ void Renderer::ComposeRadarFrame() {
   if (!json.empty()) {
     try {
       const JsonObject root = JsonObject::Parse(json);
-      sourceWidth = std::max(1, static_cast<int>(RadarNumber(root, L"width", 400)));
-      sourceHeight = std::max(1, static_cast<int>(RadarNumber(root, L"height", 260)));
+      sourceWidth = std::max(1, static_cast<int>(RadarNumber(root, L"width", 480)));
+      sourceHeight = std::max(1, static_cast<int>(RadarNumber(root, L"height", 320)));
       const JsonArray frames = RadarChildArray(root, L"frames");
       if (frames.Size() > 0 && frames.GetAt(0).ValueType() == JsonValueType::Object) {
         const JsonObject frame = frames.GetAt(0).GetObject();
         validAt = static_cast<int64_t>(std::max(0.0, RadarNumber(frame, L"validAt")));
         const JsonArray frameTiles = RadarChildArray(frame, L"tiles");
         std::wostringstream signatureStream;
-        signatureStream << L"native-radar-v3|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
+        signatureStream << L"native-radar-v4|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
                         << L"|source:" << sourceWidth << L'x' << sourceHeight
                         << L"|" << RadarText(frame, L"baseTime")
                         << L"|" << RadarText(frame, L"validTime")
