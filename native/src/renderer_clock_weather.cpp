@@ -162,6 +162,12 @@ void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
   DrawTextW(dc, text.c_str(), -1, &rect, format | DT_NOPREFIX);
 }
 
+void FillWidgetBackground(HDC dc, const RECT& bounds) {
+  HBRUSH background = CreateSolidBrush(kWidgetBackground);
+  FillRect(dc, &bounds, background);
+  DeleteObject(background);
+}
+
 RECT DrawWidgetSurface(HDC dc, const RECT& bounds, COLORREF color = kWidgetSurface) {
   HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
   HBRUSH surface = CreateSolidBrush(color);
@@ -639,9 +645,7 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   const RECT content = DrawWidgetSurface(memoryDc, bounds, RGB(14, 18, 26));
 
   SetBkMode(memoryDc, TRANSPARENT);
@@ -688,9 +692,7 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
@@ -746,9 +748,7 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
@@ -829,9 +829,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
@@ -898,9 +896,7 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
@@ -946,9 +942,7 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds, kWidgetSurface);
 
@@ -1032,9 +1026,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
@@ -1165,9 +1157,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
@@ -1317,9 +1307,7 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
   HDC memoryDc = CreateCompatibleDC(dc);
   HBITMAP bitmap = NativePanelBackBuffer(hwnd, dc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(memoryDc, &bounds, background);
-  DeleteObject(background);
+  FillWidgetBackground(memoryDc, bounds);
   SetBkMode(memoryDc, TRANSPARENT);
   const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
