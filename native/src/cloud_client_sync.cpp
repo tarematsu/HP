@@ -81,11 +81,6 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(const std::vector<uint8_t>&
   };
 
   JsonObject root = JsonObject::Parse(Utf8ToWide(std::string(body.begin(), body.end())));
-  if (root.HasKey(L"baseTiles") && root.GetNamedValue(L"baseTiles").ValueType() == JsonValueType::Array) {
-    for (auto value : root.GetNamedArray(L"baseTiles")) {
-      if (value.ValueType() == JsonValueType::Object) localizeTile(value.GetObject());
-    }
-  }
   if (root.HasKey(L"frames") && root.GetNamedValue(L"frames").ValueType() == JsonValueType::Array) {
     for (auto frameValue : root.GetNamedArray(L"frames")) {
       if (frameValue.ValueType() != JsonValueType::Object) continue;

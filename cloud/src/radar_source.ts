@@ -64,10 +64,6 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       url: `/v1/radar/tile/jma/${entry.basetime}/${entry.validtime}/${zoom}/${tile.x}/${tile.y}.png`,
     })),
   }));
-  const baseTiles = layout.map(tile => ({
-    ...tile,
-    url: `/v1/radar/tile/gsi/${zoom}/${tile.x}/${tile.y}.png`,
-  }));
   return {
     source: "radar",
     payload: {
@@ -78,7 +74,6 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       zoom,
       frameIntervalMs: 1000,
       playbackRate: 0.5,
-      baseTiles,
       frames,
       legend: [0, 1, 2, 4, 8, 16, 32, 64],
     },
