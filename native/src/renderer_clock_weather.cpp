@@ -968,11 +968,7 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   const int contentWidth = std::max(1L, content.right - content.left);
   const int popWidth = std::clamp(contentWidth / 4, 58, 72);
   RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
-  HBRUSH popBrush = CreateSolidBrush(kWidgetSurfaceAlt);
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, popBrush);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  RoundRect(memoryDc, popRect.left, popRect.top, popRect.right, popRect.bottom, 8, 8);
+  DrawWidgetCard(memoryDc, popRect);
 
   const int popHeight = std::max(1, static_cast<int>(popRect.bottom - popRect.top));
   HFONT smallFont = CreateUiFont(std::clamp(popHeight / 9, 8, 10), FW_NORMAL);
@@ -1002,7 +998,7 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   for (int i = 0; i < slotCount; ++i) {
     RECT cardRect{rightLeft + i * (cardWidth + cardGap), content.top,
                   rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
-    RoundRect(memoryDc, cardRect.left, cardRect.top, cardRect.right, cardRect.bottom, 6, 6);
+    DrawWidgetCard(memoryDc, cardRect, kWidgetSurfaceAlt, 6);
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, hourFont);
     RECT hourRect{cardRect.left, cardRect.top + 8, cardRect.right, cardRect.top + 24};
@@ -1017,10 +1013,6 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   }
   DeleteObject(hourFont);
   DeleteObject(rainFont);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(popBrush);
-  DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
@@ -1162,10 +1154,6 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
   DrawWidgetHeader(memoryDc, L"Spotify WebView2", L"", content);
 
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HBRUSH card = CreateSolidBrush(kWidgetSurface);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
   HFONT labelFont = CreateUiFont(11, FW_NORMAL);
   HFONT titleFont = CreateUiFont(18, FW_SEMIBOLD);
   HFONT artistFont = CreateUiFont(12, FW_NORMAL);
@@ -1183,7 +1171,7 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
                            const std::wstring& detail) {
     const int top = rowTop + row * (rowHeight + rowGap);
     RECT rowRect{content.left, top, content.right, std::min<LONG>(top + rowHeight, content.bottom)};
-    RoundRect(memoryDc, rowRect.left, rowRect.top, rowRect.right, rowRect.bottom, 8, 8);
+    DrawWidgetCard(memoryDc, rowRect, kWidgetSurface);
 
     const int artSize = std::clamp(static_cast<int>(rowRect.bottom - rowRect.top) - 20, 42, 60);
     RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 10 + artSize,
@@ -1280,10 +1268,6 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   DeleteObject(titleFont);
   DeleteObject(artistFont);
   DeleteObject(buttonFont);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(card);
-  DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
