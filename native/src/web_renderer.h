@@ -73,6 +73,7 @@ struct NativePlaybackRender {
 
 inline constexpr int kRadarCanvasWidth = 800;
 inline constexpr int kRadarCanvasHeight = 520;
+inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 struct NativeDashboardLayout {
   RECT air{};

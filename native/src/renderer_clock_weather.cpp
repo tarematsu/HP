@@ -12,7 +12,7 @@ constexpr int kNativeEnergyId = 106;
 constexpr int kNativeStationheadId = 107;
 constexpr int kNativeRadarId = 108;
 
-constexpr COLORREF kWidgetBackground = RGB(7, 10, 16);
+constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurface = RGB(18, 23, 31);
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
 constexpr COLORREF kWidgetBorder = RGB(46, 56, 70);

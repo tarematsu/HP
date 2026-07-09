@@ -9,7 +9,7 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
   if (!dc) return;
   RECT bounds{};
   GetClientRect(window_, &bounds);
-  HBRUSH background = CreateSolidBrush(RGB(7, 10, 16));
+  HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
   FillRect(dc, &bounds, background);
   DeleteObject(background);
   ReleaseDC(window_, dc);
