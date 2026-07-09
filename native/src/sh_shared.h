@@ -51,10 +51,12 @@ inline std::wstring StationheadLowerAscii(const wchar_t* text) {
 // needs: third-party analytics/crash/marketing/push telemetry, and the
 // social surfaces of the Stationhead API (chat, tipping, emoji, trending
 // threads). Derived from an actual startup network capture; the audio
-// stream, the Pusher realtime WebSocket (WebSocket upgrades don't raise
-// WebResourceRequested), and the core playback endpoints
-// (/timestamp, /pusher/presenceAuth, /channels/alias/*, /me/country) are all
-// left untouched. Matched as case-insensitive substrings of the full URI.
+// stream and the core playback REST endpoints (/timestamp,
+// /pusher/presenceAuth, /channels/alias/*, /me/country) are left untouched.
+// The Pusher realtime WebSocket is NOT handled here (WebSocket upgrades don't
+// raise WebResourceRequested); it is blocked separately at the network layer
+// by BlockStationheadRealtimeSockets so no new chat/presence is received.
+// Matched as case-insensitive substrings of the full URI.
 inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   static constexpr const wchar_t* kNeedles[] = {
       // Analytics / remote-config / crash / marketing / push telemetry.
@@ -95,6 +97,24 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
     if (uriLower.find(needle) != std::wstring::npos) return true;
   }
   return false;
+}
+
+// Realtime chat, presence and reactions are delivered over the Pusher
+// WebSocket, which WebResourceRequested cannot intercept (WS upgrades don't
+// raise the event). Block the Pusher socket hosts at the network layer via the
+// DevTools Protocol so no new chat is received - at startup and for the whole
+// life of the WebView, not just during the startup burst. The separate audio
+// stream and the REST playback endpoints (served from stationhead.com, e.g.
+// /pusher/presenceAuth, /channels/alias/*) are on different hosts and are
+// unaffected. CDP domain state persists across navigations, so this only needs
+// to run once per WebView (re-applied when a WebView is recreated).
+inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
+  if (!webview) return;
+  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
+  webview->CallDevToolsProtocolMethod(
+      L"Network.setBlockedURLs",
+      L"{\"urls\":[\"*pusher.com*\",\"*pusherapp.com*\",\"*pusher.io*\"]}",
+      nullptr);
 }
 
 // Strips resource requests from a Stationhead WebView down to what background
@@ -167,5 +187,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
             return S_OK;
           }).Get(),
       &token);
+  BlockStationheadRealtimeSockets(webview);
 }
 }  // namespace hp
