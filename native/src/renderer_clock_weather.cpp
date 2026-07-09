@@ -181,6 +181,19 @@ RECT DrawWidgetSurface(HDC dc, const RECT& bounds, COLORREF color = kWidgetSurfa
   return NormalizeInsetRect(bounds, 12, 10, 12, 10);
 }
 
+void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurfaceAlt,
+                    int radius = 8) {
+  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
+  HBRUSH fill = CreateSolidBrush(color);
+  HGDIOBJ previousPen = SelectObject(dc, border);
+  HGDIOBJ previousBrush = SelectObject(dc, fill);
+  RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
+  SelectObject(dc, previousBrush);
+  SelectObject(dc, previousPen);
+  DeleteObject(fill);
+  DeleteObject(border);
+}
+
 void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& trailing,
                       const RECT& content) {
   HFONT font = CreateUiFont(13, FW_NORMAL);
@@ -720,16 +733,12 @@ void Renderer::PaintNativeAir(HWND hwnd) {
       {L"温度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃"},
       {L"湿度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%"},
   }};
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HBRUSH card = CreateSolidBrush(kWidgetSurfaceAlt);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
   HFONT labelFont = CreateUiFont(std::clamp(height / 5, 10, 15), FW_NORMAL);
   HFONT valueFont = CreateUiFont(std::clamp(height / 3, 18, 29), FW_NORMAL);
   for (int i = 0; i < 3; ++i) {
     RECT rect{content.left + i * (cardWidth + gap), content.top,
               content.left + i * (cardWidth + gap) + cardWidth, content.bottom};
-    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
+    DrawWidgetCard(memoryDc, rect);
     RECT labelRect{rect.left, rect.top + 6, rect.right, rect.top + std::clamp(height / 3, 20, 26)};
     SetTextColor(memoryDc, kWidgetMuted);
     HGDIOBJ previousFont = SelectObject(memoryDc, labelFont);
@@ -742,10 +751,6 @@ void Renderer::PaintNativeAir(HWND hwnd) {
   }
   DeleteObject(labelFont);
   DeleteObject(valueFont);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(card);
-  DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
@@ -1052,10 +1057,6 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       {L"今月見込み", usageText(nativeDashboard_.projectedUsage), costText(nativeDashboard_.projectedUsage)},
   }};
 
-  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
-  HBRUSH card = CreateSolidBrush(kWidgetSurfaceAlt);
-  HGDIOBJ previousPen = SelectObject(memoryDc, border);
-  HGDIOBJ previousBrush = SelectObject(memoryDc, card);
   const int contentHeight = std::max(1L, content.bottom - content.top);
   const int summaryHeight = std::clamp(contentHeight / 3, 58, 72);
   HFONT labelFont = CreateUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
@@ -1067,7 +1068,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 30,
               content.left + i * (summaryWidth + summaryGap) + summaryWidth,
               content.top + 30 + summaryHeight};
-    RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
+    DrawWidgetCard(memoryDc, rect);
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, labelFont);
     RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 24};
@@ -1138,10 +1139,6 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
 
   DeleteObject(labelFont);
   DeleteObject(valueFont);
-  SelectObject(memoryDc, previousBrush);
-  SelectObject(memoryDc, previousPen);
-  DeleteObject(card);
-  DeleteObject(border);
 
   BitBlt(dc, 0, 0, bounds.right, bounds.bottom, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previousBitmap);
