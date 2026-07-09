@@ -93,9 +93,14 @@ struct StationheadButtonRects {
 };
 
 StationheadButtonRects StationheadButtonsFromBounds(const RECT& bounds) {
+  const int height = std::max(1L, bounds.bottom - bounds.top);
+  const int rowHeight = std::max(56, (height - 34) / 2);
+  const int firstTop = bounds.top + 34 + std::max(8, rowHeight / 2 - 15);
+  const int secondTop = bounds.top + 34 + rowHeight + std::max(8, rowHeight / 2 - 15);
+  const int buttonWidth = std::clamp((bounds.right - bounds.left) / 4, 76L, 94L);
   return StationheadButtonRects{
-      RECT{bounds.right - 108, bounds.top + 48, bounds.right - 16, bounds.top + 78},
-      RECT{bounds.right - 108, bounds.top + 142, bounds.right - 16, bounds.top + 172},
+      RECT{bounds.right - buttonWidth, firstTop, bounds.right, firstTop + 30},
+      RECT{bounds.right - buttonWidth, secondTop, bounds.right, secondTop + 30},
   };
 }
 
@@ -1160,16 +1165,23 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   HFONT titleFont = CreateUiFont(18, FW_SEMIBOLD);
   HFONT artistFont = CreateUiFont(12, FW_NORMAL);
   HFONT buttonFont = CreateUiFont(12, FW_SEMIBOLD);
+  const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(content);
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  const int rowGap = 8;
+  const int rowTop = content.top + 30;
+  const int rowHeight = std::max(56, (contentHeight - 30 - rowGap) / 2);
 
   const auto drawRow = [&](int row, const std::wstring& label, bool muted,
                            const NativePlaybackRender& playback,
                            const std::wstring& fallbackTitle, const std::wstring& fallbackArtist,
                            const std::wstring& detail) {
-    const int top = bounds.top + 38 + row * 94;
-    RECT rowRect{bounds.left + 12, top, bounds.right - 12, top + 82};
+    const int top = rowTop + row * (rowHeight + rowGap);
+    RECT rowRect{content.left, top, content.right, std::min<LONG>(top + rowHeight, content.bottom)};
     RoundRect(memoryDc, rowRect.left, rowRect.top, rowRect.right, rowRect.bottom, 8, 8);
 
-    RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 70, rowRect.bottom - 10};
+    const int artSize = std::clamp(static_cast<int>(rowRect.bottom - rowRect.top) - 20, 42, 60);
+    RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 10 + artSize,
+             rowRect.top + 10 + artSize};
     HBRUSH artBrush = CreateSolidBrush(kWidgetSurfaceAlt);
     HGDIOBJ oldBrush = SelectObject(memoryDc, artBrush);
     RoundRect(memoryDc, art.left, art.top, art.right, art.bottom, 10, 10);
@@ -1185,10 +1197,12 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
     const std::wstring title = playback.hasTrack ? playback.track.title : fallbackTitle;
     const std::wstring artist = playback.hasTrack ? playback.track.artist : fallbackArtist;
     const bool withProgress = playback.hasTrack && playback.track.durationMs > 0;
+    RECT button = row == 0 ? stationButtons.primaryAudio : stationButtons.secondaryAudio;
+    const int textRight = std::max(art.right + 28, button.left - 8);
 
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, labelFont);
-    RECT labelRect{art.right + 12, rowRect.top + 8, rowRect.right - 112, rowRect.top + 25};
+    RECT labelRect{art.right + 12, rowRect.top + 8, textRight, rowRect.top + 25};
     DrawTextInRect(memoryDc, label, labelRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
     if (withProgress) {
       DrawTextInRect(memoryDc,
@@ -1199,19 +1213,19 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     SetTextColor(memoryDc, kWidgetText);
     SelectObject(memoryDc, titleFont);
-    RECT titleRect{art.right + 12, rowRect.top + 27, rowRect.right - 112, rowRect.top + 52};
+    RECT titleRect{art.right + 12, rowRect.top + 27, textRight, rowRect.top + 52};
     DrawTextInRect(memoryDc, title.empty() ? L"--" : title, titleRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     SetTextColor(memoryDc, kWidgetMuted);
     SelectObject(memoryDc, artistFont);
-    RECT artistRect{art.right + 12, rowRect.top + 54, rowRect.right - 112,
+    RECT artistRect{art.right + 12, rowRect.top + 54, textRight,
                     withProgress ? rowRect.bottom - 18 : rowRect.bottom - 8};
     DrawTextInRect(memoryDc, artist.empty() ? detail : artist, artistRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     if (withProgress) {
-      RECT barRect{art.right + 12, rowRect.bottom - 14, rowRect.right - 112, rowRect.bottom - 10};
+      RECT barRect{art.right + 12, rowRect.bottom - 14, textRight, rowRect.bottom - 10};
       HBRUSH barBrush = CreateSolidBrush(RGB(34, 44, 56));
       FillRect(memoryDc, &barRect, barBrush);
       DeleteObject(barBrush);
@@ -1230,8 +1244,6 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
     HBRUSH buttonBrush = CreateSolidBrush(muted ? RGB(42, 33, 35) : RGB(24, 46, 34));
     oldBrush = SelectObject(memoryDc, buttonBrush);
-    const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(bounds);
-    RECT button = row == 0 ? stationButtons.primaryAudio : stationButtons.secondaryAudio;
     RoundRect(memoryDc, button.left, button.top, button.right, button.bottom, 7, 7);
     SelectObject(memoryDc, oldBrush);
     DeleteObject(buttonBrush);
