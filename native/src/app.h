@@ -109,13 +109,20 @@ class StationheadHandleBase {
   }
 
   void ApplyInteractiveBounds() {
-    if (player_) player_->SetBounds(workspaceBounds_);
+    if (!player_) return;
+    player_->ClearStartupPreviewBounds();
+    player_->SetBounds(workspaceBounds_);
   }
 
   void ApplyBounds() {
     if (!player_) return;
     ApplyAudioState();
-    player_->SetBounds(startupPreviewActive_ ? startupPreviewBounds_ : workspaceBounds_);
+    if (startupPreviewActive_) {
+      player_->SetStartupPreviewBounds(startupPreviewBounds_);
+    } else {
+      player_->ClearStartupPreviewBounds();
+      player_->SetBounds(workspaceBounds_);
+    }
     RaiseActiveHost();
   }
 
