@@ -75,7 +75,7 @@ using Microsoft::WRL::ComPtr;
 namespace fs = std::filesystem;
 
 constexpr wchar_t kAppName[] = L"HomePanel";
-constexpr wchar_t kMutexName[] = L"Local\HomePanelNativeSingleInstance";
+constexpr wchar_t kMutexName[] = L"Local\\HomePanelNativeSingleInstance";
 constexpr UINT WM_HP_CLOUD_UPDATED = WM_APP + 1;
 constexpr UINT WM_HP_SENSOR_UPDATED = WM_APP + 2;
 constexpr UINT WM_HP_STATIONHEAD_CHANGED = WM_APP + 3;

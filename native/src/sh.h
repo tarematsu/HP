@@ -141,6 +141,11 @@ class StationheadPlayer {
   std::atomic<bool> audioStateKnown_{false};
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
+  // Last mute/volume actually pushed into the WebViews (-1 = never pushed).
+  // ApplyMute/ApplyVolume run on every 1s app tick via ApplyBounds; without
+  // this cache each tick would re-run ExecuteScript in the browser process.
+  mutable std::atomic<int> appliedMuted_{-1};
+  mutable std::atomic<int> appliedVolumePercent_{-1};
   std::atomic<uint32_t> pendingChangeFlags_{0};
   std::atomic<bool> changeMessagePending_{false};
   std::wstring targetSignature_;

@@ -10,6 +10,9 @@
 namespace hp {
 
 void SecondaryStationheadPlayer::ConfigureWebView() {
+  // Fresh WebView: force the next ApplyAudioState/ApplyVolume to push state.
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   const auto alive = callbackAlive_;
   ComPtr<ICoreWebView2Settings> settings;
   webview_->get_Settings(&settings);
@@ -150,6 +153,9 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             }
             if (success) {
               lastReloadAt_ = UnixMillis();
+              // A navigation replaced the document, so the injected volume
+              // script state is gone; force ApplyVolume to re-run it.
+              appliedVolumePercent_.store(-1, std::memory_order_relaxed);
               ApplyAudioState();
             } else {
               ScheduleRetry(L"navigation failed", 5'000);

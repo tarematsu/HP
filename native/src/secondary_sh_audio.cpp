@@ -29,20 +29,24 @@ double SecondaryStationheadPlayer::Volume() const noexcept {
 }
 
 void SecondaryStationheadPlayer::ApplyAudioState() noexcept {
-  const BOOL muted = audioMuted_.load(std::memory_order_relaxed) ? TRUE : FALSE;
-  const auto apply = [muted](const ComPtr<ICoreWebView2>& view) noexcept {
-    if (!view) return;
-    ComPtr<ICoreWebView2_8> audio;
-    if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(muted);
-  };
-  apply(webview_);
-  apply(authWebview_);
+  const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
+  if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
+    const BOOL value = muted ? TRUE : FALSE;
+    const auto apply = [value](const ComPtr<ICoreWebView2>& view) noexcept {
+      if (!view) return;
+      ComPtr<ICoreWebView2_8> audio;
+      if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(value);
+    };
+    apply(webview_);
+    apply(authWebview_);
+  }
   ApplyVolume();
   EnsureDistinctBrowserIdentity();
 }
 
 void SecondaryStationheadPlayer::ApplyVolume() const noexcept {
   const int percent = std::clamp(static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
+  if (appliedVolumePercent_.exchange(percent, std::memory_order_relaxed) == percent) return;
   const auto apply = [percent](const ComPtr<ICoreWebView2>& view) noexcept {
     if (!view) return;
     const std::wstring script = StationheadVolumeScript(percent);

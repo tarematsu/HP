@@ -139,6 +139,12 @@ class SecondaryStationheadPlayer {
   std::atomic<bool> authClosePending_{false};
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
+  // Last mute/volume actually pushed into the WebViews (-1 = never pushed).
+  // ApplyAudioState/ApplyVolume run on every 1s app tick via ApplyBounds;
+  // without this cache each tick would re-run ExecuteScript in the browser
+  // process.
+  std::atomic<int> appliedMuted_{-1};
+  mutable std::atomic<int> appliedVolumePercent_{-1};
   bool interactive_ = false;
   bool startupPreviewActive_ = false;
   bool spotifyAuthorization_ = false;

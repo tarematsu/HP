@@ -1376,9 +1376,11 @@ HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int he
     if (character == L'/') character = L'\\';
   }
 
+  // A failed decode is cached as a nullptr entry too: the stationhead panel
+  // repaints every second during playback, and retrying the disk read + WIC
+  // decode on each paint would burn CPU for a file that stays missing.
   HBITMAP bitmap = DecodeImageFileToBitmap(dataDir_ / relative, width, height);
-  if (!bitmap) return nullptr;
-  if (nativeArtworkBitmaps_.size() >= 48) {
+  if (nativeArtworkBitmaps_.size() >= 64) {
     auto oldest = nativeArtworkBitmaps_.begin();
     for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {
       if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
@@ -1416,7 +1418,8 @@ HBITMAP Renderer::NativeWeatherIconBitmap(const std::wstring& icon, bool night, 
     bitmap = decodeIcon(fallback + (night ? L"_night.png" : L"_day.png"));
     if (!bitmap && night) bitmap = decodeIcon(fallback + L"_day.png");
   }
-  if (!bitmap) return nullptr;
+  // Cache decode failures as nullptr entries so repaints don't retry the
+  // whole fallback chain of disk reads on every frame.
   if (nativeArtworkBitmaps_.size() >= 64) {
     auto oldest = nativeArtworkBitmaps_.begin();
     for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {

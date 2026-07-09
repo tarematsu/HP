@@ -18,8 +18,13 @@ void Logger::Write(const wchar_t* level, const std::wstring& message) {
   std::lock_guard lock(mutex_);
   RotateIfNeeded();
   SYSTEMTIME time{}; GetLocalTime(&time);
-  std::wofstream output(path_, std::ios::app);
-  output << L'[' << std::setfill(L'0') << std::setw(4) << time.wYear << L'-' << std::setw(2) << time.wMonth << L'-' << std::setw(2) << time.wDay
-         << L' ' << std::setw(2) << time.wHour << L':' << std::setw(2) << time.wMinute << L':' << std::setw(2) << time.wSecond << L"] " << level << L" " << message << L'\n';
+  // Write UTF-8 bytes directly: the previous wofstream relied on the C-locale
+  // codecvt, which fails on any non-ASCII character and silently dropped the
+  // rest of the line (Japanese text, version strings from the cloud, etc.).
+  char header[32]{};
+  sprintf_s(header, "[%04u-%02u-%02u %02u:%02u:%02u] ", time.wYear, time.wMonth, time.wDay,
+            time.wHour, time.wMinute, time.wSecond);
+  std::ofstream output(path_, std::ios::binary | std::ios::app);
+  output << header << WideToUtf8(level) << ' ' << WideToUtf8(message) << '\n';
 }
 }

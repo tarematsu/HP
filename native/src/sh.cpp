@@ -279,6 +279,9 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
 }
 
 void StationheadPlayer::ConfigureWebView() {
+  // Fresh WebView: force the next ApplyMute/ApplyVolume to actually push state.
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   SetStartupBounds();
   ComPtr<ICoreWebView2Controller2> controller2;
   if (SUCCEEDED(controller_.As(&controller2))) {
@@ -485,6 +488,9 @@ void StationheadPlayer::ConfigureWebView() {
               if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ == 0) {
                 noAudioSinceAt_ = now;
               }
+              // A navigation replaced the document, so the injected volume
+              // script state is gone; force ApplyVolume to re-run it.
+              appliedVolumePercent_.store(-1, std::memory_order_relaxed);
               ApplyMute();
             } else {
               ScheduleRecreate(L"navigation failed " + std::to_wstring(static_cast<int>(webError)));
@@ -527,6 +533,8 @@ void StationheadPlayer::ConfigureWebView() {
 
 void StationheadPlayer::ConfigureAuthWebView() {
   if (!authController_ || !authWebview_) return;
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   ComPtr<ICoreWebView2Controller2> controller2;
   if (SUCCEEDED(authController_.As(&controller2))) {
     COREWEBVIEW2_COLOR background{255, 7, 17, 28};
@@ -596,6 +604,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
             PostChange(StationheadChangeReturnMain);
             return S_OK;
           }).Get(), &authProcessFailedToken_);
+  ApplyMute();
   if (!authPendingUrl_.empty()) authWebview_->Navigate(authPendingUrl_.c_str());
 }
 
@@ -618,6 +627,8 @@ void StationheadPlayer::CloseWebView() {
   webview_.Reset();
   controller_.Reset();
   environment_.Reset();
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   if (hostWindow_ && IsWindow(hostWindow_)) ShowWindow(hostWindow_, SW_HIDE);
   scanPending_ = false;
   spotifyAuthorization_ = false;
@@ -645,6 +656,8 @@ void StationheadPlayer::CloseAuthWebView() {
   authWebview_.Reset();
   authController_.Reset();
   authPendingUrl_.clear();
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
 }
 
 void StationheadPlayer::Tick(int64_t nowMs) {
@@ -808,20 +821,24 @@ double StationheadPlayer::Volume() const noexcept {
 }
 
 void StationheadPlayer::ApplyMute() const noexcept {
-  const BOOL muted = audioMuted_.load(std::memory_order_relaxed) ? TRUE : FALSE;
-  const auto apply = [muted](const ComPtr<ICoreWebView2>& view) noexcept {
-    if (!view) return;
-    ComPtr<ICoreWebView2_8> audio;
-    if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(muted);
-  };
-  apply(webview_);
-  apply(authWebview_);
+  const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
+  if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
+    const BOOL value = muted ? TRUE : FALSE;
+    const auto apply = [value](const ComPtr<ICoreWebView2>& view) noexcept {
+      if (!view) return;
+      ComPtr<ICoreWebView2_8> audio;
+      if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(value);
+    };
+    apply(webview_);
+    apply(authWebview_);
+  }
   ApplyVolume();
 }
 
 void StationheadPlayer::ApplyVolume() const noexcept {
   const int percent = std::clamp(
       static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
+  if (appliedVolumePercent_.exchange(percent, std::memory_order_relaxed) == percent) return;
   const auto apply = [percent](const ComPtr<ICoreWebView2>& view) noexcept {
     if (!view) return;
     const std::wstring script = StationheadVolumeScript(percent);

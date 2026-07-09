@@ -194,6 +194,8 @@ void SecondaryStationheadPlayer::FinishSpotifyAuthorization(const std::wstring& 
 void SecondaryStationheadPlayer::ConfigureAuthWebView() {
   const auto alive = callbackAlive_;
   const auto authAlive = authCallbackAlive_;
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   ComPtr<ICoreWebView2Settings> settings;
   authWebview_->get_Settings(&settings);
   if (settings) {
@@ -243,6 +245,7 @@ void SecondaryStationheadPlayer::ConfigureAuthWebView() {
             FinishSpotifyAuthorization(L"Spotify login WebView failed");
             return S_OK;
           }).Get(), &authProcessFailedToken_);
+  ApplyAudioState();
 }
 
 void SecondaryStationheadPlayer::CloseAuthWebView() {
@@ -260,6 +263,8 @@ void SecondaryStationheadPlayer::CloseAuthWebView() {
   if (authController_) authController_->Close();
   authWebview_.Reset();
   authController_.Reset();
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   if (authHostWindow_ && IsWindow(authHostWindow_)) ShowWindow(authHostWindow_, SW_HIDE);
 }
 
@@ -446,6 +451,8 @@ void SecondaryStationheadPlayer::CloseWebView() {
   webview_.Reset();
   controller_.Reset();
   environment_.Reset();
+  appliedMuted_.store(-1, std::memory_order_relaxed);
+  appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   if (hostWindow_ && IsWindow(hostWindow_)) ShowWindow(hostWindow_, SW_HIDE);
   if (authHostWindow_ && IsWindow(authHostWindow_)) ShowWindow(authHostWindow_, SW_HIDE);
   creating_ = false;
