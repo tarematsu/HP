@@ -260,8 +260,6 @@ class AppSecondaryStationheadHandle
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<SecondaryStationheadPlayer> player) noexcept {
     player_ = std::move(player);
-    stationheadAuthorizationSeen_ = false;
-    apiAuthorizationActive_ = false;
     ApplyAudioState();
     ApplyBounds();
     return *this;
@@ -269,8 +267,6 @@ class AppSecondaryStationheadHandle
 
   void reset() noexcept {
     player_.reset();
-    stationheadAuthorizationSeen_ = false;
-    apiAuthorizationActive_ = false;
   }
 
   void Start() {
