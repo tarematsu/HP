@@ -14,7 +14,12 @@ class App;
 
 template <typename StatusT>
 inline bool StationheadNeedsForeground(const StatusT& status) noexcept {
-  return status.loginRequired || status.spotifyAuthorization || status.apiAuthorization;
+  // Foreground is driven purely by a login prompt (status.loginRequired), which
+  // the page scan sets when it sees a "log in" / "sign in" style term. The
+  // Spotify/API authorization flags are intentionally NOT used: a window can be
+  // playing audio (Spotify authorized) yet still need a Stationhead login, and a
+  // stale auth flag must never pop a playing window in front of the dashboard.
+  return status.loginRequired;
 }
 
 enum class WorkspaceTab {
@@ -231,15 +236,12 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyBounds();
   }
 
-  // The primary Stationhead surface stays behind the dashboard during normal
-  // playback. Only explicit login/auth flows may temporarily raise it so the
-  // user can complete Stationhead or Spotify sign-in. A window that is already
-  // playing audio is doing its job in the background and must never be raised,
-  // so a stale spotifyAuthorization/apiAuthorization flag can no longer pop a
-  // playing window full-screen in front of the dashboard (login can never be
-  // required while audio is confirmed, so this keeps genuine login foreground).
+  // The primary Stationhead surface stays behind the dashboard except when a
+  // login prompt is on the page. Playback state is irrelevant: a window can be
+  // playing (Spotify authorized) yet still need a Stationhead login, so it must
+  // come forward for the user to sign in.
   bool IsInteractive(const StationheadStatus& status) const noexcept {
-    return StationheadNeedsForeground(status) && !status.audioPlaying;
+    return StationheadNeedsForeground(status);
   }
 
  private:
@@ -333,10 +335,7 @@ class AppSecondaryStationheadHandle
   }
 
   bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
-    // Same rule as the primary: a window playing audio stays in the background
-    // even if an auth flag is still set. The secondary reports confirmed audio
-    // via `playing` (its status has no audioPlaying field).
-    return StationheadNeedsForeground(status) && !status.playing;
+    return StationheadNeedsForeground(status);
   }
 
  private:
