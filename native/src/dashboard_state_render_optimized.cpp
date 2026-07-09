@@ -9,7 +9,9 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
   if (!dc) return;
   RECT bounds{};
   GetClientRect(window_, &bounds);
-  FillRect(dc, &bounds, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+  HBRUSH background = CreateSolidBrush(RGB(7, 10, 16));
+  FillRect(dc, &bounds, background);
+  DeleteObject(background);
   ReleaseDC(window_, dc);
 }
 
