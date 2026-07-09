@@ -166,7 +166,12 @@ StationheadStatus StationheadPlayer::Status() const {
   std::lock_guard lock(mutex_);
   StationheadStatus copy = status_;
   copy.authAvailable = authController_ != nullptr || !authPendingUrl_.empty();
-  copy.spotifyAuthorization = copy.authAvailable;
+  // Foreground is driven by StationheadNeedsForeground(spotifyAuthorization),
+  // so this must reflect an ACTIVE Spotify auth flow only - not the mere
+  // existence of a (possibly leftover) auth controller. Using authAvailable
+  // here kept window A permanently "interactive", so RaiseActiveHost raised it
+  // full-screen in front of the dashboard once the startup preview cleared.
+  copy.spotifyAuthorization = spotifyAuthorization_;
   copy.apiAuthorization = false;
   copy.audioPlaying = audioPlaying_.load(std::memory_order_relaxed);
   copy.audioSilent = false;
