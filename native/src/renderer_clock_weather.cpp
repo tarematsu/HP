@@ -144,6 +144,19 @@ void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
   DrawTextW(dc, text.c_str(), -1, &rect, format | DT_NOPREFIX);
 }
 
+RECT DrawWidgetSurface(HDC dc, const RECT& bounds, COLORREF color = kWidgetSurface) {
+  HPEN border = CreatePen(PS_SOLID, 1, kWidgetBorder);
+  HBRUSH surface = CreateSolidBrush(color);
+  HGDIOBJ previousPen = SelectObject(dc, border);
+  HGDIOBJ previousBrush = SelectObject(dc, surface);
+  RoundRect(dc, bounds.left, bounds.top, bounds.right, bounds.bottom, 8, 8);
+  SelectObject(dc, previousBrush);
+  SelectObject(dc, previousPen);
+  DeleteObject(surface);
+  DeleteObject(border);
+  return NormalizeInsetRect(bounds, 12, 10, 12, 10);
+}
+
 std::wstring Fixed(double value, int digits) {
   std::wostringstream output;
   output << std::fixed << std::setprecision(digits) << value;
@@ -611,18 +624,19 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   HBRUSH background = CreateSolidBrush(kWidgetBackground);
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds, RGB(14, 18, 26));
 
   SetBkMode(memoryDc, TRANSPARENT);
   SetTextColor(memoryDc, kWidgetMuted);
 
   SYSTEMTIME now{};
   GetLocalTime(&now);
-  const int height = std::max(1L, bounds.bottom - bounds.top);
+  const int height = std::max(1L, content.bottom - content.top);
   const int dateHeight = std::clamp(height / 9, 14, 20);
   const int clockHeight = std::clamp(height / 3, 48, 72);
 
-  RECT dateRect = bounds;
-  dateRect.bottom = bounds.top + height / 2 - clockHeight / 2;
+  RECT dateRect = content;
+  dateRect.bottom = content.top + height / 2 - clockHeight / 2;
   HFONT dateFont = CreateUiFont(dateHeight, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, dateFont);
   DrawTextW(memoryDc, DateText(now).c_str(), -1, &dateRect,
@@ -631,7 +645,7 @@ void Renderer::PaintNativeClock(HWND hwnd) {
   DeleteObject(dateFont);
 
   SetTextColor(memoryDc, kWidgetText);
-  RECT timeRect = bounds;
+  RECT timeRect = content;
   timeRect.top = dateRect.bottom + 4;
   HFONT clockFont = CreateUiFont(clockHeight, FW_LIGHT);
   previousFont = SelectObject(memoryDc, clockFont);
@@ -807,11 +821,12 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
   HFONT headerFont = CreateUiFont(13, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
   SetTextColor(memoryDc, kWidgetText);
-  RECT titleRect{12, 8, bounds.right - 12, 31};
+  RECT titleRect{content.left, content.top, content.right, content.top + 23};
   DrawTextInRect(memoryDc, L"操作", titleRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   SetTextColor(memoryDc, kWidgetMuted);
   const std::wstring version = nativeAppVersion_.empty() ? L"" : L"v" + nativeAppVersion_;
@@ -819,7 +834,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
   SelectObject(memoryDc, previousFont);
   DeleteObject(headerFont);
 
-  const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(bounds);
+  const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(content);
   const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
       {L"更新", controlButtons.update},
       {L"再起動", controlButtons.restart},
@@ -842,8 +857,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     HFONT toastFont = CreateUiFont(12, FW_NORMAL);
     previousFont = SelectObject(memoryDc, toastFont);
     SetTextColor(memoryDc, RGB(255, 209, 140));
-    RECT toastRect{12, controlButtons.toastTop, bounds.right - 12,
-                   std::max(static_cast<LONG>(controlButtons.toastTop + 22), bounds.bottom - 8)};
+    RECT toastRect{content.left, controlButtons.toastTop, content.right,
+                   std::max(static_cast<LONG>(controlButtons.toastTop + 22), content.bottom)};
     DrawTextInRect(memoryDc, nativeToast_, toastRect,
                    DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
     SelectObject(memoryDc, previousFont);
@@ -1010,11 +1025,12 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
   HFONT headerFont = CreateUiFont(13, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
   SetTextColor(memoryDc, kWidgetText);
-  RECT headerRect{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 31};
+  RECT headerRect{content.left, content.top, content.right, content.top + 23};
   DrawTextInRect(memoryDc, L"Octopus Energy", headerRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
   DeleteObject(headerFont);
@@ -1038,12 +1054,11 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   HGDIOBJ previousBrush = SelectObject(memoryDc, card);
   HFONT labelFont = CreateUiFont(11, FW_NORMAL);
   HFONT valueFont = CreateUiFont(20, FW_NORMAL);
-  const int summaryTop = 38;
   const int summaryGap = 8;
-  const int summaryWidth = (std::max(1L, bounds.right - bounds.left) - 24 - summaryGap) / 2;
+  const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
   for (int i = 0; i < 2; ++i) {
-    RECT rect{bounds.left + 12 + i * (summaryWidth + summaryGap), summaryTop,
-              bounds.left + 12 + i * (summaryWidth + summaryGap) + summaryWidth, summaryTop + 72};
+    RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 30,
+              content.left + i * (summaryWidth + summaryGap) + summaryWidth, content.top + 102};
     RoundRect(memoryDc, rect.left, rect.top, rect.right, rect.bottom, 8, 8);
     SetTextColor(memoryDc, kWidgetMuted);
     previousFont = SelectObject(memoryDc, labelFont);
@@ -1060,7 +1075,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     SelectObject(memoryDc, previousFont);
   }
 
-  RECT chart{bounds.left + 12, summaryTop + 86, bounds.right - 12, bounds.bottom - 56};
+  RECT chart{content.left, content.top + 116, content.right, content.bottom - 46};
   if (chart.bottom > chart.top + 20 && !nativeDashboard_.octopusHistory.empty()) {
     double maximum = 1.0;
     for (const auto& item : nativeDashboard_.octopusHistory) {
@@ -1091,11 +1106,12 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     DeleteObject(bar);
   }
 
-  const int plugTop = std::max(static_cast<int>(bounds.bottom) - 48, summaryTop + 164);
+  const int plugTop = std::max(static_cast<int>(content.bottom) - 38,
+                               static_cast<int>(content.top) + 164);
   HFONT plugFont = CreateUiFont(10, FW_NORMAL);
   previousFont = SelectObject(memoryDc, plugFont);
   SetTextColor(memoryDc, kWidgetMuted);
-  RECT plugRect{bounds.left + 12, plugTop, bounds.right - 12, bounds.bottom - 8};
+  RECT plugRect{content.left, plugTop, content.right, content.bottom};
   std::wstring plugs = L"Plug Mini情報なし";
   if (!nativeDashboard_.switchBotDevices.empty()) {
     plugs.clear();
@@ -1136,11 +1152,12 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
   HFONT headerFont = CreateUiFont(13, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
   SetTextColor(memoryDc, kWidgetText);
-  RECT header{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 31};
+  RECT header{content.left, content.top, content.right, content.top + 23};
   DrawTextInRect(memoryDc, L"Spotify WebView2", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
   DeleteObject(headerFont);
@@ -1280,11 +1297,12 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
   FillRect(memoryDc, &bounds, background);
   DeleteObject(background);
   SetBkMode(memoryDc, TRANSPARENT);
+  const RECT content = DrawWidgetSurface(memoryDc, bounds);
 
   HFONT headerFont = CreateUiFont(13, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, headerFont);
   SetTextColor(memoryDc, kWidgetText);
-  RECT header{bounds.left + 12, bounds.top + 8, bounds.right - 12, bounds.top + 31};
+  RECT header{content.left, content.top, content.right, content.top + 23};
   DrawTextInRect(memoryDc, L"リアルタイム雨雲", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
   {
@@ -1293,7 +1311,7 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
     DrawTextInRect(memoryDc, radarTimeText_.empty() ? L"--:--" : radarTimeText_, header,
                    DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
-    RECT stage{bounds.left + 10, bounds.top + 34, bounds.right - 10, bounds.bottom - 10};
+    RECT stage{content.left, content.top + 26, content.right, content.bottom};
     const int stageWidth = std::max(1L, stage.right - stage.left);
     const int stageHeight = std::max(1L, stage.bottom - stage.top);
     if (radarFrameBitmap_) {
