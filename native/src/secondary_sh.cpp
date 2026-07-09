@@ -478,5 +478,4 @@ void SecondaryStationheadPlayer::CloseWebView() {
 // Feature groups split out of this file; compiled as part of this translation
 // unit so they share its includes and file-local helpers (unity-build pattern,
 // like renderer_core.cpp). Not listed in CMake on purpose.
-#include "secondary_sh_layout.cpp"
 #include "secondary_sh_webview.cpp"
