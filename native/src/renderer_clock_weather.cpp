@@ -132,6 +132,16 @@ HFONT CreateUiFont(int height, int weight) {
                      DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
 }
 
+// Panels repaint as often as once a second; reuse HFONTs by (height, weight)
+// instead of creating and destroying one on every WM_PAINT.
+HFONT CachedUiFont(int height, int weight) {
+  static std::map<std::pair<int, int>, HFONT> cache;
+  const auto key = std::make_pair(height, weight);
+  auto [entry, inserted] = cache.try_emplace(key, nullptr);
+  if (inserted) entry->second = CreateUiFont(height, weight);
+  return entry->second;
+}
+
 std::wstring TrackTimeText(int64_t milliseconds) {
   const int64_t seconds = std::max<int64_t>(0, milliseconds / 1000);
   wchar_t text[32]{};
@@ -214,7 +224,7 @@ void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color) {
 
 void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& trailing,
                       const RECT& content) {
-  HFONT font = CreateUiFont(13, FW_NORMAL);
+  HFONT font = CachedUiFont(13, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(dc, font);
   RECT header{content.left, content.top, content.right, content.top + 23};
   SetTextColor(dc, kWidgetText);
@@ -224,7 +234,6 @@ void DrawWidgetHeader(HDC dc, const std::wstring& title, const std::wstring& tra
     DrawTextInRect(dc, trailing, header, DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   }
   SelectObject(dc, previousFont);
-  DeleteObject(font);
 }
 
 std::wstring Fixed(double value, int digits) {
@@ -718,22 +727,20 @@ void Renderer::PaintNativeClock(HWND hwnd) {
 
   RECT dateRect = content;
   dateRect.bottom = content.top + dateHeight + 6;
-  HFONT dateFont = CreateUiFont(dateHeight, FW_NORMAL);
+  HFONT dateFont = CachedUiFont(dateHeight, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, dateFont);
   DrawTextW(memoryDc, DateText(now).c_str(), -1, &dateRect,
             DT_LEFT | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(dateFont);
 
   SetTextColor(memoryDc, kWidgetText);
   RECT timeRect = content;
   timeRect.top = dateRect.bottom + std::max(2, height / 12);
-  HFONT clockFont = CreateUiFont(clockHeight, FW_LIGHT);
+  HFONT clockFont = CachedUiFont(clockHeight, FW_LIGHT);
   previousFont = SelectObject(memoryDc, clockFont);
   DrawTextW(memoryDc, TimeText(now).c_str(), -1, &timeRect,
             DT_LEFT | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(clockFont);
 }
 
 void Renderer::PaintNativeAir(HWND hwnd) {
@@ -750,8 +757,8 @@ void Renderer::PaintNativeAir(HWND hwnd) {
       {L"温度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃"},
       {L"湿度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%"},
   }};
-  HFONT labelFont = CreateUiFont(std::clamp(height / 5, 10, 15), FW_NORMAL);
-  HFONT valueFont = CreateUiFont(std::clamp(height / 3, 18, 29), FW_SEMIBOLD);
+  HFONT labelFont = CachedUiFont(std::clamp(height / 5, 10, 15), FW_NORMAL);
+  HFONT valueFont = CachedUiFont(std::clamp(height / 3, 18, 29), FW_SEMIBOLD);
   const bool compact = width < 230 && height >= 56;
   for (int i = 0; i < 3; ++i) {
     RECT rect{};
@@ -777,8 +784,6 @@ void Renderer::PaintNativeAir(HWND hwnd) {
     DrawTextInRect(memoryDc, values[i].second, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(memoryDc, previousFont);
   }
-  DeleteObject(labelFont);
-  DeleteObject(valueFont);
 }
 
 void Renderer::PaintNativeAirHistory(HWND hwnd) {
@@ -806,7 +811,7 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
     humidityValues.push_back(sample.humidity);
   }
 
-  HFONT font = CreateUiFont(11, FW_NORMAL);
+  HFONT font = CachedUiFont(11, FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, font);
   SetTextColor(memoryDc, kWidgetMuted);
   RECT legend{content.left, content.top, content.right, content.top + 18};
@@ -846,7 +851,6 @@ void Renderer::PaintNativeAirHistory(HWND hwnd) {
   DrawTextInRect(memoryDc, L"24時間前", axis, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   DrawTextInRect(memoryDc, L"現在", axis, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(font);
 }
 
 void Renderer::PaintNativeControls(HWND hwnd) {
@@ -865,7 +869,7 @@ void Renderer::PaintNativeControls(HWND hwnd) {
       {L"再起動", controlButtons.restart},
   }};
   const int buttonHeight = std::max(1L, controlButtons.update.bottom - controlButtons.update.top);
-  HFONT buttonFont = CreateUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
+  HFONT buttonFont = CachedUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, buttonFont);
   SetTextColor(memoryDc, kWidgetText);
   for (const auto& [label, rect] : buttons) {
@@ -874,9 +878,8 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     DrawTextInRect(memoryDc, label, textRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
   SelectObject(memoryDc, previousFont);
-  DeleteObject(buttonFont);
   if (!nativeToast_.empty()) {
-    HFONT toastFont = CreateUiFont(12, FW_NORMAL);
+    HFONT toastFont = CachedUiFont(12, FW_NORMAL);
     previousFont = SelectObject(memoryDc, toastFont);
     SetTextColor(memoryDc, kWidgetWarning);
     RECT toastRect{content.left, controlButtons.toastTop, content.right,
@@ -884,7 +887,6 @@ void Renderer::PaintNativeControls(HWND hwnd) {
     DrawTextInRect(memoryDc, nativeToast_, toastRect,
                    DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
     SelectObject(memoryDc, previousFont);
-    DeleteObject(toastFont);
   }
 }
 
@@ -903,22 +905,20 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   const std::wstring detail = item ? item->description : L"";
 
   const int contentHeight = std::max(1L, content.bottom - content.top);
-  HFONT titleFont = CreateUiFont(std::clamp(contentHeight / 6, 14, 18), FW_SEMIBOLD);
+  HFONT titleFont = CachedUiFont(std::clamp(contentHeight / 6, 14, 18), FW_SEMIBOLD);
   HGDIOBJ previousFont = SelectObject(memoryDc, titleFont);
   SetTextColor(memoryDc, kWidgetText);
   RECT titleRect{content.left, content.top, content.right,
                  content.top + std::clamp(contentHeight / 4, 24, 34)};
   DrawTextInRect(memoryDc, title, titleRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(titleFont);
 
-  HFONT detailFont = CreateUiFont(std::clamp(contentHeight / 10, 10, 12), FW_NORMAL);
+  HFONT detailFont = CachedUiFont(std::clamp(contentHeight / 10, 10, 12), FW_NORMAL);
   previousFont = SelectObject(memoryDc, detailFont);
   SetTextColor(memoryDc, kWidgetMuted);
   RECT detailRect{content.left, titleRect.bottom + 4, content.right, content.bottom};
   DrawTextInRect(memoryDc, detail, detailRect, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(detailFont);
 }
 
 void Renderer::PaintNativeWeather(HWND hwnd) {
@@ -939,25 +939,23 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
   RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
 
   const int popHeight = std::max(1, static_cast<int>(popRect.bottom - popRect.top));
-  HFONT smallFont = CreateUiFont(std::clamp(popHeight / 9, 8, 10), FW_NORMAL);
+  HFONT smallFont = CachedUiFont(std::clamp(popHeight / 9, 8, 10), FW_NORMAL);
   HGDIOBJ previousFont = SelectObject(memoryDc, smallFont);
   SetTextColor(memoryDc, kWidgetMuted);
   RECT labelRect{popRect.left, popRect.top + 14, popRect.right, popRect.top + 32};
   DrawTextInRect(memoryDc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(smallFont);
 
-  HFONT popFont = CreateUiFont(std::clamp(popHeight / 3, 20, 30), FW_BOLD);
+  HFONT popFont = CachedUiFont(std::clamp(popHeight / 3, 20, 30), FW_BOLD);
   previousFont = SelectObject(memoryDc, popFont);
   SetTextColor(memoryDc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
   RECT valueRect{popRect.left, popRect.top + 36, popRect.right, popRect.bottom - 10};
   DrawTextInRect(memoryDc, std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%", valueRect,
                  DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(popFont);
 
-  HFONT hourFont = CreateUiFont(10, FW_NORMAL);
-  HFONT rainFont = CreateUiFont(13, FW_NORMAL);
+  HFONT hourFont = CachedUiFont(10, FW_NORMAL);
+  HFONT rainFont = CachedUiFont(13, FW_NORMAL);
   const int rightLeft = popRect.right + 18;
   const int cardGap = 12;
   const int availableWidth = std::max(1L, content.right - rightLeft);
@@ -978,8 +976,6 @@ void Renderer::PaintNativeWeather(HWND hwnd) {
     DrawTextInRect(memoryDc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(memoryDc, previousFont);
   }
-  DeleteObject(hourFont);
-  DeleteObject(rainFont);
 }
 
 void Renderer::PaintNativeEnergy(HWND hwnd) {
@@ -1005,8 +1001,8 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
 
   const int contentHeight = std::max(1L, content.bottom - content.top);
   const int summaryHeight = std::clamp(contentHeight / 3, 58, 72);
-  HFONT labelFont = CreateUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
-  HFONT valueFont = CreateUiFont(std::clamp(summaryHeight / 4, 16, 20), FW_SEMIBOLD);
+  HFONT labelFont = CachedUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
+  HFONT valueFont = CachedUiFont(std::clamp(summaryHeight / 4, 16, 20), FW_SEMIBOLD);
   HGDIOBJ previousFont = nullptr;
   const int summaryGap = 20;
   const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
@@ -1042,7 +1038,7 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     const int step = std::max(1, static_cast<int>(chart.right - chart.left) / std::max(1, count));
     const int barWidth = std::max(2, step * 7 / 10);
     SetTextColor(memoryDc, kWidgetMuted);
-    HFONT chartFont = CreateUiFont(8, FW_NORMAL);
+    HFONT chartFont = CachedUiFont(8, FW_NORMAL);
     previousFont = SelectObject(memoryDc, chartFont);
     for (int i = 0; i < count; ++i) {
       const double value = std::isfinite(nativeDashboard_.octopusHistory[i].value)
@@ -1056,12 +1052,11 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
                      DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     }
     SelectObject(memoryDc, previousFont);
-    DeleteObject(chartFont);
   }
 
   const int plugTop = std::max(static_cast<int>(content.bottom) - plugHeight,
                                static_cast<int>(chart.bottom) + 6);
-  HFONT plugFont = CreateUiFont(std::clamp(plugHeight / 3, 9, 11), FW_NORMAL);
+  HFONT plugFont = CachedUiFont(std::clamp(plugHeight / 3, 9, 11), FW_NORMAL);
   previousFont = SelectObject(memoryDc, plugFont);
   SetTextColor(memoryDc, kWidgetMuted);
   RECT plugRect{content.left, plugTop, content.right, content.bottom};
@@ -1076,10 +1071,6 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
   }
   DrawTextInRect(memoryDc, plugs, plugRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(memoryDc, previousFont);
-  DeleteObject(plugFont);
-
-  DeleteObject(labelFont);
-  DeleteObject(valueFont);
 }
 
 void Renderer::PaintNativeStationhead(HWND hwnd) {
@@ -1090,10 +1081,10 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
 
   DrawWidgetHeader(memoryDc, L"Spotify WebView2", L"", content);
 
-  HFONT labelFont = CreateUiFont(11, FW_NORMAL);
-  HFONT titleFont = CreateUiFont(18, FW_SEMIBOLD);
-  HFONT artistFont = CreateUiFont(12, FW_NORMAL);
-  HFONT buttonFont = CreateUiFont(12, FW_SEMIBOLD);
+  HFONT labelFont = CachedUiFont(11, FW_NORMAL);
+  HFONT titleFont = CachedUiFont(18, FW_SEMIBOLD);
+  HFONT artistFont = CachedUiFont(12, FW_NORMAL);
+  HFONT buttonFont = CachedUiFont(12, FW_SEMIBOLD);
   HGDIOBJ previousFont = nullptr;
   const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(content);
   const int contentHeight = std::max(1L, content.bottom - content.top);
@@ -1194,10 +1185,6 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
               : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
 
   SelectObject(memoryDc, previousFont);
-  DeleteObject(labelFont);
-  DeleteObject(titleFont);
-  DeleteObject(artistFont);
-  DeleteObject(buttonFont);
 }
 
 void Renderer::PaintNativeRadar(HWND hwnd) {
