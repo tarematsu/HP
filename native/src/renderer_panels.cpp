@@ -8,7 +8,6 @@ constexpr int kNativeBottomId = 102;
 constexpr int kNativeRadarId = 108;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
-constexpr COLORREF kWidgetSurface = RGB(18, 23, 31);
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
 constexpr COLORREF kWidgetText = RGB(255, 255, 255);
 constexpr COLORREF kWidgetMuted = RGB(255, 255, 255);
@@ -311,6 +310,21 @@ void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha) 
             colorDc, 0, 0, 1, 1, blend);
   SelectObject(colorDc, previousBitmap);
   DeleteDC(colorDc);
+}
+
+// A short, slightly dark separator centered on the boundary between two
+// information blocks. It only covers the middle portion of the boundary so
+// it reads as a hint rather than a hard grid line.
+void DrawHorizontalDivider(HDC dc, const RECT& area, int y) {
+  const int inset = static_cast<int>((area.right - area.left) * 225 / 1000);
+  const RECT line{area.left + inset, y, area.right - inset, y + 2};
+  AlphaBlendSolidColor(dc, line, RGB(0, 0, 0), 90);
+}
+
+void DrawVerticalDivider(HDC dc, const RECT& area, int x) {
+  const int inset = static_cast<int>((area.bottom - area.top) * 225 / 1000);
+  const RECT line{x, area.top + inset, x + 2, area.bottom - inset};
+  AlphaBlendSolidColor(dc, line, RGB(0, 0, 0), 90);
 }
 
 struct ControlsButtonRects {
@@ -618,6 +632,8 @@ void Renderer::PaintNativeTop(HWND hwnd) {
   if (IntersectRect(&overlap, &scope.dirty, &sections.right)) {
     DrawEnergySection(scope.dc, RelativeInsetRect(sections.right, 30, 60));
   }
+  DrawVerticalDivider(scope.dc, scope.bounds, (sections.left.right + sections.center.left) / 2);
+  DrawVerticalDivider(scope.dc, scope.bounds, (sections.center.right + sections.right.left) / 2);
 }
 
 void Renderer::PaintNativeBottom(HWND hwnd) {
@@ -635,6 +651,8 @@ void Renderer::PaintNativeBottom(HWND hwnd) {
   if (IntersectRect(&overlap, &scope.dirty, &sections.right)) {
     DrawWeatherSection(scope.dc, RelativeInsetRect(sections.right, 30, 60));
   }
+  DrawVerticalDivider(scope.dc, scope.bounds, (sections.left.right + sections.center.left) / 2);
+  DrawVerticalDivider(scope.dc, scope.bounds, (sections.center.right + sections.right.left) / 2);
 }
 
 void Renderer::PaintNativeRadar(HWND hwnd) {
@@ -707,6 +725,7 @@ void Renderer::DrawAirSection(HDC dc, const RECT& content) {
   }
 
   const int historyTop = statsTop + statsHeight + SpanY(content, 70);
+  DrawHorizontalDivider(dc, content, statsTop + statsHeight + SpanY(content, 35));
   const int legendHeight = SpanY(content, 120);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   SetTextColor(dc, kWidgetMuted);
@@ -810,6 +829,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& content) {
     SelectObject(dc, previousFont);
   }
 
+  DrawHorizontalDivider(dc, content, content.top + summaryHeight + SpanY(content, 25));
   const int plugHeight = SpanY(content, 120);
   RECT chart{content.left, content.top + summaryHeight + SpanY(content, 50),
              content.right, content.bottom - plugHeight - SpanY(content, 30)};
@@ -859,12 +879,11 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
   const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
   const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
 
-  const auto drawRow = [&](int row, const std::wstring& label, bool muted,
+  const auto drawRow = [&](int row, bool muted,
                            const NativePlaybackRender& playback,
                            const std::wstring& fallbackTitle, const std::wstring& detail) {
     const StationheadRowRects rects = StationheadRowFromSection(content, row);
     const RECT& rowRect = rects.row;
-    DrawWidgetCard(dc, rowRect, kWidgetSurface, /*radius=*/14, /*alpha=*/160);
 
     const int rowHeight = rowRect.bottom - rowRect.top;
     const int pad = rowHeight * 14 / 100;
@@ -885,20 +904,10 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
     const int textLeft = art.right + pad;
     const int textRight = rects.button.left - pad;
 
-    SetTextColor(dc, kWidgetMuted);
-    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-    RECT labelRect{textLeft, rowRect.top + pad, textRight, rowRect.top + rowHeight * 32 / 100};
-    DrawTextInRect(dc, label, labelRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-    if (withProgress) {
-      DrawTextInRect(dc,
-                     TrackTimeText(playback.progressMs) + L" / " +
-                         TrackTimeText(playback.track.durationMs),
-                     labelRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-    }
-
     SetTextColor(dc, kWidgetText);
-    SelectObject(dc, TierFont(FontTier::Medium));
-    RECT titleRect{textLeft, labelRect.bottom, textRight, rowRect.top + rowHeight * 64 / 100};
+    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Medium));
+    RECT titleRect{textLeft, rowRect.top + rowHeight * 8 / 100, textRight,
+                   rowRect.top + rowHeight * 46 / 100};
     DrawTextInRect(dc, title.empty() ? L"--" : title, titleRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
@@ -906,7 +915,16 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
     SelectObject(dc, TierFont(FontTier::Small));
     RECT artistRect{textLeft, titleRect.bottom, textRight,
                     withProgress ? rowRect.bottom - rowHeight * 16 / 100 : rowRect.bottom - pad};
-    DrawTextInRect(dc, artist.empty() ? detail : artist, artistRect,
+    RECT artistTextRect = artistRect;
+    if (withProgress) {
+      // Reserve the right side of the line for the progress time.
+      artistTextRect.right = std::max<LONG>(artistTextRect.left, artistRect.right - SpanX(content, 340));
+      DrawTextInRect(dc,
+                     TrackTimeText(playback.progressMs) + L" / " +
+                         TrackTimeText(playback.track.durationMs),
+                     artistRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+    }
+    DrawTextInRect(dc, artist.empty() ? detail : artist, artistTextRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     if (withProgress) {
@@ -937,11 +955,16 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, L"StationheadウインドウA", nativeStationhead_.audioMuted, playbackA, L"", detail);
-  drawRow(1, L"StationheadウインドウB", nativeStationhead_.secondaryAudioMuted, playbackB,
+  drawRow(0, nativeStationhead_.audioMuted, playbackA, L"", detail);
+  drawRow(1, nativeStationhead_.secondaryAudioMuted, playbackB,
           L"Buddy46",
           playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
               : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
+
+  // Divider between the two playback rows, centered on the row gap.
+  const StationheadRowRects rowA = StationheadRowFromSection(content, 0);
+  const StationheadRowRects rowB = StationheadRowFromSection(content, 1);
+  DrawHorizontalDivider(dc, content, (rowA.row.bottom + rowB.row.top) / 2);
 }
 
 void Renderer::DrawClockControlsSection(HDC dc, const RECT& content) {
@@ -958,6 +981,7 @@ void Renderer::DrawClockControlsSection(HDC dc, const RECT& content) {
   SetTextColor(dc, kWidgetText);
   DrawTextInRect(dc, TimeText(now), timeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
+  DrawHorizontalDivider(dc, content, content.top + SpanY(content, 620));
   const ControlsButtonRects buttons = ControlsButtonsFromSection(content);
   if (!nativeToast_.empty()) {
     SelectObject(dc, TierFont(FontTier::Small));
@@ -1003,6 +1027,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& content) {
                  DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
   const int cardsLeft = popRect.right + SpanX(content, 40);
+  DrawVerticalDivider(dc, content, (popRect.right + cardsLeft) / 2);
   const int cardGap = SpanX(content, 20);
   const int availableWidth = std::max(1L, content.right - cardsLeft);
   constexpr int kSlotCount = 5;

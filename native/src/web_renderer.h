@@ -115,24 +115,25 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
   const int marginX = clientWidth * 2 / 100;
   const int marginY = clientHeight * 3 / 100;
-  const int topHeight = clientHeight * 26 / 100;
-  const int bottomHeight = clientHeight * 31 / 100;
+  // Top and bottom panels share one height: the former 26%/31% pair, shrunk
+  // by 10% and unified at the midpoint.
+  const int panelHeight = clientHeight * 256 / 1000;
 
   NativeDashboardLayout layout;
   layout.radar = bounds;
   layout.top = RECT{bounds.left + marginX, bounds.top + marginY,
-                    bounds.right - marginX, bounds.top + marginY + topHeight};
-  layout.bottom = RECT{bounds.left + marginX, bounds.bottom - marginY - bottomHeight,
+                    bounds.right - marginX, bounds.top + marginY + panelHeight};
+  layout.bottom = RECT{bounds.left + marginX, bounds.bottom - marginY - panelHeight,
                        bounds.right - marginX, bounds.bottom - marginY};
   return layout;
 }
 
-// Left/right sections take 36% of the panel width each; the center strip is
+// Left/right sections take 33% of the panel width each; the center strip is
 // what remains after two relative gutters.
 inline NativePanelSections SplitPanelSections(const RECT& panel) {
   const int width = std::max(1L, panel.right - panel.left);
   const int gutter = width * 15 / 1000;
-  const int sideWidth = width * 36 / 100;
+  const int sideWidth = width * 33 / 100;
   NativePanelSections sections;
   sections.left = RECT{panel.left, panel.top, panel.left + sideWidth, panel.bottom};
   sections.right = RECT{panel.right - sideWidth, panel.top, panel.right, panel.bottom};
