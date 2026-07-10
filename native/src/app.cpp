@@ -14,6 +14,7 @@ constexpr int kRestartExitCode = 42;
 constexpr uint32_t kFastTickMs = 1000;
 constexpr uint32_t kIdleTickMs = 5000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
+constexpr int64_t kDashboardStartupFallbackMs = 10'000;
 
 std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   DWORD handle = 0;
@@ -272,7 +273,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
   const bool dashboardAudioReady = secondaryStationhead_
       ? (primaryAudioReady || secondaryAudioReady)
       : primaryAudioReady;
-  const bool startupDeadlineReached = now - startupAt_ >= 30'000;
+  const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
   if (primaryAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
   if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
