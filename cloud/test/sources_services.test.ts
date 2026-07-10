@@ -17,22 +17,30 @@ function jsonResponse(value: unknown): Response {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("cloud sources", () => {
-  it("uses the Kraken token authorization header for Octopus readings", async () => {
+  it("uses the Kraken token for billing ranges and the aligned prior-year week", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T18:00:00Z"));
     const requests: Request[] = [];
+    const readingRanges: Array<{ fromDatetime?: string; toDatetime?: string }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
       requests.push(request);
-      const body = await request.clone().json() as { query?: string };
+      const body = await request.clone().json() as {
+        query?: string;
+        variables?: { fromDatetime?: string; toDatetime?: string };
+      };
       if (body.query?.includes("obtainKrakenToken")) {
         return jsonResponse({
           data: { obtainKrakenToken: { token: "octopus-token", refreshToken: "refresh-token", refreshExpiresIn: 4_000_000_000 } },
         });
       }
       expect(request.headers.get("Authorization")).toBe("octopus-token");
+      readingRanges.push(body.variables ?? {});
       return jsonResponse({
         data: {
           account: {
@@ -56,7 +64,11 @@ describe("cloud sources", () => {
     } as Env & { OCTOPUS_ACCOUNT: string });
 
     expect(result.source).toBe("octopus");
-    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(2);
+    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(3);
+    expect(readingRanges).toContainEqual({
+      fromDatetime: "2025-07-06T15:00:00.000Z",
+      toDatetime: "2025-07-13T15:00:00.000Z",
+    });
   });
 
   it("preserves Stationhead monitor thumbnails as Spotify artwork", async () => {
