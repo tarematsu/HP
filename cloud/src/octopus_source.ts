@@ -198,6 +198,22 @@ async function fetchOctopusReadings(
   return results.flat();
 }
 
+async function fetchRequiredAndComparisonReadings(
+  accountNumber: string,
+  requiredRanges: Array<{ from: Date; to: Date }>,
+  comparisonRange: { from: Date; to: Date },
+  token: string,
+): Promise<OctopusReading[]> {
+  const required = await fetchOctopusReadings(accountNumber, requiredRanges, token);
+  try {
+    return [...required, ...await fetchOctopusRangeReadings(accountNumber, comparisonRange, token)];
+  } catch (error) {
+    if (isAuthorizationError(error)) throw error;
+    console.warn("Octopus prior-year comparison is unavailable", error instanceof Error ? error.message : String(error));
+    return required;
+  }
+}
+
 export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const legacyEnv = env as Env & { OCTOPUS_ACCOUNT?: string };
   const accountNumber = (env.OCTOPUS_ACCOUNT_NUMBER || legacyEnv.OCTOPUS_ACCOUNT || "").trim();
@@ -209,20 +225,23 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const previousStart = jstBoundary(jst.getUTCFullYear(), billingMonth - 1, 2);
   const nextStart = jstBoundary(jst.getUTCFullYear(), billingMonth + 1, 2);
   const comparison = alignedWeekComparison(now.getTime());
-  const ranges = [
+  const requiredRanges = [
     { from: previousStart, to: currentStart },
     { from: currentStart, to: now },
-    { from: comparison.previousYearWeekStart, to: comparison.previousYearWeekEnd },
   ];
+  const comparisonRange = {
+    from: comparison.previousYearWeekStart,
+    to: comparison.previousYearWeekEnd,
+  };
   let token = await authenticateOctopus(env);
   let readings: OctopusReading[];
   try {
-    readings = await fetchOctopusReadings(accountNumber, ranges, token);
+    readings = await fetchRequiredAndComparisonReadings(accountNumber, requiredRanges, comparisonRange, token);
   } catch (error) {
     if (!isAuthorizationError(error)) throw error;
     octopusToken = null;
     token = await authenticateOctopus(env, true);
-    readings = await fetchOctopusReadings(accountNumber, ranges, token);
+    readings = await fetchRequiredAndComparisonReadings(accountNumber, requiredRanges, comparisonRange, token);
   }
   const seen = new Set<string>();
   const daily: Record<string, number> = {};
