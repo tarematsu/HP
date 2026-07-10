@@ -76,7 +76,21 @@ export async function mergeEnvironmentRows(
   now: number,
 ): Promise<void> {
   const cutoff = now - ENVIRONMENT_HISTORY_MS;
-  const rows = returnedRows.filter(row => Number(row.t) >= cutoff);
+  // Re-read the durable aggregate table rather than trusting only rows returned
+  // by the current request. A previous multi-chunk upload may have committed
+  // some chunks before a later chunk failed; the retry correctly skips those
+  // sequences, so they would otherwise never reach the dashboard snapshot.
+  const stored = await env.DB.prepare(
+    `SELECT bucket_at AS t,
+       CASE WHEN co2_count>0 THEN co2_sum/co2_count ELSE NULL END AS co2,
+       CASE WHEN temperature_count>0 THEN temperature_sum/temperature_count ELSE NULL END AS temperature,
+       CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity
+       FROM environment_buckets
+      WHERE device_id=?1 AND bucket_at>=?2
+      ORDER BY bucket_at`,
+  ).bind(fallbackDeviceId, cutoff).all<EnvironmentHistoryRow>();
+  const rows = (stored.results?.length ? stored.results : returnedRows)
+    .filter(row => Number(row.t) >= cutoff);
   if (!rows.length) return;
 
   const previous = await readState(env, "environment");
