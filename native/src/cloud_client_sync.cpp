@@ -8,6 +8,70 @@
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
+namespace {
+constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
+
+int64_t HealthNumber(const JsonObject& root, const wchar_t* name) {
+  try {
+    const double value = root.GetNamedNumber(name, -1);
+    return std::isfinite(value) && value >= 0 ? static_cast<int64_t>(value) : -1;
+  } catch (...) {
+    return -1;
+  }
+}
+
+std::wstring HealthTimeText(int64_t timestampMs) {
+  if (timestampMs < 0) return L"--:--";
+  const std::time_t seconds = static_cast<std::time_t>(timestampMs / 1000);
+  std::tm local{};
+  if (localtime_s(&local, &seconds) != 0) return L"--:--";
+  wchar_t text[16]{};
+  swprintf_s(text, L"%02d:%02d", local.tm_hour, local.tm_min);
+  return text;
+}
+
+std::wstring StationheadHealthSummary(const JsonObject& root) {
+  const bool configured = root.GetNamedBoolean(L"configured", false);
+  if (!configured) return L"Stationhead収集: 未設定";
+
+  const bool reachable = root.GetNamedBoolean(L"reachable", false);
+  const bool healthy = root.GetNamedBoolean(L"healthy", false);
+  const int64_t lastSuccessAt = HealthNumber(root, L"lastSuccessAt");
+  const std::wstring lastSuccess = HealthTimeText(lastSuccessAt);
+  if (!reachable) return L"Stationhead収集: 状態取得失敗";
+
+  std::wstring result = healthy
+      ? L"Stationhead収集: 稼働中"
+      : L"Stationhead収集: 停止";
+  result += L"  最終成功 " + lastSuccess;
+
+  if (lastSuccessAt >= 0) {
+    const int64_t ageMinutes = std::max<int64_t>(0, (UnixMillis() - lastSuccessAt) / 60'000);
+    if (ageMinutes < 24 * 60) result += L" (" + std::to_wstring(ageMinutes) + L"分前)";
+  }
+  return result;
+}
+
+std::wstring ReadStationheadHealth(CloudClient& client, const std::wstring& token) {
+  try {
+    const HttpResponse response = client.Request(L"GET", L"/v1/stationhead-health", token);
+    if (response.status != 200) {
+      return L"Stationhead収集: 状態取得失敗 (HTTP " + std::to_wstring(response.status) + L")";
+    }
+    const std::string body(response.body.begin(), response.body.end());
+    return StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(body)));
+  } catch (const std::exception&) {
+    return L"Stationhead収集: 状態取得失敗";
+  } catch (...) {
+    return L"Stationhead収集: 状態取得失敗";
+  }
+}
+}  // namespace
+
+std::wstring CloudClient::StationheadHealthText() const {
+  std::lock_guard lock(stateMutex_);
+  return stationheadHealthText_;
+}
 
 void CloudClient::ApplyPresenceFallback() {
   if (presenceFallbackActive_) return;
@@ -199,12 +263,18 @@ void CloudClient::Synchronize() {
     cacheMetadataDirty_ = true;
   }
   if (cacheMetadataDirty_) SaveCacheMetadata();
-  failures_ = 0;
+
+  const std::wstring nextHealthText = ReadStationheadHealth(*this, deviceToken_);
+  bool healthChanged = false;
   {
     std::lock_guard lock(stateMutex_);
+    healthChanged = stationheadHealthText_ != nextHealthText;
+    stationheadHealthText_ = nextHealthText;
     lastSuccess_ = IsoLocalNow();
     workerVersion_ = root.GetNamedString(L"workerVersion", L"").c_str();
   }
+  if (healthChanged) PostMessageW(window_, kStationheadHealthUpdatedMessage, 0, 0);
+  failures_ = 0;
 }
 
 }  // namespace hp
