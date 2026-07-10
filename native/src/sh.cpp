@@ -8,6 +8,10 @@ namespace {
 constexpr int64_t kPrimaryNoAudioFallbackMs = 360'000;
 constexpr int64_t kPrimaryFallbackMonitorGraceMs = 60'000;
 
+bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
+  return alive && alive->load(std::memory_order_acquire);
+}
+
 std::wstring HResultHex(HRESULT hr) {
   std::wostringstream output;
   output << L"0x" << std::hex << std::setw(8) << std::setfill(L'0')
@@ -34,6 +38,7 @@ void StationheadPlayer::Start() {
 
 void StationheadPlayer::Stop() {
   shuttingDown_ = true;
+  createCallbackAlive_->store(false, std::memory_order_release);
   CloseAuthWebView();
   CloseWebView();
   if (authHostWindow_ && IsWindow(authHostWindow_)) DestroyWindow(authHostWindow_);
@@ -140,8 +145,12 @@ void StationheadPlayer::Create() {
     ScheduleRecreate(L"main window unavailable");
     return;
   }
+  createCallbackAlive_->store(false, std::memory_order_release);
+  createCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
+  const auto alive = createCallbackAlive_;
   SharedWebViewEnvironment::Instance().Acquire(
-      userDataFolder_, [this](HRESULT result, ICoreWebView2Environment* environment) {
+      userDataFolder_, [this, alive](HRESULT result, ICoreWebView2Environment* environment) {
+        if (!CallbackAlive(alive)) return;
         if (FAILED(result) || !environment || shuttingDown_) {
           creating_ = false;
           if (!shuttingDown_) {
@@ -152,8 +161,12 @@ void StationheadPlayer::Create() {
         environment_ = environment;
         const HRESULT started = environment_->CreateCoreWebView2Controller(
             hostWindow_, Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                             [this](HRESULT controllerResult,
+                             [this, alive](HRESULT controllerResult,
                                     ICoreWebView2Controller* controller) -> HRESULT {
+                               if (!CallbackAlive(alive)) {
+                                 if (controller) controller->Close();
+                                 return S_OK;
+                               }
                                creating_ = false;
                                if (FAILED(controllerResult) || !controller || shuttingDown_) {
                                  if (controller) controller->Close();
@@ -535,6 +548,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
 }
 
 void StationheadPlayer::CloseWebView() {
+  createCallbackAlive_->store(false, std::memory_order_release);
   if (webview_) {
     if (audioPlayingChangedToken_.value) {
       ComPtr<ICoreWebView2_8> audioView;
@@ -613,8 +627,18 @@ void StationheadPlayer::Tick(int64_t nowMs) {
 
   const int64_t reloadInterval = StationheadReloadIntervalMs(config_.reloadIntervalMinutes);
   if (reloadInterval > 0 && lastReloadAt_ > 0 && nowMs - lastReloadAt_ >= reloadInterval) {
-    NavigatePrimaryUrl(nowMs, L"scheduled reload reset");
-    PostChange(StationheadChangeScheduledReload);
+    const bool secondaryConfigured = config_.secondaryEnabled && !config_.secondaryUrl.empty();
+    if (secondaryConfigured &&
+        (!window_ || !IsWindow(window_) ||
+         SendMessageW(window_, WM_HP_PRIMARY_RELOAD_READY, 0, 0) == 0)) {
+      {
+        std::lock_guard lock(mutex_);
+        status_.detail = L"maintenance reload waiting for secondary audio";
+      }
+      nextTickAt_ = nowMs + 30'000;
+      return;
+    }
+    NavigatePrimaryUrl(nowMs, L"50-minute scheduled reload reset");
     nextTickAt_ = nowMs + 1'000;
     return;
   }
