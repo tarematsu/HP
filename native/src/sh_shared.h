@@ -98,6 +98,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
       }
       attempts += 1;
       retryAt = Date.now() + 1500;
+      try { window.chrome?.webview?.postMessage('{{PREFIX}}-start-attempted'); } catch (_) {}
       try { target.click?.(); } catch (_) {}
       if (attempts < 2) nativeTimeout(schedule, 1500);
     } else if (!start && login && !loginReported && Date.now() - observedAt >= 15000) {

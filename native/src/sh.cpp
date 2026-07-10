@@ -6,6 +6,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kPrimaryNoAudioFallbackMs = 360'000;
+constexpr int64_t kPrimaryFallbackMonitorGraceMs = 60'000;
 
 std::wstring HResultHex(HRESULT hr) {
   std::wostringstream output;
@@ -55,6 +56,7 @@ StationheadStatus StationheadPlayer::Status() const {
 void StationheadPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
   nextTickAt_ = 0;
+  fallbackMonitorAfterAt_ = 0;
 }
 
 void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
@@ -64,11 +66,13 @@ void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& re
 void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                                                const std::wstring& reason,
                                                bool fallbackActive) {
+  (void)nowMs;
   if (!webview_ || url.empty()) return;
   SetStartupBounds();
   ResetNavigationRouteState();
   usedFallback_ = fallbackActive;
-  noAudioSinceAt_ = fallbackActive ? 0 : nowMs;
+  noAudioSinceAt_ = 0;
+  fallbackMonitorAfterAt_ = 0;
   resourceBlockingArmed_ = false;
   loginSessionActive_ = false;
   {
@@ -260,6 +264,7 @@ void StationheadPlayer::ConfigureWebView() {
                 audioPlaying_ = true;
                 resourceBlockingArmed_ = true;
                 noAudioSinceAt_ = 0;
+                fallbackMonitorAfterAt_ = 0;
                 loginSessionActive_ = false;
                 {
                   std::lock_guard lock(mutex_);
@@ -278,7 +283,10 @@ void StationheadPlayer::ConfigureWebView() {
               }
               if (message == L"stationhead-stopped") {
                 audioPlaying_ = false;
-                if (!usedFallback_ && noAudioSinceAt_ == 0) noAudioSinceAt_ = now;
+                if (!usedFallback_ && fallbackMonitorAfterAt_ > 0 &&
+                    now >= fallbackMonitorAfterAt_ && noAudioSinceAt_ == 0) {
+                  noAudioSinceAt_ = now;
+                }
                 {
                   std::lock_guard lock(mutex_);
                   status_.audioPlaying = false;
@@ -289,6 +297,14 @@ void StationheadPlayer::ConfigureWebView() {
                 }
                 nextTickAt_ = 0;
                 PostChange();
+                return S_OK;
+              }
+              if (message == L"stationhead-start-attempted") {
+                if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed)) {
+                  fallbackMonitorAfterAt_ = now + kPrimaryFallbackMonitorGraceMs;
+                  noAudioSinceAt_ = 0;
+                  nextTickAt_ = 0;
+                }
                 return S_OK;
               }
               if (message == L"stationhead-login-required") {
@@ -355,9 +371,6 @@ void StationheadPlayer::ConfigureWebView() {
             }
             if (success) {
               lastReloadAt_ = now;
-              if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ == 0) {
-                noAudioSinceAt_ = now;
-              }
               // A navigation replaced the document, so the injected volume
               // script state is gone; force ApplyVolume to re-run it.
               appliedVolumePercent_.store(-1, std::memory_order_relaxed);
@@ -565,6 +578,14 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (reloadInterval > 0 && lastReloadAt_ > 0) consider(lastReloadAt_ + reloadInterval);
+  if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) &&
+      fallbackMonitorAfterAt_ > 0) {
+    if (nowMs >= fallbackMonitorAfterAt_) {
+      if (noAudioSinceAt_ == 0) noAudioSinceAt_ = nowMs;
+    } else {
+      consider(fallbackMonitorAfterAt_);
+    }
+  }
   if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0) {
     consider(noAudioSinceAt_ + kPrimaryNoAudioFallbackMs);
   }

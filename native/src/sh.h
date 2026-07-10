@@ -129,6 +129,7 @@ class StationheadPlayer {
   int64_t createdAt_ = 0;
   int64_t lastReloadAt_ = 0;
   int64_t noAudioSinceAt_ = 0;
+  int64_t fallbackMonitorAfterAt_ = 0;
   int64_t nextTickAt_ = 0;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
