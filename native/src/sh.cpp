@@ -59,6 +59,47 @@ void StationheadPlayer::ResetNavigationRouteState() {
   fallbackMonitorAfterAt_ = 0;
 }
 
+void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
+                                                const std::wstring& source) {
+  const bool changed =
+      audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
+  if (playing) {
+    resourceBlockingArmed_ = true;
+    noAudioSinceAt_ = 0;
+    fallbackMonitorAfterAt_ = 0;
+    loginSessionActive_ = false;
+    {
+      std::lock_guard lock(mutex_);
+      status_.audioPlaying = true;
+      status_.playing = true;
+      status_.loginRequired = false;
+      status_.navigating = false;
+      status_.detail = (usedFallback_ ? L"fallback audio detected" : L"audio detected") +
+                       (source.empty() ? L"" : L" (" + source + L")");
+    }
+    if (!startupPreviewActive_) SetVisible(false);
+    if (changed) log_.Info(L"Stationhead audio playing (" + source + L")");
+    PostChange(StationheadChangeReturnMain);
+    return;
+  }
+
+  if (!usedFallback_ && fallbackMonitorAfterAt_ > 0 &&
+      nowMs >= fallbackMonitorAfterAt_ && noAudioSinceAt_ == 0) {
+    noAudioSinceAt_ = nowMs;
+  }
+  {
+    std::lock_guard lock(mutex_);
+    status_.audioPlaying = false;
+    status_.playing = false;
+    status_.detail = usedFallback_
+        ? L"fallback audio stopped"
+        : L"primary audio stopped; waiting before fallback";
+  }
+  nextTickAt_ = 0;
+  if (changed) log_.Warn(L"Stationhead audio stopped (" + source + L")");
+  PostChange();
+}
+
 void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
   NavigateStationheadUrl(nowMs, config_.url, reason, false);
 }
@@ -175,6 +216,39 @@ void StationheadPlayer::ConfigureWebView() {
   }
   ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
                                    resourceBlockingArmed_, resourceRequestedToken_);
+
+  // WebView2 exposes the actual document audio state, including playback that
+  // the top-level DOM cannot see (for example iframe/internal media pipelines).
+  // Prefer it over the injected page heuristic so audible playback can never be
+  // mistaken for six minutes of silence and redirected to the fallback station.
+  ComPtr<ICoreWebView2_8> audioView;
+  if (SUCCEEDED(webview_.As(&audioView)) && audioView) {
+    const HRESULT audioHandlerResult = audioView->add_IsDocumentPlayingAudioChanged(
+        Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
+            [this](ICoreWebView2*, IUnknown*) -> HRESULT {
+              if (shuttingDown_ || !webview_) return S_OK;
+              ComPtr<ICoreWebView2_8> currentAudioView;
+              if (FAILED(webview_.As(&currentAudioView)) || !currentAudioView) return S_OK;
+              BOOL playing = FALSE;
+              if (SUCCEEDED(currentAudioView->get_IsDocumentPlayingAudio(&playing))) {
+                ApplyAudioPlaybackState(playing != FALSE, UnixMillis(), L"WebView2");
+              }
+              return S_OK;
+            }).Get(),
+        &audioPlayingChangedToken_);
+    if (SUCCEEDED(audioHandlerResult)) {
+      nativeAudioTracking_ = true;
+      BOOL playing = FALSE;
+      if (SUCCEEDED(audioView->get_IsDocumentPlayingAudio(&playing))) {
+        ApplyAudioPlaybackState(playing != FALSE, UnixMillis(), L"WebView2 initial");
+      }
+    } else {
+      audioPlayingChangedToken_ = {};
+      nativeAudioTracking_ = false;
+      log_.Warn(L"WebView2 native audio tracking unavailable " + HResultHex(audioHandlerResult));
+    }
+  }
+
   ComPtr<ICoreWebView2_19> v19;
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
@@ -261,42 +335,15 @@ void StationheadPlayer::ConfigureWebView() {
               CoTaskMemFree(rawText);
               const int64_t now = UnixMillis();
               if (message == L"stationhead-playing") {
-                audioPlaying_ = true;
-                resourceBlockingArmed_ = true;
-                noAudioSinceAt_ = 0;
-                fallbackMonitorAfterAt_ = 0;
-                loginSessionActive_ = false;
-                {
-                  std::lock_guard lock(mutex_);
-                  status_.audioPlaying = true;
-                  status_.playing = true;
-                  status_.loginRequired = false;
-                  status_.navigating = false;
-                  status_.detail = usedFallback_ ? L"fallback audio detected" : L"audio detected";
+                if (!nativeAudioTracking_) {
+                  ApplyAudioPlaybackState(true, now, L"page heuristic");
                 }
-                // Re-assert the z-order exactly once per confirmed playback
-                // (each scheduled reload), instead of every tick. The startup
-                // split preview stays up until App hands over to the dashboard.
-                if (!startupPreviewActive_) SetVisible(false);
-                PostChange(StationheadChangeReturnMain);
                 return S_OK;
               }
               if (message == L"stationhead-stopped") {
-                audioPlaying_ = false;
-                if (!usedFallback_ && fallbackMonitorAfterAt_ > 0 &&
-                    now >= fallbackMonitorAfterAt_ && noAudioSinceAt_ == 0) {
-                  noAudioSinceAt_ = now;
+                if (!nativeAudioTracking_) {
+                  ApplyAudioPlaybackState(false, now, L"page heuristic");
                 }
-                {
-                  std::lock_guard lock(mutex_);
-                  status_.audioPlaying = false;
-                  status_.playing = false;
-                  status_.detail = usedFallback_
-                      ? L"fallback audio stopped"
-                      : L"primary audio stopped; waiting before fallback";
-                }
-                nextTickAt_ = 0;
-                PostChange();
                 return S_OK;
               }
               if (message == L"stationhead-start-attempted") {
@@ -407,7 +454,7 @@ void StationheadPlayer::ConfigureWebView() {
     status_.spotifyConfigured = spotifyConfigured;
   }
   createdAt_ = lastReloadAt_ = UnixMillis();
-  noAudioSinceAt_ = createdAt_;
+  noAudioSinceAt_ = 0;
   usedFallback_ = false;
   resourceBlockingArmed_ = false;
 }
@@ -489,6 +536,12 @@ void StationheadPlayer::ConfigureAuthWebView() {
 
 void StationheadPlayer::CloseWebView() {
   if (webview_) {
+    if (audioPlayingChangedToken_.value) {
+      ComPtr<ICoreWebView2_8> audioView;
+      if (SUCCEEDED(webview_.As(&audioView)) && audioView) {
+        audioView->remove_IsDocumentPlayingAudioChanged(audioPlayingChangedToken_);
+      }
+    }
     if (navigationToken_.value) webview_->remove_NavigationCompleted(navigationToken_);
     if (newWindowToken_.value) webview_->remove_NewWindowRequested(newWindowToken_);
     if (webMessageToken_.value) webview_->remove_WebMessageReceived(webMessageToken_);
@@ -500,6 +553,8 @@ void StationheadPlayer::CloseWebView() {
   webMessageToken_ = {};
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
+  audioPlayingChangedToken_ = {};
+  nativeAudioTracking_ = false;
   resourceBlockingArmed_ = false;
   if (controller_) controller_->Close();
   webview_.Reset();
@@ -511,6 +566,7 @@ void StationheadPlayer::CloseWebView() {
   spotifyAuthorization_ = false;
   loginSessionActive_ = false;
   noAudioSinceAt_ = 0;
+  fallbackMonitorAfterAt_ = 0;
   std::lock_guard lock(mutex_);
   status_.created = false;
 }
@@ -565,6 +621,9 @@ void StationheadPlayer::Tick(int64_t nowMs) {
 
   if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0 &&
       nowMs - noAudioSinceAt_ >= kPrimaryNoAudioFallbackMs && !config_.fallbackUrl.empty()) {
+    log_.Warn(L"Stationhead primary had no " +
+              std::wstring(nativeAudioTracking_ ? L"WebView2 audio" : L"detected audio") +
+              L" for 360s; switching to fallback");
     NavigateStationheadUrl(nowMs, config_.fallbackUrl,
                            L"primary had no audio for 360s; switching to fallback", true);
     PostChange();
