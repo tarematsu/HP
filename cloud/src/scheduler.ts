@@ -22,7 +22,7 @@ const SUCCESS_RUN_LOG_INTERVAL_SECONDS = 6 * 60 * 60;
 const DAY_MS = 86_400_000;
 const DAY_SECONDS = 86_400;
 const POWER_RETENTION_MS = 90 * DAY_MS;
-const REFRESHABLE_JOBS = ["weather", "news", "switchbot", "octopus", "stationhead", "radar"] as const;
+const REFRESHABLE_JOBS = ["weather", "news", "switchbot", "octopus", "stationhead", "radar", "update_check"] as const;
 const REFRESHABLE_JOB_SET = new Set<string>(REFRESHABLE_JOBS);
 
 export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobRow[]> {

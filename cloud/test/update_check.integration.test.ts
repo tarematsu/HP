@@ -51,7 +51,7 @@ describe("cloud-driven update check", () => {
   it("seeds the update_check job via migrations", async () => {
     const job = await env.DB.prepare("SELECT interval_seconds FROM jobs WHERE name='update_check'")
       .first<{ interval_seconds: number }>();
-    expect(job?.interval_seconds).toBe(900);
+    expect(job?.interval_seconds).toBe(300);
   });
 
   it("records a baseline first, then queues one command per device per release", async () => {

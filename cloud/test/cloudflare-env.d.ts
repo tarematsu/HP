@@ -4,6 +4,7 @@ declare global {
   namespace Cloudflare {
     interface Env {
       DB: D1Database;
+      UPDATE_BUCKET: R2Bucket;
       CITY_NAME: string;
       WEATHERNEWS_URL: string;
       STATIONHEAD_MONITOR_URL: string;

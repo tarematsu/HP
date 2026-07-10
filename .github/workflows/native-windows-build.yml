@@ -227,6 +227,27 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Trigger immediate update rollout
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          HOMEPANEL_WORKER_URL: ${{ vars.HOMEPANEL_WORKER_URL }}
+          HOMEPANEL_REFRESH_TOKEN: ${{ secrets.HOMEPANEL_REFRESH_TOKEN }}
+        run: |
+          if (-not $env:HOMEPANEL_WORKER_URL -or -not $env:HOMEPANEL_REFRESH_TOKEN) {
+            Write-Host "HOMEPANEL_WORKER_URL / HOMEPANEL_REFRESH_TOKEN not configured; devices will pick the release up via the 5-minute update_check poll."
+            exit 0
+          }
+          try {
+            $url = $env:HOMEPANEL_WORKER_URL.TrimEnd('/')
+            Invoke-RestMethod -Method Post -Uri "$url/v1/refresh" `
+              -Headers @{ Authorization = "Bearer $($env:HOMEPANEL_REFRESH_TOKEN)" } `
+              -ContentType "application/json" -Body '{"sources":["update_check"]}' | Out-Null
+            Write-Host "update_check refresh queued; devices will be commanded on their next sync."
+          } catch {
+            Write-Warning "Immediate rollout trigger failed ($_); the 5-minute update_check poll will still roll the release out."
+          }
+
       - name: Upload native release package
         if: success()
         uses: actions/upload-artifact@v4
