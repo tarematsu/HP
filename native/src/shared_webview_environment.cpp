@@ -14,6 +14,10 @@ namespace {
 // CDM can be installed/kept current.
 constexpr wchar_t kWebView2Arguments[] =
     L"--disable-domain-reliability "
+    L"--disable-breakpad "
+    L"--disable-extensions "
+    L"--disable-sync "
+    L"--metrics-recording-only "
     L"--autoplay-policy=no-user-gesture-required "
     // Stationhead windows are kept behind the dashboard (occluded); keep their
     // renderer running so auto-play and audio continue while not on screen.

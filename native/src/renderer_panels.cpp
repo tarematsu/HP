@@ -6,6 +6,7 @@ namespace {
 constexpr int kNativeTopId = 101;
 constexpr int kNativeBottomId = 102;
 constexpr int kNativeRadarId = 108;
+constexpr size_t kNativeBitmapCacheLimit = 32;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
@@ -1146,7 +1147,7 @@ HBITMAP Renderer::NativeWeatherIconBitmap(const std::wstring& icon, bool night, 
 // Inserts a decoded (or failed: nullptr) bitmap into the shared LRU cache,
 // evicting the least recently used entry once the cache is full.
 HBITMAP Renderer::CacheNativeBitmap(const std::wstring& key, HBITMAP bitmap) {
-  if (nativeArtworkBitmaps_.size() >= 64) {
+  if (nativeArtworkBitmaps_.size() >= kNativeBitmapCacheLimit) {
     auto oldest = nativeArtworkBitmaps_.begin();
     for (auto item = nativeArtworkBitmaps_.begin(); item != nativeArtworkBitmaps_.end(); ++item) {
       if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
