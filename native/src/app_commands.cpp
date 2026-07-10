@@ -6,9 +6,38 @@
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
+namespace {
+using PendingCommandAcks = std::map<int64_t, bool>;
+
+PendingCommandAcks LoadPendingCommandAcks(const fs::path& path) {
+  PendingCommandAcks pending;
+  std::ifstream input(path, std::ios::binary);
+  int64_t id = 0;
+  int success = 0;
+  while (input >> id >> success) {
+    if (id > 0) pending[id] = success != 0;
+  }
+  return pending;
+}
+
+bool SavePendingCommandAcks(const fs::path& path, const PendingCommandAcks& pending) {
+  if (pending.empty()) {
+    std::error_code ignored;
+    fs::remove(path, ignored);
+    return true;
+  }
+  std::ostringstream output;
+  for (const auto& [id, success] : pending) {
+    output << id << ' ' << (success ? 1 : 0) << '\n';
+  }
+  return AtomicWriteText(path, output.str());
+}
+}  // namespace
 
 void App::ProcessRemoteCommands() {
   const fs::path path = dataDir_ / L"commands.json";
+  const fs::path pendingAckPath = dataDir_ / L"command-acks.pending";
+  PendingCommandAcks pendingAcks = LoadPendingCommandAcks(pendingAckPath);
   try {
     std::ifstream input(path, std::ios::binary);
     std::string text((std::istreambuf_iterator<char>(input)), {});
@@ -20,6 +49,17 @@ void App::ProcessRemoteCommands() {
       const int64_t id = static_cast<int64_t>(item.GetNamedNumber(L"id", 0));
       const std::wstring command = item.GetNamedString(L"command", L"").c_str();
       if (id <= 0 || command.empty()) continue;
+
+      if (const auto pending = pendingAcks.find(id); pending != pendingAcks.end()) {
+        if (cloud_->AcknowledgeCommand(id, pending->second, L"completed earlier; acknowledgement retry")) {
+          pendingAcks.erase(pending);
+          if (!SavePendingCommandAcks(pendingAckPath, pendingAcks)) {
+            logger_->Warn(L"Failed to persist command acknowledgement retry state");
+          }
+        }
+        continue;
+      }
+
       bool success = true;
       std::wstring result = L"completed";
       if (command == L"restart_app") {
@@ -45,7 +85,23 @@ void App::ProcessRemoteCommands() {
         success = false;
         result = L"unknown command";
       }
-      cloud_->AcknowledgeCommand(id, success, result);
+
+      // Record completion before acknowledging it. If the network fails after
+      // the action, redelivery retries only the ACK instead of repeating the
+      // action. The commands are idempotent, but users should not have to rely
+      // on that fact as a substitute for delivery semantics.
+      pendingAcks[id] = success;
+      if (!SavePendingCommandAcks(pendingAckPath, pendingAcks)) {
+        logger_->Warn(L"Failed to persist completed remote command " + std::to_wstring(id));
+      }
+      if (cloud_->AcknowledgeCommand(id, success, result)) {
+        pendingAcks.erase(id);
+        if (!SavePendingCommandAcks(pendingAckPath, pendingAcks)) {
+          logger_->Warn(L"Failed to clear completed remote command acknowledgement " + std::to_wstring(id));
+        }
+      } else {
+        logger_->Warn(L"Remote command acknowledgement deferred without re-execution: " + std::to_wstring(id));
+      }
     }
     std::error_code ignored;
     fs::remove(path, ignored);
