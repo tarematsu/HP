@@ -14,6 +14,7 @@ constexpr int kRestartExitCode = 42;
 constexpr uint32_t kFastTickMs = 1000;
 constexpr uint32_t kIdleTickMs = 5000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
+constexpr int64_t kDashboardStartupFallbackMs = 10'000;
 
 std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   DWORD handle = 0;
@@ -47,7 +48,13 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
 StationheadStatus BuildRenderStationheadState(const AppStationheadHandle& stationhead,
                                               const AppSecondaryStationheadHandle& secondary) {
   StationheadStatus state = stationhead.Status();
-  state.secondaryAudioMuted = static_cast<bool>(secondary) && secondary.AudioMuted();
+  if (secondary) {
+    const SecondaryStationheadStatus secondaryStatus = secondary.Status();
+    state.loginRequired = state.loginRequired || secondaryStatus.loginRequired;
+    state.secondaryAudioMuted = secondaryStatus.audioMuted;
+  } else {
+    state.secondaryAudioMuted = false;
+  }
   return state;
 }
 
@@ -223,27 +230,21 @@ void App::ClearStartupStationheadPreview() {
 
 void App::StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus) {
   const bool primaryAudioReady = stationheadStatus.audioPlaying;
-  // The split A/B startup preview stays full-size and in front (so both windows
-  // finish loading and the auto-play scan has real geometry) until playback is
-  // confirmed. Only then does the native dashboard take over and both
-  // Stationhead windows drop to the background. Read the secondary status once,
-  // and only while the dashboard has not started yet.
+  // Keep the split startup preview until at least one Stationhead window has
+  // confirmed audio. The dashboard can then start, while any still-pending
+  // Stationhead surface remains independently raised on its half of the screen.
   bool secondaryAudioReady = true;
-  bool secondaryLoginRequired = false;
   if (!rendererStarted_ && secondaryStationhead_) {
     const SecondaryStationheadStatus secondaryStatus = secondaryStationhead_->Status();
     secondaryAudioReady = secondaryStatus.playing;
-    secondaryLoginRequired = secondaryStatus.loginRequired;
   }
-  const bool dashboardAudioReady = primaryAudioReady && secondaryAudioReady;
-  // A login prompt on either window can never auto-confirm audio, so let it hand
-  // the screen to the dashboard immediately (the prompt itself stays in front).
-  const bool loginRequired = stationheadStatus.loginRequired || secondaryLoginRequired;
-  const bool startupDeadlineReached = now - startupAt_ >= 30'000;
+  const bool dashboardAudioReady = secondaryStationhead_
+      ? (primaryAudioReady || secondaryAudioReady)
+      : primaryAudioReady;
+  const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
   if (primaryAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ &&
-      (dashboardAudioReady || startupDeadlineReached || loginRequired)) {
+  if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
     renderer_->Initialize();
     rendererStarted_ = true;
     ClearStartupStationheadPreview();
@@ -252,10 +253,8 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     renderer_->TickNativePanels(now);
     InvalidateAll();
     logger_->Info(dashboardAudioReady
-        ? L"Native dashboard started after Stationhead A/B audio confirmation"
-        : (loginRequired
-            ? L"Native dashboard started because Stationhead login is required"
-            : L"Native dashboard started after startup fallback deadline"));
+        ? L"Native dashboard started after at least one Stationhead audio confirmation"
+        : L"Native dashboard started after startup fallback deadline");
   }
 
   if (!cloudStarted_ && (primaryAudioReady || startupDeadlineReached)) {
@@ -295,12 +294,15 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !stationhead_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
-  stationhead_->Tick(now);
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
+  const SecondaryStationheadStatus secondaryStatus =
+      secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
+  stationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
   StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
   UpdateRenderStationheadState(nextStationheadState);
   StartDeferredServices(now, stationheadStatus);
+  ApplyStationheadWindowPlacement(stationheadStatus, secondaryStatus);
 
   if (cloudStarted_ &&
       now - lastTelemetryAt_ >= static_cast<int64_t>(config_.telemetryMinutes) * 60'000) {
@@ -374,20 +376,21 @@ void App::LayoutWorkspace() {
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
   const RECT fullBounds{client.left, client.top, client.left + clientWidth, client.top + clientHeight};
-  stationhead_->SetBounds(fullBounds);
-  if (secondaryStationhead_) {
-    secondaryStationhead_->SetBounds(fullBounds);
-  }
-
 
   switch (selectedTab_) {
     case WorkspaceTab::Main:
-      stationhead_->SelectTab(StationheadTabKind::None);
+      MarkStationheadPlacementDirty();
+      ApplyStationheadWindowPlacement(stationhead_->Status(),
+          secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{});
       break;
     case WorkspaceTab::Stationhead:
+      stationhead_->SetBounds(fullBounds);
+      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
       stationhead_->SelectTab(StationheadTabKind::Stationhead);
       break;
     case WorkspaceTab::Auth:
+      stationhead_->SetBounds(fullBounds);
+      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
       if (stationhead_->HasAuthTab()) {
         stationhead_->SelectTab(StationheadTabKind::Auth);
       } else {
@@ -399,6 +402,40 @@ void App::LayoutWorkspace() {
   renderState_.workspaceTab = static_cast<int>(selectedTab_);
   MarkRenderStateDirty();
   InvalidateAll();
+}
+
+void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
+                                          const SecondaryStationheadStatus& secondaryStatus) {
+  if (!rendererStarted_ || !stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
+  RECT bounds = workspaceBounds_;
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
+
+  const bool primaryPending = !primaryStatus.audioPlaying;
+  const bool secondaryPending = secondaryStationhead_ && !secondaryStatus.playing;
+  // This runs on every tick. Re-apply the placement only when the pending
+  // state or geometry changed, or a player posted a state change (which can
+  // reposition its own windows, e.g. a reload's SetStartupBounds) - steady
+  // ticks must not re-run SetWindowPos/SelectTab every second.
+  if (!stationheadPlacementDirty_ && primaryPending == placedPrimaryPending_ &&
+      secondaryPending == placedSecondaryPending_ && EqualRect(&bounds, &placedBounds_)) {
+    return;
+  }
+  stationheadPlacementDirty_ = false;
+  placedPrimaryPending_ = primaryPending;
+  placedSecondaryPending_ = secondaryPending;
+  placedBounds_ = bounds;
+
+  const LONG mid = bounds.left + std::max<LONG>(1, bounds.right - bounds.left) / 2;
+  RECT left{bounds.left, bounds.top, mid, bounds.bottom};
+  RECT right{mid, bounds.top, bounds.right, bounds.bottom};
+  if (left.right <= left.left) left.right = left.left + 1;
+  if (right.right <= right.left) right.right = right.left + 1;
+
+  stationhead_->SetBounds(primaryPending ? left : bounds);
+  stationhead_->SelectTab(StationheadTabKind::None);
+  if (secondaryStationhead_) {
+    secondaryStationhead_->SetBounds(secondaryPending ? right : bounds);
+  }
 }
 
 void App::PublishRenderState() {

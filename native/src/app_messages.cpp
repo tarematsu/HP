@@ -105,6 +105,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         ApplyScheduledStationheadAudioProfile(!scheduledPrimaryAudioAudible_);
       }
       if (layoutChanged) LayoutWorkspace();
+      MarkStationheadPlacementDirty();
       const StationheadStatus nextStationheadState =
           BuildRenderStationheadState(stationhead_, secondaryStationhead_);
       UpdateRenderStationheadState(nextStationheadState);

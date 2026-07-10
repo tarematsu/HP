@@ -58,10 +58,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     } else {
       SetWindowRgn(hostWindow, nullptr, FALSE);
       ShowWindow(hostWindow, SW_SHOWNOACTIVATE);
-      // Normal playback/content remains behind the dashboard. Startup preview is
-      // the only content-host case that is deliberately raised, and App clears it
-      // before the dashboard is shown.
-      SetWindowPos(hostWindow, previewVisible ? HWND_TOP : HWND_BOTTOM,
+      // Background playback remains behind the dashboard. Login/setup or an
+      // explicitly selected Stationhead surface must be raised immediately,
+      // including secondary-window login prompts raised from WebView callbacks.
+      SetWindowPos(hostWindow, (previewVisible || contentVisible) ? HWND_TOP : HWND_BOTTOM,
                    bounds.left, bounds.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
@@ -183,7 +183,7 @@ void StationheadPlayer::SetVisible(bool visible) {
 void StationheadPlayer::LayoutControllers() {
   if (!EnsureHostWindow()) return;
   const bool preview = startupPreviewActive_;
-  const bool showAuth = !preview && selectedTab_ == StationheadTabKind::Auth && authController_;
+  const bool showAuth = !preview && selectedTab_ == StationheadTabKind::Auth;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(),
                               bounds_, viewVisible_, showAuth, preview);
   std::lock_guard lock(mutex_);
@@ -207,26 +207,32 @@ bool SecondaryStationheadPlayer::EnsureAuthHostWindow() {
 void SecondaryStationheadPlayer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
   startupPreviewActive_ = true;
   bounds_ = bounds;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::ClearStartupPreviewBounds() {
   if (!startupPreviewActive_) return;
   startupPreviewActive_ = false;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
   const bool wasInteractive = interactive_;
   const bool authWasVisible = authHostWindow_ && IsWindow(authHostWindow_) && IsWindowVisible(authHostWindow_);
   const bool preview = startupPreviewActive_;
-  const bool showAuth = !preview && interactive && spotifyAuthorization_ && authController_;
+  const bool showAuth = !preview && interactive && spotifyAuthorization_;
   EnsureHostWindow();
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(),
                               bounds_, interactive, showAuth, preview);
@@ -242,7 +248,9 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
 
 void SecondaryStationheadPlayer::ShowInteractive(bool interactive) {
   startupPreviewActive_ = false;
-  LayoutWindows(interactive || spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire));
+  LayoutWindows(interactive || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_acquire) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::SetStartupBounds() {

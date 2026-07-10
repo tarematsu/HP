@@ -433,7 +433,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
             spotifyAuthorization_ = false;
             authPendingUrl_.clear();
             SelectTab(StationheadTabKind::None);
-            PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);
+            PostChange(StationheadChangeReleaseAuth);
             return S_OK;
           }).Get(), &authCloseToken_);
   authWebview_->add_WebMessageReceived(
@@ -458,7 +458,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
                     : L"Spotify authentication failed or cancelled";
               }
               SelectTab(StationheadTabKind::None);
-              PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);
+              PostChange(StationheadChangeReleaseAuth);
             } catch (...) {
             }
             return S_OK;
@@ -467,7 +467,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
       Callback<ICoreWebView2ProcessFailedEventHandler>(
           [this](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs*) -> HRESULT {
             SelectTab(StationheadTabKind::None);
-            PostChange(StationheadChangeReturnMain);
+            PostChange();
             return S_OK;
           }).Get(), &authProcessFailedToken_);
   ApplyMute();
@@ -729,7 +729,10 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
 }
 
 bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_ || loginSessionActive_;
+  return selectedTab_ == StationheadTabKind::Auth ||
+         spotifyAuthorization_ ||
+         loginSessionActive_ ||
+         !audioPlaying_.load(std::memory_order_relaxed);
 }
 
 void StationheadPlayer::ScheduleRecreate(const std::wstring& reason) {

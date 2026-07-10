@@ -124,14 +124,14 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
               audioPlaying_ = true;
               resourceBlockingArmed_ = true;
               retryAt_ = 0;
-              loginRequired_.store(false, std::memory_order_release);
-              // Re-assert the z-order exactly once per confirmed playback
-              // (each scheduled reload), instead of every tick. The startup
-              // split preview stays up until App hands over to the dashboard.
-              if (!spotifyAuthorization_ && !startupPreviewActive_) ShowInteractive(false);
+              const bool wasLoginInteractive = loginRequired_.exchange(false, std::memory_order_acq_rel);
+              // Drop the surface behind the dashboard once per confirmed
+              // playback instead of every tick.
+              if ((wasLoginInteractive || interactive_) && !spotifyAuthorization_) ShowInteractive(false);
               SetStatus(L"audio detected");
             } else if (message == L"secondary-stopped") {
               audioPlaying_ = false;
+              if (!spotifyAuthorization_) ShowInteractive(true);
             } else if (message == L"secondary-login-required") {
               loginRequired_ = true;
               ShowInteractive(true);
