@@ -103,6 +103,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
   const outboxCount = Number.isFinite(rawOutbox) ? Math.max(0, Math.trunc(rawOutbox)) : 0;
   const stationheadOk = input.stationheadOk ? 1 : 0;
   const returnedRows = new Map<number, EnvironmentHistoryRow>();
+  let accepted = 0;
 
   for (let offset = 0; offset < processableSamples.length; offset += TELEMETRY_SAMPLES_PER_BATCH) {
     const chunk = processableSamples.slice(offset, offset + TELEMETRY_SAMPLES_PER_BATCH);
@@ -125,7 +126,10 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
     const bucketResults = await env.DB.batch(statements);
     for (let index = 0; index < bucketResults.length; index += 2) {
       const rows = (bucketResults[index]?.results ?? []) as EnvironmentHistoryRow[];
-      for (const row of rows) returnedRows.set(Number(row.t), row);
+      for (const row of rows) {
+        accepted += Number(row.applied_count ?? 0);
+        returnedRows.set(Number(row.t), row);
+      }
     }
   }
 
@@ -153,7 +157,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
   }
 
   const response: Record<string, unknown> = {
-    accepted: acknowledgedSamples.length,
+    accepted,
     acknowledgedSequences,
     nextSequence: Math.min(Number.MAX_SAFE_INTEGER, highestSequence + 1),
   };
