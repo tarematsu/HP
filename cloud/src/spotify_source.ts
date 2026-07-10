@@ -55,7 +55,7 @@ function finite(value: unknown, fallback = 0): number {
   return Number.isFinite(result) ? result : fallback;
 }
 
-function playbackFeedUrl(value: string): string {
+export function playbackFeedUrl(value: string): string {
   const url = new URL(value);
   if (url.pathname.endsWith("/api/dashboard")) {
     url.pathname =
@@ -63,7 +63,9 @@ function playbackFeedUrl(value: string): string {
   } else if (!url.pathname.endsWith("/api/playback")) {
     url.pathname = `${url.pathname.replace(/\/$/, "")}/api/playback`;
   }
-  url.search = "";
+  // Preserve query parameters. Some monitor deployments select the station or
+  // authentication context through the query string; dropping it silently
+  // changes which feed is read.
   url.hash = "";
   return url.toString();
 }
@@ -101,18 +103,22 @@ function monitorQueue(payload: MonitorPayload | null): QueueItem[] {
   });
 }
 
-function monitorCurrentIndex(payload: MonitorPayload | null): number {
+export function monitorCurrentIndex(payload: MonitorPayload | null): number {
   const queue = payload?.queue ?? [];
   if (!queue.length) return -1;
+
+  // An explicit current marker is more authoritative than queue_status, which
+  // is omitted by some monitor versions and can lag one response behind.
+  const explicit = queue.findIndex(track => track.is_current === true);
+  if (explicit >= 0) return explicit;
+
   const generatedAt = finite(payload?.generated_at);
   const queueEnd = finite(payload?.queue_status?.queue_end_at);
   if (generatedAt > 0 && queueEnd > 0 && generatedAt >= queueEnd) return -1;
   const statusIndex = Math.trunc(
     finite(payload?.queue_status?.current_index, -1),
   );
-  if (statusIndex < 0 || statusIndex >= queue.length) return -1;
-  const explicit = queue.findIndex((track) => track.is_current);
-  return explicit >= 0 ? explicit : statusIndex;
+  return statusIndex >= 0 && statusIndex < queue.length ? statusIndex : -1;
 }
 
 export async function fetchStationhead(env: Env): Promise<SourceResult> {
@@ -127,7 +133,10 @@ export async function fetchStationhead(env: Env): Promise<SourceResult> {
 
   const queue = monitorQueue(monitor);
   const currentIndex = monitorCurrentIndex(monitor);
-  const playing = Boolean(monitor?.playing && currentIndex >= 0);
+  const playing = Boolean(
+    (monitor?.playing === true || monitor?.is_broadcasting === true) &&
+    currentIndex >= 0,
+  );
   const currentItem = currentIndex >= 0 ? queue[currentIndex] ?? null : null;
 
   return {
