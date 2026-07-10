@@ -1,4 +1,4 @@
-import { applyD1Migrations, env } from "cloudflare:test";
+import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { runUpdateCheck } from "../src/update_check";
 import type { Env } from "../src/sources";
@@ -86,6 +86,20 @@ describe("cloud-driven update check", () => {
     await runUpdateCheck(scoped);
     commands = await pendingCommands();
     expect(commands).toHaveLength(4);
+  });
+
+  it("accepts unauthenticated pings and throttles repeats", async () => {
+    await env.UPDATE_BUCKET.put(MANIFEST_KEY, manifest("2607100001"));
+    const first = await SELF.fetch("https://example.test/v1/update/ping", { method: "POST" });
+    expect(first.status).toBe(202);
+    const firstBody = await first.json() as { queued: boolean };
+    // A second ping within the throttle window is accepted but not re-queued.
+    const second = await SELF.fetch("https://example.test/v1/update/ping", { method: "POST" });
+    expect(second.status).toBe(202);
+    const secondBody = await second.json() as { queued: boolean };
+    expect(firstBody.queued || secondBody.queued).toBe(true);
+    expect(firstBody.queued && secondBody.queued).toBe(false);
+    expect((await SELF.fetch("https://example.test/v1/update/ping")).status).not.toBe(202);
   });
 
   it("rejects an invalid manifest without recording a new baseline", async () => {

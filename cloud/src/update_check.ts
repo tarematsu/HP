@@ -23,6 +23,22 @@ async function knownDeviceIds(env: Env): Promise<string[]> {
   return [...ids];
 }
 
+// CI pings this endpoint right after publishing a release so the rollout
+// starts immediately. The ping itself carries no trusted data and needs no
+// authentication: the Worker re-reads the manifest from R2 and only a real
+// version change queues device commands, so the worst an abuser can cause is
+// one throttled R2/D1 read per minute per isolate.
+let lastUpdatePingAt = 0;
+
+export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
+  const now = Date.now();
+  if (now - lastUpdatePingAt < 60_000) return false;
+  lastUpdatePingAt = now;
+  ctx.waitUntil(runUpdateCheck(env).catch(error =>
+    console.error("update ping failed", error instanceof Error ? error.message : String(error))));
+  return true;
+}
+
 // Cloud-driven auto update: whenever the published release version changes,
 // queue a check_update command for every known device. The device executes it
 // on its next sync through the existing verified-updater path (manifest

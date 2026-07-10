@@ -234,16 +234,22 @@ jobs:
           HOMEPANEL_WORKER_URL: ${{ vars.HOMEPANEL_WORKER_URL }}
           HOMEPANEL_REFRESH_TOKEN: ${{ secrets.HOMEPANEL_REFRESH_TOKEN }}
         run: |
-          if (-not $env:HOMEPANEL_WORKER_URL -or -not $env:HOMEPANEL_REFRESH_TOKEN) {
-            Write-Host "HOMEPANEL_WORKER_URL / HOMEPANEL_REFRESH_TOKEN not configured; devices will pick the release up via the 5-minute update_check poll."
+          if (-not $env:HOMEPANEL_WORKER_URL) {
+            Write-Host "HOMEPANEL_WORKER_URL not configured; devices will pick the release up via the 5-minute update_check poll."
             exit 0
           }
+          $url = $env:HOMEPANEL_WORKER_URL.TrimEnd('/')
           try {
-            $url = $env:HOMEPANEL_WORKER_URL.TrimEnd('/')
-            Invoke-RestMethod -Method Post -Uri "$url/v1/refresh" `
-              -Headers @{ Authorization = "Bearer $($env:HOMEPANEL_REFRESH_TOKEN)" } `
-              -ContentType "application/json" -Body '{"sources":["update_check"]}' | Out-Null
-            Write-Host "update_check refresh queued; devices will be commanded on their next sync."
+            if ($env:HOMEPANEL_REFRESH_TOKEN) {
+              Invoke-RestMethod -Method Post -Uri "$url/v1/refresh" `
+                -Headers @{ Authorization = "Bearer $($env:HOMEPANEL_REFRESH_TOKEN)" } `
+                -ContentType "application/json" -Body '{"sources":["update_check"]}' | Out-Null
+            } else {
+              # Token-less path: the Worker verifies the manifest in R2 itself,
+              # so the notification only needs to say "look now".
+              Invoke-RestMethod -Method Post -Uri "$url/v1/update/ping" | Out-Null
+            }
+            Write-Host "Update rollout triggered; devices will be commanded on their next sync."
           } catch {
             Write-Warning "Immediate rollout trigger failed ($_); the 5-minute update_check poll will still roll the release out."
           }

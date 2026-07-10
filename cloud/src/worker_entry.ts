@@ -11,6 +11,7 @@ import { etagResponse, suppliedEtags, unauthorized } from "./response";
 import { WORKER_VERSION } from "./snapshot";
 import type { Env } from "./sources";
 import { receiveTelemetryOptimized } from "./telemetry_route";
+import { queueUpdateCheckPing } from "./update_check";
 import { updateFileResponse } from "./update_proxy";
 import {
   spotifyAccessToken,
@@ -43,6 +44,10 @@ export default {
         workerVersion: WORKER_VERSION,
         now: new Date().toISOString(),
       });
+    }
+
+    if (request.method === "POST" && path === "/v1/update/ping") {
+      return Response.json({ queued: queueUpdateCheckPing(env, ctx) }, { status: 202 });
     }
 
     if (request.method === "GET" && path === "/v1/spotify/callback") {
