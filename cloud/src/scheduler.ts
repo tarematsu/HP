@@ -32,7 +32,9 @@ export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobR
         WHERE next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?1)
         ORDER BY next_run_at, name LIMIT ?2
      )
-     UPDATE jobs SET lease_until = ?3
+     UPDATE jobs SET
+       lease_until = ?3,
+       next_run_at = CASE WHEN next_run_at=0 THEN -1 ELSE next_run_at END
       WHERE name IN (SELECT name FROM due)
         AND next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?1)
      RETURNING name, interval_seconds, next_run_at, lease_until, last_success_at, consecutive_failures`,
