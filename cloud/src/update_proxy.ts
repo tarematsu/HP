@@ -3,7 +3,9 @@ import { cachedHmacKey, constantTimeEqual } from "./crypto_cache";
 
 const SIGNED_URL_LIFETIME_SECONDS = 600;
 const ALLOWED_FILES = new Set(["HomePanel.exe", "HomePanelUpdater.exe", "WebView2Loader.dll", "update-manifest.json"]);
+const REQUIRED_UPDATE_FILES = ["HomePanel.exe", "HomePanelUpdater.exe", "WebView2Loader.dll"] as const;
 const RELEASE_VERSION_PATTERN = /^[0-9]{10}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 const DEFAULT_UPDATE_PREFIX = "updates";
 
 interface UpdateFile { name: string; sha256: string; size: number; requireAuthenticode?: boolean; url?: string }
@@ -33,6 +35,11 @@ async function signature(secret: string, version: string, name: string, expires:
   return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
 }
 
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function updatePrefix(env: Env): string {
   return (env.UPDATE_BUCKET_PREFIX?.trim() || DEFAULT_UPDATE_PREFIX).replace(/^\/+|\/+$/g, "");
 }
@@ -59,14 +66,50 @@ async function readObject(env: Env, key: string): Promise<R2ObjectBody> {
   return object;
 }
 
-// Reads and validates just the released version, for the scheduler's
-// cloud-driven auto-update job.
-export async function readUpdateManifestVersion(env: Env): Promise<string> {
-  const manifest = JSON.parse(await readObjectText(env, updateKey(env, "latest/update-manifest.json"))) as UpdateManifest;
-  if (!manifest.version || !RELEASE_VERSION_PATTERN.test(manifest.version)) {
-    throw new Error("invalid manifest version");
+function parseManifest(text: string): UpdateManifest {
+  const manifest = JSON.parse(text) as UpdateManifest;
+  if (!manifest.version || !RELEASE_VERSION_PATTERN.test(manifest.version) ||
+      !Array.isArray(manifest.files) || manifest.files.length !== REQUIRED_UPDATE_FILES.length) {
+    throw new Error("invalid manifest");
   }
-  return manifest.version;
+  const seen = new Set<string>();
+  for (const file of manifest.files) {
+    if (!REQUIRED_UPDATE_FILES.includes(file.name as typeof REQUIRED_UPDATE_FILES[number]) ||
+        seen.has(file.name) || !SHA256_PATTERN.test(String(file.sha256 ?? "")) ||
+        !Number.isSafeInteger(file.size) || file.size <= 0 || file.size > 64 * 1024 * 1024) {
+      throw new Error("invalid manifest file");
+    }
+    seen.add(file.name);
+  }
+  if (REQUIRED_UPDATE_FILES.some(name => !seen.has(name))) throw new Error("incomplete manifest");
+  return manifest;
+}
+
+function canonicalManifest(manifest: UpdateManifest): string {
+  return JSON.stringify({
+    version: manifest.version,
+    signed: manifest.signed === true,
+    files: [...manifest.files]
+      .map(file => ({
+        name: file.name,
+        sha256: file.sha256.toLowerCase(),
+        size: file.size,
+        requireAuthenticode: file.requireAuthenticode === true,
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  });
+}
+
+// Reads and validates the complete release identity. Tracking the manifest hash
+// as well as the version allows CI to repair a bad publication without inventing
+// a fake new version number.
+export async function readUpdateManifestIdentity(env: Env): Promise<{ version: string; manifestHash: string }> {
+  const manifest = parseManifest(await readObjectText(env, updateKey(env, "latest/update-manifest.json")));
+  return { version: manifest.version, manifestHash: await sha256(canonicalManifest(manifest)) };
+}
+
+export async function readUpdateManifestVersion(env: Env): Promise<string> {
+  return (await readUpdateManifestIdentity(env)).version;
 }
 
 function unavailable(kind: "manifest" | "file", error: unknown): Response {
@@ -78,16 +121,11 @@ export async function updateManifestResponse(request: Request, env: Env): Promis
   try {
     const secret = signingSecret(env);
     if (!secret) throw new Error("signing unavailable");
-    const manifest = JSON.parse(await readObjectText(env, updateKey(env, "latest/update-manifest.json"))) as UpdateManifest;
-    if (!manifest.version || !Array.isArray(manifest.files) || manifest.files.length !== 3) {
-      throw new Error("invalid manifest");
-    }
-    if (!RELEASE_VERSION_PATTERN.test(manifest.version)) throw new Error("invalid manifest version");
+    const manifest = parseManifest(await readObjectText(env, updateKey(env, "latest/update-manifest.json")));
 
     const origin = new URL(request.url).origin;
     const expires = Math.floor(Date.now() / 1000) + SIGNED_URL_LIFETIME_SECONDS;
     for (const file of manifest.files) {
-      if (!ALLOWED_FILES.has(file.name) || file.name === "update-manifest.json") throw new Error("invalid manifest file");
       const signed = await signature(secret, manifest.version, file.name, expires);
       file.url = `${origin}/v1/update/file/${encodeURIComponent(file.name)}?version=${encodeURIComponent(manifest.version)}&expires=${expires}&signature=${signed}`;
     }
