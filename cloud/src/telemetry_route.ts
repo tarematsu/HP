@@ -103,17 +103,18 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
       const chunk = accepted.slice(offset, offset + TELEMETRY_SAMPLES_PER_BATCH);
       const buckets = aggregateTelemetrySamples(chunk);
       const statements = buckets.map(bucket => telemetryBucketStatement(env, deviceId, bucket));
-      if (offset + chunk.length === accepted.length) {
-        statements.push(telemetryHeartbeatStatement(
-          env,
-          deviceId,
-          now,
-          appVersion,
-          stationheadOk,
-          outboxCount,
-          chunk.at(-1)!.sequence,
-        ));
-      }
+      // Advance last_sequence in the same D1 batch as every chunk. If a later
+      // chunk fails, retrying the request skips already-committed samples
+      // instead of adding them to the aggregate buckets a second time.
+      statements.push(telemetryHeartbeatStatement(
+        env,
+        deviceId,
+        now,
+        appVersion,
+        stationheadOk,
+        outboxCount,
+        chunk.at(-1)!.sequence,
+      ));
       const results = await env.DB.batch(statements);
       for (let index = 0; index < buckets.length; index += 1) {
         const rows = (results[index]?.results ?? []) as EnvironmentHistoryRow[];
