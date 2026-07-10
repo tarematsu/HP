@@ -212,6 +212,21 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
       L"braze.com",
       L"onesignal.com",
       L"intercom.io",
+      L"clarity.ms",
+      L"datadoghq",
+      L"newrelic",
+      L"nr-data.net",
+      L"statsigapi.net",
+      L"launchdarkly.com",
+      L"googleadservices.com",
+      L"adservice.google.com",
+      L"facebook.com/tr",
+      L"connect.facebook.net",
+      L"twitter.com/i/",
+      L"x.com/i/",
+      L"tiktok.com",
+      L"snapchat.com",
+      L"pinterest.com",
       // Non-playback Stationhead surfaces (chat / tipping / social threads / streams).
       L"/chathistory",
       L"/streams",
@@ -242,7 +257,14 @@ inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
   webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
   webview->CallDevToolsProtocolMethod(
       L"Network.setBlockedURLs",
-      L"{\"urls\":[\"*pusher.com*\",\"*pusherapp.com*\",\"*pusher.io*\"]}",
+      L"{\"urls\":["
+      L"\"*pusher.com*\",\"*pusherapp.com*\",\"*pusher.io*\","
+      L"\"*google-analytics.com*\",\"*googletagmanager.com*\",\"*doubleclick.net*\","
+      L"\"*amplitude.com*\",\"*segment.com*\",\"*segment.io*\","
+      L"\"*clarity.ms*\",\"*datadoghq*\",\"*newrelic*\",\"*nr-data.net*\","
+      L"\"*statsigapi.net*\",\"*launchdarkly.com*\","
+      L"\"*facebook.com/tr*\",\"*connect.facebook.net*\",\"*twitter.com/i/*\",\"*x.com/i/*\""
+      L"]}",
       nullptr);
 }
 
@@ -258,6 +280,9 @@ inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
 //     icon-only controls to zero size and break getBoundingClientRect()-based
 //     auto-play detection, leaving the window stuck visible. The config flags
 //     blockImagesAfterPlayback/blockFontsAfterPlayback still gate this tier.
+//   * After playback is armed, additional stylesheets are blocked. The page's
+//     already-loaded CSS remains in memory; this only prevents late UI/theme
+//     fetches from waking the renderer/GPU for a hidden audio window.
 // Shared by the primary and secondary players so both apply the same rules.
 // The token must be removed via remove_WebResourceRequested(token) on close,
 // and armed reset to false at that point.
@@ -269,6 +294,8 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
   if (!environment || !webview) return;
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET);
+  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
@@ -304,6 +331,12 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                           (!lower.empty() && lower.find(L"stationhead.com") == std::wstring::npos);
                 } else if (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) {
                   block = armedNow;
+                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET) {
+                  block = armedNow;
+                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
+                  block = !lower.empty() &&
+                          lower.find(L"stationhead.com") == std::wstring::npos &&
+                          lower.find(L"spotify") == std::wstring::npos;
                 }
               }
             }
