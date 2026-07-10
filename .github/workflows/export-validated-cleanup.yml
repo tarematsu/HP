@@ -1,0 +1,93 @@
+name: Export validated cleanup
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+
+      - name: Install cloud dependencies
+        working-directory: cloud
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply corrected cleanup
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t script_files < <(git ls-tree -r --name-only "$BASE_SHA" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|jsonc)$')
+          git checkout "$BASE_SHA" -- "${script_files[@]}"
+
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import textwrap
+
+          source = Path('.github/workflows/final-document-cleanup.yml').read_text(encoding='utf-8')
+
+          def extract(start: str, end: str, output: Path) -> None:
+              body = source.split(start, 1)[1].split(end, 1)[0]
+              output.write_text(textwrap.dedent(body).lstrip('\n'), encoding='utf-8')
+
+          temporary = Path(os.environ['RUNNER_TEMP'])
+          extract("<<'NODE'", "\n          NODE\n", temporary / 'strip-ts.cjs')
+          extract("<<'PY'", "\n          PY\n", temporary / 'strip-other.py')
+          PY
+
+          node "$RUNNER_TEMP/strip-ts.cjs"
+          python "$RUNNER_TEMP/strip-other.py"
+          git show "$BASE_SHA:cloud/test/env.d.ts" > cloud/test/env.d.ts
+
+          rm -f \
+            .github/workflows/run-strip-on-pr.yml \
+            .github/workflows/export-cleaned-tree.yml \
+            .github/workflows/final-document-cleanup.yml \
+            .github/workflows/cleanup-validation.yml \
+            .github/workflows/final-fixed-cleanup.yml \
+            .github/workflows/export-validated-cleanup.yml
+
+      - name: Validate cleanup
+        shell: bash
+        run: |
+          git diff --check
+          cd cloud
+          npm run check
+          npm test
+
+      - name: Package cleaned repository
+        shell: bash
+        run: |
+          tar \
+            --exclude='./.git' \
+            --exclude='./cloud/node_modules' \
+            --exclude='./native/packages' \
+            --exclude='./coverage' \
+            --exclude='./.wrangler' \
+            -czf "$RUNNER_TEMP/validated-cleaned-repository.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: validated-cleaned-repository
+          path: ${{ runner.temp }}/validated-cleaned-repository.tar.gz
+          if-no-files-found: error
+          retention-days: 1
