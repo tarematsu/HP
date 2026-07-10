@@ -299,11 +299,11 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
 namespace {
 
 std::filesystem::path CurrentExecutablePath() {
-  wchar_t buffer[32768]{};
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
-  if (!length || length >= std::size(buffer)) return {};
-  return std::filesystem::path(std::wstring(buffer, length));
+  std::vector<wchar_t> buffer(32768);
+  const DWORD length = GetModuleFileNameW(
+      nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+  if (!length || length >= buffer.size()) return {};
+  return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
 bool LooksLikeHomePanelRoot(const std::filesystem::path& root) {
@@ -320,11 +320,11 @@ std::filesystem::path ResolveHomePanelRoot(
     candidates.push_back(executable.parent_path());
     candidates.push_back(executable.parent_path().parent_path());
   }
-  wchar_t current[32768]{};
-  const DWORD currentLength =
-      GetCurrentDirectoryW(static_cast<DWORD>(std::size(current)), current);
-  if (currentLength && currentLength < std::size(current)) {
-    candidates.emplace_back(std::wstring(current, currentLength));
+  std::vector<wchar_t> current(32768);
+  const DWORD currentLength = GetCurrentDirectoryW(
+      static_cast<DWORD>(current.size()), current.data());
+  if (currentLength && currentLength < current.size()) {
+    candidates.emplace_back(std::wstring(current.data(), currentLength));
   }
   if (const wchar_t* systemDrive = _wgetenv(L"SystemDrive");
       systemDrive && *systemDrive) {
