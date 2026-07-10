@@ -143,4 +143,14 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
   }
   return fail(std::move(failure));
 }
+
+inline bool WinHttpDownload(const std::wstring& rawUrl, size_t maximumBytes,
+                            std::vector<uint8_t>* body,
+                            std::wstring* contentType = nullptr,
+                            std::wstring* error = nullptr,
+                            const wchar_t* userAgent = L"HomePanel/1.0",
+                            const wchar_t* extraHeaders = nullptr) {
+  return WinHttpDownload(rawUrl.c_str(), maximumBytes, body, contentType, error,
+                         userAgent, extraHeaders);
+}
 }  // namespace hp
