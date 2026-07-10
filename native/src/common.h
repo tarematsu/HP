@@ -185,7 +185,9 @@ inline BOOL CopyFileWithActiveUpdaterAwareness(
 
 // Atomically writes bytes to path via a .tmp sibling, then ReplaceFile/MoveFile.
 inline bool AtomicWriteBytes(const fs::path& path, const void* data, DWORD size) {
-  fs::create_directories(path.parent_path());
+  std::error_code directoryError;
+  fs::create_directories(path.parent_path(), directoryError);
+  if (directoryError) return false;
   fs::path temp = path.wstring() + L".tmp";
   HANDLE file = CreateFileW(temp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) return false;
@@ -193,9 +195,22 @@ inline bool AtomicWriteBytes(const fs::path& path, const void* data, DWORD size)
   bool ok = (size == 0) || (WriteFile(file, data, size, &written, nullptr) && written == size);
   if (ok) ok = FlushFileBuffers(file) != FALSE;
   CloseHandle(file);
-  if (!ok) { DeleteFileW(temp.c_str()); return false; }
-  if (fs::exists(path)) return ReplaceFileW(path.c_str(), temp.c_str(), nullptr, REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) != FALSE;
-  return MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+  if (!ok) {
+    DeleteFileW(temp.c_str());
+    return false;
+  }
+
+  std::error_code existsError;
+  const bool targetExists = fs::exists(path, existsError);
+  if (existsError) {
+    DeleteFileW(temp.c_str());
+    return false;
+  }
+  const bool replaced = targetExists
+      ? ReplaceFileW(path.c_str(), temp.c_str(), nullptr, REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) != FALSE
+      : MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+  if (!replaced) DeleteFileW(temp.c_str());
+  return replaced;
 }
 inline bool AtomicWriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
   return AtomicWriteBytes(path, bytes.data(), static_cast<DWORD>(bytes.size()));
