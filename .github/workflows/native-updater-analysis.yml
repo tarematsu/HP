@@ -33,10 +33,12 @@ jobs:
         env:
           HOMEPANEL_BUILD_VERSION: "2607100000"
         run: |
+          New-Item -ItemType Directory -Force native/ci-logs | Out-Null
           cmake -S native -B native/build-updater-analyze `
             -G "Visual Studio 17 2022" -A x64 `
             -DHOMEPANEL_CI_STRICT=ON `
-            -DHOMEPANEL_CI_STATIC_ANALYSIS=ON
+            -DHOMEPANEL_CI_STATIC_ANALYSIS=ON `
+            2>&1 | Tee-Object native/ci-logs/updater-analyze-configure.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Analyze HomePanelUpdater
@@ -44,5 +46,15 @@ jobs:
         env:
           HOMEPANEL_BUILD_VERSION: "2607100000"
         run: |
-          cmake --build native/build-updater-analyze --config Release --target HomePanelUpdater --parallel 2
+          cmake --build native/build-updater-analyze --config Release --target HomePanelUpdater --parallel 2 `
+            2>&1 | Tee-Object native/ci-logs/updater-analyze-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload updater analysis diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-updater-analysis-logs
+          path: native/ci-logs
+          if-no-files-found: warn
+          retention-days: 7
