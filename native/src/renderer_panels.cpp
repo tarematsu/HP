@@ -405,25 +405,25 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
   }
   previousBitmap = SelectObject(dc, bitmap);
 
-  const RECT absoluteDirty{absoluteRect.left + dirty.left, absoluteRect.top + dirty.top,
-                           absoluteRect.left + dirty.right, absoluteRect.top + dirty.bottom};
+  // Clip everything to the invalidated region up front: the back buffer only
+  // changes where the destructor will blit, and the radar background is
+  // always stretched with the same full-panel mapping (per-dirty-rect source
+  // rounding would create one-pixel seams between sections at non-1:1
+  // radar-canvas scales).
+  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
+  SelectClipRgn(dc, dirtyClip);
   {
     std::lock_guard lock(renderer.radarFrameMutex_);
-    StretchRadarSampleInto(dc, dirty, renderer.radarFrameBitmap_,
-                           RadarSampleRectFor(absoluteDirty, renderer.bounds_));
+    StretchRadarSampleInto(dc, bounds, renderer.radarFrameBitmap_,
+                           RadarSampleRectFor(absoluteRect, renderer.bounds_));
   }
   if (tintAlpha > 0) {
     HRGN clip = CreateRoundRectRgn(0, 0, bounds.right + 1, bounds.bottom + 1, cornerRadius * 2, cornerRadius * 2);
     SelectClipRgn(dc, clip);
     AlphaBlendSolidColor(dc, dirty, tintColor, tintAlpha);
-    SelectClipRgn(dc, nullptr);
+    SelectClipRgn(dc, dirtyClip);
     DeleteObject(clip);
   }
-  // Clip all panel drawing to the invalidated region so the back buffer only
-  // changes where the destructor will blit; back buffer and screen stay in
-  // sync across partial repaints.
-  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
-  SelectClipRgn(dc, dirtyClip);
   DeleteObject(dirtyClip);
   SetBkMode(dc, TRANSPARENT);
 }
