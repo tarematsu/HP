@@ -74,7 +74,7 @@ function requestedVersion(url: URL, name: string): number {
   return Number.isSafeInteger(value) && value >= 0 ? value : -1;
 }
 
-async function enqueueCommandOnce(
+export async function enqueueCommandOnce(
   env: Env,
   deviceId: string,
   command: string,

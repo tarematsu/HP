@@ -59,6 +59,16 @@ async function readObject(env: Env, key: string): Promise<R2ObjectBody> {
   return object;
 }
 
+// Reads and validates just the released version, for the scheduler's
+// cloud-driven auto-update job.
+export async function readUpdateManifestVersion(env: Env): Promise<string> {
+  const manifest = JSON.parse(await readObjectText(env, updateKey(env, "latest/update-manifest.json"))) as UpdateManifest;
+  if (!manifest.version || !RELEASE_VERSION_PATTERN.test(manifest.version)) {
+    throw new Error("invalid manifest version");
+  }
+  return manifest.version;
+}
+
 function unavailable(kind: "manifest" | "file", error: unknown): Response {
   console.error(`update ${kind} unavailable`, error instanceof Error ? error.message : String(error));
   return json({ error: `update ${kind} unavailable` }, 503);

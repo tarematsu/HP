@@ -1,5 +1,6 @@
 import { executeSource, type Env, type SourceResult } from "./sources";
 import { updateState } from "./snapshot";
+import { runUpdateCheck } from "./update_check";
 import { fetchStationhead } from "./spotify_source";
 import { configuredIds, loadSwitchBotSnapshot } from "./switchbot_api";
 import { fetchSwitchBotOptimized } from "./switchbot_poll";
@@ -111,6 +112,7 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
   let sourceFailureRecorded = false;
   try {
     if (job.name === "cleanup") await cleanup(env);
+    else if (job.name === "update_check") await runUpdateCheck(env);
     else if (job.name === "stationhead") {
       sourceFailureRecorded = true;
       await refreshStationheadMonitor(env);
@@ -134,7 +136,9 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
           payload: failSafeSwitchBotState(snapshot.state, now, controlPlugIds, message),
           observedAt: now,
         }, undefined, snapshot.row);
-      } else if (job.name !== "cleanup" && !sourceFailureRecorded) {
+      } else if (job.name !== "cleanup" && job.name !== "update_check" && !sourceFailureRecorded) {
+        // update_check failures stay in jobs.last_error; they are not device
+        // dashboard sources.
         await updateState(env, { source: job.name, payload: null, observedAt: Date.now() }, message);
       }
     } catch (stateError) {
