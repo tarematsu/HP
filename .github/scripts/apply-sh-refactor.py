@@ -112,10 +112,12 @@ text = text.replace(
 )
 path.write_text(text, encoding="utf-8", newline="")
 
-for relative in TEMPORARY:
-    path = ROOT / relative
-    if path.exists():
-        path.unlink()
+# The old report collector is unrelated to the final refactor and can be
+# removed by the bot. Workflow/script self-cleanup is performed by the
+# connector after this commit because GitHub Apps cannot rewrite workflow files.
+collector = ROOT / ".github/scripts/collect-sh-inventory.mjs"
+if collector.exists():
+    collector.unlink()
 
 # Guard the requested internal rename without banning the real service name or
 # compatibility contracts.
