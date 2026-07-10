@@ -1,0 +1,420 @@
+name: Final documentation cleanup
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
+
+      - name: Install cloud dependencies
+        working-directory: cloud
+        run: npm ci --no-audit --no-fund
+
+      - name: Restore scripts and remove comments
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mapfile -t script_files < <(git ls-tree -r --name-only "$BASE_SHA" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|jsonc)$')
+          git checkout "$BASE_SHA" -- "${script_files[@]}"
+
+          cat > "$RUNNER_TEMP/strip-ts.cjs" <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const ts = require(path.resolve('cloud/node_modules/typescript'));
+          const root = process.cwd();
+          const extensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.jsonc']);
+          const ignored = new Set(['.git', 'node_modules', 'build', 'build-ci', 'dist', '.wrangler', 'packages', 'coverage', '.cache']);
+
+          function scriptKind(file) {
+            const extension = path.extname(file).toLowerCase();
+            if (extension === '.tsx') return ts.ScriptKind.TSX;
+            if (extension === '.jsx') return ts.ScriptKind.JSX;
+            if (['.js', '.mjs', '.cjs'].includes(extension)) return ts.ScriptKind.JS;
+            if (extension === '.jsonc') return ts.ScriptKind.JSON;
+            return ts.ScriptKind.TS;
+          }
+
+          function commentRanges(source, text) {
+            const ranges = new Map();
+            const add = range => {
+              if (range) ranges.set(`${range.pos}:${range.end}`, [range.pos, range.end]);
+            };
+            const inspect = node => {
+              for (const range of ts.getLeadingCommentRanges(text, node.pos) || []) add(range);
+              for (const range of ts.getTrailingCommentRanges(text, node.end) || []) add(range);
+              for (const child of node.getChildren(source)) inspect(child);
+            };
+            inspect(source);
+            for (const range of ts.getLeadingCommentRanges(text, 0) || []) add(range);
+            for (const range of ts.getTrailingCommentRanges(text, text.length) || []) add(range);
+            return [...ranges.values()].sort((left, right) => left[0] - right[0]);
+          }
+
+          function replacement(comment) {
+            const newlines = comment.match(/\r\n|\r|\n/g);
+            return newlines ? newlines.join('') : ' ';
+          }
+
+          function stripFile(file) {
+            const text = fs.readFileSync(file, 'utf8');
+            const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, scriptKind(file));
+            if (source.parseDiagnostics.length) throw new Error(`Cannot parse ${file}`);
+            const ranges = commentRanges(source, text);
+            let output = text;
+            for (let index = ranges.length - 1; index >= 0; index -= 1) {
+              const [start, end] = ranges[index];
+              output = output.slice(0, start) + replacement(text.slice(start, end)) + output.slice(end);
+            }
+            if (output !== text) fs.writeFileSync(file, output, 'utf8');
+          }
+
+          function walk(directory) {
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              if (ignored.has(entry.name)) continue;
+              const fullPath = path.join(directory, entry.name);
+              if (entry.isDirectory()) walk(fullPath);
+              else if (extensions.has(path.extname(entry.name).toLowerCase())) stripFile(fullPath);
+            }
+          }
+
+          walk(root);
+          NODE
+          node "$RUNNER_TEMP/strip-ts.cjs"
+
+          cat > "$RUNNER_TEMP/strip-other.py" <<'PY'
+          from __future__ import annotations
+
+          import io
+          import re
+          import shutil
+          import tokenize
+          from pathlib import Path
+
+          ROOT = Path.cwd()
+          IGNORED = {'.git', 'node_modules', 'build', 'build-ci', 'dist', '.wrangler', 'packages', 'coverage', '.cache', 'ci-logs'}
+          DOC_DIRS = {'doc', 'docs', 'documentation'}
+          DOC_EXTENSIONS = {'.md', '.mdx', '.rst', '.adoc', '.asciidoc'}
+          DOC_PREFIXES = ('readme', 'changelog', 'contributing', 'code_of_conduct', 'code-of-conduct', 'security', 'support', 'authors', 'release_notes', 'release-notes')
+          C_EXTENSIONS = {'.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx', '.cs', '.java', '.kt', '.kts', '.swift', '.go', '.rs', '.css', '.scss', '.sass', '.less', '.rc', '.idl'}
+          HASH_EXTENSIONS = {'.yml', '.yaml', '.toml', '.ini', '.cfg', '.conf', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.psm1', '.cmake', '.properties'}
+          HASH_NAMES = {'cmakelists.txt', 'makefile', 'gnumakefile', '.gitignore', '.gitattributes', '.editorconfig', '.npmrc'}
+          XML_EXTENSIONS = {'.html', '.htm', '.xml', '.svg'}
+          SQL_EXTENSIONS = {'.sql'}
+          PYTHON_EXTENSIONS = {'.py', '.pyw'}
+          BATCH_EXTENSIONS = {'.bat', '.cmd'}
+
+          def ignored(path: Path) -> bool:
+              return any(part in IGNORED for part in path.parts)
+
+          def newlines(text: str) -> str:
+              value = ''.join(character for character in text if character in '\r\n')
+              return value if value else ' '
+
+          def strip_c(source: str) -> str:
+              output: list[str] = []
+              index = 0
+              quote: str | None = None
+              raw_end: str | None = None
+              while index < len(source):
+                  if raw_end is not None:
+                      end = source.find(raw_end, index)
+                      if end < 0:
+                          output.append(source[index:])
+                          break
+                      output.append(source[index:end + len(raw_end)])
+                      index = end + len(raw_end)
+                      raw_end = None
+                      continue
+                  if quote is not None:
+                      character = source[index]
+                      output.append(character)
+                      index += 1
+                      if character == '\\' and quote != '`' and index < len(source):
+                          output.append(source[index])
+                          index += 1
+                      elif character == quote:
+                          quote = None
+                      continue
+                  if source.startswith('R"', index):
+                      delimiter_end = source.find('(', index + 2, min(len(source), index + 20))
+                      if delimiter_end >= 0:
+                          delimiter = source[index + 2:delimiter_end]
+                          raw_end = ')' + delimiter + '"'
+                          output.append(source[index:delimiter_end + 1])
+                          index = delimiter_end + 1
+                          continue
+                  character = source[index]
+                  if character in {'\'', '"', '`'}:
+                      quote = character
+                      output.append(character)
+                      index += 1
+                      continue
+                  if source.startswith('//', index):
+                      end = source.find('\n', index + 2)
+                      if end < 0:
+                          break
+                      output.append('\n')
+                      index = end + 1
+                      continue
+                  if source.startswith('/*', index):
+                      end = source.find('*/', index + 2)
+                      if end < 0:
+                          output.append(newlines(source[index:]))
+                          break
+                      output.append(newlines(source[index:end + 2]))
+                      index = end + 2
+                      continue
+                  output.append(character)
+                  index += 1
+              return ''.join(output)
+
+          def strip_hash(source: str) -> str:
+              output: list[str] = []
+              for line_number, line in enumerate(source.splitlines(keepends=True)):
+                  if line_number == 0 and line.startswith('#!'):
+                      output.append(line)
+                      continue
+                  single = False
+                  double = False
+                  escaped = False
+                  cut = None
+                  for index, character in enumerate(line):
+                      if escaped:
+                          escaped = False
+                          continue
+                      if character == '\\' and double:
+                          escaped = True
+                          continue
+                      if character == "'" and not double:
+                          single = not single
+                          continue
+                      if character == '"' and not single:
+                          double = not double
+                          continue
+                      if character == '#' and not single and not double and (index == 0 or line[index - 1].isspace()):
+                          cut = index
+                          break
+                  if cut is None:
+                      output.append(line)
+                  else:
+                      ending = '\r\n' if line.endswith('\r\n') else '\n' if line.endswith('\n') else ''
+                      output.append(line[:cut].rstrip() + ending)
+              return ''.join(output)
+
+          def strip_sql(source: str) -> str:
+              output: list[str] = []
+              index = 0
+              quote: str | None = None
+              while index < len(source):
+                  character = source[index]
+                  if quote is not None:
+                      output.append(character)
+                      index += 1
+                      if character == quote:
+                          if index < len(source) and source[index] == quote:
+                              output.append(source[index])
+                              index += 1
+                          else:
+                              quote = None
+                      continue
+                  if character in {'\'', '"'}:
+                      quote = character
+                      output.append(character)
+                      index += 1
+                      continue
+                  if source.startswith('--', index):
+                      end = source.find('\n', index + 2)
+                      if end < 0:
+                          break
+                      output.append('\n')
+                      index = end + 1
+                      continue
+                  if source.startswith('/*', index):
+                      end = source.find('*/', index + 2)
+                      if end < 0:
+                          output.append(newlines(source[index:]))
+                          break
+                      output.append(newlines(source[index:end + 2]))
+                      index = end + 2
+                      continue
+                  output.append(character)
+                  index += 1
+              return ''.join(output)
+
+          def strip_python(source: str) -> str:
+              offsets = [0]
+              for match in re.finditer(r'.*?(?:\n|$)', source):
+                  offsets.append(match.end())
+              ranges: list[tuple[int, int]] = []
+              try:
+                  for token in tokenize.generate_tokens(io.StringIO(source).readline):
+                      if token.type == tokenize.COMMENT and not (token.start == (1, 0) and token.string.startswith('#!')):
+                          start = offsets[token.start[0] - 1] + token.start[1]
+                          end = offsets[token.end[0] - 1] + token.end[1]
+                          ranges.append((start, end))
+              except (tokenize.TokenError, IndentationError):
+                  return source
+              output = source
+              for start, end in reversed(ranges):
+                  output = output[:start] + output[end:]
+              return output
+
+          def strip_xml(source: str) -> str:
+              source = re.sub(r'<!--.*?-->', lambda match: newlines(match.group(0)), source, flags=re.DOTALL)
+              source = re.sub(r'(<style\b[^>]*>)(.*?)(</style>)', lambda match: match.group(1) + strip_c(match.group(2)) + match.group(3), source, flags=re.IGNORECASE | re.DOTALL)
+              source = re.sub(r'(<script\b[^>]*>)(.*?)(</script>)', lambda match: match.group(1) + strip_c(match.group(2)) + match.group(3), source, flags=re.IGNORECASE | re.DOTALL)
+              return source
+
+          def strip_batch(source: str) -> str:
+              output: list[str] = []
+              for line in source.splitlines(keepends=True):
+                  stripped = line.lstrip()
+                  lowered = stripped.lower()
+                  if lowered.startswith('rem ') or lowered.startswith('rem\t') or stripped.startswith('::'):
+                      output.append('\r\n' if line.endswith('\r\n') else '\n' if line.endswith('\n') else '')
+                  else:
+                      output.append(line)
+              return ''.join(output)
+
+          directories = sorted([path for path in ROOT.rglob('*') if path.is_dir() and not ignored(path) and path.name.lower() in DOC_DIRS], key=lambda path: len(path.parts), reverse=True)
+          for directory in directories:
+              if directory.exists():
+                  shutil.rmtree(directory)
+
+          for path in sorted(ROOT.rglob('*')):
+              if not path.is_file() or ignored(path):
+                  continue
+              relative = path.relative_to(ROOT).as_posix()
+              lowered = path.name.lower()
+              suffix = path.suffix.lower()
+              if relative.startswith('.github/ISSUE_TEMPLATE/') or relative.startswith('.github/PULL_REQUEST_TEMPLATE/'):
+                  path.unlink()
+                  continue
+              if suffix in DOC_EXTENSIONS or (lowered.startswith(DOC_PREFIXES) and suffix in {'', '.txt'}):
+                  path.unlink()
+
+          for path in sorted(ROOT.rglob('*')):
+              if not path.is_file() or ignored(path):
+                  continue
+              try:
+                  source = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              extension = path.suffix.lower()
+              name = path.name.lower()
+              output = source
+              if extension in C_EXTENSIONS:
+                  output = strip_c(source)
+              elif extension in PYTHON_EXTENSIONS:
+                  output = strip_python(source)
+              elif extension in XML_EXTENSIONS:
+                  output = strip_xml(source)
+              elif extension in SQL_EXTENSIONS:
+                  output = strip_sql(source)
+              elif extension in BATCH_EXTENSIONS:
+                  output = strip_batch(source)
+              elif extension in HASH_EXTENSIONS or name in HASH_NAMES:
+                  if extension in {'.ps1', '.psm1'}:
+                      output = re.sub(r'<#.*?#>', lambda match: newlines(match.group(0)), output, flags=re.DOTALL)
+                  output = strip_hash(output)
+              if output != source:
+                  path.write_text(output, encoding='utf-8')
+
+          for path in sorted(ROOT.rglob('*')):
+              if not path.is_file() or ignored(path):
+                  continue
+              if path.suffix.lower() not in C_EXTENSIONS | HASH_EXTENSIONS | XML_EXTENSIONS | SQL_EXTENSIONS | PYTHON_EXTENSIONS | BATCH_EXTENSIONS | {'.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.jsonc'} and path.name.lower() not in HASH_NAMES:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except (UnicodeDecodeError, OSError):
+                  continue
+              cleaned = '\n'.join(line.rstrip(' \t') for line in text.splitlines()).rstrip('\n') + '\n'
+              if cleaned != text:
+                  path.write_text(cleaned, encoding='utf-8')
+
+          for temporary in [
+              ROOT / '.github/workflows/run-strip-on-pr.yml',
+              ROOT / '.github/workflows/export-cleaned-tree.yml',
+              ROOT / '.github/workflows/final-document-cleanup.yml',
+          ]:
+              if temporary.exists():
+                  temporary.unlink()
+          PY
+          python "$RUNNER_TEMP/strip-other.py"
+
+      - name: Validate cleanup
+        shell: bash
+        run: |
+          git diff --check
+          cd cloud
+          npm run check
+          npm test
+
+      - name: Commit and push cleanup
+        id: publish
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/push.log"
+          status_file="$RUNNER_TEMP/push-status.txt"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status --short > "$log"
+          if git diff --cached --quiet; then
+            echo 'push_status=0' > "$status_file"
+            exit 0
+          fi
+          set +e
+          git commit -m "Remove documentation and source comments" >> "$log" 2>&1
+          commit_status=$?
+          push_status=$commit_status
+          if [ "$commit_status" -eq 0 ]; then
+            git fetch origin agent/remove-documentation-comments >> "$log" 2>&1
+            git rebase origin/agent/remove-documentation-comments >> "$log" 2>&1
+            rebase_status=$?
+            push_status=$rebase_status
+            if [ "$rebase_status" -eq 0 ]; then
+              git push origin HEAD:agent/remove-documentation-comments >> "$log" 2>&1
+              push_status=$?
+            fi
+          fi
+          echo "push_status=$push_status" > "$status_file"
+          cat "$log"
+          exit 0
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cleanup-push-diagnostics
+          path: |
+            ${{ runner.temp }}/push.log
+            ${{ runner.temp }}/push-status.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Check push result
+        shell: bash
+        run: |
+          source "$RUNNER_TEMP/push-status.txt"
+          test "$push_status" -eq 0
