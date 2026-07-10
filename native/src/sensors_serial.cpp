@@ -144,8 +144,14 @@ void SensorHub::SerialLoop() {
         state_.lastError.clear();
       }
       const int64_t bucket = sample.observedAt / kTelemetryBucketMs;
-      if (bucket != lastPersistedBucket_ && AppendOutbox(sample)) lastPersistedBucket_ = bucket;
-      if (visibleChanged) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      const bool historyBucketAdvanced = bucket != lastPersistedBucket_;
+      if (historyBucketAdvanced && AppendOutbox(sample)) lastPersistedBucket_ = bucket;
+      // App::UpdateAirHistory is driven by WM_HP_SENSOR_UPDATED. Send one when
+      // a new five-minute bucket begins even if the rounded display values are
+      // unchanged, otherwise flat periods disappear from the 24-hour graph.
+      if (visibleChanged || historyBucketAdvanced) {
+        PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      }
     }
 
     WriteCommand(serial, "STP");
