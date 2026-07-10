@@ -12,7 +12,7 @@ struct StationheadConfig {
   bool lowMemoryMode = true;
   bool secondaryEnabled = true;
   std::wstring secondaryUrl = L"https://www.stationhead.com/buddy46";
-  int secondaryReloadIntervalMinutes = 52;
+  int secondaryReloadIntervalMinutes = 50;
 };
 
 struct AppConfig {
