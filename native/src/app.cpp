@@ -261,17 +261,17 @@ void App::ClearStartupStationheadPreview() {
 
 void App::StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus) {
   const bool primaryAudioReady = stationheadStatus.audioPlaying || stationheadStatus.lightweight;
-  // The split A/B startup preview stays full-size and in front (so both windows
-  // finish loading and the auto-play scan has real geometry) until playback is
-  // confirmed. Only then does the native dashboard take over and both
-  // Stationhead windows drop to the background. Read the secondary status once,
-  // and only while the dashboard has not started yet.
+  // Keep the split startup preview until at least one Stationhead window has
+  // confirmed audio. The dashboard can then start, while any still-pending
+  // Stationhead surface remains independently raised on its half of the screen.
   bool secondaryAudioReady = true;
   if (!rendererStarted_ && secondaryStationhead_) {
     const SecondaryStationheadStatus secondaryStatus = secondaryStationhead_->Status();
     secondaryAudioReady = secondaryStatus.playing;
   }
-  const bool dashboardAudioReady = primaryAudioReady && secondaryAudioReady;
+  const bool dashboardAudioReady = secondaryStationhead_
+      ? (primaryAudioReady || secondaryAudioReady)
+      : primaryAudioReady;
   const bool startupDeadlineReached = now - startupAt_ >= 30'000;
   if (primaryAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
@@ -283,7 +283,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    logger_->Info(L"Native dashboard started after Stationhead A/B audio confirmation");
+    logger_->Info(L"Native dashboard started after at least one Stationhead audio confirmation");
   }
 
   if (!cloudStarted_ && (primaryAudioReady || startupDeadlineReached)) {
@@ -325,14 +325,14 @@ void App::Tick() {
   const int64_t now = UnixMillis();
 
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
-  const bool waitingForSecondaryAudio =
-      !rendererStarted_ && secondaryStationhead_ && !secondaryStationhead_->Status().playing;
-  stationhead_->SetNoAudioFallbackPaused(waitingForSecondaryAudio);
+  const SecondaryStationheadStatus secondaryStatus =
+      secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
   stationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
   StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
   UpdateRenderStationheadState(nextStationheadState);
   StartDeferredServices(now, stationheadStatus);
+  ApplyStationheadWindowPlacement(stationheadStatus, secondaryStatus);
 
   if (cloudStarted_ &&
       now - lastTelemetryAt_ >= static_cast<int64_t>(config_.telemetryMinutes) * 60'000) {
@@ -431,6 +431,28 @@ void App::LayoutWorkspace() {
   renderState_.workspaceTab = static_cast<int>(selectedTab_);
   MarkRenderStateDirty();
   InvalidateAll();
+}
+
+void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
+                                          const SecondaryStationheadStatus& secondaryStatus) {
+  if (!rendererStarted_ || !stationhead_) return;
+  RECT bounds = workspaceBounds_;
+  if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
+
+  const LONG mid = bounds.left + std::max<LONG>(1, bounds.right - bounds.left) / 2;
+  RECT left{bounds.left, bounds.top, mid, bounds.bottom};
+  RECT right{mid, bounds.top, bounds.right, bounds.bottom};
+  if (left.right <= left.left) left.right = left.left + 1;
+  if (right.right <= right.left) right.right = right.left + 1;
+
+  const bool primaryPending = !primaryStatus.audioPlaying;
+  const bool secondaryPending = secondaryStationhead_ && !secondaryStatus.playing;
+
+  stationhead_->SetBounds(primaryPending ? left : bounds);
+  stationhead_->SelectTab(StationheadTabKind::None);
+  if (secondaryStationhead_) {
+    secondaryStationhead_->SetBounds(secondaryPending ? right : bounds);
+  }
 }
 
 void App::PublishRenderState() {

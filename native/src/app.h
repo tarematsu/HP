@@ -226,10 +226,6 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyAudioState();
     ApplyBounds();
   }
-  void SetNoAudioFallbackPaused(bool paused) noexcept {
-    if (player_) player_->SetNoAudioFallbackPaused(paused);
-  }
-
   void SelectTab(StationheadTabKind tab) {
     selectedTab_ = tab;
     if (!player_) return;
@@ -448,6 +444,8 @@ class App {
   void UpdateAirHistory(const SensorSnapshot& sensors);
   void HandleAction(UiAction action, float seekFraction);
   void LayoutWorkspace();
+  void ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
+                                       const SecondaryStationheadStatus& secondaryStatus);
   void ProcessRemoteCommands();
   void SendTelemetryAsync();
   void ClearDisplayCache();
