@@ -92,7 +92,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "GET" && url.pathname.startsWith("/v1/wx-icon/")) {
     const match = url.pathname.match(/^\/v1\/wx-icon\/(\d+)_(day|night)\.png$/);
     if (match) {
-      const upstream = `https:
+      const upstream = `https://s.yimg.jp/images/weather/general/next/size90/${match[1]}_${match[2]}.png`;
       try {
         const response = await fetch(upstream, { cf: { cacheEverything: true, cacheTtl: 86400 } } as RequestInit);
         if (!response.ok) return new Response(null, { status: 502 });

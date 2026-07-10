@@ -31,7 +31,7 @@ function tileRequest(pathname: string): { upstream: string; ttl: number } | null
     const coordinates = validTileCoordinates(zoomText, xText, yText);
     if (!coordinates || !baseTime || !validTime) return null;
     return {
-      upstream: `https:
+      upstream: `https://www.jma.go.jp/bosai/jmatile/data/nowc/${baseTime}/none/${validTime}/surf/hrpns/${coordinates.zoom}/${coordinates.x}/${coordinates.y}.png`,
       ttl: 300,
     };
   }

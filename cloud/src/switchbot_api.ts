@@ -58,7 +58,7 @@ async function signedHeaders(env: SwitchBotEnv): Promise<Headers> {
 }
 
 export async function switchBotApi<T>(env: SwitchBotEnv, path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetchJson<ApiResponse<T>>(`https:
+  const response = await fetchJson<ApiResponse<T>>(`https://api.switch-bot.com/v1.1${path}`, {
     ...init,
     headers: await signedHeaders(env),
   });
@@ -105,4 +105,3 @@ export async function loadSwitchBotSnapshot(env: SwitchBotEnv): Promise<SwitchBo
     return { row, state: null };
   }
 }
-

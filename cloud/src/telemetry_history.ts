@@ -76,10 +76,10 @@ export async function mergeEnvironmentRows(
   now: number,
 ): Promise<void> {
   const cutoff = now - ENVIRONMENT_HISTORY_MS;
-  
-  
-  
-  
+
+
+
+
   const stored = await env.DB.prepare(
     `SELECT bucket_at AS t,
        CASE WHEN co2_count>0 THEN co2_sum/co2_count ELSE NULL END AS co2,

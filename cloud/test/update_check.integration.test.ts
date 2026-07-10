@@ -20,8 +20,8 @@ function manifest(version: string): string {
 }
 
 function updateEnv(): Env {
-  
-  
+
+
   return {
     ...env,
     UPDATE_BUCKET_PREFIX: "updates",
@@ -61,15 +61,15 @@ describe("cloud-driven update check", () => {
       "INSERT INTO device_heartbeats(device_id, last_seen_at, stationhead_ok, outbox_count, last_sequence) VALUES('tablet-2', ?1, 1, 0, 0)",
     ).bind(Date.now()).run();
 
-    
+
     await runUpdateCheck(scoped);
     expect(await pendingCommands()).toHaveLength(0);
 
-    
+
     await runUpdateCheck(scoped);
     expect(await pendingCommands()).toHaveLength(0);
 
-    
+
     await env.UPDATE_BUCKET!.put(MANIFEST_KEY, manifest("2607100002"));
     await runUpdateCheck(scoped);
     let commands = await pendingCommands();
@@ -77,11 +77,11 @@ describe("cloud-driven update check", () => {
     expect(commands.every(command => command.command === "check_update")).toBe(true);
     expect(commands.every(command => command.payload?.includes("2607100002"))).toBe(true);
 
-    
+
     await runUpdateCheck(scoped);
     expect(await pendingCommands()).toHaveLength(2);
 
-    
+
     await env.UPDATE_BUCKET!.put(MANIFEST_KEY, manifest("2607100003"));
     await runUpdateCheck(scoped);
     commands = await pendingCommands();
@@ -93,7 +93,7 @@ describe("cloud-driven update check", () => {
     const first = await SELF.fetch("https://example.test/v1/update/ping", { method: "POST" });
     expect(first.status).toBe(202);
     const firstBody = await first.json() as { queued: boolean };
-    
+
     const second = await SELF.fetch("https://example.test/v1/update/ping", { method: "POST" });
     expect(second.status).toBe(202);
     const secondBody = await second.json() as { queued: boolean };

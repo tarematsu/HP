@@ -9,7 +9,7 @@ beforeEach(async () => {
   vi.useFakeTimers();
   const testEnv = env as TestEnv;
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
-  
+
   await env.DB.exec("DROP TRIGGER IF EXISTS skip_redundant_current_state_heartbeat");
 });
 

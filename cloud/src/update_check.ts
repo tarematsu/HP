@@ -59,10 +59,10 @@ export async function runUpdateCheck(env: Env): Promise<void> {
   } catch {   }
   if (identity.version === previousVersion && identity.manifestHash === previousManifestHash) return;
 
-  
-  
-  
-  
+
+
+
+
   if (previousVersion) {
     const payload = JSON.stringify({
       reason: "release",
@@ -73,8 +73,8 @@ export async function runUpdateCheck(env: Env): Promise<void> {
       await enqueueCommandOnce(env, deviceId, "check_update", payload, COMMAND_TTL_SECONDS);
     }
   }
-  
-  
+
+
   await updateState(env, {
     source: "update",
     payload: identity,

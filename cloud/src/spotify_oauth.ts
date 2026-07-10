@@ -14,7 +14,7 @@ const REQUIRED_SPOTIFY_KEYS = [
 function b64url(bytes: Uint8Array): string {
   let value = "";
   for (const byte of bytes) value += String.fromCharCode(byte);
-  return btoa(value).replace(/\+/g, "-").replace(/\
+  return btoa(value).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
 function randomToken(bytes = 32): string {
