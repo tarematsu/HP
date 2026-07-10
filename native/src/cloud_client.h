@@ -34,6 +34,7 @@ class CloudClient {
   void ApplyPresenceFallback();
   void LoadCacheMetadata();
   void SaveCacheMetadata();
+  void UpdateStationheadHealthText(std::wstring text);
   void EnsureHttpHandlesLocked();
   void ResetHttpHandlesLocked();
   std::vector<uint8_t> LocalizeRadarTiles(const std::vector<uint8_t>& body);
