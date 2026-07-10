@@ -196,11 +196,16 @@ export async function updateState(
   if (previous?.content_hash === hash) {
     const heartbeatDue = now - previous.fetched_at >= STATE_HEARTBEAT_MS;
     const recovered = previous.status !== "ok" || previous.error !== null;
+    // Preserve stable ETags between heartbeats, but refresh volatile timestamp
+    // fields whenever the regular state heartbeat is due or a stale source
+    // recovers. This avoids both permanently stale timestamps and redraw churn.
     if (!heartbeatDue && !recovered) return;
     await env.DB.prepare(
-      `UPDATE current_state SET observed_at=?1, fetched_at=?2, last_success_at=?2, status='ok', error=NULL
-       WHERE source=?3`,
-    ).bind(result.observedAt, now, result.source).run();
+      `UPDATE current_state
+          SET payload=?1, observed_at=?2, fetched_at=?3, last_success_at=?3,
+              status='ok', error=NULL
+        WHERE source=?4`,
+    ).bind(payload, result.observedAt, now, result.source).run();
     return;
   }
 
@@ -244,9 +249,12 @@ export async function buildMeta(env: Env): Promise<MetaPayload> {
   const radar = rows.radar;
   const version = dashboardVersion(rows);
   const statusForDashboard = dashboardStatus(rows);
+  const missingDashboardSource = DASHBOARD_SOURCE_NAMES.some(source => !rows[source]);
   const status: MetaPayload["status"] = statusForDashboard === "error" || radar?.status === "error"
     ? "error"
-    : statusForDashboard === "stale" || radar?.status === "stale" ? "stale" : "ok";
+    : missingDashboardSource || statusForDashboard === "stale" || !radar || radar.status === "stale"
+      ? "stale"
+      : "ok";
   const dashboardFetchedAt = Math.max(
     0,
     ...DASHBOARD_SOURCE_NAMES.map(source => Number(rows[source]?.fetched_at ?? 0)),

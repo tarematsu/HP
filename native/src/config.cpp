@@ -22,9 +22,8 @@ bool GetBoolean(const JsonObject& object, const wchar_t* key, bool fallback) {
 int GetInteger(const JsonObject& object, const wchar_t* key, int fallback, int minimum, int maximum) {
   try {
     const double value = object.GetNamedNumber(key, fallback);
-    return std::isfinite(value)
-        ? std::clamp(static_cast<int>(value), minimum, maximum)
-        : fallback;
+    if (!std::isfinite(value)) return fallback;
+    return static_cast<int>(std::clamp(value, static_cast<double>(minimum), static_cast<double>(maximum)));
   } catch (...) {
     return fallback;
   }
@@ -81,14 +80,15 @@ std::wstring ReadEnvironmentValue(const std::vector<std::wstring>& keys) {
 }
 
 std::vector<std::wstring> TokenKeys(const wchar_t* environmentName) {
-  std::vector<std::wstring> keys{environmentName, L"HOMEPANEL_INGEST_SECRET"};
   if (wcscmp(environmentName, L"HOMEPANEL_DEVICE_TOKEN") == 0) {
-    keys.push_back(L"DEVICE_TOKEN");
-  } else if (wcscmp(environmentName, L"HOMEPANEL_ACTION_TOKEN") == 0) {
-    keys.push_back(L"API_TOKEN");
-    keys.push_back(L"DEVICE_TOKEN");
+    return {environmentName, L"DEVICE_TOKEN", L"HOMEPANEL_INGEST_SECRET"};
   }
-  return keys;
+  if (wcscmp(environmentName, L"HOMEPANEL_ACTION_TOKEN") == 0) {
+    // Administrative operations require their own credential. Do not silently
+    // promote a device/ingestion token to fleet-control authority.
+    return {environmentName, L"API_TOKEN"};
+  }
+  return {environmentName};
 }
 }  // namespace
 

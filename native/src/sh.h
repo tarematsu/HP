@@ -115,6 +115,8 @@ class StationheadPlayer {
   EventRegistrationToken authCloseToken_{};
   std::shared_ptr<std::atomic<bool>> createCallbackAlive_{
       std::make_shared<std::atomic<bool>>(false)};
+  std::shared_ptr<std::atomic<bool>> authCallbackAlive_{
+      std::make_shared<std::atomic<bool>>(false)};
   std::atomic<bool> creating_{false};
   std::atomic<bool> recreating_{false};
   std::atomic<bool> shuttingDown_{false};

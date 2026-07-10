@@ -43,11 +43,8 @@ void App::LoadAirHistory() {
 }
 
 void App::SaveAirHistory() const {
-  const fs::path target = dataDir_ / L"air-history.json";
-  const fs::path temporary = dataDir_ / L"air-history.json.tmp";
   try {
-    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-    if (!output) return;
+    std::ostringstream output;
     output << "[";
     bool first = true;
     for (const auto& sample : renderState_.airHistory) {
@@ -59,14 +56,8 @@ void App::SaveAirHistory() const {
              << ",\"humidity\":" << sample.humidity << "}";
     }
     output << "]";
-    output.close();
-    if (!output) return;
-    std::error_code ignored;
-    fs::rename(temporary, target, ignored);
-    if (ignored) {
-      ignored.clear();
-      fs::copy_file(temporary, target, fs::copy_options::overwrite_existing, ignored);
-      fs::remove(temporary, ignored);
+    if (!AtomicWriteText(dataDir_ / L"air-history.json", output.str()) && logger_) {
+      logger_->Warn(L"Air history atomic write failed");
     }
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history save failed: " + Utf8ToWide(error.what()));

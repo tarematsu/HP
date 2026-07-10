@@ -39,6 +39,33 @@ std::vector<uint8_t> ReadFileBytes(
   return bytes;
 }
 
+bool SameHttpsOrigin(const std::wstring& url, const std::wstring& trustedBase) {
+  const auto parse = [](const std::wstring& value, std::wstring& host,
+                        INTERNET_PORT& port, bool& secure) {
+    URL_COMPONENTS parts{sizeof(parts)};
+    wchar_t hostBuffer[512]{};
+    parts.lpszHostName = hostBuffer;
+    parts.dwHostNameLength = _countof(hostBuffer);
+    if (!WinHttpCrackUrl(value.c_str(), 0, 0, &parts)) return false;
+    host.assign(hostBuffer, parts.dwHostNameLength);
+    std::transform(host.begin(), host.end(), host.begin(), towlower);
+    port = parts.nPort;
+    secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+    return !host.empty();
+  };
+
+  std::wstring urlHost;
+  std::wstring trustedHost;
+  INTERNET_PORT urlPort = 0;
+  INTERNET_PORT trustedPort = 0;
+  bool urlSecure = false;
+  bool trustedSecure = false;
+  return parse(url, urlHost, urlPort, urlSecure) &&
+         parse(trustedBase, trustedHost, trustedPort, trustedSecure) &&
+         urlSecure && trustedSecure && urlHost == trustedHost &&
+         urlPort == trustedPort;
+}
+
 std::string FetchAuthorizedManifest(const fs::path& root) {
   const fs::path data = root / L"data";
   AppConfig config = LoadConfig(data / L"settings.json");
@@ -73,6 +100,9 @@ void VerifyInstalledFiles(const UpdateManifest& manifest, const fs::path& root) 
   const std::wstring installedVersion = InstalledFileVersion(root / L"HomePanel.exe");
   if (installedVersion.empty()) {
     throw std::runtime_error("installed HomePanel version could not be read after update");
+  }
+  if (!VersionsEqual(installedVersion, manifest.version)) {
+    throw std::runtime_error("installed HomePanel version does not match update manifest");
   }
 }
 
@@ -117,17 +147,11 @@ int HardenedRunStandalone(const fs::path& root) {
   if (IsVersionNewer(installedVersion, initialManifest.version)) {
     throw std::runtime_error("server update version is older than installed HomePanel");
   }
-  if (VersionsEqual(initialManifest.version, installedVersion)) {
-    Log(root, L"Authenticated update skipped because HomePanel is already current");
-    MessageBoxW(nullptr, L"すでに最新バージョンです。",
-                L"HomePanel Updater", MB_ICONINFORMATION | MB_OK);
-    return 0;
-  }
 
   const bool initiallyNewer = IsVersionNewer(initialManifest.version, installedVersion);
   const std::wstring prompt = initiallyNewer
       ? L"HomePanelとUpdaterを " + initialManifest.version + L" に更新します。\n\n続行しますか？"
-      : L"HomePanelとUpdaterは最新版です。\n現在の版を認証付きの更新配信から再取得して修復しますか？";
+      : L"HomePanelとUpdaterは最新版です。\n現在の版を認証付きの更新配信から再取得して検証・修復しますか？";
   if (MessageBoxW(nullptr, prompt.c_str(), L"HomePanel Updater",
                   MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON1) != IDYES) {
     Log(root, L"Authenticated update cancelled");
@@ -171,24 +195,38 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
     throw std::runtime_error("refusing to downgrade installed HomePanel");
   }
   if (!currentVersion.empty() && VersionsEqual(currentVersion, manifest.version)) {
-    Log(arguments.root, L"Verified update skipped because installed version already matches manifest");
-    std::error_code ignored;
-    fs::remove(arguments.manifest, ignored);
-    RestartHomePanel(arguments.root);
-    return;
+    try {
+      VerifyInstalledFiles(manifest, arguments.root);
+      Log(arguments.root, L"Same-version verification succeeded; no repair was required");
+      std::error_code ignored;
+      fs::remove(arguments.manifest, ignored);
+      RestartHomePanel(arguments.root);
+      return;
+    } catch (const std::exception& error) {
+      Log(arguments.root, L"Same-version verification failed; repairing files: " +
+                          Utf8ToWide(error.what()));
+    }
   }
 
   const fs::path staging =
       arguments.root / L"data" / L"update-staging" / manifest.version;
   const fs::path backup = arguments.root / L"data" / L"update-backup";
-  const std::wstring deviceToken = LoadProtectedToken(arguments.root / L"data" / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
+  const fs::path data = arguments.root / L"data";
+  const AppConfig config = LoadConfig(data / L"settings.json");
+  const std::wstring deviceToken = LoadProtectedToken(data / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   if (deviceToken.empty()) {
     throw std::runtime_error("device token is unavailable; cannot download authenticated update files");
+  }
+  if (config.cloudflareBaseUrl.empty()) {
+    throw std::runtime_error("Cloudflare base URL is unavailable for update origin verification");
   }
   fs::remove_all(staging);
   fs::create_directories(staging);
 
   for (const auto& file : manifest.files) {
+    if (!SameHttpsOrigin(file.url, config.cloudflareBaseUrl)) {
+      throw std::runtime_error("update file URL is outside the configured HomePanel Worker origin");
+    }
     const size_t maximum = static_cast<size_t>(
         std::min<uint64_t>(file.size + 1024 * 1024, 64ull * 1024ull * 1024ull));
     const auto bytes = DownloadHttpsFile(file.url, maximum, deviceToken);
@@ -261,11 +299,11 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
 namespace {
 
 std::filesystem::path CurrentExecutablePath() {
-  wchar_t buffer[32768]{};
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer, static_cast<DWORD>(std::size(buffer)));
-  if (!length || length >= std::size(buffer)) return {};
-  return std::filesystem::path(std::wstring(buffer, length));
+  std::vector<wchar_t> buffer(32768);
+  const DWORD length = GetModuleFileNameW(
+      nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+  if (!length || length >= buffer.size()) return {};
+  return std::filesystem::path(std::wstring(buffer.data(), length));
 }
 
 bool LooksLikeHomePanelRoot(const std::filesystem::path& root) {
@@ -282,11 +320,11 @@ std::filesystem::path ResolveHomePanelRoot(
     candidates.push_back(executable.parent_path());
     candidates.push_back(executable.parent_path().parent_path());
   }
-  wchar_t current[32768]{};
-  const DWORD currentLength =
-      GetCurrentDirectoryW(static_cast<DWORD>(std::size(current)), current);
-  if (currentLength && currentLength < std::size(current)) {
-    candidates.emplace_back(std::wstring(current, currentLength));
+  std::vector<wchar_t> current(32768);
+  const DWORD currentLength = GetCurrentDirectoryW(
+      static_cast<DWORD>(current.size()), current.data());
+  if (currentLength && currentLength < current.size()) {
+    candidates.emplace_back(std::wstring(current.data(), currentLength));
   }
   if (const wchar_t* systemDrive = _wgetenv(L"SystemDrive");
       systemDrive && *systemDrive) {
