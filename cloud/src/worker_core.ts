@@ -31,6 +31,45 @@ async function stateJson(request: Request, env: Env, source: string): Promise<Re
   return etagResponse(request, state.payload, "application/json; charset=utf-8", state.content_hash!);
 }
 
+async function stationheadHealthState(request: Request, env: Env): Promise<Response> {
+  const state = await readState(env, "stationhead_health");
+  if (!state) return json({ error: "stationhead_health unavailable" }, { status: 503 });
+
+  let value: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(state.payload) as unknown;
+    value = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    value = {};
+  }
+
+  if (state.status !== "ok") {
+    value = {
+      ...value,
+      healthy: false,
+      monitorStatus: state.status,
+      reason: state.error || value.reason || "Stationhead health monitor is unavailable",
+    };
+  } else if (typeof value.healthy !== "boolean") {
+    value = {
+      ...value,
+      healthy: false,
+      monitorStatus: "error",
+      reason: "Stored Stationhead health payload is invalid",
+    };
+  }
+
+  const payload = JSON.stringify(value);
+  return etagResponse(
+    request,
+    payload,
+    "application/json; charset=utf-8",
+    await sha256Hex(payload),
+  );
+}
+
 async function stationheadState(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const state = await readState(env, "stationhead");
   if (state) return etagResponse(request, state.payload, "application/json; charset=utf-8", state.content_hash!);
@@ -149,7 +188,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (url.pathname === "/v1/dashboard.json") return dashboardJsonResponse(request, env);
     if (url.pathname === "/v1/switchbot") return stateJson(request, env, "switchbot");
     if (url.pathname === "/v1/stationhead") return stationheadState(request, env, ctx);
-    if (url.pathname === "/v1/stationhead-health") return stateJson(request, env, "stationhead_health");
+    if (url.pathname === "/v1/stationhead-health") return stationheadHealthState(request, env);
     return stateJson(request, env, "radar");
   }
 
