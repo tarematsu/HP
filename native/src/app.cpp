@@ -78,7 +78,13 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
 StationheadStatus BuildRenderStationheadState(const AppStationheadHandle& stationhead,
                                               const AppSecondaryStationheadHandle& secondary) {
   StationheadStatus state = stationhead.Status();
-  state.secondaryAudioMuted = static_cast<bool>(secondary) && secondary.AudioMuted();
+  if (secondary) {
+    const SecondaryStationheadStatus secondaryStatus = secondary.Status();
+    state.loginRequired = state.loginRequired || secondaryStatus.loginRequired;
+    state.secondaryAudioMuted = secondaryStatus.audioMuted;
+  } else {
+    state.secondaryAudioMuted = false;
+  }
   return state;
 }
 

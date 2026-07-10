@@ -58,10 +58,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     } else {
       SetWindowRgn(hostWindow, nullptr, FALSE);
       ShowWindow(hostWindow, SW_SHOWNOACTIVATE);
-      // Normal playback/content remains behind the dashboard. Startup preview is
-      // the only content-host case that is deliberately raised, and App clears it
-      // before the dashboard is shown.
-      SetWindowPos(hostWindow, previewVisible ? HWND_TOP : HWND_BOTTOM,
+      // Background playback remains behind the dashboard. Login/setup or an
+      // explicitly selected Stationhead surface must be raised immediately,
+      // including secondary-window login prompts raised from WebView callbacks.
+      SetWindowPos(hostWindow, (previewVisible || contentVisible) ? HWND_TOP : HWND_BOTTOM,
                    bounds.left, bounds.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
