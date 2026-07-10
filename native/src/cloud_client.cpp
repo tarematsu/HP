@@ -6,6 +6,7 @@
 namespace hp {
 namespace {
 constexpr size_t kMaxResponseBytes = 16 * 1024 * 1024;
+constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
@@ -174,6 +175,18 @@ std::wstring CloudClient::WorkerVersion() const {
   return workerVersion_;
 }
 
+void CloudClient::UpdateStationheadHealthText(std::wstring text) {
+  bool changed = false;
+  {
+    std::lock_guard lock(stateMutex_);
+    if (stationheadHealthText_ != text) {
+      stationheadHealthText_ = std::move(text);
+      changed = true;
+    }
+  }
+  if (changed && window_) PostMessageW(window_, kStationheadHealthUpdatedMessage, 0, 0);
+}
+
 void CloudClient::LoadCacheMetadata() {
   try {
     std::ifstream input(dataDir_ / L"dashboard.meta.json", std::ios::binary);
@@ -211,6 +224,7 @@ void CloudClient::Loop() {
       ApplyPresenceFallback();
       dashboardVersion_ = -1;
       cacheMetadataDirty_ = true;
+      UpdateStationheadHealthText(L"Stationhead収集: 状態取得失敗");
       const std::wstring friendly = FriendlyCloudError(error.what());
       const auto dashboard = DashboardWithCloudError(dataDir_ / L"dashboard.json", friendly);
       if (AtomicWriteBytes(dataDir_ / L"dashboard.json", dashboard)) PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
