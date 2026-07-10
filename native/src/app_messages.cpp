@@ -5,6 +5,9 @@
 #include "app.h"
 
 namespace hp {
+namespace {
+constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
+}
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   App* app = reinterpret_cast<App*>(GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -123,6 +126,13 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       PublishRenderStateNow();
       return 0;
     }
+    case kStationheadHealthUpdatedMessage:
+      if (cloud_) {
+        renderState_.toast = cloud_->StationheadHealthText();
+        toastUntil_ = 0;
+        PublishRenderStateNow();
+      }
+      return 0;
     case WM_HP_CONFIG_UPDATED:
       renderState_.toast = L"クラウド設定を保存しました。再起動時に適用します";
       ShowToast(std::move(renderState_.toast), 5000);
