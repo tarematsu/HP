@@ -72,15 +72,23 @@ inline constexpr int kRadarCanvasWidth = 1920;
 inline constexpr int kRadarCanvasHeight = 1280;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
+// Overlay layout: the radar map fills the entire client area as a living
+// background. Two full-width merged panels float over it: the top panel
+// (air quality | news | energy) and the bottom panel (stationhead |
+// clock+controls | weather). Everything is derived proportionally from the
+// client size so any resolution lays out the same way.
 struct NativeDashboardLayout {
-  RECT air{};
-  RECT controls{};
-  RECT news{};
-  RECT weather{};
-  RECT energy{};
-  RECT stationhead{};
+  RECT top{};
+  RECT bottom{};
   RECT radar{};
-  RECT clock{};
+};
+
+// A merged panel is split into three horizontal sections: the former corner
+// cards on the left/right and the former center strip in the middle.
+struct NativePanelSections {
+  RECT left{};
+  RECT center{};
+  RECT right{};
 };
 
 inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bottom) {
@@ -93,50 +101,47 @@ inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bott
   return rect;
 }
 
-// Overlay layout: the radar map fills the entire client area as a living
-// background. Air/Energy/Stationhead/Weather float as translucent cards in
-// the four corners, while News/Clock/Controls stack down the center: news up
-// top, the clock just above the update/restart buttons, and controls pinned
-// to the bottom.
+// Insets a rect by fractions (permille) of its own size, so padding scales
+// with the panel instead of being an absolute pixel count.
+inline RECT RelativeInsetRect(const RECT& rect, int horizontalPermille, int verticalPermille) {
+  const int width = std::max(1L, rect.right - rect.left);
+  const int height = std::max(1L, rect.bottom - rect.top);
+  return NormalizeInsetRect(rect, width * horizontalPermille / 1000, height * verticalPermille / 1000,
+                            width * horizontalPermille / 1000, height * verticalPermille / 1000);
+}
+
 inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
-  const int shortSide = std::min(clientWidth, clientHeight);
-  const int margin = std::clamp(shortSide * 3 / 100, 16, 32);
-  const int gap = std::clamp(shortSide * 2 / 100, 10, 20);
+  const int marginX = clientWidth * 2 / 100;
+  const int marginY = clientHeight * 3 / 100;
+  const int topHeight = clientHeight * 26 / 100;
+  const int bottomHeight = clientHeight * 31 / 100;
 
   NativeDashboardLayout layout;
   layout.radar = bounds;
-
-  const int centerWidth = std::clamp(clientWidth * 30 / 100, 320, 480);
-  const int cornerBaseHeight = std::clamp(clientHeight * 19 / 100, 150, 210) +
-                               std::clamp(shortSide * 8 / 100, 40, 70);
-  const int cornerWidth = std::clamp(centerWidth * 6 / 5, 384, 576);
-  const int cornerHeight = std::clamp(cornerBaseHeight * 11 / 10, 209, 308);
-  const int centerLeft = bounds.left + (clientWidth - centerWidth) / 2;
-  const int centerRight = centerLeft + centerWidth;
-
-  layout.air = RECT{bounds.left + margin, bounds.top + margin,
-                    bounds.left + margin + cornerWidth, bounds.top + margin + cornerHeight};
-  layout.energy = RECT{bounds.right - margin - cornerWidth, bounds.top + margin,
-                       bounds.right - margin, bounds.top + margin + cornerHeight};
-  layout.stationhead = RECT{bounds.left + margin, bounds.bottom - margin - cornerHeight,
-                            bounds.left + margin + cornerWidth, bounds.bottom - margin};
-  layout.weather = RECT{bounds.right - margin - cornerWidth, bounds.bottom - margin - cornerHeight,
-                        bounds.right - margin, bounds.bottom - margin};
-
-  const int newsHeight = std::clamp(clientHeight * 9 / 100, 56, 84);
-  layout.news = RECT{centerLeft, bounds.top + margin, centerRight, bounds.top + margin + newsHeight};
-
-  const int controlsHeight = std::clamp(clientHeight * 14 / 100, 100, 140);
-  layout.controls = RECT{centerLeft, bounds.bottom - margin - controlsHeight,
-                         centerRight, bounds.bottom - margin};
-
-  const int clockHeight = std::clamp(clientHeight * 15 / 100, 100, 160);
-  const int clockTop = layout.controls.top - gap - clockHeight;
-  layout.clock = RECT{centerLeft, clockTop, centerRight, clockTop + clockHeight};
-
+  layout.top = RECT{bounds.left + marginX, bounds.top + marginY,
+                    bounds.right - marginX, bounds.top + marginY + topHeight};
+  layout.bottom = RECT{bounds.left + marginX, bounds.bottom - marginY - bottomHeight,
+                       bounds.right - marginX, bounds.bottom - marginY};
   return layout;
+}
+
+// Left/right sections take 36% of the panel width each; the center strip is
+// what remains after two relative gutters.
+inline NativePanelSections SplitPanelSections(const RECT& panel) {
+  const int width = std::max(1L, panel.right - panel.left);
+  const int gutter = width * 15 / 1000;
+  const int sideWidth = width * 36 / 100;
+  NativePanelSections sections;
+  sections.left = RECT{panel.left, panel.top, panel.left + sideWidth, panel.bottom};
+  sections.right = RECT{panel.right - sideWidth, panel.top, panel.right, panel.bottom};
+  sections.center = RECT{sections.left.right + gutter, panel.top,
+                         sections.right.left - gutter, panel.bottom};
+  if (sections.center.right <= sections.center.left) {
+    sections.center.right = sections.center.left + 1;
+  }
+  return sections;
 }
 
 class Renderer {
@@ -189,7 +194,7 @@ class Renderer {
     ~NativePanelPaintScope();
     NativePanelPaintScope(const NativePanelPaintScope&) = delete;
     NativePanelPaintScope& operator=(const NativePanelPaintScope&) = delete;
-    bool Valid() const { return paintDc != nullptr; }
+    bool Valid() const { return paintDc != nullptr && dc != nullptr; }
 
     HWND hwnd = nullptr;
     PAINTSTRUCT paint{};
@@ -197,11 +202,12 @@ class Renderer {
     HDC dc = nullptr;
     HGDIOBJ previousBitmap = nullptr;
     RECT bounds{};
+    // Region actually invalidated this paint. Sampling/tinting/drawing are
+    // clipped to it and the destructor blits only this rect, so a 1s clock
+    // tick repaints just the clock section instead of the whole panel.
+    RECT dirty{};
   };
 
-  bool EnsureNativeClockWindow();
-  void ApplyNativeClockBounds();
-  void DestroyNativeClockWindow();
   bool EnsureNativeStaticWindows();
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
@@ -219,16 +225,22 @@ class Renderer {
     if (renderer) return (renderer->*Handler)(hwnd, message, wparam, lparam);
     return DefWindowProcW(hwnd, message, wparam, lparam);
   }
-  LRESULT HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-  void PaintNativeClock(HWND hwnd);
-  void PaintNativeAir(HWND hwnd);
-  void PaintNativeControls(HWND hwnd);
-  void PaintNativeNews(HWND hwnd);
-  void PaintNativeWeather(HWND hwnd);
-  void PaintNativeEnergy(HWND hwnd);
-  void PaintNativeStationhead(HWND hwnd);
+  // Unified typography: every label picks one of exactly three sizes, all
+  // derived from the dashboard height.
+  enum class FontTier { Small, Medium, Large };
+  HFONT TierFont(FontTier tier) const;
+  enum class PanelSection { Left, Center, Right };
+  void InvalidatePanelSection(HWND window, PanelSection section);
+  void PaintNativeTop(HWND hwnd);
+  void PaintNativeBottom(HWND hwnd);
   void PaintNativeRadar(HWND hwnd);
+  void DrawAirSection(HDC dc, const RECT& section);
+  void DrawNewsSection(HDC dc, const RECT& section);
+  void DrawEnergySection(HDC dc, const RECT& section);
+  void DrawStationheadSection(HDC dc, const RECT& section);
+  void DrawClockControlsSection(HDC dc, const RECT& section);
+  void DrawWeatherSection(HDC dc, const RECT& section);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
   void QueueAction(UiAction action);
@@ -249,25 +261,19 @@ class Renderer {
   RECT ClientBounds() const;
   void ParseDashboardMetadata(const std::wstring& json);
 
-  // One entry per static native panel window (the clock has its own window
-  // class and is handled separately). Radar comes first so placement loops
-  // stack every later panel above the full-screen radar background.
+  // One entry per native panel window. Radar comes first so placement loops
+  // stack the merged top/bottom panels above the full-screen radar background.
   struct NativePanelSlot {
     HWND Renderer::* window;
     RECT NativeDashboardLayout::* rect;
     const wchar_t* title;
     int id;
   };
-  static const std::array<NativePanelSlot, 7>& NativePanelSlots();
+  static const std::array<NativePanelSlot, 3>& NativePanelSlots();
 
   HWND window_{};
-  HWND nativeClockWindow_{};
-  HWND nativeAirWindow_{};
-  HWND nativeControlsWindow_{};
-  HWND nativeNewsWindow_{};
-  HWND nativeWeatherWindow_{};
-  HWND nativeEnergyWindow_{};
-  HWND nativeStationheadWindow_{};
+  HWND nativeTopWindow_{};
+  HWND nativeBottomWindow_{};
   HWND nativeRadarWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;

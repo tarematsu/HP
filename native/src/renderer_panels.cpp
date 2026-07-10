@@ -3,18 +3,13 @@
 
 namespace hp {
 namespace {
-constexpr int kNativeAirId = 101;
-constexpr int kNativeControlsId = 103;
-constexpr int kNativeNewsId = 104;
-constexpr int kNativeWeatherId = 105;
-constexpr int kNativeEnergyId = 106;
-constexpr int kNativeStationheadId = 107;
+constexpr int kNativeTopId = 101;
+constexpr int kNativeBottomId = 102;
 constexpr int kNativeRadarId = 108;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurface = RGB(18, 23, 31);
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
-// Label hierarchy follows iOS dark-mode label/secondaryLabel/tertiaryLabel.
 constexpr COLORREF kWidgetText = RGB(255, 255, 255);
 constexpr COLORREF kWidgetMuted = RGB(255, 255, 255);
 constexpr COLORREF kWidgetSubtle = RGB(255, 255, 255);
@@ -38,63 +33,41 @@ void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
   ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
 }
 
-struct ControlsButtonRects {
-  RECT update{};
-  RECT restart{};
-  RECT toast{};
-};
-
-// Buttons are centered horizontally and pinned to the bottom of the panel;
-// the toast message uses whatever space is left above them.
-ControlsButtonRects ControlsButtonsFromBounds(const RECT& bounds) {
-  const int width = std::max(1L, bounds.right - bounds.left);
-  const int height = std::max(1L, bounds.bottom - bounds.top);
-  if (width < 330) {
-    const int buttonHeight = std::clamp(height / 5, 34, 42);
-    const int buttonWidth = std::min(190, std::max(120, width - 8));
-    const int left = bounds.left + (width - buttonWidth) / 2;
-    const int secondTop = bounds.bottom - buttonHeight;
-    const int firstTop = secondTop - buttonHeight - 8;
-    return ControlsButtonRects{
-        RECT{left, firstTop, left + buttonWidth, firstTop + buttonHeight},
-        RECT{left, secondTop, left + buttonWidth, secondTop + buttonHeight},
-        RECT{bounds.left, bounds.top, bounds.right, firstTop - 6},
-    };
-  }
-
-  const int buttonWidth = std::min(170, std::max(120, (width - 24) / 2));
-  const int buttonHeight = std::clamp(height / 4, 38, 44);
-  const int totalWidth = buttonWidth * 2 + 10;
-  const int left = bounds.left + (width - totalWidth) / 2;
-  const int top = bounds.bottom - buttonHeight;
-  return ControlsButtonRects{
-      RECT{left, top, left + buttonWidth, top + buttonHeight},
-      RECT{left + buttonWidth + 10, top, left + totalWidth, top + buttonHeight},
-      RECT{bounds.left, bounds.top, bounds.right, top - 6},
-  };
+// Returns a fraction of a rect's span so intra-panel layout is proportional.
+int SpanX(const RECT& rect, int permille) {
+  return static_cast<int>((rect.right - rect.left) * permille / 1000);
+}
+int SpanY(const RECT& rect, int permille) {
+  return static_cast<int>((rect.bottom - rect.top) * permille / 1000);
 }
 
-struct StationheadButtonRects {
-  RECT primaryAudio{};
-  RECT secondaryAudio{};
-};
-
-StationheadButtonRects StationheadButtonsFromBounds(const RECT& bounds) {
-  const int height = std::max(1L, bounds.bottom - bounds.top);
-  const int rowHeight = std::max(56, (height - 34) / 2);
-  const int firstTop = bounds.top + 34 + std::max(8, rowHeight / 2 - 15);
-  const int secondTop = bounds.top + 34 + rowHeight + std::max(8, rowHeight / 2 - 15);
-  const int buttonWidth = std::clamp((bounds.right - bounds.left) / 4, 76L, 94L);
-  return StationheadButtonRects{
-      RECT{bounds.right - buttonWidth, firstTop, bounds.right, firstTop + 30},
-      RECT{bounds.right - buttonWidth, secondTop, bounds.right, secondTop + 30},
-  };
+// BIZ UDPGothic is Morisawa's universal-design gothic bundled with Windows 10
+// 1809+; it stays legible at dashboard viewing distance. Fall back to
+// Yu Gothic UI on systems that do not ship it.
+const wchar_t* DashboardFontFace() {
+  static const wchar_t* face = [] {
+    LOGFONTW probe{};
+    probe.lfCharSet = DEFAULT_CHARSET;
+    wcscpy_s(probe.lfFaceName, L"BIZ UDPGothic");
+    bool found = false;
+    HDC dc = GetDC(nullptr);
+    if (dc) {
+      EnumFontFamiliesExW(dc, &probe,
+          [](const LOGFONTW*, const TEXTMETRICW*, DWORD, LPARAM param) -> int {
+            *reinterpret_cast<bool*>(param) = true;
+            return 0;
+          }, reinterpret_cast<LPARAM>(&found), 0);
+      ReleaseDC(nullptr, dc);
+    }
+    return found ? L"BIZ UDPGothic" : L"Yu Gothic UI";
+  }();
+  return face;
 }
 
 HFONT CreateUiFont(int height, int weight) {
   return CreateFontW(-height, 0, 0, 0, weight, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                      OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-                     DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+                     DEFAULT_PITCH | FF_DONTCARE, DashboardFontFace());
 }
 
 // Panels repaint as often as once a second; reuse HFONTs by (height, weight)
@@ -241,7 +214,6 @@ double RangeMax(const std::vector<double>& values, double fallback) {
   return values.empty() ? fallback : *std::max_element(values.begin(), values.end());
 }
 
-
 void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
                      int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
                      COLORREF color, int width,
@@ -268,60 +240,13 @@ void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const
   DeleteObject(pen);
 }
 
-RECT PanelContentRect(const RECT& bounds) {
-  return NormalizeInsetRect(bounds, 20, 18, 20, 18);
-}
-
+// Soft drop shadow for the one text that still floats directly on the radar
+// map (the caption); panel text sits on the frosted tint and needs none.
 void DrawShadowedText(HDC dc, const std::wstring& text, RECT rect, int format, COLORREF color) {
   RECT shadowRect = rect;
   OffsetRect(&shadowRect, 0, 2);
   SetTextColor(dc, RGB(0, 0, 0));
   DrawTextInRect(dc, text, shadowRect, format);
-  SetTextColor(dc, color);
-  DrawTextInRect(dc, text, rect, format);
-}
-
-void DrawSoftOutlinedText(HDC dc, const std::wstring& text, RECT rect, int format, COLORREF color) {
-  static constexpr POINT kSoftOffsets[] = {
-      {-3, -2}, {-1, -3}, {1, -3}, {3, -2}, {-4, 0}, {4, 0},
-      {-3, 2}, {-1, 3}, {1, 3}, {3, 2}, {0, 4},
-      {-2, -1}, {0, -2}, {2, -1}, {-2, 1}, {2, 1}, {0, 2},
-  };
-  SetTextColor(dc, RGB(6, 8, 12));
-  for (const POINT& offset : kSoftOffsets) {
-    RECT shadowRect = rect;
-    OffsetRect(&shadowRect, offset.x, offset.y);
-    DrawTextInRect(dc, text, shadowRect, format);
-  }
-  SetTextColor(dc, RGB(22, 26, 34));
-  static constexpr POINT kCoreOffsets[] = {
-      {-1, 0}, {1, 0}, {0, -1}, {0, 1},
-  };
-  for (const POINT& offset : kCoreOffsets) {
-    RECT shadowRect = rect;
-    OffsetRect(&shadowRect, offset.x, offset.y);
-    DrawTextInRect(dc, text, shadowRect, format);
-  }
-  SetTextColor(dc, color);
-  DrawTextInRect(dc, text, rect, format);
-}
-
-// Draws a soft outline behind the text so it stays legible over the busy radar
-// map without the hard, chunky edge of a single thick outline.
-void DrawOutlinedText(HDC dc, const std::wstring& text, RECT rect, int format, COLORREF color) {
-  DrawSoftOutlinedText(dc, text, rect, format, color);
-}
-
-void DrawSoftShadowedText(HDC dc, const std::wstring& text, RECT rect, int format, COLORREF color) {
-  static constexpr POINT kOffsets[] = {
-      {-2, 1}, {0, 2}, {2, 1}, {-1, 3}, {1, 3},
-  };
-  SetTextColor(dc, RGB(5, 7, 10));
-  for (const POINT& offset : kOffsets) {
-    RECT shadowRect = rect;
-    OffsetRect(&shadowRect, offset.x, offset.y);
-    DrawTextInRect(dc, text, shadowRect, format);
-  }
   SetTextColor(dc, color);
   DrawTextInRect(dc, text, rect, format);
 }
@@ -387,26 +312,77 @@ void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha) 
   SelectObject(colorDc, previousBitmap);
   DeleteDC(colorDc);
 }
+
+struct ControlsButtonRects {
+  RECT update{};
+  RECT restart{};
+  RECT toast{};
+};
+
+// Update/restart buttons pinned to the bottom of the clock section; toast
+// text uses the band just above them. Everything is a fraction of the
+// section rect.
+ControlsButtonRects ControlsButtonsFromSection(const RECT& section) {
+  const int width = std::max(1L, section.right - section.left);
+  const int buttonWidth = SpanX(section, 380);
+  const int buttonHeight = std::clamp(SpanY(section, 140), 30, 56);
+  const int gap = SpanX(section, 40);
+  const int totalWidth = buttonWidth * 2 + gap;
+  const int left = section.left + (width - totalWidth) / 2;
+  const int bottom = section.bottom - SpanY(section, 50);
+  const int top = bottom - buttonHeight;
+  ControlsButtonRects rects;
+  rects.update = RECT{left, top, left + buttonWidth, bottom};
+  rects.restart = RECT{left + buttonWidth + gap, top, left + totalWidth, bottom};
+  rects.toast = RECT{section.left, top - SpanY(section, 170), section.right, top - SpanY(section, 20)};
+  return rects;
+}
+
+struct StationheadRowRects {
+  RECT row{};
+  RECT button{};
+};
+
+// The stationhead section holds two equal rows; the audio toggle button sits
+// on the right side of each row.
+StationheadRowRects StationheadRowFromSection(const RECT& section, int row) {
+  const int gap = SpanY(section, 60);
+  const int rowHeight = (section.bottom - section.top - gap) / 2;
+  const int top = section.top + row * (rowHeight + gap);
+  StationheadRowRects rects;
+  rects.row = RECT{section.left, top, section.right, top + rowHeight};
+  const int buttonWidth = SpanX(section, 200);
+  const int buttonHeight = std::clamp(rowHeight * 36 / 100, 26, 48);
+  const int buttonRight = rects.row.right - SpanX(section, 25);
+  const int buttonTop = top + (rowHeight - buttonHeight) / 2;
+  rects.button = RECT{buttonRight - buttonWidth, buttonTop, buttonRight, buttonTop + buttonHeight};
+  return rects;
+}
 }  // namespace
 
-const std::array<Renderer::NativePanelSlot, 7>& Renderer::NativePanelSlots() {
-  static const std::array<NativePanelSlot, 7> slots{{
+const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
+  static const std::array<NativePanelSlot, 3> slots{{
       {&Renderer::nativeRadarWindow_, &NativeDashboardLayout::radar,
        L"HomePanelNativeRadar", kNativeRadarId},
-      {&Renderer::nativeAirWindow_, &NativeDashboardLayout::air,
-       L"HomePanelNativeAir", kNativeAirId},
-      {&Renderer::nativeControlsWindow_, &NativeDashboardLayout::controls,
-       L"HomePanelNativeControls", kNativeControlsId},
-      {&Renderer::nativeNewsWindow_, &NativeDashboardLayout::news,
-       L"HomePanelNativeNews", kNativeNewsId},
-      {&Renderer::nativeWeatherWindow_, &NativeDashboardLayout::weather,
-       L"HomePanelNativeWeather", kNativeWeatherId},
-      {&Renderer::nativeEnergyWindow_, &NativeDashboardLayout::energy,
-       L"HomePanelNativeEnergy", kNativeEnergyId},
-      {&Renderer::nativeStationheadWindow_, &NativeDashboardLayout::stationhead,
-       L"HomePanelNativeStationhead", kNativeStationheadId},
+      {&Renderer::nativeTopWindow_, &NativeDashboardLayout::top,
+       L"HomePanelNativeTop", kNativeTopId},
+      {&Renderer::nativeBottomWindow_, &NativeDashboardLayout::bottom,
+       L"HomePanelNativeBottom", kNativeBottomId},
   }};
   return slots;
+}
+
+HFONT Renderer::TierFont(FontTier tier) const {
+  const int clientHeight = std::max(1L, bounds_.bottom - bounds_.top);
+  switch (tier) {
+    case FontTier::Small:
+      return CachedUiFont(std::clamp(clientHeight * 14 / 1000, 12, 24), FW_NORMAL);
+    case FontTier::Medium:
+      return CachedUiFont(std::clamp(clientHeight * 21 / 1000, 16, 36), FW_SEMIBOLD);
+    case FontTier::Large:
+    default:
+      return CachedUiFont(std::clamp(clientHeight * 48 / 1000, 32, 96), FW_SEMIBOLD);
+  }
 }
 
 Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND hwnd,
@@ -414,6 +390,9 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
     : hwnd(hwnd), paintDc(BeginPaint(hwnd, &paint)) {
   if (!paintDc) return;
   GetClientRect(hwnd, &bounds);
+  dirty = paint.rcPaint;
+  if (IsRectEmpty(&dirty)) dirty = bounds;
+  IntersectRect(&dirty, &dirty, &bounds);
   dc = CreateCompatibleDC(paintDc);
   HBITMAP bitmap = renderer.NativePanelBackBuffer(hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   if (!dc || !bitmap) {
@@ -426,55 +405,38 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
   }
   previousBitmap = SelectObject(dc, bitmap);
 
-  const RECT sampleRect = RadarSampleRectFor(absoluteRect, renderer.bounds_);
+  const RECT absoluteDirty{absoluteRect.left + dirty.left, absoluteRect.top + dirty.top,
+                           absoluteRect.left + dirty.right, absoluteRect.top + dirty.bottom};
   {
     std::lock_guard lock(renderer.radarFrameMutex_);
-    StretchRadarSampleInto(dc, bounds, renderer.radarFrameBitmap_, sampleRect);
+    StretchRadarSampleInto(dc, dirty, renderer.radarFrameBitmap_,
+                           RadarSampleRectFor(absoluteDirty, renderer.bounds_));
   }
   if (tintAlpha > 0) {
     HRGN clip = CreateRoundRectRgn(0, 0, bounds.right + 1, bounds.bottom + 1, cornerRadius * 2, cornerRadius * 2);
     SelectClipRgn(dc, clip);
-    AlphaBlendSolidColor(dc, bounds, tintColor, tintAlpha);
+    AlphaBlendSolidColor(dc, dirty, tintColor, tintAlpha);
     SelectClipRgn(dc, nullptr);
     DeleteObject(clip);
   }
+  // Clip all panel drawing to the invalidated region so the back buffer only
+  // changes where the destructor will blit; back buffer and screen stay in
+  // sync across partial repaints.
+  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
+  SelectClipRgn(dc, dirtyClip);
+  DeleteObject(dirtyClip);
   SetBkMode(dc, TRANSPARENT);
 }
 
 Renderer::NativePanelPaintScope::~NativePanelPaintScope() {
   if (!paintDc) return;
   if (dc) {
-    BitBlt(paintDc, 0, 0, bounds.right, bounds.bottom, dc, 0, 0, SRCCOPY);
+    BitBlt(paintDc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
+           dc, dirty.left, dirty.top, SRCCOPY);
     SelectObject(dc, previousBitmap);
     DeleteDC(dc);
   }
   EndPaint(hwnd, &paint);
-}
-
-bool Renderer::EnsureNativeClockWindow() {
-  if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) return true;
-  if (!window_ || !IsWindow(window_)) return false;
-  static constexpr wchar_t kClockClassName[] = L"HomePanelNativeClock";
-  static std::once_flag classOnce;
-  std::call_once(classOnce, [] {
-    WNDCLASSW windowClass{};
-    windowClass.lpfnWndProc = Renderer::NativeWndProcThunk<&Renderer::HandleNativeClockMessage>;
-    windowClass.hInstance = GetModuleHandleW(nullptr);
-    windowClass.lpszClassName = kClockClassName;
-    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    windowClass.hbrBackground = nullptr;
-    RegisterClassW(&windowClass);
-  });
-
-  const RECT rect = ComputeNativeDashboardLayout(bounds_).clock;
-  nativeClockWindow_ = CreateWindowExW(0, kClockClassName, L"HomePanelNativeClock",
-      WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE,
-      rect.left, rect.top, std::max(1L, rect.right - rect.left),
-      std::max(1L, rect.bottom - rect.top), window_, nullptr,
-      GetModuleHandleW(nullptr), this);
-  if (!nativeClockWindow_ || !IsWindow(nativeClockWindow_)) return false;
-  ApplyNativeClockBounds();
-  return true;
 }
 
 bool Renderer::EnsureNativeStaticWindows() {
@@ -506,10 +468,6 @@ bool Renderer::EnsureNativeStaticWindows() {
     allCreated = allCreated && hwnd && IsWindow(hwnd);
   }
   ApplyNativeStaticBounds();
-  // ApplyNativeStaticBounds() raises every static panel (including the
-  // full-screen radar) to the top of the z-order, so re-raise the clock on
-  // top of those every time this runs, not just on first creation.
-  ApplyNativeClockBounds();
   return allCreated;
 }
 
@@ -527,11 +485,20 @@ void Renderer::ApplyNativeStaticBounds() {
 }
 
 void Renderer::InvalidateAllNativePanels() {
-  if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) InvalidateRect(nativeClockWindow_, nullptr, FALSE);
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) InvalidateRect(hwnd, nullptr, FALSE);
   }
+}
+
+void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
+  if (!window || !IsWindow(window)) return;
+  RECT client{};
+  GetClientRect(window, &client);
+  const NativePanelSections sections = SplitPanelSections(client);
+  const RECT& rect = section == PanelSection::Left ? sections.left
+      : section == PanelSection::Center ? sections.center : sections.right;
+  InvalidateRect(window, &rect, FALSE);
 }
 
 void Renderer::DestroyNativeStaticWindows() {
@@ -572,73 +539,24 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   nativeNewsIndex_ = state.newsIndex;
   nativeRenderedDashboardRevision_ = dashboardSourceRevision_;
   if (!EnsureNativeStaticWindows()) return;
-  if (sensorsChanged || historyChanged) InvalidateRect(nativeAirWindow_, nullptr, FALSE);
-  if (controlsChanged) InvalidateRect(nativeControlsWindow_, nullptr, FALSE);
-  if (dashboardChanged || newsChanged) InvalidateRect(nativeNewsWindow_, nullptr, FALSE);
+  if (sensorsChanged || historyChanged) InvalidatePanelSection(nativeTopWindow_, PanelSection::Left);
+  if (dashboardChanged || newsChanged) InvalidatePanelSection(nativeTopWindow_, PanelSection::Center);
   if (dashboardChanged) {
-    InvalidateRect(nativeWeatherWindow_, nullptr, FALSE);
-    InvalidateRect(nativeEnergyWindow_, nullptr, FALSE);
+    InvalidatePanelSection(nativeTopWindow_, PanelSection::Right);
+    InvalidatePanelSection(nativeBottomWindow_, PanelSection::Right);
   }
-  if (stationheadChanged) InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
+  if (controlsChanged) InvalidatePanelSection(nativeBottomWindow_, PanelSection::Center);
+  if (stationheadChanged) InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
 }
 
 void Renderer::TickNativePanels(int64_t nowMs) {
   if (!nativeDashboardVisible_) return;
-  if (nativeClockWindow_ && IsWindow(nativeClockWindow_) && IsWindowVisible(nativeClockWindow_)) {
-    InvalidateRect(nativeClockWindow_, nullptr, FALSE);
+  if (nativeBottomWindow_ && IsWindow(nativeBottomWindow_) && IsWindowVisible(nativeBottomWindow_)) {
+    InvalidatePanelSection(nativeBottomWindow_, PanelSection::Center);
+    if (NativePlaybackActive(nowMs)) {
+      InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
+    }
   }
-  if (nativeStationheadWindow_ && IsWindow(nativeStationheadWindow_) &&
-      IsWindowVisible(nativeStationheadWindow_) && NativePlaybackActive(nowMs)) {
-    InvalidateRect(nativeStationheadWindow_, nullptr, FALSE);
-  }
-}
-
-HBITMAP Renderer::NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height) {
-  if (!hwnd || !dc || width <= 0 || height <= 0) return nullptr;
-  NativeBackBuffer& buffer = nativeBackBuffers_[hwnd];
-  if (buffer.bitmap && buffer.width == width && buffer.height == height) return buffer.bitmap;
-  if (buffer.bitmap) DeleteObject(buffer.bitmap);
-  buffer.bitmap = CreateCompatibleBitmap(dc, width, height);
-  buffer.width = buffer.bitmap ? width : 0;
-  buffer.height = buffer.bitmap ? height : 0;
-  return buffer.bitmap;
-}
-
-void Renderer::ReleaseNativePanelBackBuffer(HWND hwnd) {
-  const auto found = nativeBackBuffers_.find(hwnd);
-  if (found == nativeBackBuffers_.end()) return;
-  if (found->second.bitmap) DeleteObject(found->second.bitmap);
-  nativeBackBuffers_.erase(found);
-}
-
-void Renderer::ApplyNativeClockBounds() {
-  if (!nativeClockWindow_ || !IsWindow(nativeClockWindow_)) return;
-  const RECT rect = ComputeNativeDashboardLayout(bounds_).clock;
-  PlaceNativeWindow(nativeClockWindow_, rect, nativeDashboardVisible_);
-  InvalidateRect(nativeClockWindow_, nullptr, FALSE);
-}
-
-void Renderer::DestroyNativeClockWindow() {
-  if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) {
-    DestroyWindow(nativeClockWindow_);
-  }
-  nativeClockWindow_ = nullptr;
-}
-
-LRESULT Renderer::HandleNativeClockMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  switch (message) {
-    case WM_ERASEBKGND:
-      return 1;
-    case WM_PAINT:
-      PaintNativeClock(hwnd);
-      return 0;
-    case WM_NCDESTROY:
-      ReleaseNativePanelBackBuffer(hwnd);
-      if (nativeClockWindow_ == hwnd) nativeClockWindow_ = nullptr;
-      SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-      break;
-  }
-  return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
 LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -646,113 +564,130 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
     case WM_ERASEBKGND:
       return 1;
     case WM_LBUTTONUP:
-      if (GetDlgCtrlID(hwnd) == kNativeControlsId) {
-        RECT bounds{};
-        GetClientRect(hwnd, &bounds);
+      if (GetDlgCtrlID(hwnd) == kNativeBottomId) {
+        RECT client{};
+        GetClientRect(hwnd, &client);
         const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-        const ControlsButtonRects buttons = ControlsButtonsFromBounds(bounds);
+        const NativePanelSections sections = SplitPanelSections(client);
+        const ControlsButtonRects buttons =
+            ControlsButtonsFromSection(RelativeInsetRect(sections.center, 30, 60));
         if (PtInRect(&buttons.update, point)) QueueAction(UiAction::AppUpdate);
         else if (PtInRect(&buttons.restart, point)) QueueAction(UiAction::Restart);
-        return 0;
-      }
-      if (GetDlgCtrlID(hwnd) == kNativeStationheadId) {
-        RECT bounds{};
-        GetClientRect(hwnd, &bounds);
-        const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-        const StationheadButtonRects buttons = StationheadButtonsFromBounds(bounds);
-        if (PtInRect(&buttons.primaryAudio, point)) QueueAction(UiAction::StationheadAudioToggleA);
-        else if (PtInRect(&buttons.secondaryAudio, point)) QueueAction(UiAction::StationheadAudioToggleB);
+        else {
+          const RECT stationhead = RelativeInsetRect(sections.left, 30, 60);
+          for (int row = 0; row < 2; ++row) {
+            const StationheadRowRects rowRects = StationheadRowFromSection(stationhead, row);
+            if (PtInRect(&rowRects.button, point)) {
+              QueueAction(row == 0 ? UiAction::StationheadAudioToggleA
+                                   : UiAction::StationheadAudioToggleB);
+              break;
+            }
+          }
+        }
         return 0;
       }
       break;
     case WM_PAINT:
-      if (GetDlgCtrlID(hwnd) == kNativeAirId) PaintNativeAir(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeControlsId) PaintNativeControls(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeNewsId) PaintNativeNews(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeWeatherId) PaintNativeWeather(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeEnergyId) PaintNativeEnergy(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeRadarId) PaintNativeRadar(hwnd);
-      else PaintNativeStationhead(hwnd);
+      if (GetDlgCtrlID(hwnd) == kNativeTopId) PaintNativeTop(hwnd);
+      else if (GetDlgCtrlID(hwnd) == kNativeBottomId) PaintNativeBottom(hwnd);
+      else PaintNativeRadar(hwnd);
       return 0;
     case WM_NCDESTROY:
       ReleaseNativePanelBackBuffer(hwnd);
-      if (nativeAirWindow_ == hwnd) nativeAirWindow_ = nullptr;
-      if (nativeControlsWindow_ == hwnd) nativeControlsWindow_ = nullptr;
-      if (nativeNewsWindow_ == hwnd) nativeNewsWindow_ = nullptr;
-      if (nativeWeatherWindow_ == hwnd) nativeWeatherWindow_ = nullptr;
-      if (nativeEnergyWindow_ == hwnd) nativeEnergyWindow_ = nullptr;
-      if (nativeStationheadWindow_ == hwnd) nativeStationheadWindow_ = nullptr;
-      if (nativeRadarWindow_ == hwnd) nativeRadarWindow_ = nullptr;
+      for (const NativePanelSlot& slot : NativePanelSlots()) {
+        if (this->*slot.window == hwnd) this->*slot.window = nullptr;
+      }
       SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
       break;
   }
   return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
-void Renderer::PaintNativeClock(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).clock;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect, /*tintAlpha=*/0);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = NormalizeInsetRect(scope.bounds, 4, 4, 4, 4);
-
-  SYSTEMTIME now{};
-  GetLocalTime(&now);
-  const int height = std::max(1L, content.bottom - content.top);
-  const int dateHeight = std::clamp(height / 8, 14, 22) * 3 / 2;
-  const int clockHeight = std::clamp(height / 2, 52, 86);
-
-  RECT dateRect = content;
-  dateRect.bottom = content.top + dateHeight + 6;
-  HFONT dateFont = CachedUiFont(dateHeight, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, dateFont);
-  DrawOutlinedText(memoryDc, DateText(now), dateRect,
-                   DT_CENTER | DT_BOTTOM | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX, kWidgetMuted);
-  SelectObject(memoryDc, previousFont);
-
-  RECT timeRect = content;
-  timeRect.top = dateRect.bottom + std::max(2, height / 12);
-  HFONT clockFont = CachedUiFont(clockHeight, FW_LIGHT);
-  previousFont = SelectObject(memoryDc, clockFont);
-  DrawOutlinedText(memoryDc, TimeText(now), timeRect,
-                   DT_CENTER | DT_TOP | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX, kWidgetText);
-  SelectObject(memoryDc, previousFont);
-}
-
-void Renderer::PaintNativeAir(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).air;
+void Renderer::PaintNativeTop(HWND hwnd) {
+  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).top;
   NativePanelPaintScope scope(*this, hwnd, absoluteRect);
   if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = PanelContentRect(scope.bounds);
+  const NativePanelSections sections = SplitPanelSections(scope.bounds);
+  RECT overlap{};
+  if (IntersectRect(&overlap, &scope.dirty, &sections.left)) {
+    DrawAirSection(scope.dc, RelativeInsetRect(sections.left, 30, 60));
+  }
+  if (IntersectRect(&overlap, &scope.dirty, &sections.center)) {
+    DrawNewsSection(scope.dc, RelativeInsetRect(sections.center, 30, 60));
+  }
+  if (IntersectRect(&overlap, &scope.dirty, &sections.right)) {
+    DrawEnergySection(scope.dc, RelativeInsetRect(sections.right, 30, 60));
+  }
+}
 
-  const int width = std::max(1L, content.right - content.left);
-  const int statsTop = content.top + 6;
-  const int statsHeight = std::clamp(static_cast<int>(content.bottom - content.top) * 22 / 100, 50, 70);
-  const int gap = 16;
+void Renderer::PaintNativeBottom(HWND hwnd) {
+  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).bottom;
+  NativePanelPaintScope scope(*this, hwnd, absoluteRect);
+  if (!scope.Valid()) return;
+  const NativePanelSections sections = SplitPanelSections(scope.bounds);
+  RECT overlap{};
+  if (IntersectRect(&overlap, &scope.dirty, &sections.left)) {
+    DrawStationheadSection(scope.dc, RelativeInsetRect(sections.left, 30, 60));
+  }
+  if (IntersectRect(&overlap, &scope.dirty, &sections.center)) {
+    DrawClockControlsSection(scope.dc, RelativeInsetRect(sections.center, 30, 60));
+  }
+  if (IntersectRect(&overlap, &scope.dirty, &sections.right)) {
+    DrawWeatherSection(scope.dc, RelativeInsetRect(sections.right, 30, 60));
+  }
+}
+
+void Renderer::PaintNativeRadar(HWND hwnd) {
+  const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
+  NativePanelPaintScope scope(*this, hwnd, layout.radar, /*tintAlpha=*/0, /*cornerRadius=*/0);
+  if (!scope.Valid()) return;
+
+  std::wstring radarTime;
+  bool hasFrame = false;
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    radarTime = radarTimeText_;
+    hasFrame = radarFrameBitmap_ != nullptr;
+  }
+
+  // Caption floats just below the top panel, centered on its middle section.
+  const NativePanelSections sections = SplitPanelSections(layout.top);
+  const int captionHeight = SpanY(layout.radar, 25);
+  const RECT captionRect{sections.center.left, layout.top.bottom + captionHeight / 3,
+                         sections.center.right, layout.top.bottom + captionHeight};
+  HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
+  const std::wstring caption = hasFrame
+      ? L"レーダー更新: " + (radarTime.empty() ? L"--:--" : radarTime) + L"   LIVE"
+      : L"レーダーを準備中";
+  DrawShadowedText(scope.dc, caption, captionRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER, kWidgetMuted);
+  SelectObject(scope.dc, previousFont);
+}
+
+void Renderer::DrawAirSection(HDC dc, const RECT& content) {
+  const int64_t now = UnixMillis();
+  const int statsTop = content.top;
+  const int statsHeight = SpanY(content, 300);
+  const int gap = SpanX(content, 40);
   const std::array<std::pair<std::wstring, std::wstring>, 3> values{{
       {L"CO2", nativeSensors_.co2Connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm"},
       {L"温度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃"},
       {L"湿度", nativeSensors_.co2Connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%"},
   }};
-  HFONT labelFont = CachedUiFont(std::clamp(statsHeight / 5, 10, 15), FW_NORMAL);
-  HFONT valueFont = CachedUiFont(std::clamp(statsHeight / 3, 18, 27), FW_SEMIBOLD);
-  const int cardWidth = (width - gap * 2) / 3;
+  const int cardWidth = (content.right - content.left - gap * 2) / 3;
   for (int i = 0; i < 3; ++i) {
     RECT rect{content.left + i * (cardWidth + gap), statsTop,
               content.left + i * (cardWidth + gap) + cardWidth, statsTop + statsHeight};
-    RECT labelRect{rect.left, rect.top, rect.right, rect.top + std::clamp(statsHeight / 3, 18, 24)};
-    SetTextColor(memoryDc, kWidgetMuted);
-    HGDIOBJ previousFont = SelectObject(memoryDc, labelFont);
-    DrawTextInRect(memoryDc, values[i].first, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    RECT valueRect{rect.left + 2, labelRect.bottom, rect.right - 2, rect.bottom};
-    SetTextColor(memoryDc, kWidgetText);
-    SelectObject(memoryDc, valueFont);
-    DrawTextInRect(memoryDc, values[i].second, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SelectObject(memoryDc, previousFont);
+    RECT labelRect{rect.left, rect.top, rect.right, rect.top + statsHeight * 40 / 100};
+    SetTextColor(dc, kWidgetMuted);
+    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+    DrawTextInRect(dc, values[i].first, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    RECT valueRect{rect.left, labelRect.bottom, rect.right, rect.bottom};
+    SetTextColor(dc, kWidgetText);
+    SelectObject(dc, TierFont(FontTier::Medium));
+    DrawTextInRect(dc, values[i].second, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, previousFont);
   }
 
-  const int64_t now = UnixMillis();
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
   const int64_t cutoff = now - kWindowMs;
   std::vector<AirHistorySample> samples;
@@ -771,22 +706,24 @@ void Renderer::PaintNativeAir(HWND hwnd) {
     humidityValues.push_back(sample.humidity);
   }
 
-  const int historyTop = statsTop + statsHeight + gap;
-  HFONT font = CachedUiFont(11, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, font);
-  SetTextColor(memoryDc, kWidgetMuted);
-  RECT legend{content.left, historyTop, content.right, historyTop + 18};
-  DrawTextInRect(memoryDc, L"履歴(24時間)  CO2   温度   湿度", legend, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  const int historyTop = statsTop + statsHeight + SpanY(content, 70);
+  const int legendHeight = SpanY(content, 120);
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+  SetTextColor(dc, kWidgetMuted);
+  RECT legend{content.left, historyTop, content.right, historyTop + legendHeight};
+  DrawTextInRect(dc, L"履歴(24時間)  CO2   温度   湿度", legend, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-  RECT plot{content.left + 26, historyTop + 22, content.right, content.bottom - 20};
+  const int axisHeight = SpanY(content, 120);
+  RECT plot{content.left + SpanX(content, 50), legend.bottom + SpanY(content, 20),
+            content.right, content.bottom - axisHeight};
   HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
-  HGDIOBJ previousPen = SelectObject(memoryDc, gridPen);
+  HGDIOBJ previousPen = SelectObject(dc, gridPen);
   for (int i = 0; i < 4; ++i) {
     const int y = plot.top + (plot.bottom - plot.top) * i / 3;
-    MoveToEx(memoryDc, plot.left, y, nullptr);
-    LineTo(memoryDc, plot.right, y);
+    MoveToEx(dc, plot.left, y, nullptr);
+    LineTo(dc, plot.right, y);
   }
-  SelectObject(memoryDc, previousPen);
+  SelectObject(dc, previousPen);
   DeleteObject(gridPen);
 
   if (!samples.empty() && plot.bottom > plot.top + 4) {
@@ -796,62 +733,24 @@ void Renderer::PaintNativeAir(HWND hwnd) {
     const double tempMax = RangeMax(temperatureValues, 28) + 0.5;
     const double humMin = RangeMin(humidityValues, 30) - 2;
     const double humMax = RangeMax(humidityValues, 80) + 2;
-    DrawHistoryLine(memoryDc, samples, plot, cutoff, kWindowMs, co2Min, co2Max, kWidgetGreen, 2,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, co2Min, co2Max, kWidgetGreen, 2,
                     [](const AirHistorySample& s) { return static_cast<double>(s.co2); });
-    DrawHistoryLine(memoryDc, samples, plot, cutoff, kWindowMs, tempMin, tempMax, kWidgetOrange, 1,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, tempMin, tempMax, kWidgetOrange, 1,
                     [](const AirHistorySample& s) { return s.temperature; });
-    DrawHistoryLine(memoryDc, samples, plot, cutoff, kWindowMs, humMin, humMax, kWidgetBlue, 1,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, humMin, humMax, kWidgetBlue, 1,
                     [](const AirHistorySample& s) { return s.humidity; });
   } else {
-    DrawTextInRect(memoryDc, L"履歴を取得中", plot, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    DrawTextInRect(dc, L"履歴を取得中", plot, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  SetTextColor(memoryDc, kWidgetSubtle);
-  RECT axis{content.left, content.bottom - 18, content.right, content.bottom};
-  DrawTextInRect(memoryDc, L"24時間前", axis, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  DrawTextInRect(memoryDc, L"現在", axis, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
+  SetTextColor(dc, kWidgetSubtle);
+  RECT axis{content.left, content.bottom - axisHeight, content.right, content.bottom};
+  DrawTextInRect(dc, L"24時間前", axis, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  DrawTextInRect(dc, L"現在", axis, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+  SelectObject(dc, previousFont);
 }
 
-void Renderer::PaintNativeControls(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).controls;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect, /*tintAlpha=*/0);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = NormalizeInsetRect(scope.bounds, 4, 4, 4, 4);
-
-  const ControlsButtonRects controlButtons = ControlsButtonsFromBounds(content);
-  const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
-      {L"更新", controlButtons.update},
-      {L"再起動", controlButtons.restart},
-  }};
-  const int buttonHeight = std::max(1L, controlButtons.update.bottom - controlButtons.update.top);
-  HFONT buttonFont = CachedUiFont(std::clamp(buttonHeight / 3, 12, 14), FW_SEMIBOLD);
-  HGDIOBJ previousFont = SelectObject(memoryDc, buttonFont);
-  SetTextColor(memoryDc, kWidgetText);
-  for (const auto& [label, rect] : buttons) {
-    DrawWidgetCard(memoryDc, rect, kWidgetSurfaceAlt, /*radius=*/14, /*alpha=*/170);
-    RECT textRect = rect;
-    DrawTextInRect(memoryDc, label, textRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  }
-  SelectObject(memoryDc, previousFont);
-  if (!nativeToast_.empty()) {
-    HFONT toastFont = CachedUiFont(12, FW_NORMAL);
-    previousFont = SelectObject(memoryDc, toastFont);
-    SetTextColor(memoryDc, kWidgetWarning);
-    DrawTextInRect(memoryDc, nativeToast_, controlButtons.toast,
-                   DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
-    SelectObject(memoryDc, previousFont);
-  }
-}
-
-void Renderer::PaintNativeNews(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).news;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect, /*tintAlpha=*/0);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = NormalizeInsetRect(scope.bounds, 4, 4, 4, 4);
-
+void Renderer::DrawNewsSection(HDC dc, const RECT& content) {
   const NewsItemData* item = nullptr;
   if (!nativeDashboard_.newsItems.empty()) {
     const size_t index = static_cast<size_t>(std::max(0, nativeNewsIndex_)) % nativeDashboard_.newsItems.size();
@@ -860,117 +759,21 @@ void Renderer::PaintNativeNews(HWND hwnd) {
   const std::wstring title = item ? item->title : L"ニュース取得待ち";
   const std::wstring description = item ? item->description : L"";
 
-  const int contentHeight = std::max(1L, content.bottom - content.top);
-  const int titleHeight = std::clamp(contentHeight * 40 / 100, 18, 24);
-  RECT titleRect{content.left, content.top, content.right, content.top + titleHeight};
-  HFONT titleFont = CachedUiFont(std::clamp(titleHeight * 70 / 100, 13, 16), FW_SEMIBOLD);
-  HGDIOBJ previousFont = SelectObject(memoryDc, titleFont);
-  DrawSoftShadowedText(memoryDc, title, titleRect,
-                       DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER, kWidgetText);
-  SelectObject(memoryDc, previousFont);
+  RECT titleRect{content.left, content.top, content.right, content.top + SpanY(content, 220)};
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Medium));
+  SetTextColor(dc, kWidgetText);
+  DrawTextInRect(dc, title, titleRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
   if (!description.empty()) {
-    RECT descRect{content.left, titleRect.bottom + 2, content.right, content.bottom};
-    HFONT descFont = CachedUiFont(12, FW_NORMAL);
-    previousFont = SelectObject(memoryDc, descFont);
-    DrawSoftShadowedText(memoryDc, description, descRect,
-                         DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS, kWidgetMuted);
-    SelectObject(memoryDc, previousFont);
+    RECT descRect{content.left, titleRect.bottom + SpanY(content, 40), content.right, content.bottom};
+    SelectObject(dc, TierFont(FontTier::Small));
+    SetTextColor(dc, kWidgetMuted);
+    DrawTextInRect(dc, description, descRect, DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
   }
+  SelectObject(dc, previousFont);
 }
 
-void Renderer::PaintNativeWeather(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).weather;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = PanelContentRect(scope.bounds);
-
-  const auto& hours = nativeDashboard_.weatherHours;
-  const size_t count = std::min<size_t>(5, hours.size());
-  double maxPop = 0;
-  for (size_t i = 0; i < count; ++i) {
-    if (std::isfinite(hours[i].precipitationProbability)) maxPop = std::max(maxPop, hours[i].precipitationProbability);
-  }
-
-  const int contentWidth = std::max(1L, content.right - content.left);
-  const int contentHeight = std::max(1L, content.bottom - content.top);
-  const int popWidth = std::clamp(contentWidth * 28 / 100, 72, 104);
-  RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
-
-  const int popHeight = std::max(1, static_cast<int>(popRect.bottom - popRect.top));
-  HFONT smallFont = CachedUiFont(std::clamp(popHeight / 7, 12, 18), FW_SEMIBOLD);
-  HGDIOBJ previousFont = SelectObject(memoryDc, smallFont);
-  SetTextColor(memoryDc, kWidgetMuted);
-  RECT labelRect{popRect.left, popRect.top + std::clamp(popHeight / 10, 10, 18),
-                 popRect.right, popRect.top + std::clamp(popHeight / 4, 32, 48)};
-  DrawTextInRect(memoryDc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
-
-  HFONT popFont = CachedUiFont(std::clamp(popHeight * 42 / 100, 38, 64), FW_BOLD);
-  previousFont = SelectObject(memoryDc, popFont);
-  SetTextColor(memoryDc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
-  RECT valueRect{popRect.left, labelRect.bottom + std::clamp(popHeight / 12, 8, 16),
-                 popRect.right, popRect.bottom - std::clamp(popHeight / 10, 10, 18)};
-  DrawTextInRect(memoryDc, std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%", valueRect,
-                 DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
-
-  HFONT hourFont = CachedUiFont(std::clamp(contentHeight / 10, 13, 20), FW_SEMIBOLD);
-  HFONT tempFont = CachedUiFont(std::clamp(contentHeight / 9, 14, 22), FW_SEMIBOLD);
-  HFONT rainFont = CachedUiFont(std::clamp(contentHeight / 11, 12, 18), FW_SEMIBOLD);
-  const int rightLeft = popRect.right + std::clamp(contentWidth / 25, 12, 22);
-  const int cardGap = std::clamp(contentWidth / 45, 8, 14);
-  const int availableWidth = std::max(1L, content.right - rightLeft);
-  const int slotCount = std::clamp(availableWidth / 42, 2, 5);
-  const int cardWidth = std::max(1, (availableWidth - cardGap * (slotCount - 1)) / slotCount);
-  for (int i = 0; i < slotCount; ++i) {
-    RECT cardRect{rightLeft + i * (cardWidth + cardGap), content.top,
-                  rightLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
-    SetTextColor(memoryDc, kWidgetMuted);
-    previousFont = SelectObject(memoryDc, hourFont);
-    const int topPad = std::clamp(contentHeight / 18, 8, 16);
-    const int hourHeight = std::clamp(contentHeight / 8, 18, 28);
-    RECT hourRect{cardRect.left, cardRect.top + topPad, cardRect.right,
-                  cardRect.top + topPad + hourHeight};
-    const std::wstring hour = i < static_cast<int>(count) ? std::to_wstring(hours[i].hour) + L"時" : L"--";
-    DrawTextInRect(memoryDc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    if (i < static_cast<int>(count) && !hours[i].icon.empty()) {
-      const int iconWidth = std::clamp(std::min(cardWidth + 8, contentHeight * 42 / 100), 48, 82);
-      const int iconHeight = std::max(18, iconWidth * 48 / 90);
-      const int iconTop = hourRect.bottom + std::clamp(contentHeight / 18, 8, 16);
-      RECT iconRect{cardRect.left + (cardWidth - iconWidth) / 2, iconTop,
-                    cardRect.left + (cardWidth + iconWidth) / 2, iconTop + iconHeight};
-      DrawPremultipliedBitmap(memoryDc,
-                              NativeWeatherIconBitmap(hours[i].icon, IsWeatherNightHour(hours[i].hour),
-                                                      iconWidth, iconHeight),
-                              iconRect);
-    }
-    if (i < static_cast<int>(count) && std::isfinite(hours[i].temperature)) {
-      SetTextColor(memoryDc, kWidgetText);
-      SelectObject(memoryDc, tempFont);
-      RECT tempRect{cardRect.left, cardRect.bottom - std::clamp(contentHeight / 3, 48, 72),
-                    cardRect.right, cardRect.bottom - std::clamp(contentHeight / 6, 26, 42)};
-      DrawTextInRect(memoryDc, NumberOrDash(hours[i].temperature, 0) + L"℃",
-                     tempRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    }
-    SetTextColor(memoryDc, kWidgetBlue);
-    SelectObject(memoryDc, rainFont);
-    RECT rainRect{cardRect.left, cardRect.bottom - std::clamp(contentHeight / 7, 20, 34),
-                  cardRect.right, cardRect.bottom - std::clamp(contentHeight / 26, 6, 12)};
-    const std::wstring rain = i < static_cast<int>(count) ? NumberOrDash(hours[i].rainMm, 0) + L"mm" : L"--";
-    DrawTextInRect(memoryDc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SelectObject(memoryDc, previousFont);
-  }
-}
-
-void Renderer::PaintNativeEnergy(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).energy;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = PanelContentRect(scope.bounds);
-
+void Renderer::DrawEnergySection(HDC dc, const RECT& content) {
   const auto usageText = [](double value) {
     return std::isfinite(value) ? Fixed(value, 1) + L" kWh" : L"-- kWh";
   };
@@ -984,36 +787,32 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       {L"今月見込み", usageText(nativeDashboard_.projectedUsage), costText(nativeDashboard_.projectedUsage)},
   }};
 
-  const int contentHeight = std::max(1L, content.bottom - content.top);
-  const int summaryHeight = std::clamp(contentHeight / 3, 58, 72);
-  HFONT labelFont = CachedUiFont(std::clamp(summaryHeight / 6, 9, 11), FW_NORMAL);
-  HFONT valueFont = CachedUiFont(std::clamp(summaryHeight / 4, 16, 20), FW_SEMIBOLD);
+  const int summaryHeight = SpanY(content, 330);
+  const int summaryGap = SpanX(content, 50);
+  const int summaryWidth = (content.right - content.left - summaryGap) / 2;
   HGDIOBJ previousFont = nullptr;
-  const int summaryGap = 20;
-  const int summaryWidth = (std::max(1L, content.right - content.left) - summaryGap) / 2;
   for (int i = 0; i < 2; ++i) {
-    RECT rect{content.left + i * (summaryWidth + summaryGap), content.top + 6,
+    RECT rect{content.left + i * (summaryWidth + summaryGap), content.top,
               content.left + i * (summaryWidth + summaryGap) + summaryWidth,
-              content.top + 6 + summaryHeight};
-    SetTextColor(memoryDc, kWidgetMuted);
-    previousFont = SelectObject(memoryDc, labelFont);
-    RECT labelRect{rect.left, rect.top + 7, rect.right, rect.top + 24};
-    DrawTextInRect(memoryDc, std::get<0>(summary[i]), labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SetTextColor(memoryDc, kWidgetText);
-    SelectObject(memoryDc, valueFont);
-    RECT valueRect{rect.left, rect.top + 24, rect.right,
-                   rect.top + std::clamp(summaryHeight * 3 / 4, 44, 54)};
-    DrawTextInRect(memoryDc, std::get<1>(summary[i]), valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SetTextColor(memoryDc, kWidgetMuted);
-    SelectObject(memoryDc, labelFont);
-    RECT costRect{rect.left, rect.top + 52, rect.right, rect.bottom - 4};
-    DrawTextInRect(memoryDc, std::get<2>(summary[i]), costRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    SelectObject(memoryDc, previousFont);
+              content.top + summaryHeight};
+    SetTextColor(dc, kWidgetMuted);
+    previousFont = SelectObject(dc, TierFont(FontTier::Small));
+    RECT labelRect{rect.left, rect.top, rect.right, rect.top + summaryHeight * 30 / 100};
+    DrawTextInRect(dc, std::get<0>(summary[i]), labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(dc, kWidgetText);
+    SelectObject(dc, TierFont(FontTier::Medium));
+    RECT valueRect{rect.left, labelRect.bottom, rect.right, rect.top + summaryHeight * 72 / 100};
+    DrawTextInRect(dc, std::get<1>(summary[i]), valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(dc, kWidgetMuted);
+    SelectObject(dc, TierFont(FontTier::Small));
+    RECT costRect{rect.left, valueRect.bottom, rect.right, rect.bottom};
+    DrawTextInRect(dc, std::get<2>(summary[i]), costRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, previousFont);
   }
 
-  const int plugHeight = std::clamp(contentHeight / 7, 26, 38);
-  RECT chart{content.left, content.top + 6 + summaryHeight + 14,
-             content.right, content.bottom - plugHeight - 8};
+  const int plugHeight = SpanY(content, 120);
+  RECT chart{content.left, content.top + summaryHeight + SpanY(content, 50),
+             content.right, content.bottom - plugHeight - SpanY(content, 30)};
   if (chart.bottom > chart.top + 20 && !nativeDashboard_.octopusHistory.empty()) {
     double maximum = 1.0;
     for (const auto& item : nativeDashboard_.octopusHistory) {
@@ -1022,29 +821,26 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
     const int count = static_cast<int>(nativeDashboard_.octopusHistory.size());
     const int step = std::max(1, static_cast<int>(chart.right - chart.left) / std::max(1, count));
     const int barWidth = std::max(2, step * 7 / 10);
-    SetTextColor(memoryDc, kWidgetMuted);
-    HFONT chartFont = CachedUiFont(8, FW_NORMAL);
-    previousFont = SelectObject(memoryDc, chartFont);
+    const int valueBand = SpanY(content, 90);
+    SetTextColor(dc, kWidgetMuted);
+    previousFont = SelectObject(dc, TierFont(FontTier::Small));
     for (int i = 0; i < count; ++i) {
       const double value = std::isfinite(nativeDashboard_.octopusHistory[i].value)
           ? nativeDashboard_.octopusHistory[i].value : 0.0;
-      const int barHeight = static_cast<int>((chart.bottom - chart.top - 18) * value / maximum);
+      const int barHeight = static_cast<int>((chart.bottom - chart.top - valueBand) * value / maximum);
       const int x = chart.left + i * step + (step - barWidth) / 2;
-      RECT barRect{x, chart.bottom - 18 - barHeight, x + barWidth, chart.bottom - 18};
-      DrawWidgetCard(memoryDc, barRect, kWidgetCyan, /*radius=*/3, /*alpha=*/190);
-      RECT valueRect{x - 6, barRect.top - 13, x + barWidth + 6, barRect.top};
-      DrawTextInRect(memoryDc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
+      RECT barRect{x, chart.bottom - barHeight, x + barWidth, chart.bottom};
+      DrawWidgetCard(dc, barRect, kWidgetCyan, /*radius=*/3, /*alpha=*/190);
+      RECT valueRect{x - step / 2, barRect.top - valueBand, x + barWidth + step / 2, barRect.top};
+      DrawTextInRect(dc, NumberOrDash(value, value >= 10 ? 0 : 1), valueRect,
                      DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     }
-    SelectObject(memoryDc, previousFont);
+    SelectObject(dc, previousFont);
   }
 
-  const int plugTop = std::max(static_cast<int>(content.bottom) - plugHeight,
-                               static_cast<int>(chart.bottom) + 6);
-  HFONT plugFont = CachedUiFont(std::clamp(plugHeight / 3, 9, 11), FW_NORMAL);
-  previousFont = SelectObject(memoryDc, plugFont);
-  SetTextColor(memoryDc, kWidgetMuted);
-  RECT plugRect{content.left, plugTop, content.right, content.bottom};
+  previousFont = SelectObject(dc, TierFont(FontTier::Small));
+  SetTextColor(dc, kWidgetMuted);
+  RECT plugRect{content.left, content.bottom - plugHeight, content.right, content.bottom};
   std::wstring plugs = L"Plug Mini情報なし";
   if (!nativeDashboard_.switchBotDevices.empty()) {
     plugs.clear();
@@ -1054,87 +850,69 @@ void Renderer::PaintNativeEnergy(HWND hwnd) {
       plugs += nativeDashboard_.switchBotDevices[i].name + L": " + nativeDashboard_.switchBotDevices[i].state;
     }
   }
-  DrawTextInRect(memoryDc, plugs, plugRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-  SelectObject(memoryDc, previousFont);
+  DrawTextInRect(dc, plugs, plugRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  SelectObject(dc, previousFont);
 }
 
-void Renderer::PaintNativeStationhead(HWND hwnd) {
-  const RECT absoluteRect = ComputeNativeDashboardLayout(bounds_).stationhead;
-  NativePanelPaintScope scope(*this, hwnd, absoluteRect);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
-  const RECT content = PanelContentRect(scope.bounds);
-
-  HFONT labelFont = CachedUiFont(11, FW_NORMAL);
-  HFONT titleFont = CachedUiFont(18, FW_SEMIBOLD);
-  HFONT artistFont = CachedUiFont(12, FW_NORMAL);
-  HFONT buttonFont = CachedUiFont(12, FW_SEMIBOLD);
-  HGDIOBJ previousFont = nullptr;
-  const StationheadButtonRects stationButtons = StationheadButtonsFromBounds(content);
-  const int contentHeight = std::max(1L, content.bottom - content.top);
-  const int rowGap = 14;
-  const int rowTop = content.top;
-  const int rowHeight = std::max(56, (contentHeight - rowGap) / 2);
-  const int contentWidth = std::max(1L, content.right - content.left);
-  const bool compactRows = contentWidth < 300;
+void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
+  const int64_t nowMs = UnixMillis();
+  const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
+  const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
 
   const auto drawRow = [&](int row, const std::wstring& label, bool muted,
                            const NativePlaybackRender& playback,
-                           const std::wstring& fallbackTitle, const std::wstring& fallbackArtist,
-                           const std::wstring& detail) {
-    const int top = rowTop + row * (rowHeight + rowGap);
-    RECT rowRect{content.left, top, content.right, std::min<LONG>(top + rowHeight, content.bottom)};
-    DrawWidgetCard(memoryDc, rowRect, kWidgetSurface, /*radius=*/14, /*alpha=*/160);
+                           const std::wstring& fallbackTitle, const std::wstring& detail) {
+    const StationheadRowRects rects = StationheadRowFromSection(content, row);
+    const RECT& rowRect = rects.row;
+    DrawWidgetCard(dc, rowRect, kWidgetSurface, /*radius=*/14, /*alpha=*/160);
 
-    const int artSize = std::clamp(static_cast<int>(rowRect.bottom - rowRect.top) - 20, 42, 60);
-    RECT art{rowRect.left + 10, rowRect.top + 10, rowRect.left + 10 + artSize,
-             rowRect.top + 10 + artSize};
-    DrawWidgetCard(memoryDc, art, kWidgetSurfaceAlt);
+    const int rowHeight = rowRect.bottom - rowRect.top;
+    const int pad = rowHeight * 14 / 100;
+    const int artSize = rowHeight - pad * 2;
+    RECT art{rowRect.left + pad, rowRect.top + pad, rowRect.left + pad + artSize,
+             rowRect.top + pad + artSize};
+    DrawWidgetCard(dc, art, kWidgetSurfaceAlt);
     if (playback.hasTrack) {
-      DrawPremultipliedBitmap(memoryDc,
+      DrawPremultipliedBitmap(dc,
                               NativeArtworkBitmap(playback.track.artwork, art.right - art.left,
                                                   art.bottom - art.top),
                               art);
     }
 
     const std::wstring title = playback.hasTrack ? playback.track.title : fallbackTitle;
-    const std::wstring artist = playback.hasTrack ? playback.track.artist : fallbackArtist;
+    const std::wstring artist = playback.hasTrack ? playback.track.artist : L"";
     const bool withProgress = playback.hasTrack && playback.track.durationMs > 0;
-    RECT button = row == 0 ? stationButtons.primaryAudio : stationButtons.secondaryAudio;
-    if (compactRows) {
-      button = RECT{rowRect.right - 88, rowRect.bottom - 34, rowRect.right - 10, rowRect.bottom - 8};
-    }
-    const int textRight = compactRows ? rowRect.right - 10 : std::max(art.right + 28, button.left - 8);
+    const int textLeft = art.right + pad;
+    const int textRight = rects.button.left - pad;
 
-    SetTextColor(memoryDc, kWidgetMuted);
-    previousFont = SelectObject(memoryDc, labelFont);
-    RECT labelRect{art.right + 12, rowRect.top + 8, textRight, rowRect.top + 25};
-    DrawTextInRect(memoryDc, label, labelRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    SetTextColor(dc, kWidgetMuted);
+    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+    RECT labelRect{textLeft, rowRect.top + pad, textRight, rowRect.top + rowHeight * 32 / 100};
+    DrawTextInRect(dc, label, labelRect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
     if (withProgress) {
-      DrawTextInRect(memoryDc,
+      DrawTextInRect(dc,
                      TrackTimeText(playback.progressMs) + L" / " +
                          TrackTimeText(playback.track.durationMs),
                      labelRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
     }
 
-    SetTextColor(memoryDc, kWidgetText);
-    SelectObject(memoryDc, titleFont);
-    RECT titleRect{art.right + 12, rowRect.top + 27, textRight, rowRect.top + 52};
-    DrawTextInRect(memoryDc, title.empty() ? L"--" : title, titleRect,
+    SetTextColor(dc, kWidgetText);
+    SelectObject(dc, TierFont(FontTier::Medium));
+    RECT titleRect{textLeft, labelRect.bottom, textRight, rowRect.top + rowHeight * 64 / 100};
+    DrawTextInRect(dc, title.empty() ? L"--" : title, titleRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
-    SetTextColor(memoryDc, kWidgetMuted);
-    SelectObject(memoryDc, artistFont);
-    RECT artistRect{art.right + 12, rowRect.top + 54, textRight,
-                    compactRows ? button.top - 4 : withProgress ? rowRect.bottom - 18 : rowRect.bottom - 8};
-    DrawTextInRect(memoryDc, artist.empty() ? detail : artist, artistRect,
+    SetTextColor(dc, kWidgetMuted);
+    SelectObject(dc, TierFont(FontTier::Small));
+    RECT artistRect{textLeft, titleRect.bottom, textRight,
+                    withProgress ? rowRect.bottom - rowHeight * 16 / 100 : rowRect.bottom - pad};
+    DrawTextInRect(dc, artist.empty() ? detail : artist, artistRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     if (withProgress) {
-      RECT barRect{art.right + 12, compactRows ? button.top - 8 : rowRect.bottom - 14,
-                   compactRows ? button.left - 8 : textRight,
-                   compactRows ? button.top - 4 : rowRect.bottom - 10};
-      DrawWidgetPill(memoryDc, barRect, kWidgetTrack);
+      RECT barRect{textLeft, rowRect.bottom - rowHeight * 12 / 100,
+                   textRight, rowRect.bottom - rowHeight * 6 / 100};
+      DrawWidgetPill(dc, barRect, kWidgetTrack);
       const double ratio = std::clamp(
           static_cast<double>(playback.progressMs) / static_cast<double>(playback.track.durationMs),
           0.0, 1.0);
@@ -1142,58 +920,147 @@ void Renderer::PaintNativeStationhead(HWND hwnd) {
       fillRect.right = barRect.left +
           static_cast<int>((barRect.right - barRect.left) * ratio);
       if (fillRect.right > fillRect.left) {
-        DrawWidgetPill(memoryDc, fillRect, kWidgetGreen);
+        DrawWidgetPill(dc, fillRect, kWidgetGreen);
       }
     }
 
-    DrawWidgetCard(memoryDc, button, muted ? kWidgetDangerSurface : kWidgetSuccessSurface);
-    SetTextColor(memoryDc, muted ? kWidgetDanger : kWidgetGreen);
-    SelectObject(memoryDc, buttonFont);
-    DrawTextInRect(memoryDc, muted ? L"音声OFF" : L"音声ON", button,
+    DrawWidgetCard(dc, rects.button, muted ? kWidgetDangerSurface : kWidgetSuccessSurface);
+    SetTextColor(dc, muted ? kWidgetDanger : kWidgetGreen);
+    SelectObject(dc, TierFont(FontTier::Small));
+    DrawTextInRect(dc, muted ? L"音声OFF" : L"音声ON", rects.button,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, previousFont);
   };
-
-  const int64_t nowMs = UnixMillis();
-  const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
-  const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
 
   const std::wstring detail = nativeStationhead_.loginRequired ? L"ログイン待ち"
       : nativeStationhead_.processFailed ? L"WebView再起動待ち"
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, L"StationheadウインドウA", nativeStationhead_.audioMuted, playbackA,
-          L"", L"", detail);
+  drawRow(0, L"StationheadウインドウA", nativeStationhead_.audioMuted, playbackA, L"", detail);
   drawRow(1, L"StationheadウインドウB", nativeStationhead_.secondaryAudioMuted, playbackB,
-          L"Buddy46", L"",
+          L"Buddy46",
           playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
               : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
-
-  SelectObject(memoryDc, previousFont);
 }
 
-void Renderer::PaintNativeRadar(HWND hwnd) {
-  const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
-  NativePanelPaintScope scope(*this, hwnd, layout.radar, /*tintAlpha=*/0, /*cornerRadius=*/0);
-  if (!scope.Valid()) return;
-  HDC memoryDc = scope.dc;
+void Renderer::DrawClockControlsSection(HDC dc, const RECT& content) {
+  SYSTEMTIME now{};
+  GetLocalTime(&now);
 
-  std::wstring radarTime;
-  bool hasFrame = false;
-  {
-    std::lock_guard lock(radarFrameMutex_);
-    radarTime = radarTimeText_;
-    hasFrame = radarFrameBitmap_ != nullptr;
+  RECT dateRect{content.left, content.top, content.right, content.top + SpanY(content, 160)};
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+  SetTextColor(dc, kWidgetMuted);
+  DrawTextInRect(dc, DateText(now), dateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_BOTTOM);
+
+  RECT timeRect{content.left, dateRect.bottom, content.right, content.top + SpanY(content, 560)};
+  SelectObject(dc, TierFont(FontTier::Large));
+  SetTextColor(dc, kWidgetText);
+  DrawTextInRect(dc, TimeText(now), timeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+  const ControlsButtonRects buttons = ControlsButtonsFromSection(content);
+  if (!nativeToast_.empty()) {
+    SelectObject(dc, TierFont(FontTier::Small));
+    SetTextColor(dc, kWidgetWarning);
+    DrawTextInRect(dc, nativeToast_, buttons.toast, DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
   }
 
-  const RECT captionRect{layout.news.left, layout.news.bottom + 6, layout.news.right, layout.news.bottom + 30};
-  HFONT captionFont = CachedUiFont(12, FW_NORMAL);
-  HGDIOBJ previousFont = SelectObject(memoryDc, captionFont);
-  const std::wstring caption = hasFrame
-      ? L"レーダー更新: " + (radarTime.empty() ? L"--:--" : radarTime) + L"   LIVE"
-      : L"レーダーを準備中";
-  DrawShadowedText(memoryDc, caption, captionRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER, kWidgetMuted);
-  SelectObject(memoryDc, previousFont);
+  SelectObject(dc, TierFont(FontTier::Small));
+  SetTextColor(dc, kWidgetText);
+  const std::array<std::pair<std::wstring, RECT>, 2> labels{{
+      {L"更新", buttons.update},
+      {L"再起動", buttons.restart},
+  }};
+  for (const auto& [label, rect] : labels) {
+    DrawWidgetCard(dc, rect, kWidgetSurfaceAlt, /*radius=*/14, /*alpha=*/170);
+    DrawTextInRect(dc, label, rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  }
+  SelectObject(dc, previousFont);
+}
+
+void Renderer::DrawWeatherSection(HDC dc, const RECT& content) {
+  const auto& hours = nativeDashboard_.weatherHours;
+  const size_t count = std::min<size_t>(5, hours.size());
+  double maxPop = 0;
+  for (size_t i = 0; i < count; ++i) {
+    if (std::isfinite(hours[i].precipitationProbability)) maxPop = std::max(maxPop, hours[i].precipitationProbability);
+  }
+
+  const int contentHeight = std::max(1L, content.bottom - content.top);
+  const int popWidth = SpanX(content, 240);
+  RECT popRect{content.left, content.top, content.left + popWidth, content.bottom};
+
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+  SetTextColor(dc, kWidgetMuted);
+  RECT labelRect{popRect.left, popRect.top + SpanY(content, 80), popRect.right,
+                 popRect.top + SpanY(content, 260)};
+  DrawTextInRect(dc, L"降水確率", labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+  SelectObject(dc, TierFont(FontTier::Large));
+  SetTextColor(dc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
+  RECT valueRect{popRect.left, labelRect.bottom, popRect.right, popRect.bottom - SpanY(content, 120)};
+  DrawTextInRect(dc, std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%", valueRect,
+                 DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+  const int cardsLeft = popRect.right + SpanX(content, 40);
+  const int cardGap = SpanX(content, 20);
+  const int availableWidth = std::max(1L, content.right - cardsLeft);
+  constexpr int kSlotCount = 5;
+  const int cardWidth = std::max(1, (availableWidth - cardGap * (kSlotCount - 1)) / kSlotCount);
+  for (int i = 0; i < kSlotCount; ++i) {
+    RECT cardRect{cardsLeft + i * (cardWidth + cardGap), content.top,
+                  cardsLeft + i * (cardWidth + cardGap) + cardWidth, content.bottom};
+    SetTextColor(dc, kWidgetMuted);
+    SelectObject(dc, TierFont(FontTier::Small));
+    RECT hourRect{cardRect.left, cardRect.top + SpanY(content, 40), cardRect.right,
+                  cardRect.top + SpanY(content, 200)};
+    const std::wstring hour = i < static_cast<int>(count) ? std::to_wstring(hours[i].hour) + L"時" : L"--";
+    DrawTextInRect(dc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    if (i < static_cast<int>(count) && !hours[i].icon.empty()) {
+      const int iconWidth = std::min(cardWidth - cardWidth / 10, contentHeight * 42 / 100 * 90 / 48);
+      const int iconHeight = std::max(12, iconWidth * 48 / 90);
+      const int iconTop = hourRect.bottom + SpanY(content, 40);
+      RECT iconRect{cardRect.left + (cardWidth - iconWidth) / 2, iconTop,
+                    cardRect.left + (cardWidth + iconWidth) / 2, iconTop + iconHeight};
+      DrawPremultipliedBitmap(dc,
+                              NativeWeatherIconBitmap(hours[i].icon, IsWeatherNightHour(hours[i].hour),
+                                                      iconWidth, iconHeight),
+                              iconRect);
+    }
+    if (i < static_cast<int>(count) && std::isfinite(hours[i].temperature)) {
+      SetTextColor(dc, kWidgetText);
+      SelectObject(dc, TierFont(FontTier::Medium));
+      RECT tempRect{cardRect.left, cardRect.bottom - SpanY(content, 380),
+                    cardRect.right, cardRect.bottom - SpanY(content, 180)};
+      DrawTextInRect(dc, NumberOrDash(hours[i].temperature, 0) + L"℃",
+                     tempRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
+    SetTextColor(dc, kWidgetBlue);
+    SelectObject(dc, TierFont(FontTier::Small));
+    RECT rainRect{cardRect.left, cardRect.bottom - SpanY(content, 170),
+                  cardRect.right, cardRect.bottom - SpanY(content, 20)};
+    const std::wstring rain = i < static_cast<int>(count) ? NumberOrDash(hours[i].rainMm, 0) + L"mm" : L"--";
+    DrawTextInRect(dc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  }
+  SelectObject(dc, previousFont);
+}
+
+HBITMAP Renderer::NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height) {
+  if (!hwnd || !dc || width <= 0 || height <= 0) return nullptr;
+  NativeBackBuffer& buffer = nativeBackBuffers_[hwnd];
+  if (buffer.bitmap && buffer.width == width && buffer.height == height) return buffer.bitmap;
+  if (buffer.bitmap) DeleteObject(buffer.bitmap);
+  buffer.bitmap = CreateCompatibleBitmap(dc, width, height);
+  buffer.width = buffer.bitmap ? width : 0;
+  buffer.height = buffer.bitmap ? height : 0;
+  return buffer.bitmap;
+}
+
+void Renderer::ReleaseNativePanelBackBuffer(HWND hwnd) {
+  const auto found = nativeBackBuffers_.find(hwnd);
+  if (found == nativeBackBuffers_.end()) return;
+  if (found->second.bitmap) DeleteObject(found->second.bitmap);
+  nativeBackBuffers_.erase(found);
 }
 
 HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int height) {

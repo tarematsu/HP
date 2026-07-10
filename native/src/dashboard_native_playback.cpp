@@ -370,10 +370,7 @@ void Renderer::NativePlaybackLoop() {
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
       }
-      const HWND stationheadWindow = nativeStationheadWindow_;
-      if (stationheadWindow && IsWindow(stationheadWindow)) {
-        InvalidateRect(stationheadWindow, nullptr, FALSE);
-      }
+      InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
     }
 
     std::unique_lock waitLock(nativePlaybackWakeMutex_);

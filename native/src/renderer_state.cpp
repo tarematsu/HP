@@ -33,20 +33,14 @@ Renderer::~Renderer() {
   StopNativePlaybackBridge();
   StopRadarCompose();
   DestroyNativeStaticWindows();
-  DestroyNativeClockWindow();
 }
 
 void Renderer::Initialize() {
   PrepareParentWindow(window_);
-  EnsureNativeClockWindow();
   EnsureNativeStaticWindows();
   StartNativePlaybackBridge();
   StartRadarCompose();
-  // Static panels (including the full-screen radar) are placed first so the
-  // clock, applied last, ends up on top of the z-order instead of hidden
-  // behind the radar window.
   ApplyNativeStaticBounds();
-  ApplyNativeClockBounds();
 }
 
 void Renderer::Resize(int width, int height) {
@@ -55,7 +49,6 @@ void Renderer::Resize(int width, int height) {
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
-  ApplyNativeClockBounds();
 }
 
 void Renderer::SetBounds(const RECT& bounds) {
@@ -63,24 +56,15 @@ void Renderer::SetBounds(const RECT& bounds) {
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
-  ApplyNativeClockBounds();
 }
 
 void Renderer::SetVisible(bool visible) {
   nativeDashboardVisible_ = visible;
-  if (nativeClockWindow_ && IsWindow(nativeClockWindow_)) {
-    ShowWindow(nativeClockWindow_, visible ? SW_SHOWNA : SW_HIDE);
-  }
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
   }
-  if (visible) {
-    // Static panels first, then the clock, so the clock ends up on top of
-    // the z-order instead of hidden behind the full-screen radar window.
-    ApplyNativeStaticBounds();
-    ApplyNativeClockBounds();
-  }
+  if (visible) ApplyNativeStaticBounds();
 }
 
 bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
