@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - automation/sh-refactor-scan
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
