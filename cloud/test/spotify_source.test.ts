@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/sources";
 import {
-  fetchStationhead,
+  fetchSh,
   monitorCurrentIndex,
   playbackFeedUrl,
 } from "../src/spotify_source";
@@ -50,7 +50,7 @@ describe("Stationhead monitor normalization", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await fetchStationhead({
+    const result = await fetchSh({
       STATIONHEAD_MONITOR_URL:
         "https://monitor.example/api/dashboard?station=buddy46",
     } as Env);

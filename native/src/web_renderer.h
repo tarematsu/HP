@@ -13,12 +13,12 @@ enum class UiAction {
   AppUpdate,
   Restart,
   Maintenance,
-  StationheadReconnect,
+  ShReconnect,
   ClearCache,
   ShowLog,
   CloseMaintenance,
-  StationheadAudioToggleA,
-  StationheadAudioToggleB
+  ShAudioToggleA,
+  ShAudioToggleB
 };
 
 struct AirHistorySample {
@@ -32,7 +32,7 @@ struct AirHistorySample {
 
 struct RenderState {
   SensorSnapshot sensors;
-  StationheadStatus stationhead;
+  ShStatus stationhead;
   std::wstring appVersion;
   std::vector<AirHistorySample> airHistory;
   int workspaceTab = 0;
@@ -239,7 +239,7 @@ class Renderer {
   void DrawAirSection(HDC dc, const RECT& section);
   void DrawNewsSection(HDC dc, const RECT& section);
   void DrawEnergySection(HDC dc, const RECT& section);
-  void DrawStationheadSection(HDC dc, const RECT& section);
+  void DrawShSection(HDC dc, const RECT& section);
   void DrawClockControlsSection(HDC dc, const RECT& section);
   void DrawWeatherSection(HDC dc, const RECT& section);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
@@ -277,7 +277,7 @@ class Renderer {
   HWND nativeRadarWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
-  StationheadStatus nativeStationhead_{};
+  ShStatus nativeSh_{};
   DashboardSnapshot nativeDashboard_{};
   std::wstring nativeAppVersion_;
   std::wstring nativeToast_;

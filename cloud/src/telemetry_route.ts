@@ -14,7 +14,7 @@ import { mergeEnvironmentRows } from "./telemetry_history";
 interface TelemetryInput {
   deviceId?: string;
   appVersion?: string;
-  stationheadOk?: boolean;
+  shOk?: boolean;
   outboxCount?: number;
   samples?: TelemetrySample[];
 }
@@ -95,7 +95,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
   const appVersion = String(input.appVersion ?? "").slice(0, 100) || null;
   const rawOutbox = Number(input.outboxCount);
   const outboxCount = Number.isFinite(rawOutbox) ? Math.max(0, Math.trunc(rawOutbox)) : 0;
-  const stationheadOk = input.stationheadOk ? 1 : 0;
+  const shOk = input.shOk ? 1 : 0;
   const returnedRows = new Map<number, EnvironmentHistoryRow>();
 
   if (accepted.length) {
@@ -111,7 +111,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
         deviceId,
         now,
         appVersion,
-        stationheadOk,
+        shOk,
         outboxCount,
         chunk.at(-1)!.sequence,
       ));
@@ -126,7 +126,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
     const heartbeatDue = !previous || now - Number(previous.last_seen_at ?? 0) >= HEARTBEAT_INTERVAL_MS;
     const heartbeatChanged = !previous
       || previous.app_version !== appVersion
-      || Number(previous.stationhead_ok) !== stationheadOk
+      || Number(previous.stationhead_ok) !== shOk
       || Number(previous.outbox_count) !== outboxCount;
     if (heartbeatDue || heartbeatChanged) {
       await telemetryHeartbeatStatement(
@@ -134,7 +134,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
         deviceId,
         now,
         appVersion,
-        stationheadOk,
+        shOk,
         outboxCount,
         lastSequence,
       ).run();

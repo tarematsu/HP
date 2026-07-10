@@ -20,23 +20,23 @@ std::wstring HResultHex(HRESULT hr) {
 }
 }  // namespace
 
-StationheadPlayer::StationheadPlayer(HWND window, StationheadConfig config,
+ShPlayer::ShPlayer(HWND window, ShConfig config,
                                      fs::path userDataFolder, Logger& log)
     : window_(window), config_(std::move(config)),
       userDataFolder_(std::move(userDataFolder)), log_(log) {
   bounds_ = RECT{0, 0, 1, 1};
 }
 
-StationheadPlayer::~StationheadPlayer() { Stop(); }
+ShPlayer::~ShPlayer() { Stop(); }
 
-void StationheadPlayer::Start() {
+void ShPlayer::Start() {
   shuttingDown_ = false;
   usedFallback_ = false;
   ResetNavigationRouteState();
   Create();
 }
 
-void StationheadPlayer::Stop() {
+void ShPlayer::Stop() {
   shuttingDown_ = true;
   createCallbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
@@ -48,9 +48,9 @@ void StationheadPlayer::Stop() {
   hostWindow_ = nullptr;
 }
 
-StationheadStatus StationheadPlayer::Status() const {
+ShStatus ShPlayer::Status() const {
   std::lock_guard lock(mutex_);
-  StationheadStatus copy = status_;
+  ShStatus copy = status_;
   copy.authAvailable = authController_ != nullptr || !authPendingUrl_.empty();
   copy.spotifyAuthorization = spotifyAuthorization_;
   copy.audioPlaying = audioPlaying_.load(std::memory_order_relaxed);
@@ -59,14 +59,14 @@ StationheadStatus StationheadPlayer::Status() const {
   return copy;
 }
 
-void StationheadPlayer::ResetNavigationRouteState() {
+void ShPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
   noAudioSinceAt_ = 0;
   fallbackMonitorAfterAt_ = 0;
   nextTickAt_ = 0;
 }
 
-void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
+void ShPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
                                                 const std::wstring& source) {
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
@@ -86,7 +86,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
     }
     if (!startupPreviewActive_) SetVisible(false);
     if (changed) log_.Info(L"Stationhead audio playing (" + source + L")");
-    PostChange(StationheadChangeReturnMain);
+    PostChange(ShChangeReturnMain);
     return;
   }
 
@@ -111,11 +111,11 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
   PostChange();
 }
 
-void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
-  NavigateStationheadUrl(nowMs, config_.url, reason, false);
+void ShPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
+  NavigateShUrl(nowMs, config_.url, reason, false);
 }
 
-void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
+void ShPlayer::NavigateShUrl(int64_t nowMs, const std::wstring& url,
                                                const std::wstring& reason,
                                                bool fallbackActive) {
   if (!webview_ || url.empty()) return;
@@ -144,7 +144,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
   log_.Info(L"Stationhead navigation (" + reason + L"): " + url);
 }
 
-void StationheadPlayer::Create() {
+void ShPlayer::Create() {
   if (shuttingDown_ || creating_.exchange(true)) return;
   if (!EnsureHostWindow()) {
     creating_ = false;
@@ -195,7 +195,7 @@ void StationheadPlayer::Create() {
       });
 }
 
-void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
+void ShPlayer::EnsureAuthController(const std::wstring& url) {
   authPendingUrl_ = url;
   if (!environment_ || authController_ || !EnsureAuthHostWindow()) return;
   authCallbackAlive_->store(false, std::memory_order_release);
@@ -220,7 +220,7 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
                            }).Get());
 }
 
-void StationheadPlayer::ConfigureWebView() {
+void ShPlayer::ConfigureWebView() {
   const auto alive = createCallbackAlive_;
   // Fresh WebView: force the next ApplyMute/ApplyVolume to actually push state.
   appliedMuted_.store(-1, std::memory_order_relaxed);
@@ -241,7 +241,7 @@ void StationheadPlayer::ConfigureWebView() {
     ComPtr<ICoreWebView2Settings3> settings3;
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
-  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
+  ApplyShResourceBlocking(environment_.Get(), webview_.Get(), config_,
                                    resourceBlockingArmed_, resourceRequestedToken_);
 
   // WebView2 exposes the actual document audio state, including playback that
@@ -281,7 +281,7 @@ void StationheadPlayer::ConfigureWebView() {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
   static const std::wstring startupScript =
-      StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead");
+      ShAutoplayScript(L"__homepanelPrimarySh", L"stationhead");
   webview_->AddScriptToExecuteOnDocumentCreated(
       startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
@@ -320,7 +320,7 @@ void StationheadPlayer::ConfigureWebView() {
             authCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
             const auto authAlive = authCallbackAlive_;
             spotifyAuthorization_ = true;
-            selectedTab_ = StationheadTabKind::Auth;
+            selectedTab_ = ShTabKind::Auth;
             viewVisible_ = true;
             LayoutControllers();
             const HRESULT createResult = environment_->CreateCoreWebView2Controller(
@@ -345,7 +345,7 @@ void StationheadPlayer::ConfigureWebView() {
                                        ConfigureAuthWebView();
                                        if (SUCCEEDED(popupArgs->put_NewWindow(authWebview_.Get()))) {
                                          popupArgs->put_Handled(TRUE);
-                                         SelectTab(StationheadTabKind::Auth);
+                                         SelectTab(ShTabKind::Auth);
                                          log_.Info(L"Stationhead popup attached to auth tab: " + uri);
                                        }
                                        deferral->Complete();
@@ -422,7 +422,7 @@ void StationheadPlayer::ConfigureWebView() {
                     : L"Spotify authentication failed or cancelled";
               }
               SetVisible(false);
-              PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);
+              PostChange(ShChangeReturnMain | ShChangeReleaseAuth);
             } catch (...) {
             }
             return S_OK;
@@ -495,7 +495,7 @@ void StationheadPlayer::ConfigureWebView() {
   resourceBlockingArmed_ = false;
 }
 
-void StationheadPlayer::ConfigureAuthWebView() {
+void ShPlayer::ConfigureAuthWebView() {
   if (!authController_ || !authWebview_) return;
   const auto alive = authCallbackAlive_;
   appliedMuted_.store(-1, std::memory_order_relaxed);
@@ -520,7 +520,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
             BOOL success = FALSE;
             if (args) args->get_IsSuccess(&success);
             if (success) {
-              SelectTab(StationheadTabKind::Auth);
+              SelectTab(ShTabKind::Auth);
               if (authWebview_) authWebview_->PostWebMessageAsJson(L"{\"type\":\"auth-tab-ready\"}");
             }
             return S_OK;
@@ -531,8 +531,8 @@ void StationheadPlayer::ConfigureAuthWebView() {
             if (!CallbackAlive(alive)) return S_OK;
             spotifyAuthorization_ = false;
             authPendingUrl_.clear();
-            SelectTab(StationheadTabKind::None);
-            PostChange(StationheadChangeReleaseAuth);
+            SelectTab(ShTabKind::None);
+            PostChange(ShChangeReleaseAuth);
             return S_OK;
           }).Get(), &authCloseToken_);
   authWebview_->add_WebMessageReceived(
@@ -557,8 +557,8 @@ void StationheadPlayer::ConfigureAuthWebView() {
                     ? L"Spotify authentication completed"
                     : L"Spotify authentication failed or cancelled";
               }
-              SelectTab(StationheadTabKind::None);
-              PostChange(StationheadChangeReleaseAuth);
+              SelectTab(ShTabKind::None);
+              PostChange(ShChangeReleaseAuth);
             } catch (...) {
             }
             return S_OK;
@@ -567,7 +567,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
       Callback<ICoreWebView2ProcessFailedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs*) -> HRESULT {
             if (!CallbackAlive(alive)) return S_OK;
-            SelectTab(StationheadTabKind::None);
+            SelectTab(ShTabKind::None);
             PostChange();
             return S_OK;
           }).Get(), &authProcessFailedToken_);
@@ -575,7 +575,7 @@ void StationheadPlayer::ConfigureAuthWebView() {
   if (!authPendingUrl_.empty()) authWebview_->Navigate(authPendingUrl_.c_str());
 }
 
-void StationheadPlayer::CloseWebView() {
+void ShPlayer::CloseWebView() {
   createCallbackAlive_->store(false, std::memory_order_release);
   CloseAuthWebView();
   if (webview_) {
@@ -614,7 +614,7 @@ void StationheadPlayer::CloseWebView() {
   status_.created = false;
 }
 
-void StationheadPlayer::CloseAuthWebView() {
+void ShPlayer::CloseAuthWebView() {
   authCallbackAlive_->store(false, std::memory_order_release);
   if (authWebview_) {
     if (authNavigationToken_.value) authWebview_->remove_NavigationCompleted(authNavigationToken_);
@@ -634,7 +634,7 @@ void StationheadPlayer::CloseAuthWebView() {
   appliedVolumePercent_.store(-1, std::memory_order_relaxed);
 }
 
-void StationheadPlayer::Tick(int64_t nowMs) {
+void ShPlayer::Tick(int64_t nowMs) {
   if (shuttingDown_) return;
   if (nowMs < nextTickAt_ && !recreating_.load(std::memory_order_relaxed)) return;
   nextTickAt_ = nowMs + 60'000;
@@ -670,14 +670,14 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     log_.Warn(L"Stationhead primary had no " +
               std::wstring(nativeAudioTracking_ ? L"WebView2 audio" : L"detected audio") +
               L" for 360s; switching to fallback");
-    NavigateStationheadUrl(nowMs, config_.fallbackUrl,
+    NavigateShUrl(nowMs, config_.fallbackUrl,
                            L"primary had no audio for 360s; switching to fallback", true);
     PostChange();
     nextTickAt_ = nowMs + 1'000;
     return;
   }
 
-  const int64_t reloadInterval = StationheadReloadIntervalMs(config_.reloadIntervalMinutes);
+  const int64_t reloadInterval = ShReloadIntervalMs(config_.reloadIntervalMinutes);
   if (reloadInterval > 0 && lastReloadAt_ > 0 && nowMs - lastReloadAt_ >= reloadInterval) {
     const bool secondaryConfigured = config_.secondaryEnabled && !config_.secondaryUrl.empty();
     if (secondaryConfigured &&
@@ -710,9 +710,9 @@ void StationheadPlayer::Tick(int64_t nowMs) {
   nextTickAt_ = std::max(nowMs + 1'000, next);
 }
 
-void StationheadPlayer::Reconnect() { ScheduleRecreate(L"manual reconnect"); }
+void ShPlayer::Reconnect() { ScheduleRecreate(L"manual reconnect"); }
 
-void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
+void ShPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   if (url.empty()) return;
   if (!webview_) {
     pendingAuthorizationUrl_ = url;
@@ -723,7 +723,7 @@ void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   spotifyAuthorization_ = true;
   loginSessionActive_ = false;
   EnsureAuthController(url);
-  SelectTab(StationheadTabKind::Auth);
+  SelectTab(ShTabKind::Auth);
   {
     std::lock_guard lock(mutex_);
     status_.navigating = true;
@@ -733,14 +733,14 @@ void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   PostChange();
 }
 
-void StationheadPlayer::ShowForLogin() {
-  SelectTab(StationheadTabKind::Stationhead);
+void ShPlayer::ShowForLogin() {
+  SelectTab(ShTabKind::Stationhead);
   log_.Warn(L"Stationhead login required; Stationhead window visible");
 }
 
-void StationheadPlayer::ShowAfterAudioStop() {
+void ShPlayer::ShowAfterAudioStop() {
   if (!webview_) return;
-  selectedTab_ = StationheadTabKind::Stationhead;
+  selectedTab_ = ShTabKind::Stationhead;
   viewVisible_ = true;
   const int64_t now = UnixMillis();
   fallbackMonitorAfterAt_ = now;
@@ -754,11 +754,11 @@ void StationheadPlayer::ShowAfterAudioStop() {
   log_.Warn(L"Stationhead audio stopped; restored the player");
 }
 
-void StationheadPlayer::ReleaseCompletedAuth() {
+void ShPlayer::ReleaseCompletedAuth() {
   if (!spotifyAuthorization_ && authController_) CloseAuthWebView();
 }
 
-void StationheadPlayer::ToggleView() {
+void ShPlayer::ToggleView() {
   if (!controller_) return;
   bool loginRequired = false;
   {
@@ -766,52 +766,52 @@ void StationheadPlayer::ToggleView() {
     loginRequired = status_.loginRequired;
   }
   if (spotifyAuthorization_ || loginRequired) {
-    SelectTab(selectedTab_ == StationheadTabKind::Auth ? StationheadTabKind::Auth
-                                                       : StationheadTabKind::Stationhead);
+    SelectTab(selectedTab_ == ShTabKind::Auth ? ShTabKind::Auth
+                                                       : ShTabKind::Stationhead);
     return;
   }
   SetVisible(!viewVisible_);
   PostChange();
 }
 
-uint32_t StationheadPlayer::ConsumeChangeFlags() {
+uint32_t ShPlayer::ConsumeChangeFlags() {
   const uint32_t flags = pendingChangeFlags_.exchange(0, std::memory_order_acq_rel);
   changeMessagePending_ = false;
   if (pendingChangeFlags_.load(std::memory_order_acquire) != 0 &&
       !changeMessagePending_.exchange(true, std::memory_order_acq_rel) &&
       window_ && IsWindow(window_)) {
-    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+    PostMessageW(window_, WM_HP_SH_CHANGED, 0, 0);
   }
   return flags;
 }
 
-void StationheadPlayer::PostChange(uint32_t flags) {
+void ShPlayer::PostChange(uint32_t flags) {
   pendingChangeFlags_.fetch_or(flags, std::memory_order_release);
   if (changeMessagePending_.exchange(true, std::memory_order_acq_rel)) return;
-  if (!window_ || !IsWindow(window_) || !PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0)) {
+  if (!window_ || !IsWindow(window_) || !PostMessageW(window_, WM_HP_SH_CHANGED, 0, 0)) {
     changeMessagePending_ = false;
   }
 }
 
-void StationheadPlayer::SetMuted(bool muted) noexcept {
+void ShPlayer::SetMuted(bool muted) noexcept {
   audioMuted_.store(muted, std::memory_order_relaxed);
   ApplyMute();
 }
 
-bool StationheadPlayer::Muted() const noexcept {
+bool ShPlayer::Muted() const noexcept {
   return audioMuted_.load(std::memory_order_relaxed);
 }
 
-void StationheadPlayer::SetVolume(double volume) noexcept {
+void ShPlayer::SetVolume(double volume) noexcept {
   audioVolume_.store(std::clamp(volume, 0.0, 1.0), std::memory_order_relaxed);
   ApplyVolume();
 }
 
-double StationheadPlayer::Volume() const noexcept {
+double ShPlayer::Volume() const noexcept {
   return audioVolume_.load(std::memory_order_relaxed);
 }
 
-void StationheadPlayer::ApplyMute() const noexcept {
+void ShPlayer::ApplyMute() const noexcept {
   const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
   if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
     const BOOL value = muted ? TRUE : FALSE;
@@ -826,58 +826,58 @@ void StationheadPlayer::ApplyMute() const noexcept {
   ApplyVolume();
 }
 
-void StationheadPlayer::ApplyVolume() const noexcept {
+void ShPlayer::ApplyVolume() const noexcept {
   const int percent = std::clamp(
       static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
   if (appliedVolumePercent_.exchange(percent, std::memory_order_relaxed) == percent) return;
   const auto apply = [percent](const ComPtr<ICoreWebView2>& view) noexcept {
     if (!view) return;
-    const std::wstring script = StationheadVolumeScript(percent);
+    const std::wstring script = ShVolumeScript(percent);
     view->ExecuteScript(script.c_str(), nullptr);
   };
   apply(webview_);
   apply(authWebview_);
 }
 
-void StationheadPlayer::SetBounds(const RECT& bounds) {
+void ShPlayer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
   if (startupPreviewActive_ || viewVisible_ || NeedsInteractiveWindow()) LayoutControllers();
   else KeepPlaybackBehindDashboard();
 }
 
-void StationheadPlayer::SelectTab(StationheadTabKind tab) {
-  if (tab == StationheadTabKind::None && NeedsInteractiveWindow()) {
-    tab = spotifyAuthorization_ ? StationheadTabKind::Auth : StationheadTabKind::Stationhead;
+void ShPlayer::SelectTab(ShTabKind tab) {
+  if (tab == ShTabKind::None && NeedsInteractiveWindow()) {
+    tab = spotifyAuthorization_ ? ShTabKind::Auth : ShTabKind::Stationhead;
   }
   if (selectedTab_ == tab) {
-    if (tab == StationheadTabKind::None && !viewVisible_) return;
-    SetVisible(tab != StationheadTabKind::None);
+    if (tab == ShTabKind::None && !viewVisible_) return;
+    SetVisible(tab != ShTabKind::None);
     return;
   }
   selectedTab_ = tab;
-  SetVisible(tab != StationheadTabKind::None);
+  SetVisible(tab != ShTabKind::None);
 }
 
-bool StationheadPlayer::HasAuthTab() const {
+bool ShPlayer::HasAuthTab() const {
   return authController_ != nullptr || !authPendingUrl_.empty();
 }
 
-HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
-  if (selectedTab_ == StationheadTabKind::Auth && authHostWindow_ && IsWindow(authHostWindow_)) {
+HWND ShPlayer::ActiveHostWindowForAccountSetup() const noexcept {
+  if (selectedTab_ == ShTabKind::Auth && authHostWindow_ && IsWindow(authHostWindow_)) {
     return authHostWindow_;
   }
   return hostWindow_;
 }
 
-bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return selectedTab_ == StationheadTabKind::Auth ||
+bool ShPlayer::NeedsInteractiveWindow() const {
+  return selectedTab_ == ShTabKind::Auth ||
          spotifyAuthorization_ ||
          loginSessionActive_ ||
          !audioPlaying_.load(std::memory_order_relaxed);
 }
 
-void StationheadPlayer::ScheduleRecreate(const std::wstring& reason) {
+void ShPlayer::ScheduleRecreate(const std::wstring& reason) {
   nextTickAt_ = 0;
   if (shuttingDown_ || recreating_.exchange(true)) return;
   {

@@ -44,11 +44,11 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, kFastTickMs, fallbackMs));
 }
 
-StationheadStatus BuildRenderStationheadState(const AppStationheadHandle& stationhead,
-                                              const AppSecondaryStationheadHandle& secondary) {
-  StationheadStatus state = stationhead.Status();
+ShStatus BuildRenderShState(const AppShHandle& stationhead,
+                                              const AppSecondaryShHandle& secondary) {
+  ShStatus state = stationhead.Status();
   if (secondary) {
-    const SecondaryStationheadStatus secondaryStatus = secondary.Status();
+    const SecondaryShStatus secondaryStatus = secondary.Status();
     state.loginRequired = state.loginRequired || secondaryStatus.loginRequired;
     state.secondaryAudioMuted = secondaryStatus.audioMuted;
   } else {
@@ -156,12 +156,12 @@ void App::StartServices() {
 
   // Stationhead owns the first shared WebView2 environment/controller so its heavy
   // page bootstrap is not queued behind the dashboard renderer.
-  const fs::path stationheadData = dataDir_ / L"webview2-stationhead";
-  stationhead_ = std::make_unique<StationheadPlayer>(
-      window_, config_.stationhead, stationheadData, *logger_);
+  const fs::path shData = dataDir_ / L"webview2-stationhead";
+  sh_ = std::make_unique<ShPlayer>(
+      window_, config_.stationhead, shData, *logger_);
   if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
-    secondaryStationhead_ = std::make_unique<SecondaryStationheadPlayer>(
-        window_, config_.stationhead, stationheadData, *logger_);
+    secondarySh_ = std::make_unique<SecondaryShPlayer>(
+        window_, config_.stationhead, shData, *logger_);
     logger_->Info(L"Secondary Stationhead prepared to start alongside primary");
   }
   RECT client{};
@@ -169,17 +169,17 @@ void App::StartServices() {
     renderer_->Resize(client.right - client.left, client.bottom - client.top);
     LayoutWorkspace();
   }
-  stationhead_->Start();
+  sh_->Start();
   logger_->Info(L"Stationhead startup was prioritized before native dashboard initialization");
   // Windows A and B are started together and then temporarily shown as a split
   // preview, so startup order is visually deterministic: A/B first, dashboard next.
-  if (secondaryStationhead_) {
-    secondaryStationhead_->Start();
+  if (secondarySh_) {
+    secondarySh_->Start();
     secondaryStarted_ = true;
     logger_->Info(L"Secondary Stationhead started alongside primary");
   }
-  ApplyStartupStationheadPreview();
-  ApplyScheduledStationheadAudioProfile(true);
+  ApplyStartupShPreview();
+  ApplyScheduledShAudioProfile(true);
 
   const std::wstring deviceToken = LoadProtectedToken(dataDir_ / L"device-token.dat", L"HOMEPANEL_DEVICE_TOKEN");
   const std::wstring actionToken = LoadProtectedToken(dataDir_ / L"action-token.dat", L"HOMEPANEL_ACTION_TOKEN");
@@ -190,15 +190,15 @@ void App::StartServices() {
   LoadAirHistory();
   renderState_.sensors = sensors_->Snapshot();
   UpdateAirHistory(renderState_.sensors);
-  renderState_.stationhead = stationhead_->Status();
+  renderState_.stationhead = sh_->Status();
   renderState_.appVersion = kVersion;
   lastTelemetryAt_ = startupAt_;
   MarkRenderStateDirty();
   InvalidateAll();
 }
 
-void App::ApplyStartupStationheadPreview() {
-  if (!stationhead_) return;
+void App::ApplyStartupShPreview() {
+  if (!sh_) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) {
     GetClientRect(window_, &bounds);
@@ -207,8 +207,8 @@ void App::ApplyStartupStationheadPreview() {
     bounds = RECT{0, 0, std::max(1, config_.screenWidth), std::max(1, config_.screenHeight)};
   }
 
-  if (!secondaryStationhead_) {
-    stationhead_->SetStartupPreviewBounds(bounds);
+  if (!secondarySh_) {
+    sh_->SetStartupPreviewBounds(bounds);
     logger_->Info(L"Stationhead startup preview applied full-screen before dashboard");
     return;
   }
@@ -220,27 +220,27 @@ void App::ApplyStartupStationheadPreview() {
   if (left.right <= left.left) left.right = left.left + 1;
   if (right.right <= right.left) right.right = right.left + 1;
 
-  stationhead_->SetStartupPreviewBounds(left);
-  secondaryStationhead_->SetStartupPreviewBounds(right);
+  sh_->SetStartupPreviewBounds(left);
+  secondarySh_->SetStartupPreviewBounds(right);
   logger_->Info(L"Stationhead startup preview applied without dashboard gap: A left, B right");
 }
 
-void App::ClearStartupStationheadPreview() {
-  if (stationhead_) stationhead_->ClearStartupPreviewBounds();
-  if (secondaryStationhead_) secondaryStationhead_->ClearStartupPreviewBounds();
+void App::ClearStartupShPreview() {
+  if (sh_) sh_->ClearStartupPreviewBounds();
+  if (secondarySh_) secondarySh_->ClearStartupPreviewBounds();
 }
 
-void App::StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus) {
-  const bool primaryAudioReady = stationheadStatus.audioPlaying;
+void App::StartDeferredServices(int64_t now, const ShStatus& shStatus) {
+  const bool primaryAudioReady = shStatus.audioPlaying;
   // Keep the split startup preview until at least one Stationhead window has
   // confirmed audio. The dashboard can then start, while any still-pending
   // Stationhead surface remains independently raised on its half of the screen.
   bool secondaryAudioReady = true;
-  if (!rendererStarted_ && secondaryStationhead_) {
-    const SecondaryStationheadStatus secondaryStatus = secondaryStationhead_->Status();
+  if (!rendererStarted_ && secondarySh_) {
+    const SecondaryShStatus secondaryStatus = secondarySh_->Status();
     secondaryAudioReady = secondaryStatus.playing;
   }
-  const bool dashboardAudioReady = secondaryStationhead_
+  const bool dashboardAudioReady = secondarySh_
       ? (primaryAudioReady || secondaryAudioReady)
       : primaryAudioReady;
   const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
@@ -249,7 +249,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
   if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
     renderer_->Initialize();
     rendererStarted_ = true;
-    ClearStartupStationheadPreview();
+    ClearStartupShPreview();
     LayoutWorkspace();
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
@@ -279,32 +279,32 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
 
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
-  if (secondaryStationhead_) secondaryStationhead_->Stop();
-  if (stationhead_) stationhead_->Stop();
+  if (secondarySh_) secondarySh_->Stop();
+  if (sh_) sh_->Stop();
   if (cloud_) cloud_->Stop();
   if (sensors_) sensors_->Stop();
   if (telemetryThread_.joinable()) telemetryThread_.join();
   if (updateThread_.joinable()) updateThread_.join();
-  secondaryStationhead_.reset();
-  stationhead_.reset();
+  secondarySh_.reset();
+  sh_.reset();
   cloud_.reset();
   sensors_.reset();
   renderer_.reset();
 }
 
 void App::Tick() {
-  if (!renderer_ || !sensors_ || !stationhead_ || !cloud_) return;
+  if (!renderer_ || !sensors_ || !sh_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
-  if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
-  const SecondaryStationheadStatus secondaryStatus =
-      secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
-  stationhead_->Tick(now);
-  const StationheadStatus stationheadStatus = stationhead_->Status();
-  StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
-  UpdateRenderStationheadState(nextStationheadState);
-  StartDeferredServices(now, stationheadStatus);
-  ApplyStationheadWindowPlacement(stationheadStatus, secondaryStatus);
+  if (secondaryStarted_ && secondarySh_) secondarySh_->Tick(now);
+  const SecondaryShStatus secondaryStatus =
+      secondarySh_ ? secondarySh_->Status() : SecondaryShStatus{};
+  sh_->Tick(now);
+  const ShStatus shStatus = sh_->Status();
+  ShStatus nextShState = BuildRenderShState(sh_, secondarySh_);
+  UpdateRenderShState(nextShState);
+  StartDeferredServices(now, shStatus);
+  ApplyShWindowPlacement(shStatus, secondaryStatus);
 
   if (cloudStarted_ &&
       now - lastTelemetryAt_ >= static_cast<int64_t>(config_.telemetryMinutes) * 60'000) {
@@ -326,12 +326,12 @@ void App::Tick() {
   if (rendererStarted_) renderer_->TickNativePanels(now);
   uint32_t nextTickMs = kMaxIdleTickMs;
   if (!rendererStarted_ || selectedTab_ == WorkspaceTab::Main ||
-      renderState_.maintenance || StationheadNeedsForeground(renderState_.stationhead)) {
+      renderState_.maintenance || ShNeedsForeground(renderState_.stationhead)) {
     nextTickMs = kFastTickMs;
   } else {
-    nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, stationhead_->NextWakeAt(), kMaxIdleTickMs));
-    if (secondaryStarted_ && secondaryStationhead_) {
-      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, secondaryStationhead_->NextWakeAt(), kMaxIdleTickMs));
+    nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, sh_->NextWakeAt(), kMaxIdleTickMs));
+    if (secondaryStarted_ && secondarySh_) {
+      nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, secondarySh_->NextWakeAt(), kMaxIdleTickMs));
     }
     if (toastUntil_ > 0) nextTickMs = std::min(nextTickMs, NextDelayFromDeadline(now, toastUntil_, kMaxIdleTickMs));
     if (newsCount_ > 1 && lastNewsRotateAt_ > 0) {
@@ -360,7 +360,7 @@ void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
   else MarkRenderStateDirty();
 }
 
-bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
+bool App::UpdateRenderShState(const ShStatus& nextState) {
   if (renderState_.stationhead == nextState) return false;
   renderState_.stationhead = nextState;
   MarkRenderStateDirty();
@@ -368,7 +368,7 @@ bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
 }
 
 void App::LayoutWorkspace() {
-  if (!renderer_ || !stationhead_) return;
+  if (!renderer_ || !sh_) return;
   RECT client{};
   GetClientRect(window_, &client);
   workspaceBounds_ = client;
@@ -381,23 +381,23 @@ void App::LayoutWorkspace() {
 
   switch (selectedTab_) {
     case WorkspaceTab::Main:
-      MarkStationheadPlacementDirty();
-      ApplyStationheadWindowPlacement(stationhead_->Status(),
-          secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{});
+      MarkShPlacementDirty();
+      ApplyShWindowPlacement(sh_->Status(),
+          secondarySh_ ? secondarySh_->Status() : SecondaryShStatus{});
       break;
     case WorkspaceTab::Stationhead:
-      stationhead_->SetBounds(fullBounds);
-      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
-      stationhead_->SelectTab(StationheadTabKind::Stationhead);
+      sh_->SetBounds(fullBounds);
+      if (secondarySh_) secondarySh_->SetBounds(fullBounds);
+      sh_->SelectTab(ShTabKind::Stationhead);
       break;
     case WorkspaceTab::Auth:
-      stationhead_->SetBounds(fullBounds);
-      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
-      if (stationhead_->HasAuthTab()) {
-        stationhead_->SelectTab(StationheadTabKind::Auth);
+      sh_->SetBounds(fullBounds);
+      if (secondarySh_) secondarySh_->SetBounds(fullBounds);
+      if (sh_->HasAuthTab()) {
+        sh_->SelectTab(ShTabKind::Auth);
       } else {
         selectedTab_ = WorkspaceTab::Main;
-        stationhead_->SelectTab(StationheadTabKind::None);
+        sh_->SelectTab(ShTabKind::None);
       }
       break;
   }
@@ -406,23 +406,23 @@ void App::LayoutWorkspace() {
   InvalidateAll();
 }
 
-void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
-                                          const SecondaryStationheadStatus& secondaryStatus) {
-  if (!rendererStarted_ || !stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
+void App::ApplyShWindowPlacement(const ShStatus& primaryStatus,
+                                          const SecondaryShStatus& secondaryStatus) {
+  if (!rendererStarted_ || !sh_ || selectedTab_ != WorkspaceTab::Main) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
 
   const bool primaryPending = !primaryStatus.audioPlaying;
-  const bool secondaryPending = secondaryStationhead_ && !secondaryStatus.playing;
+  const bool secondaryPending = secondarySh_ && !secondaryStatus.playing;
   // This runs on every tick. Re-apply the placement only when the pending
   // state or geometry changed, or a player posted a state change (which can
   // reposition its own windows, e.g. a reload's SetStartupBounds) - steady
   // ticks must not re-run SetWindowPos/SelectTab every second.
-  if (!stationheadPlacementDirty_ && primaryPending == placedPrimaryPending_ &&
+  if (!shPlacementDirty_ && primaryPending == placedPrimaryPending_ &&
       secondaryPending == placedSecondaryPending_ && EqualRect(&bounds, &placedBounds_)) {
     return;
   }
-  stationheadPlacementDirty_ = false;
+  shPlacementDirty_ = false;
   placedPrimaryPending_ = primaryPending;
   placedSecondaryPending_ = secondaryPending;
   placedBounds_ = bounds;
@@ -433,10 +433,10 @@ void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus
   if (left.right <= left.left) left.right = left.left + 1;
   if (right.right <= right.left) right.right = right.left + 1;
 
-  stationhead_->SetBounds(primaryPending ? left : bounds);
-  stationhead_->SelectTab(StationheadTabKind::None);
-  if (secondaryStationhead_) {
-    secondaryStationhead_->SetBounds(secondaryPending ? right : bounds);
+  sh_->SetBounds(primaryPending ? left : bounds);
+  sh_->SelectTab(ShTabKind::None);
+  if (secondarySh_) {
+    secondarySh_->SetBounds(secondaryPending ? right : bounds);
   }
 }
 
@@ -452,10 +452,10 @@ void App::PublishRenderStateNow() {
   PublishRenderState();
 }
 
-void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept {
+void App::ApplyScheduledShAudioProfile(bool primaryAudible) noexcept {
   scheduledPrimaryAudioAudible_ = primaryAudible;
-  if (stationhead_) stationhead_->SetAudioMuted(!primaryAudible);
-  if (secondaryStationhead_) secondaryStationhead_->SetAudioMuted(primaryAudible);
+  if (sh_) sh_->SetAudioMuted(!primaryAudible);
+  if (secondarySh_) secondarySh_->SetAudioMuted(primaryAudible);
   if (renderState_.stationhead.audioMuted != !primaryAudible ||
       renderState_.stationhead.secondaryAudioMuted != primaryAudible) {
     renderState_.stationhead.audioMuted = !primaryAudible;
@@ -485,7 +485,7 @@ void App::HandleAction(UiAction action) {
       LayoutWorkspace();
       break;
     case UiAction::WorkspaceAuth:
-      if (stationhead_->HasAuthTab()) {
+      if (sh_->HasAuthTab()) {
         selectedTab_ = WorkspaceTab::Auth;
         LayoutWorkspace();
       } else {
@@ -511,14 +511,14 @@ void App::HandleAction(UiAction action) {
       renderState_.maintenance = !renderState_.maintenance;
       PublishRenderStateNow();
       break;
-    case UiAction::StationheadReconnect:
-      stationhead_->Reconnect();
+    case UiAction::ShReconnect:
+      sh_->Reconnect();
       break;
-    case UiAction::StationheadAudioToggleA:
-      ToggleStationheadAudioA();
+    case UiAction::ShAudioToggleA:
+      ToggleShAudioA();
       break;
-    case UiAction::StationheadAudioToggleB:
-      ToggleStationheadAudioB();
+    case UiAction::ShAudioToggleB:
+      ToggleShAudioB();
       break;
     case UiAction::ClearCache:
       ClearDisplayCache();

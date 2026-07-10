@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   alertTransitionKey,
-  evaluateStationheadHealth,
-  stationheadHealthUrl,
-  type StationheadHealthSnapshot,
-} from "../src/stationhead_health";
+  evaluateShHealth,
+  shHealthUrl,
+  type ShHealthSnapshot,
+} from "../src/sh_health";
 
-function snapshot(overrides: Partial<StationheadHealthSnapshot> = {}): StationheadHealthSnapshot {
+function snapshot(overrides: Partial<ShHealthSnapshot> = {}): ShHealthSnapshot {
   return {
     configured: true,
     reachable: true,
@@ -29,19 +29,19 @@ function snapshot(overrides: Partial<StationheadHealthSnapshot> = {}): Stationhe
 
 describe("Stationhead external health monitoring", () => {
   it("derives the health endpoint from the playback monitor URL", () => {
-    expect(stationheadHealthUrl({
+    expect(shHealthUrl({
       STATIONHEAD_MONITOR_URL: "https://monitor.example/api/playback?channel=buddy46",
     })).toBe("https://monitor.example/api/health");
   });
 
   it("handles a trailing slash when deriving the health endpoint", () => {
-    expect(stationheadHealthUrl({
+    expect(shHealthUrl({
       STATIONHEAD_MONITOR_URL: "https://monitor.example/api/playback/",
     })).toBe("https://monitor.example/api/health");
   });
 
   it("prefers an explicitly configured health endpoint", () => {
-    expect(stationheadHealthUrl({
+    expect(shHealthUrl({
       STATIONHEAD_HEALTH_URL: "https://health.example/custom",
       STATIONHEAD_MONITOR_URL: "https://monitor.example/api/playback",
     })).toBe("https://health.example/custom");
@@ -49,7 +49,7 @@ describe("Stationhead external health monitoring", () => {
 
   it("marks the real Stationhead health response as healthy", () => {
     const now = 2_000_000;
-    const result = evaluateStationheadHealth({
+    const result = evaluateShHealth({
       ok: true,
       collector_stale: false,
       collector_last_success_at: now - 60_000,
@@ -64,7 +64,7 @@ describe("Stationhead external health monitoring", () => {
 
   it("keeps compatibility with the older collector_health field names", () => {
     const now = 2_000_000;
-    const result = evaluateStationheadHealth({
+    const result = evaluateShHealth({
       collector_health_ok: true,
       collector_health_stale: false,
       collector_last_success_at: now - 60_000,
@@ -75,7 +75,7 @@ describe("Stationhead external health monitoring", () => {
   });
 
   it("rejects a successful HTTP response without an explicit health result", () => {
-    const result = evaluateStationheadHealth({}, true, 200, 2_000_000, 900_000);
+    const result = evaluateShHealth({}, true, 200, 2_000_000, 900_000);
 
     expect(result.reachable).toBe(true);
     expect(result.healthy).toBe(false);
@@ -83,7 +83,7 @@ describe("Stationhead external health monitoring", () => {
   });
 
   it("does not convert null collector timestamps into the Unix epoch", () => {
-    const result = evaluateStationheadHealth({
+    const result = evaluateShHealth({
       ok: false,
       collector_last_run_at: null,
       collector_last_success_at: null,
@@ -97,7 +97,7 @@ describe("Stationhead external health monitoring", () => {
   });
 
   it("marks a stale collector as unhealthy even when the endpoint responds", () => {
-    const result = evaluateStationheadHealth({
+    const result = evaluateShHealth({
       ok: false,
       collector_stale: true,
       collector_age_ms: 1_000_000,

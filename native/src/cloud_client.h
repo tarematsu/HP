@@ -23,7 +23,7 @@ class CloudClient {
   bool AcknowledgeCommand(int64_t id, bool success, const std::wstring& result);
   std::wstring LastSuccessText() const;
   std::wstring WorkerVersion() const;
-  std::wstring StationheadHealthText() const;
+  std::wstring ShHealthText() const;
   int ConsecutiveFailures() const { return failures_.load(); }
 
  private:
@@ -34,7 +34,7 @@ class CloudClient {
   void ApplyPresenceFallback();
   void LoadCacheMetadata();
   void SaveCacheMetadata();
-  void UpdateStationheadHealthText(std::wstring text);
+  void UpdateShHealthText(std::wstring text);
   void EnsureHttpHandlesLocked();
   void ResetHttpHandlesLocked();
   std::vector<uint8_t> LocalizeRadarTiles(const std::vector<uint8_t>& body);
@@ -69,11 +69,11 @@ class CloudClient {
 
   std::wstring lastSuccess_;
   std::wstring workerVersion_;
-  std::wstring stationheadHealthText_ = L"Stationhead収集: 確認中";
+  std::wstring shHealthText_ = L"Stationhead収集: 確認中";
   int dashboardVersion_ = -1;
   int radarVersion_ = -1;
   int switchbotVersion_ = -1;
-  int stationheadVersion_ = -1;
+  int shVersion_ = -1;
   int deviceConfigVersion_ = -1;
   bool cacheMetadataDirty_ = false;
   bool presenceFallbackActive_ = false;

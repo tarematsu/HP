@@ -4,7 +4,7 @@
 namespace hp {
 namespace {
 using winrt::Windows::Data::Json::JsonObject;
-constexpr wchar_t kCanonicalSecondaryStationheadUrl[] = L"https://www.stationhead.com/buddy46";
+constexpr wchar_t kCanonicalSecondaryShUrl[] = L"https://www.stationhead.com/buddy46";
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
 }
@@ -70,8 +70,8 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     if (config.stationhead.secondaryUrl.empty()) config.stationhead.secondaryUrl = config.stationhead.fallbackUrl;
     // Window B is fixed to buddy46. Older device-config caches can otherwise
     // resurrect the previous secondary station.
-    if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryStationheadUrl) != 0) {
-      config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
+    if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryShUrl) != 0) {
+      config.stationhead.secondaryUrl = kCanonicalSecondaryShUrl;
     }
     // Both players use a 50-minute maintenance cycle. The players coordinate
     // before navigation so only the currently muted side reloads.

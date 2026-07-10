@@ -17,7 +17,7 @@ import {
 } from "./device_control";
 import { proxyRadarTile } from "./radar_tile";
 import type { Env } from "./sources";
-import { fetchStationhead } from "./spotify_source";
+import { fetchSh } from "./spotify_source";
 import { receiveTelemetryOptimized } from "./telemetry_route";
 
 async function dashboardJsonResponse(request: Request, env: Env): Promise<Response> {
@@ -31,7 +31,7 @@ async function stateJson(request: Request, env: Env, source: string): Promise<Re
   return etagResponse(request, state.payload, "application/json; charset=utf-8", state.content_hash!);
 }
 
-async function stationheadHealthState(request: Request, env: Env): Promise<Response> {
+async function shHealthState(request: Request, env: Env): Promise<Response> {
   const state = await readState(env, "stationhead_health");
   if (!state) return json({ error: "stationhead_health unavailable" }, { status: 503 });
 
@@ -70,10 +70,10 @@ async function stationheadHealthState(request: Request, env: Env): Promise<Respo
   );
 }
 
-async function stationheadState(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function shState(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const state = await readState(env, "stationhead");
   if (state) return etagResponse(request, state.payload, "application/json; charset=utf-8", state.content_hash!);
-  ctx.waitUntil(fetchStationhead(env)
+  ctx.waitUntil(fetchSh(env)
     .then(result => updateState(env, result))
     .catch(error => console.error("Stationhead warm-up failed", error instanceof Error ? error.message : String(error))));
   return json({ configured: false, connected: false, playing: false }, { status: 503 });
@@ -187,8 +187,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
     if (url.pathname === "/v1/dashboard.json") return dashboardJsonResponse(request, env);
     if (url.pathname === "/v1/switchbot") return stateJson(request, env, "switchbot");
-    if (url.pathname === "/v1/stationhead") return stationheadState(request, env, ctx);
-    if (url.pathname === "/v1/stationhead-health") return stationheadHealthState(request, env);
+    if (url.pathname === "/v1/stationhead") return shState(request, env, ctx);
+    if (url.pathname === "/v1/stationhead-health") return shHealthState(request, env);
     return stateJson(request, env, "radar");
   }
 

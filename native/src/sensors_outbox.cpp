@@ -78,11 +78,11 @@ void SensorHub::CompactOutboxLocked() {
 }
 
 std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion,
-                                             bool stationheadOk, size_t maxSamples) {
+                                             bool shOk, size_t maxSamples) {
   std::lock_guard lock(mutex_);
   std::ostringstream out;
   out << "{\"deviceId\":\"" << EscapeJson(WideToUtf8(deviceId)) << "\",\"appVersion\":\""
-      << EscapeJson(appVersion) << "\",\"stationheadOk\":" << (stationheadOk ? "true" : "false")
+      << EscapeJson(appVersion) << "\",\"shOk\":" << (shOk ? "true" : "false")
       << ",\"outboxCount\":" << outbox_.size() << ",\"samples\":[";
   const size_t count = std::min(maxSamples, outbox_.size());
   for (size_t i = 0; i < count; ++i) {

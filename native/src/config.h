@@ -3,7 +3,7 @@
 
 namespace hp {
 // Compile-time defaults; cloud configuration may override supported values.
-struct StationheadConfig {
+struct ShConfig {
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
   std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
   int reloadIntervalMinutes = 50;
@@ -24,7 +24,7 @@ struct AppConfig {
   int telemetryMinutes = 30;
   double temperatureOffset = -4.5;
   std::wstring serialPort;
-  StationheadConfig stationhead;
+  ShConfig stationhead;
 };
 
 AppConfig LoadConfig(const fs::path& path);

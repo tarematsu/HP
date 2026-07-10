@@ -73,9 +73,9 @@ void App::ProcessRemoteCommands() {
         DestroyWindow(window_);
         return;
       } else if (command == L"reconnect_stationhead") {
-        stationhead_->Reconnect();
-        if (secondaryStationhead_) secondaryStationhead_->Reconnect();
-        result = secondaryStationhead_
+        sh_->Reconnect();
+        if (secondarySh_) secondarySh_->Reconnect();
+        result = secondarySh_
             ? L"primary and secondary Stationhead reconnect started"
             : L"primary Stationhead reconnect started";
       } else if (command == L"clear_display_cache") {
@@ -129,7 +129,7 @@ void App::SendTelemetryAsync() {
   telemetryThread_ = std::thread([this] {
     try {
       const auto sensor = sensors_->Snapshot();
-      const auto station = stationhead_->Status();
+      const auto station = sh_->Status();
       const size_t count = std::min<size_t>(500, sensor.outboxCount);
       std::string body = sensors_->BuildTelemetryPayload(
           config_.deviceId, WideToUtf8(kVersion), station.playing, count);

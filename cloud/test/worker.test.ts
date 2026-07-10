@@ -33,7 +33,7 @@ describe("HomePanel Worker", () => {
   });
 
   it("deduplicates telemetry by device and sequence", async () => {
-    const payload = { deviceId: "homepanel-device", appVersion: "2.0.0", stationheadOk: true, outboxCount: 1,
+    const payload = { deviceId: "homepanel-device", appVersion: "2.0.0", shOk: true, outboxCount: 1,
       samples: [{ sequence: 9, observedAt: Date.now(), co2: 700, temperature: 25, humidity: 50 }] };
     const accepted: number[] = [];
     for (let index = 0; index < 2; index++) {

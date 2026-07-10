@@ -1,8 +1,8 @@
 import { executeSource, type Env, type SourceResult } from "./sources";
 import { updateState } from "./snapshot";
 import { runUpdateCheck } from "./update_check";
-import { fetchStationhead } from "./spotify_source";
-import { runStationheadHealthMonitor } from "./stationhead_health";
+import { fetchSh } from "./spotify_source";
+import { runShHealthMonitor } from "./sh_health";
 import { configuredIds, loadSwitchBotSnapshot } from "./switchbot_api";
 import { fetchSwitchBotOptimized } from "./switchbot_poll";
 import { failSafeSwitchBotState } from "./switchbot_state";
@@ -118,9 +118,9 @@ async function recordSourceFailure(env: Env, source: string, error: unknown): Pr
   return `${source}: ${message}`;
 }
 
-async function refreshStationheadMonitor(env: Env): Promise<void> {
+async function refreshShMonitor(env: Env): Promise<void> {
   try {
-    await updateState(env, await fetchStationhead(env));
+    await updateState(env, await fetchSh(env));
   } catch (error) {
     throw new Error(await recordSourceFailure(env, "stationhead", error));
   }
@@ -136,9 +136,9 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
     else if (job.name === "update_check") await runUpdateCheck(env);
     else if (job.name === "stationhead") {
       sourceFailureRecorded = true;
-      await refreshStationheadMonitor(env);
+      await refreshShMonitor(env);
     } else if (job.name === "stationhead_health") {
-      await runStationheadHealthMonitor(env);
+      await runShHealthMonitor(env);
     } else {
       const result: SourceResult = job.name === "switchbot"
         ? await fetchSwitchBotOptimized(env)

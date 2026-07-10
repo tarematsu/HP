@@ -23,7 +23,7 @@ type RemoteHealth = {
   collector_last_error_present?: boolean;
 };
 
-export type StationheadHealthSnapshot = {
+export type ShHealthSnapshot = {
   configured: boolean;
   reachable: boolean;
   healthy: boolean;
@@ -73,7 +73,7 @@ function objectOrEmpty(value: unknown): RemoteHealth {
     : {};
 }
 
-export function stationheadHealthUrl(env: Pick<Env, "STATIONHEAD_HEALTH_URL" | "STATIONHEAD_MONITOR_URL">): string {
+export function shHealthUrl(env: Pick<Env, "STATIONHEAD_HEALTH_URL" | "STATIONHEAD_MONITOR_URL">): string {
   const explicit = env.STATIONHEAD_HEALTH_URL?.trim();
   if (explicit) return explicit;
 
@@ -93,13 +93,13 @@ export function stationheadHealthUrl(env: Pick<Env, "STATIONHEAD_HEALTH_URL" | "
   return url.toString();
 }
 
-export function evaluateStationheadHealth(
+export function evaluateShHealth(
   payload: RemoteHealth | null,
   responseOk: boolean,
   statusCode: number | null,
   now = Date.now(),
   configuredStaleMs = DEFAULT_STALE_MS,
-): StationheadHealthSnapshot {
+): ShHealthSnapshot {
   const remoteStaleAfterMs = firstFinite(
     payload?.collector_stale_after_ms,
     payload?.collector_health_stale_after_ms,
@@ -148,10 +148,10 @@ export function evaluateStationheadHealth(
   };
 }
 
-function parsePrevious(row: StateRow | null): StationheadHealthSnapshot | null {
+function parsePrevious(row: StateRow | null): ShHealthSnapshot | null {
   if (!row) return null;
   try {
-    const value = JSON.parse(row.payload) as StationheadHealthSnapshot;
+    const value = JSON.parse(row.payload) as ShHealthSnapshot;
     if (typeof value?.healthy !== "boolean") return null;
     return {
       ...value,
@@ -189,8 +189,8 @@ function formatJst(timestamp: number | null): string {
 }
 
 export function alertTransitionKey(
-  snapshot: StationheadHealthSnapshot,
-  previous: StationheadHealthSnapshot | null,
+  snapshot: ShHealthSnapshot,
+  previous: ShHealthSnapshot | null,
   recovery: boolean,
 ): string {
   const matchingRetryPending = recovery
@@ -207,7 +207,7 @@ export function alertTransitionKey(
 
 async function sendTransitionAlert(
   env: Env,
-  snapshot: StationheadHealthSnapshot,
+  snapshot: ShHealthSnapshot,
   recovery: boolean,
   eventKey: string,
 ): Promise<void> {
@@ -244,11 +244,11 @@ async function sendTransitionAlert(
   await response.body?.cancel();
 }
 
-async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHealthSnapshot> {
+async function fetchRemoteHealth(env: Env, now: number): Promise<ShHealthSnapshot> {
   const staleMs = positive(env.STATIONHEAD_HEALTH_STALE_MS, DEFAULT_STALE_MS);
   let url: string;
   try {
-    url = stationheadHealthUrl(env);
+    url = shHealthUrl(env);
   } catch (error) {
     return {
       configured: false,
@@ -280,7 +280,7 @@ async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHeal
     } catch {
       payload = {};
     }
-    return evaluateStationheadHealth(payload, response.ok, response.status, now, staleMs);
+    return evaluateShHealth(payload, response.ok, response.status, now, staleMs);
   } catch (error) {
     return {
       configured: true,
@@ -301,7 +301,7 @@ async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHeal
   }
 }
 
-async function persistHealth(env: Env, snapshot: StationheadHealthSnapshot, previous: StateRow | null): Promise<void> {
+async function persistHealth(env: Env, snapshot: ShHealthSnapshot, previous: StateRow | null): Promise<void> {
   const result: SourceResult = {
     source: SOURCE,
     payload: snapshot,
@@ -318,7 +318,7 @@ async function persistHealth(env: Env, snapshot: StationheadHealthSnapshot, prev
   }
 }
 
-export async function runStationheadHealthMonitor(env: Env, now = Date.now()): Promise<StationheadHealthSnapshot> {
+export async function runShHealthMonitor(env: Env, now = Date.now()): Promise<ShHealthSnapshot> {
   const previousRow = await readState(env, SOURCE);
   const previous = parsePrevious(previousRow);
   const current = await fetchRemoteHealth(env, now);

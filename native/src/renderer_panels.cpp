@@ -352,18 +352,18 @@ ControlsButtonRects ControlsButtonsFromSection(const RECT& section) {
   return rects;
 }
 
-struct StationheadRowRects {
+struct ShRowRects {
   RECT row{};
   RECT button{};
 };
 
 // The stationhead section holds two equal rows; the audio toggle button sits
 // on the right side of each row.
-StationheadRowRects StationheadRowFromSection(const RECT& section, int row) {
+ShRowRects ShRowFromSection(const RECT& section, int row) {
   const int gap = SpanY(section, 60);
   const int rowHeight = (section.bottom - section.top - gap) / 2;
   const int top = section.top + row * (rowHeight + gap);
-  StationheadRowRects rects;
+  ShRowRects rects;
   rects.row = RECT{section.left, top, section.right, top + rowHeight};
   const int buttonWidth = SpanX(section, 200);
   const int buttonHeight = std::clamp(rowHeight * 36 / 100, 26, 48);
@@ -543,14 +543,14 @@ void Renderer::DestroyNativeStaticWindows() {
 void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   const bool sensorsChanged = nativeSensors_ != state.sensors;
   const bool historyChanged = nativeAirHistory_ != state.airHistory;
-  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
+  const bool shChanged = nativeSh_ != state.stationhead;
   const bool controlsChanged = nativeAppVersion_ != state.appVersion || nativeToast_ != state.toast;
   const bool newsChanged = nativeNewsIndex_ != state.newsIndex;
   const bool dashboardChanged = nativeRenderedDashboardRevision_ != dashboardSourceRevision_;
 
   nativeSensors_ = state.sensors;
   nativeAirHistory_ = state.airHistory;
-  nativeStationhead_ = state.stationhead;
+  nativeSh_ = state.stationhead;
   nativeAppVersion_ = state.appVersion;
   nativeToast_ = state.toast;
   nativeNewsIndex_ = state.newsIndex;
@@ -563,7 +563,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     InvalidatePanelSection(nativeBottomWindow_, PanelSection::Right);
   }
   if (controlsChanged) InvalidatePanelSection(nativeBottomWindow_, PanelSection::Center);
-  if (stationheadChanged) InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
+  if (shChanged) InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
 }
 
 void Renderer::TickNativePanels(int64_t nowMs) {
@@ -593,10 +593,10 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
         else {
           const RECT stationhead = RelativeInsetRect(sections.left, 30, 60);
           for (int row = 0; row < 2; ++row) {
-            const StationheadRowRects rowRects = StationheadRowFromSection(stationhead, row);
+            const ShRowRects rowRects = ShRowFromSection(stationhead, row);
             if (PtInRect(&rowRects.button, point)) {
-              QueueAction(row == 0 ? UiAction::StationheadAudioToggleA
-                                   : UiAction::StationheadAudioToggleB);
+              QueueAction(row == 0 ? UiAction::ShAudioToggleA
+                                   : UiAction::ShAudioToggleB);
               break;
             }
           }
@@ -646,7 +646,7 @@ void Renderer::PaintNativeBottom(HWND hwnd) {
   const NativePanelSections sections = SplitPanelSections(scope.bounds);
   RECT overlap{};
   if (IntersectRect(&overlap, &scope.dirty, &sections.left)) {
-    DrawStationheadSection(scope.dc, RelativeInsetRect(sections.left, 30, 60));
+    DrawShSection(scope.dc, RelativeInsetRect(sections.left, 30, 60));
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.center)) {
     DrawClockControlsSection(scope.dc, RelativeInsetRect(sections.center, 30, 60));
@@ -875,7 +875,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& content) {
   SelectObject(dc, previousFont);
 }
 
-void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
+void Renderer::DrawShSection(HDC dc, const RECT& content) {
   const int64_t nowMs = UnixMillis();
   const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
   const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
@@ -883,7 +883,7 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
   const auto drawRow = [&](int row, bool muted,
                            const NativePlaybackRender& playback,
                            const std::wstring& fallbackTitle, const std::wstring& detail) {
-    const StationheadRowRects rects = StationheadRowFromSection(content, row);
+    const ShRowRects rects = ShRowFromSection(content, row);
     const RECT& rowRect = rects.row;
 
     const int rowHeight = rowRect.bottom - rowRect.top;
@@ -949,20 +949,20 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
     SelectObject(dc, previousFont);
   };
 
-  const std::wstring detail = nativeStationhead_.loginRequired ? L"ログイン待ち"
-      : nativeStationhead_.processFailed ? L"WebView再起動待ち"
-      : nativeStationhead_.audioPlaying ? L"再生中"
-      : nativeStationhead_.created ? L"接続中"
+  const std::wstring detail = nativeSh_.loginRequired ? L"ログイン待ち"
+      : nativeSh_.processFailed ? L"WebView再起動待ち"
+      : nativeSh_.audioPlaying ? L"再生中"
+      : nativeSh_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, nativeStationhead_.audioMuted, playbackA, L"", detail);
-  drawRow(1, nativeStationhead_.secondaryAudioMuted, playbackB,
+  drawRow(0, nativeSh_.audioMuted, playbackA, L"", detail);
+  drawRow(1, nativeSh_.secondaryAudioMuted, playbackB,
           L"Buddy46",
           playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
-              : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
+              : nativeSh_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
 
   // Divider between the two playback rows, centered on the row gap.
-  const StationheadRowRects rowA = StationheadRowFromSection(content, 0);
-  const StationheadRowRects rowB = StationheadRowFromSection(content, 1);
+  const ShRowRects rowA = ShRowFromSection(content, 0);
+  const ShRowRects rowB = ShRowFromSection(content, 1);
   DrawHorizontalDivider(dc, content, (rowA.row.bottom + rowB.row.top) / 2);
 }
 

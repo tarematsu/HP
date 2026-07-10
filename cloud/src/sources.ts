@@ -1,7 +1,7 @@
 import { fetchText } from "./http";
 import { fetchOctopus } from "./octopus_source";
 import { fetchRadar } from "./radar_source";
-import { fetchStationhead } from "./spotify_source";
+import { fetchSh } from "./spotify_source";
 
 export interface Env {
   DB: D1Database;
@@ -146,7 +146,7 @@ export async function executeSource(name: string, env: Env): Promise<SourceResul
     case "weather": return fetchWeather(env);
     case "news": return fetchNews();
     case "octopus": return fetchOctopus(env);
-    case "stationhead": return fetchStationhead(env);
+    case "stationhead": return fetchSh(env);
     case "radar": return fetchRadar(env);
     default: throw new Error(`Unknown job: ${name}`);
   }

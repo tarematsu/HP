@@ -11,13 +11,13 @@
 namespace hp {
 class App;
 
-inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
+inline bool ShNeedsForeground(const ShStatus& status) noexcept {
   // If Stationhead is not producing audio, keep its surface available for the
   // likely login/start prompt instead of waiting for brittle page text scans.
   return !status.audioPlaying;
 }
 
-inline bool StationheadNeedsForeground(const SecondaryStationheadStatus& status) noexcept {
+inline bool ShNeedsForeground(const SecondaryShStatus& status) noexcept {
   return !status.playing;
 }
 
@@ -36,7 +36,7 @@ enum class WorkspaceTab {
 // IsInteractive(status) for the one rule that differs (which status fields
 // count as "the user is looking at this window right now").
 template <typename Derived, typename PlayerT>
-class StationheadHandleBase {
+class ShHandleBase {
  public:
   explicit operator bool() const noexcept { return static_cast<bool>(player_); }
   Derived* operator->() noexcept { return static_cast<Derived*>(this); }
@@ -136,13 +136,13 @@ class StationheadHandleBase {
 
 // App-facing owner for the primary player. Its playback surface remains behind
 // the dashboard unless the user explicitly opens the Stationhead or auth tab.
-class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, StationheadPlayer> {
+class AppShHandle : public ShHandleBase<AppShHandle, ShPlayer> {
  public:
-  AppStationheadHandle() = default;
-  AppStationheadHandle(const AppStationheadHandle&) = delete;
-  AppStationheadHandle& operator=(const AppStationheadHandle&) = delete;
+  AppShHandle() = default;
+  AppShHandle(const AppShHandle&) = delete;
+  AppShHandle& operator=(const AppShHandle&) = delete;
 
-  AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept {
+  AppShHandle& operator=(std::unique_ptr<ShPlayer> player) noexcept {
     player_ = std::move(player);
     ApplyAudioState();
     ApplyBounds();
@@ -151,7 +151,7 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
 
   void reset() noexcept {
     player_.reset();
-    selectedTab_ = StationheadTabKind::None;
+    selectedTab_ = ShTabKind::None;
   }
 
   void Start() {
@@ -213,11 +213,11 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyBounds();
   }
   uint32_t ConsumeChangeFlags() {
-    return player_ ? player_->ConsumeChangeFlags() : StationheadChangeNone;
+    return player_ ? player_->ConsumeChangeFlags() : ShChangeNone;
   }
   bool HasAuthTab() const { return player_ && player_->HasAuthTab(); }
-  StationheadStatus Status() const {
-    StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+  ShStatus Status() const {
+    ShStatus status = player_ ? player_->Status() : ShStatus{};
     status.audioMuted = audioMuted_;
     return status;
   }
@@ -225,10 +225,10 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     return player_ ? player_->NextWakeAt() : 0;
   }
 
-  void SelectTab(StationheadTabKind tab) {
+  void SelectTab(ShTabKind tab) {
     selectedTab_ = tab;
     if (!player_) return;
-    if (tab != StationheadTabKind::None) ApplyInteractiveBounds();
+    if (tab != ShTabKind::None) ApplyInteractiveBounds();
     player_->SelectTab(tab);
     ApplyAudioState();
     ApplyBounds();
@@ -237,25 +237,25 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   // The primary Stationhead surface stays behind the dashboard except when a
   // it is not producing audio. That covers login prompts and stopped playback
   // without depending on Stationhead's current button text.
-  bool IsInteractive(const StationheadStatus& status) const noexcept {
-    return StationheadNeedsForeground(status);
+  bool IsInteractive(const ShStatus& status) const noexcept {
+    return ShNeedsForeground(status);
   }
 
  private:
-  StationheadTabKind selectedTab_ = StationheadTabKind::None;
+  ShTabKind selectedTab_ = ShTabKind::None;
 };
 
 // The secondary player retains its isolated WebView2 profile. Its audio output
 // is user-toggleable and its surface is temporarily raised for account setup.
-class AppSecondaryStationheadHandle
-    : public StationheadHandleBase<AppSecondaryStationheadHandle, SecondaryStationheadPlayer> {
+class AppSecondaryShHandle
+    : public ShHandleBase<AppSecondaryShHandle, SecondaryShPlayer> {
  public:
-  AppSecondaryStationheadHandle() = default;
-  AppSecondaryStationheadHandle(const AppSecondaryStationheadHandle&) = delete;
-  AppSecondaryStationheadHandle& operator=(const AppSecondaryStationheadHandle&) = delete;
+  AppSecondaryShHandle() = default;
+  AppSecondaryShHandle(const AppSecondaryShHandle&) = delete;
+  AppSecondaryShHandle& operator=(const AppSecondaryShHandle&) = delete;
 
-  AppSecondaryStationheadHandle& operator=(
-      std::unique_ptr<SecondaryStationheadPlayer> player) noexcept {
+  AppSecondaryShHandle& operator=(
+      std::unique_ptr<SecondaryShPlayer> player) noexcept {
     player_ = std::move(player);
     ApplyAudioState();
     ApplyBounds();
@@ -273,7 +273,7 @@ class AppSecondaryStationheadHandle
     ApplyAudioState();
     ApplyBounds();
   }
-  // See AppStationheadHandle::Tick: periodic ticks only converge audio state.
+  // See AppShHandle::Tick: periodic ticks only converge audio state.
   void Tick(int64_t nowMs) {
     if (!player_) return;
     player_->Tick(nowMs);
@@ -286,9 +286,9 @@ class AppSecondaryStationheadHandle
     ApplyAudioState();
     ApplyBounds();
   }
-  SecondaryStationheadStatus Status() const {
+  SecondaryShStatus Status() const {
     ApplyAudioState();
-    SecondaryStationheadStatus status = player_ ? player_->Status() : SecondaryStationheadStatus{};
+    SecondaryShStatus status = player_ ? player_->Status() : SecondaryShStatus{};
     status.audioMuted = audioMuted_;
     return status;
   }
@@ -296,8 +296,8 @@ class AppSecondaryStationheadHandle
     return player_ ? player_->NextWakeAt() : 0;
   }
 
-  bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
-    return StationheadNeedsForeground(status);
+  bool IsInteractive(const SecondaryShStatus& status) const noexcept {
+    return ShNeedsForeground(status);
   }
 };
 
@@ -308,25 +308,25 @@ class App {
   int Run(int showCommand);
   static App* Current();
   void LogUnhandled(DWORD code, void* address);
-  void ToggleStationheadAudioA() {
-    stationhead_->ToggleAudioMuted();
+  void ToggleShAudioA() {
+    sh_->ToggleAudioMuted();
     // Reflect the manual change in the render state immediately so the button
     // label updates on the very next paint instead of lagging until the next
     // Tick rebuild (idle ticks can be up to 30s apart). The 50-minute auto
     // rotation still re-asserts its A/B pattern on schedule.
-    ApplyScheduledStationheadAudioProfile(!stationhead_->AudioMuted());
-    renderState_.toast = stationhead_->AudioMuted()
+    ApplyScheduledShAudioProfile(!sh_->AudioMuted());
+    renderState_.toast = sh_->AudioMuted()
         ? L"Stationhead A 音声OFF"
         : L"Stationhead A 音声ON";
     toastUntil_ = UnixMillis() + 3000;
     MarkRenderStateDirty();
     InvalidateAll();
   }
-  void ToggleStationheadAudioB() {
-    if (secondaryStationhead_) {
-      secondaryStationhead_->ToggleAudioMuted();
-      ApplyScheduledStationheadAudioProfile(secondaryStationhead_->AudioMuted());
-      renderState_.toast = secondaryStationhead_->AudioMuted()
+  void ToggleShAudioB() {
+    if (secondarySh_) {
+      secondarySh_->ToggleAudioMuted();
+      ApplyScheduledShAudioProfile(secondarySh_->AudioMuted());
+      renderState_.toast = secondarySh_->AudioMuted()
           ? L"Stationhead B 音声OFF"
           : L"Stationhead B 音声ON";
     } else {
@@ -336,11 +336,11 @@ class App {
     MarkRenderStateDirty();
     InvalidateAll();
   }
-  void SetStationheadVolumeA(double volume) noexcept {
-    stationhead_->SetAudioVolume(volume);
+  void SetShVolumeA(double volume) noexcept {
+    sh_->SetAudioVolume(volume);
   }
-  void SetStationheadVolumeB(double volume) noexcept {
-    if (secondaryStationhead_) secondaryStationhead_->SetAudioVolume(volume);
+  void SetShVolumeB(double volume) noexcept {
+    if (secondarySh_) secondarySh_->SetAudioVolume(volume);
   }
 
  private:
@@ -349,17 +349,17 @@ class App {
   void InitializePaths();
   void CreateMainWindow(int showCommand);
   void StartServices();
-  void StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus);
-  void ApplyStartupStationheadPreview();
-  void ClearStartupStationheadPreview();
+  void StartDeferredServices(int64_t now, const ShStatus& shStatus);
+  void ApplyStartupShPreview();
+  void ClearStartupShPreview();
   void StopServices();
   void Tick();
   void Draw();
   void MarkRenderStateDirty() noexcept { renderStateDirty_ = true; }
   void ShowToast(std::wstring message, int64_t durationMs, bool invalidate = true);
-  bool UpdateRenderStationheadState(const StationheadStatus& nextState);
+  bool UpdateRenderShState(const ShStatus& nextState);
   void ScheduleNextTick(uint32_t milliseconds);
-  void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
+  void ApplyScheduledShAudioProfile(bool primaryAudible) noexcept;
   void PublishRenderState();
   void PublishRenderStateNow();
   void InvalidateAll();
@@ -368,9 +368,9 @@ class App {
   void UpdateAirHistory(const SensorSnapshot& sensors);
   void HandleAction(UiAction action);
   void LayoutWorkspace();
-  void ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
-                                       const SecondaryStationheadStatus& secondaryStatus);
-  void MarkStationheadPlacementDirty() noexcept { stationheadPlacementDirty_ = true; }
+  void ApplyShWindowPlacement(const ShStatus& primaryStatus,
+                                       const SecondaryShStatus& secondaryStatus);
+  void MarkShPlacementDirty() noexcept { shPlacementDirty_ = true; }
   void ProcessRemoteCommands();
   void SendTelemetryAsync();
   void ClearDisplayCache();
@@ -387,8 +387,8 @@ class App {
   std::unique_ptr<Renderer> renderer_;
   std::unique_ptr<CloudClient> cloud_;
   std::unique_ptr<SensorHub> sensors_;
-  AppStationheadHandle stationhead_;
-  AppSecondaryStationheadHandle secondaryStationhead_;
+  AppShHandle sh_;
+  AppSecondaryShHandle secondarySh_;
   RenderState renderState_;
   std::atomic<bool> telemetryBusy_{false};
   std::atomic<bool> updateBusy_{false};
@@ -411,7 +411,7 @@ class App {
   int newsCount_ = 0;
   int64_t lastNewsRotateAt_ = 0;
   bool renderStateDirty_ = true;
-  bool stationheadPlacementDirty_ = true;
+  bool shPlacementDirty_ = true;
   bool placedPrimaryPending_ = false;
   bool placedSecondaryPending_ = false;
   RECT placedBounds_{};

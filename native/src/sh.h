@@ -4,20 +4,20 @@
 #include "logger.h"
 
 namespace hp {
-enum class StationheadTabKind {
+enum class ShTabKind {
   None,
   Stationhead,
   Auth,
 };
 
-enum StationheadChangeFlags : uint32_t {
-  StationheadChangeNone = 0,
-  StationheadChangeReturnMain = 1u << 0,
-  StationheadChangeReleaseAuth = 1u << 1,
-  StationheadChangeShowPlayer = 1u << 2,
+enum ShChangeFlags : uint32_t {
+  ShChangeNone = 0,
+  ShChangeReturnMain = 1u << 0,
+  ShChangeReleaseAuth = 1u << 1,
+  ShChangeShowPlayer = 1u << 2,
 };
 
-struct StationheadStatus {
+struct ShStatus {
   bool created = false;
   bool navigating = false;
   bool playing = false;
@@ -33,13 +33,13 @@ struct StationheadStatus {
   std::wstring url;
   std::wstring detail;
 
-  bool operator==(const StationheadStatus&) const = default;
+  bool operator==(const ShStatus&) const = default;
 };
 
-class StationheadPlayer {
+class ShPlayer {
  public:
-  StationheadPlayer(HWND window, StationheadConfig config, fs::path userDataFolder, Logger& log);
-  ~StationheadPlayer();
+  ShPlayer(HWND window, ShConfig config, fs::path userDataFolder, Logger& log);
+  ~ShPlayer();
   void Start();
   void Stop();
   void Tick(int64_t nowMs);
@@ -58,9 +58,9 @@ class StationheadPlayer {
   void SetBounds(const RECT& bounds);
   void SetStartupPreviewBounds(const RECT& bounds);
   void ClearStartupPreviewBounds();
-  void SelectTab(StationheadTabKind tab);
+  void SelectTab(ShTabKind tab);
   bool HasAuthTab() const;
-  StationheadStatus Status() const;
+  ShStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
 
  private:
@@ -73,12 +73,12 @@ class StationheadPlayer {
   bool EnsureAuthHostWindow();
   void CloseWebView();
   void CloseAuthWebView();
-  void PostChange(uint32_t flags = StationheadChangeNone);
+  void PostChange(uint32_t flags = ShChangeNone);
   void ConfigureWebView();
   void ConfigureAuthWebView();
   void ResetNavigationRouteState();
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
-  void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
+  void NavigateShUrl(int64_t nowMs, const std::wstring& url,
                               const std::wstring& reason, bool fallbackActive);
   bool NeedsInteractiveWindow() const;
   void KeepPlaybackBehindDashboard();
@@ -90,13 +90,13 @@ class StationheadPlayer {
   HWND window_;
   HWND hostWindow_{};
   HWND authHostWindow_{};
-  StationheadConfig config_;
+  ShConfig config_;
   fs::path userDataFolder_;
   Logger& log_;
   mutable std::mutex mutex_;
   RECT bounds_{};
-  StationheadTabKind selectedTab_ = StationheadTabKind::None;
-  StationheadStatus status_;
+  ShTabKind selectedTab_ = ShTabKind::None;
+  ShStatus status_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;

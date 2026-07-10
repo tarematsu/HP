@@ -107,7 +107,7 @@ export function telemetryHeartbeatStatement(
   deviceId: string,
   now: number,
   appVersion: string | null,
-  stationheadOk: number,
+  shOk: number,
   outboxCount: number,
   lastSequence: number,
 ): D1PreparedStatement {
@@ -122,5 +122,5 @@ export function telemetryHeartbeatStatement(
        outbox_count=excluded.outbox_count,
        payload=NULL,
        last_sequence=MAX(device_heartbeats.last_sequence,excluded.last_sequence)`,
-  ).bind(deviceId, now, appVersion, stationheadOk, outboxCount, lastSequence);
+  ).bind(deviceId, now, appVersion, shOk, outboxCount, lastSequence);
 }

@@ -8,7 +8,7 @@ namespace hp {
 // primary and secondary players compute this the same way; callers keep
 // their own gating conditions (e.g. only reload while audio is playing).
 // A non-positive interval means the reload is disabled.
-inline int64_t StationheadReloadIntervalMs(int intervalMinutes) noexcept {
+inline int64_t ShReloadIntervalMs(int intervalMinutes) noexcept {
   return intervalMinutes > 0 ? static_cast<int64_t>(intervalMinutes) * 60'000 : 0;
 }
 
@@ -16,7 +16,7 @@ inline int64_t StationheadReloadIntervalMs(int intervalMinutes) noexcept {
 // WebViews at document creation. The two players differ only in the guard
 // global (so the script runs once per window kind) and the postMessage
 // prefix their native message handlers listen for.
-inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
+inline std::wstring ShAutoplayScript(const wchar_t* globalName,
                                               const wchar_t* messagePrefix) {
   static constexpr wchar_t kTemplate[] = LR"JS(
 (() => {
@@ -140,21 +140,21 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   return replaceAll(replaceAll(kTemplate, L"{{GLOBAL}}", globalName), L"{{PREFIX}}", messagePrefix);
 }
 
-inline std::wstring StationheadVolumeScript(int percent) {
+inline std::wstring ShVolumeScript(int percent) {
   std::wostringstream script;
   script << L"(() => { const v=" << percent << L"/100;"
-         << L"window.__homepanelStationheadVolume=v;"
+         << L"window.__homepanelShVolume=v;"
          << L"const apply=e=>{if(!e||e.__homepanelVolume===v)return;"
          << L"try{e.volume=v;e.defaultMuted=v<=0;e.muted=v<=0?true:false;e.__homepanelVolume=v;}catch(_){}};"
          << L"const applyAll=(root=document)=>{for(const e of root.querySelectorAll?.('audio,video')||[])apply(e);"
          << L"if(root?.matches?.('audio,video'))apply(root);};"
          << L"applyAll();"
-         << L"if(!window.__homepanelStationheadVolumeObserver){"
-         << L"window.__homepanelStationheadVolumeApply=()=>applyAll();"
-         << L"window.__homepanelStationheadVolumeObserver=new MutationObserver(records=>{"
+         << L"if(!window.__homepanelShVolumeObserver){"
+         << L"window.__homepanelShVolumeApply=()=>applyAll();"
+         << L"window.__homepanelShVolumeObserver=new MutationObserver(records=>{"
          << L"for(const record of records){for(const node of record.addedNodes||[]){"
          << L"if(node instanceof Element){applyAll(node);}}}});"
-         << L"window.__homepanelStationheadVolumeObserver.observe(document,{childList:true,subtree:true});"
+         << L"window.__homepanelShVolumeObserver.observe(document,{childList:true,subtree:true});"
          << L"document.addEventListener('play',event=>apply(event.target),true);"
          << L"document.addEventListener('loadedmetadata',event=>apply(event.target),true);"
          << L"} return true; })()";
@@ -164,7 +164,7 @@ inline std::wstring StationheadVolumeScript(int percent) {
 // ASCII-lowercases a URI for case-insensitive substring matching without
 // pulling in locale-aware towlower; request paths such as "chatHistory" mix
 // case while hostnames are already lowercase.
-inline std::wstring StationheadLowerAscii(const wchar_t* text) {
+inline std::wstring ShLowerAscii(const wchar_t* text) {
   std::wstring lower;
   if (text) {
     for (const wchar_t* p = text; *p; ++p) {
@@ -183,9 +183,9 @@ inline std::wstring StationheadLowerAscii(const wchar_t* text) {
 // /pusher/presenceAuth, /channels/alias/*, /me/country) are left untouched.
 // The Pusher realtime WebSocket is NOT handled here (WebSocket upgrades don't
 // raise WebResourceRequested); it is blocked separately at the network layer
-// by BlockStationheadRealtimeSockets so no new chat/presence is received.
+// by BlockShRealtimeSockets so no new chat/presence is received.
 // Matched as case-insensitive substrings of the full URI.
-inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
+inline bool ShRequestIsBlockable(const std::wstring& uriLower) {
   static constexpr const wchar_t* kNeedles[] = {
       // Analytics / remote-config / crash / marketing / push telemetry.
       L"firebaseinstallations.googleapis.com",
@@ -243,7 +243,7 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   return false;
 }
 
-inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
+inline bool ShCorePlaybackRequest(const std::wstring& uriLower) {
   if (uriLower.empty()) return false;
   const bool stationhead = uriLower.find(L"stationhead.com") != std::wstring::npos;
   const bool spotify = uriLower.find(L"spotify") != std::wstring::npos ||
@@ -270,7 +270,7 @@ inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
 // /pusher/presenceAuth, /channels/alias/*) are on different hosts and are
 // unaffected. CDP domain state persists across navigations, so this only needs
 // to run once per WebView (re-applied when a WebView is recreated).
-inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
+inline void BlockShRealtimeSockets(ICoreWebView2* webview) {
   if (!webview) return;
   webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
   webview->CallDevToolsProtocolMethod(
@@ -288,7 +288,7 @@ inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
 
 // Strips resource requests from a Stationhead WebView down to what background
 // audio playback needs. Two tiers:
-//   * Analytics/social requests (StationheadRequestIsBlockable) are dropped
+//   * Analytics/social requests (ShRequestIsBlockable) are dropped
 //     unconditionally, including at startup - they are never needed by the
 //     "click Start Listening" automation or by playback, so cutting them
 //     early reduces startup CPU/network/memory.
@@ -304,9 +304,9 @@ inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
 // Shared by the primary and secondary players so both apply the same rules.
 // The token must be removed via remove_WebResourceRequested(token) on close,
 // and armed reset to false at that point.
-inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environment,
+inline void ApplyShResourceBlocking(ICoreWebView2Environment* environment,
                                               ICoreWebView2* webview,
-                                              const StationheadConfig& config,
+                                              const ShConfig& config,
                                               std::atomic<bool>& armed,
                                               EventRegistrationToken& token) {
   if (!environment || !webview) return;
@@ -335,11 +335,11 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
             if (SUCCEEDED(args->get_Request(&request)) && request) {
               LPWSTR uriRaw = nullptr;
               if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                lower = StationheadLowerAscii(uriRaw);
+                lower = ShLowerAscii(uriRaw);
                 CoTaskMemFree(uriRaw);
               }
             }
-            bool block = StationheadRequestIsBlockable(lower);
+            bool block = ShRequestIsBlockable(lower);
             if (!block && (blockImages || blockFonts)) {
               COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
               if (SUCCEEDED(args->get_ResourceContext(&context))) {
@@ -366,7 +366,7 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                   block = true;
                 } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE ||
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET) {
-                  block = !StationheadCorePlaybackRequest(lower);
+                  block = !ShCorePlaybackRequest(lower);
                 }
               }
             }
@@ -379,6 +379,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
             return S_OK;
           }).Get(),
       &token);
-  BlockStationheadRealtimeSockets(webview);
+  BlockShRealtimeSockets(webview);
 }
 }  // namespace hp

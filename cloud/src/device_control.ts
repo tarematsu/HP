@@ -244,7 +244,8 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   }
   for (const source of ["radar", "switchbot", "stationhead"] as const) {
     const row = states[source];
-    if (row && row.version !== requested[source]) response[source] = row.payload;
+    const requestedSourceVersion = source === "stationhead" ? requested.sh : requested[source];
+    if (row && row.version !== requestedSourceVersion) response[source] = row.payload;
   }
   if (configVersion !== requested.config) {
     let value: unknown = {};

@@ -2,25 +2,25 @@
 #include "sh_shared.h"
 
 namespace hp {
-void SecondaryStationheadPlayer::SetMuted(bool muted) noexcept {
+void SecondaryShPlayer::SetMuted(bool muted) noexcept {
   audioMuted_.store(muted, std::memory_order_relaxed);
   ApplyAudioState();
 }
 
-bool SecondaryStationheadPlayer::Muted() const noexcept {
+bool SecondaryShPlayer::Muted() const noexcept {
   return audioMuted_.load(std::memory_order_relaxed);
 }
 
-void SecondaryStationheadPlayer::SetVolume(double volume) noexcept {
+void SecondaryShPlayer::SetVolume(double volume) noexcept {
   audioVolume_.store(std::clamp(volume, 0.0, 1.0), std::memory_order_relaxed);
   ApplyVolume();
 }
 
-double SecondaryStationheadPlayer::Volume() const noexcept {
+double SecondaryShPlayer::Volume() const noexcept {
   return audioVolume_.load(std::memory_order_relaxed);
 }
 
-void SecondaryStationheadPlayer::ApplyAudioState() noexcept {
+void SecondaryShPlayer::ApplyAudioState() noexcept {
   const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
   if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
     const BOOL value = muted ? TRUE : FALSE;
@@ -36,19 +36,19 @@ void SecondaryStationheadPlayer::ApplyAudioState() noexcept {
   EnsureDistinctBrowserIdentity();
 }
 
-void SecondaryStationheadPlayer::ApplyVolume() const noexcept {
+void SecondaryShPlayer::ApplyVolume() const noexcept {
   const int percent = std::clamp(static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
   if (appliedVolumePercent_.exchange(percent, std::memory_order_relaxed) == percent) return;
   const auto apply = [percent](const ComPtr<ICoreWebView2>& view) noexcept {
     if (!view) return;
-    const std::wstring script = StationheadVolumeScript(percent);
+    const std::wstring script = ShVolumeScript(percent);
     view->ExecuteScript(script.c_str(), nullptr);
   };
   apply(webview_);
   apply(authWebview_);
 }
 
-void SecondaryStationheadPlayer::EnsureDistinctBrowserIdentity() noexcept {
+void SecondaryShPlayer::EnsureDistinctBrowserIdentity() noexcept {
   if (!webview_ || identityWebview_ == webview_.Get()) return;
   identityWebview_ = webview_.Get();
   ComPtr<ICoreWebView2Settings> settings;

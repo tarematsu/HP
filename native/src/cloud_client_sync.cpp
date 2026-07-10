@@ -28,7 +28,7 @@ std::wstring HealthTimeText(int64_t timestampMs) {
   return text;
 }
 
-std::wstring StationheadHealthSummary(const JsonObject& root) {
+std::wstring ShHealthSummary(const JsonObject& root) {
   const bool configured = root.GetNamedBoolean(L"configured", false);
   if (!configured) return L"Stationhead収集: 未設定";
 
@@ -51,9 +51,9 @@ std::wstring StationheadHealthSummary(const JsonObject& root) {
 }
 }  // namespace
 
-std::wstring CloudClient::StationheadHealthText() const {
+std::wstring CloudClient::ShHealthText() const {
   std::lock_guard lock(stateMutex_);
-  return stationheadHealthText_;
+  return shHealthText_;
 }
 
 void CloudClient::ApplyPresenceFallback() {
@@ -149,7 +149,7 @@ void CloudClient::Synchronize() {
   const fs::path dashboardPath = dataDir_ / L"dashboard.json";
   const fs::path radarPath = dataDir_ / L"radar.json";
   const fs::path switchbotPath = dataDir_ / L"switchbot.json";
-  const fs::path stationheadPath = dataDir_ / L"stationhead.json";
+  const fs::path shPath = dataDir_ / L"stationhead.json";
   const fs::path deviceConfigPath = dataDir_ / L"device-config.json";
   const auto requestedVersion = [](const fs::path& path, int version) {
     std::error_code error;
@@ -161,7 +161,7 @@ void CloudClient::Synchronize() {
        << L"&dashboardVersion=" << requestedVersion(dashboardPath, dashboardVersion_)
        << L"&radarVersion=" << requestedVersion(radarPath, radarVersion_)
        << L"&switchbotVersion=" << (presenceFallbackActive_ ? -1 : requestedVersion(switchbotPath, switchbotVersion_))
-       << L"&stationheadVersion=" << requestedVersion(stationheadPath, stationheadVersion_)
+       << L"&stationheadVersion=" << requestedVersion(shPath, shVersion_)
        << L"&configVersion=" << requestedVersion(deviceConfigPath, deviceConfigVersion_);
 
   const auto response = Request(L"GET", path.str(), deviceToken_);
@@ -172,13 +172,13 @@ void CloudClient::Synchronize() {
   const int nextDashboard = VersionOr(versions, L"dashboard", dashboardVersion_);
   const int nextRadar = VersionOr(versions, L"radar", radarVersion_);
   const int nextSwitchbot = VersionOr(versions, L"switchbot", switchbotVersion_);
-  const int nextStationhead = VersionOr(versions, L"stationhead", stationheadVersion_);
+  const int nextSh = VersionOr(versions, L"stationhead", shVersion_);
   const int nextConfig = VersionOr(versions, L"config", deviceConfigVersion_);
 
   bool dashboardApplied = false;
   bool radarApplied = false;
   bool switchbotApplied = false;
-  bool stationheadApplied = false;
+  bool shApplied = false;
   bool configApplied = false;
 
   if (auto payload = StringPayload(root, L"dashboard")) {
@@ -198,9 +198,9 @@ void CloudClient::Synchronize() {
     PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
   }
   if (auto payload = StringPayload(root, L"stationhead")) {
-    if (!AtomicWriteBytes(stationheadPath, *payload)) throw std::runtime_error("Stationhead state cache write failed");
-    stationheadApplied = true;
-    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+    if (!AtomicWriteBytes(shPath, *payload)) throw std::runtime_error("Stationhead state cache write failed");
+    shApplied = true;
+    PostMessageW(window_, WM_HP_SH_CHANGED, 0, 0);
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
     if (!AtomicWriteBytes(deviceConfigPath, *payload)) throw std::runtime_error("device config cache write failed");
@@ -232,16 +232,16 @@ void CloudClient::Synchronize() {
   const int acceptedDashboard = acceptedVersion(L"dashboard", dashboardVersion_, nextDashboard, dashboardApplied);
   const int acceptedRadar = acceptedVersion(L"radar", radarVersion_, nextRadar, radarApplied);
   const int acceptedSwitchbot = acceptedVersion(L"switchbot", switchbotVersion_, nextSwitchbot, switchbotApplied);
-  const int acceptedStationhead = acceptedVersion(L"stationhead", stationheadVersion_, nextStationhead, stationheadApplied);
+  const int acceptedSh = acceptedVersion(L"stationhead", shVersion_, nextSh, shApplied);
   const int acceptedConfig = acceptedVersion(L"device config", deviceConfigVersion_, nextConfig, configApplied);
 
   if (dashboardVersion_ != acceptedDashboard || radarVersion_ != acceptedRadar ||
-      switchbotVersion_ != acceptedSwitchbot || stationheadVersion_ != acceptedStationhead ||
+      switchbotVersion_ != acceptedSwitchbot || shVersion_ != acceptedSh ||
       deviceConfigVersion_ != acceptedConfig) {
     dashboardVersion_ = acceptedDashboard;
     radarVersion_ = acceptedRadar;
     switchbotVersion_ = acceptedSwitchbot;
-    stationheadVersion_ = acceptedStationhead;
+    shVersion_ = acceptedSh;
     deviceConfigVersion_ = acceptedConfig;
     cacheMetadataDirty_ = true;
   }
@@ -252,7 +252,7 @@ void CloudClient::Synchronize() {
     const HttpResponse healthResponse = Request(L"GET", L"/v1/stationhead-health", deviceToken_);
     if (healthResponse.status == 200) {
       const std::string healthBody(healthResponse.body.begin(), healthResponse.body.end());
-      nextHealthText = StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(healthBody)));
+      nextHealthText = ShHealthSummary(JsonObject::Parse(Utf8ToWide(healthBody)));
     } else {
       nextHealthText = L"Stationhead収集: 状態取得失敗 (HTTP " +
           std::to_wstring(healthResponse.status) + L")";
@@ -265,7 +265,7 @@ void CloudClient::Synchronize() {
     nextHealthText = L"Stationhead収集: 状態取得失敗";
   }
 
-  UpdateStationheadHealthText(std::move(nextHealthText));
+  UpdateShHealthText(std::move(nextHealthText));
   {
     std::lock_guard lock(stateMutex_);
     lastSuccess_ = IsoLocalNow();

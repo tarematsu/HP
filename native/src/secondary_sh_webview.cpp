@@ -8,7 +8,7 @@
 
 namespace hp {
 
-void SecondaryStationheadPlayer::ConfigureWebView() {
+void SecondaryShPlayer::ConfigureWebView() {
   // Fresh WebView: force the next ApplyAudioState/ApplyVolume to push state.
   appliedMuted_.store(-1, std::memory_order_relaxed);
   appliedVolumePercent_.store(-1, std::memory_order_relaxed);
@@ -23,7 +23,7 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
     ComPtr<ICoreWebView2Settings3> settings3;
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
-  ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceBlockingArmed_, resourceRequestedToken_);
+  ApplyShResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceBlockingArmed_, resourceRequestedToken_);
 
   // Use WebView2's actual document audio state. Stationhead can play through
   // internal frames/media pipelines that are invisible to the injected DOM
@@ -66,7 +66,7 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
     controller2->put_DefaultBackgroundColor(background);
   }
   static const std::wstring startupScript =
-      StationheadAutoplayScript(L"__homepanelSecondaryStationhead", L"secondary");
+      ShAutoplayScript(L"__homepanelSecondarySh", L"secondary");
   webview_->AddScriptToExecuteOnDocumentCreated(
       startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(

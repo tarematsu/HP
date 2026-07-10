@@ -42,7 +42,7 @@ describe("HomePanel Worker integration", () => {
     const body = {
       deviceId: "ci-device",
       appVersion: "2.0.123",
-      stationheadOk: true,
+      shOk: true,
       outboxCount: 3,
       diagnostics: { ignored: true },
       samples: [{

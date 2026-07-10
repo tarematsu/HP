@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchOctopus } from "../src/octopus_source";
-import { fetchStationhead } from "../src/spotify_source";
+import { fetchSh } from "../src/spotify_source";
 import type { Env } from "../src/sources";
 
 const baseEnv = {
@@ -76,7 +76,7 @@ describe("cloud sources", () => {
       }],
     })));
 
-    const result = await fetchStationhead({
+    const result = await fetchSh({
       ...baseEnv,
       STATIONHEAD_MONITOR_URL: "https://monitor.example/api/dashboard",
     });

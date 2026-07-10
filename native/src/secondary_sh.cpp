@@ -17,27 +17,27 @@ std::wstring HResultHex(HRESULT value) {
 
 }  // namespace
 
-SecondaryStationheadPlayer::SecondaryStationheadPlayer(
-    HWND window, StationheadConfig config, fs::path userDataFolder, Logger& log)
+SecondaryShPlayer::SecondaryShPlayer(
+    HWND window, ShConfig config, fs::path userDataFolder, Logger& log)
     : window_(window), config_(std::move(config)),
       userDataFolder_(std::move(userDataFolder)), log_(log) {
   status_.url = config_.secondaryUrl;
 }
 
-SecondaryStationheadPlayer::~SecondaryStationheadPlayer() {
+SecondaryShPlayer::~SecondaryShPlayer() {
   callbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
   Stop();
 }
 
-void SecondaryStationheadPlayer::Start() {
+void SecondaryShPlayer::Start() {
   if (shuttingDown_) return;
   retryAt_ = 0;
   nextTickAt_ = 0;
   Create();
 }
 
-void SecondaryStationheadPlayer::Stop() {
+void SecondaryShPlayer::Stop() {
   if (shuttingDown_.exchange(true, std::memory_order_acq_rel)) return;
   callbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
@@ -48,21 +48,21 @@ void SecondaryStationheadPlayer::Stop() {
   hostWindow_ = nullptr;
 }
 
-SecondaryStationheadStatus SecondaryStationheadPlayer::Status() const {
+SecondaryShStatus SecondaryShPlayer::Status() const {
   std::lock_guard lock(mutex_);
-  SecondaryStationheadStatus copy = status_;
+  SecondaryShStatus copy = status_;
   copy.playing = audioPlaying_.load(std::memory_order_relaxed);
   copy.loginRequired = loginRequired_;
   copy.audioMuted = audioMuted_.load(std::memory_order_relaxed);
   return copy;
 }
 
-void SecondaryStationheadPlayer::SetStatus(const std::wstring& detail) {
+void SecondaryShPlayer::SetStatus(const std::wstring& detail) {
   std::lock_guard lock(mutex_);
   status_.detail = detail;
 }
 
-void SecondaryStationheadPlayer::ApplyPlaybackState(bool playing, const std::wstring& source) {
+void SecondaryShPlayer::ApplyPlaybackState(bool playing, const std::wstring& source) {
   const bool changed = audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
   if (playing) {
     resourceBlockingArmed_ = true;
@@ -77,17 +77,17 @@ void SecondaryStationheadPlayer::ApplyPlaybackState(bool playing, const std::wst
   if (changed) {
     log_.Info(std::wstring(L"Secondary Stationhead audio ") +
               (playing ? L"playing" : L"stopped") + L" (" + source + L")");
-    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+    PostMessageW(window_, WM_HP_SH_CHANGED, 0, 0);
   }
 }
 
-void SecondaryStationheadPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
+void SecondaryShPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
   spotifyAuthorization_ = false;
   authClosePending_ = true;
   SetStatus(detail);
 }
 
-void SecondaryStationheadPlayer::ConfigureAuthWebView() {
+void SecondaryShPlayer::ConfigureAuthWebView() {
   const auto alive = callbackAlive_;
   const auto authAlive = authCallbackAlive_;
   appliedMuted_.store(-1, std::memory_order_relaxed);
@@ -144,7 +144,7 @@ void SecondaryStationheadPlayer::ConfigureAuthWebView() {
   ApplyAudioState();
 }
 
-void SecondaryStationheadPlayer::CloseAuthWebView() {
+void SecondaryShPlayer::CloseAuthWebView() {
   authCallbackAlive_->store(false, std::memory_order_release);
   if (authWebview_) {
     if (authNavigationToken_.value) authWebview_->remove_NavigationCompleted(authNavigationToken_);
@@ -164,7 +164,7 @@ void SecondaryStationheadPlayer::CloseAuthWebView() {
   if (authHostWindow_ && IsWindow(authHostWindow_)) ShowWindow(authHostWindow_, SW_HIDE);
 }
 
-void SecondaryStationheadPlayer::Create() {
+void SecondaryShPlayer::Create() {
   if (shuttingDown_.load(std::memory_order_acquire) || webview_) return;
   if (creating_.exchange(true, std::memory_order_acq_rel)) return;
   if (!EnsureHostWindow()) {
@@ -230,7 +230,7 @@ void SecondaryStationheadPlayer::Create() {
       });
 }
 
-void SecondaryStationheadPlayer::Reconnect() {
+void SecondaryShPlayer::Reconnect() {
   if (!webview_) {
     if (!creating_) Create();
     return;
@@ -250,7 +250,7 @@ void SecondaryStationheadPlayer::Reconnect() {
   if (FAILED(result)) ScheduleRetry(L"reconnect navigation failed " + HResultHex(result), 1'000);
 }
 
-void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
+void SecondaryShPlayer::Tick(int64_t nowMs) {
   if (shuttingDown_) return;
   if (nowMs < nextTickAt_) return;
   if (authClosePending_.exchange(false, std::memory_order_acq_rel)) {
@@ -268,7 +268,7 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
-  const int64_t reloadInterval = StationheadReloadIntervalMs(
+  const int64_t reloadInterval = ShReloadIntervalMs(
       std::max(5, config_.secondaryReloadIntervalMinutes));
   if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 &&
       nowMs - lastReloadAt_ >= reloadInterval) {
@@ -295,7 +295,7 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
   nextTickAt_ = std::max(nowMs + 1'000, next);
 }
 
-void SecondaryStationheadPlayer::ScheduleRetry(const std::wstring& reason, int64_t delayMs) {
+void SecondaryShPlayer::ScheduleRetry(const std::wstring& reason, int64_t delayMs) {
   if (shuttingDown_.load(std::memory_order_acquire)) return;
   const int64_t candidate = UnixMillis() + std::max<int64_t>(1'000, delayMs);
   if (retryAt_ == 0 || candidate < retryAt_) retryAt_ = candidate;
@@ -303,7 +303,7 @@ void SecondaryStationheadPlayer::ScheduleRetry(const std::wstring& reason, int64
   log_.Warn(L"Secondary Stationhead " + reason);
 }
 
-void SecondaryStationheadPlayer::CloseWebView() {
+void SecondaryShPlayer::CloseWebView() {
   callbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_->store(false, std::memory_order_release);
   CloseAuthWebView();

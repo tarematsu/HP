@@ -118,9 +118,9 @@ set(HOMEPANEL_CORE_SOURCES
   src/update_client.cpp
   src/sensors.cpp)
 
-set(HOMEPANEL_STATIONHEAD_SOURCES
+set(HOMEPANEL_SH_SOURCES
   src/shared_webview_environment.cpp
-  src/stationhead_window_layout.cpp
+  src/sh_window_layout.cpp
   src/sh.cpp
   src/secondary_sh.cpp
   src/secondary_sh_audio.cpp)
@@ -138,7 +138,7 @@ set_source_files_properties("${HOMEPANEL_GENERATED_HOME_RC}" PROPERTIES
 
 add_executable(HomePanel WIN32
   ${HOMEPANEL_CORE_SOURCES}
-  ${HOMEPANEL_STATIONHEAD_SOURCES}
+  ${HOMEPANEL_SH_SOURCES}
   ${HOMEPANEL_RENDERER_SOURCES}
   ${HOMEPANEL_RESOURCE_SOURCES})
 homepanel_configure_common_target(HomePanel)

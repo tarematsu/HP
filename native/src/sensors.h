@@ -32,7 +32,7 @@ class SensorHub {
   SensorSnapshot Snapshot() const;
   void ApplyCloudSwitchBot(const fs::path& path);
   std::string BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion,
-                                    bool stationheadOk, size_t maxSamples = 500);
+                                    bool shOk, size_t maxSamples = 500);
   void AcknowledgeTelemetry(size_t count);
 
  public:

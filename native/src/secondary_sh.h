@@ -6,7 +6,7 @@
 
 namespace hp {
 
-struct SecondaryStationheadStatus {
+struct SecondaryShStatus {
   bool created = false;
   bool navigating = false;
   bool playing = false;
@@ -19,15 +19,15 @@ struct SecondaryStationheadStatus {
   std::wstring url;
 };
 
-class SecondaryStationheadPlayer {
+class SecondaryShPlayer {
  public:
-  SecondaryStationheadPlayer(HWND window, StationheadConfig config,
+  SecondaryShPlayer(HWND window, ShConfig config,
                              fs::path userDataFolder, Logger& log);
-  SecondaryStationheadPlayer(const SecondaryStationheadPlayer&) = delete;
-  SecondaryStationheadPlayer& operator=(const SecondaryStationheadPlayer&) = delete;
-  SecondaryStationheadPlayer(SecondaryStationheadPlayer&&) = delete;
-  SecondaryStationheadPlayer& operator=(SecondaryStationheadPlayer&&) = delete;
-  ~SecondaryStationheadPlayer();
+  SecondaryShPlayer(const SecondaryShPlayer&) = delete;
+  SecondaryShPlayer& operator=(const SecondaryShPlayer&) = delete;
+  SecondaryShPlayer(SecondaryShPlayer&&) = delete;
+  SecondaryShPlayer& operator=(SecondaryShPlayer&&) = delete;
+  ~SecondaryShPlayer();
 
   void Start();
   void Stop();
@@ -37,7 +37,7 @@ class SecondaryStationheadPlayer {
   void SetBounds(const RECT& bounds);
   void SetStartupPreviewBounds(const RECT& bounds);
   void ClearStartupPreviewBounds();
-  [[nodiscard]] SecondaryStationheadStatus Status() const;
+  [[nodiscard]] SecondaryShStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept {
     if (spotifyAuthorization_ && authHostWindow_ && IsWindow(authHostWindow_)) return authHostWindow_;
     return hostWindow_;
@@ -72,11 +72,11 @@ class SecondaryStationheadPlayer {
   HWND hostWindow_{};
   HWND authHostWindow_{};
   RECT bounds_{0, 0, 1, 1};
-  StationheadConfig config_;
+  ShConfig config_;
   fs::path userDataFolder_;
   Logger& log_;
   mutable std::mutex mutex_;
-  SecondaryStationheadStatus status_;
+  SecondaryShStatus status_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;

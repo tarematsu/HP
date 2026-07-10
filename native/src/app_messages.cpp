@@ -6,7 +6,7 @@
 
 namespace hp {
 namespace {
-constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
+constexpr UINT kShHealthUpdatedMessage = WM_APP + 10;
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -25,7 +25,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_TIMER:
       Tick();
       if (cloud_ && toastUntil_ == 0 && renderState_.toast.empty()) {
-        renderState_.toast = cloud_->StationheadHealthText();
+        renderState_.toast = cloud_->ShHealthText();
         PublishRenderStateNow();
       }
       return 0;
@@ -94,45 +94,45 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_HP_PRIMARY_RELOAD_READY: {
       // A may reload only after B has confirmed real audio. Without B, the
       // primary reload remains available for single-window installations.
-      if (!secondaryStationhead_) return 1;
-      if (!secondaryStationhead_->Status().playing) return 0;
-      ApplyScheduledStationheadAudioProfile(false);
+      if (!secondarySh_) return 1;
+      if (!secondarySh_->Status().playing) return 0;
+      ApplyScheduledShAudioProfile(false);
       return 1;
     }
     case WM_HP_SECONDARY_RELOAD_READY: {
       // B may reload only after A has confirmed real audio.
-      if (!stationhead_->Status().audioPlaying) return 0;
-      ApplyScheduledStationheadAudioProfile(true);
+      if (!sh_->Status().audioPlaying) return 0;
+      ApplyScheduledShAudioProfile(true);
       return 1;
     }
-    case WM_HP_STATIONHEAD_CHANGED: {
-      const uint32_t changes = stationhead_->ConsumeChangeFlags();
+    case WM_HP_SH_CHANGED: {
+      const uint32_t changes = sh_->ConsumeChangeFlags();
       bool layoutChanged = false;
-      if ((changes & StationheadChangeReleaseAuth) != 0) {
-        stationhead_->ReleaseCompletedAuth();
+      if ((changes & ShChangeReleaseAuth) != 0) {
+        sh_->ReleaseCompletedAuth();
       }
-      if ((changes & StationheadChangeShowPlayer) != 0) {
-        stationhead_->ShowAfterAudioStop();
+      if ((changes & ShChangeShowPlayer) != 0) {
+        sh_->ShowAfterAudioStop();
         if (selectedTab_ != WorkspaceTab::Stationhead) {
           selectedTab_ = WorkspaceTab::Stationhead;
           layoutChanged = true;
         }
-      } else if ((changes & StationheadChangeReturnMain) != 0 &&
+      } else if ((changes & ShChangeReturnMain) != 0 &&
                  selectedTab_ != WorkspaceTab::Main) {
         selectedTab_ = WorkspaceTab::Main;
         layoutChanged = true;
       }
       if (layoutChanged) LayoutWorkspace();
-      MarkStationheadPlacementDirty();
-      const StationheadStatus nextStationheadState =
-          BuildRenderStationheadState(stationhead_, secondaryStationhead_);
-      UpdateRenderStationheadState(nextStationheadState);
+      MarkShPlacementDirty();
+      const ShStatus nextShState =
+          BuildRenderShState(sh_, secondarySh_);
+      UpdateRenderShState(nextShState);
       PublishRenderStateNow();
       return 0;
     }
-    case kStationheadHealthUpdatedMessage:
+    case kShHealthUpdatedMessage:
       if (cloud_ && toastUntil_ == 0) {
-        renderState_.toast = cloud_->StationheadHealthText();
+        renderState_.toast = cloud_->ShHealthText();
         PublishRenderStateNow();
       }
       return 0;

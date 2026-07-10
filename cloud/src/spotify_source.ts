@@ -121,7 +121,7 @@ export function monitorCurrentIndex(payload: MonitorPayload | null): number {
   return statusIndex >= 0 && statusIndex < queue.length ? statusIndex : -1;
 }
 
-export async function fetchStationhead(env: Env): Promise<SourceResult> {
+export async function fetchSh(env: Env): Promise<SourceResult> {
   const sampledAt = Date.now();
   let monitor: MonitorPayload | null = null;
   let monitorError: string | null = null;
