@@ -26,8 +26,11 @@ struct NewsItemData {
 };
 
 struct OctopusHistoryData {
+  std::wstring weekday;
   std::wstring date;
   double value = std::numeric_limits<double>::quiet_NaN();
+  std::wstring previousYearDate;
+  double previousYearValue = std::numeric_limits<double>::quiet_NaN();
 };
 
 struct SwitchBotDeviceData {
@@ -50,6 +53,10 @@ struct DashboardSnapshot {
   PanelDataStatus octopusStatus;
   double lastMonthUsage = std::numeric_limits<double>::quiet_NaN();
   double projectedUsage = std::numeric_limits<double>::quiet_NaN();
+  int currentEnergyIsoYear = 0;
+  int currentEnergyIsoWeek = 0;
+  int previousEnergyIsoYear = 0;
+  int previousEnergyIsoWeek = 0;
   std::vector<OctopusHistoryData> octopusHistory;
 
   PanelDataStatus switchBotStatus;
@@ -61,7 +68,7 @@ struct DashboardSnapshot {
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                            std::wstring* error = nullptr);
+                             std::wstring* error = nullptr);
 bool LoadDashboardSnapshot(const fs::path& path, DashboardSnapshot& output, std::wstring* error = nullptr);
 
-}
+}  // namespace hp
