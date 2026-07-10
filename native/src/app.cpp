@@ -275,7 +275,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
   const bool startupDeadlineReached = now - startupAt_ >= 30'000;
   if (primaryAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ && dashboardAudioReady) {
+  if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
     renderer_->Initialize();
     rendererStarted_ = true;
     ClearStartupStationheadPreview();
@@ -283,7 +283,9 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    logger_->Info(L"Native dashboard started after at least one Stationhead audio confirmation");
+    logger_->Info(dashboardAudioReady
+        ? L"Native dashboard started after at least one Stationhead audio confirmation"
+        : L"Native dashboard started after startup fallback deadline");
   }
 
   if (!cloudStarted_ && (primaryAudioReady || startupDeadlineReached)) {
