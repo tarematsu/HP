@@ -1,33 +1,30 @@
-name: SH refactor source scan
+name: Apply SH refactor
 
 on:
   push:
     branches:
       - automation/sh-refactor-scan
-  pull_request:
-    branches:
-      - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  scan:
+  refactor:
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
-      TARGET_SHA: 032bc9ea135963d579a407d3cd48d70f77398e7f
-      WORKER_NAME: stationhead-monitor-collector
     steps:
       - uses: actions/checkout@v4
-      - name: Collect Stationhead identifier inventory
-        run: node .github/scripts/collect-sh-inventory.mjs
-      - name: Upload inventory
-        if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: sh-refactor-stationhead-inventory
-          path: out
-          if-no-files-found: error
-          retention-days: 3
+          ref: automation/sh-refactor-scan
+          fetch-depth: 0
+      - name: Apply file and identifier renames
+        run: python .github/scripts/apply-sh-refactor.py
+      - name: Commit refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Rename internal Stationhead files and identifiers to SH"
+          git push origin HEAD:automation/sh-refactor-scan
