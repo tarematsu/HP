@@ -138,7 +138,6 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
       sourceFailureRecorded = true;
       await refreshStationheadMonitor(env);
     } else if (job.name === "stationhead_health") {
-      sourceFailureRecorded = true;
       await runStationheadHealthMonitor(env);
     } else {
       const result: SourceResult = job.name === "switchbot"
