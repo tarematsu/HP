@@ -26,13 +26,13 @@ describe("cloud sources", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T18:00:00Z"));
     const requests: Request[] = [];
-    const readingRanges: Array<{ fromDatetime?: string; toDatetime?: string }> = [];
+    const readingRanges: Array<{ accountNumber?: string; fromDatetime?: string; toDatetime?: string }> = [];
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const request = new Request(input, init);
       requests.push(request);
       const body = await request.clone().json() as {
         query?: string;
-        variables?: { fromDatetime?: string; toDatetime?: string };
+        variables?: { accountNumber?: string; fromDatetime?: string; toDatetime?: string };
       };
       if (body.query?.includes("obtainKrakenToken")) {
         return jsonResponse({
@@ -65,10 +65,12 @@ describe("cloud sources", () => {
 
     expect(result.source).toBe("octopus");
     expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(3);
-    expect(readingRanges).toContainEqual({
-      fromDatetime: "2025-07-06T15:00:00.000Z",
-      toDatetime: "2025-07-13T15:00:00.000Z",
-    });
+    expect(readingRanges).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        fromDatetime: "2025-07-06T15:00:00.000Z",
+        toDatetime: "2025-07-13T15:00:00.000Z",
+      }),
+    ]));
   });
 
   it("preserves Stationhead monitor thumbnails as Spotify artwork", async () => {
