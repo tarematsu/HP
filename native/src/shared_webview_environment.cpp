@@ -18,6 +18,10 @@ constexpr wchar_t kWebView2Arguments[] =
     L"--disable-extensions "
     L"--disable-sync "
     L"--metrics-recording-only "
+    L"--disable-gpu "
+    L"--disable-gpu-compositing "
+    L"--disable-accelerated-2d-canvas "
+    L"--disable-accelerated-video-decode "
     L"--autoplay-policy=no-user-gesture-required "
     // Stationhead windows are kept behind the dashboard (occluded); keep their
     // renderer running so auto-play and audio continue while not on screen.
