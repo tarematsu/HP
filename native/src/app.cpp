@@ -409,20 +409,20 @@ void App::LayoutWorkspace() {
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
   const RECT fullBounds{client.left, client.top, client.left + clientWidth, client.top + clientHeight};
-  stationhead_->SetBounds(fullBounds);
-  if (secondaryStationhead_) {
-    secondaryStationhead_->SetBounds(fullBounds);
-  }
-
 
   switch (selectedTab_) {
     case WorkspaceTab::Main:
-      stationhead_->SelectTab(StationheadTabKind::None);
+      ApplyStationheadWindowPlacement(stationhead_->Status(),
+          secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{});
       break;
     case WorkspaceTab::Stationhead:
+      stationhead_->SetBounds(fullBounds);
+      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
       stationhead_->SelectTab(StationheadTabKind::Stationhead);
       break;
     case WorkspaceTab::Auth:
+      stationhead_->SetBounds(fullBounds);
+      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
       if (stationhead_->HasAuthTab()) {
         stationhead_->SelectTab(StationheadTabKind::Auth);
       } else {
@@ -438,7 +438,7 @@ void App::LayoutWorkspace() {
 
 void App::ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,
                                           const SecondaryStationheadStatus& secondaryStatus) {
-  if (!rendererStarted_ || !stationhead_) return;
+  if (!rendererStarted_ || !stationhead_ || selectedTab_ != WorkspaceTab::Main) return;
   RECT bounds = workspaceBounds_;
   if (bounds.right <= bounds.left || bounds.bottom <= bounds.top) return;
 

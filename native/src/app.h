@@ -58,6 +58,7 @@ class StationheadHandleBase {
   double AudioVolume() const noexcept { return audioVolume_; }
 
   void SetBounds(const RECT& bounds) {
+    if (!startupPreviewActive_ && EqualRect(&workspaceBounds_, &bounds)) return;
     workspaceBounds_ = bounds;
     ApplyBounds();
   }
