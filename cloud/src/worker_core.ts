@@ -92,7 +92,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "GET" && url.pathname.startsWith("/v1/wx-icon/")) {
     const match = url.pathname.match(/^\/v1\/wx-icon\/(\d+)_(day|night)\.png$/);
     if (match) {
-      const upstream = `https://s.yimg.jp/images/weather/general/next/size90/${match[1]}_${match[2]}.png`;
+      const upstream = `https:
       try {
         const response = await fetch(upstream, { cf: { cacheEverything: true, cacheTtl: 86400 } } as RequestInit);
         if (!response.ok) return new Response(null, { status: 502 });
@@ -204,7 +204,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     try {
       const body = await request.json() as { sources?: unknown };
       if (Array.isArray(body.sources)) names = body.sources.filter((value): value is string => typeof value === "string");
-    } catch { /* empty body refreshes all */ }
+    } catch {   }
     await requestRefresh(env, names);
     ctx.waitUntil(runScheduler(env));
     return json({ queued: true }, { status: 202 });
