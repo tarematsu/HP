@@ -12,8 +12,11 @@ const DEFAULT_FROM = "HomePanel Monitor <onboarding@resend.dev>";
 type RemoteHealth = {
   ok?: boolean;
   collector_health_ok?: boolean;
+  collector_stale?: boolean;
   collector_health_stale?: boolean;
+  collector_age_ms?: number | null;
   collector_health_age_ms?: number | null;
+  collector_stale_after_ms?: number | null;
   collector_health_stale_after_ms?: number | null;
   collector_last_run_at?: number | null;
   collector_last_success_at?: number | null;
@@ -34,17 +37,40 @@ export type StationheadHealthSnapshot = {
   alertConfigured: boolean;
   alertPending: boolean;
   recoveryPending: boolean;
+  alertEventKey: string | null;
 };
 
 function finite(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function firstFinite(...values: unknown[]): number | null {
+  for (const value of values) {
+    const number = finite(value);
+    if (number !== null) return number;
+  }
+  return null;
+}
+
+function firstBoolean(...values: unknown[]): boolean | null {
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+  }
+  return null;
 }
 
 function positive(value: unknown, fallback: number): number {
   const number = Number(value);
   if (!Number.isFinite(number) || number <= 0) return fallback;
   return Math.max(MIN_STALE_MS, Math.min(MAX_STALE_MS, Math.trunc(number)));
+}
+
+function objectOrEmpty(value: unknown): RemoteHealth {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as RemoteHealth
+    : {};
 }
 
 export function stationheadHealthUrl(env: Pick<Env, "STATIONHEAD_HEALTH_URL" | "STATIONHEAD_MONITOR_URL">): string {
@@ -54,12 +80,13 @@ export function stationheadHealthUrl(env: Pick<Env, "STATIONHEAD_HEALTH_URL" | "
   const monitor = env.STATIONHEAD_MONITOR_URL?.trim();
   if (!monitor) throw new Error("STATIONHEAD_HEALTH_URL or STATIONHEAD_MONITOR_URL is not configured");
   const url = new URL(monitor);
-  if (/\/api\/(?:playback|dashboard)$/.test(url.pathname)) {
-    url.pathname = url.pathname.replace(/\/api\/(?:playback|dashboard)$/, "/api/health");
-  } else if (/\/api\/[^/]+$/.test(url.pathname)) {
-    url.pathname = url.pathname.replace(/\/api\/[^/]+$/, "/api/health");
+  const path = url.pathname.replace(/\/+$/, "");
+  if (/\/api\/(?:playback|dashboard|health)$/.test(path)) {
+    url.pathname = path.replace(/\/api\/(?:playback|dashboard|health)$/, "/api/health");
+  } else if (/\/api\/[^/]+$/.test(path)) {
+    url.pathname = path.replace(/\/api\/[^/]+$/, "/api/health");
   } else {
-    url.pathname = `${url.pathname.replace(/\/$/, "")}/api/health`;
+    url.pathname = `${path}/api/health` || "/api/health";
   }
   url.search = "";
   url.hash = "";
@@ -73,22 +100,35 @@ export function evaluateStationheadHealth(
   now = Date.now(),
   configuredStaleMs = DEFAULT_STALE_MS,
 ): StationheadHealthSnapshot {
-  const staleAfterMs = positive(payload?.collector_health_stale_after_ms, configuredStaleMs);
+  const remoteStaleAfterMs = firstFinite(
+    payload?.collector_stale_after_ms,
+    payload?.collector_health_stale_after_ms,
+  );
+  const staleAfterMs = positive(configuredStaleMs, positive(remoteStaleAfterMs, DEFAULT_STALE_MS));
   const lastRunAt = finite(payload?.collector_last_run_at);
   const lastSuccessAt = finite(payload?.collector_last_success_at);
-  const reportedAge = finite(payload?.collector_health_age_ms);
+  const reportedAge = firstFinite(payload?.collector_age_ms, payload?.collector_health_age_ms);
   const ageMs = reportedAge ?? (lastSuccessAt == null ? null : Math.max(0, now - lastSuccessAt));
-  const stale = payload?.collector_health_stale === true
-    || (ageMs != null && ageMs >= staleAfterMs);
-  const remoteHealthy = payload?.ok !== false && payload?.collector_health_ok !== false;
+  const remoteStale = firstBoolean(payload?.collector_stale, payload?.collector_health_stale) === true;
+  const remoteHealthy = firstBoolean(payload?.ok, payload?.collector_health_ok);
   const reachable = payload !== null;
-  const healthy = reachable && responseOk && remoteHealthy && !stale;
+  const payloadValid = reachable && remoteHealthy !== null;
+  const hasSuccessfulCollection = lastSuccessAt !== null && lastSuccessAt > 0;
+  const stale = remoteStale || (ageMs != null && ageMs >= staleAfterMs);
+  const healthy = reachable
+    && responseOk
+    && payloadValid
+    && remoteHealthy === true
+    && hasSuccessfulCollection
+    && !stale;
+
   let reason: string | null = null;
   if (!reachable) reason = "Stationhead health endpoint is unreachable";
   else if (!responseOk) reason = `Stationhead health endpoint returned HTTP ${statusCode ?? "error"}`;
-  else if (payload?.collector_health_stale === true || stale) reason = "Stationhead collection is stale";
-  else if (payload?.collector_health_ok === false) reason = "Stationhead collector reported unhealthy";
-  else if (payload?.collector_last_error_present) reason = "Stationhead collector reported a recent error";
+  else if (!payloadValid) reason = "Stationhead health response is missing an explicit health status";
+  else if (!hasSuccessfulCollection) reason = "Stationhead collector has no successful collection";
+  else if (stale) reason = "Stationhead collection is stale";
+  else if (remoteHealthy === false) reason = "Stationhead collector reported unhealthy";
 
   return {
     configured: true,
@@ -104,6 +144,7 @@ export function evaluateStationheadHealth(
     alertConfigured: false,
     alertPending: false,
     recoveryPending: false,
+    alertEventKey: null,
   };
 }
 
@@ -111,7 +152,16 @@ function parsePrevious(row: StateRow | null): StationheadHealthSnapshot | null {
   if (!row) return null;
   try {
     const value = JSON.parse(row.payload) as StationheadHealthSnapshot;
-    return typeof value?.healthy === "boolean" ? value : null;
+    if (typeof value?.healthy !== "boolean") return null;
+    return {
+      ...value,
+      alertConfigured: value.alertConfigured === true,
+      alertPending: value.alertPending === true,
+      recoveryPending: value.recoveryPending === true,
+      alertEventKey: typeof value.alertEventKey === "string" && value.alertEventKey
+        ? value.alertEventKey
+        : null,
+    };
   } catch {
     return null;
   }
@@ -138,12 +188,26 @@ function formatJst(timestamp: number | null): string {
   }).format(new Date(timestamp));
 }
 
-function transitionKey(snapshot: StationheadHealthSnapshot, recovery: boolean): string {
-  const anchor = snapshot.lastSuccessAt == null ? "never" : String(snapshot.lastSuccessAt);
+export function alertTransitionKey(
+  snapshot: StationheadHealthSnapshot,
+  previous: StationheadHealthSnapshot | null,
+  recovery: boolean,
+): string {
+  if ((previous?.alertPending || previous?.recoveryPending) && previous.alertEventKey) {
+    return previous.alertEventKey;
+  }
+  const anchor = recovery
+    ? previous?.lastSuccessAt ?? snapshot.lastSuccessAt ?? "never"
+    : snapshot.lastSuccessAt ?? previous?.lastSuccessAt ?? "never";
   return `homepanel-stationhead-${recovery ? "recovered" : "down"}-${anchor}`;
 }
 
-async function sendTransitionAlert(env: Env, snapshot: StationheadHealthSnapshot, recovery: boolean): Promise<void> {
+async function sendTransitionAlert(
+  env: Env,
+  snapshot: StationheadHealthSnapshot,
+  recovery: boolean,
+  eventKey: string,
+): Promise<void> {
   const config = alertConfig(env);
   if (!config.enabled) return;
   const response = await fetch(RESEND_ENDPOINT, {
@@ -151,7 +215,7 @@ async function sendTransitionAlert(env: Env, snapshot: StationheadHealthSnapshot
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json",
-      "Idempotency-Key": transitionKey(snapshot, recovery),
+      "Idempotency-Key": eventKey,
     },
     body: JSON.stringify({
       from: config.from,
@@ -197,6 +261,7 @@ async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHeal
       alertConfigured: alertConfig(env).enabled,
       alertPending: false,
       recoveryPending: false,
+      alertEventKey: null,
     };
   }
 
@@ -206,7 +271,12 @@ async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHeal
       cache: "no-store",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const payload = await response.json().catch(() => null) as RemoteHealth | null;
+    let payload: RemoteHealth;
+    try {
+      payload = objectOrEmpty(await response.json());
+    } catch {
+      payload = {};
+    }
     return evaluateStationheadHealth(payload, response.ok, response.status, now, staleMs);
   } catch (error) {
     return {
@@ -223,6 +293,7 @@ async function fetchRemoteHealth(env: Env, now: number): Promise<StationheadHeal
       alertConfigured: alertConfig(env).enabled,
       alertPending: false,
       recoveryPending: false,
+      alertEventKey: null,
     };
   }
 }
@@ -235,9 +306,12 @@ async function persistHealth(env: Env, snapshot: StationheadHealthSnapshot, prev
   };
   await updateState(env, result, undefined, previous);
   if (!snapshot.healthy) {
+    const status = !snapshot.configured || !snapshot.reachable || !snapshot.lastSuccessAt
+      ? "error"
+      : "stale";
     await env.DB.prepare(
-      "UPDATE current_state SET status='stale', error=?1 WHERE source=?2",
-    ).bind(snapshot.reason || "Stationhead collector is unhealthy", SOURCE).run();
+      "UPDATE current_state SET status=?1, error=?2 WHERE source=?3",
+    ).bind(status, snapshot.reason || "Stationhead collector is unhealthy", SOURCE).run();
   }
 }
 
@@ -255,8 +329,10 @@ export async function runStationheadHealthMonitor(env: Env, now = Date.now()): P
     && (previous?.healthy === false || previous?.recoveryPending === true);
 
   if (alerts.enabled && (downTransition || recoveryTransition)) {
+    current.alertEventKey = alertTransitionKey(current, previous, recoveryTransition);
     try {
-      await sendTransitionAlert(env, current, recoveryTransition);
+      await sendTransitionAlert(env, current, recoveryTransition, current.alertEventKey);
+      current.alertEventKey = null;
     } catch (error) {
       console.error("Stationhead transition alert failed", error instanceof Error ? error.message : String(error));
       current.alertPending = downTransition;
