@@ -49,6 +49,32 @@ describe("repository audit regressions", () => {
     });
   });
 
+  it("does not serve an old healthy Stationhead payload after monitor failure", async () => {
+    const payload = JSON.stringify({
+      configured: true,
+      reachable: true,
+      healthy: true,
+      lastSuccessAt: 1_000_000,
+      reason: null,
+    });
+    await env.DB.prepare(
+      `INSERT INTO current_state(
+         source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
+       ) VALUES('stationhead_health',1,?1,1000000,2000000,1000000,'stale','monitor database failure','old-hash')`,
+    ).bind(payload).run();
+
+    const response = await SELF.fetch("https://homepanel.test/v1/stationhead-health", {
+      headers: auth("test-device"),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      healthy: false,
+      monitorStatus: "stale",
+      reason: "monitor database failure",
+    });
+  });
+
   it("drains more than one three-job scheduler batch", async () => {
     await env.DB.prepare("DELETE FROM jobs").run();
     const statements = Array.from({ length: 7 }, (_, index) =>
