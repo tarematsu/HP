@@ -6,7 +6,7 @@ namespace {
 constexpr int kNativeTopId = 101;
 constexpr int kNativeBottomId = 102;
 constexpr int kNativeRadarId = 108;
-constexpr size_t kNativeBitmapCacheLimit = 32;
+constexpr size_t kNativeBitmapCacheLimit = 24;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurfaceAlt = RGB(24, 31, 41);
@@ -665,8 +665,24 @@ void Renderer::PaintNativeBottom(HWND hwnd) {
 
 void Renderer::PaintNativeRadar(HWND hwnd) {
   const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
-  NativePanelPaintScope scope(*this, hwnd, layout.radar, /*tintAlpha=*/0, /*cornerRadius=*/0);
-  if (!scope.Valid()) return;
+  PAINTSTRUCT paint{};
+  HDC paintDc = BeginPaint(hwnd, &paint);
+  if (!paintDc) return;
+  RECT client{};
+  GetClientRect(hwnd, &client);
+  RECT dirty = paint.rcPaint;
+  if (IsRectEmpty(&dirty)) dirty = client;
+  IntersectRect(&dirty, &dirty, &client);
+  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
+  SelectClipRgn(paintDc, dirtyClip);
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    StretchRadarSampleInto(paintDc, client, radarFrameBitmap_,
+                           RadarSampleRectFor(layout.radar, bounds_));
+  }
+  SelectClipRgn(paintDc, nullptr);
+  DeleteObject(dirtyClip);
+  EndPaint(hwnd, &paint);
 }
 
 void Renderer::DrawAirSection(HDC dc, const RECT& content) {
