@@ -69,14 +69,14 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
         : config.stationhead.fallbackUrl;
     if (config.stationhead.secondaryUrl.empty()) config.stationhead.secondaryUrl = config.stationhead.fallbackUrl;
     // Window B is fixed to buddy46. Older device-config caches can otherwise
-    // resurrect the previous secondary station, because humans invented stale
-    // configuration and then called it state management.
+    // resurrect the previous secondary station.
     if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryStationheadUrl) != 0) {
       config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
     }
-    // Window B is intentionally staggered two minutes after the 50-minute primary reload.
-    // Keep this authoritative even when an older cloud cache still contains 57 minutes.
-    config.stationhead.secondaryReloadIntervalMinutes = 52;
+    // Both players use a 50-minute maintenance cycle. The players coordinate
+    // before navigation so only the currently muted side reloads.
+    config.stationhead.reloadIntervalMinutes = 50;
+    config.stationhead.secondaryReloadIntervalMinutes = 50;
 
     return true;
   } catch (...) {

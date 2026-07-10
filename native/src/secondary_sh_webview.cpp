@@ -24,6 +24,38 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
   ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_, resourceBlockingArmed_, resourceRequestedToken_);
+
+  // Use WebView2's actual document audio state. Stationhead can play through
+  // internal frames/media pipelines that are invisible to the injected DOM
+  // heuristic, which otherwise makes an audible B window look stopped.
+  ComPtr<ICoreWebView2_8> audioView;
+  if (SUCCEEDED(webview_.As(&audioView)) && audioView) {
+    const HRESULT audioResult = audioView->add_IsDocumentPlayingAudioChanged(
+        Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
+            [this, alive](ICoreWebView2*, IUnknown*) -> HRESULT {
+              if (!CallbackAlive(alive) || shuttingDown_ || !webview_) return S_OK;
+              ComPtr<ICoreWebView2_8> currentAudioView;
+              if (FAILED(webview_.As(&currentAudioView)) || !currentAudioView) return S_OK;
+              BOOL playing = FALSE;
+              if (SUCCEEDED(currentAudioView->get_IsDocumentPlayingAudio(&playing))) {
+                ApplyPlaybackState(playing != FALSE, L"WebView2");
+              }
+              return S_OK;
+            }).Get(),
+        &audioPlayingChangedToken_);
+    if (SUCCEEDED(audioResult)) {
+      nativeAudioTracking_ = true;
+      BOOL playing = FALSE;
+      if (SUCCEEDED(audioView->get_IsDocumentPlayingAudio(&playing))) {
+        ApplyPlaybackState(playing != FALSE, L"WebView2 initial");
+      }
+    } else {
+      audioPlayingChangedToken_ = {};
+      nativeAudioTracking_ = false;
+      log_.Warn(L"Secondary WebView2 native audio tracking unavailable " + HResultHex(audioResult));
+    }
+  }
+
   ComPtr<ICoreWebView2_19> v19;
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
@@ -74,7 +106,8 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             const HRESULT started = environment10->CreateCoreWebView2ControllerWithOptions(
                 authHostWindow_, options.Get(),
                 Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [this, alive, authAlive, popupArgs, deferral, uri](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                    [this, alive, authAlive, popupArgs, deferral, uri](HRESULT result,
+                        ICoreWebView2Controller* controller) -> HRESULT {
                       if (!CallbackAlive(alive) || !CallbackAlive(authAlive) || shuttingDown_) {
                         if (controller) controller->Close();
                         deferral->Complete();
@@ -121,17 +154,9 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             const std::wstring message(raw);
             CoTaskMemFree(raw);
             if (message == L"secondary-playing") {
-              audioPlaying_ = true;
-              resourceBlockingArmed_ = true;
-              retryAt_ = 0;
-              const bool wasLoginInteractive = loginRequired_.exchange(false, std::memory_order_acq_rel);
-              // Drop the surface behind the dashboard once per confirmed
-              // playback instead of every tick.
-              if ((wasLoginInteractive || interactive_) && !spotifyAuthorization_) ShowInteractive(false);
-              SetStatus(L"audio detected");
+              if (!nativeAudioTracking_) ApplyPlaybackState(true, L"page heuristic");
             } else if (message == L"secondary-stopped") {
-              audioPlaying_ = false;
-              if (!spotifyAuthorization_) ShowInteractive(true);
+              if (!nativeAudioTracking_) ApplyPlaybackState(false, L"page heuristic");
             } else if (message == L"secondary-login-required") {
               loginRequired_ = true;
               ShowInteractive(true);

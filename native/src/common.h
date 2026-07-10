@@ -75,6 +75,8 @@ constexpr UINT WM_HP_RADAR_UPDATED = WM_APP + 4;
 constexpr UINT WM_HP_SWITCHBOT_UPDATED = WM_APP + 5;
 constexpr UINT WM_HP_CONFIG_UPDATED = WM_APP + 6;
 constexpr UINT WM_HP_COMMANDS_UPDATED = WM_APP + 7;
+constexpr UINT WM_HP_PRIMARY_RELOAD_READY = WM_APP + 8;
+constexpr UINT WM_HP_SECONDARY_RELOAD_READY = WM_APP + 9;
 
 inline std::wstring Utf8ToWide(const std::string& value) {
   if (value.empty()) return {};

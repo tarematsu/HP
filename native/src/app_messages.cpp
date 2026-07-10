@@ -84,6 +84,20 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       UpdateAirHistory(renderState_.sensors);
       PublishRenderStateNow();
       return 0;
+    case WM_HP_PRIMARY_RELOAD_READY: {
+      // A may reload only after B has confirmed real audio. Without B, the
+      // primary reload remains available for single-window installations.
+      if (!secondaryStationhead_) return 1;
+      if (!secondaryStationhead_->Status().playing) return 0;
+      ApplyScheduledStationheadAudioProfile(false);
+      return 1;
+    }
+    case WM_HP_SECONDARY_RELOAD_READY: {
+      // B may reload only after A has confirmed real audio.
+      if (!stationhead_->Status().audioPlaying) return 0;
+      ApplyScheduledStationheadAudioProfile(true);
+      return 1;
+    }
     case WM_HP_STATIONHEAD_CHANGED: {
       const uint32_t changes = stationhead_->ConsumeChangeFlags();
       bool layoutChanged = false;
@@ -100,9 +114,6 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
                  selectedTab_ != WorkspaceTab::Main) {
         selectedTab_ = WorkspaceTab::Main;
         layoutChanged = true;
-      }
-      if ((changes & StationheadChangeScheduledReload) != 0) {
-        ApplyScheduledStationheadAudioProfile(!scheduledPrimaryAudioAudible_);
       }
       if (layoutChanged) LayoutWorkspace();
       MarkStationheadPlacementDirty();

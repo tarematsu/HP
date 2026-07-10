@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -58,7 +58,7 @@ jobs:
           New-Item -ItemType Directory -Force native/ci-logs | Out-Null
           cmake -S native -B native/build-ci `
             -G "Visual Studio 17 2022" -A x64 `
-            -DHOMEPANEL_CI_STRICT=OFF `
+            -DHOMEPANEL_CI_STRICT=ON `
             -DHOMEPANEL_CI_STATIC_ANALYSIS=OFF `
             2>&1 | Tee-Object native/ci-logs/configure.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -97,13 +97,36 @@ jobs:
             }
           }
 
-      - name: Build native project
+      - name: Build native project with warnings as errors
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           cmake --build native/build-ci --config Release --parallel `
             2>&1 | Tee-Object native/ci-logs/build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Configure MSVC static analysis
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cmake -S native -B native/build-analyze `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DHOMEPANEL_CI_STRICT=ON `
+            -DHOMEPANEL_CI_STATIC_ANALYSIS=ON `
+            2>&1 | Tee-Object native/ci-logs/analyze-configure.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run MSVC static analysis
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cmake --build native/build-analyze --config Release --target HomePanel --parallel 2 `
+            2>&1 | Tee-Object native/ci-logs/analyze-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Verify built binary versions
@@ -264,3 +287,12 @@ jobs:
             native/HomePanel-native-windows.zip.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Upload native diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-native-ci-logs
+          path: native/ci-logs
+          if-no-files-found: warn
+          retention-days: 7
