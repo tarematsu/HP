@@ -1,7 +1,7 @@
 import { configuredDeviceTokens, DEVICE_ID_PATTERN } from "./auth";
 import { enqueueCommandOnce } from "./device_control";
 import { readState, updateState } from "./snapshot";
-import { readUpdateManifestVersion } from "./update_proxy";
+import { readUpdateManifestIdentity } from "./update_proxy";
 import type { Env } from "./sources";
 
 const HEARTBEAT_WINDOW_MS = 30 * 86_400_000;
@@ -26,8 +26,8 @@ async function knownDeviceIds(env: Env): Promise<string[]> {
 // CI pings this endpoint right after publishing a release so the rollout
 // starts immediately. The ping itself carries no trusted data and needs no
 // authentication: the Worker re-reads the manifest from R2 and only a real
-// version change queues device commands, so the worst an abuser can cause is
-// one throttled R2/D1 read per minute per isolate.
+// manifest identity change queues device commands, so the worst an abuser can
+// cause is one throttled R2/D1 read per minute per isolate.
 let lastUpdatePingAt = 0;
 
 export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
@@ -39,29 +39,45 @@ export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
   return true;
 }
 
-// Cloud-driven auto update: whenever the published release version changes,
-// queue a check_update command for every known device. The device executes it
-// on its next sync through the existing verified-updater path (manifest
-// download, SHA-256/Authenticode checks, staged updater, restart).
+// Cloud-driven auto update: whenever the published release identity changes,
+// queue a check_update command for every known device. The identity includes a
+// hash of the validated manifest, so correcting a broken publication under the
+// same version still reaches devices.
 export async function runUpdateCheck(env: Env): Promise<void> {
   if (!env.UPDATE_BUCKET) return;
-  const version = await readUpdateManifestVersion(env);
+  const identity = await readUpdateManifestIdentity(env);
   const previous = await readState(env, "update");
   let previousVersion = "";
+  let previousManifestHash = "";
   try {
-    previousVersion = String((JSON.parse(previous?.payload ?? "{}") as { version?: unknown }).version ?? "");
+    const value = JSON.parse(previous?.payload ?? "{}") as {
+      version?: unknown;
+      manifestHash?: unknown;
+    };
+    previousVersion = String(value.version ?? "");
+    previousManifestHash = String(value.manifestHash ?? "");
   } catch { /* treat unreadable state as no baseline */ }
-  if (version === previousVersion) return;
+  if (identity.version === previousVersion && identity.manifestHash === previousManifestHash) return;
 
   // The very first run only records a baseline so a fresh deployment does not
-  // command-blast every device for a release they may already run.
+  // command-blast every device for a release they may already run. An older
+  // version-only baseline deliberately triggers one check so it upgrades to
+  // hash-aware tracking and can repair same-version publications thereafter.
   if (previousVersion) {
-    const payload = JSON.stringify({ reason: "release", version });
+    const payload = JSON.stringify({
+      reason: "release",
+      version: identity.version,
+      manifestHash: identity.manifestHash,
+    });
     for (const deviceId of await knownDeviceIds(env)) {
       await enqueueCommandOnce(env, deviceId, "check_update", payload, COMMAND_TTL_SECONDS);
     }
   }
   // Enqueue before recording: if recording fails the next run re-enqueues,
   // and enqueueCommandOnce deduplicates identical pending commands.
-  await updateState(env, { source: "update", payload: { version }, observedAt: Date.now() });
+  await updateState(env, {
+    source: "update",
+    payload: identity,
+    observedAt: Date.now(),
+  });
 }
