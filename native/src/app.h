@@ -12,14 +12,14 @@
 namespace hp {
 class App;
 
-template <typename StatusT>
-inline bool StationheadNeedsForeground(const StatusT& status) noexcept {
-  // Foreground is driven purely by a login prompt (status.loginRequired), which
-  // the page scan sets when it sees a "log in" / "sign in" style term. The
-  // Spotify/API authorization flags are intentionally NOT used: a window can be
-  // playing audio (Spotify authorized) yet still need a Stationhead login, and a
-  // stale auth flag must never pop a playing window in front of the dashboard.
-  return status.loginRequired;
+inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
+  // If Stationhead is not producing audio, keep its surface available for the
+  // likely login/start prompt instead of waiting for brittle page text scans.
+  return !status.audioPlaying;
+}
+
+inline bool StationheadNeedsForeground(const SecondaryStationheadStatus& status) noexcept {
+  return !status.playing;
 }
 
 enum class WorkspaceTab {
@@ -237,9 +237,8 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   }
 
   // The primary Stationhead surface stays behind the dashboard except when a
-  // login prompt is on the page. Playback state is irrelevant: a window can be
-  // playing (Spotify authorized) yet still need a Stationhead login, so it must
-  // come forward for the user to sign in.
+  // it is not producing audio. That covers login prompts and stopped playback
+  // without depending on Stationhead's current button text.
   bool IsInteractive(const StationheadStatus& status) const noexcept {
     return StationheadNeedsForeground(status);
   }

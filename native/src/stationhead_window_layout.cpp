@@ -229,19 +229,25 @@ bool SecondaryStationheadPlayer::EnsureAuthHostWindow() {
 void SecondaryStationheadPlayer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
   startupPreviewActive_ = true;
   bounds_ = bounds;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::ClearStartupPreviewBounds() {
   if (!startupPreviewActive_) return;
   startupPreviewActive_ = false;
-  LayoutWindows(interactive_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_relaxed));
+  LayoutWindows(interactive_ || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_relaxed) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
@@ -265,7 +271,9 @@ void SecondaryStationheadPlayer::LayoutWindows(bool interactive) {
 
 void SecondaryStationheadPlayer::ShowInteractive(bool interactive) {
   startupPreviewActive_ = false;
-  LayoutWindows(interactive || spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire));
+  LayoutWindows(interactive || spotifyAuthorization_ ||
+                loginRequired_.load(std::memory_order_acquire) ||
+                !audioPlaying_.load(std::memory_order_relaxed));
 }
 
 void SecondaryStationheadPlayer::SetStartupBounds() {

@@ -124,7 +124,7 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
               audioStoppedAt_ = 0;
               retryAt_ = 0;
               const bool wasLoginInteractive = loginRequired_.exchange(false, std::memory_order_acq_rel);
-              if (wasLoginInteractive && !spotifyAuthorization_) ShowInteractive(false);
+              if ((wasLoginInteractive || interactive_) && !spotifyAuthorization_) ShowInteractive(false);
               SetStatus(L"audio detected");
             } else if (message == L"secondary-stopped") {
               audioPlaying_ = false;

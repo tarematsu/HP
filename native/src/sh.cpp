@@ -865,7 +865,10 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
 }
 
 bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_ || loginSessionActive_;
+  return selectedTab_ == StationheadTabKind::Auth ||
+         spotifyAuthorization_ ||
+         loginSessionActive_ ||
+         !audioPlaying_.load(std::memory_order_relaxed);
 }
 
 void StationheadPlayer::NotifyMonitorHandle(const std::wstring&) {
