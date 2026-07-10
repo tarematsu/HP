@@ -676,7 +676,8 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
-  if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0 &&
+  if (!noAudioFallbackPaused_ && !usedFallback_ &&
+      !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0 &&
       nowMs - noAudioSinceAt_ >= kPrimaryNoAudioFallbackMs && !config_.fallbackUrl.empty()) {
     NavigateStationheadUrl(nowMs, config_.fallbackUrl,
                            L"primary had no audio for 360s; switching to fallback", true);
@@ -699,7 +700,8 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (reloadInterval > 0 && lastReloadAt_ > 0) consider(lastReloadAt_ + reloadInterval);
-  if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0) {
+  if (!noAudioFallbackPaused_ && !usedFallback_ &&
+      !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ > 0) {
     consider(noAudioSinceAt_ + kPrimaryNoAudioFallbackMs);
   }
   consider(lastMemoryCheckAt_ + memoryCheckInterval);
@@ -752,6 +754,17 @@ void StationheadPlayer::ShowAfterAudioStop() {
 
 void StationheadPlayer::ReleaseCompletedAuth() {
   if (!spotifyAuthorization_ && authController_) CloseAuthWebView();
+}
+
+void StationheadPlayer::SetNoAudioFallbackPaused(bool paused) noexcept {
+  if (noAudioFallbackPaused_ == paused) return;
+  noAudioFallbackPaused_ = paused;
+  if (paused) {
+    noAudioSinceAt_ = 0;
+  } else if (!usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed) && noAudioSinceAt_ == 0) {
+    noAudioSinceAt_ = UnixMillis();
+    nextTickAt_ = 0;
+  }
 }
 
 void StationheadPlayer::ToggleView() {

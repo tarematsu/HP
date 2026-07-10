@@ -226,6 +226,9 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyAudioState();
     ApplyBounds();
   }
+  void SetNoAudioFallbackPaused(bool paused) noexcept {
+    if (player_) player_->SetNoAudioFallbackPaused(paused);
+  }
 
   void SelectTab(StationheadTabKind tab) {
     selectedTab_ = tab;

@@ -67,6 +67,7 @@ class StationheadPlayer {
   void ReleaseCompletedAuth();
   void ToggleView();
   uint32_t ConsumeChangeFlags();
+  void SetNoAudioFallbackPaused(bool paused) noexcept;
   void SetMuted(bool muted) noexcept;
   bool Muted() const noexcept;
   void SetVolume(double volume) noexcept;
@@ -167,6 +168,7 @@ class StationheadPlayer {
   RECT lastControllerLayoutBounds_{};
   StationheadTabKind lastControllerLayoutTab_ = StationheadTabKind::None;
   bool usedFallback_ = false;
+  bool noAudioFallbackPaused_ = false;
   bool usedSakurazaka_ = false;
   int64_t createdForAudioCheckAt_ = 0;
   bool waitingForStartTransition_ = false;

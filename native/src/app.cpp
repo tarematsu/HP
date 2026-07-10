@@ -324,8 +324,11 @@ void App::Tick() {
   if (!renderer_ || !sensors_ || !stationhead_ || !radar_ || !cloud_) return;
   const int64_t now = UnixMillis();
 
-  stationhead_->Tick(now);
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
+  const bool waitingForSecondaryAudio =
+      !rendererStarted_ && secondaryStationhead_ && !secondaryStationhead_->Status().playing;
+  stationhead_->SetNoAudioFallbackPaused(waitingForSecondaryAudio);
+  stationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
   StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
   UpdateRenderStationheadState(nextStationheadState);
