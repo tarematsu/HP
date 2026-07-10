@@ -135,7 +135,10 @@ void App::CreateMainWindow(int showCommand) {
       logger_->Warn(text.str());
     }
   }
-  if (!window_) ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()), "CreateWindowEx");
+  if (!window_) {
+    const DWORD error = GetLastError();
+    throw std::runtime_error("CreateWindowEx failed (" + std::to_string(error) + ")");
+  }
   ShowWindow(window_, showCommand == SW_HIDE ? SW_SHOW : showCommand);
   UpdateWindow(window_);
   ScheduleNextTick(kFastTickMs);
