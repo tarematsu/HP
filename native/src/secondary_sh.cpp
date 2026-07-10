@@ -62,6 +62,25 @@ void SecondaryStationheadPlayer::SetStatus(const std::wstring& detail) {
   status_.detail = detail;
 }
 
+void SecondaryStationheadPlayer::ApplyPlaybackState(bool playing, const std::wstring& source) {
+  const bool changed = audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
+  if (playing) {
+    resourceBlockingArmed_ = true;
+    retryAt_ = 0;
+    const bool wasLoginInteractive = loginRequired_.exchange(false, std::memory_order_acq_rel);
+    if ((wasLoginInteractive || interactive_) && !spotifyAuthorization_) ShowInteractive(false);
+    SetStatus(L"audio detected (" + source + L")");
+  } else {
+    SetStatus(L"audio stopped (" + source + L")");
+    if (!spotifyAuthorization_) ShowInteractive(true);
+  }
+  if (changed) {
+    log_.Info(std::wstring(L"Secondary Stationhead audio ") +
+              (playing ? L"playing" : L"stopped") + L" (" + source + L")");
+    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+  }
+}
+
 void SecondaryStationheadPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
   spotifyAuthorization_ = false;
   authClosePending_ = true;
@@ -249,10 +268,17 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
-  const int64_t reloadInterval = StationheadReloadIntervalMs(std::max(5, config_.secondaryReloadIntervalMinutes));
+  const int64_t reloadInterval = StationheadReloadIntervalMs(
+      std::max(5, config_.secondaryReloadIntervalMinutes));
   if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 &&
       nowMs - lastReloadAt_ >= reloadInterval) {
-    log_.Info(L"Secondary Stationhead maintenance reload");
+    if (!window_ || !IsWindow(window_) ||
+        SendMessageW(window_, WM_HP_SECONDARY_RELOAD_READY, 0, 0) == 0) {
+      SetStatus(L"maintenance reload waiting for primary audio");
+      nextTickAt_ = nowMs + 30'000;
+      return;
+    }
+    log_.Info(L"Secondary Stationhead 50-minute maintenance reload");
     Reconnect();
     nextTickAt_ = nowMs + 1'000;
     return;
@@ -282,17 +308,25 @@ void SecondaryStationheadPlayer::CloseWebView() {
   authCallbackAlive_->store(false, std::memory_order_release);
   CloseAuthWebView();
   if (webview_) {
+    if (audioPlayingChangedToken_.value) {
+      ComPtr<ICoreWebView2_8> audioView;
+      if (SUCCEEDED(webview_.As(&audioView)) && audioView) {
+        audioView->remove_IsDocumentPlayingAudioChanged(audioPlayingChangedToken_);
+      }
+    }
     if (navigationToken_.value) webview_->remove_NavigationCompleted(navigationToken_);
     if (newWindowToken_.value) webview_->remove_NewWindowRequested(newWindowToken_);
     if (messageToken_.value) webview_->remove_WebMessageReceived(messageToken_);
     if (processFailedToken_.value) webview_->remove_ProcessFailed(processFailedToken_);
     if (resourceRequestedToken_.value) webview_->remove_WebResourceRequested(resourceRequestedToken_);
   }
+  audioPlayingChangedToken_ = {};
   navigationToken_ = {};
   newWindowToken_ = {};
   messageToken_ = {};
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
+  nativeAudioTracking_ = false;
   resourceBlockingArmed_ = false;
   if (controller_) controller_->Close();
   webview_.Reset();
