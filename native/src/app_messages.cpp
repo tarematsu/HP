@@ -24,6 +24,10 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
       Tick();
+      if (cloud_ && toastUntil_ == 0 && renderState_.toast.empty()) {
+        renderState_.toast = cloud_->StationheadHealthText();
+        PublishRenderStateNow();
+      }
       return 0;
     case WM_PAINT:
       Draw();
@@ -127,9 +131,8 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       return 0;
     }
     case kStationheadHealthUpdatedMessage:
-      if (cloud_) {
+      if (cloud_ && toastUntil_ == 0) {
         renderState_.toast = cloud_->StationheadHealthText();
-        toastUntil_ = 0;
         PublishRenderStateNow();
       }
       return 0;
