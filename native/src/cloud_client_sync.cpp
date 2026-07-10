@@ -51,21 +51,6 @@ std::wstring StationheadHealthSummary(const JsonObject& root) {
   }
   return result;
 }
-
-std::wstring ReadStationheadHealth(CloudClient& client, const std::wstring& token) {
-  try {
-    const HttpResponse response = client.Request(L"GET", L"/v1/stationhead-health", token);
-    if (response.status != 200) {
-      return L"Stationhead収集: 状態取得失敗 (HTTP " + std::to_wstring(response.status) + L")";
-    }
-    const std::string body(response.body.begin(), response.body.end());
-    return StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(body)));
-  } catch (const std::exception&) {
-    return L"Stationhead収集: 状態取得失敗";
-  } catch (...) {
-    return L"Stationhead収集: 状態取得失敗";
-  }
-}
 }  // namespace
 
 std::wstring CloudClient::StationheadHealthText() const {
@@ -264,16 +249,31 @@ void CloudClient::Synchronize() {
   }
   if (cacheMetadataDirty_) SaveCacheMetadata();
 
-  const std::wstring nextHealthText = ReadStationheadHealth(*this, deviceToken_);
-  bool healthChanged = false;
+  std::wstring nextHealthText;
+  try {
+    const HttpResponse healthResponse = Request(L"GET", L"/v1/stationhead-health", deviceToken_);
+    if (healthResponse.status == 200) {
+      const std::string healthBody(healthResponse.body.begin(), healthResponse.body.end());
+      nextHealthText = StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(healthBody)));
+    } else {
+      nextHealthText = L"Stationhead収集: 状態取得失敗 (HTTP " +
+          std::to_wstring(healthResponse.status) + L")";
+    }
+  } catch (const std::exception& error) {
+    log_.Warn(L"Stationhead health read failed without interrupting dashboard sync: " + Utf8ToWide(error.what()));
+    nextHealthText = L"Stationhead収集: 状態取得失敗";
+  } catch (...) {
+    log_.Warn(L"Stationhead health read failed without interrupting dashboard sync");
+    nextHealthText = L"Stationhead収集: 状態取得失敗";
+  }
+
   {
     std::lock_guard lock(stateMutex_);
-    healthChanged = stationheadHealthText_ != nextHealthText;
-    stationheadHealthText_ = nextHealthText;
+    stationheadHealthText_ = std::move(nextHealthText);
     lastSuccess_ = IsoLocalNow();
     workerVersion_ = root.GetNamedString(L"workerVersion", L"").c_str();
   }
-  if (healthChanged) PostMessageW(window_, kStationheadHealthUpdatedMessage, 0, 0);
+  PostMessageW(window_, kStationheadHealthUpdatedMessage, 0, 0);
   failures_ = 0;
 }
 
