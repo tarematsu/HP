@@ -907,29 +907,20 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
     SetTextColor(dc, kWidgetText);
     HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Medium));
     RECT titleRect{textLeft, rowRect.top + rowHeight * 8 / 100, textRight,
-                   rowRect.top + rowHeight * 46 / 100};
+                   rowRect.top + rowHeight * 44 / 100};
     DrawTextInRect(dc, title.empty() ? L"--" : title, titleRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     SetTextColor(dc, kWidgetMuted);
     SelectObject(dc, TierFont(FontTier::Small));
     RECT artistRect{textLeft, titleRect.bottom, textRight,
-                    withProgress ? rowRect.bottom - rowHeight * 16 / 100 : rowRect.bottom - pad};
-    RECT artistTextRect = artistRect;
-    if (withProgress) {
-      // Reserve the right side of the line for the progress time.
-      artistTextRect.right = std::max<LONG>(artistTextRect.left, artistRect.right - SpanX(content, 340));
-      DrawTextInRect(dc,
-                     TrackTimeText(playback.progressMs) + L" / " +
-                         TrackTimeText(playback.track.durationMs),
-                     artistRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-    }
-    DrawTextInRect(dc, artist.empty() ? detail : artist, artistTextRect,
+                    withProgress ? rowRect.top + rowHeight * 64 / 100 : rowRect.bottom - pad};
+    DrawTextInRect(dc, artist.empty() ? detail : artist, artistRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
     if (withProgress) {
-      RECT barRect{textLeft, rowRect.bottom - rowHeight * 12 / 100,
-                   textRight, rowRect.bottom - rowHeight * 6 / 100};
+      RECT barRect{textLeft, rowRect.top + rowHeight * 66 / 100,
+                   textRight, rowRect.top + rowHeight * 72 / 100};
       DrawWidgetPill(dc, barRect, kWidgetTrack);
       const double ratio = std::clamp(
           static_cast<double>(playback.progressMs) / static_cast<double>(playback.track.durationMs),
@@ -940,6 +931,13 @@ void Renderer::DrawStationheadSection(HDC dc, const RECT& content) {
       if (fillRect.right > fillRect.left) {
         DrawWidgetPill(dc, fillRect, kWidgetGreen);
       }
+      // Elapsed time under the bar's left end, track length under its right.
+      RECT timeRect{textLeft, barRect.bottom + rowHeight * 3 / 100,
+                    textRight, rowRect.bottom - rowHeight * 3 / 100};
+      DrawTextInRect(dc, TrackTimeText(playback.progressMs), timeRect,
+                     DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+      DrawTextInRect(dc, TrackTimeText(playback.track.durationMs), timeRect,
+                     DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
     }
 
     DrawWidgetCard(dc, rects.button, muted ? kWidgetDangerSurface : kWidgetSuccessSurface);
