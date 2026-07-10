@@ -301,9 +301,6 @@ inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
 //   * After playback is armed, additional stylesheets are blocked. The page's
 //     already-loaded CSS remains in memory; this only prevents late UI/theme
 //     fetches from waking the renderer/GPU for a hidden audio window.
-//   * After playback is armed, late script/fetch/xhr traffic is reduced to
-//     known core playback endpoints. This keeps the already-running page alive
-//     while cutting background social/feature polling.
 // Shared by the primary and secondary players so both apply the same rules.
 // The token must be removed via remove_WebResourceRequested(token) on close,
 // and armed reset to false at that point.
@@ -369,11 +366,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                   block = true;
                 } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE ||
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET) {
-                  block = !StationheadCorePlaybackRequest(lower);
-                } else if (armedNow &&
-                           (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT ||
-                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST ||
-                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH)) {
                   block = !StationheadCorePlaybackRequest(lower);
                 }
               }
