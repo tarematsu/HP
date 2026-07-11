@@ -150,15 +150,15 @@ async function loadBackfillState(
   initialCursor: number,
   nowMs: number,
 ): Promise<BackfillStateRow> {
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO octopus_backfill_state(
-       account_number,cursor_before,consecutive_empty_days,completed,updated_at
-     ) VALUES(?1,?2,0,0,?3)`,
-  ).bind(accountNumber, initialCursor, nowMs).run();
   const state = await env.DB.prepare(
-    `SELECT cursor_before,consecutive_empty_days,completed
-       FROM octopus_backfill_state WHERE account_number=?1`,
-  ).bind(accountNumber).first<BackfillStateRow>();
+    `INSERT INTO octopus_backfill_state(
+       account_number,cursor_before,consecutive_empty_days,completed,updated_at
+     ) VALUES(?1,?2,0,0,?3)
+     ON CONFLICT(account_number) DO UPDATE SET
+       cursor_before=MIN(octopus_backfill_state.cursor_before,excluded.cursor_before),
+       updated_at=MAX(octopus_backfill_state.updated_at,excluded.updated_at)
+     RETURNING cursor_before,consecutive_empty_days,completed`,
+  ).bind(accountNumber, initialCursor, nowMs).first<BackfillStateRow>();
   if (!state) throw new Error("Octopus backfill state could not be initialized");
   return state;
 }
