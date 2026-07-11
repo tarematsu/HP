@@ -11,6 +11,7 @@ const OCTOPUS_TOKEN_TTL_MS = 55 * 60_000;
 const HALF_HOUR_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
 const PROFILE_DAYS = 7;
+const PROFILE_SLOTS = 48;
 
 type OctopusToken = {
   value: string;
@@ -235,46 +236,55 @@ export function buildOctopusDailyProfile(
   readings: OctopusReading[],
   ranges: OctopusProfileRanges,
 ): OctopusProfilePoint[] {
-  const daySlots = new Map<string, number>();
+  const unique = new Map<string, { supplyPoint: string; observedAt: number; value: number }>();
   for (const reading of readings) {
     const observedAt = Date.parse(reading.startAt);
     const value = Number(reading.value);
-    if (!Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
+    const supplyPoint = String(reading.supplyPoint ?? "").trim();
+    if (!supplyPoint || !Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
     if (observedAt < ranges.previousStart.getTime() || observedAt >= ranges.currentEnd.getTime()) continue;
-    const local = new Date(observedAt + JST_MS);
-    const slot = local.getUTCHours() * 2 + Math.floor(local.getUTCMinutes() / 30);
-    if (slot < 0 || slot >= 48) continue;
-    const key = `${jstDayKeyMs(observedAt)}:${slot}`;
-    daySlots.set(key, (daySlots.get(key) ?? 0) + value);
+    if (observedAt % HALF_HOUR_MS !== 0) continue;
+    unique.set(`${supplyPoint}:${observedAt}`, { supplyPoint, observedAt, value });
   }
 
-  const averageFor = (start: Date, slot: number): { value: number | null; days: number } => {
-    let sum = 0;
-    let days = 0;
-    for (let offset = 0; offset < PROFILE_DAYS; offset += 1) {
-      const day = start.getTime() + offset * DAY_MS;
-      const value = daySlots.get(`${jstDayKeyMs(day)}:${slot}`);
-      if (value === undefined) continue;
-      sum += value;
-      days += 1;
+  const daySlots = new Map<string, Map<number, number>>();
+  for (const reading of unique.values()) {
+    const local = new Date(reading.observedAt + JST_MS);
+    const slot = local.getUTCHours() * 2 + Math.floor(local.getUTCMinutes() / 30);
+    if (slot < 0 || slot >= PROFILE_SLOTS) continue;
+    const dayKey = jstDayKeyMs(reading.observedAt);
+    const slots = daySlots.get(dayKey) ?? new Map<number, number>();
+    slots.set(slot, (slots.get(slot) ?? 0) + reading.value);
+    daySlots.set(dayKey, slots);
+  }
+
+  const buildPeriod = (start: Date): { averages: Array<number | null>; completeDays: number } => {
+    const days = Array.from({ length: PROFILE_DAYS }, (_, offset) =>
+      jstDayKeyMs(start.getTime() + offset * DAY_MS));
+    const completeDays = days.filter(day => daySlots.get(day)?.size === PROFILE_SLOTS).length;
+    if (completeDays !== PROFILE_DAYS) {
+      return { averages: Array<number | null>(PROFILE_SLOTS).fill(null), completeDays };
     }
-    return {
-      value: days > 0 ? Number((sum / days).toFixed(4)) : null,
-      days,
-    };
+
+    const averages = Array.from({ length: PROFILE_SLOTS }, (_, slot) => {
+      let sum = 0;
+      for (const day of days) sum += daySlots.get(day)?.get(slot) ?? 0;
+      return Number((sum / PROFILE_DAYS).toFixed(4));
+    });
+    return { averages, completeDays };
   };
 
-  return Array.from({ length: 48 }, (_, slot) => {
-    const current = averageFor(ranges.currentStart, slot);
-    const previous = averageFor(ranges.previousStart, slot);
+  const current = buildPeriod(ranges.currentStart);
+  const previous = buildPeriod(ranges.previousStart);
+  return Array.from({ length: PROFILE_SLOTS }, (_, slot) => {
     const hour = Math.floor(slot / 2);
     const minute = slot % 2 === 0 ? "00" : "30";
     return {
       time: `${String(hour).padStart(2, "0")}:${minute}`,
-      currentAverage: current.value,
-      previousAverage: previous.value,
-      currentDays: current.days,
-      previousDays: previous.days,
+      currentAverage: current.averages[slot] ?? null,
+      previousAverage: previous.averages[slot] ?? null,
+      currentDays: current.completeDays,
+      previousDays: previous.completeDays,
     };
   });
 }
@@ -293,9 +303,9 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const profileRanges = completeDayProfileRanges(now.getTime());
   const priorityRange: OctopusRange = {
     from: profileRanges.previousStart,
-    to: profileRanges.previousEnd,
+    to: profileRanges.currentEnd,
   };
-  const comparisonKey = `daily-profile:${jstDayKeyMs(priorityRange.from.getTime())}:${jstDayKeyMs(priorityRange.to.getTime() - DAY_MS)}`;
+  const comparisonKey = `complete-profile-v2:${jstDayKeyMs(priorityRange.from.getTime())}:${jstDayKeyMs(priorityRange.to.getTime() - DAY_MS)}`;
 
   let token = await authenticateOctopus(env);
   let synchronized;
@@ -324,7 +334,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
 
   const stored = await readStoredOctopusRanges(env, accountNumber, [
     { from: previousStart, to: now },
-    { from: profileRanges.previousStart, to: profileRanges.currentEnd },
+    priorityRange,
   ]);
   const readings = mergeReadings([...stored, ...synchronized.liveReadings]);
   const monthly = { previous: 0, current: 0 };
@@ -341,7 +351,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const elapsed = Math.max(1, now.getTime() - currentStart.getTime());
   const duration = Math.max(1, nextStart.getTime() - currentStart.getTime());
   const projected = monthly.current * duration / elapsed;
-  const expectedSlots = Math.round((currentStart.getTime() - previousStart.getTime()) / DAY_MS) * 48;
+  const expectedSlots = Math.round((currentStart.getTime() - previousStart.getTime()) / DAY_MS) * PROFILE_SLOTS;
   return {
     source: "octopus",
     payload: {
