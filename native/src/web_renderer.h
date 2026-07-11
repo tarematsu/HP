@@ -78,17 +78,9 @@ inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
 
 struct NativeDashboardLayout {
-  RECT top{};
-  RECT bottom{};
+  RECT side{};
   RECT radar{};
-};
-
-
-
-struct NativePanelSections {
-  RECT left{};
-  RECT center{};
-  RECT right{};
+  RECT main{};
 };
 
 inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bottom) {
@@ -103,46 +95,31 @@ inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bott
 
 
 
-inline RECT RelativeInsetRect(const RECT& rect, int horizontalPermille, int verticalPermille) {
-  const int width = std::max(1L, rect.right - rect.left);
-  const int height = std::max(1L, rect.bottom - rect.top);
-  return NormalizeInsetRect(rect, width * horizontalPermille / 1000, height * verticalPermille / 1000,
-                            width * horizontalPermille / 1000, height * verticalPermille / 1000);
-}
-
 inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
-  const int marginX = clientWidth * 2 / 100;
-  const int marginY = clientHeight * 3 / 100;
+  const int marginX = clientWidth * 14 / 1000;
+  const int marginY = clientHeight * 20 / 1000;
+  const int gapX = std::max(6, clientWidth * 11 / 1000);
+  const int gapY = std::max(6, clientHeight * 18 / 1000);
 
-
-  const int panelHeight = clientHeight * 256 / 1000;
+  const RECT inner{bounds.left + marginX, bounds.top + marginY,
+                   bounds.right - marginX, bounds.bottom - marginY};
+  const int innerWidth = std::max(1L, inner.right - inner.left);
+  const int innerHeight = std::max(1L, inner.bottom - inner.top);
+  const int sideWidth = innerWidth * 285 / 1000;
+  const int radarHeight = innerHeight * 600 / 1000;
 
   NativeDashboardLayout layout;
-  layout.radar = bounds;
-  layout.top = RECT{bounds.left + marginX, bounds.top + marginY,
-                    bounds.right - marginX, bounds.top + marginY + panelHeight};
-  layout.bottom = RECT{bounds.left + marginX, bounds.bottom - marginY - panelHeight,
-                       bounds.right - marginX, bounds.bottom - marginY};
+  layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
+  layout.radar = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
+                      inner.top + radarHeight};
+  layout.main = RECT{inner.left + sideWidth + gapX, inner.top + radarHeight + gapY,
+                     inner.right, inner.bottom};
+  if (layout.radar.right <= layout.radar.left) layout.radar.right = layout.radar.left + 1;
+  if (layout.main.right <= layout.main.left) layout.main.right = layout.main.left + 1;
+  if (layout.main.bottom <= layout.main.top) layout.main.bottom = layout.main.top + 1;
   return layout;
-}
-
-
-
-inline NativePanelSections SplitPanelSections(const RECT& panel) {
-  const int width = std::max(1L, panel.right - panel.left);
-  const int gutter = width * 15 / 1000;
-  const int sideWidth = width * 33 / 100;
-  NativePanelSections sections;
-  sections.left = RECT{panel.left, panel.top, panel.left + sideWidth, panel.bottom};
-  sections.right = RECT{panel.right - sideWidth, panel.top, panel.right, panel.bottom};
-  sections.center = RECT{sections.left.right + gutter, panel.top,
-                         sections.right.left - gutter, panel.bottom};
-  if (sections.center.right <= sections.center.left) {
-    sections.center.right = sections.center.left + 1;
-  }
-  return sections;
 }
 
 class Renderer {
@@ -189,9 +166,7 @@ class Renderer {
 
 
   struct NativePanelPaintScope {
-    NativePanelPaintScope(Renderer& renderer, HWND hwnd, const RECT& absoluteRect,
-                         BYTE tintAlpha = 168, int cornerRadius = 22,
-                         COLORREF tintColor = RGB(10, 14, 22));
+    NativePanelPaintScope(Renderer& renderer, HWND hwnd);
     ~NativePanelPaintScope();
     NativePanelPaintScope(const NativePanelPaintScope&) = delete;
     NativePanelPaintScope& operator=(const NativePanelPaintScope&) = delete;
@@ -231,17 +206,18 @@ class Renderer {
 
   enum class FontTier { Small, Medium, Large };
   HFONT TierFont(FontTier tier) const;
-  enum class PanelSection { Left, Center, Right };
+  enum class PanelSection { Clock, Air, Weather, Controls, Music, Energy, News };
   void InvalidatePanelSection(HWND window, PanelSection section);
-  void PaintNativeTop(HWND hwnd);
-  void PaintNativeBottom(HWND hwnd);
+  void PaintNativeSide(HWND hwnd);
+  void PaintNativeMain(HWND hwnd);
   void PaintNativeRadar(HWND hwnd);
-  void DrawAirSection(HDC dc, const RECT& section);
-  void DrawNewsSection(HDC dc, const RECT& section);
-  void DrawEnergySection(HDC dc, const RECT& section);
-  void DrawStationheadSection(HDC dc, const RECT& section);
-  void DrawClockControlsSection(HDC dc, const RECT& section);
-  void DrawWeatherSection(HDC dc, const RECT& section);
+  void DrawClockSection(HDC dc, const RECT& card);
+  void DrawAirSection(HDC dc, const RECT& card);
+  void DrawWeatherSection(HDC dc, const RECT& card);
+  void DrawControlsSection(HDC dc, const RECT& card);
+  void DrawMusicSection(HDC dc, const RECT& card);
+  void DrawEnergySection(HDC dc, const RECT& card);
+  void DrawNewsSection(HDC dc, const RECT& card);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
   void QueueAction(UiAction action);
@@ -272,8 +248,8 @@ class Renderer {
   static const std::array<NativePanelSlot, 3>& NativePanelSlots();
 
   HWND window_{};
-  HWND nativeTopWindow_{};
-  HWND nativeBottomWindow_{};
+  HWND nativeSideWindow_{};
+  HWND nativeMainWindow_{};
   HWND nativeRadarWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
