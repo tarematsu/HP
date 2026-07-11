@@ -1,10 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { applyD1Migrations, env } from "cloudflare:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchOctopus } from "../src/octopus_source";
 import { fetchStationhead } from "../src/spotify_source";
 import type { Env } from "../src/sources";
+import { resetD1TestDatabase } from "./d1_test_utils";
+
+type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
 
 const baseEnv = {
-  DB: {} as D1Database,
+  DB: env.DB,
   CITY_NAME: "Kawagoe",
   WEATHERNEWS_URL: "",
   STATIONHEAD_MONITOR_URL: "",
@@ -16,13 +20,18 @@ function jsonResponse(value: unknown): Response {
   });
 }
 
+beforeEach(async () => {
+  const testEnv = env as TestEnv;
+  await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("cloud sources", () => {
-  it("uses the Kraken token for billing ranges and the aligned prior-year week", async () => {
+  it("stores stable Octopus readings while keeping the latest two days live only", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T18:00:00Z"));
     const requests: Request[] = [];
@@ -41,6 +50,7 @@ describe("cloud sources", () => {
       }
       expect(request.headers.get("Authorization")).toBe("octopus-token");
       readingRanges.push(body.variables ?? {});
+      const from = Date.parse(body.variables?.fromDatetime ?? "");
       return jsonResponse({
         data: {
           account: {
@@ -48,7 +58,9 @@ describe("cloud sources", () => {
               electricitySupplyPoints: [{
                 spin: "spin-1",
                 status: "Active",
-                halfHourlyReadings: [{ startAt: new Date().toISOString(), value: "0.5" }],
+                halfHourlyReadings: Number.isFinite(from)
+                  ? [{ startAt: new Date(from + 30 * 60_000).toISOString(), value: "0.5" }]
+                  : [],
               }],
             }],
           },
@@ -64,13 +76,24 @@ describe("cloud sources", () => {
     } as Env & { OCTOPUS_ACCOUNT: string });
 
     expect(result.source).toBe("octopus");
-    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(3);
+    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token").length)
+      .toBeGreaterThanOrEqual(47);
     expect(readingRanges).toEqual(expect.arrayContaining([
       expect.objectContaining({
         fromDatetime: "2025-07-06T15:00:00.000Z",
-        toDatetime: "2025-07-13T15:00:00.000Z",
+        toDatetime: "2025-07-07T15:00:00.000Z",
       }),
     ]));
+
+    const payload = result.payload as {
+      archive: { stableThrough: number; excludedRecentDays: number };
+    };
+    expect(payload.archive.excludedRecentDays).toBe(2);
+    const stored = await env.DB.prepare(
+      "SELECT COUNT(*) AS count,MAX(observed_at) AS latest FROM octopus_readings WHERE account_number=?1",
+    ).bind("A-123").first<{ count: number; latest: number }>();
+    expect(Number(stored?.count)).toBeGreaterThan(0);
+    expect(Number(stored?.latest)).toBeLessThan(payload.archive.stableThrough);
   });
 
   it("preserves Stationhead monitor thumbnails as Spotify artwork", async () => {
