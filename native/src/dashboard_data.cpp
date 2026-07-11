@@ -12,11 +12,6 @@ double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
   return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
 
-int IntegerOrZero(const JsonObject& object, const wchar_t* name) {
-  const double value = NumberOrNaN(object, name);
-  return std::isfinite(value) ? static_cast<int>(std::lround(value)) : 0;
-}
-
 PanelDataStatus ReadStatus(const JsonObject& object) {
   PanelDataStatus status;
   const std::wstring value = json::Text(object, L"__status", L"waiting");
@@ -34,6 +29,15 @@ void ApplyCloudError(PanelDataStatus& status, const std::wstring& error) {
   if (error.empty()) return;
   status.error = error;
   status.state = status.state == PanelDataState::Ok ? PanelDataState::Stale : PanelDataState::Error;
+}
+
+std::wstring DateRangeText(const JsonObject& comparison, const wchar_t* startName,
+                           const wchar_t* endName) {
+  const std::wstring start = json::Text(comparison, startName);
+  const std::wstring end = json::Text(comparison, endName);
+  if (start.empty()) return end;
+  if (end.empty() || end == start) return start;
+  return start + L"〜" + end;
 }
 
 std::wstring Upper(std::wstring value) {
@@ -116,26 +120,25 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
     next.projectedUsage = NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
     const JsonObject comparison = json::Object(octopus, L"comparison");
-    next.currentEnergyIsoYear = IntegerOrZero(comparison, L"currentIsoYear");
-    next.currentEnergyIsoWeek = IntegerOrZero(comparison, L"currentIsoWeek");
-    next.previousEnergyIsoYear = IntegerOrZero(comparison, L"previousIsoYear");
-    next.previousEnergyIsoWeek = IntegerOrZero(comparison, L"previousIsoWeek");
-    const JsonArray history = json::Array(octopus, L"history");
-    const uint32_t historyStart = history.Size() > 7 ? history.Size() - 7 : 0;
-    for (uint32_t index = historyStart; index < history.Size(); ++index) {
+    next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週平均");
+    next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週平均");
+    next.currentEnergyDateRange = DateRangeText(
+        comparison, L"currentStartDate", L"currentEndDate");
+    next.previousEnergyDateRange = DateRangeText(
+        comparison, L"previousStartDate", L"previousEndDate");
+    const JsonArray profile = json::Array(octopus, L"profile");
+    for (uint32_t index = 0; index < profile.Size() && next.octopusProfile.size() < 48; ++index) {
       try {
-        if (history.GetAt(index).ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = history.GetObjectAt(index);
-        double previousWeekValue = NumberOrNaN(item, L"previousWeekValue");
-        if (!std::isfinite(previousWeekValue)) {
-          previousWeekValue = NumberOrNaN(item, L"previousYearValue");
-        }
-        next.octopusHistory.push_back({
-            json::Text(item, L"weekday"),
-            json::Text(item, L"date"),
-            NumberOrNaN(item, L"value"),
-            json::Text(item, L"previousWeekDate", json::Text(item, L"previousYearDate")),
-            previousWeekValue,
+        if (profile.GetAt(index).ValueType() != JsonValueType::Object) continue;
+        const JsonObject item = profile.GetObjectAt(index);
+        const std::wstring time = json::Text(item, L"time");
+        if (time.empty()) continue;
+        next.octopusProfile.push_back({
+            time,
+            NumberOrNaN(item, L"currentAverage"),
+            NumberOrNaN(item, L"previousAverage"),
+            static_cast<int>(std::lround(json::Number(item, L"currentDays", 0))),
+            static_cast<int>(std::lround(json::Number(item, L"previousDays", 0))),
         });
       } catch (...) {
       }
