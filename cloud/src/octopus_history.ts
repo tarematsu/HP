@@ -74,6 +74,30 @@ function normalizeReadings(readings: OctopusReading[], stableCutoff: number): Ar
   return [...unique.values()];
 }
 
+function hasCompleteHalfHourCoverage(range: OctopusRange, readings: OctopusReading[]): boolean {
+  const fromMs = range.from.getTime();
+  const toMs = range.to.getTime();
+  const duration = toMs - fromMs;
+  if (duration <= 0 || duration % HALF_HOUR_MS !== 0) return false;
+
+  const timestamps = new Set<number>();
+  for (const reading of readings) {
+    const observedAt = Date.parse(reading.startAt);
+    if (!Number.isFinite(observedAt) || observedAt < fromMs || observedAt >= toMs) continue;
+    if ((observedAt - fromMs) % HALF_HOUR_MS !== 0) continue;
+    const value = Number(reading.value);
+    if (!Number.isFinite(value) || value < 0) continue;
+    timestamps.add(observedAt);
+  }
+
+  const expectedSlots = duration / HALF_HOUR_MS;
+  if (timestamps.size !== expectedSlots) return false;
+  for (let observedAt = fromMs; observedAt < toMs; observedAt += HALF_HOUR_MS) {
+    if (!timestamps.has(observedAt)) return false;
+  }
+  return true;
+}
+
 async function enforceHistoryFloor(env: Env, accountNumber: string, nowMs: number): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
@@ -144,27 +168,28 @@ async function ensurePriorityRange(
   if (existing) return;
 
   const fromMs = Math.max(OCTOPUS_HISTORY_FLOOR_MS, range.from.getTime());
-  const toMs = Math.min(stableCutoff, range.to.getTime());
+  const toMs = Math.min(nowMs, range.to.getTime());
+  const fetched: OctopusReading[] = [];
   if (fromMs < toMs) {
-    await fetchAndPersistRanges(
-      env,
-      accountNumber,
-      splitIntoSafeRanges(fromMs, toMs),
-      fetchRange,
-      stableCutoff,
-      nowMs,
-    );
+    for (const requestRange of splitIntoSafeRanges(fromMs, toMs)) {
+      const readings = await fetchRange(requestRange);
+      fetched.push(...readings);
+      await persistStableReadings(env, accountNumber, readings, stableCutoff, nowMs);
+    }
   }
-  if (toMs >= range.to.getTime()) {
-    await env.DB.prepare(
-      `INSERT INTO octopus_sync_ranges(account_number,range_key,from_at,to_at,completed_at)
-       VALUES(?1,?2,?3,?4,?5)
-       ON CONFLICT(account_number,range_key) DO UPDATE SET
-         from_at=excluded.from_at,
-         to_at=excluded.to_at,
-         completed_at=excluded.completed_at`,
-    ).bind(accountNumber, rangeKey, range.from.getTime(), range.to.getTime(), nowMs).run();
-  }
+
+  if (fromMs !== range.from.getTime() || toMs !== range.to.getTime()) return;
+  const stored = await readStoredOctopusRanges(env, accountNumber, [range]);
+  if (!hasCompleteHalfHourCoverage(range, [...stored, ...fetched])) return;
+
+  await env.DB.prepare(
+    `INSERT INTO octopus_sync_ranges(account_number,range_key,from_at,to_at,completed_at)
+     VALUES(?1,?2,?3,?4,?5)
+     ON CONFLICT(account_number,range_key) DO UPDATE SET
+       from_at=excluded.from_at,
+       to_at=excluded.to_at,
+       completed_at=excluded.completed_at`,
+  ).bind(accountNumber, rangeKey, range.from.getTime(), range.to.getTime(), nowMs).run();
 }
 
 async function loadBackfillState(
