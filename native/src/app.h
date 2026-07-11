@@ -33,8 +33,6 @@ enum class WorkspaceTab {
 
 
 
-
-
 template <typename Derived, typename PlayerT>
 class StationheadHandleBase {
  public:
@@ -77,6 +75,28 @@ class StationheadHandleBase {
   bool StartupPreviewActive() const noexcept { return startupPreviewActive_; }
 
  protected:
+  static constexpr int64_t kTrackTransitionGraceMs = 12'000;
+
+  bool SuppressTrackTransitionGap(bool playing, bool forceInteractive) const noexcept {
+    if (playing) {
+      playbackObserved_ = true;
+      playbackMissingSinceAt_ = 0;
+      return false;
+    }
+    if (forceInteractive || !playbackObserved_) {
+      playbackMissingSinceAt_ = 0;
+      return false;
+    }
+    const int64_t now = UnixMillis();
+    if (playbackMissingSinceAt_ == 0) playbackMissingSinceAt_ = now;
+    return now - playbackMissingSinceAt_ < kTrackTransitionGraceMs;
+  }
+
+  void ResetTrackTransitionGrace() noexcept {
+    playbackObserved_ = false;
+    playbackMissingSinceAt_ = 0;
+  }
+
   void ApplyAudioState() const noexcept {
     if (!player_) return;
     player_->SetMuted(audioMuted_);
@@ -100,12 +120,17 @@ class StationheadHandleBase {
     const bool interactive = static_cast<const Derived*>(this)->IsInteractive(status);
     const bool preview = startupPreviewActive_;
     const RECT activeBounds = preview ? startupPreviewBounds_ : workspaceBounds_;
-    const int width = std::max(1L, activeBounds.right - activeBounds.left);
-    const int height = std::max(1L, activeBounds.bottom - activeBounds.top);
-    const HWND placement = (interactive || preview) ? HWND_TOP : HWND_BOTTOM;
+    const bool surfaceVisible = interactive || preview || status.visible;
+    const int width = surfaceVisible
+        ? std::max(1L, activeBounds.right - activeBounds.left)
+        : 1;
+    const int height = surfaceVisible
+        ? std::max(1L, activeBounds.bottom - activeBounds.top)
+        : 1;
+    const HWND placement = surfaceVisible ? HWND_TOP : HWND_BOTTOM;
     SetWindowPos(host, placement, activeBounds.left, activeBounds.top,
                  width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    if (!preview) BringMainWindowToFront(host);
+    if (!preview && interactive) BringMainWindowToFront(host);
   }
 
   void ApplyInteractiveBounds() {
@@ -132,6 +157,8 @@ class StationheadHandleBase {
   bool startupPreviewActive_ = false;
   bool audioMuted_ = false;
   double audioVolume_ = 1.0;
+  mutable bool playbackObserved_ = false;
+  mutable int64_t playbackMissingSinceAt_ = 0;
 };
 
 
@@ -152,6 +179,7 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   void reset() noexcept {
     player_.reset();
     selectedTab_ = StationheadTabKind::None;
+    ResetTrackTransitionGrace();
   }
 
   void Start() {
@@ -218,6 +246,15 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   bool HasAuthTab() const { return player_ && player_->HasAuthTab(); }
   StationheadStatus Status() const {
     StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+    const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
+                                  status.processFailed;
+    if (player_ && SuppressTrackTransitionGap(status.audioPlaying, forceInteractive)) {
+      player_->KeepPlaybackBehindDashboard();
+      status.audioPlaying = true;
+      status.playing = true;
+      status.visible = false;
+      status.detail = L"track transition; waiting for next audio";
+    }
     status.audioMuted = audioMuted_;
     return status;
   }
@@ -228,7 +265,19 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
   void SelectTab(StationheadTabKind tab) {
     selectedTab_ = tab;
     if (!player_) return;
-    if (tab != StationheadTabKind::None) ApplyInteractiveBounds();
+    if (tab == StationheadTabKind::None) {
+      const StationheadStatus status = player_->Status();
+      const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
+                                    status.processFailed;
+      if (SuppressTrackTransitionGap(status.audioPlaying, forceInteractive)) {
+        player_->KeepPlaybackBehindDashboard();
+        ApplyAudioState();
+        RaiseActiveHost();
+        return;
+      }
+    } else {
+      ApplyInteractiveBounds();
+    }
     player_->SelectTab(tab);
     ApplyAudioState();
     ApplyBounds();
@@ -238,7 +287,11 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
 
 
   bool IsInteractive(const StationheadStatus& status) const noexcept {
-    return StationheadNeedsForeground(status);
+    const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
+                                  status.processFailed;
+    if (forceInteractive) return true;
+    return !status.audioPlaying &&
+           !SuppressTrackTransitionGap(status.audioPlaying, false);
   }
 
  private:
@@ -264,6 +317,7 @@ class AppSecondaryStationheadHandle
 
   void reset() noexcept {
     player_.reset();
+    ResetTrackTransitionGrace();
   }
 
   void Start() {
@@ -289,6 +343,14 @@ class AppSecondaryStationheadHandle
   SecondaryStationheadStatus Status() const {
     ApplyAudioState();
     SecondaryStationheadStatus status = player_ ? player_->Status() : SecondaryStationheadStatus{};
+    const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
+                                  status.processFailed;
+    if (player_ && SuppressTrackTransitionGap(status.playing, forceInteractive)) {
+      player_->KeepPlaybackBehindDashboard();
+      status.playing = true;
+      status.visible = false;
+      status.detail = L"track transition; waiting for next audio";
+    }
     status.audioMuted = audioMuted_;
     return status;
   }
@@ -297,7 +359,11 @@ class AppSecondaryStationheadHandle
   }
 
   bool IsInteractive(const SecondaryStationheadStatus& status) const noexcept {
-    return StationheadNeedsForeground(status);
+    const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
+                                  status.processFailed;
+    if (forceInteractive) return true;
+    return !status.playing &&
+           !SuppressTrackTransitionGap(status.playing, false);
   }
 };
 
