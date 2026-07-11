@@ -1,0 +1,59 @@
+name: Patch weekly energy rendering
+
+on:
+  push:
+    branches:
+      - agent/octopus-hourly-weekly-comparison
+    paths:
+      - .github/workflows/patch-energy-weekly-purple.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Render previous week in translucent purple
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("native/src/renderer_panels.cpp")
+          text = path.read_text(encoding="utf-8")
+          replacements = [
+              (
+                  "constexpr COLORREF kWidgetCyan = RGB(50, 173, 230);\n",
+                  "constexpr COLORREF kWidgetCyan = RGB(50, 173, 230);\nconstexpr COLORREF kWidgetPurple = RGB(175, 82, 222);\n",
+              ),
+              (
+                  "if (std::isfinite(item.previousYearValue)) maximum = std::max(maximum, item.previousYearValue);",
+                  "if (std::isfinite(item.previousWeekValue)) maximum = std::max(maximum, item.previousWeekValue);",
+              ),
+              ("std::wstring previousLegend = L\"前年同週\";", "std::wstring previousLegend = L\"先週\";"),
+              (
+                  "DrawWidgetCard(dc, previousSwatch, kWidgetBlueMuted, 3, 135);",
+                  "DrawWidgetCard(dc, previousSwatch, kWidgetPurple, 3, 120);",
+              ),
+              (
+                  "drawBar(item.previousYearValue, previousX, kWidgetBlueMuted, 135);",
+                  "drawBar(item.previousWeekValue, previousX, kWidgetPurple, 120);",
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one occurrence, found {count}: {old}")
+              text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8")
+      - name: Commit rendering update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/src/renderer_panels.cpp
+          git commit -m "Render previous week in translucent purple"
+          git push origin HEAD:${{ github.ref_name }}
