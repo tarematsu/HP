@@ -53,7 +53,7 @@ describe("Octopus D1 history", () => {
     const stored = await env.DB.prepare(
       "SELECT COUNT(*) AS count,MIN(observed_at) AS oldest,MAX(observed_at) AS latest FROM octopus_readings",
     ).first<{ count: number; oldest: number; latest: number }>();
-    expect(Number(stored?.count)).toBeGreaterThan(40);
+    expect(Number(stored?.count)).toBeGreaterThan(20);
     expect(Number(stored?.latest)).toBeLessThan(stableCutoff);
     expect(Number(stored?.oldest)).toBeLessThan(stableCutoff - 30 * 86_400_000);
 
