@@ -253,6 +253,12 @@ void SecondaryStationheadPlayer::ShowInteractive(bool interactive) {
                 !audioPlaying_.load(std::memory_order_relaxed));
 }
 
+void SecondaryStationheadPlayer::KeepPlaybackBehindDashboard() {
+  if (spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire)) return;
+  startupPreviewActive_ = false;
+  LayoutWindows(false);
+}
+
 void SecondaryStationheadPlayer::SetStartupBounds() {
   LayoutWindows(false);
 }
