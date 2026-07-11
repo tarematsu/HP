@@ -1,4 +1,4 @@
-import { JST_MS, type Env } from "./sources";
+import type { Env } from "./sources";
 
 export interface OctopusReading {
   startAt: string;
@@ -32,6 +32,7 @@ interface StoredReadingRow {
   energy_kwh: number;
 }
 
+const JST_MS = 9 * 60 * 60 * 1000;
 const DAY_MS = 86_400_000;
 const HISTORY_FLOOR_MS = Date.UTC(2000, 0, 1) - JST_MS;
 const RECENT_REPAIR_DAYS = 7;
