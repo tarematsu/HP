@@ -496,7 +496,7 @@ void Renderer::NativePlaybackLoop() {
         update.hasPayload = update.error.empty() && !update.payload.empty();
         update.revision = ++nativePlaybackRevision_;
       }
-      InvalidatePanelSection(nativeBottomWindow_, PanelSection::Left);
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
     }
 
     std::unique_lock waitLock(nativePlaybackWakeMutex_);
