@@ -344,7 +344,7 @@ MainSections SplitMainSections(const RECT& client) {
   const int gapX = std::max(8, width * 16 / 1000);
   const int gapY = std::max(6, height * 45 / 1000);
   const int newsHeight = height * 270 / 1000;
-  const int musicWidth = width * 535 / 1000;
+  const int musicWidth = width * 480 / 1000;
   MainSections sections;
   sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
   const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
@@ -1361,8 +1361,8 @@ void Renderer::DrawNewsSection(HDC dc, const RECT& card) {
   if (!description.empty()) {
     SetTextColor(dc, kWidgetMuted);
     SelectObject(dc, TierFont(FontTier::Small));
-    DrawTextInRect(dc, description, descRow,
-                   DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    RECT descPad{descRow.left, descRow.top + SpanY(content, 20), descRow.right, descRow.bottom};
+    DrawTextInRect(dc, description, descPad, DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS);
   }
   SelectObject(dc, previousFont);
 }
