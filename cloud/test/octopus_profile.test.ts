@@ -23,6 +23,15 @@ function fullDayReadings(startMs: number, days: number, value: number): OctopusR
   return readings;
 }
 
+function profileRanges(): OctopusProfileRanges {
+  return {
+    previousStart: new Date("2026-06-25T15:00:00.000Z"),
+    previousEnd: new Date("2026-07-02T15:00:00.000Z"),
+    currentStart: new Date("2026-07-02T15:00:00.000Z"),
+    currentEnd: new Date("2026-07-09T15:00:00.000Z"),
+  };
+}
+
 describe("Octopus complete-day profile", () => {
   it("excludes today and yesterday and compares the two preceding seven-day blocks", () => {
     const now = Date.parse("2026-07-10T18:17:00Z");
@@ -57,13 +66,24 @@ describe("Octopus complete-day profile", () => {
     });
   });
 
-  it("averages each half-hour from available complete days without mixing time slots", () => {
-    const ranges: OctopusProfileRanges = {
-      previousStart: new Date("2026-06-25T15:00:00.000Z"),
-      previousEnd: new Date("2026-07-02T15:00:00.000Z"),
-      currentStart: new Date("2026-07-02T15:00:00.000Z"),
-      currentEnd: new Date("2026-07-09T15:00:00.000Z"),
-    };
+  it("hides a series when the seven complete days are not all present", () => {
+    const ranges = profileRanges();
+    const readings = [
+      ...fullDayReadings(ranges.previousStart.getTime(), 7, 0.2),
+      ...fullDayReadings(ranges.currentStart.getTime(), 6, 0.4),
+      ...fullDayReadings(ranges.currentStart.getTime() + 6 * DAY_MS, 1, 0.4)
+        .filter((_, index) => index !== 17),
+    ];
+
+    const profile = buildOctopusDailyProfile(readings, ranges);
+    expect(profile.every(point => point.currentAverage === null)).toBe(true);
+    expect(profile.every(point => point.currentDays === 6)).toBe(true);
+    expect(profile.every(point => point.previousAverage === 0.2)).toBe(true);
+    expect(profile.every(point => point.previousDays === 7)).toBe(true);
+  });
+
+  it("does not turn one available slot per day into a seven-day average", () => {
+    const ranges = profileRanges();
     const readings: OctopusReading[] = [];
     for (let day = 0; day < 7; day += 1) {
       readings.push({
@@ -72,17 +92,9 @@ describe("Octopus complete-day profile", () => {
         value: day + 1,
       });
     }
-    readings.push({
-      supplyPoint: "spin-1",
-      startAt: new Date(ranges.currentStart.getTime() + HALF_HOUR_MS).toISOString(),
-      value: 10,
-    });
 
     const profile = buildOctopusDailyProfile(readings, ranges);
-    expect(profile[0]?.currentAverage).toBe(4);
-    expect(profile[0]?.currentDays).toBe(7);
-    expect(profile[1]?.currentAverage).toBe(10);
-    expect(profile[1]?.currentDays).toBe(1);
-    expect(profile[2]?.currentAverage).toBeNull();
+    expect(profile.every(point => point.currentAverage === null)).toBe(true);
+    expect(profile.every(point => point.currentDays === 0)).toBe(true);
   });
 });
