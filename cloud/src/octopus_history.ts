@@ -38,9 +38,8 @@ const HALF_HOUR_MS = 30 * 60 * 1000;
 const DAY_MS = 86_400_000;
 const SAFE_RANGE_MS = 2 * DAY_MS;
 export const OCTOPUS_HISTORY_FLOOR_MS = Date.UTC(2025, 10, 1) - JST_MS;
-const RECENT_REPAIR_DAYS = 7;
+const RECENT_REPAIR_DAYS = 2;
 const BACKFILL_DAYS_PER_RUN = 30;
-const EMPTY_DAYS_TO_COMPLETE = 62;
 const D1_BATCH_SIZE = 90;
 
 export function octopusStableCutoffJst(nowMs: number): number {
@@ -86,7 +85,7 @@ async function enforceHistoryFloor(env: Env, accountNumber: string, nowMs: numbe
     env.DB.prepare(
       `UPDATE octopus_backfill_state SET
          cursor_before=MAX(cursor_before,?2),
-         completed=CASE WHEN cursor_before<=?2 THEN 1 ELSE completed END,
+         completed=CASE WHEN MAX(cursor_before,?2)<=?2 THEN 1 ELSE 0 END,
          updated_at=?3
        WHERE account_number=?1`,
     ).bind(accountNumber, OCTOPUS_HISTORY_FLOOR_MS, nowMs),
@@ -156,14 +155,16 @@ async function ensurePriorityRange(
       nowMs,
     );
   }
-  await env.DB.prepare(
-    `INSERT INTO octopus_sync_ranges(account_number,range_key,from_at,to_at,completed_at)
-     VALUES(?1,?2,?3,?4,?5)
-     ON CONFLICT(account_number,range_key) DO UPDATE SET
-       from_at=excluded.from_at,
-       to_at=excluded.to_at,
-       completed_at=excluded.completed_at`,
-  ).bind(accountNumber, rangeKey, range.from.getTime(), range.to.getTime(), nowMs).run();
+  if (toMs >= range.to.getTime()) {
+    await env.DB.prepare(
+      `INSERT INTO octopus_sync_ranges(account_number,range_key,from_at,to_at,completed_at)
+       VALUES(?1,?2,?3,?4,?5)
+       ON CONFLICT(account_number,range_key) DO UPDATE SET
+         from_at=excluded.from_at,
+         to_at=excluded.to_at,
+         completed_at=excluded.completed_at`,
+    ).bind(accountNumber, rangeKey, range.from.getTime(), range.to.getTime(), nowMs).run();
+  }
 }
 
 async function loadBackfillState(
@@ -178,9 +179,13 @@ async function loadBackfillState(
      ) VALUES(?1,?2,0,0,?3)
      ON CONFLICT(account_number) DO UPDATE SET
        cursor_before=MIN(octopus_backfill_state.cursor_before,excluded.cursor_before),
+       completed=CASE
+         WHEN MIN(octopus_backfill_state.cursor_before,excluded.cursor_before)<=?4 THEN 1
+         ELSE 0
+       END,
        updated_at=MAX(octopus_backfill_state.updated_at,excluded.updated_at)
      RETURNING cursor_before,consecutive_empty_days,completed`,
-  ).bind(accountNumber, initialCursor, nowMs).first<BackfillStateRow>();
+  ).bind(accountNumber, initialCursor, nowMs, OCTOPUS_HISTORY_FLOOR_MS).first<BackfillStateRow>();
   if (!state) throw new Error("Octopus backfill state could not be initialized");
   return state;
 }
@@ -194,7 +199,7 @@ async function runBackfill(
 ): Promise<BackfillStateRow> {
   const recentStart = Math.max(OCTOPUS_HISTORY_FLOOR_MS, stableCutoff - RECENT_REPAIR_DAYS * DAY_MS);
   let state = await loadBackfillState(env, accountNumber, recentStart, nowMs);
-  if (state.completed) return state;
+  if (state.completed && state.cursor_before <= OCTOPUS_HISTORY_FLOOR_MS) return state;
 
   let cursor = Math.min(state.cursor_before, recentStart);
   let emptyDays = state.consecutive_empty_days;
@@ -213,7 +218,7 @@ async function runBackfill(
     emptyDays = stored > 0 ? 0 : emptyDays + spanDays;
     coveredDays += spanDays;
     cursor = fromMs;
-    completed = cursor <= OCTOPUS_HISTORY_FLOOR_MS || emptyDays >= EMPTY_DAYS_TO_COMPLETE;
+    completed = cursor <= OCTOPUS_HISTORY_FLOOR_MS;
     await env.DB.prepare(
       `UPDATE octopus_backfill_state SET
          cursor_before=?2,
