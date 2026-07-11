@@ -11,7 +11,7 @@ beforeEach(async () => {
 });
 
 describe("telemetry retention", () => {
-  it("retains environment samples and buckets beyond previous cleanup limits", async () => {
+  it("retains environment and Octopus history beyond cleanup limits", async () => {
     const now = Date.now();
     const day = 86_400_000;
     const insertSample = (sequence: number, observedAt: number, applied: number) => env.DB.prepare(
@@ -34,6 +34,10 @@ describe("telemetry retention", () => {
       insertSample(4, now - day, 1),
       insertBucket(now - 8 * day),
       insertBucket(now - 6 * day),
+      env.DB.prepare(
+        `INSERT INTO octopus_readings(account_number,supply_point,observed_at,energy_kwh,updated_at)
+         VALUES('A-123','spin-1',?1,0.5,?2)`,
+      ).bind(now - 3650 * day, now),
     ]);
 
     await cleanupExpiredData(env, now);
@@ -55,5 +59,10 @@ describe("telemetry retention", () => {
       { bucket_at: now - 8 * day },
       { bucket_at: now - 6 * day },
     ]);
+
+    const octopus = await env.DB.prepare(
+      "SELECT observed_at,energy_kwh FROM octopus_readings WHERE account_number='A-123'",
+    ).first<{ observed_at: number; energy_kwh: number }>();
+    expect(octopus).toMatchObject({ observed_at: now - 3650 * day, energy_kwh: 0.5 });
   });
 });
