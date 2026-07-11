@@ -11,6 +11,8 @@ import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
 
+const HALF_HOUR_MS = 30 * 60_000;
+
 beforeEach(async () => {
   const testEnv = env as TestEnv;
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
@@ -19,13 +21,25 @@ beforeEach(async () => {
 function readingInside(range: OctopusRange): OctopusReading {
   return {
     supplyPoint: "spin-1",
-    startAt: new Date(range.from.getTime() + 30 * 60_000).toISOString(),
+    startAt: new Date(range.from.getTime() + HALF_HOUR_MS).toISOString(),
     value: 0.25,
   };
 }
 
+function completeReadings(range: OctopusRange): OctopusReading[] {
+  const readings: OctopusReading[] = [];
+  for (let observedAt = range.from.getTime(); observedAt < range.to.getTime(); observedAt += HALF_HOUR_MS) {
+    readings.push({
+      supplyPoint: "spin-1",
+      startAt: new Date(observedAt).toISOString(),
+      value: 0.25,
+    });
+  }
+  return readings;
+}
+
 describe("Octopus D1 history", () => {
-  it("moves the backfill cursor backward and never stores the latest 48 hours", async () => {
+  it("moves the backfill cursor backward, retries an incomplete profile, and never stores the latest 48 hours", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const stableCutoff = octopusStableCutoffJst(now);
     expect(new Date(stableCutoff).toISOString()).toBe("2026-07-08T18:00:00.000Z");
@@ -43,7 +57,7 @@ describe("Octopus D1 history", () => {
       env,
       "A-123",
       now,
-      "daily-profile:2026-06-26:2026-07-02",
+      "complete-profile-v2:2026-06-26:2026-07-02",
       comparison,
       fetchRange,
     );
@@ -66,17 +80,41 @@ describe("Octopus D1 history", () => {
       env,
       "A-123",
       now,
-      "daily-profile:2026-06-26:2026-07-02",
+      "complete-profile-v2:2026-06-26:2026-07-02",
       comparison,
       fetchRange,
     );
     expect(second.cursorBefore).toBe(firstCursor - 30 * 86_400_000);
-    expect(requested.some(range => range.from.getTime() === comparison.from.getTime())).toBe(false);
+    expect(requested.some(range => range.from.getTime() === comparison.from.getTime())).toBe(true);
 
     const marked = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM octopus_sync_ranges WHERE account_number=?1 AND range_key=?2",
-    ).bind("A-123", "daily-profile:2026-06-26:2026-07-02").first<{ count: number }>();
+    ).bind("A-123", "complete-profile-v2:2026-06-26:2026-07-02").first<{ count: number }>();
+    expect(marked?.count).toBe(0);
+  });
+
+  it("marks a complete half-hour profile and skips it on the next run", async () => {
+    const now = Date.parse("2026-07-10T18:00:00Z");
+    const comparison = {
+      from: new Date("2026-06-25T15:00:00.000Z"),
+      to: new Date("2026-07-09T15:00:00.000Z"),
+    };
+    const requested: OctopusRange[] = [];
+    const fetchRange = async (range: OctopusRange): Promise<OctopusReading[]> => {
+      requested.push(range);
+      return completeReadings(range);
+    };
+    const key = "complete-profile-v2:2026-06-26:2026-07-09";
+
+    await synchronizeOctopusHistory(env, "A-complete", now, key, comparison, fetchRange);
+    const marked = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM octopus_sync_ranges WHERE account_number=?1 AND range_key=?2",
+    ).bind("A-complete", key).first<{ count: number }>();
     expect(marked?.count).toBe(1);
+
+    requested.length = 0;
+    await synchronizeOctopusHistory(env, "A-complete", now, key, comparison, fetchRange);
+    expect(requested.some(range => range.from.getTime() === comparison.from.getTime())).toBe(false);
   });
 
   it("rounds the rolling cutoff down to a half-hour reading boundary", () => {
