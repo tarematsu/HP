@@ -75,9 +75,7 @@ function stripHtml(value: string): string {
 function parseWeatherNews(html: string, now = new Date()): { forecastDate: string; hourly: Record<string, unknown> } {
   const bodyStart = html.indexOf('id="flick_list"');
   if (bodyStart < 0) throw new Error("WeatherNews hourly table was not found");
-  let bodyEnd = html.indexOf('class="wTable day2"', bodyStart);
-  if (bodyEnd < 0) bodyEnd = html.length;
-  const body = html.slice(bodyStart, bodyEnd);
+  const body = html.slice(bodyStart);
   const jst = new Date(now.getTime() + JST_MS);
   const targetDt = new Date(jst.getTime() + (jst.getUTCHours() >= 9 ? 86_400_000 : 0));
   const targetDay = targetDt.getUTCDate();
@@ -101,7 +99,7 @@ function parseWeatherNews(html: string, now = new Date()): { forecastDate: strin
         row.match(/class="wTable__item (?:p|pop)">\s*(\d{1,3})/i)?.[1]
         ?? stripHtml(row).match(/(?:降水確率\s*)?(\d{1,3})\s*%/)?.[1],
       );
-      const wetIcon = /^(200|201|202|203|204|205|210|211|212|213|214|215|216|217|218|219|220|221|222|223|224|225)/.test(icon);
+      const wetIcon = /^3/.test(icon);
       const pop = explicitPop ?? (rainMm !== null && rainMm > 0 ? 100 : wetIcon ? 60 : 10);
       hourly[String(hour)] = { pop: Math.max(0, Math.min(100, pop)), rainMm, temp, humidity: null, icon };
     }
