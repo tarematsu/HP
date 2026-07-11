@@ -62,6 +62,7 @@ class StationheadPlayer {
   bool HasAuthTab() const;
   StationheadStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
+  void KeepPlaybackBehindDashboard();
 
  private:
   void ApplyMute() const noexcept;
@@ -81,7 +82,6 @@ class StationheadPlayer {
   void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                               const std::wstring& reason, bool fallbackActive);
   bool NeedsInteractiveWindow() const;
-  void KeepPlaybackBehindDashboard();
   void SetStartupBounds();
   void SetVisible(bool visible);
   void ScheduleRecreate(const std::wstring& reason);
