@@ -1,4 +1,10 @@
 import { fetchJson } from "./http";
+import {
+  readStoredOctopusRanges,
+  synchronizeOctopusHistory,
+  type OctopusRange,
+  type OctopusReading,
+} from "./octopus_history";
 import { JST_MS, jstDayKey as jstDayKeyMs, type Env, type SourceResult } from "./sources";
 import { alignedWeekComparison } from "./week_comparison";
 
@@ -146,7 +152,6 @@ function jstBoundary(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month, day) - JST_MS);
 }
 
-type OctopusReading = { startAt: string; value: string | number; supplyPoint: string };
 type OctopusReadingPayload = {
   account?: {
     properties?: Array<{
@@ -161,63 +166,47 @@ type OctopusReadingPayload = {
 
 async function fetchOctopusRangeReadings(
   accountNumber: string,
-  range: { from: Date; to: Date },
+  range: OctopusRange,
   token: string,
 ): Promise<OctopusReading[]> {
-  const queries = [
-    `query readings($accountNumber: String!, $fromDatetime: DateTime, $toDatetime: DateTime) { account(accountNumber: $accountNumber) { properties(activeFrom: $fromDatetime) { electricitySupplyPoints { spin status halfHourlyReadings(fromDatetime: $fromDatetime, toDatetime: $toDatetime) { startAt value } } } } }`,
-    `query readings($accountNumber: String!, $fromDatetime: DateTime, $toDatetime: DateTime) { account(accountNumber: $accountNumber) { properties { electricitySupplyPoints { spin status halfHourlyReadings(fromDatetime: $fromDatetime, toDatetime: $toDatetime) { startAt value } } } } }`,
-  ];
-  let lastErrors: OctopusGraphqlIssue[] = [];
-  for (const query of queries) {
-    const response = await octopusGraphql<OctopusReadingPayload>(query, {
-      accountNumber,
-      fromDatetime: range.from.toISOString(),
-      toDatetime: range.to.toISOString(),
-    }, token);
-    const properties = response.data?.account?.properties ?? [];
-    const rangeReadings = properties.flatMap((property, propertyIndex) =>
-      (property.electricitySupplyPoints ?? []).flatMap((point, pointIndex) => {
-        const supplyPoint = point.spin || `${propertyIndex}:${pointIndex}`;
-        return (point.halfHourlyReadings ?? []).map(reading => ({ ...reading, supplyPoint }));
-      }));
-    if (rangeReadings.length > 0) return rangeReadings;
-    lastErrors = response.errors ?? lastErrors;
-    if (!response.errors?.length && response.data) break;
-  }
-  if (lastErrors.length) throw octopusApiError("Octopus readings failed", lastErrors);
-  throw octopusApiError("Octopus readings failed");
+  const query = `query readings($accountNumber: String!, $fromDatetime: DateTime, $toDatetime: DateTime) { account(accountNumber: $accountNumber) { properties { electricitySupplyPoints { spin status halfHourlyReadings(fromDatetime: $fromDatetime, toDatetime: $toDatetime) { startAt value } } } } }`;
+  const response = await octopusGraphql<OctopusReadingPayload>(query, {
+    accountNumber,
+    fromDatetime: range.from.toISOString(),
+    toDatetime: range.to.toISOString(),
+  }, token);
+  if (response.errors?.length) throw octopusApiError("Octopus readings failed", response.errors);
+
+  const fromMs = range.from.getTime();
+  const toMs = range.to.getTime();
+  return (response.data?.account?.properties ?? []).flatMap((property, propertyIndex) =>
+    (property.electricitySupplyPoints ?? []).flatMap((point, pointIndex) => {
+      const supplyPoint = point.spin || `${propertyIndex}:${pointIndex}`;
+      return (point.halfHourlyReadings ?? [])
+        .map(reading => ({ ...reading, supplyPoint }))
+        .filter(reading => {
+          const observedAt = Date.parse(reading.startAt);
+          return Number.isFinite(observedAt) && observedAt >= fromMs && observedAt < toMs;
+        });
+    }));
 }
 
-async function fetchOctopusReadings(
-  accountNumber: string,
-  ranges: Array<{ from: Date; to: Date }>,
-  token: string,
-): Promise<OctopusReading[]> {
-  const results = await Promise.all(ranges.map(range => fetchOctopusRangeReadings(accountNumber, range, token)));
-  return results.flat();
-}
-
-async function fetchRequiredAndComparisonReadings(
-  accountNumber: string,
-  requiredRanges: Array<{ from: Date; to: Date }>,
-  comparisonRange: { from: Date; to: Date },
-  token: string,
-): Promise<OctopusReading[]> {
-  const required = await fetchOctopusReadings(accountNumber, requiredRanges, token);
-  try {
-    return [...required, ...await fetchOctopusRangeReadings(accountNumber, comparisonRange, token)];
-  } catch (error) {
-    if (isAuthorizationError(error)) throw error;
-    console.warn("Octopus prior-year comparison is unavailable", error instanceof Error ? error.message : String(error));
-    return required;
+function mergeReadings(readings: OctopusReading[]): OctopusReading[] {
+  const unique = new Map<string, OctopusReading>();
+  for (const reading of readings) {
+    const observedAt = Date.parse(reading.startAt);
+    const value = Number(reading.value);
+    if (!Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
+    unique.set(`${reading.supplyPoint}:${observedAt}`, reading);
   }
+  return [...unique.values()];
 }
 
 export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const legacyEnv = env as Env & { OCTOPUS_ACCOUNT?: string };
   const accountNumber = (env.OCTOPUS_ACCOUNT_NUMBER || legacyEnv.OCTOPUS_ACCOUNT || "").trim();
   if (!accountNumber) throw new Error("OCTOPUS_ACCOUNT or OCTOPUS_ACCOUNT_NUMBER is not configured");
+
   const now = new Date();
   const jst = new Date(now.getTime() + JST_MS);
   const billingMonth = jst.getUTCDate() >= 2 ? jst.getUTCMonth() : jst.getUTCMonth() - 1;
@@ -225,32 +214,47 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const previousStart = jstBoundary(jst.getUTCFullYear(), billingMonth - 1, 2);
   const nextStart = jstBoundary(jst.getUTCFullYear(), billingMonth + 1, 2);
   const comparison = alignedWeekComparison(now.getTime());
-  const requiredRanges = [
-    { from: previousStart, to: currentStart },
-    { from: currentStart, to: now },
-  ];
-  const comparisonRange = {
+  const comparisonRange: OctopusRange = {
     from: comparison.previousYearWeekStart,
     to: comparison.previousYearWeekEnd,
   };
+  const comparisonKey = `iso-week:${comparison.previousYear.year}-W${comparison.previousYear.week}`;
+
   let token = await authenticateOctopus(env);
-  let readings: OctopusReading[];
+  let synchronized;
   try {
-    readings = await fetchRequiredAndComparisonReadings(accountNumber, requiredRanges, comparisonRange, token);
+    synchronized = await synchronizeOctopusHistory(
+      env,
+      accountNumber,
+      now.getTime(),
+      comparisonKey,
+      comparisonRange,
+      range => fetchOctopusRangeReadings(accountNumber, range, token),
+    );
   } catch (error) {
     if (!isAuthorizationError(error)) throw error;
     octopusToken = null;
     token = await authenticateOctopus(env, true);
-    readings = await fetchRequiredAndComparisonReadings(accountNumber, requiredRanges, comparisonRange, token);
+    synchronized = await synchronizeOctopusHistory(
+      env,
+      accountNumber,
+      now.getTime(),
+      comparisonKey,
+      comparisonRange,
+      range => fetchOctopusRangeReadings(accountNumber, range, token),
+    );
   }
-  const seen = new Set<string>();
+
+  const stored = await readStoredOctopusRanges(env, accountNumber, [
+    { from: previousStart, to: now },
+    { from: comparison.currentWeekStart, to: comparison.currentWeekEnd },
+    comparisonRange,
+  ]);
+  const readings = mergeReadings([...stored, ...synchronized.liveReadings]);
   const daily: Record<string, number> = {};
   const monthly = { previous: 0, current: 0 };
   let previousSlots = 0;
   for (const reading of readings) {
-    const readingKey = `${reading.supplyPoint}:${reading.startAt}`;
-    if (seen.has(readingKey)) continue;
-    seen.add(readingKey);
     const date = new Date(reading.startAt);
     const value = Number(reading.value ?? 0);
     if (!Number.isFinite(date.getTime()) || !Number.isFinite(value)) continue;
@@ -259,6 +263,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     if (date >= previousStart && date < currentStart) { monthly.previous += value; previousSlots += 1; }
     if (date >= currentStart && date < now) monthly.current += value;
   }
+
   const history = Array.from({ length: 7 }, (_, index) => {
     const currentDate = new Date(comparison.currentWeekStart.getTime() + index * DAY_MS);
     const previousYearDate = new Date(comparison.previousYearWeekStart.getTime() + index * DAY_MS);
@@ -278,6 +283,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
       previousYearValue,
     };
   });
+
   const elapsed = Math.max(1, now.getTime() - currentStart.getTime());
   const duration = Math.max(1, nextStart.getTime() - currentStart.getTime());
   const projected = monthly.current * duration / elapsed;
@@ -292,8 +298,22 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
         previousIsoYear: comparison.previousYear.year,
         previousIsoWeek: comparison.previousYear.week,
       },
-      lastMonth: { usage: Number(monthly.previous.toFixed(3)), complete: previousSlots / Math.max(1, expectedSlots) >= 0.95, coveredSlots: previousSlots, expectedSlots },
-      thisMonth: { usageToDate: Number(monthly.current.toFixed(3)), projectedUsage: Number(projected.toFixed(3)) },
+      archive: {
+        stableThrough: synchronized.stableCutoff,
+        cursorBefore: synchronized.cursorBefore,
+        completed: synchronized.completed,
+        excludedRecentDays: 2,
+      },
+      lastMonth: {
+        usage: Number(monthly.previous.toFixed(3)),
+        complete: previousSlots / Math.max(1, expectedSlots) >= 0.95,
+        coveredSlots: previousSlots,
+        expectedSlots,
+      },
+      thisMonth: {
+        usageToDate: Number(monthly.current.toFixed(3)),
+        projectedUsage: Number(projected.toFixed(3)),
+      },
     },
     observedAt: now.getTime(),
   };
