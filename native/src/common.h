@@ -218,9 +218,25 @@ inline bool AtomicWriteBytes(const fs::path& path, const std::vector<uint8_t>& b
 inline bool AtomicWriteText(const fs::path& path, const std::string& text) {
   return AtomicWriteBytes(path, text.data(), static_cast<DWORD>(text.size()));
 }
+
+inline constexpr BYTE ColorRed(COLORREF color) noexcept {
+  return static_cast<BYTE>(color & 0xffu);
+}
+inline constexpr BYTE ColorGreen(COLORREF color) noexcept {
+  return static_cast<BYTE>((color >> 8) & 0xffu);
+}
+inline constexpr BYTE ColorBlue(COLORREF color) noexcept {
+  return static_cast<BYTE>((color >> 16) & 0xffu);
+}
 }
 
 #ifdef _MSC_VER
+#undef GetRValue
+#undef GetGValue
+#undef GetBValue
+#define GetRValue(rgb) (::hp::ColorRed(static_cast<COLORREF>(rgb)))
+#define GetGValue(rgb) (::hp::ColorGreen(static_cast<COLORREF>(rgb)))
+#define GetBValue(rgb) (::hp::ColorBlue(static_cast<COLORREF>(rgb)))
 #define _wgetenv(name) (::hp::SafeWideGetEnv(name))
 #define CopyFileW(existingFileName, newFileName, failIfExists) \
   (::hp::CopyFileWithActiveUpdaterAwareness((existingFileName), (newFileName), (failIfExists)))

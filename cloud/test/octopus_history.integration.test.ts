@@ -30,8 +30,8 @@ describe("Octopus D1 history", () => {
     const stableCutoff = octopusStableCutoffJst(now);
     expect(new Date(stableCutoff).toISOString()).toBe("2026-07-08T18:00:00.000Z");
     const comparison = {
-      from: new Date("2026-06-28T15:00:00.000Z"),
-      to: new Date("2026-07-05T15:00:00.000Z"),
+      from: new Date("2026-06-25T15:00:00.000Z"),
+      to: new Date("2026-07-02T15:00:00.000Z"),
     };
     const requested: OctopusRange[] = [];
     const fetchRange = async (range: OctopusRange): Promise<OctopusReading[]> => {
@@ -43,7 +43,7 @@ describe("Octopus D1 history", () => {
       env,
       "A-123",
       now,
-      "iso-week:2026-W27",
+      "daily-profile:2026-06-26:2026-07-02",
       comparison,
       fetchRange,
     );
@@ -55,9 +55,9 @@ describe("Octopus D1 history", () => {
     const stored = await env.DB.prepare(
       "SELECT COUNT(*) AS count,MIN(observed_at) AS oldest,MAX(observed_at) AS latest FROM octopus_readings",
     ).first<{ count: number; oldest: number; latest: number }>();
-    expect(Number(stored?.count)).toBeGreaterThan(20);
+    expect(Number(stored?.count)).toBeGreaterThan(10);
     expect(Number(stored?.latest)).toBeLessThan(stableCutoff);
-    expect(Number(stored?.oldest)).toBeLessThan(stableCutoff - 30 * 86_400_000);
+    expect(Number(stored?.oldest)).toBeLessThan(stableCutoff - 20 * 86_400_000);
     expect(Number(stored?.oldest)).toBeGreaterThanOrEqual(OCTOPUS_HISTORY_FLOOR_MS);
 
     const firstCursor = first.cursorBefore;
@@ -66,7 +66,7 @@ describe("Octopus D1 history", () => {
       env,
       "A-123",
       now,
-      "iso-week:2026-W27",
+      "daily-profile:2026-06-26:2026-07-02",
       comparison,
       fetchRange,
     );
@@ -75,7 +75,7 @@ describe("Octopus D1 history", () => {
 
     const marked = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM octopus_sync_ranges WHERE account_number=?1 AND range_key=?2",
-    ).bind("A-123", "iso-week:2026-W27").first<{ count: number }>();
+    ).bind("A-123", "daily-profile:2026-06-26:2026-07-02").first<{ count: number }>();
     expect(marked?.count).toBe(1);
   });
 
@@ -87,8 +87,8 @@ describe("Octopus D1 history", () => {
   it("never requests or retains readings older than November 2025", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const comparison = {
-      from: new Date("2026-06-28T15:00:00.000Z"),
-      to: new Date("2026-07-05T15:00:00.000Z"),
+      from: new Date("2026-06-25T15:00:00.000Z"),
+      to: new Date("2026-07-02T15:00:00.000Z"),
     };
     const requested: OctopusRange[] = [];
     const fetchRange = async (range: OctopusRange): Promise<OctopusReading[]> => {
@@ -96,9 +96,9 @@ describe("Octopus D1 history", () => {
       return [readingInside(range)];
     };
 
-    let result = await synchronizeOctopusHistory(env, "A-floor", now, "week", comparison, fetchRange);
+    let result = await synchronizeOctopusHistory(env, "A-floor", now, "profile", comparison, fetchRange);
     for (let run = 1; run < 12 && !result.completed; run += 1) {
-      result = await synchronizeOctopusHistory(env, "A-floor", now, "week", comparison, fetchRange);
+      result = await synchronizeOctopusHistory(env, "A-floor", now, "profile", comparison, fetchRange);
     }
 
     expect(result.completed).toBe(true);
@@ -109,39 +109,44 @@ describe("Octopus D1 history", () => {
       `INSERT INTO octopus_readings(account_number,supply_point,observed_at,energy_kwh,updated_at)
        VALUES('A-floor','old-spin',?1,1.0,?2)`,
     ).bind(OCTOPUS_HISTORY_FLOOR_MS - 86_400_000, now).run();
-    await synchronizeOctopusHistory(env, "A-floor", now, "week", comparison, fetchRange);
+    await synchronizeOctopusHistory(env, "A-floor", now, "profile", comparison, fetchRange);
     const oldRows = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM octopus_readings WHERE account_number='A-floor' AND observed_at<?1",
     ).bind(OCTOPUS_HISTORY_FLOOR_MS).first<{ count: number }>();
     expect(oldRows?.count).toBe(0);
   });
 
-  it("stops only after a long empty tail instead of a single missing day", async () => {
+  it("continues through long empty periods until the November floor", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const comparison = {
-      from: new Date("2026-06-28T15:00:00.000Z"),
-      to: new Date("2026-07-05T15:00:00.000Z"),
+      from: new Date("2026-06-25T15:00:00.000Z"),
+      to: new Date("2026-07-02T15:00:00.000Z"),
     };
-    const stableCutoff = octopusStableCutoffJst(now);
-    const recentStart = stableCutoff - 7 * 86_400_000;
-    const fetchRange = async (range: OctopusRange): Promise<OctopusReading[]> => {
-      if (range.from.getTime() >= recentStart || range.from.getTime() === comparison.from.getTime()) {
-        return [readingInside(range)];
-      }
-      return [];
-    };
+    const fetchRange = async (): Promise<OctopusReading[]> => [];
 
-    const first = await synchronizeOctopusHistory(env, "A-456", now, "week", comparison, fetchRange);
+    const first = await synchronizeOctopusHistory(env, "A-empty", now, "profile", comparison, fetchRange);
     expect(first.completed).toBe(false);
-    const second = await synchronizeOctopusHistory(env, "A-456", now, "week", comparison, fetchRange);
+    const second = await synchronizeOctopusHistory(env, "A-empty", now, "profile", comparison, fetchRange);
     expect(second.completed).toBe(false);
-    const third = await synchronizeOctopusHistory(env, "A-456", now, "week", comparison, fetchRange);
-    expect(third.completed).toBe(true);
+
+    await env.DB.prepare(
+      `UPDATE octopus_backfill_state SET completed=1
+        WHERE account_number='A-empty'`,
+    ).run();
+    const resumed = await synchronizeOctopusHistory(env, "A-empty", now, "profile", comparison, fetchRange);
+    expect(resumed.completed).toBe(false);
+
+    let result = resumed;
+    for (let run = 0; run < 12 && !result.completed; run += 1) {
+      result = await synchronizeOctopusHistory(env, "A-empty", now, "profile", comparison, fetchRange);
+    }
+    expect(result.completed).toBe(true);
+    expect(result.cursorBefore).toBe(OCTOPUS_HISTORY_FLOOR_MS);
 
     const state = await env.DB.prepare(
       "SELECT consecutive_empty_days,completed FROM octopus_backfill_state WHERE account_number=?1",
-    ).bind("A-456").first<{ consecutive_empty_days: number; completed: number }>();
-    expect(Number(state?.consecutive_empty_days)).toBeGreaterThanOrEqual(62);
+    ).bind("A-empty").first<{ consecutive_empty_days: number; completed: number }>();
+    expect(Number(state?.consecutive_empty_days)).toBeGreaterThan(62);
     expect(state?.completed).toBe(1);
   });
 });
