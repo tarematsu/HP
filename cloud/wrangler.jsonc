@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "homepanel-cloud-worker",
+  "name": "homepanel-cloud",
   "main": "src/worker_entry.ts",
   "compatibility_date": "2026-06-20",
   "workers_dev": true,
