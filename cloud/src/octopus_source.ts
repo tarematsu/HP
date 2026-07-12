@@ -12,6 +12,7 @@ const HALF_HOUR_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
 const PROFILE_DAYS = 7;
 const PROFILE_SLOTS = 48;
+const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 
 type OctopusToken = {
   value: string;
@@ -37,11 +38,11 @@ type OctopusGraphqlResponse<T> = {
 };
 
 export interface OctopusProfilePoint {
-  time: string;
-  currentAverage: number | null;
-  previousAverage: number | null;
-  currentDays: number;
-  previousDays: number;
+  day: string;
+  currentTotal: number | null;
+  previousTotal: number | null;
+  currentComplete: boolean;
+  previousComplete: boolean;
 }
 
 export interface OctopusProfileRanges {
@@ -258,33 +259,26 @@ export function buildOctopusDailyProfile(
     daySlots.set(dayKey, slots);
   }
 
-  const buildPeriod = (start: Date): { averages: Array<number | null>; completeDays: number } => {
-    const days = Array.from({ length: PROFILE_DAYS }, (_, offset) =>
-      jstDayKeyMs(start.getTime() + offset * DAY_MS));
-    const completeDays = days.filter(day => daySlots.get(day)?.size === PROFILE_SLOTS).length;
-    if (completeDays !== PROFILE_DAYS) {
-      return { averages: Array<number | null>(PROFILE_SLOTS).fill(null), completeDays };
-    }
-
-    const averages = Array.from({ length: PROFILE_SLOTS }, (_, slot) => {
-      let sum = 0;
-      for (const day of days) sum += daySlots.get(day)?.get(slot) ?? 0;
-      return Number((sum / PROFILE_DAYS).toFixed(4));
-    });
-    return { averages, completeDays };
+  const dayTotal = (dayKey: string): { total: number | null; complete: boolean } => {
+    const slots = daySlots.get(dayKey);
+    if (!slots || slots.size !== PROFILE_SLOTS) return { total: null, complete: false };
+    let sum = 0;
+    for (const value of slots.values()) sum += value;
+    return { total: Number(sum.toFixed(4)), complete: true };
   };
 
-  const current = buildPeriod(ranges.currentStart);
-  const previous = buildPeriod(ranges.previousStart);
-  return Array.from({ length: PROFILE_SLOTS }, (_, slot) => {
-    const hour = Math.floor(slot / 2);
-    const minute = slot % 2 === 0 ? "00" : "30";
+  return Array.from({ length: PROFILE_DAYS }, (_, offset) => {
+    const currentDayMs = ranges.currentStart.getTime() + offset * DAY_MS;
+    const previousDayMs = ranges.previousStart.getTime() + offset * DAY_MS;
+    const current = dayTotal(jstDayKeyMs(currentDayMs));
+    const previous = dayTotal(jstDayKeyMs(previousDayMs));
+    const weekday = new Date(currentDayMs + JST_MS).getUTCDay();
     return {
-      time: `${String(hour).padStart(2, "0")}:${minute}`,
-      currentAverage: current.averages[slot] ?? null,
-      previousAverage: previous.averages[slot] ?? null,
-      currentDays: current.completeDays,
-      previousDays: previous.completeDays,
+      day: WEEKDAY_LABELS[weekday]!,
+      currentTotal: current.total,
+      previousTotal: previous.total,
+      currentComplete: current.complete,
+      previousComplete: previous.complete,
     };
   });
 }
@@ -357,8 +351,8 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     payload: {
       profile,
       comparison: {
-        currentLabel: "今週平均",
-        previousLabel: "先週平均",
+        currentLabel: "今週",
+        previousLabel: "先週",
         currentStartDate: jstDayKeyMs(profileRanges.currentStart.getTime()),
         currentEndDate: jstDayKeyMs(profileRanges.currentEnd.getTime() - DAY_MS),
         previousStartDate: jstDayKeyMs(profileRanges.previousStart.getTime()),

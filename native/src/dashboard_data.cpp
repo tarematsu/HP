@@ -12,28 +12,6 @@ double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
   return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
 
-int ProfileDayCount(const JsonObject& object, const wchar_t* name) {
-  const double value = json::Number(object, name, 0);
-  if (!std::isfinite(value)) return 0;
-  return std::clamp(static_cast<int>(std::lround(value)), 0, 7);
-}
-
-std::optional<int> ProfileSlot(const std::wstring& time) {
-  if (time.size() != 5 || time[2] != L':') return std::nullopt;
-  if (!iswdigit(time[0]) || !iswdigit(time[1]) ||
-      !iswdigit(time[3]) || !iswdigit(time[4])) return std::nullopt;
-  const int hour = (time[0] - L'0') * 10 + (time[1] - L'0');
-  const int minute = (time[3] - L'0') * 10 + (time[4] - L'0');
-  if (hour < 0 || hour > 23 || (minute != 0 && minute != 30)) return std::nullopt;
-  return hour * 2 + minute / 30;
-}
-
-std::wstring ProfileTime(int slot) {
-  wchar_t buffer[6]{};
-  swprintf_s(buffer, L"%02d:%02d", slot / 2, slot % 2 == 0 ? 0 : 30);
-  return buffer;
-}
-
 PanelDataStatus ReadStatus(const JsonObject& object) {
   PanelDataStatus status;
   const std::wstring value = json::Text(object, L"__status", L"waiting");
@@ -142,45 +120,29 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
     next.projectedUsage = NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
     const JsonObject comparison = json::Object(octopus, L"comparison");
-    next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週平均");
-    next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週平均");
+    next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週");
+    next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週");
     next.currentEnergyDateRange = DateRangeText(
         comparison, L"currentStartDate", L"currentEndDate");
     next.previousEnergyDateRange = DateRangeText(
         comparison, L"previousStartDate", L"previousEndDate");
 
-    std::array<std::optional<OctopusProfileData>, 48> profileSlots;
-    size_t validProfileItems = 0;
     const JsonArray profile = json::Array(octopus, L"profile");
-    for (uint32_t index = 0; index < profile.Size(); ++index) {
+    for (uint32_t index = 0; index < profile.Size() && next.octopusProfile.size() < 7; ++index) {
       try {
         if (profile.GetAt(index).ValueType() != JsonValueType::Object) continue;
         const JsonObject item = profile.GetObjectAt(index);
-        const std::wstring time = json::Text(item, L"time");
-        const std::optional<int> slot = ProfileSlot(time);
-        if (!slot) continue;
-        const int currentDays = ProfileDayCount(item, L"currentDays");
-        const int previousDays = ProfileDayCount(item, L"previousDays");
-        double currentAverage = NumberOrNaN(item, L"currentAverage");
-        double previousAverage = NumberOrNaN(item, L"previousAverage");
-        if (currentDays != 7) currentAverage = std::numeric_limits<double>::quiet_NaN();
-        if (previousDays != 7) previousAverage = std::numeric_limits<double>::quiet_NaN();
-        profileSlots[*slot] = OctopusProfileData{
-            ProfileTime(*slot), currentAverage, previousAverage, currentDays, previousDays};
-        ++validProfileItems;
+        const std::wstring day = json::Text(item, L"day");
+        if (day.empty()) continue;
+        const bool currentComplete = json::Boolean(item, L"currentComplete");
+        const bool previousComplete = json::Boolean(item, L"previousComplete");
+        double currentTotal = NumberOrNaN(item, L"currentTotal");
+        double previousTotal = NumberOrNaN(item, L"previousTotal");
+        if (!currentComplete) currentTotal = std::numeric_limits<double>::quiet_NaN();
+        if (!previousComplete) previousTotal = std::numeric_limits<double>::quiet_NaN();
+        next.octopusProfile.push_back(OctopusProfileData{
+            day, currentTotal, previousTotal, currentComplete, previousComplete});
       } catch (...) {
-      }
-    }
-    if (validProfileItems > 0) {
-      next.octopusProfile.reserve(profileSlots.size());
-      for (int slot = 0; slot < static_cast<int>(profileSlots.size()); ++slot) {
-        next.octopusProfile.push_back(profileSlots[slot].value_or(OctopusProfileData{
-            ProfileTime(slot),
-            std::numeric_limits<double>::quiet_NaN(),
-            std::numeric_limits<double>::quiet_NaN(),
-            0,
-            0,
-        }));
       }
     }
 

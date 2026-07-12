@@ -95,20 +95,19 @@ describe("cloud sources", () => {
         previousEndDate: string;
       };
       archive: { stableThrough: number; historyFloor: number; excludedRecentDays: number };
-      profile: Array<{ time: string; currentAverage: number | null; previousAverage: number | null }>;
+      profile: Array<{ day: string; currentTotal: number | null; previousTotal: number | null }>;
     };
     expect(payload.comparison).toEqual({
-      currentLabel: "今週平均",
-      previousLabel: "先週平均",
+      currentLabel: "今週",
+      previousLabel: "先週",
       currentStartDate: "2026-07-03",
       currentEndDate: "2026-07-09",
       previousStartDate: "2026-06-26",
       previousEndDate: "2026-07-02",
       excludedRecentDays: 2,
     });
-    expect(payload.profile).toHaveLength(48);
-    expect(payload.profile[0]?.time).toBe("00:00");
-    expect(payload.profile[47]?.time).toBe("23:30");
+    expect(payload.profile).toHaveLength(7);
+    expect(payload.profile.map(point => point.day)).toEqual(["金", "土", "日", "月", "火", "水", "木"]);
     expect(payload.archive.excludedRecentDays).toBe(2);
     expect(new Date(payload.archive.stableThrough).toISOString()).toBe("2026-07-08T18:00:00.000Z");
     expect(new Date(payload.archive.historyFloor).toISOString()).toBe("2025-10-31T15:00:00.000Z");

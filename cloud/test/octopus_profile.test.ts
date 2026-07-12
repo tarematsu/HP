@@ -33,7 +33,7 @@ function profileRanges(): OctopusProfileRanges {
 }
 
 describe("Octopus complete-day profile", () => {
-  it("excludes today and yesterday and compares the two preceding seven-day blocks", () => {
+  it("excludes today and yesterday and compares the two preceding seven-day blocks as daily totals", () => {
     const now = Date.parse("2026-07-10T18:17:00Z");
     const ranges = completeDayProfileRanges(now);
 
@@ -49,24 +49,24 @@ describe("Octopus complete-day profile", () => {
     ];
     const profile = buildOctopusDailyProfile(readings, ranges);
 
-    expect(profile).toHaveLength(48);
+    expect(profile).toHaveLength(7);
     expect(profile[0]).toEqual({
-      time: "00:00",
-      currentAverage: 0.4,
-      previousAverage: 0.2,
-      currentDays: 7,
-      previousDays: 7,
+      day: "金",
+      currentTotal: 19.2,
+      previousTotal: 9.6,
+      currentComplete: true,
+      previousComplete: true,
     });
-    expect(profile[47]).toEqual({
-      time: "23:30",
-      currentAverage: 0.4,
-      previousAverage: 0.2,
-      currentDays: 7,
-      previousDays: 7,
+    expect(profile[6]).toEqual({
+      day: "木",
+      currentTotal: 19.2,
+      previousTotal: 9.6,
+      currentComplete: true,
+      previousComplete: true,
     });
   });
 
-  it("hides a series when the seven complete days are not all present", () => {
+  it("hides only the incomplete days instead of the whole series", () => {
     const ranges = profileRanges();
     const readings = [
       ...fullDayReadings(ranges.previousStart.getTime(), 7, 0.2),
@@ -76,13 +76,13 @@ describe("Octopus complete-day profile", () => {
     ];
 
     const profile = buildOctopusDailyProfile(readings, ranges);
-    expect(profile.every(point => point.currentAverage === null)).toBe(true);
-    expect(profile.every(point => point.currentDays === 6)).toBe(true);
-    expect(profile.every(point => point.previousAverage === 0.2)).toBe(true);
-    expect(profile.every(point => point.previousDays === 7)).toBe(true);
+    expect(profile.slice(0, 6).every(point => point.currentComplete && point.currentTotal === 19.2)).toBe(true);
+    expect(profile[6]!.currentComplete).toBe(false);
+    expect(profile[6]!.currentTotal).toBeNull();
+    expect(profile.every(point => point.previousComplete && point.previousTotal === 9.6)).toBe(true);
   });
 
-  it("does not turn one available slot per day into a seven-day average", () => {
+  it("does not turn one available slot per day into a total", () => {
     const ranges = profileRanges();
     const readings: OctopusReading[] = [];
     for (let day = 0; day < 7; day += 1) {
@@ -94,7 +94,7 @@ describe("Octopus complete-day profile", () => {
     }
 
     const profile = buildOctopusDailyProfile(readings, ranges);
-    expect(profile.every(point => point.currentAverage === null)).toBe(true);
-    expect(profile.every(point => point.currentDays === 0)).toBe(true);
+    expect(profile.every(point => point.currentTotal === null)).toBe(true);
+    expect(profile.every(point => point.currentComplete === false)).toBe(true);
   });
 });
