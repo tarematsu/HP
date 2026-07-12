@@ -109,43 +109,67 @@ describe("D1 meta and command optimizations", () => {
       stationhead: 6,
       environment: 7,
       radar: 8,
+      stationhead_health: 10,
     } as const;
     for (const [source, version] of Object.entries(stateVersions)) {
-      await insertState(source, version, "ok", { marker: source });
+      const payload = source === "stationhead_health" ? { marker: source, healthy: true } : { marker: source };
+      await insertState(source, version, "ok", payload);
     }
     const configUpdatedAt = Date.now();
     await env.DB.prepare(
       "INSERT INTO device_configs(device_id,version,payload,updated_at) VALUES(?1,?2,?3,?4)",
     ).bind("homepanel-device", 9, JSON.stringify({ cloudPollSeconds: 300 }), configUpdatedAt).run();
 
-    const baseUrl = "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=27&radarVersion=8&switchbotVersion=5&stationheadVersion=6&configVersion=9";
+    const baseUrl = "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=27&radarVersion=8&switchbotVersion=5&stationheadVersion=6&stationheadHealthVersion=10&configVersion=9";
     const matching = await SELF.fetch(baseUrl, { headers: auth("test-device") });
     expect(matching.status).toBe(200);
     await expect(matching.json()).resolves.toEqual({
       workerVersion: "2.11.0",
-      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, config: 9 },
+      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
       commands: [],
     });
 
     const stale = await SELF.fetch(
       baseUrl.replace("radarVersion=8", "radarVersion=7")
         .replace("switchbotVersion=5", "switchbotVersion=4")
+        .replace("stationheadHealthVersion=10", "stationheadHealthVersion=9")
         .replace("configVersion=9", "configVersion=8"),
       { headers: auth("test-device") },
     );
     expect(stale.status).toBe(200);
     await expect(stale.json()).resolves.toEqual({
       workerVersion: "2.11.0",
-      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, config: 9 },
+      versions: { dashboard: 27, radar: 8, switchbot: 5, stationhead: 6, stationheadHealth: 10, config: 9 },
       commands: [],
       radar: JSON.stringify({ marker: "radar" }),
       switchbot: JSON.stringify({ marker: "switchbot" }),
+      stationheadHealth: JSON.stringify({ marker: "stationhead_health", healthy: true }),
       deviceConfig: JSON.stringify({
         deviceId: "homepanel-device",
         version: 9,
         updatedAt: configUpdatedAt,
         config: { cloudPollSeconds: 300 },
       }),
+    });
+  });
+
+  it("falls back stationhead_health payload to unhealthy when its status is not ok", async () => {
+    for (const source of ["weather", "news", "octopus", "switchbot", "stationhead", "environment"] as const) {
+      await insertState(source, 1, "ok");
+    }
+    await insertState("radar", 1, "ok");
+    await insertState("stationhead_health", 3, "error", { healthy: true, reason: "stale reading" });
+
+    const response = await SELF.fetch(
+      "https://homepanel.test/v1/device/sync?deviceId=homepanel-device&dashboardVersion=-1&radarVersion=-1&switchbotVersion=-1&stationheadVersion=-1&stationheadHealthVersion=-1&configVersion=-1",
+      { headers: auth("test-device") },
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json<{ stationheadHealth: string }>();
+    expect(JSON.parse(body.stationheadHealth)).toEqual({
+      healthy: false,
+      monitorStatus: "error",
+      reason: "stationhead_health test status",
     });
   });
 

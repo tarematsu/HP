@@ -346,3 +346,32 @@ export async function runStationheadHealthMonitor(env: Env, now = Date.now()): P
   await persistHealth(env, current, previousRow);
   return current;
 }
+
+export function stationheadHealthPayload(state: StateRow): Record<string, unknown> {
+  let value: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(state.payload) as unknown;
+    value = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    value = {};
+  }
+  if (state.status !== "ok") {
+    return {
+      ...value,
+      healthy: false,
+      monitorStatus: state.status,
+      reason: state.error || value.reason || "Stationhead health monitor is unavailable",
+    };
+  }
+  if (typeof value.healthy !== "boolean") {
+    return {
+      ...value,
+      healthy: false,
+      monitorStatus: "error",
+      reason: "Stored Stationhead health payload is invalid",
+    };
+  }
+  return value;
+}

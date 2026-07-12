@@ -198,10 +198,12 @@ void CloudClient::LoadCacheMetadata() {
       radarVersion_ = static_cast<int>(object.GetNamedNumber(L"radarVersion", -1));
       switchbotVersion_ = static_cast<int>(object.GetNamedNumber(L"switchbotVersion", -1));
       stationheadVersion_ = static_cast<int>(object.GetNamedNumber(L"stationheadVersion", -1));
+      stationheadHealthVersion_ = static_cast<int>(object.GetNamedNumber(L"stationheadHealthVersion", -1));
       deviceConfigVersion_ = static_cast<int>(object.GetNamedNumber(L"deviceConfigVersion", -1));
     }
   } catch (...) {
-    dashboardVersion_ = radarVersion_ = switchbotVersion_ = stationheadVersion_ = deviceConfigVersion_ = -1;
+    dashboardVersion_ = radarVersion_ = switchbotVersion_ = stationheadVersion_ =
+        stationheadHealthVersion_ = deviceConfigVersion_ = -1;
   }
   cacheMetadataDirty_ = false;
 }
@@ -212,6 +214,7 @@ void CloudClient::SaveCacheMetadata() {
       << ",\"radarVersion\":" << radarVersion_
       << ",\"switchbotVersion\":" << switchbotVersion_
       << ",\"stationheadVersion\":" << stationheadVersion_
+      << ",\"stationheadHealthVersion\":" << stationheadHealthVersion_
       << ",\"deviceConfigVersion\":" << deviceConfigVersion_ << "}";
   const std::string text = out.str();
   if (AtomicWriteBytes(dataDir_ / L"dashboard.meta.json", {text.begin(), text.end()})) cacheMetadataDirty_ = false;

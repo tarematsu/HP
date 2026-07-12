@@ -235,17 +235,9 @@ export interface MetaPayload {
   workerVersion: string;
 }
 
-type StateMetadataRow = Pick<StateRow, "source" | "version" | "fetched_at" | "status">;
-
 export async function buildMeta(env: Env): Promise<MetaPayload> {
   const sources = [...DASHBOARD_SOURCE_NAMES, "radar"];
-  const placeholders = sources.map(() => "?").join(",");
-  const result = await env.DB.prepare(
-    `SELECT source, version, fetched_at, status
-       FROM current_state WHERE source IN (${placeholders})`,
-  ).bind(...sources).all<StateMetadataRow>();
-  const rows: Record<string, StateMetadataRow> = {};
-  for (const row of result.results ?? []) rows[row.source] = row;
+  const rows = await readStates(env, sources);
   const radar = rows.radar;
   const version = dashboardVersion(rows);
   const statusForDashboard = dashboardStatus(rows);

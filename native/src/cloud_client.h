@@ -80,6 +80,7 @@ class CloudClient {
   int radarVersion_ = -1;
   int switchbotVersion_ = -1;
   int stationheadVersion_ = -1;
+  int stationheadHealthVersion_ = -1;
   int deviceConfigVersion_ = -1;
   bool cacheMetadataDirty_ = false;
   bool presenceFallbackActive_ = false;

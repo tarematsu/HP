@@ -197,6 +197,7 @@ void CloudClient::Synchronize() {
   const fs::path radarPath = dataDir_ / L"radar.json";
   const fs::path switchbotPath = dataDir_ / L"switchbot.json";
   const fs::path stationheadPath = dataDir_ / L"stationhead.json";
+  const fs::path stationheadHealthPath = dataDir_ / L"stationhead-health.json";
   const fs::path deviceConfigPath = dataDir_ / L"device-config.json";
   const auto requestedVersion = [](const fs::path& path, int version) {
     std::error_code error;
@@ -209,6 +210,7 @@ void CloudClient::Synchronize() {
        << L"&radarVersion=" << requestedVersion(radarPath, radarVersion_)
        << L"&switchbotVersion=" << (presenceFallbackActive_ ? -1 : requestedVersion(switchbotPath, switchbotVersion_))
        << L"&stationheadVersion=" << requestedVersion(stationheadPath, stationheadVersion_)
+       << L"&stationheadHealthVersion=" << requestedVersion(stationheadHealthPath, stationheadHealthVersion_)
        << L"&configVersion=" << requestedVersion(deviceConfigPath, deviceConfigVersion_);
 
   const auto response = Request(L"GET", path.str(), deviceToken_);
@@ -220,12 +222,14 @@ void CloudClient::Synchronize() {
   const int nextRadar = VersionOr(versions, L"radar", radarVersion_);
   const int nextSwitchbot = VersionOr(versions, L"switchbot", switchbotVersion_);
   const int nextStationhead = VersionOr(versions, L"stationhead", stationheadVersion_);
+  const int nextStationheadHealth = VersionOr(versions, L"stationheadHealth", stationheadHealthVersion_);
   const int nextConfig = VersionOr(versions, L"config", deviceConfigVersion_);
 
   bool dashboardApplied = false;
   bool radarApplied = false;
   bool switchbotApplied = false;
   bool stationheadApplied = false;
+  bool stationheadHealthApplied = false;
   bool configApplied = false;
 
   if (auto payload = StringPayload(root, L"dashboard")) {
@@ -248,6 +252,10 @@ void CloudClient::Synchronize() {
     if (!AtomicWriteBytes(stationheadPath, *payload)) throw std::runtime_error("Stationhead state cache write failed");
     stationheadApplied = true;
     PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+  }
+  if (auto payload = StringPayload(root, L"stationheadHealth")) {
+    if (!AtomicWriteBytes(stationheadHealthPath, *payload)) throw std::runtime_error("Stationhead health cache write failed");
+    stationheadHealthApplied = true;
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
     if (!AtomicWriteBytes(deviceConfigPath, *payload)) throw std::runtime_error("device config cache write failed");
@@ -280,30 +288,33 @@ void CloudClient::Synchronize() {
   const int acceptedRadar = acceptedVersion(L"radar", radarVersion_, nextRadar, radarApplied);
   const int acceptedSwitchbot = acceptedVersion(L"switchbot", switchbotVersion_, nextSwitchbot, switchbotApplied);
   const int acceptedStationhead = acceptedVersion(L"stationhead", stationheadVersion_, nextStationhead, stationheadApplied);
+  const int acceptedStationheadHealth = acceptedVersion(
+      L"stationhead health", stationheadHealthVersion_, nextStationheadHealth, stationheadHealthApplied);
   const int acceptedConfig = acceptedVersion(L"device config", deviceConfigVersion_, nextConfig, configApplied);
 
   if (dashboardVersion_ != acceptedDashboard || radarVersion_ != acceptedRadar ||
       switchbotVersion_ != acceptedSwitchbot || stationheadVersion_ != acceptedStationhead ||
-      deviceConfigVersion_ != acceptedConfig) {
+      stationheadHealthVersion_ != acceptedStationheadHealth || deviceConfigVersion_ != acceptedConfig) {
     dashboardVersion_ = acceptedDashboard;
     radarVersion_ = acceptedRadar;
     switchbotVersion_ = acceptedSwitchbot;
     stationheadVersion_ = acceptedStationhead;
+    stationheadHealthVersion_ = acceptedStationheadHealth;
     deviceConfigVersion_ = acceptedConfig;
     cacheMetadataDirty_ = true;
   }
   if (cacheMetadataDirty_) SaveCacheMetadata();
 
+  // Recomputed every cycle (not only when stationheadHealthApplied) so the "N minutes ago"
+  // text in StationheadHealthSummary keeps advancing even while the underlying status is
+  // unchanged and the cloud sync response omits a fresh stationheadHealth payload.
   std::wstring nextHealthText;
   try {
-    const HttpResponse healthResponse = Request(L"GET", L"/v1/stationhead-health", deviceToken_);
-    if (healthResponse.status == 200) {
-      const std::string healthBody(healthResponse.body.begin(), healthResponse.body.end());
-      nextHealthText = StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(healthBody)));
-    } else {
-      nextHealthText = L"Stationhead収集: 状態取得失敗 (HTTP " +
-          std::to_wstring(healthResponse.status) + L")";
-    }
+    std::ifstream input(stationheadHealthPath, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(input)), {});
+    nextHealthText = text.empty()
+        ? L"Stationhead収集: 確認中"
+        : StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(text)));
   } catch (const std::exception& error) {
     log_.Warn(L"Stationhead health read failed without interrupting dashboard sync: " + Utf8ToWide(error.what()));
     nextHealthText = L"Stationhead収集: 状態取得失敗";

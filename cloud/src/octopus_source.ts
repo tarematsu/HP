@@ -326,10 +326,11 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     );
   }
 
-  const stored = await readStoredOctopusRanges(env, accountNumber, [
-    { from: previousStart, to: now },
-    priorityRange,
-  ]);
+  const storedRange: OctopusRange = {
+    from: new Date(Math.min(previousStart.getTime(), priorityRange.from.getTime())),
+    to: new Date(Math.max(now.getTime(), priorityRange.to.getTime())),
+  };
+  const stored = await readStoredOctopusRanges(env, accountNumber, [storedRange]);
   const readings = mergeReadings([...stored, ...synchronized.liveReadings]);
   const monthly = { previous: 0, current: 0 };
   let previousSlots = 0;
