@@ -1169,11 +1169,11 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   if (chart.bottom > chart.top + 30 && !nativeDashboard_.octopusProfile.empty()) {
     double maximum = 0.1;
     for (const auto& item : nativeDashboard_.octopusProfile) {
-      if (item.currentDays == 7 && std::isfinite(item.currentAverage)) {
-        maximum = std::max(maximum, item.currentAverage);
+      if (item.currentComplete && std::isfinite(item.currentTotal)) {
+        maximum = std::max(maximum, item.currentTotal);
       }
-      if (item.previousDays == 7 && std::isfinite(item.previousAverage)) {
-        maximum = std::max(maximum, item.previousAverage);
+      if (item.previousComplete && std::isfinite(item.previousTotal)) {
+        maximum = std::max(maximum, item.previousTotal);
       }
     }
     maximum *= 1.1;
@@ -1194,14 +1194,14 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
     RECT previousSwatch{legend.left + legendHalf, currentSwatch.top,
                         legend.left + legendHalf + swatchWidth, currentSwatch.bottom};
     DrawWidgetCard(dc, currentSwatch, kWidgetCyan, 2, 220);
-    DrawWidgetCard(dc, previousSwatch, kWidgetPurple, 2, 120);
+    DrawWidgetCard(dc, previousSwatch, kWidgetPurple, 2, 150);
 
     const bool currentComplete = std::all_of(
         nativeDashboard_.octopusProfile.begin(), nativeDashboard_.octopusProfile.end(),
-        [](const OctopusProfileData& point) { return point.currentDays == 7; });
+        [](const OctopusProfileData& point) { return point.currentComplete; });
     const bool previousComplete = std::all_of(
         nativeDashboard_.octopusProfile.begin(), nativeDashboard_.octopusProfile.end(),
-        [](const OctopusProfileData& point) { return point.previousDays == 7; });
+        [](const OctopusProfileData& point) { return point.previousComplete; });
     std::wstring currentLegend = nativeDashboard_.currentEnergyLabel;
     if (!nativeDashboard_.currentEnergyDateRange.empty()) {
       currentLegend += L" " + nativeDashboard_.currentEnergyDateRange;
@@ -1241,58 +1241,34 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
       DrawTextInRect(dc, L"0", zeroLabel, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
       const int count = static_cast<int>(nativeDashboard_.octopusProfile.size());
-      constexpr int profileSlots = 48;
-      const auto xFor = [&](int slot) {
-        return static_cast<int>(plot.left + (plot.right - plot.left) * slot /
-            static_cast<double>(profileSlots));
-      };
       const auto yFor = [&](double value) {
         const double ratio = std::clamp(value / maximum, 0.0, 1.0);
         return static_cast<int>(plot.bottom - (plot.bottom - plot.top) * ratio);
       };
-      const auto blendOnBackground = [](COLORREF foreground, BYTE alpha) {
-        const int inverse = 255 - alpha;
-        const int red = (GetRValue(foreground) * alpha + GetRValue(kWidgetSurface) * inverse) / 255;
-        const int green = (GetGValue(foreground) * alpha + GetGValue(kWidgetSurface) * inverse) / 255;
-        const int blue = (GetBValue(foreground) * alpha + GetBValue(kWidgetSurface) * inverse) / 255;
-        return RGB(red, green, blue);
-      };
-      const auto drawSeries = [&](bool current, COLORREF color, int width) {
-        HPEN pen = CreatePen(PS_SOLID, width, color);
-        HGDIOBJ oldPen = SelectObject(dc, pen);
-        bool started = false;
-        for (int index = 0; index < count; ++index) {
-          const auto& point = nativeDashboard_.octopusProfile[static_cast<size_t>(index)];
-          const bool complete = current ? point.currentDays == 7 : point.previousDays == 7;
-          const double value = complete
-              ? (current ? point.currentAverage : point.previousAverage)
-              : std::numeric_limits<double>::quiet_NaN();
-          if (!std::isfinite(value)) {
-            started = false;
-            continue;
-          }
-          const int x = xFor(index);
-          const int y = yFor(value);
-          if (!started) MoveToEx(dc, x, y, nullptr);
-          else LineTo(dc, x, y);
-          started = true;
+      const int groupWidth = count > 0
+          ? static_cast<int>((plot.right - plot.left) / static_cast<double>(count)) : 0;
+      const int barGap = std::max(2, SpanX(body, 6));
+      const int barWidth = std::max(3, (groupWidth - barGap * 3) / 2);
+
+      SelectObject(dc, TierFont(FontTier::Small));
+      for (int index = 0; index < count; ++index) {
+        const auto& point = nativeDashboard_.octopusProfile[static_cast<size_t>(index)];
+        const int groupLeft = plot.left + index * groupWidth;
+        const int currentLeft = groupLeft + barGap;
+        const int previousLeft = currentLeft + barWidth + barGap;
+
+        if (point.currentComplete && std::isfinite(point.currentTotal)) {
+          RECT bar{currentLeft, yFor(point.currentTotal), currentLeft + barWidth, plot.bottom};
+          if (bar.bottom > bar.top) DrawWidgetCard(dc, bar, kWidgetCyan, 3, 220);
         }
-        SelectObject(dc, oldPen);
-        DeleteObject(pen);
-      };
+        if (point.previousComplete && std::isfinite(point.previousTotal)) {
+          RECT bar{previousLeft, yFor(point.previousTotal), previousLeft + barWidth, plot.bottom};
+          if (bar.bottom > bar.top) DrawWidgetCard(dc, bar, kWidgetPurple, 3, 150);
+        }
 
-      drawSeries(false, blendOnBackground(kWidgetPurple, 120), 3);
-      drawSeries(true, kWidgetCyan, 3);
-
-      const std::array<std::pair<int, const wchar_t*>, 5> ticks{{
-          {0, L"0:00"}, {12, L"6:00"}, {24, L"12:00"}, {36, L"18:00"}, {48, L"24:00"},
-      }};
-      SetTextColor(dc, kWidgetSubtle);
-      for (const auto& [slot, label] : ticks) {
-        const int x = xFor(slot);
-        RECT tick{x - SpanX(body, 55), plot.bottom,
-                  x + SpanX(body, 55), chart.bottom};
-        DrawTextInRect(dc, label, tick, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+        SetTextColor(dc, kWidgetSubtle);
+        RECT dayLabel{groupLeft, plot.bottom, groupLeft + groupWidth, chart.bottom};
+        DrawTextInRect(dc, point.day, dayLabel, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
       }
     }
   } else if (chart.bottom > chart.top + 30) {

@@ -7,6 +7,7 @@ import {
   WORKER_VERSION,
   type StateRow,
 } from "./snapshot";
+import { stationheadHealthPayload } from "./stationhead_health";
 
 const ALLOWED_COMMANDS = new Set([
   "restart_app",
@@ -157,6 +158,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
     radar: requestedVersion(url, "radarVersion"),
     switchbot: requestedVersion(url, "switchbotVersion"),
     stationhead: requestedVersion(url, "stationheadVersion"),
+    stationheadHealth: requestedVersion(url, "stationheadHealthVersion"),
     config: requestedVersion(url, "configVersion"),
   };
   const now = Date.now();
@@ -171,13 +173,14 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
               WHEN source='radar' AND version<>?5 THEN payload
               WHEN source='switchbot' AND version<>?6 THEN payload
               WHEN source='stationhead' AND version<>?7 THEN payload
+              WHEN source='stationhead_health' AND version<>?9 THEN payload
               ELSE NULL
             END AS payload,
             observed_at, fetched_at,
             last_success_at, status, error, content_hash,
             NULL AS updated_at, 0 AS pending
        FROM current_state
-      WHERE source IN ('weather','news','octopus','switchbot','stationhead','environment','radar')
+      WHERE source IN ('weather','news','octopus','switchbot','stationhead','environment','radar','stationhead_health')
      UNION ALL
      SELECT 'config' AS kind, 'config' AS source, version,
             CASE WHEN version<>?8 THEN payload ELSE NULL END,
@@ -203,6 +206,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
     requested.switchbot,
     requested.stationhead,
     requested.config,
+    requested.stationheadHealth,
   ).all<SyncRow>();
   const rows = rowsResult.results ?? [];
   const states: Record<string, StateRow> = {};
@@ -228,6 +232,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   const radarVersion = Number(states.radar?.version ?? 0);
   const switchbotVersion = Number(states.switchbot?.version ?? 0);
   const stationheadVersion = Number(states.stationhead?.version ?? 0);
+  const stationheadHealthVersion = Number(states.stationhead_health?.version ?? 0);
   const response: Record<string, unknown> = {
     workerVersion: WORKER_VERSION,
     versions: {
@@ -235,6 +240,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
       radar: radarVersion,
       switchbot: switchbotVersion,
       stationhead: stationheadVersion,
+      stationheadHealth: stationheadHealthVersion,
       config: configVersion,
     },
     commands,
@@ -245,6 +251,10 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   for (const source of ["radar", "switchbot", "stationhead"] as const) {
     const row = states[source];
     if (row && row.version !== requested[source]) response[source] = row.payload;
+  }
+  const stationheadHealthState = states.stationhead_health;
+  if (stationheadHealthState && stationheadHealthState.version !== requested.stationheadHealth) {
+    response.stationheadHealth = JSON.stringify(stationheadHealthPayload(stationheadHealthState));
   }
   if (configVersion !== requested.config) {
     let value: unknown = {};

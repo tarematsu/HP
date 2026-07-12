@@ -18,6 +18,7 @@ import {
 import { proxyRadarTile } from "./radar_tile";
 import type { Env } from "./sources";
 import { fetchStationhead } from "./spotify_source";
+import { stationheadHealthPayload } from "./stationhead_health";
 import { receiveTelemetryOptimized } from "./telemetry_route";
 
 async function dashboardJsonResponse(request: Request, env: Env): Promise<Response> {
@@ -34,34 +35,7 @@ async function stateJson(request: Request, env: Env, source: string): Promise<Re
 async function stationheadHealthState(request: Request, env: Env): Promise<Response> {
   const state = await readState(env, "stationhead_health");
   if (!state) return json({ error: "stationhead_health unavailable" }, { status: 503 });
-
-  let value: Record<string, unknown>;
-  try {
-    const parsed = JSON.parse(state.payload) as unknown;
-    value = parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    value = {};
-  }
-
-  if (state.status !== "ok") {
-    value = {
-      ...value,
-      healthy: false,
-      monitorStatus: state.status,
-      reason: state.error || value.reason || "Stationhead health monitor is unavailable",
-    };
-  } else if (typeof value.healthy !== "boolean") {
-    value = {
-      ...value,
-      healthy: false,
-      monitorStatus: "error",
-      reason: "Stored Stationhead health payload is invalid",
-    };
-  }
-
-  const payload = JSON.stringify(value);
+  const payload = JSON.stringify(stationheadHealthPayload(state));
   return etagResponse(
     request,
     payload,
