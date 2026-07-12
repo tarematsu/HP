@@ -36,16 +36,9 @@ const REFRESHABLE_JOBS = [
   "update_check",
 ] as const;
 const REFRESHABLE_JOB_SET = new Set<string>(REFRESHABLE_JOBS);
-const SYSTEM_JOBS_ENSURE_INTERVAL_MS = 5 * 60_000;
-const systemJobsEnsuredAt = new WeakMap<object, number>();
 
 export async function ensureSystemJobs(env: Env): Promise<void> {
-  const key = env.DB as unknown as object;
-  const now = Date.now();
-  const last = systemJobsEnsuredAt.get(key);
-  if (last !== undefined && now - last < SYSTEM_JOBS_ENSURE_INTERVAL_MS) return;
-
-  const octopusDeadline = Math.floor(now / 1000) + OCTOPUS_INTERVAL_SECONDS;
+  const octopusDeadline = Math.floor(Date.now() / 1000) + OCTOPUS_INTERVAL_SECONDS;
   await env.DB.batch([
     env.DB.prepare(
       `INSERT OR IGNORE INTO jobs(
@@ -65,7 +58,6 @@ export async function ensureSystemJobs(env: Env): Promise<void> {
          END`,
     ).bind(OCTOPUS_INTERVAL_SECONDS, octopusDeadline),
   ]);
-  systemJobsEnsuredAt.set(key, now);
 }
 
 export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobRow[]> {

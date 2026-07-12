@@ -76,26 +76,24 @@ export async function mergeEnvironmentRows(
   now: number,
 ): Promise<void> {
   const cutoff = now - ENVIRONMENT_HISTORY_MS;
+
+
+
+
+  const stored = await env.DB.prepare(
+    `SELECT bucket_at AS t,
+       CASE WHEN co2_count>0 THEN co2_sum/co2_count ELSE NULL END AS co2,
+       CASE WHEN temperature_count>0 THEN temperature_sum/temperature_count ELSE NULL END AS temperature,
+       CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity
+       FROM environment_buckets
+      WHERE device_id=?1 AND bucket_at>=?2
+      ORDER BY bucket_at`,
+  ).bind(fallbackDeviceId, cutoff).all<EnvironmentHistoryRow>();
+  const rows = (stored.results?.length ? stored.results : returnedRows)
+    .filter(row => Number(row.t) >= cutoff);
+  if (!rows.length) return;
+
   const previous = await readState(env, "environment");
-
-  let rows = returnedRows.filter(row => Number(row.t) >= cutoff);
-  if (!rows.length) {
-    if (previous) return;
-    // current_state was lost or never created (e.g. after a manual reset) — rebuild it
-    // from the stored buckets instead of silently leaving "environment" state missing.
-    const stored = await env.DB.prepare(
-      `SELECT bucket_at AS t,
-         CASE WHEN co2_count>0 THEN co2_sum/co2_count ELSE NULL END AS co2,
-         CASE WHEN temperature_count>0 THEN temperature_sum/temperature_count ELSE NULL END AS temperature,
-         CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity
-         FROM environment_buckets
-        WHERE device_id=?1 AND bucket_at>=?2
-        ORDER BY bucket_at`,
-    ).bind(fallbackDeviceId, cutoff).all<EnvironmentHistoryRow>();
-    rows = (stored.results ?? []).filter(row => Number(row.t) >= cutoff);
-    if (!rows.length) return;
-  }
-
   const previousState = previousDevices(previous, cutoff);
   const devices = previousState.devices;
   const target = devices[fallbackDeviceId] ?? {
