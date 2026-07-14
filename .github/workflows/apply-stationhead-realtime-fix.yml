@@ -1,9 +1,9 @@
 name: Apply Stationhead realtime fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/stationhead-realtime-transition
+      - main
     paths:
       - .github/workflows/apply-stationhead-realtime-fix.yml
 
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   patch:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
