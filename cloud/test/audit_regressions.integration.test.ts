@@ -129,5 +129,8 @@ describe("repository audit regressions", () => {
     expect(page).toContain("https://www.stationhead.com/sakuramankai");
     expect(page).toContain("https://www.stationhead.com/buddy46");
     expect(page).toContain("width:1920,height:1280");
+    expect(page).toContain("blockImages:true,blockFonts:true");
+    expect(page).toContain("migrate(body.config)");
+    expect(page).toContain('delete station.blockImagesAfterPlayback');
   });
 });

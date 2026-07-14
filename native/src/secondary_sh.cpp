@@ -236,6 +236,7 @@ void SecondaryStationheadPlayer::Reconnect() {
     return;
   }
   audioPlaying_ = false;
+  resourceBlockingArmed_ = false;
   loginRequired_ = false;
   retryAt_ = 0;
   SetStartupBounds();

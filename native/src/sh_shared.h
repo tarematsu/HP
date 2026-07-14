@@ -354,12 +354,6 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   return false;
 }
 
-// Terms-of-service state can be required by login, so keep it during startup
-// and suppress later refreshes only after the station is fully joined.
-inline bool StationheadRequestIsBlockableAfterPlayback(const std::wstring& uriLower) {
-  return StationheadProductionApiPath(uriLower) == L"/tos";
-}
-
 inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
   if (uriLower.empty()) return false;
   // The captured Pusher-compatible socket carries station/queue updates even
@@ -446,8 +440,8 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING);
   webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT);
-  const bool blockImages = config.blockImagesAfterPlayback;
-  const bool blockFonts = config.blockFontsAfterPlayback;
+  const bool blockImages = config.blockImages;
+  const bool blockFonts = config.blockFonts;
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
@@ -462,12 +456,11 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                 CoTaskMemFree(uriRaw);
               }
             }
-            const bool armedNow = armed.load(std::memory_order_relaxed);
-            bool block = StationheadRequestIsBlockable(lower) ||
-                         (armedNow && StationheadRequestIsBlockableAfterPlayback(lower));
-            if (!block && (blockImages || blockFonts)) {
+            bool block = StationheadRequestIsBlockable(lower);
+            if (!block) {
               COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
               if (SUCCEEDED(args->get_ResourceContext(&context))) {
+                const bool armedNow = armed.load(std::memory_order_relaxed);
                 if (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) {
                   // Images are never required for background audio playback.
                   // Block them from the first navigation to avoid downloading
