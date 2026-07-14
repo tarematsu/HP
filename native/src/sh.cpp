@@ -149,7 +149,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
 void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
   if (!webview_) return;
   lastDailyPlayStatsAt_ = nowMs;
-  const std::wstring script = StationheadDomPlayStatsScript();
+  const std::wstring script = StationheadApiPlayStatsScript(config_.channelId);
   webview_->ExecuteScript(script.c_str(), nullptr);
 }
 
@@ -289,6 +289,8 @@ void StationheadPlayer::ConfigureWebView() {
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
+  static const std::wstring authCaptureScript = StationheadAuthCaptureScript();
+  webview_->AddScriptToExecuteOnDocumentCreated(authCaptureScript.c_str(), nullptr);
   static const std::wstring startupScript =
       StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead");
   webview_->AddScriptToExecuteOnDocumentCreated(
@@ -435,8 +437,26 @@ void StationheadPlayer::ConfigureWebView() {
                   std::lock_guard lock(mutex_);
                   status_.dailyPlayCounts = std::move(points);
                   status_.dailyPlayStatsUpdatedAt = UnixMillis();
+                  status_.detail = L"authenticated Stationhead API stats updated";
                 }
                 PostChange();
+                return S_OK;
+              }
+              if (type == L"stationhead-play-stats-auth-failed") {
+                const int status = static_cast<int>(json::Number(message, L"status", 0));
+                log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
+                          std::to_wstring(status) + L"; waiting for the page session to refresh");
+                lastDailyPlayStatsAt_ = 0;
+                return S_OK;
+              }
+              if (type == L"stationhead-auth-ready") {
+                lastDailyPlayStatsAt_ = 0;
+                nextTickAt_ = 0;
+                return S_OK;
+              }
+              if (type == L"stationhead-play-stats-error") {
+                const std::wstring error = message.GetNamedString(L"error", L"unknown").c_str();
+                log_.Warn(L"Stationhead authenticated stats unavailable: " + error);
                 return S_OK;
               }
               if (!spotifyAuthorization_ ||

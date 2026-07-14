@@ -49,9 +49,9 @@ struct StationheadStatus {
   bool secondaryAudioMuted = false;
   std::wstring url;
   std::wstring detail;
-  // Recent per-day listening activity visible in the primary Stationhead
-  // window, oldest first; the last entry is today (partial, still
-  // accumulating). Values are scraped from the rendered account UI.
+  // Recent per-day listening activity returned by the primary window's
+  // authenticated Stationhead account endpoint, oldest first; the last entry
+  // is today (partial, still accumulating).
   std::vector<StationheadDailyPlayPoint> dailyPlayCounts;
   int64_t dailyPlayStatsUpdatedAt = 0;
 
