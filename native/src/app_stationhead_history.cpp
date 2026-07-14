@@ -63,11 +63,23 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
   if (status.dailyPlayStatsUpdatedAt <= 0 || status.dailyPlayCounts.empty()) return;
 
   const int64_t bucket = status.dailyPlayStatsUpdatedAt / sampleBucketMs * sampleBucketMs;
-  auto& history = renderState_.stationheadPlayHistory;
-  if (!history.empty() && history.back().timestamp == bucket) return;
-  history.push_back({bucket, status.dailyPlayCounts.back().value});
-
   const int64_t cutoff = UnixMillis() - historyWindowMs;
+  if (bucket < cutoff) return;
+
+  const int value = status.dailyPlayCounts.back().value;
+  auto& history = renderState_.stationheadPlayHistory;
+  const auto position = std::lower_bound(
+      history.begin(), history.end(), bucket,
+      [](const StationheadPlayHistorySample& sample, int64_t timestamp) {
+        return sample.timestamp < timestamp;
+      });
+  if (position != history.end() && position->timestamp == bucket) {
+    if (position->value == value) return;
+    position->value = value;
+  } else {
+    history.insert(position, {bucket, value});
+  }
+
   history.erase(std::remove_if(history.begin(), history.end(),
                                [cutoff](const StationheadPlayHistorySample& sample) {
                                  return sample.timestamp < cutoff;

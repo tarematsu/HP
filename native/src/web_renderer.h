@@ -207,7 +207,7 @@ class Renderer {
 
   enum class FontTier { Small, Medium, Large };
   HFONT TierFont(FontTier tier) const;
-  enum class PanelSection { Clock, Air, Weather, Music, Energy, News };
+  enum class PanelSection { Clock, Air, Weather, Controls, Music, Energy, News };
   void InvalidatePanelSection(HWND window, PanelSection section);
   void PaintNativeSide(HWND hwnd);
   void PaintNativeMain(HWND hwnd);
@@ -215,6 +215,7 @@ class Renderer {
   void DrawClockSection(HDC dc, const RECT& card);
   void DrawAirSection(HDC dc, const RECT& card);
   void DrawWeatherSection(HDC dc, const RECT& card);
+  void DrawControlsSection(HDC dc, const RECT& card);
   void DrawMusicSection(HDC dc, const RECT& card);
   void DrawStationheadPlayHistoryBar(HDC dc, const RECT& bar);
   void DrawEnergySection(HDC dc, const RECT& card);

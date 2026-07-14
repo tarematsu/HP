@@ -226,6 +226,15 @@ jobs:
             else
               gh issue create --title "$title" --body-file "$report_file"
             fi
+          else
+            issue_prefix="Cloudflare build failed: ${CLOUDFLARE_WORKER_NAME} "
+            gh issue list --state open --limit 100 --json number,title \
+              --jq ".[] | select(.title | startswith(\"$issue_prefix\")) | .number" |
+            while read -r issue_number; do
+              [ -n "$issue_number" ] || continue
+              gh issue close "$issue_number" \
+                --comment "Resolved by successful Cloudflare build for commit ${TARGET_SHA:0:12}."
+            done
           fi
 
       - name: Fail the diagnostic check

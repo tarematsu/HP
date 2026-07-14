@@ -149,7 +149,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
 void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
   if (!webview_) return;
   lastDailyPlayStatsAt_ = nowMs;
-  const std::wstring script = StationheadStreakStatsScript(config_.channelId);
+  const std::wstring script = StationheadDomPlayStatsScript();
   webview_->ExecuteScript(script.c_str(), nullptr);
 }
 
@@ -289,9 +289,6 @@ void StationheadPlayer::ConfigureWebView() {
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
-  static const std::wstring authCaptureScript = StationheadAuthCaptureScript();
-  webview_->AddScriptToExecuteOnDocumentCreated(authCaptureScript.c_str(), nullptr);
-
   static const std::wstring startupScript =
       StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead");
   webview_->AddScriptToExecuteOnDocumentCreated(
