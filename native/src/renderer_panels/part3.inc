@@ -22,10 +22,7 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  SetTextColor(dc, kWidgetSubtle);
-  RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
-  DrawTextInRect(dc, L"室内環境", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  const RECT body = CardBodyRect(content);
+  const RECT body = content;
 
   const bool connected = nativeSensors_.co2Connected;
   const COLORREF co2Color = !connected ? kWidgetMuted
@@ -104,9 +101,8 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
     keyRight -= keyWidth;
   }
 
-  const int axisHeight = std::clamp(SpanY(body, 100), 12, 22);
   RECT plot{body.left, legend.bottom + SpanY(body, 30), body.right,
-            body.bottom - axisHeight - SpanY(body, 15)};
+            body.bottom};
   HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
   HGDIOBJ previousPen = SelectObject(dc, gridPen);
   for (int i = 0; i < 4; ++i) {
@@ -131,10 +127,6 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
     DrawTextInRect(dc, L"履歴を取得中", plot, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  SetTextColor(dc, kWidgetSubtle);
-  RECT axis{body.left, body.bottom - axisHeight, body.right, body.bottom};
-  DrawTextInRect(dc, L"24時間前", axis, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  DrawTextInRect(dc, L"現在", axis, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
   SelectObject(dc, previousFont);
 }
 
@@ -143,27 +135,9 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
   const RECT content = CardContentRect(card);
   const auto& hours = nativeDashboard_.weatherHours;
   const size_t count = std::min<size_t>(5, hours.size());
-  double maxPop = 0;
-  for (size_t i = 0; i < count; ++i) {
-    if (std::isfinite(hours[i].precipitationProbability)) {
-      maxPop = std::max(maxPop, hours[i].precipitationProbability);
-    }
-  }
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
-  SetTextColor(dc, kWidgetSubtle);
-  DrawTextInRect(dc, L"天気予報", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  if (nativeDashboard_.weatherStatus.state == PanelDataState::Ok) {
-    SetTextColor(dc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
-    DrawTextInRect(dc,
-                   L"降水確率 " + std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%",
-                   header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-  } else {
-    DrawHeaderStatus(dc, header, nativeDashboard_.weatherStatus);
-  }
-
-  const RECT body = CardBodyRect(content);
+  const RECT body = content;
   const int bodyHeight = std::max(1L, body.bottom - body.top);
   const int columnGap = std::max(4, SpanX(body, 25));
   constexpr int kSlotCount = 5;
@@ -273,9 +247,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  SetTextColor(dc, kWidgetSubtle);
-  RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
-  DrawTextInRect(dc, L"ミュージック", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
   std::wstring dailyPlaySummary = L"直近1時間 --　本日 --　昨日 --";
   if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
       !nativeStationhead_.dailyPlayCounts.empty()) {
@@ -291,11 +262,12 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
         : L"--";
   }
   SetTextColor(dc, kWidgetSubtle);
-  RECT dailyPlayHeader = header;
-  dailyPlayHeader.left += SpanX(header, 120);
+  RECT dailyPlayHeader{content.left, content.top, content.right,
+                       content.top + CardHeaderHeight(content)};
   DrawTextInRect(dc, dailyPlaySummary, dailyPlayHeader,
                  DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-  RECT body = CardBodyRect(content);
+  RECT body = content;
+  body.top += CardHeaderHeight(content) + std::max(4, SpanY(content, 40));
   const int64_t nowMs = UnixMillis();
   const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
   const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);

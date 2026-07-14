@@ -2,11 +2,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  SetTextColor(dc, kWidgetSubtle);
-  RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
-  DrawTextInRect(dc, L"電力使用量", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-  DrawHeaderStatus(dc, header, nativeDashboard_.octopusStatus);
-  const RECT body = CardBodyRect(content);
+  const RECT body = content;
 
   const auto usageText = [](double value) {
     return std::isfinite(value) ? Fixed(value, 1) + L" kWh" : L"-- kWh";
@@ -194,23 +190,7 @@ void Renderer::DrawNewsSection(HDC dc, const RECT& card) {
   RECT descRow{content.left, titleRow.bottom, content.right, content.bottom};
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  const std::wstring chipLabel = L"ニュース";
-  RECT measure{};
-  DrawTextW(dc, chipLabel.c_str(), -1, &measure, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
-  const int chipPadX = std::max(8, SpanX(content, 10));
-  const int chipHeight = std::min(static_cast<int>(titleRow.bottom - titleRow.top),
-                                  static_cast<int>(measure.bottom - measure.top) + 8);
-  const int chipTop = titleRow.top +
-      (static_cast<int>(titleRow.bottom - titleRow.top) - chipHeight) / 2;
-  const RECT chip{titleRow.left, chipTop,
-                  titleRow.left + (measure.right - measure.left) + chipPadX * 2,
-                  chipTop + chipHeight};
-  FillRoundRectTranslucent(dc, chip, kWidgetBlue, chipHeight, 70);
-  SetTextColor(dc, kWidgetBlueMuted);
-  DrawTextInRect(dc, chipLabel, chip, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-
-  RECT titleRect{chip.right + std::max(8, SpanX(content, 12)), titleRow.top,
-                 titleRow.right, titleRow.bottom};
+  RECT titleRect{titleRow.left, titleRow.top, titleRow.right, titleRow.bottom};
   SetTextColor(dc, kWidgetText);
   SelectObject(dc, TierFont(FontTier::Medium));
   DrawTextInRect(dc, title, titleRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);

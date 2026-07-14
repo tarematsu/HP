@@ -175,6 +175,9 @@ void App::StartServices() {
   }
   stationhead_->Start();
   logger_->Info(L"Stationhead startup was prioritized before native dashboard initialization");
+  // Route audio before creating the secondary WebView so both players cannot
+  // emit their first audio while WebView2 is applying the mute state.
+  ApplyScheduledStationheadAudioProfile(true);
 
 
   if (secondaryStationhead_) {
