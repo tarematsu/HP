@@ -1022,6 +1022,11 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   SetTextColor(dc, kWidgetSubtle);
   RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
   DrawTextInRect(dc, L"ミュージック", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 && !nativeStationhead_.dailyPlayCounts.empty()) {
+    SetTextColor(dc, kWidgetSubtle);
+    DrawTextInRect(dc, L"本日 " + std::to_wstring(nativeStationhead_.dailyPlayCounts.back().value),
+                   header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+  }
   const RECT body = CardBodyRect(content);
 
   const int64_t nowMs = UnixMillis();
