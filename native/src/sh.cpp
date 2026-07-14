@@ -149,38 +149,8 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
 void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
   if (!webview_) return;
   lastDailyPlayStatsAt_ = nowMs;
-  const auto alive = createCallbackAlive_;
   const std::wstring script = StationheadStreakStatsScript(config_.channelId);
-  webview_->ExecuteScript(
-      script.c_str(),
-      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive](HRESULT result, LPCWSTR resultObjectAsJson) -> HRESULT {
-            if (!CallbackAlive(alive) || FAILED(result) || !resultObjectAsJson) return S_OK;
-            try {
-              using winrt::Windows::Data::Json::JsonArray;
-              using winrt::Windows::Data::Json::JsonObject;
-              using winrt::Windows::Data::Json::JsonValueType;
-              const auto root = JsonObject::Parse(resultObjectAsJson);
-              if (!json::Boolean(root, L"ok", false)) return S_OK;
-              const JsonObject data = json::Object(root, L"data");
-              const JsonArray chart = json::Array(data, L"chart_data");
-              std::vector<StationheadDailyPlayPoint> points;
-              for (uint32_t index = 0; index < chart.Size() && points.size() < 40; ++index) {
-                if (chart.GetAt(index).ValueType() != JsonValueType::Object) continue;
-                const JsonObject point = chart.GetObjectAt(index);
-                points.push_back({
-                    static_cast<int64_t>(json::Number(point, L"ts", 0)),
-                    static_cast<int>(json::Number(point, L"val", 0)),
-                });
-              }
-              std::lock_guard lock(mutex_);
-              status_.dailyPlayCounts = std::move(points);
-              status_.dailyPlayStatsUpdatedAt = UnixMillis();
-            } catch (...) {
-            }
-            PostChange();
-            return S_OK;
-          }).Get());
+  webview_->ExecuteScript(script.c_str(), nullptr);
 }
 
 void StationheadPlayer::Create() {
@@ -451,7 +421,29 @@ void StationheadPlayer::ConfigureWebView() {
             try {
               const auto message = winrt::Windows::Data::Json::JsonObject::Parse(messageJson);
               const std::wstring type = message.GetNamedString(L"type", L"").c_str();
-              if (!spotifyAuthorization_ || (type != L"spotify-connected" && type != L"spotify-error")) {
+              if (type == L"stationhead-play-stats") {
+                using winrt::Windows::Data::Json::JsonValueType;
+                const auto data = json::Object(message, L"data");
+                const auto chart = json::Array(data, L"chart_data");
+                std::vector<StationheadDailyPlayPoint> points;
+                for (uint32_t index = 0; index < chart.Size() && points.size() < 40; ++index) {
+                  if (chart.GetAt(index).ValueType() != JsonValueType::Object) continue;
+                  const auto point = chart.GetObjectAt(index);
+                  points.push_back({
+                      static_cast<int64_t>(json::Number(point, L"ts", 0)),
+                      static_cast<int>(json::Number(point, L"val", 0)),
+                  });
+                }
+                {
+                  std::lock_guard lock(mutex_);
+                  status_.dailyPlayCounts = std::move(points);
+                  status_.dailyPlayStatsUpdatedAt = UnixMillis();
+                }
+                PostChange();
+                return S_OK;
+              }
+              if (!spotifyAuthorization_ ||
+                  (type != L"spotify-connected" && type != L"spotify-error")) {
                 return S_OK;
               }
               spotifyAuthorization_ = false;

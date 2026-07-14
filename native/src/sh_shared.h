@@ -222,22 +222,24 @@ inline std::wstring StationheadAuthCaptureScript() {
 }
 
 // Uses the Authorization header cached by StationheadAuthCaptureScript to
-// fetch the logged-in account's per-day listening activity. Always resolves
-// (never rejects) so the ExecuteScript completion handler gets well-formed
-// JSON back in both the success and failure case.
+// fetch the logged-in account's per-day listening activity. ExecuteScript
+// does not await a returned JavaScript Promise, so publish the asynchronous
+// result through WebView2's message channel instead.
 inline std::wstring StationheadStreakStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
 (() => {
   const headers = window.__homepanelStationheadAuthHeaders;
   if (!headers || !headers.authorization) return { ok: false, error: 'no-auth' };
-  return fetch('https://production1.stationhead.com/me/channel/)JS"
+  fetch('https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats', {
     headers: Object.assign({ accept: 'application/json' }, headers),
-  }).then(r => r.ok
-      ? r.json().then(data => ({ ok: true, data }))
-      : Promise.resolve({ ok: false, error: 'http-' + r.status })
-  ).catch(err => ({ ok: false, error: String((err && err.message) || err) }));
+  }).then(r => r.ok ? r.json() : Promise.reject(new Error('http-' + r.status)))
+    .then(data => {
+      try { window.chrome?.webview?.postMessage({ type: 'stationhead-play-stats', data }); } catch (_) {}
+    })
+    .catch(() => {});
+  return true;
 })()
 )JS";
   return script.str();
