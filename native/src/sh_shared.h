@@ -261,14 +261,12 @@ inline std::wstring StationheadLowerAscii(const wchar_t* text) {
 
 // True for requests that a background audio-only Stationhead window never
 // needs: third-party analytics/crash/marketing/push telemetry, and the
-// social surfaces of the Stationhead API (chat, tipping, emoji, trending
-// threads). Derived from an actual startup network capture; the audio
-// stream and the core playback REST endpoints (/timestamp,
-// /pusher/presenceAuth, /channels/alias/*, /me/country) are left untouched.
-// The Pusher realtime WebSocket is NOT handled here (WebSocket upgrades don't
-
-
-
+// social surfaces of the Stationhead API (chat, tipping, emoji and trending
+// threads). Derived from an actual startup network capture; audio, playback
+// REST endpoints and Pusher realtime delivery are deliberately left untouched.
+// Pusher carries track transitions as well as chat/presence, so blocking it
+// forces the player onto a roughly 10-second polling fallback.
+// Matched as case-insensitive substrings of the full URI.
 inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   static constexpr const wchar_t* kNeedles[] = {
 
@@ -313,7 +311,6 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
       L"pinterest.com",
 
       L"/chathistory",
-      L"/streams",
       L"/tippingstatus",
       L"/posts/trending",
       L"/threads/",
@@ -327,23 +324,6 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   return false;
 }
 
-inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
-  if (uriLower.empty()) return false;
-  const bool stationhead = uriLower.find(L"stationhead.com") != std::wstring::npos;
-  const bool spotify = uriLower.find(L"spotify") != std::wstring::npos ||
-                       uriLower.find(L"scdn.co") != std::wstring::npos;
-  if (!stationhead && !spotify) return false;
-  if (uriLower.find(L"/timestamp") != std::wstring::npos ||
-      uriLower.find(L"/pusher/presenceauth") != std::wstring::npos ||
-      uriLower.find(L"/channels/alias/") != std::wstring::npos ||
-      uriLower.find(L"/me/country") != std::wstring::npos) {
-    return true;
-  }
-  return spotify &&
-      (uriLower.find(L"audio") != std::wstring::npos ||
-       uriLower.find(L"playback") != std::wstring::npos ||
-       uriLower.find(L"gew") != std::wstring::npos);
-}
 
 
 
@@ -354,13 +334,14 @@ inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
 
 
 
-inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview) {
+// Block only known telemetry sockets. Realtime playback transports such as
+// Pusher must remain available so the next track starts without polling delay.
+inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview) {
   if (!webview) return;
   webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
   webview->CallDevToolsProtocolMethod(
       L"Network.setBlockedURLs",
       L"{\"urls\":["
-      L"\"*pusher.com*\",\"*pusherapp.com*\",\"*pusher.io*\","
       L"\"*google-analytics.com*\",\"*googletagmanager.com*\",\"*doubleclick.net*\","
       L"\"*amplitude.com*\",\"*segment.com*\",\"*segment.io*\","
       L"\"*clarity.ms*\",\"*datadoghq*\",\"*newrelic*\",\"*nr-data.net*\","
@@ -448,9 +429,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
                   block = true;
-                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE ||
-                           context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET) {
-                  block = !StationheadCorePlaybackRequest(lower);
                 }
               }
             }
@@ -463,6 +441,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
             return S_OK;
           }).Get(),
       &token);
-  BlockStationheadRealtimeSockets(webview);
+  BlockStationheadTelemetrySockets(webview);
 }
 }
