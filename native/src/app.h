@@ -432,6 +432,9 @@ class App {
   void LoadAirHistory();
   void SaveAirHistory() const;
   void UpdateAirHistory(const SensorSnapshot& sensors);
+  void LoadStationheadPlayHistory();
+  void SaveStationheadPlayHistory() const;
+  void UpdateStationheadPlayHistory(const StationheadStatus& status);
   void HandleAction(UiAction action);
   void LayoutWorkspace();
   void ApplyStationheadWindowPlacement(const StationheadStatus& primaryStatus,

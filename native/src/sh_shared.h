@@ -161,6 +161,90 @@ inline std::wstring StationheadVolumeScript(int percent) {
   return script.str();
 }
 
+// Injected once per document so a later ExecuteScript call can authenticate
+// as the logged-in account without ever touching where the page keeps its
+// token: it transparently observes the Authorization header the page's own
+// fetch()/XHR calls already send to *.stationhead.com and caches the latest
+// one. The wrapped fetch/XHR behavior is otherwise untouched.
+inline std::wstring StationheadAuthCaptureScript() {
+  static constexpr wchar_t kScript[] = LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
+  if (window.__homepanelAuthCapture) return;
+  window.__homepanelAuthCapture = true;
+  window.__homepanelStationheadAuthHeaders = null;
+  const relevant = url => /(^|\.)stationhead\.com/i.test(String(url || ''));
+  const capture = (url, getHeader) => {
+    if (!relevant(url)) return;
+    const auth = getHeader('authorization');
+    if (!auth) return;
+    window.__homepanelStationheadAuthHeaders = {
+      authorization: auth,
+      'sth-device-uid': getHeader('sth-device-uid') || '',
+      'app-platform': getHeader('app-platform') || 'web',
+      'app-version': getHeader('app-version') || '1.0.0',
+    };
+  };
+  const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (nativeFetch) {
+    window.fetch = function(input, init) {
+      try {
+        const headers = new Headers((init && init.headers) || (input && input.headers) || {});
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        capture(url, name => headers.get(name));
+      } catch (_) {}
+      return nativeFetch(input, init);
+    };
+  }
+  const NativeXhr = window.XMLHttpRequest;
+  if (NativeXhr) {
+    const nativeOpen = NativeXhr.prototype.open;
+    const nativeSetHeader = NativeXhr.prototype.setRequestHeader;
+    const nativeSend = NativeXhr.prototype.send;
+    NativeXhr.prototype.open = function(method, url, ...rest) {
+      this.__homepanelUrl = url;
+      this.__homepanelHeaders = {};
+      return nativeOpen.call(this, method, url, ...rest);
+    };
+    NativeXhr.prototype.setRequestHeader = function(name, value) {
+      try { this.__homepanelHeaders[String(name).toLowerCase()] = value; } catch (_) {}
+      return nativeSetHeader.call(this, name, value);
+    };
+    NativeXhr.prototype.send = function(...args) {
+      try { capture(this.__homepanelUrl, name => this.__homepanelHeaders?.[name]); } catch (_) {}
+      return nativeSend.apply(this, args);
+    };
+  }
+})()
+)JS";
+  return kScript;
+}
+
+// Uses the Authorization header cached by StationheadAuthCaptureScript to
+// fetch the logged-in account's per-day listening activity. ExecuteScript
+// does not await a returned JavaScript Promise, so publish the asynchronous
+// result through WebView2's message channel instead.
+inline std::wstring StationheadStreakStatsScript(int channelId) {
+  std::wostringstream script;
+  script << LR"JS(
+(() => {
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers || !headers.authorization) return { ok: false, error: 'no-auth' };
+  fetch('https://production1.stationhead.com/me/channel/)JS"
+         << channelId << LR"JS(/streakStats', {
+    headers: Object.assign({ accept: 'application/json' }, headers),
+  }).then(r => r.ok ? r.json() : Promise.reject(new Error('http-' + r.status)))
+    .then(data => {
+      try { window.chrome?.webview?.postMessage({ type: 'stationhead-play-stats', data }); } catch (_) {}
+    })
+    .catch(() => {});
+  return true;
+})()
+)JS";
+  return script.str();
+}
+
 // ASCII-lowercases a URI for case-insensitive substring matching without
 // pulling in locale-aware towlower; request paths such as "chatHistory" mix
 // case while hostnames are already lowercase.

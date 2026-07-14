@@ -17,6 +17,23 @@ enum StationheadChangeFlags : uint32_t {
   StationheadChangeShowPlayer = 1u << 2,
 };
 
+struct StationheadDailyPlayPoint {
+  int64_t dayStartMsUtc = 0;
+  int value = 0;
+
+  bool operator==(const StationheadDailyPlayPoint&) const = default;
+};
+
+// A single 5-minute sample of today's cumulative play value, kept over time
+// so a flattening of consecutive values can be read back later as a gap in
+// listening activity (see App::UpdateStationheadPlayHistory).
+struct StationheadPlayHistorySample {
+  int64_t timestamp = 0;
+  int value = 0;
+
+  bool operator==(const StationheadPlayHistorySample&) const = default;
+};
+
 struct StationheadStatus {
   bool created = false;
   bool navigating = false;
@@ -32,6 +49,13 @@ struct StationheadStatus {
   bool secondaryAudioMuted = false;
   std::wstring url;
   std::wstring detail;
+  // Recent per-day listening activity for the account logged into the
+  // primary Stationhead window, oldest first; the last entry is today
+  // (partial, still accumulating). Sourced from the account's own
+  // streakStats endpoint, so it reflects the site's own "val" unit
+  // (observed to track closer to listening minutes than track plays).
+  std::vector<StationheadDailyPlayPoint> dailyPlayCounts;
+  int64_t dailyPlayStatsUpdatedAt = 0;
 
   bool operator==(const StationheadStatus&) const = default;
 };
@@ -78,6 +102,7 @@ class StationheadPlayer {
   void ConfigureWebView();
   void ConfigureAuthWebView();
   void ResetNavigationRouteState();
+  void PollDailyPlayStats(int64_t nowMs);
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
   void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                               const std::wstring& reason, bool fallbackActive);
@@ -133,6 +158,7 @@ class StationheadPlayer {
   std::wstring pendingAuthorizationUrl_;
   int64_t createdAt_ = 0;
   int64_t lastReloadAt_ = 0;
+  int64_t lastDailyPlayStatsAt_ = 0;
   int64_t noAudioSinceAt_ = 0;
   int64_t fallbackMonitorAfterAt_ = 0;
   int64_t nextTickAt_ = 0;

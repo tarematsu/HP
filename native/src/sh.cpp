@@ -1,4 +1,5 @@
 #include "sh.h"
+#include "json_helpers.h"
 #include "shared_webview_environment.h"
 #include "sh_shared.h"
 #include <winrt/Windows.Data.Json.h>
@@ -7,6 +8,7 @@ namespace hp {
 namespace {
 constexpr int64_t kPrimaryNoAudioFallbackMs = 360'000;
 constexpr int64_t kPrimaryFallbackMonitorGraceMs = 60'000;
+constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
@@ -142,6 +144,13 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
     return;
   }
   log_.Info(L"Stationhead navigation (" + reason + L"): " + url);
+}
+
+void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
+  if (!webview_) return;
+  lastDailyPlayStatsAt_ = nowMs;
+  const std::wstring script = StationheadStreakStatsScript(config_.channelId);
+  webview_->ExecuteScript(script.c_str(), nullptr);
 }
 
 void StationheadPlayer::Create() {
@@ -280,6 +289,9 @@ void StationheadPlayer::ConfigureWebView() {
   if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
     v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
   }
+  static const std::wstring authCaptureScript = StationheadAuthCaptureScript();
+  webview_->AddScriptToExecuteOnDocumentCreated(authCaptureScript.c_str(), nullptr);
+
   static const std::wstring startupScript =
       StationheadAutoplayScript(L"__homepanelPrimaryStationhead", L"stationhead");
   webview_->AddScriptToExecuteOnDocumentCreated(
@@ -409,7 +421,29 @@ void StationheadPlayer::ConfigureWebView() {
             try {
               const auto message = winrt::Windows::Data::Json::JsonObject::Parse(messageJson);
               const std::wstring type = message.GetNamedString(L"type", L"").c_str();
-              if (!spotifyAuthorization_ || (type != L"spotify-connected" && type != L"spotify-error")) {
+              if (type == L"stationhead-play-stats") {
+                using winrt::Windows::Data::Json::JsonValueType;
+                const auto data = json::Object(message, L"data");
+                const auto chart = json::Array(data, L"chart_data");
+                std::vector<StationheadDailyPlayPoint> points;
+                for (uint32_t index = 0; index < chart.Size() && points.size() < 40; ++index) {
+                  if (chart.GetAt(index).ValueType() != JsonValueType::Object) continue;
+                  const auto point = chart.GetObjectAt(index);
+                  points.push_back({
+                      static_cast<int64_t>(json::Number(point, L"ts", 0)),
+                      static_cast<int>(json::Number(point, L"val", 0)),
+                  });
+                }
+                {
+                  std::lock_guard lock(mutex_);
+                  status_.dailyPlayCounts = std::move(points);
+                  status_.dailyPlayStatsUpdatedAt = UnixMillis();
+                }
+                PostChange();
+                return S_OK;
+              }
+              if (!spotifyAuthorization_ ||
+                  (type != L"spotify-connected" && type != L"spotify-error")) {
                 return S_OK;
               }
               spotifyAuthorization_ = false;
@@ -655,6 +689,10 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
+  if (nowMs - lastDailyPlayStatsAt_ >= kDailyPlayStatsIntervalMs) {
+    PollDailyPlayStats(nowMs);
+  }
+
   const bool silentPrimary =
       !usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed);
   if (silentPrimary && fallbackMonitorAfterAt_ > 0 &&
@@ -701,6 +739,7 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (reloadInterval > 0 && lastReloadAt_ > 0) consider(lastReloadAt_ + reloadInterval);
+  consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);
   if (silentPrimary && fallbackMonitorAfterAt_ > nowMs) {
     consider(fallbackMonitorAfterAt_);
   }

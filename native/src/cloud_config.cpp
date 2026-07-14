@@ -57,6 +57,7 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
       config.stationhead.url = L"https://www.stationhead.com/sakuramankai";
     }
     config.stationhead.fallbackUrl = Text(station, L"fallbackUrl", config.stationhead.fallbackUrl);
+    config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
     config.stationhead.reloadIntervalMinutes = Number(station, L"reloadIntervalMinutes", config.stationhead.reloadIntervalMinutes, 1, 1440);
     config.stationhead.blockImagesAfterPlayback = Boolean(station, L"blockImagesAfterPlayback", config.stationhead.blockImagesAfterPlayback);
     config.stationhead.blockFontsAfterPlayback = Boolean(station, L"blockFontsAfterPlayback", config.stationhead.blockFontsAfterPlayback);
