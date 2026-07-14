@@ -1,0 +1,128 @@
+name: Apply Stationhead realtime fix
+
+on:
+  push:
+    branches:
+      - fix/stationhead-realtime-transition
+    paths:
+      - .github/workflows/apply-stationhead-realtime-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stationhead-realtime-transition
+
+      - name: Restore realtime playback while retaining telemetry blocking
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path("native/src/sh_shared.h")
+          text = path.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '      L"/streams",\n',
+              '',
+              'ambiguous streams endpoint block',
+          )
+
+          core_pattern = re.compile(
+              r'\ninline bool StationheadCorePlaybackRequest\(const std::wstring& uriLower\) \{.*?\n\}\n',
+              re.DOTALL,
+          )
+          text, count = core_pattern.subn('\n', text, count=1)
+          if count != 1:
+              raise SystemExit(f"core playback socket helper: expected one match, found {count}")
+
+          replace_once(
+              'inline void BlockStationheadRealtimeSockets(ICoreWebView2* webview)',
+              'inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview)',
+              'socket blocker function name',
+          )
+          replace_once(
+              '  BlockStationheadRealtimeSockets(webview);',
+              '  BlockStationheadTelemetrySockets(webview);',
+              'socket blocker call',
+          )
+          replace_once(
+              '      L"\\"*pusher.com*\\",\\"*pusherapp.com*\\",\\"*pusher.io*\\","\n',
+              '',
+              'Pusher CDP block',
+          )
+
+          socket_branch = (
+              '                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE ||\n'
+              '                           context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET) {\n'
+              '                  block = !StationheadCorePlaybackRequest(lower);\n'
+              '                }'
+          )
+          replace_once(socket_branch, '                }', 'generic realtime socket block')
+
+          replace_once(
+              '// social surfaces of the Stationhead API (chat, tipping, emoji, trending\n'
+              '// threads). Derived from an actual startup network capture; the audio\n'
+              '// stream and the core playback REST endpoints (/timestamp,\n'
+              '// /pusher/presenceAuth, /channels/alias/*, /me/country) are left untouched.\n'
+              '// The Pusher realtime WebSocket is NOT handled here (WebSocket upgrades don\'t\n'
+              '// raise WebResourceRequested); it is blocked separately at the network layer\n',
+              '// social surfaces of the Stationhead API (chat, tipping, emoji and trending\n'
+              '// threads). Derived from an actual startup network capture; audio, playback\n'
+              '// REST endpoints and Pusher realtime delivery are deliberately left untouched.\n'
+              '// Pusher carries track transitions as well as chat/presence, so blocking it\n'
+              '// forces the player onto a roughly 10-second polling fallback.\n',
+              'resource blocking documentation',
+          )
+          replace_once(
+              '// by BlockStationheadRealtimeSockets so no new chat/presence is received.\n'
+              '// Matched as case-insensitive substrings of the full URI.\n',
+              '// Matched as case-insensitive substrings of the full URI.\n',
+              'obsolete Pusher documentation',
+          )
+
+          replace_once(
+              'inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview) {\n',
+              '// Block only known telemetry sockets. Realtime playback transports such as\n'
+              '// Pusher must remain available so the next track starts without polling delay.\n'
+              'inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview) {\n',
+              'telemetry socket documentation',
+          )
+
+          forbidden = [
+              '*pusher.com*',
+              'StationheadCorePlaybackRequest',
+              'L"/streams",',
+              'block = !StationheadCorePlaybackRequest',
+          ]
+          for value in forbidden:
+              if value in text:
+                  raise SystemExit(f"forbidden blocking rule remains: {value}")
+
+          path.write_text(text, encoding="utf-8", newline="\n")
+          PY
+
+          git diff --check
+          git diff -- native/src/sh_shared.h
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/src/sh_shared.h
+          git commit -m "Fix Stationhead next-track realtime delivery"
+          git push origin HEAD:fix/stationhead-realtime-transition
