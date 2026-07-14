@@ -104,6 +104,10 @@ int RecentStationheadPlayIncrease(const std::vector<StationheadPlayHistorySample
   return delta >= 0 ? delta : latest.value;
 }
 
+bool IsStationheadFallbackUrl(const std::wstring& url, const std::wstring& fallbackUrl) {
+  return !url.empty() && !fallbackUrl.empty() && _wcsicmp(url.c_str(), fallbackUrl.c_str()) == 0;
+}
+
 void DrawPremultipliedBitmap(HDC dc, HBITMAP bitmap, const RECT& target) {
   if (!bitmap) return;
   const int width = target.right - target.left;

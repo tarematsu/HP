@@ -12,7 +12,7 @@ struct StationheadConfig {
   bool blockFonts = true;
   bool lowMemoryMode = true;
   bool secondaryEnabled = true;
-  std::wstring secondaryUrl = L"https://www.stationhead.com/buddy46";
+  std::wstring secondaryUrl = L"https://www.stationhead.com/sakuramankai";
   int secondaryReloadIntervalMinutes = 50;
 };
 

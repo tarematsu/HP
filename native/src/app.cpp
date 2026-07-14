@@ -45,14 +45,18 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
 }
 
 StationheadStatus BuildRenderStationheadState(const AppStationheadHandle& stationhead,
-                                              const AppSecondaryStationheadHandle& secondary) {
+                                              const AppSecondaryStationheadHandle& secondary,
+                                              const StationheadConfig& config) {
   StationheadStatus state = stationhead.Status();
+  state.fallbackUrl = config.fallbackUrl;
   if (secondary) {
     const SecondaryStationheadStatus secondaryStatus = secondary.Status();
     state.loginRequired = state.loginRequired || secondaryStatus.loginRequired;
     state.secondaryAudioMuted = secondaryStatus.audioMuted;
+    state.secondaryUrl = secondaryStatus.url;
   } else {
     state.secondaryAudioMuted = false;
+    state.secondaryUrl.clear();
   }
   return state;
 }
@@ -302,7 +306,8 @@ void App::Tick() {
       secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
   stationhead_->Tick(now);
   const StationheadStatus stationheadStatus = stationhead_->Status();
-  StationheadStatus nextStationheadState = BuildRenderStationheadState(stationhead_, secondaryStationhead_);
+  StationheadStatus nextStationheadState = BuildRenderStationheadState(
+      stationhead_, secondaryStationhead_, config_.stationhead);
   UpdateRenderStationheadState(nextStationheadState);
   UpdateStationheadPlayHistory(stationheadStatus);
   StartDeferredServices(now, stationheadStatus);

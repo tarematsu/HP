@@ -2,7 +2,7 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kPlaybackRenderTransitionHoldMs = 1'000;
+constexpr int64_t kPlaybackRenderTransitionHoldMs = 500;
 
 int64_t ProjectedElapsedMs(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.playing) return projection.progressMs;

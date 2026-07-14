@@ -300,6 +300,11 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const int64_t nowMs = UnixMillis();
   const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
   const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
+  const bool bothStationheadsOnFallback =
+      IsStationheadFallbackUrl(nativeStationhead_.url, nativeStationhead_.fallbackUrl) &&
+      IsStationheadFallbackUrl(nativeStationhead_.secondaryUrl, nativeStationhead_.fallbackUrl);
+  const NativePlaybackRender& sharedPlayback =
+      bothStationheadsOnFallback ? playbackB : playbackA;
 
   const auto drawRow = [&](int row, bool muted,
                            const NativePlaybackRender& playback,
@@ -382,10 +387,10 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, nativeStationhead_.audioMuted, playbackA, L"", detail);
-  drawRow(1, nativeStationhead_.secondaryAudioMuted, playbackB,
-          L"Buddy46",
-          playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
+  drawRow(0, nativeStationhead_.audioMuted, sharedPlayback, L"", detail);
+  drawRow(1, nativeStationhead_.secondaryAudioMuted, sharedPlayback,
+          bothStationheadsOnFallback ? L"Buddy46" : L"",
+          sharedPlayback.available && !sharedPlayback.hasTrack ? L"次の曲を待機中"
               : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
   SelectObject(dc, previousFont);
 }

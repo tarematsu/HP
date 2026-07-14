@@ -125,7 +125,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       if (layoutChanged) LayoutWorkspace();
       MarkStationheadPlacementDirty();
       const StationheadStatus nextStationheadState =
-          BuildRenderStationheadState(stationhead_, secondaryStationhead_);
+          BuildRenderStationheadState(stationhead_, secondaryStationhead_, config_.stationhead);
       UpdateRenderStationheadState(nextStationheadState);
       PublishRenderStateNow();
       return 0;

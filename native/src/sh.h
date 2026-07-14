@@ -48,6 +48,9 @@ struct StationheadStatus {
   bool audioMuted = false;
   bool secondaryAudioMuted = false;
   std::wstring url;
+  // Render-only routing metadata for choosing the shared playback feed.
+  std::wstring fallbackUrl;
+  std::wstring secondaryUrl;
   std::wstring detail;
   // Recent per-day listening activity returned by the primary window's
   // authenticated Stationhead account endpoint, oldest first; the last entry
