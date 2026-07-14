@@ -15,7 +15,6 @@ param(
 # privacy: visible account/chat content is intentionally retained for analysis.
 
 $ErrorActionPreference = "Stop"
-Add-Type -AssemblyName System.Net.WebSockets.Client -ErrorAction SilentlyContinue
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
   $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
