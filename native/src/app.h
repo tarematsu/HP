@@ -386,30 +386,12 @@ class App {
   int Run(int showCommand);
   static App* Current();
   void LogUnhandled(DWORD code, void* address);
-  void ToggleStationheadAudioA() {
-    stationhead_->ToggleAudioMuted();
-
-
-
-
-    ApplyScheduledStationheadAudioProfile(!stationhead_->AudioMuted());
-    renderState_.toast = stationhead_->AudioMuted()
-        ? L"Stationhead A 音声OFF"
-        : L"Stationhead A 音声ON";
-    toastUntil_ = UnixMillis() + 3000;
-    MarkRenderStateDirty();
-    InvalidateAll();
-  }
-  void ToggleStationheadAudioB() {
-    if (secondaryStationhead_) {
-      secondaryStationhead_->ToggleAudioMuted();
-      ApplyScheduledStationheadAudioProfile(secondaryStationhead_->AudioMuted());
-      renderState_.toast = secondaryStationhead_->AudioMuted()
-          ? L"Stationhead B 音声OFF"
-          : L"Stationhead B 音声ON";
-    } else {
-      renderState_.toast = L"Stationhead B は未設定です";
-    }
+  void ToggleStationheadAudio() {
+    const bool primaryAudible = secondaryStationhead_
+        ? !scheduledPrimaryAudioAudible_
+        : true;
+    ApplyScheduledStationheadAudioProfile(primaryAudible);
+    renderState_.toast = primaryAudible ? L"A 音声ON" : L"B 音声ON";
     toastUntil_ = UnixMillis() + 3000;
     MarkRenderStateDirty();
     InvalidateAll();

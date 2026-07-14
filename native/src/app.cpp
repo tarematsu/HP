@@ -559,11 +559,8 @@ void App::HandleAction(UiAction action) {
     case UiAction::StationheadReconnect:
       stationhead_->Reconnect();
       break;
-    case UiAction::StationheadAudioToggleA:
-      ToggleStationheadAudioA();
-      break;
-    case UiAction::StationheadAudioToggleB:
-      ToggleStationheadAudioB();
+    case UiAction::StationheadAudioToggle:
+      ToggleStationheadAudio();
       break;
     case UiAction::ClearCache:
       ClearDisplayCache();

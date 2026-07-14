@@ -306,10 +306,10 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const NativePlaybackRender& sharedPlayback =
       bothStationheadsOnFallback ? playbackB : playbackA;
 
-  const auto drawRow = [&](int row, bool muted,
-                           const NativePlaybackRender& playback,
+  const bool primaryAudioAudible = !nativeStationhead_.audioMuted;
+  const auto drawRow = [&](const NativePlaybackRender& playback,
                            const std::wstring& fallbackTitle, const std::wstring& detail) {
-    const MusicRowRects rects = MusicRowFromBody(body, row);
+    const MusicRowRects rects = MusicRowFromBody(body);
     const RECT& rowRect = rects.row;
     const int rowHeight = static_cast<int>(rowRect.bottom - rowRect.top);
     const int pad = std::max(6, rowHeight * 10 / 100);
@@ -374,11 +374,10 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
                      DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
     }
 
-    DrawWidgetCard(dc, rects.button, muted ? kWidgetDangerSurface : kWidgetSuccessSurface,
-                   CardRadius(rects.button));
-    SetTextColor(dc, muted ? kWidgetDanger : kWidgetGreen);
+    DrawWidgetCard(dc, rects.button, kWidgetSuccessSurface, CardRadius(rects.button));
+    SetTextColor(dc, kWidgetGreen);
     SelectObject(dc, TierFont(FontTier::Small));
-    DrawTextInRect(dc, muted ? L"音声OFF" : L"音声ON", rects.button,
+    DrawTextInRect(dc, primaryAudioAudible ? L"A 音声ON" : L"B 音声ON", rects.button,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   };
 
@@ -387,11 +386,8 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  drawRow(0, nativeStationhead_.audioMuted, sharedPlayback, L"", detail);
-  drawRow(1, nativeStationhead_.secondaryAudioMuted, sharedPlayback,
-          bothStationheadsOnFallback ? L"Buddy46" : L"",
-          sharedPlayback.available && !sharedPlayback.hasTrack ? L"次の曲を待機中"
-              : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
+  drawRow(sharedPlayback, bothStationheadsOnFallback ? L"Buddy46" : L"",
+          sharedPlayback.available && !sharedPlayback.hasTrack ? L"次の曲を待機中" : detail);
   SelectObject(dc, previousFont);
 }
 

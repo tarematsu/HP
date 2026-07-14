@@ -6,12 +6,10 @@ struct MusicRowRects {
   RECT button{};
 };
 
-MusicRowRects MusicRowFromBody(const RECT& body, int row) {
-  const int gap = std::max(4, SpanY(body, 60));
-  const int rowHeight = std::max(1, (static_cast<int>(body.bottom - body.top) - gap) / 2);
-  const int top = body.top + row * (rowHeight + gap);
+MusicRowRects MusicRowFromBody(const RECT& body) {
+  const int rowHeight = std::max(1, static_cast<int>(body.bottom - body.top));
   MusicRowRects rects;
-  rects.row = RECT{body.left, top, body.right, top + rowHeight};
+  rects.row = body;
   const int pad = std::max(2, rowHeight * 8 / 100);
   const int artSize = std::max(1, rowHeight - pad * 2);
   rects.artwork = RECT{rects.row.left, rects.row.top + pad, rects.row.left + artSize,
@@ -269,14 +267,8 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       if (id == kNativeMainId) {
         const MainSections sections = SplitMainSections(client);
         const RECT body = CardBodyRect(CardContentRect(sections.music));
-        for (int row = 0; row < 2; ++row) {
-          const MusicRowRects rects = MusicRowFromBody(body, row);
-          if (PtInRect(&rects.button, point)) {
-            QueueAction(row == 0 ? UiAction::StationheadAudioToggleA
-                                 : UiAction::StationheadAudioToggleB);
-            break;
-          }
-        }
+        const MusicRowRects rects = MusicRowFromBody(body);
+        if (PtInRect(&rects.button, point)) QueueAction(UiAction::StationheadAudioToggle);
         return 0;
       }
       break;
