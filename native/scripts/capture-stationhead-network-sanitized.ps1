@@ -86,7 +86,7 @@ function Sanitize-Body {
   param([AllowNull()][string]$Body)
   if ($null -eq $Body) { return $null }
   try {
-    $parsed = $Body | ConvertFrom-Json -Depth 50
+    $parsed = $Body | ConvertFrom-Json
     return (($parsed | ForEach-Object { Sanitize-Value $_ }) | ConvertTo-Json -Depth 50 -Compress)
   } catch {
     return Sanitize-Text $Body
@@ -155,7 +155,7 @@ try {
   while ($true) {
     try { $raw = Receive-Cdp $socket $token } catch [OperationCanceledException] { break }
     if (-not $raw) { continue }
-    $message = $raw | ConvertFrom-Json -Depth 50
+    $message = $raw | ConvertFrom-Json
 
     if ($message.id -and $pending.ContainsKey([string]$message.id)) {
       $requestId = $pending[[string]$message.id]; $pending.Remove([string]$message.id)
