@@ -118,8 +118,63 @@
     .sort((left, right) => right.score - left.score || left.text.length - right.text.length)
     .slice(0, 100);
 
+  const svgAttribute = (element, name, limit = 500) => {
+    const value = element.getAttribute(name);
+    return value === null || value === "" ? undefined : shorten(value, limit);
+  };
+  const svgBox = element => {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: Math.round(rect.x), y: Math.round(rect.y),
+      width: Math.round(rect.width), height: Math.round(rect.height),
+    };
+  };
+  const svgCharts = Array.from(document.querySelectorAll("svg"))
+    .filter(isVisible)
+    .map((svg, chartIndex) => {
+      const textNodes = Array.from(svg.querySelectorAll("text, tspan"))
+        .filter(isVisible)
+        .map(element => ({
+          tag: element.tagName.toLowerCase(),
+          text: shorten(element.textContent, 120),
+          x: svgAttribute(element, "x", 40),
+          y: svgAttribute(element, "y", 40),
+          box: svgBox(element),
+        }))
+        .filter(item => item.text);
+      const marks = Array.from(svg.querySelectorAll("g[role='img'], rect, path"))
+        .filter(isVisible)
+        .map((element, markIndex) => {
+          const item = {
+            index: markIndex,
+            tag: element.tagName.toLowerCase(),
+            role: svgAttribute(element, "role", 40),
+            class: svgAttribute(element, "class", 180),
+            x: svgAttribute(element, "x", 40),
+            y: svgAttribute(element, "y", 40),
+            width: svgAttribute(element, "width", 40),
+            height: svgAttribute(element, "height", 40),
+            d: svgAttribute(element, "d"),
+            fill: svgAttribute(element, "fill", 80),
+            stroke: svgAttribute(element, "stroke", 80),
+            box: svgBox(element),
+          };
+          return Object.fromEntries(Object.entries(item).filter(([, value]) => value !== undefined));
+        });
+      const container = svg.closest("section, article, main, [role='region']");
+      return {
+        chartIndex,
+        box: svgBox(svg),
+        class: svgAttribute(svg, "class", 180),
+        viewBox: svgAttribute(svg, "viewBox", 120),
+        containerText: shorten(container?.innerText || "", 500),
+        textNodes,
+        marks,
+      };
+    });
+
   const result = {
-    schema: "homepanel.stationhead.visible-dom.v1",
+    schema: "homepanel.stationhead.visible-dom.v2",
     capturedAt: new Date().toISOString(),
     page: {
       origin: location.origin,
@@ -131,12 +186,14 @@
       "Only elements visible in the current viewport/layout were included.",
       "Input values, cookies, storage, Authorization headers, href, and src attributes were excluded.",
       "Text may include account or station labels that are visible on the page.",
+      "svgCharts contains visible SVG axis labels and geometry for chart marks; values may require the chart scale.",
     ],
     visibleText: shorten(document.body.innerText || "", MAX_VISIBLE_TEXT),
     nodeCount: nodes.length,
     truncated: nodes.length >= MAX_NODES,
     nodes,
     relevant,
+    svgCharts,
   };
 
   const json = JSON.stringify(result, null, 2);
