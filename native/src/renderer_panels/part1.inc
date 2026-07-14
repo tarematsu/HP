@@ -399,13 +399,19 @@ ControlsRects ControlsFromContent(const RECT& content) {
   const int width = std::max(1L, content.right - content.left);
   const int gap = std::max(6, SpanX(content, 35));
   const int buttonHeight = std::clamp(height * 45 / 100, 28, 54);
+  const int statusLineHeight = std::clamp(height * 20 / 100, 14, 24);
+  const int statusGap = std::max(4, statusLineHeight / 2);
+  const int statusHeight = std::min(
+      statusLineHeight * 2, std::max(1, height - buttonHeight - statusGap));
+  const int groupHeight = buttonHeight + statusGap + statusHeight;
+  const int groupTop = content.top + std::max(0, (height - groupHeight) / 2);
   const int buttonWidth = std::max(1, (width - gap) / 2);
   ControlsRects rects;
-  rects.update = RECT{content.left, content.top, content.left + buttonWidth,
-                      content.top + buttonHeight};
-  rects.restart = RECT{rects.update.right + gap, content.top, content.right,
-                       content.top + buttonHeight};
-  rects.status = RECT{content.left, rects.update.bottom + std::max(4, height * 8 / 100),
-                      content.right, content.bottom};
+  rects.update = RECT{content.left, groupTop, content.left + buttonWidth,
+                      groupTop + buttonHeight};
+  rects.restart = RECT{rects.update.right + gap, groupTop, content.right,
+                       groupTop + buttonHeight};
+  rects.status = RECT{content.left, rects.update.bottom + statusGap,
+                      content.right, rects.update.bottom + statusGap + statusHeight};
   if (rects.status.bottom <= rects.status.top) rects.status.bottom = rects.status.top + 1;
   return rects;

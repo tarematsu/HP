@@ -173,6 +173,7 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
     const int left = body.left + i * (columnWidth + columnGap);
     const RECT column{left, body.top, left + columnWidth, body.bottom};
     const bool hasData = i < static_cast<int>(count);
+    const bool hasIcon = hasData && !hours[static_cast<size_t>(i)].icon.empty();
 
     SetTextColor(dc, kWidgetMuted);
     SelectObject(dc, TierFont(FontTier::Small));
@@ -181,7 +182,8 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
         ? std::to_wstring(hours[static_cast<size_t>(i)].hour) + L"時" : L"--";
     DrawTextInRect(dc, hour, hourRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
 
-    if (hasData && !hours[static_cast<size_t>(i)].icon.empty()) {
+    int iconBottom = column.top + bodyHeight * 22 / 100;
+    if (hasIcon) {
       const int iconWidth = std::min(columnWidth, bodyHeight * 34 / 100 * 90 / 48);
       const int iconHeight = std::max(12, iconWidth * 48 / 90);
       const int iconTop = column.top + bodyHeight * 22 / 100;
@@ -192,12 +194,20 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
                                   IsWeatherNightHour(hours[static_cast<size_t>(i)].hour),
                                   iconWidth, iconHeight),
           iconRect);
+      // Narrow columns can make the icon shorter than its intended 34% slot.
+      // Use the actual bitmap end so the temperature does not float below it.
+      iconBottom = iconRect.bottom;
     }
 
     SetTextColor(dc, kWidgetText);
     SelectObject(dc, TierFont(FontTier::Medium));
-    RECT tempRect{column.left, column.top + bodyHeight * 56 / 100,
-                  column.right, column.top + bodyHeight * 80 / 100};
+    const int itemGap = std::max(4, bodyHeight * 20 / 1000);
+    const int temperatureTop = hasIcon
+        ? iconBottom + itemGap
+        : column.top + bodyHeight * 56 / 100;
+    const int temperatureHeight = std::clamp(bodyHeight * 12 / 100, 20, 32);
+    RECT tempRect{column.left, temperatureTop, column.right,
+                  std::min(static_cast<int>(column.bottom), temperatureTop + temperatureHeight)};
     const std::wstring temp = hasData
         ? NumberOrDash(hours[static_cast<size_t>(i)].temperature, 0) + L"℃" : L"--";
     DrawTextInRect(dc, temp, tempRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
