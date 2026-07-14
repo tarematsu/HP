@@ -2,7 +2,7 @@
 param(
   [string]$ChromePath,
   [string]$ProfileDir = (Join-Path $env:LOCALAPPDATA "HomePanel\StationheadCaptureProfile"),
-  [string]$OutDir,
+  [string]$OutDir = (Join-Path $env:USERPROFILE "Downloads"),
   [string]$Url = "https://stationhead.com/c/buddies",
   [int]$DebugPort = 9222,
   [int]$DurationSeconds = 300,
@@ -17,8 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
-  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-  $OutDir = Join-Path $repoRoot "native\data\stationhead-capture"
+  $OutDir = Join-Path $env:USERPROFILE "Downloads"
 }
 
 function Resolve-ChromePath {
@@ -120,6 +119,17 @@ $chrome = Resolve-ChromePath $ChromePath
 New-Item -ItemType Directory -Force -Path $ProfileDir, $OutDir | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outFile = Join-Path $OutDir "sanitized-capture-$stamp.jsonl"
+$writer = [IO.StreamWriter]::new($outFile, $false, [Text.Encoding]::UTF8)
+$started = [ordered]@{
+  kind = 'capture_started'
+  capturedAt = (Get-Date).ToString('o')
+  outputFile = $outFile
+  url = Sanitize-Url $Url
+  durationSeconds = $DurationSeconds
+}
+$writer.WriteLine(($started | ConvertTo-Json -Compress)); $writer.Flush()
+Write-Host "Sanitized output: $outFile"
+Write-Host "Capturing for $DurationSeconds seconds..."
 $chromeArgs = @("--remote-debugging-port=$DebugPort", "--user-data-dir=$ProfileDir", "--no-first-run", "--no-default-browser-check", $Url)
 $process = Start-Process -FilePath $chrome -ArgumentList $chromeArgs -PassThru
 
@@ -139,7 +149,6 @@ $socket.ConnectAsync([Uri]$target.webSocketDebuggerUrl, $connectToken.Token).Get
 $messageId = 0
 $runCts = [Threading.CancellationTokenSource]::new([TimeSpan]::FromSeconds($DurationSeconds))
 $token = $runCts.Token
-$writer = [IO.StreamWriter]::new($outFile, $false, [Text.Encoding]::UTF8)
 $requests = @{}
 $responses = @{}
 $pending = @{}
@@ -208,7 +217,8 @@ try {
     }
   }
 } finally {
-  $writer.Flush(); $writer.Close(); try { $socket.Dispose() } catch { }
+  if ($writer) { $writer.Flush(); $writer.Close() }
+  try { $socket.Dispose() } catch { }
 }
 
 Write-Host "Done. Captured $captured sanitized entries."
