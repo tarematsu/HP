@@ -2,7 +2,7 @@
 param(
   [string]$ChromePath,
   [string]$ProfileDir = (Join-Path $env:LOCALAPPDATA "HomePanel\StationheadCaptureProfile"),
-  [string]$OutDir = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "native\data\stationhead-capture"),
+  [string]$OutDir,
   [string]$Url = "https://stationhead.com/c/buddies",
   [int]$DebugPort = 9222,
   [int]$DurationSeconds = 300,
@@ -16,6 +16,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.WebSockets.Client -ErrorAction SilentlyContinue
+
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+  $OutDir = Join-Path $repoRoot "native\data\stationhead-capture"
+}
 
 function Resolve-ChromePath {
   param([string]$Explicit)
