@@ -6,7 +6,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kNativePlaybackPollMs = 10 * 60'000;
 constexpr size_t kMaxPlaybackResponseBytes = 4 * 1024 * 1024;
 constexpr int64_t kPlaybackTransitionHoldMs = 500;
 using winrt::Windows::Data::Json::JsonArray;
@@ -17,11 +16,12 @@ using winrt::Windows::Data::Json::JsonValueType;
 struct PlaybackEndpoint {
   const wchar_t* source;
   const wchar_t* url;
+  int64_t pollIntervalMs;
 };
 
 constexpr PlaybackEndpoint kPlaybackEndpoints[] = {
-    {L"a", L"https://skrzk.pages.dev/api/playback?channel=buddies"},
-    {L"b", L"https://skrzk.pages.dev/api/playback?channel=buddy46"},
+    {L"a", L"https://skrzk.pages.dev/api/playback?channel=buddies", 10 * 60'000},
+    {L"b", L"https://skrzk.pages.dev/api/playback?channel=buddy46", 60 * 60'000},
 };
 
 double FirstNumber(const JsonObject& object, std::initializer_list<const wchar_t*> names) {
@@ -476,9 +476,12 @@ void Renderer::StopNativePlaybackBridge() noexcept {
 
 void Renderer::NativePlaybackLoop() {
   const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  std::array<int64_t, std::size(kPlaybackEndpoints)> nextPollAt{};
   while (!nativePlaybackStopping_.load(std::memory_order_acquire)) {
+    const int64_t nowMs = UnixMillis();
     for (size_t index = 0; index < std::size(kPlaybackEndpoints); ++index) {
       if (nativePlaybackStopping_.load(std::memory_order_acquire)) break;
+      if (nextPollAt[index] > nowMs) continue;
       std::wstring payload;
       const int64_t fetchedAt = UnixMillis();
       const std::wstring error = FetchPlaybackJson(kPlaybackEndpoints[index].url, &payload);
@@ -505,12 +508,19 @@ void Renderer::NativePlaybackLoop() {
         update.revision = ++nativePlaybackRevision_;
       }
       InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+      nextPollAt[index] = UnixMillis() + kPlaybackEndpoints[index].pollIntervalMs;
     }
 
+    const int64_t waitStartedAt = UnixMillis();
+    int64_t nextDueAt = waitStartedAt + 60 * 60'000;
+    for (const int64_t pollAt : nextPollAt) {
+      if (pollAt > 0) nextDueAt = std::min(nextDueAt, pollAt);
+    }
     std::unique_lock waitLock(nativePlaybackWakeMutex_);
     nativePlaybackWake_.wait_for(
         waitLock,
-        std::chrono::milliseconds(kNativePlaybackPollMs),
+        std::chrono::milliseconds(std::max<int64_t>(
+            1'000, nextDueAt - waitStartedAt)),
         [this] { return nativePlaybackStopping_.load(std::memory_order_acquire); });
   }
   if (SUCCEEDED(apartment)) CoUninitialize();
