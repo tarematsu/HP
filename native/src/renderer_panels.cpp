@@ -309,27 +309,24 @@ void DrawHeaderStatus(HDC dc, const RECT& header, const PanelDataStatus& status)
 
 struct SidebarSections {
   RECT clock{};
-  RECT air{};
   RECT weather{};
-  RECT controls{};
+  RECT air{};
 };
 
 SidebarSections SplitSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  const int clockHeight = height * 150 / 1000;
-  const int airHeight = height * 345 / 1000;
-  const int weatherHeight = height * 305 / 1000;
+  const bool compact = height < 480;
+  const int clockHeight = height * (compact ? 450 : 310) / 1000;
+  const int weatherHeight = height * (compact ? 260 : 305) / 1000;
   SidebarSections sections;
   int top = client.top;
   sections.clock = RECT{client.left, top, client.right, top + clockHeight};
   top = sections.clock.bottom + gap;
-  sections.air = RECT{client.left, top, client.right, top + airHeight};
-  top = sections.air.bottom + gap;
   sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
   top = sections.weather.bottom + gap;
-  sections.controls = RECT{client.left, std::min(static_cast<LONG>(top), client.bottom - 1),
-                           client.right, client.bottom};
+  sections.air = RECT{client.left, std::min(static_cast<LONG>(top), client.bottom - 1),
+                      client.right, client.bottom};
   return sections;
 }
 
@@ -357,24 +354,37 @@ MainSections SplitMainSections(const RECT& client) {
   return sections;
 }
 
-struct ControlsRects {
+struct ClockSectionRects {
+  RECT date{};
+  RECT time{};
   RECT update{};
   RECT restart{};
   RECT status{};
 };
 
-ControlsRects ControlsFromContent(const RECT& content) {
+ClockSectionRects ClockSectionFromContent(const RECT& content) {
   const int height = std::max(1L, content.bottom - content.top);
   const int width = std::max(1L, content.right - content.left);
   const int gap = std::max(6, SpanX(content, 35));
-  const int buttonHeight = std::clamp(height * 45 / 100, 28, 54);
+  const int verticalGap = std::max(4, height * 20 / 1000);
+  const int dateHeight = height * 17 / 100;
+  const int timeHeight = height * 35 / 100;
+  const int statusReserve = std::max(1, height * 18 / 100);
+  const int availableButtonHeight = std::max(
+      1, height - dateHeight - timeHeight - verticalGap * 2 - statusReserve);
+  const int buttonHeight = std::min(
+      std::clamp(height * 20 / 100, 28, 54), availableButtonHeight);
   const int buttonWidth = std::max(1, (width - gap) / 2);
-  ControlsRects rects;
-  rects.update = RECT{content.left, content.top, content.left + buttonWidth,
-                      content.top + buttonHeight};
-  rects.restart = RECT{rects.update.right + gap, content.top, content.right,
-                       content.top + buttonHeight};
-  rects.status = RECT{content.left, rects.update.bottom + std::max(4, height * 8 / 100),
+  ClockSectionRects rects;
+  rects.date = RECT{content.left, content.top, content.right, content.top + dateHeight};
+  rects.time = RECT{content.left, rects.date.bottom, content.right,
+                    rects.date.bottom + timeHeight};
+  const int buttonTop = rects.time.bottom + verticalGap;
+  rects.update = RECT{content.left, buttonTop, content.left + buttonWidth,
+                      buttonTop + buttonHeight};
+  rects.restart = RECT{rects.update.right + gap, buttonTop, content.right,
+                       buttonTop + buttonHeight};
+  rects.status = RECT{content.left, rects.update.bottom + verticalGap,
                       content.right, content.bottom};
   if (rects.status.bottom <= rects.status.top) rects.status.bottom = rects.status.top + 1;
   return rects;
@@ -552,7 +562,6 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
       case PanelSection::Clock: rect = sections.clock; break;
       case PanelSection::Air: rect = sections.air; break;
       case PanelSection::Weather: rect = sections.weather; break;
-      case PanelSection::Controls: rect = sections.controls; break;
       default: break;
     }
   } else if (window == nativeMainWindow_) {
@@ -613,7 +622,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
   }
   if (dashboardChanged || newsChanged) InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
-  if (controlsChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Controls);
+  if (controlsChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
   if (stationheadChanged || stationheadHistoryChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
   }
@@ -641,7 +650,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
       if (id == kNativeSideId) {
         const SidebarSections sections = SplitSidebarSections(client);
-        const ControlsRects controls = ControlsFromContent(CardContentRect(sections.controls));
+        const ClockSectionRects controls = ClockSectionFromContent(CardContentRect(sections.clock));
         if (PtInRect(&controls.update, point)) QueueAction(UiAction::AppUpdate);
         else if (PtInRect(&controls.restart, point)) QueueAction(UiAction::Restart);
         return 0;
@@ -685,14 +694,11 @@ void Renderer::PaintNativeSide(HWND hwnd) {
   if (IntersectRect(&overlap, &scope.dirty, &sections.clock)) {
     DrawClockSection(scope.dc, sections.clock);
   }
-  if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawAirSection(scope.dc, sections.air);
-  }
   if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
     DrawWeatherSection(scope.dc, sections.weather);
   }
-  if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
-    DrawControlsSection(scope.dc, sections.controls);
+  if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
+    DrawAirSection(scope.dc, sections.air);
   }
 }
 
@@ -763,18 +769,69 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
 void Renderer::DrawClockSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);
+  const ClockSectionRects rects = ClockSectionFromContent(content);
   SYSTEMTIME now{};
   GetLocalTime(&now);
 
-  RECT dateRect{content.left, content.top, content.right, content.top + SpanY(content, 320)};
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   SetTextColor(dc, kWidgetMuted);
-  DrawTextInRect(dc, DateText(now), dateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  DrawTextInRect(dc, DateText(now), rects.date,
+                 DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
-  RECT timeRect{content.left, dateRect.bottom, content.right, content.bottom};
-  SelectObject(dc, TierFont(FontTier::Large));
+  const int timeHeight = static_cast<int>(rects.time.bottom - rects.time.top);
+  SelectObject(dc, TierFont(timeHeight >= 36 ? FontTier::Large
+                                             : timeHeight >= 16 ? FontTier::Medium
+                                                                : FontTier::Small));
   SetTextColor(dc, kWidgetText);
-  DrawTextInRect(dc, TimeText(now), timeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  DrawTextInRect(dc, TimeText(now), rects.time, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+  SelectObject(dc, TierFont(FontTier::Small));
+  const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
+      {L"更新", rects.update},
+      {L"再起動", rects.restart},
+  }};
+  for (const auto& [label, rect] : buttons) {
+    DrawWidgetCard(dc, rect, kWidgetSurfaceAlt, CardRadius(rect));
+    SetTextColor(dc, kWidgetText);
+    DrawTextInRect(dc, label, rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  }
+
+  if (!nativeToast_.empty()) {
+    SetTextColor(dc, kWidgetWarning);
+    DrawTextInRect(dc, nativeToast_, rects.status,
+                   DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
+  } else {
+    std::wstring radarTime;
+    bool hasFrame = false;
+    {
+      std::lock_guard lock(radarFrameMutex_);
+      radarTime = radarTimeText_;
+      hasFrame = radarFrameBitmap_ != nullptr;
+    }
+    const std::wstring radarStatus = hasFrame
+        ? L"レーダー更新: " + (radarTime.empty() ? L"--:--" : radarTime)
+        : L"レーダーを準備中";
+    const int statusHeight = static_cast<int>(rects.status.bottom - rects.status.top);
+    if (statusHeight < 24) {
+      SetTextColor(dc, kWidgetMuted);
+      DrawTextInRect(dc, radarStatus, rects.status,
+                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+      SelectObject(dc, previousFont);
+      return;
+    }
+    RECT firstLine = rects.status;
+    firstLine.bottom = rects.status.top + statusHeight / 2;
+    RECT secondLine = rects.status;
+    secondLine.top = firstLine.bottom;
+    SetTextColor(dc, kWidgetMuted);
+    DrawTextInRect(dc, radarStatus, firstLine,
+                   DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    if (!nativeAppVersion_.empty()) {
+      SetTextColor(dc, kWidgetSubtle);
+      DrawTextInRect(dc, L"バージョン " + nativeAppVersion_, secondLine,
+                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    }
+  }
   SelectObject(dc, previousFont);
 }
 
@@ -804,6 +861,15 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
       {L"湿度", connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%",
        kWidgetText},
   }};
+  const int bodyHeight = std::max(1L, body.bottom - body.top);
+  if (bodyHeight < 80) {
+    SelectObject(dc, TierFont(FontTier::Small));
+    SetTextColor(dc, co2Color);
+    DrawTextInRect(dc, stats[0].value, body,
+                   DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    SelectObject(dc, previousFont);
+    return;
+  }
   const int statsHeight = SpanY(body, 270);
   const int statsGap = std::max(4, SpanX(body, 30));
   const int cardWidth = (static_cast<int>(body.right - body.left) - statsGap * 2) / 3;
@@ -912,19 +978,38 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   RECT header{content.left, content.top, content.right, content.top + CardHeaderHeight(content)};
+  const bool narrowHeader = content.right - content.left < 140;
   SetTextColor(dc, kWidgetSubtle);
-  DrawTextInRect(dc, L"天気予報", header, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+  if (nativeDashboard_.weatherStatus.state == PanelDataState::Ok || !narrowHeader) {
+    DrawTextInRect(dc, L"天気予報", header,
+                   (narrowHeader ? DT_CENTER : DT_LEFT) |
+                       DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  }
   if (nativeDashboard_.weatherStatus.state == PanelDataState::Ok) {
-    SetTextColor(dc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
-    DrawTextInRect(dc,
-                   L"降水確率 " + std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%",
-                   header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+    if (!narrowHeader) {
+      SetTextColor(dc, maxPop >= 70 ? kWidgetBlue : maxPop >= 40 ? kWidgetBlueMuted : kWidgetMuted);
+      DrawTextInRect(dc,
+                     L"降水確率 " + std::to_wstring(static_cast<int>(std::round(maxPop))) + L"%",
+                     header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+    }
   } else {
     DrawHeaderStatus(dc, header, nativeDashboard_.weatherStatus);
   }
 
   const RECT body = CardBodyRect(content);
   const int bodyHeight = std::max(1L, body.bottom - body.top);
+  if (bodyHeight < 80) {
+    const bool hasData = count > 0;
+    const std::wstring summary = hasData
+        ? NumberOrDash(hours[0].temperature, 0) + L"℃"
+        : L"--";
+    SetTextColor(dc, kWidgetText);
+    SelectObject(dc, TierFont(FontTier::Small));
+    DrawTextInRect(dc, summary, body,
+                   DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    SelectObject(dc, previousFont);
+    return;
+  }
   const int columnGap = std::max(4, SpanX(body, 25));
   constexpr int kSlotCount = 5;
   const int columnWidth = std::max(
@@ -969,53 +1054,6 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
     RECT rainRect{column.left, column.top + bodyHeight * 80 / 100, column.right, column.bottom};
     const std::wstring rain = hasData ? NumberOrDash(rainMm, 0) + L"mm" : L"--";
     DrawTextInRect(dc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  }
-  SelectObject(dc, previousFont);
-}
-
-void Renderer::DrawControlsSection(HDC dc, const RECT& card) {
-  DrawSectionCard(dc, card);
-  const RECT content = CardContentRect(card);
-  const ControlsRects rects = ControlsFromContent(content);
-
-  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  const std::array<std::pair<std::wstring, RECT>, 2> buttons{{
-      {L"更新", rects.update},
-      {L"再起動", rects.restart},
-  }};
-  for (const auto& [label, rect] : buttons) {
-    DrawWidgetCard(dc, rect, kWidgetSurfaceAlt, CardRadius(rect));
-    SetTextColor(dc, kWidgetText);
-    DrawTextInRect(dc, label, rect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  }
-
-  if (!nativeToast_.empty()) {
-    SetTextColor(dc, kWidgetWarning);
-    DrawTextInRect(dc, nativeToast_, rects.status, DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
-  } else {
-    std::wstring radarTime;
-    bool hasFrame = false;
-    {
-      std::lock_guard lock(radarFrameMutex_);
-      radarTime = radarTimeText_;
-      hasFrame = radarFrameBitmap_ != nullptr;
-    }
-    const std::wstring radarStatus = hasFrame
-        ? L"レーダー更新: " + (radarTime.empty() ? L"--:--" : radarTime)
-        : L"レーダーを準備中";
-    const int statusHeight = static_cast<int>(rects.status.bottom - rects.status.top);
-    RECT firstLine = rects.status;
-    firstLine.bottom = rects.status.top + statusHeight / 2;
-    RECT secondLine = rects.status;
-    secondLine.top = firstLine.bottom;
-    SetTextColor(dc, kWidgetMuted);
-    DrawTextInRect(dc, radarStatus, firstLine,
-                   DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-    if (!nativeAppVersion_.empty()) {
-      SetTextColor(dc, kWidgetSubtle);
-      DrawTextInRect(dc, L"バージョン " + nativeAppVersion_, secondLine,
-                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-    }
   }
   SelectObject(dc, previousFont);
 }
