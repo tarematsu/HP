@@ -7,6 +7,9 @@ on:
       - ".github/workflows/native-updater-analysis.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: native-updater-analysis-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -19,7 +22,129 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: fix/music-daily-count-labels
           show-progress: false
+
+      - name: Apply music daily count fix
+        if: github.actor != 'github-actions[bot]'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          sh_path = Path("native/src/sh.cpp")
+          sh = sh_path.read_text(encoding="utf-8")
+          sh = replace_once(
+              sh,
+              "constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;\n",
+              "constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;\n"
+              "constexpr int64_t kDailyPlayStatsRetryMs = 15'000;\n",
+              "daily stats retry constant",
+          )
+          sh = replace_once(
+              sh,
+              '''    loginSessionActive_ = false;
+    {
+      std::lock_guard lock(mutex_);
+      status_.audioPlaying = true;
+      status_.playing = true;
+      status_.loginRequired = false;
+      status_.navigating = false;
+      status_.detail = (usedFallback_ ? L"fallback audio detected" : L"audio detected") +
+                       (source.empty() ? L"" : L" (" + source + L")");
+    }
+    if (!startupPreviewActive_) SetVisible(false);
+''',
+              '''    loginSessionActive_ = false;
+    bool dailyStatsReady = false;
+    {
+      std::lock_guard lock(mutex_);
+      status_.audioPlaying = true;
+      status_.playing = true;
+      status_.loginRequired = false;
+      status_.navigating = false;
+      status_.detail = (usedFallback_ ? L"fallback audio detected" : L"audio detected") +
+                       (source.empty() ? L"" : L" (" + source + L")");
+      dailyStatsReady = status_.dailyPlayStatsUpdatedAt > 0 &&
+                        !status_.dailyPlayCounts.empty();
+    }
+    if (!dailyStatsReady) {
+      lastDailyPlayStatsAt_ = 0;
+      nextTickAt_ = 0;
+    }
+    if (!startupPreviewActive_) SetVisible(false);
+''',
+              "playback-triggered stats retry",
+          )
+          sh = replace_once(
+              sh,
+              '''  if (nowMs - lastDailyPlayStatsAt_ >= kDailyPlayStatsIntervalMs) {
+    PollDailyPlayStats(nowMs);
+  }
+''',
+              '''  int64_t dailyPlayStatsPollInterval = kDailyPlayStatsRetryMs;
+  {
+    std::lock_guard lock(mutex_);
+    if (status_.dailyPlayStatsUpdatedAt > 0 && !status_.dailyPlayCounts.empty()) {
+      dailyPlayStatsPollInterval = kDailyPlayStatsIntervalMs;
+    }
+  }
+  if (nowMs - lastDailyPlayStatsAt_ >= dailyPlayStatsPollInterval) {
+    PollDailyPlayStats(nowMs);
+  }
+''',
+              "daily stats adaptive retry",
+          )
+          sh = replace_once(
+              sh,
+              "  consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);\n",
+              "  consider(lastDailyPlayStatsAt_ + dailyPlayStatsPollInterval);\n",
+              "daily stats next wake",
+          )
+          sh_path.write_text(sh, encoding="utf-8", newline="\n")
+
+          renderer_path = Path("native/src/renderer_panels.cpp")
+          renderer = renderer_path.read_text(encoding="utf-8")
+          renderer = replace_once(
+              renderer,
+              '''  if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 && !nativeStationhead_.dailyPlayCounts.empty()) {
+    SetTextColor(dc, kWidgetSubtle);
+    DrawTextInRect(dc, L"本日 " + std::to_wstring(nativeStationhead_.dailyPlayCounts.back().value),
+                   header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+  }
+''',
+              '''  std::wstring dailyPlaySummary = L"本日 --　昨日 --";
+  if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
+      !nativeStationhead_.dailyPlayCounts.empty()) {
+    const auto& counts = nativeStationhead_.dailyPlayCounts;
+    dailyPlaySummary = L"本日 " + std::to_wstring(counts.back().value) + L"　昨日 ";
+    dailyPlaySummary += counts.size() >= 2
+        ? std::to_wstring(counts[counts.size() - 2].value)
+        : L"--";
+  }
+  SetTextColor(dc, kWidgetSubtle);
+  RECT dailyPlayHeader = header;
+  dailyPlayHeader.left += SpanX(header, 320);
+  DrawTextInRect(dc, dailyPlaySummary, dailyPlayHeader,
+                 DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+''',
+              "music daily count header",
+          )
+          renderer_path.write_text(renderer, encoding="utf-8", newline="\n")
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/src/sh.cpp native/src/renderer_panels.cpp
+          git commit -m "Show today and yesterday Stationhead counts"
+          git push origin HEAD:fix/music-daily-count-labels
 
       - name: Install WebView2 SDK
         shell: pwsh
