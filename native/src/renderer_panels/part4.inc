@@ -1,37 +1,3 @@
-// listening). Shows at most the most recent kMaxSlices intervals.
-void Renderer::DrawStationheadPlayHistoryBar(HDC dc, const RECT& bar) {
-  if (bar.right <= bar.left || bar.bottom <= bar.top) return;
-  const int radius = std::max(2L, bar.bottom - bar.top);
-  DrawWidgetCard(dc, bar, kWidgetTrack, radius);
-  const auto& history = nativeStationheadPlayHistory_;
-  if (history.size() < 2) return;
-
-  constexpr size_t kMaxSlices = 48;  // last ~4 hours at the 5-minute sample interval
-  const size_t totalIntervals = history.size() - 1;
-  const size_t count = std::min(totalIntervals, kMaxSlices);
-  const size_t firstPrevIndex = history.size() - 1 - count;
-  const int width = static_cast<int>(bar.right - bar.left);
-  if (width <= 0) return;
-
-  const int saved = SaveDC(dc);
-  HRGN clip = CreateRoundRectRgn(bar.left, bar.top, bar.right + 1, bar.bottom + 1, radius, radius);
-  ExtSelectClipRgn(dc, clip, RGN_AND);
-  DeleteObject(clip);
-  for (size_t i = 0; i < count; ++i) {
-    const auto& previous = history[firstPrevIndex + i];
-    const auto& current = history[firstPrevIndex + i + 1];
-    const bool played = current.value != previous.value;
-    const int left = bar.left + static_cast<int>(static_cast<int64_t>(width) * static_cast<int64_t>(i) / static_cast<int64_t>(count));
-    const int right = bar.left + static_cast<int>(static_cast<int64_t>(width) * static_cast<int64_t>(i + 1) / static_cast<int64_t>(count));
-    if (right <= left) continue;
-    RECT slice{left, bar.top, right, bar.bottom};
-    HBRUSH fill = CreateSolidBrush(played ? kWidgetPurple : kWidgetBlack);
-    FillRect(dc, &slice, fill);
-    DeleteObject(fill);
-  }
-  RestoreDC(dc, saved);
-}
-
 void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);

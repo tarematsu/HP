@@ -282,14 +282,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   DrawTextInRect(dc, dailyPlaySummary, dailyPlayHeader,
                  DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   RECT body = CardBodyRect(content);
-  RECT historyBar{};
-  if (nativeStationheadPlayHistory_.size() >= 2) {
-    const int barHeight = std::clamp(SpanY(body, 70), 6, 14);
-    const int barGap = std::max(4, SpanY(body, 35));
-    historyBar = RECT{body.left, body.bottom - barHeight, body.right, body.bottom};
-    body.bottom -= barHeight + barGap;
-  }
-
   const int64_t nowMs = UnixMillis();
   const NativePlaybackRender playbackA = ResolveNativePlayback(0, nowMs);
   const NativePlaybackRender playbackB = ResolveNativePlayback(1, nowMs);
@@ -380,10 +372,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
           L"Buddy46",
           playbackB.available && !playbackB.hasTrack ? L"次の曲を待機中"
               : nativeStationhead_.secondaryAudioMuted ? L"音声OFF" : L"音声ON");
-  if (historyBar.right > historyBar.left) DrawStationheadPlayHistoryBar(dc, historyBar);
   SelectObject(dc, previousFont);
 }
 
-// A simple purple/black timeline: each slice is one recorded interval of the
-// account's own daily play counter (see StationheadPlayHistorySample), purple
-// where the counter moved (listening) and black where it held flat (not
+// Stationhead play history is recorded by App; no history bar is rendered here.

@@ -490,6 +490,9 @@ inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
   const bool spotify = uriLower.find(L"spotify") != std::wstring::npos ||
                        uriLower.find(L"scdn.co") != std::wstring::npos;
   if (!stationhead && !spotify) return false;
+  // Spotify preview/full-track media is commonly served as a signed URL from
+  // p.scdn.co without an "audio" or "playback" path segment.
+  if (uriLower.find(L"scdn.co") != std::wstring::npos) return true;
   if (uriLower.find(L"/timestamp") != std::wstring::npos ||
       uriLower.find(L"/pusher/presenceauth") != std::wstring::npos ||
       uriLower.find(L"/channels/alias/") != std::wstring::npos ||
@@ -598,9 +601,9 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
                 } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET) {
                   block = armedNow;
                 } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                  block = !lower.empty() &&
-                          lower.find(L"stationhead.com") == std::wstring::npos &&
-                          lower.find(L"spotify") == std::wstring::npos;
+                  // Spotify audio is commonly served from scdn.co, so a
+                  // domain-only allow-list can interrupt the next track.
+                  block = !lower.empty() && !StationheadCorePlaybackRequest(lower);
                 } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
                            context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
