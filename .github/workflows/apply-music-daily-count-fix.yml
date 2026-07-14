@@ -1,32 +1,26 @@
-name: Native Updater Static Analysis
+name: Apply music daily count fix
 
+# One-time patch workflow; removed before merge.
 on:
   pull_request:
+    branches:
+      - main
     paths:
-      - "native/**"
-      - ".github/workflows/native-updater-analysis.yml"
-  workflow_dispatch:
+      - .github/workflows/apply-music-daily-count-fix.yml
 
 permissions:
   contents: write
 
-concurrency:
-  group: native-updater-analysis-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  analyze-updater:
-    runs-on: windows-2022
-    timeout-minutes: 30
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: fix/music-daily-count-labels
-          show-progress: false
 
-      - name: Apply music daily count fix
-        if: github.actor != 'github-actions[bot]'
+      - name: Fix daily count labels and retry timing
         shell: bash
         run: |
           python - <<'PY'
@@ -40,6 +34,7 @@ jobs:
 
           sh_path = Path("native/src/sh.cpp")
           sh = sh_path.read_text(encoding="utf-8")
+
           sh = replace_once(
               sh,
               "constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;\n",
@@ -47,6 +42,7 @@ jobs:
               "constexpr int64_t kDailyPlayStatsRetryMs = 15'000;\n",
               "daily stats retry constant",
           )
+
           sh = replace_once(
               sh,
               '''    loginSessionActive_ = false;
@@ -82,6 +78,7 @@ jobs:
 ''',
               "playback-triggered stats retry",
           )
+
           sh = replace_once(
               sh,
               '''  if (nowMs - lastDailyPlayStatsAt_ >= kDailyPlayStatsIntervalMs) {
@@ -101,12 +98,14 @@ jobs:
 ''',
               "daily stats adaptive retry",
           )
+
           sh = replace_once(
               sh,
               "  consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);\n",
               "  consider(lastDailyPlayStatsAt_ + dailyPlayStatsPollInterval);\n",
               "daily stats next wake",
           )
+
           sh_path.write_text(sh, encoding="utf-8", newline="\n")
 
           renderer_path = Path("native/src/renderer_panels.cpp")
@@ -137,49 +136,33 @@ jobs:
               "music daily count header",
           )
           renderer_path.write_text(renderer, encoding="utf-8", newline="\n")
+
+          checks = {
+              "native/src/sh.cpp": [
+                  "kDailyPlayStatsRetryMs = 15'000",
+                  "dailyPlayStatsPollInterval",
+                  "lastDailyPlayStatsAt_ = 0",
+              ],
+              "native/src/renderer_panels.cpp": [
+                  'L"本日 --　昨日 --"',
+                  'L"　昨日 "',
+              ],
+          }
+          for filename, needles in checks.items():
+              body = Path(filename).read_text(encoding="utf-8")
+              for needle in needles:
+                  if needle not in body:
+                      raise SystemExit(f"missing expected change in {filename}: {needle}")
           PY
 
           git diff --check
+          git diff -- native/src/sh.cpp native/src/renderer_panels.cpp
+
+      - name: Commit fix
+        shell: bash
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add native/src/sh.cpp native/src/renderer_panels.cpp
           git commit -m "Show today and yesterday Stationhead counts"
           git push origin HEAD:fix/music-daily-count-labels
-
-      - name: Install WebView2 SDK
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path native/packages | Out-Null
-          nuget install Microsoft.Web.WebView2 -Version 1.0.4022.49 -OutputDirectory native/packages -NonInteractive
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Configure strict static analysis
-        shell: pwsh
-        env:
-          HOMEPANEL_BUILD_VERSION: "2607100000"
-        run: |
-          New-Item -ItemType Directory -Force native/ci-logs | Out-Null
-          cmake -S native -B native/build-updater-analyze `
-            -G "Visual Studio 17 2022" -A x64 `
-            -DHOMEPANEL_CI_STRICT=ON `
-            -DHOMEPANEL_CI_STATIC_ANALYSIS=ON `
-            2>&1 | Tee-Object native/ci-logs/updater-analyze-configure.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Analyze HomePanelUpdater
-        shell: pwsh
-        env:
-          HOMEPANEL_BUILD_VERSION: "2607100000"
-        run: |
-          cmake --build native/build-updater-analyze --config Release --target HomePanelUpdater --parallel 2 `
-            2>&1 | Tee-Object native/ci-logs/updater-analyze-build.log
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Upload updater analysis diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: homepanel-updater-analysis-logs
-          path: native/ci-logs
-          if-no-files-found: warn
-          retention-days: 7
