@@ -32,6 +32,7 @@ SecondaryStationheadPlayer::~SecondaryStationheadPlayer() {
 
 void SecondaryStationheadPlayer::Start() {
   if (shuttingDown_) return;
+  usingFallback_ = false;
   retryAt_ = 0;
   nextTickAt_ = 0;
   Create();
@@ -60,6 +61,29 @@ SecondaryStationheadStatus SecondaryStationheadPlayer::Status() const {
 void SecondaryStationheadPlayer::SetStatus(const std::wstring& detail) {
   std::lock_guard lock(mutex_);
   status_.detail = detail;
+}
+
+std::wstring SecondaryStationheadPlayer::CurrentStationheadUrl() const {
+  if (usingFallback_ && !config_.fallbackUrl.empty()) return config_.fallbackUrl;
+  return config_.secondaryUrl;
+}
+
+void SecondaryStationheadPlayer::SetPlaybackFallback(bool active, const std::wstring& reason) {
+  if (active && config_.fallbackUrl.empty()) return;
+  if (usingFallback_ == active) return;
+  usingFallback_ = active;
+  const std::wstring url = CurrentStationheadUrl();
+  if (!webview_) {
+    {
+      std::lock_guard lock(mutex_);
+      status_.url = url;
+      status_.detail = reason;
+    }
+    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+    return;
+  }
+  NavigateStationheadUrl(UnixMillis(), url, reason, active);
+  PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
 }
 
 void SecondaryStationheadPlayer::ApplyPlaybackState(bool playing, const std::wstring& source) {
@@ -235,20 +259,33 @@ void SecondaryStationheadPlayer::Reconnect() {
     if (!creating_) Create();
     return;
   }
+  NavigateStationheadUrl(UnixMillis(), CurrentStationheadUrl(),
+                         L"reconnecting secondary station", usingFallback_);
+}
+
+void SecondaryStationheadPlayer::NavigateStationheadUrl(int64_t nowMs,
+                                                         const std::wstring& url,
+                                                         const std::wstring& reason,
+                                                         bool fallbackActive) {
+  (void)nowMs;
+  if (!webview_ || url.empty()) return;
   audioPlaying_ = false;
   resourceBlockingArmed_ = false;
   loginRequired_ = false;
   retryAt_ = 0;
+  usingFallback_ = fallbackActive;
   SetStartupBounds();
   {
     std::lock_guard lock(mutex_);
     status_.navigating = true;
     status_.playing = false;
     status_.loginRequired = false;
-    status_.detail = L"reconnecting secondary station";
+    status_.url = url;
+    status_.detail = reason;
   }
-  const HRESULT result = webview_->Navigate(config_.secondaryUrl.c_str());
+  const HRESULT result = webview_->Navigate(url.c_str());
   if (FAILED(result)) ScheduleRetry(L"reconnect navigation failed " + HResultHex(result), 1'000);
+  else log_.Info(L"Secondary Stationhead navigation (" + reason + L"): " + url);
 }
 
 void SecondaryStationheadPlayer::Tick(int64_t nowMs) {

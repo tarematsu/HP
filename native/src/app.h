@@ -206,6 +206,12 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     ApplyAudioState();
     ApplyBounds();
   }
+  void SetPlaybackFallback(bool active, const std::wstring& reason) {
+    if (!player_) return;
+    player_->SetPlaybackFallback(active, reason);
+    ApplyAudioState();
+    ApplyBounds();
+  }
   void ShowForLogin() {
     if (!player_) return;
     ApplyInteractiveBounds();
@@ -340,6 +346,12 @@ class AppSecondaryStationheadHandle
     ApplyAudioState();
     ApplyBounds();
   }
+  void SetPlaybackFallback(bool active, const std::wstring& reason) {
+    if (!player_) return;
+    player_->SetPlaybackFallback(active, reason);
+    ApplyAudioState();
+    ApplyBounds();
+  }
   SecondaryStationheadStatus Status() const {
     ApplyAudioState();
     SecondaryStationheadStatus status = player_ ? player_->Status() : SecondaryStationheadStatus{};
@@ -426,6 +438,7 @@ class App {
   bool UpdateRenderStationheadState(const StationheadStatus& nextState);
   void ScheduleNextTick(uint32_t milliseconds);
   void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
+  void UpdateStationheadPlaybackFallback(int64_t nowMs);
   void PublishRenderState();
   void PublishRenderStateNow();
   void InvalidateAll();
@@ -471,6 +484,9 @@ class App {
   bool rendererStarted_ = false;
   bool cloudStarted_ = false;
   bool startupUpdateScheduled_ = false;
+  bool stationheadPlaybackFallbackActive_ = false;
+  bool stationheadPlaybackNoNextTrackObserved_ = false;
+  uint64_t stationheadPlaybackFallbackRevision_ = 0;
   int64_t lastTelemetryAt_ = 0;
   uint64_t lastRadarFrameStamp_ = 0;
   int64_t toastUntil_ = 0;

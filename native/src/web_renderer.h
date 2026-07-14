@@ -69,6 +69,14 @@ struct NativePlaybackRender {
   NativePlaybackTrack track;
 };
 
+struct NativePlaybackFeedStatus {
+  bool available = false;
+  bool playing = false;
+  bool hasTrack = false;
+  bool endedWithoutNextTrack = false;
+  uint64_t contentRevision = 0;
+};
+
 inline constexpr int kRadarCanvasWidth = 1920;
 inline constexpr int kRadarCanvasHeight = 1280;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
@@ -136,6 +144,7 @@ class Renderer {
   void Render(const RECT& dirty, const RenderState& state);
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs);
+  NativePlaybackFeedStatus NativePlaybackFeedStatusFor(size_t source, int64_t nowMs) const;
   void NotifyRadarUpdated();
   UiAction HitTest(POINT point);
 
@@ -147,6 +156,7 @@ class Renderer {
     std::wstring error;
     int64_t fetchedAt = 0;
     uint64_t revision = 0;
+    uint64_t contentRevision = 0;
     bool hasPayload = false;
   };
   struct ArtworkBitmapCacheEntry {
@@ -279,6 +289,7 @@ class Renderer {
   std::mutex nativePlaybackWakeMutex_;
   mutable std::mutex nativePlaybackMutex_;
   std::array<NativePlaybackUpdate, 2> nativePlaybackUpdates_{};
+  uint64_t nativePlaybackContentRevision_ = 0;
   std::map<std::wstring, ArtworkBitmapCacheEntry> nativeArtworkBitmaps_;
   uint64_t nativeArtworkUseCounter_ = 0;
   std::map<HWND, NativeBackBuffer> nativeBackBuffers_;

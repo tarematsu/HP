@@ -200,20 +200,21 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
           }).Get(), &processFailedToken_);
   SetStartupBounds();
   lastReloadAt_ = UnixMillis();
+  const std::wstring url = CurrentStationheadUrl();
   {
     std::lock_guard lock(mutex_);
     status_.created = true;
     status_.navigating = true;
     status_.processFailed = false;
-    status_.url = config_.secondaryUrl;
+    status_.url = url;
     status_.detail = L"loading secondary station";
   }
-  const HRESULT result = webview_->Navigate(config_.secondaryUrl.c_str());
+  const HRESULT result = webview_->Navigate(url.c_str());
   if (FAILED(result)) {
     ScheduleRetry(L"initial navigation failed " + HResultHex(result), 1'000);
     return;
   }
-  log_.Info(L"Secondary Stationhead started with isolated profile: " + config_.secondaryUrl);
+  log_.Info(L"Secondary Stationhead started with isolated profile: " + url);
 }
 
 }  // namespace hp

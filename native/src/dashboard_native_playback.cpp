@@ -460,6 +460,7 @@ void Renderer::StartNativePlaybackBridge() {
       update.fetchedAt = loaded.fetchedAt;
       update.projection = std::move(loaded.projection);
       update.hasPayload = loaded.hasPayload;
+      update.contentRevision = ++nativePlaybackContentRevision_;
       update.revision = ++nativePlaybackRevision_;
     }
   }
@@ -489,11 +490,18 @@ void Renderer::NativePlaybackLoop() {
         std::lock_guard lock(nativePlaybackMutex_);
         auto& update = nativePlaybackUpdates_[index];
         update.source = kPlaybackEndpoints[index].source;
-        update.payload = std::move(payload);
         update.error = error;
         update.fetchedAt = fetchedAt;
-        update.projection = std::move(projection);
-        update.hasPayload = update.error.empty() && !update.payload.empty();
+        const bool hasValidPayload = error.empty() && !payload.empty();
+        if (hasValidPayload) {
+          const bool contentChanged = !update.hasPayload || update.payload != payload;
+          update.payload = std::move(payload);
+          update.projection = std::move(projection);
+          update.hasPayload = true;
+          if (contentChanged) {
+            update.contentRevision = ++nativePlaybackContentRevision_;
+          }
+        }
         update.revision = ++nativePlaybackRevision_;
       }
       InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);

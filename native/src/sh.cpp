@@ -6,8 +6,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kPrimaryNoAudioFallbackMs = 360'000;
-constexpr int64_t kPrimaryFallbackMonitorGraceMs = 60'000;
 constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;
 constexpr int64_t kDailyPlayStatsRetryMs = 30'000;
 
@@ -34,7 +32,7 @@ StationheadPlayer::~StationheadPlayer() { Stop(); }
 
 void StationheadPlayer::Start() {
   shuttingDown_ = false;
-  usedFallback_ = false;
+  usingFallback_ = false;
   ResetNavigationRouteState();
   Create();
 }
@@ -64,19 +62,16 @@ StationheadStatus StationheadPlayer::Status() const {
 
 void StationheadPlayer::ResetNavigationRouteState() {
   audioPlaying_ = false;
-  noAudioSinceAt_ = 0;
-  fallbackMonitorAfterAt_ = 0;
   nextTickAt_ = 0;
 }
 
 void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
                                                 const std::wstring& source) {
+  (void)nowMs;
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
   if (playing) {
     resourceBlockingArmed_ = true;
-    noAudioSinceAt_ = 0;
-    fallbackMonitorAfterAt_ = 0;
     loginSessionActive_ = false;
     {
       std::lock_guard lock(mutex_);
@@ -84,7 +79,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
       status_.playing = true;
       status_.loginRequired = false;
       status_.navigating = false;
-      status_.detail = (usedFallback_ ? L"fallback audio detected" : L"audio detected") +
+      status_.detail = (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
                        (source.empty() ? L"" : L" (" + source + L")");
     }
     if (!startupPreviewActive_) SetVisible(false);
@@ -96,18 +91,11 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
 
 
 
-  if (!usedFallback_ &&
-      (changed || (fallbackMonitorAfterAt_ == 0 && noAudioSinceAt_ == 0))) {
-    fallbackMonitorAfterAt_ = nowMs + kPrimaryFallbackMonitorGraceMs;
-    noAudioSinceAt_ = 0;
-  }
   {
     std::lock_guard lock(mutex_);
     status_.audioPlaying = false;
     status_.playing = false;
-    status_.detail = usedFallback_
-        ? L"fallback audio stopped"
-        : L"primary audio stopped; waiting before fallback";
+    status_.detail = usingFallback_ ? L"fallback audio stopped" : L"audio stopped";
   }
   nextTickAt_ = 0;
   if (changed) log_.Warn(L"Stationhead audio stopped (" + source + L")");
@@ -115,19 +103,38 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
 }
 
 void StationheadPlayer::NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason) {
-  NavigateStationheadUrl(nowMs, config_.url, reason, false);
+  NavigateStationheadUrl(nowMs, CurrentStationheadUrl(), reason, usingFallback_);
+}
+
+std::wstring StationheadPlayer::CurrentStationheadUrl() const {
+  if (usingFallback_ && !config_.fallbackUrl.empty()) return config_.fallbackUrl;
+  return config_.url;
+}
+
+void StationheadPlayer::SetPlaybackFallback(bool active, const std::wstring& reason) {
+  if (active && config_.fallbackUrl.empty()) return;
+  if (usingFallback_ == active) return;
+  usingFallback_ = active;
+  const std::wstring url = CurrentStationheadUrl();
+  if (!webview_) {
+    std::lock_guard lock(mutex_);
+    status_.url = url;
+    status_.detail = reason;
+    PostChange();
+    return;
+  }
+  NavigateStationheadUrl(UnixMillis(), url, reason, active);
+  PostChange();
 }
 
 void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                                                const std::wstring& reason,
                                                bool fallbackActive) {
+  (void)nowMs;
   if (!webview_ || url.empty()) return;
   SetStartupBounds();
   ResetNavigationRouteState();
-  usedFallback_ = fallbackActive;
-  if (!fallbackActive) {
-    fallbackMonitorAfterAt_ = nowMs + kPrimaryFallbackMonitorGraceMs;
-  }
+  usingFallback_ = fallbackActive;
   resourceBlockingArmed_ = false;
   loginSessionActive_ = false;
   {
@@ -555,8 +562,6 @@ void StationheadPlayer::ConfigureWebView() {
     status_.spotifyConfigured = spotifyConfigured;
   }
   createdAt_ = lastReloadAt_ = UnixMillis();
-  noAudioSinceAt_ = 0;
-  usedFallback_ = false;
   resourceBlockingArmed_ = false;
 }
 
@@ -673,8 +678,6 @@ void StationheadPlayer::CloseWebView() {
   if (hostWindow_ && IsWindow(hostWindow_)) ShowWindow(hostWindow_, SW_HIDE);
   spotifyAuthorization_ = false;
   loginSessionActive_ = false;
-  noAudioSinceAt_ = 0;
-  fallbackMonitorAfterAt_ = 0;
   std::lock_guard lock(mutex_);
   status_.created = false;
 }
@@ -724,28 +727,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     PollDailyPlayStats(nowMs);
   }
 
-  const bool silentPrimary =
-      !usedFallback_ && !audioPlaying_.load(std::memory_order_relaxed);
-  if (silentPrimary && fallbackMonitorAfterAt_ > 0 &&
-      nowMs >= fallbackMonitorAfterAt_ && noAudioSinceAt_ == 0) {
-    noAudioSinceAt_ = nowMs;
-  }
-  // Silence recovery is safety-critical and must run before the coordinated
-  // maintenance reload. Otherwise a silent secondary window can keep returning
-  // from the reload-wait branch forever and prevent primary fallback.
-  if (silentPrimary && noAudioSinceAt_ > 0 &&
-      nowMs - noAudioSinceAt_ >= kPrimaryNoAudioFallbackMs &&
-      !config_.fallbackUrl.empty()) {
-    log_.Warn(L"Stationhead primary had no " +
-              std::wstring(nativeAudioTracking_ ? L"WebView2 audio" : L"detected audio") +
-              L" for 360s; switching to fallback");
-    NavigateStationheadUrl(nowMs, config_.fallbackUrl,
-                           L"primary had no audio for 360s; switching to fallback", true);
-    PostChange();
-    nextTickAt_ = nowMs + 1'000;
-    return;
-  }
-
   const int64_t reloadInterval = StationheadReloadIntervalMs(config_.reloadIntervalMinutes);
   if (reloadInterval > 0 && lastReloadAt_ > 0 && nowMs - lastReloadAt_ >= reloadInterval) {
     const bool secondaryConfigured = config_.secondaryEnabled && !config_.secondaryUrl.empty();
@@ -771,12 +752,6 @@ void StationheadPlayer::Tick(int64_t nowMs) {
   };
   if (reloadInterval > 0 && lastReloadAt_ > 0) consider(lastReloadAt_ + reloadInterval);
   consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);
-  if (silentPrimary && fallbackMonitorAfterAt_ > nowMs) {
-    consider(fallbackMonitorAfterAt_);
-  }
-  if (silentPrimary && noAudioSinceAt_ > 0) {
-    consider(noAudioSinceAt_ + kPrimaryNoAudioFallbackMs);
-  }
   nextTickAt_ = std::max(nowMs + 1'000, next);
 }
 
@@ -812,9 +787,6 @@ void StationheadPlayer::ShowAfterAudioStop() {
   if (!webview_) return;
   selectedTab_ = StationheadTabKind::Stationhead;
   viewVisible_ = true;
-  const int64_t now = UnixMillis();
-  fallbackMonitorAfterAt_ = now;
-  noAudioSinceAt_ = now;
   nextTickAt_ = 0;
   {
     std::lock_guard lock(mutex_);

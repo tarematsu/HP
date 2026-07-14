@@ -34,6 +34,7 @@ class SecondaryStationheadPlayer {
   void Tick(int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void Reconnect();
+  void SetPlaybackFallback(bool active, const std::wstring& reason);
   void SetBounds(const RECT& bounds);
   void SetStartupPreviewBounds(const RECT& bounds);
   void ClearStartupPreviewBounds();
@@ -68,6 +69,9 @@ class SecondaryStationheadPlayer {
   void FinishSpotifyAuthorization(const std::wstring& detail);
   void ScheduleRetry(const std::wstring& reason, int64_t delayMs = 5'000);
   void SetStatus(const std::wstring& detail);
+  std::wstring CurrentStationheadUrl() const;
+  void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
+                              const std::wstring& reason, bool fallbackActive);
 
   HWND window_{};
   HWND hostWindow_{};
@@ -117,5 +121,6 @@ class SecondaryStationheadPlayer {
   int64_t lastReloadAt_ = 0;
   int64_t nextTickAt_ = 0;
   int64_t retryAt_ = 0;
+  bool usingFallback_ = false;
 };
 }  // namespace hp

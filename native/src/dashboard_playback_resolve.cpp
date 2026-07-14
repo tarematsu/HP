@@ -12,6 +12,31 @@ int64_t ProjectedElapsedMs(const NativePlaybackProjection& projection, int64_t n
   }
   return projection.progressMs;
 }
+
+bool TrackHasIdentity(const NativePlaybackTrack& track) {
+  return !track.title.empty() || !track.artist.empty() || !track.artwork.empty();
+}
+
+bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
+  if (!projection.available || !projection.playing || projection.queue.empty()) return false;
+  size_t index = projection.currentIndex >= 0 &&
+          projection.currentIndex < static_cast<int>(projection.queue.size())
+      ? static_cast<size_t>(projection.currentIndex)
+      : 0;
+  if (!TrackHasIdentity(projection.queue[index])) return false;
+  if (projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) return true;
+
+  int64_t elapsed = ProjectedElapsedMs(projection, nowMs);
+  while (index < projection.queue.size()) {
+    const int64_t duration = projection.queue[index].durationMs;
+    if (duration <= 0 || elapsed < duration + kPlaybackRenderTransitionHoldMs) return false;
+    elapsed -= duration;
+    ++index;
+    if (index >= projection.queue.size()) return true;
+    if (!TrackHasIdentity(projection.queue[index])) return true;
+  }
+  return true;
+}
 }  // namespace
 
 NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const {
@@ -53,6 +78,22 @@ NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_
 NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowMs) const {
   std::lock_guard lock(nativePlaybackMutex_);
   return ResolveNativePlaybackLocked(source, nowMs);
+}
+
+NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
+                                                               int64_t nowMs) const {
+  std::lock_guard lock(nativePlaybackMutex_);
+  NativePlaybackFeedStatus status;
+  if (source >= nativePlaybackUpdates_.size()) return status;
+  const NativePlaybackUpdate& update = nativePlaybackUpdates_[source];
+  const NativePlaybackProjection& projection = update.projection;
+  const NativePlaybackRender render = ResolveNativePlaybackLocked(source, nowMs);
+  status.available = projection.available;
+  status.playing = projection.playing;
+  status.hasTrack = render.hasTrack;
+  status.endedWithoutNextTrack = PlaybackEndedWithoutNextTrack(projection, nowMs);
+  status.contentRevision = update.contentRevision;
+  return status;
 }
 
 bool Renderer::NativePlaybackActive(int64_t nowMs) const {

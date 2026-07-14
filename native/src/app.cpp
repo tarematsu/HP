@@ -297,6 +297,43 @@ void App::StopServices() {
   renderer_.reset();
 }
 
+void App::UpdateStationheadPlaybackFallback(int64_t nowMs) {
+  if (!rendererStarted_ || !renderer_ || !stationhead_) return;
+  const NativePlaybackFeedStatus feed =
+      renderer_->NativePlaybackFeedStatusFor(0, nowMs);
+  const bool noNextTrack = feed.endedWithoutNextTrack && feed.contentRevision != 0;
+
+  if (stationheadPlaybackFallbackActive_) {
+    if (feed.contentRevision > stationheadPlaybackFallbackRevision_) {
+      stationheadPlaybackFallbackActive_ = false;
+      stationheadPlaybackFallbackRevision_ = 0;
+      stationhead_->SetPlaybackFallback(
+          false, L"new playback-a information; returning to primary URL");
+      if (secondaryStationhead_) {
+        secondaryStationhead_->SetPlaybackFallback(
+            false, L"new playback-a information; returning to secondary URL");
+      }
+      logger_->Info(L"Stationhead playback-a updated; returning both windows from fallback");
+    }
+    stationheadPlaybackNoNextTrackObserved_ = noNextTrack;
+    return;
+  }
+
+  if (noNextTrack && !stationheadPlaybackNoNextTrackObserved_ &&
+      !config_.stationhead.fallbackUrl.empty()) {
+    stationheadPlaybackFallbackActive_ = true;
+    stationheadPlaybackFallbackRevision_ = feed.contentRevision;
+    stationhead_->SetPlaybackFallback(
+        true, L"playback-a has no new next-track information; switching to fallback");
+    if (secondaryStationhead_) {
+      secondaryStationhead_->SetPlaybackFallback(
+          true, L"playback-a has no new next-track information; switching to fallback");
+    }
+    logger_->Warn(L"Stationhead playback-a reached the end of known tracks; switching both windows to fallback");
+  }
+  stationheadPlaybackNoNextTrackObserved_ = noNextTrack;
+}
+
 void App::Tick() {
   if (!renderer_ || !sensors_ || !stationhead_ || !cloud_) return;
   const int64_t now = UnixMillis();
@@ -331,6 +368,7 @@ void App::Tick() {
   }
   PublishRenderState();
   if (rendererStarted_) renderer_->TickNativePanels(now);
+  UpdateStationheadPlaybackFallback(now);
   uint32_t nextTickMs = kMaxIdleTickMs;
   if (!rendererStarted_ || selectedTab_ == WorkspaceTab::Main ||
       renderState_.maintenance || StationheadNeedsForeground(renderState_.stationhead)) {

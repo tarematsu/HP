@@ -70,6 +70,7 @@ class StationheadPlayer {
   void Tick(int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void Reconnect();
+  void SetPlaybackFallback(bool active, const std::wstring& reason);
   void ShowForLogin();
   void ShowAfterAudioStop();
   void OpenSpotifyAuthorization(const std::wstring& url);
@@ -105,6 +106,7 @@ class StationheadPlayer {
   void ResetNavigationRouteState();
   void PollDailyPlayStats(int64_t nowMs);
   void NavigatePrimaryUrl(int64_t nowMs, const std::wstring& reason);
+  std::wstring CurrentStationheadUrl() const;
   void NavigateStationheadUrl(int64_t nowMs, const std::wstring& url,
                               const std::wstring& reason, bool fallbackActive);
   bool NeedsInteractiveWindow() const;
@@ -160,8 +162,6 @@ class StationheadPlayer {
   int64_t createdAt_ = 0;
   int64_t lastReloadAt_ = 0;
   int64_t lastDailyPlayStatsAt_ = 0;
-  int64_t noAudioSinceAt_ = 0;
-  int64_t fallbackMonitorAfterAt_ = 0;
   int64_t nextTickAt_ = 0;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
@@ -169,6 +169,6 @@ class StationheadPlayer {
   bool nativeAudioTracking_ = false;
   bool viewVisible_ = false;
   bool startupPreviewActive_ = false;
-  bool usedFallback_ = false;
+  bool usingFallback_ = false;
 };
 }
