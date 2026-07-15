@@ -81,11 +81,6 @@ inline constexpr int kRadarCanvasWidth = 1920;
 inline constexpr int kRadarCanvasHeight = 1280;
 inline constexpr COLORREF kNativeDashboardBackground = RGB(7, 10, 16);
 
-
-
-
-
-
 struct NativeDashboardLayout {
   RECT side{};
   RECT radar{};
@@ -101,9 +96,6 @@ inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bott
   if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
   return rect;
 }
-
-
-
 
 inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
@@ -160,6 +152,14 @@ class Renderer {
     uint64_t contentRevision = 0;
     bool hasPayload = false;
   };
+  struct NativePlaybackTickState {
+    bool active = false;
+    size_t source = 0;
+    size_t trackIndex = 0;
+    uint64_t contentRevision = 0;
+
+    bool operator==(const NativePlaybackTickState&) const = default;
+  };
   struct ArtworkBitmapCacheEntry {
     HBITMAP bitmap = nullptr;
     uint64_t lastUsed = 0;
@@ -169,12 +169,6 @@ class Renderer {
     int width = 0;
     int height = 0;
   };
-
-
-
-
-
-
 
   struct NativePanelPaintScope {
     NativePanelPaintScope(Renderer& renderer, HWND hwnd);
@@ -189,9 +183,6 @@ class Renderer {
     HDC dc = nullptr;
     HGDIOBJ previousBitmap = nullptr;
     RECT bounds{};
-
-
-
     RECT dirty{};
   };
 
@@ -199,8 +190,6 @@ class Renderer {
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
   void UpdateNativeStaticPanels(const RenderState& state);
-
-
 
   template <LRESULT (Renderer::*Handler)(HWND, UINT, WPARAM, LPARAM)>
   static LRESULT CALLBACK NativeWndProcThunk(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -215,10 +204,18 @@ class Renderer {
   }
   LRESULT HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
-
   enum class FontTier { Small, Medium, Large };
   HFONT TierFont(FontTier tier) const;
-  enum class PanelSection { Clock, Air, Weather, Controls, Music, Energy, News };
+  enum class PanelSection {
+    Clock,
+    PlaybackProgress,
+    Air,
+    Weather,
+    Controls,
+    Music,
+    Energy,
+    News
+  };
   void InvalidatePanelSection(HWND window, PanelSection section);
   void PaintNativeSide(HWND hwnd);
   void PaintNativeMain(HWND hwnd);
@@ -238,7 +235,7 @@ class Renderer {
   void NativePlaybackLoop();
   NativePlaybackRender ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const;
   NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
-  bool NativePlaybackActive(int64_t nowMs) const;
+  NativePlaybackTickState NativePlaybackTickStateFor(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   HBITMAP NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height);
   HBITMAP CacheNativeBitmap(const std::wstring& key, HBITMAP bitmap);
@@ -248,8 +245,6 @@ class Renderer {
   void ComposeRadarFrame();
   void InvalidateAllNativePanels();
   RECT ClientBounds() const;
-
-
 
   struct NativePanelSlot {
     HWND Renderer::* window;
@@ -292,6 +287,7 @@ class Renderer {
   mutable std::mutex nativePlaybackMutex_;
   std::array<NativePlaybackUpdate, 2> nativePlaybackUpdates_{};
   uint64_t nativePlaybackContentRevision_ = 0;
+  NativePlaybackTickState nativePlaybackTickState_{};
   std::map<std::wstring, ArtworkBitmapCacheEntry> nativeArtworkBitmaps_;
   uint64_t nativeArtworkUseCounter_ = 0;
   std::map<HWND, NativeBackBuffer> nativeBackBuffers_;
