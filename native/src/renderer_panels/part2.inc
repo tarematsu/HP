@@ -44,6 +44,15 @@ RECT MusicProgressRectFromBody(const RECT& body) {
   return progress;
 }
 
+RECT ClockTimeRectFromCard(const RECT& card) {
+  const RECT content = CardContentRect(card);
+  const LONG dateBottom = content.top + SpanY(content, 320);
+  RECT timeRect{content.left, dateBottom, content.right, content.bottom};
+  if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
+  if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
+  return timeRect;
+}
+
 void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   const int destWidth = static_cast<int>(destRect.right - destRect.left);
   const int destHeight = static_cast<int>(destRect.bottom - destRect.top);
@@ -222,6 +231,7 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
   } else if (window == nativeMainWindow_) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
+      case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.music); break;
       case PanelSection::Music: rect = sections.music; break;
       case PanelSection::Energy: rect = sections.energy; break;
       case PanelSection::News: rect = sections.news; break;
@@ -236,6 +246,7 @@ void Renderer::DestroyNativeStaticWindows() {
     KillTimer(nativeMainWindow_, kNativePanelTickTimer);
   }
   nativePanelTimerActive_ = false;
+  nativeClockDayKey_ = 0;
   nativePlaybackTickState_ = {};
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
@@ -294,11 +305,20 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
+
+  SYSTEMTIME localTime{};
+  GetLocalTime(&localTime);
+  const int clockDayKey = static_cast<int>(localTime.wYear) * 10'000 +
+      static_cast<int>(localTime.wMonth) * 100 + static_cast<int>(localTime.wDay);
+  const bool clockDayChanged = clockDayKey != nativeClockDayKey_;
+  nativeClockDayKey_ = clockDayKey;
+
   const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
   const bool playbackChanged = playbackState != nativePlaybackTickState_;
   nativePlaybackTickState_ = playbackState;
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    InvalidatePanelSection(nativeMainWindow_,
+                           clockDayChanged ? PanelSection::Music : PanelSection::ClockTime);
   }
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_)) {
     if (playbackChanged) {
