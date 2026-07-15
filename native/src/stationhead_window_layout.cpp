@@ -49,6 +49,20 @@ bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placeme
   return false;
 }
 
+bool ControllerBoundsMatch(ICoreWebView2Controller* controller,
+                           const RECT& expected) noexcept {
+  RECT current{};
+  return controller && SUCCEEDED(controller->get_Bounds(&current)) &&
+         EqualRect(&current, &expected);
+}
+
+bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
+                                 BOOL expected) noexcept {
+  BOOL current = FALSE;
+  return controller && SUCCEEDED(controller->get_IsVisible(&current)) &&
+         current == expected;
+}
+
 void ApplyStationheadChildLayout(HWND hostWindow,
                                  HWND authHostWindow,
                                  ICoreWebView2Controller* controller,
@@ -74,12 +88,17 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (controller) {
     if (showAuth) {
-      if (hostWasVisible) controller->put_IsVisible(FALSE);
+      if (!ControllerVisibilityMatches(controller, FALSE)) {
+        controller->put_IsVisible(FALSE);
+      }
     } else {
-      if (!hostWasVisible || !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
+      if (!ControllerBoundsMatch(controller, contentBounds) ||
+          !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
         controller->put_Bounds(contentBounds);
       }
-      if (!hostWasVisible) controller->put_IsVisible(TRUE);
+      if (!ControllerVisibilityMatches(controller, TRUE)) {
+        controller->put_IsVisible(TRUE);
+      }
     }
   }
 
@@ -96,11 +115,14 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authController) {
     if (showAuth) {
-      if (!authWasVisible || !WindowClientSizeMatches(authHostWindow, width, height)) {
+      if (!ControllerBoundsMatch(authController, authBounds) ||
+          !WindowClientSizeMatches(authHostWindow, width, height)) {
         authController->put_Bounds(authBounds);
       }
-      if (!authWasVisible) authController->put_IsVisible(TRUE);
-    } else if (authWasVisible) {
+      if (!ControllerVisibilityMatches(authController, TRUE)) {
+        authController->put_IsVisible(TRUE);
+      }
+    } else if (!ControllerVisibilityMatches(authController, FALSE)) {
       authController->put_IsVisible(FALSE);
     }
   }
