@@ -142,9 +142,8 @@ void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
 }
 
 void FillWidgetBackground(HDC dc, const RECT& bounds) {
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
+  static HBRUSH background = CreateSolidBrush(kWidgetBackground);
   FillRect(dc, &bounds, background);
-  DeleteObject(background);
 }
 
 void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha);
