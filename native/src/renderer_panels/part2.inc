@@ -151,7 +151,10 @@ bool Renderer::EnsureNativeStaticWindows() {
   if (createdAny) {
     ApplyNativeStaticBounds();
     if (nativeDashboardVisible_ && nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
-      SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr);
+      nativePanelTimerActive_ =
+          SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+    } else {
+      nativePanelTimerActive_ = false;
     }
   }
   return allCreated;
@@ -204,6 +207,7 @@ void Renderer::DestroyNativeStaticWindows() {
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     KillTimer(nativeMainWindow_, kNativePanelTickTimer);
   }
+  nativePanelTimerActive_ = false;
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
@@ -259,8 +263,8 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   }
 }
 
-void Renderer::TickNativePanels(int64_t nowMs) {
-  if (!nativeDashboardVisible_) return;
+void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
+  if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
   const bool playbackActive = NativePlaybackActive(nowMs);
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
@@ -277,7 +281,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       return 1;
     case WM_TIMER:
       if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
-        TickNativePanels(UnixMillis());
+        TickNativePanels(UnixMillis(), true);
         return 0;
       }
       break;
@@ -312,6 +316,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       else PaintNativeRadar(hwnd);
       return 0;
     case WM_NCDESTROY:
+      if (hwnd == nativeMainWindow_) nativePanelTimerActive_ = false;
       ReleaseNativePanelBackBuffer(hwnd);
       for (const NativePanelSlot& slot : NativePanelSlots()) {
         if (this->*slot.window == hwnd) this->*slot.window = nullptr;
@@ -403,3 +408,4 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
 
   SelectClipRgn(scope.dc, nullptr);
   DrawCardOutline(scope.dc, bounds, radius);
+}
