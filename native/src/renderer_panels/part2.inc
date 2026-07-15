@@ -99,9 +99,7 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
     return;
   }
   previousBitmap = SelectObject(dc, bitmap);
-  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
-  SelectClipRgn(dc, dirtyClip);
-  DeleteObject(dirtyClip);
+  IntersectClipRect(dc, dirty.left, dirty.top, dirty.right, dirty.bottom);
   FillWidgetBackground(dc, dirty);
   SetBkMode(dc, TRANSPARENT);
 }
