@@ -92,7 +92,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
                        (source.empty() ? L"" : L" (" + source + L")");
     }
     if (!startupPreviewActive_ && !spotifyAuthorization_) SetVisible(false);
-    if (changed) log_.Info(L"Stationhead audio playing (" + source + L")");
+    if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
     PostChange(StationheadChangeReturnMain);
     return;
   }
@@ -109,8 +109,12 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
     status_.detail = usingFallback_ ? L"fallback audio stopped" : L"audio stopped";
   }
   nextTickAt_ = 0;
-  if (changed) log_.Warn(L"Stationhead audio stopped (" + source + L")");
-  if (!spotifyAuthorization_) SelectTab(StationheadTabKind::None);
+  if (changed) log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped (" + source + L")");
+  // Don't reveal the player here: a stop can be a brief track-transition gap,
+  // and the App layer's RefreshVisibility()/SelectTab(None) calls (which know
+  // about the transition grace period) already re-evaluate visibility on the
+  // next tick. Showing it unconditionally on every stop made the window pop
+  // to the front for an instant on every track change.
   PostChange();
 }
 
@@ -166,7 +170,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
     ScheduleRecreate(L"navigation start failed " + HResultHex(result), 1'000);
     return;
   }
-  log_.Info(L"Stationhead navigation (" + reason + L"): " + url);
+  log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" navigation (" + reason + L"): " + url);
 }
 
 void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
@@ -392,7 +396,7 @@ void StationheadPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
 
 void StationheadPlayer::ShowForLogin() {
   SelectTab(StationheadTabKind::Stationhead);
-  log_.Warn(L"Stationhead login required; Stationhead window visible");
+  log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" login required; window visible");
 }
 
 void StationheadPlayer::ShowAfterAudioStop() {
@@ -405,7 +409,7 @@ void StationheadPlayer::ShowAfterAudioStop() {
     status_.detail = L"Stationhead audio stopped; player restored";
   }
   SetVisible(true);
-  log_.Warn(L"Stationhead audio stopped; restored the player");
+  log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped; restored the player");
 }
 
 void StationheadPlayer::ReleaseCompletedAuth() {
@@ -457,7 +461,7 @@ void StationheadPlayer::ScheduleRecreate(const std::wstring& reason, int64_t del
     std::lock_guard lock(mutex_);
     status_.detail = L"recreate scheduled: " + reason;
   }
-  log_.Warn(L"Stationhead WebView recreate scheduled: " + reason);
+  log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" WebView recreate scheduled: " + reason);
   PostChange();
 }
 

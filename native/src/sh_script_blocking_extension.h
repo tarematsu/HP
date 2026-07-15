@@ -163,7 +163,8 @@ inline bool ParseStationheadNativeClickMessage(std::wstring_view message,
 inline void DispatchStationheadNativeClick(ICoreWebView2* webview,
                                            double x,
                                            double y,
-                                           Logger& log) {
+                                           Logger& log,
+                                           const wchar_t* roleTag) {
   if (!webview) return;
   std::wostringstream pressed;
   pressed << std::fixed << std::setprecision(2)
@@ -174,10 +175,11 @@ inline void DispatchStationheadNativeClick(ICoreWebView2* webview,
   view->CallDevToolsProtocolMethod(
       L"Input.dispatchMouseEvent", pressed.str().c_str(),
       Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-          [view, x, y, &log](HRESULT pressedResult, LPCWSTR) -> HRESULT {
+          [view, x, y, &log, roleTag](HRESULT pressedResult, LPCWSTR) -> HRESULT {
             if (FAILED(pressedResult)) {
               std::wostringstream detail;
-              detail << L"Stationhead native click mousePressed dispatch failed 0x"
+              detail << L"Stationhead " << roleTag
+                     << L" native click mousePressed dispatch failed 0x"
                      << std::hex << static_cast<unsigned long>(pressedResult);
               log.Warn(detail.str());
             }
@@ -190,10 +192,11 @@ inline void DispatchStationheadNativeClick(ICoreWebView2* webview,
             view->CallDevToolsProtocolMethod(
                 L"Input.dispatchMouseEvent", released.str().c_str(),
                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                    [&log](HRESULT releasedResult, LPCWSTR) -> HRESULT {
+                    [&log, roleTag](HRESULT releasedResult, LPCWSTR) -> HRESULT {
                       if (FAILED(releasedResult)) {
                         std::wostringstream detail;
-                        detail << L"Stationhead native click mouseReleased dispatch failed 0x"
+                        detail << L"Stationhead " << roleTag
+                               << L" native click mouseReleased dispatch failed 0x"
                                << std::hex << static_cast<unsigned long>(releasedResult);
                         log.Warn(detail.str());
                       }
@@ -206,7 +209,8 @@ inline void DispatchStationheadNativeClick(ICoreWebView2* webview,
 inline void ApplyStationheadAdditionalScriptBlocking(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
-    Logger& log) {
+    Logger& log,
+    const wchar_t* roleTag) {
   if (!environment || !webview) return;
   webview->AddWebResourceRequestedFilter(
       L"https://stationhead.com/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
@@ -221,7 +225,7 @@ inline void ApplyStationheadAdditionalScriptBlocking(
   EventRegistrationToken ignoredMessageToken{};
   webview->add_WebMessageReceived(
       Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-          [clickView, &log](ICoreWebView2*,
+          [clickView, &log, roleTag](ICoreWebView2*,
                       ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!args || !clickView) return S_OK;
             LPWSTR raw = nullptr;
@@ -246,18 +250,20 @@ inline void ApplyStationheadAdditionalScriptBlocking(
               CoTaskMemFree(sourceRaw);
             }
             if (haveSource && !StationheadHostUrl(sourceLower)) {
-              log.Warn(L"Stationhead native click message rejected: source is not a Stationhead frame (" +
+              log.Warn(L"Stationhead " + std::wstring(roleTag) +
+                       L" native click message rejected: source is not a Stationhead frame (" +
                        sourceLower + L")");
               return S_OK;
             }
             if (!haveSource) {
-              log.Warn(L"Stationhead native click message source unavailable; dispatching anyway");
+              log.Warn(L"Stationhead " + std::wstring(roleTag) +
+                       L" native click message source unavailable; dispatching anyway");
             }
             std::wostringstream detail;
-            detail << L"Stationhead dispatching native click at " << std::fixed
+            detail << L"Stationhead " << roleTag << L" dispatching native click at " << std::fixed
                    << std::setprecision(2) << x << L"," << y;
             log.Info(detail.str());
-            DispatchStationheadNativeClick(clickView.Get(), x, y, log);
+            DispatchStationheadNativeClick(clickView.Get(), x, y, log, roleTag);
             return S_OK;
           }).Get(),
       &ignoredMessageToken);

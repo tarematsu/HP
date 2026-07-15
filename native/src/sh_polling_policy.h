@@ -92,11 +92,12 @@ inline void ApplyStationheadResourceBlocking(
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token,
-    Logger& log) {
+    Logger& log,
+    const wchar_t* roleTag) {
   ApplyStationheadResourceBlockingBase(
       environment, webview, config, armed, token);
   ApplyStationheadNonPlaybackScriptBlocking(environment, webview);
-  ApplyStationheadAdditionalScriptBlocking(environment, webview, log);
+  ApplyStationheadAdditionalScriptBlocking(environment, webview, log, roleTag);
 }
 
 // Pusher carries both track transitions and live social traffic. The socket
