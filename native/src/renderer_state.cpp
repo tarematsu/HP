@@ -7,6 +7,9 @@ namespace hp {
 bool InstallRuntimeAssets() noexcept;
 
 namespace {
+constexpr UINT_PTR kNativePanelTickTimer = 1;
+constexpr UINT kNativePanelTickMs = 1'000;
+
 void PrepareParentWindow(HWND window) {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
   SetClassLongPtrW(window, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR>(background));
@@ -66,6 +69,10 @@ void Renderer::SetVisible(bool visible) {
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
+  }
+  if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
+    if (visible) SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr);
+    else KillTimer(nativeMainWindow_, kNativePanelTickTimer);
   }
   if (visible) ApplyNativeStaticBounds();
 }
