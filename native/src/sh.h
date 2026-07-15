@@ -89,6 +89,9 @@ class StationheadPlayer {
   bool HasAuthTab() const;
   StationheadStatus Status() const;
   HWND ActiveHostWindowForAccountSetup() const noexcept;
+  [[nodiscard]] bool SurfaceVisible() const noexcept {
+    return startupPreviewActive_ || viewVisible_;
+  }
   void KeepPlaybackBehindDashboard();
 
  private:
