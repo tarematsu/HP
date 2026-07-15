@@ -10,9 +10,14 @@ namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 
-void PrepareParentWindow(HWND window) {
+HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
-  SetClassLongPtrW(window, GCLP_HBRBACKGROUND, reinterpret_cast<LONG_PTR>(background));
+  return background;
+}
+
+void PrepareParentWindow(HWND window) {
+  SetClassLongPtrW(window, GCLP_HBRBACKGROUND,
+                   reinterpret_cast<LONG_PTR>(DashboardBackgroundBrush()));
   const LONG_PTR style = GetWindowLongPtrW(window, GWL_EXSTYLE);
   if ((style & WS_EX_NOREDIRECTIONBITMAP) != 0) {
     SetWindowLongPtrW(window, GWL_EXSTYLE, style & ~WS_EX_NOREDIRECTIONBITMAP);
@@ -140,9 +145,7 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
   if (!dc) return;
   RECT bounds{};
   GetClientRect(window_, &bounds);
-  HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
-  FillRect(dc, &bounds, background);
-  DeleteObject(background);
+  FillRect(dc, &bounds, DashboardBackgroundBrush());
   ReleaseDC(window_, dc);
 }
 
