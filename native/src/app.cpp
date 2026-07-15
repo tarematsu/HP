@@ -45,21 +45,19 @@ uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackM
   return static_cast<uint32_t>(std::clamp<int64_t>(delta, kFastTickMs, fallbackMs));
 }
 
-StationheadStatus BuildRenderStationheadState(
-    const StationheadStatus& stationheadStatus,
-    const SecondaryStationheadStatus* secondaryStatus,
+void EnrichRenderStationheadState(
+    StationheadStatus& state,
+    SecondaryStationheadStatus* secondaryStatus,
     const StationheadConfig& config) {
-  StationheadStatus state = stationheadStatus;
   state.fallbackUrl = config.fallbackUrl;
   if (secondaryStatus) {
     state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
     state.secondaryAudioMuted = secondaryStatus->audioMuted;
-    state.secondaryUrl = secondaryStatus->url;
+    state.secondaryUrl = std::move(secondaryStatus->url);
   } else {
     state.secondaryAudioMuted = false;
     state.secondaryUrl.clear();
   }
-  return state;
 }
 
 }
@@ -343,16 +341,17 @@ void App::Tick() {
   const int64_t now = UnixMillis();
 
   if (secondaryStarted_ && secondaryStationhead_) secondaryStationhead_->Tick(now);
-  const SecondaryStationheadStatus secondaryStatus =
+  SecondaryStationheadStatus secondaryStatus =
       secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
   stationhead_->Tick(now);
-  const StationheadStatus stationheadStatus = stationhead_->Status();
-  StationheadStatus nextStationheadState = BuildRenderStationheadState(
-      stationheadStatus,
+  StationheadStatus nextStationheadState = stationhead_->Status();
+  EnrichRenderStationheadState(
+      nextStationheadState,
       secondaryStationhead_ ? &secondaryStatus : nullptr,
       config_.stationhead);
   nextStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
-  UpdateRenderStationheadState(nextStationheadState);
+  UpdateRenderStationheadState(std::move(nextStationheadState));
+  const StationheadStatus& stationheadStatus = renderState_.stationhead;
   UpdateStationheadPlayHistory(stationheadStatus);
   StartDeferredServices(now, stationheadStatus);
   ApplyStationheadWindowPlacement(stationheadStatus, secondaryStatus);
@@ -417,9 +416,9 @@ void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
   else MarkRenderStateDirty();
 }
 
-bool App::UpdateRenderStationheadState(const StationheadStatus& nextState) {
+bool App::UpdateRenderStationheadState(StationheadStatus nextState) {
   if (renderState_.stationhead == nextState) return false;
-  renderState_.stationhead = nextState;
+  renderState_.stationhead = std::move(nextState);
   MarkRenderStateDirty();
   return true;
 }

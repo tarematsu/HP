@@ -124,17 +124,15 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       }
       if (layoutChanged) LayoutWorkspace();
       MarkStationheadPlacementDirty();
-      const StationheadStatus stationheadStatus = stationhead_->Status();
-      const SecondaryStationheadStatus secondaryStatus =
+      StationheadStatus renderStationheadState = stationhead_->Status();
+      SecondaryStationheadStatus secondaryStatus =
           secondaryStationhead_ ? secondaryStationhead_->Status() : SecondaryStationheadStatus{};
-      const StationheadStatus nextStationheadState =
-          BuildRenderStationheadState(
-              stationheadStatus,
-              secondaryStationhead_ ? &secondaryStatus : nullptr,
-              config_.stationhead);
-      StationheadStatus renderStationheadState = nextStationheadState;
+      EnrichRenderStationheadState(
+          renderStationheadState,
+          secondaryStationhead_ ? &secondaryStatus : nullptr,
+          config_.stationhead);
       renderStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
-      UpdateRenderStationheadState(renderStationheadState);
+      UpdateRenderStationheadState(std::move(renderStationheadState));
       PublishRenderStateNow();
       return 0;
     }

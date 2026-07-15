@@ -426,7 +426,7 @@ class App {
   void Draw();
   void MarkRenderStateDirty() noexcept { renderStateDirty_ = true; }
   void ShowToast(std::wstring message, int64_t durationMs, bool invalidate = true);
-  bool UpdateRenderStationheadState(const StationheadStatus& nextState);
+  bool UpdateRenderStationheadState(StationheadStatus nextState);
   void ScheduleNextTick(uint32_t milliseconds);
   void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
   void UpdateStationheadPlaybackFallback(int64_t nowMs);
