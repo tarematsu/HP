@@ -5,6 +5,7 @@ struct MusicRowRects {
   RECT artwork{};
   RECT button{};
   RECT muteButton{};
+  RECT status{};
 };
 
 MusicRowRects MusicRowFromBody(const RECT& body) {
@@ -20,12 +21,15 @@ MusicRowRects MusicRowFromBody(const RECT& body) {
       std::clamp(rowHeight * 28 / 100, 20, 44),
       std::max(1, (rowHeight - buttonGap) / 2));
   const int buttonWidth = std::clamp(SpanX(body, 170), 64, 140);
-  const int buttonTop = rects.row.top +
-      (rowHeight - buttonHeight * 2 - buttonGap) / 2;
-  rects.button = RECT{rects.row.right - buttonWidth, buttonTop, rects.row.right,
-                      buttonTop + buttonHeight};
-  rects.muteButton = RECT{rects.row.right - buttonWidth, buttonTop + buttonHeight + buttonGap,
-                          rects.row.right, buttonTop + buttonHeight * 2 + buttonGap};
+  const int statusHeight = std::clamp(rowHeight * 14 / 100, 16, 30);
+  const int clusterHeight = buttonHeight * 2 + statusHeight + buttonGap * 2;
+  const int clusterTop = rects.row.top + std::max(0, (rowHeight - clusterHeight) / 2);
+  rects.button = RECT{rects.row.right - buttonWidth, clusterTop, rects.row.right,
+                      clusterTop + buttonHeight};
+  rects.muteButton = RECT{rects.row.right - buttonWidth, rects.button.bottom + buttonGap,
+                          rects.row.right, rects.button.bottom + buttonGap + buttonHeight};
+  rects.status = RECT{rects.row.right - buttonWidth, rects.muteButton.bottom + buttonGap,
+                      rects.row.right, rects.muteButton.bottom + buttonGap + statusHeight};
   return rects;
 }
 
