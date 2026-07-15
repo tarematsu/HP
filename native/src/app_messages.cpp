@@ -134,8 +134,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
           secondaryStationhead_ ? &secondaryStatus : nullptr,
           config_.stationhead);
       renderStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
-      UpdateRenderStationheadState(std::move(renderStationheadState));
-      PublishRenderStateNow();
+      const bool stateChanged =
+          UpdateRenderStationheadState(std::move(renderStationheadState));
+      if (layoutChanged || stateChanged) PublishRenderStateNow();
       return 0;
     }
     case kStationheadHealthUpdatedMessage:
