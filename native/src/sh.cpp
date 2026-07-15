@@ -727,30 +727,11 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     PollDailyPlayStats(nowMs);
   }
 
-  const int64_t reloadInterval = StationheadReloadIntervalMs(config_.reloadIntervalMinutes);
-  if (reloadInterval > 0 && lastReloadAt_ > 0 && nowMs - lastReloadAt_ >= reloadInterval) {
-    const bool secondaryConfigured = config_.secondaryEnabled && !config_.secondaryUrl.empty();
-    if (secondaryConfigured &&
-        (!window_ || !IsWindow(window_) ||
-         SendMessageW(window_, WM_HP_PRIMARY_RELOAD_READY, 0, 0) == 0)) {
-      {
-        std::lock_guard lock(mutex_);
-        status_.detail = L"maintenance reload waiting for secondary audio";
-      }
-      nextTickAt_ = nowMs + 30'000;
-      return;
-    }
-    NavigatePrimaryUrl(nowMs, L"50-minute scheduled reload reset");
-    nextTickAt_ = nowMs + 1'000;
-    return;
-  }
-
   int64_t next = nowMs + 30 * 60'000;
   const auto consider = [&](int64_t deadline) {
     if (deadline <= nowMs) next = nowMs + 1'000;
     else next = std::min(next, deadline);
   };
-  if (reloadInterval > 0 && lastReloadAt_ > 0) consider(lastReloadAt_ + reloadInterval);
   consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);
   nextTickAt_ = std::max(nowMs + 1'000, next);
 }

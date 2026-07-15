@@ -8,10 +8,6 @@ namespace hp {
 
 
 
-inline int64_t StationheadReloadIntervalMs(int intervalMinutes) noexcept {
-  return intervalMinutes > 0 ? static_cast<int64_t>(intervalMinutes) * 60'000 : 0;
-}
-
 // Shared "click Start Listening" automation injected into both Stationhead
 // WebViews at document creation. The two players differ only in the guard
 // global (so the script runs once per window kind) and the postMessage
@@ -260,6 +256,43 @@ inline std::wstring StationheadApiPlayStatsScript(int channelId) {
     if (data) post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
   }).catch(error => {
     post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
+  });
+  return true;
+})()
+)JS";
+  return script.str();
+}
+
+inline std::wstring StationheadAuthProbeScript(int channelId) {
+  std::wostringstream script;
+  script << LR"JS(
+(() => {
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
+  };
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers?.authorization) {
+    post({ type: 'stationhead-auth-probe', state: 'no-auth-header' });
+    return false;
+  }
+  const url = 'https://production1.stationhead.com/me/channel/)JS"
+         << channelId << LR"JS(/streakStats';
+  fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: Object.assign({ accept: 'application/json' }, headers),
+  }).then(response => {
+    if (response.status === 401 || response.status === 403) {
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      window.__homepanelStationheadAuthHeaders = null;
+      post({ type: 'stationhead-auth-probe', state: 'auth-failed', status: response.status });
+      return;
+    }
+    if (!response.ok) throw new Error('http-' + response.status);
+    post({ type: 'stationhead-auth-probe', state: 'ok', status: response.status });
+  }).catch(error => {
+    post({ type: 'stationhead-auth-probe', state: 'error', error: String(error?.message || error) });
   });
   return true;
 })()

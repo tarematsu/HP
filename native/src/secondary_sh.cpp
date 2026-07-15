@@ -4,6 +4,8 @@
 namespace hp {
 namespace {
 constexpr wchar_t kProfileName[] = L"stationhead-secondary";
+constexpr int64_t kAuthProbeIntervalMs = 5 * 60'000;
+constexpr int64_t kAuthProbeTimeoutMs = 30'000;
 
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
@@ -263,6 +265,23 @@ void SecondaryStationheadPlayer::Reconnect() {
                          L"reconnecting secondary station", usingFallback_);
 }
 
+void SecondaryStationheadPlayer::PollAuthProbe(int64_t nowMs) {
+  if (!webview_ || spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire) ||
+      authProbeInFlight_) {
+    return;
+  }
+  authProbeInFlight_ = true;
+  authProbeStartedAt_ = nowMs;
+  lastAuthProbeAt_ = nowMs;
+  const HRESULT result = webview_->ExecuteScript(
+      StationheadAuthProbeScript(config_.channelId).c_str(), nullptr);
+  if (FAILED(result)) {
+    authProbeInFlight_ = false;
+    authProbeStartedAt_ = 0;
+    log_.Warn(L"Secondary Stationhead auth probe could not start " + HResultHex(result));
+  }
+}
+
 void SecondaryStationheadPlayer::NavigateStationheadUrl(int64_t nowMs,
                                                          const std::wstring& url,
                                                          const std::wstring& reason,
@@ -272,6 +291,9 @@ void SecondaryStationheadPlayer::NavigateStationheadUrl(int64_t nowMs,
   audioPlaying_ = false;
   resourceBlockingArmed_ = false;
   loginRequired_ = false;
+  lastAuthProbeAt_ = 0;
+  authProbeStartedAt_ = 0;
+  authProbeInFlight_ = false;
   retryAt_ = 0;
   usingFallback_ = fallbackActive;
   SetStartupBounds();
@@ -306,20 +328,13 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
-  const int64_t reloadInterval = StationheadReloadIntervalMs(
-      std::max(5, config_.secondaryReloadIntervalMinutes));
-  if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 &&
-      nowMs - lastReloadAt_ >= reloadInterval) {
-    if (!window_ || !IsWindow(window_) ||
-        SendMessageW(window_, WM_HP_SECONDARY_RELOAD_READY, 0, 0) == 0) {
-      SetStatus(L"maintenance reload waiting for primary audio");
-      nextTickAt_ = nowMs + 30'000;
-      return;
-    }
-    log_.Info(L"Secondary Stationhead 50-minute maintenance reload");
-    Reconnect();
-    nextTickAt_ = nowMs + 1'000;
-    return;
+  if (authProbeInFlight_ && nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs) {
+    authProbeInFlight_ = false;
+    authProbeStartedAt_ = 0;
+    log_.Warn(L"Secondary Stationhead auth probe timed out");
+  }
+  if (lastAuthProbeAt_ > 0 && nowMs - lastAuthProbeAt_ >= kAuthProbeIntervalMs) {
+    PollAuthProbe(nowMs);
   }
   int64_t next = nowMs + 5 * 60'000;
   const auto consider = [&](int64_t deadline) {
@@ -327,9 +342,8 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     else next = std::min(next, deadline);
   };
   if (retryAt_ > 0) consider(retryAt_);
-  if (audioPlaying_.load(std::memory_order_relaxed) && lastReloadAt_ > 0 && reloadInterval > 0) {
-    consider(lastReloadAt_ + reloadInterval);
-  }
+  if (authProbeInFlight_) consider(authProbeStartedAt_ + kAuthProbeTimeoutMs);
+  if (lastAuthProbeAt_ > 0 && !authProbeInFlight_) consider(lastAuthProbeAt_ + kAuthProbeIntervalMs);
   nextTickAt_ = std::max(nowMs + 1'000, next);
 }
 
@@ -355,6 +369,7 @@ void SecondaryStationheadPlayer::CloseWebView() {
     if (navigationToken_.value) webview_->remove_NavigationCompleted(navigationToken_);
     if (newWindowToken_.value) webview_->remove_NewWindowRequested(newWindowToken_);
     if (messageToken_.value) webview_->remove_WebMessageReceived(messageToken_);
+    if (authProbeMessageToken_.value) webview_->remove_WebMessageReceived(authProbeMessageToken_);
     if (processFailedToken_.value) webview_->remove_ProcessFailed(processFailedToken_);
     if (resourceRequestedToken_.value) webview_->remove_WebResourceRequested(resourceRequestedToken_);
   }
@@ -362,6 +377,7 @@ void SecondaryStationheadPlayer::CloseWebView() {
   navigationToken_ = {};
   newWindowToken_ = {};
   messageToken_ = {};
+  authProbeMessageToken_ = {};
   processFailedToken_ = {};
   resourceRequestedToken_ = {};
   nativeAudioTracking_ = false;
@@ -381,6 +397,9 @@ void SecondaryStationheadPlayer::CloseWebView() {
   audioPlaying_ = false;
   loginRequired_ = false;
   lastReloadAt_ = 0;
+  lastAuthProbeAt_ = 0;
+  authProbeStartedAt_ = 0;
+  authProbeInFlight_ = false;
   retryAt_ = 0;
   nextTickAt_ = 0;
   {

@@ -7,13 +7,11 @@ struct StationheadConfig {
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
   std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
   int channelId = 318;
-  int reloadIntervalMinutes = 50;
   bool blockImages = true;
   bool blockFonts = true;
   bool lowMemoryMode = true;
   bool secondaryEnabled = true;
   std::wstring secondaryUrl = L"https://www.stationhead.com/sakuramankai";
-  int secondaryReloadIntervalMinutes = 50;
 };
 
 struct AppConfig {

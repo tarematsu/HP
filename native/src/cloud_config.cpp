@@ -58,7 +58,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     }
     config.stationhead.fallbackUrl = Text(station, L"fallbackUrl", config.stationhead.fallbackUrl);
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
-    config.stationhead.reloadIntervalMinutes = Number(station, L"reloadIntervalMinutes", config.stationhead.reloadIntervalMinutes, 1, 1440);
     config.stationhead.blockImages = HasKey(station, L"blockImages")
         ? Boolean(station, L"blockImages", config.stationhead.blockImages)
         : Boolean(station, L"blockImagesAfterPlayback", config.stationhead.blockImages);
@@ -78,10 +77,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryStationheadUrl) != 0) {
       config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
     }
-
-
-    config.stationhead.reloadIntervalMinutes = 50;
-    config.stationhead.secondaryReloadIntervalMinutes = 50;
 
     return true;
   } catch (...) {

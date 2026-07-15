@@ -5,6 +5,7 @@
 
 #include "secondary_sh.h"
 #include "sh_shared.h"
+#include <winrt/Windows.Data.Json.h>
 
 namespace hp {
 
@@ -67,6 +68,8 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
   }
   static const std::wstring startupScript =
       StationheadAutoplayScript(L"__homepanelSecondaryStationhead", L"secondary");
+  static const std::wstring authCaptureScript = StationheadAuthCaptureScript();
+  webview_->AddScriptToExecuteOnDocumentCreated(authCaptureScript.c_str(), nullptr);
   webview_->AddScriptToExecuteOnDocumentCreated(
       startupScript.c_str(),
       Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
@@ -164,6 +167,49 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             }
             return S_OK;
           }).Get(), &messageToken_);
+  webview_->add_WebMessageReceived(
+      Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+          [this, alive](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+            if (!CallbackAlive(alive) || shuttingDown_ || !args) return S_OK;
+            LPWSTR textRaw = nullptr;
+            if (SUCCEEDED(args->TryGetWebMessageAsString(&textRaw)) && textRaw) {
+              CoTaskMemFree(textRaw);
+              return S_OK;
+            }
+            LPWSTR raw = nullptr;
+            if (FAILED(args->get_WebMessageAsJson(&raw)) || !raw) return S_OK;
+            const std::wstring message(raw);
+            CoTaskMemFree(raw);
+            try {
+              const auto object = winrt::Windows::Data::Json::JsonObject::Parse(message);
+              const std::wstring type = object.GetNamedString(L"type", L"").c_str();
+              if (type != L"stationhead-auth-probe") return S_OK;
+              authProbeInFlight_ = false;
+              authProbeStartedAt_ = 0;
+              const std::wstring state = object.GetNamedString(L"state", L"").c_str();
+              if (state == L"auth-failed") {
+                loginRequired_ = true;
+                ShowInteractive(true);
+                SetStatus(L"secondary Stationhead authentication expired");
+                log_.Warn(L"Secondary Stationhead authentication probe rejected with HTTP " +
+                          std::to_wstring(static_cast<int>(object.GetNamedNumber(L"status", 0))));
+                PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+              } else if (state == L"ok") {
+                SetStatus(L"secondary Stationhead authentication probe ok");
+                PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+              } else if (state == L"no-auth-header") {
+                SetStatus(L"secondary Stationhead auth probe waiting for session");
+              } else {
+                SetStatus(L"secondary Stationhead auth probe failed");
+                log_.Warn(L"Secondary Stationhead auth probe returned an error");
+              }
+            } catch (...) {
+              authProbeInFlight_ = false;
+              authProbeStartedAt_ = 0;
+              log_.Warn(L"Secondary Stationhead auth probe message was invalid");
+            }
+            return S_OK;
+          }).Get(), &authProbeMessageToken_);
   webview_->add_NavigationCompleted(
       Callback<ICoreWebView2NavigationCompletedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
@@ -177,6 +223,9 @@ void SecondaryStationheadPlayer::ConfigureWebView() {
             }
             if (success) {
               lastReloadAt_ = UnixMillis();
+              lastAuthProbeAt_ = lastReloadAt_;
+              authProbeStartedAt_ = 0;
+              authProbeInFlight_ = false;
 
 
               appliedVolumePercent_.store(-1, std::memory_order_relaxed);

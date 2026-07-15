@@ -67,6 +67,7 @@ class SecondaryStationheadPlayer {
   void LayoutWindows(bool interactive);
   void ShowInteractive(bool interactive);
   void FinishSpotifyAuthorization(const std::wstring& detail);
+  void PollAuthProbe(int64_t nowMs);
   void ScheduleRetry(const std::wstring& reason, int64_t delayMs = 5'000);
   void SetStatus(const std::wstring& detail);
   std::wstring CurrentStationheadUrl() const;
@@ -90,6 +91,7 @@ class SecondaryStationheadPlayer {
   EventRegistrationToken navigationToken_{};
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken messageToken_{};
+  EventRegistrationToken authProbeMessageToken_{};
   EventRegistrationToken processFailedToken_{};
   EventRegistrationToken resourceRequestedToken_{};
   EventRegistrationToken audioPlayingChangedToken_{};
@@ -119,6 +121,9 @@ class SecondaryStationheadPlayer {
   std::atomic<bool> loginRequired_{false};
   ICoreWebView2* identityWebview_ = nullptr;
   int64_t lastReloadAt_ = 0;
+  int64_t lastAuthProbeAt_ = 0;
+  int64_t authProbeStartedAt_ = 0;
+  bool authProbeInFlight_ = false;
   int64_t nextTickAt_ = 0;
   int64_t retryAt_ = 0;
   bool usingFallback_ = false;
