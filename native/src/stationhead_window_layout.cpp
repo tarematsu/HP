@@ -34,6 +34,21 @@ bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
          client.bottom - client.top == height;
 }
 
+bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placement) noexcept {
+  if (!window) return false;
+  HWND parent = GetParent(window);
+  RECT current{};
+  if (!parent || !GetWindowRect(window, &current)) return false;
+  POINT topLeft{current.left, current.top};
+  POINT bottomRight{current.right, current.bottom};
+  if (!ScreenToClient(parent, &topLeft) || !ScreenToClient(parent, &bottomRight)) return false;
+  const RECT parentRelative{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+  if (!EqualRect(&parentRelative, &expected)) return false;
+  if (placement == HWND_TOP) return GetWindow(window, GW_HWNDPREV) == nullptr;
+  if (placement == HWND_BOTTOM) return GetWindow(window, GW_HWNDNEXT) == nullptr;
+  return false;
+}
+
 void ApplyStationheadChildLayout(HWND hostWindow,
                                  HWND authHostWindow,
                                  ICoreWebView2Controller* controller,
@@ -49,6 +64,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int hostHeight = fullContent ? height : 1;
   const RECT contentBounds{0, 0, hostWidth, hostHeight};
   const RECT authBounds{0, 0, width, height};
+  const RECT hostBounds{bounds.left, bounds.top, bounds.left + hostWidth, bounds.top + hostHeight};
+  const RECT authHostBounds{bounds.left, bounds.top, bounds.left + width, bounds.top + height};
+  const HWND hostPlacement = fullContent ? HWND_TOP : HWND_BOTTOM;
   const bool hostValid = hostWindow && IsWindow(hostWindow);
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
   const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
@@ -68,8 +86,9 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   if (hostValid) {
     if (showAuth) {
       if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else {
-      SetWindowPos(hostWindow, fullContent ? HWND_TOP : HWND_BOTTOM,
+    } else if (!hostWasVisible ||
+               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
+      SetWindowPos(hostWindow, hostPlacement,
                    bounds.left, bounds.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
@@ -88,8 +107,11 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authHostValid) {
     if (showAuth) {
-      SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+      if (!authWasVisible ||
+          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
+        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+      }
     } else if (authWasVisible) {
       ShowWindow(authHostWindow, SW_HIDE);
     }
