@@ -92,7 +92,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         controller->put_IsVisible(FALSE);
       }
     } else {
-      if (!ControllerBoundsMatch(controller, contentBounds)) {
+      if (!ControllerBoundsMatch(controller, contentBounds) ||
+          !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
         controller->put_Bounds(contentBounds);
       }
       if (!ControllerVisibilityMatches(controller, TRUE)) {
@@ -114,7 +115,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authController) {
     if (showAuth) {
-      if (!ControllerBoundsMatch(authController, authBounds)) {
+      if (!ControllerBoundsMatch(authController, authBounds) ||
+          !WindowClientSizeMatches(authHostWindow, width, height)) {
         authController->put_Bounds(authBounds);
       }
       if (!ControllerVisibilityMatches(authController, TRUE)) {
