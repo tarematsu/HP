@@ -22,6 +22,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
   if (window.{{GLOBAL}}) return;
   const nativeTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
   const NativeMutationObserver = window.MutationObserver;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
@@ -60,6 +61,15 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   };
   const publishAudio = () => {
     const current = playing();
+    if (current) {
+      observer?.disconnect?.();
+      observer = null;
+      if (scanTimer) {
+        nativeClearTimeout(scanTimer);
+        scanTimer = 0;
+        scanQueued = false;
+      }
+    }
     if (current === lastPlaying) return current;
     const wasPlaying = lastPlaying === true;
     lastPlaying = current;
@@ -110,7 +120,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
       retryAt = Date.now() + 1500;
       try { window.chrome?.webview?.postMessage('{{PREFIX}}-start-attempted'); } catch (_) {}
       try { target.click?.(); } catch (_) {}
-      if (attempts < 2) nativeTimeout(schedule, 1500);
+      if (attempts < 2) nativeTimeout(scheduleUnlessPlaying, 1500);
     } else if (!start && login && !loginReported && Date.now() - observedAt >= 15000) {
       loginReported = true;
       try { window.chrome?.webview?.postMessage('{{PREFIX}}-login-required'); } catch (_) {}
@@ -121,6 +131,9 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
     scanQueued = true;
     scanTimer = nativeTimeout(scan, delay);
   };
+  const scheduleUnlessPlaying = (delay = 100) => {
+    if (lastPlaying !== true) schedule(delay);
+  };
   const relevant = record => {
     if (record.type === 'attributes') return Boolean(record.target?.matches?.(selector) || record.target?.closest?.(selector));
     if (record.type === 'characterData') return Boolean(record.target?.parentElement?.closest?.(selector));
@@ -129,7 +142,9 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   };
   const attachObserver = () => {
     if (!NativeMutationObserver || observer || !document.documentElement) return;
-    observer = new NativeMutationObserver(records => { if (records.some(relevant)) schedule(); });
+    observer = new NativeMutationObserver(records => {
+      if (records.some(relevant)) scheduleUnlessPlaying();
+    });
     observer.observe(document, { childList: true, subtree: true });
   };
   window.{{GLOBAL}} = { scan: schedule };
@@ -137,10 +152,10 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   for (const eventName of ['play','playing','canplay','pause','ended','stalled','waiting','error']) {
     document.addEventListener(eventName, publishAudio, true);
   }
-  document.addEventListener('DOMContentLoaded', schedule, { once: true });
-  window.addEventListener('load', schedule, { once: true });
+  document.addEventListener('DOMContentLoaded', scheduleUnlessPlaying, { once: true });
+  window.addEventListener('load', scheduleUnlessPlaying, { once: true });
   schedule();
-  nativeTimeout(schedule, 15000);
+  nativeTimeout(scheduleUnlessPlaying, 15000);
 })()
 )JS";
   const auto replaceAll = [](std::wstring text, std::wstring_view from, std::wstring_view to) {
