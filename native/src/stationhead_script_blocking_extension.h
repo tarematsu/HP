@@ -2,18 +2,23 @@
 
 namespace hp {
 
-inline constexpr bool StationheadAdditionalNonPlaybackScriptUrl(
-    std::wstring_view uriLower) {
+inline constexpr bool StationheadHostUrl(std::wstring_view uriLower) {
   const size_t schemeEnd = uriLower.find(L"://");
   if (schemeEnd == std::wstring_view::npos) return false;
   const size_t hostAt = schemeEnd + 3;
-  const size_t pathAt = uriLower.find_first_of(L"/?#", hostAt);
+  const size_t hostEnd = uriLower.find_first_of(L"/?#", hostAt);
   const std::wstring_view host = uriLower.substr(
-      hostAt, pathAt == std::wstring_view::npos ? std::wstring_view::npos
-                                                : pathAt - hostAt);
-  if (host != L"stationhead.com" && !host.ends_with(L".stationhead.com")) {
-    return false;
-  }
+      hostAt, hostEnd == std::wstring_view::npos ? std::wstring_view::npos
+                                                 : hostEnd - hostAt);
+  return host == L"stationhead.com" || host.ends_with(L".stationhead.com");
+}
+
+inline constexpr bool StationheadAdditionalNonPlaybackScriptUrl(
+    std::wstring_view uriLower) {
+  if (!StationheadHostUrl(uriLower)) return false;
+  const size_t schemeEnd = uriLower.find(L"://");
+  const size_t hostAt = schemeEnd + 3;
+  const size_t pathAt = uriLower.find_first_of(L"/?#", hostAt);
   if (pathAt == std::wstring_view::npos || uriLower[pathAt] != L'/') return false;
   const size_t pathEnd = uriLower.find_first_of(L"?#", pathAt);
   const std::wstring_view path = uriLower.substr(
@@ -34,6 +39,9 @@ inline constexpr bool StationheadAdditionalNonPlaybackScriptUrl(
   return false;
 }
 
+static_assert(StationheadHostUrl(L"https://stationhead.com/c/buddies"));
+static_assert(StationheadHostUrl(L"https://www.stationhead.com/c/buddies"));
+static_assert(!StationheadHostUrl(L"https://stationhead.com.example/c/buddies"));
 static_assert(StationheadAdditionalNonPlaybackScriptUrl(
     L"https://www.stationhead.com/_next/static/chunks/notifications-panel.123.js"));
 static_assert(StationheadAdditionalNonPlaybackScriptUrl(
@@ -71,35 +79,42 @@ inline std::wstring StationheadNativeStartClickBridgeScript() {
     return Array.from(document.querySelectorAll('audio,video')).some(element =>
       !element.paused && !element.ended && element.readyState >= 2);
   };
+  const targetAtCenter = (element, rect) => {
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return null;
+    const hit = document.elementFromPoint(x, y);
+    if (!hit || (hit !== element && !element.contains(hit))) return null;
+    return { x, y };
+  };
   const eligible = element => {
-    if (!(element instanceof HTMLElement) || !element.isConnected) return false;
-    if (!startPattern.test(labelOf(element))) return false;
-    if (element.matches('audio,video') || element.querySelector?.('audio,video')) return false;
+    if (!(element instanceof HTMLElement) || !element.isConnected) return null;
+    if (!startPattern.test(labelOf(element))) return null;
+    if (element.matches('audio,video') || element.querySelector?.('audio,video')) return null;
     const rect = element.getBoundingClientRect?.();
-    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+    if (!rect || rect.width <= 2 || rect.height <= 2) return null;
     const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
+    if (style.display === 'none' || style.visibility === 'hidden' ||
+        Number(style.opacity || 1) <= 0 || style.pointerEvents === 'none') return null;
+    return targetAtCenter(element, rect);
   };
 
+  let lastNativeAt = 0;
+  let lastNativeSignature = '';
   HTMLElement.prototype.click = function(...args) {
-    if (!eligible(this) || playing()) return originalClick.apply(this, args);
-    const rect = this.getBoundingClientRect();
-    const x = Math.max(0, rect.left + rect.width / 2);
-    const y = Math.max(0, rect.top + rect.height / 2);
+    const point = playing() ? null : eligible(this);
+    if (!point) return originalClick.apply(this, args);
+    const signature = `${labelOf(this)}:${Math.round(point.x)}:${Math.round(point.y)}`;
+    const now = Date.now();
+    if (signature === lastNativeSignature && now - lastNativeAt < 1200) return;
+    lastNativeSignature = signature;
+    lastNativeAt = now;
     try {
       window.chrome?.webview?.postMessage(
-        `stationhead-native-click:${x.toFixed(2)}:${y.toFixed(2)}`);
+        `stationhead-native-click:${point.x.toFixed(2)}:${point.y.toFixed(2)}`);
     } catch (_) {
       return originalClick.apply(this, args);
     }
-
-    const target = this;
-    window.setTimeout(() => {
-      if (target.isConnected && eligible(target) && !playing()) {
-        try { originalClick.apply(target, args); } catch (_) {}
-      }
-    }, 650);
   };
 })()
 )JS";
@@ -113,7 +128,10 @@ inline bool ParseStationheadNativeClickMessage(std::wstring_view message,
   if (!message.starts_with(kPrefix)) return false;
   const std::wstring_view payload = message.substr(kPrefix.size());
   const size_t separator = payload.find(L':');
-  if (separator == std::wstring_view::npos) return false;
+  if (separator == std::wstring_view::npos ||
+      payload.find(L':', separator + 1) != std::wstring_view::npos) {
+    return false;
+  }
   try {
     size_t consumedX = 0;
     size_t consumedY = 0;
@@ -137,18 +155,18 @@ inline void DispatchStationheadNativeClick(ICoreWebView2* webview,
   pressed << std::fixed << std::setprecision(2)
           << L"{\"type\":\"mousePressed\",\"x\":" << x
           << L",\"y\":" << y
-          << L",\"button\":\"left\",\"clickCount\":1}";
+          << L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1}";
   ComPtr<ICoreWebView2> view = webview;
   view->CallDevToolsProtocolMethod(
       L"Input.dispatchMouseEvent", pressed.str().c_str(),
       Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-          [view, x, y](HRESULT result, LPCWSTR) -> HRESULT {
-            if (FAILED(result) || !view) return S_OK;
+          [view, x, y](HRESULT, LPCWSTR) -> HRESULT {
+            if (!view) return S_OK;
             std::wostringstream released;
             released << std::fixed << std::setprecision(2)
                      << L"{\"type\":\"mouseReleased\",\"x\":" << x
                      << L",\"y\":" << y
-                     << L",\"button\":\"left\",\"clickCount\":1}";
+                     << L",\"button\":\"left\",\"buttons\":0,\"clickCount\":1}";
             view->CallDevToolsProtocolMethod(
                 L"Input.dispatchMouseEvent", released.str().c_str(),
                 Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
@@ -177,6 +195,12 @@ inline void ApplyStationheadAdditionalScriptBlocking(
           [clickView](ICoreWebView2*,
                       ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!args || !clickView) return S_OK;
+            LPWSTR sourceRaw = nullptr;
+            if (FAILED(args->get_Source(&sourceRaw)) || !sourceRaw) return S_OK;
+            const std::wstring sourceLower = StationheadLowerAscii(sourceRaw);
+            CoTaskMemFree(sourceRaw);
+            if (!StationheadHostUrl(sourceLower)) return S_OK;
+
             LPWSTR raw = nullptr;
             if (FAILED(args->TryGetWebMessageAsString(&raw)) || !raw) return S_OK;
             const std::wstring message(raw);
