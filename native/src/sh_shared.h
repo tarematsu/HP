@@ -4,6 +4,8 @@
 
 namespace hp {
 
+inline constexpr int64_t kStationheadSessionRefreshIntervalMs = 58 * 60'000;
+
 
 
 

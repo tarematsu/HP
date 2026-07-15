@@ -723,6 +723,13 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
 
+  if (nowMs - lastReloadAt_ >= kStationheadSessionRefreshIntervalMs) {
+    lastReloadAt_ = nowMs;
+    NavigatePrimaryUrl(nowMs, L"periodic authentication refresh");
+    nextTickAt_ = nowMs + 1'000;
+    return;
+  }
+
   if (nowMs - lastDailyPlayStatsAt_ >= kDailyPlayStatsIntervalMs) {
     PollDailyPlayStats(nowMs);
   }

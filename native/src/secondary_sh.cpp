@@ -328,6 +328,14 @@ void SecondaryStationheadPlayer::Tick(int64_t nowMs) {
     nextTickAt_ = nowMs + 1'000;
     return;
   }
+  if (!spotifyAuthorization_ && !loginRequired_.load(std::memory_order_acquire) &&
+      nowMs - lastReloadAt_ >= kStationheadSessionRefreshIntervalMs) {
+    lastReloadAt_ = nowMs;
+    NavigateStationheadUrl(nowMs, CurrentStationheadUrl(),
+                           L"periodic authentication refresh", usingFallback_);
+    nextTickAt_ = nowMs + 1'000;
+    return;
+  }
   if (authProbeInFlight_ && nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs) {
     authProbeInFlight_ = false;
     authProbeStartedAt_ = 0;
