@@ -513,6 +513,18 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
   return false;
 }
 
+inline bool StationheadRequestLooksLikeImage(const std::wstring& uriLower) {
+  static constexpr const wchar_t* kImageNeedles[] = {
+      L".png", L".jpg", L".jpeg", L".webp", L".gif", L".avif", L".svg", L".ico",
+      L"/avatar", L"/avatars/", L"/artwork", L"/image", L"/images/", L"/thumbnail",
+      L"/thumbnails/",
+  };
+  for (const wchar_t* needle : kImageNeedles) {
+    if (uriLower.find(needle) != std::wstring::npos) return true;
+  }
+  return false;
+}
+
 inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
   if (uriLower.empty()) return false;
   // The captured Pusher-compatible socket carries station/queue updates even
@@ -551,19 +563,24 @@ inline bool StationheadCorePlaybackRequest(const std::wstring& uriLower) {
 
 // Block only known telemetry sockets. Realtime playback transports such as
 // Pusher must remain available so the next track starts without polling delay.
-inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview) {
+inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview, bool blockImages) {
   if (!webview) return;
   webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
-  webview->CallDevToolsProtocolMethod(
-      L"Network.setBlockedURLs",
+  std::wstring blockedUrls =
       L"{\"urls\":["
       L"\"*google-analytics.com*\",\"*googletagmanager.com*\",\"*doubleclick.net*\","
       L"\"*amplitude.com*\",\"*segment.com*\",\"*segment.io*\","
       L"\"*clarity.ms*\",\"*datadoghq*\",\"*newrelic*\",\"*nr-data.net*\","
       L"\"*statsigapi.net*\",\"*launchdarkly.com*\","
-      L"\"*facebook.com/tr*\",\"*connect.facebook.net*\",\"*twitter.com/i/*\",\"*x.com/i/*\""
-      L"]}",
-      nullptr);
+      L"\"*facebook.com/tr*\",\"*connect.facebook.net*\",\"*twitter.com/i/*\",\"*x.com/i/*\"";
+  if (blockImages) {
+    blockedUrls +=
+        L",\"*://*/*.png*\",\"*://*/*.jpg*\",\"*://*/*.jpeg*\",\"*://*/*.webp*\","
+        L"\"*://*/*.gif*\",\"*://*/*.avif*\",\"*://*/*.svg*\",\"*://*/*.ico*\","
+        L"\"*://*/*/avatar*\",\"*://*/*/artwork*\",\"*://*/*/thumbnail*\"";
+  }
+  blockedUrls += L"]}";
+  webview->CallDevToolsProtocolMethod(L"Network.setBlockedURLs", blockedUrls.c_str(), nullptr);
 }
 
 
@@ -620,9 +637,11 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
               }
             }
             bool block = StationheadRequestIsBlockable(lower);
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+            const bool hasContext = SUCCEEDED(args->get_ResourceContext(&context));
+            if (blockImages && StationheadRequestLooksLikeImage(lower)) block = true;
             if (!block) {
-              COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
-              if (SUCCEEDED(args->get_ResourceContext(&context))) {
+              if (hasContext) {
                 const bool armedNow = armed.load(std::memory_order_relaxed);
                 if (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) {
                   // Images are never required for background audio playback.
@@ -655,6 +674,6 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
             return S_OK;
           }).Get(),
       &token);
-  BlockStationheadTelemetrySockets(webview);
+  BlockStationheadTelemetrySockets(webview, config.blockImages);
 }
 }

@@ -11,7 +11,7 @@ constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
 constexpr UINT_PTR kCentralTimer = 1;
 constexpr UINT WM_HP_UPDATE_RESULT = WM_APP + 20;
 constexpr int kRestartExitCode = 42;
-constexpr uint32_t kFastTickMs = 1000;
+constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
 constexpr int64_t kDashboardStartupFallbackMs = 10'000;
 

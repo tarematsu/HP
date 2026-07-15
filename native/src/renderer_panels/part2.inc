@@ -246,11 +246,12 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
 void Renderer::TickNativePanels(int64_t nowMs) {
   if (!nativeDashboardVisible_) return;
+  const bool playbackActive = NativePlaybackActive(nowMs);
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    if (playbackActive) InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
   }
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_) &&
-      NativePlaybackActive(nowMs)) {
+      playbackActive) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
   }
 }
