@@ -1,6 +1,5 @@
 #include "sh.h"
 #include "secondary_sh.h"
-#include <set>
 
 namespace hp {
 namespace {
@@ -8,18 +7,16 @@ namespace {
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
                                 const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
-  static std::mutex classMutex;
-  static std::set<std::wstring> registeredClasses;
-  {
-    std::lock_guard lock(classMutex);
-    if (!registeredClasses.contains(className)) {
-      WNDCLASSW windowClass{};
-      windowClass.lpfnWndProc = DefWindowProcW;
-      windowClass.hInstance = GetModuleHandleW(nullptr);
-      windowClass.lpszClassName = className;
-      windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-      RegisterClassW(&windowClass);
-      registeredClasses.insert(className);
+  const HINSTANCE instance = GetModuleHandleW(nullptr);
+  WNDCLASSW registered{};
+  if (!GetClassInfoW(instance, className, &registered)) {
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = DefWindowProcW;
+    windowClass.hInstance = instance;
+    windowClass.lpszClassName = className;
+    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    if (!RegisterClassW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      return nullptr;
     }
   }
 
@@ -27,7 +24,29 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
   const int height = std::max(1L, bounds.bottom - bounds.top);
   return CreateWindowExW(0, className, title, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
                          bounds.left, bounds.top, width, height, parent, nullptr,
-                         GetModuleHandleW(nullptr), nullptr);
+                         instance, nullptr);
+}
+
+bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
+  RECT client{};
+  return window && GetClientRect(window, &client) &&
+         client.right - client.left == width &&
+         client.bottom - client.top == height;
+}
+
+bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placement) noexcept {
+  if (!window) return false;
+  HWND parent = GetParent(window);
+  RECT current{};
+  if (!parent || !GetWindowRect(window, &current)) return false;
+  POINT topLeft{current.left, current.top};
+  POINT bottomRight{current.right, current.bottom};
+  if (!ScreenToClient(parent, &topLeft) || !ScreenToClient(parent, &bottomRight)) return false;
+  const RECT parentRelative{topLeft.x, topLeft.y, bottomRight.x, bottomRight.y};
+  if (!EqualRect(&parentRelative, &expected)) return false;
+  if (placement == HWND_TOP) return GetWindow(window, GW_HWNDPREV) == nullptr;
+  if (placement == HWND_BOTTOM) return GetWindow(window, GW_HWNDNEXT) == nullptr;
+  return false;
 }
 
 void ApplyStationheadChildLayout(HWND hostWindow,
@@ -45,39 +64,55 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int hostHeight = fullContent ? height : 1;
   const RECT contentBounds{0, 0, hostWidth, hostHeight};
   const RECT authBounds{0, 0, width, height};
+  const RECT hostBounds{bounds.left, bounds.top, bounds.left + hostWidth, bounds.top + hostHeight};
+  const RECT authHostBounds{bounds.left, bounds.top, bounds.left + width, bounds.top + height};
+  const HWND hostPlacement = fullContent ? HWND_TOP : HWND_BOTTOM;
+  const bool hostValid = hostWindow && IsWindow(hostWindow);
+  const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
+  const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
+  const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
 
   if (controller) {
-    controller->put_ZoomFactor(1.0);
-    controller->put_Bounds(contentBounds);
-    controller->put_IsVisible(showAuth ? FALSE : TRUE);
+    if (showAuth) {
+      if (hostWasVisible) controller->put_IsVisible(FALSE);
+    } else {
+      if (!hostWasVisible || !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
+        controller->put_Bounds(contentBounds);
+      }
+      if (!hostWasVisible) controller->put_IsVisible(TRUE);
+    }
   }
 
-  if (hostWindow && IsWindow(hostWindow)) {
+  if (hostValid) {
     if (showAuth) {
-      ShowWindow(hostWindow, SW_HIDE);
-    } else {
-      SetWindowRgn(hostWindow, nullptr, FALSE);
-      ShowWindow(hostWindow, SW_SHOWNOACTIVATE);
-
-
-
-      SetWindowPos(hostWindow, (previewVisible || contentVisible) ? HWND_TOP : HWND_BOTTOM,
+      if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
+    } else if (!hostWasVisible ||
+               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
+      SetWindowPos(hostWindow, hostPlacement,
                    bounds.left, bounds.top, hostWidth, hostHeight,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
   }
 
   if (authController) {
-    authController->put_Bounds(authBounds);
-    authController->put_IsVisible(showAuth ? TRUE : FALSE);
+    if (showAuth) {
+      if (!authWasVisible || !WindowClientSizeMatches(authHostWindow, width, height)) {
+        authController->put_Bounds(authBounds);
+      }
+      if (!authWasVisible) authController->put_IsVisible(TRUE);
+    } else if (authWasVisible) {
+      authController->put_IsVisible(FALSE);
+    }
   }
 
-  if (authHostWindow && IsWindow(authHostWindow)) {
+  if (authHostValid) {
     if (showAuth) {
-      ShowWindow(authHostWindow, SW_SHOWNOACTIVATE);
-      SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    } else {
+      if (!authWasVisible ||
+          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
+        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+      }
+    } else if (authWasVisible) {
       ShowWindow(authHostWindow, SW_HIDE);
     }
   }
@@ -113,6 +148,10 @@ bool StationheadPlayer::EnsureAuthHostWindow() {
 }
 
 void StationheadPlayer::KeepPlaybackBehindDashboard() {
+  if (!startupPreviewActive_ && !viewVisible_ && selectedTab_ == StationheadTabKind::None) {
+    std::lock_guard lock(mutex_);
+    if (!status_.visible) return;
+  }
   if (!EnsureHostWindow()) {
     viewVisible_ = false;
     std::lock_guard lock(mutex_);
@@ -255,6 +294,10 @@ void SecondaryStationheadPlayer::ShowInteractive(bool interactive) {
 
 void SecondaryStationheadPlayer::KeepPlaybackBehindDashboard() {
   if (spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire)) return;
+  if (!startupPreviewActive_ && !interactive_) {
+    std::lock_guard lock(mutex_);
+    if (!status_.visible) return;
+  }
   startupPreviewActive_ = false;
   LayoutWindows(false);
 }

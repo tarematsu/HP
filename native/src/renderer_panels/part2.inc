@@ -29,6 +29,30 @@ MusicRowRects MusicRowFromBody(const RECT& body) {
   return rects;
 }
 
+RECT MusicProgressRectFromBody(const RECT& body) {
+  const MusicRowRects rects = MusicRowFromBody(body);
+  const int rowHeight = std::max(1, static_cast<int>(rects.row.bottom - rects.row.top));
+  const int pad = std::max(6, rowHeight * 10 / 100);
+  RECT progress{
+      rects.artwork.right + pad,
+      rects.row.top + rowHeight * 64 / 100,
+      rects.button.left - pad,
+      rects.row.bottom - rowHeight * 2 / 100,
+  };
+  if (progress.right <= progress.left) progress.right = progress.left + 1;
+  if (progress.bottom <= progress.top) progress.bottom = progress.top + 1;
+  return progress;
+}
+
+RECT ClockTimeRectFromCard(const RECT& card) {
+  const RECT content = CardContentRect(card);
+  const LONG dateBottom = content.top + SpanY(content, 320);
+  RECT timeRect{content.left, dateBottom, content.right, content.bottom};
+  if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
+  if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
+  return timeRect;
+}
+
 void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   const int destWidth = static_cast<int>(destRect.right - destRect.left);
   const int destHeight = static_cast<int>(destRect.bottom - destRect.top);
@@ -51,6 +75,22 @@ void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   SelectObject(sourceDc, previous);
   DeleteDC(sourceDc);
 }
+
+struct CachedPanelMemoryDc {
+  HDC value = nullptr;
+  ~CachedPanelMemoryDc() {
+    if (value) DeleteDC(value);
+  }
+};
+
+HDC NativePanelMemoryDc(HDC compatibleDc) {
+  thread_local CachedPanelMemoryDc cached;
+  if (!cached.value) cached.value = CreateCompatibleDC(compatibleDc);
+  return cached.value;
+}
+
+constexpr UINT_PTR kNativePanelTickTimer = 1;
+constexpr UINT kNativePanelTickMs = 1'000;
 }
 
 const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
@@ -85,20 +125,17 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
   dirty = paint.rcPaint;
   if (IsRectEmpty(&dirty)) dirty = bounds;
   IntersectRect(&dirty, &dirty, &bounds);
-  dc = CreateCompatibleDC(paintDc);
-  HBITMAP bitmap = renderer.NativePanelBackBuffer(hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  dc = NativePanelMemoryDc(paintDc);
+  HBITMAP bitmap = renderer.NativePanelBackBuffer(
+      hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   if (!dc || !bitmap) {
-    if (dc) {
-      DeleteDC(dc);
-      dc = nullptr;
-    }
+    dc = nullptr;
     FillWidgetBackground(paintDc, bounds);
     return;
   }
+  SelectClipRgn(dc, nullptr);
   previousBitmap = SelectObject(dc, bitmap);
-  HRGN dirtyClip = CreateRectRgnIndirect(&dirty);
-  SelectClipRgn(dc, dirtyClip);
-  DeleteObject(dirtyClip);
+  IntersectClipRect(dc, dirty.left, dirty.top, dirty.right, dirty.bottom);
   FillWidgetBackground(dc, dirty);
   SetBkMode(dc, TRANSPARENT);
 }
@@ -108,8 +145,8 @@ Renderer::NativePanelPaintScope::~NativePanelPaintScope() {
   if (dc) {
     BitBlt(paintDc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
            dc, dirty.left, dirty.top, SRCCOPY);
+    SelectClipRgn(dc, nullptr);
     SelectObject(dc, previousBitmap);
-    DeleteDC(dc);
   }
   EndPaint(hwnd, &paint);
 }
@@ -145,7 +182,15 @@ bool Renderer::EnsureNativeStaticWindows() {
     allCreated = allCreated && created;
     createdAny = createdAny || created;
   }
-  if (createdAny) ApplyNativeStaticBounds();
+  if (createdAny) {
+    ApplyNativeStaticBounds();
+    if (nativeDashboardVisible_ && nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
+      nativePanelTimerActive_ =
+          SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+    } else {
+      nativePanelTimerActive_ = false;
+    }
+  }
   return allCreated;
 }
 
@@ -175,6 +220,9 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
     const SidebarSections sections = SplitSidebarSections(client);
     switch (section) {
       case PanelSection::Clock: rect = sections.clock; break;
+      case PanelSection::PlaybackProgress:
+        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.clock)));
+        break;
       case PanelSection::Air: rect = sections.air; break;
       case PanelSection::Weather: rect = sections.weather; break;
       case PanelSection::Controls: rect = sections.controls; break;
@@ -183,6 +231,7 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
   } else if (window == nativeMainWindow_) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
+      case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.music); break;
       case PanelSection::Music: rect = sections.music; break;
       case PanelSection::Energy: rect = sections.energy; break;
       case PanelSection::News: rect = sections.news; break;
@@ -193,6 +242,12 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
 }
 
 void Renderer::DestroyNativeStaticWindows() {
+  if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
+    KillTimer(nativeMainWindow_, kNativePanelTickTimer);
+  }
+  nativePanelTimerActive_ = false;
+  nativeClockDayKey_ = 0;
+  nativePlaybackTickState_ = {};
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
@@ -248,15 +303,29 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   }
 }
 
-void Renderer::TickNativePanels(int64_t nowMs) {
-  if (!nativeDashboardVisible_) return;
-  const bool playbackActive = NativePlaybackActive(nowMs);
+void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
+  if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
+
+  SYSTEMTIME localTime{};
+  GetLocalTime(&localTime);
+  const int clockDayKey = static_cast<int>(localTime.wYear) * 10'000 +
+      static_cast<int>(localTime.wMonth) * 100 + static_cast<int>(localTime.wDay);
+  const bool clockDayChanged = clockDayKey != nativeClockDayKey_;
+  nativeClockDayKey_ = clockDayKey;
+
+  const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
+  const bool playbackChanged = playbackState != nativePlaybackTickState_;
+  nativePlaybackTickState_ = playbackState;
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
-    if (playbackActive) InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    InvalidatePanelSection(nativeMainWindow_,
+                           clockDayChanged ? PanelSection::Music : PanelSection::ClockTime);
   }
-  if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_) &&
-      playbackActive) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+  if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_)) {
+    if (playbackChanged) {
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+    } else if (playbackState.active) {
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::PlaybackProgress);
+    }
   }
 }
 
@@ -264,6 +333,12 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
   switch (message) {
     case WM_ERASEBKGND:
       return 1;
+    case WM_TIMER:
+      if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
+        TickNativePanels(UnixMillis(), true);
+        return 0;
+      }
+      break;
     case WM_LBUTTONUP: {
       const int id = GetDlgCtrlID(hwnd);
       RECT client{};
@@ -295,6 +370,7 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       else PaintNativeRadar(hwnd);
       return 0;
     case WM_NCDESTROY:
+      if (hwnd == nativeMainWindow_) nativePanelTimerActive_ = false;
       ReleaseNativePanelBackBuffer(hwnd);
       for (const NativePanelSlot& slot : NativePanelSlots()) {
         if (this->*slot.window == hwnd) this->*slot.window = nullptr;

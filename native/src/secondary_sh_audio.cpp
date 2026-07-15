@@ -4,7 +4,7 @@
 namespace hp {
 void SecondaryStationheadPlayer::SetMuted(bool muted) noexcept {
   audioMuted_.store(muted, std::memory_order_relaxed);
-  ApplyAudioState();
+  ApplyMute();
 }
 
 bool SecondaryStationheadPlayer::Muted() const noexcept {
@@ -21,19 +21,22 @@ double SecondaryStationheadPlayer::Volume() const noexcept {
 }
 
 void SecondaryStationheadPlayer::ApplyAudioState() noexcept {
-  const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
-  if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
-    const BOOL value = muted ? TRUE : FALSE;
-    const auto apply = [value](const ComPtr<ICoreWebView2>& view) noexcept {
-      if (!view) return;
-      ComPtr<ICoreWebView2_8> audio;
-      if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(value);
-    };
-    apply(webview_);
-    apply(authWebview_);
-  }
+  ApplyMute();
   ApplyVolume();
   EnsureDistinctBrowserIdentity();
+}
+
+void SecondaryStationheadPlayer::ApplyMute() noexcept {
+  const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
+  if (appliedMuted_.exchange(muted, std::memory_order_relaxed) == muted) return;
+  const BOOL value = muted ? TRUE : FALSE;
+  const auto apply = [value](const ComPtr<ICoreWebView2>& view) noexcept {
+    if (!view) return;
+    ComPtr<ICoreWebView2_8> audio;
+    if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(value);
+  };
+  apply(webview_);
+  apply(authWebview_);
 }
 
 void SecondaryStationheadPlayer::ApplyVolume() const noexcept {
@@ -64,4 +67,4 @@ void SecondaryStationheadPlayer::EnsureDistinctBrowserIdentity() noexcept {
     settings2->put_UserAgent(userAgent.c_str());
   }
 }
-}
+}  // namespace hp

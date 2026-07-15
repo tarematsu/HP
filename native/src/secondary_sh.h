@@ -43,6 +43,9 @@ class SecondaryStationheadPlayer {
     if (spotifyAuthorization_ && authHostWindow_ && IsWindow(authHostWindow_)) return authHostWindow_;
     return hostWindow_;
   }
+  [[nodiscard]] bool SurfaceVisible() const noexcept {
+    return startupPreviewActive_ || interactive_;
+  }
   void KeepPlaybackBehindDashboard();
 
   void SetMuted(bool muted) noexcept;
@@ -52,6 +55,7 @@ class SecondaryStationheadPlayer {
 
  private:
   void ApplyAudioState() noexcept;
+  void ApplyMute() noexcept;
   void ApplyVolume() const noexcept;
   void ApplyPlaybackState(bool playing, const std::wstring& source);
   void EnsureDistinctBrowserIdentity() noexcept;

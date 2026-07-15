@@ -29,12 +29,40 @@ constexpr COLORREF kWidgetDanger = RGB(255, 69, 58);
 constexpr COLORREF kWidgetDangerSurface = RGB(52, 34, 37);
 constexpr COLORREF kWidgetSuccessSurface = RGB(26, 52, 38);
 
+HBRUSH CachedSolidBrush(COLORREF color) {
+  static std::map<COLORREF, HBRUSH> cache;
+  auto [entry, inserted] = cache.try_emplace(color, nullptr);
+  if (inserted) entry->second = CreateSolidBrush(color);
+  return entry->second;
+}
+
+HPEN CachedSolidPen(int width, COLORREF color) {
+  static std::map<std::pair<int, COLORREF>, HPEN> cache;
+  const auto key = std::make_pair(width, color);
+  auto [entry, inserted] = cache.try_emplace(key, nullptr);
+  if (inserted) entry->second = CreatePen(PS_SOLID, width, color);
+  return entry->second;
+}
+
+struct CachedSourceMemoryDc {
+  HDC value = nullptr;
+  ~CachedSourceMemoryDc() {
+    if (value) DeleteDC(value);
+  }
+};
+
+HDC SourceMemoryDc(HDC compatibleDc) {
+  thread_local CachedSourceMemoryDc cached;
+  if (!cached.value) cached.value = CreateCompatibleDC(compatibleDc);
+  return cached.value;
+}
+
 void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
   SetWindowPos(hwnd, HWND_TOP, rect.left, rect.top,
                std::max(1L, rect.right - rect.left),
                std::max(1L, rect.bottom - rect.top),
-               SWP_NOACTIVATE | (visible ? SWP_SHOWWINDOW : SWP_NOOWNERZORDER));
-  ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
+               SWP_NOACTIVATE | SWP_NOSENDCHANGING |
+                   (visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
 }
 
 int SpanX(const RECT& rect, int permille) {
@@ -78,11 +106,23 @@ HFONT CachedUiFont(int height, int weight) {
   return entry->second;
 }
 
-std::wstring TrackTimeText(int64_t milliseconds) {
+const std::wstring& TrackTimeText(int64_t milliseconds) {
   const int64_t seconds = std::max<int64_t>(0, milliseconds / 1000);
+  struct CacheEntry {
+    int64_t seconds = -1;
+    std::wstring text;
+  };
+  thread_local std::array<CacheEntry, 4> cache{};
+  thread_local size_t replacement = 0;
+  for (const CacheEntry& entry : cache) {
+    if (entry.seconds == seconds) return entry.text;
+  }
+  CacheEntry& entry = cache[replacement++ % cache.size()];
   wchar_t text[32]{};
   swprintf_s(text, L"%lld:%02lld", seconds / 60, seconds % 60);
-  return text;
+  entry.seconds = seconds;
+  entry.text = text;
+  return entry.text;
 }
 
 int RecentStationheadPlayIncrease(const std::vector<StationheadPlayHistorySample>& history) {
@@ -113,27 +153,50 @@ void DrawPremultipliedBitmap(HDC dc, HBITMAP bitmap, const RECT& target) {
   const int width = target.right - target.left;
   const int height = target.bottom - target.top;
   if (width <= 0 || height <= 0) return;
-  HDC sourceDc = CreateCompatibleDC(dc);
+  HDC sourceDc = SourceMemoryDc(dc);
   if (!sourceDc) return;
   HGDIOBJ previousBitmap = SelectObject(sourceDc, bitmap);
   const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
   AlphaBlend(dc, target.left, target.top, width, height, sourceDc, 0, 0, width, height, blend);
   SelectObject(sourceDc, previousBitmap);
-  DeleteDC(sourceDc);
 }
 
-std::wstring DateText(const SYSTEMTIME& now) {
+const std::wstring& DateText(const SYSTEMTIME& now) {
+  struct DateTextCache {
+    WORD year = 0;
+    WORD month = 0;
+    WORD day = 0;
+    std::wstring text;
+  };
+  static DateTextCache cache;
+  if (cache.year == now.wYear && cache.month == now.wMonth && cache.day == now.wDay) {
+    return cache.text;
+  }
   static constexpr const wchar_t* kWeekdays[] = {L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
   wchar_t text[64]{};
   swprintf_s(text, L"%04u年%u月%u日 (%s)", now.wYear, now.wMonth, now.wDay,
              kWeekdays[now.wDayOfWeek % 7]);
-  return text;
+  cache.year = now.wYear;
+  cache.month = now.wMonth;
+  cache.day = now.wDay;
+  cache.text = text;
+  return cache.text;
 }
 
-std::wstring TimeText(const SYSTEMTIME& now) {
-  wchar_t text[32]{};
+const std::wstring& TimeText(const SYSTEMTIME& now) {
+  const int secondOfDay = now.wHour * 3600 + now.wMinute * 60 + now.wSecond;
+  thread_local int cachedSecond = -1;
+  thread_local std::wstring cachedText;
+  if (cachedSecond == secondOfDay) return cachedText;
+  wchar_t text[16]{};
   swprintf_s(text, L"%02u:%02u:%02u", now.wHour, now.wMinute, now.wSecond);
-  return text;
+  cachedSecond = secondOfDay;
+  cachedText = text;
+  return cachedText;
+}
+
+void DrawTextInRect(HDC dc, const wchar_t* text, RECT rect, int format) {
+  DrawTextW(dc, text ? text : L"", -1, &rect, format | DT_NOPREFIX);
 }
 
 void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
@@ -141,9 +204,7 @@ void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
 }
 
 void FillWidgetBackground(HDC dc, const RECT& bounds) {
-  HBRUSH background = CreateSolidBrush(kWidgetBackground);
-  FillRect(dc, &bounds, background);
-  DeleteObject(background);
+  FillRect(dc, &bounds, CachedSolidBrush(kWidgetBackground));
 }
 
 void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha);
@@ -185,13 +246,11 @@ void DrawWidgetCard(HDC dc, const RECT& rect, COLORREF color = kWidgetSurface,
     FillRoundRectTranslucent(dc, rect, color, radius, alpha);
     return;
   }
-  HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousPen = SelectObject(dc, GetStockObject(NULL_PEN));
-  HGDIOBJ previousBrush = SelectObject(dc, fill);
+  HGDIOBJ previousBrush = SelectObject(dc, CachedSolidBrush(color));
   RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
   SelectObject(dc, previousBrush);
   SelectObject(dc, previousPen);
-  DeleteObject(fill);
 }
 
 void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color, BYTE alpha = 255) {
@@ -201,13 +260,11 @@ void DrawWidgetPill(HDC dc, const RECT& rect, COLORREF color, BYTE alpha = 255) 
     FillRoundRectTranslucent(dc, rect, color, radius, alpha);
     return;
   }
-  HBRUSH fill = CreateSolidBrush(color);
   HGDIOBJ previousPen = SelectObject(dc, GetStockObject(NULL_PEN));
-  HGDIOBJ previousBrush = SelectObject(dc, fill);
+  HGDIOBJ previousBrush = SelectObject(dc, CachedSolidBrush(color));
   RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
   SelectObject(dc, previousBrush);
   SelectObject(dc, previousPen);
-  DeleteObject(fill);
 }
 
 std::wstring Fixed(double value, int digits) {
@@ -230,8 +287,7 @@ void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const
                      COLORREF color, int width,
                      const std::function<double(const AirHistorySample&)>& valueOf) {
   if (samples.empty() || maxValue <= minValue) return;
-  HPEN pen = CreatePen(PS_SOLID, width, color);
-  HGDIOBJ previousPen = SelectObject(dc, pen);
+  HGDIOBJ previousPen = SelectObject(dc, CachedSolidPen(width, color));
   bool started = false;
   for (const auto& sample : samples) {
     const double value = valueOf(sample);
@@ -248,21 +304,19 @@ void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const
     }
   }
   SelectObject(dc, previousPen);
-  DeleteObject(pen);
 }
 
 void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha) {
   if (alpha == 0 || rect.right <= rect.left || rect.bottom <= rect.top) return;
   HBITMAP colorBitmap = SolidColorBitmap(color);
   if (!colorBitmap) return;
-  HDC colorDc = CreateCompatibleDC(dc);
+  HDC colorDc = SourceMemoryDc(dc);
   if (!colorDc) return;
   HGDIOBJ previousBitmap = SelectObject(colorDc, colorBitmap);
   const BLENDFUNCTION blend{AC_SRC_OVER, 0, alpha, 0};
   AlphaBlend(dc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-            colorDc, 0, 0, 1, 1, blend);
+             colorDc, 0, 0, 1, 1, blend);
   SelectObject(colorDc, previousBitmap);
-  DeleteDC(colorDc);
 }
 
 int CardRadius(const RECT& card) {
@@ -291,13 +345,11 @@ RECT CardBodyRect(const RECT& content) {
 
 void DrawCardOutline(HDC dc, const RECT& rect, int radius) {
   if (rect.right <= rect.left || rect.bottom <= rect.top) return;
-  HPEN pen = CreatePen(PS_SOLID, 1, kWidgetOutline);
-  HGDIOBJ previousPen = SelectObject(dc, pen);
+  HGDIOBJ previousPen = SelectObject(dc, CachedSolidPen(1, kWidgetOutline));
   HGDIOBJ previousBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
   RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
   SelectObject(dc, previousBrush);
   SelectObject(dc, previousPen);
-  DeleteObject(pen);
 }
 
 void DrawSectionCard(HDC dc, const RECT& rect) {
