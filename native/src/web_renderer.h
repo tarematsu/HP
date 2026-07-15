@@ -208,6 +208,7 @@ class Renderer {
   HFONT TierFont(FontTier tier) const;
   enum class PanelSection {
     Clock,
+    ClockTime,
     PlaybackProgress,
     Air,
     Weather,
@@ -272,6 +273,7 @@ class Renderer {
   RECT bounds_{};
   bool nativeDashboardVisible_ = true;
   bool nativePanelTimerActive_ = false;
+  int nativeClockDayKey_ = 0;
   fs::path rootDir_;
   fs::path dataDir_;
   std::atomic<bool> shuttingDown_{false};
