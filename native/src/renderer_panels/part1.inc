@@ -106,11 +106,23 @@ HFONT CachedUiFont(int height, int weight) {
   return entry->second;
 }
 
-std::wstring TrackTimeText(int64_t milliseconds) {
+const std::wstring& TrackTimeText(int64_t milliseconds) {
   const int64_t seconds = std::max<int64_t>(0, milliseconds / 1000);
+  struct CacheEntry {
+    int64_t seconds = -1;
+    std::wstring text;
+  };
+  thread_local std::array<CacheEntry, 4> cache{};
+  thread_local size_t replacement = 0;
+  for (const CacheEntry& entry : cache) {
+    if (entry.seconds == seconds) return entry.text;
+  }
+  CacheEntry& entry = cache[replacement++ % cache.size()];
   wchar_t text[32]{};
   swprintf_s(text, L"%lld:%02lld", seconds / 60, seconds % 60);
-  return text;
+  entry.seconds = seconds;
+  entry.text = text;
+  return entry.text;
 }
 
 int RecentStationheadPlayIncrease(const std::vector<StationheadPlayHistorySample>& history) {
@@ -171,10 +183,20 @@ const std::wstring& DateText(const SYSTEMTIME& now) {
   return cache.text;
 }
 
-std::wstring TimeText(const SYSTEMTIME& now) {
-  wchar_t text[32]{};
+const std::wstring& TimeText(const SYSTEMTIME& now) {
+  const int secondOfDay = now.wHour * 3600 + now.wMinute * 60 + now.wSecond;
+  thread_local int cachedSecond = -1;
+  thread_local std::wstring cachedText;
+  if (cachedSecond == secondOfDay) return cachedText;
+  wchar_t text[16]{};
   swprintf_s(text, L"%02u:%02u:%02u", now.wHour, now.wMinute, now.wSecond);
-  return text;
+  cachedSecond = secondOfDay;
+  cachedText = text;
+  return cachedText;
+}
+
+void DrawTextInRect(HDC dc, const wchar_t* text, RECT rect, int format) {
+  DrawTextW(dc, text ? text : L"", -1, &rect, format | DT_NOPREFIX);
 }
 
 void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
