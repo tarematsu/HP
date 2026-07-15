@@ -104,6 +104,7 @@ inline RECT NormalizeInsetRect(RECT rect, int left, int top, int right, int bott
 
 
 
+
 inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   const int clientWidth = std::max(1L, bounds.right - bounds.left);
   const int clientHeight = std::max(1L, bounds.bottom - bounds.top);
@@ -143,7 +144,7 @@ class Renderer {
   int NewsCount() const { return newsCount_; }
   void Render(const RECT& dirty, const RenderState& state);
   void UpdateState(const RenderState& state);
-  void TickNativePanels(int64_t nowMs);
+  void TickNativePanels(int64_t nowMs, bool timerDriven = false);
   NativePlaybackFeedStatus NativePlaybackFeedStatusFor(size_t source, int64_t nowMs) const;
   void NotifyRadarUpdated();
   UiAction HitTest(POINT point);
@@ -175,7 +176,6 @@ class Renderer {
 
 
 
-
   struct NativePanelPaintScope {
     NativePanelPaintScope(Renderer& renderer, HWND hwnd);
     ~NativePanelPaintScope();
@@ -199,6 +199,7 @@ class Renderer {
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
   void UpdateNativeStaticPanels(const RenderState& state);
+
 
 
   template <LRESULT (Renderer::*Handler)(HWND, UINT, WPARAM, LPARAM)>
@@ -275,6 +276,7 @@ class Renderer {
   int height_ = 0;
   RECT bounds_{};
   bool nativeDashboardVisible_ = true;
+  bool nativePanelTimerActive_ = false;
   fs::path rootDir_;
   fs::path dataDir_;
   std::atomic<bool> shuttingDown_{false};
