@@ -46,18 +46,21 @@ void Renderer::Initialize() {
   EnsureNativeStaticWindows();
   StartNativePlaybackBridge();
   StartRadarCompose();
-  ApplyNativeStaticBounds();
 }
 
 void Renderer::Resize(int width, int height) {
-  width_ = std::max(1, width);
-  height_ = std::max(1, height);
+  const int nextWidth = std::max(1, width);
+  const int nextHeight = std::max(1, height);
+  if (width_ == nextWidth && height_ == nextHeight) return;
+  width_ = nextWidth;
+  height_ = nextHeight;
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
 }
 
 void Renderer::SetBounds(const RECT& bounds) {
+  if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
@@ -65,23 +68,23 @@ void Renderer::SetBounds(const RECT& bounds) {
 }
 
 void Renderer::SetVisible(bool visible) {
+  const bool visibilityChanged = nativeDashboardVisible_ != visible;
   nativeDashboardVisible_ = visible;
-  for (const NativePanelSlot& slot : NativePanelSlots()) {
-    const HWND hwnd = this->*slot.window;
-    if (hwnd && IsWindow(hwnd)) ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
-  }
+  if (visibilityChanged) ApplyNativeStaticBounds();
+
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     if (visible) {
-      nativePanelTimerActive_ =
-          SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
-    } else {
+      if (!nativePanelTimerActive_) {
+        nativePanelTimerActive_ =
+            SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+      }
+    } else if (nativePanelTimerActive_) {
       KillTimer(nativeMainWindow_, kNativePanelTickTimer);
       nativePanelTimerActive_ = false;
     }
   } else {
     nativePanelTimerActive_ = false;
   }
-  if (visible) ApplyNativeStaticBounds();
 }
 
 bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
