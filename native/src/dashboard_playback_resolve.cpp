@@ -197,16 +197,16 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
 }
 
 bool Renderer::NativePlaybackActive(int64_t nowMs) const {
+  const size_t selectedSource = UsesSecondaryPlaybackFeed(nativeStationhead_) ? 1 : 0;
   std::lock_guard lock(nativePlaybackMutex_);
-  for (const NativePlaybackUpdate& update : nativePlaybackUpdates_) {
-    const NativePlaybackProjection& projection = update.projection;
-    if (!projection.available || !projection.playing || projection.queue.empty()) continue;
-    if (projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) continue;
-    const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-    if (position.index >= projection.queue.size()) continue;
-    const NativePlaybackTrack& track = projection.queue[position.index];
-    if (!track.title.empty() && track.durationMs > 0) return true;
-  }
-  return false;
+  if (selectedSource >= nativePlaybackUpdates_.size()) return false;
+  const NativePlaybackProjection& projection =
+      nativePlaybackUpdates_[selectedSource].projection;
+  if (!projection.available || !projection.playing || projection.queue.empty()) return false;
+  if (projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) return false;
+  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
+  if (position.index >= projection.queue.size()) return false;
+  const NativePlaybackTrack& track = projection.queue[position.index];
+  return !track.title.empty() && track.durationMs > 0;
 }
 }  // namespace hp
