@@ -22,24 +22,98 @@ struct ProjectedTrackPosition {
   int64_t elapsedMs = 0;
 };
 
+struct ProjectionCursor {
+  const NativePlaybackProjection* owner = nullptr;
+  const NativePlaybackTrack* queueData = nullptr;
+  size_t queueSize = 0;
+  int currentIndex = 0;
+  int64_t progressMs = 0;
+  int64_t anchorAt = 0;
+  int64_t sampledAt = 0;
+  int64_t fetchedAt = 0;
+  int64_t queueEndAt = 0;
+  bool playing = false;
+  size_t index = 0;
+  int64_t consumedMs = 0;
+  int64_t resolvedAt = 0;
+};
+
+ProjectionCursor& CursorFor(const NativePlaybackProjection& projection) {
+  thread_local std::array<ProjectionCursor, 4> cursors{};
+  thread_local size_t replacement = 0;
+  for (ProjectionCursor& cursor : cursors) {
+    if (cursor.owner == &projection) return cursor;
+  }
+  for (ProjectionCursor& cursor : cursors) {
+    if (!cursor.owner) {
+      cursor.owner = &projection;
+      return cursor;
+    }
+  }
+  ProjectionCursor& cursor = cursors[replacement++ % cursors.size()];
+  cursor = {};
+  cursor.owner = &projection;
+  return cursor;
+}
+
+bool CursorMatches(const ProjectionCursor& cursor,
+                   const NativePlaybackProjection& projection) {
+  return cursor.queueData == projection.queue.data() &&
+         cursor.queueSize == projection.queue.size() &&
+         cursor.currentIndex == projection.currentIndex &&
+         cursor.progressMs == projection.progressMs &&
+         cursor.anchorAt == projection.anchorAt &&
+         cursor.sampledAt == projection.sampledAt &&
+         cursor.fetchedAt == projection.fetchedAt &&
+         cursor.queueEndAt == projection.queueEndAt &&
+         cursor.playing == projection.playing;
+}
+
+void ResetCursor(ProjectionCursor& cursor,
+                 const NativePlaybackProjection& projection,
+                 size_t startIndex) {
+  cursor.queueData = projection.queue.data();
+  cursor.queueSize = projection.queue.size();
+  cursor.currentIndex = projection.currentIndex;
+  cursor.progressMs = projection.progressMs;
+  cursor.anchorAt = projection.anchorAt;
+  cursor.sampledAt = projection.sampledAt;
+  cursor.fetchedAt = projection.fetchedAt;
+  cursor.queueEndAt = projection.queueEndAt;
+  cursor.playing = projection.playing;
+  cursor.index = startIndex;
+  cursor.consumedMs = 0;
+  cursor.resolvedAt = 0;
+}
+
 ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProjection& projection,
                                                      int64_t nowMs) {
-  ProjectedTrackPosition position;
-  position.index = projection.currentIndex > 0 &&
+  const size_t startIndex = projection.currentIndex > 0 &&
           projection.currentIndex < static_cast<int>(projection.queue.size())
       ? static_cast<size_t>(projection.currentIndex)
       : 0;
-  position.elapsedMs = ProjectedElapsedMs(projection, nowMs);
-  while (position.index < projection.queue.size()) {
-    const int64_t duration = projection.queue[position.index].durationMs;
-    if (!projection.playing || duration <= 0 ||
-        position.elapsedMs < duration + kPlaybackRenderTransitionHoldMs) {
-      break;
-    }
-    position.elapsedMs -= duration;
-    ++position.index;
+  const int64_t elapsed = ProjectedElapsedMs(projection, nowMs);
+  if (!projection.playing || projection.queue.empty()) {
+    return {startIndex, elapsed};
   }
-  return position;
+
+  ProjectionCursor& cursor = CursorFor(projection);
+  if (!CursorMatches(cursor, projection) || cursor.index < startIndex ||
+      cursor.index > projection.queue.size() || nowMs < cursor.resolvedAt ||
+      elapsed < cursor.consumedMs) {
+    ResetCursor(cursor, projection, startIndex);
+  }
+
+  int64_t remaining = elapsed - cursor.consumedMs;
+  while (cursor.index < projection.queue.size()) {
+    const int64_t duration = projection.queue[cursor.index].durationMs;
+    if (duration <= 0 || remaining < duration + kPlaybackRenderTransitionHoldMs) break;
+    remaining -= duration;
+    cursor.consumedMs += duration;
+    ++cursor.index;
+  }
+  cursor.resolvedAt = nowMs;
+  return {cursor.index, remaining};
 }
 
 bool PlaybackHasRenderableTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
@@ -54,23 +128,17 @@ bool PlaybackHasRenderableTrack(const NativePlaybackProjection& projection, int6
 
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.available || !projection.playing || projection.queue.empty()) return false;
-  size_t index = projection.currentIndex >= 0 &&
+  const size_t startIndex = projection.currentIndex >= 0 &&
           projection.currentIndex < static_cast<int>(projection.queue.size())
       ? static_cast<size_t>(projection.currentIndex)
       : 0;
-  if (!TrackHasIdentity(projection.queue[index])) return false;
+  if (!TrackHasIdentity(projection.queue[startIndex])) return false;
   if (projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) return true;
 
-  int64_t elapsed = ProjectedElapsedMs(projection, nowMs);
-  while (index < projection.queue.size()) {
-    const int64_t duration = projection.queue[index].durationMs;
-    if (duration <= 0 || elapsed < duration + kPlaybackRenderTransitionHoldMs) return false;
-    elapsed -= duration;
-    ++index;
-    if (index >= projection.queue.size()) return true;
-    if (!TrackHasIdentity(projection.queue[index])) return true;
-  }
-  return true;
+  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
+  if (position.index == startIndex) return false;
+  if (position.index >= projection.queue.size()) return true;
+  return !TrackHasIdentity(projection.queue[position.index]);
 }
 }  // namespace
 
@@ -111,7 +179,6 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   const NativePlaybackProjection& projection = update.projection;
   status.available = projection.available;
   status.playing = projection.playing;
-  status.hasTrack = PlaybackHasRenderableTrack(projection, nowMs);
   status.endedWithoutNextTrack = PlaybackEndedWithoutNextTrack(projection, nowMs);
   status.contentRevision = update.contentRevision;
   return status;
