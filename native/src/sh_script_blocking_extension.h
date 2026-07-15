@@ -32,6 +32,9 @@ inline constexpr bool StationheadAdditionalNonPlaybackScriptUrl(
       L"following", L"follow-modal", L"discover", L"discovery",
       L"social-feed", L"activity-feed", L"audience-modal",
       L"listener-modal", L"listeners-modal",
+      L"cookie-consent", L"consent-manager", L"paywall", L"upsell",
+      L"promo-banner", L"app-install", L"push-prompt", L"settings-modal",
+      L"profile-edit", L"avatar-picker", L"block-user", L"report-modal",
   };
   for (const std::wstring_view needle : kNeedles) {
     if (path.find(needle) != std::wstring_view::npos) return true;
@@ -46,6 +49,10 @@ static_assert(StationheadAdditionalNonPlaybackScriptUrl(
     L"https://www.stationhead.com/_next/static/chunks/notifications-panel.123.js"));
 static_assert(StationheadAdditionalNonPlaybackScriptUrl(
     L"https://stationhead.com/assets/share-sheet-a1b2.mjs?build=2"));
+static_assert(StationheadAdditionalNonPlaybackScriptUrl(
+    L"https://www.stationhead.com/assets/cookie-consent-a1b2.js"));
+static_assert(StationheadAdditionalNonPlaybackScriptUrl(
+    L"https://www.stationhead.com/assets/settings-modal-a1b2.js"));
 static_assert(!StationheadAdditionalNonPlaybackScriptUrl(
     L"https://www.stationhead.com/assets/player-runtime-a1b2.js"));
 static_assert(!StationheadAdditionalNonPlaybackScriptUrl(

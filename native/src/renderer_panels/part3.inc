@@ -128,9 +128,18 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
   constexpr int kSlotCount = 5;
   const int columnWidth = std::max(
       1, (static_cast<int>(body.right - body.left) - columnGap * (kSlotCount - 1)) / kSlotCount);
+  // The hour/icon/temperature/rain stack only fills the top ~56% of the body
+  // plus the (clamped) temperature and rain row heights, leaving the rest
+  // empty below - push the whole column stack down so it sits centered in
+  // the card instead of hugging the top.
+  const int temperatureHeightEstimate = std::clamp(bodyHeight * 12 / 100, 20, 32);
+  const int rainHeightEstimate = std::clamp(bodyHeight * 12 / 100, 18, 28);
+  const int estimatedContentHeight =
+      bodyHeight * 56 / 100 + temperatureHeightEstimate + rainHeightEstimate;
+  const int verticalOffset = std::max(0, (bodyHeight - estimatedContentHeight) / 2);
   for (int i = 0; i < kSlotCount; ++i) {
     const int left = body.left + i * (columnWidth + columnGap);
-    const RECT column{left, body.top, left + columnWidth, body.bottom};
+    const RECT column{left, body.top + verticalOffset, left + columnWidth, body.bottom};
     const bool hasData = i < static_cast<int>(count);
     const bool hasIcon = hasData && !hours[static_cast<size_t>(i)].icon.empty();
 
@@ -334,18 +343,8 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       ? sharedPlayback.track.title
       : (bothStationheadsOnFallback ? L"Buddy46" : L"");
   const std::wstring artist = sharedPlayback.hasTrack ? sharedPlayback.track.artist : L"";
-  const NativeMinuteFactsProjection minuteFacts = NativeMinuteFactsSnapshot();
-  std::wstring minuteFactsStatus;
-  if (minuteFacts.available) {
-    minuteFactsStatus = minuteFacts.isBroadcasting
-        ? (minuteFacts.isPaused ? L"一時停止中" : L"配信中")
-        : L"オフライン";
-    minuteFactsStatus += L" リスナー" + std::to_wstring(minuteFacts.listenerCount) + L"人";
-    if (minuteFacts.stale) minuteFactsStatus += L"(更新遅延)";
-  }
   const std::wstring detail = nativeStationhead_.loginRequired ? L"ログイン待ち"
       : nativeStationhead_.processFailed ? L"WebView再起動待ち"
-      : !minuteFactsStatus.empty() ? minuteFactsStatus
       : nativeStationhead_.audioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
@@ -380,6 +379,19 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   SetTextColor(dc, kWidgetDanger);
   DrawTextInRect(dc, L"MUTE", rects.muteButton,
                  DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+
+  const NativeMinuteFactsProjection minuteFacts = NativeMinuteFactsSnapshot();
+  std::wstring minuteFactsStatus = L"データ待ち";
+  if (minuteFacts.available) {
+    minuteFactsStatus = minuteFacts.isBroadcasting
+        ? (minuteFacts.isPaused ? L"一時停止中" : L"配信中")
+        : L"オフライン";
+    minuteFactsStatus += L"・" + std::to_wstring(minuteFacts.listenerCount) + L"人";
+    if (minuteFacts.stale) minuteFactsStatus += L"(遅延)";
+  }
+  SetTextColor(dc, kWidgetSubtle);
+  DrawTextInRect(dc, minuteFactsStatus, rects.status,
+                 DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(dc, previousFont);
 }
 

@@ -29,6 +29,9 @@ inline constexpr bool StationheadNonPlaybackScriptUrl(std::wstring_view uriLower
   constexpr std::wstring_view kNonPlaybackScriptNeedles[] = {
       L"chat", L"comment", L"gift", L"tipping", L"trending", L"thread",
       L"reaction", L"emoji", L"listeners", L"audience", L"leaderboard",
+      L"onboarding", L"walkthrough", L"tutorial", L"survey", L"feedback",
+      L"rating-prompt", L"review-prompt", L"achievement", L"badge-modal",
+      L"milestone", L"moderation-panel", L"search-modal", L"explore-panel",
   };
   for (const std::wstring_view needle : kNonPlaybackScriptNeedles) {
     if (path.find(needle) != std::wstring_view::npos) return true;
@@ -40,6 +43,10 @@ static_assert(StationheadNonPlaybackScriptUrl(
     L"https://www.stationhead.com/assets/chat-panel-a1b2.js"));
 static_assert(StationheadNonPlaybackScriptUrl(
     L"https://www.stationhead.com/_next/static/chunks/listeners-modal.123.js?build=1"));
+static_assert(StationheadNonPlaybackScriptUrl(
+    L"https://www.stationhead.com/_next/static/chunks/onboarding-walkthrough.123.js"));
+static_assert(StationheadNonPlaybackScriptUrl(
+    L"https://www.stationhead.com/assets/review-prompt-a1b2.js"));
 static_assert(!StationheadNonPlaybackScriptUrl(
     L"https://www.stationhead.com/assets/player-runtime-a1b2.js"));
 static_assert(!StationheadNonPlaybackScriptUrl(
