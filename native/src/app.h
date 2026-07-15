@@ -246,7 +246,7 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
     const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
                                   status.processFailed;
     if (player_ && SuppressTrackTransitionGap(status.audioPlaying, forceInteractive)) {
-      player_->KeepPlaybackBehindDashboard();
+      if (status.visible) player_->KeepPlaybackBehindDashboard();
       status.audioPlaying = true;
       status.playing = true;
       status.visible = false;
@@ -267,7 +267,7 @@ class AppStationheadHandle : public StationheadHandleBase<AppStationheadHandle, 
       const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
                                     status.processFailed;
       if (SuppressTrackTransitionGap(status.audioPlaying, forceInteractive)) {
-        player_->KeepPlaybackBehindDashboard();
+        if (status.visible) player_->KeepPlaybackBehindDashboard();
         return;
       }
     } else {
@@ -342,7 +342,7 @@ class AppSecondaryStationheadHandle
     const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
                                   status.processFailed;
     if (player_ && SuppressTrackTransitionGap(status.playing, forceInteractive)) {
-      player_->KeepPlaybackBehindDashboard();
+      if (status.visible) player_->KeepPlaybackBehindDashboard();
       status.playing = true;
       status.visible = false;
       status.detail = L"track transition; waiting for next audio";
