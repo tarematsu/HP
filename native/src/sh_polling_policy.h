@@ -11,7 +11,7 @@
 #undef StationheadApiPlayStatsScript
 #undef StationheadAutoplayScript
 #undef ApplyStationheadResourceBlocking
-#include "stationhead_script_blocking_extension.h"
+#include "sh_script_blocking_extension.h"
 
 namespace hp {
 

@@ -121,8 +121,8 @@ set(HOMEPANEL_CORE_SOURCES
 
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
-  src/stationhead_window_layout.cpp
-  src/stationhead_polling_policy.h
+  src/sh_layout.cpp
+  src/sh_polling_policy.h
   src/sh.cpp
   src/sh_webview.cpp
   src/sh_audio.cpp)
@@ -144,7 +144,7 @@ add_executable(HomePanel WIN32
   ${HOMEPANEL_RENDERER_SOURCES}
   ${HOMEPANEL_RESOURCE_SOURCES})
 homepanel_configure_common_target(HomePanel)
-target_precompile_headers(HomePanel PRIVATE src/stationhead_polling_policy.h)
+target_precompile_headers(HomePanel PRIVATE src/sh_polling_policy.h)
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
   "${WEBVIEW2_NATIVE_DIR}/WebView2Loader.dll.lib"
