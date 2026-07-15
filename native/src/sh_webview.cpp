@@ -41,7 +41,7 @@ void StationheadPlayer::ConfigureWebView() {
     if (SUCCEEDED(settings.As(&settings3))) settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
   }
   ApplyStationheadResourceBlocking(environment_.Get(), webview_.Get(), config_,
-                                   resourceBlockingArmed_, resourceRequestedToken_, log_);
+                                   resourceBlockingArmed_, resourceRequestedToken_, log_, RoleTag());
 
   ComPtr<ICoreWebView2_8> audioView;
   if (SUCCEEDED(webview_.As(&audioView)) && audioView) {
@@ -67,7 +67,7 @@ void StationheadPlayer::ConfigureWebView() {
     } else {
       audioPlayingChangedToken_ = {};
       nativeAudioTracking_ = false;
-      log_.Warn(L"WebView2 native audio tracking unavailable " + HResultHex(audioHandlerResult));
+      log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" WebView2 native audio tracking unavailable " + HResultHex(audioHandlerResult));
     }
   }
 
@@ -91,7 +91,7 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](HRESULT result, LPCWSTR) -> HRESULT {
             if (!CallbackAlive(alive)) return S_OK;
             if (FAILED(result)) {
-              log_.Warn(L"Stationhead startup script registration failed " +
+              log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" startup script registration failed " +
                         HResultHex(result));
             }
             if (!pendingAuthorizationUrl_.empty()) {
@@ -150,7 +150,7 @@ void StationheadPlayer::ConfigureWebView() {
                   if (SUCCEEDED(popupArgs->put_NewWindow(authWebview_.Get()))) {
                     popupArgs->put_Handled(TRUE);
                     SelectTab(StationheadTabKind::Auth);
-                    log_.Info(L"Stationhead popup attached to auth tab: " + uri);
+                    log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" popup attached to auth tab: " + uri);
                   } else {
                     FinishSpotifyAuthorization(L"Spotify popup attachment failed");
                   }

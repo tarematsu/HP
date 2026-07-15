@@ -113,6 +113,11 @@ class StationheadPlayer {
 
  private:
   [[nodiscard]] bool IsSecondary() const noexcept { return role_ == StationheadRole::Secondary; }
+  // Tags shared log lines with which window they came from - both roles run
+  // the same code path, so without this a log reader cannot tell whether an
+  // "audio playing"/"audio stopped" entry (or any other shared-path log line)
+  // came from Window A or Window B.
+  [[nodiscard]] const wchar_t* RoleTag() const noexcept { return IsSecondary() ? L"B" : L"A"; }
   void ApplyMute() const noexcept;
   void ApplyVolume() const noexcept;
   void ApplyAudioPlaybackState(bool playing, const std::wstring& source);

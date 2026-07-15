@@ -174,7 +174,12 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
                                   : std::numeric_limits<double>::quiet_NaN();
     SetTextColor(dc, std::isfinite(rainMm) && rainMm > 0 ? kWidgetBlueMuted : kWidgetSubtle);
     SelectObject(dc, TierFont(FontTier::Small));
-    RECT rainRect{column.left, tempRect.bottom, column.right, column.bottom};
+    // Keep the rain row snug under the temperature instead of stretching it
+    // down to the column bottom - centering the text in that leftover span
+    // left a large, uneven gap above and below the value.
+    const int rainHeight = std::clamp(bodyHeight * 12 / 100, 18, 28);
+    RECT rainRect{column.left, tempRect.bottom, column.right,
+                  std::min(static_cast<int>(column.bottom), tempRect.bottom + rainHeight)};
     const std::wstring rain = hasData ? NumberOrDash(rainMm, 0) + L"mm" : L"--";
     DrawTextInRect(dc, rain, rainRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }

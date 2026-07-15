@@ -220,9 +220,7 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
     const SidebarSections sections = SplitSidebarSections(client);
     switch (section) {
       case PanelSection::Clock: rect = sections.clock; break;
-      case PanelSection::PlaybackProgress:
-        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.clock)));
-        break;
+      case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.clock); break;
       case PanelSection::Air: rect = sections.air; break;
       case PanelSection::Weather: rect = sections.weather; break;
       case PanelSection::Controls: rect = sections.controls; break;
@@ -231,8 +229,10 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
   } else if (window == nativeMainWindow_) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
-      case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.music); break;
       case PanelSection::Music: rect = sections.music; break;
+      case PanelSection::PlaybackProgress:
+        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.music)));
+        break;
       case PanelSection::Energy: rect = sections.energy; break;
       case PanelSection::News: rect = sections.news; break;
       default: break;
@@ -291,15 +291,15 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   if (newsChanged) nativeNewsIndex_ = state.newsIndex;
   if (dashboardChanged) nativeRenderedDashboardRevision_ = dashboardSourceRevision_;
   if (!EnsureNativeStaticWindows()) return;
-  if (sensorsChanged || historyChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
+  if (sensorsChanged || historyChanged) InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
   if (dashboardChanged) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
+    InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
   }
   if (dashboardChanged || newsChanged) InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
   if (controlsChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Controls);
   if (stationheadChanged || stationheadHistoryChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
   }
 }
 
@@ -316,15 +316,15 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
   const bool playbackChanged = playbackState != nativePlaybackTickState_;
   nativePlaybackTickState_ = playbackState;
-  if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
-    InvalidatePanelSection(nativeMainWindow_,
-                           clockDayChanged ? PanelSection::Music : PanelSection::ClockTime);
-  }
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_)) {
+    InvalidatePanelSection(nativeSideWindow_,
+                           clockDayChanged ? PanelSection::Clock : PanelSection::ClockTime);
+  }
+  if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
     if (playbackChanged) {
-      InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
     } else if (playbackState.active) {
-      InvalidatePanelSection(nativeSideWindow_, PanelSection::PlaybackProgress);
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::PlaybackProgress);
     }
   }
 }
@@ -346,7 +346,14 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
       if (id == kNativeSideId) {
         const SidebarSections sections = SplitSidebarSections(client);
-        const RECT musicBody = CardBodyRect(CardContentRect(sections.clock));
+        const ControlsRects controls = ControlsFromContent(CardContentRect(sections.controls));
+        if (PtInRect(&controls.update, point)) QueueAction(UiAction::AppUpdate);
+        else if (PtInRect(&controls.restart, point)) QueueAction(UiAction::Restart);
+        return 0;
+      }
+      if (id == kNativeMainId) {
+        const MainSections sections = SplitMainSections(client);
+        const RECT musicBody = CardBodyRect(CardContentRect(sections.music));
         const MusicRowRects musicRects = MusicRowFromBody(musicBody);
         if (PtInRect(&musicRects.button, point)) {
           QueueAction(UiAction::StationheadAudioToggle);
@@ -356,12 +363,8 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
           QueueAction(UiAction::StationheadAudioMute);
           return 0;
         }
-        const ControlsRects controls = ControlsFromContent(CardContentRect(sections.controls));
-        if (PtInRect(&controls.update, point)) QueueAction(UiAction::AppUpdate);
-        else if (PtInRect(&controls.restart, point)) QueueAction(UiAction::Restart);
         return 0;
       }
-      if (id == kNativeMainId) return 0;
       break;
     }
     case WM_PAINT:
@@ -387,10 +390,10 @@ void Renderer::PaintNativeSide(HWND hwnd) {
   const SidebarSections sections = SplitSidebarSections(scope.bounds);
   RECT overlap{};
   if (IntersectRect(&overlap, &scope.dirty, &sections.clock)) {
-    DrawMusicSection(scope.dc, sections.clock);
+    DrawClockSection(scope.dc, sections.clock);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawAirSection(scope.dc, sections.air);
+    DrawWeatherSection(scope.dc, sections.air);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
     DrawEnergySection(scope.dc, sections.weather);
@@ -406,10 +409,10 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   const MainSections sections = SplitMainSections(scope.bounds);
   RECT overlap{};
   if (IntersectRect(&overlap, &scope.dirty, &sections.music)) {
-    DrawClockSection(scope.dc, sections.music);
+    DrawMusicSection(scope.dc, sections.music);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.energy)) {
-    DrawWeatherSection(scope.dc, sections.energy);
+    DrawAirSection(scope.dc, sections.energy);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.news)) {
     DrawNewsSection(scope.dc, sections.news);
