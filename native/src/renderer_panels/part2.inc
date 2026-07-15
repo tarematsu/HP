@@ -29,6 +29,21 @@ MusicRowRects MusicRowFromBody(const RECT& body) {
   return rects;
 }
 
+RECT MusicProgressRectFromBody(const RECT& body) {
+  const MusicRowRects rects = MusicRowFromBody(body);
+  const int rowHeight = std::max(1, static_cast<int>(rects.row.bottom - rects.row.top));
+  const int pad = std::max(6, rowHeight * 10 / 100);
+  RECT progress{
+      rects.artwork.right + pad,
+      rects.row.top + rowHeight * 64 / 100,
+      rects.button.left - pad,
+      rects.row.bottom - rowHeight * 2 / 100,
+  };
+  if (progress.right <= progress.left) progress.right = progress.left + 1;
+  if (progress.bottom <= progress.top) progress.bottom = progress.top + 1;
+  return progress;
+}
+
 void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   const int destWidth = static_cast<int>(destRect.right - destRect.left);
   const int destHeight = static_cast<int>(destRect.bottom - destRect.top);
@@ -196,6 +211,9 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
     const SidebarSections sections = SplitSidebarSections(client);
     switch (section) {
       case PanelSection::Clock: rect = sections.clock; break;
+      case PanelSection::PlaybackProgress:
+        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.clock)));
+        break;
       case PanelSection::Air: rect = sections.air; break;
       case PanelSection::Weather: rect = sections.weather; break;
       case PanelSection::Controls: rect = sections.controls; break;
@@ -218,6 +236,7 @@ void Renderer::DestroyNativeStaticWindows() {
     KillTimer(nativeMainWindow_, kNativePanelTickTimer);
   }
   nativePanelTimerActive_ = false;
+  nativePlaybackTickState_ = {};
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
@@ -275,13 +294,18 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
-  const bool playbackActive = NativePlaybackActive(nowMs);
+  const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
+  const bool playbackChanged = playbackState != nativePlaybackTickState_;
+  nativePlaybackTickState_ = playbackState;
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
   }
-  if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_) &&
-      playbackActive) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+  if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_)) {
+    if (playbackChanged) {
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
+    } else if (playbackState.active) {
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::PlaybackProgress);
+    }
   }
 }
 
