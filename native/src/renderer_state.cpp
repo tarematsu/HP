@@ -71,8 +71,15 @@ void Renderer::SetVisible(bool visible) {
     if (hwnd && IsWindow(hwnd)) ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
   }
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
-    if (visible) SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr);
-    else KillTimer(nativeMainWindow_, kNativePanelTickTimer);
+    if (visible) {
+      nativePanelTimerActive_ =
+          SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+    } else {
+      KillTimer(nativeMainWindow_, kNativePanelTickTimer);
+      nativePanelTimerActive_ = false;
+    }
+  } else {
+    nativePanelTimerActive_ = false;
   }
   if (visible) ApplyNativeStaticBounds();
 }
