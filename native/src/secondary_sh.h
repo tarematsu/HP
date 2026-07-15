@@ -55,6 +55,7 @@ class SecondaryStationheadPlayer {
 
  private:
   void ApplyAudioState() noexcept;
+  void ApplyMute() noexcept;
   void ApplyVolume() const noexcept;
   void ApplyPlaybackState(bool playing, const std::wstring& source);
   void EnsureDistinctBrowserIdentity() noexcept;
