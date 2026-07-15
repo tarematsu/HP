@@ -403,4 +403,3 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
 
   SelectClipRgn(scope.dc, nullptr);
   DrawCardOutline(scope.dc, bounds, radius);
-}
