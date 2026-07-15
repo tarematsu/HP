@@ -51,6 +51,9 @@ void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   SelectObject(sourceDc, previous);
   DeleteDC(sourceDc);
 }
+
+constexpr UINT_PTR kNativePanelTickTimer = 1;
+constexpr UINT kNativePanelTickMs = 1'000;
 }
 
 const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
@@ -145,7 +148,12 @@ bool Renderer::EnsureNativeStaticWindows() {
     allCreated = allCreated && created;
     createdAny = createdAny || created;
   }
-  if (createdAny) ApplyNativeStaticBounds();
+  if (createdAny) {
+    ApplyNativeStaticBounds();
+    if (nativeDashboardVisible_ && nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
+      SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr);
+    }
+  }
   return allCreated;
 }
 
@@ -193,6 +201,9 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
 }
 
 void Renderer::DestroyNativeStaticWindows() {
+  if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
+    KillTimer(nativeMainWindow_, kNativePanelTickTimer);
+  }
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (hwnd && IsWindow(hwnd)) DestroyWindow(hwnd);
@@ -252,7 +263,7 @@ void Renderer::TickNativePanels(int64_t nowMs) {
   if (!nativeDashboardVisible_) return;
   const bool playbackActive = NativePlaybackActive(nowMs);
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) && IsWindowVisible(nativeMainWindow_)) {
-    if (playbackActive) InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
   }
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) && IsWindowVisible(nativeSideWindow_) &&
       playbackActive) {
@@ -264,6 +275,12 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
   switch (message) {
     case WM_ERASEBKGND:
       return 1;
+    case WM_TIMER:
+      if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
+        TickNativePanels(UnixMillis());
+        return 0;
+      }
+      break;
     case WM_LBUTTONUP: {
       const int id = GetDlgCtrlID(hwnd);
       RECT client{};
@@ -386,3 +403,4 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
 
   SelectClipRgn(scope.dc, nullptr);
   DrawCardOutline(scope.dc, bounds, radius);
+}
