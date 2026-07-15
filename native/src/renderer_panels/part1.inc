@@ -33,14 +33,13 @@ void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
   SetWindowPos(hwnd, HWND_TOP, rect.left, rect.top,
                std::max(1L, rect.right - rect.left),
                std::max(1L, rect.bottom - rect.top),
-               SWP_NOACTIVATE | SWP_NOSENDCHANGING |
-                   (visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+               SWP_NOACTIVATE | (visible ? SWP_SHOWWINDOW : SWP_NOOWNERZORDER));
+  ShowWindow(hwnd, visible ? SW_SHOWNA : SW_HIDE);
 }
 
 int SpanX(const RECT& rect, int permille) {
   return static_cast<int>((rect.right - rect.left) * permille / 1000);
 }
-
 int SpanY(const RECT& rect, int permille) {
   return static_cast<int>((rect.bottom - rect.top) * permille / 1000);
 }
@@ -142,8 +141,9 @@ void DrawTextInRect(HDC dc, const std::wstring& text, RECT rect, int format) {
 }
 
 void FillWidgetBackground(HDC dc, const RECT& bounds) {
-  static HBRUSH background = CreateSolidBrush(kWidgetBackground);
+  HBRUSH background = CreateSolidBrush(kWidgetBackground);
   FillRect(dc, &bounds, background);
+  DeleteObject(background);
 }
 
 void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha);
@@ -258,3 +258,164 @@ void AlphaBlendSolidColor(HDC dc, const RECT& rect, COLORREF color, BYTE alpha) 
   HDC colorDc = CreateCompatibleDC(dc);
   if (!colorDc) return;
   HGDIOBJ previousBitmap = SelectObject(colorDc, colorBitmap);
+  const BLENDFUNCTION blend{AC_SRC_OVER, 0, alpha, 0};
+  AlphaBlend(dc, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+            colorDc, 0, 0, 1, 1, blend);
+  SelectObject(colorDc, previousBitmap);
+  DeleteDC(colorDc);
+}
+
+int CardRadius(const RECT& card) {
+  const int width = std::max(1L, card.right - card.left);
+  const int height = std::max(1L, card.bottom - card.top);
+  return std::clamp(std::min(width, height) * 16 / 100, 10, 28);
+}
+
+RECT CardContentRect(const RECT& card) {
+  const int width = std::max(1L, card.right - card.left);
+  const int height = std::max(1L, card.bottom - card.top);
+  const int pad = std::clamp(std::min(width, height) * 10 / 100, 8, 26);
+  return NormalizeInsetRect(card, pad, pad, pad, pad);
+}
+
+int CardHeaderHeight(const RECT& content) {
+  return std::clamp(SpanY(content, 140), 16, 34);
+}
+
+RECT CardBodyRect(const RECT& content) {
+  RECT body = content;
+  body.top += CardHeaderHeight(content) + std::max(4, SpanY(content, 40));
+  if (body.bottom <= body.top) body.bottom = body.top + 1;
+  return body;
+}
+
+void DrawCardOutline(HDC dc, const RECT& rect, int radius) {
+  if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+  HPEN pen = CreatePen(PS_SOLID, 1, kWidgetOutline);
+  HGDIOBJ previousPen = SelectObject(dc, pen);
+  HGDIOBJ previousBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+  RoundRect(dc, rect.left, rect.top, rect.right, rect.bottom, radius, radius);
+  SelectObject(dc, previousBrush);
+  SelectObject(dc, previousPen);
+  DeleteObject(pen);
+}
+
+void DrawSectionCard(HDC dc, const RECT& rect) {
+  const int radius = CardRadius(rect);
+  DrawWidgetCard(dc, rect, kWidgetSurface, radius);
+  DrawCardOutline(dc, rect, radius);
+}
+
+void DrawHeaderStatus(HDC dc, const RECT& header, const PanelDataStatus& status) {
+  const wchar_t* text = nullptr;
+  COLORREF color = kWidgetSubtle;
+  switch (status.state) {
+    case PanelDataState::Waiting:
+      text = L"取得待ち";
+      color = kWidgetSubtle;
+      break;
+    case PanelDataState::Stale:
+      text = L"更新停滞";
+      color = kWidgetWarning;
+      break;
+    case PanelDataState::Error:
+      text = L"取得エラー";
+      color = kWidgetDanger;
+      break;
+    case PanelDataState::Ok:
+    default:
+      return;
+  }
+  SetTextColor(dc, color);
+  DrawTextInRect(dc, text, header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+}
+
+struct SidebarSections {
+  RECT clock{};
+  RECT air{};
+  RECT weather{};
+  RECT controls{};
+};
+
+SidebarSections SplitSidebarSections(const RECT& client) {
+  const int height = std::max(1L, client.bottom - client.top);
+  const int gap = std::max(6, height * 18 / 1000);
+  const int airHeight = height * 345 / 1000;
+  const int weatherHeight = height * 305 / 1000;
+
+  // The sidebar and main panel share the same inner dashboard height. Mirror
+  // SplitMainSections' radar/news proportions so the controls card lines up
+  // with the news card, then give the released space to the clock card.
+  const int radarHeight = height * 600 / 1000;
+  const int mainGap = std::max(6, height * 18 / 1000);
+  const int mainHeight = std::max(1, height - radarHeight - mainGap);
+  const int targetControlsHeight = std::max(1, mainHeight * 270 / 1000);
+  const int availableClockAndControls = std::max(
+      2, height - airHeight - weatherHeight - gap * 3);
+  const int controlsHeight = std::clamp(
+      targetControlsHeight, 1, std::max(1, availableClockAndControls - 1));
+  const int clockHeight = std::max(1, availableClockAndControls - controlsHeight);
+
+  SidebarSections sections;
+  int top = client.top;
+  sections.clock = RECT{client.left, top, client.right, top + clockHeight};
+  top = sections.clock.bottom + gap;
+  sections.air = RECT{client.left, top, client.right, top + airHeight};
+  top = sections.air.bottom + gap;
+  sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
+  top = sections.weather.bottom + gap;
+  sections.controls = RECT{client.left, top, client.right, top + controlsHeight};
+  return sections;
+}
+
+struct MainSections {
+  RECT music{};
+  RECT energy{};
+  RECT news{};
+};
+
+MainSections SplitMainSections(const RECT& client) {
+  const int width = std::max(1L, client.right - client.left);
+  const int height = std::max(1L, client.bottom - client.top);
+  const int gapX = std::max(8, width * 16 / 1000);
+  const int gapY = std::max(6, height * 45 / 1000);
+  const int newsHeight = height * 270 / 1000;
+  const int musicWidth = width * 480 / 1000;
+  MainSections sections;
+  sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
+  const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
+  sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
+  sections.energy = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
+  if (sections.energy.right <= sections.energy.left) {
+    sections.energy.right = sections.energy.left + 1;
+  }
+  return sections;
+}
+
+struct ControlsRects {
+  RECT update{};
+  RECT restart{};
+  RECT status{};
+};
+
+ControlsRects ControlsFromContent(const RECT& content) {
+  const int height = std::max(1L, content.bottom - content.top);
+  const int width = std::max(1L, content.right - content.left);
+  const int gap = std::max(6, SpanX(content, 35));
+  const int buttonHeight = std::clamp(height * 45 / 100, 28, 54);
+  const int statusLineHeight = std::clamp(height * 20 / 100, 14, 24);
+  const int statusGap = std::max(4, statusLineHeight / 2);
+  const int statusHeight = std::min(
+      statusLineHeight * 2, std::max(1, height - buttonHeight - statusGap));
+  const int groupHeight = buttonHeight + statusGap + statusHeight;
+  const int groupTop = content.top + std::max(0, (height - groupHeight) / 2);
+  const int buttonWidth = std::max(1, (width - gap) / 2);
+  ControlsRects rects;
+  rects.update = RECT{content.left, groupTop, content.left + buttonWidth,
+                      groupTop + buttonHeight};
+  rects.restart = RECT{rects.update.right + gap, groupTop, content.right,
+                       groupTop + buttonHeight};
+  rects.status = RECT{content.left, rects.update.bottom + statusGap,
+                      content.right, rects.update.bottom + statusGap + statusHeight};
+  if (rects.status.bottom <= rects.status.top) rects.status.bottom = rects.status.top + 1;
+  return rects;
