@@ -117,13 +117,16 @@ class StationheadHandleBase {
 
   void RaiseActiveHost() const {
     if (!player_) return;
+    const bool preview = startupPreviewActive_;
+    if (!preview && !player_->SurfaceVisible()) return;
     HWND host = player_->ActiveHostWindowForAccountSetup();
     if (!host || !IsWindow(host)) return;
-    const auto status = player_->Status();
-    const bool interactive = static_cast<const Derived*>(this)->IsInteractive(status);
-    const bool preview = startupPreviewActive_;
-    const bool surfaceVisible = interactive || preview || status.visible;
-    if (!surfaceVisible) return;
+    bool interactive = false;
+    if (!preview) {
+      const auto status = player_->Status();
+      interactive = static_cast<const Derived*>(this)->IsInteractive(status);
+      if (!interactive && !status.visible) return;
+    }
     const RECT activeBounds = preview ? startupPreviewBounds_ : workspaceBounds_;
     const int width = std::max(1L, activeBounds.right - activeBounds.left);
     const int height = std::max(1L, activeBounds.bottom - activeBounds.top);
