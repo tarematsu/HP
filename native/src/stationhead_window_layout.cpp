@@ -47,20 +47,15 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const RECT authBounds{0, 0, width, height};
 
   if (controller) {
-    controller->put_ZoomFactor(1.0);
     controller->put_Bounds(contentBounds);
     controller->put_IsVisible(showAuth ? FALSE : TRUE);
   }
 
   if (hostWindow && IsWindow(hostWindow)) {
     if (showAuth) {
-      ShowWindow(hostWindow, SW_HIDE);
+      if (IsWindowVisible(hostWindow)) ShowWindow(hostWindow, SW_HIDE);
     } else {
-      SetWindowRgn(hostWindow, nullptr, FALSE);
-      ShowWindow(hostWindow, SW_SHOWNOACTIVATE);
-
-
-
+      if (!IsWindowVisible(hostWindow)) ShowWindow(hostWindow, SW_SHOWNOACTIVATE);
       SetWindowPos(hostWindow, (previewVisible || contentVisible) ? HWND_TOP : HWND_BOTTOM,
                    bounds.left, bounds.top, hostWidth, hostHeight,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -74,10 +69,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authHostWindow && IsWindow(authHostWindow)) {
     if (showAuth) {
-      ShowWindow(authHostWindow, SW_SHOWNOACTIVATE);
+      if (!IsWindowVisible(authHostWindow)) ShowWindow(authHostWindow, SW_SHOWNOACTIVATE);
       SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    } else {
+    } else if (IsWindowVisible(authHostWindow)) {
       ShowWindow(authHostWindow, SW_HIDE);
     }
   }
@@ -113,6 +108,10 @@ bool StationheadPlayer::EnsureAuthHostWindow() {
 }
 
 void StationheadPlayer::KeepPlaybackBehindDashboard() {
+  if (!startupPreviewActive_ && !viewVisible_ && selectedTab_ == StationheadTabKind::None) {
+    std::lock_guard lock(mutex_);
+    if (!status_.visible) return;
+  }
   if (!EnsureHostWindow()) {
     viewVisible_ = false;
     std::lock_guard lock(mutex_);
@@ -255,6 +254,10 @@ void SecondaryStationheadPlayer::ShowInteractive(bool interactive) {
 
 void SecondaryStationheadPlayer::KeepPlaybackBehindDashboard() {
   if (spotifyAuthorization_ || loginRequired_.load(std::memory_order_acquire)) return;
+  if (!startupPreviewActive_ && !interactive_) {
+    std::lock_guard lock(mutex_);
+    if (!status_.visible) return;
+  }
   startupPreviewActive_ = false;
   LayoutWindows(false);
 }
