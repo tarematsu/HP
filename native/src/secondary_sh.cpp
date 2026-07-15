@@ -97,6 +97,11 @@ void SecondaryStationheadPlayer::ApplyPlaybackState(bool playing, const std::wst
     if ((wasLoginInteractive || interactive_) && !spotifyAuthorization_) ShowInteractive(false);
     SetStatus(L"audio detected (" + source + L")");
   } else {
+    // Un-arm stylesheet blocking while audio isn't playing: Stationhead can
+    // briefly stop the audio element between tracks and needs to load styles
+    // for a Resume/Continue control, and a stale "ever played" latch would
+    // keep that CSS blocked until the next full navigation.
+    resourceBlockingArmed_ = false;
     SetStatus(L"audio stopped (" + source + L")");
     if (!spotifyAuthorization_) ShowInteractive(true);
   }

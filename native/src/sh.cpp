@@ -91,6 +91,11 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, int64_t nowMs,
 
 
 
+  // Un-arm stylesheet blocking while audio isn't playing: Stationhead can
+  // briefly stop the audio element between tracks and needs to load styles
+  // for a Resume/Continue control, and a stale "ever played" latch would
+  // keep that CSS blocked until the next full navigation.
+  resourceBlockingArmed_ = false;
   {
     std::lock_guard lock(mutex_);
     status_.audioPlaying = false;
