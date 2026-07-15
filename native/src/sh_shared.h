@@ -409,11 +409,10 @@ inline std::wstring StationheadDomPlayStatsScript() {
 // pulling in locale-aware towlower; request paths such as "chatHistory" mix
 // case while hostnames are already lowercase.
 inline std::wstring StationheadLowerAscii(const wchar_t* text) {
-  std::wstring lower;
-  if (text) {
-    for (const wchar_t* p = text; *p; ++p) {
-      const wchar_t c = *p;
-      lower.push_back((c >= L'A' && c <= L'Z') ? static_cast<wchar_t>(c - L'A' + L'a') : c);
+  std::wstring lower = text ? text : L"";
+  for (wchar_t& c : lower) {
+    if (c >= L'A' && c <= L'Z') {
+      c = static_cast<wchar_t>(c - L'A' + L'a');
     }
   }
   return lower;
@@ -627,42 +626,44 @@ inline void ApplyStationheadResourceBlocking(ICoreWebView2Environment* environme
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
           [env, &armed, blockImages, blockFonts](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
             if (!args) return S_OK;
-            std::wstring lower;
-            ComPtr<ICoreWebView2WebResourceRequest> request;
-            if (SUCCEEDED(args->get_Request(&request)) && request) {
-              LPWSTR uriRaw = nullptr;
-              if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                lower = StationheadLowerAscii(uriRaw);
-                CoTaskMemFree(uriRaw);
-              }
-            }
-            bool block = StationheadRequestIsBlockable(lower);
             COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
             const bool hasContext = SUCCEEDED(args->get_ResourceContext(&context));
-            if (blockImages && StationheadRequestLooksLikeImage(lower)) block = true;
-            if (!block) {
-              if (hasContext) {
-                const bool armedNow = armed.load(std::memory_order_relaxed);
-                if (blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) {
-                  // Images are never required for background audio playback.
-                  // Block them from the first navigation to avoid downloading
-                  // Stationhead artwork and avatars before playback is armed.
-                  block = true;
-                } else if (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) {
-                  // Web fonts affect presentation only and are safe to reject
-                  // before Stationhead has joined or started playback.
-                  block = true;
-                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET) {
-                  block = armedNow;
-                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
-                  // Spotify audio is commonly served from scdn.co, so a
-                  // domain-only allow-list can interrupt the next track.
-                  block = !lower.empty() && !StationheadCorePlaybackRequest(lower);
-                } else if (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
-                           context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
-                           context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
-                  block = true;
+            bool block = false;
+            bool needsUri = true;
+            if (hasContext) {
+              const bool armedNow = context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET &&
+                  armed.load(std::memory_order_relaxed);
+              if ((blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
+                  (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) ||
+                  (context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET && armedNow) ||
+                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
+                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
+                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
+                // These resource types are safe to reject without allocating
+                // and normalizing a URI first.
+                block = true;
+                needsUri = false;
+              }
+            }
+            if (needsUri) {
+              std::wstring lower;
+              ComPtr<ICoreWebView2WebResourceRequest> request;
+              if (SUCCEEDED(args->get_Request(&request)) && request) {
+                LPWSTR uriRaw = nullptr;
+                if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
+                  lower = StationheadLowerAscii(uriRaw);
+                  CoTaskMemFree(uriRaw);
                 }
+              }
+              block = StationheadRequestIsBlockable(lower);
+              if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
+                block = true;
+              }
+              if (!block && hasContext &&
+                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
+                // Spotify audio is commonly served from scdn.co, so a
+                // domain-only allow-list can interrupt the next track.
+                block = !lower.empty() && !StationheadCorePlaybackRequest(lower);
               }
             }
             if (block) {
