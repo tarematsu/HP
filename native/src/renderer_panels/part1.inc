@@ -149,12 +149,26 @@ void DrawPremultipliedBitmap(HDC dc, HBITMAP bitmap, const RECT& target) {
   SelectObject(sourceDc, previousBitmap);
 }
 
-std::wstring DateText(const SYSTEMTIME& now) {
+const std::wstring& DateText(const SYSTEMTIME& now) {
+  struct DateTextCache {
+    WORD year = 0;
+    WORD month = 0;
+    WORD day = 0;
+    std::wstring text;
+  };
+  static DateTextCache cache;
+  if (cache.year == now.wYear && cache.month == now.wMonth && cache.day == now.wDay) {
+    return cache.text;
+  }
   static constexpr const wchar_t* kWeekdays[] = {L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
   wchar_t text[64]{};
   swprintf_s(text, L"%04u年%u月%u日 (%s)", now.wYear, now.wMonth, now.wDay,
              kWeekdays[now.wDayOfWeek % 7]);
-  return text;
+  cache.year = now.wYear;
+  cache.month = now.wMonth;
+  cache.day = now.wDay;
+  cache.text = text;
+  return cache.text;
 }
 
 std::wstring TimeText(const SYSTEMTIME& now) {
