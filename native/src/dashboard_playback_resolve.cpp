@@ -126,16 +126,6 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
   return {cursor.index, remaining};
 }
 
-bool PlaybackHasRenderableTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
-  if (!projection.available || projection.queue.empty()) return false;
-  if (projection.playing && projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) {
-    return false;
-  }
-  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
-  return position.index < projection.queue.size() &&
-         !projection.queue[position.index].title.empty();
-}
-
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.available || !projection.playing || projection.queue.empty()) return false;
   const size_t startIndex = projection.currentIndex >= 0 &&
