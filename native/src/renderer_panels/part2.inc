@@ -52,6 +52,19 @@ void StretchRadarInto(HDC destDc, const RECT& destRect, HBITMAP radarBitmap) {
   DeleteDC(sourceDc);
 }
 
+struct CachedPanelMemoryDc {
+  HDC value = nullptr;
+  ~CachedPanelMemoryDc() {
+    if (value) DeleteDC(value);
+  }
+};
+
+HDC NativePanelMemoryDc(HDC compatibleDc) {
+  thread_local CachedPanelMemoryDc cached;
+  if (!cached.value) cached.value = CreateCompatibleDC(compatibleDc);
+  return cached.value;
+}
+
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 }
@@ -88,16 +101,15 @@ Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND 
   dirty = paint.rcPaint;
   if (IsRectEmpty(&dirty)) dirty = bounds;
   IntersectRect(&dirty, &dirty, &bounds);
-  dc = CreateCompatibleDC(paintDc);
-  HBITMAP bitmap = renderer.NativePanelBackBuffer(hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+  dc = NativePanelMemoryDc(paintDc);
+  HBITMAP bitmap = renderer.NativePanelBackBuffer(
+      hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
   if (!dc || !bitmap) {
-    if (dc) {
-      DeleteDC(dc);
-      dc = nullptr;
-    }
+    dc = nullptr;
     FillWidgetBackground(paintDc, bounds);
     return;
   }
+  SelectClipRgn(dc, nullptr);
   previousBitmap = SelectObject(dc, bitmap);
   IntersectClipRect(dc, dirty.left, dirty.top, dirty.right, dirty.bottom);
   FillWidgetBackground(dc, dirty);
@@ -109,8 +121,8 @@ Renderer::NativePanelPaintScope::~NativePanelPaintScope() {
   if (dc) {
     BitBlt(paintDc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
            dc, dirty.left, dirty.top, SRCCOPY);
+    SelectClipRgn(dc, nullptr);
     SelectObject(dc, previousBitmap);
-    DeleteDC(dc);
   }
   EndPaint(hwnd, &paint);
 }
