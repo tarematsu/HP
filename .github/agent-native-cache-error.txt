@@ -1,1 +1,1 @@
-native/src/dashboard_data.cpp: expected one replacement, found 0: 'using winrt::Windows::Data::Json::JsonValueType;\n\n  double NumberOrNaN'
+native/src/renderer_state.cpp: expected one replacement, found 0: '  width_ = nextWidth;\n    height_ = nextHeight;'
