@@ -1,1 +1,1 @@
-native/src/dashboard_data.cpp: expected one replacement, found 0
+native/src/dashboard_data.cpp: expected one replacement, found 0: 'using winrt::Windows::Data::Json::JsonValueType;\n\n  double NumberOrNaN'
