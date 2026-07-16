@@ -67,9 +67,11 @@ void EnrichRenderStationheadState(
   if (secondaryStatus) {
     state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
     state.secondaryAudioMuted = secondaryStatus->audioMuted;
+    state.secondaryPlaying = secondaryStatus->playing;
     state.secondaryUrl = std::move(secondaryStatus->url);
   } else {
     state.secondaryAudioMuted = false;
+    state.secondaryPlaying = false;
     state.secondaryUrl.clear();
   }
 }

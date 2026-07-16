@@ -13,7 +13,7 @@ enum class StationheadTabKind {
 // Which Stationhead window this player instance backs. The two roles share
 // every behavior - script injection, resource blocking, the native click
 // bridge, layout/visibility rules - except for exactly two things: the
-// WebView2 profile (Secondary uses an isolated named profile) and which
+// WebView2 user-data environment and which
 // periodic poll runs (Primary polls Stationhead's authenticated stats API,
 // Secondary runs a lightweight local-only auth probe).
 enum class StationheadRole {
@@ -58,6 +58,7 @@ struct StationheadStatus {
   bool audioPlaying = false;
   bool audioMuted = false;
   bool secondaryAudioMuted = false;
+  bool secondaryPlaying = false;
   bool primaryAudioSelected = true;
   std::wstring url;
   // Render-only routing metadata for choosing the shared playback feed.

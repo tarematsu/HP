@@ -153,8 +153,10 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       renderStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
       const bool stateChanged =
           UpdateRenderStationheadState(std::move(renderStationheadState));
-      if (!rendererStarted_ && stateChanged) {
+      if (!rendererStarted_) {
         StartDeferredServices(UnixMillis(), renderState_.stationhead);
+      } else if (!layoutChanged && stateChanged) {
+        ApplyStationheadWindowPlacement(renderState_.stationhead, secondaryStatus);
       }
       if (layoutChanged || stateChanged) PublishRenderStateNow();
       return 0;
