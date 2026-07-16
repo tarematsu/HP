@@ -109,17 +109,83 @@ const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
   return slots;
 }
 
-HFONT Renderer::TierFont(FontTier tier) const {
-  const int clientHeight = std::max(1L, bounds_.bottom - bounds_.top);
-  switch (tier) {
-    case FontTier::Small:
-      return CachedUiFont(std::clamp(clientHeight * 14 / 1000, 12, 24), FW_NORMAL);
-    case FontTier::Medium:
-      return CachedUiFont(std::clamp(clientHeight * 21 / 1000, 16, 36), FW_SEMIBOLD);
-    case FontTier::Large:
-    default:
-      return CachedUiFont(std::clamp(clientHeight * 56 / 1000, 36, 112), FW_SEMIBOLD);
+\1
+
+void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
+  constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
+  NativeAirGraphProjection next;
+  next.cutoff = nowMs - kWindowMs;
+  next.samples.reserve(nativeAirHistory_.size());
+  double co2Min = std::numeric_limits<double>::max();
+  double co2Max = std::numeric_limits<double>::lowest();
+  double temperatureMin = std::numeric_limits<double>::max();
+  double temperatureMax = std::numeric_limits<double>::lowest();
+  double humidityMin = std::numeric_limits<double>::max();
+  double humidityMax = std::numeric_limits<double>::lowest();
+  for (const auto& sample : nativeAirHistory_) {
+    if (sample.timestamp < next.cutoff || sample.co2 < 250 || sample.co2 > 10000 ||
+        sample.temperature < -40 || sample.temperature > 85 ||
+        sample.humidity < 0 || sample.humidity > 100) {
+      continue;
+    }
+    next.samples.push_back(sample);
+    co2Min = std::min(co2Min, static_cast<double>(sample.co2));
+    co2Max = std::max(co2Max, static_cast<double>(sample.co2));
+    temperatureMin = std::min(temperatureMin, sample.temperature);
+    temperatureMax = std::max(temperatureMax, sample.temperature);
+    humidityMin = std::min(humidityMin, sample.humidity);
+    humidityMax = std::max(humidityMax, sample.humidity);
   }
+  if (!next.samples.empty()) {
+    next.co2Min = co2Min;
+    next.co2Max = co2Max;
+    next.temperatureMin = temperatureMin;
+    next.temperatureMax = temperatureMax;
+    next.humidityMin = humidityMin;
+    next.humidityMax = humidityMax;
+  }
+  nativeAirGraph_ = std::move(next);
+}
+
+void Renderer::DrawCachedPanelSection(
+    HDC dc, const RECT& card, PanelSection section, uint64_t revision,
+    void (Renderer::*draw)(HDC, const RECT&)) {
+  const int width = std::max(1, static_cast<int>(card.right - card.left));
+  const int height = std::max(1, static_cast<int>(card.bottom - card.top));
+  NativeSectionBitmapCache& cache = nativeSectionBitmaps_[section];
+  const bool stale = !cache.bitmap || cache.width != width || cache.height != height ||
+      cache.revision != revision || cache.layoutRevision != nativeLayoutRevision_;
+  if (stale) {
+    HBITMAP bitmap = CreateCompatibleBitmap(dc, width, height);
+    HDC memoryDc = bitmap ? CreateCompatibleDC(dc) : nullptr;
+    if (bitmap && memoryDc) {
+      HGDIOBJ previous = SelectObject(memoryDc, bitmap);
+      const RECT local{0, 0, width, height};
+      FillWidgetBackground(memoryDc, local);
+      SetBkMode(memoryDc, TRANSPARENT);
+      (this->*draw)(memoryDc, local);
+      SelectObject(memoryDc, previous);
+      DeleteDC(memoryDc);
+      if (cache.bitmap) DeleteObject(cache.bitmap);
+      cache = NativeSectionBitmapCache{bitmap, width, height, revision, nativeLayoutRevision_};
+    } else {
+      if (memoryDc) DeleteDC(memoryDc);
+      if (bitmap) DeleteObject(bitmap);
+    }
+  }
+  if (!cache.bitmap) {
+    (this->*draw)(dc, card);
+    return;
+  }
+  HDC sourceDc = CreateCompatibleDC(dc);
+  if (!sourceDc) {
+    (this->*draw)(dc, card);
+    return;
+  }
+  HGDIOBJ previous = SelectObject(sourceDc, cache.bitmap);
+  BitBlt(dc, card.left, card.top, width, height, sourceDc, 0, 0, SRCCOPY);
+  SelectObject(sourceDc, previous);
+  DeleteDC(sourceDc);
 }
 
 Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND hwnd)
@@ -260,11 +326,20 @@ void Renderer::DestroyNativeStaticWindows() {
     if (buffer.bitmap) DeleteObject(buffer.bitmap);
   }
   nativeBackBuffers_.clear();
+  for (auto& [section, cache] : nativeSectionBitmaps_) {
+    if (cache.bitmap) DeleteObject(cache.bitmap);
+  }
+  nativeSectionBitmaps_.clear();
   for (auto& [key, entry] : nativeArtworkBitmaps_) {
     if (entry.bitmap) DeleteObject(entry.bitmap);
   }
   nativeArtworkBitmaps_.clear();
   nativeArtworkUseCounter_ = 0;
+  for (auto& [key, entry] : radarBitmaps_) {
+    if (entry.bitmap) DeleteObject(entry.bitmap);
+  }
+  radarBitmaps_.clear();
+  radarBitmapUseCounter_ = 0;
   {
     std::lock_guard lock(radarFrameMutex_);
     if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
@@ -279,28 +354,38 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   const bool stationheadChanged = nativeStationhead_ != state.stationhead;
   const bool stationheadHistoryChanged = nativeStationheadPlayHistory_ != state.stationheadPlayHistory;
   const bool controlsChanged = nativeAppVersion_ != state.appVersion || nativeToast_ != state.toast;
-  const bool newsChanged = nativeNewsIndex_ != state.newsIndex;
-  const bool dashboardChanged = nativeRenderedDashboardRevision_ != dashboardSourceRevision_;
+  const bool newsIndexChanged = nativeNewsIndex_ != state.newsIndex;
+  const bool weatherChanged = nativeRenderedWeatherRevision_ != dashboardWeatherRevision_;
+  const bool energyChanged = nativeRenderedEnergyRevision_ != dashboardEnergyRevision_;
+  const bool newsChanged = nativeRenderedNewsRevision_ != dashboardNewsRevision_;
 
   if (sensorsChanged) nativeSensors_ = state.sensors;
-  if (historyChanged) nativeAirHistory_ = state.airHistory;
-  if (stationheadHistoryChanged) {
-    nativeStationheadPlayHistory_ = state.stationheadPlayHistory;
+  if (historyChanged) {
+    nativeAirHistory_ = state.airHistory;
+    RebuildNativeAirGraph(UnixMillis());
   }
+  if (sensorsChanged || historyChanged) ++nativeAirRenderRevision_;
+  if (stationheadHistoryChanged) nativeStationheadPlayHistory_ = state.stationheadPlayHistory;
   if (stationheadChanged) nativeStationhead_ = state.stationhead;
   if (controlsChanged) {
     nativeAppVersion_ = state.appVersion;
     nativeToast_ = state.toast;
   }
-  if (newsChanged) nativeNewsIndex_ = state.newsIndex;
-  if (dashboardChanged) nativeRenderedDashboardRevision_ = dashboardSourceRevision_;
+  if (newsIndexChanged) nativeNewsIndex_ = state.newsIndex;
+  if (weatherChanged) nativeRenderedWeatherRevision_ = dashboardWeatherRevision_;
+  if (energyChanged) nativeRenderedEnergyRevision_ = dashboardEnergyRevision_;
+  if (newsChanged) nativeRenderedNewsRevision_ = dashboardNewsRevision_;
+  if (newsChanged || newsIndexChanged) ++nativeNewsRenderRevision_;
+  nativeRenderedDashboardRevision_ = dashboardSourceRevision_;
   if (!EnsureNativeStaticWindows()) return;
-  if (sensorsChanged || historyChanged) InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
-  if (dashboardChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
+  if (sensorsChanged || historyChanged) {
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
   }
-  if (dashboardChanged || newsChanged) InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
+  if (weatherChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
+  if (energyChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
+  if (newsChanged || newsIndexChanged) {
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
+  }
   if (controlsChanged) InvalidatePanelSection(nativeSideWindow_, PanelSection::Controls);
   if (stationheadChanged || stationheadHistoryChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
@@ -397,10 +482,12 @@ void Renderer::PaintNativeSide(HWND hwnd) {
     DrawClockSection(scope.dc, sections.clock);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawWeatherSection(scope.dc, sections.air);
+    DrawCachedPanelSection(scope.dc, sections.air, PanelSection::Weather,
+                           dashboardWeatherRevision_, &Renderer::DrawWeatherSection);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
-    DrawEnergySection(scope.dc, sections.weather);
+    DrawCachedPanelSection(scope.dc, sections.weather, PanelSection::Energy,
+                           dashboardEnergyRevision_, &Renderer::DrawEnergySection);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
     DrawControlsSection(scope.dc, sections.controls);
@@ -416,10 +503,12 @@ void Renderer::PaintNativeMain(HWND hwnd) {
     DrawMusicSection(scope.dc, sections.music);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.energy)) {
-    DrawAirSection(scope.dc, sections.energy);
+    DrawCachedPanelSection(scope.dc, sections.energy, PanelSection::Air,
+                           nativeAirRenderRevision_, &Renderer::DrawAirSection);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.news)) {
-    DrawNewsSection(scope.dc, sections.news);
+    DrawCachedPanelSection(scope.dc, sections.news, PanelSection::News,
+                           nativeNewsRenderRevision_, &Renderer::DrawNewsSection);
   }
 }
 

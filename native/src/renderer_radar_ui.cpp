@@ -6,6 +6,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kRadarTileFailureTtlMs = 5 * 60'000;
+constexpr size_t kRadarBitmapCacheLimit = 16;
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
@@ -25,19 +26,16 @@ std::wstring RadarTimeFromMillis(int64_t milliseconds) {
   return text;
 }
 
-HBITMAP DecodeRadarTile(const fs::path& dataDir, const std::wstring& url,
-                        int width, int height) {
+std::optional<fs::path> RadarTilePath(const fs::path& dataDir,
+                                             const std::wstring& url) {
   static constexpr wchar_t kDataHostPrefix[] = L"https://data.homepanel/";
-  if (url.empty()) return nullptr;
-  if (url.rfind(kDataHostPrefix, 0) == 0) {
-    std::wstring relative = url.substr(std::size(kDataHostPrefix) - 1);
-    if (relative.empty() || relative.find(L"..") != std::wstring::npos) return nullptr;
-    for (auto& character : relative) {
-      if (character == L'/') character = L'\\';
-    }
-    return DecodeImageFileToBitmap(dataDir / relative, width, height);
+  if (url.empty() || url.rfind(kDataHostPrefix, 0) != 0) return std::nullopt;
+  std::wstring relative = url.substr(std::size(kDataHostPrefix) - 1);
+  if (relative.empty() || relative.find(L"..") != std::wstring::npos) return std::nullopt;
+  for (auto& character : relative) {
+    if (character == L'/') character = L'\\';
   }
-  return nullptr;
+  return dataDir / relative;
 }
 
 bool FileMatchesText(const fs::path& path, const std::string& content) {
@@ -110,6 +108,30 @@ void BlendBitmap(HDC dc, HBITMAP bitmap, int left, int top, int width, int heigh
   DeleteDC(sourceDc);
 }
 }  // namespace
+
+HBITMAP Renderer::CachedRadarBitmap(const std::wstring& key, const fs::path& path,
+                                    int width, int height) {
+  if (width <= 0 || height <= 0) return nullptr;
+  const std::wstring cacheKey = key + L"#" + Utf8ToWide(FileStamp(path)) + L"#" +
+      std::to_wstring(width) + L"x" + std::to_wstring(height);
+  auto found = radarBitmaps_.find(cacheKey);
+  if (found != radarBitmaps_.end()) {
+    found->second.lastUsed = ++radarBitmapUseCounter_;
+    return found->second.bitmap;
+  }
+  HBITMAP bitmap = DecodeImageFileToBitmap(path, width, height);
+  if (!bitmap) return nullptr;
+  if (radarBitmaps_.size() >= kRadarBitmapCacheLimit) {
+    auto oldest = radarBitmaps_.begin();
+    for (auto item = radarBitmaps_.begin(); item != radarBitmaps_.end(); ++item) {
+      if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
+    }
+    if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
+    radarBitmaps_.erase(oldest);
+  }
+  radarBitmaps_[cacheKey] = ArtworkBitmapCacheEntry{bitmap, ++radarBitmapUseCounter_};
+  return bitmap;
+}
 
 void Renderer::StartRadarCompose() {
   if (radarComposeStarted_.exchange(true, std::memory_order_acq_rel)) return;
@@ -239,15 +261,11 @@ void Renderer::ComposeRadarFrame() {
     }
   }
 
-  HBITMAP radarSatelliteBitmap = DecodeImageFileToBitmap(
-      satellitePath, kRadarCanvasWidth, kRadarCanvasHeight);
-  HBITMAP radarMapBitmap = DecodeImageFileToBitmap(
-      mapPath, kRadarCanvasWidth, kRadarCanvasHeight);
-  if (!radarSatelliteBitmap || !radarMapBitmap) {
-    if (radarSatelliteBitmap) DeleteObject(radarSatelliteBitmap);
-    if (radarMapBitmap) DeleteObject(radarMapBitmap);
-    return;
-  }
+  HBITMAP radarSatelliteBitmap = CachedRadarBitmap(
+      L"radar-satellite", satellitePath, kRadarCanvasWidth, kRadarCanvasHeight);
+  HBITMAP radarMapBitmap = CachedRadarBitmap(
+      L"radar-map", mapPath, kRadarCanvasWidth, kRadarCanvasHeight);
+  if (!radarSatelliteBitmap || !radarMapBitmap) return;
 
   BITMAPINFO info{};
   info.bmiHeader.biSize = sizeof(info.bmiHeader);
@@ -258,17 +276,11 @@ void Renderer::ComposeRadarFrame() {
   info.bmiHeader.biCompression = BI_RGB;
   void* pixels = nullptr;
   HBITMAP composed = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
-  if (!composed) {
-    DeleteObject(radarSatelliteBitmap);
-    DeleteObject(radarMapBitmap);
-    return;
-  }
+  if (!composed) return;
 
   HDC composeDc = CreateCompatibleDC(nullptr);
   if (!composeDc) {
     DeleteObject(composed);
-    DeleteObject(radarSatelliteBitmap);
-    DeleteObject(radarMapBitmap);
     return;
   }
   HGDIOBJ previousComposed = SelectObject(composeDc, composed);
@@ -285,7 +297,10 @@ void Renderer::ComposeRadarFrame() {
   for (const RadarTile& tile : tiles) {
     if (radarComposeStopping_.load(std::memory_order_acquire)) break;
     if (TileFailureActive(radarFailedTiles_, tile.url, now)) continue;
-    HBITMAP tileBitmap = DecodeRadarTile(dataDir_, tile.url, tileWidth, tileHeight);
+    const std::optional<fs::path> tilePath = RadarTilePath(dataDir_, tile.url);
+    HBITMAP tileBitmap = tilePath
+        ? CachedRadarBitmap(L"radar-tile:" + tile.url, *tilePath, tileWidth, tileHeight)
+        : nullptr;
     if (!tileBitmap) {
       radarFailedTiles_[tile.url] = now + kRadarTileFailureTtlMs;
       continue;
@@ -294,15 +309,12 @@ void Renderer::ComposeRadarFrame() {
                 static_cast<int>(std::lround(tile.destination.x * scaleX)),
                 static_cast<int>(std::lround(tile.destination.y * scaleY)),
                 tileWidth, tileHeight);
-    DeleteObject(tileBitmap);
     ++loadedTiles;
   }
 
   BlendBitmap(composeDc, radarMapBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
   SelectObject(composeDc, previousComposed);
   DeleteDC(composeDc);
-  DeleteObject(radarSatelliteBitmap);
-  DeleteObject(radarMapBitmap);
 
   if (!tiles.empty() && loadedTiles == 0) {
     // Keep the last successfully rendered frame when every tile fails.

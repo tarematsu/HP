@@ -53,31 +53,9 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
     DrawTextInRect(dc, stats[i].value, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  const int64_t now = UnixMillis();
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
-  const int64_t cutoff = now - kWindowMs;
-  std::vector<AirHistorySample> samples;
-  samples.reserve(nativeAirHistory_.size());
-  double co2Min = std::numeric_limits<double>::max();
-  double co2Max = std::numeric_limits<double>::lowest();
-  double temperatureMin = std::numeric_limits<double>::max();
-  double temperatureMax = std::numeric_limits<double>::lowest();
-  double humidityMin = std::numeric_limits<double>::max();
-  double humidityMax = std::numeric_limits<double>::lowest();
-  for (const auto& sample : nativeAirHistory_) {
-    if (sample.timestamp < cutoff || sample.co2 < 250 || sample.co2 > 10000 ||
-        sample.temperature < -40 || sample.temperature > 85 ||
-        sample.humidity < 0 || sample.humidity > 100) {
-      continue;
-    }
-    samples.push_back(sample);
-    co2Min = std::min(co2Min, static_cast<double>(sample.co2));
-    co2Max = std::max(co2Max, static_cast<double>(sample.co2));
-    temperatureMin = std::min(temperatureMin, sample.temperature);
-    temperatureMax = std::max(temperatureMax, sample.temperature);
-    humidityMin = std::min(humidityMin, sample.humidity);
-    humidityMax = std::max(humidityMax, sample.humidity);
-  }
+  const auto& samples = nativeAirGraph_.samples;
+  const int64_t cutoff = nativeAirGraph_.cutoff;
 
   const int plotTop = body.top + statsHeight + SpanY(body, 60);
   const RECT plot{body.left, plotTop, body.right, body.bottom};
@@ -99,12 +77,18 @@ void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   }
 
   if (!samples.empty() && plot.bottom > plot.top + 4) {
-    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, co2Min - 80, co2Max + 80, kWidgetGreen, 2,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
+                    nativeAirGraph_.co2Min - 80, nativeAirGraph_.co2Max + 80,
+                    kWidgetGreen, 2,
                     [](const AirHistorySample& s) { return static_cast<double>(s.co2); });
-    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, temperatureMin - 0.5, temperatureMax + 0.5,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
+                    nativeAirGraph_.temperatureMin - 0.5,
+                    nativeAirGraph_.temperatureMax + 0.5,
                     kWidgetOrange, 1,
                     [](const AirHistorySample& s) { return s.temperature; });
-    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs, humidityMin - 2, humidityMax + 2,
+    DrawHistoryLine(dc, samples, plot, cutoff, kWindowMs,
+                    nativeAirGraph_.humidityMin - 2,
+                    nativeAirGraph_.humidityMax + 2,
                     kWidgetBlueMuted, 1,
                     [](const AirHistorySample& s) { return s.humidity; });
   } else {

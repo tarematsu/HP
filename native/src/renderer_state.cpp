@@ -61,6 +61,7 @@ void Renderer::Resize(int width, int height) {
   if (width_ == nextWidth && height_ == nextHeight) return;
   width_ = nextWidth;
   height_ = nextHeight;
+  ++nativeLayoutRevision_;
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
@@ -69,6 +70,7 @@ void Renderer::Resize(int width, int height) {
 void Renderer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
+  ++nativeLayoutRevision_;
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
@@ -97,23 +99,55 @@ void Renderer::SetVisible(bool visible) {
 bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
   if (changed) *changed = false;
   try {
-    std::ifstream input(jsonPath, std::ios::binary);
+    std::error_code error;
+    const fs::path normalizedPath = jsonPath.lexically_normal();
+    const std::uintmax_t sourceSize = fs::file_size(normalizedPath, error);
+    if (error) return false;
+    const fs::file_time_type modifiedAt = fs::last_write_time(normalizedPath, error);
+    if (error) return false;
+    if (dashboardSourceStampValid_ && dashboardSourcePath_ == normalizedPath &&
+        dashboardSourceSize_ == sourceSize && dashboardSourceModifiedAt_ == modifiedAt) {
+      return true;
+    }
+
+    std::ifstream input(normalizedPath, std::ios::binary);
     if (!input) return false;
     std::string text((std::istreambuf_iterator<char>(input)), {});
     if (text.empty()) return false;
-    if (text == dashboardUtf8_) return true;
+    if (text == dashboardUtf8_) {
+      dashboardSourcePath_ = normalizedPath;
+      dashboardSourceSize_ = sourceSize;
+      dashboardSourceModifiedAt_ = modifiedAt;
+      dashboardSourceStampValid_ = true;
+      return true;
+    }
+
     DashboardSnapshot snapshot;
     if (!ParseDashboardSnapshot(text, snapshot)) return false;
+    const bool firstSnapshot = !nativeDashboard_.loaded;
+    const bool weatherChanged = firstSnapshot ||
+        snapshot.weatherRevision != nativeDashboard_.weatherRevision;
+    const bool newsChanged = firstSnapshot ||
+        snapshot.newsRevision != nativeDashboard_.newsRevision;
+    const bool energyChanged = firstSnapshot ||
+        snapshot.octopusRevision != nativeDashboard_.octopusRevision ||
+        snapshot.switchBotRevision != nativeDashboard_.switchBotRevision;
+    const bool contentChanged = weatherChanged || newsChanged || energyChanged;
+
     newsCount_ = snapshot.newsItemCount;
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = std::move(text);
-    ++dashboardSourceRevision_;
-    if (changed) *changed = true;
+    dashboardSourcePath_ = normalizedPath;
+    dashboardSourceSize_ = sourceSize;
+    dashboardSourceModifiedAt_ = modifiedAt;
+    dashboardSourceStampValid_ = true;
+    if (weatherChanged) ++dashboardWeatherRevision_;
+    if (newsChanged) ++dashboardNewsRevision_;
+    if (energyChanged) ++dashboardEnergyRevision_;
+    if (contentChanged) ++dashboardSourceRevision_;
+    if (changed) *changed = contentChanged;
     return true;
   } catch (...) {
-    dashboardUtf8_.clear();
-    newsCount_ = 0;
-    ++dashboardSourceRevision_;
     return false;
   }
 }

@@ -65,6 +65,11 @@ struct DashboardSnapshot {
   bool switchBotDoorOpen = false;
   bool switchBotMotion = false;
   std::vector<SwitchBotDeviceData> switchBotDevices;
+
+  uint64_t weatherRevision = 0;
+  uint64_t newsRevision = 0;
+  uint64_t octopusRevision = 0;
+  uint64_t switchBotRevision = 0;
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
