@@ -47,6 +47,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
     case WM_LBUTTONUP:
       if (renderer_) HandleAction(renderer_->TakePendingAction());
       return 0;
+    case kRendererActionMessage:
+      HandleAction(static_cast<UiAction>(wParam));
+      return 0;
     case WM_HP_CLOUD_UPDATED: {
       bool dashboardChanged = false;
       if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json", &dashboardChanged) ||
@@ -188,4 +191,4 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   return DefWindowProcW(window_, message, wParam, lParam);
 }
 
-}
+} 
