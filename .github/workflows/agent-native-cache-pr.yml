@@ -43,6 +43,9 @@ jobs:
           body = body.replace(
               "  uint64_t switchBotRevision = 0;\n  };''')",
               "  uint64_t switchBotRevision = 0;\n};''')")
+          body = body.replace(
+              "using winrt::Windows::Data::Json::JsonValueType;\n\n  double NumberOrNaN",
+              "using winrt::Windows::Data::Json::JsonValueType;\n\ndouble NumberOrNaN")
           Path('/tmp/apply_native_cache.py').write_text('if True:\n' + body, encoding='utf-8')
           PY
           set +e
