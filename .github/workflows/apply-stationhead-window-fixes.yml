@@ -1,9 +1,9 @@
 name: Apply Stationhead Window Fixes
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-stationhead-window-state
+      - main
     paths:
       - tools/apply_stationhead_window_fixes.py
       - .github/workflows/apply-stationhead-window-fixes.yml
