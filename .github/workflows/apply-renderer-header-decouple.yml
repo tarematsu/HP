@@ -1,0 +1,30 @@
+name: Apply Renderer Header Decouple
+
+on:
+  push:
+    branches:
+      - agent/cache-native-panels
+    paths:
+      - "native/scripts/renderer_header_decouple_once.py"
+      - ".github/workflows/apply-renderer-header-decouple.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/cache-native-panels
+      - name: Apply include migration
+        run: python native/scripts/renderer_header_decouple_once.py
+      - name: Commit migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/src/app.cpp native/src/app_messages.cpp
+          git diff --cached --quiet || git commit -m "refactor(native): include renderer only in implementations"
+          git push origin HEAD:agent/cache-native-panels
