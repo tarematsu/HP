@@ -9,7 +9,14 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# Track both document-created scripts before starting the first navigation.
+def replace_exact_count(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    print(f"{label}: {count}")
+    if count != expected:
+        raise SystemExit(f"{label}: expected {expected} matches, found {count}")
+    return text.replace(old, new)
+
+
 header_path = Path("native/src/sh.h")
 header = header_path.read_text(encoding="utf-8")
 header = replace_once(
@@ -38,10 +45,11 @@ cpp_path.write_text(cpp, encoding="utf-8")
 
 webview_path = Path("native/src/sh_webview.cpp")
 webview = webview_path.read_text(encoding="utf-8")
-webview = replace_once(
+webview = replace_exact_count(
     webview,
-    "  webViewConfigured_ = false;\n  startupScriptRegistrationComplete_ = false;",
-    "  webViewConfigured_ = false;\n  authCaptureScriptRegistrationComplete_ = false;\n  startupScriptRegistrationComplete_ = false;",
+    "  webViewConfigured_ = false;\n  startupScriptRegistrationComplete_ = false;\n  startupNavigationStarted_ = false;",
+    "  webViewConfigured_ = false;\n  authCaptureScriptRegistrationComplete_ = false;\n  startupScriptRegistrationComplete_ = false;\n  startupNavigationStarted_ = false;",
+    2,
     "reset auth capture registration state",
 )
 webview = replace_once(
@@ -55,12 +63,6 @@ webview = replace_once(
     "              if (type == L\"stationhead-auth-ready\") {\n                lastDailyPlayStatsAt_ = 0;\n                nextTickAt_ = 0;\n                return S_OK;\n              }",
     "              if (type == L\"stationhead-auth-ready\") {\n                loginRequired_ = false;\n                {\n                  std::lock_guard lock(mutex_);\n                  status_.loginRequired = false;\n                  status_.detail = L\"Stationhead authentication ready\";\n                }\n                if (IsSecondary()) {\n                  lastAuthProbeAt_ = 0;\n                  authProbeStartedAt_ = 0;\n                  authProbeInFlight_ = false;\n                } else {\n                  lastDailyPlayStatsAt_ = 0;\n                }\n                nextAutoClickAt_ = 0;\n                nextTickAt_ = 0;\n                PostChange();\n                return S_OK;\n              }",
     "clear login-required state on auth ready",
-)
-webview = replace_once(
-    webview,
-    "  webViewConfigured_ = false;\n  startupScriptRegistrationComplete_ = false;\n  startupNavigationStarted_ = false;",
-    "  webViewConfigured_ = false;\n  authCaptureScriptRegistrationComplete_ = false;\n  startupScriptRegistrationComplete_ = false;\n  startupNavigationStarted_ = false;",
-    "clear auth capture state on close",
 )
 webview_path.write_text(webview, encoding="utf-8")
 
@@ -84,7 +86,6 @@ app = replace_once(
 )
 app_path.write_text(app, encoding="utf-8")
 
-# Static source assertions used by CI and future reviewers.
 for path, needle in [
     (header_path, "authCaptureScriptRegistrationComplete_"),
     (cpp_path, "!authCaptureScriptRegistrationComplete_"),
