@@ -34,6 +34,12 @@ jobs:
           end = source.index("\n          PY\n", start)
           lines = source[start:end].splitlines()
           body = '\n'.join(line[8:] if line.startswith('        ') else line for line in lines) + '\n'
+          body = body.replace(
+              "  std::vector<SwitchBotDeviceData> switchBotDevices;\n  };''',",
+              "  std::vector<SwitchBotDeviceData> switchBotDevices;\n};''',")
+          body = body.replace(
+              "  uint64_t switchBotRevision = 0;\n  };''')",
+              "  uint64_t switchBotRevision = 0;\n};''')")
           Path('/tmp/apply_native_cache.py').write_text('if True:\n' + body, encoding='utf-8')
           PY
           set +e
