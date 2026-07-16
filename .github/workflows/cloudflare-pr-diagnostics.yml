@@ -1,0 +1,57 @@
+name: Cloudflare PR diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "cloud/**"
+      - ".github/workflows/cloudflare-pr-diagnostics.yml"
+      - ".github/scripts/cloudflare-build-diagnostics.mjs"
+      - ".github/scripts/resolve-cloudflare-config.mjs"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: cloudflare-pr-diagnostics-hp-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_BUILDS_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve Cloudflare settings
+        id: resolve
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+        run: node .github/scripts/resolve-cloudflare-config.mjs
+
+      - name: Watch Cloudflare build and collect logs
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+          CLOUDFLARE_WORKER_NAME: ${{ steps.resolve.outputs.worker_name }}
+        run: node .github/scripts/cloudflare-build-diagnostics.mjs
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-pr-diagnostics-${{ github.event.pull_request.head.sha }}
+          path: .cloudflare-build-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
