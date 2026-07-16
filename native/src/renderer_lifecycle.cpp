@@ -1,6 +1,3 @@
-
-
-
 #include "web_renderer.h"
 
 namespace hp {
@@ -22,10 +19,11 @@ void PrepareParentWindow(HWND window) {
   if ((style & WS_EX_NOREDIRECTIONBITMAP) != 0) {
     SetWindowLongPtrW(window, GWL_EXSTYLE, style & ~WS_EX_NOREDIRECTIONBITMAP);
     SetWindowPos(window, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
+                     SWP_FRAMECHANGED);
   }
 }
-}
+}  // namespace
 
 Renderer::Renderer(HWND window, int width, int height)
     : window_(window), width_(width), height_(height) {
