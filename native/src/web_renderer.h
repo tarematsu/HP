@@ -55,6 +55,7 @@ struct NativePlaybackProjection {
   bool stale = false;
   bool ended = false;
   bool setupRequired = false;
+  std::wstring queueRevision;
   int currentIndex = -1;
   int64_t progressMs = 0;
   int64_t anchorAt = 0;

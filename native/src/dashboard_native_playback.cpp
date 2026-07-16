@@ -509,6 +509,11 @@ NativePlaybackProjection ParsePlaybackProjection(const fs::path& dataDir,
     projection.stale = stale;
     projection.ended = ended;
     projection.setupRequired = setupRequired;
+    projection.queueRevision = FirstText(value, {L"queue_revision", L"queueRevision"});
+    if (projection.queueRevision.empty()) {
+      projection.queueRevision =
+          FirstText(queueOwner, {L"queue_revision", L"queueRevision"});
+    }
     projection.sampledAt = fetchedAt;
     projection.anchorAt = playing ? fetchedAt - projection.progressMs : 0;
     if (queueEndAt > 0 && serverReferenceAt > 0) {
@@ -668,7 +673,10 @@ void Renderer::NativePlaybackLoop() {
         update.fetchedAt = fetchedAt;
         const bool hasValidPayload = error.empty() && !payload.empty();
         if (hasValidPayload) {
-          const bool contentChanged = !update.hasPayload || update.payload != payload;
+          const bool contentChanged = !update.hasPayload ||
+              (!projection.queueRevision.empty()
+                  ? projection.queueRevision != update.projection.queueRevision
+                  : update.payload != payload);
           update.payload = std::move(payload);
           update.projection = std::move(projection);
           update.hasPayload = true;
