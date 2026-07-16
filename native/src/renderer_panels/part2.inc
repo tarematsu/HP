@@ -109,7 +109,18 @@ const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
   return slots;
 }
 
-\1
+HFONT Renderer::TierFont(FontTier tier) const {
+  const int clientHeight = std::max(1L, bounds_.bottom - bounds_.top);
+  switch (tier) {
+    case FontTier::Small:
+      return CachedUiFont(std::clamp(clientHeight * 14 / 1000, 12, 24), FW_NORMAL);
+    case FontTier::Medium:
+      return CachedUiFont(std::clamp(clientHeight * 21 / 1000, 16, 36), FW_SEMIBOLD);
+    case FontTier::Large:
+    default:
+      return CachedUiFont(std::clamp(clientHeight * 56 / 1000, 36, 112), FW_SEMIBOLD);
+  }
+}
 
 void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;

@@ -112,22 +112,41 @@ void BlendBitmap(HDC dc, HBITMAP bitmap, int left, int top, int width, int heigh
 HBITMAP Renderer::CachedRadarBitmap(const std::wstring& key, const fs::path& path,
                                     int width, int height) {
   if (width <= 0 || height <= 0) return nullptr;
-  const std::wstring cacheKey = key + L"#" + Utf8ToWide(FileStamp(path)) + L"#" +
+  const std::wstring keyPrefix = key + L"#";
+  const std::wstring cacheKey = keyPrefix + Utf8ToWide(FileStamp(path)) + L"#" +
       std::to_wstring(width) + L"x" + std::to_wstring(height);
   auto found = radarBitmaps_.find(cacheKey);
   if (found != radarBitmaps_.end()) {
     found->second.lastUsed = ++radarBitmapUseCounter_;
     return found->second.bitmap;
   }
+
+  for (auto item = radarBitmaps_.begin(); item != radarBitmaps_.end();) {
+    if (item->first.rfind(keyPrefix, 0) != 0) {
+      ++item;
+      continue;
+    }
+    if (item->second.bitmap) DeleteObject(item->second.bitmap);
+    item = radarBitmaps_.erase(item);
+  }
+
   HBITMAP bitmap = DecodeImageFileToBitmap(path, width, height);
   if (!bitmap) return nullptr;
   if (radarBitmaps_.size() >= kRadarBitmapCacheLimit) {
-    auto oldest = radarBitmaps_.begin();
+    auto oldest = radarBitmaps_.end();
     for (auto item = radarBitmaps_.begin(); item != radarBitmaps_.end(); ++item) {
-      if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
+      const bool persistent = item->first.rfind(L"radar-satellite#", 0) == 0 ||
+          item->first.rfind(L"radar-map#", 0) == 0;
+      if (persistent) continue;
+      if (oldest == radarBitmaps_.end() ||
+          item->second.lastUsed < oldest->second.lastUsed) {
+        oldest = item;
+      }
     }
-    if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
-    radarBitmaps_.erase(oldest);
+    if (oldest != radarBitmaps_.end()) {
+      if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
+      radarBitmaps_.erase(oldest);
+    }
   }
   radarBitmaps_[cacheKey] = ArtworkBitmapCacheEntry{bitmap, ++radarBitmapUseCounter_};
   return bitmap;
