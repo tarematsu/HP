@@ -70,8 +70,14 @@ class StationheadHandleBase {
 
   bool StartupPreviewActive() const noexcept { return startupPreviewActive_; }
 
-  StationheadStatus Status() const {
+  StationheadStatus RawStatus() const {
     StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+    status.audioMuted = audioMuted_;
+    return status;
+  }
+
+  StationheadStatus Status() const {
+    StationheadStatus status = RawStatus();
     const bool forceInteractive = status.loginRequired || status.spotifyAuthorization ||
                                   status.processFailed;
     if (player_ && SuppressTrackTransitionGap(status.audioPlaying, forceInteractive)) {
@@ -81,7 +87,6 @@ class StationheadHandleBase {
       status.visible = false;
       status.detail = L"track transition; waiting for next audio";
     }
-    status.audioMuted = audioMuted_;
     return status;
   }
 
@@ -344,6 +349,20 @@ class AppSecondaryStationheadHandle
     player_->SetPlaybackFallback(active, reason);
     ApplyBounds();
   }
+  void ShowAfterAudioStop() {
+    if (!player_) return;
+    ApplyInteractiveBounds();
+    player_->ShowAfterAudioStop();
+    ApplyBounds();
+  }
+  void ReleaseCompletedAuth() {
+    if (!player_) return;
+    player_->ReleaseCompletedAuth();
+    ApplyBounds();
+  }
+  uint32_t ConsumeChangeFlags() {
+    return player_ ? player_->ConsumeChangeFlags() : StationheadChangeNone;
+  }
 };
 
 class App {
@@ -437,6 +456,7 @@ class App {
   bool running_ = false;
   int exitCode_ = 0;
   int64_t startupAt_ = 0;
+  int64_t dashboardAudioReadySince_ = 0;
   int64_t playbackReadyAt_ = 0;
   bool secondaryStarted_ = false;
   bool rendererStarted_ = false;

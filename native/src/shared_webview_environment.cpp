@@ -55,6 +55,7 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
   const std::wstring requestedKey = NormalizePath(userDataFolder);
   ComPtr<ICoreWebView2Environment> readyEnvironment;
   bool startCreation = false;
+  uint64_t creationGeneration = 0;
   fs::path folderForCreation;
 
   {
@@ -68,6 +69,7 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
       entry.pending.push_back(std::move(completion));
       if (!entry.creating) {
         entry.creating = true;
+        creationGeneration = ++entry.generation;
         startCreation = true;
         folderForCreation = entry.userDataFolder;
       }
@@ -83,7 +85,8 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
   std::error_code directoryError;
   fs::create_directories(folderForCreation, directoryError);
   if (directoryError) {
-    Complete(requestedKey, HRESULT_FROM_WIN32(directoryError.value()), nullptr);
+    Complete(requestedKey, creationGeneration,
+             HRESULT_FROM_WIN32(directoryError.value()), nullptr);
     return;
   }
 
@@ -99,17 +102,39 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
   const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
       nullptr, folderForCreation.c_str(), options.Get(),
       Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-          [this, key](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-            Complete(*key, FAILED(result) || !environment
-                               ? (FAILED(result) ? result : E_POINTER)
-                               : S_OK,
+          [this, key, creationGeneration](
+              HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+            Complete(*key, creationGeneration,
+                     FAILED(result) || !environment
+                         ? (FAILED(result) ? result : E_POINTER)
+                         : S_OK,
                      environment);
             return S_OK;
           }).Get());
-  if (FAILED(started)) Complete(requestedKey, started, nullptr);
+  if (FAILED(started)) {
+    Complete(requestedKey, creationGeneration, started, nullptr);
+  }
 }
 
-void SharedWebViewEnvironment::Complete(const std::wstring& key, HRESULT result,
+void SharedWebViewEnvironment::Invalidate(const fs::path& userDataFolder) {
+  const std::wstring key = NormalizePath(userDataFolder);
+  std::vector<Completion> callbacks;
+  {
+    std::lock_guard lock(mutex_);
+    auto iterator = entries_.find(key);
+    if (iterator == entries_.end()) return;
+    Entry& entry = iterator->second;
+    ++entry.generation;
+    entry.creating = false;
+    entry.environment.Reset();
+    callbacks.swap(entry.pending);
+  }
+  const HRESULT timeout = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+  for (auto& callback : callbacks) callback(timeout, nullptr);
+}
+
+void SharedWebViewEnvironment::Complete(const std::wstring& key,
+                                        uint64_t generation, HRESULT result,
                                         ICoreWebView2Environment* environment) {
   std::vector<Completion> callbacks;
   ComPtr<ICoreWebView2Environment> readyEnvironment;
@@ -118,6 +143,7 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key, HRESULT result,
     auto iterator = entries_.find(key);
     if (iterator == entries_.end()) return;
     Entry& entry = iterator->second;
+    if (entry.generation != generation) return;
     entry.creating = false;
     if (SUCCEEDED(result) && environment) {
       entry.environment = environment;

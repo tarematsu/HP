@@ -15,6 +15,7 @@ constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kSteadyDashboardTickMs = 5000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
 constexpr int64_t kDashboardStartupFallbackMs = 30'000;
+constexpr int64_t kDashboardAudioStabilityMs = 1'500;
 int startupShowCommand = SW_SHOW;
 
 constexpr bool DashboardAudioReady(bool primaryAudioReady,
@@ -29,6 +30,7 @@ static_assert(DashboardAudioReady(true, true, true));
 static_assert(!DashboardAudioReady(true, true, false));
 static_assert(!DashboardAudioReady(false, true, true));
 static_assert(kDashboardStartupFallbackMs == 30'000);
+static_assert(kDashboardAudioStabilityMs >= 1'000);
 
 std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   DWORD handle = 0;
@@ -67,9 +69,11 @@ void EnrichRenderStationheadState(
   if (secondaryStatus) {
     state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
     state.secondaryAudioMuted = secondaryStatus->audioMuted;
+    state.secondaryPlaying = secondaryStatus->playing;
     state.secondaryUrl = std::move(secondaryStatus->url);
   } else {
     state.secondaryAudioMuted = false;
+    state.secondaryPlaying = false;
     state.secondaryUrl.clear();
   }
 }
@@ -169,13 +173,17 @@ void App::StartServices() {
 
 
 
-  const fs::path stationheadData = dataDir_ / L"webview2-stationhead";
+  // Keep the primary on its existing folder so its login survives this
+  // migration. Window B gets its own user-data folder and therefore its own
+  // browser process, cache, service workers, cookies, and storage.
+  const fs::path primaryStationheadData = dataDir_ / L"webview2-stationhead";
+  const fs::path secondaryStationheadData = dataDir_ / L"webview2-stationhead-secondary";
   stationhead_ = std::make_unique<StationheadPlayer>(
-      StationheadRole::Primary, window_, config_.stationhead, stationheadData, *logger_);
+      StationheadRole::Primary, window_, config_.stationhead, primaryStationheadData, *logger_);
   if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
     secondaryStationhead_ = std::make_unique<StationheadPlayer>(
-        StationheadRole::Secondary, window_, config_.stationhead, stationheadData, *logger_);
-    logger_->Info(L"Secondary Stationhead prepared to start alongside primary");
+        StationheadRole::Secondary, window_, config_.stationhead, secondaryStationheadData, *logger_);
+    logger_->Info(L"Secondary Stationhead prepared with isolated WebView2 user data");
   }
   RECT client{};
   if (GetClientRect(window_, &client) && client.right > client.left && client.bottom > client.top) {
@@ -252,20 +260,28 @@ void App::ClearStartupStationheadPreview() {
   if (secondaryStationhead_) secondaryStationhead_->ClearStartupPreviewBounds();
 }
 
-void App::StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus) {
-  const bool primaryAudioReady = stationheadStatus.audioPlaying;
+void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
+  const bool primaryAudioReady = stationhead_->RawStatus().audioPlaying;
   const bool secondaryEnabled = static_cast<bool>(secondaryStationhead_);
   bool secondaryAudioReady = true;
-  if (!rendererStarted_ && secondaryEnabled) {
-    const StationheadStatus secondaryStatus = secondaryStationhead_->Status();
-    secondaryAudioReady = secondaryStatus.playing;
+  if (secondaryEnabled) {
+    const StationheadStatus secondaryStatus = secondaryStationhead_->RawStatus();
+    secondaryAudioReady = secondaryStatus.audioPlaying;
   }
   const bool dashboardAudioReady =
       DashboardAudioReady(primaryAudioReady, secondaryEnabled, secondaryAudioReady);
+  if (dashboardAudioReady) {
+    if (dashboardAudioReadySince_ == 0) dashboardAudioReadySince_ = now;
+  } else {
+    dashboardAudioReadySince_ = 0;
+  }
+  const bool stableDashboardAudio = dashboardAudioReady &&
+      dashboardAudioReadySince_ > 0 &&
+      now - dashboardAudioReadySince_ >= kDashboardAudioStabilityMs;
   const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
-  if (dashboardAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
+  if (stableDashboardAudio && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
+  if (!rendererStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
     renderer_->Initialize();
     rendererStarted_ = true;
     ClearStartupStationheadPreview();
@@ -273,7 +289,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    if (dashboardAudioReady) {
+    if (stableDashboardAudio) {
       logger_->Info(secondaryEnabled
           ? L"Native dashboard started after Stationhead A/B audio confirmation"
           : L"Native dashboard started after Stationhead audio confirmation");
@@ -282,11 +298,11 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus& stationhea
     }
   }
 
-  if (!cloudStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
+  if (!cloudStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
     cloud_->Start();
     cloudStarted_ = true;
-    logger_->Info(dashboardAudioReady
-        ? L"Cloud synchronization started after Stationhead startup confirmation"
+    logger_->Info(stableDashboardAudio
+        ? L"Cloud synchronization started after stable Stationhead startup confirmation"
         : L"Cloud synchronization started after startup fallback deadline");
   }
 

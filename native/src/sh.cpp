@@ -110,8 +110,10 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
     status_.detail = usingFallback_ ? L"fallback audio stopped" : L"audio stopped";
   }
   nextTickAt_ = 0;
-  nextAutoClickAt_ = 0;
-  if (changed) log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped (" + source + L")");
+  if (changed) {
+    nextAutoClickAt_ = UnixMillis() + kStationheadPostPlaybackStopClickDelayMs;
+    log_.Warn(L"Stationhead " + std::wstring(RoleTag()) + L" audio stopped (" + source + L")");
+  }
   // Don't reveal the player here: a stop can be a brief track-transition gap,
   // and the App layer's RefreshVisibility()/SelectTab(None) calls (which know
   // about the transition grace period) already re-evaluate visibility on the
@@ -122,6 +124,22 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
 
 void StationheadPlayer::NavigateCurrentUrl(int64_t nowMs, const std::wstring& reason) {
   NavigateStationheadUrl(nowMs, CurrentStationheadUrl(), reason, usingFallback_);
+}
+
+void StationheadPlayer::TryStartInitialNavigation() {
+  if (!webViewConfigured_ || !startupScriptRegistrationComplete_ ||
+      startupNavigationStarted_ || shuttingDown_ || !webview_) {
+    return;
+  }
+  startupNavigationStarted_ = true;
+  startupScriptDeadline_ = 0;
+  if (!pendingAuthorizationUrl_.empty()) {
+    const std::wstring authorizationUrl = pendingAuthorizationUrl_;
+    pendingAuthorizationUrl_.clear();
+    OpenSpotifyAuthorization(authorizationUrl);
+  } else {
+    NavigateCurrentUrl(UnixMillis(), L"startup");
+  }
 }
 
 std::wstring StationheadPlayer::CurrentStationheadUrl() const {
@@ -150,6 +168,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
                                                bool fallbackActive) {
   (void)nowMs;
   if (!webview_ || url.empty()) return;
+  stationNavigationStarted_ = true;
   SetStartupBounds();
   ResetNavigationRouteState();
   usingFallback_ = fallbackActive;
@@ -203,8 +222,11 @@ void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
 // stale between detection and dispatch the way an earlier page-computed
 // position could.
 void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
-  if (!webview_ || autoClickInFlight_ || audioPlaying_.load(std::memory_order_relaxed)) return;
-  nextAutoClickAt_ = nowMs + 2'500;
+  if (!webview_ || autoClickInFlight_ ||
+      audioPlaying_.load(std::memory_order_relaxed) || nowMs < nextAutoClickAt_) {
+    return;
+  }
+  nextAutoClickAt_ = nowMs + kStationheadAutoClickRetryMs;
   autoClickInFlight_ = true;
   const auto alive = createCallbackAlive_;
   static const std::wstring locateScript = StationheadLocateStartButtonScript();
@@ -214,15 +236,23 @@ void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, alive, view](HRESULT scriptResult, LPCWSTR resultJson) -> HRESULT {
             if (!CallbackAlive(alive)) return S_OK;
-            autoClickInFlight_ = false;
-            if (FAILED(scriptResult) || !resultJson) return S_OK;
+            if (FAILED(scriptResult) || !resultJson) {
+              autoClickInFlight_ = false;
+              return S_OK;
+            }
             double x = 0.0;
             double y = 0.0;
-            if (!ParseStationheadLocateButtonResult(resultJson, x, y)) return S_OK;
+            if (!ParseStationheadLocateButtonResult(resultJson, x, y)) {
+              autoClickInFlight_ = false;
+              return S_OK;
+            }
+            nextAutoClickAt_ = std::max(
+                nextAutoClickAt_, UnixMillis() + kStationheadAutoClickSuccessGraceMs);
             log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
                       L" auto-clicking Start Listening at " + std::to_wstring(x) +
                       L"," + std::to_wstring(y));
             DispatchStationheadNativeClick(view.Get(), x, y, log_, RoleTag());
+            autoClickInFlight_ = false;
             return S_OK;
           }).Get());
   if (FAILED(result)) autoClickInFlight_ = false;
@@ -230,8 +260,10 @@ void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
 
 void StationheadPlayer::Create() {
   if (shuttingDown_ || creating_.exchange(true)) return;
+  creationStartedAt_ = UnixMillis();
   if (!EnsureHostWindow()) {
     creating_ = false;
+    creationStartedAt_ = 0;
     ScheduleRecreate(L"main window unavailable");
     return;
   }
@@ -244,6 +276,7 @@ void StationheadPlayer::Create() {
         if (!CallbackAlive(alive)) return;
         if (FAILED(result) || !environment || shuttingDown_) {
           creating_ = false;
+          creationStartedAt_ = 0;
           if (!shuttingDown_) {
             ScheduleRecreate(L"shared environment acquisition failed " + HResultHex(result));
           }
@@ -258,6 +291,7 @@ void StationheadPlayer::Create() {
                 return S_OK;
               }
               creating_ = false;
+              creationStartedAt_ = 0;
               if (FAILED(controllerResult) || !controller || shuttingDown_) {
                 if (controller) controller->Close();
                 if (!shuttingDown_) {
@@ -276,34 +310,25 @@ void StationheadPlayer::Create() {
               ConfigureWebView();
               return S_OK;
             });
-        HRESULT started = E_FAIL;
-        if (!IsSecondary()) {
-          started = environment_->CreateCoreWebView2Controller(hostWindow_, onController.Get());
-        } else {
-          ComPtr<ICoreWebView2Environment10> environment10;
-          if (FAILED(environment_.As(&environment10)) || !environment10) {
-            creating_ = false;
-            ScheduleRecreate(L"WebView2 multi-profile API unavailable", 30'000);
-            return;
-          }
-          ComPtr<ICoreWebView2ControllerOptions> options;
-          const HRESULT optionsResult =
-              environment10->CreateCoreWebView2ControllerOptions(options.GetAddressOf());
-          if (FAILED(optionsResult) || !options) {
-            creating_ = false;
-            ScheduleRecreate(L"profile options creation failed " + HResultHex(optionsResult));
-            return;
-          }
-          options->put_ProfileName(L"stationhead-secondary");
-          options->put_IsInPrivateModeEnabled(FALSE);
-          started = environment10->CreateCoreWebView2ControllerWithOptions(
-              hostWindow_, options.Get(), onController.Get());
-        }
+        const HRESULT started =
+            environment_->CreateCoreWebView2Controller(hostWindow_, onController.Get());
         if (FAILED(started)) {
           creating_ = false;
+          creationStartedAt_ = 0;
           ScheduleRecreate(L"controller creation could not start " + HResultHex(started));
         }
       });
+}
+
+void StationheadPlayer::CompletePendingAuthPopupDeferral() noexcept {
+  ComPtr<ICoreWebView2Deferral> deferral = authPopupDeferral_;
+  const auto completed = authPopupDeferralCompleted_;
+  authPopupDeferral_.Reset();
+  authPopupDeferralCompleted_.reset();
+  if (deferral && completed &&
+      !completed->exchange(true, std::memory_order_acq_rel)) {
+    deferral->Complete();
+  }
 }
 
 void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
@@ -312,33 +337,40 @@ void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
   authCallbackAlive_->store(false, std::memory_order_release);
   authCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
   const auto alive = authCallbackAlive_;
+  authControllerStartedAt_ = UnixMillis();
   const auto onController = Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
       [this, alive](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
         if (!CallbackAlive(alive)) {
           if (controller) controller->Close();
           return S_OK;
         }
+        authControllerStartedAt_ = 0;
         if (FAILED(result) || !controller || shuttingDown_) {
           if (controller) controller->Close();
+          if (!shuttingDown_) {
+            FinishSpotifyAuthorization(
+                L"Spotify auth controller creation failed " + HResultHex(result));
+          }
           return S_OK;
         }
         authController_ = controller;
         authController_->put_IsVisible(FALSE);
         authController_->get_CoreWebView2(&authWebview_);
+        if (!authWebview_) {
+          FinishSpotifyAuthorization(L"Spotify auth WebView unavailable");
+          return S_OK;
+        }
         ConfigureAuthWebView();
         return S_OK;
       });
-  if (!IsSecondary()) {
-    environment_->CreateCoreWebView2Controller(authHostWindow_, onController.Get());
-    return;
+  const HRESULT started =
+      environment_->CreateCoreWebView2Controller(authHostWindow_, onController.Get());
+  if (FAILED(started)) {
+    authControllerStartedAt_ = 0;
+    authCallbackAlive_->store(false, std::memory_order_release);
+    FinishSpotifyAuthorization(
+        L"Spotify auth controller could not start " + HResultHex(started));
   }
-  ComPtr<ICoreWebView2Environment10> environment10;
-  if (FAILED(environment_.As(&environment10)) || !environment10) return;
-  ComPtr<ICoreWebView2ControllerOptions> options;
-  if (FAILED(environment10->CreateCoreWebView2ControllerOptions(options.GetAddressOf())) || !options) return;
-  options->put_ProfileName(L"stationhead-secondary");
-  options->put_IsInPrivateModeEnabled(FALSE);
-  environment10->CreateCoreWebView2ControllerWithOptions(authHostWindow_, options.Get(), onController.Get());
 }
 
 void StationheadPlayer::Tick(int64_t nowMs) {
@@ -347,6 +379,16 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
   nextTickAt_ = nowMs + 60'000;
+  if (creating_.load(std::memory_order_relaxed) && creationStartedAt_ > 0 &&
+      nowMs - creationStartedAt_ >= kStationheadWebViewCreationTimeoutMs) {
+    createCallbackAlive_->store(false, std::memory_order_release);
+    creating_ = false;
+    creationStartedAt_ = 0;
+    SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
+    ScheduleRecreate(L"WebView2 environment/controller creation timed out", 1'000);
+    nextTickAt_ = nowMs + 1'000;
+    return;
+  }
   if (recreating_.load(std::memory_order_relaxed) && nowMs >= recreateAt_) {
     recreating_ = false;
     recreateAt_ = 0;
@@ -357,6 +399,28 @@ void StationheadPlayer::Tick(int64_t nowMs) {
   }
   if (!webview_) {
     if (!creating_ && nowMs - createdAt_ > 5'000) Create();
+    nextTickAt_ = nowMs + 1'000;
+    return;
+  }
+  if (!startupNavigationStarted_) {
+    if (!startupScriptRegistrationComplete_ && startupScriptDeadline_ > 0 &&
+        nowMs >= startupScriptDeadline_) {
+      startupScriptRegistrationComplete_ = true;
+      log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                L" startup script registration timed out; continuing without it");
+      TryStartInitialNavigation();
+    }
+    if (!startupNavigationStarted_) {
+      nextTickAt_ = nowMs + 1'000;
+      return;
+    }
+  }
+  if (spotifyAuthorization_ && authControllerStartedAt_ > 0 &&
+      nowMs - authControllerStartedAt_ >= kStationheadAuthControllerTimeoutMs) {
+    authCallbackAlive_->store(false, std::memory_order_release);
+    authControllerStartedAt_ = 0;
+    CompletePendingAuthPopupDeferral();
+    FinishSpotifyAuthorization(L"Spotify auth controller creation timed out");
     nextTickAt_ = nowMs + 1'000;
     return;
   }
@@ -428,6 +492,9 @@ void StationheadPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
   {
     std::lock_guard lock(mutex_);
     status_.detail = detail;
+  }
+  if (webview_ && !stationNavigationStarted_) {
+    NavigateCurrentUrl(UnixMillis(), L"post-auth startup");
   }
   SelectTab(StationheadTabKind::None);
   PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);

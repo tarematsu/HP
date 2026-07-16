@@ -13,7 +13,7 @@ enum class StationheadTabKind {
 // Which Stationhead window this player instance backs. The two roles share
 // every behavior - script injection, resource blocking, the native click
 // bridge, layout/visibility rules - except for exactly two things: the
-// WebView2 profile (Secondary uses an isolated named profile) and which
+// WebView2 user-data environment and which
 // periodic poll runs (Primary polls Stationhead's authenticated stats API,
 // Secondary runs a lightweight local-only auth probe).
 enum class StationheadRole {
@@ -58,6 +58,7 @@ struct StationheadStatus {
   bool audioPlaying = false;
   bool audioMuted = false;
   bool secondaryAudioMuted = false;
+  bool secondaryPlaying = false;
   bool primaryAudioSelected = true;
   std::wstring url;
   // Render-only routing metadata for choosing the shared playback feed.
@@ -121,6 +122,8 @@ class StationheadPlayer {
   void ApplyMute() const noexcept;
   void ApplyVolume() const noexcept;
   void ApplyAudioPlaybackState(bool playing, const std::wstring& source);
+  void TryStartInitialNavigation();
+  void CompletePendingAuthPopupDeferral() noexcept;
   void EnsureDistinctBrowserIdentity() noexcept;
   void Create();
   void EnsureAuthController(const std::wstring& url);
@@ -162,6 +165,8 @@ class StationheadPlayer {
   ComPtr<ICoreWebView2> webview_;
   ComPtr<ICoreWebView2Controller> authController_;
   ComPtr<ICoreWebView2> authWebview_;
+  ComPtr<ICoreWebView2Deferral> authPopupDeferral_;
+  std::shared_ptr<std::atomic<bool>> authPopupDeferralCompleted_;
   EventRegistrationToken navigationToken_{};
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken webMessageToken_{};
@@ -179,6 +184,7 @@ class StationheadPlayer {
       std::make_shared<std::atomic<bool>>(false)};
   std::atomic<bool> creating_{false};
   std::atomic<bool> recreating_{false};
+  int64_t creationStartedAt_ = 0;
   int64_t recreateAt_ = 0;
   std::atomic<bool> shuttingDown_{false};
   std::atomic<bool> audioPlaying_{false};
@@ -190,6 +196,8 @@ class StationheadPlayer {
   std::atomic<bool> changeMessagePending_{false};
   std::wstring pendingAuthorizationUrl_;
   int64_t createdAt_ = 0;
+  int64_t startupScriptDeadline_ = 0;
+  int64_t authControllerStartedAt_ = 0;
   int64_t lastReloadAt_ = 0;
   int64_t lastDailyPlayStatsAt_ = 0;  // Primary only.
   int64_t lastAuthProbeAt_ = 0;       // Secondary only.
@@ -197,6 +205,10 @@ class StationheadPlayer {
   bool authProbeInFlight_ = false;    // Secondary only.
   int64_t nextAutoClickAt_ = 0;
   bool autoClickInFlight_ = false;
+  bool webViewConfigured_ = false;
+  bool startupScriptRegistrationComplete_ = false;
+  bool startupNavigationStarted_ = false;
+  bool stationNavigationStarted_ = false;
   int64_t nextTickAt_ = 0;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
