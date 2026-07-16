@@ -1,0 +1,176 @@
+name: Apply shared Stationhead user data folder
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/share-stationhead-user-data'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply shared UDF with separate profiles
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              print(f"{label}: {count}")
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          app_path = Path('native/src/app.cpp')
+          app = app_path.read_text(encoding='utf-8')
+          app = replace_once(
+              app,
+              '''  // Keep the primary on its existing folder so its login survives this
+  // migration. Window B gets its own user-data folder and therefore its own
+  // browser process, cache, service workers, cookies, and storage.
+  const fs::path primaryStationheadData = dataDir_ / L"webview2-stationhead";
+  const fs::path secondaryStationheadData = dataDir_ / L"webview2-stationhead-secondary";
+  stationhead_ = std::make_unique<StationheadPlayer>(
+      StationheadRole::Primary, window_, config_.stationhead, primaryStationheadData, *logger_);
+  if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
+    secondaryStationhead_ = std::make_unique<StationheadPlayer>(
+        StationheadRole::Secondary, window_, config_.stationhead, secondaryStationheadData, *logger_);
+    logger_->Info(L"Secondary Stationhead prepared with isolated WebView2 user data");
+  }
+''',
+              '''  // A and B share one WebView2 user-data folder and browser environment, while
+  // controller profiles keep cookies, cache, storage, and service workers isolated.
+  // The primary uses the existing Default profile so its current login survives.
+  const fs::path stationheadUserData = dataDir_ / L"webview2-stationhead";
+  stationhead_ = std::make_unique<StationheadPlayer>(
+      StationheadRole::Primary, window_, config_.stationhead, stationheadUserData, *logger_);
+  if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
+    secondaryStationhead_ = std::make_unique<StationheadPlayer>(
+        StationheadRole::Secondary, window_, config_.stationhead, stationheadUserData, *logger_);
+    logger_->Info(L"Secondary Stationhead prepared with a separate profile in the shared WebView2 user data folder");
+  }
+''',
+              'share Stationhead user data folder')
+          app_path.write_text(app, encoding='utf-8')
+
+          header_path = Path('native/src/sh.h')
+          header = header_path.read_text(encoding='utf-8')
+          header = replace_once(
+              header,
+              '  void Create();\n  void EnsureAuthController(const std::wstring& url);\n',
+              '  void Create();\n  HRESULT CreateProfileController(\n      HWND parentWindow, ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) const noexcept;\n  void EnsureAuthController(const std::wstring& url);\n',
+              'declare profile controller factory')
+          header = replace_once(
+              header,
+              '  fs::path userDataFolder_;\n  Logger& log_;\n',
+              '  fs::path userDataFolder_;\n  std::wstring profileName_;\n  Logger& log_;\n',
+              'store profile name')
+          header_path.write_text(header, encoding='utf-8')
+
+          sh_path = Path('native/src/sh.cpp')
+          sh = sh_path.read_text(encoding='utf-8')
+          sh = replace_once(
+              sh,
+              '''    : role_(role), window_(window), config_(std::move(config)),
+      userDataFolder_(std::move(userDataFolder)), log_(log) {
+  if (IsSecondary()) status_.url = config_.secondaryUrl;
+}
+''',
+              '''    : role_(role), window_(window), config_(std::move(config)),
+      userDataFolder_(std::move(userDataFolder)),
+      profileName_(role == StationheadRole::Secondary ? L"stationhead-secondary" : L"Default"),
+      log_(log) {
+  if (IsSecondary()) status_.url = config_.secondaryUrl;
+}
+''',
+              'assign stable role profiles')
+          sh = replace_once(
+              sh,
+              'void StationheadPlayer::Create() {\n',
+              '''HRESULT StationheadPlayer::CreateProfileController(
+    HWND parentWindow,
+    ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) const noexcept {
+  if (!environment_ || !parentWindow || !handler) return E_INVALIDARG;
+  ComPtr<ICoreWebView2Environment10> environment10;
+  HRESULT result = environment_.As(&environment10);
+  if (FAILED(result) || !environment10) return E_NOINTERFACE;
+
+  ComPtr<ICoreWebView2ControllerOptions> options;
+  result = environment10->CreateCoreWebView2ControllerOptions(&options);
+  if (FAILED(result) || !options) return FAILED(result) ? result : E_FAIL;
+  result = options->put_ProfileName(profileName_.c_str());
+  if (FAILED(result)) return result;
+  result = options->put_IsInPrivateModeEnabled(FALSE);
+  if (FAILED(result)) return result;
+  return environment10->CreateCoreWebView2ControllerWithOptions(
+      parentWindow, options.Get(), handler);
+}
+
+void StationheadPlayer::Create() {
+''',
+              'implement profile controller factory')
+          sh = replace_once(
+              sh,
+              '''        const HRESULT started =
+            environment_->CreateCoreWebView2Controller(hostWindow_, onController.Get());
+''',
+              '''        const HRESULT started =
+            CreateProfileController(hostWindow_, onController.Get());
+''',
+              'create main controller with role profile')
+          sh = replace_once(
+              sh,
+              '''  const HRESULT started =
+      environment_->CreateCoreWebView2Controller(authHostWindow_, onController.Get());
+''',
+              '''  const HRESULT started =
+      CreateProfileController(authHostWindow_, onController.Get());
+''',
+              'create auth controller with role profile')
+          sh_path.write_text(sh, encoding='utf-8')
+
+          webview_path = Path('native/src/sh_webview.cpp')
+          webview = webview_path.read_text(encoding='utf-8')
+          webview = replace_once(
+              webview,
+              '''            const HRESULT createResult =
+                environment_->CreateCoreWebView2Controller(authHostWindow_, onController.Get());
+''',
+              '''            const HRESULT createResult =
+                CreateProfileController(authHostWindow_, onController.Get());
+''',
+              'create popup controller with role profile')
+          webview_path.write_text(webview, encoding='utf-8')
+
+          combined = '\n'.join(p.read_text(encoding='utf-8') for p in
+              [app_path, header_path, sh_path, webview_path])
+          for marker in [
+              'stationheadUserData', 'profileName_', 'L"Default"',
+              'L"stationhead-secondary"', 'CreateCoreWebView2ControllerWithOptions',
+          ]:
+              if marker not in combined:
+                  raise SystemExit(f'missing marker: {marker}')
+          if 'webview2-stationhead-secondary' in app:
+              raise SystemExit('separate secondary user data folder remains')
+          PY
+
+          rm .github/workflows/apply-shared-stationhead-udf.yml
+          git diff --check
+
+      - name: Commit source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Share Stationhead user data across profiles"
+          git push origin HEAD:${{ github.head_ref }}
