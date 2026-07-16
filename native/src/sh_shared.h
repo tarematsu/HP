@@ -508,52 +508,6 @@ inline bool StationheadRequestIsBlockable(const std::wstring& uriLower) {
       L"tiktok.com",
       L"snapchat.com",
       L"pinterest.com",
-      L"criteo.com",
-      L"outbrain.com",
-      L"taboola.com",
-      L"quantserve.com",
-      L"scorecardresearch.com",
-      L"chartbeat.com",
-      L"optimizely.com",
-      L"onetrust.com",
-      L"cookielaw.org",
-      L"cookiebot.com",
-      L"iterable.com",
-      L"customer.io",
-      L"klaviyo.com",
-      L"cloudflareinsights.com",
-      L"vercel-insights.com",
-      L"vercel-scripts.com",
-      L"sentry-cdn.com",
-      L"posthog.com",
-      L"heap.io",
-      L"logrocket.com",
-      L"smartlook.com",
-      L"appcues.com",
-      L"pendo.io",
-      L"media.net",
-      L"adroll.com",
-      L"rubiconproject.com",
-      L"openx.net",
-      L"pubmatic.com",
-      L"pushwoosh.com",
-      L"leanplum.com",
-      L"zdassets.com",
-      L"tawk.to",
-      L"crisp.chat",
-      L"drift.com",
-      L"freshchat.com",
-      L"livechatinc.com",
-
-      // This app only ever authenticates Stationhead's Spotify integration;
-      // Apple Music is a Stationhead feature this deployment never uses, so
-      // its MusicKit SDK, artwork CDN, and Apple ID sign-in traffic are all
-      // safe to reject outright rather than merely trimming a JS chunk.
-      L"music.apple.com",
-      L"itunes.apple.com",
-      L"mzstatic.com",
-      L"appleid.apple.com",
-      L"idmsa.apple.com",
 
       L"/chathistory",
       L"/tippingstatus",
@@ -640,10 +594,7 @@ inline void BlockStationheadTelemetrySockets(ICoreWebView2* webview, bool blockI
       L"\"*amplitude.com*\",\"*segment.com*\",\"*segment.io*\","
       L"\"*clarity.ms*\",\"*datadoghq*\",\"*newrelic*\",\"*nr-data.net*\","
       L"\"*statsigapi.net*\",\"*launchdarkly.com*\","
-      L"\"*facebook.com/tr*\",\"*connect.facebook.net*\",\"*twitter.com/i/*\",\"*x.com/i/*\","
-      L"\"*posthog.com*\",\"*heap.io*\",\"*logrocket.com*\",\"*smartlook.com*\","
-      L"\"*music.apple.com*\",\"*itunes.apple.com*\",\"*mzstatic.com*\","
-      L"\"*appleid.apple.com*\",\"*idmsa.apple.com*\"";
+      L"\"*facebook.com/tr*\",\"*connect.facebook.net*\",\"*twitter.com/i/*\",\"*x.com/i/*\"";
   if (blockImages) {
     blockedUrls +=
         L",\"*://*/*.png*\",\"*://*/*.jpg*\",\"*://*/*.jpeg*\",\"*://*/*.webp*\","
