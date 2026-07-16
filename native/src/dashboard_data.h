@@ -66,6 +66,8 @@ struct DashboardSnapshot {
   bool switchBotMotion = false;
   std::vector<SwitchBotDeviceData> switchBotDevices;
 
+  // Stable per-section content revisions let the renderer invalidate only the
+  // panels whose source data changed, rather than repainting the whole dashboard.
   uint64_t weatherRevision = 0;
   uint64_t newsRevision = 0;
   uint64_t octopusRevision = 0;
@@ -73,7 +75,7 @@ struct DashboardSnapshot {
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                             std::wstring* error = nullptr);
+                            std::wstring* error = nullptr);
 bool LoadDashboardSnapshot(const fs::path& path, DashboardSnapshot& output, std::wstring* error = nullptr);
 
 }  // namespace hp
