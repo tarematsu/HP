@@ -1,0 +1,38 @@
+name: Apply Stationhead transition hardening v2
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/isolate-stationhead-webview-data'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply transition patch
+        shell: bash
+        run: |
+          python3 .github/scripts/apply_stationhead_transition_completion.py
+          rm .github/scripts/apply_stationhead_transition_completion.py
+          rm .github/workflows/apply-stationhead-transition-completion.yml
+          rm .github/workflows/apply-stationhead-transition-v2.yml
+          rm -f .ci-trigger-stationhead-transition-apply
+          git diff --check
+
+      - name: Commit transition hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Complete Stationhead startup and auth transitions"
+          git push origin HEAD:${{ github.head_ref }}
