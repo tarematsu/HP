@@ -34,8 +34,8 @@ jobs:
           header = header_path.read_text(encoding='utf-8')
           header = replace_once(
               header,
-              '  // WebView2 profile (Secondary uses an isolated named profile) and which\n',
-              '  // WebView2 user-data environment and which\n',
+              '// WebView2 profile (Secondary uses an isolated named profile) and which\n',
+              '// WebView2 user-data environment and which\n',
               'update role isolation comment')
           header = replace_once(
               header,
@@ -96,6 +96,7 @@ jobs:
           PY
 
           rm .github/workflows/apply-secondary-state-fix.yml
+          rm .github/workflows/diagnose-secondary-state-fix.yml
           git diff --check
 
       - name: Commit secondary state fix
@@ -104,6 +105,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add native/src/sh.h native/src/app.cpp native/src/app_messages.cpp \
-            .github/workflows/apply-secondary-state-fix.yml
+            .github/workflows/apply-secondary-state-fix.yml \
+            .github/workflows/diagnose-secondary-state-fix.yml
           git commit -m "Propagate secondary Stationhead playback state"
           git push origin HEAD:${{ github.head_ref }}
