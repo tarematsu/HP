@@ -107,6 +107,12 @@ endfunction()
 set(HOMEPANEL_CORE_SOURCES
   src/main.cpp
   src/app.cpp
+  src/app_air_history.cpp
+  src/app_stationhead_history.cpp
+  src/app_stationhead_state.cpp
+  src/app_update.cpp
+  src/app_messages.cpp
+  src/app_commands.cpp
   src/config.cpp
   src/cloud_config.cpp
   src/logger.cpp

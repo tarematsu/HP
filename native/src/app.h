@@ -399,6 +399,11 @@ class App {
   }
 
  private:
+  static constexpr UINT kUpdateResultMessage = WM_APP + 20;
+  static constexpr int kRestartExitCode = 42;
+  static void EnrichRenderStationheadState(
+      StationheadStatus& state, StationheadStatus* secondaryStatus,
+      const StationheadConfig& config);
   static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
   LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
   void InitializePaths();
@@ -453,8 +458,8 @@ class App {
   std::atomic<bool> updateBusy_{false};
   std::thread telemetryThread_;
   std::thread updateThread_;
-  bool running_ = false;
   int exitCode_ = 0;
+  int startupShowCommand_ = SW_SHOW;
   int64_t startupAt_ = 0;
   int64_t dashboardAudioReadySince_ = 0;
   int64_t playbackReadyAt_ = 0;
@@ -466,7 +471,6 @@ class App {
   bool stationheadPlaybackNoNextTrackObserved_ = false;
   uint64_t stationheadPlaybackFallbackRevision_ = 0;
   int64_t lastTelemetryAt_ = 0;
-  uint64_t lastRadarFrameStamp_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
 

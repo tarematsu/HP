@@ -94,8 +94,6 @@ void Renderer::SetVisible(bool visible) {
   }
 }
 
-RECT Renderer::ClientBounds() const { return bounds_; }
-
 void Renderer::QueueAction(UiAction action) {
   {
     std::lock_guard lock(actionMutex_);
@@ -104,7 +102,7 @@ void Renderer::QueueAction(UiAction action) {
   PostMessageW(window_, WM_LBUTTONUP, 0, MAKELPARAM(0, 0));
 }
 
-UiAction Renderer::HitTest(POINT) {
+UiAction Renderer::TakePendingAction() {
   std::lock_guard lock(actionMutex_);
   const UiAction action = pendingAction_;
   pendingAction_ = UiAction::None;
@@ -115,9 +113,7 @@ void Renderer::UpdateState(const RenderState& state) {
   UpdateNativeStaticPanels(state);
 }
 
-void Renderer::Render(const RECT& dirty, const RenderState& state) {
-  (void)dirty;
-  (void)state;
+void Renderer::Render() {
   if (!window_ || !nativeDashboardVisible_) return;
   HDC dc = GetDC(window_);
   if (!dc) return;

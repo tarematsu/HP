@@ -7,18 +7,10 @@
 namespace hp {
 enum class UiAction {
   None,
-  WorkspaceMain,
-  WorkspaceAuth,
-  DataRefresh,
   AppUpdate,
   Restart,
-  Maintenance,
-  StationheadReconnect,
-  ClearCache,
-  ShowLog,
-  CloseMaintenance,
   StationheadAudioToggle,
-  StationheadAudioMute
+  StationheadAudioMute,
 };
 
 struct AirHistorySample {
@@ -36,10 +28,8 @@ struct RenderState {
   std::wstring appVersion;
   std::vector<AirHistorySample> airHistory;
   std::vector<StationheadPlayHistorySample> stationheadPlayHistory;
-  int workspaceTab = 0;
   std::wstring toast;
   int newsIndex = 0;
-  bool maintenance = false;
 };
 
 struct NativePlaybackTrack {
@@ -153,13 +143,13 @@ class Renderer {
   void SetVisible(bool visible);
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
   int NewsCount() const { return newsCount_; }
-  void Render(const RECT& dirty, const RenderState& state);
+  void Render();
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
   NativePlaybackFeedStatus NativePlaybackFeedStatusFor(size_t source, int64_t nowMs) const;
   NativeMinuteFactsProjection NativeMinuteFactsSnapshot() const;
   void NotifyRadarUpdated();
-  UiAction HitTest(POINT point);
+  UiAction TakePendingAction();
 
  private:
   struct NativePlaybackUpdate {
@@ -298,7 +288,6 @@ class Renderer {
   void RadarComposeLoop();
   void ComposeRadarFrame();
   void InvalidateAllNativePanels();
-  RECT ClientBounds() const;
 
   struct NativePanelSlot {
     HWND Renderer::* window;
