@@ -1,36 +1,9 @@
 #pragma once
 #include "common.h"
 #include "dashboard_data.h"
-#include "sensors.h"
-#include "sh.h"
+#include "render_state.h"
 
 namespace hp {
-enum class UiAction {
-  None,
-  AppUpdate,
-  Restart,
-  StationheadAudioToggle,
-  StationheadAudioMute,
-};
-
-struct AirHistorySample {
-  int64_t timestamp = 0;
-  int co2 = 0;
-  double temperature = 0;
-  double humidity = 0;
-
-  bool operator==(const AirHistorySample&) const = default;
-};
-
-struct RenderState {
-  SensorSnapshot sensors;
-  StationheadStatus stationhead;
-  std::wstring appVersion;
-  std::vector<AirHistorySample> airHistory;
-  std::vector<StationheadPlayHistorySample> stationheadPlayHistory;
-  std::wstring toast;
-  int newsIndex = 0;
-};
 
 struct NativePlaybackTrack {
   std::wstring title;
@@ -125,11 +98,17 @@ inline NativeDashboardLayout ComputeNativeDashboardLayout(const RECT& bounds) {
   layout.side = RECT{inner.left, inner.top, inner.left + sideWidth, inner.bottom};
   layout.radar = RECT{inner.left + sideWidth + gapX, inner.top, inner.right,
                       inner.top + radarHeight};
-  layout.main = RECT{inner.left + sideWidth + gapX, inner.top + radarHeight + gapY,
-                     inner.right, inner.bottom};
-  if (layout.radar.right <= layout.radar.left) layout.radar.right = layout.radar.left + 1;
-  if (layout.main.right <= layout.main.left) layout.main.right = layout.main.left + 1;
-  if (layout.main.bottom <= layout.main.top) layout.main.bottom = layout.main.top + 1;
+  layout.main = RECT{inner.left + sideWidth + gapX,
+                     inner.top + radarHeight + gapY, inner.right, inner.bottom};
+  if (layout.radar.right <= layout.radar.left) {
+    layout.radar.right = layout.radar.left + 1;
+  }
+  if (layout.main.right <= layout.main.left) {
+    layout.main.right = layout.main.left + 1;
+  }
+  if (layout.main.bottom <= layout.main.top) {
+    layout.main.bottom = layout.main.top + 1;
+  }
   return layout;
 }
 
@@ -146,7 +125,8 @@ class Renderer {
   void Render();
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
-  NativePlaybackFeedStatus NativePlaybackFeedStatusFor(size_t source, int64_t nowMs) const;
+  NativePlaybackFeedStatus NativePlaybackFeedStatusFor(
+      size_t source, int64_t nowMs) const;
   NativeMinuteFactsProjection NativeMinuteFactsSnapshot() const;
   void NotifyRadarUpdated();
   UiAction TakePendingAction();
@@ -162,6 +142,7 @@ class Renderer {
     uint64_t contentRevision = 0;
     bool hasPayload = false;
   };
+
   struct NativePlaybackTickState {
     bool active = false;
     size_t source = 0;
@@ -170,15 +151,18 @@ class Renderer {
 
     bool operator==(const NativePlaybackTickState&) const = default;
   };
+
   struct BitmapCacheEntry {
     HBITMAP bitmap = nullptr;
     uint64_t lastUsed = 0;
   };
+
   struct PanelBackBuffer {
     HBITMAP bitmap = nullptr;
     int width = 0;
     int height = 0;
   };
+
   struct PanelBitmapCache {
     HBITMAP bitmap = nullptr;
     int width = 0;
@@ -186,6 +170,7 @@ class Renderer {
     uint64_t revision = 0;
     uint64_t layoutRevision = 0;
   };
+
   struct AirGraphProjection {
     std::vector<AirHistorySample> samples;
     int64_t cutoff = 0;
@@ -196,6 +181,7 @@ class Renderer {
     double humidityMin = 0;
     double humidityMax = 0;
   };
+
   struct DashboardSourceStamp {
     fs::path path;
     std::uintmax_t size = 0;
@@ -225,8 +211,10 @@ class Renderer {
   void UpdateNativeStaticPanels(const RenderState& state);
 
   template <LRESULT (Renderer::*Handler)(HWND, UINT, WPARAM, LPARAM)>
-  static LRESULT CALLBACK NativeWndProcThunk(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-    Renderer* renderer = reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  static LRESULT CALLBACK NativeWndProcThunk(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+    Renderer* renderer =
+        reinterpret_cast<Renderer*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
     if (message == WM_NCCREATE) {
       auto* createstruct = reinterpret_cast<CREATESTRUCTW*>(lparam);
       renderer = reinterpret_cast<Renderer*>(createstruct->lpCreateParams);
@@ -235,10 +223,13 @@ class Renderer {
     if (renderer) return (renderer->*Handler)(hwnd, message, wparam, lparam);
     return DefWindowProcW(hwnd, message, wparam, lparam);
   }
-  LRESULT HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+
+  LRESULT HandleNativeStaticMessage(
+      HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
   enum class FontTier { Small, Medium, Large };
   HFONT TierFont(FontTier tier) const;
+
   enum class PanelSection {
     Clock,
     ClockTime,
@@ -250,6 +241,7 @@ class Renderer {
     Energy,
     News
   };
+
   void InvalidatePanelSection(HWND window, PanelSection section);
   void PaintNativeSide(HWND hwnd);
   void PaintNativeMain(HWND hwnd);
@@ -262,9 +254,9 @@ class Renderer {
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawNewsSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
-  void DrawCachedPanelSection(HDC dc, const RECT& card, PanelSection section,
-                              uint64_t revision,
-                              void (Renderer::*draw)(HDC, const RECT&));
+  void DrawCachedPanelSection(
+      HDC dc, const RECT& card, PanelSection section, uint64_t revision,
+      void (Renderer::*draw)(HDC, const RECT&));
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
   void ResetNativeBitmapCaches() noexcept;
@@ -275,14 +267,17 @@ class Renderer {
   void StartNativeMinuteFactsBridge();
   void StopNativeMinuteFactsBridge() noexcept;
   void NativeMinuteFactsLoop();
-  NativePlaybackRender ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const;
+  NativePlaybackRender ResolveNativePlaybackLocked(
+      size_t source, int64_t nowMs) const;
   NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
   NativePlaybackTickState NativePlaybackTickStateFor(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
-  HBITMAP NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height);
+  HBITMAP NativeWeatherIconBitmap(
+      const std::wstring& icon, bool night, int width, int height);
   HBITMAP CacheNativeImageBitmap(const std::wstring& key, HBITMAP bitmap);
-  HBITMAP CachedRadarBitmap(const std::wstring& key, const fs::path& path,
-                            const std::string& fileStamp, int width, int height);
+  HBITMAP CachedRadarBitmap(
+      const std::wstring& key, const fs::path& path,
+      const std::string& fileStamp, int width, int height);
   void StartRadarCompose();
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();
@@ -295,6 +290,7 @@ class Renderer {
     const wchar_t* title;
     int id;
   };
+
   static const std::array<NativePanelSlot, 3>& NativePanelSlots();
 
   HWND window_{};
@@ -365,4 +361,5 @@ class Renderer {
   std::atomic<bool> radarComposeStarted_{false};
   std::atomic<bool> radarComposeStopping_{false};
 };
-}
+
+}  // namespace hp
