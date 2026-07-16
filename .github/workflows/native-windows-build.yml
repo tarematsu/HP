@@ -15,9 +15,6 @@ on:
       - ".github/workflows/native-windows-build.yml"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 concurrency:
   group: native-windows-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -32,21 +29,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           show-progress: false
-          ref: ${{ github.head_ref || github.ref_name }}
-          fetch-depth: 1
-
-      - name: Apply native app refactor
-        if: github.event_name == 'pull_request' && github.head_ref == 'agent/cache-native-panels'
-        shell: pwsh
-        run: |
-          python native/scripts/app_refactor_once.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if (-not (git diff --cached --quiet)) {
-            git commit -m "refactor(native): split app responsibilities"
-            git push origin "HEAD:$env:GITHUB_HEAD_REF"
-          }
 
       - name: Define release version
         id: version
@@ -93,7 +75,7 @@ jobs:
             throw "Native configure modified checked-in source files."
           }
 
-      - name: Verify static Stationhead source build
+      - name: Verify static native source build
         shell: pwsh
         run: |
           $generatedDir = "native/build-ci/generated/stationhead"
@@ -114,6 +96,18 @@ jobs:
           )) {
             if (Test-Path -LiteralPath $path) {
               throw "Removed Stationhead/browser dashboard source '$path' still exists."
+            }
+          }
+          $appSource = Get-Content -LiteralPath "native/src/app.cpp" -Raw
+          foreach ($token in @(
+            '#include "app_air_history.cpp"',
+            '#include "app_stationhead_history.cpp"',
+            '#include "app_update.cpp"',
+            '#include "app_messages.cpp"',
+            '#include "app_commands.cpp"'
+          )) {
+            if ($appSource.Contains($token)) {
+              throw "App implementation include '$token' must be compiled as its own translation unit."
             }
           }
 
