@@ -15,6 +15,7 @@ constexpr uint32_t kFastTickMs = 2000;
 constexpr uint32_t kSteadyDashboardTickMs = 5000;
 constexpr uint32_t kMaxIdleTickMs = 30'000;
 constexpr int64_t kDashboardStartupFallbackMs = 30'000;
+constexpr int64_t kDashboardAudioStabilityMs = 1'500;
 int startupShowCommand = SW_SHOW;
 
 constexpr bool DashboardAudioReady(bool primaryAudioReady,
@@ -29,6 +30,7 @@ static_assert(DashboardAudioReady(true, true, true));
 static_assert(!DashboardAudioReady(true, true, false));
 static_assert(!DashboardAudioReady(false, true, true));
 static_assert(kDashboardStartupFallbackMs == 30'000);
+static_assert(kDashboardAudioStabilityMs >= 1'000);
 
 std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   DWORD handle = 0;
@@ -268,10 +270,18 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
   }
   const bool dashboardAudioReady =
       DashboardAudioReady(primaryAudioReady, secondaryEnabled, secondaryAudioReady);
+  if (dashboardAudioReady) {
+    if (dashboardAudioReadySince_ == 0) dashboardAudioReadySince_ = now;
+  } else {
+    dashboardAudioReadySince_ = 0;
+  }
+  const bool stableDashboardAudio = dashboardAudioReady &&
+      dashboardAudioReadySince_ > 0 &&
+      now - dashboardAudioReadySince_ >= kDashboardAudioStabilityMs;
   const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
-  if (dashboardAudioReady && playbackReadyAt_ == 0) playbackReadyAt_ = now;
+  if (stableDashboardAudio && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
+  if (!rendererStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
     renderer_->Initialize();
     rendererStarted_ = true;
     ClearStartupStationheadPreview();
@@ -279,7 +289,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    if (dashboardAudioReady) {
+    if (stableDashboardAudio) {
       logger_->Info(secondaryEnabled
           ? L"Native dashboard started after Stationhead A/B audio confirmation"
           : L"Native dashboard started after Stationhead audio confirmation");
@@ -288,11 +298,11 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
     }
   }
 
-  if (!cloudStarted_ && (dashboardAudioReady || startupDeadlineReached)) {
+  if (!cloudStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
     cloud_->Start();
     cloudStarted_ = true;
-    logger_->Info(dashboardAudioReady
-        ? L"Cloud synchronization started after Stationhead startup confirmation"
+    logger_->Info(stableDashboardAudio
+        ? L"Cloud synchronization started after stable Stationhead startup confirmation"
         : L"Cloud synchronization started after startup fallback deadline");
   }
 

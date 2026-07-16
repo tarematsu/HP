@@ -456,6 +456,7 @@ class App {
   bool running_ = false;
   int exitCode_ = 0;
   int64_t startupAt_ = 0;
+  int64_t dashboardAudioReadySince_ = 0;
   int64_t playbackReadyAt_ = 0;
   bool secondaryStarted_ = false;
   bool rendererStarted_ = false;

@@ -168,6 +168,7 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
                                                bool fallbackActive) {
   (void)nowMs;
   if (!webview_ || url.empty()) return;
+  stationNavigationStarted_ = true;
   SetStartupBounds();
   ResetNavigationRouteState();
   usingFallback_ = fallbackActive;
@@ -319,6 +320,17 @@ void StationheadPlayer::Create() {
       });
 }
 
+void StationheadPlayer::CompletePendingAuthPopupDeferral() noexcept {
+  ComPtr<ICoreWebView2Deferral> deferral = authPopupDeferral_;
+  const auto completed = authPopupDeferralCompleted_;
+  authPopupDeferral_.Reset();
+  authPopupDeferralCompleted_.reset();
+  if (deferral && completed &&
+      !completed->exchange(true, std::memory_order_acq_rel)) {
+    deferral->Complete();
+  }
+}
+
 void StationheadPlayer::EnsureAuthController(const std::wstring& url) {
   authPendingUrl_ = url;
   if (!environment_ || authController_ || !EnsureAuthHostWindow()) return;
@@ -407,6 +419,7 @@ void StationheadPlayer::Tick(int64_t nowMs) {
       nowMs - authControllerStartedAt_ >= kStationheadAuthControllerTimeoutMs) {
     authCallbackAlive_->store(false, std::memory_order_release);
     authControllerStartedAt_ = 0;
+    CompletePendingAuthPopupDeferral();
     FinishSpotifyAuthorization(L"Spotify auth controller creation timed out");
     nextTickAt_ = nowMs + 1'000;
     return;
@@ -479,6 +492,9 @@ void StationheadPlayer::FinishSpotifyAuthorization(const std::wstring& detail) {
   {
     std::lock_guard lock(mutex_);
     status_.detail = detail;
+  }
+  if (webview_ && !stationNavigationStarted_) {
+    NavigateCurrentUrl(UnixMillis(), L"post-auth startup");
   }
   SelectTab(StationheadTabKind::None);
   PostChange(StationheadChangeReturnMain | StationheadChangeReleaseAuth);

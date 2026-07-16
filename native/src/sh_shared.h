@@ -10,7 +10,7 @@ inline constexpr int64_t kStationheadStartupScriptRegistrationTimeoutMs = 5'000;
 inline constexpr int64_t kStationheadAuthControllerTimeoutMs = 20'000;
 inline constexpr int64_t kStationheadAutoClickRetryMs = 2'500;
 inline constexpr int64_t kStationheadAutoClickSuccessGraceMs = 5'000;
-inline constexpr int64_t kStationheadPostPlaybackStopClickDelayMs = 5'000;
+inline constexpr int64_t kStationheadPostPlaybackStopClickDelayMs = 12'000;
 
 
 

@@ -137,8 +137,17 @@ void StationheadPlayer::ConfigureWebView() {
               return S_OK;
             }
             args->put_Handled(TRUE);
+            const auto deferralCompleted =
+                std::make_shared<std::atomic<bool>>(false);
+            const auto completeDeferral = [deferral, deferralCompleted]() noexcept {
+              if (!deferralCompleted->exchange(true, std::memory_order_acq_rel)) {
+                deferral->Complete();
+              }
+            };
             ComPtr<ICoreWebView2NewWindowRequestedEventArgs> popupArgs = args;
             CloseAuthWebView();
+            authPopupDeferral_ = deferral;
+            authPopupDeferralCompleted_ = deferralCompleted;
             authCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
             const auto authAlive = authCallbackAlive_;
             authControllerStartedAt_ = UnixMillis();
@@ -146,18 +155,18 @@ void StationheadPlayer::ConfigureWebView() {
             SelectTab(StationheadTabKind::Auth);
 
             const auto onController = Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                [this, popupArgs, deferral, uri, authAlive](HRESULT result,
+                [this, popupArgs, completeDeferral, uri, authAlive](HRESULT result,
                     ICoreWebView2Controller* controller) -> HRESULT {
                   if (!CallbackAlive(authAlive)) {
                     if (controller) controller->Close();
-                    deferral->Complete();
+                    completeDeferral();
                     return S_OK;
                   }
                   authControllerStartedAt_ = 0;
                   if (FAILED(result) || !controller || shuttingDown_) {
                     if (controller) controller->Close();
                     FinishSpotifyAuthorization(L"Spotify popup creation failed " + HResultHex(result));
-                    deferral->Complete();
+                    CompletePendingAuthPopupDeferral();
                     return S_OK;
                   }
                   authController_ = controller;
@@ -165,18 +174,19 @@ void StationheadPlayer::ConfigureWebView() {
                   authController_->get_CoreWebView2(&authWebview_);
                   if (!authWebview_) {
                     FinishSpotifyAuthorization(L"Spotify popup WebView unavailable");
-                    deferral->Complete();
+                    CompletePendingAuthPopupDeferral();
                     return S_OK;
                   }
                   ConfigureAuthWebView();
                   if (SUCCEEDED(popupArgs->put_NewWindow(authWebview_.Get()))) {
                     popupArgs->put_Handled(TRUE);
                     SelectTab(StationheadTabKind::Auth);
-                    log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" popup attached to auth tab: " + uri);
+                    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
+                              L" popup attached to auth tab: " + uri);
                   } else {
                     FinishSpotifyAuthorization(L"Spotify popup attachment failed");
                   }
-                  deferral->Complete();
+                  CompletePendingAuthPopupDeferral();
                   return S_OK;
                 });
 
@@ -185,8 +195,9 @@ void StationheadPlayer::ConfigureWebView() {
             if (FAILED(createResult)) {
               authControllerStartedAt_ = 0;
               authCallbackAlive_->store(false, std::memory_order_release);
-              FinishSpotifyAuthorization(L"Spotify popup creation could not start " + HResultHex(createResult));
-              deferral->Complete();
+              FinishSpotifyAuthorization(
+                  L"Spotify popup creation could not start " + HResultHex(createResult));
+              CompletePendingAuthPopupDeferral();
             }
             return S_OK;
           }).Get(), &newWindowToken_);
@@ -507,6 +518,7 @@ void StationheadPlayer::CloseWebView() {
   webViewConfigured_ = false;
   startupScriptRegistrationComplete_ = false;
   startupNavigationStarted_ = false;
+  stationNavigationStarted_ = false;
   startupScriptDeadline_ = 0;
   ResetNavigationRouteState();
   if (controller_) controller_->Close();
@@ -534,6 +546,7 @@ void StationheadPlayer::CloseWebView() {
 void StationheadPlayer::CloseAuthWebView() {
   authCallbackAlive_->store(false, std::memory_order_release);
   authControllerStartedAt_ = 0;
+  CompletePendingAuthPopupDeferral();
   if (authWebview_) {
     if (authNavigationToken_.value) authWebview_->remove_NavigationCompleted(authNavigationToken_);
     if (authMessageToken_.value) authWebview_->remove_WebMessageReceived(authMessageToken_);

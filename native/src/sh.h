@@ -123,6 +123,7 @@ class StationheadPlayer {
   void ApplyVolume() const noexcept;
   void ApplyAudioPlaybackState(bool playing, const std::wstring& source);
   void TryStartInitialNavigation();
+  void CompletePendingAuthPopupDeferral() noexcept;
   void EnsureDistinctBrowserIdentity() noexcept;
   void Create();
   void EnsureAuthController(const std::wstring& url);
@@ -164,6 +165,8 @@ class StationheadPlayer {
   ComPtr<ICoreWebView2> webview_;
   ComPtr<ICoreWebView2Controller> authController_;
   ComPtr<ICoreWebView2> authWebview_;
+  ComPtr<ICoreWebView2Deferral> authPopupDeferral_;
+  std::shared_ptr<std::atomic<bool>> authPopupDeferralCompleted_;
   EventRegistrationToken navigationToken_{};
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken webMessageToken_{};
@@ -205,6 +208,7 @@ class StationheadPlayer {
   bool webViewConfigured_ = false;
   bool startupScriptRegistrationComplete_ = false;
   bool startupNavigationStarted_ = false;
+  bool stationNavigationStarted_ = false;
   int64_t nextTickAt_ = 0;
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
