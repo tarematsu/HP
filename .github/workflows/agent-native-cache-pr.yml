@@ -1,70 +1,11 @@
-name: Run native cache patch from pull request
+name: Obsolete native cache patch extractor
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/agent-native-cache-apply.yml"
-      - ".github/workflows/agent-native-cache-pr.yml"
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  apply:
-    if: >-
-      github.actor != 'github-actions[bot]' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+  disabled:
+    if: false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-
-      - name: Extract and run patch script
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          source = Path('.github/workflows/agent-native-cache-apply.yml').read_text(encoding='utf-8')
-          marker = "          python3 - <<'PY'\n"
-          start = source.index(marker) + len(marker)
-          end = source.index("\n          PY\n", start)
-          lines = source[start:end].splitlines()
-          body = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          body = body.replace(
-              "raise SystemExit(f'{path}: expected one replacement, found {count}')",
-              "raise SystemExit(f'{path}: expected one replacement, found {count}: {old[:120]!r}')")
-          Path('/tmp/apply_native_cache.py').write_text(body, encoding='utf-8')
-          PY
-          set +e
-          python3 /tmp/apply_native_cache.py > /tmp/apply-native-cache.log 2>&1
-          status=$?
-          set -e
-          cat /tmp/apply-native-cache.log
-          if [[ $status -ne 0 ]]; then
-            cp /tmp/apply-native-cache.log .github/agent-native-cache-error.txt
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add .github/agent-native-cache-error.txt
-            git commit -m "Record native cache patch failure"
-            git push origin HEAD:${{ github.event.pull_request.head.ref }}
-            exit $status
-          fi
-          git diff --check
-
-      - name: Commit patch and remove helper workflows
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm .github/workflows/agent-native-cache-apply.yml \
-            .github/workflows/agent-native-cache-pr.yml \
-            .github/agent-native-cache-error.txt
-          git add native/src/web_renderer.h native/src/dashboard_data.h native/src/dashboard_data.cpp \
-            native/src/renderer_state.cpp native/src/renderer_panels/part2.inc \
-            native/src/renderer_panels/part3.inc native/src/renderer_radar_ui.cpp
-          git commit -m "Cache native dashboard rendering"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+      - run: echo disabled
