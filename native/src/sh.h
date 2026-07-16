@@ -181,6 +181,7 @@ class StationheadPlayer {
       std::make_shared<std::atomic<bool>>(false)};
   std::atomic<bool> creating_{false};
   std::atomic<bool> recreating_{false};
+  int64_t creationStartedAt_ = 0;
   int64_t recreateAt_ = 0;
   std::atomic<bool> shuttingDown_{false};
   std::atomic<bool> audioPlaying_{false};

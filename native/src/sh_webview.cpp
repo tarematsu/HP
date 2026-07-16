@@ -478,6 +478,8 @@ void StationheadPlayer::ConfigureAuthWebView() {
 
 void StationheadPlayer::CloseWebView() {
   createCallbackAlive_->store(false, std::memory_order_release);
+  creating_ = false;
+  creationStartedAt_ = 0;
   CloseAuthWebView();
   if (webview_) {
     if (audioPlayingChangedToken_.value) {

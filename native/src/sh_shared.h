@@ -5,6 +5,7 @@
 namespace hp {
 
 inline constexpr int64_t kStationheadSessionRefreshIntervalMs = 55 * 60'000;
+inline constexpr int64_t kStationheadWebViewCreationTimeoutMs = 30'000;
 inline constexpr int64_t kStationheadStartupScriptRegistrationTimeoutMs = 5'000;
 inline constexpr int64_t kStationheadAuthControllerTimeoutMs = 20'000;
 inline constexpr int64_t kStationheadAutoClickRetryMs = 2'500;

@@ -259,8 +259,10 @@ void StationheadPlayer::AttemptNativeStartClick(int64_t nowMs) {
 
 void StationheadPlayer::Create() {
   if (shuttingDown_ || creating_.exchange(true)) return;
+  creationStartedAt_ = UnixMillis();
   if (!EnsureHostWindow()) {
     creating_ = false;
+    creationStartedAt_ = 0;
     ScheduleRecreate(L"main window unavailable");
     return;
   }
@@ -273,6 +275,7 @@ void StationheadPlayer::Create() {
         if (!CallbackAlive(alive)) return;
         if (FAILED(result) || !environment || shuttingDown_) {
           creating_ = false;
+          creationStartedAt_ = 0;
           if (!shuttingDown_) {
             ScheduleRecreate(L"shared environment acquisition failed " + HResultHex(result));
           }
@@ -287,6 +290,7 @@ void StationheadPlayer::Create() {
                 return S_OK;
               }
               creating_ = false;
+              creationStartedAt_ = 0;
               if (FAILED(controllerResult) || !controller || shuttingDown_) {
                 if (controller) controller->Close();
                 if (!shuttingDown_) {
@@ -309,6 +313,7 @@ void StationheadPlayer::Create() {
             environment_->CreateCoreWebView2Controller(hostWindow_, onController.Get());
         if (FAILED(started)) {
           creating_ = false;
+          creationStartedAt_ = 0;
           ScheduleRecreate(L"controller creation could not start " + HResultHex(started));
         }
       });
@@ -362,6 +367,16 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
   nextTickAt_ = nowMs + 60'000;
+  if (creating_.load(std::memory_order_relaxed) && creationStartedAt_ > 0 &&
+      nowMs - creationStartedAt_ >= kStationheadWebViewCreationTimeoutMs) {
+    createCallbackAlive_->store(false, std::memory_order_release);
+    creating_ = false;
+    creationStartedAt_ = 0;
+    SharedWebViewEnvironment::Instance().Invalidate(userDataFolder_);
+    ScheduleRecreate(L"WebView2 environment/controller creation timed out", 1'000);
+    nextTickAt_ = nowMs + 1'000;
+    return;
+  }
   if (recreating_.load(std::memory_order_relaxed) && nowMs >= recreateAt_) {
     recreating_ = false;
     recreateAt_ = 0;
