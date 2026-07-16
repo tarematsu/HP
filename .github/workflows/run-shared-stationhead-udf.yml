@@ -1,0 +1,25 @@
+name: Run shared Stationhead UDF patch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/share-stationhead-user-data'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - run: python3 .github/scripts/apply_shared_stationhead_udf.py
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add native/src/app.cpp native/src/sh.cpp native/src/sh.h native/src/sh_webview.cpp
+          git commit -m "Share Stationhead user data across profiles"
+          git push origin HEAD:${{ github.head_ref }}
