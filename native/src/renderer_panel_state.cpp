@@ -1,11 +1,13 @@
 #include "web_renderer.h"
 
 namespace hp {
+namespace {
+constexpr int64_t kAirGraphWindowMs = 24LL * 60 * 60 * 1000;
+}
 
 void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
-  constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
   AirGraphProjection next;
-  next.cutoff = nowMs - kWindowMs;
+  next.cutoff = nowMs - kAirGraphWindowMs;
   next.samples.reserve(nativeAirHistory_.size());
   double co2Min = std::numeric_limits<double>::max();
   double co2Max = std::numeric_limits<double>::lowest();
@@ -103,6 +105,18 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
+
+  const int64_t airCutoff = nowMs - kAirGraphWindowMs;
+  const bool airGraphExpired = !nativeAirGraph_.samples.empty() &&
+      nativeAirGraph_.samples.front().timestamp < airCutoff;
+  if (airGraphExpired) {
+    RebuildNativeAirGraph(nowMs);
+    ++nativeAirRenderRevision_;
+    if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
+        IsWindowVisible(nativeMainWindow_)) {
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Air);
+    }
+  }
 
   SYSTEMTIME localTime{};
   GetLocalTime(&localTime);
