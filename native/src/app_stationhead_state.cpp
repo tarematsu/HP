@@ -19,4 +19,21 @@ void App::EnrichRenderStationheadState(
   state.secondaryUrl.clear();
 }
 
+void App::ToggleStationheadAudio() {
+  const bool primaryAudible = secondaryStationhead_
+      ? !scheduledPrimaryAudioAudible_
+      : true;
+  stationheadAudioMuted_ = false;
+  ApplyScheduledStationheadAudioProfile(primaryAudible);
+  ShowToast(primaryAudible ? L"A 音声ON" : L"B 音声ON", 3000, false);
+  InvalidateAll();
+}
+
+void App::MuteStationheadAudio() {
+  stationheadAudioMuted_ = true;
+  ApplyScheduledStationheadAudioProfile(scheduledPrimaryAudioAudible_);
+  ShowToast(L"MUTE", 3000, false);
+  InvalidateAll();
+}
+
 }  // namespace hp
