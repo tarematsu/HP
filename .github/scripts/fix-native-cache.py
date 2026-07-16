@@ -23,7 +23,7 @@ if text.count(broken) != 1:
 panels.write_text(text.replace(broken, tier_font), encoding="utf-8", newline="")
 
 radar = Path("native/src/renderer_radar_ui.cpp")
-text = radar.read_text(encoding="utf-8")n
+text = radar.read_text(encoding="utf-8")
 text = text.replace(
     '''std::optional<fs::path> RadarTilePath(const fs::path& dataDir,
                                               const std::wstring& url) {''',
