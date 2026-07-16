@@ -180,23 +180,23 @@ class Renderer {
 
     bool operator==(const NativePlaybackTickState&) const = default;
   };
-  struct ArtworkBitmapCacheEntry {
+  struct BitmapCacheEntry {
     HBITMAP bitmap = nullptr;
     uint64_t lastUsed = 0;
   };
-  struct NativeBackBuffer {
+  struct PanelBackBuffer {
     HBITMAP bitmap = nullptr;
     int width = 0;
     int height = 0;
   };
-  struct NativeSectionBitmapCache {
+  struct PanelBitmapCache {
     HBITMAP bitmap = nullptr;
     int width = 0;
     int height = 0;
     uint64_t revision = 0;
     uint64_t layoutRevision = 0;
   };
-  struct NativeAirGraphProjection {
+  struct AirGraphProjection {
     std::vector<AirHistorySample> samples;
     int64_t cutoff = 0;
     double co2Min = 0;
@@ -205,6 +205,12 @@ class Renderer {
     double temperatureMax = 0;
     double humidityMin = 0;
     double humidityMax = 0;
+  };
+  struct DashboardSourceStamp {
+    fs::path path;
+    std::uintmax_t size = 0;
+    fs::file_time_type modifiedAt{};
+    bool valid = false;
   };
 
   struct NativePanelPaintScope {
@@ -271,6 +277,7 @@ class Renderer {
                               void (Renderer::*draw)(HDC, const RECT&));
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
+  void ResetNativeBitmapCaches() noexcept;
   void QueueAction(UiAction action);
   void StartNativePlaybackBridge();
   void StopNativePlaybackBridge() noexcept;
@@ -283,9 +290,9 @@ class Renderer {
   NativePlaybackTickState NativePlaybackTickStateFor(int64_t nowMs) const;
   HBITMAP NativeArtworkBitmap(const std::wstring& url, int width, int height);
   HBITMAP NativeWeatherIconBitmap(const std::wstring& icon, bool night, int width, int height);
-  HBITMAP CacheNativeBitmap(const std::wstring& key, HBITMAP bitmap);
+  HBITMAP CacheNativeImageBitmap(const std::wstring& key, HBITMAP bitmap);
   HBITMAP CachedRadarBitmap(const std::wstring& key, const fs::path& path,
-                            int width, int height);
+                            const std::string& fileStamp, int width, int height);
   void StartRadarCompose();
   void StopRadarCompose() noexcept;
   void RadarComposeLoop();
@@ -307,17 +314,14 @@ class Renderer {
   HWND nativeRadarWindow_{};
   SensorSnapshot nativeSensors_{};
   std::vector<AirHistorySample> nativeAirHistory_;
-  NativeAirGraphProjection nativeAirGraph_{};
+  AirGraphProjection nativeAirGraph_{};
   std::vector<StationheadPlayHistorySample> nativeStationheadPlayHistory_;
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
   std::wstring nativeAppVersion_;
   std::wstring nativeToast_;
   int nativeNewsIndex_ = 0;
-  uint64_t nativeRenderedDashboardRevision_ = 0;
-  uint64_t nativeRenderedWeatherRevision_ = 0;
-  uint64_t nativeRenderedEnergyRevision_ = 0;
-  uint64_t nativeRenderedNewsRevision_ = 0;
+  DashboardSectionRevisions renderedDashboardRevisions_{};
   uint64_t nativeAirRenderRevision_ = 0;
   uint64_t nativeNewsRenderRevision_ = 0;
   uint64_t nativeLayoutRevision_ = 1;
@@ -331,14 +335,8 @@ class Renderer {
   fs::path dataDir_;
   std::atomic<bool> shuttingDown_{false};
   std::string dashboardUtf8_;
-  fs::path dashboardSourcePath_;
-  std::uintmax_t dashboardSourceSize_ = 0;
-  fs::file_time_type dashboardSourceModifiedAt_{};
-  bool dashboardSourceStampValid_ = false;
-  uint64_t dashboardSourceRevision_ = 0;
-  uint64_t dashboardWeatherRevision_ = 0;
-  uint64_t dashboardEnergyRevision_ = 0;
-  uint64_t dashboardNewsRevision_ = 0;
+  DashboardSourceStamp dashboardSourceStamp_{};
+  DashboardSectionRevisions dashboardRevisions_{};
   uint64_t spotifySourceRevision_ = 0;
   int newsCount_ = 0;
   mutable std::mutex actionMutex_;
@@ -350,10 +348,10 @@ class Renderer {
   std::array<NativePlaybackUpdate, 2> nativePlaybackUpdates_{};
   uint64_t nativePlaybackContentRevision_ = 0;
   NativePlaybackTickState nativePlaybackTickState_{};
-  std::map<std::wstring, ArtworkBitmapCacheEntry> nativeArtworkBitmaps_;
-  uint64_t nativeArtworkUseCounter_ = 0;
-  std::map<HWND, NativeBackBuffer> nativeBackBuffers_;
-  std::map<PanelSection, NativeSectionBitmapCache> nativeSectionBitmaps_;
+  std::map<std::wstring, BitmapCacheEntry> nativeImageBitmaps_;
+  uint64_t nativeImageUseCounter_ = 0;
+  std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
+  std::map<PanelSection, PanelBitmapCache> nativeSectionBitmaps_;
   std::atomic<uint64_t> nativePlaybackRevision_{0};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
@@ -372,8 +370,8 @@ class Renderer {
   std::wstring radarTimeText_ = L"--:--";
   std::wstring radarSignature_;
   std::map<std::wstring, int64_t> radarFailedTiles_;
-  std::map<std::wstring, ArtworkBitmapCacheEntry> radarBitmaps_;
-  uint64_t radarBitmapUseCounter_ = 0;
+  std::map<std::wstring, BitmapCacheEntry> nativeRadarBitmaps_;
+  uint64_t nativeRadarBitmapUseCounter_ = 0;
   bool radarComposePending_ = false;
   std::atomic<bool> radarComposeStarted_{false};
   std::atomic<bool> radarComposeStopping_{false};

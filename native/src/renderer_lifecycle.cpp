@@ -96,62 +96,6 @@ void Renderer::SetVisible(bool visible) {
   }
 }
 
-bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
-  if (changed) *changed = false;
-  try {
-    std::error_code error;
-    const fs::path normalizedPath = jsonPath.lexically_normal();
-    const std::uintmax_t sourceSize = fs::file_size(normalizedPath, error);
-    if (error) return false;
-    const fs::file_time_type modifiedAt = fs::last_write_time(normalizedPath, error);
-    if (error) return false;
-    if (dashboardSourceStampValid_ && dashboardSourcePath_ == normalizedPath &&
-        dashboardSourceSize_ == sourceSize && dashboardSourceModifiedAt_ == modifiedAt) {
-      return true;
-    }
-
-    std::ifstream input(normalizedPath, std::ios::binary);
-    if (!input) return false;
-    std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return false;
-    if (text == dashboardUtf8_) {
-      dashboardSourcePath_ = normalizedPath;
-      dashboardSourceSize_ = sourceSize;
-      dashboardSourceModifiedAt_ = modifiedAt;
-      dashboardSourceStampValid_ = true;
-      return true;
-    }
-
-    DashboardSnapshot snapshot;
-    if (!ParseDashboardSnapshot(text, snapshot)) return false;
-    const bool firstSnapshot = !nativeDashboard_.loaded;
-    const bool weatherChanged = firstSnapshot ||
-        snapshot.weatherRevision != nativeDashboard_.weatherRevision;
-    const bool newsChanged = firstSnapshot ||
-        snapshot.newsRevision != nativeDashboard_.newsRevision;
-    const bool energyChanged = firstSnapshot ||
-        snapshot.octopusRevision != nativeDashboard_.octopusRevision ||
-        snapshot.switchBotRevision != nativeDashboard_.switchBotRevision;
-    const bool contentChanged = weatherChanged || newsChanged || energyChanged;
-
-    newsCount_ = snapshot.newsItemCount;
-    nativeDashboard_ = std::move(snapshot);
-    dashboardUtf8_ = std::move(text);
-    dashboardSourcePath_ = normalizedPath;
-    dashboardSourceSize_ = sourceSize;
-    dashboardSourceModifiedAt_ = modifiedAt;
-    dashboardSourceStampValid_ = true;
-    if (weatherChanged) ++dashboardWeatherRevision_;
-    if (newsChanged) ++dashboardNewsRevision_;
-    if (energyChanged) ++dashboardEnergyRevision_;
-    if (contentChanged) ++dashboardSourceRevision_;
-    if (changed) *changed = contentChanged;
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
 RECT Renderer::ClientBounds() const { return bounds_; }
 
 void Renderer::QueueAction(UiAction action) {
@@ -185,13 +129,4 @@ void Renderer::Render(const RECT& dirty, const RenderState& state) {
   ReleaseDC(window_, dc);
 }
 
-void Renderer::NotifyRadarUpdated() {
-  if (!radarComposeStarted_.load(std::memory_order_acquire)) return;
-  {
-    std::lock_guard lock(radarComposeWakeMutex_);
-    radarComposePending_ = true;
-  }
-  radarComposeWake_.notify_all();
-}
-
-}
+}  // namespace hp

@@ -8,9 +8,23 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
-uint64_t SectionRevision(const JsonObject& object, const std::wstring& cloudError) {
-  std::string source = WideToUtf8(std::wstring(object.Stringify().c_str()));
+void AppendRevisionSource(std::string& source, const JsonObject& object) {
+  source += WideToUtf8(std::wstring(object.Stringify().c_str()));
   source.push_back('\0');
+}
+
+uint64_t SectionRevision(const JsonObject& object, const std::wstring& cloudError) {
+  std::string source;
+  AppendRevisionSource(source, object);
+  source += WideToUtf8(cloudError);
+  return Fnv1a64(source);
+}
+
+uint64_t SectionRevision(const JsonObject& first, const JsonObject& second,
+                         const std::wstring& cloudError) {
+  std::string source;
+  AppendRevisionSource(source, first);
+  AppendRevisionSource(source, second);
   source += WideToUtf8(cloudError);
   return Fnv1a64(source);
 }
@@ -89,7 +103,7 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     next.cloudError = json::Text(root, L"__cloudError");
 
     const JsonObject weather = json::Object(root, L"weather");
-    next.weatherRevision = SectionRevision(weather, next.cloudError);
+    next.revisions.weather = SectionRevision(weather, next.cloudError);
     next.weatherStatus = ReadStatus(weather);
     next.city = json::Text(weather, L"city");
     const JsonObject hourly = json::Object(weather, L"hourly");
@@ -112,7 +126,7 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     }
 
     const JsonObject news = json::Object(root, L"news");
-    next.newsRevision = SectionRevision(news, next.cloudError);
+    next.revisions.news = SectionRevision(news, next.cloudError);
     next.newsStatus = ReadStatus(news);
     const JsonArray newsItems = json::Array(news, L"items");
     for (uint32_t index = 0; index < newsItems.Size() && next.newsItems.size() < 10; ++index) {
@@ -127,7 +141,6 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     next.newsItemCount = static_cast<int>(next.newsItems.size());
 
     const JsonObject octopus = json::Object(root, L"octopus");
-    next.octopusRevision = SectionRevision(octopus, next.cloudError);
     next.octopusStatus = ReadStatus(octopus);
     next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
     next.projectedUsage = NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
@@ -159,7 +172,7 @@ bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output, 
     }
 
     const JsonObject switchbot = json::Object(root, L"switchbot");
-    next.switchBotRevision = SectionRevision(switchbot, next.cloudError);
+    next.revisions.energy = SectionRevision(octopus, switchbot, next.cloudError);
     next.switchBotStatus = ReadStatus(switchbot);
     next.switchBotPresence = json::Text(switchbot, L"presence", L"unknown");
     next.switchBotBrightness = json::Text(switchbot, L"brightness", L"unknown");

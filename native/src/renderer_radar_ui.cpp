@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "file_utils.h"
 #include "wic_image.h"
 #include "json_helpers.h"
 #include <winrt/Windows.Data.Json.h>
@@ -6,7 +7,6 @@
 namespace hp {
 namespace {
 constexpr int64_t kRadarTileFailureTtlMs = 5 * 60'000;
-constexpr size_t kRadarBitmapCacheLimit = 16;
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
@@ -14,6 +14,8 @@ using winrt::Windows::Data::Json::JsonValueType;
 struct RadarTile {
   std::wstring url;
   POINT destination{};
+  fs::path path;
+  std::string fileStamp;
 };
 
 std::wstring RadarTimeFromMillis(int64_t milliseconds) {
@@ -38,25 +40,6 @@ std::optional<fs::path> RadarTilePath(const fs::path& dataDir,
   return dataDir / relative;
 }
 
-bool FileMatchesText(const fs::path& path, const std::string& content) {
-  std::error_code error;
-  if (!fs::is_regular_file(path, error) || fs::file_size(path, error) != content.size()) return false;
-  std::ifstream input(path, std::ios::binary);
-  if (!input) return false;
-  return std::equal(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>(),
-                    content.begin(), content.end());
-}
-
-std::string FileStamp(const fs::path& path) {
-  std::error_code error;
-  std::ostringstream stamp;
-  const auto size = fs::file_size(path, error);
-  if (error) return "missing";
-  stamp << size;
-  const auto modified = fs::last_write_time(path, error);
-  if (!error) stamp << ':' << modified.time_since_epoch().count();
-  return stamp.str();
-}
 
 bool TileFailureActive(const std::map<std::wstring, int64_t>& failures,
                        const std::wstring& url, int64_t now) {
@@ -109,47 +92,13 @@ void BlendBitmap(HDC dc, HBITMAP bitmap, int left, int top, int width, int heigh
 }
 }  // namespace
 
-HBITMAP Renderer::CachedRadarBitmap(const std::wstring& key, const fs::path& path,
-                                    int width, int height) {
-  if (width <= 0 || height <= 0) return nullptr;
-  const std::wstring keyPrefix = key + L"#";
-  const std::wstring cacheKey = keyPrefix + Utf8ToWide(FileStamp(path)) + L"#" +
-      std::to_wstring(width) + L"x" + std::to_wstring(height);
-  auto found = radarBitmaps_.find(cacheKey);
-  if (found != radarBitmaps_.end()) {
-    found->second.lastUsed = ++radarBitmapUseCounter_;
-    return found->second.bitmap;
+void Renderer::NotifyRadarUpdated() {
+  if (!radarComposeStarted_.load(std::memory_order_acquire)) return;
+  {
+    std::lock_guard lock(radarComposeWakeMutex_);
+    radarComposePending_ = true;
   }
-
-  for (auto item = radarBitmaps_.begin(); item != radarBitmaps_.end();) {
-    if (item->first.rfind(keyPrefix, 0) != 0) {
-      ++item;
-      continue;
-    }
-    if (item->second.bitmap) DeleteObject(item->second.bitmap);
-    item = radarBitmaps_.erase(item);
-  }
-
-  HBITMAP bitmap = DecodeImageFileToBitmap(path, width, height);
-  if (!bitmap) return nullptr;
-  if (radarBitmaps_.size() >= kRadarBitmapCacheLimit) {
-    auto oldest = radarBitmaps_.end();
-    for (auto item = radarBitmaps_.begin(); item != radarBitmaps_.end(); ++item) {
-      const bool persistent = item->first.rfind(L"radar-satellite#", 0) == 0 ||
-          item->first.rfind(L"radar-map#", 0) == 0;
-      if (persistent) continue;
-      if (oldest == radarBitmaps_.end() ||
-          item->second.lastUsed < oldest->second.lastUsed) {
-        oldest = item;
-      }
-    }
-    if (oldest != radarBitmaps_.end()) {
-      if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
-      radarBitmaps_.erase(oldest);
-    }
-  }
-  radarBitmaps_[cacheKey] = ArtworkBitmapCacheEntry{bitmap, ++radarBitmapUseCounter_};
-  return bitmap;
+  radarComposeWake_.notify_all();
 }
 
 void Renderer::StartRadarCompose() {
@@ -210,6 +159,8 @@ void Renderer::ComposeRadarFrame() {
   const fs::path uiDir = rootDir_ / L"ui";
   const fs::path satellitePath = uiDir / L"radar-satellite.png";
   const fs::path mapPath = uiDir / L"radar-map.png";
+  const std::string satelliteStamp = file::Stamp(satellitePath);
+  const std::string mapStamp = file::Stamp(mapPath);
   if (!json.empty()) {
     try {
       const JsonObject root = JsonObject::Parse(json);
@@ -221,13 +172,13 @@ void Renderer::ComposeRadarFrame() {
         validAt = static_cast<int64_t>(std::max(0.0, json::Number(frame, L"validAt")));
         const JsonArray frameTiles = json::Array(frame, L"tiles");
         std::wostringstream signatureStream;
-        signatureStream << L"native-radar-v4|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
+        signatureStream << L"native-radar-v5|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
                         << L"|source:" << sourceWidth << L'x' << sourceHeight
                         << L"|" << json::Text(frame, L"baseTime")
                         << L"|" << json::Text(frame, L"validTime")
                         << L"|" << validAt
-                        << L"|sat:" << Utf8ToWide(FileStamp(satellitePath))
-                        << L"|map:" << Utf8ToWide(FileStamp(mapPath))
+                        << L"|sat:" << Utf8ToWide(satelliteStamp)
+                        << L"|map:" << Utf8ToWide(mapStamp)
                         << L"|tiles:" << frameTiles.Size();
         for (uint32_t index = 0; index < frameTiles.Size(); ++index) {
           if (frameTiles.GetAt(index).ValueType() != JsonValueType::Object) continue;
@@ -237,8 +188,12 @@ void Renderer::ComposeRadarFrame() {
               static_cast<LONG>(json::Number(tile, L"destX")),
               static_cast<LONG>(json::Number(tile, L"destY")),
           };
-          tiles.push_back(RadarTile{url, destination});
-          signatureStream << L"|" << url << L"@" << destination.x << L"," << destination.y;
+          const std::optional<fs::path> tilePath = RadarTilePath(dataDir_, url);
+          const std::string tileStamp = tilePath ? file::Stamp(*tilePath) : "invalid";
+          tiles.push_back(RadarTile{
+              url, destination, tilePath.value_or(fs::path{}), tileStamp});
+          signatureStream << L"|" << url << L"@" << destination.x << L"," << destination.y
+                          << L"#" << Utf8ToWide(tileStamp);
         }
         signature = signatureStream.str();
       }
@@ -257,7 +212,7 @@ void Renderer::ComposeRadarFrame() {
   const std::string signatureUtf8 = WideToUtf8(signature);
   const fs::path cachedFrame = dataDir_ / L"radar-frame.bmp";
   const fs::path cachedSignature = dataDir_ / L"radar-frame.signature";
-  if (!signature.empty() && FileMatchesText(cachedSignature, signatureUtf8)) {
+  if (!signature.empty() && file::MatchesText(cachedSignature, signatureUtf8)) {
     HBITMAP cached = DecodeImageFileToBitmap(cachedFrame, kRadarCanvasWidth, kRadarCanvasHeight);
     if (cached) {
       std::wstring timeText = RadarTimeFromMillis(validAt);
@@ -281,9 +236,10 @@ void Renderer::ComposeRadarFrame() {
   }
 
   HBITMAP radarSatelliteBitmap = CachedRadarBitmap(
-      L"radar-satellite", satellitePath, kRadarCanvasWidth, kRadarCanvasHeight);
+      L"radar-satellite", satellitePath, satelliteStamp,
+      kRadarCanvasWidth, kRadarCanvasHeight);
   HBITMAP radarMapBitmap = CachedRadarBitmap(
-      L"radar-map", mapPath, kRadarCanvasWidth, kRadarCanvasHeight);
+      L"radar-map", mapPath, mapStamp, kRadarCanvasWidth, kRadarCanvasHeight);
   if (!radarSatelliteBitmap || !radarMapBitmap) return;
 
   BITMAPINFO info{};
@@ -316,10 +272,10 @@ void Renderer::ComposeRadarFrame() {
   for (const RadarTile& tile : tiles) {
     if (radarComposeStopping_.load(std::memory_order_acquire)) break;
     if (TileFailureActive(radarFailedTiles_, tile.url, now)) continue;
-    const std::optional<fs::path> tilePath = RadarTilePath(dataDir_, tile.url);
-    HBITMAP tileBitmap = tilePath
-        ? CachedRadarBitmap(L"radar-tile:" + tile.url, *tilePath, tileWidth, tileHeight)
-        : nullptr;
+    HBITMAP tileBitmap = tile.path.empty()
+        ? nullptr
+        : CachedRadarBitmap(L"radar-tile:" + tile.url, tile.path,
+                            tile.fileStamp, tileWidth, tileHeight);
     if (!tileBitmap) {
       radarFailedTiles_[tile.url] = now + kRadarTileFailureTtlMs;
       continue;

@@ -6,7 +6,6 @@ namespace {
 constexpr int kNativeSideId = 101;
 constexpr int kNativeMainId = 102;
 constexpr int kNativeRadarId = 108;
-constexpr size_t kNativeBitmapCacheLimit = 24;
 
 constexpr COLORREF kWidgetBackground = kNativeDashboardBackground;
 constexpr COLORREF kWidgetSurface = RGB(20, 26, 36);
@@ -16,12 +15,10 @@ constexpr COLORREF kWidgetText = RGB(238, 242, 248);
 constexpr COLORREF kWidgetMuted = RGB(159, 171, 189);
 constexpr COLORREF kWidgetSubtle = RGB(110, 122, 141);
 
-constexpr COLORREF kWidgetBlue = RGB(10, 132, 255);
 constexpr COLORREF kWidgetBlueMuted = RGB(100, 176, 255);
 constexpr COLORREF kWidgetGreen = RGB(48, 209, 88);
 constexpr COLORREF kWidgetOrange = RGB(255, 159, 10);
 constexpr COLORREF kWidgetCyan = RGB(50, 173, 230);
-constexpr COLORREF kWidgetPurple = RGB(175, 82, 222);
 constexpr COLORREF kWidgetBlack = RGB(0, 0, 0);
 constexpr COLORREF kWidgetTrack = RGB(42, 52, 66);
 constexpr COLORREF kWidgetWarning = RGB(255, 214, 10);
@@ -282,10 +279,10 @@ bool IsWeatherNightHour(int hour) {
   return hour < 6 || hour >= 18;
 }
 
+template <typename ValueOf>
 void DrawHistoryLine(HDC dc, const std::vector<AirHistorySample>& samples, const RECT& plot,
                      int64_t cutoff, int64_t spanMs, double minValue, double maxValue,
-                     COLORREF color, int width,
-                     const std::function<double(const AirHistorySample&)>& valueOf) {
+                     COLORREF color, int width, ValueOf&& valueOf) {
   if (samples.empty() || maxValue <= minValue) return;
   HGDIOBJ previousPen = SelectObject(dc, CachedSolidPen(width, color));
   bool started = false;
@@ -358,34 +355,10 @@ void DrawSectionCard(HDC dc, const RECT& rect) {
   DrawCardOutline(dc, rect, radius);
 }
 
-void DrawHeaderStatus(HDC dc, const RECT& header, const PanelDataStatus& status) {
-  const wchar_t* text = nullptr;
-  COLORREF color = kWidgetSubtle;
-  switch (status.state) {
-    case PanelDataState::Waiting:
-      text = L"取得待ち";
-      color = kWidgetSubtle;
-      break;
-    case PanelDataState::Stale:
-      text = L"更新停滞";
-      color = kWidgetWarning;
-      break;
-    case PanelDataState::Error:
-      text = L"取得エラー";
-      color = kWidgetDanger;
-      break;
-    case PanelDataState::Ok:
-    default:
-      return;
-  }
-  SetTextColor(dc, color);
-  DrawTextInRect(dc, text, header, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
-}
-
 struct SidebarSections {
   RECT clock{};
-  RECT air{};
   RECT weather{};
+  RECT energy{};
   RECT controls{};
 };
 
@@ -410,17 +383,17 @@ SidebarSections SplitSidebarSections(const RECT& client) {
   int top = client.top;
   sections.clock = RECT{client.left, top, client.right, top + cardHeight};
   top = sections.clock.bottom + gap;
-  sections.air = RECT{client.left, top, client.right, top + cardHeight};
-  top = sections.air.bottom + gap;
   sections.weather = RECT{client.left, top, client.right, top + cardHeight};
   top = sections.weather.bottom + gap;
+  sections.energy = RECT{client.left, top, client.right, top + cardHeight};
+  top = sections.energy.bottom + gap;
   sections.controls = RECT{client.left, top, client.right, top + controlsHeight};
   return sections;
 }
 
 struct MainSections {
   RECT music{};
-  RECT energy{};
+  RECT air{};
   RECT news{};
 };
 
@@ -435,9 +408,9 @@ MainSections SplitMainSections(const RECT& client) {
   sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
   const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
   sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
-  sections.energy = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
-  if (sections.energy.right <= sections.energy.left) {
-    sections.energy.right = sections.energy.left + 1;
+  sections.air = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
+  if (sections.air.right <= sections.air.left) {
+    sections.air.right = sections.air.left + 1;
   }
   return sections;
 }

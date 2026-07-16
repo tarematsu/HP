@@ -38,6 +38,12 @@ struct SwitchBotDeviceData {
   std::wstring state;
 };
 
+struct DashboardSectionRevisions {
+  uint64_t weather = 0;
+  uint64_t energy = 0;
+  uint64_t news = 0;
+};
+
 struct DashboardSnapshot {
   bool loaded = false;
   std::wstring cloudError;
@@ -68,10 +74,7 @@ struct DashboardSnapshot {
 
   // Stable per-section content revisions let the renderer invalidate only the
   // panels whose source data changed, rather than repainting the whole dashboard.
-  uint64_t weatherRevision = 0;
-  uint64_t newsRevision = 0;
-  uint64_t octopusRevision = 0;
-  uint64_t switchBotRevision = 0;
+  DashboardSectionRevisions revisions;
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
