@@ -25,11 +25,15 @@ void App::LoadAirHistory() {
     if (text.empty()) return;
     const auto array = winrt::Windows::Data::Json::JsonArray::Parse(Utf8ToWide(text));
     std::vector<AirHistorySample> history;
+    bool normalized = false;
     const int64_t now = UnixMillis();
     const int64_t cutoff = now - kAirHistoryWindowMs;
     const int64_t futureLimit = now + kAirHistoryFutureToleranceMs;
     for (auto value : array) {
-      if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) continue;
+      if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) {
+        normalized = true;
+        continue;
+      }
       const auto item = value.GetObject();
       AirHistorySample sample{
           static_cast<int64_t>(item.GetNamedNumber(L"t", 0)),
@@ -40,22 +44,37 @@ void App::LoadAirHistory() {
       if (sample.timestamp >= cutoff && sample.timestamp <= futureLimit &&
           ValidAirValues(sample)) {
         history.push_back(sample);
+      } else {
+        normalized = true;
       }
     }
-    std::sort(history.begin(), history.end(),
-              [](const AirHistorySample& left, const AirHistorySample& right) {
-                return left.timestamp < right.timestamp;
-              });
-    history.erase(
-        std::unique(history.begin(), history.end(),
-                    [](const AirHistorySample& left, const AirHistorySample& right) {
-                      return left.timestamp == right.timestamp;
-                    }),
-        history.end());
+    if (!std::is_sorted(
+            history.begin(), history.end(),
+            [](const AirHistorySample& left, const AirHistorySample& right) {
+              return left.timestamp < right.timestamp;
+            })) {
+      normalized = true;
+    }
+    std::stable_sort(
+        history.begin(), history.end(),
+        [](const AirHistorySample& left, const AirHistorySample& right) {
+          return left.timestamp < right.timestamp;
+        });
+    const auto uniqueEnd = std::unique(
+        history.begin(), history.end(),
+        [](const AirHistorySample& left, const AirHistorySample& right) {
+          return left.timestamp == right.timestamp;
+        });
+    if (uniqueEnd != history.end()) {
+      normalized = true;
+      history.erase(uniqueEnd, history.end());
+    }
     if (history.size() > kAirHistoryMaxSamples) {
+      normalized = true;
       history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
     }
     renderState_.airHistory = std::move(history);
+    if (normalized) SaveAirHistory();
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history load failed: " + Utf8ToWide(error.what()));
   } catch (...) {
