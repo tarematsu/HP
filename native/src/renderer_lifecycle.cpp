@@ -95,11 +95,7 @@ void Renderer::SetVisible(bool visible) {
 }
 
 void Renderer::QueueAction(UiAction action) {
-  {
-    std::lock_guard lock(actionMutex_);
-    pendingAction_ = action;
-  }
-  PostMessageW(window_, WM_LBUTTONUP, 0, MAKELPARAM(0, 0));
+  PostMessageW(window_, kRendererActionMessage, static_cast<WPARAM>(action), 0);
 }
 
 UiAction Renderer::TakePendingAction() {
