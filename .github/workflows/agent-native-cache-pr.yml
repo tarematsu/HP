@@ -33,8 +33,8 @@ jobs:
           start = source.index(marker) + len(marker)
           end = source.index("\n          PY\n", start)
           lines = source[start:end].splitlines()
-          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
-          Path('/tmp/apply_native_cache.py').write_text(script, encoding='utf-8')
+          body = '\n'.join(line[8:] if line.startswith('        ') else line for line in lines) + '\n'
+          Path('/tmp/apply_native_cache.py').write_text('if True:\n' + body, encoding='utf-8')
           PY
           set +e
           python3 /tmp/apply_native_cache.py > /tmp/apply-native-cache.log 2>&1
@@ -58,7 +58,8 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git rm .github/workflows/agent-native-cache-apply.yml \
-            .github/workflows/agent-native-cache-pr.yml
+            .github/workflows/agent-native-cache-pr.yml \
+            .github/agent-native-cache-error.txt
           git add native/src/web_renderer.h native/src/dashboard_data.h native/src/dashboard_data.cpp \
             native/src/renderer_state.cpp native/src/renderer_panels/part2.inc \
             native/src/renderer_panels/part3.inc native/src/renderer_radar_ui.cpp
