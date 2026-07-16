@@ -27,6 +27,26 @@ jobs:
             capture && /^          PY$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/apply-startup-order-fix.yml > /tmp/apply-startup-order-fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply-startup-order-fix.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '        if (layoutChanged || stateChanged) PublishRenderStateNow();',
+              '      if (layoutChanged || stateChanged) PublishRenderStateNow();',
+          )
+          text = text.replace(
+              '        if (!rendererStarted_ && stateChanged) {\n'
+              '          StartDeferredServices(UnixMillis(), renderState_.stationhead);\n'
+              '        }\n'
+              '        if (layoutChanged || stateChanged) PublishRenderStateNow();',
+              '      if (!rendererStarted_ && stateChanged) {\n'
+              '        StartDeferredServices(UnixMillis(), renderState_.stationhead);\n'
+              '      }\n'
+              '      if (layoutChanged || stateChanged) PublishRenderStateNow();',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
           set +e
           python3 /tmp/apply-startup-order-fix.py > /tmp/startup-patch.log 2>&1
           status=$?
