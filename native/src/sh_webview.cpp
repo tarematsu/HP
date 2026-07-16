@@ -71,10 +71,11 @@ void StationheadPlayer::ConfigureWebView() {
     }
   }
 
-  ComPtr<ICoreWebView2_19> v19;
-  if (config_.lowMemoryMode && SUCCEEDED(webview_.As(&v19))) {
-    v19->put_MemoryUsageTargetLevel(COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
-  }
+  // An audio WebView must not be marked as a low-memory discard target.
+  // Once the dashboard moves it behind the native surface, WebView2 can
+  // otherwise unload and recreate the page, stopping playback and causing
+  // Start Listening to be clicked again. Keep LOW only for the transient
+  // authorization WebView below.
   ApplyMute();
   if (IsSecondary()) EnsureDistinctBrowserIdentity();
 

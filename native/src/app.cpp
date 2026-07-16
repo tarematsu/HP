@@ -169,13 +169,17 @@ void App::StartServices() {
 
 
 
-  const fs::path stationheadData = dataDir_ / L"webview2-stationhead";
+  // Keep the primary on its existing folder so its login survives this
+  // migration. Window B gets its own user-data folder and therefore its own
+  // browser process, cache, service workers, cookies, and storage.
+  const fs::path primaryStationheadData = dataDir_ / L"webview2-stationhead";
+  const fs::path secondaryStationheadData = dataDir_ / L"webview2-stationhead-secondary";
   stationhead_ = std::make_unique<StationheadPlayer>(
-      StationheadRole::Primary, window_, config_.stationhead, stationheadData, *logger_);
+      StationheadRole::Primary, window_, config_.stationhead, primaryStationheadData, *logger_);
   if (config_.stationhead.secondaryEnabled && !config_.stationhead.secondaryUrl.empty()) {
     secondaryStationhead_ = std::make_unique<StationheadPlayer>(
-        StationheadRole::Secondary, window_, config_.stationhead, stationheadData, *logger_);
-    logger_->Info(L"Secondary Stationhead prepared to start alongside primary");
+        StationheadRole::Secondary, window_, config_.stationhead, secondaryStationheadData, *logger_);
+    logger_->Info(L"Secondary Stationhead prepared with isolated WebView2 user data");
   }
   RECT client{};
   if (GetClientRect(window_, &client) && client.right > client.left && client.bottom > client.top) {
