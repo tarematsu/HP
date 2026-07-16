@@ -1,11 +1,54 @@
-name: Obsolete native cache patch extractor
+name: Run native cache patch from pull request
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/agent-native-cache-apply.yml"
+      - ".github/workflows/agent-native-cache-pr.yml"
+
+permissions:
+  contents: write
 
 jobs:
-  disabled:
-    if: false
+  apply:
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - run: echo disabled
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Run direct patch script
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/agent-native-cache-apply.yml').read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index("\n          PY\n", start)
+          lines = source[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/apply_native_cache.py').write_text(script, encoding='utf-8')
+          PY
+          python3 /tmp/apply_native_cache.py
+          git diff --check
+
+      - name: Commit native cache patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm .github/workflows/agent-native-cache-apply.yml \
+            .github/workflows/agent-native-cache-pr.yml \
+            .github/agent-native-cache-error.txt
+          git add native/src/web_renderer.h native/src/dashboard_data.h native/src/dashboard_data.cpp \
+            native/src/renderer_state.cpp native/src/renderer_panels/part2.inc \
+            native/src/renderer_panels/part3.inc native/src/renderer_radar_ui.cpp
+          git commit -m "Cache native dashboard rendering"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
