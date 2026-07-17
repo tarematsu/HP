@@ -9,6 +9,9 @@
   "triggers": {
     "crons": ["*/5 * * * *"]
   },
+  "images": {
+    "binding": "IMAGES"
+  },
   "d1_databases": [
     {
       "binding": "DB",
