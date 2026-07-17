@@ -1,0 +1,73 @@
+name: Temporary radar publisher run audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-publisher-run-audit.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Capture recent publisher runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${GITHUB_REPOSITORY}/actions/workflows/radar-frames.yml/runs?per_page=20" \
+            --jq '{runs:[.workflow_runs[] | {id,run_number,event,status,conclusion,created_at,run_started_at,updated_at,head_sha,display_title}]}' \
+            | tee publisher-runs.json
+
+      - name: Validate recent schedule health
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import pathlib
+
+          payload = json.loads(pathlib.Path('publisher-runs.json').read_text(encoding='utf-8'))
+          runs = payload.get('runs') or []
+          if not runs:
+              raise SystemExit('no radar publisher workflow runs found')
+          completed = [run for run in runs if run.get('status') == 'completed']
+          successful = [run for run in completed if run.get('conclusion') == 'success']
+          if not successful:
+              raise SystemExit('no successful radar publisher run found')
+          latest = runs[0]
+          latest_success = successful[0]
+          now = dt.datetime.now(dt.timezone.utc)
+          updated = dt.datetime.fromisoformat(str(latest_success['updated_at']).replace('Z', '+00:00'))
+          age = (now - updated).total_seconds()
+          summary = {
+              'latestRun': latest,
+              'latestSuccessfulRun': latest_success,
+              'latestSuccessAgeSeconds': round(age, 1),
+              'recentRunCount': len(runs),
+              'recentFailures': [
+                  run for run in completed
+                  if run.get('conclusion') not in ('success', 'skipped', 'cancelled')
+              ],
+          }
+          pathlib.Path('publisher-health.json').write_text(
+              json.dumps(summary, separators=(',', ':')),
+              encoding='utf-8',
+          )
+          print(pathlib.Path('publisher-health.json').read_text(encoding='utf-8'))
+          PY
+
+      - name: Upload publisher report
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-publisher-health-${{ github.run_id }}
+          path: |
+            publisher-runs.json
+            publisher-health.json
+          if-no-files-found: error
+          retention-days: 1
