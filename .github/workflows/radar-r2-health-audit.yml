@@ -170,7 +170,9 @@ jobs:
                       raise SystemExit(f"unexpected {name}: {image.format} {image.size}")
                   image.verify()
           PY
-          echo "R2_HEALTH frames=$count total_bytes=$total_bytes first_key=$first_key last_key=$last_key"
+          printf '{"activeFrameCount":%d,"activeFrameBytes":%d,"firstKey":"%s","lastKey":"%s"}\n' \
+            "$count" "$total_bytes" "$first_key" "$last_key" > frame-object-summary.json
+          cat frame-object-summary.json
 
       - name: Count radar objects
         shell: bash
@@ -181,4 +183,15 @@ jobs:
             --bucket "$R2_BUCKET" \
             --prefix radar/ \
             --query '{count:KeyCount,totalBytes:sum(Contents[].Size)}' \
-            --output json
+            --output json | tee radar-object-count.json
+
+      - name: Upload health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-r2-health-${{ github.run_id }}
+          path: |
+            health-summary.json
+            frame-object-summary.json
+            radar-object-count.json
+          if-no-files-found: error
+          retention-days: 1
