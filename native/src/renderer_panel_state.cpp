@@ -84,7 +84,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
   if (!EnsureNativeStaticWindows()) return;
   if (sensorsChanged || historyChanged) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Air);
+    InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
   }
   if (weatherChanged) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
@@ -96,7 +96,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
   }
   if (controlsChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Controls);
+    InvalidatePanelSection(nativeSideWindow_, PanelSection::Clock);
   }
   if (stationheadChanged || stationheadHistoryChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
@@ -112,9 +112,9 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (airGraphExpired) {
     RebuildNativeAirGraph(nowMs);
     ++nativeAirRenderRevision_;
-    if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
-        IsWindowVisible(nativeMainWindow_)) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::Air);
+    if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
+        IsWindowVisible(nativeSideWindow_)) {
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
     }
   }
 
