@@ -50,9 +50,19 @@ ControlsRects RearrangedControlsFromContent(const RECT&) {
 }
 
 #define HP_DRAW_CLOCK_WITH_CONTROLS(dc, card) do { \
-  DrawClockSection((dc), (card)); \
+  DrawSectionCard((dc), (card)); \
+  const RECT hpClockContent = CardContentRect((card)); \
+  SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
+  RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 18)}; \
+  RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 55)}; \
+  HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
+  SetTextColor((dc), kWidgetMuted); \
+  DrawTextInRect((dc), DateText(hpNow), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  SelectObject((dc), TierFont(FontTier::Large)); \
+  SetTextColor((dc), kWidgetText); \
+  DrawTextInRect((dc), TimeText(hpNow), hpTimeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER); \
   const ControlsRects hpControls = RearrangedControlsFromContent((card)); \
-  HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Small)); \
+  SelectObject((dc), TierFont(FontTier::Small)); \
   DrawWidgetCard((dc), hpControls.update, kWidgetSurfaceAlt, CardRadius(hpControls.update)); \
   DrawWidgetCard((dc), hpControls.restart, kWidgetSurfaceAlt, CardRadius(hpControls.restart)); \
   SetTextColor((dc), kWidgetText); \
