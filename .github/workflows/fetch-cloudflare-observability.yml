@@ -1,4 +1,4 @@
-name: Temporary radar R2 audit
+name: Temporary radar publisher audit
 
 on:
   pull_request:
@@ -11,96 +11,134 @@ permissions:
   contents: read
 
 concurrency:
-  group: radar-r2-audit-${{ github.event.pull_request.number }}
+  group: radar-publisher-audit-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  audit:
+  publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-      AWS_DEFAULT_REGION: auto
-      R2_BUCKET: homepanel-updates
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
+      RADAR_CENTER_LAT: ${{ vars.RADAR_CENTER_LAT || '35.8923181' }}
+      RADAR_CENTER_LON: ${{ vars.RADAR_CENTER_LON || '139.4858691' }}
+      RADAR_ZOOM: ${{ vars.RADAR_ZOOM || '10' }}
+      RADAR_WORK_DIR: ${{ runner.temp }}/homepanel-radar
 
     steps:
-      - name: Derive R2 credentials
-        shell: bash
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+          npm ci --no-audit --no-fund
+        working-directory: cloud
+
+      - name: Resolve Cloudflare settings
+        id: resolve
+        run: node .github/scripts/resolve-cloudflare-config.mjs
+
+      - name: Validate Cloudflare credentials
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
         run: |
           set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN"
-          verify="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify)"
-          token_id="$(jq -er '.result.id' <<<"$verify")"
-          secret="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)"
-          accounts="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" 'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
-          export AWS_ACCESS_KEY_ID="$token_id" AWS_SECRET_ACCESS_KEY="$secret"
-          match=""
-          while read -r account_id; do
-            endpoint="https://${account_id}.r2.cloudflarestorage.com"
-            if aws s3api head-bucket --endpoint-url "$endpoint" --bucket "$R2_BUCKET" >/dev/null 2>&1; then
-              test -z "$match" || { echo 'Multiple matching accounts' >&2; exit 1; }
-              match="$account_id"
-            fi
-          done < <(jq -r '.result[].id' <<<"$accounts")
-          test -n "$match" || { echo "R2 bucket not accessible: $R2_BUCKET" >&2; exit 1; }
-          echo "::add-mask::$token_id"
-          echo "::add-mask::$secret"
-          echo "AWS_ACCESS_KEY_ID=$token_id" >> "$GITHUB_ENV"
-          echo "AWS_SECRET_ACCESS_KEY=$secret" >> "$GITHUB_ENV"
-          echo "R2_ENDPOINT=https://${match}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Cloudflare API token is not configured"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Cloudflare account ID is not configured"; exit 1; }
 
-      - name: Inventory radar objects
-        shell: bash
+      - name: Download existing radar manifest
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
         run: |
           set -euo pipefail
-          aws s3api list-objects-v2 \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket "$R2_BUCKET" \
-            --prefix radar/ \
-            --output json > radar-objects.json
-          python3 - <<'PY'
-          import datetime as dt
-          import json
-          import pathlib
+          mkdir -p "$RADAR_WORK_DIR"
+          npx wrangler r2 object get \
+            "homepanel-updates/radar/manifest.json" \
+            --file="$RADAR_WORK_DIR/existing-manifest.json" \
+            --remote \
+            || rm -f "$RADAR_WORK_DIR/existing-manifest.json"
+        working-directory: cloud
 
-          data = json.loads(pathlib.Path('radar-objects.json').read_text(encoding='utf-8'))
-          objects = data.get('Contents') or []
-          rows = []
-          for item in objects:
-              rows.append({
-                  'key': item.get('Key'),
-                  'size': item.get('Size'),
-                  'lastModified': item.get('LastModified'),
-                  'etag': item.get('ETag'),
-              })
-          rows.sort(key=lambda item: (item.get('lastModified') or '', item.get('key') or ''))
-          manifest = next((item for item in rows if item.get('key') == 'radar/manifest.json'), None)
-          frames = [item for item in rows if str(item.get('key') or '').startswith('radar/frames/')]
-          report = {
-              'ok': manifest is not None,
-              'checkedAt': dt.datetime.now(dt.timezone.utc).isoformat().replace('+00:00', 'Z'),
-              'manifestPresent': manifest is not None,
-              'radarObjectCount': len(rows),
-              'frameObjectCount': len(frames),
-              'totalFrameBytes': sum(int(item.get('size') or 0) for item in frames),
-              'oldestFrame': frames[0] if frames else None,
-              'newestFrame': frames[-1] if frames else None,
-              'objects': rows,
-          }
-          pathlib.Path('radar-r2-audit.json').write_text(
-              json.dumps(report, ensure_ascii=False, indent=2) + '\n',
-              encoding='utf-8',
-          )
-          print(json.dumps(report, ensure_ascii=False, separators=(',', ':')))
+      - name: Build radar WebP frames
+        run: |
+          set -euo pipefail
+          time python .github/scripts/build-radar-frames.py \
+            --output-dir "$RADAR_WORK_DIR" \
+            --existing-manifest "$RADAR_WORK_DIR/existing-manifest.json" \
+            --center-lat "$RADAR_CENTER_LAT" \
+            --center-lon "$RADAR_CENTER_LON" \
+            --zoom "$RADAR_ZOOM"
+          ls -lh "$RADAR_WORK_DIR" "$RADAR_WORK_DIR/frames" || true
+
+      - name: Publish radar frames to R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS=$'\t' read -r file key; do
+            test -n "$key" || continue
+            count=$((count + 1))
+            echo "Uploading frame $count: $key"
+            npx wrangler r2 object put "homepanel-updates/$key" \
+              --file="$file" \
+              --content-type="image/webp" \
+              --cache-control="private, max-age=10800, immutable" \
+              --remote \
+              --force
+          done < "$RADAR_WORK_DIR/uploads.tsv"
+          echo "Uploaded $count frame objects"
+
+          npx wrangler r2 object put "homepanel-updates/radar/manifest.json" \
+            --file="$RADAR_WORK_DIR/manifest.json" \
+            --content-type="application/json" \
+            --cache-control="private, max-age=0, must-revalidate" \
+            --remote \
+            --force
+
+      - name: Verify published manifest
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          npx wrangler r2 object get \
+            "homepanel-updates/radar/manifest.json" \
+            --file="$RADAR_WORK_DIR/verified-manifest.json" \
+            --remote
+          python - <<'PY'
+          import json, os, pathlib
+          path = pathlib.Path(os.environ['RADAR_WORK_DIR']) / 'verified-manifest.json'
+          value = json.loads(path.read_text(encoding='utf-8'))
+          print(json.dumps({
+              'version': value.get('version'),
+              'generatedAt': value.get('generatedAt'),
+              'currentAt': value.get('currentAt'),
+              'frames': len(value.get('frames') or []),
+          }, separators=(',', ':')))
+          if value.get('version') != 2 or len(value.get('frames') or []) != 13:
+              raise SystemExit('published radar manifest is invalid')
           PY
 
-      - name: Upload audit report
+      - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: radar-r2-audit-${{ github.run_id }}
+          name: radar-publisher-audit-${{ github.run_id }}
           path: |
-            radar-objects.json
-            radar-r2-audit.json
-          if-no-files-found: error
+            ${{ runner.temp }}/homepanel-radar/manifest.json
+            ${{ runner.temp }}/homepanel-radar/verified-manifest.json
+            ${{ runner.temp }}/homepanel-radar/uploads.tsv
+          if-no-files-found: warn
           retention-days: 1
