@@ -8,6 +8,7 @@ import {
 } from "./dashboard_cache";
 import worker from "./worker_core";
 import { etagResponse, suppliedEtags, unauthorized } from "./response";
+import { radarFrameResponse } from "./radar_source";
 import { WORKER_VERSION } from "./snapshot";
 import type { Env } from "./sources";
 import { receiveTelemetryOptimized } from "./telemetry_route";
@@ -44,6 +45,11 @@ export default {
         workerVersion: WORKER_VERSION,
         now: new Date().toISOString(),
       });
+    }
+
+    if (request.method === "GET" && path.startsWith("/v1/radar/frame/")) {
+      if (!authorizedAnyDevice(request, env)) return unauthorized();
+      return radarFrameResponse(path, env);
     }
 
     if (request.method === "POST" && path === "/v1/update/ping") {
