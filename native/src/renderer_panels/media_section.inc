@@ -141,19 +141,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   SetTextColor(dc, kWidgetDanger);
   DrawTextInRect(dc, L"MUTE", rects.muteButton,
                  DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-
-  const NativeMinuteFactsProjection minuteFacts = NativeMinuteFactsSnapshot();
-  std::wstring minuteFactsStatus = L"データ待ち";
-  if (minuteFacts.available) {
-    minuteFactsStatus = minuteFacts.isBroadcasting
-        ? (minuteFacts.isPaused ? L"一時停止中" : L"配信中")
-        : L"オフライン";
-    minuteFactsStatus += L"・" + std::to_wstring(minuteFacts.listenerCount) + L"人";
-    if (minuteFacts.stale) minuteFactsStatus += L"(遅延)";
-  }
-  SetTextColor(dc, kWidgetSubtle);
-  DrawTextInRect(dc, minuteFactsStatus, rects.status,
-                 DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(dc, previousFont);
 }
 
