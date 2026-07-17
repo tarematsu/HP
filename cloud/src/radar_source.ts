@@ -1,10 +1,8 @@
 import { fetchJson } from "./http";
-import { signedRadarTilePath } from "./radar_tile";
 import type { Env, SourceResult } from "./sources";
 
 const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const DEFAULT_RADAR_ZOOM = 10;
-const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
 const RADAR_HISTORY_WINDOW_MS = 60 * 60 * 1000;
 const RADAR_FRAME_INTERVAL_MS = 5 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/";
@@ -112,25 +110,15 @@ async function ensureRenderedFrames(
   entries: TimeEntry[],
   layout: RadarTileLayout[],
   zoom: number,
-): Promise<Set<string>> {
-  const ready = new Set<string>();
-  if (!env.UPDATE_BUCKET) return ready;
+): Promise<void> {
+  if (!env.UPDATE_BUCKET) throw new Error("radar R2 bucket unavailable");
   const missing: TimeEntry[] = [];
   for (const entry of entries) {
-    if (await env.UPDATE_BUCKET.head(frameKey(entry.validtime))) ready.add(entry.validtime);
-    else missing.push(entry);
+    if (!await env.UPDATE_BUCKET.head(frameKey(entry.validtime))) missing.push(entry);
   }
   for (let index = 0; index < missing.length; index += 2) {
-    await Promise.all(missing.slice(index, index + 2).map(async entry => {
-      try {
-        await renderFrame(env, entry, layout, zoom);
-        ready.add(entry.validtime);
-      } catch (error) {
-        console.error("radar frame render failed", entry.validtime, error instanceof Error ? error.message : String(error));
-      }
-    }));
+    await Promise.all(missing.slice(index, index + 2).map(entry => renderFrame(env, entry, layout, zoom)));
   }
-  return ready;
 }
 
 export async function radarFrameResponse(pathname: string, env: Env): Promise<Response> {
@@ -157,40 +145,35 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   if (!current) throw new Error("JMA nowcast current frame is unavailable");
   const currentAt = jmaTimestampToMillis(current.validtime);
   const historyStart = currentAt - RADAR_HISTORY_WINDOW_MS;
-  const width = 480, height = 320;
+  const sourceWidth = 480, sourceHeight = 320;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
   const center = {
     lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),
     lon: envNumber(env.RADAR_CENTER_LON, DEFAULT_RADAR_CENTER.lon, -180, 180),
   };
-  const layout = radarTileLayout(center.lat, center.lon, zoom, width, height);
+  const layout = radarTileLayout(center.lat, center.lon, zoom, sourceWidth, sourceHeight);
   const entries = available.filter(entry => {
     const validAt = jmaTimestampToMillis(entry.validtime);
     return validAt >= historyStart && validAt <= currentAt;
   });
-  const rendered = await ensureRenderedFrames(env, entries, layout, zoom);
-  const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
-  const frames = await Promise.all(entries.map(async entry => {
-    const common = {
-      baseTime: entry.basetime,
-      validTime: entry.validtime,
-      validAt: jmaTimestampToMillis(entry.validtime),
-    };
-    if (rendered.has(entry.validtime)) return { ...common, url: framePath(entry.validtime) };
-    return {
-      ...common,
-      tiles: await Promise.all(layout.map(async tile => {
-        const pathname = `/v1/radar/tile/jma/${entry.basetime}/${entry.validtime}/${zoom}/${tile.x}/${tile.y}.png`;
-        return { ...tile, url: await signedRadarTilePath(env, pathname, expires) };
-      })),
-    };
+  await ensureRenderedFrames(env, entries, layout, zoom);
+
+  // Keep the established tile payload shape so existing clients cache each
+  // WebP through the same code path. A single opaque 256x256 logical tile is
+  // scaled to the native radar canvas; all expensive composition already
+  // happened once in Cloudflare Images.
+  const frames = entries.map(entry => ({
+    baseTime: entry.basetime,
+    validTime: entry.validtime,
+    validAt: jmaTimestampToMillis(entry.validtime),
+    tiles: [{ x: 0, y: 0, destX: 0, destY: 0, url: framePath(entry.validtime) }],
   }));
   return {
     source: "radar",
     payload: {
       provider: "JMA radar rendered by Cloudflare Images and cached in R2",
-      width,
-      height,
+      width: 256,
+      height: 256,
       outputWidth: RADAR_OUTPUT_WIDTH,
       outputHeight: RADAR_OUTPUT_HEIGHT,
       center,
