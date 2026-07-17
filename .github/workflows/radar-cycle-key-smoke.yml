@@ -1,0 +1,77 @@
+name: Temporary radar cycle-key smoke test
+
+on:
+  pull_request:
+    branches: ["fix/radar-cycle-keys"]
+    paths:
+      - ".github/workflows/radar-cycle-key-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+
+      - name: Run focused builder tests
+        run: python .github/scripts/test_build_radar_frames.py
+
+      - name: Build live radar frame set
+        run: |
+          set -euo pipefail
+          python .github/scripts/build-radar-frames.py \
+            --output-dir "$RUNNER_TEMP/radar"
+
+      - name: Validate cycle-scoped output
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          from PIL import Image
+
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar'
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          frames = manifest.get('frames') or []
+          uploads = [line.split('\t', 1) for line in (root / 'uploads.tsv').read_text(encoding='utf-8').splitlines() if line]
+          if manifest.get('renderVersion') != 'gha-v4':
+              raise SystemExit(f"unexpected renderVersion: {manifest.get('renderVersion')}")
+          if len(frames) != 13 or len(uploads) != 13:
+              raise SystemExit(f"unexpected counts: frames={len(frames)} uploads={len(uploads)}")
+          base_times = {frame.get('baseTime') for frame in frames}
+          variants = {frame.get('variant') for frame in frames}
+          if len(base_times) != 1 or len(variants) != 1:
+              raise SystemExit(f"mixed cycle output: baseTimes={base_times} variants={variants}")
+          base_time = next(iter(base_times))
+          variant = next(iter(variants))
+          if not isinstance(base_time, str) or not isinstance(variant, str) or not variant.endswith('-' + base_time):
+              raise SystemExit(f"variant is not cycle scoped: {variant} base={base_time}")
+          keys = [frame.get('key') for frame in frames]
+          if len(set(keys)) != 13 or not all('/' + variant + '/' in str(key) for key in keys):
+              raise SystemExit('frame keys are not unique within the cycle variant')
+          uploaded_keys = {key for _, key in uploads}
+          if uploaded_keys != set(keys):
+              raise SystemExit('first cycle did not upload every manifest frame')
+          for file_name, _ in uploads:
+              with Image.open(file_name) as image:
+                  if image.format != 'WEBP' or image.size != (1920, 1280):
+                      raise SystemExit(f"invalid image: {image.format} {image.size}")
+          print(json.dumps({
+              'renderVersion': manifest.get('renderVersion'),
+              'baseTime': base_time,
+              'variant': variant,
+              'frames': len(frames),
+              'uploads': len(uploads),
+          }, separators=(',', ':')))
+          PY
