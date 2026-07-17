@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import math
+import re
 import sys
 import time
 import urllib.error
@@ -36,6 +37,7 @@ OBJECT_RETENTION_MS = 3 * 60 * 60 * 1000
 FRAME_INTERVAL_MS = 5 * 1000
 RENDER_VERSION = "gha-v1"
 FRAME_PREFIX = "radar/frames/"
+FRAME_KEY_PATTERN = re.compile(r"^radar/frames/[a-z0-9-]{1,96}/\d{14}\.webp$")
 
 
 @dataclass(frozen=True)
@@ -205,7 +207,13 @@ def valid_existing_objects(manifest: dict[str, Any]) -> dict[str, dict[str, Any]
             continue
         key = item.get("key")
         valid_at = item.get("validAt")
-        if isinstance(key, str) and isinstance(valid_at, int):
+        if (
+            isinstance(key, str)
+            and FRAME_KEY_PATTERN.fullmatch(key)
+            and isinstance(valid_at, int)
+            and not isinstance(valid_at, bool)
+            and valid_at > 0
+        ):
             result[key] = item
     return result
 
