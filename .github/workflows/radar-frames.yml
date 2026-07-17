@@ -1,8 +1,10 @@
 name: Publish radar frames
+run-name: Radar frames · ${{ github.event_name }} · ${{ github.event.schedule || github.sha }}
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2,12,22,32,42,52 * * * *"
+    - cron: "7,17,27,37,47,57 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -15,7 +17,7 @@ permissions:
 
 concurrency:
   group: radar-frame-publish
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   publish:
@@ -29,6 +31,13 @@ jobs:
       RADAR_ZOOM: ${{ vars.RADAR_ZOOM || '10' }}
 
     steps:
+      - name: Log trigger
+        env:
+          RADAR_TRIGGER_SCHEDULE: ${{ github.event.schedule || 'not-scheduled' }}
+        run: |
+          printf 'event=%s schedule=%s ref=%s sha=%s\n' \
+            "$GITHUB_EVENT_NAME" "$RADAR_TRIGGER_SCHEDULE" "$GITHUB_REF" "$GITHUB_SHA"
+
       - name: Checkout
         uses: actions/checkout@v4
 
