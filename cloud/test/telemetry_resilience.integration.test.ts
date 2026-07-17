@@ -14,19 +14,19 @@ beforeEach(async () => {
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
 });
 
-async function postTelemetry(body: unknown): Promise<Response> {
+async function postTelemetry(body: unknown, token = "test-device"): Promise<Response> {
   return SELF.fetch("https://homepanel.test/v1/telemetry", {
     method: "POST",
     headers: {
-      Authorization: "Bearer test-device",
+      Authorization: `Bearer ${token}`,
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
   });
 }
 
-async function telemetryReceipt(body: unknown): Promise<TelemetryReceipt> {
-  const response = await postTelemetry(body);
+async function telemetryReceipt(body: unknown, token = "test-device"): Promise<TelemetryReceipt> {
+  const response = await postTelemetry(body, token);
   expect(response.status).toBe(200);
   return response.json<TelemetryReceipt>();
 }
@@ -87,11 +87,11 @@ describe("telemetry resilience", () => {
       samples: [{ sequence: 220, observedAt, co2: 820 }],
     };
 
-    expect((await telemetryReceipt(deviceA)).acknowledgedSequences).toEqual([210]);
-    expect((await telemetryReceipt(deviceB)).acknowledgedSequences).toEqual([220]);
+    expect((await telemetryReceipt(deviceA, "token-a")).acknowledgedSequences).toEqual([210]);
+    expect((await telemetryReceipt(deviceB, "token-b")).acknowledgedSequences).toEqual([220]);
     await env.DB.prepare("DELETE FROM current_state WHERE source='environment'").run();
 
-    expect((await telemetryReceipt(deviceA)).acknowledgedSequences).toEqual([210]);
+    expect((await telemetryReceipt(deviceA, "token-a")).acknowledgedSequences).toEqual([210]);
     const state = await env.DB.prepare(
       "SELECT payload FROM current_state WHERE source='environment'",
     ).first<{ payload: string }>();
