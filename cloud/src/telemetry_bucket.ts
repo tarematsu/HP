@@ -10,6 +10,17 @@ export interface TelemetrySample {
   humidityCorrected?: number;
 }
 
+export interface StoredTelemetrySample {
+  sequence: number;
+  observed_at: number;
+  co2: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  temperature_corrected: number | null;
+  humidity_corrected: number | null;
+  bucket_applied: number;
+}
+
 export interface EnvironmentHistoryRow {
   t: number;
   co2: number | null;
@@ -81,7 +92,7 @@ export function telemetrySampleStatement(
     `INSERT INTO environment_samples(
        device_id,sequence,observed_at,co2,temperature,humidity,
        temperature_corrected,humidity_corrected,bucket_applied
-     ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,0)
+     ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,1)
      ON CONFLICT(device_id,sequence) DO UPDATE SET
        observed_at=excluded.observed_at,
        co2=excluded.co2,
@@ -89,10 +100,7 @@ export function telemetrySampleStatement(
        humidity=excluded.humidity,
        temperature_corrected=excluded.temperature_corrected,
        humidity_corrected=excluded.humidity_corrected,
-       bucket_applied=CASE
-         WHEN excluded.observed_at>environment_samples.observed_at THEN 0
-         ELSE environment_samples.bucket_applied
-       END
+       bucket_applied=1
      WHERE excluded.observed_at>environment_samples.observed_at
         OR (
           excluded.observed_at=environment_samples.observed_at
@@ -115,53 +123,51 @@ export function telemetrySampleStatement(
   );
 }
 
-export function pendingTelemetryBucketStatement(
+function bucketPlaceholders(bucketAts: readonly number[], startAt: number): string {
+  return bucketAts.map((_, index) => `?${startAt + index}`).join(",");
+}
+
+export function rebuildTelemetryBucketStatements(
   env: Env,
   deviceId: string,
-  bucketAt: number,
-): D1PreparedStatement {
-  return env.DB.prepare(
+  bucketAts: readonly number[],
+): [D1PreparedStatement, D1PreparedStatement, D1PreparedStatement] {
+  if (!bucketAts.length) throw new Error("telemetry bucket rebuild requires at least one bucket");
+  const placeholders = bucketPlaceholders(bucketAts, 2);
+  const aggregatePlaceholders = bucketPlaceholders(bucketAts, 3);
+  const remove = env.DB.prepare(
+    `DELETE FROM environment_buckets
+      WHERE device_id=?1 AND bucket_at IN (${placeholders})`,
+  ).bind(deviceId, ...bucketAts);
+  const rebuild = env.DB.prepare(
     `INSERT INTO environment_buckets(
        device_id,bucket_at,sample_count,co2_sum,co2_count,
        temperature_sum,temperature_count,humidity_sum,humidity_count
      )
-     SELECT ?1,?2,COUNT(*),
+     SELECT ?1,
+       CAST(observed_at/?2 AS INTEGER)*?2 AS bucket_at,
+       COUNT(*),
        COALESCE(SUM(co2),0),COUNT(co2),
        COALESCE(SUM(COALESCE(temperature_corrected,temperature)),0),
        COUNT(COALESCE(temperature_corrected,temperature)),
        COALESCE(SUM(COALESCE(humidity_corrected,humidity)),0),
        COUNT(COALESCE(humidity_corrected,humidity))
        FROM environment_samples
-      WHERE device_id=?1 AND observed_at>=?2 AND observed_at<?3 AND bucket_applied=0
-     HAVING COUNT(*)>0
-     ON CONFLICT(device_id,bucket_at) DO UPDATE SET
-       sample_count=environment_buckets.sample_count+excluded.sample_count,
-       co2_sum=environment_buckets.co2_sum+excluded.co2_sum,
-       co2_count=environment_buckets.co2_count+excluded.co2_count,
-       temperature_sum=environment_buckets.temperature_sum+excluded.temperature_sum,
-       temperature_count=environment_buckets.temperature_count+excluded.temperature_count,
-       humidity_sum=environment_buckets.humidity_sum+excluded.humidity_sum,
-       humidity_count=environment_buckets.humidity_count+excluded.humidity_count
+      WHERE device_id=?1
+        AND CAST(observed_at/?2 AS INTEGER)*?2 IN (${aggregatePlaceholders})
+      GROUP BY CAST(observed_at/?2 AS INTEGER)*?2
      RETURNING bucket_at AS t,
        CASE WHEN co2_count>0 THEN co2_sum/co2_count ELSE NULL END AS co2,
        CASE WHEN temperature_count>0 THEN temperature_sum/temperature_count ELSE NULL END AS temperature,
-       CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity,
-       (SELECT COUNT(*) FROM environment_samples
-         WHERE device_id=?1 AND observed_at>=?2 AND observed_at<?3 AND bucket_applied=0
-       ) AS applied_count`,
-  ).bind(deviceId, bucketAt, bucketAt + ENVIRONMENT_BUCKET_MS);
-}
-
-export function markTelemetryBucketAppliedStatement(
-  env: Env,
-  deviceId: string,
-  bucketAt: number,
-): D1PreparedStatement {
-  return env.DB.prepare(
+       CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity`,
+  ).bind(deviceId, ENVIRONMENT_BUCKET_MS, ...bucketAts);
+  const markApplied = env.DB.prepare(
     `UPDATE environment_samples
         SET bucket_applied=1
-      WHERE device_id=?1 AND observed_at>=?2 AND observed_at<?3 AND bucket_applied=0`,
-  ).bind(deviceId, bucketAt, bucketAt + ENVIRONMENT_BUCKET_MS);
+      WHERE device_id=?1
+        AND CAST(observed_at/?2 AS INTEGER)*?2 IN (${aggregatePlaceholders})`,
+  ).bind(deviceId, ENVIRONMENT_BUCKET_MS, ...bucketAts);
+  return [remove, rebuild, markApplied];
 }
 
 export function telemetryHeartbeatStatement(
