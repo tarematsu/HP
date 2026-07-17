@@ -1,4 +1,3 @@
-namespace hp {
 namespace {
 
 thread_local RECT gDashboardClockCard{};
@@ -90,4 +89,3 @@ ControlsRects RearrangedControlsFromContent(const RECT&) {
 } while (false)
 
 }  // namespace
-}  // namespace hp
