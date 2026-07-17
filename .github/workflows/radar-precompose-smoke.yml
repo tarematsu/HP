@@ -1,0 +1,78 @@
+name: Temporary radar precompose smoke test
+
+on:
+  pull_request:
+    branches: ["fix/radar-precomposed-layers"]
+    paths:
+      - ".github/workflows/radar-precompose-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+
+      - name: Build precomposed radar frames
+        run: |
+          set -euo pipefail
+          python .github/scripts/build-radar-frames.py \
+            --output-dir "$RUNNER_TEMP/radar"
+
+      - name: Validate output contract
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          from PIL import Image
+
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar'
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          frames = manifest.get('frames') or []
+          uploads = [line for line in (root / 'uploads.tsv').read_text(encoding='utf-8').splitlines() if line]
+          if manifest.get('renderVersion') != 'gha-v3':
+              raise SystemExit(f"unexpected render version: {manifest.get('renderVersion')}")
+          if manifest.get('precomposed') is not True:
+              raise SystemExit('manifest is not marked precomposed')
+          if manifest.get('layers') != ['satellite', 'radar', 'map']:
+              raise SystemExit(f"unexpected layers: {manifest.get('layers')}")
+          if len(frames) != 13 or len(uploads) != 13:
+              raise SystemExit(f"unexpected frame counts: manifest={len(frames)} uploads={len(uploads)}")
+          for line in uploads:
+              file_name, key = line.split('\t', 1)
+              if not key.startswith('radar/frames/gha-v3-'):
+                  raise SystemExit(f"unexpected key: {key}")
+              with Image.open(file_name) as image:
+                  if image.size != (1920, 1280) or image.format != 'WEBP':
+                      raise SystemExit(f"unexpected image: {image.format} {image.size}")
+          print(json.dumps({
+              'renderVersion': manifest.get('renderVersion'),
+              'frames': len(frames),
+              'precomposed': manifest.get('precomposed'),
+              'layers': manifest.get('layers'),
+          }, separators=(',', ':')))
+          PY
+
+      - name: Upload generated frames
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-precompose-smoke-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/radar/manifest.json
+            ${{ runner.temp }}/radar/frames/*.webp
+          if-no-files-found: error
+          retention-days: 1
