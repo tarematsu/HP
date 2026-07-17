@@ -41,6 +41,8 @@ jobs:
           curl --fail-with-body --silent --show-error "${headers[@]}" \
             "$api/contents/.github/workflows/radar-frames.yml?ref=main" > report/workflow-content.json
           curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/commits?path=.github/workflows/radar-frames.yml&sha=main&per_page=30" > report/workflow-commits.json
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
             "$api/actions/permissions" > report/actions-permissions.json || true
           curl --fail-with-body --silent --show-error "${headers[@]}" \
             "$api/actions/permissions/workflow" > report/workflow-permissions.json || true
@@ -51,6 +53,7 @@ jobs:
             --slurpfile workflow report/workflow.json \
             --slurpfile runs report/runs.json \
             --slurpfile workflows report/workflows.json \
+            --slurpfile commits report/workflow-commits.json \
             '{
               checkedAt: $checkedAt,
               repository: {
@@ -70,8 +73,22 @@ jobs:
               },
               runCount: ($runs[0].workflow_runs | length),
               events: ($runs[0].workflow_runs | group_by(.event) | map({event: .[0].event, count: length})),
-              latestRuns: ($runs[0].workflow_runs[:20] | map({id, run_number, event, status, conclusion, created_at, run_started_at, updated_at, head_sha, display_title})),
-              scheduleRuns: ($runs[0].workflow_runs | map(select(.event == "schedule")) | map({id, run_number, status, conclusion, created_at, run_started_at, updated_at, head_sha})[:20]),
+              latestRuns: ($runs[0].workflow_runs[:20] | map({id, run_number, event, status, conclusion, created_at, run_started_at, updated_at, head_sha, actor: .actor.login, triggering_actor: .triggering_actor.login, display_title})),
+              scheduleRuns: ($runs[0].workflow_runs | map(select(.event == "schedule")) | map({id, run_number, status, conclusion, created_at, run_started_at, updated_at, head_sha, actor: .actor.login, triggering_actor: .triggering_actor.login})[:20]),
+              workflowCommits: ($commits[0] | map({
+                sha,
+                message: .commit.message,
+                authoredAt: .commit.author.date,
+                committedAt: .commit.committer.date,
+                gitAuthorName: .commit.author.name,
+                gitAuthorEmail: .commit.author.email,
+                gitCommitterName: .commit.committer.name,
+                gitCommitterEmail: .commit.committer.email,
+                authorLogin: .author.login,
+                authorType: .author.type,
+                committerLogin: .committer.login,
+                committerType: .committer.type
+              })),
               workflowListEntry: ($workflows[0].workflows | map(select(.path == ".github/workflows/radar-frames.yml")) | .[0])
             }' > report/scheduler-summary.json
 
