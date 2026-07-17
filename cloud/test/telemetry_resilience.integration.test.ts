@@ -76,6 +76,39 @@ describe("telemetry resilience", () => {
     expect(payload.history).toEqual([{ t: observedAt, co2: 810, temperature: null, humidity: null }]);
   });
 
+  it("restores every device from durable buckets after the environment state is lost", async () => {
+    const observedAt = Math.floor((Date.now() - 1000) / 300_000) * 300_000;
+    const deviceA = {
+      deviceId: "device-a",
+      samples: [{ sequence: 210, observedAt, co2: 610 }],
+    };
+    const deviceB = {
+      deviceId: "device-b",
+      samples: [{ sequence: 220, observedAt, co2: 820 }],
+    };
+
+    expect((await telemetryReceipt(deviceA)).acknowledgedSequences).toEqual([210]);
+    expect((await telemetryReceipt(deviceB)).acknowledgedSequences).toEqual([220]);
+    await env.DB.prepare("DELETE FROM current_state WHERE source='environment'").run();
+
+    expect((await telemetryReceipt(deviceA)).acknowledgedSequences).toEqual([210]);
+    const state = await env.DB.prepare(
+      "SELECT payload FROM current_state WHERE source='environment'",
+    ).first<{ payload: string }>();
+    const payload = JSON.parse(state?.payload ?? "{}") as {
+      deviceId?: string;
+      devices?: Record<string, { history: Array<{ t: number; co2: number | null }> }>;
+    };
+    expect(payload.deviceId).toBe("device-a");
+    expect(Object.keys(payload.devices ?? {}).sort()).toEqual(["device-a", "device-b"]);
+    expect(payload.devices?.["device-a"]?.history).toEqual([
+      { t: observedAt, co2: 610, temperature: null, humidity: null },
+    ]);
+    expect(payload.devices?.["device-b"]?.history).toEqual([
+      { t: observedAt, co2: 820, temperature: null, humidity: null },
+    ]);
+  });
+
   it("accepts a reused sequence when the replacement sample is newer", async () => {
     const firstAt = Math.floor((Date.now() - 20 * 60_000) / 300_000) * 300_000;
     const secondAt = firstAt + 300_000;
