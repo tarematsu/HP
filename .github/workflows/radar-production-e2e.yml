@@ -96,7 +96,7 @@ jobs:
           npx wrangler r2 object get homepanel-updates/radar/manifest.json \
             --file="$GITHUB_WORKSPACE/report/push-manifest.json" --remote
           started_epoch="$(date -u -d "$PUSH_STARTED_AT" +%s)"
-          generated_epoch="$(jq -r '.generatedAt | fromdateiso8601' "$GITHUB_WORKSPACE/report/push-manifest.json")"
+          generated_epoch="$(date -u -d "$(jq -r '.generatedAt' "$GITHUB_WORKSPACE/report/push-manifest.json")" +%s)"
           test "$generated_epoch" -ge "$((started_epoch - 30))"
           test "$(jq -r '.renderVersion' "$GITHUB_WORKSPACE/report/push-manifest.json")" = gha-v3
           test "$(jq -r '.precomposed' "$GITHUB_WORKSPACE/report/push-manifest.json")" = true
@@ -178,7 +178,7 @@ jobs:
           npx wrangler r2 object get homepanel-updates/radar/manifest.json \
             --file="$GITHUB_WORKSPACE/report/final-manifest.json" --remote
           started_epoch="$(date -u -d "$DISPATCH_STARTED_AT" +%s)"
-          generated_epoch="$(jq -r '.generatedAt | fromdateiso8601' "$GITHUB_WORKSPACE/report/final-manifest.json")"
+          generated_epoch="$(date -u -d "$(jq -r '.generatedAt' "$GITHUB_WORKSPACE/report/final-manifest.json")" +%s)"
           test "$generated_epoch" -ge "$((started_epoch - 30))"
           test "$(jq -r '.renderVersion' "$GITHUB_WORKSPACE/report/final-manifest.json")" = gha-v3
           test "$(jq -r '.precomposed' "$GITHUB_WORKSPACE/report/final-manifest.json")" = true
