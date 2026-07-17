@@ -2,14 +2,13 @@ name: Publish radar frames
 run-name: Radar frames · ${{ github.event_name }} · ${{ github.event.schedule || github.sha }}
 
 on:
-  schedule:
-    - cron: "2,12,22,32,42,52 * * * *"
-    - cron: "7,17,27,37,47,57 * * * *"
+  workflow_call:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - ".github/workflows/radar-frames.yml"
+      - ".github/workflows/radar-scheduler.yml"
       - ".github/scripts/build-radar-frames.py"
 
 permissions:
