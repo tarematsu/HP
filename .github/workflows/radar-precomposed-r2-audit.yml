@@ -1,0 +1,158 @@
+name: Temporary precomposed radar R2 audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-precomposed-r2-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      AWS_DEFAULT_REGION: auto
+      R2_BUCKET: homepanel-updates
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+
+      - name: Derive R2 credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          verify="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          token_id="$(jq -er '.result.id' <<<"$verify")"
+          secret="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)"
+          accounts="$(curl --fail-with-body --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" 'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
+          export AWS_ACCESS_KEY_ID="$token_id" AWS_SECRET_ACCESS_KEY="$secret"
+          match=""
+          while read -r account_id; do
+            endpoint="https://${account_id}.r2.cloudflarestorage.com"
+            if aws s3api head-bucket --endpoint-url "$endpoint" --bucket "$R2_BUCKET" >/dev/null 2>&1; then
+              test -z "$match" || { echo 'Multiple matching accounts' >&2; exit 1; }
+              match="$account_id"
+            fi
+          done < <(jq -r '.result[].id' <<<"$accounts")
+          test -n "$match" || { echo "R2 bucket not accessible: $R2_BUCKET" >&2; exit 1; }
+          echo "::add-mask::$token_id"
+          echo "::add-mask::$secret"
+          echo "AWS_ACCESS_KEY_ID=$token_id" >> "$GITHUB_ENV"
+          echo "AWS_SECRET_ACCESS_KEY=$secret" >> "$GITHUB_ENV"
+          echo "R2_ENDPOINT=https://${match}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+
+      - name: Wait for gha-v3 radar manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 40); do
+            if aws s3api get-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$R2_BUCKET" \
+              --key radar/manifest.json \
+              manifest.json >/dev/null 2>&1; then
+              if jq -e '.renderVersion == "gha-v3" and .precomposed == true and (.frames | length) == 13' manifest.json >/dev/null; then
+                echo "gha-v3 radar manifest found on attempt $attempt"
+                exit 0
+              fi
+              echo "Radar manifest is still $(jq -r '.renderVersion // "unknown"' manifest.json), attempt $attempt/40"
+            else
+              echo "Radar manifest unavailable, attempt $attempt/40"
+            fi
+            sleep 15
+          done
+          echo "gha-v3 radar manifest was not published within ten minutes" >&2
+          exit 1
+
+      - name: Validate R2 frames
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import datetime as dt
+          import json
+          import pathlib
+
+          manifest = json.loads(pathlib.Path('manifest.json').read_text(encoding='utf-8'))
+          frames = manifest.get('frames') or []
+          generated = dt.datetime.fromisoformat(str(manifest.get('generatedAt', '')).replace('Z', '+00:00'))
+          age = (dt.datetime.now(dt.timezone.utc) - generated).total_seconds()
+          if manifest.get('renderVersion') != 'gha-v3':
+              raise SystemExit(f"unexpected renderVersion: {manifest.get('renderVersion')}")
+          if manifest.get('precomposed') is not True:
+              raise SystemExit('manifest is not precomposed')
+          if manifest.get('layers') != ['satellite', 'radar', 'map']:
+              raise SystemExit(f"unexpected layers: {manifest.get('layers')}")
+          if len(frames) != 13:
+              raise SystemExit(f"unexpected frame count: {len(frames)}")
+          if age < -300 or age > 900:
+              raise SystemExit(f"manifest age is invalid: {age:.1f}s")
+          valid_times = [frame.get('validTime') for frame in frames]
+          if valid_times != sorted(valid_times) or len(set(valid_times)) != 13:
+              raise SystemExit('frame times are not unique and ordered')
+          pathlib.Path('frame-keys.txt').write_text(
+              '\n'.join(str(frame.get('key')) for frame in frames) + '\n',
+              encoding='utf-8',
+          )
+          print(json.dumps({
+              'renderVersion': manifest.get('renderVersion'),
+              'generatedAt': manifest.get('generatedAt'),
+              'currentAt': manifest.get('currentAt'),
+              'frames': len(frames),
+              'firstValidTime': valid_times[0],
+              'lastValidTime': valid_times[-1],
+              'ageSeconds': round(age, 1),
+          }, separators=(',', ':')))
+          PY
+
+          count=0
+          total_bytes=0
+          first_key=""
+          while IFS= read -r key; do
+            test -n "$key" || continue
+            size="$(aws s3api head-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$R2_BUCKET" \
+              --key "$key" \
+              --query ContentLength \
+              --output text)"
+            test "$size" -gt 0
+            count=$((count + 1))
+            total_bytes=$((total_bytes + size))
+            if [[ -z "$first_key" ]]; then first_key="$key"; fi
+          done < frame-keys.txt
+          test "$count" -eq 13
+          aws s3api get-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$R2_BUCKET" \
+            --key "$first_key" \
+            first-frame.webp >/dev/null
+          python - <<'PY'
+          from PIL import Image
+          with Image.open('first-frame.webp') as image:
+              if image.format != 'WEBP' or image.size != (1920, 1280):
+                  raise SystemExit(f"unexpected first frame: {image.format} {image.size}")
+              image.verify()
+          PY
+          echo "Verified $count precomposed WebP objects, total bytes: $total_bytes"
+
+      - name: Upload R2 sample
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-precomposed-r2-${{ github.run_id }}
+          path: |
+            manifest.json
+            first-frame.webp
+          if-no-files-found: error
+          retention-days: 1
