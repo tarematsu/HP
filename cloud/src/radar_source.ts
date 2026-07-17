@@ -79,24 +79,24 @@ async function renderFrame(
   const baseResponse = mapResponses[0]!.clone();
 
   let image = env.IMAGES.input(baseResponse.body!)
-    .transform({ width: 480, height: 320, fit: "fill" });
+    .transform({ width: 480, height: 320, fit: "squeeze" });
   for (let index = 0; index < layout.length; index += 1) {
     const tile = layout[index]!;
     image = image.draw(
-      env.IMAGES.input(mapResponses[index]!.body!).transform({ width: 256, height: 256, fit: "fill" }),
+      env.IMAGES.input(mapResponses[index]!.body!).transform({ width: 256, height: 256, fit: "squeeze" }),
       { left: tile.destX, top: tile.destY },
     );
   }
   for (let index = 0; index < layout.length; index += 1) {
     const tile = layout[index]!;
     image = image.draw(
-      env.IMAGES.input(radarResponses[index]!.body!).transform({ width: 256, height: 256, fit: "fill" }),
+      env.IMAGES.input(radarResponses[index]!.body!).transform({ width: 256, height: 256, fit: "squeeze" }),
       { left: tile.destX, top: tile.destY },
     );
   }
 
   const output = await image
-    .transform({ width: RADAR_OUTPUT_WIDTH, height: RADAR_OUTPUT_HEIGHT, fit: "fill" })
+    .transform({ width: RADAR_OUTPUT_WIDTH, height: RADAR_OUTPUT_HEIGHT, fit: "squeeze" })
     .output({ format: "image/webp" });
   const response = output.response();
   if (!response.body) throw new Error("Cloudflare Images returned an empty radar frame");
