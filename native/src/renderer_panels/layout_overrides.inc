@@ -6,9 +6,9 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
   const int available = std::max(4, height - gap * 3);
-  const int clockHeight = available * 31 / 100;
-  const int weatherHeight = available * 23 / 100;
-  const int energyHeight = available * 23 / 100;
+  const int clockHeight = available * 27 / 100;
+  const int weatherHeight = available * 24 / 100;
+  const int energyHeight = available * 24 / 100;
   const int airHeight = std::max(1, available - clockHeight - weatherHeight - energyHeight);
 
   SidebarSections sections;
@@ -44,6 +44,15 @@ RECT ClockControlsContent(const RECT& card) {
   return controls;
 }
 
+RECT RearrangedClockTimeRectFromCard(const RECT& card) {
+  const RECT content = CardContentRect(card);
+  RECT timeRect{content.left, content.top + SpanY(content, 180),
+                content.right, content.top + SpanY(content, 550)};
+  if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
+  if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
+  return timeRect;
+}
+
 ControlsRects RearrangedControlsFromContent(const RECT&) {
   return ControlsFromContent(ClockControlsContent(gDashboardClockCard));
 }
@@ -53,11 +62,14 @@ ControlsRects RearrangedControlsFromContent(const RECT&) {
   const RECT hpClockContent = CardContentRect((card)); \
   SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
   RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 180)}; \
-  RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 550)}; \
+  RECT hpTimeRect = RearrangedClockTimeRectFromCard((card)); \
   HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetMuted); \
   DrawTextInRect((dc), DateText(hpNow), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
-  SelectObject((dc), TierFont(FontTier::Large)); \
+  const int hpTimeHeight = std::max(1L, hpTimeRect.bottom - hpTimeRect.top); \
+  const int hpTimeWidth = std::max(1L, hpTimeRect.right - hpTimeRect.left); \
+  const int hpTimeFontHeight = std::clamp(std::min(hpTimeHeight * 72 / 100, hpTimeWidth * 18 / 100), 32, 88); \
+  SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
   DrawTextInRect((dc), TimeText(hpNow), hpTimeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER); \
   const ControlsRects hpControls = RearrangedControlsFromContent((card)); \
