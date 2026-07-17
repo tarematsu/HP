@@ -34,6 +34,7 @@ export interface Env {
   RADAR_CENTER_LAT?: string;
   RADAR_CENTER_LON?: string;
   RADAR_ZOOM?: string;
+  GITHUB_RADAR_DISPATCH_TOKEN?: string;
 }
 
 export type StateStatus = "ok" | "stale" | "error";
