@@ -84,6 +84,65 @@ describe("HomePanel Worker integration", () => {
     expect(Number(metrics?.count)).toBe(0);
   });
 
+  it("replaces a later correction inside the same telemetry bucket", async () => {
+    const bucketAt = Math.floor((Date.now() - 10 * 60_000) / 300_000) * 300_000;
+    const first = await readTelemetry(await postTelemetry({
+      deviceId: "ci-device",
+      samples: [{ sequence: 30, observedAt: bucketAt + 1000, co2: 600 }],
+    }));
+    const corrected = await readTelemetry(await postTelemetry({
+      deviceId: "ci-device",
+      samples: [{ sequence: 30, observedAt: bucketAt + 2000, co2: 900 }],
+    }));
+
+    expect(first).toMatchObject({ accepted: 1, acknowledgedSequences: [30] });
+    expect(corrected).toMatchObject({ accepted: 1, acknowledgedSequences: [30] });
+    const bucket = await env.DB.prepare(
+      "SELECT sample_count,co2_sum FROM environment_buckets WHERE device_id=?1 AND bucket_at=?2",
+    ).bind("ci-device", bucketAt).first<{ sample_count: number; co2_sum: number }>();
+    expect(bucket).toMatchObject({ sample_count: 1, co2_sum: 900 });
+
+    const state = await env.DB.prepare(
+      "SELECT payload FROM current_state WHERE source='environment'",
+    ).first<{ payload: string }>();
+    const payload = JSON.parse(state!.payload) as { history: Array<{ t: number; co2: number | null }> };
+    expect(payload.history).toEqual([{ t: bucketAt, co2: 900, temperature: null, humidity: null }]);
+  });
+
+  it("removes the old bucket contribution when a corrected sequence moves", async () => {
+    const oldBucket = Math.floor((Date.now() - 15 * 60_000) / 300_000) * 300_000;
+    const newBucket = oldBucket + 300_000;
+    await readTelemetry(await postTelemetry({
+      deviceId: "ci-device",
+      samples: [
+        { sequence: 40, observedAt: oldBucket + 1000, co2: 600 },
+        { sequence: 41, observedAt: oldBucket + 2000, co2: 800 },
+      ],
+    }));
+    const moved = await readTelemetry(await postTelemetry({
+      deviceId: "ci-device",
+      samples: [{ sequence: 40, observedAt: newBucket + 1000, co2: 1000 }],
+    }));
+
+    expect(moved).toMatchObject({ accepted: 1, acknowledgedSequences: [40] });
+    const buckets = await env.DB.prepare(
+      "SELECT bucket_at,sample_count,co2_sum FROM environment_buckets WHERE device_id=?1 ORDER BY bucket_at",
+    ).bind("ci-device").all<{ bucket_at: number; sample_count: number; co2_sum: number }>();
+    expect(buckets.results).toEqual([
+      { bucket_at: oldBucket, sample_count: 1, co2_sum: 800 },
+      { bucket_at: newBucket, sample_count: 1, co2_sum: 1000 },
+    ]);
+
+    const state = await env.DB.prepare(
+      "SELECT payload FROM current_state WHERE source='environment'",
+    ).first<{ payload: string }>();
+    const payload = JSON.parse(state!.payload) as { history: Array<{ t: number; co2: number | null }> };
+    expect(payload.history).toEqual([
+      { t: oldBucket, co2: 800, temperature: null, humidity: null },
+      { t: newBucket, co2: 1000, temperature: null, humidity: null },
+    ]);
+  });
+
   it("deduplicates equal sequences inside one telemetry request", async () => {
     const observedAt = Date.now() - 1000;
     const receipt = await readTelemetry(await postTelemetry({
