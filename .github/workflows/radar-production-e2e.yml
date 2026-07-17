@@ -1,0 +1,217 @@
+name: Temporary radar production E2E audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-production-e2e.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
+      EXPECTED_MAIN_SHA: 3fb7b7feacb5579732abb58fe6252b8916eefc83
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: cloud
+
+      - name: Resolve Cloudflare settings
+        id: resolve
+        run: node .github/scripts/resolve-cloudflare-config.mjs
+
+      - name: Wait for merge-triggered radar publication
+        id: push_run
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          run_id=""
+          for attempt in $(seq 1 90); do
+            curl --fail-with-body --silent --show-error "${auth[@]}" \
+              "$api/actions/workflows/radar-frames.yml/runs?event=push&branch=main&per_page=30" \
+              > report/push-runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | .[0].id // empty' report/push-runs.json)"
+            if [[ -n "$run_id" ]]; then
+              curl --fail-with-body --silent --show-error "${auth[@]}" \
+                "$api/actions/runs/$run_id" > report/push-run.json
+              status="$(jq -r '.status' report/push-run.json)"
+              conclusion="$(jq -r '.conclusion // empty' report/push-run.json)"
+              echo "push run=$run_id status=$status conclusion=${conclusion:-pending} attempt=$attempt/90"
+              if [[ "$status" == completed ]]; then
+                test "$conclusion" = success || { jq . report/push-run.json; exit 1; }
+                break
+              fi
+            else
+              echo "push radar run not found, attempt $attempt/90"
+            fi
+            sleep 10
+          done
+          test -n "$run_id"
+          test "$(jq -r '.status' report/push-run.json)" = completed
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(jq -r '.run_started_at' report/push-run.json)" >> "$GITHUB_OUTPUT"
+          echo "completed_at=$(jq -r '.updated_at' report/push-run.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify merge-triggered workflow steps
+        env:
+          RUN_ID: ${{ steps.push_run.outputs.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          curl --fail-with-body --silent --show-error "${auth[@]}" \
+            "$api/actions/runs/$RUN_ID/jobs?per_page=20" > report/push-jobs.json
+          for step in "Test radar frame builder" "Build radar WebP frames" "Publish radar frames to R2"; do
+            result="$(jq -r --arg step "$step" '[.jobs[].steps[]? | select(.name == $step)][0].conclusion // empty' report/push-jobs.json)"
+            echo "$step=$result"
+            test "$result" = success
+          done
+
+      - name: Verify merge-triggered R2 publication
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+          PUSH_STARTED_AT: ${{ steps.push_run.outputs.started_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler r2 object get homepanel-updates/radar/manifest.json \
+            --file="$GITHUB_WORKSPACE/report/push-manifest.json" --remote
+          started_epoch="$(date -u -d "$PUSH_STARTED_AT" +%s)"
+          generated_epoch="$(jq -r '.generatedAt | fromdateiso8601' "$GITHUB_WORKSPACE/report/push-manifest.json")"
+          test "$generated_epoch" -ge "$((started_epoch - 30))"
+          test "$(jq -r '.renderVersion' "$GITHUB_WORKSPACE/report/push-manifest.json")" = gha-v3
+          test "$(jq -r '.precomposed' "$GITHUB_WORKSPACE/report/push-manifest.json")" = true
+          test "$(jq -r '.frames | length' "$GITHUB_WORKSPACE/report/push-manifest.json")" = 13
+        working-directory: cloud
+
+      - name: Wait for a later Cloudflare dispatch marker
+        id: marker
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+          PUSH_COMPLETED_AT: ${{ steps.push_run.outputs.completed_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          push_epoch="$(date -u -d "$PUSH_COMPLETED_AT" +%s)"
+          dispatch_epoch=""
+          for attempt in $(seq 1 100); do
+            if npx wrangler r2 object get homepanel-updates/radar/dispatch.json \
+              --file="$GITHUB_WORKSPACE/report/dispatch.json" --remote >/dev/null 2>&1; then
+              dispatched_ms="$(jq -r '.dispatchedAt // empty' "$GITHUB_WORKSPACE/report/dispatch.json")"
+              if [[ "$dispatched_ms" =~ ^[0-9]+$ ]]; then
+                dispatch_epoch=$((dispatched_ms / 1000))
+                echo "dispatch=$dispatch_epoch push-completed=$push_epoch attempt=$attempt/100"
+                if (( dispatch_epoch > push_epoch )); then
+                  break
+                fi
+              fi
+            fi
+            sleep 10
+          done
+          test -n "$dispatch_epoch"
+          test "$dispatch_epoch" -gt "$push_epoch"
+          echo "epoch=$dispatch_epoch" >> "$GITHUB_OUTPUT"
+        working-directory: cloud
+
+      - name: Wait for Cloudflare-triggered radar publication
+        id: dispatch_run
+        env:
+          DISPATCH_EPOCH: ${{ steps.marker.outputs.epoch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          auth=(-H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28")
+          run_id=""
+          for attempt in $(seq 1 90); do
+            curl --fail-with-body --silent --show-error "${auth[@]}" \
+              "$api/actions/workflows/radar-frames.yml/runs?event=workflow_dispatch&branch=main&per_page=30" \
+              > report/dispatch-runs.json
+            run_id="$(jq -r --argjson cutoff "$DISPATCH_EPOCH" '.workflow_runs | map(select((.created_at | fromdateiso8601) >= ($cutoff - 30))) | sort_by(.created_at) | reverse | .[0].id // empty' report/dispatch-runs.json)"
+            if [[ -n "$run_id" ]]; then
+              curl --fail-with-body --silent --show-error "${auth[@]}" \
+                "$api/actions/runs/$run_id" > report/dispatch-run.json
+              status="$(jq -r '.status' report/dispatch-run.json)"
+              conclusion="$(jq -r '.conclusion // empty' report/dispatch-run.json)"
+              echo "dispatch run=$run_id status=$status conclusion=${conclusion:-pending} attempt=$attempt/90"
+              if [[ "$status" == completed ]]; then
+                test "$conclusion" = success || { jq . report/dispatch-run.json; exit 1; }
+                break
+              fi
+            else
+              echo "workflow_dispatch run not found, attempt=$attempt/90"
+            fi
+            sleep 10
+          done
+          test -n "$run_id"
+          test "$(jq -r '.status' report/dispatch-run.json)" = completed
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "started_at=$(jq -r '.run_started_at' report/dispatch-run.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify periodic R2 publication and all frames
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+          DISPATCH_STARTED_AT: ${{ steps.dispatch_run.outputs.started_at }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/radar-frames"
+          npx wrangler r2 object get homepanel-updates/radar/manifest.json \
+            --file="$GITHUB_WORKSPACE/report/final-manifest.json" --remote
+          started_epoch="$(date -u -d "$DISPATCH_STARTED_AT" +%s)"
+          generated_epoch="$(jq -r '.generatedAt | fromdateiso8601' "$GITHUB_WORKSPACE/report/final-manifest.json")"
+          test "$generated_epoch" -ge "$((started_epoch - 30))"
+          test "$(jq -r '.renderVersion' "$GITHUB_WORKSPACE/report/final-manifest.json")" = gha-v3
+          test "$(jq -r '.precomposed' "$GITHUB_WORKSPACE/report/final-manifest.json")" = true
+          test "$(jq -r '.frames | length' "$GITHUB_WORKSPACE/report/final-manifest.json")" = 13
+
+          count=0
+          total_bytes=0
+          while IFS= read -r key; do
+            file="$RUNNER_TEMP/radar-frames/$count.webp"
+            npx wrangler r2 object get "homepanel-updates/$key" --file="$file" --remote >/dev/null
+            test -s "$file"
+            size="$(stat -c %s "$file")"
+            count=$((count + 1))
+            total_bytes=$((total_bytes + size))
+          done < <(jq -r '.frames[].key' "$GITHUB_WORKSPACE/report/final-manifest.json")
+          test "$count" -eq 13
+
+          jq -n \
+            --arg checkedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg pushRun "${{ steps.push_run.outputs.run_id }}" \
+            --arg dispatchRun "${{ steps.dispatch_run.outputs.run_id }}" \
+            --arg generatedAt "$(jq -r '.generatedAt' "$GITHUB_WORKSPACE/report/final-manifest.json")" \
+            --argjson frames "$count" \
+            --argjson totalBytes "$total_bytes" \
+            '{checkedAt,pushRun,dispatchRun,generatedAt,frames,totalBytes}' \
+            | tee "$GITHUB_WORKSPACE/report/summary.json"
+        working-directory: cloud
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-production-e2e-${{ github.run_id }}
+          path: report/
+          if-no-files-found: warn
+          retention-days: 1
