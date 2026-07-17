@@ -62,9 +62,9 @@ static_assert(!StationheadAdditionalNonPlaybackScriptUrl(
 static_assert(!StationheadAdditionalNonPlaybackScriptUrl(
     L"https://cdn.example.com/assets/notifications-panel.js"));
 
-// Locates the current Start Listening-like control, if any, and returns its
-// clickable center point as {x, y}, or null if there is nothing to click
-// right now (already playing, or no eligible control visible). Called
+// Locates the current Stationhead playback/onboarding control, if any, and
+// returns its clickable center point as {x, y}, or null if there is nothing to
+// click right now (already playing, or no eligible control visible). Called
 // on-demand from native code immediately before dispatching a click, so the
 // coordinates it returns are always fresh - there is no page-scheduled scan
 // loop whose captured position could go stale while a message travels back
@@ -74,7 +74,7 @@ inline std::wstring StationheadLocateStartButtonScript() {
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return null;
-  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|続ける|続行|次へ)$/i;
+  const startPattern = /\b(start|join|resume|continue)\s+(listening|station|show|room)\b|\blisten\s+(now|live)\b|^(continue|let(?:'|’)?s\s+go|続ける|続行|次へ)$/i;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const labelOf = element => normalize([
     element?.innerText,
