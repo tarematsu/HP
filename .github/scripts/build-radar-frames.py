@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build recent JMA radar frames for HomePanel and emit an R2 publish plan."""
+"""Build the current JMA radar frame and the next hour of forecast frames."""
 
 from __future__ import annotations
 
@@ -21,7 +21,8 @@ from typing import Any
 
 from PIL import Image
 
-TARGET_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json"
+OBSERVED_TARGET_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json"
+FORECAST_TARGET_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json"
 GSI_TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/pale/{zoom}/{x}/{y}.png"
 JMA_TILE_URL = (
     "https://www.jma.go.jp/bosai/jmatile/data/nowc/"
@@ -32,10 +33,10 @@ SOURCE_WIDTH = 480
 SOURCE_HEIGHT = 320
 OUTPUT_WIDTH = 1920
 OUTPUT_HEIGHT = 1280
-HISTORY_WINDOW_MS = 60 * 60 * 1000
+FORECAST_WINDOW_MS = 60 * 60 * 1000
 OBJECT_RETENTION_MS = 3 * 60 * 60 * 1000
 FRAME_INTERVAL_MS = 5 * 1000
-RENDER_VERSION = "gha-v1"
+RENDER_VERSION = "gha-v2"
 FRAME_PREFIX = "radar/frames/"
 FRAME_KEY_PATTERN = re.compile(r"^radar/frames/[a-z0-9-]{1,96}/\d{14}\.webp$")
 
@@ -90,8 +91,7 @@ def jma_timestamp_ms(value: str) -> int:
     return int(parsed.timestamp() * 1000)
 
 
-def load_entries() -> list[TimeEntry]:
-    raw = fetch_json(TARGET_TIMES_URL)
+def parse_entries(raw: Any) -> list[TimeEntry]:
     if not isinstance(raw, list):
         raise RuntimeError("JMA target-times response is not an array")
 
@@ -109,16 +109,51 @@ def load_entries() -> list[TimeEntry]:
         valid_at = jma_timestamp_ms(valid_time)
         if valid_at:
             entries.append(TimeEntry(base_time, valid_time, valid_at))
-
     entries.sort(key=lambda entry: entry.valid_at)
-    if not entries:
-        raise RuntimeError("JMA nowcast contains no hrpns frames")
-    latest_at = entries[-1].valid_at
-    return [
-        entry
-        for entry in entries
-        if latest_at - HISTORY_WINDOW_MS <= entry.valid_at <= latest_at
-    ]
+    return entries
+
+
+def select_current_and_forecast(
+    observed: list[TimeEntry],
+    forecast: list[TimeEntry],
+) -> list[TimeEntry]:
+    forecast_base_times = {entry.base_time for entry in forecast}
+    current = next(
+        (
+            entry
+            for entry in reversed(observed)
+            if entry.base_time == entry.valid_time and entry.base_time in forecast_base_times
+        ),
+        None,
+    )
+    if current is None:
+        raise RuntimeError("JMA current frame has no matching forecast cycle")
+
+    forecast_end = current.valid_at + FORECAST_WINDOW_MS
+    future_by_valid_time: dict[str, TimeEntry] = {}
+    for entry in forecast:
+        if entry.base_time != current.base_time:
+            continue
+        if current.valid_at < entry.valid_at <= forecast_end:
+            future_by_valid_time[entry.valid_time] = entry
+
+    future = sorted(future_by_valid_time.values(), key=lambda entry: entry.valid_at)
+    if not future:
+        raise RuntimeError("JMA one-hour forecast frames are unavailable")
+    return [current, *future]
+
+
+def load_entries() -> list[TimeEntry]:
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        observed_future = executor.submit(fetch_json, OBSERVED_TARGET_TIMES_URL)
+        forecast_future = executor.submit(fetch_json, FORECAST_TARGET_TIMES_URL)
+        observed = parse_entries(observed_future.result())
+        forecast = parse_entries(forecast_future.result())
+    if not observed:
+        raise RuntimeError("JMA nowcast contains no observed hrpns frames")
+    if not forecast:
+        raise RuntimeError("JMA nowcast contains no forecast hrpns frames")
+    return select_current_and_forecast(observed, forecast)
 
 
 def tile_layout(lat: float, lon: float, zoom: int) -> list[Tile]:
@@ -258,6 +293,7 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     entries = load_entries()
+    current_at = entries[0].valid_at
     layout = tile_layout(args.center_lat, args.center_lon, args.zoom)
     variant = variant_for(args.center_lat, args.center_lon, args.zoom)
     existing_manifest = load_existing_manifest(args.existing_manifest)
@@ -281,8 +317,7 @@ def main() -> int:
         render_frame(entry, layout, map_tiles, args.zoom, local_path)
         uploads.append((str(local_path), key))
 
-    latest_at = entries[-1].valid_at
-    retention_cutoff = latest_at - OBJECT_RETENTION_MS
+    retention_cutoff = current_at - OBJECT_RETENTION_MS
     retained_objects = {
         key: item
         for key, item in existing_objects.items()
@@ -293,17 +328,18 @@ def main() -> int:
 
     stale_keys = sorted(set(existing_objects) - set(retained_objects))
     manifest = {
-        "version": 1,
+        "version": 2,
         "renderVersion": RENDER_VERSION,
         "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "provider": "JMA radar rendered by GitHub Actions and cached in Cloudflare R2",
+        "currentAt": current_at,
+        "provider": "JMA current radar and one-hour forecast rendered by GitHub Actions and cached in Cloudflare R2",
         "width": 256,
         "height": 256,
         "outputWidth": OUTPUT_WIDTH,
         "outputHeight": OUTPUT_HEIGHT,
         "center": {"lat": args.center_lat, "lon": args.center_lon},
         "zoom": args.zoom,
-        "historyWindowMs": HISTORY_WINDOW_MS,
+        "forecastWindowMs": FORECAST_WINDOW_MS,
         "frameIntervalMs": FRAME_INTERVAL_MS,
         "playbackRate": 1,
         "frames": current_records,
@@ -324,7 +360,8 @@ def main() -> int:
 
     print(
         f"radar frames={len(current_records)} uploads={len(uploads)} "
-        f"deletes={len(stale_keys)} variant={variant}"
+        f"deletes={len(stale_keys)} current={entries[0].valid_time} "
+        f"end={entries[-1].valid_time} variant={variant}"
     )
     return 0
 
