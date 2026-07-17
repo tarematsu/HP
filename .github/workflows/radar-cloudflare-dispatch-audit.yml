@@ -1,0 +1,148 @@
+name: Temporary radar Cloudflare dispatch audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-cloudflare-dispatch-audit.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_MAIN_SHA: 568744ac5588ecda2d7db0bbd4ea7d4237594731
+
+    steps:
+      - name: Wait for production Worker deploy
+        id: deploy
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          headers=(
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          run_id=""
+          for attempt in $(seq 1 90); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "$api/actions/workflows/cloud-deploy.yml/runs?branch=main&event=push&per_page=20" \
+              > report/deploy-runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | .[0].id // empty' report/deploy-runs.json)"
+            if [[ -n "$run_id" ]]; then break; fi
+            echo "Waiting for production deploy run, attempt $attempt/90"
+            sleep 10
+          done
+          test -n "$run_id" || { echo "Production deploy run was not created" >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+          for attempt in $(seq 1 120); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "$api/actions/runs/$run_id" > report/deploy-run.json
+            status="$(jq -r '.status' report/deploy-run.json)"
+            conclusion="$(jq -r '.conclusion // empty' report/deploy-run.json)"
+            echo "deploy status=$status conclusion=${conclusion:-pending} attempt=$attempt/120"
+            if [[ "$status" == completed ]]; then
+              test "$conclusion" = success || { jq . report/deploy-run.json; exit 1; }
+              break
+            fi
+            sleep 5
+          done
+          test "$(jq -r '.status' report/deploy-run.json)" = completed
+
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/runs/$run_id/jobs?per_page=100" > report/deploy-jobs.json
+
+      - name: Verify dispatch token synchronization
+        run: |
+          set -euo pipefail
+          sync_state="$(jq -r '[.jobs[].steps[]? | select(.name == "Sync radar dispatcher token")][0].conclusion // "missing"' report/deploy-jobs.json)"
+          missing_state="$(jq -r '[.jobs[].steps[]? | select(.name == "Report missing radar dispatcher token")][0].conclusion // "missing"' report/deploy-jobs.json)"
+          jq -n \
+            --arg syncState "$sync_state" \
+            --arg missingState "$missing_state" \
+            '{syncRadarTokenStep:$syncState,missingRadarTokenStep:$missingState}' \
+            > report/token-summary.json
+          cat report/token-summary.json
+          if [[ "$sync_state" != success ]]; then
+            echo "GITHUB_RADAR_DISPATCH_TOKEN was not synchronized to Cloudflare" >&2
+            exit 1
+          fi
+          test "$missing_state" = skipped
+
+      - name: Wait for Cloudflare-triggered radar workflow
+        id: radar
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$GITHUB_REPOSITORY"
+          headers=(
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+          deploy_finished="$(jq -r '.updated_at' report/deploy-run.json)"
+          run_id=""
+          for attempt in $(seq 1 100); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "$api/actions/workflows/radar-frames.yml/runs?event=workflow_dispatch&branch=main&per_page=30" \
+              > report/radar-runs.json
+            run_id="$(jq -r --arg sha "$EXPECTED_MAIN_SHA" --arg finished "$deploy_finished" '.workflow_runs | map(select(.head_sha == $sha and .created_at >= $finished)) | .[0].id // empty' report/radar-runs.json)"
+            if [[ -n "$run_id" ]]; then
+              echo "Found Cloudflare-triggered radar run $run_id"
+              break
+            fi
+            echo "Waiting for workflow_dispatch, attempt $attempt/100"
+            sleep 10
+          done
+          test -n "$run_id" || { echo "Cloudflare did not dispatch the radar workflow" >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+
+          for attempt in $(seq 1 120); do
+            curl --fail-with-body --silent --show-error "${headers[@]}" \
+              "$api/actions/runs/$run_id" > report/radar-run.json
+            status="$(jq -r '.status' report/radar-run.json)"
+            conclusion="$(jq -r '.conclusion // empty' report/radar-run.json)"
+            echo "radar status=$status conclusion=${conclusion:-pending} attempt=$attempt/120"
+            if [[ "$status" == completed ]]; then
+              test "$conclusion" = success || { jq . report/radar-run.json; exit 1; }
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Radar workflow did not complete" >&2
+          exit 1
+
+      - name: Write audit summary
+        run: |
+          jq -n \
+            --slurpfile deploy report/deploy-run.json \
+            --slurpfile radar report/radar-run.json \
+            --slurpfile token report/token-summary.json \
+            '{
+              deployRunId: $deploy[0].id,
+              deployConclusion: $deploy[0].conclusion,
+              tokenSync: $token[0],
+              radarRunId: $radar[0].id,
+              radarEvent: $radar[0].event,
+              radarConclusion: $radar[0].conclusion,
+              radarCreatedAt: $radar[0].created_at,
+              radarUpdatedAt: $radar[0].updated_at,
+              headSha: $radar[0].head_sha
+            }' > report/final-summary.json
+          jq . report/final-summary.json
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-cloudflare-dispatch-audit-${{ github.run_id }}
+          path: report/
+          if-no-files-found: warn
+          retention-days: 1
