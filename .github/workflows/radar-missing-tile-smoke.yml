@@ -1,0 +1,59 @@
+name: Temporary radar missing-tile smoke test
+
+on:
+  pull_request:
+    branches: ["fix/radar-missing-tile"]
+    paths:
+      - ".github/workflows/radar-missing-tile-smoke.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+
+      - name: Run focused tests
+        run: python .github/scripts/test_build_radar_frames.py
+
+      - name: Build live radar frame set
+        run: |
+          set -euo pipefail
+          python .github/scripts/build-radar-frames.py --output-dir "$RUNNER_TEMP/radar"
+
+      - name: Validate generated frames
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          from PIL import Image
+
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'radar'
+          manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
+          uploads = [line.split('\t', 1) for line in (root / 'uploads.tsv').read_text(encoding='utf-8').splitlines() if line]
+          frames = manifest.get('frames') or []
+          if len(frames) != 13 or len(uploads) != 13:
+              raise SystemExit(f"unexpected frame counts: manifest={len(frames)} uploads={len(uploads)}")
+          if manifest.get('renderVersion') != 'gha-v3' or manifest.get('precomposed') is not True:
+              raise SystemExit('unexpected manifest contract')
+          for filename, key in uploads:
+              if key not in {frame.get('key') for frame in frames}:
+                  raise SystemExit(f"upload key not in manifest: {key}")
+              with Image.open(filename) as image:
+                  if image.format != 'WEBP' or image.size != (1920, 1280):
+                      raise SystemExit(f"unexpected image: {image.format} {image.size}")
+                  image.verify()
+          print(json.dumps({'frames': len(frames), 'uploads': len(uploads), 'generatedAt': manifest.get('generatedAt')}, separators=(',', ':')))
+          PY
