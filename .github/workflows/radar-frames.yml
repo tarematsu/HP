@@ -106,6 +106,7 @@ jobs:
 
           while IFS=$'\t' read -r key; do
             test -n "$key" || continue
-            npx wrangler r2 object delete "homepanel-updates/$key" --remote --force
+            npx wrangler r2 object delete "homepanel-updates/$key" --remote --force \
+              || echo "warning: failed to delete stale radar object $key"
           done < "$RADAR_WORK_DIR/deletes.tsv"
         working-directory: cloud
