@@ -9,6 +9,11 @@ on:
     paths:
       - ".github/workflows/radar-frames.yml"
       - ".github/scripts/build-radar-frames.py"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-frames.yml"
+      - ".github/scripts/build-radar-frames.py"
 
 permissions:
   contents: read
