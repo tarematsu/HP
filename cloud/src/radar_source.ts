@@ -76,8 +76,9 @@ async function renderFrame(
     fetchImage(`https://cyberjapandata.gsi.go.jp/xyz/pale/${zoom}/${tile.x}/${tile.y}.png`)));
   const radarResponses = await Promise.all(layout.map(tile =>
     fetchImage(`https://www.jma.go.jp/bosai/jmatile/data/nowc/${entry.basetime}/none/${entry.validtime}/surf/hrpns/${zoom}/${tile.x}/${tile.y}.png`)));
+  const baseResponse = mapResponses[0]!.clone();
 
-  let image = env.IMAGES.input(mapResponses[0]!.body!)
+  let image = env.IMAGES.input(baseResponse.body!)
     .transform({ width: 480, height: 320, fit: "fill" });
   for (let index = 0; index < layout.length; index += 1) {
     const tile = layout[index]!;
@@ -158,10 +159,6 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   });
   await ensureRenderedFrames(env, entries, layout, zoom);
 
-  // Keep the established tile payload shape so existing clients cache each
-  // WebP through the same code path. A single opaque 256x256 logical tile is
-  // scaled to the native radar canvas; all expensive composition already
-  // happened once in Cloudflare Images.
   const frames = entries.map(entry => ({
     baseTime: entry.basetime,
     validTime: entry.validtime,
