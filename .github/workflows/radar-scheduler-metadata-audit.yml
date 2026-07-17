@@ -1,0 +1,89 @@
+name: Temporary radar scheduler metadata audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/radar-scheduler-metadata-audit.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect scheduler metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p report
+          api="https://api.github.com/repos/$REPOSITORY"
+          headers=(
+            -H "Authorization: Bearer $GH_TOKEN"
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+          )
+
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api" > report/repository.json
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/workflows/radar-frames.yml" > report/workflow.json
+          workflow_id="$(jq -er '.id' report/workflow.json)"
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/workflows/$workflow_id/runs?per_page=100" > report/runs.json
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/workflows?per_page=100" > report/workflows.json
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/contents/.github/workflows/radar-frames.yml?ref=main" > report/workflow-content.json
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/permissions" > report/actions-permissions.json || true
+          curl --fail-with-body --silent --show-error "${headers[@]}" \
+            "$api/actions/permissions/workflow" > report/workflow-permissions.json || true
+
+          jq -n \
+            --arg checkedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile repo report/repository.json \
+            --slurpfile workflow report/workflow.json \
+            --slurpfile runs report/runs.json \
+            --slurpfile workflows report/workflows.json \
+            '{
+              checkedAt: $checkedAt,
+              repository: {
+                defaultBranch: $repo[0].default_branch,
+                archived: $repo[0].archived,
+                disabled: $repo[0].disabled,
+                pushedAt: $repo[0].pushed_at,
+                updatedAt: $repo[0].updated_at
+              },
+              workflow: {
+                id: $workflow[0].id,
+                name: $workflow[0].name,
+                path: $workflow[0].path,
+                state: $workflow[0].state,
+                createdAt: $workflow[0].created_at,
+                updatedAt: $workflow[0].updated_at
+              },
+              runCount: ($runs[0].workflow_runs | length),
+              events: ($runs[0].workflow_runs | group_by(.event) | map({event: .[0].event, count: length})),
+              latestRuns: ($runs[0].workflow_runs[:20] | map({id, run_number, event, status, conclusion, created_at, run_started_at, updated_at, head_sha, display_title})),
+              scheduleRuns: ($runs[0].workflow_runs | map(select(.event == "schedule")) | map({id, run_number, status, conclusion, created_at, run_started_at, updated_at, head_sha})[:20]),
+              workflowListEntry: ($workflows[0].workflows | map(select(.path == ".github/workflows/radar-frames.yml")) | .[0])
+            }' > report/scheduler-summary.json
+
+          jq . report/scheduler-summary.json
+          test "$(jq -r '.repository.defaultBranch' report/scheduler-summary.json)" = main
+          test "$(jq -r '.workflow.state' report/scheduler-summary.json)" = active
+          test "$(jq -r '.workflow.path' report/scheduler-summary.json)" = .github/workflows/radar-frames.yml
+
+      - name: Upload scheduler report
+        uses: actions/upload-artifact@v4
+        with:
+          name: radar-scheduler-metadata-${{ github.run_id }}
+          path: report/
+          if-no-files-found: error
+          retention-days: 1
