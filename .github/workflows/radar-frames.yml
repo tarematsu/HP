@@ -27,7 +27,6 @@ jobs:
       RADAR_CENTER_LAT: ${{ vars.RADAR_CENTER_LAT || '35.8923181' }}
       RADAR_CENTER_LON: ${{ vars.RADAR_CENTER_LON || '139.4858691' }}
       RADAR_ZOOM: ${{ vars.RADAR_ZOOM || '10' }}
-      RADAR_WORK_DIR: ${{ runner.temp }}/homepanel-radar
 
     steps:
       - name: Checkout
@@ -42,6 +41,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Configure runtime paths
+        run: printf 'RADAR_WORK_DIR=%s/homepanel-radar\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
