@@ -7,6 +7,7 @@ import { configuredIds, loadSwitchBotSnapshot } from "./switchbot_api";
 import { fetchSwitchBotOptimized } from "./switchbot_poll";
 import { failSafeSwitchBotState } from "./switchbot_state";
 import type { SwitchBotEnv } from "./switchbot_types";
+import { dispatchRadarBuildIfStale } from "./radar_dispatch";
 
 export interface JobRow {
   name: string;
@@ -22,6 +23,7 @@ const MAX_PARALLEL = 3;
 const MAX_SCHEDULER_BATCHES = 10;
 const SUCCESS_RUN_LOG_INTERVAL_SECONDS = 6 * 60 * 60;
 const OCTOPUS_INTERVAL_SECONDS = 60 * 60 * 6;
+const RADAR_DISPATCH_INTERVAL_SECONDS = 5 * 60;
 const DAY_MS = 86_400_000;
 const DAY_SECONDS = 86_400;
 const POWER_RETENTION_MS = 90 * DAY_MS;
@@ -39,7 +41,7 @@ const REFRESHABLE_JOB_SET = new Set<string>(REFRESHABLE_JOBS);
 
 export async function ensureSystemJobs(env: Env): Promise<void> {
   const octopusDeadline = Math.floor(Date.now() / 1000) + OCTOPUS_INTERVAL_SECONDS;
-  await env.DB.batch([
+  const statements = [
     env.DB.prepare(
       `INSERT OR IGNORE INTO jobs(
          name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
@@ -59,7 +61,17 @@ export async function ensureSystemJobs(env: Env): Promise<void> {
        WHERE jobs.interval_seconds<>excluded.interval_seconds
           OR (jobs.next_run_at<>0 AND jobs.next_run_at>?2)`,
     ).bind(OCTOPUS_INTERVAL_SECONDS, octopusDeadline),
-  ]);
+  ];
+  if (env.GITHUB_RADAR_DISPATCH_TOKEN?.trim()) {
+    statements.push(env.DB.prepare(
+      `INSERT INTO jobs(
+         name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
+       ) VALUES('radar_dispatch',?1,0,NULL,NULL,NULL,0)
+       ON CONFLICT(name) DO UPDATE SET interval_seconds=excluded.interval_seconds
+       WHERE jobs.interval_seconds<>excluded.interval_seconds`,
+    ).bind(RADAR_DISPATCH_INTERVAL_SECONDS));
+  }
+  await env.DB.batch(statements);
 }
 
 export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobRow[]> {
@@ -151,6 +163,7 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
   try {
     if (job.name === "cleanup") await cleanupExpiredData(env);
     else if (job.name === "update_check") await runUpdateCheck(env);
+    else if (job.name === "radar_dispatch") await dispatchRadarBuildIfStale(env);
     else if (job.name === "stationhead") {
       sourceFailureRecorded = true;
       await refreshStationheadMonitor(env);
@@ -176,7 +189,7 @@ async function runOne(env: Env, job: JobRow): Promise<void> {
           payload: failSafeSwitchBotState(snapshot.state, now, controlPlugIds, message),
           observedAt: now,
         }, undefined, snapshot.row);
-      } else if (job.name !== "cleanup" && job.name !== "update_check" && !sourceFailureRecorded) {
+      } else if (!["cleanup", "update_check", "radar_dispatch"].includes(job.name) && !sourceFailureRecorded) {
         await updateState(env, { source: job.name, payload: null, observedAt: Date.now() }, message);
       }
     } catch (stateError) {
