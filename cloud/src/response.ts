@@ -17,8 +17,9 @@ function suppliedEtagMatches(request: Request, tag: string): boolean {
   if (!value) return false;
   let start = 0;
   while (start <= value.length) {
-    let end = value.indexOf(",", start);
-    if (end < 0) end = value.length;
+    const delimiter = value.indexOf(",", start);
+    const final = delimiter < 0;
+    let end = final ? value.length : delimiter;
     while (start < end && (value.charCodeAt(start) === 32 || value.charCodeAt(start) === 9)) start += 1;
     while (end > start && (value.charCodeAt(end - 1) === 32 || value.charCodeAt(end - 1) === 9)) end -= 1;
     const length = end - start;
@@ -26,8 +27,8 @@ function suppliedEtagMatches(request: Request, tag: string): boolean {
         (length === tag.length && value.startsWith(tag, start))) {
       return true;
     }
-    if (end === value.length) return false;
-    start = value.indexOf(",", end) + 1;
+    if (final) return false;
+    start = delimiter + 1;
   }
   return false;
 }
