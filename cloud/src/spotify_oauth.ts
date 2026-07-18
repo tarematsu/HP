@@ -4,12 +4,17 @@ import type { Env } from "./sources";
 const SESSION_TTL_MS = 10 * 60 * 1000;
 const TOKEN_SKEW_MS = 60 * 1000;
 const SCOPES = "user-read-playback-state";
+const UTF8_ENCODER = new TextEncoder();
+const UTF8_DECODER = new TextDecoder();
 const REQUIRED_SPOTIFY_KEYS = [
   "SPOTIFY_CLIENT_ID",
   "SPOTIFY_CLIENT_SECRET",
   "SPOTIFY_REDIRECT_URI",
   "SPOTIFY_TOKEN_ENCRYPTION_KEY",
 ] as const satisfies readonly (keyof Env)[];
+
+let cachedEncryptionSecret = "";
+let cachedEncryptionKey: Promise<CryptoKey> | null = null;
 
 function b64url(bytes: Uint8Array): string {
   let value = "";
@@ -82,8 +87,27 @@ function validateSpotifyConfiguration(env: Env): Response | null {
 
 async function encryptionKey(env: Env): Promise<CryptoKey> {
   const secret = required(env, "SPOTIFY_TOKEN_ENCRYPTION_KEY");
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
-  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  if (cachedEncryptionKey && cachedEncryptionSecret === secret) return cachedEncryptionKey;
+
+  const pending = crypto.subtle.digest("SHA-256", UTF8_ENCODER.encode(secret))
+    .then(digest => crypto.subtle.importKey(
+      "raw",
+      digest,
+      { name: "AES-GCM" },
+      false,
+      ["encrypt", "decrypt"],
+    ));
+  cachedEncryptionSecret = secret;
+  cachedEncryptionKey = pending;
+  try {
+    return await pending;
+  } catch (error) {
+    if (cachedEncryptionKey === pending) {
+      cachedEncryptionSecret = "";
+      cachedEncryptionKey = null;
+    }
+    throw error;
+  }
 }
 
 async function encryptToken(token: string, env: Env): Promise<string> {
@@ -91,7 +115,7 @@ async function encryptToken(token: string, env: Env): Promise<string> {
   const encrypted = new Uint8Array(await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     await encryptionKey(env),
-    new TextEncoder().encode(token),
+    UTF8_ENCODER.encode(token),
   ));
   return `${b64url(iv)}.${b64url(encrypted)}`;
 }
@@ -100,8 +124,11 @@ function decodeB64url(value: string): ArrayBuffer {
   const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
   const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
   const decoded = atob(padded);
-  const bytes = Uint8Array.from(decoded, char => char.charCodeAt(0));
-  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const bytes = new Uint8Array(decoded.length);
+  for (let index = 0; index < decoded.length; index += 1) {
+    bytes[index] = decoded.charCodeAt(index);
+  }
+  return bytes.buffer;
 }
 
 async function decryptToken(value: string, env: Env): Promise<string> {
@@ -112,7 +139,7 @@ async function decryptToken(value: string, env: Env): Promise<string> {
     await encryptionKey(env),
     decodeB64url(payloadPart),
   );
-  return new TextDecoder().decode(plain);
+  return UTF8_DECODER.decode(plain);
 }
 
 function callbackUrl(env: Env): string {
