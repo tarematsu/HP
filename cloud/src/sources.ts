@@ -47,9 +47,13 @@ export interface SourceResult {
 
 export const JST_MS = 9 * 60 * 60 * 1000;
 
+function twoDigits(value: number): string {
+  return value < 10 ? `0${value}` : String(value);
+}
+
 export function jstDayKey(timestampMs: number): string {
   const date = new Date(timestampMs + JST_MS);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+  return `${date.getUTCFullYear()}-${twoDigits(date.getUTCMonth() + 1)}-${twoDigits(date.getUTCDate())}`;
 }
 
 function numberOrNull(value: unknown): number | null {
@@ -58,58 +62,78 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-const EVENING_HOURS = new Set([22, 23]);
-const MORNING_HOURS = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const SCRIPT_HTML = /<script[\s\S]*?<\/script>/gi;
+const STYLE_HTML = /<style[\s\S]*?<\/style>/gi;
+const HTML_TAG = /<[^>]+>/g;
+const HTML_SPACE = /\s+/g;
+const WEATHER_GROUP = /<div class="wTable__group">([\s\S]*?)(?=<div class="wTable__group">|$)/gi;
+const WEATHER_ROW = /<div class="wTable__row">([\s\S]*?)<\/div>\s*(?=<div class="wTable__row">|<\/div>)/gi;
+const WEATHER_DAY = /class="wTable__item">(\d{1,2})日/;
+const WEATHER_HOUR = /class="wTable__item time">(\d{1,2})</;
+const WEATHER_ICON = /wxicon\/(\d+)\.png/i;
+const WEATHER_RAIN = /class="wTable__item r">(-?\d+(?:\.\d+)?)/;
+const WEATHER_TEMP = /class="wTable__item t">(-?\d+(?:\.\d+)?)/;
+const WEATHER_POP = /class="wTable__item (?:p|pop)">\s*(\d{1,3})/i;
+const WEATHER_POP_TEXT = /(?:降水確率\s*)?(\d{1,3})\s*%/;
+const NEWS_ITEM = /<item>([\s\S]*?)<\/item>/gi;
+const NEWS_TITLE = /<title[^>]*>([\s\S]*?)<\/title>/i;
+const NEWS_DESCRIPTION = /<description[^>]*>([\s\S]*?)<\/description>/i;
+const NEWS_LINK = /<link[^>]*>([\s\S]*?)<\/link>/i;
+const NEWS_PUBLISHED = /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i;
 
 function stripHtml(value: string): string {
   return value
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
+    .replace(SCRIPT_HTML, " ")
+    .replace(STYLE_HTML, " ")
+    .replace(HTML_TAG, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&#39;|&apos;/g, "'")
     .replace(/&quot;/g, '"')
-    .replace(/\s+/g, " ")
+    .replace(HTML_SPACE, " ")
     .trim();
 }
 
 function parseWeatherNews(html: string, now = new Date()): { forecastDate: string; hourly: Record<string, unknown> } {
   const bodyStart = html.indexOf('id="flick_list"');
   if (bodyStart < 0) throw new Error("WeatherNews hourly table was not found");
-  const body = html.slice(bodyStart);
   const jst = new Date(now.getTime() + JST_MS);
   const nextJst = new Date(jst.getTime() + 86_400_000);
   const startDay = jst.getUTCDate();
   const endDay = nextJst.getUTCDate();
   const forecastDate = `${jst.getUTCMonth() + 1}/${startDay}〜${nextJst.getUTCMonth() + 1}/${endDay}`;
   const hourly: Record<string, unknown> = {};
-  const groups = [...body.matchAll(/<div class="wTable__group">([\s\S]*?)(?=<div class="wTable__group">|$)/gi)];
+  let hourlyCount = 0;
 
-  for (const group of groups) {
-    const content = group[1] ?? "";
-    const day = numberOrNull(content.match(/class="wTable__item">(\d{1,2})日/)?.[1]);
-    const targetHours = day === startDay ? EVENING_HOURS : day === endDay ? MORNING_HOURS : null;
-    if (!targetHours) continue;
-    const rows = [...content.matchAll(/<div class="wTable__row">([\s\S]*?)<\/div>\s*(?=<div class="wTable__row">|<\/div>)/gi)];
-    for (const rowMatch of rows) {
+  WEATHER_GROUP.lastIndex = bodyStart;
+  for (let groupMatch = WEATHER_GROUP.exec(html); groupMatch; groupMatch = WEATHER_GROUP.exec(html)) {
+    const content = groupMatch[1] ?? "";
+    const day = numberOrNull(WEATHER_DAY.exec(content)?.[1]);
+    const target = day === startDay ? 1 : day === endDay ? 2 : 0;
+    if (!target) continue;
+
+    WEATHER_ROW.lastIndex = 0;
+    for (let rowMatch = WEATHER_ROW.exec(content); rowMatch; rowMatch = WEATHER_ROW.exec(content)) {
       const row = rowMatch[1] ?? "";
-      const hour = numberOrNull(row.match(/class="wTable__item time">(\d{1,2})</)?.[1]);
-      if (hour === null || !targetHours.has(hour)) continue;
-      const icon = row.match(/wxicon\/(\d+)\.png/i)?.[1] ?? "";
-      const rainMm = numberOrNull(row.match(/class="wTable__item r">(-?\d+(?:\.\d+)?)/)?.[1]);
-      const temp = numberOrNull(row.match(/class="wTable__item t">(-?\d+(?:\.\d+)?)/)?.[1]);
+      const hour = numberOrNull(WEATHER_HOUR.exec(row)?.[1]);
+      if (hour === null || (target === 1 ? hour < 22 : hour > 9)) continue;
+      const icon = WEATHER_ICON.exec(row)?.[1] ?? "";
+      const rainMm = numberOrNull(WEATHER_RAIN.exec(row)?.[1]);
+      const temp = numberOrNull(WEATHER_TEMP.exec(row)?.[1]);
+      const explicitMatch = WEATHER_POP.exec(row)?.[1];
       const explicitPop = numberOrNull(
-        row.match(/class="wTable__item (?:p|pop)">\s*(\d{1,3})/i)?.[1]
-        ?? stripHtml(row).match(/(?:降水確率\s*)?(\d{1,3})\s*%/)?.[1],
+        explicitMatch ?? WEATHER_POP_TEXT.exec(stripHtml(row))?.[1],
       );
-      const wetIcon = /^3/.test(icon);
-      const pop = explicitPop ?? (rainMm !== null && rainMm > 0 ? 100 : wetIcon ? 60 : 10);
-      hourly[String(hour)] = { pop: Math.max(0, Math.min(100, pop)), rainMm, temp, humidity: null, icon };
+      const pop = explicitPop ?? (rainMm !== null && rainMm > 0 ? 100 : icon.startsWith("3") ? 60 : 10);
+      const key = String(hour);
+      if (!Object.prototype.hasOwnProperty.call(hourly, key)) hourlyCount += 1;
+      hourly[key] = { pop: Math.max(0, Math.min(100, pop)), rainMm, temp, humidity: null, icon };
     }
   }
 
-  if (!Object.keys(hourly).length) throw new Error("WeatherNews hourly rows were not found");
+  WEATHER_GROUP.lastIndex = 0;
+  WEATHER_ROW.lastIndex = 0;
+  if (!hourlyCount) throw new Error("WeatherNews hourly rows were not found");
   return { forecastDate, hourly };
 }
 
@@ -130,14 +154,29 @@ export async function fetchWeather(env: Env): Promise<SourceResult> {
   };
 }
 
+function rssValue(body: string, pattern: RegExp): string {
+  return stripHtml(pattern.exec(body)?.[1] ?? "");
+}
+
 export async function fetchNews(): Promise<SourceResult> {
   const url = "https://news.web.nhk/n-data/conf/na/rss/cat0.xml";
   const xml = await fetchText(url);
-  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)].slice(0, 10).map(match => {
+  const items: Array<{ title: string; description: string; link: string; publishedAt: string }> = [];
+  NEWS_ITEM.lastIndex = 0;
+  let inspected = 0;
+  for (let match = NEWS_ITEM.exec(xml); match && inspected < 10; match = NEWS_ITEM.exec(xml)) {
+    inspected += 1;
     const body = match[1] ?? "";
-    const value = (tag: string): string => stripHtml(body.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"))?.[1] ?? "");
-    return { title: value("title"), description: value("description"), link: value("link"), publishedAt: value("pubDate") };
-  }).filter(item => item.title);
+    const title = rssValue(body, NEWS_TITLE);
+    if (!title) continue;
+    items.push({
+      title,
+      description: rssValue(body, NEWS_DESCRIPTION),
+      link: rssValue(body, NEWS_LINK),
+      publishedAt: rssValue(body, NEWS_PUBLISHED),
+    });
+  }
+  NEWS_ITEM.lastIndex = 0;
   if (!items.length) throw new Error("NHK RSS contained no items");
   return { source: "news", payload: { title: "NHKニュース", items }, observedAt: Date.now() };
 }
