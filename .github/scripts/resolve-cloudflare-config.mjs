@@ -54,17 +54,17 @@ async function writeD1Usage(token, accountId, databaseName, databaseId) {
     window_end: new Date(day.getTime() + 86_400_000).toISOString(),
     database_name: databaseName,
     database_id: databaseId,
-    rows_read: null,
-    rows_written: null,
-    read_queries: null,
-    write_queries: null,
+    rows_read: 0,
+    rows_written: 0,
+    read_queries: 0,
+    write_queries: 0,
     error: null,
   };
 
   if (!token || !accountId || !databaseId) {
     result.error = "D1 usage query requires API token, account ID, and database ID";
     await writeFile(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-    return;
+    return result;
   }
 
   const query = `query D1DailyUsage($accountTag: string!, $date: Date!, $databaseId: string!) {
@@ -120,6 +120,51 @@ async function writeD1Usage(token, accountId, databaseName, databaseId) {
   }
 
   await writeFile(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+  return result;
+}
+
+async function publishD1UsageIssue(result) {
+  const token = String(process.env.GH_TOKEN || "").trim();
+  const repository = String(process.env.GITHUB_REPOSITORY || "").trim();
+  if (!token || !repository || process.env.GITHUB_EVENT_NAME !== "push") return;
+
+  const title = "D1 complete-day usage report";
+  const marker = "<!-- homepanel-d1-complete-day-usage -->";
+  const body = `${marker}
+## D1 complete-day usage
+
+- Date: \`${result.date}\` (UTC)
+- Database: \`${result.database_name}\`
+- Rows read: **${result.rows_read.toLocaleString("en-US")}**
+- Rows written: **${result.rows_written.toLocaleString("en-US")}**
+- Read queries: ${result.read_queries.toLocaleString("en-US")}
+- Write queries: ${result.write_queries.toLocaleString("en-US")}
+- Measurement: \`${result.ok ? "ok" : "failed"}\`
+${result.error ? `- Error: \`${String(result.error).replaceAll("`", "'")}\`\n` : ""}
+Updated at \`${result.measured_at}\` by Cloudflare diagnostics.
+`;
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const api = `https://api.github.com/repos/${repository}`;
+  const listed = await fetch(`${api}/issues?state=open&per_page=100`, { headers });
+  const issues = listed.ok ? await listed.json() : [];
+  const existing = Array.isArray(issues)
+    ? issues.find((issue) => !issue?.pull_request && issue?.title === title)
+    : null;
+  const endpoint = existing?.number ? `${api}/issues/${existing.number}` : `${api}/issues`;
+  const response = await fetch(endpoint, {
+    method: existing?.number ? "PATCH" : "POST",
+    headers,
+    body: JSON.stringify(existing?.number ? { body } : { title, body }),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`GitHub D1 usage issue update failed (${response.status}): ${text.slice(0, 300)}`);
+  }
 }
 
 const config = await readConfig();
@@ -134,7 +179,8 @@ const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() || (api
 if (!workerName) throw new Error("Worker name is missing in cloud/wrangler.jsonc");
 if (!databaseName) throw new Error("D1 database name is missing in cloud/wrangler.jsonc");
 
-await writeD1Usage(apiToken, accountId, databaseName, databaseId);
+const d1Usage = await writeD1Usage(apiToken, accountId, databaseName, databaseId);
+await publishD1UsageIssue(d1Usage);
 
 const output = process.env.GITHUB_OUTPUT;
 if (output) {
