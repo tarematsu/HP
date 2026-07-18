@@ -1,8 +1,15 @@
-import { cachedHmacKey, constantTimeEqual } from "./crypto_cache";
+import { cachedHmacKey } from "./crypto_cache";
 import { json } from "./http";
 import type { Env } from "./sources";
 
 const SIGNED_URL_LIFETIME_SECONDS = 30 * 60;
+const UTF8_ENCODER = new TextEncoder();
+const HEX_DIGITS = "0123456789abcdef";
+
+interface RadarTileTarget {
+  upstream: string;
+  ttl: number;
+}
 
 function validTileCoordinates(
   zoomText: string | undefined,
@@ -19,7 +26,7 @@ function validTileCoordinates(
   return { zoom, x, y };
 }
 
-function tileRequest(pathname: string): { upstream: string; ttl: number } | null {
+function tileRequest(pathname: string): RadarTileTarget | null {
   let match = pathname.match(/^\/v1\/radar\/tile\/gsi\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
   if (match) {
     const coordinates = validTileCoordinates(match[1], match[2], match[3]);
@@ -50,13 +57,55 @@ function signingSecret(env: Env): string {
     || "";
 }
 
-async function signature(secret: string, pathname: string, expires: number): Promise<string> {
-  const digest = await crypto.subtle.sign(
+async function signatureDigest(secret: string, pathname: string, expires: number): Promise<ArrayBuffer> {
+  return crypto.subtle.sign(
     "HMAC",
     await cachedHmacKey(secret),
-    new TextEncoder().encode(`${pathname}\n${expires}`),
+    UTF8_ENCODER.encode(`${pathname}\n${expires}`),
   );
-  return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+}
+
+function hexDigest(digest: ArrayBuffer): string {
+  const bytes = new Uint8Array(digest);
+  let output = "";
+  for (const value of bytes) {
+    output += HEX_DIGITS[value >>> 4] + HEX_DIGITS[value & 15];
+  }
+  return output;
+}
+
+function digestMatchesHex(supplied: string, digest: ArrayBuffer): boolean {
+  const bytes = new Uint8Array(digest);
+  const expectedLength = bytes.length * 2;
+  let diff = supplied.length ^ expectedLength;
+  for (let index = 0; index < bytes.length; index += 1) {
+    const value = bytes[index]!;
+    const suppliedOffset = index * 2;
+    const suppliedHigh = suppliedOffset < supplied.length ? supplied.charCodeAt(suppliedOffset) : 0;
+    const suppliedLow = suppliedOffset + 1 < supplied.length ? supplied.charCodeAt(suppliedOffset + 1) : 0;
+    diff |= suppliedHigh ^ HEX_DIGITS.charCodeAt(value >>> 4);
+    diff |= suppliedLow ^ HEX_DIGITS.charCodeAt(value & 15);
+  }
+  return diff === 0;
+}
+
+async function verifyRadarTileUrl(
+  url: URL,
+  env: Env,
+  nowSeconds: number,
+  target: RadarTileTarget | null = tileRequest(url.pathname),
+): Promise<boolean> {
+  if (!target) return false;
+  const secret = signingSecret(env);
+  if (!secret) return false;
+  const expires = Number(url.searchParams.get("expires"));
+  if (!Number.isSafeInteger(expires)
+      || expires < nowSeconds
+      || expires > nowSeconds + SIGNED_URL_LIFETIME_SECONDS + 60) {
+    return false;
+  }
+  const supplied = url.searchParams.get("signature") ?? "";
+  return digestMatchesHex(supplied, await signatureDigest(secret, url.pathname, expires));
 }
 
 export async function signedRadarTilePath(
@@ -67,7 +116,7 @@ export async function signedRadarTilePath(
   if (!tileRequest(pathname)) throw new Error("invalid radar tile path");
   const secret = signingSecret(env);
   if (!secret) throw new Error("radar tile signing unavailable");
-  const signed = await signature(secret, pathname, expires);
+  const signed = hexDigest(await signatureDigest(secret, pathname, expires));
   return `${pathname}?expires=${expires}&signature=${signed}`;
 }
 
@@ -76,26 +125,14 @@ export async function verifyRadarTileRequest(
   env: Env,
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<boolean> {
-  const url = new URL(request.url);
-  if (!tileRequest(url.pathname)) return false;
-  const secret = signingSecret(env);
-  if (!secret) return false;
-  const expires = Number(url.searchParams.get("expires"));
-  if (!Number.isSafeInteger(expires)
-      || expires < nowSeconds
-      || expires > nowSeconds + SIGNED_URL_LIFETIME_SECONDS + 60) {
-    return false;
-  }
-  const supplied = url.searchParams.get("signature") ?? "";
-  const expected = await signature(secret, url.pathname, expires);
-  return constantTimeEqual(supplied, expected);
+  return verifyRadarTileUrl(new URL(request.url), env, nowSeconds);
 }
 
 export async function proxyRadarTile(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const target = tileRequest(url.pathname);
   if (!target) return json({ error: "invalid radar tile" }, { status: 404 });
-  if (!await verifyRadarTileRequest(request, env)) {
+  if (!await verifyRadarTileUrl(url, env, Math.floor(Date.now() / 1000), target)) {
     return json({ error: "invalid or expired radar tile signature" }, { status: 403 });
   }
   const upstream = await fetch(target.upstream, {
