@@ -145,7 +145,7 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
     || previous.app_version !== appVersion
     || Number(previous.stationhead_ok) !== stationheadOk
     || Number(previous.outbox_count) !== outboxCount;
-  if (acknowledgedSequences.length || heartbeatDue || heartbeatChanged) {
+  if (highestSequence > lastSequence || heartbeatDue || heartbeatChanged) {
     await telemetryHeartbeatStatement(
       env,
       deviceId,
@@ -157,7 +157,17 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
     ).run();
   }
 
-  if (pendingSamples.length) {
+  let rebuildEnvironment = pendingSamples.length > 0;
+  if (!rebuildEnvironment && acknowledgedSequences.length > 0) {
+    // A retry is also the repair trigger if current_state was lost. Use a tiny
+    // existence read first; only the exceptional recovery path scans durable
+    // buckets and reconstructs every device.
+    const environmentState = await env.DB.prepare(
+      "SELECT 1 AS present FROM current_state WHERE source='environment'",
+    ).first<{ present: number }>();
+    rebuildEnvironment = !environmentState;
+  }
+  if (rebuildEnvironment) {
     await mergeEnvironmentRows(env, deviceId, [...returnedRows.values()], now);
   }
 
