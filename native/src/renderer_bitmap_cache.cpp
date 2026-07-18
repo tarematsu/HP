@@ -5,6 +5,7 @@ namespace hp {
 namespace {
 constexpr size_t kNativeImageBitmapCacheLimit = 24;
 constexpr size_t kRadarBitmapCacheLimit = 16;
+constexpr int64_t kNativeImageDecodeRetryMs = 60'000;
 
 struct CachedBitmapMemoryDc {
   HDC value = nullptr;
@@ -93,8 +94,15 @@ HBITMAP Renderer::NativeArtworkBitmap(const std::wstring& url, int width, int he
       std::to_wstring(height);
   auto found = nativeImageBitmaps_.find(key);
   if (found != nativeImageBitmaps_.end()) {
-    found->second.lastUsed = ++nativeImageUseCounter_;
-    return found->second.bitmap;
+    if (found->second.bitmap) {
+      found->second.lastUsed = ++nativeImageUseCounter_;
+      return found->second.bitmap;
+    }
+    // Null entries carry a retry deadline in lastUsed. This stops a missing
+    // artwork file from causing a disk read and WIC decode on every repaint,
+    // while still allowing a later download to become visible.
+    if (UnixMillis() < static_cast<int64_t>(found->second.lastUsed)) return nullptr;
+    nativeImageBitmaps_.erase(found);
   }
 
   std::wstring relative = url.substr(std::size(kDataHostPrefix) - 1);
@@ -117,8 +125,12 @@ HBITMAP Renderer::NativeWeatherIconBitmap(
       std::to_wstring(width) + L"x" + std::to_wstring(height);
   auto found = nativeImageBitmaps_.find(key);
   if (found != nativeImageBitmaps_.end()) {
-    found->second.lastUsed = ++nativeImageUseCounter_;
-    return found->second.bitmap;
+    if (found->second.bitmap) {
+      found->second.lastUsed = ++nativeImageUseCounter_;
+      return found->second.bitmap;
+    }
+    if (UnixMillis() < static_cast<int64_t>(found->second.lastUsed)) return nullptr;
+    nativeImageBitmaps_.erase(found);
   }
 
   const auto decodeIcon = [&](const std::wstring& name) {
@@ -138,17 +150,30 @@ HBITMAP Renderer::NativeWeatherIconBitmap(
 }
 
 HBITMAP Renderer::CacheNativeImageBitmap(const std::wstring& key, HBITMAP bitmap) {
-  if (!bitmap) return nullptr;
   if (nativeImageBitmaps_.size() >= kNativeImageBitmapCacheLimit) {
-    auto oldest = nativeImageBitmaps_.begin();
+    auto oldest = nativeImageBitmaps_.end();
     for (auto item = nativeImageBitmaps_.begin();
          item != nativeImageBitmaps_.end(); ++item) {
-      if (item->second.lastUsed < oldest->second.lastUsed) oldest = item;
+      // Prefer evicting a negative-cache entry before a decoded bitmap. This
+      // keeps the backoff bounded without sacrificing useful image memory.
+      if (!item->second.bitmap) {
+        oldest = item;
+        break;
+      }
+      if (oldest == nativeImageBitmaps_.end() ||
+          item->second.lastUsed < oldest->second.lastUsed) {
+        oldest = item;
+      }
     }
-    if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
-    nativeImageBitmaps_.erase(oldest);
+    if (oldest != nativeImageBitmaps_.end()) {
+      if (oldest->second.bitmap) DeleteObject(oldest->second.bitmap);
+      nativeImageBitmaps_.erase(oldest);
+    }
   }
-  nativeImageBitmaps_[key] = BitmapCacheEntry{bitmap, ++nativeImageUseCounter_};
+  const uint64_t cacheStamp = bitmap
+      ? ++nativeImageUseCounter_
+      : static_cast<uint64_t>(UnixMillis() + kNativeImageDecodeRetryMs);
+  nativeImageBitmaps_[key] = BitmapCacheEntry{bitmap, cacheStamp};
   return bitmap;
 }
 
