@@ -41,37 +41,47 @@ const REFRESHABLE_JOB_SET = new Set<string>(REFRESHABLE_JOBS);
 
 export async function ensureSystemJobs(env: Env): Promise<void> {
   const octopusDeadline = Math.floor(Date.now() / 1000) + OCTOPUS_INTERVAL_SECONDS;
-  const statements = [
-    env.DB.prepare(
-      `INSERT OR IGNORE INTO jobs(
-         name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
-       ) VALUES('stationhead_health',300,0,NULL,NULL,NULL,0)`,
-    ),
-    env.DB.prepare(
-      `INSERT INTO jobs(
-         name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
-       ) VALUES('octopus',?1,0,NULL,NULL,NULL,0)
-       ON CONFLICT(name) DO UPDATE SET
-         interval_seconds=excluded.interval_seconds,
-         next_run_at=CASE
+  const radarEnabled = Boolean(env.GITHUB_RADAR_DISPATCH_TOKEN?.trim());
+  const radarValues = radarEnabled
+    ? ",('radar_dispatch',?2,0,NULL,NULL,NULL,0)"
+    : "";
+  const deadlineParameter = radarEnabled ? "?3" : "?2";
+  const statement = env.DB.prepare(
+    `INSERT INTO jobs(
+       name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
+     ) VALUES
+       ('stationhead_health',300,0,NULL,NULL,NULL,0),
+       ('octopus',?1,0,NULL,NULL,NULL,0)
+       ${radarValues}
+     ON CONFLICT(name) DO UPDATE SET
+       interval_seconds=CASE
+         WHEN excluded.name='stationhead_health' THEN jobs.interval_seconds
+         ELSE excluded.interval_seconds
+       END,
+       next_run_at=CASE
+         WHEN excluded.name='octopus' THEN CASE
            WHEN jobs.next_run_at=0 THEN 0
-           WHEN jobs.next_run_at>?2 THEN ?2
+           WHEN jobs.next_run_at>${deadlineParameter} THEN ${deadlineParameter}
            ELSE jobs.next_run_at
          END
-       WHERE jobs.interval_seconds<>excluded.interval_seconds
-          OR (jobs.next_run_at<>0 AND jobs.next_run_at>?2)`,
-    ).bind(OCTOPUS_INTERVAL_SECONDS, octopusDeadline),
-  ];
-  if (env.GITHUB_RADAR_DISPATCH_TOKEN?.trim()) {
-    statements.push(env.DB.prepare(
-      `INSERT INTO jobs(
-         name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
-       ) VALUES('radar_dispatch',?1,0,NULL,NULL,NULL,0)
-       ON CONFLICT(name) DO UPDATE SET interval_seconds=excluded.interval_seconds
-       WHERE jobs.interval_seconds<>excluded.interval_seconds`,
-    ).bind(RADAR_DISPATCH_INTERVAL_SECONDS));
+         ELSE jobs.next_run_at
+       END
+     WHERE
+       (excluded.name='octopus' AND (
+         jobs.interval_seconds<>excluded.interval_seconds
+         OR (jobs.next_run_at<>0 AND jobs.next_run_at>${deadlineParameter})
+       ))
+       OR (excluded.name='radar_dispatch' AND jobs.interval_seconds<>excluded.interval_seconds)`,
+  );
+  if (radarEnabled) {
+    await statement.bind(
+      OCTOPUS_INTERVAL_SECONDS,
+      RADAR_DISPATCH_INTERVAL_SECONDS,
+      octopusDeadline,
+    ).run();
+  } else {
+    await statement.bind(OCTOPUS_INTERVAL_SECONDS, octopusDeadline).run();
   }
-  await env.DB.batch(statements);
 }
 
 export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobRow[]> {
