@@ -1,10 +1,39 @@
 #include "app.h"
 #include "version.h"
+#include <charconv>
+#include <limits>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
 namespace {
 using PendingCommandAcks = std::map<int64_t, bool>;
+constexpr std::uintmax_t kMaxCommandFileBytes = 4 * 1024 * 1024;
+
+std::optional<std::string> ReadCommandFile(const fs::path& path) {
+  std::error_code error;
+  const std::uintmax_t size = fs::file_size(path, error);
+  if (error || size > kMaxCommandFileBytes ||
+      size > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
+    return std::nullopt;
+  }
+  std::string text(static_cast<size_t>(size), '\0');
+  if (text.empty()) return text;
+  std::ifstream input(path, std::ios::binary);
+  if (!input) return std::nullopt;
+  input.read(text.data(), static_cast<std::streamsize>(text.size()));
+  if (input.gcount() != static_cast<std::streamsize>(text.size()) || input.peek() != EOF) {
+    return std::nullopt;
+  }
+  return text;
+}
+
+bool AppendInteger(std::string& output, int64_t value) {
+  char buffer[32]{};
+  const auto result = std::to_chars(std::begin(buffer), std::end(buffer), value);
+  if (result.ec != std::errc{}) return false;
+  output.append(buffer, result.ptr);
+  return true;
+}
 
 PendingCommandAcks LoadPendingCommandAcks(const fs::path& path) {
   PendingCommandAcks pending;
@@ -23,11 +52,15 @@ bool SavePendingCommandAcks(const fs::path& path, const PendingCommandAcks& pend
     fs::remove(path, ignored);
     return true;
   }
-  std::ostringstream output;
+  std::string output;
+  output.reserve(pending.size() * 24);
   for (const auto& [id, success] : pending) {
-    output << id << ' ' << (success ? 1 : 0) << '\n';
+    if (!AppendInteger(output, id)) return false;
+    output.push_back(' ');
+    output.push_back(success ? '1' : '0');
+    output.push_back('\n');
   }
-  return AtomicWriteText(path, output.str());
+  return AtomicWriteText(path, output);
 }
 }  // namespace
 
@@ -36,12 +69,12 @@ void App::ProcessRemoteCommands() {
   const fs::path pendingAckPath = dataDir_ / L"command-acks.pending";
   PendingCommandAcks pendingAcks = LoadPendingCommandAcks(pendingAckPath);
   try {
-    std::ifstream input(path, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return;
-    auto root = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(text));
+    const std::optional<std::string> text = ReadCommandFile(path);
+    if (!text || text->empty()) return;
+    auto root = winrt::Windows::Data::Json::JsonObject::Parse(Utf8ToWide(*text));
     if (!root.HasKey(L"commands")) return;
-    for (auto value : root.GetNamedArray(L"commands")) {
+    const auto commands = root.GetNamedArray(L"commands");
+    for (const auto value : commands) {
       auto item = value.GetObject();
       const int64_t id = static_cast<int64_t>(item.GetNamedNumber(L"id", 0));
       const std::wstring command = item.GetNamedString(L"command", L"").c_str();
@@ -123,11 +156,12 @@ void App::SendTelemetryAsync() {
   if (telemetryThread_.joinable()) telemetryThread_.join();
   telemetryThread_ = std::thread([this] {
     try {
+      static const std::string versionUtf8 = WideToUtf8(kVersion);
       const auto sensor = sensors_->Snapshot();
       const auto station = stationhead_->Status();
       const size_t count = std::min<size_t>(500, sensor.outboxCount);
-      std::string body = sensors_->BuildTelemetryPayload(
-          config_.deviceId, WideToUtf8(kVersion), station.playing, count);
+      const std::string body = sensors_->BuildTelemetryPayload(
+          config_.deviceId, versionUtf8, station.playing, count);
       const TelemetryReceipt receipt = cloud_->SendTelemetry(body);
       if (receipt.success) {
         sensors_->ApplyTelemetryReceipt(receipt.acknowledgedSequences, receipt.nextSequence);
