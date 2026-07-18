@@ -1,11 +1,17 @@
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_ATTEMPTS = 2;
+const DEFAULT_JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Cache-Control": "no-store",
+} as const;
 
 export function json(value: unknown, init: ResponseInit = {}): Response {
+  const body = JSON.stringify(value);
+  if (!init.headers) return new Response(body, { ...init, headers: DEFAULT_JSON_HEADERS });
   const headers = new Headers(init.headers);
-  headers.set("Content-Type", "application/json; charset=utf-8");
-  headers.set("Cache-Control", "no-store");
-  return new Response(JSON.stringify(value), { ...init, headers });
+  headers.set("Content-Type", DEFAULT_JSON_HEADERS["Content-Type"]);
+  headers.set("Cache-Control", DEFAULT_JSON_HEADERS["Cache-Control"]);
+  return new Response(body, { ...init, headers });
 }
 
 function sleep(ms: number): Promise<void> {
@@ -23,25 +29,26 @@ export async function fetchWithRetry(
 ): Promise<Response> {
   let lastError: unknown;
   const totalAttempts = Math.max(1, Math.trunc(attempts));
+  const callerSignal = init.signal;
+  const headers = new Headers(init.headers);
+  if (!headers.has("User-Agent")) headers.set("User-Agent", "HomePanel/2.0 (+Cloudflare Worker)");
+  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-cache, no-store, max-age=0");
+  if (!headers.has("Pragma")) headers.set("Pragma", "no-cache");
+  const requestInit: RequestInit = {
+    ...init,
+    cache: "no-store",
+    headers,
+  };
   for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
     const controller = new AbortController();
-    const callerSignal = init.signal;
     const abortFromCaller = (): void => controller.abort(callerSignal?.reason);
     if (callerSignal?.aborted) abortFromCaller();
     else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
     const timer = setTimeout(() => controller.abort("timeout"), FETCH_TIMEOUT_MS);
     let terminalError: Error | null = null;
     try {
-      const headers = new Headers(init.headers);
-      if (!headers.has("User-Agent")) headers.set("User-Agent", "HomePanel/2.0 (+Cloudflare Worker)");
-      if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-cache, no-store, max-age=0");
-      if (!headers.has("Pragma")) headers.set("Pragma", "no-cache");
-      const response = await fetch(url, {
-        ...init,
-        cache: "no-store",
-        headers,
-        signal: controller.signal,
-      });
+      requestInit.signal = controller.signal;
+      const response = await fetch(url, requestInit);
       if (response.ok) return response;
       const error = new Error(`${response.status} ${response.statusText}`);
       await response.body?.cancel();
