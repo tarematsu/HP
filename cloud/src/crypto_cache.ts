@@ -1,15 +1,12 @@
-
-
-
-
 const keyCache = new Map<string, Promise<CryptoKey>>();
+const utf8Encoder = new TextEncoder();
 
 export function cachedHmacKey(secret: string): Promise<CryptoKey> {
   let promise = keyCache.get(secret);
   if (!promise) {
     promise = crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(secret),
+      utf8Encoder.encode(secret),
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"],
@@ -22,17 +19,15 @@ export function cachedHmacKey(secret: string): Promise<CryptoKey> {
   return promise;
 }
 
-
-
-
-
 export function constantTimeEqual(left: string, right: string): boolean {
-  const a = new TextEncoder().encode(left);
-  const b = new TextEncoder().encode(right);
+  const a = utf8Encoder.encode(left);
+  const b = utf8Encoder.encode(right);
   let diff = a.length ^ b.length;
-  const length = Math.max(a.length, b.length, 1);
+  const length = Math.max(a.length, b.length);
   for (let index = 0; index < length; index += 1) {
-    diff |= (a[index % Math.max(1, a.length)] ?? 0) ^ (b[index % Math.max(1, b.length)] ?? 0);
+    const leftByte = index < a.length ? a[index]! : 0;
+    const rightByte = index < b.length ? b[index]! : 0;
+    diff |= leftByte ^ rightByte;
   }
   return diff === 0;
 }
