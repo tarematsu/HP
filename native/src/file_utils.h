@@ -1,7 +1,20 @@
 #pragma once
 #include "common.h"
+#include <charconv>
 
 namespace hp::file {
+namespace detail {
+
+template <typename T>
+inline bool AppendDecimal(std::string& output, T value) noexcept {
+  char buffer[64];
+  const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value);
+  if (result.ec != std::errc{}) return false;
+  output.append(buffer, result.ptr);
+  return true;
+}
+
+}  // namespace detail
 
 inline bool MatchesText(const fs::path& path, const std::string& content) {
   std::error_code error;
@@ -24,11 +37,16 @@ inline std::string Stamp(const fs::path& path) {
   std::error_code error;
   const auto size = fs::file_size(path, error);
   if (error) return "missing";
-  std::ostringstream stamp;
-  stamp << size;
+
+  std::string stamp;
+  stamp.reserve(48);
+  if (!detail::AppendDecimal(stamp, size)) return "missing";
   const auto modified = fs::last_write_time(path, error);
-  if (!error) stamp << ':' << modified.time_since_epoch().count();
-  return stamp.str();
+  if (!error) {
+    stamp.push_back(':');
+    if (!detail::AppendDecimal(stamp, modified.time_since_epoch().count())) return "missing";
+  }
+  return stamp;
 }
 
 }  // namespace hp::file
