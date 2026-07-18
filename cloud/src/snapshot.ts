@@ -44,7 +44,7 @@ export async function sha256Hex(value: string | ArrayBuffer): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
   let output = "";
   for (const byte of digest) {
-    output += HEX_DIGITS[byte >>> 4] + HEX_DIGITS[byte & 0x0f];
+    output += HEX_DIGITS.charAt(byte >>> 4) + HEX_DIGITS.charAt(byte & 0x0f);
   }
   return output;
 }
