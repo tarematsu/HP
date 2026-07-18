@@ -27,20 +27,19 @@ function previousSelectedDevice(previous: StateRow | null): string {
   }
 }
 
-function normalizedPoint(row: EnvironmentHistoryRow): EnvironmentHistoryRow | null {
-  const t = Number(row.t);
-  if (!Number.isSafeInteger(t)) return null;
-  const nullable = (value: unknown, digits?: number): number | null => {
-    if (value === null || value === undefined) return null;
-    const number = Number(value);
-    if (!Number.isFinite(number)) return null;
-    return digits === undefined ? Math.round(number) : Number(number.toFixed(digits));
-  };
+function nullableNumber(value: unknown, digits?: number): number | null {
+  if (value === null || value === undefined) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return digits === undefined ? Math.round(number) : Number(number.toFixed(digits));
+}
+
+function normalizedPoint(row: EnvironmentHistoryRow, t: number): EnvironmentHistoryRow {
   return {
     t,
-    co2: nullable(row.co2),
-    temperature: nullable(row.temperature, 2),
-    humidity: nullable(row.humidity, 2),
+    co2: nullableNumber(row.co2),
+    temperature: nullableNumber(row.temperature, 2),
+    humidity: nullableNumber(row.humidity, 2),
   };
 }
 
@@ -62,21 +61,34 @@ export async function mergeEnvironmentRows(
   ).bind(cutoff).all<StoredEnvironmentRow>();
 
   const durableRows = stored.results ?? [];
-  const rows: StoredEnvironmentRow[] = durableRows.length
-    ? durableRows
-    : returnedRows.map(row => ({ ...row, device_id: fallbackDeviceId }));
+  const useDurableRows = durableRows.length > 0;
+  const rows: readonly EnvironmentHistoryRow[] = useDurableRows ? durableRows : returnedRows;
   const devices: Record<string, EnvironmentDeviceHistory> = {};
+  const deviceList: EnvironmentDeviceHistory[] = [];
+  let unorderedDevices: Set<string> | null = null;
+  let firstDeviceId = "";
   for (const row of rows) {
-    const deviceId = String(row.device_id ?? "");
-    if (!DEVICE_ID_PATTERN.test(deviceId) || Number(row.t) < cutoff) continue;
-    const point = normalizedPoint(row);
-    if (!point) continue;
-    const device = devices[deviceId] ?? { deviceId, bucketMinutes: 5, history: [] };
+    const deviceId = useDurableRows
+      ? String((row as StoredEnvironmentRow).device_id ?? "")
+      : fallbackDeviceId;
+    const t = Number(row.t);
+    if (!DEVICE_ID_PATTERN.test(deviceId) || !Number.isSafeInteger(t) || t < cutoff) continue;
+    const point = normalizedPoint(row, t);
+    let device = devices[deviceId];
+    if (!device) {
+      device = { deviceId, bucketMinutes: 5, history: [] };
+      devices[deviceId] = device;
+      deviceList.push(device);
+      if (!firstDeviceId || deviceId < firstDeviceId) firstDeviceId = deviceId;
+    } else if (device.history.length && device.history[device.history.length - 1]!.t > t) {
+      (unorderedDevices ??= new Set<string>()).add(deviceId);
+    }
     device.history.push(point);
-    devices[deviceId] = device;
   }
-  for (const device of Object.values(devices)) {
-    device.history.sort((left, right) => left.t - right.t);
+  if (unorderedDevices) {
+    for (const deviceId of unorderedDevices) {
+      devices[deviceId]!.history.sort((left, right) => left.t - right.t);
+    }
   }
 
   const previous = await readState(env, "environment");
@@ -88,11 +100,16 @@ export async function mergeEnvironmentRows(
       ? previousDeviceId
       : devices[fallbackDeviceId]
         ? fallbackDeviceId
-        : Object.keys(devices).sort()[0] ?? fallbackDeviceId;
+        : firstDeviceId || fallbackDeviceId;
   const selected = devices[selectedId] ?? { deviceId: selectedId, bucketMinutes: 5, history: [] };
   await updateState(env, {
     source: "environment",
     observedAt: now,
-    payload: { ...selected, devices },
+    payload: {
+      deviceId: selected.deviceId,
+      bucketMinutes: selected.bucketMinutes,
+      history: selected.history,
+      devices,
+    },
   }, undefined, previous);
 }
