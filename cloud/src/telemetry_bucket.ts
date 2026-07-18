@@ -10,6 +10,11 @@ export interface TelemetrySample {
   humidityCorrected?: number;
 }
 
+export interface TelemetrySampleReceipt {
+  sequence: number;
+  bucket_applied: number;
+}
+
 export interface EnvironmentHistoryRow {
   t: number;
   co2: number | null;
@@ -102,7 +107,7 @@ export function telemetrySampleStatement(
           AND excluded.temperature_corrected IS environment_samples.temperature_corrected
           AND excluded.humidity_corrected IS environment_samples.humidity_corrected
         )
-     RETURNING sequence`,
+     RETURNING sequence,bucket_applied`,
   ).bind(
     deviceId,
     sample.sequence,
