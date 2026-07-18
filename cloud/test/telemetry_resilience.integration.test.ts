@@ -109,6 +109,36 @@ describe("telemetry resilience", () => {
     ]);
   });
 
+  it("extends a single-device state without rereading older durable buckets", async () => {
+    const firstAt = Math.floor((Date.now() - 10 * 60_000) / 300_000) * 300_000;
+    const secondAt = firstAt + 300_000;
+
+    expect((await telemetryReceipt({
+      deviceId: "ci-device",
+      samples: [{ sequence: 230, observedAt: firstAt, co2: 640 }],
+    })).acknowledgedSequences).toEqual([230]);
+
+    await env.DB.prepare(
+      "DELETE FROM environment_buckets WHERE device_id=?1 AND bucket_at=?2",
+    ).bind("ci-device", firstAt).run();
+
+    expect((await telemetryReceipt({
+      deviceId: "ci-device",
+      samples: [{ sequence: 231, observedAt: secondAt, co2: 660 }],
+    })).acknowledgedSequences).toEqual([231]);
+
+    const state = await env.DB.prepare(
+      "SELECT payload FROM current_state WHERE source='environment'",
+    ).first<{ payload: string }>();
+    const payload = JSON.parse(state?.payload ?? "{}") as {
+      history?: Array<{ t: number; co2: number | null }>;
+    };
+    expect(payload.history).toEqual([
+      { t: firstAt, co2: 640, temperature: null, humidity: null },
+      { t: secondAt, co2: 660, temperature: null, humidity: null },
+    ]);
+  });
+
   it("accepts a reused sequence when the replacement sample is newer", async () => {
     const firstAt = Math.floor((Date.now() - 20 * 60_000) / 300_000) * 300_000;
     const secondAt = firstAt + 300_000;
