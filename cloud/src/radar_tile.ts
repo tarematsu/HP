@@ -69,7 +69,7 @@ function hexDigest(digest: ArrayBuffer): string {
   const bytes = new Uint8Array(digest);
   let output = "";
   for (const value of bytes) {
-    output += HEX_DIGITS[value >>> 4] + HEX_DIGITS[value & 15];
+    output += HEX_DIGITS.charAt(value >>> 4) + HEX_DIGITS.charAt(value & 15);
   }
   return output;
 }
