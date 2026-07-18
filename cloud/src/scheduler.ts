@@ -24,6 +24,7 @@ const MAX_SCHEDULER_BATCHES = 10;
 const SUCCESS_RUN_LOG_INTERVAL_SECONDS = 6 * 60 * 60;
 const OCTOPUS_INTERVAL_SECONDS = 60 * 60 * 6;
 const RADAR_DISPATCH_INTERVAL_SECONDS = 5 * 60;
+const SYSTEM_JOBS_CACHE_MS = 15 * 60_000;
 const DAY_MS = 86_400_000;
 const DAY_SECONDS = 86_400;
 const POWER_RETENTION_MS = 90 * DAY_MS;
@@ -39,9 +40,20 @@ const REFRESHABLE_JOBS = [
 ] as const;
 const REFRESHABLE_JOB_SET = new Set<string>(REFRESHABLE_JOBS);
 
-export async function ensureSystemJobs(env: Env): Promise<void> {
-  const octopusDeadline = Math.floor(Date.now() / 1000) + OCTOPUS_INTERVAL_SECONDS;
-  const radarEnabled = Boolean(env.GITHUB_RADAR_DISPATCH_TOKEN?.trim());
+interface SystemJobsCacheEntry {
+  radarEnabled: boolean;
+  expiresAt: number;
+  inFlight: Promise<void> | null;
+}
+
+const SYSTEM_JOBS_CACHE = new WeakMap<D1Database, SystemJobsCacheEntry>();
+
+export function invalidateSystemJobsCache(db: D1Database): void {
+  SYSTEM_JOBS_CACHE.delete(db);
+}
+
+async function reconcileSystemJobs(env: Env, nowMs: number, radarEnabled: boolean): Promise<void> {
+  const octopusDeadline = Math.floor(nowMs / 1000) + OCTOPUS_INTERVAL_SECONDS;
   const radarValues = radarEnabled
     ? ",('radar_dispatch',?2,0,NULL,NULL,NULL,0)"
     : "";
@@ -82,6 +94,32 @@ export async function ensureSystemJobs(env: Env): Promise<void> {
   } else {
     await statement.bind(OCTOPUS_INTERVAL_SECONDS, octopusDeadline).run();
   }
+}
+
+export async function ensureSystemJobs(env: Env, nowMs = Date.now()): Promise<void> {
+  const radarEnabled = Boolean(env.GITHUB_RADAR_DISPATCH_TOKEN?.trim());
+  const cached = SYSTEM_JOBS_CACHE.get(env.DB);
+  if (cached?.radarEnabled === radarEnabled) {
+    if (cached.inFlight) return cached.inFlight;
+    if (cached.expiresAt > nowMs) return;
+  }
+
+  const entry: SystemJobsCacheEntry = { radarEnabled, expiresAt: 0, inFlight: null };
+  const task = reconcileSystemJobs(env, nowMs, radarEnabled).then(
+    () => {
+      if (SYSTEM_JOBS_CACHE.get(env.DB) === entry) {
+        entry.expiresAt = nowMs + SYSTEM_JOBS_CACHE_MS;
+        entry.inFlight = null;
+      }
+    },
+    error => {
+      if (SYSTEM_JOBS_CACHE.get(env.DB) === entry) SYSTEM_JOBS_CACHE.delete(env.DB);
+      throw error;
+    },
+  );
+  entry.inFlight = task;
+  SYSTEM_JOBS_CACHE.set(env.DB, entry);
+  return task;
 }
 
 export async function acquireDueJobs(env: Env, nowSeconds: number): Promise<JobRow[]> {
