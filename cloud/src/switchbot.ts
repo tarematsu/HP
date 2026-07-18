@@ -17,6 +17,8 @@ const WEBHOOK_TYPES = new Set([
   "WoPlugJP",
   "WoPlugEU",
 ]);
+const UTF8_ENCODER = new TextEncoder();
+const HEX_DIGITS = "0123456789abcdef";
 
 let webhookSecret = "";
 let webhookTokenCache = "";
@@ -88,8 +90,16 @@ export async function webhookToken(baseEnv: Env): Promise<string> {
   const secret = (baseEnv as SwitchBotEnv).SWITCHBOT_SECRET?.trim() ?? "";
   if (!secret) return "";
   if (webhookSecret === secret && webhookTokenCache) return webhookTokenCache;
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${secret}:homepanel-webhook`));
-  webhookTokenCache = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("").slice(0, 32);
+  const digest = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    UTF8_ENCODER.encode(`${secret}:homepanel-webhook`),
+  ));
+  let token = "";
+  for (let index = 0; index < 16; index += 1) {
+    const byte = digest[index]!;
+    token += HEX_DIGITS.charAt(byte >>> 4) + HEX_DIGITS.charAt(byte & 15);
+  }
+  webhookTokenCache = token;
   webhookSecret = secret;
   return webhookTokenCache;
 }
@@ -122,12 +132,20 @@ export async function handleSwitchBotWebhook(request: Request, baseEnv: Env): Pr
   const snapshot = await loadSwitchBotSnapshot(env);
   const previous = snapshot.state;
   const devices = [...(previous?.devices ?? [])];
-  const index = devices.findIndex(device => device.deviceId.toUpperCase() === deviceId.toUpperCase());
-  const current = index >= 0 ? devices[index]! : emptyDevice(deviceId, eventDeviceType(rawType));
+  const normalizedDeviceId = deviceId.toUpperCase();
+  let index = -1;
+  for (let candidate = 0; candidate < devices.length; candidate += 1) {
+    if (devices[candidate]!.deviceId.toUpperCase() === normalizedDeviceId) {
+      index = candidate;
+      break;
+    }
+  }
+  const deviceType = eventDeviceType(rawType);
+  const current = index >= 0 ? devices[index]! : emptyDevice(deviceId, deviceType);
   const detectionState = text(context.detectionState);
   const updated: DeviceState = {
     ...current,
-    deviceType: eventDeviceType(rawType),
+    deviceType,
     battery: numberValue(context.battery) ?? current.battery,
     motion: detectionState === "DETECTED" ? true : detectionState === "NOT_DETECTED" ? false : current.motion,
     openState: text(context.openState) || current.openState,
