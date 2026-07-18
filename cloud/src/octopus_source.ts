@@ -13,6 +13,12 @@ const DAY_MS = 86_400_000;
 const PROFILE_DAYS = 7;
 const PROFILE_SLOTS = 48;
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
+const JSON_HEADERS = { "Content-Type": "application/json" } as const;
+const AUTHORIZATION_ERROR_CODES = new Set([
+  "KT-CT-118", "KT-CT-1111", "KT-CT-1112", "KT-CT-4177",
+]);
+const LOGIN_MUTATION = `mutation login($input: ObtainJSONWebTokenInput!) { obtainKrakenToken(input: $input) { token refreshToken refreshExpiresIn } }`;
+const READINGS_QUERY = `query readings($accountNumber: String!, $fromDatetime: DateTime, $toDatetime: DateTime) { account(accountNumber: $accountNumber) { properties { electricitySupplyPoints { spin status halfHourlyReadings(fromDatetime: $fromDatetime, toDatetime: $toDatetime) { startAt value } } } } }`;
 
 type OctopusToken = {
   value: string;
@@ -65,36 +71,63 @@ class OctopusApiError extends Error {
 
 let octopusToken: OctopusToken | null = null;
 
-function collectErrorText(value: unknown): string[] {
-  if (typeof value === "string") return value.trim() ? [value.trim()] : [];
-  if (Array.isArray(value)) return value.flatMap(collectErrorText);
-  if (value && typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).flatMap(collectErrorText);
+function appendUnique(output: string[], seen: Set<string>, value: string | undefined): void {
+  if (!value || seen.has(value)) return;
+  seen.add(value);
+  output.push(value);
+}
+
+function collectErrorText(value: unknown, output: string[], seen: Set<string>): void {
+  if (typeof value === "string") {
+    appendUnique(output, seen, value.trim());
+    return;
   }
-  return [];
+  if (Array.isArray(value)) {
+    for (const item of value) collectErrorText(item, output, seen);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  const record = value as Record<string, unknown>;
+  for (const name in record) {
+    if (Object.prototype.hasOwnProperty.call(record, name)) {
+      collectErrorText(record[name], output, seen);
+    }
+  }
 }
 
 function octopusApiError(context: string, issues: OctopusGraphqlIssue[] = []): OctopusApiError {
-  const codes = Array.from(new Set(issues.map(issue => issue.extensions?.errorCode).filter((value): value is string => Boolean(value))));
-  const types = Array.from(new Set(issues.map(issue => issue.extensions?.errorType).filter((value): value is string => Boolean(value))));
-  const details = issues.map(issue => {
-    const code = issue.extensions?.errorCode;
-    const descriptions = [
-      issue.extensions?.errorDescription,
-      ...collectErrorText(issue.extensions?.validationErrors),
-      issue.message,
-    ].filter((value): value is string => Boolean(value));
-    const description = Array.from(new Set(descriptions)).join(" / ") || "GraphQL error";
-    return code ? `${code}: ${description}` : description;
-  });
-  return new OctopusApiError(`${context}: ${details.join("; ") || "response did not contain data"}`, codes, types);
+  const codes: string[] = [];
+  const types: string[] = [];
+  const details: string[] = [];
+  const codeSet = new Set<string>();
+  const typeSet = new Set<string>();
+
+  for (const issue of issues) {
+    const extension = issue.extensions;
+    appendUnique(codes, codeSet, extension?.errorCode);
+    appendUnique(types, typeSet, extension?.errorType);
+
+    const descriptions: string[] = [];
+    const descriptionSet = new Set<string>();
+    appendUnique(descriptions, descriptionSet, extension?.errorDescription);
+    collectErrorText(extension?.validationErrors, descriptions, descriptionSet);
+    appendUnique(descriptions, descriptionSet, issue.message);
+    const description = descriptions.join(" / ") || "GraphQL error";
+    details.push(extension?.errorCode ? `${extension.errorCode}: ${description}` : description);
+  }
+
+  return new OctopusApiError(
+    `${context}: ${details.join("; ") || "response did not contain data"}`,
+    codes,
+    types,
+  );
 }
 
 function isAuthorizationError(error: unknown): boolean {
   if (!(error instanceof OctopusApiError)) return false;
-  return error.types.includes("AUTHORIZATION") || error.codes.some(code => [
-    "KT-CT-118", "KT-CT-1111", "KT-CT-1112", "KT-CT-4177",
-  ].includes(code));
+  for (const type of error.types) if (type === "AUTHORIZATION") return true;
+  for (const code of error.codes) if (AUTHORIZATION_ERROR_CODES.has(code)) return true;
+  return false;
 }
 
 async function octopusGraphql<T>(
@@ -102,11 +135,9 @@ async function octopusGraphql<T>(
   variables: Record<string, unknown>,
   token?: string,
 ): Promise<OctopusGraphqlResponse<T>> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (token) headers.set("Authorization", token);
   return fetchJson<OctopusGraphqlResponse<T>>("https://api.oejp-kraken.energy/v1/graphql/", {
     method: "POST",
-    headers,
+    headers: token ? { "Content-Type": "application/json", Authorization: token } : JSON_HEADERS,
     body: JSON.stringify({ query, variables }),
   });
 }
@@ -125,10 +156,9 @@ function normalizeRefreshExpiry(value: unknown): number | undefined {
 }
 
 async function requestOctopusToken(input: Record<string, string>): Promise<OctopusToken> {
-  const mutation = `mutation login($input: ObtainJSONWebTokenInput!) { obtainKrakenToken(input: $input) { token refreshToken refreshExpiresIn } }`;
   const response = await octopusGraphql<{
     obtainKrakenToken?: { token?: string; refreshToken?: string; refreshExpiresIn?: number };
-  }>(mutation, { input });
+  }>(LOGIN_MUTATION, { input });
   const result = response.data?.obtainKrakenToken;
   if (response.errors?.length || !result?.token) {
     throw octopusApiError("Octopus authentication failed", response.errors);
@@ -142,22 +172,22 @@ async function requestOctopusToken(input: Record<string, string>): Promise<Octop
 }
 
 async function authenticateOctopus(env: Env, forceCredentials = false): Promise<string> {
-  if (!forceCredentials && octopusToken && Date.now() < octopusToken.expiresAt) return octopusToken.value;
+  const now = Date.now();
+  if (!forceCredentials && octopusToken && now < octopusToken.expiresAt) return octopusToken.value;
   const cached = octopusToken;
   const refreshToken = !forceCredentials && cached?.refresh &&
-    (!cached.refreshExpiresAt || Date.now() < cached.refreshExpiresAt)
+    (!cached.refreshExpiresAt || now < cached.refreshExpiresAt)
     ? cached.refresh
     : undefined;
   if (refreshToken) {
     try {
       const refreshed = await requestOctopusToken({ refreshToken });
-      const activeToken: OctopusToken = refreshed.refresh ? refreshed : {
-        ...refreshed,
-        refresh: refreshToken,
-        refreshExpiresAt: cached?.refreshExpiresAt,
-      };
-      octopusToken = activeToken;
-      return activeToken.value;
+      if (!refreshed.refresh) {
+        refreshed.refresh = refreshToken;
+        refreshed.refreshExpiresAt = cached?.refreshExpiresAt;
+      }
+      octopusToken = refreshed;
+      return refreshed.value;
     } catch {
     }
   }
@@ -200,8 +230,7 @@ async function fetchOctopusRangeReadings(
   range: OctopusRange,
   token: string,
 ): Promise<OctopusReading[]> {
-  const query = `query readings($accountNumber: String!, $fromDatetime: DateTime, $toDatetime: DateTime) { account(accountNumber: $accountNumber) { properties { electricitySupplyPoints { spin status halfHourlyReadings(fromDatetime: $fromDatetime, toDatetime: $toDatetime) { startAt value } } } } }`;
-  const response = await octopusGraphql<OctopusReadingPayload>(query, {
+  const response = await octopusGraphql<OctopusReadingPayload>(READINGS_QUERY, {
     accountNumber,
     fromDatetime: range.from.toISOString(),
     toDatetime: range.to.toISOString(),
@@ -210,40 +239,52 @@ async function fetchOctopusRangeReadings(
 
   const fromMs = range.from.getTime();
   const toMs = range.to.getTime();
-  return (response.data?.account?.properties ?? []).flatMap((property, propertyIndex) =>
-    (property.electricitySupplyPoints ?? []).flatMap((point, pointIndex) => {
+  const output: OctopusReading[] = [];
+  const properties = response.data?.account?.properties ?? [];
+  for (let propertyIndex = 0; propertyIndex < properties.length; propertyIndex += 1) {
+    const points = properties[propertyIndex]?.electricitySupplyPoints ?? [];
+    for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+      const point = points[pointIndex]!;
       const supplyPoint = point.spin || `${propertyIndex}:${pointIndex}`;
-      return (point.halfHourlyReadings ?? [])
-        .map(reading => ({ ...reading, supplyPoint }))
-        .filter(reading => {
-          const observedAt = Date.parse(reading.startAt);
-          return Number.isFinite(observedAt) && observedAt >= fromMs && observedAt < toMs;
-        });
-    }));
+      for (const reading of point.halfHourlyReadings ?? []) {
+        const observedAt = Date.parse(reading.startAt);
+        if (!Number.isFinite(observedAt) || observedAt < fromMs || observedAt >= toMs) continue;
+        output.push({ startAt: reading.startAt, value: reading.value, supplyPoint });
+      }
+    }
+  }
+  return output;
 }
 
-function mergeReadings(readings: OctopusReading[]): OctopusReading[] {
-  const unique = new Map<string, OctopusReading>();
+function addMergedReadings(unique: Map<string, OctopusReading>, readings: OctopusReading[]): void {
   for (const reading of readings) {
     const observedAt = Date.parse(reading.startAt);
     const value = Number(reading.value);
     if (!Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
     unique.set(`${reading.supplyPoint}:${observedAt}`, reading);
   }
-  return [...unique.values()];
+}
+
+function mergeReadings(stored: OctopusReading[], live: OctopusReading[]): OctopusReading[] {
+  const unique = new Map<string, OctopusReading>();
+  addMergedReadings(unique, stored);
+  addMergedReadings(unique, live);
+  return Array.from(unique.values());
 }
 
 export function buildOctopusDailyProfile(
   readings: OctopusReading[],
   ranges: OctopusProfileRanges,
 ): OctopusProfilePoint[] {
+  const rangeStart = ranges.previousStart.getTime();
+  const rangeEnd = ranges.currentEnd.getTime();
   const unique = new Map<string, { supplyPoint: string; observedAt: number; value: number }>();
   for (const reading of readings) {
     const observedAt = Date.parse(reading.startAt);
     const value = Number(reading.value);
     const supplyPoint = String(reading.supplyPoint ?? "").trim();
     if (!supplyPoint || !Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
-    if (observedAt < ranges.previousStart.getTime() || observedAt >= ranges.currentEnd.getTime()) continue;
+    if (observedAt < rangeStart || observedAt >= rangeEnd) continue;
     if (observedAt % HALF_HOUR_MS !== 0) continue;
     unique.set(`${supplyPoint}:${observedAt}`, { supplyPoint, observedAt, value });
   }
@@ -254,9 +295,12 @@ export function buildOctopusDailyProfile(
     const slot = local.getUTCHours() * 2 + Math.floor(local.getUTCMinutes() / 30);
     if (slot < 0 || slot >= PROFILE_SLOTS) continue;
     const dayKey = jstDayKeyMs(reading.observedAt);
-    const slots = daySlots.get(dayKey) ?? new Map<number, number>();
+    let slots = daySlots.get(dayKey);
+    if (!slots) {
+      slots = new Map<number, number>();
+      daySlots.set(dayKey, slots);
+    }
     slots.set(slot, (slots.get(slot) ?? 0) + reading.value);
-    daySlots.set(dayKey, slots);
   }
 
   const dayTotal = (dayKey: string): { total: number | null; complete: boolean } => {
@@ -267,20 +311,23 @@ export function buildOctopusDailyProfile(
     return { total: Number(sum.toFixed(4)), complete: true };
   };
 
-  return Array.from({ length: PROFILE_DAYS }, (_, offset) => {
+  const profile: OctopusProfilePoint[] = [];
+  profile.length = 0;
+  for (let offset = 0; offset < PROFILE_DAYS; offset += 1) {
     const currentDayMs = ranges.currentStart.getTime() + offset * DAY_MS;
     const previousDayMs = ranges.previousStart.getTime() + offset * DAY_MS;
     const current = dayTotal(jstDayKeyMs(currentDayMs));
     const previous = dayTotal(jstDayKeyMs(previousDayMs));
     const weekday = new Date(currentDayMs + JST_MS).getUTCDay();
-    return {
+    profile.push({
       day: WEEKDAY_LABELS[weekday]!,
       currentTotal: current.total,
       previousTotal: previous.total,
       currentComplete: current.complete,
       previousComplete: previous.complete,
-    };
-  });
+    });
+  }
+  return profile;
 }
 
 export async function fetchOctopus(env: Env): Promise<SourceResult> {
@@ -289,12 +336,13 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   if (!accountNumber) throw new Error("OCTOPUS_ACCOUNT or OCTOPUS_ACCOUNT_NUMBER is not configured");
 
   const now = new Date();
-  const jst = new Date(now.getTime() + JST_MS);
+  const nowMs = now.getTime();
+  const jst = new Date(nowMs + JST_MS);
   const billingMonth = jst.getUTCDate() >= 2 ? jst.getUTCMonth() : jst.getUTCMonth() - 1;
   const currentStart = jstBoundary(jst.getUTCFullYear(), billingMonth, 2);
   const previousStart = jstBoundary(jst.getUTCFullYear(), billingMonth - 1, 2);
   const nextStart = jstBoundary(jst.getUTCFullYear(), billingMonth + 1, 2);
-  const profileRanges = completeDayProfileRanges(now.getTime());
+  const profileRanges = completeDayProfileRanges(nowMs);
   const priorityRange: OctopusRange = {
     from: profileRanges.previousStart,
     to: profileRanges.currentEnd,
@@ -307,7 +355,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     synchronized = await synchronizeOctopusHistory(
       env,
       accountNumber,
-      now.getTime(),
+      nowMs,
       comparisonKey,
       priorityRange,
       range => fetchOctopusRangeReadings(accountNumber, range, token),
@@ -319,34 +367,40 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
     synchronized = await synchronizeOctopusHistory(
       env,
       accountNumber,
-      now.getTime(),
+      nowMs,
       comparisonKey,
       priorityRange,
       range => fetchOctopusRangeReadings(accountNumber, range, token),
     );
   }
 
+  const previousStartMs = previousStart.getTime();
+  const currentStartMs = currentStart.getTime();
   const storedRange: OctopusRange = {
-    from: new Date(Math.min(previousStart.getTime(), priorityRange.from.getTime())),
-    to: new Date(Math.max(now.getTime(), priorityRange.to.getTime())),
+    from: new Date(Math.min(previousStartMs, priorityRange.from.getTime())),
+    to: new Date(Math.max(nowMs, priorityRange.to.getTime())),
   };
   const stored = await readStoredOctopusRanges(env, accountNumber, [storedRange]);
-  const readings = mergeReadings([...stored, ...synchronized.liveReadings]);
-  const monthly = { previous: 0, current: 0 };
+  const readings = mergeReadings(stored, synchronized.liveReadings);
+  let previousUsage = 0;
+  let currentUsage = 0;
   let previousSlots = 0;
   for (const reading of readings) {
-    const date = new Date(reading.startAt);
+    const observedAt = Date.parse(reading.startAt);
     const value = Number(reading.value ?? 0);
-    if (!Number.isFinite(date.getTime()) || !Number.isFinite(value)) continue;
-    if (date >= previousStart && date < currentStart) { monthly.previous += value; previousSlots += 1; }
-    if (date >= currentStart && date < now) monthly.current += value;
+    if (!Number.isFinite(observedAt) || !Number.isFinite(value)) continue;
+    if (observedAt >= previousStartMs && observedAt < currentStartMs) {
+      previousUsage += value;
+      previousSlots += 1;
+    }
+    if (observedAt >= currentStartMs && observedAt < nowMs) currentUsage += value;
   }
 
   const profile = buildOctopusDailyProfile(readings, profileRanges);
-  const elapsed = Math.max(1, now.getTime() - currentStart.getTime());
-  const duration = Math.max(1, nextStart.getTime() - currentStart.getTime());
-  const projected = monthly.current * duration / elapsed;
-  const expectedSlots = Math.round((currentStart.getTime() - previousStart.getTime()) / DAY_MS) * PROFILE_SLOTS;
+  const elapsed = Math.max(1, nowMs - currentStartMs);
+  const duration = Math.max(1, nextStart.getTime() - currentStartMs);
+  const projected = currentUsage * duration / elapsed;
+  const expectedSlots = Math.round((currentStartMs - previousStartMs) / DAY_MS) * PROFILE_SLOTS;
   return {
     source: "octopus",
     payload: {
@@ -368,16 +422,16 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
         excludedRecentDays: 2,
       },
       lastMonth: {
-        usage: Number(monthly.previous.toFixed(3)),
+        usage: Number(previousUsage.toFixed(3)),
         complete: previousSlots / Math.max(1, expectedSlots) >= 0.95,
         coveredSlots: previousSlots,
         expectedSlots,
       },
       thisMonth: {
-        usageToDate: Number(monthly.current.toFixed(3)),
+        usageToDate: Number(currentUsage.toFixed(3)),
         projectedUsage: Number(projected.toFixed(3)),
       },
     },
-    observedAt: now.getTime(),
+    observedAt: nowMs,
   };
 }
