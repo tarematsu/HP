@@ -3,7 +3,6 @@ import { DEVICE_ID_PATTERN, deviceIdFromRequest as deviceIdFrom } from "./auth";
 import { json } from "./http";
 import {
   dashboardPayload,
-  dashboardVersion,
   WORKER_VERSION,
   type StateRow,
 } from "./snapshot";
@@ -51,6 +50,22 @@ function configEtag(deviceId: string, version: number): string {
   return `"device-config-${deviceId}-${version}"`;
 }
 
+function etagHeaderIncludes(value: string | null, tag: string): boolean {
+  if (value === null) return false;
+  let start = 0;
+  while (start <= value.length) {
+    const delimiter = value.indexOf(",", start);
+    const final = delimiter < 0;
+    let end = final ? value.length : delimiter;
+    while (start < end && (value.charCodeAt(start) === 32 || value.charCodeAt(start) === 9)) start += 1;
+    while (end > start && (value.charCodeAt(end - 1) === 32 || value.charCodeAt(end - 1) === 9)) end -= 1;
+    if (end - start === tag.length && value.startsWith(tag, start)) return true;
+    if (final) return false;
+    start = delimiter + 1;
+  }
+  return false;
+}
+
 function objectOrNull(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -58,10 +73,19 @@ function objectOrNull(value: unknown): Record<string, unknown> | null {
 }
 
 function canonicalValue(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (Array.isArray(value)) {
+    const normalized = new Array<unknown>(value.length);
+    for (let index = 0; index < value.length; index += 1) {
+      normalized[index] = canonicalValue(value[index]);
+    }
+    return normalized;
+  }
   if (value && typeof value === "object") {
     const object = value as Record<string, unknown>;
-    return Object.fromEntries(Object.keys(object).sort().map(key => [key, canonicalValue(object[key])]));
+    const normalized = Object.create(null) as Record<string, unknown>;
+    const keys = Object.keys(object).sort();
+    for (const key of keys) normalized[key] = canonicalValue(object[key]);
+    return normalized;
   }
   return value;
 }
@@ -140,13 +164,21 @@ async function pendingCommands(env: Env, deviceId: string, now: number): Promise
         AND (delivered_at IS NULL OR delivered_at<=?3)
      RETURNING id, command, payload, created_at, expires_at`,
   ).bind(deviceId, now, now - COMMAND_REDELIVERY_MS).all<DeviceCommandRow>();
-  return (rows.results ?? [])
-    .sort((left, right) => Number(left.id) - Number(right.id))
-    .map(row => {
-      let payload: unknown = null;
-      try { payload = row.payload ? JSON.parse(row.payload) : null; } catch { payload = null; }
-      return { id: row.id, command: row.command, payload, createdAt: row.created_at, expiresAt: row.expires_at };
+  const results = rows.results ?? [];
+  results.sort((left, right) => Number(left.id) - Number(right.id));
+  const commands: Array<Record<string, unknown>> = [];
+  for (const row of results) {
+    let payload: unknown = null;
+    try { payload = row.payload ? JSON.parse(row.payload) : null; } catch { payload = null; }
+    commands.push({
+      id: row.id,
+      command: row.command,
+      payload,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
     });
+  }
+  return commands;
 }
 
 export async function getDeviceSync(request: Request, env: Env): Promise<Response> {
@@ -163,13 +195,19 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   };
   const now = Date.now();
   const rowsResult = await env.DB.prepare(
-    `SELECT 'state' AS kind, source, version,
+    `WITH state_rows AS (
+       SELECT source, version, payload, observed_at, fetched_at,
+              last_success_at, status, error, content_hash,
+              COALESCE(SUM(CASE
+                WHEN source IN ('weather','news','octopus','switchbot','stationhead','environment')
+                  THEN version ELSE 0 END) OVER (), 0) AS dashboard_version
+         FROM current_state
+        WHERE source IN ('weather','news','octopus','switchbot','stationhead','environment','radar','stationhead_health')
+     )
+     SELECT 'state' AS kind, source, version,
             CASE
               WHEN source IN ('weather','news','octopus','switchbot','stationhead','environment')
-                   AND (SELECT COALESCE(SUM(version), 0)
-                          FROM current_state
-                         WHERE source IN ('weather','news','octopus','switchbot','stationhead','environment'))<>?4
-                THEN payload
+                   AND dashboard_version<>?4 THEN payload
               WHEN source='radar' AND version<>?5 THEN payload
               WHEN source='switchbot' AND version<>?6 THEN payload
               WHEN source='stationhead' AND version<>?7 THEN payload
@@ -179,8 +217,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
             observed_at, fetched_at,
             last_success_at, status, error, content_hash,
             NULL AS updated_at, 0 AS pending
-       FROM current_state
-      WHERE source IN ('weather','news','octopus','switchbot','stationhead','environment','radar','stationhead_health')
+       FROM state_rows
      UNION ALL
      SELECT 'config' AS kind, 'config' AS source, version,
             CASE WHEN version<>?8 THEN payload ELSE NULL END,
@@ -208,13 +245,28 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
     requested.config,
     requested.stationheadHealth,
   ).all<SyncRow>();
-  const rows = rowsResult.results ?? [];
   const states: Record<string, StateRow> = {};
-  for (const row of rows) {
-    if (row.kind !== "state" || !row.status) continue;
+  let configRow: SyncRow | undefined;
+  let hasPendingCommands = false;
+  let currentDashboardVersion = 0;
+  let radarVersion = 0;
+  let switchbotVersion = 0;
+  let stationheadVersion = 0;
+  let stationheadHealthVersion = 0;
+  for (const row of rowsResult.results ?? []) {
+    if (row.kind === "config") {
+      configRow = row;
+      continue;
+    }
+    if (row.kind === "commands") {
+      hasPendingCommands = Number(row.pending) === 1;
+      continue;
+    }
+    if (!row.status) continue;
+    const version = Number(row.version);
     states[row.source] = {
       source: row.source,
-      version: Number(row.version),
+      version,
       payload: row.payload ?? "",
       observed_at: row.observed_at,
       fetched_at: Number(row.fetched_at ?? 0),
@@ -223,16 +275,17 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
       error: row.error,
       content_hash: row.content_hash,
     };
+    if (row.source === "weather" || row.source === "news" || row.source === "octopus" ||
+        row.source === "switchbot" || row.source === "stationhead" || row.source === "environment") {
+      currentDashboardVersion += version;
+    }
+    if (row.source === "radar") radarVersion = version;
+    else if (row.source === "switchbot") switchbotVersion = version;
+    else if (row.source === "stationhead") stationheadVersion = version;
+    else if (row.source === "stationhead_health") stationheadHealthVersion = version;
   }
-  const configRow = rows.find(row => row.kind === "config");
   const configVersion = Number(configRow?.version ?? 0);
-  const hasPendingCommands = Number(rows.find(row => row.kind === "commands")?.pending ?? 0) === 1;
   const commands = hasPendingCommands ? await pendingCommands(env, deviceId, now) : [];
-  const currentDashboardVersion = dashboardVersion(states);
-  const radarVersion = Number(states.radar?.version ?? 0);
-  const switchbotVersion = Number(states.switchbot?.version ?? 0);
-  const stationheadVersion = Number(states.stationhead?.version ?? 0);
-  const stationheadHealthVersion = Number(states.stationhead_health?.version ?? 0);
   const response: Record<string, unknown> = {
     workerVersion: WORKER_VERSION,
     versions: {
@@ -248,10 +301,12 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   if (currentDashboardVersion !== requested.dashboard) {
     response.dashboard = JSON.stringify(dashboardPayload(states));
   }
-  for (const source of ["radar", "switchbot", "stationhead"] as const) {
-    const row = states[source];
-    if (row && row.version !== requested[source]) response[source] = row.payload;
-  }
+  const radarState = states.radar;
+  if (radarState && radarState.version !== requested.radar) response.radar = radarState.payload;
+  const switchbotState = states.switchbot;
+  if (switchbotState && switchbotState.version !== requested.switchbot) response.switchbot = switchbotState.payload;
+  const stationheadState = states.stationhead;
+  if (stationheadState && stationheadState.version !== requested.stationhead) response.stationhead = stationheadState.payload;
   const stationheadHealthState = states.stationhead_health;
   if (stationheadHealthState && stationheadHealthState.version !== requested.stationheadHealth) {
     response.stationheadHealth = JSON.stringify(stationheadHealthPayload(stationheadHealthState));
@@ -281,12 +336,13 @@ export async function getDeviceConfig(request: Request, env: Env): Promise<Respo
     try { config = JSON.parse(row.payload); } catch { config = {}; }
   }
   const body = JSON.stringify({ deviceId, version, updatedAt: row?.updated_at ?? 0, config });
-  const headers = new Headers({
+  const etag = configEtag(deviceId, version);
+  const headers = {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "private, max-age=0, must-revalidate",
-    ETag: configEtag(deviceId, version),
-  });
-  if (request.headers.get("If-None-Match")?.split(",").map(value => value.trim()).includes(headers.get("ETag")!)) {
+    ETag: etag,
+  };
+  if (etagHeaderIncludes(request.headers.get("If-None-Match"), etag)) {
     return new Response(null, { status: 304, headers });
   }
   return new Response(body, { status: 200, headers });
@@ -309,14 +365,14 @@ export async function putDeviceConfig(request: Request, env: Env): Promise<Respo
   ).bind(deviceId).first<DeviceConfigRow>();
   const currentVersion = Number(existing?.version ?? 0);
   const currentEtag = configEtag(deviceId, currentVersion);
-  const suppliedEtags = request.headers.get("If-Match")?.split(",").map(value => value.trim()) ?? [];
-  if (!suppliedEtags.length) {
+  const suppliedEtags = request.headers.get("If-Match");
+  if (suppliedEtags === null) {
     return json(
       { error: "device config precondition required", deviceId, currentVersion },
       { status: 428, headers: { ETag: currentEtag } },
     );
   }
-  if (!suppliedEtags.includes(currentEtag)) {
+  if (!etagHeaderIncludes(suppliedEtags, currentEtag)) {
     return json(
       { error: "device config changed; reload before saving", deviceId, currentVersion },
       { status: 412, headers: { ETag: currentEtag } },
