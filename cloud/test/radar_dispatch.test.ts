@@ -47,7 +47,7 @@ describe("Cloudflare-triggered radar build dispatch", () => {
 
   it("dispatches the reusable GitHub workflow when the manifest is stale", async () => {
     const bucket = (env as unknown as Env).UPDATE_BUCKET!;
-    await bucket.put(MANIFEST_KEY, JSON.stringify({ generatedAt: new Date(NOW - 9 * 60_000).toISOString() }));
+    await bucket.put(MANIFEST_KEY, JSON.stringify({ generatedAt: new Date(NOW - 5 * 60_000).toISOString() }));
     const fetcher = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }));
 
     const result = await dispatchRadarBuildIfStale(testEnv(), {
@@ -55,7 +55,7 @@ describe("Cloudflare-triggered radar build dispatch", () => {
       fetcher,
     });
 
-    expect(result).toEqual({ status: "dispatched", manifestAgeMs: 9 * 60_000, dispatchedAt: NOW });
+    expect(result).toEqual({ status: "dispatched", manifestAgeMs: 5 * 60_000, dispatchedAt: NOW });
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = fetcher.mock.calls[0]!;
     expect(url).toBe("https://api.github.com/repos/tarematsu/HP/actions/workflows/radar-frames.yml/dispatches");
@@ -68,7 +68,7 @@ describe("Cloudflare-triggered radar build dispatch", () => {
     const marker = JSON.parse(await markerObject!.text()) as Record<string, unknown>;
     expect(marker).toMatchObject({
       dispatchedAt: NOW,
-      manifestAgeMs: 9 * 60_000,
+      manifestAgeMs: 5 * 60_000,
       repository: "tarematsu/HP",
       workflow: "radar-frames.yml",
       ref: "main",
@@ -89,7 +89,7 @@ describe("Cloudflare-triggered radar build dispatch", () => {
     expect(result).toEqual({
       status: "cooldown",
       manifestAgeMs: 20 * 60_000,
-      cooldownRemainingMs: 7 * 60_000,
+      cooldownRemainingMs: 3 * 60_000,
     });
     expect(fetcher).not.toHaveBeenCalled();
   });

@@ -49,6 +49,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: cloud/package-lock.json
 
       - name: Configure runtime paths
         run: printf 'RADAR_WORK_DIR=%s/homepanel-radar\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
@@ -79,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RADAR_WORK_DIR"
-          npx wrangler r2 object get \
+          ./node_modules/.bin/wrangler r2 object get \
             "homepanel-updates/radar/manifest.json" \
             --file="$RADAR_WORK_DIR/existing-manifest.json" \
             --remote \
@@ -100,17 +102,31 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
         run: |
           set -euo pipefail
+          pids=()
+          wait_for_uploads() {
+            local pid
+            for pid in "${pids[@]}"; do
+              wait "$pid"
+            done
+            pids=()
+          }
+
           while IFS=$'\t' read -r file key; do
             test -n "$key" || continue
-            npx wrangler r2 object put "homepanel-updates/$key" \
+            ./node_modules/.bin/wrangler r2 object put "homepanel-updates/$key" \
               --file="$file" \
               --content-type="image/webp" \
               --cache-control="private, max-age=10800, immutable" \
               --remote \
-              --force
+              --force &
+            pids+=("$!")
+            if (( ${#pids[@]} >= 4 )); then
+              wait_for_uploads
+            fi
           done < "$RADAR_WORK_DIR/uploads.tsv"
+          wait_for_uploads
 
-          npx wrangler r2 object put "homepanel-updates/radar/manifest.json" \
+          ./node_modules/.bin/wrangler r2 object put "homepanel-updates/radar/manifest.json" \
             --file="$RADAR_WORK_DIR/manifest.json" \
             --content-type="application/json" \
             --cache-control="private, max-age=0, must-revalidate" \
@@ -119,7 +135,7 @@ jobs:
 
           while IFS=$'\t' read -r key; do
             test -n "$key" || continue
-            npx wrangler r2 object delete "homepanel-updates/$key" --remote --force \
+            ./node_modules/.bin/wrangler r2 object delete "homepanel-updates/$key" --remote --force \
               || echo "warning: failed to delete stale radar object $key"
           done < "$RADAR_WORK_DIR/deletes.tsv"
         working-directory: cloud
