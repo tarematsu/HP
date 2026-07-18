@@ -23,6 +23,8 @@ function finiteTimestamp(value: unknown): number | null {
   if (typeof value === "string") {
     const parsed = Date.parse(value);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
   }
   return null;
 }
@@ -38,6 +40,18 @@ async function readObjectJson(bucket: R2Bucket, key: string): Promise<Record<str
   } catch {
     return null;
   }
+}
+
+async function lastRadarDispatchAt(bucket: R2Bucket): Promise<number | null> {
+  const marker = await bucket.head(RADAR_DISPATCH_MARKER_KEY);
+  if (!marker) return null;
+  const metadataTimestamp = finiteTimestamp(marker.customMetadata?.dispatchedAt);
+  if (metadataTimestamp !== null) return metadataTimestamp;
+
+  // Markers written before custom metadata was added still need to work. This
+  // body read disappears after the next successful dispatch rewrites the key.
+  const legacy = await readObjectJson(bucket, RADAR_DISPATCH_MARKER_KEY);
+  return finiteTimestamp(legacy?.dispatchedAt);
 }
 
 async function responseDetail(response: Response): Promise<string> {
@@ -65,8 +79,7 @@ export async function dispatchRadarBuildIfStale(
     return { status: "fresh", manifestAgeMs };
   }
 
-  const marker = await readObjectJson(bucket, RADAR_DISPATCH_MARKER_KEY);
-  const lastDispatchedAt = finiteTimestamp(marker?.dispatchedAt);
+  const lastDispatchedAt = await lastRadarDispatchAt(bucket);
   if (lastDispatchedAt !== null) {
     const elapsed = Math.max(0, now - lastDispatchedAt);
     if (elapsed < RADAR_DISPATCH_COOLDOWN_MS) {
@@ -109,6 +122,9 @@ export async function dispatchRadarBuildIfStale(
     httpMetadata: {
       contentType: "application/json",
       cacheControl: "private, max-age=0, must-revalidate",
+    },
+    customMetadata: {
+      dispatchedAt: String(now),
     },
   });
   console.info("Dispatched radar build to GitHub Actions", {
