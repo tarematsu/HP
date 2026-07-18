@@ -9,7 +9,7 @@ import { switchBotWebhookUrl } from "./switchbot";
 import { applyAwayControls, deriveSwitchBotState, failSafeSwitchBotState } from "./switchbot_state";
 import { PLUG_TYPES, SENSOR_TYPES } from "./switchbot_types";
 import type { ApiDevice } from "./switchbot_api";
-import type { SwitchBotEnv } from "./switchbot_types";
+import type { DeviceState, SwitchBotEnv } from "./switchbot_types";
 import type { StateRow } from "./snapshot";
 
 const WEBHOOK_RECHECK_MS = 6 * 60 * 60 * 1000;
@@ -20,6 +20,10 @@ export type SwitchBotPollResult = SourceResult & { previousRow: StateRow | null 
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function pollResult(payload: unknown, observedAt: number, previousRow: StateRow | null): SwitchBotPollResult {
+  return { source: "switchbot", payload, observedAt, previousRow };
 }
 
 function sensorStatusError(device: ApiDevice, status: Record<string, unknown>): string | null {
@@ -76,66 +80,78 @@ export async function fetchSwitchBotOptimized(baseEnv: Env): Promise<SwitchBotPo
   const controlPlugIds = configuredIds(env.SWITCHBOT_CONTROL_PLUG_IDS);
   const exitConfirmSeconds = Math.max(30, Number(env.SWITCHBOT_EXIT_CONFIRM_SECONDS) || 60);
   const fallbackSeconds = Math.max(60, Number(env.SWITCHBOT_FALLBACK_POLL_SECONDS) || 300);
-  const wrap = (payload: unknown): SwitchBotPollResult => ({
-    source: "switchbot",
-    payload,
-    observedAt: now,
-    previousRow: snapshot.row,
-  });
 
   if (previous && now - previous.lastPowerPollAt < fallbackSeconds * 1000) {
     if (previous.serviceAvailable === false || previous.motionReliable !== true) {
-      return wrap(failSafeSwitchBotState(
+      return pollResult(failSafeSwitchBotState(
         previous,
         now,
         controlPlugIds,
         previous.degradedReason ?? "SwitchBot motion state unavailable",
-      ));
+      ), now, snapshot.row);
     }
     const next = deriveSwitchBotState(previous.devices, previous, now, exitConfirmSeconds, controlPlugIds);
     await applyAwayControls(env, previous, next);
-    return wrap(next);
+    return pollResult(next, now, snapshot.row);
   }
 
   let response: { deviceList?: ApiDevice[] };
   try {
     response = await switchBotApi<{ deviceList?: ApiDevice[] }>(env, "/devices");
   } catch (error) {
-    return wrap(failSafeSwitchBotState(previous, now, controlPlugIds, errorText(error)));
+    return pollResult(failSafeSwitchBotState(previous, now, controlPlugIds, errorText(error)), now, snapshot.row);
   }
 
-  const devices = (response.deviceList ?? []).filter(device =>
-    SENSOR_TYPES.has(device.deviceType ?? "") || PLUG_TYPES.has(device.deviceType ?? ""));
-  const previousById = new Map((previous?.devices ?? []).map(device => [device.deviceId, device]));
-  const normalized = await Promise.all(devices.map(async device => {
-    const prior = previousById.get(device.deviceId) ?? null;
-    try {
-      const status = await switchBotApi<Record<string, unknown>>(env, `/devices/${encodeURIComponent(device.deviceId)}/status`);
-      const result = normalizeDevice(device, status, prior);
-      result.error = sensorStatusError(device, status);
-      return result;
-    } catch (error) {
-      const fallback = normalizeDevice(device, {}, prior);
-      fallback.error = errorText(error);
-      return fallback;
-    }
-  }));
+  const devices: ApiDevice[] = [];
+  for (const device of response.deviceList ?? []) {
+    const type = device.deviceType ?? "";
+    if (SENSOR_TYPES.has(type) || PLUG_TYPES.has(type)) devices.push(device);
+  }
 
-  const sensors = normalized.filter(device => SENSOR_TYPES.has(device.deviceType));
-  const failedSensors = sensors.filter(device => device.error);
-  if (!sensors.length || failedSensors.length) {
-    const reason = !sensors.length
+  const previousById = new Map<string, DeviceState>();
+  for (const device of previous?.devices ?? []) previousById.set(device.deviceId, device);
+
+  const statusRequests: Promise<DeviceState>[] = [];
+  for (const device of devices) {
+    statusRequests.push((async (): Promise<DeviceState> => {
+      const prior = previousById.get(device.deviceId) ?? null;
+      try {
+        const status = await switchBotApi<Record<string, unknown>>(
+          env,
+          `/devices/${encodeURIComponent(device.deviceId)}/status`,
+        );
+        const result = normalizeDevice(device, status, prior);
+        result.error = sensorStatusError(device, status);
+        return result;
+      } catch (error) {
+        const fallback = normalizeDevice(device, {}, prior);
+        fallback.error = errorText(error);
+        return fallback;
+      }
+    })());
+  }
+  const normalized = await Promise.all(statusRequests);
+
+  let sensorCount = 0;
+  const failedSensorNames: string[] = [];
+  for (const device of normalized) {
+    if (!SENSOR_TYPES.has(device.deviceType)) continue;
+    sensorCount += 1;
+    if (device.error) failedSensorNames.push(device.deviceName);
+  }
+  if (sensorCount === 0 || failedSensorNames.length > 0) {
+    const reason = sensorCount === 0
       ? "No SwitchBot presence sensor is available"
-      : `SwitchBot sensor status unavailable: ${failedSensors.map(device => device.deviceName).join(", ")}`;
+      : `SwitchBot sensor status unavailable: ${failedSensorNames.join(", ")}`;
     const base = previous ? { ...previous, devices: normalized, lastPowerPollAt: now } : null;
     const next = failSafeSwitchBotState(base, now, controlPlugIds, reason);
     next.devices = normalized;
     next.lastPowerPollAt = now;
-    return wrap(next);
+    return pollResult(next, now, snapshot.row);
   }
 
   const next = deriveSwitchBotState(normalized, previous, now, exitConfirmSeconds, controlPlugIds);
   next.lastPowerPollAt = now;
   await applyAwayControls(env, previous, next);
-  return wrap(next);
+  return pollResult(next, now, snapshot.row);
 }
