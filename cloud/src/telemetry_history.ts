@@ -234,7 +234,7 @@ export async function mergeEnvironmentRows(
        CASE WHEN humidity_count>0 THEN humidity_sum/humidity_count ELSE NULL END AS humidity
        FROM environment_buckets
       WHERE bucket_at>=?1
-      ORDER BY device_id,bucket_at`,
+      ORDER BY bucket_at,device_id`,
   ).bind(cutoff).all<StoredEnvironmentRow>();
 
   const durableRows = stored.results ?? [];
