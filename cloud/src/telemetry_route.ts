@@ -40,8 +40,7 @@ const TELEMETRY_STATEMENTS_PER_BATCH = 90;
 
 function finiteOptional(value: unknown): number | null | undefined {
   if (value === undefined || value === null) return null;
-  const result = Number(value);
-  return Number.isFinite(result) ? result : undefined;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function boundedOptional(
@@ -57,10 +56,16 @@ function boundedOptional(
 function normalizeSample(value: unknown, now: number): TelemetrySample | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
-  const sequence = Math.trunc(Number(input.sequence));
-  const observedAt = Math.trunc(Number(input.observedAt));
-  if (!Number.isSafeInteger(sequence) || sequence <= 0 || sequence >= Number.MAX_SAFE_INTEGER) return null;
-  if (!Number.isSafeInteger(observedAt) || observedAt < 946_684_800_000 || observedAt > now + 86_400_000) return null;
+  if (typeof input.sequence !== "number" || !Number.isSafeInteger(input.sequence) ||
+      input.sequence <= 0 || input.sequence >= Number.MAX_SAFE_INTEGER) {
+    return null;
+  }
+  if (typeof input.observedAt !== "number" || !Number.isSafeInteger(input.observedAt) ||
+      input.observedAt < 946_684_800_000 || input.observedAt > now + 86_400_000) {
+    return null;
+  }
+  const sequence = input.sequence;
+  const observedAt = input.observedAt;
 
   const co2 = boundedOptional(input.co2, 250, 10_000);
   const temperature = boundedOptional(input.temperature, -40, 85);
