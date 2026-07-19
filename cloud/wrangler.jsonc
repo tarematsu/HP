@@ -6,9 +6,7 @@
   "workers_dev": true,
   "keep_vars": true,
   "logpush": true,
-  "triggers": {
-    "crons": ["*/5 * * * *"]
-  },
+  "triggers": { "crons": [] },
   "d1_databases": [
     {
       "binding": "DB",
