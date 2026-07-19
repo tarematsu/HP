@@ -63,12 +63,15 @@ jobs:
             --sort-type=sum --sort-by=writes --sort-direction=DESC \
             --limit=100 --timePeriod=1d --json \
             > ../.cloudflare-build-diagnostics/d1-insights-writes.json
+          test -s ../.cloudflare-build-diagnostics/d1-insights-reads.json
+          test -s ../.cloudflare-build-diagnostics/d1-insights-writes.json
 
       - name: Upload D1 query insights
         uses: actions/upload-artifact@v4
         with:
           name: d1-query-insights-${{ github.event.pull_request.head.sha }}
           path: .cloudflare-build-diagnostics/d1-insights-*.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
@@ -84,5 +87,6 @@ jobs:
         with:
           name: cloudflare-pr-diagnostics-${{ github.event.pull_request.head.sha }}
           path: .cloudflare-build-diagnostics/
+          include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
