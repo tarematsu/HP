@@ -158,10 +158,10 @@ void App::SendTelemetryAsync() {
     try {
       static const std::string versionUtf8 = WideToUtf8(kVersion);
       const auto sensor = sensors_->Snapshot();
-      const auto station = stationhead_->Status();
+      const bool stationPlaying = stationhead_->AudioPlaying();
       const size_t count = std::min<size_t>(500, sensor.outboxCount);
       const std::string body = sensors_->BuildTelemetryPayload(
-          config_.deviceId, versionUtf8, station.playing, count);
+          config_.deviceId, versionUtf8, stationPlaying, count);
       const TelemetryReceipt receipt = cloud_->SendTelemetry(body);
       if (receipt.success) {
         sensors_->ApplyTelemetryReceipt(receipt.acknowledgedSequences, receipt.nextSequence);
