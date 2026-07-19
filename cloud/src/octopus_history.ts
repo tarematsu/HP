@@ -1,3 +1,4 @@
+import { changedOctopusReadings, type ComparableOctopusReading } from "./octopus_reading_filter";
 import type { Env } from "./sources";
 
 export interface OctopusReading {
@@ -33,11 +34,7 @@ interface StoredReadingRow {
   energy_kwh: number;
 }
 
-type NormalizedReading = {
-  supplyPoint: string;
-  observedAt: number;
-  energyKwh: number;
-};
+type NormalizedReading = ComparableOctopusReading;
 
 const JST_MS = 9 * 60 * 60 * 1000;
 const HALF_HOUR_MS = 30 * 60 * 1000;
@@ -136,6 +133,29 @@ async function enforceHistoryFloor(env: Env, accountNumber: string, nowMs: numbe
   ]);
 }
 
+async function readComparableStoredReadings(
+  env: Env,
+  accountNumber: string,
+  normalized: readonly NormalizedReading[],
+): Promise<ComparableOctopusReading[]> {
+  let fromMs = Number.POSITIVE_INFINITY;
+  let toMs = Number.NEGATIVE_INFINITY;
+  for (const reading of normalized) {
+    if (reading.observedAt < fromMs) fromMs = reading.observedAt;
+    if (reading.observedAt > toMs) toMs = reading.observedAt;
+  }
+  const result = await env.DB.prepare(
+    `SELECT supply_point,observed_at,energy_kwh
+       FROM octopus_readings
+      WHERE account_number=?1 AND observed_at>=?2 AND observed_at<=?3`,
+  ).bind(accountNumber, fromMs, toMs).all<StoredReadingRow>();
+  return (result.results ?? []).map(row => ({
+    supplyPoint: row.supply_point,
+    observedAt: Number(row.observed_at),
+    energyKwh: Number(row.energy_kwh),
+  }));
+}
+
 async function persistStableReadings(
   env: Env,
   accountNumber: string,
@@ -145,12 +165,16 @@ async function persistStableReadings(
 ): Promise<number> {
   const normalized = normalizeReadings(readings, stableCutoff);
   if (!normalized.length) return 0;
+  const stored = await readComparableStoredReadings(env, accountNumber, normalized);
+  const changed = changedOctopusReadings(normalized, stored);
+  if (!changed.length) return normalized.length;
+
   const insert = env.DB.prepare(UPSERT_READING_SQL);
-  for (let offset = 0; offset < normalized.length; offset += D1_BATCH_SIZE) {
-    const end = Math.min(normalized.length, offset + D1_BATCH_SIZE);
+  for (let offset = 0; offset < changed.length; offset += D1_BATCH_SIZE) {
+    const end = Math.min(changed.length, offset + D1_BATCH_SIZE);
     const statements: D1PreparedStatement[] = [];
     for (let index = offset; index < end; index += 1) {
-      const reading = normalized[index]!;
+      const reading = changed[index]!;
       statements.push(insert.bind(
         accountNumber,
         reading.supplyPoint,
