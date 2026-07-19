@@ -15,8 +15,12 @@ const placeholderDatabaseId = "00000000-0000-0000-0000-000000000000";
 const placeholderUpdateBucket = "replace-with-your-r2-bucket-name";
 const productionBranch = process.env.HOMEPANEL_PRODUCTION_BRANCH?.trim() || "main";
 const buildBranch = process.env.WORKERS_CI_BRANCH?.trim() || "";
-const previewBuild = process.env.WORKERS_CI === "1" && Boolean(buildBranch) && buildBranch !== productionBranch;
+const cloudflareManagedBuild = process.env.WORKERS_CI === "1";
+const previewBuild = cloudflareManagedBuild && Boolean(buildBranch) && buildBranch !== productionBranch;
 const migrateLocal = process.argv.includes("--migrate-local");
+const migrateRemoteOnly = process.argv.includes("--migrate-only");
+const forceRemoteMigrations = process.argv.includes("--with-migrations")
+  || process.env.HOMEPANEL_APPLY_D1_MIGRATIONS?.trim() === "1";
 
 function cloudflareEnvironment() {
   const env = { ...process.env, CI: "true" };
@@ -220,7 +224,13 @@ if (previewBuild) {
   process.exit(0);
 }
 
-wrangler(["d1", "migrations", "apply", databaseName, "--remote", "--config", generatedConfig]);
-if (process.argv.includes("--migrate-only")) process.exit(0);
+const applyRemoteMigrations = migrateRemoteOnly || forceRemoteMigrations || !cloudflareManagedBuild;
+if (applyRemoteMigrations) {
+  wrangler(["d1", "migrations", "apply", databaseName, "--remote", "--config", generatedConfig]);
+} else {
+  console.log("Cloudflare managed production build: skipping routine remote migration discovery");
+  console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
+}
+if (migrateRemoteOnly) process.exit(0);
 wrangler(["deploy", "--config", generatedConfig]);
 console.log("Cloudflare runtime secrets were left unchanged");
