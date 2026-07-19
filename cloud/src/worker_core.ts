@@ -183,10 +183,13 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (body.sources !== undefined && !Array.isArray(body.sources)) {
       return json({ error: "sources must be an array" }, { status: 400 });
     }
-    const names = Array.isArray(body.sources)
-      ? body.sources.filter((value): value is string => typeof value === "string")
-      : undefined;
-    await requestRefresh(env, names);
+    if (Array.isArray(body.sources) && body.sources.some(value => typeof value !== "string")) {
+      return json({ error: "sources must contain only strings" }, { status: 400 });
+    }
+    const names = Array.isArray(body.sources) ? body.sources as string[] : undefined;
+    if (!await requestRefresh(env, names)) {
+      return json({ error: "sources must include a supported source" }, { status: 400 });
+    }
     return json({ queued: true }, { status: 202 });
   }
 
