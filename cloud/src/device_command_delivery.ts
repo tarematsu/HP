@@ -10,6 +10,8 @@ interface DeviceCommandRow {
   expires_at: number | null;
 }
 
+// Both sync and the standalone command endpoint use this atomic claim so a
+// concurrent poll cannot deliver the same command twice.
 export async function claimPendingDeviceCommands(
   env: Env,
   deviceId: string,
