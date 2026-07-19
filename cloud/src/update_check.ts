@@ -29,7 +29,7 @@ async function knownDeviceIds(env: Env): Promise<Set<string>> {
   return ids;
 }
 
-let lastUpdatePingAt = 0;
+const LAST_UPDATE_PING_AT = new WeakMap<D1Database, number>();
 let activeUpdateCheck: ActiveUpdateCheck | null = null;
 
 async function performUpdateCheck(env: Env): Promise<void> {
@@ -85,9 +85,11 @@ function coalescedUpdateCheck(env: Env): Promise<void> {
 }
 
 export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
+  if (!env.UPDATE_BUCKET) return false;
   const now = Date.now();
-  if (now - lastUpdatePingAt < UPDATE_PING_COOLDOWN_MS) return false;
-  lastUpdatePingAt = now;
+  const lastPingAt = LAST_UPDATE_PING_AT.get(env.DB) ?? 0;
+  if (now - lastPingAt < UPDATE_PING_COOLDOWN_MS) return false;
+  LAST_UPDATE_PING_AT.set(env.DB, now);
   ctx.waitUntil(coalescedUpdateCheck(env).catch(error =>
     console.error("update ping failed", error instanceof Error ? error.message : String(error))));
   return true;
