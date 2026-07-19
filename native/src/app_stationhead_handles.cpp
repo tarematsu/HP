@@ -20,6 +20,7 @@ void StationheadHandleBase::Stop() {
 void StationheadHandleBase::SetAudioMuted(bool muted) noexcept {
   if (audioMuted_ == muted) return;
   audioMuted_ = muted;
+  ++contentRevision_;
   if (player_) player_->SetMuted(muted);
 }
 
@@ -43,20 +44,27 @@ void StationheadHandleBase::ClearStartupPreviewBounds() {
 
 StationheadStatus StationheadHandleBase::RawStatus() const {
   StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+  status.contentRevision = contentRevision_;
   status.audioMuted = audioMuted_;
   return status;
 }
 
 StationheadStatus StationheadHandleBase::Status() const {
   StationheadStatus status = RawStatus();
-  if (player_ && SuppressTrackTransitionGap(
-                     status.audioPlaying, RequiresInteractiveStationhead(status))) {
+  const bool transitionSuppressed = player_ && SuppressTrackTransitionGap(
+      status.audioPlaying, RequiresInteractiveStationhead(status));
+  if (transitionSuppressed) {
     if (status.visible) player_->KeepPlaybackBehindDashboard();
     status.audioPlaying = true;
     status.playing = true;
     status.visible = false;
     status.detail = L"track transition; waiting for next audio";
   }
+  if (transitionSuppressed_ != transitionSuppressed) {
+    transitionSuppressed_ = transitionSuppressed;
+    ++contentRevision_;
+  }
+  status.contentRevision = contentRevision_;
   return status;
 }
 
@@ -116,12 +124,16 @@ void StationheadHandleBase::ReleaseCompletedAuth() {
 }
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
-  return player_ ? player_->ConsumeChangeFlags() : StationheadChangeNone;
+  if (!player_) return StationheadChangeNone;
+  const uint32_t flags = player_->ConsumeChangeFlags();
+  ++contentRevision_;
+  return flags;
 }
 
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
   player_ = std::move(player);
+  ++contentRevision_;
   ApplyAudioState();
   ApplyBounds();
 }
@@ -130,6 +142,8 @@ void StationheadHandleBase::ResetPlayer() noexcept {
   player_.reset();
   playbackObserved_ = false;
   playbackMissingSinceAt_ = 0;
+  transitionSuppressed_ = false;
+  ++contentRevision_;
 }
 
 bool StationheadHandleBase::HasAuthTabPlayer() const {
