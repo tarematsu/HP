@@ -174,12 +174,16 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (url.pathname === "/v1/refresh") {
     if (request.method !== "POST") return methodNotAllowed(["POST"]);
     if (!authorizedAction(request, env)) return unauthorized();
-    let body: { sources?: unknown };
+    let parsed: unknown;
     try {
-      body = await request.json() as { sources?: unknown };
+      parsed = await request.json();
     } catch {
       return json({ error: "invalid json" }, { status: 400 });
     }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return json({ error: "body must be an object" }, { status: 400 });
+    }
+    const body = parsed as { sources?: unknown };
     if (body.sources !== undefined && !Array.isArray(body.sources)) {
       return json({ error: "sources must be an array" }, { status: 400 });
     }
