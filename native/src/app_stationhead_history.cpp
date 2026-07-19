@@ -77,6 +77,7 @@ void App::LoadStationheadPlayHistory() {
     lastStationheadPlayHistorySavedAt_ =
         history.empty() ? 0 : history.back().timestamp;
     renderState_.stationheadPlayHistory = std::move(history);
+    ++renderState_.stationheadPlayHistoryRevision;
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Stationhead play history load failed: " + Utf8ToWide(error.what()));
   } catch (...) {
@@ -151,6 +152,7 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
     history.erase(history.begin(), history.end() - kMaxHistorySamples);
   }
 
+  ++renderState_.stationheadPlayHistoryRevision;
   if (currentValueChanged ||
       bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs) {
     SaveStationheadPlayHistory();
