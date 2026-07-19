@@ -9,6 +9,7 @@
     "test:integration": "vitest run test/worker.integration.test.ts --reporter=verbose",
     "prepare:existing": "node scripts/deploy-existing.mjs --prepare-only",
     "deploy": "node scripts/deploy-existing.mjs",
+    "deploy:worker": "node scripts/deploy-existing.mjs --without-migrations",
     "migrate:local": "node scripts/deploy-existing.mjs --migrate-local",
     "migrate:remote": "node scripts/deploy-existing.mjs --migrate-only"
   },
