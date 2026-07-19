@@ -76,6 +76,7 @@ void App::LoadAirHistory() {
       history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
     }
     renderState_.airHistory = std::move(history);
+    ++renderState_.airHistoryRevision;
     if (normalized) SaveAirHistory();
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history load failed: " + Utf8ToWide(error.what()));
@@ -140,6 +141,7 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
   if (history.size() > kAirHistoryMaxSamples) {
     history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
   }
+  ++renderState_.airHistoryRevision;
   SaveAirHistory();
   MarkRenderStateDirty();
 }
