@@ -250,14 +250,19 @@ export async function acknowledgeDeviceCommand(request: Request, env: Env): Prom
   if (!deviceId) return json({ error: "valid deviceId is required" }, { status: 400 });
   let input: Record<string, unknown>;
   try { input = objectOrNull(await request.json()) ?? {}; } catch { return json({ error: "invalid json" }, { status: 400 }); }
-  const id = Math.trunc(Number(input.id));
-  const success = input.success !== false;
-  const result = String(input.result ?? "").slice(0, 1000);
-  if (!Number.isFinite(id) || id <= 0) return json({ error: "invalid command id" }, { status: 400 });
+  const id = input.id;
+  if (typeof id !== "number" || !Number.isSafeInteger(id) || id <= 0 ||
+      typeof input.success !== "boolean") {
+    return json({ error: "valid command id and boolean success are required" }, { status: 400 });
+  }
+  if (input.result !== undefined && input.result !== null && typeof input.result !== "string") {
+    return json({ error: "command result must be a string" }, { status: 400 });
+  }
+  const result = typeof input.result === "string" ? input.result.slice(0, 1000) : "";
   const update = await env.DB.prepare(
     `UPDATE device_commands
         SET completed_at=?1, success=?2, result=?3
       WHERE id=?4 AND device_id=?5 AND completed_at IS NULL`,
-  ).bind(Date.now(), success ? 1 : 0, result || null, id, deviceId).run();
+  ).bind(Date.now(), input.success ? 1 : 0, result || null, id, deviceId).run();
   return json({ acknowledged: (update.meta.changes ?? 0) === 1 });
 }
