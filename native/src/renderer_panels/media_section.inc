@@ -62,18 +62,38 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   };
   const int recentIncrease = RecentStationheadPlayIncrease(nativeStationheadPlayHistory_);
   const std::wstring recentText = playValueText(recentIncrease);
-  StationheadPlayPeriodSummary playSummary;
-  if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
-      !nativeStationhead_.dailyPlayCounts.empty()) {
-    playSummary = SummarizeStationheadDailyPlays(
-        nativeStationhead_.dailyPlayCounts, nowMs);
+
+  struct DailyPlaySummaryTextCache {
+    const Renderer* owner = nullptr;
+    const void* pointsIdentity = nullptr;
+    int64_t statsUpdatedAt = -1;
+    int64_t dayOrdinal = std::numeric_limits<int64_t>::min();
+    std::wstring text;
+  };
+  static DailyPlaySummaryTextCache dailyCache;
+  const int64_t dayOrdinal = StationheadJstDayOrdinal(nowMs);
+  const void* pointsIdentity = nativeStationhead_.dailyPlayCounts.identity();
+  if (dailyCache.owner != this || dailyCache.pointsIdentity != pointsIdentity ||
+      dailyCache.statsUpdatedAt != nativeStationhead_.dailyPlayStatsUpdatedAt ||
+      dailyCache.dayOrdinal != dayOrdinal) {
+    StationheadPlayPeriodSummary playSummary;
+    if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
+        !nativeStationhead_.dailyPlayCounts.empty()) {
+      playSummary = SummarizeStationheadDailyPlays(
+          nativeStationhead_.dailyPlayCounts, nowMs);
+    }
+    dailyCache.owner = this;
+    dailyCache.pointsIdentity = pointsIdentity;
+    dailyCache.statsUpdatedAt = nativeStationhead_.dailyPlayStatsUpdatedAt;
+    dailyCache.dayOrdinal = dayOrdinal;
+    dailyCache.text =
+        L"　本日 " + playValueText(playSummary.today) +
+        L"　昨日 " + playValueText(playSummary.yesterday) +
+        L"　今週 " + playValueText(playSummary.thisWeek) +
+        L"　先週 " + playValueText(playSummary.lastWeek);
   }
   const std::wstring dailyPlaySummary =
-      L"直近1時間 " + recentText +
-      L"　本日 " + playValueText(playSummary.today) +
-      L"　昨日 " + playValueText(playSummary.yesterday) +
-      L"　今週 " + playValueText(playSummary.thisWeek) +
-      L"　先週 " + playValueText(playSummary.lastWeek);
+      L"直近1時間 " + recentText + dailyCache.text;
   SetTextColor(dc, kWidgetSubtle);
   RECT dailyPlayHeader{content.left, content.top, content.right,
                        content.top + CardHeaderHeight(content)};
