@@ -29,7 +29,9 @@ struct RenderState {
   StationheadStatus stationhead;
   std::wstring appVersion;
   std::vector<AirHistorySample> airHistory;
+  uint64_t airHistoryRevision = 0;
   std::vector<StationheadPlayHistorySample> stationheadPlayHistory;
+  uint64_t stationheadPlayHistoryRevision = 0;
   std::wstring toast;
   int newsIndex = 0;
 };
