@@ -64,6 +64,14 @@ jobs:
             --limit=100 --timePeriod=1d --json \
             > ../.cloudflare-build-diagnostics/d1-insights-writes.json
 
+      - name: Upload D1 query insights
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-query-insights-${{ github.event.pull_request.head.sha }}
+          path: .cloudflare-build-diagnostics/d1-insights-*.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Watch Cloudflare build and collect logs
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
