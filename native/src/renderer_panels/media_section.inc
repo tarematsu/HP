@@ -71,7 +71,10 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     std::wstring text;
   };
   static DailyPlaySummaryTextCache dailyCache;
-  const int64_t dayOrdinal = StationheadJstDayOrdinal(nowMs);
+  // Stationhead daily counts are keyed by UTC date. UTC midnight is 09:00 JST,
+  // so the displayed "today" changes at the requested local boundary without
+  // translating the source dates into another calendar.
+  const int64_t dayOrdinal = StationheadUtcDayOrdinal(nowMs);
   const void* pointsIdentity = nativeStationhead_.dailyPlayCounts.identity();
   if (dailyCache.owner != this || dailyCache.pointsIdentity != pointsIdentity ||
       dailyCache.statsUpdatedAt != nativeStationhead_.dailyPlayStatsUpdatedAt ||
