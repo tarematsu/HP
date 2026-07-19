@@ -127,7 +127,7 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
       case PanelSection::Clock: rect = sections.clock; break;
       case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.clock); break;
       case PanelSection::Weather: rect = sections.weather; break;
-      case PanelSection::Energy: rect = sections.energy; break;
+      case PanelSection::Air: rect = sections.controls; break;
       case PanelSection::Controls: rect = sections.controls; break;
       default: break;
     }
@@ -138,7 +138,7 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
       case PanelSection::PlaybackProgress:
         rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.music)));
         break;
-      case PanelSection::Air: rect = sections.air; break;
+      case PanelSection::Energy: rect = sections.air; break;
       case PanelSection::News: rect = sections.news; break;
       default: break;
     }
@@ -233,10 +233,6 @@ void Renderer::PaintNativeSide(HWND hwnd) {
     DrawCachedPanelSection(scope.dc, sections.weather, PanelSection::Weather,
                            dashboardRevisions_.weather, &Renderer::DrawWeatherSection);
   }
-  if (IntersectRect(&overlap, &scope.dirty, &sections.energy)) {
-    DrawCachedPanelSection(scope.dc, sections.energy, PanelSection::Energy,
-                           dashboardRevisions_.energy, &Renderer::DrawEnergySection);
-  }
   if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
     DrawControlsSection(scope.dc, sections.controls);
   }
@@ -251,8 +247,8 @@ void Renderer::PaintNativeMain(HWND hwnd) {
     DrawMusicSection(scope.dc, sections.music);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawCachedPanelSection(scope.dc, sections.air, PanelSection::Air,
-                           nativeAirRenderRevision_, &Renderer::DrawAirSection);
+    DrawCachedPanelSection(scope.dc, sections.air, PanelSection::Energy,
+                           dashboardRevisions_.energy, &Renderer::DrawEnergySection);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.news)) {
     DrawCachedPanelSection(scope.dc, sections.news, PanelSection::News,
@@ -306,4 +302,3 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
 
   SelectClipRgn(scope.dc, nullptr);
   DrawCardOutline(scope.dc, bounds, radius);}
-
