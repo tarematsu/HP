@@ -65,8 +65,18 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
   constexpr size_t maxSamples = static_cast<size_t>(historyWindowMs / sampleBucketMs) + 1;
   if (status.dailyPlayStatsUpdatedAt <= 0 || status.dailyPlayCounts.empty()) return;
 
+  const auto latestPoint = std::max_element(
+      status.dailyPlayCounts.begin(), status.dailyPlayCounts.end(),
+      [](const StationheadDailyPlayPoint& left, const StationheadDailyPlayPoint& right) {
+        return left.dayStartMsUtc < right.dayStartMsUtc;
+      });
+  if (latestPoint == status.dailyPlayCounts.end() ||
+      latestPoint->dayStartMsUtc <= 0 || latestPoint->value < 0) {
+    return;
+  }
+
   const int64_t bucket = status.dailyPlayStatsUpdatedAt / sampleBucketMs * sampleBucketMs;
-  const int value = status.dailyPlayCounts.back().value;
+  const int value = latestPoint->value;
   const int64_t cutoff = UnixMillis() - historyWindowMs;
   if (bucket < cutoff) return;
 
