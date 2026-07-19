@@ -1,5 +1,6 @@
 import { jstDayKey, type Env, type SourceResult } from "./sources";
 import { markStateChanged } from "./state_generation";
+import { memoizedStateHash } from "./state_hash_cache";
 
 export const WORKER_VERSION = "2.11.0";
 
@@ -230,7 +231,13 @@ export async function updateState(
 
   const payload = JSON.stringify(result.payload);
   const stable = stablePayload(result);
-  const hash = await sha256Hex(stable === result.payload ? payload : JSON.stringify(stable));
+  const stableJson = stable === result.payload ? payload : JSON.stringify(stable);
+  const hash = await memoizedStateHash(
+    env,
+    result.source,
+    stableJson,
+    () => sha256Hex(stableJson),
+  );
   const write = await env.DB.prepare(
     `INSERT INTO current_state(
        source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
