@@ -12,9 +12,17 @@ interface BundleEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
 }
 
+interface CloudflareCacheStorage extends CacheStorage {
+  default: Cache;
+}
+
 interface StreamRecord {
   header: Uint8Array;
   body: Uint8Array | ReadableStream<Uint8Array>;
+}
+
+function defaultCache(): Cache {
+  return (caches as CloudflareCacheStorage).default;
 }
 
 function writeUint16(target: Uint8Array, offset: number, value: number): void {
@@ -180,8 +188,9 @@ export async function radarBundleResponse(
   const match = new URL(request.url).pathname.match(BUNDLE_PATH);
   if (!match) return Response.json({ error: "not_found" }, { status: 404 });
 
+  const cache = defaultCache();
   const cacheKey = new Request(request.url, { method: "GET" });
-  const cached = await caches.default.match(cacheKey);
+  const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
   const state = await readState(env, "radar");
@@ -226,7 +235,7 @@ export async function radarBundleResponse(
       },
     },
   );
-  ctx.waitUntil(caches.default.put(cacheKey, response.clone()).catch(error => {
+  ctx.waitUntil(cache.put(cacheKey, response.clone()).catch((error: unknown) => {
     console.error("radar bundle cache put failed", error instanceof Error ? error.message : String(error));
   }));
   return response;
