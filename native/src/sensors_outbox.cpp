@@ -151,8 +151,12 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
     log_.Warn(L"Failed to persist telemetry sequence rebase; retaining the existing outbox");
     return;
   }
-  if (persistedAck > acknowledgedSequence_ && !WriteAcknowledgedSequenceLocked(persistedAck)) {
-    log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
+  bool acknowledgementPersisted = true;
+  if (persistedAck > acknowledgedSequence_) {
+    acknowledgementPersisted = WriteAcknowledgedSequenceLocked(persistedAck);
+    if (!acknowledgementPersisted) {
+      log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
+    }
   }
 
   if (removed > 0 || sequencesChanged) {
@@ -161,6 +165,7 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
       acknowledgedSinceCompaction_ = 0;
     } else {
       acknowledgedSinceCompaction_ += removed;
+      if (!acknowledgementPersisted) acknowledgedSinceCompaction_ = kCompactAfterAck;
       CompactOutboxLocked();
     }
   }
