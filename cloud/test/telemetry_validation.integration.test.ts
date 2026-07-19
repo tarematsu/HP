@@ -24,7 +24,7 @@ async function postSample(sequence: number, fields: Record<string, unknown>): Pr
 }
 
 describe("telemetry measurement validation", () => {
-  it("rejects physically impossible measurements before writing to D1", async () => {
+  it("rejects impossible or incorrectly typed measurements before writing to D1", async () => {
     const invalid = [
       { co2: 249 },
       { co2: 10_001 },
@@ -36,6 +36,10 @@ describe("telemetry measurement validation", () => {
       { temperatureCorrected: 120.01 },
       { humidityCorrected: -0.01 },
       { humidityCorrected: 100.01 },
+      { co2: "250" },
+      { humidity: true },
+      { co2: 500, sequence: "1012" },
+      { co2: 500, observedAt: String(Date.now() - 1000) },
     ];
 
     for (let index = 0; index < invalid.length; index += 1) {
