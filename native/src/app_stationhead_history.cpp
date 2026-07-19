@@ -111,13 +111,16 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
   if (status.dailyPlayStatsUpdatedAt == lastStationheadPlayStatsUpdatedAt_) return;
   lastStationheadPlayStatsUpdatedAt_ = status.dailyPlayStatsUpdatedAt;
 
+  // The source labels daily counts by UTC date. UTC midnight is 09:00 JST, so
+  // selecting the matching UTC day keeps the one-hour history on the same
+  // boundary as the Music panel's today/yesterday summaries.
   const int64_t currentDay =
-      StationheadJstDayOrdinal(status.dailyPlayStatsUpdatedAt);
+      StationheadUtcDayOrdinal(status.dailyPlayStatsUpdatedAt);
   const auto todayPoint = std::find_if(
       status.dailyPlayCounts.rbegin(), status.dailyPlayCounts.rend(),
       [currentDay](const StationheadDailyPlayPoint& point) {
         return point.dayStartMsUtc > 0 && point.value >= 0 &&
-            StationheadJstDayOrdinal(point.dayStartMsUtc) == currentDay;
+            StationheadUtcDayOrdinal(point.dayStartMsUtc) == currentDay;
       });
   if (todayPoint == status.dailyPlayCounts.rend()) return;
 
