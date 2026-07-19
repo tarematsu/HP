@@ -5,11 +5,11 @@ thread_local RECT gDashboardClockCard{};
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  const int available = std::max(4, height - gap * 3);
+  const int available = std::max(3, height - gap * 2);
   const int clockHeight = available * 27 / 100;
-  const int weatherHeight = available * 24 / 100;
-  const int energyHeight = available * 24 / 100;
-  const int airHeight = std::max(1, available - clockHeight - weatherHeight - energyHeight);
+  const int remainingHeight = std::max(2, available - clockHeight);
+  const int weatherHeight = remainingHeight / 2;
+  const int airHeight = std::max(1, remainingHeight - weatherHeight);
 
   SidebarSections sections;
   int top = client.top;
@@ -17,23 +17,33 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   top = sections.clock.bottom + gap;
   sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
   top = sections.weather.bottom + gap;
-  sections.energy = RECT{client.left, top, client.right, top + energyHeight};
-  top = sections.energy.bottom + gap;
   sections.controls = RECT{client.left, top, client.right, top + airHeight};
+  // Electricity moved beside Music in the main column. Keep the legacy slot
+  // outside the side client so old section plumbing cannot paint it twice.
+  sections.energy = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
   gDashboardClockCard = sections.clock;
   return sections;
 }
 
 MainSections SplitRearrangedMainSections(const RECT& client) {
+  const int width = std::max(1L, client.right - client.left);
   const int height = std::max(1L, client.bottom - client.top);
-  const int gap = std::max(6, height * 45 / 1000);
+  const int gapX = std::max(8, width * 16 / 1000);
+  const int gapY = std::max(6, height * 45 / 1000);
   const int newsHeight = height * 47 / 100;
+  const int rowWidth = std::max(2, width - gapX);
+  const int musicWidth = std::max(1, rowWidth * 65 / 100);
 
   MainSections sections;
   sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
-  sections.music = RECT{client.left, client.top, client.right,
-                        std::max(client.top + 1, sections.news.top - gap)};
-  sections.air = RECT{client.right, client.top, client.right + 1, client.top + 1};
+  const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
+  sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
+  // MainSections::air is the right-hand top-row slot. The rearranged dashboard
+  // uses it for Electricity while Air occupies the expanded side-card slot.
+  sections.air = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
+  if (sections.air.right <= sections.air.left) {
+    sections.air.right = sections.air.left + 1;
+  }
   return sections;
 }
 
