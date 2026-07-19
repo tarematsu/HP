@@ -60,7 +60,12 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   NativeHistoryRevisionCache& historyRevisions = HistoryRevisionCacheFor(this);
   const bool sensorsChanged = nativeSensors_ != state.sensors;
   const bool historyChanged = historyRevisions.air != state.airHistoryRevision;
-  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
+  const bool stationheadChanged =
+      nativeStationhead_.contentRevision != state.stationhead.contentRevision ||
+      nativeStationhead_.secondaryContentRevision != state.stationhead.secondaryContentRevision ||
+      nativeStationhead_.audioMuted != state.stationhead.audioMuted ||
+      nativeStationhead_.secondaryAudioMuted != state.stationhead.secondaryAudioMuted ||
+      nativeStationhead_.primaryAudioSelected != state.stationhead.primaryAudioSelected;
   const bool stationheadHistoryChanged =
       historyRevisions.stationhead != state.stationheadPlayHistoryRevision;
   const bool controlsChanged =
