@@ -82,7 +82,11 @@ void SensorHub::CompactOutboxLocked() {
   std::error_code error;
   const uintmax_t bytes = fs::exists(outboxPath_, error) ? fs::file_size(outboxPath_, error) : 0;
   if (acknowledgedSinceCompaction_ < kCompactAfterAck && bytes < kCompactBytes) return;
-  if (RewriteOutboxLocked(outbox_)) acknowledgedSinceCompaction_ = 0;
+  if (!RewriteOutboxLocked(outbox_)) {
+    log_.Warn(L"Failed to compact telemetry outbox");
+    return;
+  }
+  acknowledgedSinceCompaction_ = 0;
 }
 
 std::string SensorHub::BuildTelemetryPayload(const std::wstring& deviceId, const std::string& appVersion,
@@ -142,18 +146,28 @@ void SensorHub::ApplyTelemetryReceipt(const std::vector<uint64_t>& acknowledgedS
     }
   }
 
-  const bool outboxChanged = removed > 0 || rebased > 0;
-  if (outboxChanged && !RewriteOutboxLocked(updated)) {
-    log_.Warn(L"Failed to persist telemetry acknowledgement; retaining the existing outbox");
+  const bool sequencesChanged = rebased > 0;
+  if (sequencesChanged && !RewriteOutboxLocked(updated)) {
+    log_.Warn(L"Failed to persist telemetry sequence rebase; retaining the existing outbox");
     return;
   }
-  if (persistedAck > acknowledgedSequence_ && !WriteAcknowledgedSequenceLocked(persistedAck)) {
-    log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
+  bool acknowledgementPersisted = true;
+  if (persistedAck > acknowledgedSequence_) {
+    acknowledgementPersisted = WriteAcknowledgedSequenceLocked(persistedAck);
+    if (!acknowledgementPersisted) {
+      log_.Warn(L"Failed to persist the telemetry acknowledgement high-water mark");
+    }
   }
 
-  if (outboxChanged) {
+  if (removed > 0 || sequencesChanged) {
     outbox_ = std::move(updated);
-    acknowledgedSinceCompaction_ = 0;
+    if (sequencesChanged) {
+      acknowledgedSinceCompaction_ = 0;
+    } else {
+      acknowledgedSinceCompaction_ += removed;
+      if (!acknowledgementPersisted) acknowledgedSinceCompaction_ = kCompactAfterAck;
+      CompactOutboxLocked();
+    }
   }
   acknowledgedSequence_ = std::max(acknowledgedSequence_, persistedAck);
   nextSequence_ = std::max(nextSequence_, candidate);
