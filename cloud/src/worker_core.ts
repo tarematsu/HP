@@ -246,4 +246,7 @@ export default {
       return json({ error: "internal error" }, { status: 500 });
     });
   },
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runScheduler(env));
+  },
 } satisfies ExportedHandler<Env>;
