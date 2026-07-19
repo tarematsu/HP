@@ -1,7 +1,48 @@
 #include "app.h"
+#include "stationhead_play_summary.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
+namespace {
+
+constexpr int64_t kHistoryWindowMs = 7LL * 24 * 60 * 60 * 1000;
+constexpr int64_t kSampleBucketMs = 5LL * 60 * 1000;
+constexpr int64_t kPersistIntervalMs = 30LL * 60 * 1000;
+constexpr size_t kMaxHistorySamples =
+    static_cast<size_t>(kHistoryWindowMs / kSampleBucketMs) + 1;
+
+void CompactStationheadPlayHistory(
+    std::vector<StationheadPlayHistorySample>& history) {
+  if (history.size() < 2) return;
+
+  std::vector<StationheadPlayHistorySample> unique;
+  unique.reserve(history.size());
+  for (const auto& sample : history) {
+    if (!unique.empty() && unique.back().timestamp == sample.timestamp) {
+      unique.back() = sample;
+    } else {
+      unique.push_back(sample);
+    }
+  }
+
+  std::vector<StationheadPlayHistorySample> compact;
+  compact.reserve(unique.size());
+  for (const auto& sample : unique) {
+    if (compact.empty() || compact.back().value != sample.value) {
+      compact.push_back(sample);
+      continue;
+    }
+    if (compact.size() >= 2 &&
+        compact[compact.size() - 2].value == sample.value) {
+      compact.back() = sample;
+    } else {
+      compact.push_back(sample);
+    }
+  }
+  history = std::move(compact);
+}
+
+}  // namespace
 
 void App::LoadStationheadPlayHistory() {
   const fs::path path = dataDir_ / L"stationhead-play-history.json";
@@ -12,8 +53,7 @@ void App::LoadStationheadPlayHistory() {
     if (text.empty()) return;
     const auto array = winrt::Windows::Data::Json::JsonArray::Parse(Utf8ToWide(text));
     std::vector<StationheadPlayHistorySample> history;
-    constexpr int64_t historyWindowMs = 7 * 24 * 60 * 60 * 1000;
-    const int64_t cutoff = UnixMillis() - historyWindowMs;
+    const int64_t cutoff = UnixMillis() - kHistoryWindowMs;
     for (auto value : array) {
       if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) continue;
       const auto item = value.GetObject();
@@ -28,8 +68,14 @@ void App::LoadStationheadPlayHistory() {
       return left.timestamp < right.timestamp;
     };
     if (!std::is_sorted(history.begin(), history.end(), earlier)) {
-      std::sort(history.begin(), history.end(), earlier);
+      std::stable_sort(history.begin(), history.end(), earlier);
     }
+    CompactStationheadPlayHistory(history);
+    if (history.size() > kMaxHistorySamples) {
+      history.erase(history.begin(), history.end() - kMaxHistorySamples);
+    }
+    lastStationheadPlayHistorySavedAt_ =
+        history.empty() ? 0 : history.back().timestamp;
     renderState_.stationheadPlayHistory = std::move(history);
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Stationhead play history load failed: " + Utf8ToWide(error.what()));
@@ -60,54 +106,56 @@ void App::SaveStationheadPlayHistory() const {
 }
 
 void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
-  constexpr int64_t historyWindowMs = 7 * 24 * 60 * 60 * 1000;
-  constexpr int64_t sampleBucketMs = 5 * 60 * 1000;
-  constexpr size_t maxSamples = static_cast<size_t>(historyWindowMs / sampleBucketMs) + 1;
   if (status.dailyPlayStatsUpdatedAt <= 0 || status.dailyPlayCounts.empty()) return;
+  if (status.dailyPlayStatsUpdatedAt == lastStationheadPlayStatsUpdatedAt_) return;
+  lastStationheadPlayStatsUpdatedAt_ = status.dailyPlayStatsUpdatedAt;
 
-  const auto latestPoint = std::max_element(
+  const int64_t currentDay =
+      StationheadJstDayOrdinal(status.dailyPlayStatsUpdatedAt);
+  const auto todayPoint = std::find_if(
       status.dailyPlayCounts.begin(), status.dailyPlayCounts.end(),
-      [](const StationheadDailyPlayPoint& left, const StationheadDailyPlayPoint& right) {
-        return left.dayStartMsUtc < right.dayStartMsUtc;
+      [currentDay](const StationheadDailyPlayPoint& point) {
+        return point.dayStartMsUtc > 0 && point.value >= 0 &&
+            StationheadJstDayOrdinal(point.dayStartMsUtc) == currentDay;
       });
-  if (latestPoint == status.dailyPlayCounts.end() ||
-      latestPoint->dayStartMsUtc <= 0 || latestPoint->value < 0) {
-    return;
-  }
+  if (todayPoint == status.dailyPlayCounts.end()) return;
 
-  const int64_t bucket = status.dailyPlayStatsUpdatedAt / sampleBucketMs * sampleBucketMs;
-  const int value = latestPoint->value;
-  const int64_t cutoff = UnixMillis() - historyWindowMs;
+  const int64_t bucket =
+      status.dailyPlayStatsUpdatedAt / kSampleBucketMs * kSampleBucketMs;
+  const int value = todayPoint->value;
+  const int64_t cutoff = UnixMillis() - kHistoryWindowMs;
   if (bucket < cutoff) return;
 
   auto& history = renderState_.stationheadPlayHistory;
-  if (!history.empty() && history.back().timestamp == bucket) {
-    if (history.back().value == value) return;
-    history.back().value = value;
-  } else if (history.empty() || history.back().timestamp < bucket) {
-    history.push_back({bucket, value});
+  const bool currentValueChanged = history.empty() || history.back().value != value;
+  const auto position = std::lower_bound(
+      history.begin(), history.end(), bucket,
+      [](const StationheadPlayHistorySample& sample, int64_t timestamp) {
+        return sample.timestamp < timestamp;
+      });
+  if (position != history.end() && position->timestamp == bucket) {
+    if (position->value == value) return;
+    position->value = value;
   } else {
-    const auto position = std::lower_bound(
-        history.begin(), history.end(), bucket,
-        [](const StationheadPlayHistorySample& sample, int64_t timestamp) {
-          return sample.timestamp < timestamp;
-        });
-    if (position != history.end() && position->timestamp == bucket) {
-      if (position->value == value) return;
-      position->value = value;
-    } else {
-      history.insert(position, {bucket, value});
-    }
+    history.insert(position, {bucket, value});
   }
 
+  CompactStationheadPlayHistory(history);
   const auto firstRetained = std::lower_bound(
       history.begin(), history.end(), cutoff,
       [](const StationheadPlayHistorySample& sample, int64_t timestamp) {
         return sample.timestamp < timestamp;
       });
   if (firstRetained != history.begin()) history.erase(history.begin(), firstRetained);
-  if (history.size() > maxSamples) history.erase(history.begin(), history.end() - maxSamples);
-  SaveStationheadPlayHistory();
+  if (history.size() > kMaxHistorySamples) {
+    history.erase(history.begin(), history.end() - kMaxHistorySamples);
+  }
+
+  if (currentValueChanged ||
+      bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs) {
+    SaveStationheadPlayHistory();
+    lastStationheadPlayHistorySavedAt_ = bucket;
+  }
   MarkRenderStateDirty();
 }
 
