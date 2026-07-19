@@ -89,6 +89,9 @@ class StationheadPlayer {
   void Stop();
   void Tick(int64_t nowMs);
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
+  [[nodiscard]] bool AudioPlaying() const noexcept {
+    return audioPlaying_.load(std::memory_order_relaxed);
+  }
   void Reconnect();
   void SetPlaybackFallback(bool active, const std::wstring& reason);
   void ShowForLogin();
