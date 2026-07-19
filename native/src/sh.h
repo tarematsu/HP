@@ -47,6 +47,12 @@ struct StationheadPlayHistorySample {
 };
 
 struct StationheadStatus {
+  // App handles advance these when a primary/secondary notification or the
+  // local track-transition projection changes. Keeping them first lets the
+  // default equality operator reject changed snapshots before touching URLs
+  // and diagnostic strings.
+  uint64_t contentRevision = 0;
+  uint64_t secondaryContentRevision = 0;
   bool created = false;
   bool navigating = false;
   bool playing = false;
@@ -227,4 +233,4 @@ class StationheadPlayer {
   bool usingFallback_ = false;
   ICoreWebView2* identityWebview_ = nullptr;  // Secondary only.
 };
-}
+}  // namespace hp
