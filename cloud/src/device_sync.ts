@@ -123,7 +123,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
   let switchbotVersion = 0;
   let stationheadVersion = 0;
   let stationheadHealthVersion = 0;
-  for (const raw of stateResult.results ?? []) {
+  for (const raw of stateResult?.results ?? []) {
     const row = raw as unknown as SyncStateMetadata;
     const version = Number(row.version);
     const normalized: SyncStateMetadata = {
@@ -144,7 +144,7 @@ export async function getDeviceSync(request: Request, env: Env): Promise<Respons
     else if (normalized.source === "stationhead_health") stationheadHealthVersion = version;
   }
 
-  const aux = (auxResult.results?.[0] ?? {}) as unknown as DeviceSyncAuxRow;
+  const aux = (auxResult?.results?.[0] ?? {}) as unknown as DeviceSyncAuxRow;
   const configVersion = Number(aux.config_version ?? 0);
   const configUpdatedAt = Number(aux.config_updated_at ?? 0);
   const commands = Number(aux.pending) === 1 ? await pendingCommands(env, deviceId, now) : [];
