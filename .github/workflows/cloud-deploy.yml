@@ -58,10 +58,10 @@ jobs:
           npm run check
           npm test
 
-      - name: Apply migrations and deploy the Worker
+      - name: Deploy Worker without routine migration discovery
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
-        run: npm run deploy
+        run: npm run deploy:worker
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
