@@ -58,4 +58,21 @@ constexpr StationheadPlayPeriodSummary SummarizeStationheadDailyPlays(
   return summary;
 }
 
+namespace stationhead_play_summary_checks {
+inline constexpr std::array<StationheadDailyPlayPoint, 6> kFixture{{
+    {1783296000000, 10},
+    {1783814400000, 20},
+    {1783900800000, 30},
+    {1784332800000, 40},
+    {1784419200000, 45},
+    {1784419200000, 50},
+}};
+inline constexpr auto kSummary =
+    SummarizeStationheadDailyPlays(kFixture, 1784462400000);
+static_assert(kSummary.today == 50);
+static_assert(kSummary.yesterday == 40);
+static_assert(kSummary.thisWeek == 120);
+static_assert(kSummary.lastWeek == 30);
+}  // namespace stationhead_play_summary_checks
+
 }  // namespace hp
