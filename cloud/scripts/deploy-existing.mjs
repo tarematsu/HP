@@ -21,6 +21,14 @@ const migrateLocal = process.argv.includes("--migrate-local");
 const migrateRemoteOnly = process.argv.includes("--migrate-only");
 const forceRemoteMigrations = process.argv.includes("--with-migrations")
   || process.env.HOMEPANEL_APPLY_D1_MIGRATIONS?.trim() === "1";
+// Schema changes remain owned by the dedicated migration workflow. Routine
+// Worker deploys opt out explicitly instead of rediscovering the same list.
+const skipRemoteMigrations = process.argv.includes("--without-migrations")
+  || process.env.HOMEPANEL_SKIP_D1_MIGRATIONS?.trim() === "1";
+
+if (skipRemoteMigrations && (migrateRemoteOnly || forceRemoteMigrations)) {
+  throw new Error("Remote D1 migrations cannot be both forced and skipped");
+}
 
 function cloudflareEnvironment() {
   const env = { ...process.env, CI: "true" };
@@ -224,9 +232,14 @@ if (previewBuild) {
   process.exit(0);
 }
 
-const applyRemoteMigrations = migrateRemoteOnly || forceRemoteMigrations || !cloudflareManagedBuild;
+const applyRemoteMigrations = !skipRemoteMigrations && (
+  migrateRemoteOnly || forceRemoteMigrations || !cloudflareManagedBuild
+);
 if (applyRemoteMigrations) {
   wrangler(["d1", "migrations", "apply", databaseName, "--remote", "--config", generatedConfig]);
+} else if (skipRemoteMigrations) {
+  console.log("Routine Worker deploy: skipping remote D1 migration discovery");
+  console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
 } else {
   console.log("Cloudflare managed production build: skipping routine remote migration discovery");
   console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");

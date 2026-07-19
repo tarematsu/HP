@@ -58,10 +58,41 @@ jobs:
           npm run check
           npm test
 
-      - name: Apply migrations and deploy the Worker
+      - name: Deploy Worker with migration discovery only when required
+        shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
-        run: npm run deploy
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual deployment keeps the conservative migration check."
+            npm run deploy
+            exit 0
+          fi
+
+          if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No usable previous commit; keeping the conservative migration check."
+            npm run deploy
+            exit 0
+          fi
+
+          if ! git -C "$GITHUB_WORKSPACE" cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git -C "$GITHUB_WORKSPACE" fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+          fi
+
+          if git -C "$GITHUB_WORKSPACE" diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- \
+            cloud/migrations \
+            cloud/scripts/deploy-existing.mjs \
+            cloud/wrangler.jsonc \
+            cloud/package.json \
+            cloud/package-lock.json \
+            .github/workflows/d1-migrations.yml; then
+            npm run deploy:worker
+          else
+            echo "Migration-sensitive files changed; applying pending migrations before deployment."
+            npm run deploy
+          fi
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
