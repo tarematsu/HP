@@ -114,7 +114,7 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
   }
   if (energyChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Energy);
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
   }
   if (newsChanged || newsIndexChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::News);
