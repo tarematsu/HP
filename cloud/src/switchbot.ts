@@ -1,6 +1,6 @@
 import { configuredIds, loadSwitchBotSnapshot, numberValue } from "./switchbot_api";
 import { applyAwayControls, deriveSwitchBotState } from "./switchbot_state";
-import { updateState } from "./snapshot";
+import { updateState, type StateRow } from "./snapshot";
 import type { Env } from "./sources";
 import type { DeviceState, SwitchBotEnv } from "./switchbot_types";
 
@@ -19,6 +19,7 @@ const WEBHOOK_TYPES = new Set([
 ]);
 const UTF8_ENCODER = new TextEncoder();
 const HEX_DIGITS = "0123456789abcdef";
+const STATE_HEARTBEAT_MS = 15 * 60_000;
 
 let webhookSecret = "";
 let webhookTokenCache = "";
@@ -84,6 +85,26 @@ function emptyDevice(deviceId: string, deviceType: string): DeviceState {
     observedAt: 0,
     error: null,
   };
+}
+
+export async function switchBotWebhookStateStillCurrent(
+  env: SwitchBotEnv,
+  row: StateRow,
+  serialized: string,
+  now: number,
+): Promise<boolean> {
+  const heartbeatBefore = now - STATE_HEARTBEAT_MS;
+  if (row.source !== "switchbot" || row.payload !== serialized || row.status !== "ok" ||
+      row.error !== null || row.fetched_at <= heartbeatBefore) {
+    return false;
+  }
+  const current = await env.DB.prepare(
+    `SELECT 1 AS present
+       FROM current_state
+      WHERE source='switchbot' AND version=?1
+        AND status='ok' AND error IS NULL AND fetched_at>?2`,
+  ).bind(row.version, heartbeatBefore).first<{ present: number }>();
+  return Boolean(current?.present);
 }
 
 export async function webhookToken(baseEnv: Env): Promise<string> {
@@ -164,6 +185,10 @@ export async function handleSwitchBotWebhook(request: Request, baseEnv: Env): Pr
     doorMode: updated.doorMode ?? undefined,
     detectionState: detectionState || undefined,
   });
+  const serialized = JSON.stringify(next);
+  if (snapshot.row && await switchBotWebhookStateStillCurrent(env, snapshot.row, serialized, now)) {
+    return new Response(null, { status: 204 });
+  }
   await applyAwayControls(env, previous, next);
   await updateState(env, { source: "switchbot", payload: next, observedAt: now }, undefined, snapshot.row);
   return new Response(null, { status: 204 });
