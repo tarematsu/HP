@@ -10,8 +10,13 @@ struct NativeHistoryRevisionCache {
   uint64_t stationhead = 0;
 };
 
-NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
+NativeHistoryRevisionCache& HistoryRevisionCacheStorage() {
   static NativeHistoryRevisionCache cache;
+  return cache;
+}
+
+NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
+  NativeHistoryRevisionCache& cache = HistoryRevisionCacheStorage();
   if (cache.owner != owner) {
     cache.owner = owner;
     cache.air = std::numeric_limits<uint64_t>::max();
@@ -20,6 +25,11 @@ NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
   return cache;
 }
 }  // namespace
+
+void ResetNativeHistoryRevisionCache(const Renderer* owner) noexcept {
+  NativeHistoryRevisionCache& cache = HistoryRevisionCacheStorage();
+  if (cache.owner == owner) cache = {};
+}
 
 void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
   AirGraphProjection next;
