@@ -30,6 +30,16 @@ beforeEach(async () => {
 });
 
 describe("SchedulerCoordinator Durable Object", () => {
+  it("accepts only internal POST signals", async () => {
+    const stub = coordinatorStub();
+
+    const response = await stub.fetch("https://scheduler.internal/ensure");
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(await alarmTime(stub)).toBeNull();
+  });
+
   it("schedules an alarm for the earliest due job", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
