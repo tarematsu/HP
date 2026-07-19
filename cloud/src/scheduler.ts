@@ -161,7 +161,17 @@ export async function finishJob(
     || startedAt - job.last_success_at >= SUCCESS_CHECKPOINT_INTERVAL_SECONDS
     || Number(job.lease_until ?? 0) <= nowSeconds
   );
-  if (success && !checkpointSuccess) return true;
+  if (success && !checkpointSuccess) {
+    // The regular next run was already scheduled atomically with lease acquisition.
+    // Only a refresh queued while this job was running needs a completion write so
+    // the new zero deadline can run immediately instead of waiting for lease expiry.
+    const queuedRefresh = await env.DB.prepare(
+      `UPDATE jobs SET lease_until=NULL
+        WHERE name=?1 AND lease_until=?2 AND next_run_at=0`,
+    ).bind(job.name, job.lease_until).run();
+    if (Number(queuedRefresh.meta.changes ?? 0) === 1) return true;
+    return Number(job.lease_until ?? 0) > nowSeconds;
+  }
 
   const update = await env.DB.prepare(
     `UPDATE jobs SET
