@@ -130,11 +130,9 @@ export async function receiveTelemetryOptimized(request: Request, env: Env): Pro
     }
     const bucketResults = await env.DB.batch(statements);
     for (let index = 0; index < bucketResults.length; index += 2) {
+      accepted += Number(bucketResults[index + 1]?.meta.changes ?? 0);
       const rows = (bucketResults[index]?.results ?? []) as EnvironmentHistoryRow[];
-      for (const row of rows) {
-        accepted += Number(row.applied_count ?? 0);
-        returnedRows.set(Number(row.t), row);
-      }
+      for (const row of rows) returnedRows.set(Number(row.t), row);
     }
   }
 
