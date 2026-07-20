@@ -52,9 +52,7 @@ class CloudClient {
   void UpdateStationheadHealthText(std::wstring text);
   void EnsureHttpHandlesLocked();
   void ResetHttpHandlesLocked();
-  std::vector<uint8_t> LocalizeRadarTiles(
-      const std::vector<uint8_t>& body,
-      const std::vector<uint8_t>& embeddedBundle = {});
+  std::vector<uint8_t> LocalizeRadarTiles(const std::vector<uint8_t>& body);
 
   void StartNetworkChangeWatcher();
   void StopNetworkChangeWatcher();
@@ -87,6 +85,9 @@ class CloudClient {
   std::mutex pendingTelemetryMutex_;
   std::optional<PendingTelemetry> pendingTelemetry_;
   uint64_t pendingTelemetryGeneration_ = 0;
+  std::mutex pendingExchangeMutex_;
+  std::wstring pendingExchangeBundlePath_;
+  std::vector<uint8_t> pendingExchangeRadar_;
 
   std::wstring lastSuccess_;
   std::wstring workerVersion_;
