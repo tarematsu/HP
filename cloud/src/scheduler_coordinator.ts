@@ -1,12 +1,13 @@
 import { radarBundleShardResponse } from "./radar_bundle";
-import { ensureSystemJobs, runSchedulerTick } from "./scheduler";
+import { ensureSystemJobs, runScheduler } from "./scheduler";
 import type { Env } from "./sources";
 
 const COORDINATOR_NAME = "global";
 const ENSURE_THROTTLE_MS = 15 * 60_000;
+const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
-const EMPTY_QUEUE_RECHECK_MS = 15 * 60_000;
+const EMPTY_QUEUE_RECHECK_MS = 24 * 60 * 60_000;
 
 interface SchedulerEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
@@ -17,6 +18,7 @@ interface NextWakeRow {
 }
 
 let nextEnsureAllowedAt = 0;
+let nextWatchdogAllowedAt = 0;
 
 function namespaceFor(env: Env): DurableObjectNamespace | null {
   return (env as SchedulerEnv).SCHEDULER_COORDINATOR ?? null;
@@ -45,6 +47,20 @@ export function queueSchedulerEnsure(
   ctx.waitUntil(signalCoordinator(env, "/ensure").catch(error => {
     nextEnsureAllowedAt = 0;
     console.error("Failed to ensure scheduler alarm", error instanceof Error ? error.message : String(error));
+  }));
+  return true;
+}
+
+export function queueSchedulerWatchdog(
+  env: Env,
+  ctx: ExecutionContext,
+  now = Date.now(),
+): boolean {
+  if (!namespaceFor(env) || now < nextWatchdogAllowedAt) return false;
+  nextWatchdogAllowedAt = now + WATCHDOG_THROTTLE_MS;
+  ctx.waitUntil(signalCoordinator(env, "/ensure").catch(error => {
+    nextWatchdogAllowedAt = 0;
+    console.error("Failed to run scheduler watchdog", error instanceof Error ? error.message : String(error));
   }));
   return true;
 }
@@ -118,9 +134,9 @@ export class SchedulerCoordinator {
 
   async alarm(): Promise<void> {
     try {
-      await runSchedulerTick(this.env);
+      await runScheduler(this.env);
     } catch (error) {
-      console.error("Scheduler alarm tick failed", error instanceof Error ? error.message : String(error));
+      console.error("Scheduler alarm batch failed", error instanceof Error ? error.message : String(error));
     }
 
     try {
