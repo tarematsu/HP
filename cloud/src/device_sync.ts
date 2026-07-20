@@ -41,7 +41,7 @@ async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Prom
   const deviceParameter = SYNC_SOURCE_NAMES.length + 1;
   const nowParameter = deviceParameter + 1;
   const redeliveryParameter = nowParameter + 1;
-  const row = await env.DB.prepare(
+  const result = await env.DB.prepare(
     `WITH versions AS (
        SELECT
          COALESCE(SUM(CASE
@@ -64,6 +64,7 @@ async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Prom
        EXISTS(
          SELECT 1 FROM device_commands
           WHERE device_id=?${deviceParameter}
+            AND command='check_update'
             AND completed_at IS NULL
             AND (expires_at IS NULL OR expires_at>?${nowParameter})
             AND (delivered_at IS NULL OR delivered_at<=?${redeliveryParameter})
@@ -74,7 +75,8 @@ async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Prom
     deviceId,
     now,
     now - COMMAND_REDELIVERY_MS,
-  ).first<DeviceSyncSnapshotRow>();
+  ).all<DeviceSyncSnapshotRow>();
+  const row = result.results?.[0];
   return row ?? {
     dashboard_version: 0,
     radar_version: 0,
