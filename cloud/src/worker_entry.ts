@@ -10,7 +10,7 @@ import { radarBundleResponse } from "./radar_bundle";
 import worker from "./worker_core";
 import { etagResponse, suppliedEtags, unauthorized } from "./response";
 import { radarFrameResponse } from "./radar_source";
-import { queueSchedulerWake, queueSchedulerWatchdog } from "./scheduler_coordinator";
+import { queueSchedulerWake } from "./scheduler_coordinator";
 import { WORKER_VERSION } from "./snapshot";
 import type { Env } from "./sources";
 import { receiveTelemetryOptimized } from "./telemetry_route";
@@ -43,7 +43,6 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET" && path === "/v1/health") {
-      queueSchedulerWatchdog(env, ctx);
       return Response.json({
         ok: true,
         d1: "unchecked",
@@ -53,9 +52,7 @@ export default {
     }
 
     if (request.method === "POST" && path === "/v1/device/exchange") {
-      const response = await deviceExchangeResponse(request, env, ctx);
-      if (response.ok) queueSchedulerWatchdog(env, ctx);
-      return response;
+      return deviceExchangeResponse(request, env, ctx);
     }
 
     if (request.method === "GET" && path.startsWith("/v1/radar/bundle/")) {
