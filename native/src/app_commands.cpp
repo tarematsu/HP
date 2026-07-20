@@ -91,38 +91,14 @@ void App::ProcessRemoteCommands() {
         continue;
       }
 
-      bool success = true;
-      std::wstring result = L"completed";
-      if (command == L"restart_app") {
-        if (!cloud_->AcknowledgeCommand(id, true, L"restarting")) {
-          logger_->Warn(L"Restart command acknowledgement failed; restart postponed");
-          continue;
-        }
-        std::error_code ignored;
-        fs::remove(path, ignored);
-        exitCode_ = kRestartExitCode;
-        DestroyWindow(window_);
-        return;
-      } else if (command == L"reconnect_stationhead") {
-        stationhead_->Reconnect();
-        if (secondaryStationhead_) secondaryStationhead_->Reconnect();
-        result = secondaryStationhead_
-            ? L"primary and secondary Stationhead reconnect started"
-            : L"primary Stationhead reconnect started";
-      } else if (command == L"clear_display_cache") {
-        ClearDisplayCache();
-      } else if (command == L"reload_dashboard") {
-        cloud_->RefreshNow();
-      } else if (command == L"check_update") {
+      bool success = command == L"check_update";
+      std::wstring result = success ? L"verified update check started" : L"unsupported command";
+      if (success) {
         if (updateBusy_.load(std::memory_order_acquire)) {
           logger_->Info(L"Update install command deferred because an update check is already running");
           continue;
         }
         CheckForUpdateAsync(true);
-        result = L"verified update check started";
-      } else {
-        success = false;
-        result = L"unknown command";
       }
 
       pendingAcks[id] = success;
@@ -152,27 +128,23 @@ void App::ProcessRemoteCommands() {
 }
 
 void App::SendTelemetryAsync() {
-  if (telemetryBusy_.exchange(true)) return;
-  if (telemetryThread_.joinable()) telemetryThread_.join();
-  telemetryThread_ = std::thread([this] {
-    try {
-      static const std::string versionUtf8 = WideToUtf8(kVersion);
-      const auto sensor = sensors_->Snapshot();
-      const bool stationPlaying = stationhead_->AudioPlaying();
-      const size_t count = std::min<size_t>(500, sensor.outboxCount);
-      const std::string body = sensors_->BuildTelemetryPayload(
-          config_.deviceId, versionUtf8, stationPlaying, count);
-      const TelemetryReceipt receipt = cloud_->SendTelemetry(body);
-      if (receipt.success) {
+  try {
+    static const std::string versionUtf8 = WideToUtf8(kVersion);
+    const auto sensor = sensors_->Snapshot();
+    const bool stationPlaying = stationhead_->AudioPlaying();
+    const size_t count = std::min<size_t>(500, sensor.outboxCount);
+    const std::string body = sensors_->BuildTelemetryPayload(
+        config_.deviceId, versionUtf8, stationPlaying, count);
+    cloud_->QueueTelemetry(body, [this](TelemetryReceipt receipt) {
+      if (receipt.success && sensors_) {
         sensors_->ApplyTelemetryReceipt(receipt.acknowledgedSequences, receipt.nextSequence);
       }
-    } catch (const std::exception& error) {
-      if (logger_) logger_->Warn(L"Telemetry worker failed: " + Utf8ToWide(error.what()));
-    } catch (...) {
-      if (logger_) logger_->Warn(L"Telemetry worker failed with an unknown exception");
-    }
-    telemetryBusy_ = false;
-  });
+    });
+  } catch (const std::exception& error) {
+    if (logger_) logger_->Warn(L"Telemetry queue failed: " + Utf8ToWide(error.what()));
+  } catch (...) {
+    if (logger_) logger_->Warn(L"Telemetry queue failed with an unknown exception");
+  }
 }
 
 void App::ClearDisplayCache() {

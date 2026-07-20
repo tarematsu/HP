@@ -1,10 +1,6 @@
-
-
-
-
-
-
 #include "cloud_client.h"
+#include "cloud_client_exchange_helpers.inc"
+#include "cloud_client_exchange.inc"
 
 namespace hp {
 
@@ -52,6 +48,8 @@ void CloudClient::EnsureHttpHandlesLocked() {
 
 HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring& path, const std::wstring& token,
                                    const std::wstring& etag, const std::string& body, const wchar_t* contentType) {
+  if (auto compressed = TryCompressedExchange(method, path, token)) return std::move(*compressed);
+
   std::lock_guard lock(httpMutex_);
   for (int attempt = 0; attempt < 2; ++attempt) {
     EnsureHttpHandlesLocked();

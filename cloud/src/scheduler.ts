@@ -20,6 +20,7 @@ export interface JobRow {
 const LEASE_SECONDS = 120;
 const MAX_PARALLEL = 3;
 const MAX_SCHEDULER_BATCHES = 10;
+const COALESCE_WINDOW_SECONDS = 5;
 const SUCCESS_CHECKPOINT_INTERVAL_SECONDS = 6 * 60 * 60;
 const OCTOPUS_INTERVAL_SECONDS = 60 * 60 * 6;
 const SYSTEM_JOBS_CACHE_MS = 15 * 60_000;
@@ -87,7 +88,6 @@ export async function ensureSystemJobs(env: Env, nowMs = Date.now()): Promise<vo
     if (cached.inFlight) return cached.inFlight;
     if (cached.expiresAt > nowMs) return;
   }
-
   const entry: SystemJobsCacheEntry = { expiresAt: 0, inFlight: null };
   const task = reconcileSystemJobs(env, nowMs).then(
     () => {
@@ -110,24 +110,26 @@ export async function acquireDueJobs(
   env: Env,
   nowSeconds: number,
   limit = MAX_PARALLEL,
+  lookaheadSeconds = 0,
 ): Promise<JobRow[]> {
   const batchSize = Math.max(1, Math.min(MAX_PARALLEL, Math.trunc(limit)));
+  const dueThrough = nowSeconds + Math.max(0, Math.trunc(lookaheadSeconds));
   const result = await env.DB.prepare(
     `WITH due AS (
        SELECT name FROM jobs
-        WHERE next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?1)
-        ORDER BY next_run_at, name LIMIT ?2
+        WHERE next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?2)
+        ORDER BY next_run_at, name LIMIT ?3
      )
      UPDATE jobs SET
-       lease_until = ?3,
+       lease_until = ?4,
        next_run_at = CASE
-         WHEN next_run_at=0 THEN -(?1 + interval_seconds)
-         ELSE ?1 + interval_seconds
+         WHEN next_run_at=0 THEN -(?2 + interval_seconds)
+         ELSE ?2 + interval_seconds
        END
       WHERE name IN (SELECT name FROM due)
-        AND next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?1)
+        AND next_run_at <= ?1 AND (lease_until IS NULL OR lease_until < ?2)
      RETURNING name, interval_seconds, next_run_at, lease_until, last_success_at, consecutive_failures`,
-  ).bind(nowSeconds, batchSize, nowSeconds + LEASE_SECONDS).all<JobRow>();
+  ).bind(dueThrough, nowSeconds, batchSize, nowSeconds + LEASE_SECONDS).all<JobRow>();
   return result.results ?? [];
 }
 
@@ -151,12 +153,8 @@ export async function finishJob(
     || Number(job.lease_until ?? 0) <= nowSeconds
   );
   if (success && !checkpointSuccess) {
-    // The regular next run was already scheduled atomically with lease acquisition.
-    // Release the completed lease even when a refresh was not queued; otherwise the
-    // coordinator schedules a redundant lease-expiry alarm and a later refresh waits.
     const released = await env.DB.prepare(
-      `UPDATE jobs SET lease_until=NULL
-        WHERE name=?1 AND lease_until=?2`,
+      `UPDATE jobs SET lease_until=NULL WHERE name=?1 AND lease_until=?2`,
     ).bind(job.name, job.lease_until).run();
     return Number(released.meta.changes ?? 0) === 1;
   }
@@ -274,7 +272,7 @@ export async function runScheduler(env: Env): Promise<void> {
   await ensureSystemJobs(env);
   for (let batch = 0; batch < MAX_SCHEDULER_BATCHES; batch += 1) {
     const now = Math.floor(Date.now() / 1000);
-    const jobs = await acquireDueJobs(env, now);
+    const jobs = await acquireDueJobs(env, now, MAX_PARALLEL, COALESCE_WINDOW_SECONDS);
     if (!jobs.length) return;
     const results = await Promise.allSettled(jobs.map(job => runOne(env, job)));
     results.forEach((result, index) => {
@@ -306,8 +304,7 @@ export async function requestRefresh(env: Env, names?: string[]): Promise<boolea
   await ensureSystemJobs(env);
   const placeholders = selected.map(() => "?").join(",");
   await env.DB.prepare(
-    `UPDATE jobs SET next_run_at=0
-      WHERE name IN (${placeholders}) AND next_run_at<>0`,
+    `UPDATE jobs SET next_run_at=0 WHERE name IN (${placeholders}) AND next_run_at<>0`,
   ).bind(...selected).run();
   return true;
 }

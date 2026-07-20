@@ -10,8 +10,6 @@ interface DeviceCommandRow {
   expires_at: number | null;
 }
 
-// Both sync and the standalone command endpoint use this atomic claim so a
-// concurrent poll cannot deliver the same command twice.
 export async function claimPendingDeviceCommands(
   env: Env,
   deviceId: string,
@@ -22,6 +20,7 @@ export async function claimPendingDeviceCommands(
        SELECT id
          FROM device_commands
         WHERE device_id=?1
+          AND command='check_update'
           AND completed_at IS NULL
           AND (expires_at IS NULL OR expires_at>?2)
           AND (delivered_at IS NULL OR delivered_at<=?3)
@@ -32,6 +31,7 @@ export async function claimPendingDeviceCommands(
         SET delivered_at=?2
       WHERE id IN (SELECT id FROM pending)
         AND device_id=?1
+        AND command='check_update'
         AND completed_at IS NULL
         AND (expires_at IS NULL OR expires_at>?2)
         AND (delivered_at IS NULL OR delivered_at<=?3)

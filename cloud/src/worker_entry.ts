@@ -5,11 +5,12 @@ import {
   cachedMeta,
   cachedMetaEtag,
 } from "./dashboard_cache";
+import { deviceExchangeResponse } from "./device_exchange";
 import { radarBundleResponse } from "./radar_bundle";
 import worker from "./worker_core";
 import { etagResponse, suppliedEtags, unauthorized } from "./response";
 import { radarFrameResponse } from "./radar_source";
-import { queueSchedulerEnsure, queueSchedulerWake } from "./scheduler_coordinator";
+import { queueSchedulerWake, queueSchedulerWatchdog } from "./scheduler_coordinator";
 import { WORKER_VERSION } from "./snapshot";
 import type { Env } from "./sources";
 import { receiveTelemetryOptimized } from "./telemetry_route";
@@ -42,12 +43,19 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
     if (request.method === "GET" && path === "/v1/health") {
+      queueSchedulerWatchdog(env, ctx);
       return Response.json({
         ok: true,
         d1: "unchecked",
         workerVersion: WORKER_VERSION,
         now: new Date().toISOString(),
       });
+    }
+
+    if (request.method === "POST" && path === "/v1/device/exchange") {
+      const response = await deviceExchangeResponse(request, env, ctx);
+      if (response.ok) queueSchedulerWatchdog(env, ctx);
+      return response;
     }
 
     if (request.method === "GET" && path.startsWith("/v1/radar/bundle/")) {
@@ -108,9 +116,6 @@ export default {
     }
 
     const response = await worker.fetch(request, env, ctx);
-    if (response.ok && request.method === "GET" && path === "/v1/device/sync") {
-      queueSchedulerEnsure(env, ctx);
-    }
     if (response.status === 202 && request.method === "POST" && path === "/v1/refresh") {
       queueSchedulerWake(env, ctx);
     }

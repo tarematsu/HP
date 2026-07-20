@@ -164,7 +164,7 @@ describe("HomePanel Worker integration", () => {
     expect((await allowed.json<{ commands: unknown[] }>()).commands).toHaveLength(1);
   });
 
-  it("uses optimistic locking and creates one pending restart command", async () => {
+  it("uses optimistic locking without creating restart commands", async () => {
     const url = "https://homepanel.test/v1/device/config?deviceId=homepanel-device";
     const withoutPrecondition = await SELF.fetch(url, {
       method: "PUT",
@@ -188,9 +188,16 @@ describe("HomePanel Worker integration", () => {
     });
     expect(stale.status).toBe(412);
     const pending = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM device_commands WHERE device_id=?1 AND command='restart_app' AND completed_at IS NULL",
+      "SELECT COUNT(*) AS count FROM device_commands WHERE device_id=?1 AND completed_at IS NULL",
     ).bind("homepanel-device").first<{ count: number }>();
-    expect(Number(pending?.count)).toBe(1);
+    expect(Number(pending?.count)).toBe(0);
+
+    const rejected = await SELF.fetch("https://homepanel.test/v1/device/commands", {
+      method: "POST",
+      headers: { ...auth("test-action"), "content-type": "application/json" },
+      body: JSON.stringify({ deviceId: "homepanel-device", command: "restart_app" }),
+    });
+    expect(rejected.status).toBe(400);
   });
 
   it("updates one device history incrementally while preserving other devices", async () => {

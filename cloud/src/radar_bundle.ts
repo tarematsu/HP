@@ -180,32 +180,22 @@ export async function radarBundleShardResponse(request: Request, env: Env): Prom
   }
 }
 
-export async function radarBundleResponse(
-  request: Request,
+export async function radarBundleResponseForPayload(
+  requestUrl: string,
+  payload: unknown,
+  baseTime: string,
   env: Env,
   ctx: ExecutionContext,
 ): Promise<Response> {
-  const match = new URL(request.url).pathname.match(BUNDLE_PATH);
-  if (!match) return Response.json({ error: "not_found" }, { status: 404 });
-
-  const cache = defaultCache();
-  const cacheKey = new Request(request.url, { method: "GET" });
-  const cached = await cache.match(cacheKey);
-  if (cached) return cached;
-
-  const state = await readState(env, "radar");
-  if (!state?.payload) return Response.json({ error: "radar_unavailable" }, { status: 503 });
-  let payload: unknown;
-  try {
-    payload = JSON.parse(state.payload);
-  } catch {
-    return Response.json({ error: "radar_state_invalid" }, { status: 503 });
-  }
-
-  const paths = radarBundlePaths(payload, match[1]!);
+  const paths = radarBundlePaths(payload, baseTime);
   if (!paths.length) return Response.json({ error: "radar_bundle_unavailable" }, { status: 404 });
   const namespace = (env as BundleEnv).SCHEDULER_COORDINATOR;
   if (!namespace) return Response.json({ error: "radar_bundle_unavailable" }, { status: 503 });
+
+  const cache = defaultCache();
+  const cacheKey = new Request(requestUrl, { method: "GET" });
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
 
   const chunks: string[][] = [];
   for (let offset = 0; offset < paths.length; offset += MAX_PATHS_PER_SHARD) {
@@ -239,4 +229,23 @@ export async function radarBundleResponse(
     console.error("radar bundle cache put failed", error instanceof Error ? error.message : String(error));
   }));
   return response;
+}
+
+export async function radarBundleResponse(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  const match = new URL(request.url).pathname.match(BUNDLE_PATH);
+  if (!match) return Response.json({ error: "not_found" }, { status: 404 });
+
+  const state = await readState(env, "radar");
+  if (!state?.payload) return Response.json({ error: "radar_unavailable" }, { status: 503 });
+  let payload: unknown;
+  try {
+    payload = JSON.parse(state.payload);
+  } catch {
+    return Response.json({ error: "radar_state_invalid" }, { status: 503 });
+  }
+  return radarBundleResponseForPayload(request.url, payload, match[1]!, env, ctx);
 }
