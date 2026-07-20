@@ -18,6 +18,8 @@ struct TelemetryReceipt {
 
 class CloudClient {
  public:
+  using TelemetryCallback = std::function<void(TelemetryReceipt)>;
+
   CloudClient(HWND window, AppConfig config, fs::path dataDir, std::wstring deviceToken, std::wstring actionToken, Logger& log);
   ~CloudClient();
   void Start();
@@ -26,6 +28,7 @@ class CloudClient {
   bool RequestRemoteRefresh();
   std::string FetchUpdateManifest();
   TelemetryReceipt SendTelemetry(const std::string& json);
+  void QueueTelemetry(std::string json, TelemetryCallback callback);
   bool AcknowledgeCommand(int64_t id, bool success, const std::wstring& result);
   std::wstring LastSuccessText() const;
   std::wstring WorkerVersion() const;
@@ -33,6 +36,12 @@ class CloudClient {
   int ConsecutiveFailures() const { return failures_.load(); }
 
  private:
+  struct PendingTelemetry {
+    uint64_t generation = 0;
+    std::string json;
+    TelemetryCallback callback;
+  };
+
   HttpResponse Request(const std::wstring& method, const std::wstring& path, const std::wstring& token,
                        const std::wstring& etag = {}, const std::string& body = {}, const wchar_t* contentType = L"application/json");
   void Loop();
@@ -43,7 +52,9 @@ class CloudClient {
   void UpdateStationheadHealthText(std::wstring text);
   void EnsureHttpHandlesLocked();
   void ResetHttpHandlesLocked();
-  std::vector<uint8_t> LocalizeRadarTiles(const std::vector<uint8_t>& body);
+  std::vector<uint8_t> LocalizeRadarTiles(
+      const std::vector<uint8_t>& body,
+      const std::vector<uint8_t>& embeddedBundle = {});
 
   void StartNetworkChangeWatcher();
   void StopNetworkChangeWatcher();
@@ -72,6 +83,10 @@ class CloudClient {
   INTERNET_PORT port_ = 0;
   bool secure_ = true;
   DWORD accessType_ = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
+
+  std::mutex pendingTelemetryMutex_;
+  std::optional<PendingTelemetry> pendingTelemetry_;
+  uint64_t pendingTelemetryGeneration_ = 0;
 
   std::wstring lastSuccess_;
   std::wstring workerVersion_;
