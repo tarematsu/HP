@@ -44,6 +44,10 @@ class CloudClient {
 
   HttpResponse Request(const std::wstring& method, const std::wstring& path, const std::wstring& token,
                        const std::wstring& etag = {}, const std::string& body = {}, const wchar_t* contentType = L"application/json");
+  std::optional<HttpResponse> TryCompressedExchange(
+      const std::wstring& method,
+      const std::wstring& path,
+      const std::wstring& token);
   void Loop();
   void Synchronize();
   void ApplyPresenceFallback();
