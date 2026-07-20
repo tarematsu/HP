@@ -20,7 +20,7 @@ beforeEach(async () => {
 });
 
 describe("repository audit regressions", () => {
-  it("allows DEVICE_TOKEN for administrative commands and rejects unknown tokens", async () => {
+  it("allows DEVICE_TOKEN for update commands and rejects unknown tokens", async () => {
     const request = (token: string) => SELF.fetch(
       "https://homepanel.test/v1/device/commands",
       {
@@ -28,7 +28,7 @@ describe("repository audit regressions", () => {
         headers: auth(token),
         body: JSON.stringify({
           deviceId: "homepanel-device",
-          command: "restart_app",
+          command: "check_update",
         }),
       },
     );
