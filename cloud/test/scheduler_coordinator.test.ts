@@ -58,7 +58,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(scheduledAt)).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("runs only one due job per alarm and schedules the remaining backlog", async () => {
+  it("coalesces due jobs in one alarm and schedules the next deadline", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
       .bind(now + 3600)
@@ -73,13 +73,14 @@ describe("SchedulerCoordinator Durable Object", () => {
       "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
     ).all<{ name: string; next_run_at: number; lease_until: number | null }>();
     expect(rows.results).toHaveLength(2);
-    expect(rows.results[0]).toMatchObject({ name: "cleanup", lease_until: null });
-    expect(Number(rows.results[0]?.next_run_at)).toBeGreaterThan(now);
-    expect(rows.results[1]).toEqual({ name: "weather", next_run_at: 0, lease_until: null });
+    for (const row of rows.results) {
+      expect(row.lease_until).toBeNull();
+      expect(Number(row.next_run_at)).toBeGreaterThan(now);
+    }
 
     const nextAlarm = await alarmTime(stub);
     expect(nextAlarm).not.toBeNull();
-    expect(Number(nextAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
+    expect(Number(nextAlarm)).toBeGreaterThan(Date.now());
   });
 
   it("moves a future alarm forward when refresh work wakes the coordinator", async () => {
