@@ -4,7 +4,6 @@ import { requestFamily } from './unified_routes.js';
 import {
   inactiveVideoRuntimeResponse,
   retryInactiveVideoBatch,
-  skipInactiveVideoSchedule,
   videoRuntimeActive
 } from './video_runtime_activation.js';
 
@@ -28,14 +27,5 @@ export default {
     }
     if (typeof videoWorker.queue !== 'function') return undefined;
     return videoWorker.queue(batch, env, ctx);
-  },
-
-  async scheduled(controller, env, ctx) {
-    if (!await videoRuntimeActive(env)) {
-      skipInactiveVideoSchedule(controller);
-      return undefined;
-    }
-    if (typeof videoWorker.scheduled !== 'function') return undefined;
-    return videoWorker.scheduled(controller, env, ctx);
   }
 };
