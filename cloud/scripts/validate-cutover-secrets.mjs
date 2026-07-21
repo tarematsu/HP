@@ -48,6 +48,13 @@ if (![...payloadNames].some((name) => [
 ].includes(name))) {
   throw new Error('Secret payload must include a HomePanel device authentication secret');
 }
+if (![...payloadNames].some((name) => [
+  'API_TOKEN',
+  'HOMEPANEL_INGEST_SECRET',
+  'DEVICE_TOKEN'
+].includes(name))) {
+  throw new Error('Secret payload must include a HomePanel action token for scheduler bootstrap');
+}
 
 console.log(JSON.stringify({
   legacyHomepanelSecrets: homepanelNames.sort(),
