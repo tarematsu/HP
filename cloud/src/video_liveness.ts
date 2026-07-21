@@ -1,10 +1,10 @@
 import videoWorker from "../../video/src/entry-core.js";
 import { LIVENESS_CRON } from "../../video/src/liveness-schedule.js";
 import type { Env } from "./sources";
-import { videoRuntimeActive } from "./video_runtime_activation.js";
+import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 
 export async function runVideoLiveness(env: Env): Promise<void> {
-  if (!await videoRuntimeActive(env)) {
+  if (!await readVideoRuntimeActive(env)) {
     console.log("video-liveness-skipped-inactive-runtime");
     return;
   }
