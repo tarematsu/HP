@@ -1,11 +1,6 @@
 name: Run VP workspace migration
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/run-vp-migration.yml
   issues:
     types:
       - opened
@@ -13,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: run-vp-workspace-migration
@@ -21,11 +17,23 @@ concurrency:
 jobs:
   migrate:
     if: >-
-      github.actor != 'github-actions[bot]' &&
-      (github.event_name != 'issues' || github.event.issue.title == '[automation] Run VP migration')
+      github.event_name == 'workflow_dispatch' ||
+      github.event.issue.title == '[automation] Run VP migration'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Report start
+        if: github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'VP migration started.'
+            });
+
       - name: Check out migration branch
         uses: actions/checkout@v4
         with:
@@ -51,147 +59,9 @@ jobs:
           - Imported into HP as: \`video/\`
           - Video Worker: \`videoscraper\`
           - HomePanel Worker: \`homepanel-cloud\`
-          - The Workers, D1 databases, queues, assets, bindings, cron schedules, and deployments remain separate.
+          - Workers, D1 databases, queues, assets, bindings, cron schedules, and deployments remain separate.
 
-          GitHub only executes workflows under the repository root. The original VP workflows are retained under \`video/.github/workflows\` as migration references; active monorepo workflows are rooted under \`.github/workflows/video-*.yml\`.
-          EOF
-
-      - name: Add isolated video CI workflow
-        shell: bash
-        run: |
-          cat > .github/workflows/video-ci.yml <<'EOF'
-          name: Video CI
-
-          on:
-            push:
-              branches:
-                - main
-              paths:
-                - 'video/**'
-                - '.github/workflows/video-ci.yml'
-            pull_request:
-              paths:
-                - 'video/**'
-                - '.github/workflows/video-ci.yml'
-            workflow_dispatch:
-
-          permissions:
-            contents: read
-
-          concurrency:
-            group: video-ci-${{ github.event.pull_request.head.sha || github.sha }}
-            cancel-in-progress: true
-
-          jobs:
-            test:
-              runs-on: ubuntu-latest
-              timeout-minutes: 20
-              defaults:
-                run:
-                  working-directory: video
-              steps:
-                - uses: actions/checkout@v4
-                  with:
-                    ref: ${{ github.event.pull_request.head.sha || github.sha }}
-                - uses: actions/setup-node@v4
-                  with:
-                    node-version: 22
-                - name: Install dependencies
-                  run: npm install --no-audit --no-fund
-                - name: Run syntax checks
-                  run: npm run check:syntax
-                - name: Run repository audit
-                  run: npm run check:audit
-                - name: Run tests
-                  run: npm test
-                - name: Validate Worker bundle
-                  run: npm run check:bundle
-          EOF
-
-      - name: Add isolated video deployment workflow
-        shell: bash
-        run: |
-          cat > .github/workflows/video-deploy.yml <<'EOF'
-          name: Video D1 migrate and deploy
-
-          on:
-            workflow_dispatch:
-            push:
-              branches:
-                - main
-              paths:
-                - '.github/workflows/video-deploy.yml'
-                - 'video/migrations/**'
-                - 'video/public/**'
-                - 'video/scripts/push-manual-import-recovery.mjs'
-                - 'video/src/**'
-                - 'video/package.json'
-                - 'video/package-lock.json'
-                - 'video/wrangler.jsonc'
-
-          permissions:
-            contents: read
-            statuses: write
-
-          concurrency:
-            group: video-cloudflare-production-deploy
-            cancel-in-progress: false
-
-          jobs:
-            validate:
-              runs-on: ubuntu-latest
-              timeout-minutes: 15
-              defaults:
-                run:
-                  working-directory: video
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-node@v4
-                  with:
-                    node-version: '22'
-                - run: npm install --no-audit --no-fund
-                - run: npm run check
-
-            migrate-and-deploy:
-              needs: validate
-              runs-on: ubuntu-latest
-              timeout-minutes: 25
-              environment: production
-              defaults:
-                run:
-                  working-directory: video
-              env:
-                CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
-                CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
-                MANUAL_IMPORT_QUEUE: videoscraper-manual-imports
-                MANUAL_IMPORT_DLQ: videoscraper-manual-imports-dlq
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-node@v4
-                  with:
-                    node-version: '22'
-                - name: Validate credentials
-                  run: test -n "$CLOUDFLARE_API_TOKEN"
-                - run: npm install --no-audit --no-fund
-                - name: Ensure queues exist
-                  shell: bash
-                  run: |
-                    set -euo pipefail
-                    if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
-                    ensure_queue() {
-                      local name="$1"
-                      if ! npx --no-install wrangler queues info "$name" >/dev/null 2>&1; then
-                        npx --no-install wrangler queues create "$name"
-                      fi
-                    }
-                    ensure_queue "$MANUAL_IMPORT_QUEUE"
-                    ensure_queue "$MANUAL_IMPORT_DLQ"
-                - name: Apply D1 migrations
-                  run: npm run db:migrate:remote
-                - name: Deploy videoscraper Worker
-                  run: npx --no-install wrangler deploy --strict --tag "git-${GITHUB_SHA:0:12}" --message "HP main $GITHUB_SHA"
-                - name: Seed recoverable jobs
-                  run: node scripts/push-manual-import-recovery.mjs
+          Original VP workflows are retained under \`video/.github/workflows\` as migration references. Active monorepo workflows belong under the HP root \`.github/workflows/\` directory.
           EOF
 
       - name: Commit imported workspace
@@ -201,6 +71,34 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm -f .github/workflows/migrate-vp-into-video.yml || true
-          git add video .github/workflows/video-ci.yml .github/workflows/video-deploy.yml
-          git commit -m 'Integrate VP as video workspace'
-          git push origin HEAD:agent/integrate-vp-video
+          git add video
+          if git diff --cached --quiet; then
+            echo 'No migration changes to commit.'
+          else
+            git commit -m 'Integrate VP as video workspace'
+            git push origin HEAD:agent/integrate-vp-video
+          fi
+
+      - name: Report success
+        if: success() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'VP migration completed and pushed to PR #204.'
+            });
+
+      - name: Report failure
+        if: failure() && github.event_name == 'issues'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: 'VP migration failed. Inspect the workflow run logs for the failing step.'
+            });
