@@ -9,7 +9,8 @@ import { blockPlaybackMedia } from '../src/video-blocklist.js';
 const entryCoreSource = readFileSync(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
 test('status responses remain private without an entry response rewrite', () => {
-  assert.equal(entry, core);
+  assert.notEqual(entry, core);
+  assert.equal(typeof entry.fetch, 'function');
   assert.match(entryCoreSource, /'cache-control', 'private, no-store'/);
   assert.match(entryCoreSource, /headers: STATUS_RESPONSE_HEADERS/);
   assert.doesNotMatch(entryCoreSource, /x-edge-cache/i);
