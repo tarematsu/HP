@@ -8,7 +8,6 @@ on:
       - "video/src/**"
       - "video/public/**"
       - "video/package.json"
-      - "video/package-lock.json"
       - ".github/workflows/cloud-deploy.yml"
       - ".github/scripts/resolve-cloudflare-config.mjs"
   workflow_dispatch:
@@ -46,7 +45,7 @@ jobs:
 
       - name: Install video dependencies
         working-directory: video
-        run: npm ci --no-audit --no-fund
+        run: npm install --no-audit --no-fund
 
       - name: Resolve Cloudflare settings
         id: resolve
