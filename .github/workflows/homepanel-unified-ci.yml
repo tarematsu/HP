@@ -58,8 +58,20 @@ jobs:
         run: npm run check:unified-bundle
       - name: Verify local unified D1 migrations
         working-directory: cloud
+        shell: bash
         run: |
-          rm -rf .wrangler-ci-state
-          npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
-          npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
-          npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA integrity_check;"
+          set -o pipefail
+          {
+            rm -rf .wrangler-ci-state
+            npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
+            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
+            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA integrity_check;"
+          } 2>&1 | tee d1-validation.log
+      - name: Upload D1 validation output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-unified-d1-output-${{ github.run_id }}
+          path: cloud/d1-validation.log
+          if-no-files-found: warn
+          retention-days: 14
