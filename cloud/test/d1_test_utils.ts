@@ -1,6 +1,5 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { invalidateSystemJobsCache } from "../src/scheduler";
-import { invalidateStateCacheScope } from "../src/state_cache";
 import { invalidateEnvironmentStateCache } from "../src/telemetry_history";
 
 export async function resetD1TestDatabase(
@@ -8,7 +7,6 @@ export async function resetD1TestDatabase(
   migrations: Parameters<typeof applyD1Migrations>[1],
 ): Promise<void> {
   invalidateSystemJobsCache(db);
-  invalidateStateCacheScope(db);
   invalidateEnvironmentStateCache(db);
   await applyD1Migrations(db, migrations);
   await db.batch([
@@ -25,6 +23,6 @@ export async function resetD1TestDatabase(
     db.prepare("DELETE FROM current_state"),
   ]);
   await db.prepare(
-    "UPDATE jobs SET next_run_at=0, lease_until=NULL, last_success_at=NULL, last_error=NULL, consecutive_failures=0",
+    "UPDATE jobs SET next_run_at=0, lease_until=NULL,last_success_at=NULL,last_error=NULL,consecutive_failures=0",
   ).run();
 }
