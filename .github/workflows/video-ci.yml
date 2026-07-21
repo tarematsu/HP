@@ -1,0 +1,57 @@
+name: Video CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'video/**'
+      - '.github/workflows/video-ci.yml'
+  pull_request:
+    paths:
+      - 'video/**'
+      - '.github/workflows/video-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: video
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run syntax checks
+        run: npm run check:syntax
+      - name: Run repository audit
+        run: npm run check:audit
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.log
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-ci-test-output-${{ github.run_id }}
+          path: video/test-output.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Validate Worker bundle
+        run: npm run check:bundle

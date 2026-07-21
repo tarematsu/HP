@@ -1,0 +1,2 @@
+DROP TRIGGER IF EXISTS liveness_feed_dirty_on_death_insert;
+DROP TRIGGER IF EXISTS liveness_feed_dirty_on_death_delete;

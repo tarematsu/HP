@@ -21,6 +21,7 @@ const migrateLocal = process.argv.includes("--migrate-local");
 const migrateRemoteOnly = process.argv.includes("--migrate-only");
 const forceRemoteMigrations = process.argv.includes("--with-migrations")
   || process.env.HOMEPANEL_APPLY_D1_MIGRATIONS?.trim() === "1";
+const secretsFile = process.env.HOMEPANEL_SECRETS_FILE?.trim() || "";
 // Schema changes remain owned by the dedicated migration workflow. Routine
 // Worker deploys opt out explicitly instead of rediscovering the same list.
 const skipRemoteMigrations = process.argv.includes("--without-migrations")
@@ -197,6 +198,9 @@ const updateBucket = configuredUpdateBucket(config);
 config.name = workerName;
 config.keep_vars = true;
 config.main = generatedPath(join(root, config.main));
+if (typeof config.assets?.directory === "string") {
+  config.assets.directory = generatedPath(join(root, config.assets.directory));
+}
 config.d1_databases = [{
   binding: "DB",
   database_name: databaseName,
@@ -219,6 +223,7 @@ writeFileSync(generatedConfig, `${JSON.stringify(config, null, 2)}\n`);
 console.log(`Using Worker '${workerName}' and D1 '${databaseName}' (${databaseId})`);
 if (updateBucket) console.log(`Using R2 bucket '${updateBucket}' for update assets`);
 console.log(`Generated config paths: main=${config.main}, migrations=${config.d1_databases[0].migrations_dir}`);
+if (config.assets?.directory) console.log(`Generated assets path: ${config.assets.directory}`);
 console.log("Local .env files are ignored; runtime credentials remain in Cloudflare secrets");
 
 if (process.argv.includes("--prepare-only")) process.exit(0);
@@ -245,5 +250,10 @@ if (applyRemoteMigrations) {
   console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
 }
 if (migrateRemoteOnly) process.exit(0);
-wrangler(["deploy", "--config", generatedConfig]);
-console.log("Cloudflare runtime secrets were left unchanged");
+const deployArgs = ["deploy", "--config", generatedConfig];
+if (secretsFile) {
+  deployArgs.push("--secrets-file", secretsFile);
+  console.log(`Bootstrapping runtime secrets from ${secretsFile}`);
+}
+wrangler(deployArgs);
+console.log("Cloudflare runtime secrets were left unchanged unless HOMEPANEL_SECRETS_FILE was supplied");

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#000000">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <link rel="stylesheet" href="/critical.css">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/landscape-controls.css">
+  <title>動画プレイヤー</title>
+</head>
+<body class="is-locked is-auth-pending">
+  <section id="authGate" aria-label="認証">
+    <form id="authForm" autocomplete="off">
+      <label for="authTokenInput">ADMIN_TOKEN</label>
+      <input id="authTokenInput" name="adminToken" type="password" inputmode="text" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+      <button id="authSubmitButton" type="submit">認証</button>
+      <p id="authMessage" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <main id="player" class="is-paused" aria-live="polite" inert data-controls-visible="true">
+    <video id="videoA" playsinline muted preload="auto"></video>
+    <video id="videoB" playsinline muted preload="auto"></video>
+    <div id="controlShade" aria-hidden="true"></div>
+    <button id="centerPlayButton" type="button" aria-label="再生">
+      <span aria-hidden="true">▶</span>
+    </button>
+    <div id="tapFeedback" hidden aria-live="polite"></div>
+    <div id="loader" hidden aria-label="読み込み中"></div>
+    <div id="message" hidden></div>
+    <div id="hint">上下スワイプ: 次へ / 左右スワイプ: 時間移動 / 左右ダブルタップ: 10秒移動</div>
+    <div id="playbackControls" aria-label="動画コントロール">
+      <input id="seekBar" type="range" min="0" max="1000" step="1" value="0" aria-label="再生位置" disabled>
+      <div id="controlRow">
+        <button id="playPauseButton" class="controlIcon" type="button" aria-label="再生">
+          <span aria-hidden="true">▶</span>
+        </button>
+        <button class="controlIcon skipButton" type="button" data-skip-seconds="-10" aria-label="10秒戻る">
+          <span aria-hidden="true">↶</span><small>10</small>
+        </button>
+        <button class="controlIcon skipButton" type="button" data-skip-seconds="10" aria-label="10秒進む">
+          <span aria-hidden="true">↷</span><small>10</small>
+        </button>
+        <button id="muteButton" class="controlIcon" type="button" aria-label="ミュート解除">
+          <span aria-hidden="true">🔇</span>
+        </button>
+        <input id="volumeBar" type="range" min="0" max="100" step="1" value="100" aria-label="音量">
+        <span id="timeDisplay">
+          <span id="currentTime" class="timeLabel">0:00</span>
+          <span aria-hidden="true"> / </span>
+          <span id="durationTime" class="timeLabel">0:00</span>
+        </span>
+        <span class="controlSpacer" aria-hidden="true"></span>
+        <button id="fullscreenButton" class="controlIcon" type="button" aria-label="全画面表示">
+          <span aria-hidden="true">⛶</span>
+        </button>
+      </div>
+    </div>
+    <div id="orientationFilter" role="group" aria-label="動画表示とNG登録">
+      <button type="button" data-orientation="vertical" aria-pressed="false" aria-label="縦動画のみ">縦</button>
+      <button type="button" data-orientation="horizontal" aria-pressed="false" aria-label="横動画のみ">横</button>
+      <button type="button" data-orientation="both" aria-pressed="true" aria-label="縦横両方">両方</button>
+      <span class="controlDivider" aria-hidden="true"></span>
+      <button id="adminTokenButton" type="button" aria-pressed="false" aria-label="ADMIN_TOKENを削除">認証済</button>
+      <button id="blockButton" type="button" aria-label="この動画をNGリストへ追加">NG</button>
+    </div>
+  </main>
+  <script src="/auth-pending.js"></script>
+  <script type="module" src="/auth-bootstrap.js"></script>
+  <script type="module" src="/keyboard-interaction-guard.js"></script>
+  <script type="module" src="/player-state-bridge.js"></script>
+  <script type="module" src="/player-display.js"></script>
+  <script type="module" src="/app-resilient.js"></script>
+  <script type="module" src="/playback-gestures.js"></script>
+  <script type="module" src="/persistent-sound.js"></script>
+</body>
+</html>

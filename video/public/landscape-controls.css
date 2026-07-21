@@ -1,0 +1,17 @@
+@media (orientation: landscape) {
+  #tapFeedback[data-side="top"] {
+    top: max(12%, calc(env(safe-area-inset-top, 0px) + 36px));
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+  }
+
+  #tapFeedback[data-side="bottom"] {
+    top: auto;
+    left: 50%;
+    right: auto;
+    bottom: max(12%, calc(env(safe-area-inset-bottom, 0px) + 36px));
+    transform: translate(-50%, 50%);
+  }
+}

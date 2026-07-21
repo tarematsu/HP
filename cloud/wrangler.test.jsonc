@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "homepanel-test",
+  "main": "src/worker_entry.ts",
+  "compatibility_date": "2026-06-20",
+  "workers_dev": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCHEDULER_COORDINATOR",
+        "class_name": "SchedulerCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "scheduler-coordinator-v1",
+      "new_sqlite_classes": [
+        "SchedulerCoordinator"
+      ]
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "homepanel-test",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "UPDATE_BUCKET",
+      "bucket_name": "homepanel-test-updates"
+    }
+  ]
+}

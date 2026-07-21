@@ -6,7 +6,7 @@ const testMigrations = await readD1Migrations("./migrations");
 export default defineConfig({
   plugins: [
     cloudflareTest({
-      wrangler: { configPath: "./wrangler.jsonc" },
+      wrangler: { configPath: "./wrangler.test.jsonc" },
       miniflare: {
         d1Databases: ["DB"],
         r2Buckets: ["UPDATE_BUCKET"],
@@ -15,6 +15,7 @@ export default defineConfig({
           HOMEPANEL_INGEST_SECRET: "test-action",
           API_TOKEN: "test-action",
           DEVICE_TOKEN: "test-device",
+          ADMIN_TOKEN: "test-video-admin",
           HOMEPANEL_DEVICE_TOKENS: JSON.stringify({
             "ci-device": "test-device",
             "homepanel-device": "test-device",
