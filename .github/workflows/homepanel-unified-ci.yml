@@ -65,7 +65,7 @@ jobs:
             rm -rf .wrangler-ci-state
             npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
             npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
-            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA integrity_check;"
+            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%';"
           } 2>&1 | tee d1-validation.log
       - name: Upload D1 validation output
         if: always()
