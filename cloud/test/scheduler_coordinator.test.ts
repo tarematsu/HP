@@ -5,6 +5,11 @@ import {
   runInDurableObject,
 } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import {
+  LIVENESS_INTERVAL_SECONDS,
+  LIVENESS_JOB_NAME,
+} from "../../video/src/liveness-schedule.js";
+import { invalidateSystemJobsCache } from "../src/scheduler";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & {
@@ -27,6 +32,7 @@ async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
 beforeEach(async () => {
   const testEnv = env as TestEnv;
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
+  invalidateSystemJobsCache(testEnv.DB);
 });
 
 describe("SchedulerCoordinator Durable Object", () => {
@@ -38,6 +44,27 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST");
     expect(await alarmTime(stub)).toBeNull();
+  });
+
+  it("registers video liveness in the shared alarm scheduler", async () => {
+    await env.DB.prepare("DELETE FROM jobs WHERE name=?1").bind(LIVENESS_JOB_NAME).run();
+    const stub = coordinatorStub();
+
+    const response = await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
+    const row = await env.DB.prepare(
+      "SELECT name,interval_seconds,next_run_at FROM jobs WHERE name=?1",
+    ).bind(LIVENESS_JOB_NAME).first<{
+      name: string;
+      interval_seconds: number;
+      next_run_at: number;
+    }>();
+
+    expect(response.status).toBe(202);
+    expect(row).toEqual({
+      name: LIVENESS_JOB_NAME,
+      interval_seconds: LIVENESS_INTERVAL_SECONDS,
+      next_run_at: 0,
+    });
   });
 
   it("schedules an alarm for the earliest due job", async () => {
