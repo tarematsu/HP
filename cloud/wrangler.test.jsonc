@@ -28,10 +28,19 @@
       "migrations_dir": "migrations"
     }
   ],
+  "kv_namespaces": [
+    {
+      "binding": "STATE_CACHE"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "UPDATE_BUCKET",
       "bucket_name": "homepanel-test-updates"
+    },
+    {
+      "binding": "DATA_BUCKET",
+      "bucket_name": "homepanel-test-data"
     }
   ]
 }
