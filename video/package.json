@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Video player runtime imported into the unified HomePanel Worker.",
   "scripts": {
-    "postinstall": "node scripts/sync-d1-database-id.mjs --if-placeholder",
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --local",
     "config:production": "node scripts/standalone-runtime-retired.mjs production-config",
     "deploy": "node scripts/standalone-runtime-retired.mjs deploy",
     "db:create": "node scripts/standalone-runtime-retired.mjs database-create",
