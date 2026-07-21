@@ -11,6 +11,7 @@ const sourceDatabase = process.env.VIDEO_SOURCE_D1_NAME?.trim() || 'twivideo-swi
 const targetDatabase = process.env.HOMEPANEL_D1_DATABASE_NAME?.trim() || 'homepanel-data';
 const exportDirectory = process.env.VIDEO_D1_EXPORT_DIR?.trim()
   || join(cloudRoot, '.wrangler', 'video-d1-export');
+const runtimeStateTable = 'video_runtime_state';
 
 const importOrder = Object.freeze([
   'videos',
@@ -32,12 +33,6 @@ const importOrder = Object.freeze([
   'status_counts'
 ]);
 const expectedTables = new Set(importOrder);
-const singletonTables = new Set([
-  'd1_maintenance_state',
-  'playback_feed_state',
-  'video_liveness_state',
-  'status_counts'
-]);
 
 function cloudflareEnvironment() {
   const env = { ...process.env, CI: 'true' };
@@ -136,24 +131,9 @@ function assertSourceSchema(names) {
 
 function assertTargetSchema(names) {
   const actual = new Set(names);
-  const missing = importOrder.filter((name) => !actual.has(name));
+  const missing = [...importOrder, runtimeStateTable].filter((name) => !actual.has(name));
   if (missing.length) {
-    throw new Error(`Target homepanel D1 is missing video tables: ${missing.join(', ')}`);
-  }
-}
-
-function assertTargetEmpty(counts) {
-  const populated = [];
-  for (const table of importOrder) {
-    const count = Number(counts[table] || 0);
-    const allowed = singletonTables.has(table) ? 1 : 0;
-    if (count > allowed) populated.push(`${table}=${count}`);
-  }
-  if (populated.length) {
-    throw new Error(
-      'Target homepanel D1 already contains video data; refusing a duplicate import: '
-      + populated.join(', ')
-    );
+    throw new Error(`Target HomePanel D1 is missing video tables: ${missing.join(', ')}`);
   }
 }
 
@@ -177,6 +157,34 @@ function restoreImportGuards() {
   executeTargetFile(postImportSql);
 }
 
+function resetTargetVideoData() {
+  executeTargetCommand(`
+    UPDATE video_runtime_state SET active = 0, activated_at = NULL WHERE id = 1;
+    DROP TRIGGER IF EXISTS video_death_skip_ranking;
+    DROP TRIGGER IF EXISTS status_counts_delta_on_block_insert;
+    DROP TRIGGER IF EXISTS status_counts_dirty_on_block_delete;
+    DROP TRIGGER IF EXISTS manual_import_jobs_max_urls_insert;
+    DROP TRIGGER IF EXISTS manual_import_jobs_max_urls_update;
+    DELETE FROM collection_capture_network_events;
+    DELETE FROM collection_capture_snapshots;
+    DELETE FROM collection_run_timings;
+    DELETE FROM reports;
+    DELETE FROM ranking_entries;
+    DELETE FROM manual_import_job_chunks;
+    DELETE FROM manual_import_jobs;
+    DELETE FROM video_blocklist;
+    DELETE FROM video_death_list;
+    DELETE FROM video_orientations;
+    DELETE FROM worker_locks;
+    DELETE FROM status_counts;
+    DELETE FROM video_liveness_state;
+    DELETE FROM playback_feed_state;
+    DELETE FROM d1_maintenance_state;
+    DELETE FROM collection_runs;
+    DELETE FROM videos;
+  `);
+}
+
 if (!readFileSync(postImportSql, 'utf8').trim()) {
   throw new Error(`Post-import SQL is empty: ${postImportSql}`);
 }
@@ -194,24 +202,12 @@ assertCountsEqual(sourceCountsBefore, sourceCountsAfter);
 const targetNames = tableNames(targetDatabase, true);
 assertTargetSchema(targetNames);
 const targetCountsBefore = tableCounts(targetDatabase, true);
-assertTargetEmpty(targetCountsBefore);
 
 let guardsDropped = false;
 let importError;
 try {
-  executeTargetCommand(`
-    DROP TRIGGER IF EXISTS video_death_skip_ranking;
-    DROP TRIGGER IF EXISTS status_counts_delta_on_block_insert;
-    DROP TRIGGER IF EXISTS status_counts_dirty_on_block_delete;
-    DROP TRIGGER IF EXISTS manual_import_jobs_max_urls_insert;
-    DROP TRIGGER IF EXISTS manual_import_jobs_max_urls_update;
-    DELETE FROM status_counts;
-    DELETE FROM video_liveness_state;
-    DELETE FROM playback_feed_state;
-    DELETE FROM d1_maintenance_state;
-  `);
+  resetTargetVideoData();
   guardsDropped = true;
-
   for (const table of importOrder) executeTargetFile(exports[table]);
 } catch (error) {
   importError = error;
@@ -242,8 +238,24 @@ const schemaRows = query(targetDatabase, `
      AND name NOT LIKE '_cf_%';
 `, true);
 const schemaObjectCount = Number(schemaRows[0]?.object_count ?? 0);
-if (!Number.isSafeInteger(schemaObjectCount) || schemaObjectCount < importOrder.length) {
+if (!Number.isSafeInteger(schemaObjectCount) || schemaObjectCount < importOrder.length + 1) {
   throw new Error(`D1 schema inventory is incomplete: ${JSON.stringify(schemaRows)}`);
+}
+
+executeTargetCommand(`
+  UPDATE video_runtime_state
+     SET active = 1,
+         activated_at = CURRENT_TIMESTAMP
+   WHERE id = 1;
+`);
+const activationRows = query(targetDatabase, `
+  SELECT active, activated_at
+    FROM video_runtime_state
+   WHERE id = 1;
+`, true);
+const activation = activationRows[0];
+if (Number(activation?.active ?? 0) !== 1 || !activation?.activated_at) {
+  throw new Error(`Video runtime activation failed: ${JSON.stringify(activationRows)}`);
 }
 
 const manifest = {
@@ -252,10 +264,13 @@ const manifest = {
   targetDatabase,
   tables: importOrder,
   sourceCounts: sourceCountsBefore,
+  targetCountsBefore,
   targetCounts: targetCountsAfter,
   foreignKeyCheck: 'ok',
   schemaCheck: 'ok',
-  schemaObjectCount
+  schemaObjectCount,
+  runtimeActivation: 'ok',
+  activatedAt: String(activation.activated_at)
 };
 writeFileSync(join(exportDirectory, 'migration-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(JSON.stringify(manifest, null, 2));
