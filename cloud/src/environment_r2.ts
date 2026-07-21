@@ -4,7 +4,6 @@ import type { Env } from "./sources";
 import type { TelemetrySample } from "./telemetry_bucket";
 
 const ENVIRONMENT_STATE_KEY = "environment/v2/latest.json";
-const TELEMETRY_LATEST_PREFIX = "telemetry/v2";
 const ENVIRONMENT_BUCKET_MS = 15 * 60_000;
 const ENVIRONMENT_HISTORY_MS = 24 * 60 * 60_000;
 const MAX_CAS_ATTEMPTS = 4;
@@ -40,7 +39,6 @@ export interface EnvironmentMergeResult {
   accepted: number;
   acknowledgedSequences: number[];
   lastSequence: number;
-  row: StateRow | null;
 }
 
 interface CachedEnvironmentRow {
@@ -67,17 +65,21 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function nonNegativeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
 function validBucket(value: unknown): value is StoredBucket {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
   return Number.isSafeInteger(row.bucketAt)
-    && finiteNumber(row.sampleCount)
+    && nonNegativeInteger(row.sampleCount)
     && finiteNumber(row.co2Sum)
-    && finiteNumber(row.co2Count)
+    && nonNegativeInteger(row.co2Count)
     && finiteNumber(row.temperatureSum)
-    && finiteNumber(row.temperatureCount)
+    && nonNegativeInteger(row.temperatureCount)
     && finiteNumber(row.humiditySum)
-    && finiteNumber(row.humidityCount);
+    && nonNegativeInteger(row.humidityCount);
 }
 
 function validStateRow(value: unknown): value is StateRow {
@@ -100,7 +102,9 @@ function parseDocument(value: unknown): EnvironmentDocument | null {
   if (root.schemaVersion !== 2 || typeof root.selectedDeviceId !== "string" || !validStateRow(root.row)) {
     return null;
   }
-  if (!root.lastSequences || typeof root.lastSequences !== "object" || Array.isArray(root.lastSequences)) return null;
+  if (!root.lastSequences || typeof root.lastSequences !== "object" || Array.isArray(root.lastSequences)) {
+    return null;
+  }
   if (!root.devices || typeof root.devices !== "object" || Array.isArray(root.devices)) return null;
 
   const lastSequences: Record<string, number> = {};
@@ -180,6 +184,14 @@ function copyDevices(previous: EnvironmentDocument | null): Record<string, Store
   return devices;
 }
 
+function stateContentChanged(previous: StateRow | null, next: StateRow): boolean {
+  return !previous
+    || previous.version !== next.version
+    || previous.status !== next.status
+    || previous.error !== next.error
+    || previous.content_hash !== next.content_hash;
+}
+
 async function nextDocument(
   previous: EnvironmentDocument | null,
   env: Env,
@@ -251,7 +263,11 @@ async function nextDocument(
   const version = previousRow
     ? previousRow.version + (previousRow.content_hash === contentHash ? 0 : 1)
     : 1;
-  const observedAt = samples.reduce((maximum, sample) => Math.max(maximum, sample.observedAt), 0) || now;
+  const sampleObservedAt = samples.reduce(
+    (maximum, sample) => Math.max(maximum, sample.observedAt),
+    0,
+  );
+  const observedAt = Math.max(Number(previousRow?.observed_at ?? 0), sampleObservedAt) || now;
   const lastSequences = { ...(previous?.lastSequences ?? {}) };
   const highest = samples.reduce(
     (maximum, sample) => Math.max(maximum, sample.sequence),
@@ -278,7 +294,9 @@ async function nextDocument(
   };
 }
 
-async function readDocument(bucket: R2Bucket): Promise<{ document: EnvironmentDocument | null; etag: string | null }> {
+async function readDocument(
+  bucket: R2Bucket,
+): Promise<{ document: EnvironmentDocument | null; etag: string | null }> {
   const object = await bucket.get(ENVIRONMENT_STATE_KEY);
   if (!object) return { document: null, etag: null };
   const parsed = parseDocument(await object.json<unknown>());
@@ -330,7 +348,6 @@ export async function mergeR2EnvironmentTelemetry(
           .filter(sample => sample.sequence <= previousSequence)
           .map(sample => sample.sequence),
         lastSequence: previousSequence,
-        row: document?.row ?? null,
       };
     }
 
@@ -349,7 +366,7 @@ export async function mergeR2EnvironmentTelemetry(
       expiresAt: now + CACHE_TTL_MS,
       row: next.row,
     });
-    markStateChanged(env);
+    if (stateContentChanged(document?.row ?? null, next.row)) markStateChanged(env);
     const lastSequence = next.lastSequences[deviceId] ?? previousSequence;
     return {
       accepted: unique.length,
@@ -357,22 +374,7 @@ export async function mergeR2EnvironmentTelemetry(
         .filter(sample => sample.sequence <= lastSequence)
         .map(sample => sample.sequence),
       lastSequence,
-      row: next.row,
     };
   }
   throw new Error("R2 environment update conflicted repeatedly");
-}
-
-export async function archiveLatestTelemetry(
-  env: Env,
-  deviceId: string,
-  payload: unknown,
-  now: number,
-): Promise<void> {
-  const bucket = env.DATA_BUCKET;
-  if (!bucket) return;
-  await bucket.put(`${TELEMETRY_LATEST_PREFIX}/${deviceId}/latest.json`, JSON.stringify(payload), {
-    httpMetadata: { contentType: "application/json" },
-    customMetadata: { updatedAt: String(now) },
-  });
 }
