@@ -55,12 +55,6 @@ RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   return dynamicRect;
 }
 
-ControlsRects RearrangedControlsFromContent(const RECT&) {
-  // Clock-card update/restart controls were retired. Empty hit targets keep the
-  // shared side-window message plumbing inert without leaving invisible buttons.
-  return ControlsRects{};
-}
-
 std::wstring DashboardStatusTimeText(int64_t epochMs) {
   if (epochMs <= 0) return L"--:--";
   const std::time_t seconds = static_cast<std::time_t>(epochMs / 1000);
@@ -71,7 +65,7 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   return text;
 }
 
-#define HP_DRAW_CLOCK_WITH_CONTROLS(dc, card) do { \
+#define HP_DRAW_CLOCK_WITH_STATUS(dc, card) do { \
   DrawSectionCard((dc), (card)); \
   const RECT hpClockContent = CardContentRect((card)); \
   SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
