@@ -111,8 +111,8 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
   assert.ok(modeledRequests < TARGET);
 });
 
-test('bounded R2 telemetry writes remain modest', () => {
-  const telemetryStateAndLatestWrites = runsPerDay(60 * 60) * 2;
+test('bounded R2 writes remain modest', () => {
+  const telemetryStateWrites = runsPerDay(60 * 60);
   const radarLatestReserve = 24;
-  assert.equal(telemetryStateAndLatestWrites + radarLatestReserve, 72);
+  assert.equal(telemetryStateWrites + radarLatestReserve, 48);
 });
