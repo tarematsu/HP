@@ -90,7 +90,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(scheduledAt)).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("coalesces due jobs in one alarm and schedules the next deadline", async () => {
+  it("runs one due job per alarm and schedules remaining work", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
       .bind(now + 3600)
@@ -101,11 +101,26 @@ describe("SchedulerCoordinator Durable Object", () => {
 
     expect(await runDurableObjectAlarm(stub)).toBe(true);
 
-    const rows = await env.DB.prepare(
+    let rows = await env.DB.prepare(
       "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
     ).all<{ name: string; next_run_at: number; lease_until: number | null }>();
     expect(rows.results).toHaveLength(2);
-    for (const row of rows.results) {
+    expect(rows.results?.filter(row => Number(row.next_run_at) > now)).toHaveLength(1);
+    expect(rows.results?.filter(row => Number(row.next_run_at) === 0)).toHaveLength(1);
+    for (const row of rows.results ?? []) expect(row.lease_until).toBeNull();
+
+    const remainingAlarm = await alarmTime(stub);
+    expect(remainingAlarm).not.toBeNull();
+    expect(Number(remainingAlarm)).toBeGreaterThan(Date.now());
+    expect(Number(remainingAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
+
+    expect(await runDurableObjectAlarm(stub)).toBe(true);
+
+    rows = await env.DB.prepare(
+      "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
+    ).all<{ name: string; next_run_at: number; lease_until: number | null }>();
+    expect(rows.results).toHaveLength(2);
+    for (const row of rows.results ?? []) {
       expect(row.lease_until).toBeNull();
       expect(Number(row.next_run_at)).toBeGreaterThan(now);
     }
