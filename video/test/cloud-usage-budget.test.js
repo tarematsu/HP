@@ -25,7 +25,7 @@ const scheduledIntervals = {
   update_check: 21_600,
   cleanup: 86_400
 };
-const stateIntervals = [900, 900, 1_800, 1_800, 3_600, 21_600];
+const heartbeatStateIntervals = [900, 1_800, 1_800, 3_600, 21_600];
 
 function runsPerDay(intervalSeconds) {
   return Math.ceil(DAY_SECONDS / intervalSeconds);
@@ -65,18 +65,22 @@ test('modeled daily D1 writes stay below the 3000-row target', () => {
     .reduce((total, interval) => total + runsPerDay(interval), 0);
   assert.equal(schedulerCompletionWrites, 393);
 
-  const stateHeartbeatWrites = stateIntervals
+  const switchbotStateWrites = runsPerDay(scheduledIntervals.switchbot);
+  const heartbeatStateWrites = heartbeatStateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
+  const stateWrites = switchbotStateWrites + heartbeatStateWrites;
   const compactTelemetryHeartbeatWrites = runsPerDay(60 * 60) * 2;
-  const changeCommandWebhookAndLegacyReserve = 2_200;
+  const changeCommandWebhookAndLegacyReserve = 2_100;
   const modeledWrites = schedulerCompletionWrites
-    + stateHeartbeatWrites
+    + stateWrites
     + compactTelemetryHeartbeatWrites
     + changeCommandWebhookAndLegacyReserve;
 
-  assert.equal(stateHeartbeatWrites, 124);
+  assert.equal(switchbotStateWrites, 96);
+  assert.equal(heartbeatStateWrites, 100);
+  assert.equal(stateWrites, 196);
   assert.equal(compactTelemetryHeartbeatWrites, 48);
-  assert.equal(modeledWrites, 2_765);
+  assert.equal(modeledWrites, 2_737);
   assert.ok(modeledWrites < TARGET);
 });
 
@@ -85,7 +89,7 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
   const schedulerAlarmInvocations = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
   const radarGenerationReserve = 50;
-  const apiWebhookVideoAndLegacyReserve = 2_200;
+  const apiWebhookVideoAndLegacyReserve = 2_100;
   const modeledRequests = nativeExchangeRequests
     + schedulerAlarmInvocations
     + radarGenerationReserve
@@ -93,7 +97,7 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
 
   assert.equal(nativeExchangeRequests, 96);
   assert.equal(schedulerAlarmInvocations, 393);
-  assert.equal(modeledRequests, 2_739);
+  assert.equal(modeledRequests, 2_639);
   assert.ok(modeledRequests < TARGET);
 });
 
