@@ -1,7 +1,7 @@
 void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const RECT content = CardContentRect(card);
   const RECT body = CardBodyRect(content);
-  MusicRowRects rects = MusicRowFromBody(body);
+  const MusicRowRects rects = MusicRowFromBody(body);
   const RECT& rowRect = rects.row;
   const int rowHeight = std::max(1, static_cast<int>(rowRect.bottom - rowRect.top));
   const int pad = std::max(6, rowHeight * 10 / 100);
@@ -16,17 +16,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       : ResolveNativePlayback(0, nowMs);
   const bool withProgress = !bothStationheadsOnFallback &&
       sharedPlayback.hasTrack && sharedPlayback.track.durationMs > 0;
-
-  // The Stationhead status moved to the clock card. Center the two remaining
-  // audio controls instead of preserving an empty status slot below them.
-  const int controlGap = std::max(3, rowHeight * 4 / 100);
-  const int controlHeight = std::max(1L, rects.button.bottom - rects.button.top);
-  const int controlClusterHeight = controlHeight * 2 + controlGap;
-  const int controlTop = rowRect.top + std::max(0, (rowHeight - controlClusterHeight) / 2);
-  rects.button.top = controlTop;
-  rects.button.bottom = controlTop + controlHeight;
-  rects.muteButton.top = rects.button.bottom + controlGap;
-  rects.muteButton.bottom = rects.muteButton.top + controlHeight;
 
   const auto drawProgress = [&] {
     RECT barRect{textLeft, rowRect.top + rowHeight * 66 / 100,
