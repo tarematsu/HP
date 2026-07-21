@@ -1,0 +1,67 @@
+name: HomePanel unified Worker CI
+
+on:
+  pull_request:
+    paths:
+      - 'cloud/**'
+      - 'video/src/**'
+      - 'video/public/**'
+      - 'video/package.json'
+      - 'video/package-lock.json'
+      - '.github/workflows/homepanel-unified-ci.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'cloud/**'
+      - 'video/src/**'
+      - 'video/public/**'
+      - 'video/package.json'
+      - 'video/package-lock.json'
+      - '.github/workflows/homepanel-unified-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-unified-ci-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install HomePanel dependencies
+        working-directory: cloud
+        run: npm ci --no-audit --no-fund
+      - name: Install video dependencies
+        working-directory: video
+        run: npm ci --no-audit --no-fund
+      - name: Validate HomePanel code and tests
+        working-directory: cloud
+        run: |
+          npm run check
+          npm test
+      - name: Validate video code and tests
+        working-directory: video
+        run: |
+          npm run check:syntax
+          npm test
+      - name: Build the unified Worker
+        working-directory: cloud
+        run: npm run check:unified-bundle
+      - name: Verify local unified D1 migrations
+        working-directory: cloud
+        run: |
+          rm -rf .wrangler-ci-state
+          npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
+          npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
+          npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA integrity_check;"
