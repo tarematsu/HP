@@ -220,13 +220,6 @@ function shouldInvalidateState(previous: StateRow | null, next: StateRow): boole
     || previous.content_hash !== next.content_hash;
 }
 
-async function hydrateColdCache(env: Env, source: string): Promise<StateRow | null> {
-  if (!env.STATE_CACHE) return null;
-  const row = await readStateFromD1(env, source);
-  if (row) await writeCachedState(env, row);
-  return row;
-}
-
 export async function updateState(
   env: Env,
   result: SourceResult,
@@ -236,6 +229,7 @@ export async function updateState(
   const now = Date.now();
   const checkpointBefore = now - D1_STATE_CHECKPOINT_MS;
   const previous = knownPrevious === undefined ? await readCachedState(env, result.source) : knownPrevious;
+  const previousVersion = previous?.version ?? -1;
   const forceCheckpoint = previous === null ? 1 : 0;
 
   if (error) {
@@ -253,7 +247,7 @@ export async function updateState(
         error,
         content_hash: EMPTY_OBJECT_HASH,
       };
-    const written = await env.DB.prepare(
+    const persisted = await env.DB.prepare(
       `INSERT INTO current_state(
          source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
        ) VALUES(?1,1,'{}',NULL,?2,NULL,'error',?3,?4)
@@ -265,13 +259,21 @@ export async function updateState(
                WHEN current_state.last_success_at IS NULL THEN 'error' ELSE 'stale' END
           OR current_state.error IS NOT excluded.error
           OR current_state.fetched_at<=?5
-          OR ?6=1`,
-    ).bind(result.source, now, error, EMPTY_OBJECT_HASH, checkpointBefore, forceCheckpoint).run();
-    const current = previous ? next : await hydrateColdCache(env, result.source);
-    if (current && (Number(written.meta.changes ?? 0) > 0 || shouldInvalidateState(previous, current))) {
-      markStateChanged(env);
-    }
-    if (previous) await writeCachedState(env, next);
+          OR ?6=1
+          OR current_state.version<>?7
+       RETURNING source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash`,
+    ).bind(
+      result.source,
+      now,
+      error,
+      EMPTY_OBJECT_HASH,
+      checkpointBefore,
+      forceCheckpoint,
+      previousVersion,
+    ).first<StateRow>();
+    const current = persisted ?? next;
+    if (shouldInvalidateState(previous, current)) markStateChanged(env);
+    await writeCachedState(env, current);
     return;
   }
 
@@ -296,7 +298,7 @@ export async function updateState(
     error: null,
     content_hash: hash,
   };
-  const written = await env.DB.prepare(
+  const persisted = await env.DB.prepare(
     `INSERT INTO current_state(
        source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
      ) VALUES(?1,1,?2,?3,?4,?4,'ok',NULL,?5)
@@ -322,13 +324,22 @@ export async function updateState(
         OR current_state.status<>'ok'
         OR current_state.error IS NOT NULL
         OR current_state.fetched_at<=?6
-        OR ?7=1`,
-  ).bind(result.source, payload, result.observedAt, now, hash, checkpointBefore, forceCheckpoint).run();
-  const current = previous ? next : await hydrateColdCache(env, result.source);
-  if (current && (Number(written.meta.changes ?? 0) > 0 || shouldInvalidateState(previous, current))) {
-    markStateChanged(env);
-  }
-  if (previous) await writeCachedState(env, next);
+        OR ?7=1
+        OR current_state.version<>?8
+     RETURNING source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash`,
+  ).bind(
+    result.source,
+    payload,
+    result.observedAt,
+    now,
+    hash,
+    checkpointBefore,
+    forceCheckpoint,
+    previousVersion,
+  ).first<StateRow>();
+  const current = persisted ?? next;
+  if (shouldInvalidateState(previous, current)) markStateChanged(env);
+  await writeCachedState(env, current);
 }
 
 export async function ensureDashboard(env: Env): Promise<StateRow> {
