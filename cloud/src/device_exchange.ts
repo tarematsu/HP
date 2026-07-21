@@ -49,10 +49,11 @@ function exchangeStream(
         controller.close();
         return;
       }
-      radarReader = radarBody.getReader();
+      const reader = radarBody.getReader();
+      radarReader = reader;
       try {
         for (;;) {
-          const chunk = await radarReader.read();
+          const chunk = await reader.read();
           if (chunk.done) break;
           if (chunk.value?.length) controller.enqueue(chunk.value);
         }
@@ -60,8 +61,8 @@ function exchangeStream(
       } catch (error) {
         controller.error(error);
       } finally {
-        radarReader.releaseLock();
-        radarReader = null;
+        reader.releaseLock();
+        if (radarReader === reader) radarReader = null;
       }
     },
     async cancel(reason) {
@@ -176,10 +177,12 @@ export async function deviceExchangeResponse(
   if (input.telemetry !== undefined) await applyTelemetry(request, env, input.telemetry, payload);
   const radarBundle = await embeddedRadarBundle(request, env, ctx, payload);
   const jsonBytes = ENCODER.encode(JSON.stringify(payload));
+  const responseBytes = EXCHANGE_MAGIC.length + 4 + jsonBytes.length + radarBundle.byteLength;
   return new Response(exchangeStream(jsonBytes, radarBundle.body), {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.homepanel.device-exchange",
+      "Content-Length": String(responseBytes),
       "Cache-Control": "private, no-store",
       "X-HomePanel-Exchange-Json-Bytes": String(jsonBytes.length),
       "X-HomePanel-Exchange-Radar-Bytes": String(radarBundle.byteLength),
