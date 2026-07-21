@@ -8,7 +8,7 @@ UPDATE jobs
      WHEN 'news' THEN 1800
      WHEN 'weather' THEN 3600
      WHEN 'octopus' THEN 21600
-     WHEN 'video_liveness' THEN 1200
+     WHEN 'video_liveness' THEN 720
      WHEN 'update_check' THEN 21600
      WHEN 'cleanup' THEN 86400
      ELSE interval_seconds
@@ -24,7 +24,7 @@ UPDATE jobs
              WHEN 'news' THEN 1800
              WHEN 'weather' THEN 3600
              WHEN 'octopus' THEN 21600
-             WHEN 'video_liveness' THEN 1200
+             WHEN 'video_liveness' THEN 720
              WHEN 'update_check' THEN 21600
              WHEN 'cleanup' THEN 86400
              ELSE interval_seconds
