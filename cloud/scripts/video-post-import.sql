@@ -67,3 +67,11 @@ AFTER DELETE ON video_blocklist
 BEGIN
   UPDATE status_counts SET dirty = 1 WHERE id = 1;
 END;
+
+INSERT OR IGNORE INTO d1_maintenance_state (id, last_cleanup_at) VALUES (1, 0);
+INSERT OR IGNORE INTO playback_feed_state (id) VALUES (1);
+INSERT OR IGNORE INTO video_liveness_state (id, phase) VALUES (1, 'base');
+INSERT OR IGNORE INTO status_counts (
+  id, active_videos, active_mp4_videos, feed_videos, feed_mp4_videos,
+  blocked_videos, death_videos, updated_at, dirty
+) VALUES (1, 0, 0, 0, 0, 0, 0, CURRENT_TIMESTAMP, 1);
