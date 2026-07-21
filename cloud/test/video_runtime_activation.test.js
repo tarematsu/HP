@@ -1,6 +1,6 @@
-import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 
+import unifiedWorker from '../src/unified_worker.js';
 import {
   inactiveVideoRuntimeResponse,
   videoRuntimeActive
@@ -50,12 +50,23 @@ describe('video runtime activation', () => {
     });
   });
 
-  it('gates video fetch, queue, and scheduled handlers', async () => {
-    const source = await readFile(new URL('../src/unified_worker.js', import.meta.url), 'utf8');
-    expect(source.match(/videoRuntimeActive\(env\)/g)).toHaveLength(3);
-    expect(source).toMatch(/inactiveVideoRuntimeResponse\(\)/);
-    expect(source).toMatch(/video-runtime-inactive-queue-retried/);
-    expect(source).toMatch(/batch\.retryAll\(\)/);
-    expect(source).toMatch(/video-runtime-inactive-scheduled-skipped/);
+  it('gates video fetch, retries queue delivery, and skips cron work', async () => {
+    const inactive = databaseWith(0);
+    const env = { DB: inactive.database };
+
+    const response = await unifiedWorker.fetch(
+      new Request('https://example.com/api/status'),
+      env,
+      {}
+    );
+    expect(response.status).toBe(503);
+
+    const retryAll = vi.fn();
+    await expect(unifiedWorker.queue({ messages: [{}], retryAll }, env, {})).resolves.toBeUndefined();
+    expect(retryAll).toHaveBeenCalledOnce();
+
+    await expect(
+      unifiedWorker.scheduled({ cron: '*/12 * * * *' }, env, {})
+    ).resolves.toBeUndefined();
   });
 });
