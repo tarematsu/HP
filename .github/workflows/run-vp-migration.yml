@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - .github/workflows/run-vp-migration.yml
+  issues:
+    types:
+      - opened
   workflow_dispatch:
 
 permissions:
@@ -17,9 +20,11 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name != 'issues' || github.event.issue.title == '[automation] Run VP migration')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Check out migration branch
         uses: actions/checkout@v4
@@ -27,182 +32,175 @@ jobs:
           ref: agent/integrate-vp-video
           fetch-depth: 0
 
-      - name: Fetch VP snapshot
+      - name: Import current VP snapshot
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/vp
+          rm -rf /tmp/vp video
           git clone --depth 1 https://github.com/tarematsu/VP.git /tmp/vp
-          echo "VP_SHA=$(git -C /tmp/vp rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      - name: Copy VP into video workspace
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -rf video
+          vp_sha="$(git -C /tmp/vp rev-parse HEAD)"
           mkdir -p video
-          rsync -a \
-            --exclude='.git/' \
-            --exclude='.github/workflows/' \
-            /tmp/vp/ video/
-          find video/.github -type d -empty -delete 2>/dev/null || true
+          rsync -a --exclude='.git/' /tmp/vp/ video/
 
-      - name: Convert VP workflows for the HP monorepo
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --quiet 'ruamel.yaml>=0.18,<0.19'
-          python3 <<'PY'
-          from pathlib import Path
-          from ruamel.yaml import YAML
-          from ruamel.yaml.comments import CommentedMap, CommentedSeq
-
-          root = Path.cwd()
-          source = Path('/tmp/vp/.github/workflows')
-          destination = root / '.github' / 'workflows'
-          destination.mkdir(parents=True, exist_ok=True)
-          for stale in destination.glob('video-*.y*ml'):
-              stale.unlink()
-
-          yaml = YAML()
-          yaml.version = (1, 2)
-          yaml.preserve_quotes = True
-          yaml.width = 120
-          yaml.indent(mapping=2, sequence=4, offset=2)
-
-          def prefixed_path(value: str, workflow_name: str) -> str:
-              value = value.strip()
-              if not value:
-                  return value
-              if value.startswith('.github/workflows/'):
-                  return f'.github/workflows/{workflow_name}'
-              if value.startswith('video/'):
-                  return value
-              return f'video/{value}'
-
-          def ensure_event_paths(events, event_name: str, workflow_name: str) -> None:
-              if event_name not in events:
-                  return
-              config = events[event_name]
-              if config is None:
-                  config = CommentedMap()
-                  events[event_name] = config
-              if not isinstance(config, dict):
-                  return
-              existing = config.get('paths')
-              paths = []
-              if existing:
-                  paths.extend(prefixed_path(str(value), workflow_name) for value in existing)
-              else:
-                  paths.extend(['video/**', f'.github/workflows/{workflow_name}'])
-              deduplicated = CommentedSeq()
-              for value in paths:
-                  if value not in deduplicated:
-                      deduplicated.append(value)
-              config['paths'] = deduplicated
-
-          def prefix_artifact_path(value):
-              if not isinstance(value, str):
-                  return value
-              converted = []
-              for line in value.splitlines():
-                  stripped = line.strip()
-                  if not stripped or stripped.startswith('/') or stripped.startswith('${{') or stripped.startswith('video/'):
-                      converted.append(line)
-                  else:
-                      converted.append(f'video/{stripped}')
-              return '\n'.join(converted)
-
-          workflows = sorted(source.glob('*.y*ml'))
-          if not workflows:
-              raise RuntimeError('No VP workflows found')
-
-          for workflow in workflows:
-              target_name = f'video-{workflow.name}'
-              with workflow.open('r', encoding='utf-8') as handle:
-                  data = yaml.load(handle)
-              if not isinstance(data, dict):
-                  raise RuntimeError(f'Unexpected workflow structure: {workflow}')
-
-              data['name'] = f"Video · {data.get('name', workflow.stem)}"
-              events = data.get('on')
-              if isinstance(events, dict):
-                  ensure_event_paths(events, 'push', target_name)
-                  ensure_event_paths(events, 'pull_request', target_name)
-
-              concurrency = data.get('concurrency')
-              if isinstance(concurrency, str):
-                  data['concurrency'] = f'video-{concurrency}'
-              elif isinstance(concurrency, dict) and concurrency.get('group'):
-                  concurrency['group'] = f"video-{concurrency['group']}"
-
-              jobs = data.get('jobs') or {}
-              for job in jobs.values():
-                  if not isinstance(job, dict):
-                      continue
-                  defaults = job.setdefault('defaults', CommentedMap())
-                  run_defaults = defaults.setdefault('run', CommentedMap())
-                  run_defaults['working-directory'] = 'video'
-
-                  for step in job.get('steps') or []:
-                      if not isinstance(step, dict):
-                          continue
-                      uses = str(step.get('uses', ''))
-                      if uses.startswith('actions/upload-artifact@') or uses.startswith('actions/download-artifact@'):
-                          options = step.get('with')
-                          if isinstance(options, dict) and 'path' in options:
-                              options['path'] = prefix_artifact_path(options['path'])
-
-              target = destination / target_name
-              with target.open('w', encoding='utf-8') as handle:
-                  yaml.dump(data, handle)
-
-          for workflow in sorted(destination.glob('video-*.y*ml')):
-              with workflow.open('r', encoding='utf-8') as handle:
-                  yaml.load(handle)
-          PY
-
-      - name: Record migration boundary
-        shell: bash
-        run: |
           cat > video/MIGRATION.md <<EOF
           # VP migration
 
           This directory is the imported snapshot of \`tarematsu/VP\`.
 
-          - Source commit: \`${VP_SHA}\`
+          - Source commit: \`${vp_sha}\`
           - Imported into HP as: \`video/\`
-          - Cloudflare Worker remains: \`videoscraper\`
-          - HomePanel Worker remains: \`homepanel-cloud\`
-          - D1 databases, queues, assets, browser binding, cron, and deployment workflows remain separate.
+          - Video Worker: \`videoscraper\`
+          - HomePanel Worker: \`homepanel-cloud\`
+          - The Workers, D1 databases, queues, assets, bindings, cron schedules, and deployments remain separate.
 
-          Operational workflows live at the HP repository root as \`.github/workflows/video-*.yml\` because GitHub only executes workflows from the root workflow directory.
+          GitHub only executes workflows under the repository root. The original VP workflows are retained under \`video/.github/workflows\` as migration references; active monorepo workflows are rooted under \`.github/workflows/video-*.yml\`.
           EOF
 
-      - name: Validate imported workspace
+      - name: Add isolated video CI workflow
         shell: bash
-        working-directory: video
         run: |
-          set -euo pipefail
-          test -f package.json
-          test -f package-lock.json
-          test -f wrangler.jsonc
-          test -f src/entry.js
-          test -d public
-          test -d migrations
-          npm install --no-audit --no-fund
-          npm run check:syntax
-          npm run check:audit
-          npm test
-          npm run check:bundle
+          cat > .github/workflows/video-ci.yml <<'EOF'
+          name: Video CI
 
-      - name: Commit migrated workspace
+          on:
+            push:
+              branches:
+                - main
+              paths:
+                - 'video/**'
+                - '.github/workflows/video-ci.yml'
+            pull_request:
+              paths:
+                - 'video/**'
+                - '.github/workflows/video-ci.yml'
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: video-ci-${{ github.event.pull_request.head.sha || github.sha }}
+            cancel-in-progress: true
+
+          jobs:
+            test:
+              runs-on: ubuntu-latest
+              timeout-minutes: 20
+              defaults:
+                run:
+                  working-directory: video
+              steps:
+                - uses: actions/checkout@v4
+                  with:
+                    ref: ${{ github.event.pull_request.head.sha || github.sha }}
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: 22
+                - name: Install dependencies
+                  run: npm install --no-audit --no-fund
+                - name: Run syntax checks
+                  run: npm run check:syntax
+                - name: Run repository audit
+                  run: npm run check:audit
+                - name: Run tests
+                  run: npm test
+                - name: Validate Worker bundle
+                  run: npm run check:bundle
+          EOF
+
+      - name: Add isolated video deployment workflow
+        shell: bash
+        run: |
+          cat > .github/workflows/video-deploy.yml <<'EOF'
+          name: Video D1 migrate and deploy
+
+          on:
+            workflow_dispatch:
+            push:
+              branches:
+                - main
+              paths:
+                - '.github/workflows/video-deploy.yml'
+                - 'video/migrations/**'
+                - 'video/public/**'
+                - 'video/scripts/push-manual-import-recovery.mjs'
+                - 'video/src/**'
+                - 'video/package.json'
+                - 'video/package-lock.json'
+                - 'video/wrangler.jsonc'
+
+          permissions:
+            contents: read
+            statuses: write
+
+          concurrency:
+            group: video-cloudflare-production-deploy
+            cancel-in-progress: false
+
+          jobs:
+            validate:
+              runs-on: ubuntu-latest
+              timeout-minutes: 15
+              defaults:
+                run:
+                  working-directory: video
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                - run: npm install --no-audit --no-fund
+                - run: npm run check
+
+            migrate-and-deploy:
+              needs: validate
+              runs-on: ubuntu-latest
+              timeout-minutes: 25
+              environment: production
+              defaults:
+                run:
+                  working-directory: video
+              env:
+                CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
+                CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+                MANUAL_IMPORT_QUEUE: videoscraper-manual-imports
+                MANUAL_IMPORT_DLQ: videoscraper-manual-imports-dlq
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                - name: Validate credentials
+                  run: test -n "$CLOUDFLARE_API_TOKEN"
+                - run: npm install --no-audit --no-fund
+                - name: Ensure queues exist
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
+                    ensure_queue() {
+                      local name="$1"
+                      if ! npx --no-install wrangler queues info "$name" >/dev/null 2>&1; then
+                        npx --no-install wrangler queues create "$name"
+                      fi
+                    }
+                    ensure_queue "$MANUAL_IMPORT_QUEUE"
+                    ensure_queue "$MANUAL_IMPORT_DLQ"
+                - name: Apply D1 migrations
+                  run: npm run db:migrate:remote
+                - name: Deploy videoscraper Worker
+                  run: npx --no-install wrangler deploy --strict --tag "git-${GITHUB_SHA:0:12}" --message "HP main $GITHUB_SHA"
+                - name: Seed recoverable jobs
+                  run: node scripts/push-manual-import-recovery.mjs
+          EOF
+
+      - name: Commit imported workspace
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm -f .github/workflows/migrate-vp-into-video.yml || true
-          git add video .github/workflows/video-*.yml
-          git commit -m "Integrate VP as video workspace"
+          git add video .github/workflows/video-ci.yml .github/workflows/video-deploy.yml
+          git commit -m 'Integrate VP as video workspace'
           git push origin HEAD:agent/integrate-vp-video
