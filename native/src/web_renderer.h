@@ -236,7 +236,6 @@ class Renderer {
     PlaybackProgress,
     Air,
     Weather,
-    Controls,
     Music,
     Energy,
     News
@@ -249,7 +248,6 @@ class Renderer {
   void DrawClockSection(HDC dc, const RECT& card);
   void DrawAirSection(HDC dc, const RECT& card);
   void DrawWeatherSection(HDC dc, const RECT& card);
-  void DrawControlsSection(HDC dc, const RECT& card);
   void DrawMusicSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawNewsSection(HDC dc, const RECT& card);
@@ -264,9 +262,6 @@ class Renderer {
   void StartNativePlaybackBridge();
   void StopNativePlaybackBridge() noexcept;
   void NativePlaybackLoop();
-  void StartNativeMinuteFactsBridge();
-  void StopNativeMinuteFactsBridge() noexcept;
-  void NativeMinuteFactsLoop();
   NativePlaybackRender ResolveNativePlaybackLocked(
       size_t source, int64_t nowMs) const;
   NativePlaybackRender ResolveNativePlayback(size_t source, int64_t nowMs) const;
@@ -303,8 +298,6 @@ class Renderer {
   std::vector<StationheadPlayHistorySample> nativeStationheadPlayHistory_;
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
-  std::wstring nativeAppVersion_;
-  std::wstring nativeToast_;
   int nativeNewsIndex_ = 0;
   DashboardSectionRevisions renderedDashboardRevisions_{};
   uint64_t nativeAirRenderRevision_ = 0;
@@ -340,13 +333,8 @@ class Renderer {
   std::atomic<uint64_t> nativePlaybackRevision_{0};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
-  std::thread nativeMinuteFactsThread_;
-  std::condition_variable nativeMinuteFactsWake_;
-  std::mutex nativeMinuteFactsWakeMutex_;
   mutable std::mutex nativeMinuteFactsMutex_;
   NativeMinuteFactsProjection nativeMinuteFacts_{};
-  std::atomic<bool> nativeMinuteFactsStarted_{false};
-  std::atomic<bool> nativeMinuteFactsStopping_{false};
   std::thread radarComposeThread_;
   std::condition_variable radarComposeWake_;
   std::mutex radarComposeWakeMutex_;
