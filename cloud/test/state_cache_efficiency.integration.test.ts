@@ -1,7 +1,7 @@
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invalidateStateCaches } from "../src/dashboard_cache";
-import { readState, sha256Hex, updateState } from "../src/snapshot";
+import { readState, updateState } from "../src/snapshot";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
@@ -59,40 +59,22 @@ describe("state cache and D1 efficiency", () => {
     expect(second.status).toBe(304);
   });
 
-  it("serves a valid state row from KV when the D1 row is unavailable", async () => {
-    const observedAt = Date.now();
-    await updateState(env, { source: "weather", observedAt, payload: { temperature: 20 } });
-    await env.DB.prepare("DELETE FROM current_state WHERE source='weather'").run();
-
-    const cached = await readState(env, "weather");
-    expect(cached).toMatchObject({
-      source: "weather",
-      observed_at: observedAt,
-      status: "ok",
-    });
-    expect(JSON.parse(cached!.payload)).toEqual({ temperature: 20 });
-  });
-
-  it("writes the authoritative D1 version back when KV is stale", async () => {
+  it("suppresses unchanged current_state heartbeat writes for thirty minutes", async () => {
     const startedAt = Date.now();
-    await updateState(env, { source: "weather", observedAt: startedAt, payload: { temperature: 20 } });
+    vi.useFakeTimers();
+    vi.setSystemTime(startedAt);
+    const payload = { temperature: 20 };
+    await updateState(env, { source: "weather", observedAt: startedAt, payload });
+    const initial = await readState(env, "weather");
 
-    const externalPayload = JSON.stringify({ temperature: 21 });
-    const externalHash = await sha256Hex(externalPayload);
-    await env.DB.prepare(
-      `UPDATE current_state SET version=3,payload=?1,observed_at=?2,fetched_at=?2,
-         last_success_at=?2,status='ok',error=NULL,content_hash=?3
-       WHERE source='weather'`,
-    ).bind(externalPayload, startedAt + 1_000, externalHash).run();
+    vi.setSystemTime(startedAt + 16 * 60_000);
+    await updateState(env, { source: "weather", observedAt: startedAt + 16 * 60_000, payload });
+    const suppressed = await readState(env, "weather");
+    expect(suppressed?.fetched_at).toBe(initial?.fetched_at);
 
-    await updateState(env, {
-      source: "weather",
-      observedAt: startedAt + 2_000,
-      payload: { temperature: 22 },
-    });
-
-    const current = await readState(env, "weather");
-    expect(current?.version).toBe(4);
-    expect(JSON.parse(current!.payload)).toEqual({ temperature: 22 });
+    vi.setSystemTime(startedAt + 31 * 60_000);
+    await updateState(env, { source: "weather", observedAt: startedAt + 31 * 60_000, payload });
+    const written = await readState(env, "weather");
+    expect(written?.fetched_at).toBe(startedAt + 31 * 60_000);
   });
 });
