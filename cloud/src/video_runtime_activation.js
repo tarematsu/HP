@@ -38,3 +38,16 @@ export function inactiveVideoRuntimeResponse() {
     }
   });
 }
+
+export function retryInactiveVideoBatch(batch) {
+  console.log('video-runtime-inactive-queue-retried', {
+    messages: batch?.messages?.length || 0
+  });
+  if (typeof batch?.retryAll === 'function') batch.retryAll();
+}
+
+export function skipInactiveVideoSchedule(controller) {
+  console.log('video-runtime-inactive-scheduled-skipped', {
+    cron: controller?.cron || ''
+  });
+}
