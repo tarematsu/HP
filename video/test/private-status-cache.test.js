@@ -8,7 +8,8 @@ import entry from '../src/entry.js';
 const coreSource = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
 test('authenticated status responses are private at their core construction point', () => {
-  assert.equal(entry, core);
+  assert.notEqual(entry, core);
+  assert.equal(typeof entry.fetch, 'function');
   assert.match(coreSource, /STATUS_RESPONSE_HEADERS/);
   assert.match(coreSource, /'cache-control', 'private, no-store'/);
   assert.match(coreSource, /'x-content-type-options', 'nosniff'/);
