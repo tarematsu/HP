@@ -140,7 +140,7 @@ jobs:
           NODE
           npx wrangler deploy --config "$config" --secrets-file "$secrets_file" --keep-vars
 
-      - name: Verify HomePanel and video APIs
+      - name: Verify APIs and bootstrap the HomePanel scheduler
         working-directory: cloud
         shell: bash
         run: |
@@ -152,9 +152,24 @@ jobs:
           process.stdout.write(String(payload.ADMIN_TOKEN || ''));
           NODE
           )"
+          action_token="$(node --input-type=module - "$secrets_file" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          process.stdout.write(String(
+            payload.API_TOKEN || payload.HOMEPANEL_INGEST_SECRET || payload.DEVICE_TOKEN || ''
+          ));
+          NODE
+          )"
           test -n "$admin_token"
+          test -n "$action_token"
           curl --fail --silent --show-error -H "Authorization: Bearer $admin_token" \
             "$NEW_WORKER_BASE_URL/api/status" > "$RUNNER_TEMP/final-video-status.json"
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $action_token" \
+            -H "Content-Type: application/json" \
+            --data '{}' \
+            "$NEW_WORKER_BASE_URL/v1/refresh" > "$RUNNER_TEMP/scheduler-bootstrap.json"
 
       - name: Upload migration evidence
         if: always()
@@ -179,5 +194,6 @@ jobs:
             echo
             echo '- New Worker: homepanel'
             echo '- Unified D1: homepanel-data'
+            echo '- HomePanel scheduler: bootstrapped on the new Durable Object namespace'
             echo '- Legacy resources remain frozen until retirement is approved from the migration evidence.'
           } >> "$GITHUB_STEP_SUMMARY"
