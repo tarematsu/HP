@@ -34,7 +34,7 @@ async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
 
 async function makeAlarmDue(stub: DurableObjectStub): Promise<void> {
   await runInDurableObject(stub, async (_instance, state) => {
-    await state.storage.setAlarm(Date.now());
+    await state.storage.setAlarm(Date.now() - 1_000);
   });
 }
 
