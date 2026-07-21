@@ -65,7 +65,6 @@ void PlaceNativeWindow(HWND hwnd, const RECT& rect, bool visible) {
 int SpanX(const RECT& rect, int permille) {
   return static_cast<int>((rect.right - rect.left) * permille / 1000);
 }
-
 int SpanY(const RECT& rect, int permille) {
   return static_cast<int>((rect.bottom - rect.top) * permille / 1000);
 }
@@ -137,6 +136,8 @@ int RecentStationheadPlayIncrease(const std::vector<StationheadPlayHistorySample
   if (baseline == history.begin()) return -1;
 
   const int delta = latest.value - std::prev(baseline)->value;
+  // The daily counter can reset at midnight; in that case the current value
+  // is the number accumulated since the reset rather than a negative delta.
   return delta >= 0 ? delta : latest.value;
 }
 
@@ -364,6 +365,11 @@ struct SidebarSections {
 SidebarSections SplitSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
+
+  // The sidebar and main panel share the same inner dashboard height. Mirror
+  // SplitMainSections' radar/news proportions so the controls card lines up
+  // with the news card, then split the rest evenly across the clock,
+  // weather-forecast, and energy cards so all three share one height.
   const int radarHeight = height * 600 / 1000;
   const int mainGap = std::max(6, height * 18 / 1000);
   const int mainHeight = std::max(1, height - radarHeight - mainGap);
@@ -429,6 +435,8 @@ MusicRowRects MusicRowFromBody(const RECT& body) {
       std::clamp(rowHeight * 28 / 100, 20, 44),
       std::max(1, (rowHeight - buttonGap) / 2));
   const int buttonWidth = std::clamp(SpanX(body, 170), 64, 140);
+  // Reserve the removed status row so the two existing controls keep their
+  // established visual and click positions.
   const int retiredStatusHeight = std::clamp(rowHeight * 14 / 100, 16, 30);
   const int clusterHeight = buttonHeight * 2 + retiredStatusHeight + buttonGap * 2;
   const int clusterTop = rects.row.top + std::max(0, (rowHeight - clusterHeight) / 2);
@@ -501,4 +509,4 @@ HDC NativePanelMemoryDc(HDC compatibleDc) {
 
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
-}  // namespace
+}
