@@ -8,6 +8,7 @@
   ],
   "workers_dev": true,
   "preview_urls": false,
+  "keep_vars": true,
   "placement": {
     "mode": "smart"
   },
