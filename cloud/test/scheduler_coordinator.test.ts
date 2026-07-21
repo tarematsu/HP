@@ -32,6 +32,12 @@ async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
   return runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm());
 }
 
+async function makeAlarmDue(stub: DurableObjectStub): Promise<void> {
+  await runInDurableObject(stub, async (_instance, state) => {
+    await state.storage.setAlarm(Date.now());
+  });
+}
+
 beforeEach(async () => {
   const testEnv = env as TestEnv;
   await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
@@ -99,6 +105,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
 
+    await makeAlarmDue(stub);
     expect(await runDurableObjectAlarm(stub)).toBe(true);
 
     let rows = await env.DB.prepare(
@@ -114,6 +121,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(remainingAlarm)).toBeGreaterThan(Date.now());
     expect(Number(remainingAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
 
+    await makeAlarmDue(stub);
     expect(await runDurableObjectAlarm(stub)).toBe(true);
 
     rows = await env.DB.prepare(
