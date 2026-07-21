@@ -1,7 +1,6 @@
 import { DEVICE_ID_PATTERN } from "./auth";
-import { readState, readStateFromD1, sha256Hex, updateState, type StateRow } from "./snapshot";
+import { readState, sha256Hex, updateState, type StateRow } from "./snapshot";
 import type { Env } from "./sources";
-import { writeCachedState } from "./state_cache";
 import type { EnvironmentHistoryRow } from "./telemetry_bucket";
 
 interface EnvironmentDeviceHistory {
@@ -34,10 +33,7 @@ async function readEnvironmentState(env: Env, force = false): Promise<StateRow |
   if (!force && ENVIRONMENT_STATE_CACHE.has(env.DB)) {
     return ENVIRONMENT_STATE_CACHE.get(env.DB) ?? null;
   }
-  const row = force
-    ? await readStateFromD1(env, "environment")
-    : await readState(env, "environment");
-  if (force && row) await writeCachedState(env, row);
+  const row = await readState(env, "environment");
   ENVIRONMENT_STATE_CACHE.set(env.DB, row);
   return row;
 }
@@ -237,7 +233,6 @@ async function mergeDeviceState(
   ).bind(serialized, now, hash, previous.version).run();
   if (Number(updated.meta.changes ?? 0) !== 1) return "conflict";
   updateCachedEnvironmentRow(previous, serialized, hash, now);
-  await writeCachedState(env, previous);
   return "updated";
 }
 
