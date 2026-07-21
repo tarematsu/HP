@@ -182,8 +182,20 @@ jobs:
         run: |
           set -euo pipefail
           npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:true
-          status="$(curl --silent --show-error --output "$RUNNER_TEMP/old-freeze.json" --write-out '%{http_code}' "$OLD_VIDEO_BASE_URL/api/status")"
-          test "$status" = "503"
+          status=000
+          for attempt in $(seq 1 20); do
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/old-freeze.json" --write-out '%{http_code}' "$OLD_VIDEO_BASE_URL/api/status")"
+            if [ "$status" = "503" ]; then
+              echo "Legacy videoscraper freeze observed after attempt $attempt."
+              break
+            fi
+            echo "Waiting for legacy freeze propagation; attempt $attempt returned HTTP $status."
+            sleep 2
+          done
+          if [ "$status" != "503" ]; then
+            cat "$RUNNER_TEMP/old-freeze.json" || true
+            exit 1
+          fi
 
       - name: Detach legacy queue consumers
         working-directory: video
@@ -215,9 +227,22 @@ jobs:
           set -euo pipefail
           config=.wrangler/generated/homepanel-existing.jsonc
           npx wrangler deploy --config "$config" --keep-vars
-          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/v1/health" >/dev/null
-          status="$(curl --silent --show-error --output "$RUNNER_TEMP/inactive-video.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
-          test "$status" = "503"
+          status=000
+          for attempt in $(seq 1 20); do
+            health_status="$(curl --silent --show-error --output "$RUNNER_TEMP/homepanel-health.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/v1/health")"
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/inactive-video.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+            if [ "$health_status" = "200" ] && [ "$status" = "503" ]; then
+              echo "Unified inactive deployment observed after attempt $attempt."
+              break
+            fi
+            echo "Waiting for unified deployment propagation; health=$health_status video=$status attempt=$attempt."
+            sleep 2
+          done
+          if [ "$health_status" != "200" ] || [ "$status" != "503" ]; then
+            cat "$RUNNER_TEMP/homepanel-health.json" || true
+            cat "$RUNNER_TEMP/inactive-video.json" || true
+            exit 1
+          fi
 
       - name: Copy, verify, and activate videoscraper data
         working-directory: cloud
@@ -227,10 +252,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sleep 6
-          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/v1/health" >/dev/null
-          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/" >/dev/null
-          status="$(curl --silent --show-error --output "$RUNNER_TEMP/final-video-auth.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+          status=000
+          for attempt in $(seq 1 20); do
+            health_status="$(curl --silent --show-error --output "$RUNNER_TEMP/final-health.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/v1/health")"
+            page_status="$(curl --silent --show-error --output "$RUNNER_TEMP/final-video-page.html" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/")"
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/final-video-auth.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+            if [ "$health_status" = "200" ] && [ "$page_status" = "200" ] && { [ "$status" = "401" ] || [ "$status" = "403" ]; }; then
+              echo "Unified active routes observed after attempt $attempt."
+              break
+            fi
+            echo "Waiting for unified activation propagation; health=$health_status page=$page_status video=$status attempt=$attempt."
+            sleep 2
+          done
+          if [ "$health_status" != "200" ] || [ "$page_status" != "200" ]; then
+            exit 1
+          fi
           case "$status" in
             401|403) ;;
             *) cat "$RUNNER_TEMP/final-video-auth.json"; exit 1 ;;
@@ -266,4 +302,15 @@ jobs:
         if: failure()
         working-directory: video
         continue-on-error: true
-        run: npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:false
+        shell: bash
+        run: |
+          npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:false
+          for attempt in $(seq 1 20); do
+            status="$(curl --silent --show-error --output "$RUNNER_TEMP/old-restored.json" --write-out '%{http_code}' "$OLD_VIDEO_BASE_URL/api/status")"
+            if [ "$status" != "503" ]; then
+              echo "Legacy videoscraper restored with HTTP $status after attempt $attempt."
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
