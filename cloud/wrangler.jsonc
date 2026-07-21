@@ -47,11 +47,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "kv_namespaces": [
-    {
-      "binding": "STATE_CACHE"
-    }
-  ],
   "r2_buckets": [
     {
       "binding": "UPDATE_BUCKET",
