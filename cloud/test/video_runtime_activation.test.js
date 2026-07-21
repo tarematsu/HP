@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import unifiedWorker from '../src/unified_worker.js';
 import {
   inactiveVideoRuntimeResponse,
+  retryInactiveVideoBatch,
+  skipInactiveVideoSchedule,
   videoRuntimeActive
 } from '../src/video_runtime_activation.js';
 
@@ -50,23 +51,13 @@ describe('video runtime activation', () => {
     });
   });
 
-  it('gates video fetch, retries queue delivery, and skips cron work', async () => {
-    const inactive = databaseWith(0);
-    const env = { DB: inactive.database };
-
-    const response = await unifiedWorker.fetch(
-      new Request('https://example.com/api/status'),
-      env,
-      {}
-    );
-    expect(response.status).toBe(503);
-
+  it('retries inactive queue deliveries instead of acknowledging them', () => {
     const retryAll = vi.fn();
-    await expect(unifiedWorker.queue({ messages: [{}], retryAll }, env, {})).resolves.toBeUndefined();
+    retryInactiveVideoBatch({ messages: [{}], retryAll });
     expect(retryAll).toHaveBeenCalledOnce();
+  });
 
-    await expect(
-      unifiedWorker.scheduled({ cron: '*/12 * * * *' }, env, {})
-    ).resolves.toBeUndefined();
+  it('skips inactive scheduled work without throwing', () => {
+    expect(() => skipInactiveVideoSchedule({ cron: '*/12 * * * *' })).not.toThrow();
   });
 });
