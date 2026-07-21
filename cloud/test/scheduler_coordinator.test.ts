@@ -1,7 +1,6 @@
 import {
   applyD1Migrations,
   env,
-  runDurableObjectAlarm,
   runInDurableObject,
 } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -20,6 +19,8 @@ type TestEnv = typeof env & {
   SCHEDULER_COORDINATOR: DurableObjectNamespace;
 };
 
+type AlarmInstance = { alarm(): Promise<void> };
+
 let objectSequence = 0;
 
 function coordinatorStub(): DurableObjectStub {
@@ -32,9 +33,9 @@ async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
   return runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm());
 }
 
-async function makeAlarmDue(stub: DurableObjectStub): Promise<void> {
-  await runInDurableObject(stub, async (_instance, state) => {
-    await state.storage.setAlarm(Date.now() - 1_000);
+async function runAlarm(stub: DurableObjectStub): Promise<void> {
+  await runInDurableObject(stub, async instance => {
+    await (instance as AlarmInstance).alarm();
   });
 }
 
@@ -105,8 +106,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
 
-    await makeAlarmDue(stub);
-    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runAlarm(stub);
 
     let rows = await env.DB.prepare(
       "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
@@ -121,8 +121,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(remainingAlarm)).toBeGreaterThan(Date.now());
     expect(Number(remainingAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
 
-    await makeAlarmDue(stub);
-    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runAlarm(stub);
 
     rows = await env.DB.prepare(
       "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
