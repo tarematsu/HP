@@ -1,6 +1,7 @@
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { invalidateR2EnvironmentCache } from "../src/environment_r2";
+import { stateGeneration } from "../src/state_generation";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & {
@@ -16,7 +17,6 @@ beforeEach(async () => {
   const bindings = testEnv();
   await resetD1TestDatabase(bindings.DB, bindings.TEST_MIGRATIONS);
   await bindings.DATA_BUCKET.delete("environment/v2/latest.json");
-  await bindings.DATA_BUCKET.delete("telemetry/v2/homepanel-device/latest.json");
   invalidateR2EnvironmentCache(bindings);
 });
 
@@ -54,6 +54,16 @@ function exchange(body: unknown): Promise<Response> {
   });
 }
 
+function telemetry(sequence: number, observedAt: number, co2 = 640): Record<string, unknown> {
+  return {
+    deviceId: "homepanel-device",
+    appVersion: "2.12.0",
+    stationheadOk: true,
+    outboxCount: 1,
+    samples: [{ sequence, observedAt, co2 }],
+  };
+}
+
 describe("device exchange", () => {
   it("requires the configured device token", async () => {
     const response = await SELF.fetch("https://homepanel.test/v1/device/exchange?deviceId=homepanel-device", {
@@ -66,16 +76,7 @@ describe("device exchange", () => {
 
   it("returns sync and compact telemetry receipt in one binary response", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
-    const response = await exchange({
-      versions,
-      telemetry: {
-        deviceId: "homepanel-device",
-        appVersion: "2.12.0",
-        stationheadOk: true,
-        outboxCount: 1,
-        samples: [{ sequence: 1, observedAt, co2: 640 }],
-      },
-    });
+    const response = await exchange({ versions, telemetry: telemetry(1, observedAt) });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/vnd.homepanel.device-exchange");
     const decoded = decodeExchange(new Uint8Array(await response.arrayBuffer()));
@@ -124,16 +125,7 @@ describe("device exchange", () => {
 
   it("acknowledges a retried telemetry batch without duplicating R2 aggregates", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
-    const request = () => exchange({
-      versions,
-      telemetry: {
-        deviceId: "homepanel-device",
-        appVersion: "2.12.0",
-        stationheadOk: true,
-        outboxCount: 1,
-        samples: [{ sequence: 1, observedAt, co2: 640 }],
-      },
-    });
+    const request = () => exchange({ versions, telemetry: telemetry(1, observedAt) });
 
     expect((await request()).status).toBe(200);
     const retried = decodeExchange(new Uint8Array(await (await request()).arrayBuffer()));
@@ -149,5 +141,25 @@ describe("device exchange", () => {
       history: Array<{ t: number; co2: number }>;
     };
     expect(payload.history).toEqual([{ t: observedAt, co2: 640, temperature: null, humidity: null }]);
+  });
+
+  it("does not move environment observed_at backwards for delayed samples", async () => {
+    const recent = Math.floor((Date.now() - 60_000) / 900_000) * 900_000;
+    const delayed = recent - 900_000;
+    expect((await exchange({ versions, telemetry: telemetry(1, recent) })).status).toBe(200);
+    expect((await exchange({ versions, telemetry: telemetry(2, delayed, 620) })).status).toBe(200);
+
+    const stored = await testEnv().DATA_BUCKET.get("environment/v2/latest.json");
+    const document = await stored!.json<{ row: { observed_at: number } }>();
+    expect(document.row.observed_at).toBe(recent);
+  });
+
+  it("does not invalidate dashboard state when an accepted sample leaves content unchanged", async () => {
+    const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
+    expect((await exchange({ versions, telemetry: telemetry(1, observedAt) })).status).toBe(200);
+    const generation = stateGeneration(env);
+
+    expect((await exchange({ versions, telemetry: telemetry(2, observedAt) })).status).toBe(200);
+    expect(stateGeneration(env)).toBe(generation);
   });
 });
