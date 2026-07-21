@@ -134,7 +134,7 @@ jobs:
 
       - name: Report deferred unified deployment
         if: steps.activation.outputs.active != 'true'
-        run: echo "::notice::Unified homepanel-cloud deployment is deferred until the videoscraper cutover workflow activates the D1 runtime marker."
+        run: echo "::notice::Unified homepanel-cloud deployment is deferred because the video runtime activation marker is not active."
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}

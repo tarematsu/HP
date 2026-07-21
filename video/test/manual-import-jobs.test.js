@@ -125,8 +125,14 @@ test('large imports use Queue chaining while preserving D1 finalization state', 
   const jobs = await readFile(new URL('../src/manual-import-jobs.js', import.meta.url), 'utf8');
   const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
   const queue = await readFile(new URL('../src/manual-import-queue.js', import.meta.url), 'utf8');
-  const wranglerSource = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
-  const wrangler = JSON.parse(wranglerSource);
+  const standaloneWrangler = JSON.parse(await readFile(
+    new URL('../wrangler.jsonc', import.meta.url),
+    'utf8'
+  ));
+  const unifiedWrangler = JSON.parse(await readFile(
+    new URL('../../cloud/wrangler.jsonc', import.meta.url),
+    'utf8'
+  ));
   const migration = await readFile(
     new URL('../migrations/100000_manual_import_jobs.sql', import.meta.url),
     'utf8'
@@ -170,10 +176,12 @@ test('large imports use Queue chaining while preserving D1 finalization state', 
   assert.match(queue, /publishManualImportJob/);
   assert.match(queue, /publish\(env, jobId/);
   assert.match(entryCore, /ADMIN_IMPORT_JOB_PATH_PREFIX/);
-  assert.deepEqual(wrangler.triggers.crons, ['*/12 * * * *']);
-  assert.equal(wrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
-  assert.equal(wrangler.queues.consumers[0].max_batch_size, 1);
-  assert.equal(wrangler.queues.consumers[0].max_concurrency, 1);
+  assert.equal(standaloneWrangler.triggers, undefined);
+  assert.equal(standaloneWrangler.queues, undefined);
+  assert.equal(unifiedWrangler.triggers, undefined);
+  assert.equal(unifiedWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
+  assert.equal(unifiedWrangler.queues.consumers[0].max_batch_size, 1);
+  assert.equal(unifiedWrangler.queues.consumers[0].max_concurrency, 1);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS manual_import_job_chunks/);
   assert.match(migration, /failure_count INTEGER NOT NULL DEFAULT 0/);
   assert.match(migration, /url_count INTEGER/);

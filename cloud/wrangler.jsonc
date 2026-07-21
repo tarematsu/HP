@@ -19,11 +19,6 @@
   "browser": {
     "binding": "BROWSER"
   },
-  "triggers": {
-    "crons": [
-      "*/12 * * * *"
-    ]
-  },
   "durable_objects": {
     "bindings": [
       {

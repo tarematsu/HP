@@ -45,5 +45,5 @@ jobs:
       - name: Validate D1 migrations in isolation
         run: |
           rm -rf .wrangler-ci-state
-          npx wrangler d1 migrations apply twivideo-swiper-db --local --persist-to .wrangler-ci-state
-          npx wrangler d1 execute twivideo-swiper-db --local --persist-to .wrangler-ci-state --command "PRAGMA integrity_check;"
+          npx wrangler d1 migrations apply DB --local --persist-to .wrangler-ci-state
+          npx wrangler d1 execute DB --local --persist-to .wrangler-ci-state --command "PRAGMA integrity_check;"
