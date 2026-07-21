@@ -20,6 +20,7 @@ The unified entry point is `cloud/src/unified_worker.js`.
 - Video uses the same `DB` binding after its schema and rows are migrated into `homepanel-data`.
 - Video assets, Browser Rendering, manual-import queues, and the liveness cron are attached to `homepanel-cloud`.
 - A D1 activation flag keeps video fetch, queue, and scheduled handlers disabled until the verified data import completes.
+- Cloudflare-managed production builds fail closed and skip deployment until that activation flag is set, so merging alone cannot transfer the Queue consumer prematurely.
 
 ## Required production secret
 
