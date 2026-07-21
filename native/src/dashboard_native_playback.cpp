@@ -52,6 +52,17 @@ bool ProjectionAtQueueEnd(const NativePlaybackProjection& projection,
       nowMs >= projection.queueEndAt;
 }
 
+bool ProjectionHasPlayableTrack(const NativePlaybackProjection& projection,
+                                int64_t nowMs) {
+  if (ProjectionAtQueueEnd(projection, nowMs) || projection.currentIndex < 0 ||
+      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
+    return false;
+  }
+  const NativePlaybackTrack& track =
+      projection.queue[static_cast<size_t>(projection.currentIndex)];
+  return !track.title.empty() || !track.artist.empty() || !track.artwork.empty();
+}
+
 NativeMinuteFactsProjection ParseDashboardStatus(const std::wstring& payload,
                                                   int64_t fetchedAt) {
   NativeMinuteFactsProjection projection;
@@ -334,23 +345,22 @@ void Renderer::NativePlaybackLoop() {
       update.source = kPlaybackSource;
       update.error = error;
       if (hasValidPayload) {
-        const bool previousAtQueueEnd =
-            ProjectionAtQueueEnd(update.projection, fetchedAt);
-        const bool nextAtQueueEnd = ProjectionAtQueueEnd(projection, fetchedAt);
-        const bool contentChanged = !update.hasPayload ||
-            (!projection.queueRevision.empty()
-                 ? projection.queueRevision != update.projection.queueRevision
-                 : update.payload != payload) ||
-            previousAtQueueEnd != nextAtQueueEnd;
+        const bool previousPlayable =
+            ProjectionHasPlayableTrack(update.projection, fetchedAt);
+        const bool nextPlayable = ProjectionHasPlayableTrack(projection, fetchedAt);
+        const bool queueChanged = !projection.queueRevision.empty()
+            ? projection.queueRevision != update.projection.queueRevision
+            : update.payload != payload;
+        const bool advanceContentRevision = !update.hasPayload ||
+            (nextPlayable && (!previousPlayable || queueChanged));
         update.payload = std::move(payload);
         update.projection = std::move(projection);
         update.fetchedAt = fetchedAt;
-        const bool wasMissingPayload = !update.hasPayload;
         update.hasPayload = true;
-        // Keep the fallback release revision stable while every new dashboard
-        // response still describes a completed queue. Advance it only for the
-        // first usable payload or when playable queue information returns.
-        if (contentChanged && (wasMissingPayload || !nextAtQueueEnd)) {
+        // Keep the fallback release revision stable while responses still have
+        // no usable current track. Advance it only when playable queue data
+        // first appears or changes to a new playable queue.
+        if (advanceContentRevision) {
           update.contentRevision = ++nativePlaybackContentRevision_;
         }
       }
