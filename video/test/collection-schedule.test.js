@@ -16,21 +16,23 @@ const unifiedWrangler = JSON.parse(await readFile(
 ));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('deployment has no video cron and drives manual imports from a Queue', () => {
+test('deployment has no video cron and unified HomePanel owns manual import queues', () => {
   assert.equal(wrangler.triggers, undefined);
   assert.equal(unifiedWrangler.triggers, undefined);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 12 * 60);
   assert.equal(LIVENESS_SCHEDULE, 'homepanel-alarm:720s');
-  assert.deepEqual(wrangler.queues?.producers, [{
+  assert.equal(wrangler.queues, undefined);
+  assert.deepEqual(unifiedWrangler.queues?.producers, [{
     binding: 'MANUAL_IMPORT_QUEUE',
     queue: MANUAL_IMPORT_QUEUE_NAME
   }]);
-  assert.deepEqual(wrangler.queues?.consumers, [{
+  assert.deepEqual(unifiedWrangler.queues?.consumers, [{
     queue: MANUAL_IMPORT_QUEUE_NAME,
     max_batch_size: 1,
     max_batch_timeout: 0,
     max_retries: 5,
+    retry_delay: 300,
     max_concurrency: 1,
     dead_letter_queue: 'videoscraper-manual-imports-dlq'
   }]);
