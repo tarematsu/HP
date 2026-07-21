@@ -3,6 +3,10 @@ import {
   prepareLivenessStateRead
 } from './liveness-monitor.js';
 import {
+  LIVENESS_INTERVAL_SECONDS,
+  LIVENESS_SCHEDULE
+} from './liveness-schedule.js';
+import {
   emptyStatusCounts,
   prepareStatusCountsRead,
   refreshStatusCounts
@@ -81,6 +85,8 @@ async function buildStatusReport(env) {
   };
   data.deathList = {
     ...liveness,
+    schedule: LIVENESS_SCHEDULE,
+    intervalSeconds: LIVENESS_INTERVAL_SECONDS,
     type: 'automatic-liveness-death-list',
     behavior: 'excluded-from-playback-and-collection-until-revived'
   };
