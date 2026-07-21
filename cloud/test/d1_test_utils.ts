@@ -23,6 +23,6 @@ export async function resetD1TestDatabase(
     db.prepare("DELETE FROM current_state"),
   ]);
   await db.prepare(
-    "UPDATE jobs SET next_run_at=0, lease_until=NULL,last_success_at=NULL,last_error=NULL,consecutive_failures=0",
+    "UPDATE jobs SET next_run_at=0, lease_until=NULL, last_success_at=NULL, last_error=NULL, consecutive_failures=0",
   ).run();
 }
