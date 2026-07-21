@@ -3,22 +3,29 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc', import.meta.url), 'utf8'));
+const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
+const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
+const resourceMigration = readFileSync(
+  new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
+  'utf8'
+);
+const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', import.meta.url), 'utf8');
 
 const DAY_SECONDS = 86_400;
-const TARGET = 5_000;
-const STATE_HEARTBEAT_SECONDS = 30 * 60;
+const TARGET = 3_000;
+const STATE_HEARTBEAT_SECONDS = 60 * 60;
 const scheduledIntervals = {
-  switchbot: 300,
-  stationhead: 300,
-  stationhead_health: 300,
-  news: 600,
+  switchbot: 900,
+  stationhead: 900,
+  stationhead_health: 1_800,
+  news: 1_800,
   weather: 3_600,
   octopus: 21_600,
-  video_liveness: 720,
-  update_check: 1_800,
+  video_liveness: 1_200,
+  update_check: 21_600,
   cleanup: 86_400
 };
-const stateIntervals = [300, 300, 300, 600, 3_600, 21_600];
+const stateIntervals = [900, 900, 1_800, 1_800, 3_600, 21_600];
 
 function runsPerDay(intervalSeconds) {
   return Math.ceil(DAY_SECONDS / intervalSeconds);
@@ -34,41 +41,64 @@ test('static assets bypass the Worker while dynamic routes remain Worker-first',
   assert.notEqual(cloudConfig.assets.run_worker_first, true);
 });
 
-test('Workers KV is absent while the bounded R2 data cache remains declared', () => {
+test('Workers KV is absent while bounded R2 caches remain declared', () => {
   assert.equal(cloudConfig.kv_namespaces, undefined);
   assert.ok(cloudConfig.r2_buckets.some((entry) => entry.binding === 'DATA_BUCKET'));
 });
 
-test('modeled daily D1 writes stay below the 5000-row target without KV', () => {
+test('native polling is fixed at fifteen-minute sync and hourly telemetry', () => {
+  assert.match(nativeConfig, /cloudPollSeconds = 900;/);
+  assert.match(nativeConfig, /telemetryMinutes = 60;/);
+  assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 900;/);
+  assert.match(nativeCloudConfig, /config\.telemetryMinutes = 60;/);
+});
+
+test('scheduler migration and liveness schedule use the reduced cadence', () => {
+  for (const [name, interval] of Object.entries(scheduledIntervals)) {
+    assert.match(resourceMigration, new RegExp(`WHEN '${name}' THEN ${interval}`));
+  }
+  assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 20 \* 60/);
+});
+
+test('modeled daily D1 writes stay below the 3000-row target', () => {
   const schedulerCompletionWrites = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
-  assert.equal(schedulerCompletionWrites, 1_205);
+  assert.equal(schedulerCompletionWrites, 393);
 
   const stateHeartbeatWrites = stateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
-  const telemetryWrites = 48 * 4;
-  const changeAndControlReserve = 3_000;
+  const compactTelemetryHeartbeatWrites = runsPerDay(60 * 60) * 2;
+  const changeCommandWebhookAndLegacyReserve = 2_200;
   const modeledWrites = schedulerCompletionWrites
     + stateHeartbeatWrites
-    + telemetryWrites
-    + changeAndControlReserve;
+    + compactTelemetryHeartbeatWrites
+    + changeCommandWebhookAndLegacyReserve;
 
-  assert.equal(stateHeartbeatWrites, 220);
-  assert.equal(modeledWrites, 4_617);
+  assert.equal(stateHeartbeatWrites, 124);
+  assert.equal(compactTelemetryHeartbeatWrites, 48);
+  assert.equal(modeledWrites, 2_765);
   assert.ok(modeledWrites < TARGET);
 });
 
-test('modeled daily Worker invocations stay below the 5000-request target', () => {
-  const nativeSyncRequests = runsPerDay(300);
+test('modeled daily Worker invocations stay below the 3000-request target', () => {
+  const nativeExchangeRequests = runsPerDay(900);
   const schedulerAlarmInvocations = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
-  const radarMissReserve = 100;
-  const apiAndVideoReserve = 3_000;
-  const modeledRequests = nativeSyncRequests
+  const radarGenerationReserve = 50;
+  const apiWebhookVideoAndLegacyReserve = 2_200;
+  const modeledRequests = nativeExchangeRequests
     + schedulerAlarmInvocations
-    + radarMissReserve
-    + apiAndVideoReserve;
+    + radarGenerationReserve
+    + apiWebhookVideoAndLegacyReserve;
 
-  assert.equal(modeledRequests, 4_593);
+  assert.equal(nativeExchangeRequests, 96);
+  assert.equal(schedulerAlarmInvocations, 393);
+  assert.equal(modeledRequests, 2_739);
   assert.ok(modeledRequests < TARGET);
+});
+
+test('bounded R2 telemetry writes remain modest', () => {
+  const telemetryStateAndLatestWrites = runsPerDay(60 * 60) * 2;
+  const radarLatestReserve = 24;
+  assert.equal(telemetryStateAndLatestWrites + radarLatestReserve, 72);
 });
