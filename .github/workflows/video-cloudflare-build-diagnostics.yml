@@ -24,6 +24,7 @@ concurrency:
 
 jobs:
   diagnose:
+    if: vars.VIDEO_CLOUDFLARE_BUILD_DIAGNOSTICS_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
