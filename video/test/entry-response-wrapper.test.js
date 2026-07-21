@@ -8,11 +8,16 @@ import entry from '../src/entry.js';
 const entrySource = await readFile(new URL('../src/entry.js', import.meta.url), 'utf8');
 const coreSource = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('Worker entry exports the core handler without a per-request wrapper', () => {
-  assert.equal(entry, core);
+test('Worker entry keeps the migration wrapper narrow and delegates normal traffic', () => {
+  assert.notEqual(entry, core);
+  assert.equal(typeof entry.fetch, 'function');
+  assert.equal(typeof entry.queue, 'function');
+  assert.equal(typeof entry.scheduled, 'function');
+  assert.match(entrySource, /migrationFreezeEnabled/);
+  assert.match(entrySource, /return core\.fetch\(request, env, ctx\)/);
+  assert.match(entrySource, /return core\.queue\(batch, env, ctx\)/);
+  assert.match(entrySource, /return core\.scheduled\(controller, env, ctx\)/);
   assert.doesNotMatch(entrySource, /protectPrivateStatusResponse/);
-  assert.doesNotMatch(entrySource, /async fetch\(/);
-  assert.doesNotMatch(entrySource, /new URL\(/);
 });
 
 test('cached status snapshots are serialized directly with private headers', () => {
