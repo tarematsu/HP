@@ -1,0 +1,31 @@
+{
+  "name": "video-scraper",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight random video player with automatic multi-source collection.",
+  "scripts": {
+    "postinstall": "node scripts/sync-d1-database-id.mjs --if-placeholder",
+    "dev": "wrangler dev",
+    "config:production": "node scripts/render-production-config.mjs",
+    "deploy": "npm run config:production && npm run db:migrate:production && wrangler deploy --config wrangler.production.jsonc",
+    "db:create": "wrangler d1 create video-scraper-db --location apac",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:production": "wrangler d1 migrations apply DB --remote --config wrangler.production.jsonc",
+    "test": "node --test",
+    "test:integration": "node --test test/worker.integration.test.js",
+    "benchmark:hot-path": "node scripts/benchmark-hot-path.mjs",
+    "check:audit": "node scripts/audit-generalization.mjs",
+    "check:bundle": "wrangler deploy --dry-run --outdir=dist-dry-run",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "check": "npm run check:syntax && npm run check:audit && npm run check:bundle"
+  },
+  "devDependencies": {
+    "@cloudflare/puppeteer": "^1.1.0",
+    "wrangler": "^4.105.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
