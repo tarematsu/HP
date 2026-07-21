@@ -6,6 +6,8 @@ const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc'
 
 const DAY_SECONDS = 86_400;
 const TARGET = 5_000;
+const KV_FREE_WRITE_TARGET = 1_000;
+const KV_HEARTBEAT_SECONDS = 30 * 60;
 const scheduledIntervals = {
   switchbot: 300,
   stationhead: 300,
@@ -17,9 +19,15 @@ const scheduledIntervals = {
   update_check: 1_800,
   cleanup: 86_400
 };
+const stateIntervals = [300, 300, 300, 600, 3_600, 21_600];
 
 function runsPerDay(intervalSeconds) {
   return Math.ceil(DAY_SECONDS / intervalSeconds);
+}
+
+function throttledHeartbeatWrites(intervalSeconds) {
+  const effectiveInterval = Math.ceil(KV_HEARTBEAT_SECONDS / intervalSeconds) * intervalSeconds;
+  return runsPerDay(effectiveInterval);
 }
 
 test('static assets bypass the Worker while dynamic routes remain Worker-first', () => {
@@ -62,4 +70,18 @@ test('modeled daily Worker invocations stay below the 5000-request target', () =
 
   assert.equal(modeledRequests, 4_593);
   assert.ok(modeledRequests < TARGET);
+});
+
+test('modeled daily KV writes stay within the Workers Free allowance', () => {
+  const unchangedHeartbeatWrites = stateIntervals
+    .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
+  const environmentStateWrites = 48;
+  const contentChangeAndCacheMissReserve = 600;
+  const modeledKvWrites = unchangedHeartbeatWrites
+    + environmentStateWrites
+    + contentChangeAndCacheMissReserve;
+
+  assert.equal(unchangedHeartbeatWrites, 220);
+  assert.equal(modeledKvWrites, 868);
+  assert.ok(modeledKvWrites < KV_FREE_WRITE_TARGET);
 });
