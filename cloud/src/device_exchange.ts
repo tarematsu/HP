@@ -21,6 +21,11 @@ interface DeviceExchangeInput {
   telemetry?: unknown;
 }
 
+interface EmbeddedRadarBundle {
+  body: ReadableStream<Uint8Array> | null;
+  byteLength: number;
+}
+
 function writeUint32(target: Uint8Array, offset: number, value: number): void {
   target[offset] = value & 0xff;
   target[offset + 1] = value >>> 8 & 0xff;
@@ -28,16 +33,40 @@ function writeUint32(target: Uint8Array, offset: number, value: number): void {
   target[offset + 3] = value >>> 24 & 0xff;
 }
 
-function exchangeStream(jsonBytes: Uint8Array, radarBytes: Uint8Array): ReadableStream<Uint8Array> {
+function exchangeStream(
+  jsonBytes: Uint8Array,
+  radarBody: ReadableStream<Uint8Array> | null,
+): ReadableStream<Uint8Array> {
   const header = new Uint8Array(EXCHANGE_MAGIC.length + 4);
   header.set(EXCHANGE_MAGIC);
   writeUint32(header, EXCHANGE_MAGIC.length, jsonBytes.length);
+  let radarReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   return new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       controller.enqueue(header);
       controller.enqueue(jsonBytes);
-      if (radarBytes.length) controller.enqueue(radarBytes);
-      controller.close();
+      if (!radarBody) {
+        controller.close();
+        return;
+      }
+      const reader = radarBody.getReader();
+      radarReader = reader;
+      try {
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (chunk.value?.length) controller.enqueue(chunk.value);
+        }
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+        if (radarReader === reader) radarReader = null;
+      }
+    },
+    async cancel(reason) {
+      await radarReader?.cancel(reason);
     },
   });
 }
@@ -81,30 +110,43 @@ async function embeddedRadarBundle(
   env: Env,
   ctx: ExecutionContext,
   payload: Record<string, unknown>,
-): Promise<Uint8Array> {
-  if (typeof payload.radar !== "string") return new Uint8Array();
+): Promise<EmbeddedRadarBundle> {
+  if (typeof payload.radar !== "string") return { body: null, byteLength: 0 };
   let radar: unknown;
   try {
     radar = JSON.parse(payload.radar);
   } catch {
     payload.radarBundleError = "invalid_radar_payload";
-    return new Uint8Array();
+    return { body: null, byteLength: 0 };
   }
-  if (!radar || typeof radar !== "object") return new Uint8Array();
+  if (!radar || typeof radar !== "object") return { body: null, byteLength: 0 };
   const bundleUrl = (radar as Record<string, unknown>).bundleUrl;
-  if (typeof bundleUrl !== "string") return new Uint8Array();
+  if (typeof bundleUrl !== "string") return { body: null, byteLength: 0 };
   const match = new URL(bundleUrl, request.url).pathname.match(RADAR_BUNDLE_PATH);
-  if (!match) return new Uint8Array();
+  if (!match) return { body: null, byteLength: 0 };
 
   const absoluteUrl = new URL(bundleUrl, request.url).toString();
   const response = await radarBundleResponseForPayload(absoluteUrl, radar, match[1]!, env, ctx);
   if (!response.ok) {
+    await response.body?.cancel();
     payload.radarBundleError = `HTTP ${response.status}`;
-    return new Uint8Array();
+    return { body: null, byteLength: 0 };
   }
+
+  const declaredLength = Number(response.headers.get("Content-Length"));
+  if (response.body && Number.isSafeInteger(declaredLength) && declaredLength > 0) {
+    payload.radarBundleIncluded = true;
+    return { body: response.body, byteLength: declaredLength };
+  }
+
+  // Cached or intermediary responses should preserve Content-Length. Keep a
+  // compatibility fallback without making buffering the normal hot path.
   const bytes = new Uint8Array(await response.arrayBuffer());
   payload.radarBundleIncluded = bytes.length > 0;
-  return bytes;
+  return {
+    body: bytes.length ? new Response(bytes).body : null,
+    byteLength: bytes.length,
+  };
 }
 
 export async function deviceExchangeResponse(
@@ -133,15 +175,17 @@ export async function deviceExchangeResponse(
 
   const payload = await buildDeviceSyncPayload(syncRequest(request, deviceId, versions), env);
   if (input.telemetry !== undefined) await applyTelemetry(request, env, input.telemetry, payload);
-  const radarBytes = await embeddedRadarBundle(request, env, ctx, payload);
+  const radarBundle = await embeddedRadarBundle(request, env, ctx, payload);
   const jsonBytes = ENCODER.encode(JSON.stringify(payload));
-  return new Response(exchangeStream(jsonBytes, radarBytes), {
+  const responseBytes = EXCHANGE_MAGIC.length + 4 + jsonBytes.length + radarBundle.byteLength;
+  return new Response(exchangeStream(jsonBytes, radarBundle.body), {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.homepanel.device-exchange",
+      "Content-Length": String(responseBytes),
       "Cache-Control": "private, no-store",
       "X-HomePanel-Exchange-Json-Bytes": String(jsonBytes.length),
-      "X-HomePanel-Exchange-Radar-Bytes": String(radarBytes.length),
+      "X-HomePanel-Exchange-Radar-Bytes": String(radarBundle.byteLength),
     },
   });
 }

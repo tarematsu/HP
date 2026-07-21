@@ -1,7 +1,6 @@
 import {
   applyD1Migrations,
   env,
-  runDurableObjectAlarm,
   runInDurableObject,
 } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -20,6 +19,8 @@ type TestEnv = typeof env & {
   SCHEDULER_COORDINATOR: DurableObjectNamespace;
 };
 
+type AlarmInstance = { alarm(): Promise<void> };
+
 let objectSequence = 0;
 
 function coordinatorStub(): DurableObjectStub {
@@ -30,6 +31,14 @@ function coordinatorStub(): DurableObjectStub {
 
 async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
   return runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm());
+}
+
+async function runAlarm(stub: DurableObjectStub): Promise<void> {
+  // Invoke the handler directly so the test verifies scheduler behavior rather
+  // than depending on the test runtime's wall-clock alarm dispatch semantics.
+  await runInDurableObject(stub, async instance => {
+    await (instance as AlarmInstance).alarm();
+  });
 }
 
 beforeEach(async () => {
@@ -90,7 +99,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(scheduledAt)).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("coalesces due jobs in one alarm and schedules the next deadline", async () => {
+  it("runs one due job per alarm and schedules remaining work", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
       .bind(now + 3600)
@@ -99,13 +108,28 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
 
-    expect(await runDurableObjectAlarm(stub)).toBe(true);
+    await runAlarm(stub);
 
-    const rows = await env.DB.prepare(
+    let rows = await env.DB.prepare(
       "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
     ).all<{ name: string; next_run_at: number; lease_until: number | null }>();
     expect(rows.results).toHaveLength(2);
-    for (const row of rows.results) {
+    expect(rows.results?.filter(row => Number(row.next_run_at) > now)).toHaveLength(1);
+    expect(rows.results?.filter(row => Number(row.next_run_at) === 0)).toHaveLength(1);
+    for (const row of rows.results ?? []) expect(row.lease_until).toBeNull();
+
+    const remainingAlarm = await alarmTime(stub);
+    expect(remainingAlarm).not.toBeNull();
+    expect(Number(remainingAlarm)).toBeGreaterThan(Date.now());
+    expect(Number(remainingAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
+
+    await runAlarm(stub);
+
+    rows = await env.DB.prepare(
+      "SELECT name,next_run_at,lease_until FROM jobs WHERE name IN ('cleanup','weather') ORDER BY name",
+    ).all<{ name: string; next_run_at: number; lease_until: number | null }>();
+    expect(rows.results).toHaveLength(2);
+    for (const row of rows.results ?? []) {
       expect(row.lease_until).toBeNull();
       expect(Number(row.next_run_at)).toBeGreaterThan(now);
     }

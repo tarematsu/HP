@@ -1,12 +1,18 @@
 import { applyD1Migrations, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { acquireDueJobs, finishJob, requestRefresh } from "../src/scheduler";
+import {
+  acquireDueJobs,
+  ensureSystemJobs,
+  finishJob,
+  requestRefresh,
+} from "../src/scheduler";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
 
 beforeEach(async () => {
   const testEnv = env as TestEnv;
   await applyD1Migrations(testEnv.DB, testEnv.TEST_MIGRATIONS);
+  await ensureSystemJobs(testEnv);
   await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL, last_success_at=?2")
     .bind(Math.floor(Date.now() / 1000) + 3600, Math.floor(Date.now() / 1000))
     .run();

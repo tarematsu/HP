@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -50,4 +51,15 @@ test('empty analytics data is explicit and does not claim the target was met', (
   assert.match(markdown, /Maximum bucket P99: n\/a/);
   assert.match(markdown, /Maximum bucket P99 <= target: no data/);
   assert.match(markdown, /does not prove that every route/);
+});
+
+test('CPU diagnostics workflows are manual-only', async () => {
+  const workflows = await Promise.all([
+    readFile(new URL('../../.github/workflows/video-worker-cpu-report.yml', import.meta.url), 'utf8'),
+    readFile(new URL('../.github/workflows/worker-cpu-report.yml', import.meta.url), 'utf8')
+  ]);
+  for (const workflow of workflows) {
+    assert.match(workflow, /^\s*workflow_dispatch:/m);
+    assert.doesNotMatch(workflow, /^\s*schedule:/m);
+  }
 });
