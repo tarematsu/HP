@@ -30,7 +30,8 @@ const importOrder = Object.freeze([
   'manual_import_jobs',
   'manual_import_job_chunks',
   'video_orientations',
-  'status_counts'
+  'status_counts',
+  'automatic_reset_state'
 ]);
 const expectedTables = new Set(importOrder);
 
@@ -177,6 +178,7 @@ function resetTargetVideoData() {
     DELETE FROM video_orientations;
     DELETE FROM worker_locks;
     DELETE FROM status_counts;
+    DELETE FROM automatic_reset_state;
     DELETE FROM video_liveness_state;
     DELETE FROM playback_feed_state;
     DELETE FROM d1_maintenance_state;
