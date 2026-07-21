@@ -21,4 +21,18 @@ describe("video liveness scheduler bridge", () => {
       "SELECT active FROM video_runtime_state WHERE id = 1",
     ]);
   });
+
+  it("rejects activation read failures so the scheduler applies backoff", async () => {
+    const DB = {
+      prepare() {
+        return {
+          async first() {
+            throw new Error("temporary D1 failure");
+          },
+        };
+      },
+    };
+
+    await expect(runVideoLiveness({ DB } as never)).rejects.toThrow("temporary D1 failure");
+  });
 });
