@@ -65,7 +65,29 @@ jobs:
           npm test
           npm run check:unified-bundle
 
+      - name: Check whether video cutover is active
+        id: activation
+        working-directory: cloud
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
+        run: |
+          set -euo pipefail
+          npm run prepare:existing
+          config=.wrangler/generated/homepanel-existing.jsonc
+          output="$RUNNER_TEMP/video-runtime-state.json"
+          if npx wrangler d1 execute homepanel-data --remote --config "$config" \
+            --command "SELECT active FROM video_runtime_state WHERE id=1;" --json > "$output" 2>/dev/null \
+            && grep -Eq '"active"[[:space:]]*:[[:space:]]*1' "$output"; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "Verified completed videoscraper cutover."
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "Video cutover is not active; routine deployment is intentionally skipped."
+          fi
+
       - name: Deploy Worker with migration discovery only when required
+        if: steps.activation.outputs.active == 'true'
         working-directory: cloud
         shell: bash
         env:
@@ -101,6 +123,10 @@ jobs:
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
             npm run deploy
           fi
+
+      - name: Report deferred unified deployment
+        if: steps.activation.outputs.active != 'true'
+        run: echo "::notice::Unified homepanel-cloud deployment is deferred until the videoscraper cutover workflow activates the D1 runtime marker."
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
