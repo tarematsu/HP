@@ -1,0 +1,254 @@
+name: Ops observable videoscraper cutover
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/ops-videoscraper-cutover-pr.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-cloud-video-cutover
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    outputs:
+      should_run: ${{ steps.state.outputs.should_run }}
+      homepanel_url: ${{ steps.urls.outputs.homepanel_url }}
+      video_url: ${{ steps.urls.outputs.video_url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
+      HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Cloud dependencies
+        working-directory: cloud
+        run: npm ci --no-audit --no-fund
+
+      - name: Resolve Worker URLs
+        id: urls
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          response="$RUNNER_TEMP/workers-subdomain.json"
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain" \
+            > "$response"
+          subdomain="$(node --input-type=module - "$response" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          const value = String(payload?.result?.subdomain || '').trim();
+          if (!payload?.success || !value) throw new Error('Workers subdomain could not be resolved');
+          process.stdout.write(value);
+          NODE
+          )"
+          echo "homepanel_url=https://homepanel-cloud.${subdomain}.workers.dev" >> "$GITHUB_OUTPUT"
+          echo "video_url=https://videoscraper.${subdomain}.workers.dev" >> "$GITHUB_OUTPUT"
+
+      - name: Verify ADMIN_TOKEN name
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          secret_list="$RUNNER_TEMP/homepanel-cloud-secret-list.json"
+          npx wrangler secret list --name homepanel-cloud --format json > "$secret_list"
+          node --input-type=module - "$secret_list" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          const entries = Array.isArray(payload) ? payload : payload.result;
+          if (!Array.isArray(entries)) throw new Error('Unexpected Wrangler secret-list response');
+          if (!entries.some((entry) => String(entry?.name || '') === 'ADMIN_TOKEN')) {
+            throw new Error('ADMIN_TOKEN is missing from homepanel-cloud');
+          }
+          NODE
+
+      - name: Determine cutover state
+        id: state
+        working-directory: cloud
+        shell: bash
+        env:
+          HOMEPANEL_BASE_URL: ${{ steps.urls.outputs.homepanel_url }}
+          OLD_VIDEO_BASE_URL: ${{ steps.urls.outputs.video_url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/v1/health" >/dev/null
+          npm run prepare:existing
+          config=.wrangler/generated/homepanel-existing.jsonc
+          set +e
+          state_json="$(npx wrangler d1 execute homepanel-data --remote --config "$config" \
+            --command "SELECT active FROM video_runtime_state WHERE id=1;" --json 2>/dev/null)"
+          state_code=$?
+          set -e
+          active=0
+          if [ "$state_code" -eq 0 ] && printf '%s' "$state_json" | grep -Eq '"active"[[:space:]]*:[[:space:]]*1'; then
+            active=1
+          fi
+          api_status="$(curl --silent --show-error --output "$RUNNER_TEMP/current-video-status.json" \
+            --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+          if [ "$active" = 1 ] && { [ "$api_status" = 401 ] || [ "$api_status" = 403 ]; }; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Cutover is already active and the unified video API is responding."
+            exit 0
+          fi
+          curl --fail --silent --show-error "$OLD_VIDEO_BASE_URL/" >/dev/null
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+  cutover:
+    needs: preflight
+    if: needs.preflight.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
+      HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
+      HOMEPANEL_BASE_URL: ${{ needs.preflight.outputs.homepanel_url }}
+      OLD_VIDEO_BASE_URL: ${{ needs.preflight.outputs.video_url }}
+      VIDEO_SOURCE_D1_NAME: twivideo-swiper-db
+      HOMEPANEL_D1_DATABASE_NAME: homepanel-data
+      VIDEO_QUEUE_NAME: videoscraper-manual-imports
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          npm --prefix cloud ci --no-audit --no-fund
+          npm --prefix video install --no-audit --no-fund
+
+      - name: Ensure video queues exist
+        working-directory: video
+        shell: bash
+        run: |
+          set -euo pipefail
+          for queue in videoscraper-manual-imports videoscraper-manual-imports-dlq; do
+            npx wrangler queues info "$queue" >/dev/null 2>&1 || npx wrangler queues create "$queue"
+          done
+
+      - name: Apply pending source migrations
+        working-directory: video
+        run: npm run db:migrate:remote
+
+      - name: Prepare target schema and deactivate video routes
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run prepare:existing
+          config=.wrangler/generated/homepanel-existing.jsonc
+          npx wrangler d1 migrations apply homepanel-data --remote --config "$config"
+          npx wrangler d1 execute homepanel-data --remote --config "$config" \
+            --command "UPDATE video_runtime_state SET active=0, activated_at=NULL WHERE id=1;"
+
+      - name: Freeze legacy videoscraper writes
+        working-directory: video
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:true
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/old-freeze.json" --write-out '%{http_code}' "$OLD_VIDEO_BASE_URL/api/status")"
+          test "$status" = "503"
+
+      - name: Detach legacy queue consumers
+        working-directory: video
+        shell: bash
+        run: |
+          set -euo pipefail
+          for worker in videoscraper homepanel; do
+            npx wrangler queues consumer worker remove "$VIDEO_QUEUE_NAME" "$worker" || true
+          done
+
+      - name: Remove abandoned renamed homepanel Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/delete-renamed-homepanel.json"
+          status="$(curl --silent --show-error --output "$response" --write-out '%{http_code}' \
+            -X DELETE \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/homepanel")"
+          case "$status" in
+            200|404) ;;
+            *) cat "$response"; exit 1 ;;
+          esac
+
+      - name: Deploy unified code to homepanel-cloud
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          config=.wrangler/generated/homepanel-existing.jsonc
+          npx wrangler deploy --config "$config" --keep-vars
+          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/v1/health" >/dev/null
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/inactive-video.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+          test "$status" = "503"
+
+      - name: Copy, verify, and activate videoscraper data
+        working-directory: cloud
+        run: npm run migrate:videoscraper
+
+      - name: Verify unified routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 6
+          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/v1/health" >/dev/null
+          curl --fail --silent --show-error "$HOMEPANEL_BASE_URL/" >/dev/null
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/final-video-auth.json" --write-out '%{http_code}' "$HOMEPANEL_BASE_URL/api/status")"
+          case "$status" in
+            401|403) ;;
+            *) cat "$RUNNER_TEMP/final-video-auth.json"; exit 1 ;;
+          esac
+
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-video-d1-migration-${{ github.run_id }}
+          path: cloud/.wrangler/video-d1-export/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Deactivate unified video runtime on failure
+        if: failure()
+        working-directory: cloud
+        continue-on-error: true
+        shell: bash
+        run: |
+          npm run prepare:existing
+          config=.wrangler/generated/homepanel-existing.jsonc
+          npx wrangler d1 execute homepanel-data --remote --config "$config" \
+            --command "UPDATE video_runtime_state SET active=0, activated_at=NULL WHERE id=1;"
+
+      - name: Detach homepanel-cloud queue consumer on failure
+        if: failure()
+        working-directory: video
+        continue-on-error: true
+        run: npx wrangler queues consumer worker remove "$VIDEO_QUEUE_NAME" homepanel-cloud
+
+      - name: Restore videoscraper on failure
+        if: failure()
+        working-directory: video
+        continue-on-error: true
+        run: npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:false
