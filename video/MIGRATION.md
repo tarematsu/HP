@@ -35,15 +35,16 @@ The cutover checks that the secret name exists but never reads or copies its val
 4. The workflow applies pending source video migrations and the target activation migration.
 5. The target video runtime is marked inactive.
 6. The legacy `videoscraper` Worker enters `VIDEO_MIGRATION_FREEZE=true`, blocking API, queue, and scheduled writes.
-7. Any abandoned Worker named `homepanel` from the discarded rename plan is removed.
-8. Unified code is deployed to the existing `homepanel-cloud` Worker. Existing HomePanel routes remain live while video routes return 503 until activation.
-9. The target video tables in `homepanel-data` are reset without touching HomePanel tables.
-10. Each allowlisted videoscraper table is exported without schema and imported in dependency order.
-11. Row counts, foreign keys, and the D1 schema inventory are verified.
-12. The D1 activation flag is set and the video routes, queue, and cron become active on `homepanel-cloud`.
-13. Migration evidence is retained as a workflow artifact for 90 days.
+7. The single Queue push consumer is detached from `videoscraper` or an abandoned `homepanel` Worker.
+8. Any abandoned Worker named `homepanel` from the discarded rename plan is removed.
+9. Unified code is deployed to the existing `homepanel-cloud` Worker, which becomes the Queue consumer. Existing HomePanel routes remain live while video routes return 503 until activation.
+10. The target video tables in `homepanel-data` are reset without touching HomePanel tables.
+11. Each allowlisted videoscraper table is exported without schema and imported in dependency order.
+12. Row counts, foreign keys, and the D1 schema inventory are verified.
+13. The D1 activation flag is set and the video routes, queue, and cron become active on `homepanel-cloud`.
+14. Migration evidence is retained as a workflow artifact for 90 days.
 
-If the cutover fails, the workflow deactivates the unified video runtime before attempting to unfreeze the legacy `videoscraper` Worker. The source D1 database is not deleted by the cutover workflow.
+If the cutover fails, the workflow deactivates the unified video runtime, detaches the `homepanel-cloud` Queue consumer, and then attempts to redeploy and unfreeze `videoscraper`. The source D1 database is not deleted by the cutover workflow.
 
 ## Legacy resource retirement
 
