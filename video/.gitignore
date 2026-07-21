@@ -1,0 +1,10 @@
+node_modules/
+.dev.vars
+.admin-token.txt
+.wrangler/
+dist/
+dist-dry-run/
+wrangler.local.jsonc
+wrangler.production.jsonc
+.DS_Store
+*.log

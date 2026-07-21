@@ -1,0 +1,23 @@
+html, body {
+  background: #000;
+}
+
+body.is-auth-pending #authGate,
+body.is-auth-pending #player {
+  visibility: hidden !important;
+}
+
+#tapFeedback[data-side="top"],
+#tapFeedback[data-side="bottom"] {
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+}
+
+#tapFeedback[data-side="top"] {
+  top: 18%;
+}
+
+#tapFeedback[data-side="bottom"] {
+  top: 82%;
+}
