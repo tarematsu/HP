@@ -10,10 +10,15 @@ import {
 import { MANUAL_IMPORT_QUEUE_NAME } from '../src/manual-import-queue.js';
 
 const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+const unifiedWrangler = JSON.parse(await readFile(
+  new URL('../../cloud/wrangler.jsonc', import.meta.url),
+  'utf8'
+));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
 test('deployment has no video cron and drives manual imports from a Queue', () => {
   assert.equal(wrangler.triggers, undefined);
+  assert.equal(unifiedWrangler.triggers, undefined);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 12 * 60);
   assert.equal(LIVENESS_SCHEDULE, 'homepanel-alarm:720s');
