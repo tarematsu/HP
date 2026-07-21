@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   inactiveVideoRuntimeResponse,
+  readVideoRuntimeActive,
   retryInactiveVideoBatch,
-  skipInactiveVideoSchedule,
   videoRuntimeActive
 } from '../src/video_runtime_activation.js';
 
@@ -25,7 +25,7 @@ describe('video runtime activation', () => {
     );
   });
 
-  it('fails closed when the activation state cannot be read', async () => {
+  it('fails closed for request routing when the activation state cannot be read', async () => {
     const database = {
       prepare() {
         return {
@@ -37,6 +37,20 @@ describe('video runtime activation', () => {
     };
 
     await expect(videoRuntimeActive({ DB: database }, 1)).resolves.toBe(false);
+  });
+
+  it('preserves activation read errors for scheduled retry handling', async () => {
+    const database = {
+      prepare() {
+        return {
+          async first() {
+            throw new Error('temporary D1 failure');
+          }
+        };
+      }
+    };
+
+    await expect(readVideoRuntimeActive({ DB: database })).rejects.toThrow('temporary D1 failure');
   });
 
   it('returns a non-cacheable retry response before migration', async () => {
@@ -55,9 +69,5 @@ describe('video runtime activation', () => {
     const retryAll = vi.fn();
     retryInactiveVideoBatch({ messages: [{}], retryAll });
     expect(retryAll).toHaveBeenCalledOnce();
-  });
-
-  it('skips inactive scheduled work without throwing', () => {
-    expect(() => skipInactiveVideoSchedule({ cron: '*/12 * * * *' })).not.toThrow();
   });
 });
