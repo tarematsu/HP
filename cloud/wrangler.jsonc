@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "homepanel",
+  "name": "homepanel-cloud",
   "main": "src/unified_worker.js",
   "compatibility_date": "2026-06-30",
   "compatibility_flags": [
