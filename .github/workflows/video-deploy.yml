@@ -1,0 +1,95 @@
+name: Video D1 migrate and deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/video-deploy.yml'
+      - 'video/migrations/**'
+      - 'video/public/**'
+      - 'video/scripts/push-manual-import-recovery.mjs'
+      - 'video/src/**'
+      - 'video/package.json'
+      - 'video/package-lock.json'
+      - 'video/wrangler.jsonc'
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: video-cloudflare-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: video
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run full validation
+        run: npm run check
+
+  migrate-and-deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    defaults:
+      run:
+        working-directory: video
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      MANUAL_IMPORT_QUEUE: videoscraper-manual-imports
+      MANUAL_IMPORT_DLQ: videoscraper-manual-imports-dlq
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Cloudflare credentials
+        run: test -n "$CLOUDFLARE_API_TOKEN"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Resolve account and ensure queues exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
+          npx --no-install wrangler whoami
+          ensure_queue() {
+            local name="$1"
+            if ! npx --no-install wrangler queues info "$name" >/dev/null 2>&1; then
+              npx --no-install wrangler queues create "$name"
+            fi
+            npx --no-install wrangler queues info "$name"
+          }
+          ensure_queue "$MANUAL_IMPORT_QUEUE"
+          ensure_queue "$MANUAL_IMPORT_DLQ"
+      - name: Apply pending D1 migrations
+        run: npm run db:migrate:remote
+      - name: Deploy videoscraper Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --no-install wrangler deploy \
+            --strict \
+            --tag "git-${GITHUB_SHA:0:12}" \
+            --message "HP main $GITHUB_SHA"
+      - name: Verify active production deployment
+        run: |
+          npx --no-install wrangler deployments status --json > deployment-status.json
+          test -s deployment-status.json
+      - name: Seed recoverable D1 jobs
+        run: node scripts/push-manual-import-recovery.mjs
