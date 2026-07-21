@@ -106,15 +106,17 @@ function tableNames(database, target = false) {
   return rows.map((row) => String(row.name));
 }
 
-function countSql() {
-  return importOrder
-    .map((table) => `SELECT '${table}' AS table_name, COUNT(*) AS row_count FROM "${table}"`)
-    .join('\nUNION ALL\n') + ';';
-}
-
 function tableCounts(database, target = false) {
-  const rows = query(database, countSql(), target);
-  return Object.fromEntries(rows.map((row) => [String(row.table_name), Number(row.row_count)]));
+  const counts = {};
+  for (const table of importOrder) {
+    const rows = query(database, `SELECT COUNT(*) AS row_count FROM "${table}";`, target);
+    const count = Number(rows[0]?.row_count);
+    if (!Number.isSafeInteger(count) || count < 0) {
+      throw new Error(`Invalid row count returned for ${database}.${table}: ${JSON.stringify(rows)}`);
+    }
+    counts[table] = count;
+  }
+  return counts;
 }
 
 function assertSourceSchema(names) {
