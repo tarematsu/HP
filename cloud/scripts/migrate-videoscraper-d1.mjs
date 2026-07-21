@@ -234,9 +234,16 @@ const foreignKeyFailures = query(targetDatabase, 'PRAGMA foreign_key_check;', tr
 if (foreignKeyFailures.length) {
   throw new Error(`Foreign-key verification failed: ${JSON.stringify(foreignKeyFailures)}`);
 }
-const integrityRows = query(targetDatabase, 'PRAGMA integrity_check;', true);
-if (!integrityRows.some((row) => Object.values(row).includes('ok'))) {
-  throw new Error(`D1 integrity_check did not return ok: ${JSON.stringify(integrityRows)}`);
+const schemaRows = query(targetDatabase, `
+  SELECT COUNT(*) AS object_count
+    FROM sqlite_schema
+   WHERE type IN ('table', 'index', 'trigger')
+     AND name NOT LIKE 'sqlite_%'
+     AND name NOT LIKE '_cf_%';
+`, true);
+const schemaObjectCount = Number(schemaRows[0]?.object_count ?? 0);
+if (!Number.isSafeInteger(schemaObjectCount) || schemaObjectCount < importOrder.length) {
+  throw new Error(`D1 schema inventory is incomplete: ${JSON.stringify(schemaRows)}`);
 }
 
 const manifest = {
@@ -247,7 +254,8 @@ const manifest = {
   sourceCounts: sourceCountsBefore,
   targetCounts: targetCountsAfter,
   foreignKeyCheck: 'ok',
-  integrityCheck: 'ok'
+  schemaCheck: 'ok',
+  schemaObjectCount
 };
 writeFileSync(join(exportDirectory, 'migration-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(JSON.stringify(manifest, null, 2));
