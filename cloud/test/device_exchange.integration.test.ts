@@ -43,6 +43,17 @@ const versions = {
   config: 0,
 };
 
+function exchange(body: unknown): Promise<Response> {
+  return SELF.fetch("https://homepanel.test/v1/device/exchange?deviceId=homepanel-device", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer test-device",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("device exchange", () => {
   it("requires the configured device token", async () => {
     const response = await SELF.fetch("https://homepanel.test/v1/device/exchange?deviceId=homepanel-device", {
@@ -55,22 +66,15 @@ describe("device exchange", () => {
 
   it("returns sync and compact telemetry receipt in one binary response", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
-    const response = await SELF.fetch("https://homepanel.test/v1/device/exchange?deviceId=homepanel-device", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer test-device",
-        "content-type": "application/json",
+    const response = await exchange({
+      versions,
+      telemetry: {
+        deviceId: "homepanel-device",
+        appVersion: "2.12.0",
+        stationheadOk: true,
+        outboxCount: 1,
+        samples: [{ sequence: 1, observedAt, co2: 640 }],
       },
-      body: JSON.stringify({
-        versions,
-        telemetry: {
-          deviceId: "homepanel-device",
-          appVersion: "2.12.0",
-          stationheadOk: true,
-          outboxCount: 1,
-          samples: [{ sequence: 1, observedAt, co2: 640 }],
-        },
-      }),
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/vnd.homepanel.device-exchange");
@@ -106,26 +110,29 @@ describe("device exchange", () => {
       bucketMinutes: 15,
       history: [{ t: observedAt, co2: 640 }],
     });
+
+    const refreshed = decodeExchange(new Uint8Array(await (await exchange({ versions })).arrayBuffer()));
+    expect(refreshed.payload.versions).toMatchObject({ dashboard: 1 });
+    expect(JSON.parse(String(refreshed.payload.dashboard))).toMatchObject({
+      environment: {
+        deviceId: "homepanel-device",
+        bucketMinutes: 15,
+        history: [{ t: observedAt, co2: 640 }],
+      },
+    });
   });
 
   it("acknowledges a retried telemetry batch without duplicating R2 aggregates", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
-    const request = () => SELF.fetch("https://homepanel.test/v1/device/exchange?deviceId=homepanel-device", {
-      method: "POST",
-      headers: {
-        Authorization: "Bearer test-device",
-        "content-type": "application/json",
+    const request = () => exchange({
+      versions,
+      telemetry: {
+        deviceId: "homepanel-device",
+        appVersion: "2.12.0",
+        stationheadOk: true,
+        outboxCount: 1,
+        samples: [{ sequence: 1, observedAt, co2: 640 }],
       },
-      body: JSON.stringify({
-        versions,
-        telemetry: {
-          deviceId: "homepanel-device",
-          appVersion: "2.12.0",
-          stationheadOk: true,
-          outboxCount: 1,
-          samples: [{ sequence: 1, observedAt, co2: 640 }],
-        },
-      }),
     });
 
     expect((await request()).status).toBe(200);
