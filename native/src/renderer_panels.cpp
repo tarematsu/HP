@@ -8,7 +8,9 @@
 #define SplitMainSections SplitRearrangedMainSections
 #define ClockTimeRectFromCard RearrangedClockTimeRectFromCard
 #define DrawClockSection HP_DRAW_CLOCK_WITH_STATUS
+#define DrawControlsSection DrawAirSection
 #include "renderer_panels/windows.inc"
+#undef DrawControlsSection
 #undef DrawClockSection
 #undef ClockTimeRectFromCard
 #undef SplitMainSections
