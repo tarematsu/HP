@@ -1,0 +1,183 @@
+name: Cut over to unified homepanel Worker
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type MIGRATE_VIDEO_DB_TO_HOMEPANEL
+        required: true
+        type: string
+      new_worker_base_url:
+        description: Full base URL for the new homepanel Worker
+        required: true
+        type: string
+      old_video_base_url:
+        description: Full base URL for the existing videoscraper Worker
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-unified-cutover
+  cancel-in-progress: false
+
+jobs:
+  cutover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
+      HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
+      HOMEPANEL_RUNTIME_SECRETS_JSON: ${{ secrets.HOMEPANEL_RUNTIME_SECRETS_JSON }}
+      NEW_WORKER_BASE_URL: ${{ inputs.new_worker_base_url }}
+      OLD_VIDEO_BASE_URL: ${{ inputs.old_video_base_url }}
+      VIDEO_SOURCE_D1_NAME: twivideo-swiper-db
+      HOMEPANEL_D1_DATABASE_NAME: homepanel-data
+
+    steps:
+      - name: Validate cutover inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirmation }}" = "MIGRATE_VIDEO_DB_TO_HOMEPANEL"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$HOMEPANEL_RUNTIME_SECRETS_JSON"
+          case "$NEW_WORKER_BASE_URL" in https://*) ;; *) exit 1;; esac
+          case "$OLD_VIDEO_BASE_URL" in https://*) ;; *) exit 1;; esac
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: |
+          npm --prefix cloud ci --no-audit --no-fund
+          npm --prefix video ci --no-audit --no-fund
+
+      - name: Materialize and validate runtime secrets
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          secrets_file="$RUNNER_TEMP/homepanel-secrets.json"
+          old_home_file="$RUNNER_TEMP/homepanel-cloud-secret-list.json"
+          old_video_file="$RUNNER_TEMP/videoscraper-secret-list.json"
+          printf '%s' "$HOMEPANEL_RUNTIME_SECRETS_JSON" > "$secrets_file"
+          chmod 600 "$secrets_file"
+          npx wrangler secret list --name homepanel-cloud --format json > "$old_home_file"
+          npx wrangler secret list --name videoscraper --format json > "$old_video_file"
+          node scripts/validate-cutover-secrets.mjs "$old_home_file" "$old_video_file" "$secrets_file"
+          echo "secrets_file=$secrets_file" >> "$GITHUB_ENV"
+
+      - name: Ensure video queues exist
+        working-directory: video
+        shell: bash
+        run: |
+          set -euo pipefail
+          for queue in videoscraper-manual-imports videoscraper-manual-imports-dlq; do
+            npx wrangler queues info "$queue" >/dev/null 2>&1 || npx wrangler queues create "$queue"
+          done
+
+      - name: Apply pending source migrations
+        working-directory: video
+        run: npm run db:migrate:remote
+
+      - name: Freeze old videoscraper writes
+        working-directory: video
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:true
+          status="$(curl --silent --show-error --output "$RUNNER_TEMP/old-freeze.json" --write-out '%{http_code}' "$OLD_VIDEO_BASE_URL/api/status")"
+          test "$status" = "503"
+
+      - name: Prepare unified Worker config
+        working-directory: cloud
+        run: npm run prepare:existing
+
+      - name: Deploy frozen unified Worker and schema
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          config=.wrangler/generated/homepanel-existing.jsonc
+          node --input-type=module - "$config" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = process.argv[2];
+          const config = JSON.parse(readFileSync(path, 'utf8'));
+          config.vars ??= {};
+          config.vars.VIDEO_MIGRATION_FREEZE = 'true';
+          writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+          npx wrangler d1 migrations apply homepanel-data --remote --config "$config"
+          npx wrangler deploy --config "$config" --secrets-file "$secrets_file" --keep-vars
+          curl --fail --silent --show-error "$NEW_WORKER_BASE_URL/v1/health" > "$RUNNER_TEMP/new-health.json"
+
+      - name: Copy and verify videoscraper data
+        working-directory: cloud
+        run: npm run migrate:videoscraper
+
+      - name: Activate unified video routes
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          config=.wrangler/generated/homepanel-existing.jsonc
+          node --input-type=module - "$config" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const path = process.argv[2];
+          const config = JSON.parse(readFileSync(path, 'utf8'));
+          config.vars ??= {};
+          config.vars.VIDEO_MIGRATION_FREEZE = 'false';
+          writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
+          NODE
+          npx wrangler deploy --config "$config" --secrets-file "$secrets_file" --keep-vars
+
+      - name: Verify HomePanel and video APIs
+        working-directory: cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error "$NEW_WORKER_BASE_URL/v1/health" > "$RUNNER_TEMP/final-health.json"
+          admin_token="$(node --input-type=module - "$secrets_file" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const payload = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          process.stdout.write(String(payload.ADMIN_TOKEN || ''));
+          NODE
+          )"
+          test -n "$admin_token"
+          curl --fail --silent --show-error -H "Authorization: Bearer $admin_token" \
+            "$NEW_WORKER_BASE_URL/api/status" > "$RUNNER_TEMP/final-video-status.json"
+
+      - name: Upload migration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-video-d1-migration-${{ github.run_id }}
+          path: cloud/.wrangler/video-d1-export/
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Restore videoscraper on failure
+        if: failure()
+        working-directory: video
+        continue-on-error: true
+        run: npx wrangler deploy --config wrangler.jsonc --keep-vars --var VIDEO_MIGRATION_FREEZE:false
+
+      - name: Cutover summary
+        if: success()
+        run: |
+          {
+            echo '## Unified homepanel cutover verified'
+            echo
+            echo '- New Worker: homepanel'
+            echo '- Unified D1: homepanel-data'
+            echo '- Legacy resources remain frozen until retirement is approved from the migration evidence.'
+          } >> "$GITHUB_STEP_SUMMARY"
