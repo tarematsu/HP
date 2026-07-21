@@ -75,8 +75,11 @@ jobs:
           const manifest = JSON.parse(readFileSync(process.argv[2], 'utf8'));
           if (manifest.sourceDatabase !== 'twivideo-swiper-db') throw new Error('Unexpected source database');
           if (manifest.targetDatabase !== 'homepanel-data') throw new Error('Unexpected target database');
-          if (manifest.foreignKeyCheck !== 'ok' || manifest.integrityCheck !== 'ok') {
-            throw new Error('Migration integrity evidence is incomplete');
+          if (manifest.foreignKeyCheck !== 'ok' || manifest.schemaCheck !== 'ok') {
+            throw new Error('Migration verification evidence is incomplete');
+          }
+          if (!Number.isSafeInteger(Number(manifest.schemaObjectCount)) || Number(manifest.schemaObjectCount) <= 0) {
+            throw new Error('Migration schema inventory is missing');
           }
           const source = manifest.sourceCounts || {};
           const target = manifest.targetCounts || {};
