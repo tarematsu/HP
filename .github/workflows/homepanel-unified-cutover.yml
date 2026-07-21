@@ -59,7 +59,7 @@ jobs:
       - name: Install dependencies
         run: |
           npm --prefix cloud ci --no-audit --no-fund
-          npm --prefix video ci --no-audit --no-fund
+          npm --prefix video install --no-audit --no-fund
 
       - name: Materialize and validate runtime secrets
         working-directory: cloud
