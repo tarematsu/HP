@@ -2,14 +2,21 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import { LIVENESS_CRON } from '../src/liveness-schedule.js';
+import {
+  LIVENESS_INTERVAL_SECONDS,
+  LIVENESS_JOB_NAME,
+  LIVENESS_SCHEDULE
+} from '../src/liveness-schedule.js';
 import { MANUAL_IMPORT_QUEUE_NAME } from '../src/manual-import-queue.js';
 
 const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('deployment schedules only liveness and drives manual imports from a Queue', () => {
-  assert.deepEqual(wrangler.triggers?.crons, [LIVENESS_CRON]);
+test('deployment has no video cron and drives manual imports from a Queue', () => {
+  assert.equal(wrangler.triggers, undefined);
+  assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
+  assert.equal(LIVENESS_INTERVAL_SECONDS, 12 * 60);
+  assert.equal(LIVENESS_SCHEDULE, 'homepanel-alarm:720s');
   assert.deepEqual(wrangler.queues?.producers, [{
     binding: 'MANUAL_IMPORT_QUEUE',
     queue: MANUAL_IMPORT_QUEUE_NAME
@@ -24,8 +31,7 @@ test('deployment schedules only liveness and drives manual imports from a Queue'
   }]);
 });
 
-test('automatic source collection crons remain explicitly disabled', () => {
-  assert.match(entryCore, /controller\.cron === LIVENESS_CRON/);
+test('automatic source collection remains explicitly disabled', () => {
   assert.match(entryCore, /async queue\(batch, env\)/);
   assert.doesNotMatch(entryCore, /MANUAL_IMPORT_CRON/);
   assert.match(entryCore, /scheduled-collection-disabled/);
