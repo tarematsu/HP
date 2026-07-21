@@ -1,4 +1,4 @@
-name: Deploy unified homepanel Worker
+name: Deploy unified homepanel-cloud Worker
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: homepanel-unified-production
+  group: homepanel-cloud-unified-production
   cancel-in-progress: false
 
 jobs:
@@ -107,7 +107,7 @@ jobs:
         working-directory: cloud
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
-        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel
+        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
 
       - name: Report missing radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
