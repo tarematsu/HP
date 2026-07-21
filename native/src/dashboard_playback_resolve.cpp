@@ -130,13 +130,19 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.available || projection.setupRequired) return false;
   if (projection.ended) return true;
+  // The dashboard endpoint represents a completed queue with current_index=-1,
+  // playing=false and a past queue_end_at; it does not always emit `ended`.
+  // Check the absolute end before rejecting non-playing/no-current-track states.
+  if (!projection.queue.empty() && projection.queueEndAt > 0 &&
+      nowMs >= projection.queueEndAt) {
+    return true;
+  }
   if (!projection.playing || projection.queue.empty() || projection.currentIndex < 0 ||
       projection.currentIndex >= static_cast<int>(projection.queue.size())) {
     return false;
   }
   const size_t startIndex = static_cast<size_t>(projection.currentIndex);
   if (!TrackHasIdentity(projection.queue[startIndex])) return false;
-  if (projection.queueEndAt > 0 && nowMs >= projection.queueEndAt) return true;
 
   const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
   if (position.index == startIndex) return false;
