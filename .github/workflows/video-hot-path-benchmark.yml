@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/video-hot-path-benchmark.yml'
       - 'video/package.json'
+      - 'video/package-lock.json'
       - 'video/scripts/benchmark-hot-path.mjs'
       - 'video/test/hot-path-benchmark.test.js'
 
@@ -26,7 +27,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
       - name: Measure warm Worker hot path
         shell: bash
         run: |
