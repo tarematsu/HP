@@ -44,6 +44,14 @@ bool BooleanOrNumber(const JsonObject& object, const wchar_t* name,
   return fallback;
 }
 
+bool ProjectionAtQueueEnd(const NativePlaybackProjection& projection,
+                          int64_t nowMs) {
+  if (!projection.available || projection.setupRequired) return false;
+  if (projection.ended) return true;
+  return !projection.queue.empty() && projection.queueEndAt > 0 &&
+      nowMs >= projection.queueEndAt;
+}
+
 NativeMinuteFactsProjection ParseDashboardStatus(const std::wstring& payload,
                                                   int64_t fetchedAt) {
   NativeMinuteFactsProjection projection;
@@ -326,15 +334,23 @@ void Renderer::NativePlaybackLoop() {
       update.source = kPlaybackSource;
       update.error = error;
       if (hasValidPayload) {
+        const bool previousAtQueueEnd =
+            ProjectionAtQueueEnd(update.projection, fetchedAt);
+        const bool nextAtQueueEnd = ProjectionAtQueueEnd(projection, fetchedAt);
         const bool contentChanged = !update.hasPayload ||
             (!projection.queueRevision.empty()
                  ? projection.queueRevision != update.projection.queueRevision
-                 : update.payload != payload);
+                 : update.payload != payload) ||
+            previousAtQueueEnd != nextAtQueueEnd;
         update.payload = std::move(payload);
         update.projection = std::move(projection);
         update.fetchedAt = fetchedAt;
+        const bool wasMissingPayload = !update.hasPayload;
         update.hasPayload = true;
-        if (contentChanged) {
+        // Keep the fallback release revision stable while every new dashboard
+        // response still describes a completed queue. Advance it only for the
+        // first usable payload or when playable queue information returns.
+        if (contentChanged && (wasMissingPayload || !nextAtQueueEnd)) {
           update.contentRevision = ++nativePlaybackContentRevision_;
         }
       }
