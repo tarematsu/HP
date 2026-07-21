@@ -14,6 +14,7 @@ const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', imp
 const DAY_SECONDS = 86_400;
 const TARGET = 3_000;
 const STATE_HEARTBEAT_SECONDS = 60 * 60;
+const INDEXED_ROW_WRITE_MULTIPLIER = 2;
 const scheduledIntervals = {
   switchbot: 900,
   stationhead: 900,
@@ -60,28 +61,37 @@ test('scheduler migration keeps liveness while reducing other periodic work', ()
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
 });
 
-test('modeled daily D1 writes stay below the 3000-row target', () => {
-  const schedulerCompletionWrites = Object.values(scheduledIntervals)
+test('modeled daily D1 written rows stay below the 3000-row target', () => {
+  const schedulerCompletionQueries = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
-  assert.equal(schedulerCompletionWrites, 441);
+  assert.equal(schedulerCompletionQueries, 441);
+  const schedulerCompletionRows = schedulerCompletionQueries * INDEXED_ROW_WRITE_MULTIPLIER;
 
-  const switchbotStateWrites = runsPerDay(scheduledIntervals.switchbot);
-  const heartbeatStateWrites = heartbeatStateIntervals
+  const switchbotStateQueries = runsPerDay(scheduledIntervals.switchbot);
+  const heartbeatStateQueries = heartbeatStateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
-  const stateWrites = switchbotStateWrites + heartbeatStateWrites;
-  const compactTelemetryHeartbeatWrites = runsPerDay(60 * 60) * 2;
-  const changeCommandWebhookAndLegacyReserve = 2_100;
-  const modeledWrites = schedulerCompletionWrites
-    + stateWrites
-    + compactTelemetryHeartbeatWrites
-    + changeCommandWebhookAndLegacyReserve;
+  const stateQueries = switchbotStateQueries + heartbeatStateQueries;
+  const stateRows = stateQueries * INDEXED_ROW_WRITE_MULTIPLIER;
 
-  assert.equal(switchbotStateWrites, 96);
-  assert.equal(heartbeatStateWrites, 100);
-  assert.equal(stateWrites, 196);
-  assert.equal(compactTelemetryHeartbeatWrites, 48);
-  assert.equal(modeledWrites, 2_785);
-  assert.ok(modeledWrites < TARGET);
+  const compactTelemetryHeartbeatQueries = runsPerDay(60 * 60);
+  const compactTelemetryHeartbeatRows = compactTelemetryHeartbeatQueries * INDEXED_ROW_WRITE_MULTIPLIER;
+  const jobRunCheckpointQueries = Object.keys(scheduledIntervals).length * 4;
+  const jobRunCheckpointRows = jobRunCheckpointQueries * INDEXED_ROW_WRITE_MULTIPLIER;
+  const changeCommandWebhookAndLegacyRowReserve = 1_500;
+  const modeledRows = schedulerCompletionRows
+    + stateRows
+    + compactTelemetryHeartbeatRows
+    + jobRunCheckpointRows
+    + changeCommandWebhookAndLegacyRowReserve;
+
+  assert.equal(schedulerCompletionRows, 882);
+  assert.equal(switchbotStateQueries, 96);
+  assert.equal(heartbeatStateQueries, 100);
+  assert.equal(stateRows, 392);
+  assert.equal(compactTelemetryHeartbeatRows, 48);
+  assert.equal(jobRunCheckpointRows, 72);
+  assert.equal(modeledRows, 2_894);
+  assert.ok(modeledRows < TARGET);
 });
 
 test('modeled daily Worker invocations stay below the 3000-request target', () => {
