@@ -4,14 +4,16 @@
   "version": "2.5.0",
   "type": "module",
   "scripts": {
-    "check": "tsc --noEmit && node --check scripts/deploy-existing.mjs",
+    "check": "tsc --noEmit && node --check src/unified_worker.js && node --check scripts/deploy-existing.mjs && node --check scripts/migrate-videoscraper-d1.mjs && node --check scripts/validate-cutover-secrets.mjs",
+    "check:unified-bundle": "wrangler deploy --dry-run --outdir=.wrangler/unified-dry-run",
     "test": "vitest run --reporter=verbose",
     "test:integration": "vitest run test/worker.integration.test.ts --reporter=verbose",
     "prepare:existing": "node scripts/deploy-existing.mjs --prepare-only",
     "deploy": "node scripts/deploy-existing.mjs",
     "deploy:worker": "node scripts/deploy-existing.mjs --without-migrations",
     "migrate:local": "node scripts/deploy-existing.mjs --migrate-local",
-    "migrate:remote": "node scripts/deploy-existing.mjs --migrate-only"
+    "migrate:remote": "node scripts/deploy-existing.mjs --migrate-only",
+    "migrate:videoscraper": "node scripts/migrate-videoscraper-d1.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.0",
