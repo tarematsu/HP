@@ -21,7 +21,7 @@ const scheduledIntervals = {
   news: 1_800,
   weather: 3_600,
   octopus: 21_600,
-  video_liveness: 1_200,
+  video_liveness: 720,
   update_check: 21_600,
   cleanup: 86_400
 };
@@ -53,17 +53,17 @@ test('native polling is fixed at fifteen-minute sync and hourly telemetry', () =
   assert.match(nativeCloudConfig, /config\.telemetryMinutes = 60;/);
 });
 
-test('scheduler migration and liveness schedule use the reduced cadence', () => {
+test('scheduler migration keeps liveness while reducing other periodic work', () => {
   for (const [name, interval] of Object.entries(scheduledIntervals)) {
     assert.match(resourceMigration, new RegExp(`WHEN '${name}' THEN ${interval}`));
   }
-  assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 20 \* 60/);
+  assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
 });
 
 test('modeled daily D1 writes stay below the 3000-row target', () => {
   const schedulerCompletionWrites = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
-  assert.equal(schedulerCompletionWrites, 393);
+  assert.equal(schedulerCompletionWrites, 441);
 
   const switchbotStateWrites = runsPerDay(scheduledIntervals.switchbot);
   const heartbeatStateWrites = heartbeatStateIntervals
@@ -80,7 +80,7 @@ test('modeled daily D1 writes stay below the 3000-row target', () => {
   assert.equal(heartbeatStateWrites, 100);
   assert.equal(stateWrites, 196);
   assert.equal(compactTelemetryHeartbeatWrites, 48);
-  assert.equal(modeledWrites, 2_737);
+  assert.equal(modeledWrites, 2_785);
   assert.ok(modeledWrites < TARGET);
 });
 
@@ -96,8 +96,8 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
     + apiWebhookVideoAndLegacyReserve;
 
   assert.equal(nativeExchangeRequests, 96);
-  assert.equal(schedulerAlarmInvocations, 393);
-  assert.equal(modeledRequests, 2_639);
+  assert.equal(schedulerAlarmInvocations, 441);
+  assert.equal(modeledRequests, 2_687);
   assert.ok(modeledRequests < TARGET);
 });
 
