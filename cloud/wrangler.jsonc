@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "homepanel",
+  "name": "homepanel-cloud",
   "main": "src/unified_worker.js",
   "compatibility_date": "2026-06-30",
   "compatibility_flags": [
@@ -67,6 +67,7 @@
         "max_batch_size": 1,
         "max_batch_timeout": 0,
         "max_retries": 5,
+        "retry_delay": 300,
         "max_concurrency": 1,
         "dead_letter_queue": "videoscraper-manual-imports-dlq"
       }

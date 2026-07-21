@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - "cloud/**"
+      - "video/src/**"
+      - "video/public/**"
+      - "video/package.json"
       - ".github/workflows/cloudflare-pr-diagnostics.yml"
       - ".github/scripts/cloudflare-build-diagnostics.mjs"
       - ".github/scripts/resolve-cloudflare-config.mjs"

@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "cloud/**"
+      - "video/src/**"
+      - "video/public/**"
+      - "video/package.json"
       - ".github/workflows/cloudflare-build-diagnostics.yml"
       - ".github/scripts/cloudflare-build-diagnostics.mjs"
       - ".github/scripts/resolve-cloudflare-config.mjs"
@@ -12,6 +15,9 @@ on:
       - main
     paths:
       - "cloud/**"
+      - "video/src/**"
+      - "video/public/**"
+      - "video/package.json"
       - ".github/workflows/cloudflare-build-diagnostics.yml"
       - ".github/scripts/cloudflare-build-diagnostics.mjs"
       - ".github/scripts/resolve-cloudflare-config.mjs"
@@ -44,6 +50,10 @@ jobs:
       - name: Install Worker dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install video dependencies
+        working-directory: video
+        run: npm install --no-audit --no-fund
+
       - name: Type check
         shell: bash
         run: |
@@ -64,7 +74,7 @@ jobs:
         run: |
           set -eo pipefail
           rm -rf .wrangler-ci-output
-          npx wrangler deploy --dry-run --outdir .wrangler-ci-output
+          npx wrangler deploy --dry-run --outdir .wrangler-ci-output 2>&1 | tee ../cloud-bundle.log
           test -n "$(find .wrangler-ci-output -type f -size +0c -print -quit)"
 
       - name: Upload cloud validation logs on failure
@@ -75,6 +85,7 @@ jobs:
           path: |
             cloud-check.log
             cloud-test.log
+            cloud-bundle.log
           if-no-files-found: warn
           retention-days: 7
 
