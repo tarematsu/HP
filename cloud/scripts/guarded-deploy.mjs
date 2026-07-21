@@ -27,8 +27,8 @@ function runNode(args, capture = false) {
 function ensureVideoDependencies() {
   if (existsSync(videoDependencyMarker)) return;
   const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  console.log('Installing imported video Worker dependencies from package-lock.json before bundling.');
-  execFileSync(npmCommand, ['--prefix', videoRoot, 'ci', '--no-audit', '--no-fund'], {
+  console.log('Installing imported video Worker dependencies before bundling.');
+  execFileSync(npmCommand, ['--prefix', videoRoot, 'install', '--no-audit', '--no-fund'], {
     cwd: root,
     env: { ...process.env, CI: 'true' },
     stdio: 'inherit'
