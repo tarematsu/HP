@@ -1,15 +1,9 @@
 import homePanelWorker from './worker_entry.ts';
 import videoWorker from '../../video/src/entry.js';
+import { requestFamily } from './unified_routes.js';
 
 export { SchedulerCoordinator } from './worker_entry.ts';
-
-const HOMEPANEL_EXACT_PATHS = new Set(['/admin', '/v1']);
-
-export function requestFamily(pathname) {
-  return HOMEPANEL_EXACT_PATHS.has(pathname) || pathname.startsWith('/v1/')
-    ? 'homepanel'
-    : 'video';
-}
+export { requestFamily } from './unified_routes.js';
 
 export default {
   async fetch(request, env, ctx) {
