@@ -3,6 +3,8 @@ import videoWorker from '../../video/src/entry.js';
 import { requestFamily } from './unified_routes.js';
 import {
   inactiveVideoRuntimeResponse,
+  retryInactiveVideoBatch,
+  skipInactiveVideoSchedule,
   videoRuntimeActive
 } from './video_runtime_activation.js';
 
@@ -21,10 +23,7 @@ export default {
 
   async queue(batch, env, ctx) {
     if (!await videoRuntimeActive(env)) {
-      console.log('video-runtime-inactive-queue-retried', {
-        messages: batch?.messages?.length || 0
-      });
-      if (typeof batch?.retryAll === 'function') batch.retryAll();
+      retryInactiveVideoBatch(batch);
       return undefined;
     }
     if (typeof videoWorker.queue !== 'function') return undefined;
@@ -33,9 +32,7 @@ export default {
 
   async scheduled(controller, env, ctx) {
     if (!await videoRuntimeActive(env)) {
-      console.log('video-runtime-inactive-scheduled-skipped', {
-        cron: controller?.cron || ''
-      });
+      skipInactiveVideoSchedule(controller);
       return undefined;
     }
     if (typeof videoWorker.scheduled !== 'function') return undefined;
