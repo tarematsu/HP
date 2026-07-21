@@ -13,9 +13,21 @@ export interface CachedStateRow {
 }
 
 const STATE_CACHE_PREFIX = "state:v1:";
+const STATE_CACHE_SCOPES = new WeakMap<object, string>();
+let scopeSequence = 0;
 
-function stateCacheKey(source: string): string {
-  return `${STATE_CACHE_PREFIX}${source}`;
+function scopeKey(db: D1Database): object {
+  return db as unknown as object;
+}
+
+function stateCacheKey(env: Env, source: string): string {
+  const scope = STATE_CACHE_SCOPES.get(scopeKey(env.DB)) ?? "prod";
+  return `${STATE_CACHE_PREFIX}${scope}:${source}`;
+}
+
+export function invalidateStateCacheScope(db: D1Database): void {
+  scopeSequence += 1;
+  STATE_CACHE_SCOPES.set(scopeKey(db), `test-${scopeSequence}`);
 }
 
 function validNumber(value: unknown): value is number {
@@ -47,7 +59,7 @@ function isCachedStateRow(value: unknown, source: string): value is CachedStateR
 export async function readCachedState(env: Env, source: string): Promise<CachedStateRow | null> {
   if (!env.STATE_CACHE) return null;
   try {
-    const value = await env.STATE_CACHE.get<unknown>(stateCacheKey(source), "json");
+    const value = await env.STATE_CACHE.get<unknown>(stateCacheKey(env, source), "json");
     return isCachedStateRow(value, source) ? value : null;
   } catch (error) {
     console.error("KV state read failed", source, error instanceof Error ? error.message : String(error));
@@ -58,7 +70,7 @@ export async function readCachedState(env: Env, source: string): Promise<CachedS
 export async function writeCachedState(env: Env, row: CachedStateRow): Promise<void> {
   if (!env.STATE_CACHE) return;
   try {
-    await env.STATE_CACHE.put(stateCacheKey(row.source), JSON.stringify(row));
+    await env.STATE_CACHE.put(stateCacheKey(env, row.source), JSON.stringify(row));
   } catch (error) {
     console.error("KV state write failed", row.source, error instanceof Error ? error.message : String(error));
   }
@@ -67,7 +79,7 @@ export async function writeCachedState(env: Env, row: CachedStateRow): Promise<v
 export async function deleteCachedState(env: Env, source: string): Promise<void> {
   if (!env.STATE_CACHE) return;
   try {
-    await env.STATE_CACHE.delete(stateCacheKey(source));
+    await env.STATE_CACHE.delete(stateCacheKey(env, source));
   } catch (error) {
     console.error("KV state delete failed", source, error instanceof Error ? error.message : String(error));
   }
