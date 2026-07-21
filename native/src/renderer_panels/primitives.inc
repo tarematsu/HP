@@ -435,10 +435,10 @@ MusicRowRects MusicRowFromBody(const RECT& body) {
       std::clamp(rowHeight * 28 / 100, 20, 44),
       std::max(1, (rowHeight - buttonGap) / 2));
   const int buttonWidth = std::clamp(SpanX(body, 170), 64, 140);
-  // Reserve the removed status row so the two existing controls keep their
+  // Reserve the removed footer so the two existing controls keep their
   // established visual and click positions.
-  const int retiredStatusHeight = std::clamp(rowHeight * 14 / 100, 16, 30);
-  const int clusterHeight = buttonHeight * 2 + retiredStatusHeight + buttonGap * 2;
+  const int retiredFooterHeight = std::clamp(rowHeight * 14 / 100, 16, 30);
+  const int clusterHeight = buttonHeight * 2 + retiredFooterHeight + buttonGap * 2;
   const int clusterTop = rects.row.top + std::max(0, (rowHeight - clusterHeight) / 2);
   rects.button = RECT{rects.row.right - buttonWidth, clusterTop, rects.row.right,
                       clusterTop + buttonHeight};
