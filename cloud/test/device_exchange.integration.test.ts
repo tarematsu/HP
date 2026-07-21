@@ -2,13 +2,20 @@ import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
-type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
+type TestEnv = typeof env & {
+  DATA_BUCKET: R2Bucket;
+  TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
+};
+
+function testEnv(): TestEnv {
+  return env as TestEnv;
+}
 
 beforeEach(async () => {
-  const testEnv = env as TestEnv;
-  await resetD1TestDatabase(testEnv.DB, testEnv.TEST_MIGRATIONS);
-  await env.DATA_BUCKET.delete("environment/v2/latest.json");
-  await env.DATA_BUCKET.delete("telemetry/v2/homepanel-device/latest.json");
+  const bindings = testEnv();
+  await resetD1TestDatabase(bindings.DB, bindings.TEST_MIGRATIONS);
+  await bindings.DATA_BUCKET.delete("environment/v2/latest.json");
+  await bindings.DATA_BUCKET.delete("telemetry/v2/homepanel-device/latest.json");
 });
 
 function decodeExchange(bytes: Uint8Array): { payload: Record<string, unknown>; radar: Uint8Array } {
@@ -85,7 +92,7 @@ describe("device exchange", () => {
     expect(legacySamples?.count).toBe(0);
     expect(legacyBuckets?.count).toBe(0);
 
-    const stored = await env.DATA_BUCKET.get("environment/v2/latest.json");
+    const stored = await testEnv().DATA_BUCKET.get("environment/v2/latest.json");
     expect(stored).not.toBeNull();
     const document = await stored!.json<{
       lastSequences: Record<string, number>;
@@ -127,7 +134,7 @@ describe("device exchange", () => {
       nextSequence: 2,
     });
 
-    const stored = await env.DATA_BUCKET.get("environment/v2/latest.json");
+    const stored = await testEnv().DATA_BUCKET.get("environment/v2/latest.json");
     const document = await stored!.json<{ row: { payload: string } }>();
     const payload = JSON.parse(document.row.payload) as {
       history: Array<{ t: number; co2: number }>;
