@@ -7,10 +7,12 @@ import entry from '../src/entry.js';
 
 const entrySource = await readFile(new URL('../src/entry.js', import.meta.url), 'utf8');
 
-test('all requests bypass entry-level status URL parsing', () => {
-  assert.equal(entry, core);
-  assert.doesNotMatch(entrySource, /new URL\(/);
+test('normal requests bypass entry-level URL parsing', () => {
+  assert.notEqual(entry, core);
+  assert.match(
+    entrySource,
+    /migrationFreezeEnabled\(env\) && new URL\(request\.url\)\.pathname\.startsWith\('\/api\/'\)/
+  );
   assert.doesNotMatch(entrySource, /includes\('\/api\/status'\)/);
   assert.doesNotMatch(entrySource, /protectPrivateStatusResponse/);
-  assert.doesNotMatch(entrySource, /async fetch\(/);
 });
