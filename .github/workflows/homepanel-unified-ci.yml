@@ -7,6 +7,7 @@ on:
       - 'video/src/**'
       - 'video/public/**'
       - 'video/package.json'
+      - 'video/package-lock.json'
       - '.github/workflows/homepanel-unified-ci.yml'
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - 'video/src/**'
       - 'video/public/**'
       - 'video/package.json'
+      - 'video/package-lock.json'
       - '.github/workflows/homepanel-unified-ci.yml'
   workflow_dispatch:
 
@@ -42,7 +44,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install video dependencies
         working-directory: video
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Validate HomePanel code and tests
         working-directory: cloud
         run: |
