@@ -21,9 +21,10 @@ export default {
 
   async queue(batch, env, ctx) {
     if (!await videoRuntimeActive(env)) {
-      console.log('video-runtime-inactive-queue-skipped', {
+      console.log('video-runtime-inactive-queue-retried', {
         messages: batch?.messages?.length || 0
       });
+      if (typeof batch?.retryAll === 'function') batch.retryAll();
       return undefined;
     }
     if (typeof videoWorker.queue !== 'function') return undefined;
