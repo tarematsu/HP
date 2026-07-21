@@ -21,6 +21,7 @@ const migrateLocal = process.argv.includes("--migrate-local");
 const migrateRemoteOnly = process.argv.includes("--migrate-only");
 const forceRemoteMigrations = process.argv.includes("--with-migrations")
   || process.env.HOMEPANEL_APPLY_D1_MIGRATIONS?.trim() === "1";
+const secretsFile = process.env.HOMEPANEL_SECRETS_FILE?.trim() || "";
 // Schema changes remain owned by the dedicated migration workflow. Routine
 // Worker deploys opt out explicitly instead of rediscovering the same list.
 const skipRemoteMigrations = process.argv.includes("--without-migrations")
@@ -245,5 +246,10 @@ if (applyRemoteMigrations) {
   console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
 }
 if (migrateRemoteOnly) process.exit(0);
-wrangler(["deploy", "--config", generatedConfig]);
-console.log("Cloudflare runtime secrets were left unchanged");
+const deployArgs = ["deploy", "--config", generatedConfig];
+if (secretsFile) {
+  deployArgs.push("--secrets-file", secretsFile);
+  console.log(`Bootstrapping runtime secrets from ${secretsFile}`);
+}
+wrangler(deployArgs);
+console.log("Cloudflare runtime secrets were left unchanged unless HOMEPANEL_SECRETS_FILE was supplied");
