@@ -13,6 +13,7 @@ export interface CachedStateRow {
 }
 
 const STATE_CACHE_PREFIX = "state:v1:";
+const KV_HEARTBEAT_MS = 30 * 60_000;
 let activeTestScope: string | null = null;
 let scopeSequence = 0;
 
@@ -51,6 +52,14 @@ function isCachedStateRow(value: unknown, source: string): value is CachedStateR
     && validNullableString(row.content_hash);
 }
 
+function unchangedWithinHeartbeat(previous: CachedStateRow, next: CachedStateRow): boolean {
+  return previous.version === next.version
+    && previous.status === next.status
+    && previous.error === next.error
+    && previous.content_hash === next.content_hash
+    && next.fetched_at - previous.fetched_at < KV_HEARTBEAT_MS;
+}
+
 export async function readCachedState(env: Env, source: string): Promise<CachedStateRow | null> {
   if (!env.STATE_CACHE) return null;
   try {
@@ -64,8 +73,11 @@ export async function readCachedState(env: Env, source: string): Promise<CachedS
 
 export async function writeCachedState(env: Env, row: CachedStateRow): Promise<void> {
   if (!env.STATE_CACHE) return;
+  const key = stateCacheKey(row.source);
   try {
-    await env.STATE_CACHE.put(stateCacheKey(row.source), JSON.stringify(row));
+    const stored = await env.STATE_CACHE.get<unknown>(key, "json");
+    if (isCachedStateRow(stored, row.source) && unchangedWithinHeartbeat(stored, row)) return;
+    await env.STATE_CACHE.put(key, JSON.stringify(row));
   } catch (error) {
     console.error("KV state write failed", row.source, error instanceof Error ? error.message : String(error));
   }
