@@ -1,10 +1,14 @@
-name: Deploy Cloudflare Worker
+name: Deploy unified homepanel Worker
 
 on:
   push:
     branches: [main]
     paths:
       - "cloud/**"
+      - "video/src/**"
+      - "video/public/**"
+      - "video/package.json"
+      - "video/package-lock.json"
       - ".github/workflows/cloud-deploy.yml"
       - ".github/scripts/resolve-cloudflare-config.mjs"
   workflow_dispatch:
@@ -13,16 +17,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloud-deploy-production
+  group: homepanel-unified-production
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: cloud
+    timeout-minutes: 25
+    environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || secrets.CLOUDFLARE_BUILDS_ACCOUNT_ID }}
@@ -38,13 +40,17 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
+      - name: Install HomePanel dependencies
+        working-directory: cloud
+        run: npm ci --no-audit --no-fund
+
+      - name: Install video dependencies
+        working-directory: video
         run: npm ci --no-audit --no-fund
 
       - name: Resolve Cloudflare settings
         id: resolve
         run: node .github/scripts/resolve-cloudflare-config.mjs
-        working-directory: ${{ github.workspace }}
 
       - name: Validate Cloudflare credentials
         env:
@@ -53,12 +59,15 @@ jobs:
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is not configured"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured"; exit 1; }
 
-      - name: Type check and Worker tests
+      - name: Validate unified Worker
+        working-directory: cloud
         run: |
           npm run check
           npm test
+          npm run check:unified-bundle
 
       - name: Deploy Worker with migration discovery only when required
+        working-directory: cloud
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
@@ -96,9 +105,10 @@ jobs:
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
+        working-directory: cloud
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ steps.resolve.outputs.account_id }}
-        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN
+        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel
 
       - name: Report missing radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
