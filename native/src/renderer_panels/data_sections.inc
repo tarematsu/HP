@@ -114,7 +114,9 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
     const int fixedWidth = swatchWidth * 2 + swatchGap * 2 + groupGap;
     const int textWidth =
         std::max(0, legendWidth - legendPadding * 2 - fixedWidth);
-    const int currentTextWidth = std::min(currentTextSize.cx, textWidth / 2);
+    const int reservedPreviousWidth = std::min(previousTextSize.cx, textWidth / 2);
+    const int currentTextWidth =
+        std::min(currentTextSize.cx, textWidth - reservedPreviousWidth);
     const int previousTextWidth =
         std::min(previousTextSize.cx, textWidth - currentTextWidth);
     const int currentGroupWidth = swatchWidth + swatchGap + currentTextWidth;
