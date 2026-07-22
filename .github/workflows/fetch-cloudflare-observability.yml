@@ -4,6 +4,8 @@ on:
   workflow_run:
     workflows: ["Deploy unified homepanel-cloud Worker"]
     types: [completed]
+  schedule:
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       lookback_minutes:
@@ -21,16 +23,21 @@ concurrency:
 
 jobs:
   observability:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 6
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKERS: homepanel-cloud
+      D1_CONFIG_GLOBS: cloud/wrangler*.jsonc
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       CPU_BUDGET_MS: "10"
       DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
+      DAILY_REQUEST_BUDGET: "3000"
+      DAILY_D1_READ_BUDGET: "50000"
+      DAILY_D1_WRITE_BUDGET: "3000"
+      DAILY_USAGE_OUTPUT_DIR: daily-usage
 
     steps:
       - uses: actions/checkout@v4
@@ -38,30 +45,53 @@ jobs:
           show-progress: false
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      - name: Validate daily budget policy
+        run: python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+
+      - name: Enforce UTC daily request and D1 budgets
+        run: python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
+
       - name: Start post-deployment audit window
+        if: github.event_name != 'schedule'
         shell: bash
         run: echo "AUDIT_FROM=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
 
-      - name: Capture live HomePanel events
-        continue-on-error: true
+      - name: Collect metrics and live events in parallel
+        if: github.event_name != 'schedule'
         env:
           LIVE_TAIL_WORKER: homepanel-cloud
-          LIVE_TAIL_SECONDS: "180"
+          LIVE_TAIL_SECONDS: "90"
           LIVE_TAIL_PROBES: /v1/health,/
         shell: bash
-        run: node .github/scripts/capture-cloudflare-live-tail.mjs 2>&1 | tee live-tail.log
-
-      - name: Query Cloudflare metrics and persisted errors
-        shell: bash
         run: |
+          set -uo pipefail
           actual_summary="$GITHUB_STEP_SUMMARY"
-          GITHUB_STEP_SUMMARY=observability-summary.md python3 .github/scripts/query-cloudflare-observability.py
-          cat observability-summary.md >> "$actual_summary"
+          (
+            GITHUB_STEP_SUMMARY=observability-summary.md \
+              python3 .github/scripts/query-cloudflare-observability.py \
+              > observability-query.log 2>&1
+          ) &
+          query_pid=$!
+          (
+            set +e
+            node .github/scripts/capture-cloudflare-live-tail.mjs 2>&1 | tee live-tail.log
+            exit 0
+          ) &
+          tail_pid=$!
+
+          query_status=0
+          wait "$query_pid" || query_status=$?
+          wait "$tail_pid" || true
+          cat observability-query.log
+          if [[ -f observability-summary.md ]]; then
+            cat observability-summary.md >> "$actual_summary"
+          fi
+          exit "$query_status"
 
       - name: Enforce deployed Worker CPU and error policy
+        if: github.event_name != 'schedule'
         env:
           LIVE_TAIL_LOG: live-tail.log
-        shell: bash
         run: python3 .github/scripts/audit-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
 
       - name: Upload sanitized observability report
@@ -70,7 +100,10 @@ jobs:
         with:
           name: cloudflare-observability-report-hp-${{ github.run_id }}
           path: |
+            daily-usage/
+            daily-usage-audit.log
             observability-summary.md
+            observability-query.log
             telemetry-audit.log
             live-tail.log
           if-no-files-found: warn
