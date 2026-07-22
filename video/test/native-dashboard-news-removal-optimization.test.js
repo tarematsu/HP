@@ -114,21 +114,35 @@ test('native playback state retains only a compact queue signature', () => {
   assert.doesNotMatch(nativePlayback, /update\.(?:source|error|fetchedAt)\s*=/);
 });
 
-test('playback snapshots are coalesced to queue changes or 30 minute checkpoints', () => {
-  assert.match(nativePlayback, /kDashboardSnapshotCheckpointMs = 30 \* 60'000;/);
-  assert.match(nativePlayback, /const bool snapshotChanged =\s*projectionSignature != lastSnapshotSignature;/s);
-  assert.match(nativePlayback, /fetchedAt - lastSnapshotSavedAt >= kDashboardSnapshotCheckpointMs/);
-  assert.match(nativePlayback, /\(snapshotChanged \|\| checkpointDue\) &&\s*SaveDashboardSnapshot/s);
-  assert.doesNotMatch(
-    nativePlayback,
-    /ParseDashboardProjection[\s\S]*SaveDashboardSnapshot\(dataDir_, payload, \{\}, fetchedAt\);/,
-  );
+test('playback snapshots persist only compact playback and minute facts', () => {
+  assert.match(nativePlayback, /kCompactSnapshotVersion = 2;/);
+  assert.match(nativePlayback, /bool SaveDashboardSnapshot\([\s\S]*const NativePlaybackProjection& playback[\s\S]*const NativeMinuteFactsProjection& facts/s);
+  assert.match(nativePlayback, /L",\\"playback\\":\{"/);
+  assert.match(nativePlayback, /L"\]\},\\"facts\\":\{"/);
+  assert.match(nativePlayback, /bool LoadCompactSnapshot\(/);
+  assert.match(nativePlayback, /Read snapshots created by pre-v2 builds once/);
+  const saveFunction = nativePlayback.match(
+    /bool SaveDashboardSnapshot\([\s\S]*?\n\}/,
+  )?.[0] ?? '';
+  assert.doesNotMatch(saveFunction, /payload/);
 });
 
-test('dashboard status and playback share one parsed root after validation', () => {
-  assert.match(nativePlayback, /ParseDashboardStatus\(root, fetchedAt\)/);
-  assert.doesNotMatch(nativePlayback, /ParseDashboardStatus\(payload, fetchedAt\)/);
-  assert.match(nativePlayback, /ParseDashboardProjection\(\s*dataDir_, payload, fetchedAt, &statusProjection\)/s);
+test('playback snapshot writes use queue persistence changes or 30 minute checkpoints', () => {
+  assert.match(nativePlayback, /kDashboardSnapshotCheckpointMs = 30 \* 60'000;/);
+  assert.match(nativePlayback, /uint64_t PlaybackPersistenceSignature\(/);
+  assert.match(nativePlayback, /const bool snapshotChanged =\s*persistenceSignature != lastPersistenceSignature;/s);
+  assert.match(nativePlayback, /fetchedAt - lastSnapshotSavedAt >= kDashboardSnapshotCheckpointMs/);
+  assert.match(nativePlayback, /\(snapshotChanged \|\| checkpointDue\) &&\s*SaveDashboardSnapshot/s);
+});
+
+test('dashboard response JSON is parsed once for playback and status', () => {
+  assert.match(nativePlayback, /bool ParseDashboardPayload\(/);
+  assert.match(nativePlayback, /facts = ParseDashboardStatus\(root, fetchedAt\)/);
+  const fetchFunction = nativePlayback.match(
+    /std::wstring FetchDashboardJson\([\s\S]*?\n\}/,
+  )?.[0] ?? '';
+  assert.doesNotMatch(fetchFunction, /JsonObject::Parse|JsonValue::Parse/);
+  assert.match(nativePlayback, /ParseDashboardPayload\(\s*dataDir_, payload, fetchedAt, &projection, &statusProjection, &error\)/s);
 });
 
 test('unchanged playback polls do not invalidate the full Music panel', () => {
