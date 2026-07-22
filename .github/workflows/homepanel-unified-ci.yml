@@ -40,11 +40,12 @@ jobs:
       - name: Install HomePanel dependencies
         working-directory: cloud
         run: npm ci --no-audit --no-fund
-      - name: Validate HomePanel code and tests
+      - name: Check HomePanel sources
         working-directory: cloud
-        run: |
-          npm run check
-          npm test
+        run: npm run check
+      - name: Run HomePanel tests
+        working-directory: cloud
+        run: npm test
       - name: Build the unified Worker
         working-directory: cloud
         run: npm run check:unified-bundle
