@@ -172,7 +172,7 @@ bool StationheadHandleBase::IsInteractive(
     const StationheadStatus& status) const noexcept {
   if (RequiresInteractiveStationhead(status)) return true;
   return !status.audioPlaying &&
-         !SuppressTrackTransitionGap(status.audioPlaying, false);
+          !SuppressTrackTransitionGap(status.audioPlaying, false);
 }
 
 bool StationheadHandleBase::SuppressTrackTransitionGap(
@@ -228,8 +228,12 @@ void StationheadHandleBase::RaiseActiveHost() const {
 
 void StationheadHandleBase::ApplyInteractiveBounds() {
   if (!player_) return;
-  player_->ClearStartupPreviewBounds();
-  player_->SetBounds(workspaceBounds_);
+  // The handle is the sole owner of the startup-preview lifetime. Interactive
+  // transitions (login, Spotify auth, reconnect, audio-stop recovery) must not
+  // clear the player's preview state and then immediately reapply it, because
+  // that exposes a transient workspace-sized or hidden surface between the two
+  // calls. Reuse the same atomic placement path as every other bounds update.
+  ApplyBounds();
 }
 
 void StationheadHandleBase::ApplyBounds() {
