@@ -30,6 +30,8 @@ interface ShardResponse {
   byteLength: number;
 }
 
+type FixedWriter = WritableStreamDefaultWriter<Uint8Array>;
+
 function defaultCache(): Cache {
   return (caches as CloudflareCacheStorage).default;
 }
@@ -85,47 +87,60 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function recordStream(records: readonly BufferedRecord[]): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const record of records) {
-        controller.enqueue(record.header);
-        controller.enqueue(record.body);
-      }
-      controller.close();
-    },
+function fixedLengthStream(
+  byteLength: number,
+  write: (writer: FixedWriter) => Promise<void>,
+): ReadableStream<Uint8Array> {
+  const fixed = new FixedLengthStream(byteLength);
+  const writer = fixed.writable.getWriter();
+  void (async () => {
+    try {
+      await write(writer);
+      await writer.close();
+    } catch (error) {
+      await writer.abort(error).catch(() => {});
+    }
+  })();
+  return fixed.readable;
+}
+
+function recordStream(records: readonly BufferedRecord[], byteLength: number): ReadableStream<Uint8Array> {
+  return fixedLengthStream(byteLength, async writer => {
+    for (const record of records) {
+      await writer.write(record.header);
+      await writer.write(record.body);
+    }
   });
 }
 
-function shardStream(prefix: Uint8Array, responses: readonly Response[]): ReadableStream<Uint8Array> {
+function shardStream(
+  prefix: Uint8Array,
+  responses: readonly Response[],
+  byteLength: number,
+): ReadableStream<Uint8Array> {
   let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  return new ReadableStream<Uint8Array>({
-    async start(controller) {
-      controller.enqueue(prefix);
-      try {
-        for (const response of responses) {
-          if (!response.body) throw new Error("radar bundle shard body is missing");
-          const reader = response.body.getReader();
-          activeReader = reader;
-          try {
-            for (;;) {
-              const chunk = await reader.read();
-              if (chunk.done) break;
-              if (chunk.value?.length) controller.enqueue(chunk.value);
-            }
-          } finally {
-            reader.releaseLock();
-            if (activeReader === reader) activeReader = null;
+  return fixedLengthStream(byteLength, async writer => {
+    await writer.write(prefix);
+    try {
+      for (const response of responses) {
+        if (!response.body) throw new Error("radar bundle shard body is missing");
+        const reader = response.body.getReader();
+        activeReader = reader;
+        try {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            if (chunk.value?.length) await writer.write(chunk.value);
           }
+        } finally {
+          reader.releaseLock();
+          if (activeReader === reader) activeReader = null;
         }
-        controller.close();
-      } catch (error) {
-        controller.error(error);
       }
-    },
-    async cancel(reason) {
-      await activeReader?.cancel(reason);
-    },
+    } catch (error) {
+      await activeReader?.cancel(error).catch(() => {});
+      throw error;
+    }
   });
 }
 
@@ -258,7 +273,7 @@ export async function radarBundleShardResponse(request: Request, env: Env): Prom
       (total, record) => total + record.header.length + record.body.length,
       0,
     );
-    return new Response(recordStream(records), {
+    return new Response(recordStream(records, byteLength), {
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(byteLength),
@@ -349,7 +364,7 @@ export async function radarBundleResponseForPayload(
   }
 
   const response = bundleResponse(
-    shardStream(header, shards.map(shard => shard.response)),
+    shardStream(header, shards.map(shard => shard.response), totalBytes),
     totalBytes,
     paths.length,
   );
