@@ -94,6 +94,7 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   SelectObject((dc), TierFont(FontTier::Small)); \
   SetTextColor((dc), hpStationheadStatus.available ? kWidgetMuted : kWidgetSubtle); \
   DrawTextInRect((dc), hpMonitorText, hpMonitorRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  SetTextColor((dc), kWidgetMuted); \
   DrawTextInRect((dc), hpVersionText, hpVersionRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   SelectObject((dc), hpPreviousFont); \
 } while (false)
