@@ -42,6 +42,11 @@ constexpr TrackBoundaryPendingAction TrackBoundaryPendingActionFor(
   return TrackBoundaryPendingAction::Retry;
 }
 
+constexpr bool ShouldReturnMainForStationheadChanges(uint32_t changes) noexcept {
+  return (changes & StationheadChangeReturnMain) != 0 &&
+         (changes & StationheadChangeReleaseAuth) == 0;
+}
+
 static_assert(kStationheadHandoffAudioStabilityMs >= 1'000);
 static_assert(StableAudioReadyAt(150, 0) == 150);
 static_assert(StableAudioReadyAt(150, 100) == 1'600);
@@ -62,6 +67,9 @@ static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, true, true) ==
               TrackBoundaryPendingAction::Retry);
 static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, false, false) ==
               TrackBoundaryPendingAction::Retry);
+static_assert(ShouldReturnMainForStationheadChanges(StationheadChangeReturnMain));
+static_assert(!ShouldReturnMainForStationheadChanges(
+    StationheadChangeReturnMain | StationheadChangeReleaseAuth));
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -91,13 +99,8 @@ void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
         otherRequired && otherPlayer ? otherPlayer->AudioPlayingSince() : nowMs;
     if (otherRequired) {
       if (!otherPlaying || otherPlayingSince <= 0) {
-        // Require a fresh, uninterrupted stability window after every observed
-        // loss of the handoff side's audio. A one-frame WebView2 audio pulse must
-        // not authorize navigation of the other player.
         handoffReadyAt = nowMs + kStationheadHandoffAudioStabilityMs;
       } else {
-        // The per-player timestamp catches a stop/start transition even when
-        // coalesced window messages hide the intermediate stopped state.
         handoffReadyAt = StableAudioReadyAt(
             handoffReadyAt, otherPlayingSince);
       }
@@ -130,9 +133,6 @@ void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
           handoffReadyAt = 0;
           return;
         }
-        // Keep the deadline armed while RetryPendingTrackBoundaryRefresh sends
-        // the synchronous readiness message. The message handler clears it only
-        // after re-checking both players at the actual navigation instant.
         pendingPlayer->RetryPendingTrackBoundaryRefresh(nowMs);
         return;
       case TrackBoundaryPendingAction::Wait:
@@ -240,8 +240,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       }
       if (secondaryStationhead_) {
         const bool handoffPlaying = secondaryStationhead_->AudioPlaying();
-        const int64_t handoffPlayingSince =
-            secondaryStationhead_->AudioPlayingSince();
+        const int64_t handoffPlayingSince = secondaryStationhead_->AudioPlayingSince();
         if (!handoffPlaying || handoffPlayingSince <= 0) {
           primaryTrackBoundaryHandoffReadyAt_ =
               now + kStationheadHandoffAudioStabilityMs;
@@ -328,8 +327,11 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
           selectedTab_ = WorkspaceTab::Stationhead;
           layoutChanged = true;
         }
-      } else if ((changes & StationheadChangeReturnMain) != 0 &&
+      } else if (ShouldReturnMainForStationheadChanges(changes) &&
                  selectedTab_ != WorkspaceTab::Main) {
+        // Auth completion is handled by the originating StationheadPlayer,
+        // which selects its own Stationhead tab before releasing its auth view.
+        // Do not replace Window A or B with the dashboard during that handoff.
         selectedTab_ = WorkspaceTab::Main;
         layoutChanged = true;
       }
@@ -343,8 +345,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
           secondaryStationhead_ ? &secondaryStatus : nullptr,
           config_.stationhead);
       renderStationheadState.primaryAudioSelected = scheduledPrimaryAudioAudible_;
-      const bool stateChanged =
-          UpdateRenderStationheadState(std::move(renderStationheadState));
+      const bool stateChanged = UpdateRenderStationheadState(std::move(renderStationheadState));
       if (!rendererStarted_) {
         StartDeferredServices(UnixMillis(), renderState_.stationhead);
       } else if (!layoutChanged && stateChanged) {
