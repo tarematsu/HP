@@ -205,6 +205,32 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   return status;
 }
 
+int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
+  if (StationheadIsOnFallback(nativeStationhead_)) return 0;
+  std::lock_guard lock(nativePlaybackMutex_);
+  const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
+  if (!projection.available || projection.setupRequired) return 0;
+  if (projection.ended) return nowMs;
+  if (projection.queueEndAt > 0) {
+    return projection.queueEndAt <= nowMs ? nowMs : projection.queueEndAt;
+  }
+  if (!projection.playing || projection.queue.empty() || projection.currentIndex < 0 ||
+      projection.currentIndex >= static_cast<int>(projection.queue.size())) {
+    return 0;
+  }
+
+  const ProjectedTrackPosition position = ResolveProjectedTrackPosition(projection, nowMs);
+  if (position.index >= projection.queue.size()) return nowMs;
+  const int64_t duration = projection.queue[position.index].durationMs;
+  if (duration <= 0 ||
+      duration > std::numeric_limits<int64_t>::max() - kPlaybackRenderTransitionHoldMs) {
+    return 0;
+  }
+  const int64_t remaining =
+      duration + kPlaybackRenderTransitionHoldMs - position.elapsedMs;
+  return remaining <= 0 ? nowMs : nowMs + remaining;
+}
+
 Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
   NativePlaybackTickState state;
   if (StationheadIsOnFallback(nativeStationhead_)) return state;
