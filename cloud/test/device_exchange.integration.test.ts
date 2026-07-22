@@ -74,6 +74,26 @@ describe("device exchange", () => {
     expect(response.status).toBe(401);
   });
 
+  it("rejects telemetry for a different device without storing it", async () => {
+    const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
+    const response = await exchange({
+      versions,
+      telemetry: { ...telemetry(1, observedAt), deviceId: "other-device" },
+    });
+    expect(response.status).toBe(200);
+
+    const decoded = decodeExchange(new Uint8Array(await response.arrayBuffer()));
+    expect(decoded.payload.telemetryError).toEqual({
+      status: 400,
+      detail: { error: "telemetry device mismatch" },
+    });
+    expect(await testEnv().DATA_BUCKET.get("environment/v2/latest.json")).toBeNull();
+    const heartbeat = await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM device_heartbeats",
+    ).first<{ count: number }>();
+    expect(heartbeat?.count).toBe(0);
+  });
+
   it("returns sync and compact telemetry receipt in one binary response", async () => {
     const observedAt = Math.floor((Date.now() - 1000) / 900_000) * 900_000;
     const response = await exchange({ versions, telemetry: telemetry(1, observedAt) });

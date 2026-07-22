@@ -1,7 +1,7 @@
 import { authorizedDevice, deviceIdFromRequest } from "./auth";
 import { buildDeviceSyncPayload } from "./device_sync";
 import type { Env } from "./sources";
-import { receiveCompactTelemetry } from "./telemetry_compact";
+import { applyCompactTelemetryInput } from "./telemetry_compact";
 
 const EXCHANGE_MAGIC = new TextEncoder().encode("HPEX0001");
 const ENCODER = new TextEncoder();
@@ -46,33 +46,23 @@ function syncRequest(request: Request, deviceId: string, versions: Record<string
 }
 
 async function applyTelemetry(
-  request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  deviceId: string,
   telemetry: unknown,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const headers = new Headers({ "Content-Type": "application/json" });
-  const authorization = request.headers.get("Authorization");
-  if (authorization) headers.set("Authorization", authorization);
-  const telemetryResponse = await receiveCompactTelemetry(new Request("https://exchange.internal/v1/telemetry/compact", {
-    method: "POST",
-    headers,
-    body: JSON.stringify(telemetry),
-  }), env, ctx);
-  if (telemetryResponse.status === 200) {
-    payload.telemetry = await telemetryResponse.json<unknown>();
+  const result = await applyCompactTelemetryInput(telemetry, env, deviceId);
+  if (result.status === 200) {
+    payload.telemetry = result.body;
     return;
   }
-  let detail: unknown = null;
-  try { detail = await telemetryResponse.json<unknown>(); } catch { detail = null; }
-  payload.telemetryError = { status: telemetryResponse.status, detail };
+  payload.telemetryError = { status: result.status, detail: result.body };
 }
 
 export async function deviceExchangeResponse(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
+  _ctx: ExecutionContext,
 ): Promise<Response> {
   const deviceId = deviceIdFromRequest(request);
   if (!deviceId) return Response.json({ error: "valid deviceId is required" }, { status: 400 });
@@ -94,7 +84,7 @@ export async function deviceExchangeResponse(
     : {};
 
   const payload = await buildDeviceSyncPayload(syncRequest(request, deviceId, versions), env);
-  if (input.telemetry !== undefined) await applyTelemetry(request, env, ctx, input.telemetry, payload);
+  if (input.telemetry !== undefined) await applyTelemetry(env, deviceId, input.telemetry, payload);
 
   // Keep the exchange hot path focused on the small state/telemetry response.
   // The native client already falls back to the authenticated radar bundle URL
