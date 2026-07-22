@@ -8,6 +8,7 @@ namespace hp {
 namespace {
 constexpr wchar_t kDashboardUrl[] = L"https://skrzk.pages.dev/api/dashboard?history=0";
 constexpr int64_t kDashboardPollIntervalMs = 5 * 60'000;
+constexpr int64_t kDashboardSnapshotCheckpointMs = 30 * 60'000;
 constexpr size_t kMaxDashboardResponseBytes = 4 * 1024 * 1024;
 constexpr uint64_t kPayloadFnvOffset = 14695981039346656037ull;
 constexpr uint64_t kPayloadFnvPrime = 1099511628211ull;
@@ -17,13 +18,40 @@ using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
 using winrt::Windows::Data::Json::JsonValueType;
 
-uint64_t PayloadSignature(const std::wstring& payload) noexcept {
-  uint64_t hash = kPayloadFnvOffset;
-  const auto* bytes = reinterpret_cast<const unsigned char*>(payload.data());
-  const size_t byteCount = payload.size() * sizeof(wchar_t);
-  for (size_t index = 0; index < byteCount; ++index) {
+void AppendSignatureBytes(uint64_t& hash, const void* value, size_t size) noexcept {
+  const auto* bytes = static_cast<const unsigned char*>(value);
+  for (size_t index = 0; index < size; ++index) {
     hash ^= bytes[index];
     hash *= kPayloadFnvPrime;
+  }
+}
+
+template <typename T>
+void AppendSignatureValue(uint64_t& hash, const T& value) noexcept {
+  AppendSignatureBytes(hash, &value, sizeof(value));
+}
+
+void AppendSignatureText(uint64_t& hash, const std::wstring& value) noexcept {
+  AppendSignatureBytes(hash, value.data(), value.size() * sizeof(wchar_t));
+  const wchar_t separator = L'\0';
+  AppendSignatureValue(hash, separator);
+}
+
+uint64_t PlaybackSnapshotSignature(
+    const NativePlaybackProjection& projection) noexcept {
+  uint64_t hash = kPayloadFnvOffset;
+  AppendSignatureText(hash, projection.queueRevision);
+  AppendSignatureValue(hash, projection.currentIndex);
+  AppendSignatureValue(hash, projection.available);
+  AppendSignatureValue(hash, projection.ended);
+  AppendSignatureValue(hash, projection.setupRequired);
+  const size_t queueSize = projection.queue.size();
+  AppendSignatureValue(hash, queueSize);
+  for (const NativePlaybackTrack& track : projection.queue) {
+    AppendSignatureText(hash, track.title);
+    AppendSignatureText(hash, track.artist);
+    AppendSignatureText(hash, track.artwork);
+    AppendSignatureValue(hash, track.durationMs);
   }
   return hash;
 }
@@ -75,14 +103,11 @@ bool ProjectionHasPlayableTrack(const NativePlaybackProjection& projection,
   return !track.title.empty() || !track.artist.empty() || !track.artwork.empty();
 }
 
-NativeMinuteFactsProjection ParseDashboardStatus(const std::wstring& payload,
+NativeMinuteFactsProjection ParseDashboardStatus(const JsonObject& root,
                                                   int64_t fetchedAt) {
   NativeMinuteFactsProjection projection;
   projection.fetchedAt = fetchedAt;
-  if (payload.empty()) return projection;
-
   try {
-    const JsonObject root = JsonObject::Parse(payload);
     projection.ok = BooleanOrNumber(root, L"ok");
     if (!projection.ok) return projection;
 
@@ -117,9 +142,9 @@ NativePlaybackTrack ParseDashboardTrack(const fs::path& dataDir,
   return track;
 }
 
-NativePlaybackProjection ParseDashboardProjection(const fs::path& dataDir,
-                                                   const std::wstring& payload,
-                                                   int64_t fetchedAt) {
+NativePlaybackProjection ParseDashboardProjection(
+    const fs::path& dataDir, const std::wstring& payload, int64_t fetchedAt,
+    NativeMinuteFactsProjection* statusProjection) {
   NativePlaybackProjection projection;
   projection.fetchedAt = fetchedAt;
   if (payload.empty()) return projection;
@@ -127,6 +152,9 @@ NativePlaybackProjection ParseDashboardProjection(const fs::path& dataDir,
   try {
     const JsonObject root = JsonObject::Parse(payload);
     if (!json::Boolean(root, L"ok")) return projection;
+    if (statusProjection) {
+      *statusProjection = ParseDashboardStatus(root, fetchedAt);
+    }
 
     const JsonArray queue = json::Array(root, L"queue");
     const JsonObject status = json::Object(root, L"queue_status");
@@ -257,7 +285,7 @@ fs::path SnapshotPath(const fs::path& dataDir) {
   return dataDir / L"native-playback-a.json";
 }
 
-void SaveDashboardSnapshot(const fs::path& dataDir,
+bool SaveDashboardSnapshot(const fs::path& dataDir,
                            const std::wstring& payload,
                            const std::wstring& error,
                            int64_t fetchedAt) {
@@ -267,7 +295,7 @@ void SaveDashboardSnapshot(const fs::path& dataDir,
   if (!error.empty()) output << L",\"error\":" << JsonQuote(error);
   if (!payload.empty()) output << L",\"payload\":" << payload;
   output << L"}";
-  AtomicWriteText(SnapshotPath(dataDir), WideToUtf8(output.str()));
+  return AtomicWriteText(SnapshotPath(dataDir), WideToUtf8(output.str()));
 }
 
 bool LoadDashboardSnapshot(const fs::path& dataDir,
@@ -300,17 +328,20 @@ void Renderer::StartNativePlaybackBridge() {
   std::wstring error;
   int64_t fetchedAt = 0;
   if (LoadDashboardSnapshot(dataDir_, &payload, &error, &fetchedAt)) {
-    const bool hasValidPayload = error.empty() && !payload.empty();
+    bool hasValidPayload = error.empty() && !payload.empty();
     NativePlaybackProjection playbackProjection;
     NativeMinuteFactsProjection statusProjection;
     if (hasValidPayload) {
-      playbackProjection = ParseDashboardProjection(dataDir_, payload, fetchedAt);
-      statusProjection = ParseDashboardStatus(payload, fetchedAt);
+      playbackProjection = ParseDashboardProjection(
+          dataDir_, payload, fetchedAt, &statusProjection);
+      hasValidPayload = playbackProjection.available;
     }
     {
       std::lock_guard lock(nativePlaybackMutex_);
       NativePlaybackUpdate& update = nativePlaybackUpdate_;
-      update.payloadSignature = hasValidPayload ? PayloadSignature(payload) : 0;
+      update.payloadSignature = hasValidPayload
+          ? PlaybackSnapshotSignature(playbackProjection)
+          : 0;
       update.projection = std::move(playbackProjection);
       update.hasPayload = hasValidPayload;
       update.contentRevision = ++nativePlaybackContentRevision_;
@@ -333,22 +364,43 @@ void Renderer::StopNativePlaybackBridge() noexcept {
 
 void Renderer::NativePlaybackLoop() {
   const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  int64_t lastSnapshotSavedAt = 0;
+  uint64_t lastSnapshotSignature = 0;
+  {
+    std::lock_guard lock(nativePlaybackMutex_);
+    if (nativePlaybackUpdate_.hasPayload) {
+      lastSnapshotSavedAt = nativePlaybackUpdate_.projection.fetchedAt;
+      lastSnapshotSignature = nativePlaybackUpdate_.payloadSignature;
+    }
+  }
+
   while (!nativePlaybackStopping_.load(std::memory_order_acquire)) {
     std::wstring payload;
     const std::wstring error = FetchDashboardJson(&payload);
-    const bool hasValidPayload = error.empty() && !payload.empty();
+    bool hasValidPayload = error.empty() && !payload.empty();
     const int64_t fetchedAt = hasValidPayload ? UnixMillis() : 0;
-    const uint64_t payloadSignature =
-        hasValidPayload ? PayloadSignature(payload) : 0;
     NativePlaybackProjection projection;
     NativeMinuteFactsProjection statusProjection;
+    uint64_t projectionSignature = 0;
     if (hasValidPayload) {
-      projection = ParseDashboardProjection(dataDir_, payload, fetchedAt);
-      statusProjection = ParseDashboardStatus(payload, fetchedAt);
-      // Preserve the last successful snapshot across transient request errors.
-      SaveDashboardSnapshot(dataDir_, payload, {}, fetchedAt);
+      projection = ParseDashboardProjection(
+          dataDir_, payload, fetchedAt, &statusProjection);
+      hasValidPayload = projection.available;
+      if (hasValidPayload) {
+        projectionSignature = PlaybackSnapshotSignature(projection);
+        const bool snapshotChanged =
+            projectionSignature != lastSnapshotSignature;
+        const bool checkpointDue = lastSnapshotSavedAt <= 0 ||
+            fetchedAt - lastSnapshotSavedAt >= kDashboardSnapshotCheckpointMs;
+        if ((snapshotChanged || checkpointDue) &&
+            SaveDashboardSnapshot(dataDir_, payload, {}, fetchedAt)) {
+          lastSnapshotSavedAt = fetchedAt;
+          lastSnapshotSignature = projectionSignature;
+        }
+      }
     }
 
+    bool musicChanged = false;
     {
       std::lock_guard lock(nativePlaybackMutex_);
       NativePlaybackUpdate& update = nativePlaybackUpdate_;
@@ -356,12 +408,18 @@ void Renderer::NativePlaybackLoop() {
         const bool previousPlayable =
             ProjectionHasPlayableTrack(update.projection, fetchedAt);
         const bool nextPlayable = ProjectionHasPlayableTrack(projection, fetchedAt);
-        const bool queueChanged = !projection.queueRevision.empty()
-            ? projection.queueRevision != update.projection.queueRevision
-            : update.payloadSignature != payloadSignature;
+        const bool queueChanged =
+            update.payloadSignature != projectionSignature;
+        musicChanged = !update.hasPayload || queueChanged ||
+            update.projection.available != projection.available ||
+            update.projection.playing != projection.playing ||
+            update.projection.stale != projection.stale ||
+            update.projection.ended != projection.ended ||
+            update.projection.setupRequired != projection.setupRequired ||
+            update.projection.currentIndex != projection.currentIndex;
         const bool advanceContentRevision = !update.hasPayload ||
             (nextPlayable && (!previousPlayable || queueChanged));
-        update.payloadSignature = payloadSignature;
+        update.payloadSignature = projectionSignature;
         update.projection = std::move(projection);
         update.hasPayload = true;
         // Keep the fallback release revision stable while responses still have
@@ -377,7 +435,9 @@ void Renderer::NativePlaybackLoop() {
       nativeMinuteFacts_ = statusProjection;
     }
 
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    if (musicChanged) {
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
+    }
     std::unique_lock waitLock(nativePlaybackWakeMutex_);
     nativePlaybackWake_.wait_for(
         waitLock, std::chrono::milliseconds(kDashboardPollIntervalMs),
