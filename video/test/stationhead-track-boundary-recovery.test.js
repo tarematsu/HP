@@ -119,8 +119,7 @@ function page({
     assert.notEqual(index, -1, 'expected a scheduled recovery timer');
     const [timer] = timers.splice(index, 1);
     timer.callback();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise(resolve => setImmediate(resolve));
   };
 
   return {
