@@ -33,7 +33,10 @@ test('dashboard loader does not arm News rotation or publish News-only changes',
 
 test('dashboard loader retains a compact signature instead of the full JSON copy', () => {
   assert.match(dashboardLoader, /const std::string contentSignature =/);
-  assert.match(dashboardLoader, /std::to_string\(sourceSize\).*Fnv1a64\(text\)/s);
+  assert.match(
+    dashboardLoader,
+    /std::to_string\(sourceSize\) \+ ":" \+ std::to_string\(Fnv1a64\(text\)\)/,
+  );
   assert.match(dashboardLoader, /dashboardUtf8_ = contentSignature;/);
   assert.doesNotMatch(dashboardLoader, /dashboardUtf8_ = std::move\(text\)/);
 });
