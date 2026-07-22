@@ -24,23 +24,24 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
 
 MainSections SplitRearrangedMainSections(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
-  const int height = std::max(1L, client.bottom - client.top);
   const int gapX = std::max(8, width * 16 / 1000);
-  const int gapY = std::max(6, height * 45 / 1000);
-  const int newsHeight = height * 47 / 100;
   const int rowWidth = std::max(2, width - gapX);
   const int musicWidth = std::max(1, rowWidth * 65 / 100);
+  const LONG rowBottom = std::max(client.top + 1, client.bottom);
 
   MainSections sections;
-  sections.news = RECT{client.left, client.bottom - newsHeight, client.right, client.bottom};
-  const LONG rowBottom = std::max(client.top + 1, sections.news.top - gapY);
+  // News has been removed from the dashboard. Music and Electricity retain
+  // their established horizontal ratio and now use the full main-column height.
   sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
-  // MainSections::air is the right-hand top-row slot. The rearranged dashboard
-  // uses it for Electricity while Air occupies the expanded side-card slot.
+  // MainSections::air is the right-hand slot. The rearranged dashboard uses it
+  // for Electricity while Air occupies the expanded side-card slot.
   sections.air = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
   if (sections.air.right <= sections.air.left) {
     sections.air.right = sections.air.left + 1;
   }
+  // Keep the legacy News section outside the client so existing invalidation and
+  // paint plumbing remains harmless without reserving or drawing a panel.
+  sections.news = RECT{client.right, client.bottom, client.right + 1, client.bottom + 1};
   return sections;
 }
 
@@ -99,4 +100,4 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   SelectObject((dc), hpPreviousFont); \
 } while (false)
 
-}  // namespace
+}  // namespace hp
