@@ -30,6 +30,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKERS: homepanel-cloud
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
+      CPU_BUDGET_MS: "10"
 
     steps:
       - uses: actions/checkout@v4
@@ -39,3 +40,7 @@ jobs:
       - name: Query Cloudflare metrics and persisted errors
         shell: bash
         run: python3 .github/scripts/query-cloudflare-observability.py
+
+      - name: Enforce per-invocation 10 ms CPU policy
+        shell: bash
+        run: python3 .github/scripts/audit-cloudflare-telemetry.py
