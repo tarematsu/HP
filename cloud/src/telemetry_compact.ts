@@ -17,6 +17,15 @@ interface TelemetryInput {
   samples?: unknown[];
 }
 
+interface ValidatedTelemetryInput extends TelemetryInput {
+  samples: unknown[];
+}
+
+interface ValidatedTelemetry {
+  input: ValidatedTelemetryInput;
+  deviceId: string;
+}
+
 const MAX_COMPACT_TELEMETRY_SAMPLES = 60;
 
 function finiteOptional(value: unknown): number | null | undefined {
@@ -68,28 +77,22 @@ function normalizeSample(value: unknown, now: number): TelemetrySample | null {
   return normalized;
 }
 
-export async function receiveCompactTelemetry(
-  request: Request,
-  env: Env,
-  _ctx: ExecutionContext,
-): Promise<Response> {
-  if (!bearerToken(request)) return unauthorized();
-  if (!env.DATA_BUCKET) return json({ error: "telemetry storage unavailable" }, { status: 503 });
-
-  let input: TelemetryInput;
-  try {
-    input = await request.json() as TelemetryInput;
-  } catch {
-    return json({ error: "invalid json" }, { status: 400 });
-  }
-
+function validatedTelemetry(value: unknown): ValidatedTelemetry | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as TelemetryInput;
   const deviceId = String(input.deviceId ?? "").trim();
   if (!DEVICE_ID_PATTERN.test(deviceId) || !Array.isArray(input.samples) ||
       input.samples.length > MAX_COMPACT_TELEMETRY_SAMPLES) {
-    return json({ error: "invalid telemetry" }, { status: 400 });
+    return null;
   }
-  if (!authorizedDevice(request, env, deviceId)) return unauthorized();
+  return { input: input as ValidatedTelemetryInput, deviceId };
+}
 
+async function storeCompactTelemetry(
+  input: ValidatedTelemetryInput,
+  env: Env,
+  deviceId: string,
+): Promise<Response> {
   const now = Date.now();
   const unique = new Map<number, TelemetrySample>();
   let requestDuplicates = 0;
@@ -127,4 +130,39 @@ export async function receiveCompactTelemetry(
   };
   if (requestDuplicates) response.duplicates = requestDuplicates;
   return json(response);
+}
+
+export async function applyCompactTelemetryInput(
+  value: unknown,
+  env: Env,
+  expectedDeviceId: string,
+): Promise<Response> {
+  if (!env.DATA_BUCKET) return json({ error: "telemetry storage unavailable" }, { status: 503 });
+  const validated = validatedTelemetry(value);
+  if (!validated) return json({ error: "invalid telemetry" }, { status: 400 });
+  if (validated.deviceId !== expectedDeviceId) {
+    return json({ error: "telemetry device mismatch" }, { status: 400 });
+  }
+  return storeCompactTelemetry(validated.input, env, validated.deviceId);
+}
+
+export async function receiveCompactTelemetry(
+  request: Request,
+  env: Env,
+  _ctx: ExecutionContext,
+): Promise<Response> {
+  if (!bearerToken(request)) return unauthorized();
+  if (!env.DATA_BUCKET) return json({ error: "telemetry storage unavailable" }, { status: 503 });
+
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return json({ error: "invalid json" }, { status: 400 });
+  }
+
+  const validated = validatedTelemetry(value);
+  if (!validated) return json({ error: "invalid telemetry" }, { status: 400 });
+  if (!authorizedDevice(request, env, validated.deviceId)) return unauthorized();
+  return storeCompactTelemetry(validated.input, env, validated.deviceId);
 }
