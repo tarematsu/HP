@@ -18,10 +18,15 @@ constexpr wchar_t kWebView2Arguments[] =
     L"--disable-sync "
     L"--metrics-recording-only "
     L"--autoplay-policy=no-user-gesture-required "
+    // Stationhead startup, track-boundary refreshes, and WebView rebuilds must
+    // all be genuine network navigations. Disable Chromium's HTTP cache and its
+    // back/forward page-state cache while retaining the persistent profile,
+    // cookies, DOM storage, Spotify login, and DRM/session state.
+    L"--disable-http-cache "
 
 
     L"--disable-backgrounding-occluded-windows "
-    L"--disable-features=MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
+    L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 void ApplyWebView2ProcessHints() noexcept {
   static std::once_flag once;
