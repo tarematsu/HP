@@ -153,8 +153,8 @@ bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, i
 
 NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_t nowMs) const {
   NativePlaybackRender render;
-  if (source >= nativePlaybackUpdates_.size()) return render;
-  const NativePlaybackProjection& projection = nativePlaybackUpdates_[source].projection;
+  if (source != 0) return render;
+  const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
   render.available = projection.available;
   render.playing = projection.playing;
   render.stale = projection.stale;
@@ -188,10 +188,10 @@ NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowM
 
 NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
                                                                int64_t nowMs) const {
-  std::lock_guard lock(nativePlaybackMutex_);
   NativePlaybackFeedStatus status;
-  if (source >= nativePlaybackUpdates_.size()) return status;
-  const NativePlaybackUpdate& update = nativePlaybackUpdates_[source];
+  if (source != 0) return status;
+  std::lock_guard lock(nativePlaybackMutex_);
+  const NativePlaybackUpdate& update = nativePlaybackUpdate_;
   const NativePlaybackProjection& projection = update.projection;
   status.available = projection.available;
   status.playing = projection.playing;
@@ -207,11 +207,10 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
 
 Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
   NativePlaybackTickState state;
-  state.source = 0;
   if (StationheadIsOnFallback(nativeStationhead_)) return state;
 
   std::lock_guard lock(nativePlaybackMutex_);
-  const NativePlaybackUpdate& update = nativePlaybackUpdates_[0];
+  const NativePlaybackUpdate& update = nativePlaybackUpdate_;
   const NativePlaybackProjection& projection = update.projection;
   state.contentRevision = update.contentRevision;
   if (!projection.available || projection.queue.empty() || projection.currentIndex < 0 ||
