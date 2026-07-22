@@ -121,7 +121,7 @@ class Renderer {
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
-  int NewsCount() const { return newsCount_; }
+  int NewsCount() const { return 0; }
   void Render();
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
@@ -238,8 +238,7 @@ class Renderer {
     Weather,
     Controls,
     Music,
-    Energy,
-    News
+    Energy
   };
 
   void InvalidatePanelSection(HWND window, PanelSection section);
@@ -252,7 +251,6 @@ class Renderer {
   void DrawControlsSection(HDC dc, const RECT& card);
   void DrawMusicSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
-  void DrawNewsSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
   void DrawCachedPanelSection(
       HDC dc, const RECT& card, PanelSection section, uint64_t revision,
@@ -301,10 +299,8 @@ class Renderer {
   std::vector<StationheadPlayHistorySample> nativeStationheadPlayHistory_;
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
-  int nativeNewsIndex_ = 0;
   DashboardSectionRevisions renderedDashboardRevisions_{};
   uint64_t nativeAirRenderRevision_ = 0;
-  uint64_t nativeNewsRenderRevision_ = 0;
   uint64_t nativeLayoutRevision_ = 1;
   int width_ = 0;
   int height_ = 0;
@@ -320,7 +316,6 @@ class Renderer {
   DashboardSourceStamp dashboardSourceStamp_{};
   DashboardSectionRevisions dashboardRevisions_{};
   uint64_t spotifySourceRevision_ = 0;
-  int newsCount_ = 0;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
   std::thread nativePlaybackThread_;
