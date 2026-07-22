@@ -74,7 +74,9 @@ inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
     memoryIndex.urls.erase(indexed);
   }
   const auto remember = [&](std::wstring resolved, int64_t retryAfter = 0) {
-    if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
+    if (memoryIndex.urls.size() >= 128) {
+      memoryIndex.urls.erase(memoryIndex.urls.begin());
+    }
     memoryIndex.urls.insert_or_assign(
         artworkUrl, MemoryIndexEntry{std::move(resolved), retryAfter});
   };
