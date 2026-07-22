@@ -53,10 +53,6 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
         snapshot.revisions.energy != nativeDashboard_.revisions.energy;
     const bool contentChanged = weatherChanged || energyChanged;
 
-    // News is no longer rendered natively, so keep the legacy rotation count at
-    // zero. This prevents the App's 30-second News timer/state publication path
-    // from arming without changing its compatibility surface in this PR.
-    newsCount_ = 0;
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = contentSignature;
     dashboardSourceStamp_ = nextStamp;
