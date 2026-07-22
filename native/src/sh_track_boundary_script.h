@@ -78,7 +78,7 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
       })
       .slice(0, 3);
     if (!candidates.length) {
-      schedulePlaybackRecovery(2'000);
+      schedulePlaybackRecovery(2000);
       return;
     }
     try { window.__homepanelStationheadVolumeApply?.(); } catch (_) {}
@@ -95,7 +95,7 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
     playFirstAvailable().finally(() => {
       recoveryInFlight = false;
       if (anyMediaPlaying()) markRecentPlayback();
-      else schedulePlaybackRecovery(5'000);
+      else schedulePlaybackRecovery(5000);
     });
   };
 
@@ -132,10 +132,10 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
     document.addEventListener(eventName, () => schedulePlaybackRecovery(0), true);
   }
   for (const eventName of ['pause', 'stalled', 'waiting', 'error', 'emptied']) {
-    document.addEventListener(eventName, () => schedulePlaybackRecovery(1'000), true);
+    document.addEventListener(eventName, () => schedulePlaybackRecovery(1000), true);
   }
   document.addEventListener('ended', event => {
-    schedulePlaybackRecovery(1'000);
+    schedulePlaybackRecovery(1000);
     const media = event.target;
     if (!(media instanceof HTMLMediaElement) || !playedMedia.has(media)) return;
     if (!pageActive) {
