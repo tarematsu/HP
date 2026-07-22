@@ -5,6 +5,7 @@ namespace hp {
 namespace {
 constexpr int64_t kAirHistoryWindowMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kAirHistoryBucketMs = 5LL * 60 * 1000;
+constexpr int64_t kAirHistoryPersistIntervalMs = 30LL * 60 * 1000;
 constexpr int64_t kAirHistoryFutureToleranceMs = kAirHistoryBucketMs;
 constexpr size_t kAirHistoryMaxSamples =
     static_cast<size_t>(kAirHistoryWindowMs / kAirHistoryBucketMs) + 1;
@@ -78,6 +79,7 @@ void App::LoadAirHistory() {
     renderState_.airHistory = std::move(history);
     ++renderState_.airHistoryRevision;
     if (normalized) SaveAirHistory();
+    lastAirHistorySavedAt_ = now;
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history load failed: " + Utf8ToWide(error.what()));
   } catch (...) {
@@ -142,7 +144,11 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
     history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
   }
   ++renderState_.airHistoryRevision;
-  SaveAirHistory();
+  if (lastAirHistorySavedAt_ <= 0 ||
+      now - lastAirHistorySavedAt_ >= kAirHistoryPersistIntervalMs) {
+    SaveAirHistory();
+    lastAirHistorySavedAt_ = now;
+  }
   MarkRenderStateDirty();
 }
 
