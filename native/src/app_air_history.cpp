@@ -27,6 +27,20 @@ bool AirHistoryBeforeTimestamp(const AirHistorySample& sample,
 }
 }  // namespace
 
+App::HistoryFlushGuard::~HistoryFlushGuard() {
+  if (!owner) return;
+  const int64_t now = UnixMillis();
+  if (owner->airHistoryDirty_ && owner->SaveAirHistory()) {
+    owner->airHistoryDirty_ = false;
+    owner->lastAirHistorySavedAt_ = now;
+  }
+  if (owner->stationheadPlayHistoryDirty_ &&
+      owner->SaveStationheadPlayHistory()) {
+    owner->stationheadPlayHistoryDirty_ = false;
+    owner->lastStationheadPlayHistorySavedAt_ = now;
+  }
+}
+
 void App::LoadAirHistory() {
   const fs::path path = dataDir_ / L"air-history.json";
   try {
@@ -78,8 +92,9 @@ void App::LoadAirHistory() {
     }
     renderState_.airHistory = std::move(history);
     ++renderState_.airHistoryRevision;
-    if (normalized) SaveAirHistory();
-    lastAirHistorySavedAt_ = now;
+    airHistoryDirty_ = normalized;
+    if (airHistoryDirty_ && SaveAirHistory()) airHistoryDirty_ = false;
+    lastAirHistorySavedAt_ = airHistoryDirty_ ? 0 : now;
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history load failed: " + Utf8ToWide(error.what()));
   } catch (...) {
@@ -87,7 +102,7 @@ void App::LoadAirHistory() {
   }
 }
 
-void App::SaveAirHistory() const {
+bool App::SaveAirHistory() const {
   try {
     std::ostringstream output;
     output << "[";
@@ -101,14 +116,17 @@ void App::SaveAirHistory() const {
              << ",\"humidity\":" << sample.humidity << "}";
     }
     output << "]";
-    if (!AtomicWriteText(dataDir_ / L"air-history.json", output.str()) && logger_) {
-      logger_->Warn(L"Air history atomic write failed");
+    if (!AtomicWriteText(dataDir_ / L"air-history.json", output.str())) {
+      if (logger_) logger_->Warn(L"Air history atomic write failed");
+      return false;
     }
+    return true;
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history save failed: " + Utf8ToWide(error.what()));
   } catch (...) {
     if (logger_) logger_->Warn(L"Air history save failed with an unknown error");
   }
+  return false;
 }
 
 void App::UpdateAirHistory(const SensorSnapshot& sensors) {
@@ -144,10 +162,13 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
     history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
   }
   ++renderState_.airHistoryRevision;
+  airHistoryDirty_ = true;
   if (lastAirHistorySavedAt_ <= 0 ||
       now - lastAirHistorySavedAt_ >= kAirHistoryPersistIntervalMs) {
-    SaveAirHistory();
-    lastAirHistorySavedAt_ = now;
+    if (SaveAirHistory()) {
+      airHistoryDirty_ = false;
+      lastAirHistorySavedAt_ = now;
+    }
   }
   MarkRenderStateDirty();
 }
