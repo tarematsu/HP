@@ -26,6 +26,10 @@ const radarUi = readFileSync(
   new URL('../../native/src/renderer_radar_ui.cpp', import.meta.url),
   'utf8',
 );
+const bitmapCache = readFileSync(
+  new URL('../../native/src/renderer_bitmap_cache.cpp', import.meta.url),
+  'utf8',
+);
 const rendererHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
@@ -125,6 +129,13 @@ test('radar updates invalidate only the radar window and reuse a source DC', () 
   assert.doesNotMatch(radarUi, /InvalidateAllNativePanels\(\)/);
   assert.match(radarUi, /thread_local CachedRadarSourceDc cached/);
   assert.doesNotMatch(radarUi, /void BlendBitmap[\s\S]*DeleteDC\(sourceDc\)/);
+});
+
+test('native image caches use reduced LRU entry limits', () => {
+  assert.match(bitmapCache, /kNativeImageBitmapCacheLimit = 16;/);
+  assert.match(bitmapCache, /kRadarBitmapCacheLimit = 12;/);
+  assert.doesNotMatch(bitmapCache, /kNativeImageBitmapCacheLimit = 24;/);
+  assert.doesNotMatch(bitmapCache, /kRadarBitmapCacheLimit = 16;/);
 });
 
 test('native panel state no longer compares or invalidates News revisions', () => {
