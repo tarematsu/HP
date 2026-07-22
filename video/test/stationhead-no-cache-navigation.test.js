@@ -11,8 +11,9 @@ const player = readFileSync(
   'utf8',
 );
 
-test('Stationhead WebView disables HTTP cache before its first navigation', () => {
+test('Stationhead WebView disables HTTP and page-state caches before first navigation', () => {
   assert.match(environment, /L"--disable-http-cache "/);
+  assert.match(environment, /--disable-features=BackForwardCache,/);
   assert.match(
     environment,
     /ApplyWebView2ProcessHints\(\);[\s\S]*CreateCoreWebView2EnvironmentWithOptions/,
@@ -35,11 +36,16 @@ test('52-minute track-boundary navigation uses the same cache-disabled environme
   assert.equal(
     environment.match(/--disable-http-cache/g)?.length,
     1,
-    'the shared Stationhead environment should have one authoritative cache policy',
+    'the shared Stationhead environment should have one HTTP cache policy',
+  );
+  assert.equal(
+    environment.match(/BackForwardCache/g)?.length,
+    1,
+    'the shared Stationhead environment should have one page-cache policy',
   );
 });
 
-test('cache bypass does not replace the persistent Stationhead profile', () => {
+test('cache bypass does not replace or erase the persistent Stationhead profile', () => {
   assert.doesNotMatch(environment, /--incognito|--guest|--user-data-dir/);
   assert.doesNotMatch(environment, /COOKIES|ALL_SITE|ALL_PROFILE|LOCAL_STORAGE/);
 });
