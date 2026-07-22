@@ -236,6 +236,10 @@ void StationheadPlayer::ConfigureWebView() {
                     return S_OK;
                   }
                   ConfigureAuthWebView();
+                  if (!spotifyAuthorization_ || !CallbackAlive(authAlive)) {
+                    CompletePendingAuthPopupDeferral();
+                    return S_OK;
+                  }
                   if (SUCCEEDED(popupArgs->put_NewWindow(authWebview_.Get()))) {
                     popupArgs->put_Handled(TRUE);
                     SelectTab(StationheadTabKind::Auth);
