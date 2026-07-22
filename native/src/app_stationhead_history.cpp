@@ -161,6 +161,8 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
 
   ++renderState_.stationheadPlayHistoryRevision;
   stationheadPlayHistoryDirty_ = true;
+  // Do not restore `bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs`:
+  // source timestamps can lag or be bucket-rounded, so wall-clock time controls persistence.
   if (lastStationheadPlayHistorySavedAt_ <= 0 ||
       now - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs) {
     if (SaveStationheadPlayHistory()) {
