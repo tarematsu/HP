@@ -47,7 +47,7 @@ test('native panel state no longer compares or invalidates News revisions', () =
   assert.doesNotMatch(panelState, /PanelSection::News/);
 });
 
-test('playback projection work is guarded by visible main-panel state', () => {
+test('playback projection runs only while the main panel is visible', () => {
   assert.match(
     panelState,
     /if \(nativeMainWindow_ && IsWindow\(nativeMainWindow_\) &&\s*IsWindowVisible\(nativeMainWindow_\)\) \{\s*const NativePlaybackTickState playbackState = NativePlaybackTickStateFor\(nowMs\);/s,
