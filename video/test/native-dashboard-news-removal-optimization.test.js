@@ -18,6 +18,10 @@ const nativePlayback = readFileSync(
   new URL('../../native/src/dashboard_native_playback.cpp', import.meta.url),
   'utf8',
 );
+const playbackResolve = readFileSync(
+  new URL('../../native/src/dashboard_playback_resolve.cpp', import.meta.url),
+  'utf8',
+);
 const rendererHeader = readFileSync(
   new URL('../../native/src/web_renderer.h', import.meta.url),
   'utf8',
@@ -80,9 +84,18 @@ test('native playback state retains only a compact response signature', () => {
   assert.doesNotMatch(updateStruct, /std::wstring|fetchedAt/);
   assert.doesNotMatch(rendererHeader, /nativePlaybackRevision_/);
   assert.match(nativePlayback, /uint64_t PayloadSignature\(/);
-  assert.match(nativePlayback, /update\.revision = payloadSignature;/);
+  assert.match(nativePlayback, /update\.payloadSignature = payloadSignature;/);
   assert.doesNotMatch(nativePlayback, /update\.payload\s*=/);
   assert.doesNotMatch(nativePlayback, /update\.(?:source|error|fetchedAt)\s*=/);
+});
+
+test('playback update storage is reduced to one native source', () => {
+  assert.match(rendererHeader, /NativePlaybackUpdate nativePlaybackUpdate_\{\};/);
+  assert.doesNotMatch(rendererHeader, /nativePlaybackUpdates_|std::array<NativePlaybackUpdate/);
+  assert.match(nativePlayback, /NativePlaybackUpdate& update = nativePlaybackUpdate_;/);
+  assert.match(playbackResolve, /const NativePlaybackUpdate& update = nativePlaybackUpdate_;/);
+  assert.doesNotMatch(nativePlayback, /nativePlaybackUpdates_/);
+  assert.doesNotMatch(playbackResolve, /nativePlaybackUpdates_/);
 });
 
 test('native panel state no longer compares or invalidates News revisions', () => {
