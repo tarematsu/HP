@@ -33,7 +33,12 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
 
     const DashboardSourceStamp nextStamp{
         normalizedPath, sourceSize, modifiedAt, true};
-    if (text == dashboardUtf8_) {
+    // Retain only a small content signature instead of a second persistent copy
+    // of dashboard.json. Size is included so an equal FNV value for differently
+    // sized input cannot suppress parsing after metadata-only file replacement.
+    const std::string contentSignature =
+        std::to_string(sourceSize) + L":" + std::to_string(Fnv1a64(text));
+    if (dashboardSourceStamp_.valid && dashboardUtf8_ == contentSignature) {
       dashboardSourceStamp_ = nextStamp;
       return true;
     }
@@ -45,17 +50,17 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
         snapshot.revisions.weather != nativeDashboard_.revisions.weather;
     const bool energyChanged = firstSnapshot ||
         snapshot.revisions.energy != nativeDashboard_.revisions.energy;
-    const bool newsChanged = firstSnapshot ||
-        snapshot.revisions.news != nativeDashboard_.revisions.news;
-    const bool contentChanged = weatherChanged || energyChanged || newsChanged;
+    const bool contentChanged = weatherChanged || energyChanged;
 
-    newsCount_ = snapshot.newsItemCount;
+    // News is no longer rendered natively, so keep the legacy rotation count at
+    // zero. This prevents the App's 30-second News timer/state publication path
+    // from arming without changing its compatibility surface in this PR.
+    newsCount_ = 0;
     nativeDashboard_ = std::move(snapshot);
-    dashboardUtf8_ = std::move(text);
+    dashboardUtf8_ = contentSignature;
     dashboardSourceStamp_ = nextStamp;
     if (weatherChanged) ++dashboardRevisions_.weather;
     if (energyChanged) ++dashboardRevisions_.energy;
-    if (newsChanged) ++dashboardRevisions_.news;
     if (changed) *changed = contentChanged;
     return true;
   } catch (...) {
