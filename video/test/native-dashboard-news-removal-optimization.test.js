@@ -30,6 +30,22 @@ const airHistory = readFileSync(
   new URL('../../native/src/app_air_history.cpp', import.meta.url),
   'utf8',
 );
+const stationheadHistory = readFileSync(
+  new URL('../../native/src/app_stationhead_history.cpp', import.meta.url),
+  'utf8',
+);
+const stationheadHandles = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
+const stationheadPlayerHeader = readFileSync(
+  new URL('../../native/src/sh.h', import.meta.url),
+  'utf8',
+);
+const sensorSerial = readFileSync(
+  new URL('../../native/src/sensors_serial.cpp', import.meta.url),
+  'utf8',
+);
 const loggerHeader = readFileSync(
   new URL('../../native/src/logger.h', import.meta.url),
   'utf8',
@@ -160,7 +176,7 @@ test('playback update storage is reduced to one native source', () => {
   assert.doesNotMatch(playbackResolve, /nativePlaybackUpdates_/);
 });
 
-test('artwork URL resolution avoids repeated probes and backs off failures', () => {
+test('artwork URL resolution avoids repeated probes, backs off failures, and evicts one entry', () => {
   assert.match(artworkCache, /static thread_local MemoryIndex memoryIndex;/);
   assert.match(artworkCache, /const auto indexed = memoryIndex\.urls\.find\(artworkUrl\);/);
   assert.match(artworkCache, /kArtworkFailureRetryMs = 30 \* 60'000/);
@@ -168,6 +184,8 @@ test('artwork URL resolution avoids repeated probes and backs off failures', () 
   assert.match(artworkCache, /remember\(artworkUrl, now \+ kArtworkFailureRetryMs\)/);
   assert.match(artworkCache, /static thread_local fs::path preparedCacheDir;/);
   assert.match(artworkCache, /memoryIndex\.urls\.size\(\) >= 128/);
+  assert.match(artworkCache, /memoryIndex\.urls\.erase\(memoryIndex\.urls\.begin\(\)\)/);
+  assert.doesNotMatch(artworkCache, /size\(\) >= 128\) memoryIndex\.urls\.clear\(\)/);
 });
 
 test('air history display remains five minute data while persistence is batched', () => {
@@ -181,6 +199,32 @@ test('air history display remains five minute data while persistence is batched'
     airHistory,
     /\+\+renderState_\.airHistoryRevision;\s*SaveAirHistory\(\);\s*MarkRenderStateDirty\(\);/s,
   );
+});
+
+test('Stationhead play history persists on a fixed 30 minute cadence', () => {
+  assert.match(stationheadHistory, /kPersistIntervalMs = 30LL \* 60 \* 1000;/);
+  assert.match(stationheadHistory, /lastStationheadPlayHistorySavedAt_ = history\.empty\(\) \? 0 : now;/);
+  assert.match(
+    stationheadHistory,
+    /bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs[\s\S]*SaveStationheadPlayHistory\(\)/,
+  );
+  assert.doesNotMatch(stationheadHistory, /currentValueChanged/);
+  assert.doesNotMatch(stationheadHistory, /currentValueChanged \|\|/);
+});
+
+test('steady Stationhead ticks read only the authorization flag', () => {
+  assert.match(stationheadPlayerHeader, /bool SpotifyAuthorizationActive\(\) const/);
+  assert.match(stationheadHandles, /player_->SpotifyAuthorizationActive\(\)/);
+  assert.doesNotMatch(stationheadHandles, /player_->Status\(\)\.spotifyAuthorization/);
+});
+
+test('missing serial sensors use bounded exponential retry backoff', () => {
+  assert.match(sensorSerial, /kSerialRetryInitial = std::chrono::seconds\(10\)/);
+  assert.match(sensorSerial, /kSerialRetryMaximum = std::chrono::seconds\(60\)/);
+  assert.match(sensorSerial, /const auto waitForRetry/);
+  assert.match(sensorSerial, /retryDelay = std::min\(retryDelay \* 2, kSerialRetryMaximum\)/);
+  assert.match(sensorSerial, /if \(changed\) PostMessageW\(window_, WM_HP_SENSOR_UPDATED/);
+  assert.doesNotMatch(sensorSerial, /wait_for\(lock, std::chrono::seconds\(10\)/);
 });
 
 test('logger keeps one stream open and avoids filesystem metadata checks per line', () => {
