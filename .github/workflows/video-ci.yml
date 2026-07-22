@@ -34,6 +34,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-22-video-${{ hashFiles('video/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-video-
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Run syntax checks
@@ -45,13 +52,13 @@ jobs:
         run: |
           set -o pipefail
           npm test 2>&1 | tee test-output.log
-      - name: Upload test output
-        if: always()
+      - name: Upload failed test output
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: video-ci-test-output-${{ github.run_id }}
           path: video/test-output.log
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 7
       - name: Validate Worker bundle
         run: npm run check:bundle

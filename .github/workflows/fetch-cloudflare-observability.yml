@@ -1,11 +1,6 @@
 name: Check Cloudflare observability logs
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "cloud/**"
-      - ".github/workflows/fetch-cloudflare-observability.yml"
   workflow_dispatch:
     inputs:
       since:
@@ -22,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cloudflare-observability-hp-${{ github.event.pull_request.number || github.ref }}
+  group: cloudflare-observability-hp-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

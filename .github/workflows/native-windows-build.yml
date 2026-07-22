@@ -38,6 +38,12 @@ jobs:
           $version = [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz).ToString("yyMMddHHmm")
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
+      - name: Restore WebView2 SDK cache
+        uses: actions/cache@v4
+        with:
+          path: native/packages/Microsoft.Web.WebView2.1.0.4022.49
+          key: ${{ runner.os }}-webview2-1.0.4022.49
+
       - name: Install WebView2 SDK
         shell: pwsh
         run: |
@@ -139,7 +145,7 @@ jobs:
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cmake --build native/build-analyze --config Release --target HomePanel --parallel 2 `
+          cmake --build native/build-analyze --config Release --target HomePanel HomePanelUpdater --parallel 2 `
             2>&1 | Tee-Object native/ci-logs/analyze-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -157,7 +163,7 @@ jobs:
           }
 
       - name: Package native release
-        if: success()
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
@@ -290,7 +296,7 @@ jobs:
           }
 
       - name: Upload native release package
-        if: success()
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: homepanel-native-windows

@@ -41,6 +41,14 @@ jobs:
         with:
           node-version: 22
 
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-22-deploy-${{ hashFiles('cloud/package-lock.json', 'video/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-deploy-
+
       - name: Install HomePanel dependencies
         working-directory: cloud
         run: npm ci --no-audit --no-fund
@@ -124,8 +132,7 @@ jobs:
             cloud/scripts/deploy-existing.mjs \
             cloud/wrangler.jsonc \
             cloud/package.json \
-            cloud/package-lock.json \
-            .github/workflows/d1-migrations.yml; then
+            cloud/package-lock.json; then
             npm run deploy:worker
           else
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
