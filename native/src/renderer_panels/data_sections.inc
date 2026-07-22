@@ -107,32 +107,39 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
                           &currentTextSize);
     GetTextExtentPoint32W(dc, previousLegend.c_str(), static_cast<int>(previousLegend.size()),
                           &previousTextSize);
+    const int legendWidth = static_cast<int>(legend.right - legend.left);
+    const int legendPadding = std::max(2, SpanX(body, 10));
     const int swatchGap = std::max(4, SpanX(body, 15));
     const int groupGap = std::max(12, SpanX(body, 45));
-    const int currentGroupWidth = swatchWidth + swatchGap + currentTextSize.cx;
-    const int previousGroupWidth = swatchWidth + swatchGap + previousTextSize.cx;
+    const int fixedWidth = swatchWidth * 2 + swatchGap * 2 + groupGap;
+    const int textWidth =
+        std::max(0, legendWidth - legendPadding * 2 - fixedWidth);
+    const int currentTextWidth = std::min(currentTextSize.cx, textWidth / 2);
+    const int previousTextWidth =
+        std::min(previousTextSize.cx, textWidth - currentTextWidth);
+    const int currentGroupWidth = swatchWidth + swatchGap + currentTextWidth;
+    const int previousGroupWidth = swatchWidth + swatchGap + previousTextWidth;
     const int comparisonWidth = currentGroupWidth + groupGap + previousGroupWidth;
     const int comparisonLeft =
-        legend.left +
-        std::max(0, (static_cast<int>(legend.right - legend.left) - comparisonWidth) / 2);
+        legend.left + std::max(legendPadding, (legendWidth - comparisonWidth) / 2);
     const int swatchTop = legend.top + (legendHeight - swatchHeight) / 2;
     RECT currentSwatch{comparisonLeft, swatchTop, comparisonLeft + swatchWidth,
                        swatchTop + swatchHeight};
     RECT currentLegendRect{currentSwatch.right + swatchGap, legend.top,
-                           currentSwatch.right + swatchGap + currentTextSize.cx, legend.bottom};
+                           currentSwatch.right + swatchGap + currentTextWidth, legend.bottom};
     RECT previousSwatch{currentLegendRect.right + groupGap, swatchTop,
                         currentLegendRect.right + groupGap + swatchWidth,
                         swatchTop + swatchHeight};
     RECT previousLegendRect{previousSwatch.right + swatchGap, legend.top,
-                            previousSwatch.right + swatchGap + previousTextSize.cx, legend.bottom};
+                            previousSwatch.right + swatchGap + previousTextWidth, legend.bottom};
     DrawWidgetCard(dc, currentSwatch, kWidgetCyan, 2, 220);
     drawPreviousOverlay(previousSwatch);
 
     SetTextColor(dc, kWidgetMuted);
     DrawTextInRect(dc, currentLegend, currentLegendRect,
-                   DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     DrawTextInRect(dc, previousLegend, previousLegendRect,
-                   DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     RECT plot{chart.left + yLabelWidth, legend.bottom + SpanY(body, 15),
               chart.right - SpanX(body, 10), chart.bottom - axisHeight};
