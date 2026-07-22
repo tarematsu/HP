@@ -5,7 +5,7 @@
 
 namespace hp {
 inline bool ContainsInsensitive(const std::wstring& value,
-                                const wchar_t* needle) noexcept {
+                                 const wchar_t* needle) noexcept {
   return needle && StrStrIW(value.c_str(), needle) != nullptr;
 }
 
@@ -45,19 +45,35 @@ inline std::wstring GuessArtworkExtension(const std::wstring& contentType,
 }
 
 inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
-                                     const std::wstring& artworkUrl,
-                                     const wchar_t* userAgent =
-                                         L"HomePanel-Artwork-Cache/1.0") {
+                                    const std::wstring& artworkUrl,
+                                    const wchar_t* userAgent =
+                                        L"HomePanel-Artwork-Cache/1.0") {
   if (artworkUrl.empty()) return {};
   if (artworkUrl.rfind(L"https://data.homepanel/", 0) == 0) return artworkUrl;
+
+  struct MemoryIndex {
+    fs::path dataDir;
+    std::map<std::wstring, std::wstring> urls;
+  };
+  static thread_local MemoryIndex memoryIndex;
+  if (memoryIndex.dataDir != dataDir) {
+    memoryIndex.dataDir = dataDir;
+    memoryIndex.urls.clear();
+  }
+  const auto indexed = memoryIndex.urls.find(artworkUrl);
+  if (indexed != memoryIndex.urls.end()) return indexed->second;
 
   const std::string key = WideToUtf8(artworkUrl);
   if (key.empty()) return artworkUrl;
 
   const std::wstring stem = Hex64(Fnv1a64(key));
   const fs::path cacheDir = dataDir / L"spotify-artwork-cache";
-  std::error_code error;
-  fs::create_directories(cacheDir, error);
+  static thread_local fs::path preparedCacheDir;
+  if (preparedCacheDir != cacheDir) {
+    std::error_code error;
+    fs::create_directories(cacheDir, error);
+    preparedCacheDir = cacheDir;
+  }
 
   std::wstring localUrl = L"https://data.homepanel/spotify-artwork-cache/";
   localUrl += stem;
@@ -67,19 +83,27 @@ inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
     const fs::path cached = cacheDir / (stem + extension);
     std::error_code itemError;
     const auto size = fs::file_size(cached, itemError);
-    if (!itemError && size > 0) return localUrl + extension;
+    if (!itemError && size > 0) {
+      const std::wstring resolved = localUrl + extension;
+      if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
+      memoryIndex.urls.emplace(artworkUrl, resolved);
+      return resolved;
+    }
   }
 
   std::vector<uint8_t> bytes;
   std::wstring contentType;
   if (!WinHttpDownload(artworkUrl.c_str(), 8 * 1024 * 1024, &bytes, &contentType,
-                        nullptr, userAgent)) {
+                       nullptr, userAgent)) {
     return artworkUrl;
   }
 
   const std::wstring extension = GuessArtworkExtension(contentType, artworkUrl);
   const fs::path cached = cacheDir / (stem + extension);
   if (!AtomicWriteBytes(cached, bytes)) return artworkUrl;
-  return localUrl + extension;
+  const std::wstring resolved = localUrl + extension;
+  if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
+  memoryIndex.urls.emplace(artworkUrl, resolved);
+  return resolved;
 }
 }  // namespace hp
