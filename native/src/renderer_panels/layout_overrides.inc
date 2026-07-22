@@ -42,13 +42,13 @@ MainSections SplitRearrangedMainSections(const RECT& client) {
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   const RECT content = CardContentRect(card);
-  // Include the footer in the clock tick invalidation so the moved status is
-  // refreshed without a separate polling or invalidation subsystem.
-  RECT dynamicRect{content.left, content.top + SpanY(content, 170),
-                   content.right, content.bottom};
-  if (dynamicRect.right <= dynamicRect.left) dynamicRect.right = dynamicRect.left + 1;
-  if (dynamicRect.bottom <= dynamicRect.top) dynamicRect.bottom = dynamicRect.top + 1;
-  return dynamicRect;
+  // The one-second tick changes only the large time text. The monitor footer
+  // displays minute precision and is refreshed by the minute boundary tick.
+  RECT timeRect{content.left, content.top + SpanY(content, 170),
+                content.right, content.top + SpanY(content, 705)};
+  if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
+  if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
+  return timeRect;
 }
 
 std::wstring DashboardStatusTimeText(int64_t epochMs) {
@@ -95,4 +95,4 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   SelectObject((dc), hpPreviousFont); \
 } while (false)
 
-}  // namespace
+}  // namespace hp
