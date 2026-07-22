@@ -6,12 +6,24 @@ const dashboardParser = readFileSync(
   new URL('../../native/src/dashboard_data.cpp', import.meta.url),
   'utf8',
 );
+const dashboardDataHeader = readFileSync(
+  new URL('../../native/src/dashboard_data.h', import.meta.url),
+  'utf8',
+);
 const dashboardLoader = readFileSync(
   new URL('../../native/src/renderer_dashboard.cpp', import.meta.url),
   'utf8',
 );
 const panelState = readFileSync(
   new URL('../../native/src/renderer_panel_state.cpp', import.meta.url),
+  'utf8',
+);
+const panelWindows = readFileSync(
+  new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
+  'utf8',
+);
+const dataSections = readFileSync(
+  new URL('../../native/src/renderer_panels/data_sections.inc', import.meta.url),
   'utf8',
 );
 const layout = readFileSync(
@@ -25,9 +37,14 @@ test('removed native News panel no longer parses or hashes News payloads', () =>
   assert.doesNotMatch(dashboardParser, /next\.revisions\.news/);
 });
 
-test('dashboard loader does not arm News rotation or publish News-only changes', () => {
+test('News data types and snapshot storage are removed', () => {
+  assert.doesNotMatch(dashboardDataHeader, /NewsItemData/);
+  assert.doesNotMatch(dashboardDataHeader, /newsItems|newsItemCount/);
+  assert.doesNotMatch(dashboardDataHeader, /uint64_t news/);
+});
+
+test('dashboard loader does not publish News-only changes', () => {
   assert.match(dashboardLoader, /const bool contentChanged = weatherChanged \|\| energyChanged;/);
-  assert.match(dashboardLoader, /newsCount_ = 0;/);
   assert.doesNotMatch(dashboardLoader, /dashboardRevisions_\.news/);
 });
 
@@ -47,16 +64,15 @@ test('native panel state no longer compares or invalidates News revisions', () =
   assert.doesNotMatch(panelState, /PanelSection::News/);
 });
 
+test('News drawing function and paint branches are removed', () => {
+  assert.doesNotMatch(dataSections, /DrawNewsSection|ニュース取得待ち/);
+  assert.doesNotMatch(panelWindows, /PanelSection::News|sections\.news|nativeNewsRenderRevision_/);
+  assert.doesNotMatch(layout, /sections\.news/);
+});
+
 test('playback projection runs only while the main panel is visible', () => {
   assert.match(
     panelState,
     /if \(nativeMainWindow_ && IsWindow\(nativeMainWindow_\) &&\s*IsWindowVisible\(nativeMainWindow_\)\) \{\s*const NativePlaybackTickState playbackState = NativePlaybackTickStateFor\(nowMs\);/s,
-  );
-});
-
-test('legacy News rectangle remains outside the visible main client', () => {
-  assert.match(
-    layout,
-    /sections\.news = RECT\{client\.right, client\.bottom, client\.right \+ 1, client\.bottom \+ 1\};/,
   );
 });
