@@ -14,6 +14,10 @@ const dashboardLoader = readFileSync(
   new URL('../../native/src/renderer_dashboard.cpp', import.meta.url),
   'utf8',
 );
+const rendererHeader = readFileSync(
+  new URL('../../native/src/web_renderer.h', import.meta.url),
+  'utf8',
+);
 const panelState = readFileSync(
   new URL('../../native/src/renderer_panel_state.cpp', import.meta.url),
   'utf8',
@@ -43,9 +47,15 @@ test('News data types and snapshot storage are removed', () => {
   assert.doesNotMatch(dashboardDataHeader, /uint64_t news/);
 });
 
+test('Renderer retains no News enum, drawing declaration, or state member', () => {
+  assert.doesNotMatch(rendererHeader, /PanelSection::News|\bNews\s*[,}]/);
+  assert.doesNotMatch(rendererHeader, /DrawNewsSection/);
+  assert.doesNotMatch(rendererHeader, /nativeNewsIndex_|nativeNewsRenderRevision_|newsCount_/);
+});
+
 test('dashboard loader does not publish News-only changes', () => {
   assert.match(dashboardLoader, /const bool contentChanged = weatherChanged \|\| energyChanged;/);
-  assert.doesNotMatch(dashboardLoader, /dashboardRevisions_\.news/);
+  assert.doesNotMatch(dashboardLoader, /dashboardRevisions_\.news|newsCount_/);
 });
 
 test('dashboard loader retains a compact signature instead of the full JSON copy', () => {
