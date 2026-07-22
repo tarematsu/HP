@@ -18,6 +18,11 @@ constexpr wchar_t kWebView2Arguments[] =
     L"--disable-sync "
     L"--metrics-recording-only "
     L"--autoplay-policy=no-user-gesture-required "
+    // Stationhead startup, track-boundary refreshes, and WebView rebuilds must
+    // all be genuine network navigations. Disable only Chromium's HTTP cache;
+    // the persistent profile still retains cookies, DOM storage, Spotify login,
+    // and DRM/session state needed for unattended playback.
+    L"--disable-http-cache "
 
 
     L"--disable-backgrounding-occluded-windows "
