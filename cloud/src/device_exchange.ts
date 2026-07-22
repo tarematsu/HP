@@ -102,7 +102,7 @@ export async function deviceExchangeResponse(
   // the Free-plan 10 ms stateless invocation budget.
   const jsonBytes = ENCODER.encode(JSON.stringify(payload));
   const body = exchangeBody(jsonBytes);
-  return new Response(body, {
+  return new Response(body.buffer as ArrayBuffer, {
     status: 200,
     headers: {
       "Content-Type": "application/vnd.homepanel.device-exchange",
