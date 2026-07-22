@@ -111,11 +111,12 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
     const int groupGap = std::max(12, SpanX(body, 45));
     const int currentGroupWidth = swatchWidth + swatchGap + currentTextSize.cx;
     const int previousGroupWidth = swatchWidth + swatchGap + previousTextSize.cx;
-    const int groupWidth = currentGroupWidth + groupGap + previousGroupWidth;
-    const int groupLeft =
-        legend.left + std::max(0, (static_cast<int>(legend.right - legend.left) - groupWidth) / 2);
+    const int comparisonWidth = currentGroupWidth + groupGap + previousGroupWidth;
+    const int comparisonLeft =
+        legend.left +
+        std::max(0, (static_cast<int>(legend.right - legend.left) - comparisonWidth) / 2);
     const int swatchTop = legend.top + (legendHeight - swatchHeight) / 2;
-    RECT currentSwatch{groupLeft, swatchTop, groupLeft + swatchWidth,
+    RECT currentSwatch{comparisonLeft, swatchTop, comparisonLeft + swatchWidth,
                        swatchTop + swatchHeight};
     RECT currentLegendRect{currentSwatch.right + swatchGap, legend.top,
                            currentSwatch.right + swatchGap + currentTextSize.cx, legend.bottom};
