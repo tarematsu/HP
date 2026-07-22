@@ -41,9 +41,47 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Validate Cloudflare observability policies
+        shell: bash
         run: |
+          set -euo pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/fetch-cloudflare-observability.yml').read_text()
+          telemetry = Path('.github/scripts/audit-cloudflare-telemetry.py').read_text()
+          required_workflow = (
+              'workflows: ["Deploy unified homepanel-cloud Worker"]',
+              'cron: "23 * * * *"',
+              'cron: "47 2 * * *"',
+              'DAILY_REQUEST_BUDGET: "3000"',
+              'DAILY_REQUEST_RESERVE: "0"',
+              'DAILY_D1_READ_BUDGET: "50000"',
+              'DAILY_D1_WRITE_BUDGET: "3000"',
+              'LIVE_TAIL_SECONDS: "90"',
+              'LIVE_TAIL_LOG: live-tail.log',
+              "github.event.schedule == '47 2 * * *'",
+              'set -o pipefail',
+              'retention-days: 1',
+          )
+          required_telemetry = (
+              'scriptVersion',
+              'fromisoformat',
+              'old_version_invocations_excluded',
+              'LIVE_TAIL_EVENT=',
+              'missing_workers',
+              'DURABLE_OBJECT_CPU_BUDGET_MS',
+          )
+          for marker in required_workflow:
+              assert marker in workflow, marker
+          for marker in required_telemetry:
+              assert marker in telemetry, marker
+          assert '\n  pull_request:' not in workflow
+          assert '\n  push:' not in workflow
+          assert 'R2_BUCKET' not in workflow + telemetry
+          print('observability workflow policy check passed')
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: 22
