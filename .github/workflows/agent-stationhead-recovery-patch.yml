@@ -1,9 +1,9 @@
 name: Apply Stationhead recovery patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/stabilize-stationhead-startup
+      - main
 
 permissions:
   contents: write
@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Apply focused Stationhead recovery changes
         run: python .github/scripts/apply_stationhead_recovery.py
@@ -27,4 +28,4 @@ jobs:
           git add -A
           git diff --cached --check
           git commit -m "Stationhead 52分更新後の音声復帰を監視"
-          git push
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
