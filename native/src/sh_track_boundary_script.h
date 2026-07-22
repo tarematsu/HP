@@ -12,27 +12,32 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
 
   const nativeTimeout = window.setTimeout.bind(window);
   const nativeClearTimeout = window.clearTimeout.bind(window);
-  const playbackMarkerKey = '__homepanelStationheadRecentPlayback:{{PREFIX}}';
-  const recoveryMarkerMaxAgeMs = 30 * 60 * 1000;
-  const recoveryDeadlineAt = Date.now() + 30 * 1000;
+  const playbackLeaseKey = '__homepanelStationheadRecentPlayback:v2:{{PREFIX}}';
+  const playbackLeaseMaxAgeMs = 30 * 60 * 1000;
+  const playbackRoute = String(location.origin || '') + String(location.pathname || '/');
   let pageActive = true;
   let playedMedia = new WeakSet();
   let recoveryTimer = 0;
   let recoveryInFlight = false;
 
-  // A full navigation creates a new document and loses the page's in-memory
-  // playback state. Keep only a short-lived session marker so the replacement
-  // document can distinguish an established listener from a first-time/login
-  // page and safely resume the already selected live media element.
+  // WebView reconstruction destroys sessionStorage together with the browsing
+  // context. Keep a short-lived, route-scoped lease in the persistent profile
+  // so a replacement WebView can continue recovering the same established
+  // station without enabling autoplay on unrelated/login routes.
   const markRecentPlayback = () => {
-    try { sessionStorage.setItem(playbackMarkerKey, String(Date.now())); } catch (_) {}
+    try {
+      localStorage.setItem(playbackLeaseKey, `${Date.now()}\n${playbackRoute}`);
+    } catch (_) {}
   };
   const hasRecentPlayback = () => {
     try {
-      const markedAt = Number(sessionStorage.getItem(playbackMarkerKey) || 0);
+      const value = String(localStorage.getItem(playbackLeaseKey) || '');
+      const separator = value.indexOf('\n');
+      if (separator <= 0 || value.slice(separator + 1) !== playbackRoute) return false;
+      const markedAt = Number(value.slice(0, separator));
       const age = Date.now() - markedAt;
       return Number.isFinite(markedAt) && markedAt > 0 && age >= 0 &&
-        age <= recoveryMarkerMaxAgeMs;
+        age <= playbackLeaseMaxAgeMs;
     } catch (_) {
       return false;
     }
@@ -41,7 +46,12 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
     !media.paused && !media.ended &&
     media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
   const anyMediaPlaying = () => {
-    if (window.__homepanelAudioPlaying === true) return true;
+    // When available, the native WebView2 audio signal is authoritative. A
+    // media element can report paused=false while its DRM/audio pipeline is
+    // stalled and producing no sound.
+    if (typeof window.__homepanelAudioPlaying === 'boolean') {
+      return window.__homepanelAudioPlaying;
+    }
     return Array.from(document.querySelectorAll('audio,video')).some(mediaIsPlaying);
   };
   const hasSource = media => Boolean(
@@ -49,26 +59,26 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
       media.querySelector?.('source[src]'));
 
   const schedulePlaybackRecovery = delay => {
-    if (!pageActive || recoveryTimer || Date.now() >= recoveryDeadlineAt ||
-        !hasRecentPlayback() || anyMediaPlaying()) return;
-    recoveryTimer = nativeTimeout(attemptPlaybackRecovery, delay);
+    if (!pageActive || recoveryTimer || !hasRecentPlayback() || anyMediaPlaying()) return;
+    recoveryTimer = nativeTimeout(attemptPlaybackRecovery, Math.max(0, delay || 0));
   };
   const attemptPlaybackRecovery = () => {
     recoveryTimer = 0;
-    if (!pageActive || recoveryInFlight || Date.now() >= recoveryDeadlineAt ||
-        !hasRecentPlayback() || anyMediaPlaying()) return;
+    if (!pageActive || recoveryInFlight || !hasRecentPlayback() || anyMediaPlaying()) return;
     const candidates = Array.from(document.querySelectorAll('audio,video'))
       .filter(media => media instanceof HTMLMediaElement && media.isConnected &&
-        media.paused && !media.ended && hasSource(media) &&
+        !media.ended && hasSource(media) &&
         media.readyState >= HTMLMediaElement.HAVE_METADATA)
       .sort((left, right) => {
+        const paused = Number(right.paused) - Number(left.paused);
+        if (paused) return paused;
         const readiness = right.readyState - left.readyState;
         if (readiness) return readiness;
         return Number(right.tagName === 'AUDIO') - Number(left.tagName === 'AUDIO');
       })
       .slice(0, 3);
     if (!candidates.length) {
-      schedulePlaybackRecovery(500);
+      schedulePlaybackRecovery(2'000);
       return;
     }
     try { window.__homepanelStationheadVolumeApply?.(); } catch (_) {}
@@ -85,7 +95,7 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
     playFirstAvailable().finally(() => {
       recoveryInFlight = false;
       if (anyMediaPlaying()) markRecentPlayback();
-      else schedulePlaybackRecovery(1000);
+      else schedulePlaybackRecovery(5'000);
     });
   };
 
@@ -105,14 +115,27 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
   const rememberPlayedMedia = event => {
     if (pageActive && event.target instanceof HTMLMediaElement) {
       playedMedia.add(event.target);
-      markRecentPlayback();
+    }
+  };
+  const rememberConfirmedPlayback = event => {
+    rememberPlayedMedia(event);
+    if (!pageActive || !(event.target instanceof HTMLMediaElement)) return;
+    markRecentPlayback();
+    if (recoveryTimer) {
+      nativeClearTimeout(recoveryTimer);
+      recoveryTimer = 0;
     }
   };
   document.addEventListener('play', rememberPlayedMedia, true);
-  document.addEventListener('playing', rememberPlayedMedia, true);
-  document.addEventListener('loadedmetadata', () => schedulePlaybackRecovery(0), true);
-  document.addEventListener('canplay', () => schedulePlaybackRecovery(0), true);
+  document.addEventListener('playing', rememberConfirmedPlayback, true);
+  for (const eventName of ['loadedmetadata', 'canplay']) {
+    document.addEventListener(eventName, () => schedulePlaybackRecovery(0), true);
+  }
+  for (const eventName of ['pause', 'stalled', 'waiting', 'error', 'emptied']) {
+    document.addEventListener(eventName, () => schedulePlaybackRecovery(1'000), true);
+  }
   document.addEventListener('ended', event => {
+    schedulePlaybackRecovery(1'000);
     const media = event.target;
     if (!(media instanceof HTMLMediaElement) || !playedMedia.has(media)) return;
     if (!pageActive) {
@@ -139,10 +162,9 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t* messagePrefix)
     } catch (_) {}
   }, true);
 
-  // After the native 52-minute boundary navigation, the new document can have
-  // a valid current media source that remains paused until Stationhead advances
-  // to the following track. Resume that source immediately instead of waiting
-  // for the next track transition or rebuilding the WebView.
+  // Recovery remains event-driven and lightly retried for the lifetime of the
+  // short lease. This covers multiple track changes and a native WebView rebuild
+  // instead of abandoning recovery after one fixed 30-second window.
   schedulePlaybackRecovery(0);
 })()
 )JS";
