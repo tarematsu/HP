@@ -55,13 +55,25 @@ inline std::wstring StationheadVolumeScript(int percent) {
   window.__homepanelStationheadVolumeApply = applyAll;
   applyAll();
 
-  // At the default 100% volume, WebView2's native mute state is sufficient and
-  // no page listeners are needed. Install lightweight media-event listeners
-  // only if a non-default volume is actually requested.
-  if (v !== 1 && !window.__homepanelStationheadVolumeEventsInstalled) {
-    window.__homepanelStationheadVolumeEventsInstalled = true;
-    document.addEventListener('play', event => apply(event.target), true);
-    document.addEventListener('loadedmetadata', event => apply(event.target), true);
+  // Keep one removable handler per page. Returning to the default 100% volume
+  // now removes the listeners instead of leaving both long-lived WebViews with
+  // callbacks that no longer perform useful work.
+  let mediaEventHandler = window.__homepanelStationheadVolumeEventHandler;
+  if (v !== 1) {
+    if (!mediaEventHandler) {
+      mediaEventHandler = event => apply(event.target);
+      window.__homepanelStationheadVolumeEventHandler = mediaEventHandler;
+    }
+    if (!window.__homepanelStationheadVolumeEventsInstalled) {
+      window.__homepanelStationheadVolumeEventsInstalled = true;
+      document.addEventListener('play', mediaEventHandler, true);
+      document.addEventListener('loadedmetadata', mediaEventHandler, true);
+    }
+  } else if (mediaEventHandler &&
+             window.__homepanelStationheadVolumeEventsInstalled) {
+    document.removeEventListener('play', mediaEventHandler, true);
+    document.removeEventListener('loadedmetadata', mediaEventHandler, true);
+    window.__homepanelStationheadVolumeEventsInstalled = false;
   }
   return true;
 })()
