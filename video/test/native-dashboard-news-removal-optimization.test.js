@@ -146,10 +146,12 @@ test('playback update storage is reduced to one native source', () => {
   assert.doesNotMatch(playbackResolve, /nativePlaybackUpdates_/);
 });
 
-test('artwork URL resolution avoids repeated cache directory and extension probes', () => {
+test('artwork URL resolution avoids repeated probes and backs off failures', () => {
   assert.match(artworkCache, /static thread_local MemoryIndex memoryIndex;/);
   assert.match(artworkCache, /const auto indexed = memoryIndex\.urls\.find\(artworkUrl\);/);
-  assert.match(artworkCache, /if \(indexed != memoryIndex\.urls\.end\(\)\) return indexed->second;/);
+  assert.match(artworkCache, /kArtworkFailureRetryMs = 30 \* 60'000/);
+  assert.match(artworkCache, /now < indexed->second\.retryAfter/);
+  assert.match(artworkCache, /remember\(artworkUrl, now \+ kArtworkFailureRetryMs\)/);
   assert.match(artworkCache, /static thread_local fs::path preparedCacheDir;/);
   assert.match(artworkCache, /memoryIndex\.urls\.size\(\) >= 128/);
 });
@@ -209,6 +211,16 @@ test('native image caches use reduced LRU entry limits', () => {
   assert.match(bitmapCache, /kRadarBitmapCacheLimit = 12;/);
   assert.doesNotMatch(bitmapCache, /kNativeImageBitmapCacheLimit = 24;/);
   assert.doesNotMatch(bitmapCache, /kRadarBitmapCacheLimit = 16;/);
+});
+
+test('clock second ticks redraw only the time while footer refreshes by minute', () => {
+  assert.match(panelState, /const bool clockMinuteChanged = previousClockSecondKey < 0 \|\|/);
+  assert.match(panelState, /clockDayChanged \|\| clockMinuteChanged[\s\S]*PanelSection::Clock[\s\S]*PanelSection::ClockTime/s);
+  assert.match(
+    layout,
+    /RECT timeRect\{content\.left, content\.top \+ SpanY\(content, 170\),\s*content\.right, content\.top \+ SpanY\(content, 705\)\}/s,
+  );
+  assert.doesNotMatch(layout, /Include the footer in the clock tick invalidation/);
 });
 
 test('native panel state no longer compares or invalidates News revisions', () => {
