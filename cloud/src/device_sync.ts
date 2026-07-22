@@ -35,9 +35,9 @@ interface DeviceSyncSnapshotRow {
   pending: number;
 }
 
-function requestedVersion(url: URL, name: string): number {
-  const value = Number(url.searchParams.get(name));
-  return Number.isSafeInteger(value) && value >= 0 ? value : -1;
+function requestedVersion(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : -1;
 }
 
 async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Promise<DeviceSyncSnapshotRow> {
@@ -106,17 +106,19 @@ function preferredEnvironmentState(
   return r2.fetched_at >= d1FetchedAt ? r2 : null;
 }
 
-export async function buildDeviceSyncPayload(request: Request, env: Env): Promise<Record<string, unknown>> {
-  const deviceId = deviceIdFrom(request);
+export async function buildDeviceSyncPayloadForDevice(
+  env: Env,
+  deviceId: string,
+  clientVersions: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
   if (!deviceId) throw new Error("valid deviceId is required");
-  const url = new URL(request.url);
   const requested = {
-    dashboard: requestedVersion(url, "dashboardVersion"),
-    radar: requestedVersion(url, "radarVersion"),
-    switchbot: requestedVersion(url, "switchbotVersion"),
-    stationhead: requestedVersion(url, "stationheadVersion"),
-    stationheadHealth: requestedVersion(url, "stationheadHealthVersion"),
-    config: requestedVersion(url, "configVersion"),
+    dashboard: requestedVersion(clientVersions.dashboard),
+    radar: requestedVersion(clientVersions.radar),
+    switchbot: requestedVersion(clientVersions.switchbot),
+    stationhead: requestedVersion(clientVersions.stationhead),
+    stationheadHealth: requestedVersion(clientVersions.stationheadHealth),
+    config: requestedVersion(clientVersions.config),
   };
   const now = Date.now();
   const [snapshot, r2Environment] = await Promise.all([
@@ -196,6 +198,20 @@ export async function buildDeviceSyncPayload(request: Request, env: Env): Promis
     });
   }
   return response;
+}
+
+export async function buildDeviceSyncPayload(request: Request, env: Env): Promise<Record<string, unknown>> {
+  const deviceId = deviceIdFrom(request);
+  if (!deviceId) throw new Error("valid deviceId is required");
+  const params = new URL(request.url).searchParams;
+  return buildDeviceSyncPayloadForDevice(env, deviceId, {
+    dashboard: params.get("dashboardVersion"),
+    radar: params.get("radarVersion"),
+    switchbot: params.get("switchbotVersion"),
+    stationhead: params.get("stationheadVersion"),
+    stationheadHealth: params.get("stationheadHealthVersion"),
+    config: params.get("configVersion"),
+  });
 }
 
 export async function getDeviceSync(request: Request, env: Env): Promise<Response> {
