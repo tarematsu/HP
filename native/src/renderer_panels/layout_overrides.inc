@@ -82,20 +82,19 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   SetTextColor((dc), kWidgetText); \
   DrawTextInRect((dc), TimeText(hpNow), hpTimeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER); \
   const NativeMinuteFactsProjection hpStationheadStatus = NativeMinuteFactsSnapshot(); \
-  std::wstring hpStateText = L"状態取得待ち"; \
-  if (hpStationheadStatus.available) { \
-    if (hpStationheadStatus.isPaused) hpStateText = L"一時停止"; \
-    else if (hpStationheadStatus.isBroadcasting) hpStateText = L"配信中 " + std::to_wstring(hpStationheadStatus.listenerCount); \
-    else hpStateText = L"停止中"; \
-  } \
-  const std::wstring hpStatusTime = L"生成" + DashboardStatusTimeText(hpStationheadStatus.minuteAt) + L" 取得" + DashboardStatusTimeText(hpStationheadStatus.fetchedAt); \
+  std::wstring hpMonitorText = L"Stationheadモニター 生成"; \
+  hpMonitorText += DashboardStatusTimeText(hpStationheadStatus.minuteAt); \
+  hpMonitorText += L" 取得"; \
+  hpMonitorText += DashboardStatusTimeText(hpStationheadStatus.fetchedAt); \
+  std::wstring hpVersionText = L"アプリバージョン "; \
+  hpVersionText += kVersion; \
   const LONG hpStatusMiddle = hpStatusRect.top + std::max<LONG>(1, (hpStatusRect.bottom - hpStatusRect.top) / 2); \
-  RECT hpStateRect = hpStatusRect; hpStateRect.bottom = hpStatusMiddle; \
-  RECT hpStatusTimeRect = hpStatusRect; hpStatusTimeRect.top = hpStatusMiddle; \
+  RECT hpMonitorRect = hpStatusRect; hpMonitorRect.bottom = hpStatusMiddle; \
+  RECT hpVersionRect = hpStatusRect; hpVersionRect.top = hpStatusMiddle; \
   SelectObject((dc), TierFont(FontTier::Small)); \
   SetTextColor((dc), hpStationheadStatus.available ? kWidgetMuted : kWidgetSubtle); \
-  DrawTextInRect((dc), hpStateText, hpStateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
-  DrawTextInRect((dc), hpStatusTime, hpStatusTimeRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), hpMonitorText, hpMonitorRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), hpVersionText, hpVersionRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   SelectObject((dc), hpPreviousFont); \
 } while (false)
 
