@@ -9,12 +9,24 @@ namespace {
 constexpr wchar_t kDashboardUrl[] = L"https://skrzk.pages.dev/api/dashboard?history=0";
 constexpr int64_t kDashboardPollIntervalMs = 5 * 60'000;
 constexpr size_t kMaxDashboardResponseBytes = 4 * 1024 * 1024;
-constexpr wchar_t kPlaybackSource[] = L"a";
+constexpr uint64_t kPayloadFnvOffset = 14695981039346656037ull;
+constexpr uint64_t kPayloadFnvPrime = 1099511628211ull;
 
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValue;
 using winrt::Windows::Data::Json::JsonValueType;
+
+uint64_t PayloadSignature(const std::wstring& payload) noexcept {
+  uint64_t hash = kPayloadFnvOffset;
+  const auto* bytes = reinterpret_cast<const unsigned char*>(payload.data());
+  const size_t byteCount = payload.size() * sizeof(wchar_t);
+  for (size_t index = 0; index < byteCount; ++index) {
+    hash ^= bytes[index];
+    hash *= kPayloadFnvPrime;
+  }
+  return hash;
+}
 
 int64_t EpochMilliseconds(double value) {
   if (!std::isfinite(value) || value <= 0) return 0;
@@ -298,14 +310,10 @@ void Renderer::StartNativePlaybackBridge() {
     {
       std::lock_guard lock(nativePlaybackMutex_);
       NativePlaybackUpdate& update = nativePlaybackUpdates_[0];
-      update.source = kPlaybackSource;
-      update.payload = payload;
-      update.error = error;
-      update.fetchedAt = hasValidPayload ? fetchedAt : 0;
+      update.revision = hasValidPayload ? PayloadSignature(payload) : 0;
       update.projection = std::move(playbackProjection);
       update.hasPayload = hasValidPayload;
       update.contentRevision = ++nativePlaybackContentRevision_;
-      update.revision = ++nativePlaybackRevision_;
     }
     if (hasValidPayload) {
       std::lock_guard lock(nativeMinuteFactsMutex_);
@@ -330,6 +338,8 @@ void Renderer::NativePlaybackLoop() {
     const std::wstring error = FetchDashboardJson(&payload);
     const bool hasValidPayload = error.empty() && !payload.empty();
     const int64_t fetchedAt = hasValidPayload ? UnixMillis() : 0;
+    const uint64_t payloadSignature =
+        hasValidPayload ? PayloadSignature(payload) : 0;
     NativePlaybackProjection projection;
     NativeMinuteFactsProjection statusProjection;
     if (hasValidPayload) {
@@ -342,20 +352,17 @@ void Renderer::NativePlaybackLoop() {
     {
       std::lock_guard lock(nativePlaybackMutex_);
       NativePlaybackUpdate& update = nativePlaybackUpdates_[0];
-      update.source = kPlaybackSource;
-      update.error = error;
       if (hasValidPayload) {
         const bool previousPlayable =
             ProjectionHasPlayableTrack(update.projection, fetchedAt);
         const bool nextPlayable = ProjectionHasPlayableTrack(projection, fetchedAt);
         const bool queueChanged = !projection.queueRevision.empty()
             ? projection.queueRevision != update.projection.queueRevision
-            : update.payload != payload;
+            : update.revision != payloadSignature;
         const bool advanceContentRevision = !update.hasPayload ||
             (nextPlayable && (!previousPlayable || queueChanged));
-        update.payload = std::move(payload);
+        update.revision = payloadSignature;
         update.projection = std::move(projection);
-        update.fetchedAt = fetchedAt;
         update.hasPayload = true;
         // Keep the fallback release revision stable while responses still have
         // no usable current track. Advance it only when playable queue data
@@ -364,7 +371,6 @@ void Renderer::NativePlaybackLoop() {
           update.contentRevision = ++nativePlaybackContentRevision_;
         }
       }
-      update.revision = ++nativePlaybackRevision_;
     }
     if (hasValidPayload) {
       std::lock_guard lock(nativeMinuteFactsMutex_);
