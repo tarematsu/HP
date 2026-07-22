@@ -220,7 +220,7 @@ HBITMAP Renderer::CachedRadarBitmap(
   return bitmap;
 }
 
-void Renderer::ResetNativeBitmapCaches() noexcept {
+void Renderer::ReleaseNativePanelSurfaces() noexcept {
   const auto deleteBitmaps = [](auto& entries) {
     for (auto& item : entries) {
       if (item.second.bitmap) DeleteObject(item.second.bitmap);
@@ -229,6 +229,16 @@ void Renderer::ResetNativeBitmapCaches() noexcept {
   };
   deleteBitmaps(nativeBackBuffers_);
   deleteBitmaps(nativeSectionBitmaps_);
+}
+
+void Renderer::ResetNativeBitmapCaches() noexcept {
+  ReleaseNativePanelSurfaces();
+  const auto deleteBitmaps = [](auto& entries) {
+    for (auto& item : entries) {
+      if (item.second.bitmap) DeleteObject(item.second.bitmap);
+    }
+    entries.clear();
+  };
   deleteBitmaps(nativeImageBitmaps_);
   nativeImageUseCounter_ = 0;
   deleteBitmaps(nativeRadarBitmaps_);
