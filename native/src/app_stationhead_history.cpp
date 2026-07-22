@@ -53,7 +53,8 @@ void App::LoadStationheadPlayHistory() {
     if (text.empty()) return;
     const auto array = winrt::Windows::Data::Json::JsonArray::Parse(Utf8ToWide(text));
     std::vector<StationheadPlayHistorySample> history;
-    const int64_t cutoff = UnixMillis() - kHistoryWindowMs;
+    const int64_t now = UnixMillis();
+    const int64_t cutoff = now - kHistoryWindowMs;
     for (auto value : array) {
       if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Object) continue;
       const auto item = value.GetObject();
@@ -74,8 +75,7 @@ void App::LoadStationheadPlayHistory() {
     if (history.size() > kMaxHistorySamples) {
       history.erase(history.begin(), history.end() - kMaxHistorySamples);
     }
-    lastStationheadPlayHistorySavedAt_ =
-        history.empty() ? 0 : history.back().timestamp;
+    lastStationheadPlayHistorySavedAt_ = history.empty() ? 0 : now;
     renderState_.stationheadPlayHistory = std::move(history);
     ++renderState_.stationheadPlayHistoryRevision;
   } catch (const std::exception& error) {
@@ -131,7 +131,6 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
   if (bucket < cutoff) return;
 
   auto& history = renderState_.stationheadPlayHistory;
-  const bool currentValueChanged = history.empty() || history.back().value != value;
   const auto position = std::lower_bound(
       history.begin(), history.end(), bucket,
       [](const StationheadPlayHistorySample& sample, int64_t timestamp) {
@@ -156,7 +155,7 @@ void App::UpdateStationheadPlayHistory(const StationheadStatus& status) {
   }
 
   ++renderState_.stationheadPlayHistoryRevision;
-  if (currentValueChanged ||
+  if (lastStationheadPlayHistorySavedAt_ <= 0 ||
       bucket - lastStationheadPlayHistorySavedAt_ >= kPersistIntervalMs) {
     SaveStationheadPlayHistory();
     lastStationheadPlayHistorySavedAt_ = bucket;
