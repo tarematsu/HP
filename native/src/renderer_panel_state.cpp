@@ -138,13 +138,18 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   const int clockDayKey = static_cast<int>(localTime.wYear) * 10'000 +
       static_cast<int>(localTime.wMonth) * 100 + static_cast<int>(localTime.wDay);
   const bool clockDayChanged = clockDayKey != nativeClockDayKey_;
+  const int64_t clockSecondKey =
+      (((static_cast<int64_t>(clockDayKey) * 24 + localTime.wHour) * 60 +
+        localTime.wMinute) * 60 + localTime.wSecond);
+  const bool clockSecondChanged = clockSecondKey != nativeClockSecondKey_;
   nativeClockDayKey_ = clockDayKey;
+  nativeClockSecondKey_ = clockSecondKey;
 
   const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
   const bool playbackChanged = playbackState != nativePlaybackTickState_;
   nativePlaybackTickState_ = playbackState;
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
-      IsWindowVisible(nativeSideWindow_)) {
+      IsWindowVisible(nativeSideWindow_) && clockSecondChanged) {
     InvalidatePanelSection(nativeSideWindow_,
                            clockDayChanged ? PanelSection::Clock : PanelSection::ClockTime);
   }
