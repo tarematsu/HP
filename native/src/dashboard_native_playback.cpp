@@ -309,8 +309,8 @@ void Renderer::StartNativePlaybackBridge() {
     }
     {
       std::lock_guard lock(nativePlaybackMutex_);
-      NativePlaybackUpdate& update = nativePlaybackUpdates_[0];
-      update.revision = hasValidPayload ? PayloadSignature(payload) : 0;
+      NativePlaybackUpdate& update = nativePlaybackUpdate_;
+      update.payloadSignature = hasValidPayload ? PayloadSignature(payload) : 0;
       update.projection = std::move(playbackProjection);
       update.hasPayload = hasValidPayload;
       update.contentRevision = ++nativePlaybackContentRevision_;
@@ -351,17 +351,17 @@ void Renderer::NativePlaybackLoop() {
 
     {
       std::lock_guard lock(nativePlaybackMutex_);
-      NativePlaybackUpdate& update = nativePlaybackUpdates_[0];
+      NativePlaybackUpdate& update = nativePlaybackUpdate_;
       if (hasValidPayload) {
         const bool previousPlayable =
             ProjectionHasPlayableTrack(update.projection, fetchedAt);
         const bool nextPlayable = ProjectionHasPlayableTrack(projection, fetchedAt);
         const bool queueChanged = !projection.queueRevision.empty()
             ? projection.queueRevision != update.projection.queueRevision
-            : update.revision != payloadSignature;
+            : update.payloadSignature != payloadSignature;
         const bool advanceContentRevision = !update.hasPayload ||
             (nextPlayable && (!previousPlayable || queueChanged));
-        update.revision = payloadSignature;
+        update.payloadSignature = payloadSignature;
         update.projection = std::move(projection);
         update.hasPayload = true;
         // Keep the fallback release revision stable while responses still have
