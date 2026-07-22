@@ -23,9 +23,9 @@ const ORIENTATION_KEY = 'video-scraper-orientation';
 const NEXT_EVENT_NAME = 'videoscraper:next';
 const ADMIN_TOKEN_CHANGE_EVENT = 'videoscraper:admin-token-change';
 const FEED_PAGE_SIZE = 100;
-const INITIAL_FEED_SIZE = 500;
-const ORIENTED_INITIAL_FEED_SIZE = 200;
-const MAX_FEED_PAGES = 5;
+const INITIAL_FEED_SIZE = 1000;
+const ORIENTED_INITIAL_FEED_SIZE = 1000;
+const MAX_FEED_PAGES = 10;
 
 function setMessage(text = '') {
   message.textContent = text;
