@@ -7,11 +7,13 @@ const playerSource = readFileSync(
   'utf8'
 );
 
-test('initial playback feed uses bounded cursor invocations and a smaller oriented target', () => {
+test('initial playback feed loads up to 1000 URLs with bounded cursor invocations', () => {
+  // The API stays capped at 100 rows per request, so ten cursor pages produce
+  // the requested initial pool without widening a single D1 query.
   assert.match(playerSource, /const FEED_PAGE_SIZE = 100;/);
-  assert.match(playerSource, /const INITIAL_FEED_SIZE = 500;/);
-  assert.match(playerSource, /const ORIENTED_INITIAL_FEED_SIZE = 200;/);
-  assert.match(playerSource, /const MAX_FEED_PAGES = 5;/);
+  assert.match(playerSource, /const INITIAL_FEED_SIZE = 1000;/);
+  assert.match(playerSource, /const ORIENTED_INITIAL_FEED_SIZE = 1000;/);
+  assert.match(playerSource, /const MAX_FEED_PAGES = 10;/);
   assert.match(
     playerSource,
     /const targetSize = state\.orientation === 'both'[\s\S]*?ORIENTED_INITIAL_FEED_SIZE;/
