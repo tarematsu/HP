@@ -37,7 +37,7 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     // of dashboard.json. Size is included so an equal FNV value for differently
     // sized input cannot suppress parsing after metadata-only file replacement.
     const std::string contentSignature =
-        std::to_string(sourceSize) + L":" + std::to_string(Fnv1a64(text));
+        std::to_string(sourceSize) + ":" + std::to_string(Fnv1a64(text));
     if (dashboardSourceStamp_.valid && dashboardUtf8_ == contentSignature) {
       dashboardSourceStamp_ = nextStamp;
       return true;
