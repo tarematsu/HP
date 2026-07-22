@@ -68,7 +68,6 @@ uint64_t PlaybackPersistenceSignature(
   AppendSignatureValue(hash, projection.available);
   AppendSignatureValue(hash, projection.ended);
   AppendSignatureValue(hash, projection.setupRequired);
-  AppendSignatureValue(hash, projection.queueEndAt);
   return hash;
 }
 
