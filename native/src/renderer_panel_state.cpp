@@ -130,14 +130,20 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   const int64_t clockSecondKey =
       (((static_cast<int64_t>(clockDayKey) * 24 + localTime.wHour) * 60 +
         localTime.wMinute) * 60 + localTime.wSecond);
-  const bool clockSecondChanged = clockSecondKey != nativeClockSecondKey_;
+  const int64_t previousClockSecondKey = nativeClockSecondKey_;
+  const bool clockSecondChanged = clockSecondKey != previousClockSecondKey;
+  const bool clockMinuteChanged = previousClockSecondKey < 0 ||
+      clockSecondKey / 60 != previousClockSecondKey / 60;
   nativeClockDayKey_ = clockDayKey;
   nativeClockSecondKey_ = clockSecondKey;
 
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
       IsWindowVisible(nativeSideWindow_) && clockSecondChanged) {
-    InvalidatePanelSection(nativeSideWindow_,
-                           clockDayChanged ? PanelSection::Clock : PanelSection::ClockTime);
+    InvalidatePanelSection(
+        nativeSideWindow_,
+        clockDayChanged || clockMinuteChanged
+            ? PanelSection::Clock
+            : PanelSection::ClockTime);
   }
 
   // Resolving projected playback takes the playback mutex and advances a queue
