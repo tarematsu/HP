@@ -49,7 +49,10 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Check HomePanel sources
         working-directory: cloud
-        run: npm run check
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run check 2>&1 | tee source-check.log
       - name: Run HomePanel tests
         working-directory: cloud
         run: npm test
@@ -67,11 +70,13 @@ jobs:
             npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
             npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%';"
           } 2>&1 | tee d1-validation.log
-      - name: Upload failed D1 validation output
+      - name: Upload failed validation output
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: homepanel-unified-d1-output-${{ github.run_id }}
-          path: cloud/d1-validation.log
+          name: homepanel-unified-validation-output-${{ github.run_id }}
+          path: |
+            cloud/source-check.log
+            cloud/d1-validation.log
           if-no-files-found: warn
           retention-days: 7

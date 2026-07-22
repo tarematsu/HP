@@ -41,7 +41,6 @@ def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | Non
         raise RuntimeError(f"Cloudflare API HTTP {error.code}: {detail}") from error
     except urllib.error.URLError as error:
         raise RuntimeError(f"Cloudflare API request failed: {error.reason}") from error
-
     errors = data.get("errors")
     if data.get("success") is False or errors:
         raise RuntimeError(f"Cloudflare API error: {json.dumps(errors, ensure_ascii=False)[:2000]}")
@@ -50,6 +49,15 @@ def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | Non
 
 def iso(value: dt.datetime) -> str:
     return value.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def microseconds_to_ms(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value) / 1000.0
+    except (TypeError, ValueError):
+        return None
 
 
 def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.datetime) -> dict[str, Any]:
@@ -92,8 +100,9 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
         "requests": int(sums.get("requests") or 0),
         "errors": int(sums.get("errors") or 0),
         "subrequests": int(sums.get("subrequests") or 0),
-        "cpu_p50": quantiles.get("cpuTimeP50"),
-        "cpu_p99": quantiles.get("cpuTimeP99"),
+        # Cloudflare GraphQL reports these quantiles in microseconds.
+        "cpu_p50_ms": microseconds_to_ms(quantiles.get("cpuTimeP50")),
+        "cpu_p99_ms": microseconds_to_ms(quantiles.get("cpuTimeP99")),
     }
 
 
@@ -106,7 +115,6 @@ def discover_account_id(start: dt.datetime, end: dt.datetime) -> str:
         return ids[0]
     if not ids:
         raise RuntimeError("No Cloudflare account is visible to CLOUDFLARE_BUILDS_API_TOKEN")
-
     discovery_start = start - dt.timedelta(hours=23)
     matches: list[str] = []
     for account_id in ids:
@@ -171,7 +179,6 @@ def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> l
             method="POST",
             payload=payload,
         )
-
     events = (((data.get("result") or {}).get("events") or {}).get("events") or [])
     selected: list[dict[str, Any]] = []
     for event in events:
@@ -218,7 +225,6 @@ def main() -> int:
         raise RuntimeError("CLOUDFLARE_BUILDS_API_TOKEN is empty")
     if not WORKERS:
         raise RuntimeError("CLOUDFLARE_WORKERS is empty")
-
     request_json(f"{API_BASE}/user/tokens/verify")
     end = dt.datetime.now(dt.timezone.utc)
     start = end - dt.timedelta(minutes=LOOKBACK_MINUTES)
@@ -242,15 +248,12 @@ def main() -> int:
         rate = (item["errors"] / requests * 100) if requests else 0
         lines.append(
             f"| `{item['worker']}` | {requests} | {item['errors']} | {rate:.2f}% | "
-            f"{item['subrequests']} | {number(item['cpu_p50'])} | {number(item['cpu_p99'])} |"
+            f"{item['subrequests']} | {number(item['cpu_p50_ms'])} | {number(item['cpu_p99_ms'])} |"
         )
 
     lines.extend(["", f"### Recent error events ({len(errors)} samples)", ""])
     if errors:
-        lines.extend([
-            "| Time | Worker | Error | URL |",
-            "|---|---|---|---|",
-        ])
+        lines.extend(["| Time | Worker | Error | URL |", "|---|---|---|---|"])
         for event in errors[:10]:
             timestamp, service, message, url = event_row(event)
             lines.append(f"| {timestamp} | `{service}` | {message} | {url} |")
@@ -263,7 +266,6 @@ def main() -> int:
             summary.write("\n".join(lines) + "\n")
     else:
         print("\n".join(lines))
-
     if total_errors:
         print(f"::warning title=Cloudflare Worker errors::{total_errors} errors in the last {LOOKBACK_MINUTES} minutes")
     return 0
