@@ -19,8 +19,8 @@ struct AppConfig {
   std::wstring deviceId = L"homepanel-device";
   int screenWidth = 1920;
   int screenHeight = 1280;
-  int cloudPollSeconds = 900;
-  int telemetryMinutes = 60;
+  int cloudPollSeconds = 1800;
+  int telemetryMinutes = 120;
   double temperatureOffset = -4.5;
   std::wstring serialPort;
   StationheadConfig stationhead;
