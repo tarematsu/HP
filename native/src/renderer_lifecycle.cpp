@@ -90,6 +90,7 @@ void Renderer::SetVisible(bool visible) {
   } else {
     nativePanelTimerActive_ = false;
   }
+  if (visibilityChanged && !visible) ReleaseNativePanelSurfaces();
 }
 
 void Renderer::QueueAction(UiAction action) {

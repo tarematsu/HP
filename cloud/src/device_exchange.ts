@@ -1,18 +1,10 @@
 import { authorizedDevice, deviceIdFromRequest } from "./auth";
-import { buildDeviceSyncPayload } from "./device_sync";
+import { buildDeviceSyncPayloadForDevice } from "./device_sync";
 import type { Env } from "./sources";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
 
 const EXCHANGE_MAGIC = new TextEncoder().encode("HPEX0001");
 const ENCODER = new TextEncoder();
-const VERSION_FIELDS = [
-  "dashboard",
-  "radar",
-  "switchbot",
-  "stationhead",
-  "stationheadHealth",
-  "config",
-] as const;
 
 interface DeviceExchangeInput {
   versions?: Record<string, unknown>;
@@ -32,17 +24,6 @@ function exchangeBody(jsonBytes: Uint8Array): Uint8Array {
   writeUint32(output, EXCHANGE_MAGIC.length, jsonBytes.length);
   output.set(jsonBytes, EXCHANGE_MAGIC.length + 4);
   return output;
-}
-
-function syncRequest(request: Request, deviceId: string, versions: Record<string, unknown>): Request {
-  const url = new URL("/v1/device/sync", request.url);
-  url.searchParams.set("deviceId", deviceId);
-  for (const field of VERSION_FIELDS) {
-    const raw = Number(versions[field]);
-    const value = Number.isSafeInteger(raw) && raw >= 0 ? raw : -1;
-    url.searchParams.set(`${field}Version`, String(value));
-  }
-  return new Request(url, { method: "GET", headers: request.headers });
 }
 
 async function applyTelemetry(
@@ -83,7 +64,10 @@ export async function deviceExchangeResponse(
     ? input.versions
     : {};
 
-  const payload = await buildDeviceSyncPayload(syncRequest(request, deviceId, versions), env);
+  // Keep the exchange as one Worker invocation and pass already parsed fields
+  // directly into the D1 snapshot path. Rebuilding an internal Request/URL here
+  // needlessly repeated URL, query-string, and device-id parsing on every poll.
+  const payload = await buildDeviceSyncPayloadForDevice(env, deviceId, versions);
   if (input.telemetry !== undefined) await applyTelemetry(env, deviceId, input.telemetry, payload);
 
   // Keep the exchange hot path focused on the small state/telemetry response.

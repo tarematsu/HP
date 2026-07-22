@@ -5,6 +5,7 @@ import test from 'node:test';
 const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc', import.meta.url), 'utf8'));
 const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
+const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const resourceMigration = readFileSync(
   new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
   'utf8'
@@ -47,11 +48,13 @@ test('Workers KV is absent while bounded R2 caches remain declared', () => {
   assert.ok(cloudConfig.r2_buckets.some((entry) => entry.binding === 'DATA_BUCKET'));
 });
 
-test('native polling is fixed at fifteen-minute sync and hourly telemetry', () => {
-  assert.match(nativeConfig, /cloudPollSeconds = 900;/);
-  assert.match(nativeConfig, /telemetryMinutes = 60;/);
-  assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 900;/);
-  assert.match(nativeCloudConfig, /config\.telemetryMinutes = 60;/);
+test('native polling is fixed at thirty-minute sync and two-hour telemetry', () => {
+  assert.match(nativeConfig, /cloudPollSeconds = 1800;/);
+  assert.match(nativeConfig, /telemetryMinutes = 120;/);
+  assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 1800;/);
+  assert.match(nativeCloudConfig, /config\.telemetryMinutes = 120;/);
+  assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:120/);
+  assert.match(adminPage, /config\.cloudPollSeconds=1800;config\.telemetryMinutes=120/);
 });
 
 test('scheduler migration keeps liveness while reducing other periodic work', () => {
@@ -73,7 +76,7 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
   const stateQueries = switchbotStateQueries + heartbeatStateQueries;
   const stateRows = stateQueries * INDEXED_ROW_WRITE_MULTIPLIER;
 
-  const compactTelemetryHeartbeatQueries = runsPerDay(60 * 60);
+  const compactTelemetryHeartbeatQueries = runsPerDay(120 * 60);
   const compactTelemetryHeartbeatRows = compactTelemetryHeartbeatQueries * INDEXED_ROW_WRITE_MULTIPLIER;
   const jobRunCheckpointQueries = Object.keys(scheduledIntervals).length * 4;
   const jobRunCheckpointRows = jobRunCheckpointQueries * INDEXED_ROW_WRITE_MULTIPLIER;
@@ -88,14 +91,14 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
   assert.equal(switchbotStateQueries, 96);
   assert.equal(heartbeatStateQueries, 100);
   assert.equal(stateRows, 392);
-  assert.equal(compactTelemetryHeartbeatRows, 48);
+  assert.equal(compactTelemetryHeartbeatRows, 24);
   assert.equal(jobRunCheckpointRows, 72);
-  assert.equal(modeledRows, 2_894);
+  assert.equal(modeledRows, 2_870);
   assert.ok(modeledRows < TARGET);
 });
 
 test('modeled daily Worker invocations stay below the 3000-request target', () => {
-  const nativeExchangeRequests = runsPerDay(900);
+  const nativeExchangeRequests = runsPerDay(1800);
   const schedulerAlarmInvocations = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
   const radarGenerationReserve = 50;
@@ -105,14 +108,14 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
     + radarGenerationReserve
     + apiWebhookVideoAndLegacyReserve;
 
-  assert.equal(nativeExchangeRequests, 96);
+  assert.equal(nativeExchangeRequests, 48);
   assert.equal(schedulerAlarmInvocations, 441);
-  assert.equal(modeledRequests, 2_687);
+  assert.equal(modeledRequests, 2_639);
   assert.ok(modeledRequests < TARGET);
 });
 
 test('bounded R2 writes remain modest', () => {
-  const telemetryStateWrites = runsPerDay(60 * 60);
+  const telemetryStateWrites = runsPerDay(120 * 60);
   const radarLatestReserve = 24;
-  assert.equal(telemetryStateWrites + radarLatestReserve, 48);
+  assert.equal(telemetryStateWrites + radarLatestReserve, 36);
 });
