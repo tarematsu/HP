@@ -127,6 +127,7 @@ class Renderer {
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
   NativePlaybackFeedStatus NativePlaybackFeedStatusFor(
       size_t source, int64_t nowMs) const;
+  int64_t NativePlaybackNextWakeAt(int64_t nowMs) const;
   NativeMinuteFactsProjection NativeMinuteFactsSnapshot() const;
   void NotifyRadarUpdated();
   UiAction TakePendingAction();
