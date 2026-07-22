@@ -45,23 +45,39 @@ inline std::wstring GuessArtworkExtension(const std::wstring& contentType,
 }
 
 inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
-                                    const std::wstring& artworkUrl,
-                                    const wchar_t* userAgent =
-                                        L"HomePanel-Artwork-Cache/1.0") {
+                                     const std::wstring& artworkUrl,
+                                     const wchar_t* userAgent =
+                                         L"HomePanel-Artwork-Cache/1.0") {
   if (artworkUrl.empty()) return {};
   if (artworkUrl.rfind(L"https://data.homepanel/", 0) == 0) return artworkUrl;
 
+  constexpr int64_t kArtworkFailureRetryMs = 30 * 60'000;
+  struct MemoryIndexEntry {
+    std::wstring resolved;
+    int64_t retryAfter = 0;
+  };
   struct MemoryIndex {
     fs::path dataDir;
-    std::map<std::wstring, std::wstring> urls;
+    std::map<std::wstring, MemoryIndexEntry> urls;
   };
   static thread_local MemoryIndex memoryIndex;
   if (memoryIndex.dataDir != dataDir) {
     memoryIndex.dataDir = dataDir;
     memoryIndex.urls.clear();
   }
+  const int64_t now = UnixMillis();
   const auto indexed = memoryIndex.urls.find(artworkUrl);
-  if (indexed != memoryIndex.urls.end()) return indexed->second;
+  if (indexed != memoryIndex.urls.end()) {
+    if (indexed->second.retryAfter <= 0 || now < indexed->second.retryAfter) {
+      return indexed->second.resolved;
+    }
+    memoryIndex.urls.erase(indexed);
+  }
+  const auto remember = [&](std::wstring resolved, int64_t retryAfter = 0) {
+    if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
+    memoryIndex.urls.insert_or_assign(
+        artworkUrl, MemoryIndexEntry{std::move(resolved), retryAfter});
+  };
 
   const std::string key = WideToUtf8(artworkUrl);
   if (key.empty()) return artworkUrl;
@@ -85,8 +101,7 @@ inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
     const auto size = fs::file_size(cached, itemError);
     if (!itemError && size > 0) {
       const std::wstring resolved = localUrl + extension;
-      if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
-      memoryIndex.urls.emplace(artworkUrl, resolved);
+      remember(resolved);
       return resolved;
     }
   }
@@ -95,15 +110,18 @@ inline std::wstring CacheArtworkUrl(const fs::path& dataDir,
   std::wstring contentType;
   if (!WinHttpDownload(artworkUrl.c_str(), 8 * 1024 * 1024, &bytes, &contentType,
                        nullptr, userAgent)) {
+    remember(artworkUrl, now + kArtworkFailureRetryMs);
     return artworkUrl;
   }
 
   const std::wstring extension = GuessArtworkExtension(contentType, artworkUrl);
   const fs::path cached = cacheDir / (stem + extension);
-  if (!AtomicWriteBytes(cached, bytes)) return artworkUrl;
+  if (!AtomicWriteBytes(cached, bytes)) {
+    remember(artworkUrl, now + kArtworkFailureRetryMs);
+    return artworkUrl;
+  }
   const std::wstring resolved = localUrl + extension;
-  if (memoryIndex.urls.size() >= 128) memoryIndex.urls.clear();
-  memoryIndex.urls.emplace(artworkUrl, resolved);
+  remember(resolved);
   return resolved;
 }
 }  // namespace hp
