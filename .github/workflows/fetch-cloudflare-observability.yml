@@ -6,6 +6,7 @@ on:
     types: [completed]
   schedule:
     - cron: "23 * * * *"
+    - cron: "47 2 * * *"
   workflow_dispatch:
     inputs:
       lookback_minutes:
@@ -45,19 +46,24 @@ jobs:
           show-progress: false
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Validate daily budget policy
-        run: python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+      - name: Validate observability policy code
+        run: |
+          python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+          python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
 
       - name: Enforce UTC daily request and D1 budgets
-        run: python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
 
-      - name: Start post-deployment audit window
-        if: github.event_name != 'schedule'
+      - name: Start deep audit window
+        if: github.event_name != 'schedule' || github.event.schedule == '47 2 * * *'
         shell: bash
         run: echo "AUDIT_FROM=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_ENV"
 
       - name: Collect metrics and live events in parallel
-        if: github.event_name != 'schedule'
+        if: github.event_name != 'schedule' || github.event.schedule == '47 2 * * *'
         env:
           LIVE_TAIL_WORKER: homepanel-cloud
           LIVE_TAIL_SECONDS: "90"
@@ -88,14 +94,17 @@ jobs:
           fi
           exit "$query_status"
 
-      - name: Enforce deployed Worker CPU and error policy
-        if: github.event_name != 'schedule'
+      - name: Enforce current-version persisted and live CPU policy
+        if: github.event_name != 'schedule' || github.event.schedule == '47 2 * * *'
         env:
           LIVE_TAIL_LOG: live-tail.log
-        run: python3 .github/scripts/audit-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
 
       - name: Upload sanitized observability report
-        if: always()
+        if: ${{ failure() || github.event_name != 'schedule' || github.event.schedule == '47 2 * * *' }}
         uses: actions/upload-artifact@v4
         with:
           name: cloudflare-observability-report-hp-${{ github.run_id }}
