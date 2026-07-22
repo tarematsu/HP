@@ -121,26 +121,26 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
         std::min(static_cast<int>(previousTextSize.cx), textWidth - currentTextWidth);
     const int currentGroupWidth = swatchWidth + swatchGap + currentTextWidth;
     const int previousGroupWidth = swatchWidth + swatchGap + previousTextWidth;
-    const int comparisonWidth = currentGroupWidth + groupGap + previousGroupWidth;
+    const int comparisonWidth = previousGroupWidth + groupGap + currentGroupWidth;
     const int comparisonLeft =
         legend.left + std::max(legendPadding, (legendWidth - comparisonWidth) / 2);
     const int swatchTop = legend.top + (legendHeight - swatchHeight) / 2;
-    RECT currentSwatch{comparisonLeft, swatchTop, comparisonLeft + swatchWidth,
-                       swatchTop + swatchHeight};
-    RECT currentLegendRect{currentSwatch.right + swatchGap, legend.top,
-                           currentSwatch.right + swatchGap + currentTextWidth, legend.bottom};
-    RECT previousSwatch{currentLegendRect.right + groupGap, swatchTop,
-                        currentLegendRect.right + groupGap + swatchWidth,
+    RECT previousSwatch{comparisonLeft, swatchTop, comparisonLeft + swatchWidth,
                         swatchTop + swatchHeight};
     RECT previousLegendRect{previousSwatch.right + swatchGap, legend.top,
                             previousSwatch.right + swatchGap + previousTextWidth, legend.bottom};
-    DrawWidgetCard(dc, currentSwatch, kWidgetCyan, 2, 220);
+    RECT currentSwatch{previousLegendRect.right + groupGap, swatchTop,
+                       previousLegendRect.right + groupGap + swatchWidth,
+                       swatchTop + swatchHeight};
+    RECT currentLegendRect{currentSwatch.right + swatchGap, legend.top,
+                           currentSwatch.right + swatchGap + currentTextWidth, legend.bottom};
     drawPreviousOverlay(previousSwatch);
+    DrawWidgetCard(dc, currentSwatch, kWidgetCyan, 2, 220);
 
     SetTextColor(dc, kWidgetMuted);
-    DrawTextInRect(dc, currentLegend, currentLegendRect,
-                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     DrawTextInRect(dc, previousLegend, previousLegendRect,
+                   DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+    DrawTextInRect(dc, currentLegend, currentLegendRect,
                    DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
 
     RECT plot{chart.left + yLabelWidth, legend.bottom + SpanY(body, 15),
