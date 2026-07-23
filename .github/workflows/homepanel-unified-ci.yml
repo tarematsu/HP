@@ -124,7 +124,7 @@ jobs:
           assert "ctx.waitUntil(runSchedulerTick(env))" in unified_worker
           assert "await prewarmRadarBundle(env, payload" in radar_source
           assert "cache.match(cacheKey)" in radar_cache
-          assert "env.DATA_BUCKET.get(R2_LATEST_BUNDLE_KEY)" in radar_cache
+          assert "bucket.get(R2_LATEST_BUNDLE_KEY)" in radar_cache
           assert workflow.count('cron: "') == 1
           assert 'cron: "23 * * * *"' not in workflow
           assert 'actions: read' not in workflow
