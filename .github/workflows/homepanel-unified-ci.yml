@@ -205,7 +205,10 @@ jobs:
           npm run check 2>&1 | tee source-check.log
       - name: Run HomePanel tests
         working-directory: cloud
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
       - name: Build the unified Worker
         working-directory: cloud
         run: npm run check:unified-bundle
@@ -227,6 +230,7 @@ jobs:
           name: homepanel-unified-validation-output-${{ github.run_id }}
           path: |
             cloud/source-check.log
+            cloud/test.log
             cloud/d1-validation.log
           if-no-files-found: warn
           retention-days: 7
