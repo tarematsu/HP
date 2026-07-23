@@ -5,6 +5,10 @@ import type { Env } from "../src/sources";
 
 const baseTime = "20260723003000";
 
+type PutOptions = {
+  customMetadata: { baseTime: string; records: string };
+};
+
 function payload() {
   return {
     frames: [{
@@ -24,7 +28,7 @@ afterEach(() => {
 describe("radar bundle runtime optimization", () => {
   it("prewarms the latest R2 bundle before radar state publication", async () => {
     const shard = new Uint8Array([10, 20, 30, 40]);
-    const shardFetch = vi.fn(async () => new Response(shard, {
+    const shardFetch = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(shard, {
       headers: {
         "Content-Length": String(shard.length),
         "X-HomePanel-Radar-Shard-Bytes": String(shard.length),
@@ -34,7 +38,7 @@ describe("radar bundle runtime optimization", () => {
       idFromName: vi.fn((name: string) => name),
       get: vi.fn(() => ({ fetch: shardFetch })),
     };
-    const put = vi.fn(async () => undefined);
+    const put = vi.fn(async (_key: string, _body: Uint8Array, _options: PutOptions) => undefined);
     const env = {
       DATA_BUCKET: { put },
       SCHEDULER_COORDINATOR: namespace,
@@ -54,12 +58,12 @@ describe("radar bundle runtime optimization", () => {
   });
 
   it("serves a matching R2 bundle before the D1 fallback path", async () => {
-    const cacheMatch = vi.fn(async () => undefined);
-    const cachePut = vi.fn(async () => undefined);
+    const cacheMatch = vi.fn(async (_request: Request) => undefined);
+    const cachePut = vi.fn(async (_request: Request, _response: Response) => undefined);
     vi.stubGlobal("caches", { default: { match: cacheMatch, put: cachePut } });
 
     const bodyBytes = new Uint8Array([1, 2, 3, 4]);
-    const get = vi.fn(async () => ({
+    const get = vi.fn(async (_key: string) => ({
       body: new Response(bodyBytes).body!,
       size: bodyBytes.length,
       customMetadata: { baseTime, records: "2" },
