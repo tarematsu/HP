@@ -39,9 +39,10 @@ export async function cachedRadarBundleResponse(
     console.error("radar bundle edge cache read failed", error instanceof Error ? error.message : String(error));
   }
 
-  if (!env.DATA_BUCKET) return null;
+  const bucket = env.DATA_BUCKET;
+  if (!bucket) return null;
   try {
-    const object = await env.DATA_BUCKET.get(R2_LATEST_BUNDLE_KEY);
+    const object = await bucket.get(R2_LATEST_BUNDLE_KEY);
     if (!object) return null;
     const storedBaseTime = object.customMetadata?.baseTime;
     const recordCount = Number(object.customMetadata?.records);
