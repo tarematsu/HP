@@ -12,6 +12,7 @@ on:
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-observability.py'
+      - '.github/scripts/query-cloudflare-d1-insights.mjs'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
   schedule:
@@ -19,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       lookback_minutes:
-        description: Minutes of Cloudflare metrics and persisted errors to inspect
+        description: Minutes of Cloudflare metrics, D1 query insights, and persisted errors to inspect
         required: false
         default: "60"
         type: string
@@ -37,12 +38,15 @@ jobs:
   observability:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_WORKERS: homepanel-cloud
-      D1_CONFIG_GLOBS: cloud/wrangler*.jsonc
+      D1_CONFIG_GLOBS: cloud/wrangler.jsonc
+      D1_DATABASE_NAME: homepanel-data
+      D1_INSIGHTS_OUTPUT_DIR: d1-insights
+      D1_INSIGHTS_LIMIT: "20"
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       CPU_BUDGET_MS: "10"
       DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
@@ -64,6 +68,7 @@ jobs:
         run: |
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+          node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node .github/scripts/publish-homepanel-observability-status.mjs --self-test
 
       - name: Enforce projected UTC daily Worker, D1, and Queue budgets
@@ -73,6 +78,26 @@ jobs:
         run: |
           set -o pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
+
+      - name: Install pinned Wrangler for D1 insights
+        id: install-wrangler
+        continue-on-error: true
+        run: npm ci --prefix cloud --ignore-scripts --no-audit --no-fund
+
+      - name: Collect top D1 queries by rows read
+        id: d1-insights
+        if: always() && steps.install-wrangler.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          actual_summary="$GITHUB_STEP_SUMMARY"
+          node .github/scripts/query-cloudflare-d1-insights.mjs 2>&1 | tee d1-insights.log
+          status=${PIPESTATUS[0]}
+          if [[ -f d1-insights/summary.md ]]; then
+            cat d1-insights/summary.md >> "$actual_summary"
+          fi
+          exit "$status"
 
       - name: Collect metrics and live events in parallel
         id: observability-query
@@ -135,6 +160,7 @@ jobs:
           OBSERVABILITY_TRIGGER: ${{ github.event_name }}
           POLICY_OUTCOME: ${{ steps.policy-self-test.outcome }}
           DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
+          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome || steps.install-wrangler.outcome }}
           OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
         run: node .github/scripts/publish-homepanel-observability-status.mjs
@@ -147,6 +173,8 @@ jobs:
           path: |
             daily-usage/
             daily-usage-audit.log
+            d1-insights/
+            d1-insights.log
             observability-summary.md
             observability-query.log
             telemetry-summary.md
@@ -158,6 +186,8 @@ jobs:
       - name: Fail after collecting diagnostics when any observability gate fails
         if: >-
           steps.daily-budget.outcome == 'failure' ||
+          steps.install-wrangler.outcome == 'failure' ||
+          steps.d1-insights.outcome == 'failure' ||
           steps.observability-query.outcome == 'failure' ||
           steps.telemetry-policy.outcome == 'failure' ||
           steps.publish-status.outcome == 'failure'
