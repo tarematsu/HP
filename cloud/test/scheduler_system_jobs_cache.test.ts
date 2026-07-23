@@ -12,15 +12,15 @@ function fakeEnv() {
 }
 
 describe("system job reconciliation cache", () => {
-  it("reuses a successful reconciliation for fifteen minutes", async () => {
+  it("reuses a successful reconciliation for sixty minutes", async () => {
     const { env, DB, batch } = fakeEnv();
     invalidateSystemJobsCache(DB);
 
     await ensureSystemJobs(env, 1_000);
-    await ensureSystemJobs(env, 1_000 + 14 * 60_000);
+    await ensureSystemJobs(env, 1_000 + 59 * 60_000);
     expect(batch).toHaveBeenCalledTimes(1);
 
-    await ensureSystemJobs(env, 1_000 + 15 * 60_000);
+    await ensureSystemJobs(env, 1_000 + 60 * 60_000);
     expect(batch).toHaveBeenCalledTimes(2);
   });
 
