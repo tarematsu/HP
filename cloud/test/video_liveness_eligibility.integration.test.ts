@@ -62,6 +62,10 @@ describe("video liveness eligibility invariant", () => {
 
   it("keeps excluded rows out of the active liveness cursor", async () => {
     const timestamp = "2026-07-23T00:00:00.000Z";
+    const prior = await env.DB.prepare("SELECT COALESCE(MAX(id),0) AS id FROM videos")
+      .first<{ id: number }>();
+    const cursorStart = Number(prior?.id ?? 0);
+
     for (let index = 0; index < 8; index += 1) {
       const key = `media.test/blocked-${index}.mp4`;
       const id = await insertVideo(key);
@@ -88,7 +92,7 @@ describe("video liveness eligibility invariant", () => {
           )
         ORDER BY video.id
         LIMIT 1`,
-    ).bind(0, eligibleId).first<{ id: number; canonicalKey: string }>();
+    ).bind(cursorStart, eligibleId).first<{ id: number; canonicalKey: string }>();
 
     expect(selected).toEqual({ id: eligibleId, canonicalKey: eligibleKey });
     const activeExcluded = await env.DB.prepare(
