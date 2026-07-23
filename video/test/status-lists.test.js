@@ -11,7 +11,7 @@ import {
   unpackStatusItems
 } from '../src/status-lists.js';
 
-function createStatusDb(items, blockedVideos) {
+function createStatusDb(items, blockedVideos, countsDirty = 0) {
   const statements = [];
   return {
     statements,
@@ -31,7 +31,7 @@ function createStatusDb(items, blockedVideos) {
           return {
             blockedVideos,
             deathVideos: 2,
-            countsDirty: 0,
+            countsDirty,
             countsUpdatedAt: '2026-07-19T00:00:00.000Z'
           };
         }
@@ -84,6 +84,20 @@ test('full BAD list page reads the persisted singleton to detect truncation', as
   assert.equal(report.count, 3);
   assert.equal(report.returnedCount, 1);
   assert.equal(report.truncated, true);
+  assert.equal(report.stale, false);
+  assert.equal(report.ok, true);
+});
+
+test('dirty persisted counts are returned stale without synchronous rebuild', async () => {
+  const db = createStatusDb([{ canonicalKey: 'bad-one' }], 3, 1);
+  const report = await readBlocklistStatus(db, 1);
+
+  assert.equal(db.statements.length, 2);
+  assert.equal(db.statements.some(item => item.sql.includes('COUNT(*)')), false);
+  assert.equal(report.count, 3);
+  assert.equal(report.stale, true);
+  assert.equal(report.repair, 'daily-cleanup');
+  assert.equal(report.ok, false);
 });
 
 test('short BAD list page derives the total without a count read', async () => {
@@ -95,12 +109,14 @@ test('short BAD list page derives the total without a count read', async () => {
   assert.equal(report.count, 1);
   assert.equal(report.returnedCount, 1);
   assert.equal(report.truncated, false);
+  assert.equal(report.stale, false);
 });
 
-test('status list hot paths contain no direct block or death count scans', async () => {
+test('status list hot paths contain no direct or deferred full count scans', async () => {
   const source = await readFile(new URL('../src/status-lists.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /SELECT COUNT\(\*\) AS count FROM video_blocklist/);
   assert.doesNotMatch(source, /SELECT COUNT\(\*\) AS count FROM video_death_list/);
+  assert.doesNotMatch(source, /refreshStatusCounts/);
   assert.match(source, /prepareStatusCountsRead/);
-  assert.match(source, /refreshPersistedStatusCounts/);
+  assert.match(source, /daily-cleanup/);
 });
