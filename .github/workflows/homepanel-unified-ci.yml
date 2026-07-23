@@ -63,11 +63,13 @@ jobs:
           insights = Path('.github/scripts/query-cloudflare-d1-insights.mjs').read_text()
           publisher = Path('.github/scripts/publish-homepanel-observability-status.mjs').read_text()
           unified_worker = Path('cloud/src/unified_worker.js').read_text()
+          worker_entry = Path('cloud/src/worker_entry.ts').read_text()
           worker_core = Path('cloud/src/worker_core.ts').read_text()
           device_sync = Path('cloud/src/device_sync.ts').read_text()
           scheduler = Path('cloud/src/scheduler.ts').read_text()
           octopus_history = Path('cloud/src/octopus_history.ts').read_text()
           status_report = Path('video/src/status-report.js').read_text()
+          status_lists = Path('video/src/status-lists.js').read_text()
           liveness = Path('video/src/liveness-monitor.js').read_text()
           migration = Path('cloud/migrations/202607230500_d1_read_hotspots.sql').read_text()
           radar_source = Path('cloud/src/radar_source.ts').read_text()
@@ -117,6 +119,7 @@ jobs:
               'totalRowsRead',
               'sanitizeQuery',
               'SQL fingerprint',
+              'redactText',
           )
           required_telemetry = (
               'scriptVersion',
@@ -155,8 +158,10 @@ jobs:
           assert "await prewarmRadarBundle(env, payload" in radar_source
           assert "cache.match(cacheKey)" in radar_cache
           assert "bucket.get(R2_LATEST_BUNDLE_KEY)" in radar_cache
-          assert 'legacy telemetry endpoint retired' in worker_core
-          assert 'receiveTelemetryOptimized' not in worker_core
+          assert 'legacy-telemetry-endpoint-used' in worker_entry
+          assert 'receiveTelemetryOptimized' in worker_entry
+          assert 'legacy-telemetry-endpoint-used' in worker_core
+          assert 'receiveTelemetryOptimized' in worker_core
           assert ').first<DeviceSyncSnapshotRow>()' in device_sync
           assert 'refreshStatusCounts(env.DB' in scheduler
           assert 'SYSTEM_JOBS_CACHE_MS = 60 * 60_000' in scheduler
@@ -164,11 +169,16 @@ jobs:
           assert 'readDailyRange' in octopus_history
           assert 'status-counts-stale-deferred-to-cleanup' in status_report
           assert 'refreshStatusCounts' not in status_report
+          assert 'refreshStatusCounts' not in status_lists
+          assert 'daily-cleanup' in status_lists
           assert 'video_liveness_bounds' in liveness
           assert 'MAX(video.id)' not in liveness
           assert 'CREATE TABLE IF NOT EXISTS octopus_daily_totals' in migration
-          assert 'CREATE TABLE IF NOT EXISTS video_liveness_bounds' in migration
+          assert 'CREATE VIEW IF NOT EXISTS video_liveness_bounds' in migration
+          assert 'sqlite_sequence' in migration
+          assert 'video_liveness_bound_on_insert' not in migration
           assert 'status_counts_delta_on_block_delete' in migration
+          assert 'dirty=1' in migration
           assert workflow.count('cron: "') == 1
           assert 'cron: "23 * * * *"' not in workflow
           assert 'actions: read' not in workflow
@@ -203,6 +213,9 @@ jobs:
         run: |
           set -o pipefail
           npm run check 2>&1 | tee source-check.log
+          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--time-period'
+          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--sort-by'
+          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--json'
       - name: Run HomePanel tests
         working-directory: cloud
         shell: bash
@@ -221,7 +234,7 @@ jobs:
             rm -rf .wrangler-ci-state
             npx wrangler d1 migrations apply homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc
             npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "PRAGMA foreign_key_check;"
-            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('table','index','trigger') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%';"
+            npx wrangler d1 execute homepanel-data --local --persist-to .wrangler-ci-state --config wrangler.jsonc --command "SELECT COUNT(*) AS schema_object_count FROM sqlite_schema WHERE type IN ('table','index','trigger','view') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%';"
           } 2>&1 | tee d1-validation.log
       - name: Upload failed validation output
         if: failure()
