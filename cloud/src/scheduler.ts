@@ -8,6 +8,7 @@ import { fetchSwitchBotOptimized } from "./switchbot_poll";
 import { failSafeSwitchBotState } from "./switchbot_state";
 import type { SwitchBotEnv } from "./switchbot_types";
 import { runVideoLiveness } from "./video_liveness";
+import { refreshStatusCounts } from "../../video/src/status-counts.js";
 import {
   LIVENESS_INTERVAL_SECONDS,
   LIVENESS_JOB_NAME,
@@ -28,7 +29,7 @@ const MAX_SCHEDULER_BATCHES = 10;
 const COALESCE_WINDOW_SECONDS = 5;
 const SUCCESS_CHECKPOINT_INTERVAL_SECONDS = 6 * 60 * 60;
 const OCTOPUS_INTERVAL_SECONDS = 60 * 60 * 6;
-const SYSTEM_JOBS_CACHE_MS = 15 * 60_000;
+const SYSTEM_JOBS_CACHE_MS = 60 * 60_000;
 const DAY_MS = 86_400_000;
 const DAY_SECONDS = 86_400;
 const POWER_RETENTION_MS = 90 * DAY_MS;
@@ -218,6 +219,7 @@ export async function cleanupExpiredData(env: Env, now = Date.now()): Promise<vo
     env.DB.prepare("DELETE FROM job_runs WHERE finished_at < ?1")
       .bind(Math.floor(now / 1000) - 30 * DAY_SECONDS),
   ]);
+  await refreshStatusCounts(env.DB, new Date(now).toISOString());
 }
 
 async function recordSourceFailure(env: Env, source: string, error: unknown): Promise<string> {
