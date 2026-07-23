@@ -20,6 +20,7 @@ import type { Env } from "./sources";
 import { fetchStationhead } from "./spotify_source";
 import { stationheadHealthPayload } from "./stationhead_health";
 import { receiveCompactTelemetry } from "./telemetry_compact";
+import { receiveTelemetryOptimized } from "./telemetry_route";
 
 async function dashboardJsonResponse(request: Request, env: Env): Promise<Response> {
   const snapshot = await ensureDashboard(env);
@@ -173,10 +174,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (url.pathname === "/v1/telemetry") {
     if (request.method !== "POST") return methodNotAllowed(["POST"]);
-    return json({
-      error: "legacy telemetry endpoint retired",
-      replacement: "/v1/telemetry/compact or /v1/device/exchange",
-    }, { status: 410 });
+    console.warn("legacy-telemetry-endpoint-used");
+    return receiveTelemetryOptimized(request, env);
   }
 
   if (url.pathname === "/v1/refresh") {
