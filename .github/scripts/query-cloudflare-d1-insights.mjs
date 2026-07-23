@@ -16,18 +16,24 @@ function number(value) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-export function fingerprint(query) {
-  return createHash('sha256').update(String(query || '')).digest('hex').slice(0, 12);
-}
-
-export function sanitizeQuery(query) {
-  return String(query || '')
+function redactText(value, maximum = Number.POSITIVE_INFINITY) {
+  return String(value || '')
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=:-]+/gi, 'Bearer [redacted]')
+    .replace(/([?&](?:token|key|secret|signature|sig|auth)=)[^\s&#)]+/gi, '$1[redacted]')
     .replace(/'(?:''|[^'])*'/g, '?')
     .replace(/"(?:""|[^"])*"/g, '?')
     .replace(/\b(?:[0-9a-f]{8}-[0-9a-f-]{27,}|0x[0-9a-f]+|\d{4,})\b/gi, '?')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 420);
+    .slice(0, maximum);
+}
+
+export function sanitizeQuery(query) {
+  return redactText(query, 420);
+}
+
+export function fingerprint(query) {
+  return createHash('sha256').update(redactText(query)).digest('hex').slice(0, 12);
 }
 
 export function normalizeRows(input) {
@@ -48,10 +54,14 @@ export function normalizeRows(input) {
 
 function parseJsonOutput(output) {
   const text = String(output || '').trim();
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start < 0 || end < start) throw new Error(`Unable to locate D1 insights JSON in Wrangler output: ${text.slice(0, 500)}`);
-  return JSON.parse(text.slice(start, end + 1));
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf('[');
+    const end = text.lastIndexOf(']');
+    if (start < 0 || end < start) throw new Error('Unable to locate D1 insights JSON in Wrangler output');
+    return JSON.parse(text.slice(start, end + 1));
+  }
 }
 
 export function markdown(rows, generatedAt = new Date().toISOString()) {
@@ -74,7 +84,7 @@ export function markdown(rows, generatedAt = new Date().toISOString()) {
   lines.push('| SQL fingerprint | Total reads | Avg reads | Runs | Total writes | Avg ms | Sanitized SQL |');
   lines.push('|---|---:|---:|---:|---:|---:|---|');
   for (const row of rows) {
-    const sql = row.query.replaceAll('|', '\\|') || '(empty query)';
+    const sql = row.query.replaceAll('|', '\\|').replaceAll('`', 'ˋ') || '(empty query)';
     lines.push(`| \`${row.fingerprint}\` | ${row.totalRowsRead} | ${row.avgRowsRead.toFixed(2)} | ${row.numberOfTimesRun} | ${row.totalRowsWritten} | ${row.avgDurationMs.toFixed(3)} | \`${sql}\` |`);
   }
   return `${lines.join('\n')}\n`;
@@ -101,7 +111,9 @@ async function run() {
   });
   const combined = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`wrangler d1 insights failed (${result.status}): ${combined.slice(0, 2000)}`);
+  if (result.status !== 0) {
+    throw new Error(`wrangler d1 insights failed (${result.status}): ${redactText(combined, 1500)}`);
+  }
   const rows = normalizeRows(parseJsonOutput(result.stdout || combined));
   const generatedAt = new Date().toISOString();
   await mkdir(OUT, { recursive: true });
@@ -112,7 +124,7 @@ async function run() {
 
 function selfTest() {
   const rows = normalizeRows([{
-    query: "SELECT * FROM device_commands WHERE device_id='secret-device' AND id=12345",
+    query: "SELECT `payload` FROM device_commands WHERE device_id='secret-device' AND id=12345",
     totalRowsRead: 25,
     avgRowsRead: 12.5,
     totalRowsWritten: 0,
@@ -124,8 +136,15 @@ function selfTest() {
   }]);
   assert.equal(rows[0].totalRowsRead, 25);
   assert.doesNotMatch(rows[0].query, /secret-device|12345/);
-  assert.match(markdown(rows, '2026-07-23T00:00:00.000Z'), /D1 query insights/);
-  assert.match(markdown(rows), /SQL fingerprint/);
+  assert.equal(
+    fingerprint("SELECT * FROM t WHERE id='secret-one' AND sequence=12345"),
+    fingerprint("SELECT * FROM t WHERE id='secret-two' AND sequence=98765"),
+  );
+  const summary = markdown(rows, '2026-07-23T00:00:00.000Z');
+  assert.match(summary, /D1 query insights/);
+  assert.match(summary, /SQL fingerprint/);
+  assert.doesNotMatch(summary, /`payload`/);
+  assert.doesNotMatch(redactText("Bearer secret-token SELECT 'secret' id=12345"), /secret-token|secret|12345/);
   console.log('D1 insights reporter self-test passed');
 }
 
