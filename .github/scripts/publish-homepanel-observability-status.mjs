@@ -76,12 +76,13 @@ This issue is maintained automatically by the HomePanel Cloudflare Observability
 - **Trigger:** ${trigger}
 - **Commit:** \`${targetSha}\`
 - **Workflow run:** ${runUrl}
-- **Telemetry lookback:** ${lookbackMinutes} minutes
+- **Telemetry and D1 insights lookback:** ${lookbackMinutes} minutes
 
 | Gate | Outcome |
 |---|---|
 ${rows}
 ${section('Projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
+${section('Top D1 queries by rows read', summaries.d1Insights)}
 ${section('Cloudflare metrics and persisted errors', summaries.observability)}
 ${section('Current-version CPU and error policy', summaries.telemetry)}
 `;
@@ -127,6 +128,7 @@ async function publishCommitStatuses(targetSha, runUrl, outcomes) {
   const contexts = {
     policy: 'observability/policy-self-test',
     daily: 'observability/daily-usage-budget',
+    d1Insights: 'observability/d1-query-insights',
     query: 'observability/cloudflare-query',
     telemetry: 'observability/telemetry-policy',
   };
@@ -174,11 +176,13 @@ export async function publishFromEnvironment() {
   const outcomes = {
     policy: process.env.POLICY_OUTCOME,
     daily: process.env.DAILY_BUDGET_OUTCOME,
+    d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
   };
   const summaries = {
     daily: await readOptional('daily-usage/summary.md'),
+    d1Insights: await readOptional('d1-insights/summary.md'),
     observability: await readOptional('observability-summary.md'),
     telemetry: await readOptional('telemetry-summary.md'),
   };
@@ -210,18 +214,24 @@ function selfTest() {
     runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
     trigger: 'workflow_run',
     lookbackMinutes: '60',
-    outcomes: { policy: 'success', daily: 'failure', query: 'skipped', telemetry: 'success' },
+    outcomes: {
+      policy: 'success',
+      daily: 'failure',
+      d1Insights: 'success',
+      query: 'skipped',
+      telemetry: 'success',
+    },
     summaries: {
       daily: '## Daily\n\n| Metric | Value |\n|---|---:|\n| Queue | 1 |',
+      d1Insights: '## D1 query insights\n\n| SQL fingerprint | Total reads |\n|---|---:|\n| `abc` | 12 |',
       telemetry: 'Authorization: Bearer secret-value',
     },
   });
   assert.match(body, /HomePanel Observability Status/);
   assert.match(body, /\*\*Overall:\*\* failure/);
-  assert.match(body, /\| daily \| failure \|/);
-  assert.match(body, /\| query \| skipped \|/);
+  assert.match(body, /\| d1Insights \| success \|/);
+  assert.match(body, /Top D1 queries by rows read/);
   assert.match(body, /abc123/);
-  assert.match(body, /Projected UTC daily Worker, D1, and Queue budgets/);
   assert.doesNotMatch(body, /secret-value/);
   assert.match(body, /Bearer \[redacted\]/);
   console.log('HomePanel observability status publisher self-test passed');

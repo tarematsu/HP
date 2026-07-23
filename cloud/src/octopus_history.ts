@@ -28,6 +28,13 @@ interface StoredReadingRow {
   energy_kwh: number;
 }
 
+interface DailyTotalRow {
+  supply_point: string;
+  day: string;
+  energy_kwh: number;
+  slot_count: number;
+}
+
 type NormalizedReading = ComparableOctopusReading;
 
 const JST_MS = 9 * 60 * 60 * 1000;
@@ -43,6 +50,25 @@ const UPSERT_READING_SQL = `INSERT INTO octopus_readings(account_number,supply_p
    energy_kwh=excluded.energy_kwh,
    updated_at=excluded.updated_at
  WHERE octopus_readings.energy_kwh IS NOT excluded.energy_kwh`;
+
+function jstDayKey(timestampMs: number): string {
+  return new Date(timestampMs + JST_MS).toISOString().slice(0, 10);
+}
+
+function jstDayStart(timestampMs: number): number {
+  const local = new Date(timestampMs + JST_MS);
+  return Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()) - JST_MS;
+}
+
+function dayStartFromKey(day: string): number {
+  const parsed = Date.parse(`${day}T00:00:00.000Z`);
+  return Number.isFinite(parsed) ? parsed - JST_MS : Number.NaN;
+}
+
+function nextCompleteDayStart(timestampMs: number): number {
+  const start = jstDayStart(timestampMs);
+  return start < timestampMs ? start + DAY_MS : start;
+}
 
 export function octopusStableCutoffJst(nowMs: number): number {
   return Math.floor((nowMs - 2 * DAY_MS) / HALF_HOUR_MS) * HALF_HOUR_MS;
@@ -106,6 +132,32 @@ async function readComparableStoredReadings(
   }));
 }
 
+async function refreshDailyTotals(
+  env: Env,
+  accountNumber: string,
+  changed: readonly NormalizedReading[],
+  nowMs: number,
+): Promise<void> {
+  const days = new Set(changed.map(reading => jstDayKey(reading.observedAt)));
+  for (const day of days) {
+    const start = dayStartFromKey(day);
+    if (!Number.isFinite(start)) continue;
+    await env.DB.prepare(
+      `INSERT INTO octopus_daily_totals(
+         account_number,supply_point,day,energy_kwh,slot_count,updated_at
+       )
+       SELECT account_number,supply_point,?3,SUM(energy_kwh),COUNT(*),?4
+         FROM octopus_readings
+        WHERE account_number=?1 AND observed_at>=?2 AND observed_at<?5
+        GROUP BY account_number,supply_point
+       ON CONFLICT(account_number,supply_point,day) DO UPDATE SET
+         energy_kwh=excluded.energy_kwh,
+         slot_count=excluded.slot_count,
+         updated_at=excluded.updated_at`,
+    ).bind(accountNumber, start, day, nowMs, start + DAY_MS).run();
+  }
+}
+
 async function persistStableReadings(
   env: Env,
   accountNumber: string,
@@ -135,6 +187,7 @@ async function persistStableReadings(
     }
     await env.DB.batch(statements);
   }
+  await refreshDailyTotals(env, accountNumber, changed, nowMs);
 }
 
 function addLiveReadings(
@@ -170,8 +223,6 @@ export async function synchronizeOctopusHistory(
   const collectionStart = octopusCollectionStart(nowMs);
   const live = new Map<string, { reading: OctopusReading; observedAt: number }>();
 
-  // Historical rows remain available for monthly totals and week comparisons.
-  // Only network refreshes are bounded to the latest seven days.
   await enforceHistoryFloor(env, accountNumber);
   for (const range of safeRanges(collectionStart, nowMs)) {
     const readings = await fetchRange(range);
@@ -192,32 +243,84 @@ export async function synchronizeOctopusHistory(
   };
 }
 
+async function readRawRange(
+  env: Env,
+  accountNumber: string,
+  fromMs: number,
+  toMs: number,
+): Promise<OctopusReading[]> {
+  if (toMs <= fromMs) return [];
+  const result = await env.DB.prepare(
+    `SELECT supply_point,observed_at,energy_kwh
+       FROM octopus_readings
+      WHERE account_number=?1 AND observed_at>=?2 AND observed_at<?3
+      ORDER BY observed_at`,
+  ).bind(accountNumber, fromMs, toMs).all<StoredReadingRow>();
+  return (result.results ?? []).map(row => ({
+    supplyPoint: row.supply_point,
+    startAt: new Date(Number(row.observed_at)).toISOString(),
+    value: Number(row.energy_kwh),
+  }));
+}
+
+async function readDailyRange(
+  env: Env,
+  accountNumber: string,
+  fromMs: number,
+  toMs: number,
+): Promise<OctopusReading[]> {
+  if (toMs <= fromMs) return [];
+  const fromDay = jstDayKey(fromMs);
+  const toDay = jstDayKey(toMs);
+  const result = await env.DB.prepare(
+    `SELECT supply_point,day,energy_kwh,slot_count
+       FROM octopus_daily_totals
+      WHERE account_number=?1 AND day>=?2 AND day<?3
+      ORDER BY day,supply_point`,
+  ).bind(accountNumber, fromDay, toDay).all<DailyTotalRow>();
+  const rows = result.results ?? [];
+  if (!rows.length) return readRawRange(env, accountNumber, fromMs, toMs);
+
+  const readings: OctopusReading[] = [];
+  for (const row of rows) {
+    const start = dayStartFromKey(row.day);
+    const slots = Math.max(0, Math.min(48, Math.trunc(Number(row.slot_count))));
+    const total = Number(row.energy_kwh);
+    if (!Number.isFinite(start) || !Number.isFinite(total) || total < 0 || slots === 0) continue;
+    const value = total / slots;
+    for (let slot = 0; slot < slots; slot += 1) {
+      const observedAt = start + slot * HALF_HOUR_MS;
+      if (observedAt < fromMs || observedAt >= toMs) continue;
+      readings.push({
+        supplyPoint: row.supply_point,
+        startAt: new Date(observedAt).toISOString(),
+        value,
+      });
+    }
+  }
+  return readings;
+}
+
 export async function readStoredOctopusRanges(
   env: Env,
   accountNumber: string,
   ranges: OctopusRange[],
 ): Promise<OctopusReading[]> {
   const unique = new Map<string, OctopusReading>();
-  const query = env.DB.prepare(
-    `SELECT supply_point,observed_at,energy_kwh
-       FROM octopus_readings
-      WHERE account_number=?1 AND observed_at>=?2 AND observed_at<?3
-      ORDER BY observed_at`,
-  );
+  const stableDailyEnd = jstDayStart(Date.now() - 2 * DAY_MS);
   for (const range of ranges) {
-    const result = await query.bind(
-      accountNumber,
-      range.from.getTime(),
-      range.to.getTime(),
-    ).all<StoredReadingRow>();
-    for (const row of result.results ?? []) {
-      const observedAt = Number(row.observed_at);
-      const key = `${row.supply_point}:${observedAt}`;
-      unique.set(key, {
-        supplyPoint: row.supply_point,
-        startAt: new Date(observedAt).toISOString(),
-        value: Number(row.energy_kwh),
-      });
+    const fromMs = range.from.getTime();
+    const toMs = range.to.getTime();
+    const dailyStart = Math.min(toMs, nextCompleteDayStart(fromMs));
+    const dailyEnd = Math.max(dailyStart, Math.min(toMs, stableDailyEnd));
+    const segments = await Promise.all([
+      readRawRange(env, accountNumber, fromMs, dailyStart),
+      readDailyRange(env, accountNumber, dailyStart, dailyEnd),
+      readRawRange(env, accountNumber, dailyEnd, toMs),
+    ]);
+    for (const row of segments.flat()) {
+      const observedAt = Date.parse(row.startAt);
+      unique.set(`${row.supplyPoint}:${observedAt}`, row);
     }
   }
   return Array.from(unique.values());

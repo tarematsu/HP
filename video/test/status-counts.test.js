@@ -52,6 +52,13 @@ test('only a complete refresh clears and returns the persistent dirty marker', (
 
 test('complete refresh scans and clears dirty state in one D1 batch', async () => {
   let batchStatements = null;
+  const dirty = {
+    activeVideos: 9,
+    feedVideos: 7,
+    deathVideos: 2,
+    countsDirty: 1,
+    countsUpdatedAt: '2026-07-05T11:00:00.000Z'
+  };
   const refreshed = {
     activeVideos: 10,
     feedVideos: 8,
@@ -69,7 +76,8 @@ test('complete refresh scans and clears dirty state in one D1 batch', async () =
           return this;
         },
         async first() {
-          throw new Error('atomic refresh should return its row from batch');
+          assert.match(this.sql, /FROM status_counts WHERE id = 1/i);
+          return dirty;
         },
         async run() {
           throw new Error('full refresh must use batch');
@@ -92,6 +100,40 @@ test('complete refresh scans and clears dirty state in one D1 batch', async () =
   assert.match(batchStatements[1].sql, /FROM video_blocklist/i);
   assert.match(batchStatements[2].sql, /SET dirty = 0/i);
   assert.deepEqual(row, refreshed);
+});
+
+test('clean singleton skips all full-count scans', async () => {
+  let batchCalls = 0;
+  const clean = {
+    activeVideos: 10,
+    activeMp4Videos: 8,
+    feedVideos: 7,
+    feedMp4Videos: 6,
+    blockedVideos: 1,
+    deathVideos: 2,
+    countsDirty: 0,
+    countsUpdatedAt: '2026-07-05T12:00:00.000Z'
+  };
+  const db = {
+    prepare(sql) {
+      return {
+        sql: sql.replace(/\s+/g, ' ').trim(),
+        bind() { return this; },
+        async first() {
+          assert.match(this.sql, /FROM status_counts WHERE id = 1/i);
+          return clean;
+        }
+      };
+    },
+    async batch() {
+      batchCalls += 1;
+      throw new Error('clean counts must not run a rebuild batch');
+    }
+  };
+
+  const row = await refreshStatusCounts(db, '2026-07-05T13:00:00.000Z');
+  assert.equal(batchCalls, 0);
+  assert.deepEqual(row, clean);
 });
 
 test('dirty state survives until a complete fallback refresh', () => {

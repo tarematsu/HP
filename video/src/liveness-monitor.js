@@ -10,17 +10,9 @@ const DEATH_PHASE = 'death';
 const PROBE_CONCURRENCY = 1;
 const PROBE_TIMEOUT_MS = 8_000;
 const LOCK_TTL_MS = 4 * 60_000;
-const BASE_UPPER_ID_SQL = `(SELECT COALESCE(MAX(video.id), 0)
-  FROM videos AS video
- WHERE video.status = 'active'
-   AND NOT EXISTS (
-     SELECT 1 FROM video_blocklist AS bad
-      WHERE bad.canonical_key = video.canonical_key
-   )
-   AND NOT EXISTS (
-     SELECT 1 FROM video_death_list AS death
-      WHERE death.canonical_key = video.canonical_key
-   ))`;
+const BASE_UPPER_ID_SQL = `(SELECT COALESCE(max_video_id, 0)
+  FROM video_liveness_bounds
+ WHERE id = 1)`;
 const DEATH_UPPER_KEY_SQL = `(SELECT COALESCE(MAX(canonical_key), '')
   FROM video_death_list)`;
 

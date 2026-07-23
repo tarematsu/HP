@@ -112,6 +112,7 @@ export default {
     }
 
     if (request.method === "POST" && path === "/v1/telemetry") {
+      console.warn("legacy-telemetry-endpoint-used");
       return receiveTelemetryOptimized(request, env);
     }
 

@@ -174,6 +174,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (url.pathname === "/v1/telemetry") {
     if (request.method !== "POST") return methodNotAllowed(["POST"]);
+    console.warn("legacy-telemetry-endpoint-used");
     return receiveTelemetryOptimized(request, env);
   }
 
