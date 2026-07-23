@@ -23,46 +23,17 @@ SELECT account_number,
        COUNT(*),
        MAX(updated_at)
   FROM octopus_readings
+ WHERE observed_at >= 1761922800000
  GROUP BY account_number, supply_point, day
 ON CONFLICT(account_number, supply_point, day) DO UPDATE SET
   energy_kwh=excluded.energy_kwh,
   slot_count=excluded.slot_count,
   updated_at=excluded.updated_at;
 
-CREATE TABLE IF NOT EXISTS video_liveness_bounds (
-  id INTEGER PRIMARY KEY CHECK(id = 1),
-  max_video_id INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL
-);
-
-INSERT INTO video_liveness_bounds(id, max_video_id, updated_at)
-VALUES(1, COALESCE((SELECT MAX(id) FROM videos), 0), CURRENT_TIMESTAMP)
-ON CONFLICT(id) DO UPDATE SET
-  max_video_id=MAX(video_liveness_bounds.max_video_id, excluded.max_video_id),
-  updated_at=excluded.updated_at;
-
-CREATE TRIGGER IF NOT EXISTS video_liveness_bound_on_insert
-AFTER INSERT ON videos
-BEGIN
-  UPDATE video_liveness_bounds
-     SET max_video_id=MAX(max_video_id, NEW.id),
-         updated_at=CURRENT_TIMESTAMP
-   WHERE id=1;
-END;
-
-CREATE TRIGGER IF NOT EXISTS video_liveness_bound_on_status_active
-AFTER UPDATE OF status ON videos
-WHEN NEW.status='active'
-BEGIN
-  UPDATE video_liveness_bounds
-     SET max_video_id=MAX(max_video_id, NEW.id),
-         updated_at=CURRENT_TIMESTAMP
-   WHERE id=1;
-END;
-
 DROP TRIGGER IF EXISTS status_counts_dirty_on_block_delete;
+DROP TRIGGER IF EXISTS status_counts_delta_on_block_delete;
 
-CREATE TRIGGER IF NOT EXISTS status_counts_delta_on_block_delete
+CREATE TRIGGER status_counts_delta_on_block_delete
 AFTER DELETE ON video_blocklist
 BEGIN
   UPDATE status_counts
@@ -87,7 +58,7 @@ BEGIN
          ),
          blocked_videos=MAX(0, blocked_videos-1),
          updated_at=CURRENT_TIMESTAMP,
-         dirty=0
+         dirty=1
    WHERE id=1;
 END;
 
