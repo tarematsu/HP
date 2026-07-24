@@ -4,7 +4,7 @@ export interface TelemetryHeartbeatReceipt {
   last_sequence: number;
 }
 
-const HEARTBEAT_REFRESH_MS = 6 * 60 * 60_000;
+const HEARTBEAT_REFRESH_MS = 24 * 60 * 60_000;
 
 export function telemetryHeartbeatReturningStatement(
   env: Env,
