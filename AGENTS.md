@@ -1,3 +1,7 @@
+# Home Platform repository instructions
+
+This repository contains the Stationhead (SH) platform at the repository root and HomePanel applications under `hp/`. Product deployments remain independent.
+
 # Repository Instructions
 
 ## Repository identity

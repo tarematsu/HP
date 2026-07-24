@@ -9,7 +9,7 @@ const rootPath = fileURLToPath(root);
 const auditPath = '.github/scripts/audit-cloudflare-free-tier-account.py';
 const audit = readFileSync(new URL(`../${auditPath}`, import.meta.url), 'utf8');
 const workflow = readFileSync(
-  new URL('../.github/workflows/fetch-cloudflare-observability.yml', import.meta.url),
+  new URL('../.github/workflows/sh-observability.yml', import.meta.url),
   'utf8',
 );
 

@@ -108,7 +108,7 @@ test('D1 budget indexes stay selective and refresh planner statistics', () => {
 });
 
 test('measured daily budgets target the required reductions from the current estimate', () => {
-  const workflow = source('../.github/workflows/fetch-cloudflare-observability.yml');
+  const workflow = source('../.github/workflows/sh-observability.yml');
   const auditor = source('../.github/scripts/audit-cloudflare-daily-usage.py');
   const currentEstimate = { reads: 8_000_000, writes: 250_000 };
   const budget = { reads: 3_000_000, writes: 70_000 };

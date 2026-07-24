@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { stripJsonc } from "../../cloud/scripts/jsonc.mjs";
+import { stripJsonc } from "../../hp/cloud/scripts/jsonc.mjs";
 
 async function readConfig() {
   const file = path.resolve("cloud", "wrangler.jsonc");
@@ -176,8 +176,8 @@ const updateBucket = configuredUpdateBucket(config);
 const apiToken = String(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_BUILDS_API_TOKEN || "").trim();
 const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() || (apiToken ? await cloudflareAccountId(apiToken) : "");
 
-if (!workerName) throw new Error("Worker name is missing in cloud/wrangler.jsonc");
-if (!databaseName) throw new Error("D1 database name is missing in cloud/wrangler.jsonc");
+if (!workerName) throw new Error("Worker name is missing in hp/cloud/wrangler.jsonc");
+if (!databaseName) throw new Error("D1 database name is missing in hp/cloud/wrangler.jsonc");
 
 const d1Usage = await writeD1Usage(apiToken, accountId, databaseName, databaseId);
 await publishD1UsageIssue(d1Usage);

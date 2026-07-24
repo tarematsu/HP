@@ -29,7 +29,7 @@ test('observability script changes are covered by pull-request CI', async () => 
 });
 
 test('observability uses post-deploy, diagnostic-change, and daily complete budget checks', async () => {
-  const workflow = await readFile(new URL('.github/workflows/fetch-cloudflare-observability.yml', root), 'utf8');
+  const workflow = await readFile(new URL('.github/workflows/sh-observability.yml', root), 'utf8');
   const dailyAudit = await readFile(
     new URL('.github/scripts/audit-cloudflare-daily-usage.py', root),
     'utf8',

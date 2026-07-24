@@ -17,7 +17,7 @@ function jobSection(source, name, nextName) {
 const ci = workflow('ci.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
 const d1Usage = workflow('fetch-cloudflare-d1-usage.yml');
-const observability = workflow('fetch-cloudflare-observability.yml');
+const observability = workflow('sh-observability.yml');
 const sitePackage = JSON.parse(readFileSync(new URL('../site/package.json', import.meta.url), 'utf8'));
 const workerDependencyGuard = readFileSync(
   new URL('../site/scripts/ensure-worker-test-deps.mjs', import.meta.url),

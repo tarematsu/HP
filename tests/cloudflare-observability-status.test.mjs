@@ -81,7 +81,7 @@ test('observability status body is stable, sanitized, and fail-closed', () => {
 
 test('observability workflow publishes retrievable commit statuses and issue summary', async () => {
   const workflow = await readFile(
-    new URL('.github/workflows/fetch-cloudflare-observability.yml', root),
+    new URL('.github/workflows/sh-observability.yml', root),
     'utf8',
   );
   const publisher = await readFile(

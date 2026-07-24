@@ -1,0 +1,43 @@
+name: Resolve Cloudflare context
+description: Export Cloudflare token and automatically resolve the accessible account ID
+inputs:
+  api-token:
+    description: Cloudflare API token
+    required: true
+  account-id:
+    description: Optional explicit Cloudflare account ID
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Resolve account
+      shell: bash
+      env:
+        INPUT_API_TOKEN: ${{ inputs.api-token }}
+        INPUT_ACCOUNT_ID: ${{ inputs.account-id }}
+      run: |
+        set -euo pipefail
+        token="$INPUT_API_TOKEN"
+        account_id="$INPUT_ACCOUNT_ID"
+        if [[ -z "$token" ]]; then
+          echo 'CLOUDFLARE_BUILDS_API_TOKEN is unavailable' >&2
+          exit 1
+        fi
+        echo "::add-mask::$token"
+        if [[ -z "$account_id" ]]; then
+          response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $token" \
+            'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
+          mapfile -t account_ids < <(jq -r '.result[]?.id // empty' <<<"$response")
+          if [[ "${#account_ids[@]}" -ne 1 ]]; then
+            echo "Expected exactly one accessible Cloudflare account, found ${#account_ids[@]}" >&2
+            exit 1
+          fi
+          account_id="${account_ids[0]}"
+        fi
+        {
+          echo "CLOUDFLARE_API_TOKEN=$token"
+          echo "CLOUDFLARE_BUILDS_API_TOKEN=$token"
+          echo "CLOUDFLARE_ACCOUNT_ID=$account_id"
+        } >> "$GITHUB_ENV"

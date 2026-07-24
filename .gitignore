@@ -47,3 +47,18 @@ WebView2Loader.dll
 .idea/
 .DS_Store
 Thumbs.db
+
+# SH
+node_modules/
+__pycache__/
+.pytest_cache/
+artifacts/
+dist-dry-run/
+playwright-report/
+test-results/
+state/
+.sh-session.json
+
+.wrangler/
+.sh-discovery/
+database/local-migration/

@@ -15,7 +15,7 @@ const factsVerification = readFileSync(
   'utf8',
 );
 const observabilityWorkflow = readFileSync(
-  new URL('../.github/workflows/fetch-cloudflare-observability.yml', import.meta.url),
+  new URL('../.github/workflows/sh-observability.yml', import.meta.url),
   'utf8',
 );
 const observabilityQuery = readFileSync(
