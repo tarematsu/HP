@@ -6,13 +6,21 @@ const layoutSource = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
 );
+const playerHeader = readFileSync(
+  new URL('../../native/src/sh.h', import.meta.url),
+  'utf8',
+);
+const handleSource = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
 
-function section(start, end) {
-  const startAt = layoutSource.indexOf(start);
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
   assert.notEqual(startAt, -1, `missing section: ${start}`);
-  const endAt = layoutSource.indexOf(end, startAt + start.length);
+  const endAt = source.indexOf(end, startAt + start.length);
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
-  return layoutSource.slice(startAt, endAt);
+  return source.slice(startAt, endAt);
 }
 
 test('single Stationhead configuration expands the primary surface to the full parent client', () => {
@@ -32,6 +40,7 @@ test('single Stationhead configuration expands the primary surface to the full p
 
 test('hidden playback placement does not trust a stale cached visible flag', () => {
   const keepBehind = section(
+    layoutSource,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()',
   );
@@ -44,6 +53,7 @@ test('hidden playback placement does not trust a stale cached visible flag', () 
 
 test('child hosts are resized before WebView controller bounds are applied', () => {
   const applyLayout = section(
+    layoutSource,
     'void ApplyStationheadChildLayout(',
     '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
@@ -57,6 +67,7 @@ test('child hosts are resized before WebView controller bounds are applied', () 
 
 test('failed host creation clears the public visible state', () => {
   const layoutControllers = section(
+    layoutSource,
     'void StationheadPlayer::LayoutControllers()',
     'void StationheadPlayer::SetBounds(',
   );
@@ -64,4 +75,47 @@ test('failed host creation clears the public visible state', () => {
     layoutControllers,
     /if \(!EnsureHostWindow\(\)\)[\s\S]*status_\.visible = false;[\s\S]*return;/,
   );
+});
+
+test('scheduled WebView recreation is not reported as healthy playback', () => {
+  const audioPlaying = section(
+    playerHeader,
+    '[[nodiscard]] bool AudioPlaying() const noexcept',
+    '[[nodiscard]] int64_t AudioPlayingSince() const noexcept',
+  );
+  assert.match(audioPlaying, /!recreating_\.load\(std::memory_order_relaxed\)/);
+  assert.match(audioPlaying, /audioPlaying_\.load\(std::memory_order_relaxed\)/);
+  assert.match(
+    playerHeader,
+    /AudioPlayingSince\(\) const noexcept[\s\S]*return AudioPlaying\(\)[\s\S]*: 0;/,
+  );
+  assert.match(
+    layoutSource,
+    /bool StationheadPlayer::NeedsInteractiveWindow\(\) const[\s\S]*controller_ && !AudioPlaying\(\)/,
+  );
+});
+
+test('handle status and placement use the recreation-aware audio state', () => {
+  const rawStatus = section(
+    handleSource,
+    'StationheadStatus StationheadHandleBase::RawStatus() const',
+    'StationheadStatus StationheadHandleBase::Status() const',
+  );
+  assert.match(rawStatus, /player_->AudioPlaying\(\)/);
+  assert.match(rawStatus, /status\.audioPlaying = audioPlaying;/);
+  assert.match(rawStatus, /status\.playing = audioPlaying;/);
+
+  const refreshVisibility = section(
+    handleSource,
+    'void StationheadHandleBase::RefreshVisibility()',
+    'void StationheadHandleBase::Start()',
+  );
+  assert.match(refreshVisibility, /const StationheadStatus status = RawStatus\(\);/);
+
+  const raiseActiveHost = section(
+    handleSource,
+    'void StationheadHandleBase::RaiseActiveHost() const',
+    'void StationheadHandleBase::ApplyInteractiveBounds()',
+  );
+  assert.match(raiseActiveHost, /const StationheadStatus status = RawStatus\(\);/);
 });
