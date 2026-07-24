@@ -10,9 +10,11 @@ CREATE TABLE jobs_v2 (
   last_error TEXT,
   consecutive_failures INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
+
 INSERT INTO jobs_v2
 SELECT name,interval_seconds,next_run_at,lease_until,last_success_at,last_error,consecutive_failures
   FROM jobs;
+
 DROP TABLE jobs;
 ALTER TABLE jobs_v2 RENAME TO jobs;
 
@@ -27,9 +29,11 @@ CREATE TABLE current_state_v2 (
   error TEXT,
   content_hash TEXT
 ) WITHOUT ROWID;
+
 INSERT INTO current_state_v2
 SELECT source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
   FROM current_state;
+
 DROP TABLE current_state;
 ALTER TABLE current_state_v2 RENAME TO current_state;
 
@@ -42,9 +46,11 @@ CREATE TABLE device_heartbeats_v2 (
   payload TEXT,
   last_sequence INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
+
 INSERT INTO device_heartbeats_v2
 SELECT device_id,last_seen_at,app_version,stationhead_ok,outbox_count,payload,last_sequence
   FROM device_heartbeats;
+
 DROP TABLE device_heartbeats;
 ALTER TABLE device_heartbeats_v2 RENAME TO device_heartbeats;
 
@@ -86,12 +92,12 @@ BEGIN
      SET dashboard_version=dashboard_version + CASE WHEN NEW.source IN (
            'weather','news','octopus','switchbot','stationhead','environment'
          ) THEN NEW.version ELSE 0 END,
-         environment_version=CASE WHEN NEW.source='environment' THEN NEW.version ELSE environment_version END,
-         environment_fetched_at=CASE WHEN NEW.source='environment' THEN NEW.fetched_at ELSE environment_fetched_at END,
-         radar_version=CASE WHEN NEW.source='radar' THEN NEW.version ELSE radar_version END,
-         switchbot_version=CASE WHEN NEW.source='switchbot' THEN NEW.version ELSE switchbot_version END,
-         stationhead_version=CASE WHEN NEW.source='stationhead' THEN NEW.version ELSE stationhead_version END,
-         stationhead_health_version=CASE WHEN NEW.source='stationhead_health' THEN NEW.version ELSE stationhead_health_version END,
+         environment_version = CASE WHEN NEW.source='environment' THEN NEW.version ELSE environment_version END,
+         environment_fetched_at = CASE WHEN NEW.source='environment' THEN NEW.fetched_at ELSE environment_fetched_at END,
+         radar_version = CASE WHEN NEW.source='radar' THEN NEW.version ELSE radar_version END,
+         switchbot_version = CASE WHEN NEW.source='switchbot' THEN NEW.version ELSE switchbot_version END,
+         stationhead_version = CASE WHEN NEW.source='stationhead' THEN NEW.version ELSE stationhead_version END,
+         stationhead_health_version = CASE WHEN NEW.source='stationhead_health' THEN NEW.version ELSE stationhead_health_version END,
          updated_at=MAX(updated_at,NEW.fetched_at)
    WHERE id=1;
 END;
@@ -105,12 +111,12 @@ BEGIN
      SET dashboard_version=dashboard_version + CASE WHEN NEW.source IN (
            'weather','news','octopus','switchbot','stationhead','environment'
          ) THEN NEW.version-OLD.version ELSE 0 END,
-         environment_version=CASE WHEN NEW.source='environment' THEN NEW.version ELSE environment_version END,
-         environment_fetched_at=CASE WHEN NEW.source='environment' THEN NEW.fetched_at ELSE environment_fetched_at END,
-         radar_version=CASE WHEN NEW.source='radar' THEN NEW.version ELSE radar_version END,
-         switchbot_version=CASE WHEN NEW.source='switchbot' THEN NEW.version ELSE switchbot_version END,
-         stationhead_version=CASE WHEN NEW.source='stationhead' THEN NEW.version ELSE stationhead_version END,
-         stationhead_health_version=CASE WHEN NEW.source='stationhead_health' THEN NEW.version ELSE stationhead_health_version END,
+         environment_version = CASE WHEN NEW.source='environment' THEN NEW.version ELSE environment_version END,
+         environment_fetched_at = CASE WHEN NEW.source='environment' THEN NEW.fetched_at ELSE environment_fetched_at END,
+         radar_version = CASE WHEN NEW.source='radar' THEN NEW.version ELSE radar_version END,
+         switchbot_version = CASE WHEN NEW.source='switchbot' THEN NEW.version ELSE switchbot_version END,
+         stationhead_version = CASE WHEN NEW.source='stationhead' THEN NEW.version ELSE stationhead_version END,
+         stationhead_health_version = CASE WHEN NEW.source='stationhead_health' THEN NEW.version ELSE stationhead_health_version END,
          updated_at=MAX(updated_at,NEW.fetched_at)
    WHERE id=1;
 END;
@@ -122,12 +128,12 @@ BEGIN
      SET dashboard_version=MAX(0,dashboard_version - CASE WHEN OLD.source IN (
            'weather','news','octopus','switchbot','stationhead','environment'
          ) THEN OLD.version ELSE 0 END),
-         environment_version=CASE WHEN OLD.source='environment' THEN 0 ELSE environment_version END,
-         environment_fetched_at=CASE WHEN OLD.source='environment' THEN 0 ELSE environment_fetched_at END,
-         radar_version=CASE WHEN OLD.source='radar' THEN 0 ELSE radar_version END,
-         switchbot_version=CASE WHEN OLD.source='switchbot' THEN 0 ELSE switchbot_version END,
-         stationhead_version=CASE WHEN OLD.source='stationhead' THEN 0 ELSE stationhead_version END,
-         stationhead_health_version=CASE WHEN OLD.source='stationhead_health' THEN 0 ELSE stationhead_health_version END
+         environment_version = CASE WHEN OLD.source='environment' THEN 0 ELSE environment_version END,
+         environment_fetched_at = CASE WHEN OLD.source='environment' THEN 0 ELSE environment_fetched_at END,
+         radar_version = CASE WHEN OLD.source='radar' THEN 0 ELSE radar_version END,
+         switchbot_version = CASE WHEN OLD.source='switchbot' THEN 0 ELSE switchbot_version END,
+         stationhead_version = CASE WHEN OLD.source='stationhead' THEN 0 ELSE stationhead_version END,
+         stationhead_health_version = CASE WHEN OLD.source='stationhead_health' THEN 0 ELSE stationhead_health_version END
    WHERE id=1;
 END;
 
@@ -151,7 +157,7 @@ DROP TABLE IF EXISTS environment_buckets;
 
 UPDATE jobs
    SET interval_seconds=3600,
-       next_run_at=CASE
+       next_run_at = CASE
          WHEN next_run_at=0 THEN 0
          ELSE MIN(next_run_at,unixepoch()+3600)
        END
@@ -280,7 +286,7 @@ BEGIN
          dirty=0
    WHERE id=1;
   UPDATE videos
-     SET status=CASE WHEN EXISTS(
+     SET status = CASE WHEN EXISTS(
        SELECT 1 FROM video_death_list WHERE canonical_key=OLD.canonical_key
      ) THEN 'dead' ELSE 'active' END
    WHERE canonical_key=OLD.canonical_key AND status='hidden';
@@ -308,7 +314,7 @@ BEGIN
          dirty=0
    WHERE id=1;
   UPDATE videos
-     SET status=CASE WHEN EXISTS(
+     SET status = CASE WHEN EXISTS(
        SELECT 1 FROM video_blocklist WHERE canonical_key=OLD.canonical_key
      ) THEN 'hidden' ELSE 'active' END
    WHERE canonical_key=OLD.canonical_key AND status='dead';
