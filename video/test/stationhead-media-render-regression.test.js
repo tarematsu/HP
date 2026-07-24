@@ -26,7 +26,7 @@ test('music status follows the selected A or B audio source', () => {
   assert.doesNotMatch(mediaSource, /: nativeStationhead_\.audioPlaying \? L"再生中"/);
 });
 
-test('interactive and failure status is not hidden by an empty-feed message', () => {
+test('interactive and failure status is not hidden by feed or artist metadata', () => {
   assert.match(
     mediaSource,
     /const bool stationheadNeedsAttention = nativeStationhead_\.loginRequired \|\|[\s\S]*nativeStationhead_\.processFailed \|\| nativeStationhead_\.spotifyAuthorization;/,
@@ -36,4 +36,10 @@ test('interactive and failure status is not hidden by an empty-feed message', ()
     mediaSource,
     /const std::wstring rowDetail = !stationheadNeedsAttention &&[\s\S]*sharedPlayback\.available && !sharedPlayback\.hasTrack/,
   );
+  assert.match(
+    mediaSource,
+    /const std::wstring artistOrDetail = stationheadNeedsAttention \|\| artist\.empty\(\)[\s\S]*\? rowDetail[\s\S]*: artist;/,
+  );
+  assert.match(mediaSource, /DrawTextInRect\(dc, artistOrDetail, artistRect,/);
+  assert.doesNotMatch(mediaSource, /DrawTextInRect\(dc, artist\.empty\(\) \? rowDetail : artist/);
 });
