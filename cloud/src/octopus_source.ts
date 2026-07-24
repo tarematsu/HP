@@ -1,17 +1,18 @@
 import { fetchJson } from "./http";
 import {
-  readStoredOctopusRanges,
+  octopusCompleteStableThroughJst,
+  readOctopusDailyTotals,
   synchronizeOctopusHistory,
+  type OctopusDailyTotal,
   type OctopusRange,
   type OctopusReading,
 } from "./octopus_history";
 import { JST_MS, jstDayKey as jstDayKeyMs, type Env, type SourceResult } from "./sources";
 
 const OCTOPUS_TOKEN_TTL_MS = 55 * 60_000;
-const HALF_HOUR_MS = 30 * 60_000;
 const DAY_MS = 86_400_000;
 const PROFILE_DAYS = 7;
-const PROFILE_SLOTS = 48;
+const SLOTS_PER_DAY = 48;
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
 const JSON_HEADERS = { "Content-Type": "application/json" } as const;
 const AUTHORIZATION_ERROR_CODES = new Set([
@@ -199,14 +200,8 @@ function jstBoundary(year: number, month: number, day: number): Date {
   return new Date(Date.UTC(year, month, day) - JST_MS);
 }
 
-function jstDayStart(timestampMs: number): Date {
-  const jst = new Date(timestampMs + JST_MS);
-  return jstBoundary(jst.getUTCFullYear(), jst.getUTCMonth(), jst.getUTCDate());
-}
-
 export function completeDayProfileRanges(nowMs: number): OctopusProfileRanges {
-  const todayStart = jstDayStart(nowMs);
-  const currentEnd = new Date(todayStart.getTime() - DAY_MS);
+  const currentEnd = new Date(octopusCompleteStableThroughJst(nowMs));
   const currentStart = new Date(currentEnd.getTime() - PROFILE_DAYS * DAY_MS);
   const previousEnd = currentStart;
   const previousStart = new Date(previousEnd.getTime() - PROFILE_DAYS * DAY_MS);
@@ -257,58 +252,28 @@ async function fetchOctopusRangeReadings(
 }
 
 export function buildOctopusDailyProfile(
-  readings: OctopusReading[],
+  totals: readonly OctopusDailyTotal[],
   ranges: OctopusProfileRanges,
 ): OctopusProfilePoint[] {
-  const rangeStart = ranges.previousStart.getTime();
-  const rangeEnd = ranges.currentEnd.getTime();
-  const unique = new Map<string, { supplyPoint: string; observedAt: number; value: number }>();
-  for (const reading of readings) {
-    const observedAt = Date.parse(reading.startAt);
-    const value = Number(reading.value);
-    const supplyPoint = String(reading.supplyPoint ?? "").trim();
-    if (!supplyPoint || !Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
-    if (observedAt < rangeStart || observedAt >= rangeEnd) continue;
-    if (observedAt % HALF_HOUR_MS !== 0) continue;
-    unique.set(`${supplyPoint}:${observedAt}`, { supplyPoint, observedAt, value });
+  const byDay = new Map<string, OctopusDailyTotal>();
+  for (const total of totals) {
+    if (total.slotCount !== SLOTS_PER_DAY || !Number.isFinite(total.energyKwh) || total.energyKwh < 0) continue;
+    byDay.set(total.day, total);
   }
-
-  const daySlots = new Map<string, Map<number, number>>();
-  for (const reading of unique.values()) {
-    const local = new Date(reading.observedAt + JST_MS);
-    const slot = local.getUTCHours() * 2 + Math.floor(local.getUTCMinutes() / 30);
-    if (slot < 0 || slot >= PROFILE_SLOTS) continue;
-    const dayKey = jstDayKeyMs(reading.observedAt);
-    let slots = daySlots.get(dayKey);
-    if (!slots) {
-      slots = new Map<number, number>();
-      daySlots.set(dayKey, slots);
-    }
-    slots.set(slot, (slots.get(slot) ?? 0) + reading.value);
-  }
-
-  const dayTotal = (dayKey: string): { total: number | null; complete: boolean } => {
-    const slots = daySlots.get(dayKey);
-    if (!slots || slots.size !== PROFILE_SLOTS) return { total: null, complete: false };
-    let sum = 0;
-    for (const value of slots.values()) sum += value;
-    return { total: Number(sum.toFixed(4)), complete: true };
-  };
 
   const profile: OctopusProfilePoint[] = [];
-  profile.length = 0;
   for (let offset = 0; offset < PROFILE_DAYS; offset += 1) {
     const currentDayMs = ranges.currentStart.getTime() + offset * DAY_MS;
     const previousDayMs = ranges.previousStart.getTime() + offset * DAY_MS;
-    const current = dayTotal(jstDayKeyMs(currentDayMs));
-    const previous = dayTotal(jstDayKeyMs(previousDayMs));
+    const current = byDay.get(jstDayKeyMs(currentDayMs));
+    const previous = byDay.get(jstDayKeyMs(previousDayMs));
     const weekday = new Date(currentDayMs + JST_MS).getUTCDay();
     profile.push({
       day: WEEKDAY_LABELS[weekday]!,
-      currentTotal: current.total,
-      previousTotal: previous.total,
-      currentComplete: current.complete,
-      previousComplete: previous.complete,
+      currentTotal: current ? Number(current.energyKwh.toFixed(4)) : null,
+      previousTotal: previous ? Number(previous.energyKwh.toFixed(4)) : null,
+      currentComplete: current !== undefined,
+      previousComplete: previous !== undefined,
     });
   }
   return profile;
@@ -319,19 +284,13 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
   const accountNumber = (env.OCTOPUS_ACCOUNT_NUMBER || legacyEnv.OCTOPUS_ACCOUNT || "").trim();
   if (!accountNumber) throw new Error("OCTOPUS_ACCOUNT or OCTOPUS_ACCOUNT_NUMBER is not configured");
 
-  const now = new Date();
-  const nowMs = now.getTime();
+  const nowMs = Date.now();
   const jst = new Date(nowMs + JST_MS);
   const billingMonth = jst.getUTCDate() >= 2 ? jst.getUTCMonth() : jst.getUTCMonth() - 1;
   const currentStart = jstBoundary(jst.getUTCFullYear(), billingMonth, 2);
   const previousStart = jstBoundary(jst.getUTCFullYear(), billingMonth - 1, 2);
   const nextStart = jstBoundary(jst.getUTCFullYear(), billingMonth + 1, 2);
   const profileRanges = completeDayProfileRanges(nowMs);
-  const priorityRange: OctopusRange = {
-    from: profileRanges.previousStart,
-    to: profileRanges.currentEnd,
-  };
-  const comparisonKey = `complete-profile-v2:${jstDayKeyMs(priorityRange.from.getTime())}:${jstDayKeyMs(priorityRange.to.getTime() - DAY_MS)}`;
 
   let token = await authenticateOctopus(env);
   let synchronized;
@@ -340,8 +299,6 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
       env,
       accountNumber,
       nowMs,
-      comparisonKey,
-      priorityRange,
       range => fetchOctopusRangeReadings(accountNumber, range, token),
     );
   } catch (error) {
@@ -352,39 +309,37 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
       env,
       accountNumber,
       nowMs,
-      comparisonKey,
-      priorityRange,
       range => fetchOctopusRangeReadings(accountNumber, range, token),
     );
   }
 
   const previousStartMs = previousStart.getTime();
   const currentStartMs = currentStart.getTime();
-  const dataThroughMs = Math.min(nowMs, synchronized.stableCutoff);
-  const storedRange: OctopusRange = {
-    from: new Date(Math.min(previousStartMs, priorityRange.from.getTime())),
-    to: new Date(dataThroughMs),
-  };
-  const readings = await readStoredOctopusRanges(env, accountNumber, [storedRange]);
+  const dataThroughMs = synchronized.stableThrough;
+  const previousStartDay = jstDayKeyMs(previousStartMs);
+  const currentStartDay = jstDayKeyMs(currentStartMs);
+  const dataThroughDay = jstDayKeyMs(dataThroughMs);
+  const profileStartDay = jstDayKeyMs(profileRanges.previousStart.getTime());
+  const queryFromDay = previousStartDay < profileStartDay ? previousStartDay : profileStartDay;
+  const totals = await readOctopusDailyTotals(env, accountNumber, queryFromDay, dataThroughDay);
+
   let previousUsage = 0;
   let currentUsage = 0;
-  let previousSlots = 0;
-  for (const reading of readings) {
-    const observedAt = Date.parse(reading.startAt);
-    const value = Number(reading.value ?? 0);
-    if (!Number.isFinite(observedAt) || !Number.isFinite(value)) continue;
-    if (observedAt >= previousStartMs && observedAt < currentStartMs) {
-      previousUsage += value;
-      previousSlots += 1;
+  let previousDays = 0;
+  for (const total of totals) {
+    if (total.slotCount !== SLOTS_PER_DAY) continue;
+    if (total.day >= previousStartDay && total.day < currentStartDay) {
+      previousUsage += total.energyKwh;
+      previousDays += 1;
     }
-    if (observedAt >= currentStartMs && observedAt < dataThroughMs) currentUsage += value;
+    if (total.day >= currentStartDay && total.day < dataThroughDay) currentUsage += total.energyKwh;
   }
 
-  const profile = buildOctopusDailyProfile(readings, profileRanges);
-  const elapsed = Math.max(1, dataThroughMs - currentStartMs);
+  const profile = buildOctopusDailyProfile(totals, profileRanges);
+  const elapsed = Math.max(0, dataThroughMs - currentStartMs);
   const duration = Math.max(1, nextStart.getTime() - currentStartMs);
-  const projected = currentUsage * duration / elapsed;
-  const expectedSlots = Math.round((currentStartMs - previousStartMs) / DAY_MS) * PROFILE_SLOTS;
+  const projected = elapsed > 0 ? currentUsage * duration / elapsed : 0;
+  const expectedDays = Math.round((currentStartMs - previousStartMs) / DAY_MS);
   return {
     source: "octopus",
     payload: {
@@ -399,17 +354,21 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
         excludedRecentDays: 2,
       },
       archive: {
-        stableThrough: synchronized.stableCutoff,
+        stableThrough: synchronized.stableThrough,
+        rawStableCutoff: synchronized.stableCutoff,
         historyFloor: synchronized.historyFloor,
         cursorBefore: synchronized.cursorBefore,
+        fetchFrom: synchronized.fetchFrom,
         completed: synchronized.completed,
         excludedRecentDays: 2,
       },
       lastMonth: {
         usage: Number(previousUsage.toFixed(3)),
-        complete: previousSlots / Math.max(1, expectedSlots) >= 0.95,
-        coveredSlots: previousSlots,
-        expectedSlots,
+        complete: previousDays / Math.max(1, expectedDays) >= 0.95,
+        coveredDays: previousDays,
+        expectedDays,
+        coveredSlots: previousDays * SLOTS_PER_DAY,
+        expectedSlots: expectedDays * SLOTS_PER_DAY,
       },
       thisMonth: {
         usageToDate: Number(currentUsage.toFixed(3)),
