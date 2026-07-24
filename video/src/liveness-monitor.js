@@ -1,8 +1,4 @@
 import { restoreRevivedRankingStatement } from './liveness-feed-maintenance.js';
-import {
-  baseLivenessStatusDeltaStatement,
-  deathLivenessStatusDeltaStatement
-} from './liveness-status-counts.js';
 import { LIVENESS_CRON } from './liveness-schedule.js';
 
 const BASE_PHASE = 'base';
@@ -192,32 +188,29 @@ async function selectRows(db, state, limit) {
 function baseMutationStatements(db, payload, checkedAt, hasDead) {
   const statements = [];
   if (hasDead) {
-    statements.push(
-      baseLivenessStatusDeltaStatement(db, payload, checkedAt),
-      db.prepare(
-        `WITH input AS (
-           SELECT CAST(json_extract(value, '$.id') AS INTEGER) AS id,
-                  json_extract(value, '$.mediaUrl') AS mediaUrl,
-                  json_extract(value, '$.canonicalKey') AS canonicalKey,
-                  CAST(json_extract(value, '$.httpStatus') AS INTEGER) AS httpStatus
-             FROM json_each(?)
-            WHERE json_extract(value, '$.state') = 'dead'
-         )
-         INSERT INTO video_death_list (
-           canonical_key, media_url, video_id, detected_at,
-           last_checked_at, last_http_status, check_count
-         )
-         SELECT canonicalKey, mediaUrl, id, ?, ?, httpStatus, 1
-           FROM input
-          WHERE 1
-         ON CONFLICT(canonical_key) DO UPDATE SET
-           media_url = excluded.media_url,
-           video_id = excluded.video_id,
-           last_checked_at = excluded.last_checked_at,
-           last_http_status = excluded.last_http_status,
-           check_count = COALESCE(video_death_list.check_count, 0) + 1`
-      ).bind(payload, checkedAt, checkedAt)
-    );
+    statements.push(db.prepare(
+      `WITH input AS (
+         SELECT CAST(json_extract(value, '$.id') AS INTEGER) AS id,
+                json_extract(value, '$.mediaUrl') AS mediaUrl,
+                json_extract(value, '$.canonicalKey') AS canonicalKey,
+                CAST(json_extract(value, '$.httpStatus') AS INTEGER) AS httpStatus
+           FROM json_each(?)
+          WHERE json_extract(value, '$.state') = 'dead'
+       )
+       INSERT INTO video_death_list (
+         canonical_key, media_url, video_id, detected_at,
+         last_checked_at, last_http_status, check_count
+       )
+       SELECT canonicalKey, mediaUrl, id, ?, ?, httpStatus, 1
+         FROM input
+        WHERE 1
+       ON CONFLICT(canonical_key) DO UPDATE SET
+         media_url = excluded.media_url,
+         video_id = excluded.video_id,
+         last_checked_at = excluded.last_checked_at,
+         last_http_status = excluded.last_http_status,
+         check_count = COALESCE(video_death_list.check_count, 0) + 1`
+    ).bind(payload, checkedAt, checkedAt));
   }
 
   statements.push(db.prepare(
@@ -302,7 +295,6 @@ function deathMutationStatements(db, payload, checkedAt, hasRevived, hasUnresolv
         WHERE video_death_list.canonical_key = input.canonicalKey`
     ).bind(payload, checkedAt));
   }
-  if (hasRevived) statements.push(deathLivenessStatusDeltaStatement(db, payload, checkedAt));
   return statements;
 }
 
