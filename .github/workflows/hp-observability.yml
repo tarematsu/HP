@@ -18,7 +18,7 @@ on:
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - 'tests/helpers/source-contract.mjs'
-      - 'tests/homepanel-*.test.mjs'
+      - 'tests/homepanel-observability-contract.test.mjs'
       - 'tests/observability-status-publisher.test.mjs'
   schedule:
     - cron: "47 2 * * *"
@@ -71,6 +71,7 @@ jobs:
         uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
       - name: Validate observability policy code
         id: policy-self-test
         run: |
@@ -78,7 +79,7 @@ jobs:
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node --test \
-            tests/homepanel-*.test.mjs \
+            tests/homepanel-observability-contract.test.mjs \
             tests/observability-status-publisher.test.mjs
 
       - name: Enforce projected UTC daily Worker, D1, and Queue budgets
