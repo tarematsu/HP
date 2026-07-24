@@ -144,6 +144,9 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       sharedPlayback.available && !sharedPlayback.hasTrack
       ? L"次の曲を待機中"
       : detail;
+  const std::wstring artistOrDetail = stationheadNeedsAttention || artist.empty()
+      ? rowDetail
+      : artist;
 
   SetTextColor(dc, kWidgetText);
   SelectObject(dc, TierFont(FontTier::Medium));
@@ -157,7 +160,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     SelectObject(dc, TierFont(FontTier::Small));
     RECT artistRect{textLeft, titleRect.bottom, textRight,
                     withProgress ? rowRect.top + rowHeight * 62 / 100 : rowRect.bottom - pad};
-    DrawTextInRect(dc, artist.empty() ? rowDetail : artist, artistRect,
+    DrawTextInRect(dc, artistOrDetail, artistRect,
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   }
 
