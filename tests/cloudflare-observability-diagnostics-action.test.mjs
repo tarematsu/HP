@@ -38,13 +38,12 @@ test('SH and HomePanel workflows use and retrigger the diagnostics action', () =
   assert.match(workflows.hp, /^\s{10}live-tail-probes: \/v1\/health,\/$/m);
 });
 
-test('ambiguous action and duplicate telemetry implementation stay removed', async () => {
-  await assert.rejects(access(new URL(
+test('ambiguous and superseded observability implementations stay removed', async () => {
+  for (const path of [
     '../.github/actions/cloudflare-observability-query/action.yml',
-    import.meta.url,
-  )));
-  await assert.rejects(access(new URL(
     '../.github/scripts/audit-cloudflare-telemetry-core.py',
-    import.meta.url,
-  )));
+    '../.github/scripts/enforce-worker-cpu-budget.py',
+  ]) {
+    await assert.rejects(access(new URL(path, import.meta.url)), path);
+  }
 });
