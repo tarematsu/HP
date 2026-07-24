@@ -11,10 +11,7 @@ const deviceSync = readFileSync(new URL('../../cloud/src/device_sync.ts', import
 const schedulerCoordinator = readFileSync(new URL('../../cloud/src/scheduler_coordinator.ts', import.meta.url), 'utf8');
 const schedulerRuntime = readFileSync(new URL('../../cloud/src/scheduler_runtime.ts', import.meta.url), 'utf8');
 const livenessDoDb = readFileSync(new URL('../../cloud/src/liveness_do_db.ts', import.meta.url), 'utf8');
-const telemetryCompact = readFileSync(new URL('../../cloud/src/telemetry_compact.ts', import.meta.url), 'utf8');
 const telemetryHeartbeat = readFileSync(new URL('../../cloud/src/telemetry_heartbeat.ts', import.meta.url), 'utf8');
-const pipelineSetup = readFileSync(new URL('../../cloud/scripts/setup-homepanel-pipeline.mjs', import.meta.url), 'utf8');
-const pipelineSql = readFileSync(new URL('../../cloud/pipelines/homepanel-events.sql', import.meta.url), 'utf8');
 const feedSnapshot = readFileSync(new URL('../src/feed-snapshot.js', import.meta.url), 'utf8');
 const playbackSync = readFileSync(new URL('../src/playback-feed-sync.js', import.meta.url), 'utf8');
 const sourceStorage = readFileSync(new URL('../src/video-storage-statements.js', import.meta.url), 'utf8');
@@ -43,7 +40,6 @@ const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', imp
 const DAY_SECONDS = 86_400;
 const TARGET = 3_000;
 const READ_TARGET = 10_000;
-const PIPELINE_FREE_BYTES = 1024 ** 3;
 const STATE_HEARTBEAT_SECONDS = 24 * 60 * 60;
 const scheduledIntervals = {
   switchbot: 900,
@@ -159,17 +155,6 @@ test('high-frequency D1 state is checkpointed or suppressed', () => {
   assert.match(offloadMigration, /OLD\.fetched_at \+ 86400000/);
 });
 
-test('Cloudflare Pipelines is provisioned as the standard analytics sink', () => {
-  assert.match(telemetryCompact, /sendPipelineRecordsBestEffort/);
-  assert.match(pipelineSetup, /homepanel_events_stream/);
-  assert.match(pipelineSetup, /homepanel_events_sink/);
-  assert.match(pipelineSetup, /--format', 'parquet'/);
-  assert.match(pipelineSetup, /--compression', 'zstd'/);
-  assert.match(pipelineSetup, /HOMEPANEL_PIPELINE/);
-  assert.match(pipelineSql, /INSERT INTO homepanel_events_sink/);
-  assert.match(pipelineSql, /FROM homepanel_events_stream/);
-});
-
 test('modeled daily D1 written rows remain low after R2 and DO offload', () => {
   const switchbotChangedStateReserve = 24;
   const heartbeatStateRows = heartbeatStateIntervals
@@ -239,16 +224,11 @@ test('modeled daily Worker and internal DO invocations stay below target', () =>
   assert.ok(modeledRequests < TARGET);
 });
 
-test('R2 writes and Pipeline volume remain bounded', () => {
+test('primary R2 writes remain bounded', () => {
   const telemetryStateWrites = runsPerDay(240 * 60);
   const radarLatestReserve = 24;
   const feedSnapshotWrites = 1;
   const primaryR2Writes = telemetryStateWrites + radarLatestReserve + feedSnapshotWrites;
-  const pipelineEventsPerDay = telemetryStateWrites * 60 + 2;
-  const pipelineBytesPerMonth = pipelineEventsPerDay * 31 * 1024;
 
   assert.equal(primaryR2Writes, 31);
-  assert.equal(pipelineEventsPerDay, 362);
-  assert.equal(pipelineBytesPerMonth, 11_491_328);
-  assert.ok(pipelineBytesPerMonth < PIPELINE_FREE_BYTES);
 });
