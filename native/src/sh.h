@@ -128,6 +128,9 @@ class StationheadPlayer {
   void ShowAfterAudioStop();
   void OpenSpotifyAuthorization(const std::wstring& url);
   void ReleaseCompletedAuth();
+  void FinalizeCompletedAuth() {
+    if (!SpotifyAuthorizationActive()) CloseAuthWebView();
+  }
   void ToggleView();
   uint32_t ConsumeChangeFlags();
   void SetMuted(bool muted) noexcept;
