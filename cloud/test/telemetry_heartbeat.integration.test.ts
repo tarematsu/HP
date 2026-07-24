@@ -19,7 +19,7 @@ beforeEach(async () => {
 });
 
 describe("compact telemetry heartbeat", () => {
-  it("does not rewrite D1 for sequence-only changes inside six hours", async () => {
+  it("does not rewrite D1 for sequence-only changes inside one day", async () => {
     const startedAt = 1_800_000_000_000;
     const first = await telemetryHeartbeatReturningStatement(
       env,
@@ -35,7 +35,7 @@ describe("compact telemetry heartbeat", () => {
     const suppressed = await telemetryHeartbeatReturningStatement(
       env,
       "homepanel-device",
-      startedAt + 2 * 60 * 60_000,
+      startedAt + 6 * 60 * 60_000,
       "2.13.0",
       1,
       0,
@@ -58,7 +58,7 @@ describe("compact telemetry heartbeat", () => {
     const refreshed = await telemetryHeartbeatReturningStatement(
       env,
       "homepanel-device",
-      startedAt + 6 * 60 * 60_000,
+      startedAt + 24 * 60 * 60_000,
       "2.13.0",
       1,
       0,
