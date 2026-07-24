@@ -14,10 +14,10 @@ from typing import Any
 
 API_BASE = "https://api.cloudflare.com/client/v4"
 GRAPHQL_URL = f"{API_BASE}/graphql"
-TOKEN = os.environ["CLOUDFLARE_API_TOKEN"].strip()
-WORKERS = [item.strip() for item in os.environ["CLOUDFLARE_WORKERS"].split(",") if item.strip()]
+TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+WORKERS = [item.strip() for item in os.environ.get("CLOUDFLARE_WORKERS", "").split(",") if item.strip()]
 LOOKBACK_MINUTES = max(1, int(os.environ.get("LOOKBACK_MINUTES", "60")))
-ACCOUNT_ID_OVERRIDE = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 
 
 def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -104,30 +104,6 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
         "cpu_p50_ms": microseconds_to_ms(quantiles.get("cpuTimeP50")),
         "cpu_p99_ms": microseconds_to_ms(quantiles.get("cpuTimeP99")),
     }
-
-
-def discover_account_id(start: dt.datetime, end: dt.datetime) -> str:
-    if ACCOUNT_ID_OVERRIDE:
-        return ACCOUNT_ID_OVERRIDE
-    accounts = request_json(f"{API_BASE}/accounts?per_page=50").get("result") or []
-    ids = [str(item["id"]) for item in accounts if item.get("id")]
-    if len(ids) == 1:
-        return ids[0]
-    if not ids:
-        raise RuntimeError("No Cloudflare account is visible to CLOUDFLARE_BUILDS_API_TOKEN")
-    discovery_start = start - dt.timedelta(hours=23)
-    matches: list[str] = []
-    for account_id in ids:
-        try:
-            if any(worker_metrics(account_id, worker, discovery_start, end)["requests"] > 0 for worker in WORKERS):
-                matches.append(account_id)
-        except RuntimeError:
-            continue
-    if len(matches) == 1:
-        return matches[0]
-    raise RuntimeError(
-        "Cloudflare account could not be selected uniquely; set repository variable CLOUDFLARE_ACCOUNT_ID"
-    )
 
 
 def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
@@ -221,23 +197,19 @@ def number(value: Any) -> str:
 
 
 def main() -> int:
-    if not TOKEN:
-        raise RuntimeError("CLOUDFLARE_BUILDS_API_TOKEN is empty")
-    if not WORKERS:
-        raise RuntimeError("CLOUDFLARE_WORKERS is empty")
-    request_json(f"{API_BASE}/user/tokens/verify")
+    if not TOKEN or not ACCOUNT_ID or not WORKERS:
+        raise RuntimeError("Cloudflare token, account ID, and Worker list are required")
     end = dt.datetime.now(dt.timezone.utc)
     start = end - dt.timedelta(minutes=LOOKBACK_MINUTES)
-    account_id = discover_account_id(start, end)
-    metrics = [worker_metrics(account_id, worker, start, end) for worker in WORKERS]
-    errors = telemetry_errors(account_id, start, end)
+    metrics = [worker_metrics(ACCOUNT_ID, worker, start, end) for worker in WORKERS]
+    errors = telemetry_errors(ACCOUNT_ID, start, end)
     total_errors = sum(item["errors"] for item in metrics)
 
     lines = [
         "## Cloudflare Observability",
         "",
         f"- Window: `{iso(start)}` to `{iso(end)}`",
-        f"- Account: `{account_id[:8]}…`",
+        f"- Account: `{ACCOUNT_ID[:8]}…`",
         "- Sources: GraphQL Analytics API and Workers Observability Telemetry API",
         "",
         "| Worker | Requests | Errors | Error rate | Subrequests | CPU p50 ms | CPU p99 ms |",
