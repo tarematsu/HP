@@ -352,7 +352,7 @@ bool StationheadPlayer::NeedsInteractiveWindow() const {
   return selectedTab_ == StationheadTabKind::Auth ||
          spotifyAuthorization_ ||
          loginRequired_ ||
-         (controller_ && !audioPlaying_.load(std::memory_order_relaxed));
+         (controller_ && !AudioPlaying());
 }
 
 }  // namespace hp
