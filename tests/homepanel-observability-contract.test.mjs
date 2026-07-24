@@ -5,6 +5,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 test('HomePanel observability workflow keeps the production contract', () => {
   const workflow = readSource('.github/workflows/hp-observability.yml');
+  const unifiedCi = readSource('.github/workflows/homepanel-unified-ci.yml');
   const diagnostics = readSource('.github/actions/cloudflare-observability-diagnostics/action.yml');
 
   expectAll(workflow, [
@@ -36,9 +37,10 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'if: always()',
     'set -o pipefail',
     'retention-days: 1',
-    'tests/homepanel-*.test.mjs',
+    'tests/homepanel-observability-contract.test.mjs',
     'tests/observability-status-publisher.test.mjs',
   ]);
+  expectAll(unifiedCi, ['tests/homepanel-*.test.mjs']);
   expectAll(diagnostics, [
     'query-cloudflare-observability.py',
     'capture-cloudflare-live-tail.mjs',
@@ -57,6 +59,10 @@ test('HomePanel observability workflow keeps the production contract', () => {
     '\n  pull_request:',
     'R2_BUCKET',
     'publish-homepanel-observability-status.mjs --self-test',
+    'tests/homepanel-*.test.mjs',
+    'tests/homepanel-runtime-contract.test.mjs',
+    'tests/homepanel-video-contract.test.mjs',
+    'tests/homepanel-migrations-contract.test.mjs',
   ]);
   assert.equal(workflow.match(/cron: "/g)?.length, 1);
   assert.ok(workflow.includes('\n  push:'));
