@@ -14,6 +14,10 @@ const handleSource = readFileSync(
   new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
   'utf8',
 );
+const stateSource = readFileSync(
+  new URL('../../native/src/app_stationhead_state.cpp', import.meta.url),
+  'utf8',
+);
 const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
@@ -140,6 +144,26 @@ test('handle raises the active host without overwriting player-owned geometry', 
   assert.match(raiseActiveHost, /SWP_NOMOVE \| SWP_NOSIZE/);
   assert.doesNotMatch(raiseActiveHost, /const RECT activeBounds/);
   assert.doesNotMatch(raiseActiveHost, /workspaceBounds_\.right - workspaceBounds_\.left/);
+});
+
+test('secondary interactive and failure states are included in the combined render status', () => {
+  const enrich = section(
+    stateSource,
+    'void App::EnrichRenderStationheadState(',
+    'void App::ToggleStationheadAudio()',
+  );
+  assert.match(
+    enrich,
+    /state\.loginRequired = state\.loginRequired \|\| secondaryStatus->loginRequired;/,
+  );
+  assert.match(
+    enrich,
+    /state\.spotifyAuthorization =[\s\S]*state\.spotifyAuthorization \|\| secondaryStatus->spotifyAuthorization;/,
+  );
+  assert.match(
+    enrich,
+    /state\.processFailed = state\.processFailed \|\| secondaryStatus->processFailed;/,
+  );
 });
 
 test('Spotify popup authorization survives playback WebView recreation without premature navigation', () => {
