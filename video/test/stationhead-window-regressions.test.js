@@ -172,6 +172,20 @@ test('Spotify popup authorization survives playback WebView recreation without p
   assert.match(closeAuthWebView, /authPendingUrl_\.clear\(\);[\s\S]*activeAuthorizationUrl_\.clear\(\);/);
 });
 
+test('completed Spotify auth clears pending state even when controller creation failed', () => {
+  assert.match(
+    playerHeader,
+    /void FinalizeCompletedAuth\(\) \{[\s\S]*!SpotifyAuthorizationActive\(\)[\s\S]*CloseAuthWebView\(\);/,
+  );
+  const releaseCompletedAuth = section(
+    handleSource,
+    'void StationheadHandleBase::ReleaseCompletedAuth()',
+    'uint32_t StationheadHandleBase::ConsumeChangeFlags()',
+  );
+  assert.match(releaseCompletedAuth, /player_->FinalizeCompletedAuth\(\);/);
+  assert.doesNotMatch(releaseCompletedAuth, /player_->ReleaseCompletedAuth\(\);/);
+});
+
 test('required playback WebView event registrations fail closed into recreation', () => {
   for (const resultName of ['newWindowResult', 'webMessageResult', 'processFailedResult']) {
     assert.match(webviewSource, new RegExp(`const HRESULT ${resultName} =`));
