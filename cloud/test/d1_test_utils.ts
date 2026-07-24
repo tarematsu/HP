@@ -16,9 +16,8 @@ export async function resetD1TestDatabase(
     db.prepare("DELETE FROM device_metrics"),
     db.prepare("DELETE FROM environment_samples"),
     db.prepare("DELETE FROM environment_buckets"),
-    db.prepare("DELETE FROM octopus_sync_ranges"),
-    db.prepare("DELETE FROM octopus_backfill_state"),
-    db.prepare("DELETE FROM octopus_readings"),
+    db.prepare("DELETE FROM octopus_sync_state"),
+    db.prepare("DELETE FROM octopus_daily_totals"),
     db.prepare("DELETE FROM device_heartbeats"),
     db.prepare("DELETE FROM current_state"),
   ]);
