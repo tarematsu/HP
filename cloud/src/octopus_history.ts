@@ -190,26 +190,6 @@ async function persistStableReadings(
   await refreshDailyTotals(env, accountNumber, changed, nowMs);
 }
 
-function addLiveReadings(
-  output: Map<string, { reading: OctopusReading; observedAt: number }>,
-  readings: readonly OctopusReading[],
-  stableCutoff: number,
-  nowMs: number,
-): void {
-  for (const reading of readings) {
-    const observedAt = Date.parse(reading.startAt);
-    const energyKwh = Number(reading.value);
-    const supplyPoint = String(reading.supplyPoint ?? "").trim();
-    if (!supplyPoint || !Number.isFinite(observedAt) ||
-        observedAt < stableCutoff || observedAt >= nowMs) continue;
-    if (!Number.isFinite(energyKwh) || energyKwh < 0) continue;
-    output.set(`${supplyPoint}:${observedAt}`, {
-      observedAt,
-      reading: { startAt: reading.startAt, value: reading.value, supplyPoint },
-    });
-  }
-}
-
 export async function synchronizeOctopusHistory(
   env: Env,
   accountNumber: string,
@@ -221,21 +201,15 @@ export async function synchronizeOctopusHistory(
   if (!Number.isFinite(nowMs)) throw new Error("Octopus synchronization time must be finite");
   const stableCutoff = octopusStableCutoffJst(nowMs);
   const collectionStart = octopusCollectionStart(nowMs);
-  const live = new Map<string, { reading: OctopusReading; observedAt: number }>();
 
   await enforceHistoryFloor(env, accountNumber);
-  for (const range of safeRanges(collectionStart, nowMs)) {
+  for (const range of safeRanges(collectionStart, stableCutoff)) {
     const readings = await fetchRange(range);
     await persistStableReadings(env, accountNumber, readings, stableCutoff, nowMs);
-    addLiveReadings(live, readings, stableCutoff, nowMs);
   }
 
-  const liveReadings = Array.from(live.values())
-    .sort((left, right) => left.observedAt - right.observedAt ||
-      left.reading.supplyPoint.localeCompare(right.reading.supplyPoint))
-    .map(item => item.reading);
   return {
-    liveReadings,
+    liveReadings: [],
     stableCutoff,
     historyFloor: OCTOPUS_HISTORY_FLOOR_MS,
     cursorBefore: collectionStart,
