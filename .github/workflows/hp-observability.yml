@@ -9,7 +9,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/hp-observability.yml'
-      - '.github/actions/cloudflare-observability-query/action.yml'
+      - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-observability.py'
@@ -106,7 +106,7 @@ jobs:
       - name: Collect metrics and live events in parallel
         id: observability-query
         continue-on-error: true
-        uses: ./.github/actions/cloudflare-observability-query
+        uses: ./.github/actions/cloudflare-observability-diagnostics
         with:
           live-tail-worker: homepanel-cloud
           live-tail-seconds: "90"
