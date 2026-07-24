@@ -29,19 +29,27 @@ export async function collectLivenessResults(
   storage: DurableObjectStorage | undefined,
   pending: readonly Promise<unknown>[],
 ): Promise<unknown[]> {
-  try {
-    const results = await Promise.all(pending);
-    if (results.some(result => result === null)) {
-      throw new Error("video liveness failed");
+  const settled = await Promise.allSettled(pending);
+  const fulfilled: unknown[] = [];
+  let failure: unknown = null;
+  for (const result of settled) {
+    if (result.status === "rejected") {
+      if (failure === null) failure = result.reason;
+      continue;
     }
-    return results;
-  } catch (error) {
-    // A failure can happen after D1 mutations commit but before the liveness
-    // runtime state/result is returned. Preserve the original failure while
-    // recording a durable repair obligation whenever DO storage is available.
-    if (storage) await persistSnapshotRepairMarker(storage);
-    throw error;
+    fulfilled.push(result.value);
+    if (result.value === null && failure === null) {
+      failure = new Error("video liveness failed");
+    }
   }
+  if (failure === null) return fulfilled;
+
+  // A failure can happen after D1 mutations commit but before the liveness
+  // runtime state/result is returned. Wait for every scheduled task to settle
+  // before repairing so a slower sibling cannot mutate the feed after the R2
+  // snapshot has already been regenerated.
+  if (storage) await persistSnapshotRepairMarker(storage);
+  throw failure;
 }
 
 export async function refreshLivenessFeedSnapshotWithRetry(
