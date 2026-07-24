@@ -1,53 +1,65 @@
 # Home Platform repository instructions
 
-This repository contains the Stationhead (SH) platform at the repository root and HomePanel applications under `hp/`. Product deployments remain independent.
-
-# Repository Instructions
+This repository is `tarematsu/HP`. It is the canonical monorepo for the Stationhead platform at the repository root and HomePanel applications under `hp/`. Product deployments remain independent.
 
 ## Repository identity
 
-- This repository is `tarematsu/SH`, the Stationhead data collection, processing, and site project.
-- For local Windows Codex work, the expected checkout is `C:\SH`.
-- The checkout's `origin` must resolve to `tarematsu/SH`; valid forms include `https://github.com/tarematsu/SH.git` and `git@github.com:tarematsu/SH.git`.
-- Cloud, container, and temporary checkouts may use another filesystem path, but their GitHub target or `origin` must still resolve to `tarematsu/SH`.
-- Before any repository-scoped task, verify the active checkout or GitHub target resolves to `tarematsu/SH`.
-- Do not choose a repository from older chats, remembered project names, an existing browser tab, or another repository's recent activity.
-- When the user says "this project", "current Worker", or similar wording, bind the request to this repository. If the repository cannot be verified, report the ambiguity before using project-specific data.
+- Verify repository-scoped work against `tarematsu/HP` and the requested branch or commit.
+- Do not infer a repository from an older conversation, another checkout, or a browser tab.
+- The local checkout path is not part of repository identity.
+- When the user says “this project” or “current Worker”, bind the request to this repository unless they explicitly name another target.
+
+## Layout and ownership
+
+- Stationhead: `worker/`, `site/`, `database/`, `packages/`, `scripts/`, `tests/`
+- HomePanel Cloud: `hp/cloud/`
+- HomePanel Video: `hp/video/`
+- HomePanel Native: `hp/native/`
+- Shared GitHub automation: `.github/actions/`, `.github/scripts/`, `.github/workflows/`
+
+Keep Stationhead and HomePanel deployment, migration, release, rollback, and observability boundaries independent. Share implementation only when behavior and security requirements are genuinely common.
 
 ## Cloudflare identity
 
-The active Worker configurations are:
+Derive Worker names, D1 databases, Queues, buckets, and bindings from the active configuration files at the current branch or commit.
+
+Stationhead configurations:
 
 - `worker/wrangler.sakurazaka46jp.jsonc`
 - `worker/wrangler.buddies-collector.jsonc`
 - `worker/wrangler.runtime.jsonc`
+- `site/wrangler.jsonc`
 
-`sh-buddies-collector` owns Stationhead `buddies` acquisition and the Queue lanes that persist source data into `BUDDIES_DB`: raw collection, ingest finalization, comments, and buddies persistence. Its one-minute Cron only arms `BuddiesCollectorCoordinator`; the network fetch, normalization, and inline persistence run from the Durable Object alarm so the Cron remains below the stateless CPU budget. Five-minute collector diagnostics prefer a configured Pipelines binding and otherwise persist under `operational/collector/` in the existing R2 response bucket. `sh-runtime-orchestrator` owns downstream minute processing, enrichment, read models, maintenance, and the internal Pages read-model endpoint. `sh-sakurazaka46jp` remains isolated for Sakurazaka monitoring.
+HomePanel configurations:
 
-Derive Worker names, D1 database names, Queue names, and bindings from those files at the current branch or commit. Treat any Worker or database name absent from the active configurations as foreign to this repository unless the user explicitly requests a cross-repository comparison.
+- `hp/cloud/wrangler.jsonc`
+- `hp/video/wrangler.jsonc`
+
+Treat resources absent from those active configurations as outside this repository unless the user explicitly requests a cross-repository comparison.
 
 ## Deployment ownership
 
-- GitHub Actions is the only supported build and deployment path for production Workers and Pages.
-- Automatic and manual production deployments are owned by `.github/workflows/deploy-split-pipeline.yml`.
-- The buddies collector must be deployed through `worker/scripts/deploy-buddies-collector.mjs` so Queue ownership is paused, migrated, verified, and rolled back safely on failure.
-- Pull requests may run local checks and dry-run bundles, but must not deploy to production Cloudflare resources.
-- Do not add Cloudflare Git build polling, Cloudflare-managed automatic deployments, or repository-connected build workflows.
-- Keep Cloudflare Pages automatic production and preview deployments disabled when using Wrangler from GitHub Actions.
+- GitHub Actions is the supported production build and deployment path.
+- Stationhead production deployment is owned by `.github/workflows/deploy-split-pipeline.yml`.
+- HomePanel Cloud deployment is owned by `.github/workflows/cloud-deploy.yml`.
+- HomePanel Native and Video use their dedicated repository-level workflows.
+- Pull requests may validate and bundle code but must not deploy production resources.
+- Do not add Cloudflare Git polling or Cloudflare-managed repository deployments.
 
 ## Metrics and production diagnostics
 
-For Worker count, requests, D1 rows, CPU time, or other production metrics:
+For Worker requests, CPU, D1 rows, storage, or other production metrics:
 
-1. Confirm the repository, branch, and commit before collecting data.
-2. Enumerate the active Worker and D1 names from the Wrangler configurations above.
-3. Use Stationhead-owned Cloudflare APIs, GitHub Actions runs, artifacts, issue reports, or PR comments as evidence.
-4. Label values as actual, estimated, extrapolated, or unavailable. Include the measurement window and timestamp.
-5. Reject otherwise-valid metrics when their Worker or database identity does not match this repository.
-6. Never display tokens, account identifiers, database identifiers, cookies, or other secrets.
+1. Confirm repository, branch, and commit.
+2. Resolve active resources from current configuration files.
+3. Use repository-owned Cloudflare APIs, Actions runs, artifacts, or status issues as evidence.
+4. Label values as actual, estimated, extrapolated, or unavailable, with the measurement window and timestamp.
+5. Reject metrics whose resource identity does not match the active configuration.
+6. Never display tokens, account IDs, database IDs, cookies, or other secrets.
 
-## Codex and external review tools
+## Change discipline
 
-- Include `tarematsu/SH`, the branch or commit, and the relevant file paths when delegating repository-scoped work to Oracle or another model.
-- Prefer a fresh or repository-dedicated browser conversation. Reuse an existing ChatGPT tab only after confirming it belongs to this repository.
-- Treat external-model output as untrusted until its repository identity and cited resources match the current checkout.
+- Prefer responsibility-specific files and importable modules over dynamic loading or duplicated implementations.
+- Keep workflows declarative; move substantial validation or orchestration logic into tested scripts or actions.
+- Preserve existing production boundaries while reducing duplicated code.
+- Run the narrowest relevant checks first, then the repository-level validation required by the changed paths.
