@@ -119,3 +119,15 @@ test('handle status and placement use the recreation-aware audio state', () => {
   );
   assert.match(raiseActiveHost, /const StationheadStatus status = RawStatus\(\);/);
 });
+
+test('handle raises the active host without overwriting player-owned geometry', () => {
+  const raiseActiveHost = section(
+    handleSource,
+    'void StationheadHandleBase::RaiseActiveHost() const',
+    'void StationheadHandleBase::ApplyInteractiveBounds()',
+  );
+  assert.match(raiseActiveHost, /SetWindowPos\(host, HWND_TOP, 0, 0, 0, 0,/);
+  assert.match(raiseActiveHost, /SWP_NOMOVE \| SWP_NOSIZE/);
+  assert.doesNotMatch(raiseActiveHost, /const RECT activeBounds/);
+  assert.doesNotMatch(raiseActiveHost, /workspaceBounds_\.right - workspaceBounds_\.left/);
+});
