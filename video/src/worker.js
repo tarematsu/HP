@@ -13,7 +13,8 @@ import { resolveCollectionRunConfig } from './scheduled-source-runner.js';
 function persistenceOptions(options) {
   return {
     deferFeedMaintenance: Boolean(options?.deferFeedMaintenance),
-    collectionSeenKeys: options?.collectionSeenKeys
+    collectionSeenKeys: options?.collectionSeenKeys,
+    collectionItems: options?.collectionItems
   };
 }
 
@@ -125,11 +126,16 @@ function adminCollectionConfig(pathname) {
 export async function runAdminCollector(pathname, env) {
   const config = adminCollectionConfig(pathname);
   if (!config) throw new Error('Unknown collection endpoint');
+  const collectionItems = new Map();
   const result = await runAndRecord(env, {
     ...config,
-    deferFeedMaintenance: true
+    deferFeedMaintenance: true,
+    collectionSeenKeys: new Set(),
+    collectionItems
   });
-  const combinedFeedCount = await finalizeCompactedFeed(env);
+  const combinedFeedCount = await finalizeCompactedFeed(env, undefined, {
+    mergeItems: [...collectionItems.values()]
+  });
   return { ...result, combinedFeedCount };
 }
 
@@ -139,7 +145,8 @@ export async function runScheduledConfigs(env, configs, cron, runSource = runAnd
       return await runSource(env, {
         ...config,
         deferFeedMaintenance: false,
-        collectionSeenKeys: new Set()
+        collectionSeenKeys: new Set(),
+        collectionItems: new Map()
       });
     } catch (error) {
       console.error('scheduled-source-collection-failed', {

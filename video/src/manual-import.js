@@ -8,6 +8,10 @@ import { publishManualImportJob } from './manual-import-queue.js';
 import { MANUAL_IMPORT_MAX_URLS } from './manual-import-limits.js';
 import { persistMergedFeed } from './source-feed.js';
 import { finalizeCompactedFeed } from './source-feed-compacted.js';
+import {
+  normalizeSourceFeedItems,
+  sourceMediaHost
+} from './source-feed-normalization.js';
 
 const MAX_SOURCE_URL_LENGTH = 2048;
 const DEFAULT_IMPORT_SOURCE_URL = 'https://example.invalid/manual-import';
@@ -98,6 +102,7 @@ export async function runManualImport(request, env) {
   }
 
   try {
+    const mergeItems = normalizeSourceFeedItems(body.urls, sourceMediaHost(env));
     const result = await persistMergedFeed(env, {
       sourceUrl,
       method: 'manual-browser-import',
@@ -106,8 +111,8 @@ export async function runManualImport(request, env) {
       deferFeedMaintenance: true,
       details: { clicks: 0, elapsedMs: 0 }
     });
-    if (Number(result.changed || 0) > 0) {
-      result.combinedFeedCount = await finalizeCompactedFeed(env);
+    if (mergeItems.length) {
+      result.combinedFeedCount = await finalizeCompactedFeed(env, undefined, { mergeItems });
     } else {
       const feedState = await readFeedState(env.DB);
       result.combinedFeedCount = Number(feedState?.rowCount || 0);

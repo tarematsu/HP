@@ -8,6 +8,10 @@ import {
   rebuildPlaybackFeed
 } from './playback-feed-sync.js';
 import {
+  finalizeCompactedFeed,
+  stageCompactedFeedCandidates
+} from './source-feed-compacted.js';
+import {
   normalizeSourceFeedItems,
   selectUnseenItems,
   sourceMediaHost
@@ -38,7 +42,8 @@ function resolvePersistenceContext(env, options) {
     deferFeedMaintenance: options.deferFeedMaintenance === undefined
       ? Boolean(shared?.deferFeedMaintenance)
       : Boolean(options.deferFeedMaintenance),
-    collectionSeenKeys: options.collectionSeenKeys || shared?.collectionSeenKeys
+    collectionSeenKeys: options.collectionSeenKeys || shared?.collectionSeenKeys,
+    collectionItems: options.collectionItems || shared?.collectionItems || new Map()
   };
 }
 
@@ -73,10 +78,18 @@ export async function persistMergedFeed(env, options) {
       : { inserted: 0, changed: 0, chunks: 0 };
     inserted = saved.inserted;
     throwIfCollectionAborted(options.signal);
-    for (const item of writeItems) persistence.collectionSeenKeys?.add(item.key);
-    const feedCount = persistence.deferFeedMaintenance
-      ? null
-      : await finalizeCollectionDatabase(env, capturedAt);
+    for (const item of items) {
+      persistence.collectionSeenKeys?.add(item.key);
+      if (!persistence.collectionItems.has(item.key)) persistence.collectionItems.set(item.key, item);
+    }
+    let feedCount = null;
+    if (persistence.deferFeedMaintenance) {
+      if (options.method === 'manual-browser-import-chunk') {
+        await stageCompactedFeedCandidates(env, items);
+      }
+    } else {
+      feedCount = await finalizeCompactedFeed(env, capturedAt, { mergeItems: items });
+    }
     throwIfCollectionAborted(options.signal);
     const timings = await finishCollectionRun(env, run, {
       databaseStartedMs: dbStarted,

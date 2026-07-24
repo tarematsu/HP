@@ -48,6 +48,7 @@ async function collectAndPersist(env, config, run, signal, persistence) {
     urls,
     deferFeedMaintenance: true,
     collectionSeenKeys: persistence.collectionSeenKeys,
+    collectionItems: persistence.collectionItems,
     details: { ...details, elapsedMs }
   });
 }
@@ -74,7 +75,7 @@ export async function runScheduledSource(env, config, parentSignal, persistence)
       }, error).catch((recordError) => {
         console.error('scheduled-source-failure-recording-failed', {
           method: runConfig.method,
-          error: String(recordError?.message || recordError)
+          error: String(recordError?.message || error)
         });
         return null;
       });
