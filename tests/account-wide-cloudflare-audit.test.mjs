@@ -27,8 +27,12 @@ test('account-wide budget audit is independent of configured DO binding count', 
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /account-wide discovery-free audit self-test passed/);
-  assert.match(implementation, /configured_resource_ids/);
-  assert.doesNotMatch(implementation, /core\.resource_ids|workers\/durable_objects\/namespaces/);
+  assert.match(implementation, /def aggregate\(row:/);
+  assert.match(implementation, /"durableObjectNamespaces": len\(DO_BINDINGS\)/);
+  assert.doesNotMatch(
+    implementation,
+    /configured_resource_ids|core\.|importlib\.util|workers\/durable_objects\/namespaces/,
+  );
 });
 
 test('observability covers both coordinators without Pipelines configuration', () => {
