@@ -2,6 +2,7 @@ import type { Env } from "./sources";
 
 const RUNTIME_KEY = "video-liveness-runtime-v1";
 const D1_CHECKPOINT_MS = 24 * 60 * 60_000;
+const STATE_ROW_UNAVAILABLE = "video liveness state row unavailable";
 
 interface LivenessRuntimeRow {
   phase: "base" | "death";
@@ -68,7 +69,7 @@ async function bootstrapRuntime(
     // Migrations create the singleton row. Synthesizing a zero cursor here would
     // hide schema/data loss and let the DO continue without a recoverable D1
     // checkpoint, so surface the corruption to the scheduler instead.
-    throw new Error("video liveness state row unavailable");
+    throw new Error(STATE_ROW_UNAVAILABLE);
   }
   const runtime = normalizeRow({
     ...row,
@@ -139,7 +140,7 @@ async function checkpointRuntime(env: Env, runtime: LivenessRuntimeRow): Promise
     runtime.lastError,
   ).run();
   if (number(result.meta?.changes) <= 0) {
-    throw new Error("video liveness checkpoint state row unavailable");
+    throw new Error(STATE_ROW_UNAVAILABLE);
   }
 }
 
@@ -193,6 +194,12 @@ function fakeUpdateStatement(
           await storage.put(RUNTIME_KEY, next);
         } catch (error) {
           console.error("video-liveness-d1-checkpoint-failed", error instanceof Error ? error.message : String(error));
+          // Transient D1 failures retain the old checkpoint time and retry on the
+          // next run. A missing singleton row is permanent corruption, so do not
+          // report a successful scheduler execution while recovery is impossible.
+          if (error instanceof Error && error.message === STATE_ROW_UNAVAILABLE) {
+            throw error;
+          }
         }
       }
       return d1Result([], 1);
