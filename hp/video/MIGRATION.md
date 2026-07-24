@@ -46,6 +46,6 @@ This produces at most 120 normal liveness probes per day before retries. Failure
 
 The videoscraper data migration and unified-runtime activation completed successfully. The legacy `videoscraper` Worker and `twivideo-swiper-db` database were subsequently deleted. `homepanel-cloud`, `homepanel-data`, `homepanel-updates`, existing HomePanel secrets, and the scheduler Durable Object namespace remain authoritative.
 
-The completed cutover and retirement workflows have been removed so they cannot be rerun against production. Standalone remote deploy, build-diagnostics, and D1 commands in the `hp/video/` workspace are retired; production operations must use the repository-root workflows and the `hp/cloud/` workspace.
+The completed cutover and retirement workflows have been removed so they cannot be rerun against production. Standalone remote deploy, build diagnostics, Pages configuration, production Wrangler generation, and D1 discovery or synchronization tools were removed from `hp/video/`; production operations must use the repository-root workflows and the `hp/cloud/` workspace. The remaining package commands fail closed when a retired production operation is requested.
 
 No tablet URL change is required.
