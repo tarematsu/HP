@@ -1,4 +1,4 @@
-import { readState, updateState, type StateRow } from "./snapshot";
+import { readState, updateStateWithStatus, type StateRow } from "./snapshot";
 import type { Env, SourceResult } from "./sources";
 
 const SOURCE = "stationhead_health";
@@ -304,15 +304,15 @@ async function persistHealth(env: Env, snapshot: StationheadHealthSnapshot, prev
     payload: snapshot,
     observedAt: snapshot.lastSuccessAt ?? snapshot.sampledAt,
   };
-  await updateState(env, result, undefined, previous);
-  if (!snapshot.healthy) {
-    const status = !snapshot.configured || !snapshot.reachable || !snapshot.lastSuccessAt
+  const status: StateRow["status"] = snapshot.healthy
+    ? "ok"
+    : !snapshot.configured || !snapshot.reachable || !snapshot.lastSuccessAt
       ? "error"
       : "stale";
-    await env.DB.prepare(
-      "UPDATE current_state SET status=?1, error=?2 WHERE source=?3",
-    ).bind(status, snapshot.reason || "Stationhead collector is unhealthy", SOURCE).run();
-  }
+  const error = snapshot.healthy
+    ? null
+    : snapshot.reason || "Stationhead collector is unhealthy";
+  await updateStateWithStatus(env, result, status, error, previous);
 }
 
 export async function runStationheadHealthMonitor(env: Env, now = Date.now()): Promise<StationheadHealthSnapshot> {
