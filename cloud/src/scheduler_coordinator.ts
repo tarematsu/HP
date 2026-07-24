@@ -20,6 +20,7 @@ const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
 const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
 const VIDEO_FEED_GROUPS_KEY = "video-feed-groups-v1";
+const VIDEO_FEED_COUNT_KEY = "video-feed-count-v1";
 const EXPECTED_SCHEDULED_FEED_GROUPS = 2;
 const MAX_FEED_ITEMS = 2_000;
 
@@ -43,7 +44,9 @@ interface FeedFinalizeRequest {
 }
 
 type FeedCandidate = Record<string, unknown>;
-type FeedGroups = Record<string, FeedCandidate[]>;
+type FeedGroupSnapshot = { day: string; items: FeedCandidate[] };
+type FeedGroups = Record<string, FeedGroupSnapshot>;
+type FeedCandidateResult = { ready: boolean; items?: FeedCandidate[] };
 
 let nextEnsureAllowedAt = 0;
 let nextWatchdogAllowedAt = 0;
@@ -78,11 +81,11 @@ function normalizedCandidates(value: unknown): FeedCandidate[] {
   return result;
 }
 
-function unionFeedGroups(groups: FeedGroups): FeedCandidate[] {
+function unionFeedGroups(groups: readonly FeedGroupSnapshot[]): FeedCandidate[] {
   const result: FeedCandidate[] = [];
   const seen = new Set<string>();
-  for (const candidates of Object.values(groups)) {
-    for (const candidate of candidates) {
+  for (const group of groups) {
+    for (const candidate of group.items) {
       const key = candidateKey(candidate);
       if (!key || seen.has(key)) continue;
       seen.add(key);
@@ -91,6 +94,13 @@ function unionFeedGroups(groups: FeedGroups): FeedCandidate[] {
     }
   }
   return result;
+}
+
+function collectionDay(capturedAt: string): string {
+  const prefix = capturedAt.slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(prefix)
+    ? prefix
+    : new Date().toISOString().slice(0, 10);
 }
 
 async function signalCoordinator(
@@ -185,18 +195,34 @@ export class SchedulerCoordinator {
     return manifest;
   }
 
-  private async feedCandidates(body: FeedFinalizeRequest): Promise<FeedCandidate[] | undefined> {
+  private async feedCandidates(
+    body: FeedFinalizeRequest,
+    capturedAt: string,
+  ): Promise<FeedCandidateResult> {
     const groupKey = typeof body.groupKey === "string" ? body.groupKey.trim().slice(0, 200) : "";
     const submitted = normalizedCandidates(body.desiredItems);
-    if (!groupKey) return submitted.length ? submitted : undefined;
+    if (!groupKey) return { ready: true, ...(submitted.length ? { items: submitted } : {}) };
 
+    const day = collectionDay(capturedAt);
     const groups = await this.state.storage.get<FeedGroups>(VIDEO_FEED_GROUPS_KEY) ?? {};
     if (Array.isArray(body.desiredItems)) {
-      groups[groupKey] = submitted;
+      groups[groupKey] = { day, items: submitted };
       await this.state.storage.put(VIDEO_FEED_GROUPS_KEY, groups);
     }
-    if (Object.keys(groups).length < EXPECTED_SCHEDULED_FEED_GROUPS) return undefined;
-    return unionFeedGroups(groups);
+    const currentGroups = Object.values(groups).filter(group => group.day === day);
+    if (currentGroups.length < EXPECTED_SCHEDULED_FEED_GROUPS) return { ready: false };
+    return { ready: true, items: unionFeedGroups(currentGroups) };
+  }
+
+  private async existingFeedCount(): Promise<number> {
+    const stored = await this.state.storage.get<number>(VIDEO_FEED_COUNT_KEY);
+    if (Number.isFinite(stored)) return Math.max(0, Number(stored));
+    const row = await this.env.DB.prepare(
+      "SELECT row_count AS rowCount FROM playback_feed_state WHERE id=1",
+    ).first<{ rowCount: number }>();
+    const count = Math.max(0, Number(row?.rowCount ?? 0));
+    await this.state.storage.put(VIDEO_FEED_COUNT_KEY, count);
+    return count;
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -235,9 +261,15 @@ export class SchedulerCoordinator {
       const capturedAt = typeof body.capturedAt === "string" && body.capturedAt
         ? body.capturedAt
         : new Date().toISOString();
-      const desiredItems = await this.feedCandidates(body);
-      const count = await finalizeCompactedFeedLocally(this.env, capturedAt, { desiredItems });
-      return Response.json({ count });
+      const candidates = await this.feedCandidates(body, capturedAt);
+      if (!candidates.ready) {
+        return Response.json({ count: await this.existingFeedCount(), deferred: true });
+      }
+      const count = await finalizeCompactedFeedLocally(this.env, capturedAt, {
+        desiredItems: candidates.items,
+      });
+      await this.state.storage.put(VIDEO_FEED_COUNT_KEY, count);
+      return Response.json({ count, deferred: false });
     }
     if (path === "/wake") {
       let body: WakeRequest = {};
