@@ -103,7 +103,7 @@ describe("HomePanel Worker", () => {
     expect(second[0]?.name).not.toBe(first[0]?.name);
   });
 
-  it("queues refresh work without executing source jobs in the HTTP request", async () => {
+  it("queues refresh work in the Scheduler DO without writing D1 jobs", async () => {
     const future = Math.floor(Date.now() / 1000) + 3600;
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(future).run();
 
@@ -121,7 +121,7 @@ describe("HomePanel Worker", () => {
     const job = await env.DB.prepare(
       "SELECT next_run_at,lease_until FROM jobs WHERE name='weather'",
     ).first<{ next_run_at: number; lease_until: number | null }>();
-    expect(job).toEqual({ next_run_at: 0, lease_until: null });
+    expect(job).toEqual({ next_run_at: future, lease_until: null });
     expect(await readState(env, "weather")).toBeNull();
   });
 
