@@ -158,12 +158,10 @@ const databaseName = String(database?.database_name || "").trim();
 const databaseId = String(database?.database_id || "").trim();
 const updateBucket = configuredUpdateBucket(config);
 const apiToken = String(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_BUILDS_API_TOKEN || "").trim();
-const accountId = apiToken
-  ? await resolveCloudflareAccountId({
-    token: apiToken,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-  })
-  : "";
+const configuredAccountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim();
+const accountId = configuredAccountId
+  ? await resolveCloudflareAccountId({ accountId: configuredAccountId })
+  : (apiToken ? await resolveCloudflareAccountId({ token: apiToken }) : "");
 
 if (!workerName) throw new Error("Worker name is missing in hp/cloud/wrangler.jsonc");
 if (!databaseName) throw new Error("D1 database name is missing in hp/cloud/wrangler.jsonc");
