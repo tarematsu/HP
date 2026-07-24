@@ -17,6 +17,8 @@ on:
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
+      - 'tests/cloudflare-observability-status.test.mjs'
+      - 'tests/observability-status-publisher.test.mjs'
   schedule:
     - cron: "0 1 * * *"
   workflow_dispatch:
