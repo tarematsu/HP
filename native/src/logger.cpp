@@ -20,7 +20,7 @@ std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
     // values can legally contain commas or bracket-like characters, so treating
     // them as URL terminators could expose the remainder of a query value.
     const size_t delimiterAt = sanitized.find_first_of(
-        L" \t\r\n\"'<>”, urlAt);
+        L" \t\r\n\"'<>", urlAt);
     const size_t urlEnd = delimiterAt == std::wstring::npos
         ? sanitized.size()
         : delimiterAt;
