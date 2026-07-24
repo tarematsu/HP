@@ -16,7 +16,8 @@ on:
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
-      - 'tests/homepanel-production-contract.test.mjs'
+      - 'tests/helpers/source-contract.mjs'
+      - 'tests/homepanel-*.test.mjs'
       - 'tests/observability-status-publisher.test.mjs'
   push:
     branches:
@@ -35,7 +36,8 @@ on:
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
-      - 'tests/homepanel-production-contract.test.mjs'
+      - 'tests/helpers/source-contract.mjs'
+      - 'tests/homepanel-*.test.mjs'
       - 'tests/observability-status-publisher.test.mjs'
   workflow_dispatch:
 
@@ -71,7 +73,7 @@ jobs:
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node --test \
-            tests/homepanel-production-contract.test.mjs \
+            tests/homepanel-*.test.mjs \
             tests/observability-status-publisher.test.mjs
 
       - name: Install HomePanel dependencies
