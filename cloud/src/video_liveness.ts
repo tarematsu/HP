@@ -13,6 +13,14 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function normalizedError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  if (error === null || error === undefined || error === "") {
+    return new Error("video liveness failed");
+  }
+  return new Error(errorMessage(error));
+}
+
 function livenessResultFailure(value: unknown): Error | null {
   if (value === null) return new Error("video liveness failed");
   if (!value || typeof value !== "object") return null;
@@ -41,31 +49,29 @@ export async function collectLivenessResults(
 ): Promise<unknown[]> {
   const settled = await Promise.allSettled(pending);
   const fulfilled: unknown[] = [];
-  let hasRejected = false;
-  let rejectionReason: unknown;
+  let rejectionError: Error | null = null;
+  let rejectionWasError = false;
   let resultFailure: Error | null = null;
   for (const result of settled) {
     if (result.status === "rejected") {
-      if (!hasRejected) {
-        hasRejected = true;
-        rejectionReason = result.reason;
+      const candidateWasError = result.reason instanceof Error;
+      if (!rejectionError || (candidateWasError && !rejectionWasError)) {
+        rejectionError = normalizedError(result.reason);
+        rejectionWasError = candidateWasError;
       }
       continue;
     }
     fulfilled.push(result.value);
     if (!resultFailure) resultFailure = livenessResultFailure(result.value);
   }
-  if (!hasRejected && !resultFailure) return fulfilled;
+  if (!rejectionError && !resultFailure) return fulfilled;
 
   // A failure can happen after D1 mutations commit but before the liveness
   // runtime state/result is returned. Wait for every scheduled task to settle
   // before repairing so a slower sibling cannot mutate the feed after the R2
   // snapshot has already been regenerated.
   if (storage) await persistSnapshotRepairMarker(storage);
-  if (hasRejected) {
-    throw rejectionReason ?? new Error("video liveness failed");
-  }
-  throw resultFailure;
+  throw rejectionError ?? resultFailure;
 }
 
 export async function refreshLivenessFeedSnapshotWithRetry(
