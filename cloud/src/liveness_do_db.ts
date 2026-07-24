@@ -64,9 +64,15 @@ async function bootstrapRuntime(
   const stored = await storage.get<LivenessRuntimeRow>(RUNTIME_KEY);
   if (stored) return normalizeRow(stored);
   const row = await db.prepare(selectSql).first<Record<string, unknown>>();
+  if (!row) {
+    // Migrations create the singleton row. Synthesizing a zero cursor here would
+    // hide schema/data loss and let the DO continue without a recoverable D1
+    // checkpoint, so surface the corruption to the scheduler instead.
+    throw new Error("video liveness state row unavailable");
+  }
   const runtime = normalizeRow({
-    ...(row ?? {}),
-    lastD1CheckpointAt: row?.lastRunAt ? Date.parse(String(row.lastRunAt)) : 0,
+    ...row,
+    lastD1CheckpointAt: row.lastRunAt ? Date.parse(String(row.lastRunAt)) : 0,
   });
   await storage.put(RUNTIME_KEY, runtime);
   return runtime;
