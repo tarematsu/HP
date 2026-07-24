@@ -43,6 +43,9 @@ void StationheadHandleBase::ClearStartupPreviewBounds() {
 
 StationheadStatus StationheadHandleBase::RawStatus() const {
   StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+  const bool audioPlaying = player_ && player_->AudioPlaying();
+  status.audioPlaying = audioPlaying;
+  status.playing = audioPlaying;
   status.contentRevision = contentRevision_;
   status.audioMuted = audioMuted_;
   return status;
@@ -73,7 +76,7 @@ int64_t StationheadHandleBase::NextWakeAt() const noexcept {
 
 void StationheadHandleBase::RefreshVisibility() {
   if (!player_) return;
-  const StationheadStatus status = player_->Status();
+  const StationheadStatus status = RawStatus();
   if (SuppressTrackTransitionGap(
           status.audioPlaying, RequiresInteractiveStationhead(status))) {
     if (status.visible) player_->KeepPlaybackBehindDashboard();
@@ -221,7 +224,7 @@ void StationheadHandleBase::RaiseActiveHost() const {
 
   bool interactive = false;
   if (!preview) {
-    const StationheadStatus status = player_->Status();
+    const StationheadStatus status = RawStatus();
     interactive = IsInteractive(status);
     if (!interactive && !status.visible) return;
   }
