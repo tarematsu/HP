@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/finalize-monorepo.yml
       - .github/scripts/finalize-monorepo.py
+      - .github/scripts/trigger-monorepo.txt
   workflow_dispatch:
 
 permissions:
