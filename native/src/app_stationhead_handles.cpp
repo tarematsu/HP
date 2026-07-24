@@ -144,7 +144,15 @@ void StationheadHandleBase::ReleaseCompletedAuth() {
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
   if (!player_) return StationheadChangeNone;
-  const uint32_t flags = player_->ConsumeChangeFlags();
+  uint32_t flags = player_->ConsumeChangeFlags();
+  if ((flags & StationheadChangeReleaseAuth) != 0) {
+    // Complete auth teardown before A/B flags are OR-ed by App. Remove only
+    // this player's auth-related ReturnMain request so a simultaneous audio
+    // ReturnMain from the other player is not suppressed by ReleaseAuth.
+    player_->FinalizeCompletedAuth();
+    ApplyBounds();
+    flags &= ~(StationheadChangeReleaseAuth | StationheadChangeReturnMain);
+  }
   ++contentRevision_;
   return flags;
 }
