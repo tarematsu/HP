@@ -20,7 +20,7 @@ struct AppConfig {
   int screenWidth = 1920;
   int screenHeight = 1280;
   int cloudPollSeconds = 1800;
-  int telemetryMinutes = 120;
+  int telemetryMinutes = 240;
   double temperatureOffset = -4.5;
   std::wstring serialPort;
   StationheadConfig stationhead;

@@ -17,7 +17,7 @@ import { stationheadHealthPayload } from "./stationhead_health";
 
 type SyncSourceName = typeof DASHBOARD_SOURCE_NAMES[number] | "radar" | "stationhead_health";
 
-interface DeviceSyncSnapshotRow {
+export interface DeviceSyncManifestRow {
   dashboard_version: number;
   environment_version: number;
   environment_fetched_at: number;
@@ -25,6 +25,9 @@ interface DeviceSyncSnapshotRow {
   switchbot_version: number;
   stationhead_version: number;
   stationhead_health_version: number;
+}
+
+interface DeviceSyncSnapshotRow {
   config_version: number;
   config_updated_at: number;
   config_payload: string | null;
@@ -36,19 +39,39 @@ function requestedVersion(value: unknown): number {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : -1;
 }
 
-async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Promise<DeviceSyncSnapshotRow> {
+export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
+  const row = await env.DB.prepare(
+    `SELECT manifest.dashboard_version,
+            manifest.environment_version,
+            manifest.environment_fetched_at,
+            manifest.radar_version,
+            manifest.switchbot_version,
+            manifest.stationhead_version,
+            manifest.stationhead_health_version
+       FROM sync_manifest AS manifest
+      WHERE manifest.id=1`,
+  ).first<DeviceSyncManifestRow>();
+  return row ?? {
+    dashboard_version: 0,
+    environment_version: 0,
+    environment_fetched_at: 0,
+    radar_version: 0,
+    switchbot_version: 0,
+    stationhead_version: 0,
+    stationhead_health_version: 0,
+  };
+}
+
+async function deviceSpecificSnapshot(
+  env: Env,
+  deviceId: string,
+  now: number,
+): Promise<DeviceSyncSnapshotRow> {
   const row = await env.DB.prepare(
     `WITH config AS (
        SELECT version,updated_at,payload FROM device_configs WHERE device_id=?1
      )
      SELECT
-       manifest.dashboard_version,
-       manifest.environment_version,
-       manifest.environment_fetched_at,
-       manifest.radar_version,
-       manifest.switchbot_version,
-       manifest.stationhead_version,
-       manifest.stationhead_health_version,
        COALESCE((SELECT version FROM config),0) AS config_version,
        COALESCE((SELECT updated_at FROM config),0) AS config_updated_at,
        (SELECT payload FROM config) AS config_payload,
@@ -59,22 +82,13 @@ async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Prom
             AND completed_at IS NULL
             AND (expires_at IS NULL OR expires_at>?2)
             AND (delivered_at IS NULL OR delivered_at<=?3)
-       ) AS pending
-     FROM sync_manifest AS manifest
-     WHERE manifest.id=1`,
+       ) AS pending`,
   ).bind(
     deviceId,
     now,
     now - COMMAND_REDELIVERY_MS,
   ).first<DeviceSyncSnapshotRow>();
   return row ?? {
-    dashboard_version: 0,
-    environment_version: 0,
-    environment_fetched_at: 0,
-    radar_version: 0,
-    switchbot_version: 0,
-    stationhead_version: 0,
-    stationhead_health_version: 0,
     config_version: 0,
     config_updated_at: 0,
     config_payload: null,
@@ -83,11 +97,11 @@ async function deviceSyncSnapshot(env: Env, deviceId: string, now: number): Prom
 }
 
 function preferredEnvironmentState(
-  snapshot: DeviceSyncSnapshotRow,
+  manifest: DeviceSyncManifestRow,
   r2: StateRow | null,
 ): StateRow | null {
   if (!r2) return null;
-  const d1FetchedAt = Number(snapshot.environment_fetched_at ?? 0);
+  const d1FetchedAt = Number(manifest.environment_fetched_at ?? 0);
   return r2.fetched_at >= d1FetchedAt ? r2 : null;
 }
 
@@ -95,6 +109,7 @@ export async function buildDeviceSyncPayloadForDevice(
   env: Env,
   deviceId: string,
   clientVersions: Record<string, unknown>,
+  manifestOverride?: DeviceSyncManifestRow,
 ): Promise<Record<string, unknown>> {
   if (!deviceId) throw new Error("valid deviceId is required");
   const requested = {
@@ -106,13 +121,14 @@ export async function buildDeviceSyncPayloadForDevice(
     config: requestedVersion(clientVersions.config),
   };
   const now = Date.now();
-  const [snapshot, r2Environment] = await Promise.all([
-    deviceSyncSnapshot(env, deviceId, now),
+  const [manifest, snapshot, r2Environment] = await Promise.all([
+    manifestOverride ? Promise.resolve(manifestOverride) : readDeviceSyncManifest(env),
+    deviceSpecificSnapshot(env, deviceId, now),
     readR2EnvironmentState(env),
   ]);
-  const versions = normalizeDeviceSyncVersions(snapshot);
-  const environmentState = preferredEnvironmentState(snapshot, r2Environment);
-  const d1EnvironmentVersion = Number(snapshot.environment_version ?? 0);
+  const versions = normalizeDeviceSyncVersions(manifest);
+  const environmentState = preferredEnvironmentState(manifest, r2Environment);
+  const d1EnvironmentVersion = Number(manifest.environment_version ?? 0);
   const environmentVersion = environmentState?.version ?? d1EnvironmentVersion;
   const currentDashboardVersion = Math.max(
     0,

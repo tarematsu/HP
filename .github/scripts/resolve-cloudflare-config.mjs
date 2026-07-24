@@ -3,7 +3,7 @@ import path from "node:path";
 import { stripJsonc } from "../../hp/cloud/scripts/jsonc.mjs";
 
 async function readConfig() {
-  const file = path.resolve("cloud", "wrangler.jsonc");
+  const file = path.resolve("hp/cloud", "wrangler.jsonc");
   const raw = await readFile(file, "utf8");
   return JSON.parse(stripJsonc(raw));
 }

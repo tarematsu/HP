@@ -3,17 +3,16 @@ import {
   ensureD1Compaction,
   feedContentHash,
   maybeCleanupCollectionRuns,
-  withPlaybackFeedFinalization
+  withPlaybackFeedFinalization,
+  writeFeedState
 } from './d1-compaction.js';
 import { PLAYBACK_FEED_LIMIT } from './feed-limits.js';
 import {
-  currentRankingEntriesStatement,
   deleteRankingEntriesByVideoIdsStatement,
   parkRankingEntriesByVideoIdsStatement,
   rankingEntryPayloads,
   upsertRankingEntriesByVideoIdsStatement
 } from './ranking-entry-statements.js';
-import { recentFeedCutoff } from './source-feed-time.js';
 
 function positiveInteger(value) {
   const parsed = Number(value);
@@ -50,36 +49,117 @@ export function planPlaybackFeedChanges(desiredRows, currentRows) {
   return { desiredCount: desired.length, stale, moved, upserts };
 }
 
-export function desiredFeedStatement(db, capturedAt) {
-  const cutoffAt = recentFeedCutoff(capturedAt);
+export function currentFeedRowsStatement(db) {
   return db.prepare(
-    `SELECT video.id AS videoId
-       FROM videos AS video
-      WHERE video.status = 'active'
-        AND video.last_seen_at >= ?
-        AND NOT EXISTS (
-          SELECT 1 FROM video_blocklist AS bad
-           WHERE bad.canonical_key = video.canonical_key
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM video_death_list AS death
-           WHERE death.canonical_key = video.canonical_key
-        )
-      ORDER BY video.last_seen_at DESC, video.id DESC
+    `SELECT ranking.video_id AS videoId,
+            ranking.rank,
+            video.canonical_key AS canonicalKey,
+            video.media_url AS mediaUrl
+       FROM ranking_entries AS ranking
+       INNER JOIN videos AS video ON video.id = ranking.video_id
+      WHERE ranking.period = '24h'
+        AND video.status = 'active'
+      ORDER BY ranking.rank, ranking.video_id
       LIMIT ?`
-  ).bind(cutoffAt, PLAYBACK_FEED_LIMIT);
+  ).bind(PLAYBACK_FEED_LIMIT);
 }
 
-async function syncPlaybackFeed(db, capturedAt) {
-  const [desiredResult, currentResult] = await db.batch([
-    desiredFeedStatement(db, capturedAt),
-    currentRankingEntriesStatement(db)
-  ]);
-  const desiredRows = desiredResult?.results || [];
-  const plan = planPlaybackFeedChanges(
-    desiredRows,
-    currentResult?.results || []
-  );
+export function desiredFeedStatement(db) {
+  return currentFeedRowsStatement(db);
+}
+
+function itemPayload(items) {
+  const rows = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    const key = String(item?.key || item?.canonicalKey || '').trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ key, rank: rows.length + 1 });
+    if (rows.length >= PLAYBACK_FEED_LIMIT) break;
+  }
+  return JSON.stringify(rows);
+}
+
+export function desiredFeedItemsStatement(db, items) {
+  return db.prepare(
+    `SELECT video.id AS videoId,
+            CAST(json_extract(input.value, '$.rank') AS INTEGER) AS rank,
+            video.canonical_key AS canonicalKey,
+            video.media_url AS mediaUrl
+       FROM json_each(?) AS input
+       INNER JOIN videos AS video
+               ON video.canonical_key = json_extract(input.value, '$.key')
+      WHERE video.status = 'active'
+        AND NOT EXISTS (
+          SELECT 1 FROM video_blocklist AS blocked
+           WHERE blocked.canonical_key = video.canonical_key
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM video_death_list AS dead
+           WHERE dead.canonical_key = video.canonical_key
+        )
+      ORDER BY rank
+      LIMIT ?`
+  ).bind(itemPayload(items), PLAYBACK_FEED_LIMIT);
+}
+
+function mergedDesiredRows(currentRows, incomingRows) {
+  const rows = [];
+  const indexByKey = new Map();
+  for (const row of currentRows || []) {
+    const key = String(row?.canonicalKey || '');
+    if (!key || indexByKey.has(key)) continue;
+    indexByKey.set(key, rows.length);
+    rows.push({ ...row });
+  }
+  for (const row of incomingRows || []) {
+    const key = String(row?.canonicalKey || '');
+    if (!key) continue;
+    const index = indexByKey.get(key);
+    if (index === undefined) {
+      if (rows.length >= PLAYBACK_FEED_LIMIT) break;
+      indexByKey.set(key, rows.length);
+      rows.push({ ...row });
+    } else {
+      rows[index] = { ...rows[index], ...row };
+    }
+  }
+  return rows.map((row, index) => ({ ...row, rank: index + 1 }));
+}
+
+async function syncPlaybackFeed(db, capturedAt, options = {}) {
+  const replaceItems = Array.isArray(options.replaceItems)
+    ? options.replaceItems
+    : Array.isArray(options.desiredItems)
+      ? options.desiredItems
+      : null;
+  const mergeItems = Array.isArray(options.mergeItems) ? options.mergeItems : null;
+  const currentStatement = currentFeedRowsStatement(db);
+
+  let currentRows;
+  let desiredRows;
+  if (replaceItems) {
+    const [desiredResult, currentResult] = await db.batch([
+      desiredFeedItemsStatement(db, replaceItems),
+      currentStatement
+    ]);
+    desiredRows = desiredResult?.results || [];
+    currentRows = currentResult?.results || [];
+  } else if (mergeItems) {
+    const [incomingResult, currentResult] = await db.batch([
+      desiredFeedItemsStatement(db, mergeItems),
+      currentStatement
+    ]);
+    currentRows = currentResult?.results || [];
+    desiredRows = mergedDesiredRows(currentRows, incomingResult?.results || []);
+  } else {
+    const currentResult = await currentStatement.all();
+    currentRows = currentResult?.results || [];
+    desiredRows = currentRows;
+  }
+
+  const plan = planPlaybackFeedChanges(desiredRows, currentRows);
   const statements = [];
   for (const payload of rankingEntryPayloads(plan.stale)) {
     statements.push(deleteRankingEntriesByVideoIdsStatement(db, payload));
@@ -94,18 +174,32 @@ async function syncPlaybackFeed(db, capturedAt) {
   return { count: plan.desiredCount, rows: desiredRows };
 }
 
-export async function rebuildPlaybackFeed(db, capturedAt = new Date().toISOString()) {
+export async function rebuildPlaybackFeed(
+  db,
+  capturedAt = new Date().toISOString(),
+  options = {}
+) {
   await Promise.all([ensureDbIndexes(db), ensureD1Compaction(db)]);
-  return withPlaybackFeedFinalization(db, async () => {
-    const { count, rows } = await syncPlaybackFeed(db, capturedAt);
+  const task = async () => {
+    const { count, rows } = await syncPlaybackFeed(db, capturedAt, options);
     const hash = await feedContentHash(rows);
+    if (typeof options.publishSnapshot === 'function') {
+      await options.publishSnapshot(rows, hash, capturedAt);
+    }
     return {
       value: count,
       contentHash: hash,
       rowCount: count,
       updatedAt: capturedAt
     };
-  });
+  };
+
+  if (options.lock === false) {
+    const outcome = await task();
+    await writeFeedState(db, outcome.contentHash, outcome.rowCount, outcome.updatedAt);
+    return outcome.value;
+  }
+  return withPlaybackFeedFinalization(db, task);
 }
 
 export async function finalizeCollectionDatabase(env, capturedAt = new Date().toISOString()) {

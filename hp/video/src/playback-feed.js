@@ -1,4 +1,8 @@
 import { collectPlaybackCursorPage } from './playback-cursor.js';
+import {
+  invalidateFeedSnapshotCache,
+  readFeedSnapshotPage
+} from './feed-snapshot.js';
 
 export const SHUFFLE_MULTIPLIER = 1_103_515_245;
 export const SHUFFLE_INCREMENT = 12_345;
@@ -78,14 +82,6 @@ export async function readActivePlaybackFallbackPage(db, options) {
     `SELECT video.id, video.media_url AS mediaUrl
        FROM videos AS video
       WHERE video.status = 'active'
-        AND NOT EXISTS (
-          SELECT 1 FROM video_blocklist AS bad
-           WHERE bad.canonical_key = video.canonical_key
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM video_death_list AS death
-           WHERE death.canonical_key = video.canonical_key
-        )
       ORDER BY video.id DESC
       LIMIT ?`
   ).bind(limit).all();
@@ -95,9 +91,14 @@ export async function readActivePlaybackFallbackPage(db, options) {
   };
 }
 
-export function invalidatePlaybackCache() {}
+export function invalidatePlaybackCache(db) {
+  invalidateFeedSnapshotCache(db);
+}
 
 export async function readSeededPlaybackCursorPage(db, options) {
+  const snapshot = await readFeedSnapshotPage(db, { ...options, orientation: 'both' });
+  if (snapshot) return snapshot;
+
   const page = await collectPage(db, options);
   if (page.rows.length || page.nextCursor || !isInitialCursor(options.cursor)) {
     return {

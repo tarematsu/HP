@@ -272,7 +272,7 @@ async function writePayloadState(
     statusError,
     heartbeatBefore,
   ).run();
-  if (Number(write.meta.changes ?? 0) > 0) markStateChanged(env);
+  if (Number(write.meta.changes ?? 0) > 0) await markStateChanged(env);
 }
 
 export async function updateState(
@@ -297,7 +297,7 @@ export async function updateState(
           OR current_state.error IS NOT excluded.error
           OR current_state.fetched_at<=?5`,
     ).bind(result.source, now, error, EMPTY_OBJECT_HASH, heartbeatBefore).run();
-    if (Number(write.meta.changes ?? 0) > 0) markStateChanged(env);
+    if (Number(write.meta.changes ?? 0) > 0) await markStateChanged(env);
     return;
   }
 

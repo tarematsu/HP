@@ -102,6 +102,12 @@ function feedStateWrites(db) {
   return db.runs.filter((item) => item.sql.includes('SET content_hash=?, row_count=?'));
 }
 
+const replacementItems = [
+  { key: 'one' },
+  { key: 'two' },
+  { key: 'three' }
+];
+
 test('feed planner returns only stale, moved, and missing rows', () => {
   const plan = planPlaybackFeedChanges(
     [{ videoId: 30 }, { videoId: 20 }, { videoId: 10 }],
@@ -132,7 +138,9 @@ test('unchanged playback feed skips ranking writes and commits feed state under 
   ];
   const db = createFeedDb(desired, current);
 
-  const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z');
+  const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z', {
+    replaceItems: replacementItems
+  });
   const rankingWrites = db.batches.filter((batch) => batch.some((item) => (
     item.sql.startsWith('DELETE FROM ranking_entries')
     || item.sql.startsWith('UPDATE ranking_entries')
@@ -159,7 +167,9 @@ test('changed playback feed writes only the calculated delta and commits feed st
     ]
   );
 
-  const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z');
+  const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z', {
+    replaceItems: replacementItems
+  });
   const writeBatch = db.batches.find((batch) => batch.some((item) => (
     item.sql.startsWith('DELETE FROM ranking_entries')
   )));

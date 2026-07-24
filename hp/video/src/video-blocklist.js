@@ -5,6 +5,7 @@ import {
 } from './extractor.js';
 import { createJsonKeyPayloads } from './key-payloads.js';
 import { mediaHostFor } from './source-locator.js';
+import { refreshCompactedFeedSnapshot } from './source-feed-compacted.js';
 
 const MAX_BODY_BYTES = 4096;
 const BLOCK_ACTION_HEADER = 'x-videoscraper-action';
@@ -123,6 +124,13 @@ export async function blockPlaybackMedia(env, request, options = {}) {
       data: { ok: true, alreadyBlocked: true, canonicalKey: state.canonicalKey }
     };
   }
+
+  await refreshCompactedFeedSnapshot(env, blockedAt).catch((error) => {
+    console.error('blocked-video-feed-snapshot-refresh-failed', {
+      videoId: state.id,
+      error: String(error?.message || error)
+    });
+  });
 
   return {
     status: 200,

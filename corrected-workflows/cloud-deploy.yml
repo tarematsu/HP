@@ -1,0 +1,153 @@
+name: Deploy unified homepanel-cloud Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "hp/cloud/**"
+      - "hp/video/src/**"
+      - "hp/video/public/**"
+      - "hp/video/package.json"
+      - ".github/workflows/cloud-deploy.yml"
+      - ".github/scripts/resolve-cloudflare-config.mjs"
+      - ".github/scripts/assert-actions-only-cloudflare.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-cloud-unified-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      CLOUDFLARE_BUILDS_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
+      HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
+      RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restore npm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-22-deploy-${{ hashFiles('hp/cloud/package-lock.json', 'hp/video/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-22-deploy-
+
+      - name: Install HomePanel dependencies
+        working-directory: hp/cloud
+        run: npm ci --no-audit --no-fund
+
+      - name: Install video dependencies
+        working-directory: hp/video
+        run: npm install --no-audit --no-fund
+
+      - name: Resolve Cloudflare settings
+        id: resolve
+        run: node .github/scripts/resolve-cloudflare-config.mjs
+
+      - name: Validate Cloudflare credentials
+        env:
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is not configured"; exit 1; }
+          test -n "$CLOUDFLARE_BUILDS_API_TOKEN" || { echo "CLOUDFLARE_BUILDS_API_TOKEN is required to enforce Actions-only deployments"; exit 1; }
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured"; exit 1; }
+
+      - name: Enforce GitHub Actions-only Cloudflare deployment
+        env:
+        run: node .github/scripts/assert-actions-only-cloudflare.mjs
+
+      - name: Validate unified Worker
+        working-directory: hp/cloud
+        run: |
+          npm run check
+          npm test
+          npm run check:unified-bundle
+
+      - name: Check whether video cutover is active
+        id: activation
+        working-directory: hp/cloud
+        shell: bash
+        env:
+        run: |
+          set -euo pipefail
+          npm run prepare:existing
+          config=.wrangler/generated/homepanel-existing.jsonc
+          output="$RUNNER_TEMP/video-runtime-state.json"
+          if npx wrangler d1 execute homepanel-data --remote --config "$config" \
+            --command "SELECT active FROM video_runtime_state WHERE id=1;" --json > "$output" 2>/dev/null \
+            && grep -Eq '"active"[[:space:]]*:[[:space:]]*1' "$output"; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "Verified completed videoscraper cutover."
+          else
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "Video cutover is not active; routine deployment is intentionally skipped."
+          fi
+
+      - name: Deploy Worker with migration discovery only when required
+        if: steps.activation.outputs.active == 'true'
+        working-directory: hp/cloud
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual deployment keeps the conservative migration check."
+            npm run deploy
+            exit 0
+          fi
+
+          if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "No usable previous commit; keeping the conservative migration check."
+            npm run deploy
+            exit 0
+          fi
+
+          if ! git -C "$GITHUB_WORKSPACE" cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git -C "$GITHUB_WORKSPACE" fetch --no-tags --depth=1 origin "$BEFORE_SHA"
+          fi
+
+          if git -C "$GITHUB_WORKSPACE" diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- \
+            hp/cloud/migrations \
+            hp/cloud/scripts/deploy-existing.mjs \
+            hp/cloud/wrangler.jsonc \
+            hp/cloud/package.json \
+            hp/cloud/package-lock.json; then
+            npm run deploy:worker
+          else
+            echo "Migration-sensitive files changed; applying pending migrations before deployment."
+            npm run deploy
+          fi
+
+      - name: Report deferred unified deployment
+        if: steps.activation.outputs.active != 'true'
+        run: echo "::notice::Unified homepanel-cloud deployment is deferred because the video runtime activation marker is not active."
+
+      - name: Sync radar dispatcher token
+        if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
+        working-directory: hp/cloud
+        env:
+        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
+
+      - name: Report missing radar dispatcher token
+        if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
+        run: echo "::warning::RADAR_DISPATCH_TOKEN is not configured; automatic radar workflow dispatch remains disabled"

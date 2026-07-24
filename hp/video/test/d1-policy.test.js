@@ -12,6 +12,10 @@ const playbackFeedSync = await readFile(
   new URL('../src/playback-feed-sync.js', import.meta.url),
   'utf8'
 );
+const feedSnapshot = await readFile(
+  new URL('../src/feed-snapshot.js', import.meta.url),
+  'utf8'
+);
 const worker = await readFile(new URL('../src/worker.js', import.meta.url), 'utf8');
 
 test('authenticated status responses bypass shared edge cache and remain private', () => {
@@ -30,28 +34,32 @@ test('admin collect-all runs the active source set once with one feed finalizati
   assert.doesNotMatch(entryCore, /for \(const path of ADMIN_COLLECTION_PATHS\)/);
 });
 
-test('individual admin collectors return accepted and finalize one compacted feed', () => {
+test('individual admin collectors merge collected candidates and finalize once', () => {
   assert.match(entryCore, /ADMIN_COLLECTION_PATHS\.includes\((?:url\.)?pathname\)/);
   assert.match(entryCore, /runOneAdminCollector\((?:url\.)?pathname, env, ctx\)/);
   assert.match(entryCore, /finally\(\(\) => invalidateCaches\(env\.DB\)\)/);
   assert.match(entryCore, /status: 202/);
   assert.match(worker, /deferFeedMaintenance: true/);
-  assert.match(worker, /finalizeCompactedFeed\(env\)/);
+  assert.match(worker, /collectionItems = new Map\(\)/);
+  assert.match(worker, /mergeItems: \[\.\.\.collectionItems\.values\(\)\]/);
   assert.doesNotMatch(worker, /json\(await runAndRecord/);
 });
 
-test('compacted finalization performs set synchronization in D1 under the shared feed lock', () => {
-  assert.match(compactedFeed, /withPlaybackFeedFinalization\(db, async \(\) =>/);
-  assert.match(compactedFeed, /syncCompactedFeedInDatabase\(db, capturedAt\)/);
-  assert.match(compactedFeed, /serializedFeedContentHash\(synchronized\.contentJson\)/);
-  assert.doesNotMatch(compactedFeed, /desiredFeedStatement/);
-  assert.doesNotMatch(compactedFeed, /syncCompactedFeedRows/);
-  assert.doesNotMatch(compactedFeed, /rebuildPlaybackFeed\(db, capturedAt\)/);
+test('compacted finalization serializes through the Durable Object and publishes R2', () => {
+  assert.match(compactedFeed, /video-feed-finalize/);
+  assert.match(compactedFeed, /video-feed-stage/);
+  assert.match(compactedFeed, /video-feed-refresh/);
+  assert.match(compactedFeed, /lock: false/);
+  assert.match(compactedFeed, /publishFeedSnapshot/);
+  assert.match(feedSnapshot, /video\/playback-feed\/v1\.json/);
+  assert.match(feedSnapshot, /DATA_BUCKET|bucket/);
 });
 
-test('playback feed rebuild hashes and commits rows through the shared feed lock', () => {
-  assert.match(playbackFeedSync, /return \{ count: plan\.desiredCount, rows: desiredRows \}/);
-  assert.match(playbackFeedSync, /withPlaybackFeedFinalization\(db, async \(\) =>/);
+test('playback feed rebuild uses one diff plan and supports DO-local state commits', () => {
+  assert.match(playbackFeedSync, /planPlaybackFeedChanges\(desiredRows, currentRows\)/);
   assert.match(playbackFeedSync, /feedContentHash\(rows\)/);
-  assert.doesNotMatch(playbackFeedSync, /writeFeedState\(db, hash, count, capturedAt\)/);
+  assert.match(playbackFeedSync, /if \(options\.lock === false\)/);
+  assert.match(playbackFeedSync, /writeFeedState\(db, outcome\.contentHash/);
+  assert.match(playbackFeedSync, /withPlaybackFeedFinalization\(db, task\)/);
+  assert.doesNotMatch(playbackFeedSync, /last_seen_at/);
 });

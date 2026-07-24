@@ -31,25 +31,25 @@ function baseVideoUpsertSql({ conditional, returningInserted }) {
      media_url = excluded.media_url,
      media_type = excluded.media_type,
      last_seen_at = excluded.last_seen_at,
-     fail_count = 0,
-     status = CASE WHEN videos.status = 'hidden' THEN 'hidden' ELSE 'active' END${conditional ? `
+     fail_count = CASE WHEN videos.status = 'dead' THEN videos.fail_count ELSE 0 END,
+     status = CASE
+       WHEN videos.status IN ('hidden','dead') THEN videos.status
+       ELSE 'active'
+     END${conditional ? `
    WHERE videos.media_url IS NOT excluded.media_url
       OR videos.media_type IS NOT excluded.media_type
-      OR videos.fail_count <> 0
-      OR videos.status NOT IN ('active','hidden')
-      OR videos.last_seen_at < ?` : ''}${returningInserted ? `
+      OR (videos.fail_count <> 0 AND videos.status <> 'dead')
+      OR videos.status NOT IN ('active','hidden','dead')` : ''}${returningInserted ? `
    RETURNING CASE WHEN first_seen_at = ? THEN 1 ELSE 0 END AS inserted` : ''}`;
 }
 
 export function upsertVideoItemsStatement(db, payload, capturedAt, options = {}) {
   const {
-    sessionStart = null,
     conditional = false,
     returningInserted = false
   } = options;
   const statement = db.prepare(baseVideoUpsertSql({ conditional, returningInserted }));
   const bindings = [payload, capturedAt, capturedAt];
-  if (conditional) bindings.push(sessionStart || capturedAt);
   if (returningInserted) bindings.push(capturedAt);
   return statement.bind(...bindings);
 }

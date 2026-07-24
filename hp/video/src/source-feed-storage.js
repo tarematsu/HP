@@ -1,4 +1,3 @@
-import { seenSessionStart } from './source-feed-time.js';
 import {
   countInsertedRows,
   upsertVideoItemsStatement,
@@ -20,14 +19,12 @@ export async function saveSourceFeedItems(db, items, capturedAt) {
   let inserted = 0;
   let changed = 0;
   const payloads = sourceFeedPayloads(items);
-  const sessionStart = seenSessionStart(capturedAt);
   for (let offset = 0; offset < payloads.length; offset += VIDEO_STORAGE_BATCH_SIZE) {
     const statements = payloads
       .slice(offset, offset + VIDEO_STORAGE_BATCH_SIZE)
       .map((payload) => upsertVideoItemsStatement(db, payload, capturedAt, {
         conditional: true,
-        returningInserted: true,
-        sessionStart
+        returningInserted: true
       }));
     const results = await db.batch(statements);
     for (const result of results) {
