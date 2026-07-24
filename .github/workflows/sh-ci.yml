@@ -1,0 +1,69 @@
+name: SH CI
+
+on:
+  pull_request:
+    paths:
+      - 'SH/**'
+      - '.github/workflows/sh-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sh-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Validate imported SH repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            SH/package-lock.json
+            SH/site/package-lock.json
+            SH/worker/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install SH root dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: SH
+
+      - name: Install SH Pages dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: SH/site
+
+      - name: Install SH Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: SH/worker
+
+      - name: Run SH checks and tests
+        shell: bash
+        working-directory: SH
+        run: |
+          set +e
+          npm run check > sh-check.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 300 sh-check.log
+          fi
+          exit "$status"
+
+      - name: Upload SH failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sh-check-failure
+          path: SH/sh-check.log
+          if-no-files-found: ignore
+          retention-days: 7
