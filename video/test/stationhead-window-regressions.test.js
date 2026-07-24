@@ -14,6 +14,10 @@ const handleSource = readFileSync(
   new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
   'utf8',
 );
+const webviewSource = readFileSync(
+  new URL('../../native/src/sh_webview.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -132,4 +136,48 @@ test('handle raises the active host without overwriting player-owned geometry', 
   assert.match(raiseActiveHost, /SWP_NOMOVE \| SWP_NOSIZE/);
   assert.doesNotMatch(raiseActiveHost, /const RECT activeBounds/);
   assert.doesNotMatch(raiseActiveHost, /workspaceBounds_\.right - workspaceBounds_\.left/);
+});
+
+test('Spotify popup authorization survives playback WebView recreation without premature navigation', () => {
+  assert.match(playerHeader, /std::wstring activeAuthorizationUrl_;/);
+  const popup = section(
+    webviewSource,
+    'const HRESULT newWindowResult = webview_->add_NewWindowRequested(',
+    'if (FAILED(newWindowResult))',
+  );
+  assert.match(popup, /CloseAuthWebView\(\);[\s\S]*activeAuthorizationUrl_ = uri;/);
+  assert.doesNotMatch(popup, /authPendingUrl_ = uri;/);
+
+  const closeWebView = section(
+    webviewSource,
+    'void StationheadPlayer::CloseWebView()',
+    'void StationheadPlayer::CloseAuthWebView()',
+  );
+  const preserveAt = closeWebView.indexOf('const std::wstring& resumeUrl');
+  const closeAuthAt = closeWebView.indexOf('CloseAuthWebView();');
+  assert.ok(preserveAt >= 0 && preserveAt < closeAuthAt);
+  assert.match(
+    closeWebView,
+    /activeAuthorizationUrl_\.empty\(\)[\s\S]*authPendingUrl_[\s\S]*activeAuthorizationUrl_[\s\S]*pendingAuthorizationUrl_ = resumeUrl;/,
+  );
+  assert.match(closeWebView, /status_\.loginRequired = false;/);
+  assert.match(closeWebView, /status_\.spotifyAuthorization = false;/);
+  assert.match(closeWebView, /status_\.processFailed = false;/);
+
+  const closeAuthWebView = section(
+    webviewSource,
+    'void StationheadPlayer::CloseAuthWebView()',
+    '}  // namespace hp',
+  );
+  assert.match(closeAuthWebView, /authPendingUrl_\.clear\(\);[\s\S]*activeAuthorizationUrl_\.clear\(\);/);
+});
+
+test('required playback WebView event registrations fail closed into recreation', () => {
+  for (const resultName of ['newWindowResult', 'webMessageResult', 'processFailedResult']) {
+    assert.match(webviewSource, new RegExp(`const HRESULT ${resultName} =`));
+    assert.match(
+      webviewSource,
+      new RegExp(`if \\(FAILED\\(${resultName}\\)\\) \\{[\\s\\S]*ScheduleRecreate\\(`),
+    );
+  }
 });
