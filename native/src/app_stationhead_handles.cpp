@@ -137,7 +137,7 @@ void StationheadHandleBase::ShowAfterAudioStop() {
 
 void StationheadHandleBase::ReleaseCompletedAuth() {
   if (!player_) return;
-  player_->ReleaseCompletedAuth();
+  player_->FinalizeCompletedAuth();
   ApplyBounds();
 }
 
