@@ -1,18 +1,23 @@
 import videoWorker from "../../video/src/entry-core.js";
 import { LIVENESS_CRON } from "../../video/src/liveness-schedule.js";
+import { livenessDoDatabase } from "./liveness_do_db";
 import type { Env } from "./sources";
 import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 
-export async function runVideoLiveness(env: Env): Promise<void> {
+export async function runVideoLiveness(
+  env: Env,
+  storage?: DurableObjectStorage,
+): Promise<void> {
   if (!await readVideoRuntimeActive(env)) {
     console.log("video-liveness-skipped-inactive-runtime");
     return;
   }
 
+  const runtimeEnv = storage ? { ...env, DB: livenessDoDatabase(env, storage) } : env;
   const pending: Promise<unknown>[] = [];
   await videoWorker.scheduled(
     { cron: LIVENESS_CRON },
-    env,
+    runtimeEnv,
     {
       waitUntil(promise: Promise<unknown>) {
         pending.push(Promise.resolve(promise));
