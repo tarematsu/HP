@@ -7,15 +7,19 @@ on:
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/package.json'
+      - '.github/actions/cloudflare-context/action.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/resolve-cloudflare-account.mjs'
+      - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
+      - 'tests/cloudflare-account-context.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
       - 'tests/observability-status-publisher.test.mjs'
@@ -27,15 +31,19 @@ on:
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/package.json'
+      - '.github/actions/cloudflare-context/action.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/resolve-cloudflare-account.mjs'
+      - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
+      - 'tests/cloudflare-account-context.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
       - 'tests/observability-status-publisher.test.mjs'
@@ -73,6 +81,7 @@ jobs:
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node --test \
+            tests/cloudflare-account-context.test.mjs \
             tests/homepanel-*.test.mjs \
             tests/observability-status-publisher.test.mjs
 
