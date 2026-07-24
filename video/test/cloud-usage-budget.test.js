@@ -6,6 +6,7 @@ const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc'
 const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
+const octopusHistory = readFileSync(new URL('../../cloud/src/octopus_history.ts', import.meta.url), 'utf8');
 const resourceMigration = readFileSync(
   new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
   'utf8'
@@ -73,6 +74,18 @@ test('scheduler migration keeps liveness while reducing other periodic work', ()
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
 });
 
+test('Octopus uses a daily-only, cursor-bounded D1 model', () => {
+  assert.match(octopusScheduleMigration, /PRIMARY KEY\(account_number, day\)/);
+  assert.match(octopusScheduleMigration, /WITHOUT ROWID/);
+  assert.match(octopusScheduleMigration, /DROP TABLE IF EXISTS octopus_readings/);
+  assert.match(octopusScheduleMigration, /CREATE TABLE octopus_sync_state/);
+  assert.match(octopusHistory, /OCTOPUS_CORRECTION_OVERLAP_DAYS = 1/);
+  assert.match(octopusHistory, /ON CONFLICT\(account_number,day\)/);
+  assert.match(octopusHistory, /SELECT day,energy_kwh,slot_count/);
+  assert.doesNotMatch(octopusHistory, /INSERT INTO octopus_readings/);
+  assert.doesNotMatch(octopusHistory, /DELETE FROM octopus_readings/);
+});
+
 test('modeled daily D1 written rows stay below the 3000-row target', () => {
   const schedulerCompletionQueries = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
@@ -89,11 +102,13 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
   const compactTelemetryHeartbeatRows = compactTelemetryHeartbeatQueries * INDEXED_ROW_WRITE_MULTIPLIER;
   const jobRunCheckpointQueries = Object.keys(scheduledIntervals).length * 4;
   const jobRunCheckpointRows = jobRunCheckpointQueries * INDEXED_ROW_WRITE_MULTIPLIER;
+  const octopusDailyAndCursorRows = 3;
   const changeCommandWebhookAndLegacyRowReserve = 1_500;
   const modeledRows = schedulerCompletionRows
     + stateRows
     + compactTelemetryHeartbeatRows
     + jobRunCheckpointRows
+    + octopusDailyAndCursorRows
     + changeCommandWebhookAndLegacyRowReserve;
 
   assert.equal(schedulerCompletionRows, 876);
@@ -102,7 +117,7 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
   assert.equal(stateRows, 386);
   assert.equal(compactTelemetryHeartbeatRows, 24);
   assert.equal(jobRunCheckpointRows, 72);
-  assert.equal(modeledRows, 2_858);
+  assert.equal(modeledRows, 2_861);
   assert.ok(modeledRows < TARGET);
 });
 
