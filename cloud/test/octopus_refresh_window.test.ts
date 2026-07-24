@@ -6,7 +6,7 @@ import {
 } from "../src/octopus_history";
 
 describe("Octopus refresh boundaries", () => {
-  it("keeps requests inside a seven-day collection window and a two-day live window", () => {
+  it("keeps requests inside a seven-day collection window ending before the recent two days", () => {
     const now = Date.parse("2026-07-10T18:17:42Z");
     expect(OCTOPUS_COLLECTION_DAYS).toBe(7);
     expect(new Date(octopusCollectionStart(now)).toISOString()).toBe("2026-07-03T18:30:00.000Z");
