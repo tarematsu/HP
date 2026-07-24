@@ -1,17 +1,19 @@
+import { LIVENESS_JOB_NAME } from "../../video/src/liveness-schedule.js";
+import { cleanupExpiredData, ensureSystemJobs, type JobRow } from "./scheduler";
+import { stateGeneration } from "./state_generation";
 import { executeSource, type Env, type SourceResult } from "./sources";
 import { updateState } from "./snapshot";
-import { cleanupExpiredData, ensureSystemJobs, type JobRow } from "./scheduler";
-import { runUpdateCheck } from "./update_check";
 import { fetchStationhead } from "./spotify_source";
 import { runStationheadHealthMonitor } from "./stationhead_health";
 import { configuredIds, loadSwitchBotSnapshot } from "./switchbot_api";
 import { fetchSwitchBotOptimized } from "./switchbot_poll";
 import { failSafeSwitchBotState } from "./switchbot_state";
 import type { SwitchBotEnv } from "./switchbot_types";
+import { runUpdateCheck } from "./update_check";
 import { runVideoLiveness } from "./video_liveness";
-import { LIVENESS_JOB_NAME } from "../../video/src/liveness-schedule.js";
 
 const RUNTIME_STORAGE_KEY = "scheduler-runtime-v2";
+const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
 const RUNTIME_VERSION = 2;
 const MIN_RETRY_SECONDS = 60;
 const MAX_FAILURE_EXPONENT = 4;
@@ -105,7 +107,11 @@ async function refreshStationheadMonitor(env: Env): Promise<void> {
   }
 }
 
-async function executeRuntimeJob(env: Env, job: RuntimeJob): Promise<JobExecution> {
+async function executeRuntimeJob(
+  env: Env,
+  job: RuntimeJob,
+  storage: DurableObjectStorage,
+): Promise<JobExecution> {
   const startedAt = Math.floor(Date.now() / 1000);
   let success = false;
   let message: string | undefined;
@@ -119,7 +125,7 @@ async function executeRuntimeJob(env: Env, job: RuntimeJob): Promise<JobExecutio
     } else if (job.name === "stationhead_health") {
       await runStationheadHealthMonitor(env);
     } else if (job.name === LIVENESS_JOB_NAME) {
-      await runVideoLiveness(env);
+      await runVideoLiveness(env, storage);
     } else {
       const result: SourceResult = job.name === "switchbot"
         ? await fetchSwitchBotOptimized(env)
@@ -213,11 +219,15 @@ function nextCadenceAt(completedAt: number, intervalSeconds: number): number {
   return (Math.floor(completedAt / interval) + 1) * interval;
 }
 
-async function executeDueJobs(env: Env, jobs: readonly RuntimeJob[]): Promise<JobExecution[]> {
+async function executeDueJobs(
+  env: Env,
+  jobs: readonly RuntimeJob[],
+  storage: DurableObjectStorage,
+): Promise<JobExecution[]> {
   const executions: JobExecution[] = [];
   for (let offset = 0; offset < jobs.length; offset += MAX_RUNTIME_BATCH) {
     const batch = jobs.slice(offset, offset + MAX_RUNTIME_BATCH);
-    executions.push(...await Promise.all(batch.map(job => executeRuntimeJob(env, job))));
+    executions.push(...await Promise.all(batch.map(job => executeRuntimeJob(env, job, storage))));
   }
   return executions;
 }
@@ -263,7 +273,13 @@ export async function runRuntimeSchedulerTick(
   const jobs = dueJobs(envelope, nowSeconds);
   if (!jobs.length) return [];
 
-  const executions = await executeDueJobs(env, jobs);
+  const executionEnv: Env = { ...env };
+  delete executionEnv.SCHEDULER_COORDINATOR;
+  const generationBefore = stateGeneration(executionEnv);
+  const executions = await executeDueJobs(executionEnv, jobs, state.storage);
+  if (stateGeneration(executionEnv) !== generationBefore) {
+    await state.storage.delete(DEVICE_SYNC_MANIFEST_KEY);
+  }
   const completedAt = Math.floor(Date.now() / 1000);
   const events: PendingJobEvent[] = [];
 
@@ -292,8 +308,6 @@ export async function runRuntimeSchedulerTick(
     }
   }
 
-  // Runtime progress is authoritative. Diagnostic D1 history is deliberately
-  // recorded only after the durable checkpoint and cannot block future alarms.
   await state.storage.put(RUNTIME_STORAGE_KEY, envelope);
   await recordJobEventsBestEffort(env, events);
   return jobs.map(job => job.name);
