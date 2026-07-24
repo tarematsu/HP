@@ -1,9 +1,13 @@
 # Home Platform
 
-Unified repository for Stationhead (SH) and HomePanel (HP).
+Canonical monorepo for Stationhead (SH) and HomePanel (HP).
 
-- SH application and data pipeline: repository root (`worker/`, `site/`, `database/`)
-- HP applications: `hp/`
-- Shared Cloudflare operations: `.github/scripts/` and `.github/actions/cloudflare-context/`
+- Stationhead application and data pipeline: repository root (`worker/`, `site/`, `database/`, `packages/`)
+- HomePanel applications: `hp/cloud/`, `hp/video/`, `hp/native/`
+- Shared Cloudflare account resolution: `.github/actions/cloudflare-context/`
+- Shared persisted-telemetry and Live Tail diagnostics: `.github/actions/cloudflare-observability-diagnostics/`
+- Shared operational tooling: `.github/scripts/`
 
-Run `npm run check` for the full JavaScript/TypeScript validation suite. See `docs/MONOREPO.md` for deployment boundaries and migration details.
+Production deployments, migrations, releases, rollbacks, and observability remain independent for SH and HP.
+
+Run `npm run check` for repository-level validation. See `docs/MONOREPO.md` for ownership and deployment boundaries.
