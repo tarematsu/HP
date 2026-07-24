@@ -9,6 +9,22 @@ import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 export const LIVENESS_FEED_SNAPSHOT_PENDING_KEY =
   "video-liveness-feed-snapshot-refresh-pending-v1";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function persistSnapshotRepairMarker(
+  storage: DurableObjectStorage,
+): Promise<boolean> {
+  try {
+    await storage.put(LIVENESS_FEED_SNAPSHOT_PENDING_KEY, true);
+    return true;
+  } catch (error) {
+    console.error("video-liveness-feed-repair-marker-write-failed", errorMessage(error));
+    return false;
+  }
+}
+
 export async function collectLivenessResults(
   storage: DurableObjectStorage | undefined,
   pending: readonly Promise<unknown>[],
@@ -21,12 +37,9 @@ export async function collectLivenessResults(
     return results;
   } catch (error) {
     // A failure can happen after D1 mutations commit but before the liveness
-    // runtime state/result is returned. Conservatively repair the snapshot on
-    // the next successful alarm because the failed result cannot prove that the
-    // feed remained unchanged.
-    if (storage) {
-      await storage.put(LIVENESS_FEED_SNAPSHOT_PENDING_KEY, true);
-    }
+    // runtime state/result is returned. Preserve the original failure while
+    // recording a durable repair obligation whenever DO storage is available.
+    if (storage) await persistSnapshotRepairMarker(storage);
     throw error;
   }
 }
@@ -36,17 +49,36 @@ export async function refreshLivenessFeedSnapshotWithRetry(
   feedChanged: boolean,
   refresh: () => Promise<unknown>,
 ): Promise<boolean> {
-  const pending = feedChanged
-    || await storage.get<boolean>(LIVENESS_FEED_SNAPSHOT_PENDING_KEY) === true;
+  let pending = feedChanged;
+  if (!pending) {
+    try {
+      pending = await storage.get<boolean>(LIVENESS_FEED_SNAPSHOT_PENDING_KEY) === true;
+    } catch (error) {
+      // An unreadable marker cannot prove the snapshot is current. Refresh
+      // conservatively; publishing an unchanged hash does not rewrite R2.
+      console.error("video-liveness-feed-repair-marker-read-failed", errorMessage(error));
+      pending = true;
+    }
+  }
   if (!pending) return false;
 
-  // Record the repair obligation before touching R2. Liveness mutations and the
-  // cursor have already committed at this point, so a failed snapshot publish
-  // must survive the current alarm and be retried even if the next batch has no
-  // dead/revived transition of its own.
-  await storage.put(LIVENESS_FEED_SNAPSHOT_PENDING_KEY, true);
-  await refresh();
-  await storage.delete(LIVENESS_FEED_SNAPSHOT_PENDING_KEY);
+  // Record the repair obligation before touching R2. If this write itself is
+  // unavailable, still attempt the publish immediately instead of losing the
+  // only repair opportunity after the liveness cursor has advanced.
+  let markerPersisted = await persistSnapshotRepairMarker(storage);
+  try {
+    await refresh();
+  } catch (error) {
+    // The first marker write may have failed transiently. Retry once after the
+    // publish failure so the next scheduler alarm can complete the repair.
+    if (!markerPersisted) {
+      markerPersisted = await persistSnapshotRepairMarker(storage);
+    }
+    throw error;
+  }
+  if (markerPersisted) {
+    await storage.delete(LIVENESS_FEED_SNAPSHOT_PENDING_KEY);
+  }
   return true;
 }
 
@@ -72,7 +104,27 @@ export async function runVideoLiveness(
   );
 
   if (!pending.length) throw new Error("video liveness did not schedule work");
-  const results = await collectLivenessResults(storage, pending);
+  let results: unknown[];
+  try {
+    results = await collectLivenessResults(storage, pending);
+  } catch (error) {
+    // The result is uncertain only after the scheduled work has settled. Repair
+    // the snapshot in the same alarm as well as retaining the durable marker;
+    // this closes the gap where a later unchanged batch cannot rediscover the
+    // feed mutation that preceded the failure.
+    if (storage) {
+      try {
+        await refreshLivenessFeedSnapshotWithRetry(
+          storage,
+          true,
+          () => refreshFeedSnapshot(env),
+        );
+      } catch (repairError) {
+        console.error("video-liveness-feed-repair-after-failure-failed", errorMessage(repairError));
+      }
+    }
+    throw error;
+  }
   const feedChanged = results.some(result => {
     if (!result || typeof result !== "object") return false;
     const row = result as Record<string, unknown>;
