@@ -1,6 +1,7 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { stripJsonc } from "../../hp/cloud/scripts/jsonc.mjs";
+import { resolveCloudflareAccountId } from "./resolve-cloudflare-account.mjs";
 
 async function readConfig() {
   const file = path.resolve("hp/cloud", "wrangler.jsonc");
@@ -14,23 +15,6 @@ function configuredUpdateBucket(config) {
   const declared = String(config?.r2_buckets?.find((entry) => entry?.binding === "UPDATE_BUCKET")?.bucket_name || "").trim();
   if (declared && declared !== "replace-with-your-r2-bucket-name") return declared;
   return "";
-}
-
-async function cloudflareAccountId(token) {
-  const response = await fetch("https://api.cloudflare.com/client/v4/accounts?page=1&per_page=100", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-  });
-  const payload = await response.json();
-  if (!response.ok || payload?.success === false) {
-    const message = (payload?.errors || []).map((error) => error?.message || "unknown error").join("; ");
-    throw new Error(`Cloudflare account lookup failed: ${message || response.status}`);
-  }
-  const accounts = Array.isArray(payload?.result) ? payload.result : [];
-  if (accounts.length === 1 && accounts[0]?.id) return String(accounts[0].id);
-  throw new Error("Cloudflare account could not be inferred automatically; set CLOUDFLARE_ACCOUNT_ID");
 }
 
 function previousUtcDay() {
@@ -174,7 +158,12 @@ const databaseName = String(database?.database_name || "").trim();
 const databaseId = String(database?.database_id || "").trim();
 const updateBucket = configuredUpdateBucket(config);
 const apiToken = String(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_BUILDS_API_TOKEN || "").trim();
-const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || "").trim() || (apiToken ? await cloudflareAccountId(apiToken) : "");
+const accountId = apiToken
+  ? await resolveCloudflareAccountId({
+    token: apiToken,
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+  })
+  : "";
 
 if (!workerName) throw new Error("Worker name is missing in hp/cloud/wrangler.jsonc");
 if (!databaseName) throw new Error("D1 database name is missing in hp/cloud/wrangler.jsonc");
