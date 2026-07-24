@@ -91,8 +91,17 @@ export function desiredFeedItemsStatement(db, items) {
        INNER JOIN videos AS video
                ON video.canonical_key = json_extract(input.value, '$.key')
       WHERE video.status = 'active'
-      ORDER BY rank`
-  ).bind(itemPayload(items));
+        AND NOT EXISTS (
+          SELECT 1 FROM video_blocklist AS blocked
+           WHERE blocked.canonical_key = video.canonical_key
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM video_death_list AS dead
+           WHERE dead.canonical_key = video.canonical_key
+        )
+      ORDER BY rank
+      LIMIT ?`
+  ).bind(itemPayload(items), PLAYBACK_FEED_LIMIT);
 }
 
 function mergedDesiredRows(currentRows, incomingRows) {
