@@ -1,0 +1,211 @@
+import { environmentView } from '../../packages/sh-shared/environment-view.mjs';
+
+const ORIGINAL_D1_STATEMENT = Symbol('minute-original-d1-statement');
+const STATEMENT_META = Symbol('minute-d1-statement-meta');
+const REWRITE_CACHE_LIMIT = 24;
+const REVISION_PROGRESS_CACHE_LIMIT = 64;
+const CHECKPOINT_MS = 20 * 60_000;
+const rewriteCache = new Map();
+const wrappedDatabases = new WeakMap();
+const revisionProgressCaches = new WeakMap();
+
+const HISTORICAL_SESSION_SEEK = `WITH before_match AS (
+      SELECT id,first_observed_at FROM sh_broadcast_sessions
+      WHERE channel_id=?1 AND broadcast_start_time=?2 AND first_observed_at<=?3
+      ORDER BY first_observed_at DESC,id ASC LIMIT 1
+    ), after_match AS (
+      SELECT id,first_observed_at FROM sh_broadcast_sessions
+      WHERE channel_id=?1 AND broadcast_start_time=?2 AND first_observed_at>?3
+      ORDER BY first_observed_at ASC,id ASC LIMIT 1
+    ), candidates AS (
+      SELECT id,first_observed_at FROM before_match
+      UNION ALL
+      SELECT id,first_observed_at FROM after_match
+    )
+    SELECT id FROM candidates
+    ORDER BY ABS(first_observed_at-?3) ASC,id ASC LIMIT 1`;
+
+function compact(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function throttleAliasUpsert(sql, table) {
+  const text = String(sql || '');
+  const normalized = compact(text);
+  if (!normalized.startsWith(`insert into ${table}(`)
+      || !normalized.includes('on conflict(alias_type,alias_value) do update set')
+      || !normalized.includes(`last_seen_at=max(${table}.last_seen_at,excluded.last_seen_at)`)
+      || normalized.includes('excluded.last_seen_at-coalesce')) {
+    return text;
+  }
+  return `${text}\n      WHERE excluded.last_seen_at-COALESCE(${table}.last_seen_at,0)>=${CHECKPOINT_MS}`;
+}
+
+export function rewriteHistoricalSessionSeekSql(value) {
+  const original = String(value || '');
+  const normalized = compact(original);
+  if (!normalized.startsWith('select id from sh_broadcast_sessions where channel_id=? and broadcast_start_time=?')
+      || !normalized.includes('order by abs(first_observed_at-?) asc,id asc limit 1')) {
+    return original;
+  }
+  return HISTORICAL_SESSION_SEEK;
+}
+
+export function rewriteMinuteD1WriteSql(value) {
+  const original = String(value || '');
+  const cached = rewriteCache.get(original);
+  if (cached !== undefined) return cached;
+
+  let rewritten = original;
+  if (compact(original).startsWith('insert into sh_track_aliases(')) {
+    rewritten = throttleAliasUpsert(original, 'sh_track_aliases');
+  } else if (compact(original).startsWith('insert into sh_host_aliases(')) {
+    rewritten = throttleAliasUpsert(original, 'sh_host_aliases');
+  }
+
+  if (rewriteCache.size >= REWRITE_CACHE_LIMIT) {
+    const oldest = rewriteCache.keys().next().value;
+    if (oldest !== undefined) rewriteCache.delete(oldest);
+  }
+  rewriteCache.set(original, rewritten);
+  return rewritten;
+}
+
+function rewriteMinuteD1Sql(value) {
+  const writeOptimized = rewriteMinuteD1WriteSql(value);
+  return writeOptimized === String(value || '')
+    ? rewriteHistoricalSessionSeekSql(value)
+    : writeOptimized;
+}
+
+function statementKind(sql) {
+  const normalized = compact(sql);
+  if (normalized.startsWith('select id,status,effective_at,item_count,materialized_item_count,')
+      && normalized.includes('from sh_queue_revisions')
+      && normalized.includes("status in ('complete','pending')")) {
+    return 'revision-source';
+  }
+  if (normalized === 'select count(*) as item_count from sh_queue_revision_items where revision_id=?') {
+    return 'revision-count';
+  }
+  if (normalized.startsWith('insert into sh_queue_revision_items(')) return 'revision-item-write';
+  return null;
+}
+
+function progressCacheFor(db) {
+  let cache = revisionProgressCaches.get(db);
+  if (!cache) {
+    cache = new Map();
+    revisionProgressCaches.set(db, cache);
+  }
+  return cache;
+}
+
+function rememberCompleteRevision(cache, row) {
+  const revisionId = Number(row?.id);
+  const rawCount = row?.materialized_item_count;
+  const count = rawCount == null ? Number.NaN : Number(rawCount);
+  const complete = row?.status === 'complete' && Number(row?.coverage_complete) === 1;
+  if (!Number.isFinite(revisionId)) return;
+  if (!complete || !Number.isFinite(count) || count < 0) {
+    cache.delete(revisionId);
+    return;
+  }
+  if (cache.size >= REVISION_PROGRESS_CACHE_LIMIT && !cache.has(revisionId)) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(revisionId, Math.trunc(count));
+}
+
+function invalidateRevision(cache, meta) {
+  const revisionId = Number(meta?.binds?.[0]);
+  if (Number.isFinite(revisionId)) cache.delete(revisionId);
+}
+
+function wrapStatement(statement, meta, cache) {
+  return new Proxy(statement, {
+    get(target, property) {
+      if (property === ORIGINAL_D1_STATEMENT) return target;
+      if (property === STATEMENT_META) return meta;
+      if (property === 'bind') {
+        return (...args) => wrapStatement(target.bind(...args), { ...meta, binds: args }, cache);
+      }
+      if (property === 'first') {
+        return async (...args) => {
+          if (meta.kind === 'revision-count') {
+            const revisionId = Number(meta.binds?.[0]);
+            if (Number.isFinite(revisionId) && cache.has(revisionId)) {
+              return { item_count: cache.get(revisionId), cached_revision_progress: true };
+            }
+          }
+          const result = await target.first(...args);
+          if (meta.kind === 'revision-source') rememberCompleteRevision(cache, result);
+          return result;
+        };
+      }
+      if (property === 'run') {
+        return async (...args) => {
+          const result = await target.run(...args);
+          if (meta.kind === 'revision-item-write' && result?.success !== false) invalidateRevision(cache, meta);
+          return result;
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+function wrapDatabase(db) {
+  const cached = wrappedDatabases.get(db);
+  if (cached) return cached;
+  const progressCache = progressCacheFor(db);
+  const wrapped = new Proxy(db, {
+    get(target, property) {
+      if (property === 'prepare') {
+        return (sql) => {
+          const original = String(sql || '');
+          const rewritten = rewriteMinuteD1Sql(original);
+          const kind = statementKind(rewritten);
+          const statement = target.prepare(rewritten);
+          return rewritten === original && kind === null
+            ? statement
+            : wrapStatement(statement, { kind, binds: [] }, progressCache);
+        };
+      }
+      if (property === 'batch') {
+        return async (statements) => {
+          const list = statements || [];
+          const results = await target.batch(
+            list.map((statement) => statement?.[ORIGINAL_D1_STATEMENT] || statement),
+          );
+          for (let index = 0; index < list.length; index += 1) {
+            const meta = list[index]?.[STATEMENT_META];
+            if (meta?.kind === 'revision-item-write' && results?.[index]?.success !== false) {
+              invalidateRevision(progressCache, meta);
+            }
+          }
+          return results;
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  wrappedDatabases.set(db, wrapped);
+  return wrapped;
+}
+
+export function withMinuteD1WriteThrottling(env) {
+  if (!env?.MINUTE_DB) return env;
+  return environmentView(env, { MINUTE_DB: wrapDatabase(env.MINUTE_DB) });
+}
+
+export function resetMinuteD1WriteRewriteCacheForTests(db) {
+  rewriteCache.clear();
+  if (db) {
+    wrappedDatabases.delete(db);
+    revisionProgressCaches.delete(db);
+  }
+}

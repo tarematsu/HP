@@ -1,0 +1,191 @@
+import { withMinuteD1WriteThrottling } from './minute-d1-write-throttle.js';
+import {
+  IDENTITY_ATTACH_STAGE,
+  IDENTITY_BITE_STAGE,
+  processMinuteIdentityAttach,
+  processMinuteIdentityBite,
+  processMinuteIdentitySession,
+} from './minute-enrichment-identity-stages.js';
+import {
+  PLAYBACK_PATCH_STAGE,
+  processMinutePlaybackPatch,
+  processMinutePlaybackResolve,
+} from './minute-enrichment-playback-stages.js';
+import { processTrackMetadataTask } from './track-metadata-entry.js';
+
+export const TRACK_METADATA_QUEUE_NAME = 'stationhead-track-metadata';
+export const PAGES_PUBLICATION_QUEUE_NAME = 'stationhead-pages-read-model-publication';
+export const MINUTE_READ_MODEL_QUEUE = 'stationhead-read-model';
+const TRACK_METADATA_MESSAGE_TYPE = 'stationhead-track-metadata';
+const RETRY_30_SECONDS = Object.freeze({ delaySeconds: 30 });
+const EMPTY_DEPENDENCIES = Object.freeze({});
+const SUCCESS_LOG_SAMPLE_MODULUS = 32;
+const TRACK_METADATA_LOG_SAMPLE_MODULUS = 32;
+const activeEnrichmentEnvs = new WeakMap();
+let pagesModulePromise;
+
+function loadPagesModule() {
+  pagesModulePromise ||= import('./pages-read-model-entry.js');
+  return pagesModulePromise;
+}
+
+function shouldLogMinuteEnrichmentResult(result) {
+  if (result?.skipped === true || result?.reason) return true;
+  const minuteAt = Number(result?.minuteAt);
+  if (!Number.isFinite(minuteAt)) return false;
+  return Math.abs(Math.floor(minuteAt / 60_000)) % SUCCESS_LOG_SAMPLE_MODULUS === 0;
+}
+
+function logMinuteEnrichmentResult(result) {
+  if (!shouldLogMinuteEnrichmentResult(result)) return;
+  console.log(JSON.stringify({
+    event: 'minute_enrichment_completed',
+    skipped: result?.skipped === true,
+    reason: result?.reason,
+    pending: result?.pending === true,
+    stage: result?.stage,
+    channelId: result?.channelId,
+    minuteAt: result?.minuteAt,
+    observedAt: result?.observedAt,
+    queue_position: result?.queue_position,
+    track_id: result?.track_id,
+    requested_materialized_tracks: result?.requested_materialized_tracks,
+    playback_patch_deferred: result?.playback_patch_deferred === true,
+    attach_deferred: result?.attach_deferred === true,
+    bite_deferred: result?.bite_deferred === true,
+    session_id: result?.session_id,
+    host_id: result?.host_id,
+    bite_count: result?.bite_count,
+  }));
+}
+
+function stableSampleIdentity(value) {
+  const text = String(value ?? '');
+  const trailingNumber = text.match(/(\d+)(?!.*\d)/)?.[1];
+  if (trailingNumber) return Number(trailingNumber);
+  return text.length ? text.charCodeAt(text.length - 1) : 0;
+}
+
+function shouldLogTrackMetadataResult(result) {
+  if (result?.reason || result?.skipped === true) return true;
+  const identity = result?.job_id;
+  if (identity == null || identity === '') return false;
+  return stableSampleIdentity(identity) % TRACK_METADATA_LOG_SAMPLE_MODULUS === 0;
+}
+
+function productionEnrichmentEnv(env) {
+  const cached = activeEnrichmentEnvs.get(env);
+  if (cached) return cached;
+  const active = withMinuteD1WriteThrottling(env);
+  activeEnrichmentEnvs.set(env, active);
+  return active;
+}
+
+async function processOptimizedMinuteEnrichment(env, body, dependencies = EMPTY_DEPENDENCIES) {
+  const activeBody = body;
+  if (activeBody?.stage === 'playback') {
+    const run = dependencies.processMinutePlaybackResolve || processMinutePlaybackResolve;
+    return run(env, activeBody, dependencies.playback || EMPTY_DEPENDENCIES);
+  }
+  if (activeBody?.stage === PLAYBACK_PATCH_STAGE) {
+    const run = dependencies.processMinutePlaybackPatch || processMinutePlaybackPatch;
+    return run(env, activeBody, dependencies.playback || EMPTY_DEPENDENCIES);
+  }
+  if (activeBody?.stage === IDENTITY_ATTACH_STAGE) {
+    const run = dependencies.processMinuteIdentityAttach || processMinuteIdentityAttach;
+    return run(env, activeBody, dependencies.identity || EMPTY_DEPENDENCIES);
+  }
+  if (activeBody?.stage === IDENTITY_BITE_STAGE) {
+    const run = dependencies.processMinuteIdentityBite || processMinuteIdentityBite;
+    return run(env, activeBody, dependencies.identity || EMPTY_DEPENDENCIES);
+  }
+  if (activeBody?.stage === 'identity') {
+    const run = dependencies.processMinuteIdentitySession || processMinuteIdentitySession;
+    return run(env, activeBody, dependencies.identity || EMPTY_DEPENDENCIES);
+  }
+  if (dependencies.processMinuteEnrichment) {
+    return dependencies.processMinuteEnrichment(env, activeBody, dependencies.core || EMPTY_DEPENDENCIES);
+  }
+  throw new Error(`unsupported minute enrichment stage: ${String(activeBody?.stage || '')}`);
+}
+
+function isTrackMetadataDelivery(batch, body) {
+  return String(batch?.queue || '') === TRACK_METADATA_QUEUE_NAME
+    || body?.message_type === TRACK_METADATA_MESSAGE_TYPE;
+}
+
+async function processMinuteEnrichmentBatch(batch, env, dependencies = EMPTY_DEPENDENCIES) {
+  const messages = batch.messages;
+  if (!messages?.length) return;
+  const message = messages[0];
+  const metadata = isTrackMetadataDelivery(batch, message.body);
+  const activeEnv = metadata
+    ? env
+    : dependencies === EMPTY_DEPENDENCIES
+      ? productionEnrichmentEnv(env)
+      : env;
+  try {
+    if (metadata) {
+      const run = dependencies.processTrackMetadataTask || processTrackMetadataTask;
+      const result = await run(activeEnv, message.body, dependencies.metadata || EMPTY_DEPENDENCIES);
+      if (shouldLogTrackMetadataResult(result)) {
+        console.log(JSON.stringify({ event: 'track_metadata_task_completed', ...result }));
+      }
+    } else {
+      const result = await processOptimizedMinuteEnrichment(activeEnv, message.body, dependencies);
+      logMinuteEnrichmentResult(result);
+    }
+    message.ack();
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: metadata ? 'track_metadata_task_failed' : 'minute_enrichment_failed',
+      error: String(error?.message || error).slice(0, 800),
+    }));
+    message.retry(RETRY_30_SECONDS);
+  }
+}
+
+function isPagesReadModelDelivery(batch, body) {
+  const queue = String(batch?.queue || '');
+  return queue === MINUTE_READ_MODEL_QUEUE
+    || queue === PAGES_PUBLICATION_QUEUE_NAME
+    || body?.message_type === 'stationhead-read-model'
+    || body?.message_type === 'stationhead-pages-read-model-publication';
+}
+
+async function processConsolidatedEnrichmentBatch(batch, env, dependencies = EMPTY_DEPENDENCIES) {
+  const body = batch?.messages?.[0]?.body;
+  if (isPagesReadModelDelivery(batch, body)) {
+    const run = dependencies.runPagesReadModelQueue
+      || (await loadPagesModule()).runPagesReadModelQueue;
+    return run(batch, env, dependencies.pages || EMPTY_DEPENDENCIES);
+  }
+  return processMinuteEnrichmentBatch(batch, env, dependencies);
+}
+
+async function runPagesReadModelFetch(...args) {
+  return (await loadPagesModule()).runPagesReadModelFetch(...args);
+}
+
+async function runPagesReadModelCron(...args) {
+  return (await loadPagesModule()).runPagesReadModelCron(...args);
+}
+
+export {
+  isTrackMetadataDelivery,
+  isPagesReadModelDelivery,
+  processConsolidatedEnrichmentBatch,
+  processMinuteEnrichmentBatch,
+  processOptimizedMinuteEnrichment,
+  productionEnrichmentEnv,
+  runPagesReadModelCron,
+  runPagesReadModelFetch,
+  shouldLogMinuteEnrichmentResult,
+  shouldLogTrackMetadataResult,
+};
+
+export default {
+  fetch: runPagesReadModelFetch,
+  scheduled: runPagesReadModelCron,
+  queue: processConsolidatedEnrichmentBatch,
+};

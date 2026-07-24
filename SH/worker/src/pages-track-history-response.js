@@ -1,0 +1,125 @@
+export const TRACK_HISTORY_MODEL_KEY = 'track-history';
+export const TRACK_HISTORY_RESPONSE_CHUNK_SIZE = 192_000;
+export const TRACK_HISTORY_RESPONSE_MAX_CHUNKS = 256;
+export const TRACK_HISTORY_RESPONSE_LIMIT = 10_000;
+
+const DEFAULT_PAGE_ROWS = 100;
+const MAX_PAGE_ROWS = 500;
+const DEFAULT_PAGE_DAYS = 30;
+const MAX_PAGE_DAYS = 90;
+
+function integer(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = integer(value);
+  return parsed != null && parsed > 0 ? Math.min(parsed, maximum) : fallback;
+}
+
+function dayText(timestamp) {
+  return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function createTrackHistoryPublication(stage, status, now = Date.now(), env = {}) {
+  const generatedAt = integer(status?.generated_at) ?? integer(now) ?? Date.now();
+  const from = '2024-05-01';
+  const r2Days = Boolean(env?.PAGES_RESPONSE_R2?.get && env?.PAGES_RESPONSE_R2?.put);
+  return {
+    model_key: TRACK_HISTORY_MODEL_KEY,
+    generation: `${integer(stage?.generation) ?? generatedAt}:track-history:${generatedAt}`,
+    phase: r2Days ? 'r2-days' : 'rows',
+    from,
+    to: dayText(generatedAt),
+    limit: TRACK_HISTORY_RESPONSE_LIMIT,
+    page_rows: positiveInteger(env?.PAGES_TRACK_HISTORY_ROWS_PER_STEP, DEFAULT_PAGE_ROWS, MAX_PAGE_ROWS),
+    page_days: positiveInteger(env?.PAGES_TRACK_HISTORY_DAYS_PER_STEP, DEFAULT_PAGE_DAYS, MAX_PAGE_DAYS),
+    day_cursor: r2Days ? from : null,
+    days_written: 0,
+    rows_written: 0,
+    next_chunk_index: 1,
+    cursor: null,
+    truncated: false,
+    source_row_count: Math.max(0, Number(status?.source_row_count || 0)),
+    excluded_play_count_dates: Array.isArray(status?.excluded_play_count_dates)
+      ? status.excluded_play_count_dates.map(String)
+      : [],
+    ranking: Array.isArray(status?.ranking) ? status.ranking : [],
+    ranking_summary: status?.ranking_summary && typeof status.ranking_summary === 'object'
+      ? status.ranking_summary
+      : {},
+    generated_at: generatedAt,
+    updated_at: generatedAt,
+  };
+}
+
+export function trackHistoryResponsePrefix(publication) {
+  const header = {
+    ok: true,
+    mode: 'tracks',
+    from: publication.from,
+    to: publication.to,
+    timezone: 'UTC',
+  };
+  return `${JSON.stringify(header).slice(0, -1)},"rows":[`;
+}
+
+export function trackHistoryResponseSuffix(publication) {
+  const excludedDates = Array.isArray(publication.excluded_play_count_dates)
+    ? publication.excluded_play_count_dates
+    : [];
+  const tail = {
+    truncated: publication.truncated === true,
+    likes_included: true,
+    ranking: Array.isArray(publication.ranking) ? publication.ranking : [],
+    ranking_summary: publication.ranking_summary && typeof publication.ranking_summary === 'object'
+      ? publication.ranking_summary
+      : {},
+    ranking_scope: 'all-time-latest-counter',
+    source_row_count: Math.max(0, Number(publication.source_row_count || 0)),
+    excluded_play_count_dates: excludedDates,
+    excluded_play_count_date_count: excludedDates.length,
+    generated_at: integer(publication.generated_at),
+    historical_recovery: 'worker_materialized_read_model',
+    method: 'precomputed_track_history_read_model',
+  };
+  return `],${JSON.stringify(tail).slice(1)}`;
+}
+
+function validatedTrackHistoryRowJson(row) {
+  const raw = String(row?.row_json || 'null');
+  if (row?.row_json_valid == null) {
+    JSON.parse(raw);
+  } else if (Number(row.row_json_valid) !== 1) {
+    throw new Error('track-history row contained invalid JSON');
+  }
+  return raw;
+}
+
+export function splitTrackHistoryPublicationRows(
+  rows,
+  rowsWritten = 0,
+  maximum = TRACK_HISTORY_RESPONSE_CHUNK_SIZE,
+) {
+  const chunks = [];
+  let chunk = '';
+  let offset = 0;
+  for (const row of rows || []) {
+    const raw = validatedTrackHistoryRowJson(row);
+    const piece = `${rowsWritten + offset > 0 ? ',' : ''}${raw}`;
+    if (piece.length > maximum) throw new Error('track-history row exceeded response chunk size');
+    if (chunk && chunk.length + piece.length > maximum) {
+      chunks.push(chunk);
+      chunk = '';
+    }
+    chunk += piece;
+    offset += 1;
+  }
+  if (chunk) chunks.push(chunk);
+  return chunks;
+}
+
+export function assembledTrackHistoryPublicationForTest(publication, rowChunks = []) {
+  return `${trackHistoryResponsePrefix(publication)}${rowChunks.join('')}${trackHistoryResponseSuffix(publication)}`;
+}

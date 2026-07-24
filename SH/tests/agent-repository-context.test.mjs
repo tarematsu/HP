@@ -1,0 +1,54 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const ACTIVE_CONFIGS = [
+  'worker/wrangler.sakurazaka46jp.jsonc',
+  'worker/wrangler.runtime.jsonc',
+];
+
+async function source(path) {
+  return readFile(new URL(`../${path}`, import.meta.url), 'utf8');
+}
+
+test('agent instructions pin repository and active Cloudflare topology', async () => {
+  const instructions = await source('AGENTS.md');
+  assert.match(instructions, /`tarematsu\/SH`/);
+  assert.match(instructions, /`C:\\SH`/);
+  assert.match(instructions, /https:\/\/github\.com\/tarematsu\/SH\.git/);
+  assert.match(instructions, /git@github\.com:tarematsu\/SH\.git/);
+  assert.match(instructions, /origin.*resolve to `tarematsu\/SH`/);
+  assert.match(instructions, /older chats/);
+  assert.match(instructions, /existing browser tab/);
+
+  for (const path of ACTIVE_CONFIGS) {
+    assert.match(instructions, new RegExp(path.replaceAll('.', '\\.')));
+  }
+  assert.doesNotMatch(instructions, /worker\/wrangler\.ingest\.jsonc/);
+  assert.doesNotMatch(instructions, /worker\/wrangler\.minute-enrichment\.jsonc/);
+
+  const configs = await Promise.all(ACTIVE_CONFIGS.map(source));
+  const workerNames = configs.map((config) => JSON.parse(config).name);
+  assert.deepEqual(workerNames, [
+    'sh-sakurazaka46jp',
+    'sh-runtime-orchestrator',
+  ]);
+
+  const databaseNames = new Set(configs.flatMap((config) => (
+    JSON.parse(config).d1_databases.map(({ database_name: name }) => name)
+  )));
+  assert.deepEqual([...databaseNames].sort(), [
+    'stationhead-buddies',
+    'stationhead-minute',
+    'stationhead-other',
+  ]);
+});
+
+test('metrics instructions require provenance and reject foreign resources', async () => {
+  const instructions = await source('AGENTS.md');
+  assert.match(instructions, /actual, estimated, extrapolated, or unavailable/);
+  assert.match(instructions, /measurement window and timestamp/);
+  assert.match(instructions, /absent from the active configurations as foreign/);
+  assert.match(instructions, /Never display tokens/);
+  assert.match(instructions, /fresh or repository-dedicated browser conversation/);
+});

@@ -1,0 +1,290 @@
+import { withMinuteD1WriteThrottling } from './minute-d1-write-throttle.js';
+import {
+  processMinuteDeriveMessage,
+} from './minute-derive-router.js';
+import { saveOptimizedMinuteFactWithinBudget } from './minute-facts-fast-store.js';
+import {
+  MINUTE_DIRECT_LIVE_DERIVE_MESSAGE_TYPE,
+  parseDirectLiveMinuteDeriveMessage,
+} from './minute-derive-trigger.js';
+
+export const LIVE_DERIVE_QUEUE_NAME = 'stationhead-minute-live-derive';
+export const REBUILD_DERIVE_QUEUE_NAME = 'stationhead-minute-derive';
+
+const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
+const SUCCESS_LOG_SAMPLE_MODULUS = 16;
+const MAX_LIVE_REVISION_CHUNK_TRACKS = 1;
+const SOURCE_PAYLOAD_GRACE_MS = 5 * 60_000;
+const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json', delaySeconds: 1 });
+const SOURCE_PAYLOAD_ERROR = /queue revision \d+ source payload is unavailable or incomplete/i;
+const QUEUE_OVERLOAD_ERROR = /queue is overloaded|\(10250\)/i;
+const activeDeriveEnvs = new WeakMap();
+
+function integer(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+export function shouldLogMinuteDeriveResult(result) {
+  if (Number(result?.failed || 0) > 0 || result?.terminal === true || result?.reason) return true;
+  const identity = Number(result?.job_id ?? result?.revision_id);
+  if (!Number.isFinite(identity)) return false;
+  return Math.abs(Math.trunc(identity)) % SUCCESS_LOG_SAMPLE_MODULUS === 0;
+}
+
+function logMinuteDeriveResult(result, queueName = null) {
+  if (!shouldLogMinuteDeriveResult(result)) return;
+  console.log(JSON.stringify({
+    event: result?.event || 'minute_derive_completed',
+    processed: result?.processed ?? 0,
+    failed: result?.failed ?? 0,
+    pending: result?.pending === true,
+    terminal: result?.terminal === true,
+    job_id: result?.job_id ?? null,
+    revision_id: result?.revision_id ?? null,
+    derive_queue: queueName,
+  }));
+}
+
+function scopedDeriveEnv(base, continuation, chunkTracks = null) {
+  const active = Object.create(base || null);
+  if (continuation) {
+    Object.defineProperty(active, 'MINUTE_DERIVE_QUEUE', {
+      value: continuation,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  if (chunkTracks != null) {
+    Object.defineProperty(active, 'DERIVE_REVISION_CHUNK_TRACKS', {
+      value: chunkTracks,
+      enumerable: false,
+      configurable: true,
+    });
+  }
+  return active;
+}
+
+function deriveEnvironmentSet(env) {
+  const cached = activeDeriveEnvs.get(env);
+  if (cached) return cached;
+  const base = withMinuteD1WriteThrottling(env);
+  const rebuildQueue = env?.MINUTE_DERIVE_QUEUE;
+  const liveQueue = env?.MINUTE_LIVE_DERIVE_QUEUE || rebuildQueue;
+  const configuredChunkTracks = Math.max(
+    1,
+    Math.min(MAX_LIVE_REVISION_CHUNK_TRACKS, integer(env?.DERIVE_REVISION_CHUNK_TRACKS) ?? 1),
+  );
+  const environments = {
+    live: scopedDeriveEnv(base, liveQueue, configuredChunkTracks),
+    rebuild: scopedDeriveEnv(base, rebuildQueue),
+    fallback: scopedDeriveEnv(base, liveQueue),
+  };
+  activeDeriveEnvs.set(env, environments);
+  return environments;
+}
+
+export function activeDeriveEnv(batch, env) {
+  const sourceQueue = String(batch?.queue || '');
+  const environments = deriveEnvironmentSet(env);
+  if (sourceQueue === LIVE_DERIVE_QUEUE_NAME) return environments.live;
+  if (sourceQueue === REBUILD_DERIVE_QUEUE_NAME) return environments.rebuild;
+  return environments.fallback;
+}
+
+function importInProgress(error) {
+  return /currently processing a long-running import/i.test(String(error?.message || error));
+}
+
+export function transientQueueOverload(error) {
+  return QUEUE_OVERLOAD_ERROR.test(String(error?.message || error));
+}
+
+function sourcePayloadUnavailable(error) {
+  return SOURCE_PAYLOAD_ERROR.test(String(error?.message || error));
+}
+
+function revisionMaterializationMessage(body) {
+  return body?.message_type === 'minute-fact-derive-stage'
+    && body?.stage === 'revision-materialize';
+}
+
+function directLiveMessage(body) {
+  return body?.message_type === MINUTE_DIRECT_LIVE_DERIVE_MESSAGE_TYPE;
+}
+
+async function processDirectLiveMessage(env, body, dependencies = {}) {
+  const message = parseDirectLiveMinuteDeriveMessage(body);
+  const write = dependencies.writeDirectLive || saveOptimizedMinuteFactWithinBudget;
+  await write(env, message.payload);
+  return {
+    event: 'minute_fact_live_direct',
+    processed: 1,
+    processed_live: 1,
+    processed_rebuild: 0,
+    failed: 0,
+    direct: true,
+    job_id: message.job_id,
+  };
+}
+
+function revisionSourceStartedAt(body) {
+  return integer(body?.started_at)
+    ?? integer(body?.revision?.enrichment?.observed_at)
+    ?? integer(body?.job?.minute_at);
+}
+
+export function staleUnavailableRevisionSource(body, now = Date.now(), graceMs = SOURCE_PAYLOAD_GRACE_MS) {
+  if (!revisionMaterializationMessage(body)) return false;
+  const startedAt = revisionSourceStartedAt(body);
+  const grace = Math.max(60_000, integer(graceMs) ?? SOURCE_PAYLOAD_GRACE_MS);
+  return startedAt != null && now - startedAt >= grace;
+}
+
+export async function retireUnavailableRevisionSource(env, body, now = Date.now()) {
+  const revisionId = integer(body?.revision?.revision_id);
+  const sourceJobId = integer(body?.revision?.source_job_id);
+  const staleVisibleItemCount = integer(body?.revision?.visible_item_count);
+  const db = env?.MINUTE_DB;
+  if (revisionId == null || sourceJobId == null || staleVisibleItemCount == null || !db?.prepare) return false;
+  if (!staleUnavailableRevisionSource(body, now)) return false;
+  const result = await db.prepare(`UPDATE sh_queue_revisions SET
+      source_visible_count=COALESCE(materialized_item_count,0),
+      status='complete',
+      coverage_complete=CASE
+        WHEN COALESCE(materialized_item_count,0)>=COALESCE(item_count,0) THEN 1 ELSE 0 END,
+      last_materialized_at=?
+    WHERE id=? AND source_job_id=?
+      AND COALESCE(materialized_item_count,0)<COALESCE(source_visible_count,0)
+      AND COALESCE(source_visible_count,0)<=?`)
+    .bind(now, revisionId, sourceJobId, Math.max(0, staleVisibleItemCount))
+    .run();
+  if (Number(result?.meta?.changes || 0) > 0) return true;
+
+  const row = await db.prepare(`SELECT source_job_id,source_visible_count,
+      materialized_item_count,status
+    FROM sh_queue_revisions WHERE id=? LIMIT 1`)
+    .bind(revisionId)
+    .first();
+  return integer(row?.source_job_id) === sourceJobId
+    && String(row?.status || '') === 'complete'
+    && Math.max(0, integer(row?.source_visible_item_count) ?? integer(row?.source_visible_count) ?? 0)
+      <= Math.max(0, integer(row?.materialized_item_count) ?? 0);
+}
+
+export async function refreshSparseRevisionContinuation(env, body) {
+  const revisionId = integer(body?.revision?.revision_id);
+  const db = env?.MINUTE_DB;
+  const queue = env?.MINUTE_DERIVE_QUEUE;
+  if (revisionId == null || !db?.prepare || !queue?.send) return false;
+  const row = await db.prepare(`SELECT source_job_id,source_visible_count,item_count,
+      materialized_item_count,coverage_complete
+    FROM sh_queue_revisions WHERE id=? LIMIT 1`).bind(revisionId).first();
+  const sourceJobId = integer(row?.source_job_id);
+  const visibleItemCount = integer(row?.source_visible_count);
+  if (sourceJobId == null || visibleItemCount == null) return false;
+  const current = body.revision || {};
+  const totalItemCount = Math.max(
+    visibleItemCount,
+    integer(row?.item_count) ?? integer(current.total_item_count) ?? visibleItemCount,
+  );
+  const materializedItemCount = Math.max(0, integer(row?.materialized_item_count) ?? 0);
+  const changed = sourceJobId !== integer(current.source_job_id)
+    || visibleItemCount !== integer(current.visible_item_count)
+    || materializedItemCount !== integer(current.materialized_item_count);
+  if (!changed && materializedItemCount < visibleItemCount) return false;
+  await queue.send({
+    ...body,
+    revision: {
+      ...current,
+      source_job_id: sourceJobId,
+      visible_item_count: visibleItemCount,
+      total_item_count: totalItemCount,
+      materialized_item_count: materializedItemCount,
+      coverage_complete: Number(row?.coverage_complete || 0) === 1,
+    },
+  }, JSON_QUEUE_SEND_OPTIONS);
+  return true;
+}
+
+async function processOneMinuteDeriveMessage(message, activeEnv, queueName, dependencies = {}) {
+  const processMessage = dependencies.processMessage || processMinuteDeriveMessage;
+  const refreshContinuation = dependencies.refreshContinuation || refreshSparseRevisionContinuation;
+  const retireSource = dependencies.retireUnavailableSource || retireUnavailableRevisionSource;
+  try {
+    const result = directLiveMessage(message.body)
+      ? await processDirectLiveMessage(activeEnv, message.body, dependencies)
+      : await processMessage(activeEnv, message.body);
+    logMinuteDeriveResult(result, queueName);
+    if (result?.failed && !result.terminal && result.retry_message !== false) {
+      const retryDelayMs = result.retry_delay_ms;
+      const delaySeconds = typeof retryDelayMs === 'number' && Number.isFinite(retryDelayMs)
+        ? Math.max(1, Math.ceil(retryDelayMs / 1000))
+        : 60;
+      message.retry(delaySeconds === 60 ? RETRY_60_SECONDS : { delaySeconds });
+    } else {
+      message.ack();
+    }
+  } catch (error) {
+    const unavailable = sourcePayloadUnavailable(error);
+    if (unavailable
+        && await refreshContinuation(activeEnv, message.body).catch(() => false)) {
+      console.warn(JSON.stringify({
+        event: 'minute_derive_revision_continuation_refreshed',
+        derive_queue: queueName,
+        revision_id: integer(message.body?.revision?.revision_id),
+      }));
+      message.ack();
+      return;
+    }
+    if (unavailable
+        && await retireSource(activeEnv, message.body).catch(() => false)) {
+      console.warn(JSON.stringify({
+        event: 'minute_derive_revision_source_retired',
+        derive_queue: queueName,
+        revision_id: integer(message.body?.revision?.revision_id),
+        source_job_id: integer(message.body?.revision?.source_job_id),
+        materialized_item_count: integer(message.body?.revision?.materialized_item_count) ?? 0,
+        reason: 'source-payload-unavailable',
+      }));
+      message.ack();
+      return;
+    }
+    const importing = importInProgress(error);
+    const overloaded = transientQueueOverload(error);
+    const detail = {
+      event: importing
+        ? 'minute_derive_import_deferred'
+        : overloaded
+          ? 'minute_derive_queue_overloaded'
+          : unavailable
+            ? 'minute_derive_revision_source_waiting'
+            : 'minute_derive_message_failed',
+      derive_queue: queueName,
+      error: String(error?.message || error).slice(0, 800),
+    };
+    if (importing || overloaded || unavailable) console.warn(JSON.stringify(detail));
+    else console.error(JSON.stringify(detail));
+    if (error?.code === 'MINUTE_DERIVE_INVALID_TRIGGER') message.ack();
+    else message.retry(RETRY_60_SECONDS);
+  }
+}
+
+export async function processMinuteDeriveBatch(batch, env, dependencies = {}) {
+  const messages = batch?.messages;
+  if (!messages?.length) return;
+  const activeEnv = activeDeriveEnv(batch, env);
+  const queueName = batch?.queue || null;
+  const containsRevisionMaterialization = messages.length > 1
+    && messages.some((message) => revisionMaterializationMessage(message?.body));
+  const processingEnv = containsRevisionMaterialization
+    ? scopedDeriveEnv(activeEnv, null, 1)
+    : activeEnv;
+  for (const message of messages) {
+    await processOneMinuteDeriveMessage(message, processingEnv, queueName, dependencies);
+  }
+}
+
+export default {
+  queue: processMinuteDeriveBatch,
+};
