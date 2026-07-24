@@ -1,0 +1,32 @@
+{
+  "base_commit": "356d030d0fc0a34a4b0138c1ba4a5b83f804afb2",
+  "base_tree": "cf48a9861787f7992f58b8ea044b2d4adcca17b7",
+  "source_sh_commit": "741ccc82c94a17cbe3f3b57f8b6f180105ee1922",
+  "files": [
+    "audit-d1-storage.yml",
+    "ci.yml",
+    "cloud-deploy.yml",
+    "database.yml",
+    "deploy-split-pipeline.yml",
+    "fetch-cloudflare-d1-usage.yml",
+    "homepanel-unified-ci.yml",
+    "hp-observability.yml",
+    "native-windows-build.yml",
+    "prune-homepanel-updates.yml",
+    "refresh-code-search.yml",
+    "sh-browser-discovery.yml",
+    "sh-observability.yml",
+    "video-ci.yml",
+    "video-hot-path-benchmark.yml",
+    "video-provision-manual-import-queue.yml",
+    "video-worker-cpu-report.yml"
+  ],
+  "delete_paths": [
+    ".github/workflows/fetch-cloudflare-observability.yml",
+    ".github/workflows/finalize-monorepo.yml",
+    ".github/workflows/generate-monorepo-workflows.yml",
+    ".github/workflows/sh-ci.yml",
+    ".github/scripts/generate-monorepo-workflows.py",
+    ".github/scripts/trigger-monorepo.txt"
+  ]
+}
