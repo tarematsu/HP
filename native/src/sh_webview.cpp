@@ -174,7 +174,7 @@ void StationheadPlayer::ConfigureWebView() {
               HResultHex(navigationStartingResult));
   }
 
-  webview_->add_NewWindowRequested(
+  const HRESULT newWindowResult = webview_->add_NewWindowRequested(
       Callback<ICoreWebView2NewWindowRequestedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
@@ -204,6 +204,7 @@ void StationheadPlayer::ConfigureWebView() {
             };
             ComPtr<ICoreWebView2NewWindowRequestedEventArgs> popupArgs = args;
             CloseAuthWebView();
+            authPendingUrl_ = uri;
             authPopupDeferral_ = deferral;
             authPopupDeferralCompleted_ = deferralCompleted;
             authCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
@@ -263,8 +264,15 @@ void StationheadPlayer::ConfigureWebView() {
             }
             return S_OK;
           }).Get(), &newWindowToken_);
+  if (FAILED(newWindowResult)) {
+    newWindowToken_ = {};
+    ScheduleRecreate(
+        L"new-window handler registration failed " + HResultHex(newWindowResult),
+        1'000);
+    return;
+  }
 
-  webview_->add_WebMessageReceived(
+  const HRESULT webMessageResult = webview_->add_WebMessageReceived(
       Callback<ICoreWebView2WebMessageReceivedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
@@ -422,6 +430,13 @@ void StationheadPlayer::ConfigureWebView() {
             }
             return S_OK;
           }).Get(), &webMessageToken_);
+  if (FAILED(webMessageResult)) {
+    webMessageToken_ = {};
+    ScheduleRecreate(
+        L"web-message handler registration failed " + HResultHex(webMessageResult),
+        1'000);
+    return;
+  }
 
   const HRESULT navigationCompletedResult = webview_->add_NavigationCompleted(
       Callback<ICoreWebView2NavigationCompletedEventHandler>(
@@ -478,7 +493,7 @@ void StationheadPlayer::ConfigureWebView() {
     return;
   }
 
-  webview_->add_ProcessFailed(
+  const HRESULT processFailedResult = webview_->add_ProcessFailed(
       Callback<ICoreWebView2ProcessFailedEventHandler>(
           [this, alive](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive)) return S_OK;
@@ -492,6 +507,14 @@ void StationheadPlayer::ConfigureWebView() {
             ScheduleRecreate(L"ProcessFailed", 5'000);
             return S_OK;
           }).Get(), &processFailedToken_);
+  if (FAILED(processFailedResult)) {
+    processFailedToken_ = {};
+    ScheduleRecreate(
+        L"process-failed handler registration failed " +
+            HResultHex(processFailedResult),
+        1'000);
+    return;
+  }
 
   {
     std::lock_guard lock(mutex_);
@@ -647,6 +670,10 @@ void StationheadPlayer::CloseWebView() {
   createCallbackAlive_->store(false, std::memory_order_release);
   creating_ = false;
   creationStartedAt_ = 0;
+  if (spotifyAuthorization_ && pendingAuthorizationUrl_.empty() &&
+      !authPendingUrl_.empty()) {
+    pendingAuthorizationUrl_ = authPendingUrl_;
+  }
   CloseAuthWebView();
   if (webview_) {
     if (audioPlayingChangedToken_.value) {
@@ -701,7 +728,10 @@ void StationheadPlayer::CloseWebView() {
   status_.navigating = false;
   status_.audioPlaying = false;
   status_.playing = false;
+  status_.loginRequired = false;
+  status_.spotifyAuthorization = false;
   status_.visible = false;
+  status_.processFailed = false;
 }
 
 void StationheadPlayer::CloseAuthWebView() {
