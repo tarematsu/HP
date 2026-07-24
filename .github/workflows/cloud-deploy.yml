@@ -9,7 +9,6 @@ on:
       - "hp/video/public/**"
       - "hp/video/package.json"
       - ".github/workflows/cloud-deploy.yml"
-      - ".github/scripts/resolve-cloudflare-config.mjs"
       - ".github/scripts/assert-actions-only-cloudflare.mjs"
   workflow_dispatch:
 
@@ -58,10 +57,6 @@ jobs:
       - name: Install video dependencies
         working-directory: hp/video
         run: npm install --no-audit --no-fund
-
-      - name: Resolve Cloudflare settings
-        id: resolve
-        run: node .github/scripts/resolve-cloudflare-config.mjs
 
       - name: Enforce GitHub Actions-only Cloudflare deployment
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
