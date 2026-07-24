@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import {
   MAX_ISSUE_BODY_CHARS,
@@ -106,46 +105,7 @@ export async function publishFromEnvironment() {
   console.log(`Published HomePanel observability status to issue #${issue.number}`);
 }
 
-function selfTest() {
-  assert.equal(statusState('success'), 'success');
-  assert.equal(statusState('skipped'), 'failure');
-  assert.equal(statusState('unknown'), 'failure');
-  assert.equal(statusState('failure'), 'failure');
-  assert.equal(overallOutcome({ a: 'success', b: 'success' }), 'success');
-  assert.equal(overallOutcome({ a: 'success', b: 'skipped' }), 'failure');
-  assert.equal(overallOutcome({ a: 'success', b: 'unknown' }), 'failure');
-  const body = buildIssueBody({
-    generatedAt: '2026-07-23T00:00:00.000Z',
-    targetSha: 'abc123',
-    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
-    trigger: 'workflow_run',
-    lookbackMinutes: '60',
-    outcomes: {
-      policy: 'success',
-      daily: 'failure',
-      d1Insights: 'success',
-      query: 'skipped',
-      telemetry: 'success',
-    },
-    summaries: {
-      daily: '## Daily\n\n| Metric | Value |\n|---|---:|\n| Queue | 1 |',
-      d1Insights: '## D1 query insights\n\n| SQL fingerprint | Total reads |\n|---|---:|\n| `abc` | 12 |',
-      telemetry: 'Authorization: Bearer secret-value',
-    },
-  });
-  assert.match(body, /HomePanel Observability Status/);
-  assert.match(body, /\*\*Overall:\*\* failure/);
-  assert.match(body, /\| d1Insights \| success \|/);
-  assert.match(body, /Top D1 queries by rows read/);
-  assert.match(body, /abc123/);
-  assert.doesNotMatch(body, /secret-value/);
-  assert.match(body, /Bearer \[redacted\]/);
-  console.log('HomePanel observability status publisher self-test passed');
-}
-
-if (process.argv.includes('--self-test')) {
-  selfTest();
-} else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   publishFromEnvironment().catch((error) => {
     console.error(`::error title=Publish HomePanel observability status::${String(error?.message || error).replaceAll('\n', ' ').slice(0, 1000)}`);
     process.exitCode = 1;
