@@ -1,0 +1,36 @@
+name: Finalize monorepo
+
+on:
+  push:
+    branches:
+      - agent/import-sh-snapshot
+    paths:
+      - .github/workflows/finalize-monorepo.yml
+      - .github/scripts/finalize-monorepo.py
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/import-sh-snapshot
+          fetch-depth: 0
+
+      - name: Build unified repository layout
+        run: python3 .github/scripts/finalize-monorepo.py
+
+      - name: Commit monorepo
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --stat
+          git commit -m "Unify SH and HP as a production monorepo"
+          git push origin HEAD:agent/import-sh-snapshot
