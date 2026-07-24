@@ -18,6 +18,10 @@ const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
 );
+const loggerSource = readFileSync(
+  new URL('../../native/src/logger.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -194,4 +198,13 @@ test('required playback WebView event registrations fail closed into recreation'
       new RegExp(`if \\(FAILED\\(${resultName}\\)\\) \\{[\\s\\S]*ScheduleRecreate\\(`),
     );
   }
+});
+
+test('native logger redacts URL query and fragment data before writing diagnostics', () => {
+  assert.match(loggerSource, /std::wstring RedactUrlQueryAndFragment\(const std::wstring& message\)/);
+  assert.match(loggerSource, /sanitized\.find\(L"http:\/\/", searchAt\)/);
+  assert.match(loggerSource, /sanitized\.find\(L"https:\/\/", searchAt\)/);
+  assert.match(loggerSource, /sanitized\.find_first_of\(L"\?#", urlAt\)/);
+  assert.match(loggerSource, /sanitized\.replace\(sensitiveAt, urlEnd - sensitiveAt, marker\)/);
+  assert.match(loggerSource, /WideToUtf8\(RedactUrlQueryAndFragment\(message\)\)/);
 });
