@@ -1,20 +1,23 @@
-# SH repository migration
+# Stationhead repository migration
 
-This directory is a history-free snapshot imported from `tarematsu/SH`.
+Stationhead was imported from `tarematsu/SH` into the root of `tarematsu/HP` without Git history.
 
 - Source branch: `main`
 - Source commit: `741ccc82c94a17cbe3f3b57f8b6f180105ee1922`
-- Active validation workflow: `.github/workflows/sh-ci.yml`
+- Destination layout: repository root (`worker/`, `site/`, `database/`, `packages/`, `scripts/`, `tests/`)
 
-The original SH workflows are retained under `SH/.github/workflows` as migration source material. GitHub does not execute nested workflow files.
+## Active repository-level workflows
 
-## Cutover requirements
+- Validation: `.github/workflows/ci.yml`
+- Production deployment: `.github/workflows/deploy-split-pipeline.yml`
+- Database operations: `.github/workflows/database.yml`
+- Observability: `.github/workflows/sh-observability.yml`
+- Browser discovery: `.github/workflows/sh-browser-discovery.yml`
 
-Before deleting the original SH repository:
+There is no nested `SH/` repository or nested workflow directory. GitHub Actions and Cloudflare configuration resolve paths from the HP monorepo root.
 
-1. Merge this pull request and confirm `SH CI` succeeds.
-2. Copy the required SH repository secrets, variables, and environment protection rules into the HP repository.
-3. Promote and path-adjust the required deployment, database, observability, and scheduled workflows from `SH/.github/workflows` into the repository-level `.github/workflows` directory.
-4. Confirm the Cloudflare Pages/Workers deployment configuration uses the HP repository and the `SH/` working directory where applicable.
+## Cutover state
 
-Deployment and scheduled SH workflows are intentionally not activated by this import because repository-scoped secrets cannot be copied through Git and activating them before cutover could target the wrong HP credentials or fail with missing secrets.
+The monorepo is the intended canonical source after PR #256 is merged and its checks pass. Before retiring the original SH repository, verify that required secrets, variables, environment protections, Cloudflare repository links, and operational runbooks all target `tarematsu/HP`.
+
+Deleting or archiving the original SH repository is an operational follow-up and is not performed by the migration pull request.
