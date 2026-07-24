@@ -25,14 +25,14 @@ test('partial UTC-day budget audits pass executable projection tests', () => {
 });
 
 test('daily Worker and D1 gates use 24-hour projected values', () => {
-  assert.match(daily, /PROJECTION_METHOD = "linear-from-utc-midnight"/);
+  assert.match(daily, /"method": "linear-from-utc-midnight"/);
   assert.match(daily, /DAY_SECONDS \/ elapsed/);
   assert.match(daily, /"actualUsage": actual/);
-  assert.match(daily, /"usageKind": "projected-24h"/);
-  assert.match(daily, /usage = project_usage\(actual, projection\)/);
+  assert.match(daily, /"queueOperations"/);
+  assert.match(daily, /usage = project_daily_usage\(actual, projection, REQUEST_RESERVE\)/);
   assert.match(daily, /violations = evaluate\(usage, LIMITS\)/);
-  assert.match(daily, /Actual to date \| 24h projection/);
-  assert.match(daily, /projected24h=/);
+  assert.match(daily, /Actual to now \| Projected 24h/);
+  assert.match(daily, /projected limit=/);
 });
 
 test('account-wide gate projects only daily allowance meters', () => {

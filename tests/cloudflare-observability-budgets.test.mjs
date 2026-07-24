@@ -58,10 +58,10 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(workflow, /audit-observability-budget-gates\.py --self-test/);
   assert.match(workflow, /audit-deployed-cloudflare-telemetry\.py --self-test/);
   assert.match(workflow, /publish-cloudflare-observability-status\.mjs --self-test/);
-  assert.match(dailyAudit, /def databases\(\)/);
-  assert.match(dailyAudit, /perDatabaseUsage/);
-  assert.match(dailyAudit, /D1 database breakdown \(UTC day actual\)/);
-  assert.match(dailyAudit, /include every deployment/);
+  assert.match(dailyAudit, /def configured_resources\(\)/);
+  assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
+  assert.match(dailyAudit, /configured_queue_ids/);
+  assert.match(dailyAudit, /Projected 24h/);
   assert.match(freeTierAudit, /def durable_object_namespace_ids\(/);
   assert.match(freeTierAudit, /if script != worker:/);
   assert.match(freeTierAudit, /per_page=50/);

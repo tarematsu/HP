@@ -128,10 +128,10 @@ test('Cloudflare audit compatibility wrappers pass offline self-tests', () => {
     new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
     'utf8',
   );
-  assert.match(telemetry, /exceededCpu/);
-  assert.match(telemetry, /QUEUE_CPU_BUDGET_MS/);
-  assert.match(telemetry, /def invocation_class/);
-  assert.match(telemetry, /event_type == "queue"/);
+  assert.match(telemetry, /Worker CPU policy violation/);
+  assert.match(telemetry, /DURABLE_OBJECT_CPU_BUDGET_MS/);
+  assert.match(telemetry, /def error_event/);
+  assert.match(telemetry, /OK_OUTCOMES/);
   assert.doesNotMatch(telemetry, /platform_flexible_cpu_exempt/);
-  assert.doesNotMatch(telemetry, /outcome in core\.OK_OUTCOMES/);
+  assert.match(telemetry, /outcome not in OK_OUTCOMES/);
 });

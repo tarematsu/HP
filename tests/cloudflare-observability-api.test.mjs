@@ -93,7 +93,7 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(auditScript, /coverage_ok/);
   assert.match(auditScript, /missing_workers/);
   assert.match(auditScript, /incomplete coverage/);
-  assert.match(auditScript, /exceededCpu/);
+  assert.match(auditScript, /Worker CPU policy violation/);
   assert.match(deployedAuditScript, /workers\/scripts\/\{encoded\}\/deployments/);
   assert.match(deployedAuditScript, /deployments\[0\]/);
   assert.match(deployedAuditScript, /percentage/);
