@@ -35,12 +35,14 @@ export {
 
 function resolvePersistenceContext(env, options) {
   const shared = getCollectionContext(env);
+  const authoritativeItems = options.collectionItems || shared?.collectionItems || null;
   return {
     deferFeedMaintenance: options.deferFeedMaintenance === undefined
       ? Boolean(shared?.deferFeedMaintenance)
       : Boolean(options.deferFeedMaintenance),
     collectionSeenKeys: options.collectionSeenKeys || shared?.collectionSeenKeys,
-    collectionItems: options.collectionItems || shared?.collectionItems || new Map()
+    collectionItems: authoritativeItems || new Map(),
+    authoritative: authoritativeItems instanceof Map
   };
 }
 
@@ -82,7 +84,9 @@ export async function persistMergedFeed(env, options) {
     const desiredItems = [...persistence.collectionItems.values()].slice(0, PLAYBACK_FEED_LIMIT);
     const feedCount = persistence.deferFeedMaintenance
       ? null
-      : await finalizeCompactedFeed(env, capturedAt, { desiredItems });
+      : await finalizeCompactedFeed(env, capturedAt, persistence.authoritative
+        ? { desiredItems }
+        : {});
     throwIfCollectionAborted(options.signal);
     const timings = await finishCollectionRun(env, run, {
       databaseStartedMs: dbStarted,
