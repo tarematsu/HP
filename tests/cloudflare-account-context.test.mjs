@@ -107,6 +107,7 @@ test('the composite action is the single production credential resolver', () => 
   const action = readSource('.github/actions/cloudflare-context/action.yml');
   const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
   const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
+  const pruneUpdates = readSource('.github/workflows/prune-homepanel-updates.yml');
 
   assert.match(action, /node \.github\/scripts\/resolve-cloudflare-account\.mjs/);
   assert.doesNotMatch(action, /curl|jq|mapfile/);
@@ -122,5 +123,14 @@ test('the composite action is the single production credential resolver', () => 
   assert.doesNotMatch(
     cloudDeploy,
     /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
+  );
+
+  assert.match(pruneUpdates, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(pruneUpdates, /\/r2\/buckets\/\$\{UPDATE_BUCKET\}\/objects/);
+  assert.match(pruneUpdates, /result_info\.is_truncated/);
+  assert.match(pruneUpdates, /-X DELETE/);
+  assert.doesNotMatch(
+    pruneUpdates,
+    /user\/tokens\/verify|accounts\?per_page=50|AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|aws s3api|sha256sum/,
   );
 });
