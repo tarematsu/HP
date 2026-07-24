@@ -5,7 +5,6 @@ import {
   maybeCleanupCollectionRuns,
   withPlaybackFeedFinalization
 } from './d1-compaction.js';
-import { refreshStatusVideoCounts } from './status-counts.js';
 
 async function serializedFeedContentHash(contentJson) {
   const bytes = new TextEncoder().encode(String(contentJson || '[]'));
@@ -34,7 +33,6 @@ export async function synchronizeCompactedFeed(env, capturedAt = new Date().toIS
 export async function finalizeCompactedFeed(env, capturedAt = new Date().toISOString()) {
   const db = env.DB || env;
   const count = await synchronizeCompactedFeed(db, capturedAt);
-  await refreshStatusVideoCounts(db, capturedAt);
   await maybeCleanupCollectionRuns(db);
   return count;
 }

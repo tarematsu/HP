@@ -3,7 +3,7 @@ import { jstDayKey, type Env, type SourceResult } from "./sources";
 import { markStateChanged } from "./state_generation";
 import { memoizedStateHash } from "./state_hash_cache";
 
-export const WORKER_VERSION = "2.12.0";
+export const WORKER_VERSION = "2.13.0";
 
 const EMPTY_OBJECT_HASH = "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
 const HEX_DIGITS = "0123456789abcdef";
@@ -39,7 +39,7 @@ export const DASHBOARD_SOURCE_NAMES = [
   "environment",
 ] as const;
 const META_SOURCE_NAMES = [...DASHBOARD_SOURCE_NAMES, "radar"] as const;
-const STATE_HEARTBEAT_MS = 60 * 60_000;
+const STATE_HEARTBEAT_MS = 6 * 60 * 60_000;
 
 type DashboardSourceName = typeof DASHBOARD_SOURCE_NAMES[number];
 type CachedDashboardSource = { key: string; value: unknown };
@@ -207,8 +207,13 @@ function stablePayload(result: SourceResult): unknown {
   delete copy.generatedAt;
   delete copy.sampledAt;
   delete copy.monitorSampledAt;
-  if (result.source !== "switchbot") delete copy.lastPowerPollAt;
+  delete copy.lastPowerPollAt;
   if (result.source === "stationhead") delete copy.progressMs;
+  if (result.source === "stationhead_health") {
+    delete copy.ageMs;
+    delete copy.lastRunAt;
+    delete copy.lastSuccessAt;
+  }
   if (result.source === "switchbot" && Array.isArray(copy.devices)) {
     copy.devices = copy.devices.map(device => {
       if (!device || typeof device !== "object" || Array.isArray(device)) return device;
@@ -218,6 +223,56 @@ function stablePayload(result: SourceResult): unknown {
     });
   }
   return copy;
+}
+
+async function writePayloadState(
+  env: Env,
+  result: SourceResult,
+  status: StateRow["status"],
+  statusError: string | null,
+): Promise<void> {
+  const now = Date.now();
+  const heartbeatBefore = now - STATE_HEARTBEAT_MS;
+  const payload = JSON.stringify(result.payload);
+  const stable = stablePayload(result);
+  const stableJson = stable === result.payload ? payload : JSON.stringify(stable);
+  const hash = await memoizedStateHash(
+    env,
+    result.source,
+    stableJson,
+    () => sha256Hex(stableJson),
+  );
+  const write = await env.DB.prepare(
+    `INSERT INTO current_state(
+       source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
+     ) VALUES(?1,1,?2,?3,?4,?4,?6,?7,?5)
+     ON CONFLICT(source) DO UPDATE SET
+       version=CASE
+         WHEN current_state.content_hash IS NOT excluded.content_hash THEN current_state.version+1
+         ELSE current_state.version
+       END,
+       payload=excluded.payload,
+       observed_at=excluded.observed_at,
+       fetched_at=excluded.fetched_at,
+       last_success_at=excluded.last_success_at,
+       status=excluded.status,
+       error=excluded.error,
+       content_hash=excluded.content_hash
+     WHERE current_state.content_hash IS NOT excluded.content_hash
+        OR current_state.status IS NOT excluded.status
+        OR current_state.error IS NOT excluded.error
+        OR current_state.fetched_at<=?8`,
+  ).bind(
+    result.source,
+    payload,
+    result.observedAt,
+    now,
+    hash,
+    status,
+    statusError,
+    heartbeatBefore,
+  ).run();
+  if (Number(write.meta.changes ?? 0) > 0) markStateChanged(env);
 }
 
 export async function updateState(
@@ -246,37 +301,17 @@ export async function updateState(
     return;
   }
 
-  const payload = JSON.stringify(result.payload);
-  const stable = stablePayload(result);
-  const stableJson = stable === result.payload ? payload : JSON.stringify(stable);
-  const hash = await memoizedStateHash(
-    env,
-    result.source,
-    stableJson,
-    () => sha256Hex(stableJson),
-  );
-  const write = await env.DB.prepare(
-    `INSERT INTO current_state(
-       source,version,payload,observed_at,fetched_at,last_success_at,status,error,content_hash
-     ) VALUES(?1,1,?2,?3,?4,?4,'ok',NULL,?5)
-     ON CONFLICT(source) DO UPDATE SET
-       version=CASE
-         WHEN current_state.content_hash IS NOT excluded.content_hash THEN current_state.version+1
-         ELSE current_state.version
-       END,
-       payload=excluded.payload,
-       observed_at=excluded.observed_at,
-       fetched_at=excluded.fetched_at,
-       last_success_at=excluded.last_success_at,
-       status='ok',
-       error=NULL,
-       content_hash=excluded.content_hash
-     WHERE current_state.content_hash IS NOT excluded.content_hash
-        OR current_state.status<>'ok'
-        OR current_state.error IS NOT NULL
-        OR current_state.fetched_at<=?6`,
-  ).bind(result.source, payload, result.observedAt, now, hash, heartbeatBefore).run();
-  if (Number(write.meta.changes ?? 0) > 0) markStateChanged(env);
+  await writePayloadState(env, result, "ok", null);
+}
+
+export async function updateStateWithStatus(
+  env: Env,
+  result: SourceResult,
+  status: StateRow["status"],
+  statusError: string | null,
+  _knownPrevious?: StateRow | null,
+): Promise<void> {
+  await writePayloadState(env, result, status, statusError);
 }
 
 export async function ensureDashboard(env: Env): Promise<StateRow> {
