@@ -44,4 +44,20 @@ describe("video liveness result contract", () => {
       Promise.reject(new Error("checkpoint unavailable")),
     ])).rejects.toThrow("checkpoint unavailable");
   });
+
+  it("prefers a concrete Error over an earlier null rejection reason", async () => {
+    const { storage } = markerStorage();
+
+    await expect(collectLivenessResults(storage, [
+      Promise.reject(null),
+      Promise.reject(new Error("D1 mutation failed")),
+    ])).rejects.toThrow("D1 mutation failed");
+  });
+
+  it("normalizes a string rejection into an Error", async () => {
+    const { storage } = markerStorage();
+
+    await expect(collectLivenessResults(storage, [Promise.reject("network failed")]))
+      .rejects.toThrow("network failed");
+  });
 });
