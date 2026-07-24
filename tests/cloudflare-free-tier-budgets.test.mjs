@@ -7,7 +7,7 @@ import test from 'node:test';
 const root = new URL('../', import.meta.url);
 const scriptUrl = new URL('.github/scripts/audit-cloudflare-free-tier.py', root);
 const script = [
-  readFileSync(scriptUrl, 'utf8'),
+  readFileSync(new URL('.github/scripts/cloudflare_free_tier_audit.py', root), 'utf8'),
   readFileSync(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root), 'utf8'),
 ].join('\n');
 const runtime = JSON.parse(readFileSync(new URL('worker/wrangler.runtime.jsonc', root), 'utf8'));
