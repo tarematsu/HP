@@ -29,6 +29,8 @@ test('HomePanel video runtime keeps deferred status and bounded liveness work', 
     'interval: one hour',
     'batch size: five URLs',
     'at most 120 normal liveness probes per day',
+    'Pages configuration',
+    'production Wrangler generation',
   ]);
   expectNone(migration, [
     'Imported into HP as: `video/`',
@@ -36,6 +38,26 @@ test('HomePanel video runtime keeps deferred status and bounded liveness work', 
     'interval: 12 minutes',
     'batch size: one URL',
   ]);
+});
+
+test('manual Video workflows share the fail-closed Cloudflare context', () => {
+  const cpu = readSource('.github/workflows/video-worker-cpu-report.yml');
+  const queues = readSource('.github/workflows/video-provision-manual-import-queue.yml');
+
+  for (const workflow of [cpu, queues]) {
+    expectAll(workflow, [
+      'uses: ./.github/actions/cloudflare-context',
+      'api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}',
+    ]);
+    expectNone(workflow, [
+      'Validate Cloudflare token',
+      'Validate Cloudflare credentials',
+      'unset CLOUDFLARE_ACCOUNT_ID',
+    ]);
+  }
+  expectAll(cpu, ["'homepanel-cloud'"]);
+  expectNone(cpu, ["|| 'homepanel' }}"]);
+  expectNone(queues, ['npx --no-install wrangler whoami']);
 });
 
 test('retired standalone video build diagnostics stay removed', async () => {
