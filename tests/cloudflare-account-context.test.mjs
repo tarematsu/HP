@@ -18,10 +18,9 @@ function response(payload, { ok = true, status = 200 } = {}) {
   };
 }
 
-test('explicit Cloudflare account avoids discovery', async () => {
+test('explicit Cloudflare account avoids discovery and does not require a token', async () => {
   let calls = 0;
   const accountId = await resolveCloudflareAccountId({
-    token: 'token',
     accountId: 'account-explicit',
     fetchImpl: async () => {
       calls += 1;
@@ -73,11 +72,11 @@ test('Cloudflare account discovery requires exactly one valid account', async ()
 
 test('Cloudflare context export rejects multiline values and writes canonical variables', async () => {
   await assert.rejects(
-    resolveCloudflareAccountId({ token: 'token\ninjected', accountId: 'account' }),
+    resolveCloudflareAccountId({ token: 'token\ninjected' }),
     /single line/,
   );
   await assert.rejects(
-    resolveCloudflareAccountId({ token: 'token', accountId: 'account\ninjected' }),
+    resolveCloudflareAccountId({ accountId: 'account\ninjected' }),
     /single line/,
   );
 
@@ -112,5 +111,6 @@ test('the composite action and deploy config share one resolver implementation',
   assert.doesNotMatch(action, /curl|jq|mapfile/);
   assert.match(configResolver, /from "\.\/resolve-cloudflare-account\.mjs"/);
   assert.match(configResolver, /resolveCloudflareAccountId\(\{/);
+  assert.match(configResolver, /configuredAccountId/);
   assert.doesNotMatch(configResolver, /async function cloudflareAccountId/);
 });
