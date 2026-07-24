@@ -115,7 +115,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(scheduledAt)).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("advances successful work only in DO storage and does not write D1 job state", async () => {
+  it("advances successful work only in DO storage and aligns the next cadence", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
       .bind(now + 3600)
@@ -137,6 +137,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stored = await runtime(stub);
     const cleanup = stored?.jobs.find(job => job.name === "cleanup");
     expect(Number(cleanup?.nextRunAt)).toBeGreaterThan(now);
+    expect(Number(cleanup?.nextRunAt) % 86_400).toBe(0);
     expect(Number(cleanup?.lastSuccessAt)).toBeGreaterThanOrEqual(now);
     expect(cleanup?.consecutiveFailures).toBe(0);
 
@@ -147,23 +148,23 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(await alarmTime(stub))).toBeGreaterThan(Date.now());
   });
 
-  it("advances up to three co-due jobs in one alarm", async () => {
+  it("advances more than three co-due jobs in one alarm", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
       .bind(now + 3600)
       .run();
-    await env.DB.prepare(
-      "UPDATE jobs SET next_run_at=0 WHERE name IN ('cleanup','update_check',?1)",
-    ).bind(LIVENESS_JOB_NAME).run();
+    const names = ["unsupported_1", "unsupported_2", "unsupported_3", "unsupported_4", "unsupported_5"];
+    for (const name of names) await insertFailingJob(name);
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
 
     await runAlarm(stub);
 
     const stored = await runtime(stub);
-    const selected = stored?.jobs.filter(job => ["cleanup", "update_check", LIVENESS_JOB_NAME].includes(job.name)) ?? [];
-    expect(selected).toHaveLength(3);
+    const selected = stored?.jobs.filter(job => names.includes(job.name)) ?? [];
+    expect(selected).toHaveLength(names.length);
     expect(selected.every(job => job.nextRunAt > now)).toBe(true);
+    expect(selected.every(job => job.consecutiveFailures === 1)).toBe(true);
   });
 
   it("records only the first failure until the job recovers", async () => {
