@@ -22,8 +22,8 @@ const observabilityQuery = readFileSync(
   new URL('../.github/scripts/query-cloudflare-observability.py', import.meta.url),
   'utf8',
 );
-const cpuPolicy = readFileSync(
-  new URL('../.github/scripts/enforce-worker-cpu-budget.py', import.meta.url),
+const telemetryAudit = readFileSync(
+  new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
   'utf8',
 );
 const workerPackage = JSON.parse(readFileSync(
@@ -223,7 +223,6 @@ test('Worker package scripts contain only the three active deployment and bundle
 test('observability covers the three active Workers through Cloudflare APIs without R2', () => {
   for (const worker of ['sh-sakurazaka46jp', 'sh-buddies-collector', 'sh-runtime-orchestrator']) {
     assert.match(observabilityWorkflow, new RegExp(worker));
-    assert.match(cpuPolicy, new RegExp(worker));
   }
   for (const retired of [
     'sh-buddies-ingest',
@@ -234,11 +233,16 @@ test('observability covers the three active Workers through Cloudflare APIs with
     'sh-host-monitor',
   ]) {
     assert.doesNotMatch(observabilityWorkflow, new RegExp(retired));
-    assert.doesNotMatch(cpuPolicy, new RegExp(`"${retired}"`));
   }
   assert.match(observabilityQuery, /workersInvocationsAdaptive/);
   assert.match(observabilityQuery, /workers\/observability\/telemetry\/query/);
   assert.match(observabilityQuery, /cpuTimeP99/);
-  assert.match(cpuPolicy, /BUDGET_MS = 10\.0/);
-  assert.doesNotMatch(`${observabilityWorkflow}\n${observabilityQuery}\n${cpuPolicy}`, /R2_BUCKET|r2\.cloudflarestorage|aws s3api/);
+  assert.match(telemetryAudit, /STATELESS_CPU_BUDGET_MS/);
+  assert.match(telemetryAudit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
+  assert.match(telemetryAudit, /current_events/);
+  assert.match(telemetryAudit, /coverage_ok/);
+  assert.doesNotMatch(
+    `${observabilityWorkflow}\n${observabilityQuery}\n${telemetryAudit}`,
+    /R2_BUCKET|r2\.cloudflarestorage|aws s3api/,
+  );
 });
