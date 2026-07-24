@@ -3,6 +3,36 @@
 namespace hp {
 namespace {
 constexpr size_t kLogFlushThresholdBytes = 64 * 1024;
+
+std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
+  std::wstring sanitized = message;
+  size_t searchAt = 0;
+  while (searchAt < sanitized.size()) {
+    const size_t httpAt = sanitized.find(L"http://", searchAt);
+    const size_t httpsAt = sanitized.find(L"https://", searchAt);
+    size_t urlAt = std::wstring::npos;
+    if (httpAt == std::wstring::npos) urlAt = httpsAt;
+    else if (httpsAt == std::wstring::npos) urlAt = httpAt;
+    else urlAt = std::min(httpAt, httpsAt);
+    if (urlAt == std::wstring::npos) break;
+
+    const size_t delimiterAt = sanitized.find_first_of(
+        L" \t\r\n\"'<>)]},", urlAt);
+    const size_t urlEnd = delimiterAt == std::wstring::npos
+        ? sanitized.size()
+        : delimiterAt;
+    const size_t sensitiveAt = sanitized.find_first_of(L"?#", urlAt);
+    if (sensitiveAt == std::wstring::npos || sensitiveAt >= urlEnd) {
+      searchAt = urlEnd;
+      continue;
+    }
+
+    const std::wstring marker = L"?[redacted]";
+    sanitized.replace(sensitiveAt, urlEnd - sensitiveAt, marker);
+    searchAt = sensitiveAt + marker.size();
+  }
+  return sanitized;
+}
 }
 
 Logger::Logger(fs::path path, size_t maxBytes, int rotations)
@@ -84,7 +114,7 @@ void Logger::Write(const wchar_t* level, const std::wstring& message) {
   std::string line = header;
   line += WideToUtf8(level);
   line.push_back(' ');
-  line += WideToUtf8(message);
+  line += WideToUtf8(RedactUrlQueryAndFragment(message));
   line.push_back('\n');
 
   std::lock_guard lock(mutex_);
