@@ -118,6 +118,7 @@ test('the composite action is the single production credential resolver', () => 
   assert.match(cloudDeploy, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(cloudDeploy, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
   assert.doesNotMatch(cloudDeploy, /Validate Cloudflare credentials/);
+  assert.doesNotMatch(cloudDeploy, /resolve-cloudflare-config\.mjs/);
   assert.doesNotMatch(
     cloudDeploy,
     /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
