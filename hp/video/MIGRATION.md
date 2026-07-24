@@ -3,7 +3,7 @@
 This directory is the imported snapshot of `tarematsu/VP` and is now maintained entirely inside HP.
 
 - Source commit: `9984a5db4104019a2537a3018aa7b754f9ad4228`
-- Imported into HP as: `video/`
+- Imported into HP as: `hp/video/`
 - Unified Worker: `homepanel-cloud`
 - Unified D1 database: `homepanel-data`
 - Retired video Worker: `videoscraper`
@@ -13,7 +13,7 @@ Deleting the former VP repository does not remove any runtime source or producti
 
 ## Runtime boundary
 
-The unified entry point is `cloud/src/unified_worker.js`.
+The unified entry point is `hp/cloud/src/unified_worker.js`.
 
 - `/admin`, `/v1`, and `/v1/*` continue to use the existing HomePanel Worker implementation.
 - `/api/*` and the static application routes continue to use the imported video implementation.
@@ -22,7 +22,7 @@ The unified entry point is `cloud/src/unified_worker.js`.
 - Video uses the same `DB` binding after its schema and rows were migrated into `homepanel-data`.
 - Video assets, Browser Rendering, and manual-import queues are attached to `homepanel-cloud`.
 - Video liveness is registered as the `video_liveness` job in HomePanel's existing `SchedulerCoordinator` Durable Object.
-- The liveness job runs every 720 seconds and checks one video URL per run.
+- The liveness job runs hourly and checks at most five video URLs per run.
 - No Cloudflare Cron Trigger is used for video liveness or automatic video collection.
 - A D1 activation flag keeps video fetch, queue, and liveness work disabled unless the verified unified runtime is active.
 
@@ -30,24 +30,22 @@ The unified entry point is `cloud/src/unified_worker.js`.
 
 The shared HomePanel scheduler owns the next alarm and coalesces jobs that become due together. Video liveness therefore does not create a second scheduler or a separate Cron Trigger.
 
-The liveness job deliberately keeps the previous conservative work budget:
+The liveness work budget is intentionally bounded:
 
-- interval: 12 minutes;
-- batch size: one URL;
+- interval: one hour;
+- batch size: five URLs;
 - probe: first-byte range request;
-- concurrency: one;
+- concurrency: five;
 - timeout: eight seconds;
 - overlap protection: D1 lock;
-- failure retry: HomePanel scheduler exponential backoff, capped at the normal 12-minute interval.
+- failure retry: HomePanel scheduler exponential backoff, capped at the normal interval.
 
-This produces at most 120 normal liveness probes per day before retries. Failures do not fan out into parallel checks.
+This produces at most 120 normal liveness probes per day before retries. Failures do not create an independent timer or unbounded fan-out.
 
 ## Production state
 
 The videoscraper data migration and unified-runtime activation completed successfully. The legacy `videoscraper` Worker and `twivideo-swiper-db` database were subsequently deleted. `homepanel-cloud`, `homepanel-data`, `homepanel-updates`, existing HomePanel secrets, and the scheduler Durable Object namespace remain authoritative.
 
-The completed cutover and retirement workflows have been removed so they cannot be rerun against production. Standalone remote deploy and D1 commands in the `video` workspace fail closed; production operations must use the `cloud` workspace.
+The completed cutover and retirement workflows have been removed so they cannot be rerun against production. Standalone remote deploy, build-diagnostics, and D1 commands in the `hp/video/` workspace are retired; production operations must use the repository-root workflows and the `hp/cloud/` workspace.
 
 No tablet URL change is required.
-
-Original VP workflows remain under `video/.github/workflows` as historical references only. GitHub does not execute workflows outside the repository-root `.github/workflows/` directory.
