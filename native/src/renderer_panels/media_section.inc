@@ -155,7 +155,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   DrawTextInRect(dc, title.empty() ? L"--" : title, titleRect,
                  DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
-  if (!allStationheadsOnFallback) {
+  if (!allStationheadsOnFallback || stationheadNeedsAttention) {
     SetTextColor(dc, kWidgetMuted);
     SelectObject(dc, TierFont(FontTier::Small));
     RECT artistRect{textLeft, titleRect.bottom, textRight,
