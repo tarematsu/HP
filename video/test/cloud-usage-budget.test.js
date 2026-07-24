@@ -7,6 +7,7 @@ const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.me
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const octopusHistory = readFileSync(new URL('../../cloud/src/octopus_history.ts', import.meta.url), 'utf8');
+const schedulerRuntime = readFileSync(new URL('../../cloud/src/scheduler_runtime.ts', import.meta.url), 'utf8');
 const resourceMigration = readFileSync(
   new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
   'utf8'
@@ -15,12 +16,15 @@ const octopusScheduleMigration = readFileSync(
   new URL('../../cloud/migrations/202607240100_octopus_daily_stable_only.sql', import.meta.url),
   'utf8'
 );
+const runtimeMigration = readFileSync(
+  new URL('../../cloud/migrations/202607240200_d1_runtime_reduction.sql', import.meta.url),
+  'utf8'
+);
 const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', import.meta.url), 'utf8');
 
 const DAY_SECONDS = 86_400;
 const TARGET = 3_000;
-const STATE_HEARTBEAT_SECONDS = 60 * 60;
-const INDEXED_ROW_WRITE_MULTIPLIER = 2;
+const STATE_HEARTBEAT_SECONDS = 6 * 60 * 60;
 const scheduledIntervals = {
   switchbot: 900,
   stationhead: 900,
@@ -28,7 +32,7 @@ const scheduledIntervals = {
   news: 1_800,
   weather: 3_600,
   octopus: 86_400,
-  video_liveness: 720,
+  video_liveness: 3_600,
   update_check: 21_600,
   cleanup: 86_400
 };
@@ -62,16 +66,23 @@ test('native polling is fixed at thirty-minute sync and two-hour telemetry', () 
   assert.match(adminPage, /config\.cloudPollSeconds=1800;config\.telemetryMinutes=120/);
 });
 
-test('scheduler migration keeps liveness while reducing other periodic work', () => {
+test('scheduler uses DO runtime and hourly five-video liveness batches', () => {
   for (const [name, interval] of Object.entries(scheduledIntervals)) {
     if (name === 'octopus') {
       assert.match(octopusScheduleMigration, /interval_seconds = 86400/);
       assert.match(octopusScheduleMigration, /WHERE name = 'octopus'/);
       continue;
     }
+    if (name === 'video_liveness') {
+      assert.match(runtimeMigration, /interval_seconds=3600/);
+      assert.match(runtimeMigration, /WHERE name='video_liveness'/);
+      continue;
+    }
     assert.match(resourceMigration, new RegExp(`WHEN '${name}' THEN ${interval}`));
   }
-  assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
+  assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
+  assert.match(schedulerRuntime, /state\.storage\.put\(RUNTIME_STORAGE_KEY/);
+  assert.doesNotMatch(schedulerRuntime, /UPDATE jobs SET/);
 });
 
 test('Octopus uses a daily-only, cursor-bounded D1 model', () => {
@@ -86,38 +97,39 @@ test('Octopus uses a daily-only, cursor-bounded D1 model', () => {
   assert.doesNotMatch(octopusHistory, /DELETE FROM octopus_readings/);
 });
 
+test('high-frequency D1 tables and legacy telemetry are compacted', () => {
+  assert.match(runtimeMigration, /CREATE TABLE jobs_v2[\s\S]*WITHOUT ROWID/);
+  assert.match(runtimeMigration, /CREATE TABLE current_state_v2[\s\S]*WITHOUT ROWID/);
+  assert.match(runtimeMigration, /CREATE TABLE device_heartbeats_v2[\s\S]*WITHOUT ROWID/);
+  assert.match(runtimeMigration, /CREATE TABLE sync_manifest/);
+  assert.match(runtimeMigration, /CREATE TABLE job_events/);
+  assert.match(runtimeMigration, /DROP TABLE IF EXISTS environment_samples/);
+  assert.match(runtimeMigration, /DROP TABLE IF EXISTS environment_buckets/);
+});
+
 test('modeled daily D1 written rows stay below the 3000-row target', () => {
-  const schedulerCompletionQueries = Object.values(scheduledIntervals)
-    .reduce((total, interval) => total + runsPerDay(interval), 0);
-  assert.equal(schedulerCompletionQueries, 438);
-  const schedulerCompletionRows = schedulerCompletionQueries * INDEXED_ROW_WRITE_MULTIPLIER;
-
-  const switchbotStateQueries = runsPerDay(scheduledIntervals.switchbot);
-  const heartbeatStateQueries = heartbeatStateIntervals
+  const schedulerCompletionRows = 0;
+  const switchbotChangedStateReserve = 24;
+  const heartbeatStateRows = heartbeatStateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
-  const stateQueries = switchbotStateQueries + heartbeatStateQueries;
-  const stateRows = stateQueries * INDEXED_ROW_WRITE_MULTIPLIER;
-
-  const compactTelemetryHeartbeatQueries = runsPerDay(120 * 60);
-  const compactTelemetryHeartbeatRows = compactTelemetryHeartbeatQueries * INDEXED_ROW_WRITE_MULTIPLIER;
-  const jobRunCheckpointQueries = Object.keys(scheduledIntervals).length * 4;
-  const jobRunCheckpointRows = jobRunCheckpointQueries * INDEXED_ROW_WRITE_MULTIPLIER;
+  const compactTelemetryHeartbeatRows = runsPerDay(120 * 60);
+  const livenessStateRows = runsPerDay(scheduledIntervals.video_liveness);
+  const jobFailureRecoveryReserve = 4;
   const octopusDailyAndCursorRows = 3;
-  const changeCommandWebhookAndLegacyRowReserve = 1_500;
+  const changeCommandWebhookAndVideoMutationReserve = 1_500;
   const modeledRows = schedulerCompletionRows
-    + stateRows
+    + switchbotChangedStateReserve
+    + heartbeatStateRows
     + compactTelemetryHeartbeatRows
-    + jobRunCheckpointRows
+    + livenessStateRows
+    + jobFailureRecoveryReserve
     + octopusDailyAndCursorRows
-    + changeCommandWebhookAndLegacyRowReserve;
+    + changeCommandWebhookAndVideoMutationReserve;
 
-  assert.equal(schedulerCompletionRows, 876);
-  assert.equal(switchbotStateQueries, 96);
-  assert.equal(heartbeatStateQueries, 97);
-  assert.equal(stateRows, 386);
-  assert.equal(compactTelemetryHeartbeatRows, 24);
-  assert.equal(jobRunCheckpointRows, 72);
-  assert.equal(modeledRows, 2_861);
+  assert.equal(heartbeatStateRows, 17);
+  assert.equal(compactTelemetryHeartbeatRows, 12);
+  assert.equal(livenessStateRows, 24);
+  assert.equal(modeledRows, 1_584);
   assert.ok(modeledRows < TARGET);
 });
 
@@ -126,15 +138,15 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
   const schedulerAlarmInvocations = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
   const radarGenerationReserve = 50;
-  const apiWebhookVideoAndLegacyReserve = 2_100;
+  const apiWebhookVideoReserve = 1_900;
   const modeledRequests = nativeExchangeRequests
     + schedulerAlarmInvocations
     + radarGenerationReserve
-    + apiWebhookVideoAndLegacyReserve;
+    + apiWebhookVideoReserve;
 
   assert.equal(nativeExchangeRequests, 48);
-  assert.equal(schedulerAlarmInvocations, 438);
-  assert.equal(modeledRequests, 2_636);
+  assert.equal(schedulerAlarmInvocations, 342);
+  assert.equal(modeledRequests, 2_340);
   assert.ok(modeledRequests < TARGET);
 });
 
