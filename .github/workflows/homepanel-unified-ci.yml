@@ -70,7 +70,6 @@ jobs:
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
-          node .github/scripts/publish-homepanel-observability-status.mjs --self-test
           node --test \
             tests/homepanel-production-contract.test.mjs \
             tests/observability-status-publisher.test.mjs
