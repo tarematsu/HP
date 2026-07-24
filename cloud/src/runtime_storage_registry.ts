@@ -1,15 +1,9 @@
 import type { Env } from "./sources";
 
-const RUNTIME_STORES = new WeakMap<object, DurableObjectStorage>();
+// Durable Object storage is actor-context-bound and must never be retained in
+// module-global state. Scheduled code receives storage explicitly instead.
+export function registerRuntimeStorage(_env: Env, _storage: DurableObjectStorage): void {}
 
-function keyFor(env: Env): object {
-  return env.DB as unknown as object;
-}
-
-export function registerRuntimeStorage(env: Env, storage: DurableObjectStorage): void {
-  RUNTIME_STORES.set(keyFor(env), storage);
-}
-
-export function runtimeStorageFor(env: Env): DurableObjectStorage | undefined {
-  return RUNTIME_STORES.get(keyFor(env));
+export function runtimeStorageFor(_env: Env): DurableObjectStorage | undefined {
+  return undefined;
 }
