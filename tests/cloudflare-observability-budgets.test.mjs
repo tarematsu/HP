@@ -54,7 +54,11 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "70000"/);
   assert.match(workflow, /CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator/);
   assert.match(workflow, /CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV/);
-  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR/);
+  assert.match(
+    workflow,
+    /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR/,
+  );
+  assert.doesNotMatch(workflow, /CLOUDFLARE_PIPELINE_NAMES|Pipelines included-usage/);
   assert.match(workflow, /audit-cloudflare-free-tier\.py --self-test/);
   assert.doesNotMatch(workflow, /audit-cloudflare-free-tier-account\.py/);
   assert.match(workflow, /audit-observability-budget-gates\.py --self-test/);
@@ -69,7 +73,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(freeTierAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
   assert.doesNotMatch(
     freeTierAudit,
-    /configured_resource_ids|importlib\.util|audit-cloudflare-free-tier-core|def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces/,
+    /configured_resource_ids|importlib\.util|audit-cloudflare-free-tier-core|def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces|PIPELINE_NAMES|pipelines\/v1\/pipelines/,
   );
   assert.match(workflow, /id: free-tier-budget/);
   assert.match(workflow, /id: budget-contract/);
