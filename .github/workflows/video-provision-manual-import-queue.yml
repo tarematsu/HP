@@ -18,7 +18,6 @@ jobs:
       run:
         working-directory: hp/video
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
       MANUAL_IMPORT_QUEUE: videoscraper-manual-imports
       MANUAL_IMPORT_DLQ: videoscraper-manual-imports-dlq
     steps:
@@ -37,19 +36,12 @@ jobs:
           key: ${{ runner.os }}-node-22-video-${{ hashFiles('hp/video/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node-22-video-
-      - name: Validate Cloudflare credentials
-        shell: bash
-        run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "Cloudflare API token is not configured"; exit 1; }
-          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Resolve account and ensure queues exist
+      - name: Ensure queues exist
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then unset CLOUDFLARE_ACCOUNT_ID; fi
-          npx --no-install wrangler whoami
           ensure_queue() {
             local name="$1"
             if npx --no-install wrangler queues info "$name" >/dev/null 2>&1; then
