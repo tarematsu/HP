@@ -2,8 +2,8 @@ PRAGMA foreign_keys = ON;
 
 -- D1's production planner did not consistently select the partial
 -- idx_videos_active_id index for the bounded liveness cursor. A normal
--- status/id index makes the equality + range access path unambiguous and is
--- explicitly selected by the runtime query.
+-- status/id index gives the equality + range predicate an unambiguous access
+-- path that can be verified with EXPLAIN QUERY PLAN.
 CREATE INDEX IF NOT EXISTS idx_videos_status_id
   ON videos(status, id);
 
