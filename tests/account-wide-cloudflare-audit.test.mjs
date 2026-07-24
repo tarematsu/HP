@@ -6,8 +6,11 @@ import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
 const rootPath = fileURLToPath(root);
-const auditPath = '.github/scripts/audit-cloudflare-free-tier-account.py';
-const audit = readFileSync(new URL(`../${auditPath}`, import.meta.url), 'utf8');
+const auditPath = '.github/scripts/audit-cloudflare-free-tier.py';
+const implementation = readFileSync(
+  new URL('../.github/scripts/cloudflare_free_tier_audit.py', import.meta.url),
+  'utf8',
+);
 const workflow = readFileSync(
   new URL('../.github/workflows/sh-observability.yml', import.meta.url),
   'utf8',
@@ -24,14 +27,16 @@ test('account-wide budget audit is independent of configured DO binding count', 
   });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   assert.match(result.stdout, /account-wide discovery-free audit self-test passed/);
-  assert.match(audit, /configured_resource_ids/);
+  assert.match(implementation, /configured_resource_ids/);
+  assert.doesNotMatch(implementation, /core\.resource_ids|workers\/durable_objects\/namespaces/);
 });
 
 test('observability covers both coordinators without Pipelines configuration', () => {
   assert.match(
     workflow,
-    /python3 \.github\/scripts\/audit-cloudflare-free-tier-account\.py 2>&1/,
+    /python3 \.github\/scripts\/audit-cloudflare-free-tier\.py 2>&1/,
   );
+  assert.doesNotMatch(workflow, /audit-cloudflare-free-tier-account\.py/);
   assert.match(
     workflow,
     /CLOUDFLARE_CONFIG_GLOBS: worker\/wrangler\.runtime\.jsonc,worker\/wrangler\.buddies-collector\.jsonc/,
@@ -41,5 +46,5 @@ test('observability covers both coordinators without Pipelines configuration', (
     /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR/,
   );
   assert.doesNotMatch(workflow, /CLOUDFLARE_PIPELINE_NAMES|Pipelines included-usage/);
-  assert.doesNotMatch(audit, /PIPELINE_NAMES|pipelines\/v1\/pipelines/);
+  assert.doesNotMatch(implementation, /PIPELINE_NAMES|pipelines\/v1\/pipelines/);
 });
