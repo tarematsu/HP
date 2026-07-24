@@ -31,7 +31,6 @@ const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', imp
 const DAY_SECONDS = 86_400;
 const TARGET = 3_000;
 const STATE_HEARTBEAT_SECONDS = 6 * 60 * 60;
-const SCHEDULER_BATCH_SIZE = 3;
 const scheduledIntervals = {
   switchbot: 900,
   stationhead: 900,
@@ -55,18 +54,11 @@ function throttledHeartbeatWrites(intervalSeconds) {
 }
 
 function modeledSchedulerAlarms() {
-  const nextRunAt = Object.fromEntries(Object.keys(scheduledIntervals).map((name) => [name, 0]));
-  let alarms = 0;
-  while (true) {
-    const next = Math.min(...Object.values(nextRunAt));
-    if (next >= DAY_SECONDS) return alarms;
-    const due = Object.keys(nextRunAt)
-      .filter((name) => nextRunAt[name] <= next)
-      .sort()
-      .slice(0, SCHEDULER_BATCH_SIZE);
-    alarms += 1;
-    for (const name of due) nextRunAt[name] = next + scheduledIntervals[name];
+  const alarmTimes = new Set();
+  for (const interval of Object.values(scheduledIntervals)) {
+    for (let next = 0; next < DAY_SECONDS; next += interval) alarmTimes.add(next);
   }
+  return alarmTimes.size;
 }
 
 test('static assets bypass the Worker while dynamic routes remain Worker-first', () => {
@@ -88,7 +80,7 @@ test('native polling is fixed at thirty-minute sync and two-hour telemetry', () 
   assert.match(adminPage, /config\.cloudPollSeconds=1800;config\.telemetryMinutes=120/);
 });
 
-test('scheduler uses batched DO runtime and hourly five-video liveness batches', () => {
+test('scheduler drains all due work with bounded concurrency and aligned cadence', () => {
   for (const [name, interval] of Object.entries(scheduledIntervals)) {
     if (name === 'octopus') {
       assert.match(octopusScheduleMigration, /interval_seconds = 86400/);
@@ -104,18 +96,23 @@ test('scheduler uses batched DO runtime and hourly five-video liveness batches',
   }
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(schedulerRuntime, /MAX_RUNTIME_BATCH = 3/);
-  assert.match(schedulerRuntime, /Promise\.all\(jobs\.map/);
+  assert.match(schedulerRuntime, /MAX_RUNTIME_JOBS_PER_ALARM = 32/);
+  assert.match(schedulerRuntime, /Promise\.all\(batch\.map/);
+  assert.match(schedulerRuntime, /nextCadenceAt/);
   assert.match(schedulerRuntime, /recordJobEventsBestEffort/);
   assert.match(schedulerRuntime, /state\.storage\.put\(RUNTIME_STORAGE_KEY/);
   assert.doesNotMatch(schedulerRuntime, /UPDATE jobs SET/);
 });
 
-test('device exchange merges telemetry before the sync snapshot read', () => {
+test('device exchange merges telemetry before sync and only telemetry signals the watchdog', () => {
+  const telemetryAt = deviceExchange.indexOf('if (input.telemetry !== undefined)');
+  const watchdogAt = deviceExchange.indexOf('queueSchedulerWatchdog(env, ctx)');
   const mergeAt = deviceExchange.indexOf('await applyTelemetry');
   const syncAt = deviceExchange.indexOf('await buildDeviceSyncPayloadForDevice');
-  assert.ok(mergeAt >= 0);
+  assert.ok(telemetryAt >= 0);
+  assert.ok(watchdogAt > telemetryAt);
+  assert.ok(mergeAt > watchdogAt);
   assert.ok(syncAt > mergeAt);
-  assert.match(deviceExchange, /queueSchedulerWatchdog\(env, ctx\)/);
 });
 
 test('Octopus uses a daily-only, gap-safe cursor-bounded D1 model', () => {
@@ -143,7 +140,7 @@ test('high-frequency D1 tables and legacy telemetry are compacted', () => {
   assert.match(runtimeBugfixMigration, /WHEN NEW\.source IN/);
   assert.match(runtimeBugfixMigration, /BEFORE DELETE ON videos/);
   assert.match(runtimeBugfixMigration, /AFTER DELETE ON ranking_entries/);
-  assert.match(telemetryHeartbeat, /HEARTBEAT_REFRESH_MS = 6 \* 60 \* 60_000/);
+  assert.match(telemetryHeartbeat, /HEARTBEAT_REFRESH_MS = 24 \* 60 \* 60_000/);
   assert.match(telemetryHeartbeat, /last_seen_at<=\?7/);
 });
 
@@ -152,7 +149,7 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
   const switchbotChangedStateReserve = 24;
   const heartbeatStateRows = heartbeatStateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
-  const compactTelemetryHeartbeatRows = runsPerDay(6 * 60 * 60);
+  const compactTelemetryHeartbeatRows = runsPerDay(24 * 60 * 60);
   const livenessStateRows = runsPerDay(scheduledIntervals.video_liveness);
   const jobFailureRecoveryReserve = 4;
   const octopusDailyAndCursorRows = 3;
@@ -167,18 +164,19 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
     + changeCommandWebhookAndVideoMutationReserve;
 
   assert.equal(heartbeatStateRows, 17);
-  assert.equal(compactTelemetryHeartbeatRows, 4);
+  assert.equal(compactTelemetryHeartbeatRows, 1);
   assert.equal(livenessStateRows, 24);
-  assert.equal(modeledRows, 1_576);
+  assert.equal(modeledRows, 1_573);
   assert.ok(modeledRows < TARGET);
 });
 
 test('modeled daily Worker invocations stay below the 3000-request target', () => {
   const nativeExchangeRequests = runsPerDay(1800);
+  const telemetryUploadRequests = runsPerDay(120 * 60);
   const schedulerAlarmInvocations = modeledSchedulerAlarms();
-  // Count one internal DO ensure for every native exchange as a deliberately
-  // conservative upper bound; isolate-local throttling normally makes it lower.
-  const schedulerEnsureSignals = nativeExchangeRequests;
+  // Only telemetry-bearing exchanges signal the DO watchdog. Count every upload
+  // as a separate isolate to keep this an intentionally conservative upper bound.
+  const schedulerEnsureSignals = telemetryUploadRequests;
   const radarGenerationReserve = 50;
   const apiWebhookVideoReserve = 1_900;
   const modeledRequests = nativeExchangeRequests
@@ -188,8 +186,9 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
     + apiWebhookVideoReserve;
 
   assert.equal(nativeExchangeRequests, 48);
-  assert.equal(schedulerAlarmInvocations, 148);
-  assert.equal(modeledRequests, 2_194);
+  assert.equal(telemetryUploadRequests, 12);
+  assert.equal(schedulerAlarmInvocations, 96);
+  assert.equal(modeledRequests, 2_106);
   assert.ok(modeledRequests < TARGET);
 });
 
