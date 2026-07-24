@@ -41,7 +41,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /^\s+push:/m);
   assert.match(workflow, /branches: \[main\]/);
-  assert.match(workflow, /\.github\/actions\/cloudflare-observability-query\/action\.yml/);
+  assert.match(workflow, /\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml/);
   assert.match(workflow, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
   assert.doesNotMatch(workflow, /^\s{6}- '(?:worker|site|packages)\//m);
   assert.doesNotMatch(workflow, /cron: "37 \* \* \* \*"/);
@@ -77,7 +77,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(workflow, /steps\.observability-query\.outcome == 'failure'/);
   assert.match(workflow, /steps\.telemetry-policy\.outcome == 'failure'/);
   assert.match(workflow, /steps\.publish-status\.outcome == 'failure'/);
-  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-observability-query/);
+  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics/);
   assert.match(workflow, /live-tail-worker: sh-runtime-orchestrator/);
   assert.match(workflow, /live-tail-seconds: "90"/);
   assert.match(workflow, /LIVE_TAIL_LOG: live-tail\.log/);
