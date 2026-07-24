@@ -9,7 +9,10 @@ const rootPath = fileURLToPath(root);
 const dailyPath = '.github/scripts/audit-cloudflare-daily-usage.py';
 const freeTierPath = '.github/scripts/audit-cloudflare-free-tier.py';
 const daily = readFileSync(new URL(`../${dailyPath}`, import.meta.url), 'utf8');
-const freeTier = readFileSync(new URL(`../${freeTierPath}`, import.meta.url), 'utf8');
+const freeTier = readFileSync(
+  new URL('../.github/scripts/cloudflare_free_tier_audit.py', import.meta.url),
+  'utf8',
+);
 
 function runSelfTest(path) {
   const result = spawnSync('python3', [path, '--self-test'], {
