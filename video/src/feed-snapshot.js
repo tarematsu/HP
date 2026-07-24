@@ -153,25 +153,6 @@ export async function readFeedSnapshotPage(db, options) {
   };
 }
 
-async function emitSnapshotEvent(env, snapshot, written) {
-  const pipeline = env?.HOMEPANEL_PIPELINE;
-  if (!pipeline?.send) return;
-  try {
-    await pipeline.send([{
-      schemaVersion: 1,
-      eventType: 'video_feed_snapshot',
-      occurredAt: snapshot.generatedAt,
-      contentHash: snapshot.contentHash,
-      rowCount: snapshot.items.length,
-      written
-    }]);
-  } catch (error) {
-    console.error('video-feed-pipeline-send-failed', {
-      error: String(error?.message || error)
-    });
-  }
-}
-
 export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
   const bucket = env?.DATA_BUCKET;
   if (!bucket) return { written: false, reason: 'bucket-unavailable' };
@@ -218,7 +199,6 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
     expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS
   });
   await cacheSnapshot(snapshot);
-  await emitSnapshotEvent(env, snapshot, !unchanged);
   return { written: !unchanged, rowCount: snapshot.items.length };
 }
 
