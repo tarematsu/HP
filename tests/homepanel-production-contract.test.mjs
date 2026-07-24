@@ -46,6 +46,8 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'if: always()',
     'set -o pipefail',
     'retention-days: 1',
+    'tests/homepanel-production-contract.test.mjs',
+    'tests/observability-status-publisher.test.mjs',
   ]);
   expectAll(diagnostics, [
     'query-cloudflare-observability.py',
@@ -64,6 +66,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'AUDIT_FROM=',
     '\n  pull_request:',
     'R2_BUCKET',
+    'publish-homepanel-observability-status.mjs --self-test',
   ]);
   assert.equal(workflow.match(/cron: "/g)?.length, 1);
   assert.ok(workflow.includes('\n  push:'));
@@ -111,10 +114,10 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     './observability-status-publisher.mjs',
     'observability/d1-query-insights',
     'Top D1 queries by rows read',
-    "statusState('skipped'), 'failure'",
-    "statusState('unknown'), 'failure'",
-    "overallOutcome({ a: 'success', b: 'skipped' }), 'failure'",
+    'publishCommitStatuses',
+    'upsertStatusIssue',
   ]);
+  expectNone(publisher, ['node:assert', '--self-test', 'function selfTest']);
   expectAll(publisherCore, [
     'MAX_SECTION_CHARS = 12_000',
     'MAX_ISSUE_BODY_CHARS = 60_000',
