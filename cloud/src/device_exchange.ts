@@ -65,15 +65,14 @@ export async function deviceExchangeResponse(
     ? input.versions
     : {};
 
-  // A valid native poll is the deployment bootstrap/watchdog signal. The
-  // module-level throttle keeps this to at most once per day per isolate.
-  queueSchedulerWatchdog(env, ctx);
-
   // Merge telemetry first. The R2 merge primes the environment cache, so the
   // following sync read reuses the same row and can return the new sample in
-  // this response instead of one native polling cycle later.
+  // this response instead of one native polling cycle later. A telemetry upload
+  // is also the low-frequency deployment watchdog signal; ordinary 30-minute
+  // sync polls no longer invoke the Scheduler Durable Object.
   const telemetryPayload: Record<string, unknown> = {};
   if (input.telemetry !== undefined) {
+    queueSchedulerWatchdog(env, ctx);
     await applyTelemetry(env, deviceId, input.telemetry, telemetryPayload);
   }
   const payload = await buildDeviceSyncPayloadForDevice(env, deviceId, versions);
