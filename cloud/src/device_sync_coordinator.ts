@@ -1,4 +1,3 @@
-import { runtimeStorageFor } from "./runtime_storage_registry";
 import type { Env } from "./sources";
 
 const COORDINATOR_NAME = "global";
@@ -32,11 +31,6 @@ export async function requestCoordinatedDeviceSync(
 }
 
 export async function invalidateCoordinatedDeviceSyncManifest(env: Env): Promise<void> {
-  const localStorage = runtimeStorageFor(env);
-  if (localStorage) {
-    await localStorage.delete(DEVICE_SYNC_MANIFEST_KEY);
-    return;
-  }
   const stub = coordinatorStub(env);
   if (!stub) return;
   const response = await stub.fetch("https://scheduler.internal/device-sync-invalidate", {
