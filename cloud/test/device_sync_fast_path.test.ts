@@ -3,9 +3,9 @@ import { getDeviceSync } from "../src/device_sync";
 import type { Env } from "../src/sources";
 
 describe("device sync unchanged fast path", () => {
-  it("uses one manifest snapshot statement and does not fetch state payload rows when versions match", async () => {
+  it("uses bounded manifest and device-specific statements without fetching state payload rows", async () => {
     const statements: string[] = [];
-    const first = vi.fn().mockResolvedValue({
+    const manifestFirst = vi.fn().mockResolvedValue({
       dashboard_version: 27,
       environment_version: 0,
       environment_fetched_at: 0,
@@ -13,6 +13,8 @@ describe("device sync unchanged fast path", () => {
       switchbot_version: 5,
       stationhead_version: 6,
       stationhead_health_version: 10,
+    });
+    const deviceFirst = vi.fn().mockResolvedValue({
       config_version: 9,
       config_updated_at: 123,
       config_payload: "{}",
@@ -20,8 +22,11 @@ describe("device sync unchanged fast path", () => {
     });
     const prepare = vi.fn((sql: string) => {
       statements.push(sql);
+      if (sql.includes("FROM sync_manifest AS manifest")) {
+        return { first: manifestFirst };
+      }
       return {
-        bind: vi.fn(() => ({ first })),
+        bind: vi.fn(() => ({ first: deviceFirst })),
       };
     });
     const env = {
@@ -48,12 +53,13 @@ describe("device sync unchanged fast path", () => {
       },
       commands: [],
     });
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(first).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(manifestFirst).toHaveBeenCalledTimes(1);
+    expect(deviceFirst).toHaveBeenCalledTimes(1);
     expect(statements[0]).toContain("FROM sync_manifest AS manifest");
     expect(statements[0]).not.toContain("SUM(CASE");
-    expect(statements[0]).toContain("device_configs");
-    expect(statements[0]).toContain("device_commands");
+    expect(statements[1]).toContain("device_configs");
+    expect(statements[1]).toContain("device_commands");
     expect(statements.some(sql => sql.includes("SELECT source,version,payload"))).toBe(false);
   });
 });
