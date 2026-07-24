@@ -1,6 +1,6 @@
 import { authorizedDevice, deviceIdFromRequest } from "./auth";
-import { buildDeviceSyncPayloadForDevice } from "./device_sync";
-import { requestCoordinatedDeviceSync } from "./device_sync_coordinator";
+import * as deviceSync from "./device_sync";
+import * as deviceSyncCoordinator from "./device_sync_coordinator";
 import { queueSchedulerWatchdog } from "./scheduler_coordinator";
 import type { Env } from "./sources";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
@@ -71,8 +71,8 @@ export async function deviceExchangeResponse(
     queueSchedulerWatchdog(env, ctx);
     await applyTelemetry(env, deviceId, input.telemetry, telemetryPayload);
   }
-  const coordinated = await requestCoordinatedDeviceSync(env, deviceId, versions);
-  const payload = coordinated ?? await buildDeviceSyncPayloadForDevice(env, deviceId, versions);
+  const coordinated = await deviceSyncCoordinator.requestCoordinatedDeviceSync(env, deviceId, versions);
+  const payload = coordinated ?? await deviceSync.buildDeviceSyncPayloadForDevice(env, deviceId, versions);
   Object.assign(payload, telemetryPayload);
 
   const jsonBytes = ENCODER.encode(JSON.stringify(payload));
