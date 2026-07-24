@@ -8,9 +8,6 @@ export interface Env {
   DATA_BUCKET?: R2Bucket;
   UPDATE_BUCKET?: R2Bucket;
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
-  HOMEPANEL_PIPELINE?: {
-    send(records: Record<string, unknown>[]): Promise<void>;
-  };
   HOMEPANEL_INGEST_SECRET?: string;
   HOMEPANEL_DEVICE_TOKENS?: string;
   HOMEPANEL_PRIMARY_DEVICE_ID?: string;
