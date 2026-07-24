@@ -10,6 +10,10 @@ const resourceMigration = readFileSync(
   new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
   'utf8'
 );
+const octopusScheduleMigration = readFileSync(
+  new URL('../../cloud/migrations/202607240100_octopus_daily_stable_only.sql', import.meta.url),
+  'utf8'
+);
 const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', import.meta.url), 'utf8');
 
 const DAY_SECONDS = 86_400;
@@ -22,12 +26,12 @@ const scheduledIntervals = {
   stationhead_health: 1_800,
   news: 1_800,
   weather: 3_600,
-  octopus: 21_600,
+  octopus: 86_400,
   video_liveness: 720,
   update_check: 21_600,
   cleanup: 86_400
 };
-const heartbeatStateIntervals = [900, 1_800, 1_800, 3_600, 21_600];
+const heartbeatStateIntervals = [900, 1_800, 1_800, 3_600, 86_400];
 
 function runsPerDay(intervalSeconds) {
   return Math.ceil(DAY_SECONDS / intervalSeconds);
@@ -59,7 +63,8 @@ test('native polling is fixed at thirty-minute sync and two-hour telemetry', () 
 
 test('scheduler migration keeps liveness while reducing other periodic work', () => {
   for (const [name, interval] of Object.entries(scheduledIntervals)) {
-    assert.match(resourceMigration, new RegExp(`WHEN '${name}' THEN ${interval}`));
+    const migration = name === 'octopus' ? octopusScheduleMigration : resourceMigration;
+    assert.match(migration, new RegExp(`WHEN '${name}' THEN ${interval}|name = '${name}'[\\s\\S]*interval_seconds = ${interval}`));
   }
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
 });
@@ -67,7 +72,7 @@ test('scheduler migration keeps liveness while reducing other periodic work', ()
 test('modeled daily D1 written rows stay below the 3000-row target', () => {
   const schedulerCompletionQueries = Object.values(scheduledIntervals)
     .reduce((total, interval) => total + runsPerDay(interval), 0);
-  assert.equal(schedulerCompletionQueries, 441);
+  assert.equal(schedulerCompletionQueries, 438);
   const schedulerCompletionRows = schedulerCompletionQueries * INDEXED_ROW_WRITE_MULTIPLIER;
 
   const switchbotStateQueries = runsPerDay(scheduledIntervals.switchbot);
@@ -87,13 +92,13 @@ test('modeled daily D1 written rows stay below the 3000-row target', () => {
     + jobRunCheckpointRows
     + changeCommandWebhookAndLegacyRowReserve;
 
-  assert.equal(schedulerCompletionRows, 882);
+  assert.equal(schedulerCompletionRows, 876);
   assert.equal(switchbotStateQueries, 96);
-  assert.equal(heartbeatStateQueries, 100);
-  assert.equal(stateRows, 392);
+  assert.equal(heartbeatStateQueries, 97);
+  assert.equal(stateRows, 386);
   assert.equal(compactTelemetryHeartbeatRows, 24);
   assert.equal(jobRunCheckpointRows, 72);
-  assert.equal(modeledRows, 2_870);
+  assert.equal(modeledRows, 2_858);
   assert.ok(modeledRows < TARGET);
 });
 
@@ -109,8 +114,8 @@ test('modeled daily Worker invocations stay below the 3000-request target', () =
     + apiWebhookVideoAndLegacyReserve;
 
   assert.equal(nativeExchangeRequests, 48);
-  assert.equal(schedulerAlarmInvocations, 441);
-  assert.equal(modeledRequests, 2_639);
+  assert.equal(schedulerAlarmInvocations, 438);
+  assert.equal(modeledRequests, 2_636);
   assert.ok(modeledRequests < TARGET);
 });
 
