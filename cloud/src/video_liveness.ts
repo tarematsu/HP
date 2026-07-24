@@ -9,6 +9,28 @@ import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 export const LIVENESS_FEED_SNAPSHOT_PENDING_KEY =
   "video-liveness-feed-snapshot-refresh-pending-v1";
 
+export async function collectLivenessResults(
+  storage: DurableObjectStorage | undefined,
+  pending: readonly Promise<unknown>[],
+): Promise<unknown[]> {
+  try {
+    const results = await Promise.all(pending);
+    if (results.some(result => result === null)) {
+      throw new Error("video liveness failed");
+    }
+    return results;
+  } catch (error) {
+    // A failure can happen after D1 mutations commit but before the liveness
+    // runtime state/result is returned. Conservatively repair the snapshot on
+    // the next successful alarm because the failed result cannot prove that the
+    // feed remained unchanged.
+    if (storage) {
+      await storage.put(LIVENESS_FEED_SNAPSHOT_PENDING_KEY, true);
+    }
+    throw error;
+  }
+}
+
 export async function refreshLivenessFeedSnapshotWithRetry(
   storage: DurableObjectStorage,
   feedChanged: boolean,
@@ -50,8 +72,7 @@ export async function runVideoLiveness(
   );
 
   if (!pending.length) throw new Error("video liveness did not schedule work");
-  const results = await Promise.all(pending);
-  if (results.some(result => result === null)) throw new Error("video liveness failed");
+  const results = await collectLivenessResults(storage, pending);
   const feedChanged = results.some(result => {
     if (!result || typeof result !== "object") return false;
     const row = result as Record<string, unknown>;
