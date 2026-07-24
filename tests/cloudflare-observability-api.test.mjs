@@ -49,6 +49,7 @@ test('observability uses measured budgets and post-deploy Cloudflare API diagnos
   assert.match(workflow, /^  push:\n/m);
   assert.match(workflow, /branches: \[main\]/);
   assert.match(workflow, /\.github\/workflows\/sh-observability\.yml/);
+  assert.match(workflow, /\.github\/actions\/cloudflare-observability-query\/action\.yml/);
   assert.match(workflow, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
   assert.doesNotMatch(workflow, /^      - '(?:worker|site|packages)\//m);
   assert.match(workflow, /^  schedule:\n/m);
@@ -68,7 +69,9 @@ test('observability uses measured budgets and post-deploy Cloudflare API diagnos
   assert.match(workflow, /DAILY_REQUEST_RESERVE: "0"/);
   assert.match(workflow, /DAILY_D1_READ_BUDGET: "3000000"/);
   assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "70000"/);
-  assert.match(workflow, /LIVE_TAIL_SECONDS: "90"/);
+  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-observability-query/);
+  assert.match(workflow, /live-tail-worker: sh-runtime-orchestrator/);
+  assert.match(workflow, /live-tail-seconds: "90"/);
   assert.doesNotMatch(workflow, /R2_BUCKET|AWS_|aws s3api/);
   assert.match(workflow, /Upload sanitized observability report/);
   assert.match(workflow, /retention-days: 1/);
