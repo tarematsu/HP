@@ -93,7 +93,7 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /workflows: \["Deploy production"\]/);
   assert.match(observability, /^  push:\n/m);
   assert.match(observability, /branches: \[main\]/);
-  assert.match(observability, /\.github\/workflows\/fetch-cloudflare-observability\.yml/);
+  assert.match(observability, /\.github\/workflows\/sh-observability\.yml/);
   assert.match(observability, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
   assert.doesNotMatch(observability, /^      - '(?:worker|site|packages)\//m);
   assert.match(observability, /^  classify:\n/m);
