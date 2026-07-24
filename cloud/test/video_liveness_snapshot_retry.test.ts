@@ -180,6 +180,29 @@ describe("liveness feed snapshot retry", () => {
     expect(values.get(LIVENESS_FEED_SNAPSHOT_PENDING_KEY)).toBe(true);
   });
 
+  it("waits for all scheduled liveness work before recording repair", async () => {
+    const { storage, operations } = fakeStorage();
+    let siblingSettled = false;
+    const slowerSibling = new Promise(resolve => {
+      setTimeout(() => {
+        siblingSettled = true;
+        operations.push("sibling-settled");
+        resolve({ ok: true });
+      }, 10);
+    });
+
+    await expect(collectLivenessResults(storage, [
+      Promise.reject(new Error("state write failed")),
+      slowerSibling,
+    ])).rejects.toThrow("state write failed");
+
+    expect(siblingSettled).toBe(true);
+    expect(operations).toEqual([
+      "sibling-settled",
+      `put:${LIVENESS_FEED_SNAPSHOT_PENDING_KEY}`,
+    ]);
+  });
+
   it("preserves the liveness error when marker persistence also fails", async () => {
     const { storage } = fakeStorage(false, { putFailures: 1 });
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
