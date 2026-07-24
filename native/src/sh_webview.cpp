@@ -204,7 +204,7 @@ void StationheadPlayer::ConfigureWebView() {
             };
             ComPtr<ICoreWebView2NewWindowRequestedEventArgs> popupArgs = args;
             CloseAuthWebView();
-            authPendingUrl_ = uri;
+            activeAuthorizationUrl_ = uri;
             authPopupDeferral_ = deferral;
             authPopupDeferralCompleted_ = deferralCompleted;
             authCallbackAlive_ = std::make_shared<std::atomic<bool>>(true);
@@ -670,9 +670,11 @@ void StationheadPlayer::CloseWebView() {
   createCallbackAlive_->store(false, std::memory_order_release);
   creating_ = false;
   creationStartedAt_ = 0;
-  if (spotifyAuthorization_ && pendingAuthorizationUrl_.empty() &&
-      !authPendingUrl_.empty()) {
-    pendingAuthorizationUrl_ = authPendingUrl_;
+  if (spotifyAuthorization_ && pendingAuthorizationUrl_.empty()) {
+    const std::wstring& resumeUrl = activeAuthorizationUrl_.empty()
+        ? authPendingUrl_
+        : activeAuthorizationUrl_;
+    if (!resumeUrl.empty()) pendingAuthorizationUrl_ = resumeUrl;
   }
   CloseAuthWebView();
   if (webview_) {
@@ -752,6 +754,7 @@ void StationheadPlayer::CloseAuthWebView() {
   authWebview_.Reset();
   authController_.Reset();
   authPendingUrl_.clear();
+  activeAuthorizationUrl_.clear();
   appliedMuted_.store(-1, std::memory_order_relaxed);
   appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   if (authHostWindow_ && IsWindow(authHostWindow_)) ShowWindow(authHostWindow_, SW_HIDE);
