@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("cloud sources", () => {
-  it("limits Octopus API refreshes to seven days without changing the dashboard payload", async () => {
+  it("limits Octopus API refreshes to stable readings in the seven-day window", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-10T18:00:00Z"));
     const requests: Request[] = [];
@@ -76,7 +76,7 @@ describe("cloud sources", () => {
     } as Env & { OCTOPUS_ACCOUNT: string });
 
     expect(result.source).toBe("octopus");
-    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(4);
+    expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(3);
     expect(readingRanges).toEqual([
       expect.objectContaining({
         fromDatetime: "2026-07-03T18:00:00.000Z",
@@ -88,11 +88,7 @@ describe("cloud sources", () => {
       }),
       expect.objectContaining({
         fromDatetime: "2026-07-07T18:00:00.000Z",
-        toDatetime: "2026-07-09T18:00:00.000Z",
-      }),
-      expect.objectContaining({
-        fromDatetime: "2026-07-09T18:00:00.000Z",
-        toDatetime: "2026-07-10T18:00:00.000Z",
+        toDatetime: "2026-07-08T18:00:00.000Z",
       }),
     ]);
 
