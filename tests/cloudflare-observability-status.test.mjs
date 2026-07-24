@@ -36,7 +36,7 @@ test('observability status body is stable, sanitized, and fail-closed', () => {
     generatedAt: '2026-07-23T01:00:00.000Z',
     targetSha: 'abcdef123456',
     mainSha: 'fedcba654321',
-    runUrl: 'https://github.com/tarematsu/SH/actions/runs/123',
+    runUrl: 'https://github.com/tarematsu/HP/actions/runs/123',
     trigger: 'schedule',
     outcomes: {
       policy: 'success',
@@ -99,7 +99,7 @@ test('observability workflow publishes retrievable commit statuses and issue sum
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
   assert.match(workflow, /active-worker-deployments\.json/);
   assert.match(workflow, /telemetry-audit\.log/);
-  assert.match(publisher, /readOptional\('telemetry-audit\.log'\)/);
+  assert.match(publisher, /readOptionalText\('telemetry-audit\.log'\)/);
   assert.match(publisher, /Current-deployment telemetry policy/);
   assert.match(workflow, /id: publish-status/);
   assert.match(workflow, /if: always\(\)/);
