@@ -1,18 +1,19 @@
 name: Finalize monorepo
 
 on:
-  push:
-    branches:
-      - agent/import-sh-snapshot
+  pull_request:
+    branches: [main]
     paths:
       - .github/workflows/finalize-monorepo.yml
       - .github/scripts/finalize-monorepo.py
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   finalize:
+    if: github.head_ref == 'agent/import-sh-snapshot' || github.ref_name == 'agent/import-sh-snapshot'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
