@@ -1,61 +1,36 @@
 #!/usr/bin/env node
 
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import {
+  MAX_ISSUE_BODY_CHARS,
+  clipText,
+  createGitHubRequest,
+  normalizeOutcome,
+  overallOutcome,
+  publishCommitStatuses,
+  readOptionalJson,
+  readOptionalText,
+  renderOutcomeRows,
+  renderSection,
+  requiredEnv,
+  statusState,
+  upsertStatusIssue,
+} from './observability-status-publisher.mjs';
+
+export { normalizeOutcome, overallOutcome, statusState };
 
 export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 
-const VALID_OUTCOMES = new Set(['success', 'failure', 'cancelled', 'skipped']);
-const MAX_SECTION_CHARS = 12_000;
-const MAX_ISSUE_BODY_CHARS = 60_000;
-
-export function normalizeOutcome(value) {
-  const outcome = String(value || '').trim().toLowerCase();
-  return VALID_OUTCOMES.has(outcome) ? outcome : 'unknown';
-}
-
-export function statusState(outcome) {
-  return normalizeOutcome(outcome) === 'success' ? 'success' : 'failure';
-}
-
-export function overallOutcome(outcomes) {
-  return Object.values(outcomes).every((value) => normalizeOutcome(value) === 'success')
-    ? 'success'
-    : 'failure';
-}
-
-function clipped(text, maximum = MAX_SECTION_CHARS) {
-  const value = String(text || '').trim();
-  if (value.length <= maximum) return value;
-  return `${value.slice(0, maximum)}\n\n…truncated…`;
-}
-
-async function readOptional(path) {
-  try {
-    return clipped(await readFile(path, 'utf8'));
-  } catch (error) {
-    if (error?.code === 'ENOENT') return '';
-    throw error;
-  }
-}
-
-async function readOptionalJson(path) {
-  const text = await readOptional(path);
-  if (!text) return {};
-  try {
-    const value = JSON.parse(text);
-    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function section(title, body) {
-  if (!body) return '';
-  return `\n<details>\n<summary>${title}</summary>\n\n${body}\n\n</details>\n`;
-}
+const STATUS_CONTEXTS = {
+  policy: 'observability/policy-self-test',
+  daily: 'observability/daily-d1-budget',
+  freeTier: 'observability/free-tier-budget',
+  contract: 'observability/budget-contract',
+  query: 'observability/query',
+  telemetry: 'observability/telemetry',
+};
 
 function deploymentSummary(activeDeployments) {
   const entries = Object.entries(activeDeployments || {});
@@ -89,9 +64,6 @@ export function buildIssueBody({
   recentMerges = [],
 }) {
   const overall = overallOutcome(outcomes);
-  const rows = Object.entries(outcomes)
-    .map(([name, outcome]) => `| ${name} | ${normalizeOutcome(outcome)} |`)
-    .join('\n');
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
 
@@ -110,111 +82,29 @@ ${recentMergeSummary(recentMerges)}
 
 | Gate | Outcome |
 |---|---|
-${rows}
-${section('UTC daily request and D1 budgets', summaries.daily)}
-${section('DO, Queues, R2, and KV budgets', summaries.freeTier)}
-${section('Budget contract', summaries.contract)}
-${section('Cloudflare metrics and live diagnostics', summaries.observability)}
-${section('Current-deployment telemetry policy', summaries.telemetry)}
+${renderOutcomeRows(outcomes)}
+${renderSection('UTC daily request and D1 budgets', summaries.daily)}
+${renderSection('DO, Queues, R2, and KV budgets', summaries.freeTier)}
+${renderSection('Budget contract', summaries.contract)}
+${renderSection('Cloudflare metrics and live diagnostics', summaries.observability)}
+${renderSection('Current-deployment telemetry policy', summaries.telemetry)}
 `;
-  return clipped(body, MAX_ISSUE_BODY_CHARS);
+  return clipText(body, MAX_ISSUE_BODY_CHARS);
 }
 
-function requiredEnv(name) {
-  const value = String(process.env[name] || '').trim();
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-async function githubRequest(method, path, payload) {
-  const repository = requiredEnv('GITHUB_REPOSITORY');
-  const token = requiredEnv('GITHUB_TOKEN');
-  const response = await fetch(`https://api.github.com/repos/${repository}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'sh-cloudflare-observability-status',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: payload == null ? undefined : JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let body = null;
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = { message: text.slice(0, 500) };
-    }
-  }
-  if (!response.ok) {
-    throw new Error(`GitHub ${method} ${path} failed: ${response.status} ${text.slice(0, 500)}`);
-  }
-  return body;
-}
-
-async function publishCommitStatuses(targetSha, runUrl, outcomes) {
-  const contexts = {
-    policy: 'observability/policy-self-test',
-    daily: 'observability/daily-d1-budget',
-    freeTier: 'observability/free-tier-budget',
-    contract: 'observability/budget-contract',
-    query: 'observability/query',
-    telemetry: 'observability/telemetry',
-  };
-  for (const [key, context] of Object.entries(contexts)) {
-    const outcome = normalizeOutcome(outcomes[key]);
-    await githubRequest('POST', `/statuses/${encodeURIComponent(targetSha)}`, {
-      state: statusState(outcome),
-      context,
-      description: `${key}: ${outcome}`.slice(0, 140),
-      target_url: runUrl,
-    });
-  }
-  const overall = overallOutcome(outcomes);
-  await githubRequest('POST', `/statuses/${encodeURIComponent(targetSha)}`, {
-    state: overall,
-    context: 'observability/overall',
-    description: `Cloudflare observability: ${overall}`,
-    target_url: runUrl,
-  });
-}
-
-async function upsertStatusIssue(body) {
-  const issues = await githubRequest('GET', '/issues?state=all&per_page=100&sort=updated&direction=desc');
-  const existing = issues.find((issue) => (
-    !issue.pull_request
-    && issue.title === STATUS_ISSUE_TITLE
-    && String(issue.body || '').includes(STATUS_MARKER)
-  ));
-  if (existing) {
-    return githubRequest('PATCH', `/issues/${existing.number}`, {
-      title: STATUS_ISSUE_TITLE,
-      body,
-      state: 'open',
-    });
-  }
-  return githubRequest('POST', '/issues', {
-    title: STATUS_ISSUE_TITLE,
-    body,
-  });
-}
-
-async function currentMainSha() {
+async function currentMainSha(request) {
   const mainRef = String(process.env.OBSERVABILITY_MAIN_REF || 'main').trim() || 'main';
   try {
-    const commit = await githubRequest('GET', `/commits/${encodeURIComponent(mainRef)}`);
+    const commit = await request('GET', `/commits/${encodeURIComponent(mainRef)}`);
     return String(commit?.sha || 'unknown');
   } catch {
     return 'unknown';
   }
 }
 
-async function recentMergedPullRequests() {
+async function recentMergedPullRequests(request) {
   try {
-    const pulls = await githubRequest('GET', '/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=20');
+    const pulls = await request('GET', '/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=20');
     return (Array.isArray(pulls) ? pulls : [])
       .filter((pull) => pull?.merged_at)
       .slice(0, 5)
@@ -232,6 +122,7 @@ async function recentMergedPullRequests() {
 export async function publishFromEnvironment() {
   const targetSha = requiredEnv('OBSERVABILITY_TARGET_SHA');
   const runUrl = requiredEnv('OBSERVABILITY_RUN_URL');
+  const request = createGitHubRequest('sh-cloudflare-observability-status');
   const outcomes = {
     policy: process.env.POLICY_OUTCOME,
     daily: process.env.DAILY_BUDGET_OUTCOME,
@@ -250,14 +141,14 @@ export async function publishFromEnvironment() {
     observability,
     telemetry,
   ] = await Promise.all([
-    currentMainSha(),
+    currentMainSha(request),
     readOptionalJson('active-worker-deployments.json'),
-    recentMergedPullRequests(),
-    readOptional('daily-usage/summary.md'),
-    readOptional('free-tier-usage/summary.md'),
-    readOptional('observability-gate/summary.md'),
-    readOptional('observability-summary.md'),
-    readOptional('telemetry-audit.log'),
+    recentMergedPullRequests(request),
+    readOptionalText('daily-usage/summary.md'),
+    readOptionalText('free-tier-usage/summary.md'),
+    readOptionalText('observability-gate/summary.md'),
+    readOptionalText('observability-summary.md'),
+    readOptionalText('telemetry-audit.log'),
   ]);
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
@@ -270,8 +161,20 @@ export async function publishFromEnvironment() {
     activeDeployments,
     recentMerges,
   });
-  await publishCommitStatuses(targetSha, runUrl, outcomes);
-  const issue = await upsertStatusIssue(body);
+  await publishCommitStatuses({
+    request,
+    targetSha,
+    runUrl,
+    outcomes,
+    contexts: STATUS_CONTEXTS,
+    overallDescription: 'Cloudflare observability',
+  });
+  const issue = await upsertStatusIssue({
+    request,
+    title: STATUS_ISSUE_TITLE,
+    marker: STATUS_MARKER,
+    body,
+  });
   console.log(`Published observability status to issue #${issue.number}`);
 }
 
@@ -284,12 +187,12 @@ function selfTest() {
     generatedAt: '2026-07-23T00:00:00.000Z',
     targetSha: 'abc123',
     mainSha: 'def456',
-    runUrl: 'https://github.com/tarematsu/SH/actions/runs/1',
+    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
     trigger: 'workflow_run',
     outcomes: { policy: 'success', daily: 'failure' },
     summaries: {
       daily: '## Daily\n\n| Metric | Value |\n|---|---:|\n| D1 | 1 |',
-      telemetry: 'TELEMETRY_AUDIT={"violations":0,"errors":0}',
+      telemetry: 'Authorization: Bearer secret-value',
     },
     activeDeployments: {
       worker: {
@@ -313,7 +216,8 @@ function selfTest() {
   assert.match(body, /#591/);
   assert.match(body, /UTC daily request and D1 budgets/);
   assert.match(body, /Current-deployment telemetry policy/);
-  assert.match(body, /TELEMETRY_AUDIT/);
+  assert.match(body, /Bearer \[redacted\]/);
+  assert.doesNotMatch(body, /secret-value/);
   console.log('observability status publisher self-test passed');
 }
 
