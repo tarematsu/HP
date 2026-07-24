@@ -55,15 +55,51 @@ jobs:
           echo "$status" > prepare-final-monorepo.status
           exit 0
 
-      - name: Commit prepared artifacts and diagnostics
+      - name: Commit and attempt push
+        id: publish
         run: |
-          set -euo pipefail
+          set +e
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add hp .github/scripts corrected-workflows prepare-final-monorepo.log prepare-final-monorepo.status
+          git status --short > git-status.log
+          git diff --cached --stat > staged-stat.log
           if git diff --cached --quiet; then
-            echo "No preparation changes"
+            echo "No preparation changes" | tee push.log
             exit 0
           fi
-          git commit -m "Capture final monorepo preparation"
-          git push origin HEAD:agent/import-sh-snapshot
+          git commit -m "Synchronize latest HP and prepare final workflows" > commit.log 2>&1
+          commit_status=$?
+          if [[ "$commit_status" -eq 0 ]]; then
+            git push origin HEAD:agent/import-sh-snapshot > push.log 2>&1
+            push_status=$?
+          else
+            cp commit.log push.log
+            push_status=$commit_status
+          fi
+          cat commit.log || true
+          cat push.log || true
+          echo "$push_status" > push.status
+          exit 0
+
+      - name: Upload preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monorepo-preparation-${{ github.run_id }}
+          path: |
+            prepare-final-monorepo.log
+            prepare-final-monorepo.status
+            git-status.log
+            staged-stat.log
+            commit.log
+            push.log
+            push.status
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail when preparation or push failed
+        if: always()
+        run: |
+          test "$(cat prepare-final-monorepo.status)" = "0"
+          test "$(cat push.status)" = "0"
