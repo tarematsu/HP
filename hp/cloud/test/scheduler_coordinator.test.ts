@@ -218,9 +218,9 @@ describe("SchedulerCoordinator Durable Object", () => {
   });
 
   it("refreshes only the requested runtime job without touching D1", async () => {
-    const now = Math.floor(Date.now() / 1000);
+    const scheduledAt = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
-      .bind(now + 3600)
+      .bind(scheduledAt + 3600)
       .run();
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
@@ -239,6 +239,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const after = await env.DB.prepare(
       "SELECT next_run_at FROM jobs WHERE name='weather'",
     ).first<{ next_run_at: number }>();
+    const dueAt = Math.floor(Date.now() / 1000);
 
     expect(response.status).toBe(202);
     await expect(response.clone().json()).resolves.toMatchObject({ scheduled: true, changed: 1 });
@@ -247,8 +248,8 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(immediateAlarm)).toBeLessThan(Number(futureAlarm));
     expect(Number(immediateAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
     expect(stored?.jobs.find(job => job.name === "weather")?.nextRunAt)
-      .toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+      .toBeLessThanOrEqual(dueAt);
     expect(after).toEqual(before);
-    expect(stored?.jobs.filter(job => job.nextRunAt <= now).map(job => job.name)).toEqual(["weather"]);
+    expect(stored?.jobs.filter(job => job.nextRunAt <= dueAt).map(job => job.name)).toEqual(["weather"]);
   });
 });
