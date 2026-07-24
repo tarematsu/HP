@@ -45,8 +45,9 @@ function runtime(overrides: Partial<RuntimeRow> = {}): RuntimeRow {
   };
 }
 
-function storageWith(initial: RuntimeRow) {
-  const values = new Map<string, unknown>([[VIDEO_LIVENESS_RUNTIME_KEY, initial]]);
+function storageWith(initial?: RuntimeRow) {
+  const values = new Map<string, unknown>();
+  if (initial) values.set(VIDEO_LIVENESS_RUNTIME_KEY, initial);
   const storage = {
     async get<T>(key: string): Promise<T | undefined> {
       return values.get(key) as T | undefined;
@@ -138,5 +139,26 @@ describe("liveness DO D1 checkpoints", () => {
     const stored = values.get(VIDEO_LIVENESS_RUNTIME_KEY) as RuntimeRow;
     expect(stored.checkedTotal).toBe(105);
     expect(stored.lastD1CheckpointAt).toBe(previousCheckpoint);
+  });
+
+  it("fails closed instead of synthesizing a zero runtime when the D1 row is missing", async () => {
+    const { storage, values } = storageWith();
+    const realDb = {
+      prepare() {
+        return {
+          async first() {
+            return null;
+          },
+        };
+      },
+    } as unknown as D1Database;
+    const env = { DB: realDb } as unknown as Parameters<typeof livenessDoDatabase>[0];
+    const db = livenessDoDatabase(env, storage);
+
+    await expect(db.prepare(
+      "SELECT phase FROM video_liveness_state WHERE id = 1",
+    ).first()).rejects.toThrow("video liveness state row unavailable");
+
+    expect(values.has(VIDEO_LIVENESS_RUNTIME_KEY)).toBe(false);
   });
 });
