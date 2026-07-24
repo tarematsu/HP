@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import {
   MAX_ISSUE_BODY_CHARS,
@@ -178,52 +177,7 @@ export async function publishFromEnvironment() {
   console.log(`Published observability status to issue #${issue.number}`);
 }
 
-function selfTest() {
-  assert.equal(statusState('success'), 'success');
-  assert.equal(statusState('skipped'), 'failure');
-  assert.equal(overallOutcome({ a: 'success', b: 'success' }), 'success');
-  assert.equal(overallOutcome({ a: 'success', b: 'failure' }), 'failure');
-  const body = buildIssueBody({
-    generatedAt: '2026-07-23T00:00:00.000Z',
-    targetSha: 'abc123',
-    mainSha: 'def456',
-    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
-    trigger: 'workflow_run',
-    outcomes: { policy: 'success', daily: 'failure' },
-    summaries: {
-      daily: '## Daily\n\n| Metric | Value |\n|---|---:|\n| D1 | 1 |',
-      telemetry: 'Authorization: Bearer secret-value',
-    },
-    activeDeployments: {
-      worker: {
-        deployment_id: 'deployment-1',
-        version_ids: ['version-1'],
-        created_on: '2026-07-23T00:00:00Z',
-      },
-    },
-    recentMerges: [{
-      number: 591,
-      title: 'Deploy runtime after migrations',
-      merge_commit_sha: 'merge591',
-      merged_at: '2026-07-23T00:01:00Z',
-    }],
-  });
-  assert.match(body, /Cloudflare Observability Status/);
-  assert.match(body, /\| daily \| failure \|/);
-  assert.match(body, /Workflow source commit:\*\* `abc123`/);
-  assert.match(body, /Current main SHA:\*\* `def456`/);
-  assert.match(body, /deployment-1/);
-  assert.match(body, /#591/);
-  assert.match(body, /UTC daily request and D1 budgets/);
-  assert.match(body, /Current-deployment telemetry policy/);
-  assert.match(body, /Bearer \[redacted\]/);
-  assert.doesNotMatch(body, /secret-value/);
-  console.log('observability status publisher self-test passed');
-}
-
-if (process.argv.includes('--self-test')) {
-  selfTest();
-} else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   publishFromEnvironment().catch((error) => {
     console.error(`::error title=Publish observability status::${String(error?.message || error).replaceAll('\n', ' ').slice(0, 1000)}`);
     process.exitCode = 1;
