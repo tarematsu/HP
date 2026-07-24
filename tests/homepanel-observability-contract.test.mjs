@@ -69,6 +69,8 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
   const insights = readSource('.github/scripts/query-cloudflare-d1-insights.mjs');
   const publisher = readSource('.github/scripts/publish-homepanel-observability-status.mjs');
   const publisherCore = readSource('.github/scripts/observability-status-publisher.mjs');
+  const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
+  const usageDocumentation = readSource('hp/cloud/D1_USAGE_MEASUREMENT.md');
 
   expectAll(daily, [
     'queueMessageOperationsAdaptiveGroups',
@@ -115,6 +117,27 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     'upsertStatusIssue',
     'Bearer [redacted]',
     'CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)',
+  ]);
+  expectAll(configResolver, [
+    './resolve-cloudflare-account.mjs',
+    'resolveCloudflareAccountId',
+    'GITHUB_OUTPUT',
+    'worker_name',
+    'database_name',
+    'account_id',
+    'update_bucket',
+  ]);
+  expectNone(configResolver, [
+    'd1AnalyticsAdaptiveGroups',
+    '.cloudflare-build-diagnostics',
+    'publishD1UsageIssue',
+    'api.github.com',
+    'GH_TOKEN',
+  ]);
+  expectAll(usageDocumentation, [
+    '.github/workflows/hp-observability.yml',
+    '.github/scripts/audit-cloudflare-daily-usage.py',
+    'does not query usage or publish a separate status issue',
   ]);
   assert.ok(!telemetry.includes('R2_BUCKET'));
 });
