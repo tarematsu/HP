@@ -19,15 +19,22 @@ export async function requestCoordinatedDeviceSync(
 ): Promise<Record<string, unknown> | null> {
   const stub = coordinatorStub(env);
   if (!stub) return null;
-  const response = await stub.fetch("https://scheduler.internal/device-sync", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, versions }),
-  });
-  if (!response.ok) {
-    throw new Error(`device sync coordinator failed: HTTP ${response.status}`);
+  try {
+    const response = await stub.fetch("https://scheduler.internal/device-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deviceId, versions }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return response.json<Record<string, unknown>>();
+  } catch (error) {
+    console.error("device sync coordinator unavailable; falling back to D1", error instanceof Error
+      ? error.message
+      : String(error));
+    return null;
   }
-  return response.json<Record<string, unknown>>();
 }
 
 export async function invalidateCoordinatedDeviceSyncManifest(env: Env): Promise<void> {
