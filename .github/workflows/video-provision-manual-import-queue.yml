@@ -16,14 +16,17 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: video
+        working-directory: hp/video
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
       MANUAL_IMPORT_QUEUE: videoscraper-manual-imports
       MANUAL_IMPORT_DLQ: videoscraper-manual-imports-dlq
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -31,7 +34,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-22-video-${{ hashFiles('video/package.json') }}
+          key: ${{ runner.os }}-node-22-video-${{ hashFiles('hp/video/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node-22-video-
       - name: Validate Cloudflare credentials

@@ -3,10 +3,10 @@ name: HomePanel unified Worker CI
 on:
   pull_request:
     paths:
-      - 'cloud/**'
-      - 'video/src/**'
-      - 'video/public/**'
-      - 'video/package.json'
+      - 'hp/cloud/**'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/package.json'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
@@ -18,10 +18,10 @@ on:
     branches:
       - main
     paths:
-      - 'cloud/**'
-      - 'video/src/**'
-      - 'video/public/**'
-      - 'video/package.json'
+      - 'hp/cloud/**'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/package.json'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
@@ -62,26 +62,26 @@ jobs:
           telemetry = Path('.github/scripts/audit-cloudflare-telemetry.py').read_text()
           insights = Path('.github/scripts/query-cloudflare-d1-insights.mjs').read_text()
           publisher = Path('.github/scripts/publish-homepanel-observability-status.mjs').read_text()
-          unified_worker = Path('cloud/src/unified_worker.js').read_text()
-          worker_entry = Path('cloud/src/worker_entry.ts').read_text()
-          worker_core = Path('cloud/src/worker_core.ts').read_text()
-          device_sync = Path('cloud/src/device_sync.ts').read_text()
-          scheduler = Path('cloud/src/scheduler.ts').read_text()
-          scheduler_runtime = Path('cloud/src/scheduler_runtime.ts').read_text()
-          octopus_history = Path('cloud/src/octopus_history.ts').read_text()
-          status_report = Path('video/src/status-report.js').read_text()
-          status_lists = Path('video/src/status-lists.js').read_text()
-          liveness = Path('video/src/liveness-monitor.js').read_text()
-          migration = Path('cloud/migrations/202607230500_d1_read_hotspots.sql').read_text()
-          runtime_migration = Path('cloud/migrations/202607240200_d1_runtime_reduction.sql').read_text()
-          radar_source = Path('cloud/src/radar_source.ts').read_text()
-          radar_cache = Path('cloud/src/radar_bundle_cache.ts').read_text()
+          unified_worker = Path('hp/cloud/src/unified_worker.js').read_text()
+          worker_entry = Path('hp/cloud/src/worker_entry.ts').read_text()
+          worker_core = Path('hp/cloud/src/worker_core.ts').read_text()
+          device_sync = Path('hp/cloud/src/device_sync.ts').read_text()
+          scheduler = Path('hp/cloud/src/scheduler.ts').read_text()
+          scheduler_runtime = Path('hp/cloud/src/scheduler_runtime.ts').read_text()
+          octopus_history = Path('hp/cloud/src/octopus_history.ts').read_text()
+          status_report = Path('hp/video/src/status-report.js').read_text()
+          status_lists = Path('hp/video/src/status-lists.js').read_text()
+          liveness = Path('hp/video/src/liveness-monitor.js').read_text()
+          migration = Path('hp/cloud/migrations/202607230500_d1_read_hotspots.sql').read_text()
+          runtime_migration = Path('hp/cloud/migrations/202607240200_d1_runtime_reduction.sql').read_text()
+          radar_source = Path('hp/cloud/src/radar_source.ts').read_text()
+          radar_cache = Path('hp/cloud/src/radar_bundle_cache.ts').read_text()
           required_workflow = (
               'workflows: ["Deploy unified homepanel-cloud Worker"]',
               'cron: "47 2 * * *"',
               'issues: write',
               'statuses: write',
-              'D1_CONFIG_GLOBS: cloud/wrangler.jsonc',
+              'D1_CONFIG_GLOBS: hp/cloud/wrangler.jsonc',
               'D1_DATABASE_NAME: homepanel-data',
               'DAILY_REQUEST_BUDGET: "3000"',
               'DAILY_REQUEST_RESERVE: "0"',
@@ -214,16 +214,16 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: |
-            cloud/package-lock.json
-            video/package.json
+            hp/cloud/package-lock.json
+            hp/video/package.json
       - name: Install HomePanel dependencies
-        working-directory: cloud
+        working-directory: hp/cloud
         run: npm ci --no-audit --no-fund
       - name: Install video runtime dependencies
-        working-directory: video
+        working-directory: hp/video
         run: npm install --no-audit --no-fund
       - name: Check HomePanel sources
-        working-directory: cloud
+        working-directory: hp/cloud
         shell: bash
         run: |
           set -o pipefail
@@ -232,16 +232,16 @@ jobs:
           node_modules/.bin/wrangler d1 insights --help | grep -q -- '--sort-by'
           node_modules/.bin/wrangler d1 insights --help | grep -q -- '--json'
       - name: Run HomePanel tests
-        working-directory: cloud
+        working-directory: hp/cloud
         shell: bash
         run: |
           set -o pipefail
           npm test 2>&1 | tee test.log
       - name: Build the unified Worker
-        working-directory: cloud
+        working-directory: hp/cloud
         run: npm run check:unified-bundle
       - name: Verify local unified D1 migrations
-        working-directory: cloud
+        working-directory: hp/cloud
         shell: bash
         run: |
           set -o pipefail
@@ -257,8 +257,8 @@ jobs:
         with:
           name: homepanel-unified-validation-output-${{ github.run_id }}
           path: |
-            cloud/source-check.log
-            cloud/test.log
-            cloud/d1-validation.log
+            hp/cloud/source-check.log
+            hp/cloud/test.log
+            hp/cloud/d1-validation.log
           if-no-files-found: warn
           retention-days: 7

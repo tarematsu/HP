@@ -5,9 +5,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/video-hot-path-benchmark.yml'
-      - 'video/package.json'
-      - 'video/scripts/benchmark-hot-path.mjs'
-      - 'video/test/hot-path-benchmark.test.js'
+      - 'hp/video/package.json'
+      - 'hp/video/scripts/benchmark-hot-path.mjs'
+      - 'hp/video/test/hot-path-benchmark.test.js'
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: video
+        working-directory: hp/video
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +30,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-22-video-${{ hashFiles('video/package.json') }}
+          key: ${{ runner.os }}-node-22-video-${{ hashFiles('hp/video/package.json') }}
           restore-keys: |
             ${{ runner.os }}-node-22-video-
       - run: npm install --no-audit --no-fund
@@ -42,6 +42,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: video-hot-path-benchmark-${{ github.event.pull_request.head.sha || github.sha }}
-          path: video/hot-path-benchmark.json
+          path: hp/video/hot-path-benchmark.json
           if-no-files-found: error
           retention-days: 14
