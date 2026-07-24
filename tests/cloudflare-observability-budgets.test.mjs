@@ -69,6 +69,8 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
   assert.match(dailyAudit, /configured_queue_ids/);
   assert.match(dailyAudit, /Projected 24h/);
+  assert.match(dailyAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
+  assert.doesNotMatch(dailyAudit, /def account_id|accounts\?per_page=50|urllib\.parse/);
   assert.match(freeTierAudit, /def aggregate\(row:/);
   assert.match(freeTierAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
   assert.doesNotMatch(
