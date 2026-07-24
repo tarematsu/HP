@@ -190,6 +190,20 @@ test('completed Spotify auth clears pending state even when controller creation 
   assert.doesNotMatch(releaseCompletedAuth, /player_->ReleaseCompletedAuth\(\);/);
 });
 
+test('auth release is consumed per player before A/B change flags are merged', () => {
+  const consumeFlags = section(
+    handleSource,
+    'uint32_t StationheadHandleBase::ConsumeChangeFlags()',
+    'void StationheadHandleBase::AssignPlayer(',
+  );
+  assert.match(consumeFlags, /if \(\(flags & StationheadChangeReleaseAuth\) != 0\)/);
+  assert.match(consumeFlags, /player_->FinalizeCompletedAuth\(\);/);
+  assert.match(
+    consumeFlags,
+    /flags &= ~\(StationheadChangeReleaseAuth \| StationheadChangeReturnMain\);/,
+  );
+});
+
 test('required playback WebView event registrations fail closed into recreation', () => {
   for (const resultName of ['newWindowResult', 'webMessageResult', 'processFailedResult']) {
     assert.match(webviewSource, new RegExp(`const HRESULT ${resultName} =`));
