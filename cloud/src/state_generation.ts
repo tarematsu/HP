@@ -11,13 +11,15 @@ export function stateGeneration(env: Env): number {
   return STATE_GENERATIONS.get(keyFor(env)) ?? 0;
 }
 
-export function markStateChanged(env: Env): number {
+export async function markStateChanged(env: Env): Promise<number> {
   const key = keyFor(env);
   const next = (STATE_GENERATIONS.get(key) ?? 0) + 1;
   STATE_GENERATIONS.set(key, next);
-  void invalidateCoordinatedDeviceSyncManifest(env).catch(error => {
+  try {
+    await invalidateCoordinatedDeviceSyncManifest(env);
+  } catch (error) {
     console.error("device sync manifest invalidation failed", error instanceof Error ? error.message : String(error));
-  });
+  }
   return next;
 }
 
