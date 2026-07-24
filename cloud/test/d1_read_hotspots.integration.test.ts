@@ -36,7 +36,7 @@ describe("D1 read hotspot migration", () => {
     expect(Number(triggers?.count)).toBe(0);
   });
 
-  it("restores active counts while preserving unrelated dirty state on block deletion", async () => {
+  it("restores active counts without marking the exact counter state dirty", async () => {
     const timestamp = "2026-07-23T00:00:00.000Z";
     const inserted = await env.DB.prepare(
       `INSERT INTO videos(media_url,canonical_key,media_type,first_seen_at,last_seen_at,status)
@@ -61,7 +61,7 @@ describe("D1 read hotspot migration", () => {
     const counts = await env.DB.prepare(
       "SELECT active_videos,blocked_videos,dirty FROM status_counts WHERE id=1",
     ).first<{ active_videos: number; blocked_videos: number; dirty: number }>();
-    expect(counts).toMatchObject({ active_videos: 1, blocked_videos: 0, dirty: 1 });
+    expect(counts).toMatchObject({ active_videos: 1, blocked_videos: 0, dirty: 0 });
     const video = await env.DB.prepare("SELECT status FROM videos WHERE id=?1")
       .bind(videoId).first<{ status: string }>();
     expect(video?.status).toBe("active");
