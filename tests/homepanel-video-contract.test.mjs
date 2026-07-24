@@ -40,24 +40,37 @@ test('HomePanel video runtime keeps deferred status and bounded liveness work', 
   ]);
 });
 
-test('manual Video workflows share the fail-closed Cloudflare context', () => {
-  const cpu = readSource('.github/workflows/video-worker-cpu-report.yml');
+test('remaining manual Video Queue workflow shares the fail-closed Cloudflare context', () => {
   const queues = readSource('.github/workflows/video-provision-manual-import-queue.yml');
+  expectAll(queues, [
+    'uses: ./.github/actions/cloudflare-context',
+    'api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}',
+  ]);
+  expectNone(queues, [
+    'Validate Cloudflare credentials',
+    'unset CLOUDFLARE_ACCOUNT_ID',
+    'npx --no-install wrangler whoami',
+  ]);
+});
 
-  for (const workflow of [cpu, queues]) {
-    expectAll(workflow, [
-      'uses: ./.github/actions/cloudflare-context',
-      'api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}',
-    ]);
-    expectNone(workflow, [
-      'Validate Cloudflare token',
-      'Validate Cloudflare credentials',
-      'unset CLOUDFLARE_ACCOUNT_ID',
-    ]);
+test('duplicate Video CPU reporting stays retired in favor of HomePanel observability', async () => {
+  for (const path of [
+    '../.github/workflows/video-worker-cpu-report.yml',
+    '../hp/video/scripts/report-worker-cpu.mjs',
+    '../hp/video/scripts/report-worker-invocations.mjs',
+    '../hp/video/test/worker-cpu-report.test.js',
+    '../hp/video/test/worker-invocation-report.test.js',
+  ]) {
+    await assert.rejects(access(new URL(path, import.meta.url)), path);
   }
-  expectAll(cpu, ["'homepanel-cloud'"]);
-  expectNone(cpu, ["|| 'homepanel' }}"]);
-  expectNone(queues, ['npx --no-install wrangler whoami']);
+  const observability = readSource('.github/workflows/hp-observability.yml');
+  expectAll(observability, [
+    'CLOUDFLARE_WORKERS: homepanel-cloud',
+    'query-cloudflare-observability.py',
+    'audit-cloudflare-telemetry.py',
+    'workflow_dispatch:',
+    'lookback_minutes:',
+  ]);
 });
 
 test('retired standalone video build diagnostics stay removed', async () => {
