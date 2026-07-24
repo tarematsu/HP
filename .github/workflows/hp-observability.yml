@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/hp-observability.yml'
+      - '.github/actions/cloudflare-observability-query/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-observability.py'
@@ -105,35 +106,11 @@ jobs:
       - name: Collect metrics and live events in parallel
         id: observability-query
         continue-on-error: true
-        env:
-          LIVE_TAIL_WORKER: homepanel-cloud
-          LIVE_TAIL_SECONDS: "90"
-          LIVE_TAIL_PROBES: /v1/health,/
-        shell: bash
-        run: |
-          set -uo pipefail
-          actual_summary="$GITHUB_STEP_SUMMARY"
-          (
-            GITHUB_STEP_SUMMARY=observability-summary.md \
-              python3 .github/scripts/query-cloudflare-observability.py \
-              > observability-query.log 2>&1
-          ) &
-          query_pid=$!
-          (
-            set +e
-            node .github/scripts/capture-cloudflare-live-tail.mjs 2>&1 | tee live-tail.log
-            exit 0
-          ) &
-          tail_pid=$!
-
-          query_status=0
-          wait "$query_pid" || query_status=$?
-          wait "$tail_pid" || true
-          cat observability-query.log
-          if [[ -f observability-summary.md ]]; then
-            cat observability-summary.md >> "$actual_summary"
-          fi
-          exit "$query_status"
+        uses: ./.github/actions/cloudflare-observability-query
+        with:
+          live-tail-worker: homepanel-cloud
+          live-tail-seconds: "90"
+          live-tail-probes: /v1/health,/
 
       - name: Enforce current-version persisted and live CPU policy
         id: telemetry-policy
