@@ -5,6 +5,7 @@ import {
   type DeviceSyncManifestRow,
 } from "./device_sync";
 import { radarBundleShardResponse } from "./radar_bundle";
+import { registerRuntimeStorage } from "./runtime_storage_registry";
 import {
   refreshRuntimeJobs,
   runRuntimeSchedulerTick,
@@ -112,7 +113,9 @@ export class SchedulerCoordinator {
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
-  ) {}
+  ) {
+    registerRuntimeStorage(env, state.storage);
+  }
 
   private async nextWakeAt(nowMs = Date.now()): Promise<number> {
     const desired = await runtimeNextWakeAt(this.state, this.env, nowMs);
