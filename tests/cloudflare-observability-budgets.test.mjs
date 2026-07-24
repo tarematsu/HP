@@ -65,10 +65,11 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
   assert.match(dailyAudit, /configured_queue_ids/);
   assert.match(dailyAudit, /Projected 24h/);
-  assert.match(freeTierAudit, /def durable_object_namespace_ids\(/);
-  assert.match(freeTierAudit, /if script != worker:/);
   assert.match(freeTierAudit, /configured_resource_ids/);
-  assert.doesNotMatch(freeTierAudit, /script == WORKER or class_name == "RuntimeCoordinator"/);
+  assert.doesNotMatch(
+    freeTierAudit,
+    /def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces/,
+  );
   assert.match(workflow, /id: free-tier-budget/);
   assert.match(workflow, /id: budget-contract/);
   assert.match(workflow, /id: observability-query/);
