@@ -7,14 +7,21 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const int pad = std::max(6, rowHeight * 10 / 100);
   const int textLeft = rects.artwork.right + pad;
   const int textRight = rects.button.left - pad;
-  const bool bothStationheadsOnFallback =
-      IsStationheadFallbackUrl(nativeStationhead_.url, nativeStationhead_.fallbackUrl) &&
-      IsStationheadFallbackUrl(nativeStationhead_.secondaryUrl, nativeStationhead_.fallbackUrl);
+  const bool primaryOnFallback =
+      IsStationheadFallbackUrl(nativeStationhead_.url, nativeStationhead_.fallbackUrl);
+  const bool secondaryConfigured = !nativeStationhead_.secondaryUrl.empty();
+  const bool allStationheadsOnFallback = primaryOnFallback &&
+      (!secondaryConfigured ||
+       IsStationheadFallbackUrl(nativeStationhead_.secondaryUrl,
+                                nativeStationhead_.fallbackUrl));
+  const bool selectedAudioPlaying = nativeStationhead_.primaryAudioSelected
+      ? nativeStationhead_.audioPlaying
+      : nativeStationhead_.secondaryPlaying;
   const int64_t nowMs = UnixMillis();
-  const NativePlaybackRender sharedPlayback = bothStationheadsOnFallback
+  const NativePlaybackRender sharedPlayback = allStationheadsOnFallback
       ? NativePlaybackRender{}
       : ResolveNativePlayback(0, nowMs);
-  const bool withProgress = !bothStationheadsOnFallback &&
+  const bool withProgress = !allStationheadsOnFallback &&
       sharedPlayback.hasTrack && sharedPlayback.track.durationMs > 0;
 
   const auto drawProgress = [&] {
@@ -106,7 +113,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
 
   const int artworkRadius = std::max(6, rowHeight * 14 / 100);
   DrawWidgetCard(dc, rects.artwork, kWidgetSurfaceAlt, artworkRadius);
-  if (!bothStationheadsOnFallback && sharedPlayback.hasTrack) {
+  if (!allStationheadsOnFallback && sharedPlayback.hasTrack) {
     const int saved = SaveDC(dc);
     HRGN artworkClip = CreateRoundRectRgn(rects.artwork.left, rects.artwork.top,
                                           rects.artwork.right + 1, rects.artwork.bottom + 1,
@@ -121,17 +128,22 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     RestoreDC(dc, saved);
   }
 
-  const std::wstring title = bothStationheadsOnFallback
+  const std::wstring title = allStationheadsOnFallback
       ? L"fallback中"
       : (sharedPlayback.hasTrack ? sharedPlayback.track.title : L"");
   const std::wstring artist = sharedPlayback.hasTrack ? sharedPlayback.track.artist : L"";
+  const bool stationheadNeedsAttention = nativeStationhead_.loginRequired ||
+      nativeStationhead_.processFailed || nativeStationhead_.spotifyAuthorization;
   const std::wstring detail = nativeStationhead_.loginRequired ? L"ログイン待ち"
       : nativeStationhead_.processFailed ? L"WebView再起動待ち"
-      : nativeStationhead_.audioPlaying ? L"再生中"
+      : nativeStationhead_.spotifyAuthorization ? L"Spotify認証中"
+      : selectedAudioPlaying ? L"再生中"
       : nativeStationhead_.created ? L"接続中"
       : L"起動待ち";
-  const std::wstring rowDetail =
-      sharedPlayback.available && !sharedPlayback.hasTrack ? L"次の曲を待機中" : detail;
+  const std::wstring rowDetail = !stationheadNeedsAttention &&
+      sharedPlayback.available && !sharedPlayback.hasTrack
+      ? L"次の曲を待機中"
+      : detail;
 
   SetTextColor(dc, kWidgetText);
   SelectObject(dc, TierFont(FontTier::Medium));
@@ -140,7 +152,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   DrawTextInRect(dc, title.empty() ? L"--" : title, titleRect,
                  DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
-  if (!bothStationheadsOnFallback) {
+  if (!allStationheadsOnFallback) {
     SetTextColor(dc, kWidgetMuted);
     SelectObject(dc, TierFont(FontTier::Small));
     RECT artistRect{textLeft, titleRect.bottom, textRight,
