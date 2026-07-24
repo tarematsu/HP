@@ -72,30 +72,6 @@ async function bootstrapRuntime(
   return runtime;
 }
 
-async function sendPipelineCheckpoint(env: Env, runtime: LivenessRuntimeRow): Promise<void> {
-  const pipeline = env.HOMEPANEL_PIPELINE;
-  if (!pipeline?.send) return;
-  try {
-    await pipeline.send([{
-      schemaVersion: 1,
-      eventType: "video_liveness_checkpoint",
-      occurredAt: runtime.lastRunAt ?? new Date().toISOString(),
-      phase: runtime.phase,
-      cycle: runtime.cycle,
-      checkedTotal: runtime.checkedTotal,
-      deadTotal: runtime.deadTotal,
-      revivedTotal: runtime.revivedTotal,
-      lastCheckedCount: runtime.lastCheckedCount,
-      lastDeadCount: runtime.lastDeadCount,
-      lastRevivedCount: runtime.lastRevivedCount,
-      lastUnknownCount: runtime.lastUnknownCount,
-      lastError: runtime.lastError,
-    }]);
-  } catch (error) {
-    console.error("video-liveness-pipeline-send-failed", error instanceof Error ? error.message : String(error));
-  }
-}
-
 function fakeSelectStatement(
   db: D1Database,
   storage: DurableObjectStorage,
@@ -167,7 +143,6 @@ function fakeUpdateStatement(
         } catch (error) {
           console.error("video-liveness-d1-checkpoint-failed", error instanceof Error ? error.message : String(error));
         }
-        await sendPipelineCheckpoint(env, next);
       }
       return d1Result([], 1);
     },
