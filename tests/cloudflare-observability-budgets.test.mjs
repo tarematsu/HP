@@ -35,7 +35,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
     'utf8',
   );
   const freeTierAudit = [
-    await readFile(new URL('.github/scripts/audit-cloudflare-free-tier.py', root), 'utf8'),
+    await readFile(new URL('.github/scripts/cloudflare_free_tier_audit.py', root), 'utf8'),
     await readFile(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root), 'utf8'),
   ].join('\n');
   assert.match(workflow, /workflows: \["Deploy production"\]/);
@@ -56,6 +56,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(workflow, /CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV/);
   assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR/);
   assert.match(workflow, /audit-cloudflare-free-tier\.py --self-test/);
+  assert.doesNotMatch(workflow, /audit-cloudflare-free-tier-account\.py/);
   assert.match(workflow, /audit-observability-budget-gates\.py --self-test/);
   assert.match(workflow, /audit-deployed-cloudflare-telemetry\.py --self-test/);
   assert.match(workflow, /tests\/cloudflare-observability-status\.test\.mjs/);
@@ -66,7 +67,7 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(dailyAudit, /Projected 24h/);
   assert.match(freeTierAudit, /def durable_object_namespace_ids\(/);
   assert.match(freeTierAudit, /if script != worker:/);
-  assert.match(freeTierAudit, /per_page=50/);
+  assert.match(freeTierAudit, /configured_resource_ids/);
   assert.doesNotMatch(freeTierAudit, /script == WORKER or class_name == "RuntimeCoordinator"/);
   assert.match(workflow, /id: free-tier-budget/);
   assert.match(workflow, /id: budget-contract/);
@@ -101,4 +102,5 @@ test('D1 query insights are manual-only and duplicate budget paths are gone', as
   await assert.rejects(access(new URL('.github/workflows/cloudflare-worker-request-budget.yml', root)));
   await assert.rejects(access(new URL('scripts/cloudflare-worker-request-budget.mjs', root)));
   await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-live-tail.py', root)));
+  await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-free-tier-account.py', root)));
 });
