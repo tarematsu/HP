@@ -13,15 +13,15 @@ function singleLine(name, value) {
 }
 
 export async function resolveCloudflareAccountId({
-  token,
+  token = '',
   accountId = '',
   fetchImpl = globalThis.fetch,
 }) {
-  const apiToken = singleLine('Cloudflare API token', token);
   const explicit = String(accountId || '').trim();
   if (explicit) return singleLine('Cloudflare account ID', explicit);
-  if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
 
+  const apiToken = singleLine('Cloudflare API token', token);
+  if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
   const response = await fetchImpl(ACCOUNTS_URL, {
     headers: {
       Authorization: `Bearer ${apiToken}`,
