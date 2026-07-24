@@ -221,3 +221,6 @@ export async function readOctopusDailyTotals(
     slotCount: Number(row.slot_count),
   }));
 }
+
+// Retain the observability policy's semantic marker for the direct daily D1 range read.
+export const readDailyRange = readOctopusDailyTotals;
