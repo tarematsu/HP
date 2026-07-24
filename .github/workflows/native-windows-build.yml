@@ -49,7 +49,7 @@ jobs:
         run: |
           $packageRoot = "hp/native/packages"
           $packageDir = Join-Path $packageRoot "Microsoft.Web.WebView2.1.0.4022.49"
-          if (Test-Path -LiteralPath (Join-Path $packageDir "build/hp/native/include/WebView2.h")) {
+          if (Test-Path -LiteralPath (Join-Path $packageDir "build/native/include/WebView2.h")) {
             Write-Host "WebView2 SDK already available."
             exit 0
           }
@@ -64,7 +64,7 @@ jobs:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           New-Item -ItemType Directory -Force hp/native/ci-logs | Out-Null
-          cmake -S native -B hp/native/build-ci `
+          cmake -S hp/native -B hp/native/build-ci `
             -G "Visual Studio 17 2022" -A x64 `
             -DHOMEPANEL_CI_STRICT=ON `
             -DHOMEPANEL_CI_STATIC_ANALYSIS=OFF `
@@ -132,7 +132,7 @@ jobs:
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cmake -S native -B hp/native/build-analyze `
+          cmake -S hp/native -B hp/native/build-analyze `
             -G "Visual Studio 17 2022" -A x64 `
             -DHOMEPANEL_CI_STRICT=ON `
             -DHOMEPANEL_CI_STATIC_ANALYSIS=ON `
@@ -228,7 +228,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
-          npm ci --prefix cloud --no-audit --no-fund
+          npm ci --prefix hp/cloud --no-audit --no-fund
 
       - name: Resolve Cloudflare settings
         if: github.ref == 'refs/heads/main'
