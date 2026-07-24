@@ -17,6 +17,7 @@ const MIN_RETRY_SECONDS = 60;
 const MAX_FAILURE_EXPONENT = 4;
 const EMPTY_RECHECK_SECONDS = 24 * 60 * 60;
 const MAX_RUNTIME_BATCH = 3;
+const MAX_RUNTIME_JOBS_PER_ALARM = 32;
 const NON_SOURCE_JOBS = new Set<string>([
   "cleanup",
   "update_check",
@@ -199,12 +200,26 @@ async function recordJobEventsBestEffort(env: Env, events: readonly PendingJobEv
 function dueJobs(
   envelope: RuntimeEnvelope,
   nowSeconds: number,
-  limit = MAX_RUNTIME_BATCH,
+  limit = MAX_RUNTIME_JOBS_PER_ALARM,
 ): RuntimeJob[] {
   return envelope.jobs
     .filter(job => job.nextRunAt <= nowSeconds)
     .sort((left, right) => left.nextRunAt - right.nextRunAt || left.name.localeCompare(right.name))
     .slice(0, Math.max(1, Math.trunc(limit)));
+}
+
+function nextCadenceAt(completedAt: number, intervalSeconds: number): number {
+  const interval = Math.max(MIN_RETRY_SECONDS, Math.trunc(intervalSeconds));
+  return (Math.floor(completedAt / interval) + 1) * interval;
+}
+
+async function executeDueJobs(env: Env, jobs: readonly RuntimeJob[]): Promise<JobExecution[]> {
+  const executions: JobExecution[] = [];
+  for (let offset = 0; offset < jobs.length; offset += MAX_RUNTIME_BATCH) {
+    const batch = jobs.slice(offset, offset + MAX_RUNTIME_BATCH);
+    executions.push(...await Promise.all(batch.map(job => executeRuntimeJob(env, job))));
+  }
+  return executions;
 }
 
 export async function runtimeNextWakeAt(
@@ -248,7 +263,7 @@ export async function runRuntimeSchedulerTick(
   const jobs = dueJobs(envelope, nowSeconds);
   if (!jobs.length) return [];
 
-  const executions = await Promise.all(jobs.map(job => executeRuntimeJob(env, job)));
+  const executions = await executeDueJobs(env, jobs);
   const completedAt = Math.floor(Date.now() / 1000);
   const events: PendingJobEvent[] = [];
 
@@ -259,7 +274,7 @@ export async function runRuntimeSchedulerTick(
     if (event) events.push(event);
 
     if (execution.success) {
-      job.nextRunAt = completedAt + job.intervalSeconds;
+      job.nextRunAt = nextCadenceAt(completedAt, job.intervalSeconds);
       job.lastSuccessAt = execution.startedAt;
       job.consecutiveFailures = 0;
       job.lastError = null;
