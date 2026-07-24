@@ -7,6 +7,7 @@ export interface Env {
   DB: D1Database;
   DATA_BUCKET?: R2Bucket;
   UPDATE_BUCKET?: R2Bucket;
+  SCHEDULER_COORDINATOR?: DurableObjectNamespace;
   HOMEPANEL_INGEST_SECRET?: string;
   HOMEPANEL_DEVICE_TOKENS?: string;
   HOMEPANEL_PRIMARY_DEVICE_ID?: string;

@@ -3,6 +3,7 @@ import { mergeR2EnvironmentTelemetry } from "./environment_r2";
 import { json } from "./http";
 import { unauthorized } from "./response";
 import type { Env } from "./sources";
+import { awaitStateInvalidation } from "./state_generation";
 import type { TelemetrySample } from "./telemetry_bucket";
 import {
   telemetryHeartbeatReturningStatement,
@@ -116,6 +117,7 @@ async function storeCompactTelemetry(
   }
   const samples = [...unique.values()].sort((left, right) => left.sequence - right.sequence);
   const merged = await mergeR2EnvironmentTelemetry(env, deviceId, samples, now);
+  await awaitStateInvalidation(env);
 
   const appVersion = String(input.appVersion ?? "").slice(0, 100) || null;
   const rawOutbox = Number(input.outboxCount);

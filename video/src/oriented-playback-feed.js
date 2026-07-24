@@ -3,6 +3,10 @@ import {
   parsePlaybackCursor
 } from './playback-cursor.js';
 import {
+  invalidateFeedSnapshotCache,
+  readFeedSnapshotPage
+} from './feed-snapshot.js';
+import {
   readActivePlaybackFallbackPage,
   seedShufflePivot,
   SHUFFLE_SQL_EXPRESSION
@@ -46,9 +50,14 @@ function isInitialCursor(value) {
   return value == null || value === '' || value === 'start';
 }
 
-export function invalidateOrientationPlaybackCache() {}
+export function invalidateOrientationPlaybackCache(db) {
+  invalidateFeedSnapshotCache(db);
+}
 
 export async function readOrientationPlaybackCursorPage(db, options) {
+  const snapshot = await readFeedSnapshotPage(db, options);
+  if (snapshot) return snapshot;
+
   const limit = Math.max(0, Number(options.limit) || 0);
   if (!limit) return { items: [], nextCursor: null };
 

@@ -7,9 +7,14 @@ const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.me
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const deviceExchange = readFileSync(new URL('../../cloud/src/device_exchange.ts', import.meta.url), 'utf8');
-const octopusHistory = readFileSync(new URL('../../cloud/src/octopus_history.ts', import.meta.url), 'utf8');
+const deviceSync = readFileSync(new URL('../../cloud/src/device_sync.ts', import.meta.url), 'utf8');
+const schedulerCoordinator = readFileSync(new URL('../../cloud/src/scheduler_coordinator.ts', import.meta.url), 'utf8');
 const schedulerRuntime = readFileSync(new URL('../../cloud/src/scheduler_runtime.ts', import.meta.url), 'utf8');
+const livenessDoDb = readFileSync(new URL('../../cloud/src/liveness_do_db.ts', import.meta.url), 'utf8');
 const telemetryHeartbeat = readFileSync(new URL('../../cloud/src/telemetry_heartbeat.ts', import.meta.url), 'utf8');
+const feedSnapshot = readFileSync(new URL('../src/feed-snapshot.js', import.meta.url), 'utf8');
+const playbackSync = readFileSync(new URL('../src/playback-feed-sync.js', import.meta.url), 'utf8');
+const sourceStorage = readFileSync(new URL('../src/video-storage-statements.js', import.meta.url), 'utf8');
 const resourceMigration = readFileSync(
   new URL('../../cloud/migrations/202607220100_resource_budget_3000.sql', import.meta.url),
   'utf8'
@@ -26,11 +31,16 @@ const runtimeBugfixMigration = readFileSync(
   new URL('../../cloud/migrations/202607240300_d1_runtime_bugfixes.sql', import.meta.url),
   'utf8'
 );
+const offloadMigration = readFileSync(
+  new URL('../../cloud/migrations/202607240400_storage_tier_offload.sql', import.meta.url),
+  'utf8'
+);
 const livenessSchedule = readFileSync(new URL('../src/liveness-schedule.js', import.meta.url), 'utf8');
 
 const DAY_SECONDS = 86_400;
 const TARGET = 3_000;
-const STATE_HEARTBEAT_SECONDS = 6 * 60 * 60;
+const READ_TARGET = 10_000;
+const STATE_HEARTBEAT_SECONDS = 24 * 60 * 60;
 const scheduledIntervals = {
   switchbot: 900,
   stationhead: 900,
@@ -66,18 +76,25 @@ test('static assets bypass the Worker while dynamic routes remain Worker-first',
   assert.notEqual(cloudConfig.assets.run_worker_first, true);
 });
 
-test('Workers KV is absent while bounded R2 caches remain declared', () => {
+test('R2 and the existing scheduler Durable Object are the primary offload tiers', () => {
   assert.equal(cloudConfig.kv_namespaces, undefined);
   assert.ok(cloudConfig.r2_buckets.some((entry) => entry.binding === 'DATA_BUCKET'));
+  assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'SCHEDULER_COORDINATOR'));
+  assert.match(feedSnapshot, /SNAPSHOT_KEY = 'video\/playback-feed\/v1\.json'/);
+  assert.match(feedSnapshot, /globalThis\.caches\?\.default/);
+  assert.match(schedulerCoordinator, /CANDIDATE_CHUNK_SIZE = 500/);
+  assert.match(schedulerCoordinator, /EXPECTED_SCHEDULED_FEED_GROUPS = 2/);
+  assert.match(schedulerCoordinator, /video-feed-stage/);
+  assert.match(schedulerCoordinator, /video-feed-refresh/);
 });
 
-test('native polling is fixed at thirty-minute sync and two-hour telemetry', () => {
+test('native polling is fixed at thirty-minute sync and four-hour telemetry', () => {
   assert.match(nativeConfig, /cloudPollSeconds = 1800;/);
-  assert.match(nativeConfig, /telemetryMinutes = 120;/);
+  assert.match(nativeConfig, /telemetryMinutes = 240;/);
   assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 1800;/);
-  assert.match(nativeCloudConfig, /config\.telemetryMinutes = 120;/);
-  assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:120/);
-  assert.match(adminPage, /config\.cloudPollSeconds=1800;config\.telemetryMinutes=120/);
+  assert.match(nativeCloudConfig, /config\.telemetryMinutes = 240;/);
+  assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
+  assert.match(adminPage, /config\.cloudPollSeconds=1800;config\.telemetryMinutes=240/);
 });
 
 test('scheduler drains all due work with bounded concurrency and aligned cadence', () => {
@@ -104,96 +121,114 @@ test('scheduler drains all due work with bounded concurrency and aligned cadence
   assert.doesNotMatch(schedulerRuntime, /UPDATE jobs SET/);
 });
 
-test('device exchange merges telemetry before sync and only telemetry signals the watchdog', () => {
+test('device exchange merges telemetry before DO-coordinated sync', () => {
   const telemetryAt = deviceExchange.indexOf('if (input.telemetry !== undefined)');
-  const watchdogAt = deviceExchange.indexOf('queueSchedulerWatchdog(env, ctx)');
   const mergeAt = deviceExchange.indexOf('await applyTelemetry');
-  const syncAt = deviceExchange.indexOf('await buildDeviceSyncPayloadForDevice');
+  const coordinatedAt = deviceExchange.indexOf('requestCoordinatedDeviceSync');
+  const fallbackAt = deviceExchange.indexOf('buildDeviceSyncPayloadForDevice');
   assert.ok(telemetryAt >= 0);
-  assert.ok(watchdogAt > telemetryAt);
-  assert.ok(mergeAt > watchdogAt);
-  assert.ok(syncAt > mergeAt);
+  assert.ok(mergeAt > telemetryAt);
+  assert.ok(coordinatedAt > mergeAt);
+  assert.ok(fallbackAt > coordinatedAt);
+  assert.match(deviceSync, /manifestOverride/);
+  assert.match(schedulerCoordinator, /DEVICE_SYNC_MANIFEST_KEY/);
 });
 
-test('Octopus uses a daily-only, gap-safe cursor-bounded D1 model', () => {
-  assert.match(octopusScheduleMigration, /PRIMARY KEY\(account_number, day\)/);
-  assert.match(octopusScheduleMigration, /WITHOUT ROWID/);
-  assert.match(octopusScheduleMigration, /DROP TABLE IF EXISTS octopus_readings/);
-  assert.match(octopusScheduleMigration, /CREATE TABLE octopus_sync_state/);
-  assert.match(octopusHistory, /OCTOPUS_CORRECTION_OVERLAP_DAYS = 1/);
-  assert.match(octopusHistory, /json_each\(\?2\)/);
-  assert.match(octopusHistory, /contiguousStoredThrough/);
-  assert.match(octopusHistory, /ON CONFLICT\(account_number,day\)/);
-  assert.match(octopusHistory, /SELECT day,energy_kwh,slot_count/);
-  assert.doesNotMatch(octopusHistory, /INSERT INTO octopus_readings/);
-  assert.doesNotMatch(octopusHistory, /DELETE FROM octopus_readings/);
+test('video catalog writes only new or materially changed rows', () => {
+  assert.doesNotMatch(sourceStorage, /videos\.last_seen_at < \?/);
+  assert.match(sourceStorage, /videos\.media_url IS NOT excluded\.media_url/);
+  assert.match(sourceStorage, /videos\.media_type IS NOT excluded\.media_type/);
+  assert.doesNotMatch(playbackSync, /last_seen_at/);
+  assert.match(playbackSync, /currentFeedRowsStatement/);
+  assert.match(playbackSync, /replaceItems/);
+  assert.match(playbackSync, /mergeItems/);
 });
 
-test('high-frequency D1 tables and legacy telemetry are compacted', () => {
+test('high-frequency D1 state is checkpointed or suppressed', () => {
   assert.match(runtimeMigration, /CREATE TABLE jobs_v2[\s\S]*WITHOUT ROWID/);
   assert.match(runtimeMigration, /CREATE TABLE current_state_v2[\s\S]*WITHOUT ROWID/);
   assert.match(runtimeMigration, /CREATE TABLE device_heartbeats_v2[\s\S]*WITHOUT ROWID/);
-  assert.match(runtimeMigration, /CREATE TABLE sync_manifest/);
-  assert.match(runtimeMigration, /CREATE TABLE job_events/);
-  assert.match(runtimeMigration, /DROP TABLE IF EXISTS environment_samples/);
-  assert.match(runtimeMigration, /DROP TABLE IF EXISTS environment_buckets/);
   assert.match(runtimeBugfixMigration, /WHEN NEW\.source IN/);
-  assert.match(runtimeBugfixMigration, /BEFORE DELETE ON videos/);
-  assert.match(runtimeBugfixMigration, /AFTER DELETE ON ranking_entries/);
   assert.match(telemetryHeartbeat, /HEARTBEAT_REFRESH_MS = 24 \* 60 \* 60_000/);
-  assert.match(telemetryHeartbeat, /last_seen_at<=\?7/);
+  assert.match(livenessDoDb, /D1_CHECKPOINT_MS = 24 \* 60 \* 60_000/);
+  assert.match(offloadMigration, /skip_redundant_current_state_heartbeat/);
+  assert.match(offloadMigration, /OLD\.fetched_at \+ 86400000/);
 });
 
-test('modeled daily D1 written rows stay below the 3000-row target', () => {
-  const schedulerCompletionRows = 0;
+test('modeled daily D1 written rows remain low after R2 and DO offload', () => {
   const switchbotChangedStateReserve = 24;
   const heartbeatStateRows = heartbeatStateIntervals
     .reduce((total, interval) => total + throttledHeartbeatWrites(interval), 0);
-  const compactTelemetryHeartbeatRows = runsPerDay(24 * 60 * 60);
-  const livenessStateRows = runsPerDay(scheduledIntervals.video_liveness);
+  const compactTelemetryHeartbeatRows = 1;
+  const livenessCheckpointRows = 1;
   const jobFailureRecoveryReserve = 4;
   const octopusDailyAndCursorRows = 3;
-  const changeCommandWebhookAndVideoMutationReserve = 1_500;
-  const modeledRows = schedulerCompletionRows
-    + switchbotChangedStateReserve
+  const feedStateRows = 1;
+  const collectionObservabilityReserve = 40;
+  const commandWebhookAndMaterialVideoMutationReserve = 500;
+  const modeledRows = switchbotChangedStateReserve
     + heartbeatStateRows
     + compactTelemetryHeartbeatRows
-    + livenessStateRows
+    + livenessCheckpointRows
     + jobFailureRecoveryReserve
     + octopusDailyAndCursorRows
-    + changeCommandWebhookAndVideoMutationReserve;
+    + feedStateRows
+    + collectionObservabilityReserve
+    + commandWebhookAndMaterialVideoMutationReserve;
 
-  assert.equal(heartbeatStateRows, 17);
-  assert.equal(compactTelemetryHeartbeatRows, 1);
-  assert.equal(livenessStateRows, 24);
-  assert.equal(modeledRows, 1_573);
+  assert.equal(heartbeatStateRows, 5);
+  assert.equal(modeledRows, 579);
   assert.ok(modeledRows < TARGET);
 });
 
-test('modeled daily Worker invocations stay below the 3000-request target', () => {
+test('modeled background D1 reads remain below ten thousand rows per day', () => {
+  const deviceSpecificRows = runsPerDay(1800) * 3;
+  const manifestBootstrapAndInvalidationRows = 10;
+  const livenessRows = runsPerDay(scheduledIntervals.video_liveness) * 7;
+  const dailyFeedReconciliationRows = 4_000;
+  const schedulerAndSourceRowsReserve = 1_000;
+  const apiFallbackRowsReserve = 500;
+  const modeledReads = deviceSpecificRows
+    + manifestBootstrapAndInvalidationRows
+    + livenessRows
+    + dailyFeedReconciliationRows
+    + schedulerAndSourceRowsReserve
+    + apiFallbackRowsReserve;
+
+  assert.equal(modeledReads, 5_822);
+  assert.ok(modeledReads < READ_TARGET);
+});
+
+test('modeled daily Worker and internal DO invocations stay below target', () => {
   const nativeExchangeRequests = runsPerDay(1800);
-  const telemetryUploadRequests = runsPerDay(120 * 60);
+  const deviceSyncDoRequests = nativeExchangeRequests;
+  const telemetryUploadRequests = runsPerDay(240 * 60);
   const schedulerAlarmInvocations = modeledSchedulerAlarms();
-  // Only telemetry-bearing exchanges signal the DO watchdog. Count every upload
-  // as a separate isolate to keep this an intentionally conservative upper bound.
   const schedulerEnsureSignals = telemetryUploadRequests;
+  const scheduledFeedDoRequests = 2;
+  const stateInvalidationReserve = 12;
   const radarGenerationReserve = 50;
   const apiWebhookVideoReserve = 1_900;
   const modeledRequests = nativeExchangeRequests
+    + deviceSyncDoRequests
     + schedulerAlarmInvocations
     + schedulerEnsureSignals
+    + scheduledFeedDoRequests
+    + stateInvalidationReserve
     + radarGenerationReserve
     + apiWebhookVideoReserve;
 
-  assert.equal(nativeExchangeRequests, 48);
-  assert.equal(telemetryUploadRequests, 12);
+  assert.equal(telemetryUploadRequests, 6);
   assert.equal(schedulerAlarmInvocations, 96);
-  assert.equal(modeledRequests, 2_106);
+  assert.equal(modeledRequests, 2_162);
   assert.ok(modeledRequests < TARGET);
 });
 
-test('bounded R2 writes remain modest', () => {
-  const telemetryStateWrites = runsPerDay(120 * 60);
+test('primary R2 writes remain bounded', () => {
+  const telemetryStateWrites = runsPerDay(240 * 60);
   const radarLatestReserve = 24;
-  assert.equal(telemetryStateWrites + radarLatestReserve, 36);
+  const feedSnapshotWrites = 1;
+  const primaryR2Writes = telemetryStateWrites + radarLatestReserve + feedSnapshotWrites;
+
+  assert.equal(primaryR2Writes, 31);
 });

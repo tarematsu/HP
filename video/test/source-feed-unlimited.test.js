@@ -167,16 +167,16 @@ class AbortDuringFinishDb {
   }
 }
 
-test('desired playback feed excludes manually and automatically excluded videos', () => {
-  const statement = desiredFeedStatement(createStatementCaptureDb(), '2026-07-02T00:00:00.000Z');
+test('desired playback feed reads the compacted active ranking without last-seen or exclusion scans', () => {
+  const statement = desiredFeedStatement(createStatementCaptureDb());
 
-  assert.match(statement.sql, /FROM videos AS video/);
+  assert.match(statement.sql, /FROM ranking_entries AS ranking/);
+  assert.match(statement.sql, /INNER JOIN videos AS video/);
   assert.match(statement.sql, /video\.status = 'active'/);
-  assert.match(statement.sql, /video_blocklist AS bad/);
-  assert.match(statement.sql, /video_death_list AS death/);
-  assert.match(statement.sql, /bad\.canonical_key = video\.canonical_key/);
-  assert.match(statement.sql, /death\.canonical_key = video\.canonical_key/);
-  assert.equal(statement.args[1], PLAYBACK_FEED_LIMIT);
+  assert.doesNotMatch(statement.sql, /last_seen_at/);
+  assert.doesNotMatch(statement.sql, /video_blocklist/);
+  assert.doesNotMatch(statement.sql, /video_death_list/);
+  assert.equal(statement.args[0], PLAYBACK_FEED_LIMIT);
 });
 
 test('playback feed planner removes current entries no longer desired', () => {
