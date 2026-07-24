@@ -1,7 +1,6 @@
 import { authorizedDevice, bearerToken, DEVICE_ID_PATTERN } from "./auth";
 import { mergeR2EnvironmentTelemetry } from "./environment_r2";
 import { json } from "./http";
-import { sendPipelineRecordsBestEffort } from "./pipeline_sink";
 import { unauthorized } from "./response";
 import type { Env } from "./sources";
 import type { TelemetrySample } from "./telemetry_bucket";
@@ -98,30 +97,6 @@ function validatedTelemetry(value: unknown): ValidatedTelemetry | null {
   return { input: input as ValidatedTelemetryInput, deviceId };
 }
 
-function pipelineTelemetryRecords(
-  deviceId: string,
-  appVersion: string | null,
-  stationheadOk: number,
-  outboxCount: number,
-  samples: readonly TelemetrySample[],
-): Record<string, unknown>[] {
-  return samples.map(sample => ({
-    schemaVersion: 1,
-    eventType: "homepanel_telemetry",
-    deviceId,
-    appVersion,
-    stationheadOk: stationheadOk === 1,
-    outboxCount,
-    sequence: sample.sequence,
-    observedAt: new Date(sample.observedAt).toISOString(),
-    co2: sample.co2 ?? null,
-    temperature: sample.temperature ?? null,
-    humidity: sample.humidity ?? null,
-    temperatureCorrected: sample.temperatureCorrected ?? null,
-    humidityCorrected: sample.humidityCorrected ?? null,
-  }));
-}
-
 async function storeCompactTelemetry(
   input: ValidatedTelemetryInput,
   env: Env,
@@ -146,21 +121,15 @@ async function storeCompactTelemetry(
   const rawOutbox = Number(input.outboxCount);
   const outboxCount = Number.isFinite(rawOutbox) ? Math.max(0, Math.trunc(rawOutbox)) : 0;
   const stationheadOk = input.stationheadOk ? 1 : 0;
-  const [heartbeat] = await Promise.all([
-    telemetryHeartbeatReturningStatement(
-      env,
-      deviceId,
-      now,
-      appVersion,
-      stationheadOk,
-      outboxCount,
-      merged.lastSequence,
-    ).first<TelemetryHeartbeatReceipt>(),
-    sendPipelineRecordsBestEffort(
-      env,
-      pipelineTelemetryRecords(deviceId, appVersion, stationheadOk, outboxCount, samples),
-    ),
-  ]);
+  const heartbeat = await telemetryHeartbeatReturningStatement(
+    env,
+    deviceId,
+    now,
+    appVersion,
+    stationheadOk,
+    outboxCount,
+    merged.lastSequence,
+  ).first<TelemetryHeartbeatReceipt>();
   const lastSequence = Math.max(merged.lastSequence, Number(heartbeat?.last_sequence ?? 0));
 
   const body: Record<string, unknown> = {
