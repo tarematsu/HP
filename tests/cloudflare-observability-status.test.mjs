@@ -34,7 +34,7 @@ test('observability status body is stable, sanitized, and fail-closed', () => {
     summaries: {
       daily: '## Daily usage\n\nD1 rows read: 10',
       freeTier: '## Included usage\n\nQueue operations: 20',
-      telemetry: 'Authorization: Bearer secret-value',
+      telemetry: 'TELEMETRY_AUDIT={"authorization":"Bearer secret-value"}',
     },
     activeDeployments: {
       'sh-runtime-orchestrator': {
