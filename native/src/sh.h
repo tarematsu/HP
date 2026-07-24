@@ -97,10 +97,16 @@ class StationheadPlayer {
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
   [[nodiscard]] bool AudioPlaying() const noexcept {
-    return audioPlaying_.load(std::memory_order_relaxed);
+    // Once recreation is scheduled, the current controller is no longer a
+    // trustworthy handoff source even if WebView2 has not emitted its final
+    // audio-stopped event yet.
+    return !recreating_.load(std::memory_order_relaxed) &&
+           audioPlaying_.load(std::memory_order_relaxed);
   }
   [[nodiscard]] int64_t AudioPlayingSince() const noexcept {
-    return audioPlayingSinceAt_.load(std::memory_order_relaxed);
+    return AudioPlaying()
+        ? audioPlayingSinceAt_.load(std::memory_order_relaxed)
+        : 0;
   }
   [[nodiscard]] bool SpotifyAuthorizationActive() const {
     std::lock_guard lock(mutex_);
