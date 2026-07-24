@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  collectLivenessResults,
   LIVENESS_FEED_SNAPSHOT_PENDING_KEY,
   refreshLivenessFeedSnapshotWithRetry,
 } from "../src/video_liveness";
@@ -71,5 +72,24 @@ describe("liveness feed snapshot retry", () => {
 
     expect(refresh).not.toHaveBeenCalled();
     expect(operations).toEqual([`get:${LIVENESS_FEED_SNAPSHOT_PENDING_KEY}`]);
+  });
+
+  it("marks snapshot repair pending when liveness reports a swallowed failure", async () => {
+    const { storage, values, operations } = fakeStorage();
+
+    await expect(collectLivenessResults(storage, [Promise.resolve(null)]))
+      .rejects.toThrow("video liveness failed");
+
+    expect(values.get(LIVENESS_FEED_SNAPSHOT_PENDING_KEY)).toBe(true);
+    expect(operations).toEqual([`put:${LIVENESS_FEED_SNAPSHOT_PENDING_KEY}`]);
+  });
+
+  it("marks snapshot repair pending when liveness rejects after partial work", async () => {
+    const { storage, values } = fakeStorage();
+
+    await expect(collectLivenessResults(storage, [Promise.reject(new Error("state write failed"))]))
+      .rejects.toThrow("state write failed");
+
+    expect(values.get(LIVENESS_FEED_SNAPSHOT_PENDING_KEY)).toBe(true);
   });
 });
