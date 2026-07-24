@@ -48,7 +48,7 @@ test('observability uses measured budgets and post-deploy Cloudflare API diagnos
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /^  push:\n/m);
   assert.match(workflow, /branches: \[main\]/);
-  assert.match(workflow, /\.github\/workflows\/fetch-cloudflare-observability\.yml/);
+  assert.match(workflow, /\.github\/workflows\/sh-observability\.yml/);
   assert.match(workflow, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
   assert.doesNotMatch(workflow, /^      - '(?:worker|site|packages)\//m);
   assert.match(workflow, /^  schedule:\n/m);
