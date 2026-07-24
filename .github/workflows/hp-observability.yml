@@ -17,6 +17,9 @@ on:
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
+      - 'tests/helpers/source-contract.mjs'
+      - 'tests/homepanel-*.test.mjs'
+      - 'tests/observability-status-publisher.test.mjs'
   schedule:
     - cron: "47 2 * * *"
   workflow_dispatch:
@@ -75,7 +78,7 @@ jobs:
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node --test \
-            tests/homepanel-production-contract.test.mjs \
+            tests/homepanel-*.test.mjs \
             tests/observability-status-publisher.test.mjs
 
       - name: Enforce projected UTC daily Worker, D1, and Queue budgets
