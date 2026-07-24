@@ -65,3 +65,16 @@ test('feed hash does not collide through comma-delimited serialization', async (
 
   assert.notEqual(first, second);
 });
+
+test('feed hash changes when a stable video id receives a new media URL', async () => {
+  const first = await feedContentHash([{
+    videoId: 42,
+    mediaUrl: 'https://cdn.example/old.mp4'
+  }]);
+  const second = await feedContentHash([{
+    videoId: 42,
+    mediaUrl: 'https://cdn.example/new.mp4'
+  }]);
+
+  assert.notEqual(first, second);
+});
