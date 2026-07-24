@@ -6,10 +6,10 @@ import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
 const scriptUrl = new URL('.github/scripts/audit-cloudflare-free-tier.py', root);
-const script = [
-  readFileSync(new URL('.github/scripts/cloudflare_free_tier_audit.py', root), 'utf8'),
-  readFileSync(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root), 'utf8'),
-].join('\n');
+const script = readFileSync(
+  new URL('.github/scripts/cloudflare_free_tier_audit.py', root),
+  'utf8',
+);
 const runtime = JSON.parse(readFileSync(new URL('worker/wrangler.runtime.jsonc', root), 'utf8'));
 const responseStore = readFileSync(new URL('worker/src/pages-response-store.js', root), 'utf8');
 const responseEntry = readFileSync(new URL('worker/src/pages-read-model-entry.js', root), 'utf8');
@@ -40,7 +40,8 @@ test('Cloudflare resource budgets are fixed at 80 percent of included usage', ()
   assert.match(script, /kvStorageAdaptiveGroups/);
   assert.doesNotMatch(script, /"pipelineTransformBytes"\s*:/);
   assert.doesNotMatch(script, /^\s+pipelineOperators:/m);
-  assert.match(script, /per_page=50/);
+  assert.match(script, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
+  assert.doesNotMatch(script, /accounts\?per_page=50|importlib\.util|audit-cloudflare-free-tier-core/);
   const result = spawnSync('python3', [fileURLToPath(scriptUrl), '--self-test'], {
     encoding: 'utf8',
     env: {
