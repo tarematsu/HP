@@ -17,15 +17,32 @@ concurrency:
 
 jobs:
   generate:
-    name: Generate final monorepo workflows
+    name: Synchronize HP and generate final workflows
     if: github.head_ref == 'agent/import-sh-snapshot' || github.ref_name == 'agent/import-sh-snapshot'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/import-sh-snapshot
           fetch-depth: 0
+
+      - name: Synchronize latest HP main into hp subtree
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git worktree add --detach "$RUNNER_TEMP/hp-main" origin/main
+          for directory in cloud video native; do
+            rm -rf "hp/$directory"
+            mkdir -p "hp/$directory"
+            rsync -a --delete "$RUNNER_TEMP/hp-main/$directory/" "hp/$directory/"
+          done
+          for document in AGENTS.md README.md DEPLOYMENT.md; do
+            if [[ -f "$RUNNER_TEMP/hp-main/$document" ]]; then
+              cp "$RUNNER_TEMP/hp-main/$document" "hp/$document"
+            fi
+          done
+          rsync -a "$RUNNER_TEMP/hp-main/.github/scripts/" .github/scripts/
 
       - name: Fetch pinned SH workflow source
         run: |
@@ -43,11 +60,11 @@ jobs:
           SH_SOURCE: ${{ runner.temp }}/SH-source
         run: python3 .github/scripts/generate-monorepo-workflows.py
 
-      - name: Commit generated bundle
+      - name: Commit synchronized applications and generated bundle
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add generated-workflows
-          git commit -m "Generate unified workflow bundle"
+          git add hp .github/scripts generated-workflows
+          git commit -m "Synchronize HP main and generate unified workflows"
           git push origin HEAD:agent/import-sh-snapshot
