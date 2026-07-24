@@ -133,19 +133,20 @@ export async function runVideoLiveness(
     results = await collectLivenessResults(storage, pending);
   } catch (error) {
     // The result is uncertain only after the scheduled work has settled. Repair
-    // the snapshot in the same alarm as well as retaining the durable marker;
-    // this closes the gap where a later unchanged batch cannot rediscover the
-    // feed mutation that preceded the failure.
-    if (storage) {
-      try {
+    // the snapshot in the same alarm; DO-backed runs also retain the durable
+    // marker, while the direct path has no marker and must rebuild immediately.
+    try {
+      if (storage) {
         await refreshLivenessFeedSnapshotWithRetry(
           storage,
           true,
           () => refreshFeedSnapshot(env),
         );
-      } catch (repairError) {
-        console.error("video-liveness-feed-repair-after-failure-failed", errorMessage(repairError));
+      } else {
+        await refreshCompactedFeedSnapshot(env);
       }
+    } catch (repairError) {
+      console.error("video-liveness-feed-repair-after-failure-failed", errorMessage(repairError));
     }
     throw error;
   }
