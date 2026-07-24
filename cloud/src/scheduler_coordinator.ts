@@ -1,6 +1,9 @@
 import { radarBundleShardResponse } from "./radar_bundle";
-import { ensureSystemJobs } from "./scheduler";
-import { runSchedulerTickLowWrite } from "./scheduler_tick";
+import {
+  resetRuntimeFromD1,
+  runRuntimeSchedulerTick,
+  runtimeNextWakeAt,
+} from "./scheduler_runtime";
 import type { Env } from "./sources";
 
 const COORDINATOR_NAME = "global";
@@ -8,14 +11,9 @@ const ENSURE_THROTTLE_MS = 15 * 60_000;
 const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
-const EMPTY_QUEUE_RECHECK_MS = 24 * 60 * 60_000;
 
 interface SchedulerEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
-}
-
-interface NextWakeRow {
-  wake_at: number | null;
 }
 
 let nextEnsureAllowedAt = 0;
@@ -81,21 +79,8 @@ export class SchedulerCoordinator {
   ) {}
 
   private async nextWakeAt(nowMs = Date.now()): Promise<number> {
-    await ensureSystemJobs(this.env, nowMs);
-    const nowSeconds = Math.floor(nowMs / 1000);
-    const row = await this.env.DB.prepare(
-      `SELECT MIN(
-         CASE
-           WHEN lease_until IS NOT NULL AND lease_until>=?1 THEN lease_until+1
-           WHEN next_run_at<=?1 THEN ?1
-           ELSE next_run_at
-         END
-       ) AS wake_at
-       FROM jobs`,
-    ).bind(nowSeconds).first<NextWakeRow>();
-    const wakeAtSeconds = Number(row?.wake_at);
-    if (!Number.isFinite(wakeAtSeconds)) return nowMs + EMPTY_QUEUE_RECHECK_MS;
-    return Math.max(nowMs + MIN_ALARM_DELAY_MS, wakeAtSeconds * 1000);
+    const desired = await runtimeNextWakeAt(this.state, this.env, nowMs);
+    return Math.max(nowMs + MIN_ALARM_DELAY_MS, desired);
   }
 
   private async setEarlierAlarm(desiredAt: number): Promise<number> {
@@ -123,6 +108,9 @@ export class SchedulerCoordinator {
       return radarBundleShardResponse(request, this.env);
     }
     if (path === "/wake") {
+      // Manual refresh is rare. Re-import the D1 configuration snapshot only on
+      // this explicit signal; normal alarms remain entirely in DO storage.
+      await resetRuntimeFromD1(this.state, this.env);
       const alarmAt = await this.setEarlierAlarm(Date.now() + MIN_ALARM_DELAY_MS);
       return Response.json({ scheduled: true, alarmAt }, { status: 202 });
     }
@@ -135,17 +123,15 @@ export class SchedulerCoordinator {
 
   async alarm(): Promise<void> {
     try {
-      // The Durable Object serializes alarms, so a separate D1 lease write is
-      // unnecessary. One compare-and-set completion advances the selected job.
-      await runSchedulerTickLowWrite(this.env);
+      // This object serializes alarms, so runtime leases and successful
+      // completion checkpoints do not need D1 writes.
+      await runRuntimeSchedulerTick(this.state, this.env);
     } catch (error) {
       console.error("Scheduler alarm job failed", error instanceof Error ? error.message : String(error));
     }
 
     try {
-      // Re-evaluate the indexed jobs table after each job. Remaining due work
-      // receives the next alarm after the one-second floor.
-      await this.scheduleNext();
+      await this.state.storage.setAlarm(await this.nextWakeAt());
     } catch (error) {
       console.error("Failed to schedule the next scheduler alarm", error instanceof Error ? error.message : String(error));
       await this.state.storage.setAlarm(Date.now() + RECOVERY_ALARM_DELAY_MS);
