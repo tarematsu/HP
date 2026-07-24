@@ -41,24 +41,31 @@ export async function collectLivenessResults(
 ): Promise<unknown[]> {
   const settled = await Promise.allSettled(pending);
   const fulfilled: unknown[] = [];
-  let failure: unknown = null;
+  let hasRejected = false;
+  let rejectionReason: unknown;
+  let resultFailure: Error | null = null;
   for (const result of settled) {
     if (result.status === "rejected") {
-      if (failure === null) failure = result.reason;
+      if (!hasRejected) {
+        hasRejected = true;
+        rejectionReason = result.reason;
+      }
       continue;
     }
     fulfilled.push(result.value);
-    const resultFailure = livenessResultFailure(result.value);
-    if (resultFailure && failure === null) failure = resultFailure;
+    if (!resultFailure) resultFailure = livenessResultFailure(result.value);
   }
-  if (failure === null) return fulfilled;
+  if (!hasRejected && !resultFailure) return fulfilled;
 
   // A failure can happen after D1 mutations commit but before the liveness
   // runtime state/result is returned. Wait for every scheduled task to settle
   // before repairing so a slower sibling cannot mutate the feed after the R2
   // snapshot has already been regenerated.
   if (storage) await persistSnapshotRepairMarker(storage);
-  throw failure;
+  if (hasRejected) {
+    throw rejectionReason ?? new Error("video liveness failed");
+  }
+  throw resultFailure;
 }
 
 export async function refreshLivenessFeedSnapshotWithRetry(
