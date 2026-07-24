@@ -47,13 +47,23 @@ jobs:
         env:
           HP_MAIN: ${{ runner.temp }}/hp-main
           SH_SOURCE: ${{ runner.temp }}/SH-source
-        run: python3 .github/scripts/prepare-final-monorepo.py
+        run: |
+          set +e
+          python3 .github/scripts/prepare-final-monorepo.py > prepare-final-monorepo.log 2>&1
+          status=$?
+          cat prepare-final-monorepo.log
+          echo "$status" > prepare-final-monorepo.status
+          exit 0
 
-      - name: Commit prepared artifacts
+      - name: Commit prepared artifacts and diagnostics
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add hp .github/scripts corrected-workflows
-          git commit -m "Synchronize latest HP and prepare final workflows"
+          git add hp .github/scripts corrected-workflows prepare-final-monorepo.log prepare-final-monorepo.status
+          if git diff --cached --quiet; then
+            echo "No preparation changes"
+            exit 0
+          fi
+          git commit -m "Capture final monorepo preparation"
           git push origin HEAD:agent/import-sh-snapshot
