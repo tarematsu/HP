@@ -21,7 +21,7 @@ describe("video liveness query indexes", () => {
     expect(rankingIndexes.results?.map(row => row.name)).toContain("idx_ranking_video_period");
   });
 
-  it("plans the runtime base cursor through the status/id index", async () => {
+  it("forces the runtime base cursor through the status/id index", async () => {
     expect(BASE_LIVENESS_SELECT_SQL).toContain("INDEXED BY idx_videos_status_id");
     const plan = await env.DB.prepare(
       `EXPLAIN QUERY PLAN ${BASE_LIVENESS_SELECT_SQL}`,
