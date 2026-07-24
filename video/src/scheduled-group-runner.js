@@ -9,7 +9,10 @@ export async function runCollectionConfigs(env, configs, parentSignal, scope) {
 
   await ensureDbIndexes(env.DB);
   await closeStaleCollectionRuns(env, configs);
-  const persistence = { collectionSeenKeys: new Set() };
+  const persistence = {
+    collectionSeenKeys: new Set(),
+    collectionItems: new Map()
+  };
   const results = [];
   let successfulSources = 0;
 
@@ -35,7 +38,9 @@ export async function runCollectionConfigs(env, configs, parentSignal, scope) {
   }
 
   if (!parentSignal?.aborted && successfulSources > 0) {
-    const combinedFeedCount = await finalizeCompactedFeed(env).catch(async (error) => {
+    const combinedFeedCount = await finalizeCompactedFeed(env, undefined, {
+      desiredItems: [...persistence.collectionItems.values()]
+    }).catch(async (error) => {
       console.error('scheduled-feed-finalization-failed', {
         scope,
         error: String(error?.message || error)
