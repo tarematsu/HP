@@ -1,5 +1,6 @@
 import { applyD1Migrations, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { BASE_LIVENESS_SELECT_SQL } from "../../video/src/liveness-monitor.js";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
@@ -20,16 +21,10 @@ describe("video liveness query indexes", () => {
     expect(rankingIndexes.results?.map(row => row.name)).toContain("idx_ranking_video_period");
   });
 
-  it("plans the base cursor through the status/id index", async () => {
+  it("plans the runtime base cursor through the status/id index", async () => {
+    expect(BASE_LIVENESS_SELECT_SQL).toContain("INDEXED BY idx_videos_status_id");
     const plan = await env.DB.prepare(
-      `EXPLAIN QUERY PLAN
-       SELECT video.id, video.media_url, video.canonical_key,
-              video.last_http_status, video.fail_count
-         FROM videos AS video
-        WHERE video.id > ?1 AND video.id <= ?2
-          AND video.status = 'active'
-        ORDER BY video.id
-        LIMIT ?3`,
+      `EXPLAIN QUERY PLAN ${BASE_LIVENESS_SELECT_SQL}`,
     ).bind(0, 10_000, 5).all<{ detail: string }>();
 
     const details = (plan.results ?? []).map(row => row.detail).join("\n");
