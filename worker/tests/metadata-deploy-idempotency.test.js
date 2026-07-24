@@ -98,13 +98,14 @@ test('retired Workers are deleted after all three active Workers are reachable',
 });
 
 test('core consolidation is validated against the strict 10 ms CPU contract', () => {
-  const budget = readFileSync(
-    new URL('../../.github/scripts/enforce-worker-cpu-budget.py', import.meta.url),
+  const audit = readFileSync(
+    new URL('../../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
     'utf8',
   );
-  assert.match(budget, /BUDGET_MS = 10\.0/);
-  assert.match(budget, /"comparison": "less_than_or_equal"/);
-  assert.match(budget, /"statistic": "max"/);
+  assert.match(audit, /STATELESS_CPU_BUDGET_MS = float\(os\.environ\.get\("CPU_BUDGET_MS", "10"\)\)/);
+  assert.match(audit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
+  assert.match(audit, /cpu_ms <= item\["budget_ms"\]/);
+  assert.match(audit, /not truncated and not missing/);
 });
 
 test('core consolidation composes with the paginated Pages KV deploy', () => {
