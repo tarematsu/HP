@@ -27,7 +27,9 @@ jobs:
         run: python3 .github/scripts/finalize-monorepo.py
 
       - name: Exclude active workflow mutations from the bot commit
-        run: git checkout HEAD -- .github/workflows
+        run: |
+          git checkout HEAD -- .github/workflows
+          git clean -fd .github/workflows
 
       - name: Stage monorepo
         run: git add -A
