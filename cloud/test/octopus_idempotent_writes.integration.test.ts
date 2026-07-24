@@ -7,7 +7,7 @@ import {
 } from "../src/octopus_history";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
- type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
+type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
 
 const HALF_HOUR_MS = 30 * 60_000;
 
