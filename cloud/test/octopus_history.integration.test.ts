@@ -34,7 +34,7 @@ function completeReadings(range: OctopusRange): OctopusReading[] {
 }
 
 describe("Octopus D1 history", () => {
-  it("refreshes only the latest seven days while retaining older stored history", async () => {
+  it("requests only stable readings from the latest seven-day collection window", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const collectionStart = octopusCollectionStart(now);
     const stableCutoff = octopusStableCutoffJst(now);
@@ -64,21 +64,17 @@ describe("Octopus D1 history", () => {
     );
 
     expect(OCTOPUS_COLLECTION_DAYS).toBe(7);
-    expect(requested).toHaveLength(4);
+    expect(requested).toHaveLength(3);
     expect(requested[0]?.from.getTime()).toBe(collectionStart);
-    expect(requested.at(-1)?.to.getTime()).toBe(now);
+    expect(requested.at(-1)?.to.getTime()).toBe(stableCutoff);
     expect(requested.every(range => range.from.getTime() >= collectionStart)).toBe(true);
-    expect(requested.every(range => range.to.getTime() <= now)).toBe(true);
+    expect(requested.every(range => range.to.getTime() <= stableCutoff)).toBe(true);
     expect(requested.some(range => range.from.getTime() === comparison.from.getTime())).toBe(false);
 
     expect(result.completed).toBe(true);
     expect(result.cursorBefore).toBe(collectionStart);
     expect(result.historyFloor).toBe(OCTOPUS_HISTORY_FLOOR_MS);
-    expect(result.liveReadings).toHaveLength(2 * 48);
-    expect(result.liveReadings.every(reading => {
-      const observedAt = Date.parse(reading.startAt);
-      return observedAt >= stableCutoff && observedAt < now;
-    })).toBe(true);
+    expect(result.liveReadings).toEqual([]);
 
     const oldRow = await env.DB.prepare(
       "SELECT energy_kwh FROM octopus_readings WHERE account_number=?1 AND supply_point=?2 AND observed_at=?3",
