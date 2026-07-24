@@ -1,0 +1,47 @@
+name: Run Cloudflare observability diagnostics
+description: Collect persisted telemetry and live-tail diagnostics in parallel
+inputs:
+  live-tail-worker:
+    description: Cloudflare Worker script to observe with Live Tail
+    required: true
+  live-tail-seconds:
+    description: Number of seconds to keep Live Tail open
+    required: false
+    default: '90'
+  live-tail-probes:
+    description: Optional comma-separated workers.dev probe paths
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - name: Query persisted telemetry and capture live events
+      shell: bash
+      env:
+        LIVE_TAIL_WORKER: ${{ inputs.live-tail-worker }}
+        LIVE_TAIL_SECONDS: ${{ inputs.live-tail-seconds }}
+        LIVE_TAIL_PROBES: ${{ inputs.live-tail-probes }}
+      run: |
+        set -uo pipefail
+        actual_summary="$GITHUB_STEP_SUMMARY"
+        (
+          GITHUB_STEP_SUMMARY=observability-summary.md \
+            python3 .github/scripts/query-cloudflare-observability.py \
+            > observability-query.log 2>&1
+        ) &
+        query_pid=$!
+        (
+          set +e
+          node .github/scripts/capture-cloudflare-live-tail.mjs 2>&1 | tee live-tail.log
+          exit 0
+        ) &
+        tail_pid=$!
+
+        query_status=0
+        wait "$query_pid" || query_status=$?
+        wait "$tail_pid" || true
+        cat observability-query.log
+        if [[ -f observability-summary.md ]]; then
+          cat observability-summary.md >> "$actual_summary"
+        fi
+        exit "$query_status"
