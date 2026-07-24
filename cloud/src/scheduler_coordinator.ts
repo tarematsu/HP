@@ -1,3 +1,9 @@
+import { finalizeCompactedFeedLocally } from "../../video/src/source-feed-compacted.js";
+import {
+  buildDeviceSyncPayloadForDevice,
+  readDeviceSyncManifest,
+  type DeviceSyncManifestRow,
+} from "./device_sync";
 import { radarBundleShardResponse } from "./radar_bundle";
 import {
   refreshRuntimeJobs,
@@ -11,6 +17,7 @@ const ENSURE_THROTTLE_MS = 15 * 60_000;
 const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
+const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
 
 interface SchedulerEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
@@ -18,6 +25,16 @@ interface SchedulerEnv extends Env {
 
 interface WakeRequest {
   names?: unknown;
+}
+
+interface DeviceSyncRequest {
+  deviceId?: unknown;
+  versions?: unknown;
+}
+
+interface FeedFinalizeRequest {
+  capturedAt?: unknown;
+  desiredItems?: unknown;
 }
 
 let nextEnsureAllowedAt = 0;
@@ -115,6 +132,14 @@ export class SchedulerCoordinator {
     return this.setEarlierAlarm(await this.nextWakeAt());
   }
 
+  private async deviceSyncManifest(): Promise<DeviceSyncManifestRow> {
+    const stored = await this.state.storage.get<DeviceSyncManifestRow>(DEVICE_SYNC_MANIFEST_KEY);
+    if (stored) return stored;
+    const manifest = await readDeviceSyncManifest(this.env);
+    await this.state.storage.put(DEVICE_SYNC_MANIFEST_KEY, manifest);
+    return manifest;
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return Response.json({ error: "method_not_allowed" }, {
@@ -125,6 +150,35 @@ export class SchedulerCoordinator {
     const path = new URL(request.url).pathname;
     if (path === "/radar-bundle-shard") {
       return radarBundleShardResponse(request, this.env);
+    }
+    if (path === "/device-sync-invalidate") {
+      await this.state.storage.delete(DEVICE_SYNC_MANIFEST_KEY);
+      return Response.json({ invalidated: true }, { status: 202 });
+    }
+    if (path === "/device-sync") {
+      let body: DeviceSyncRequest = {};
+      try { body = await request.json<DeviceSyncRequest>(); } catch { body = {}; }
+      const deviceId = typeof body.deviceId === "string" ? body.deviceId : "";
+      const versions = body.versions && typeof body.versions === "object" && !Array.isArray(body.versions)
+        ? body.versions as Record<string, unknown>
+        : {};
+      if (!deviceId) return Response.json({ error: "invalid_device_id" }, { status: 400 });
+      return Response.json(await buildDeviceSyncPayloadForDevice(
+        this.env,
+        deviceId,
+        versions,
+        await this.deviceSyncManifest(),
+      ));
+    }
+    if (path === "/video-feed-finalize") {
+      let body: FeedFinalizeRequest = {};
+      try { body = await request.json<FeedFinalizeRequest>(); } catch { body = {}; }
+      const capturedAt = typeof body.capturedAt === "string" && body.capturedAt
+        ? body.capturedAt
+        : new Date().toISOString();
+      const desiredItems = Array.isArray(body.desiredItems) ? body.desiredItems : undefined;
+      const count = await finalizeCompactedFeedLocally(this.env, capturedAt, { desiredItems });
+      return Response.json({ count });
     }
     if (path === "/wake") {
       let body: WakeRequest = {};
