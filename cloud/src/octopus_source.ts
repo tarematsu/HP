@@ -256,22 +256,6 @@ async function fetchOctopusRangeReadings(
   return output;
 }
 
-function addMergedReadings(unique: Map<string, OctopusReading>, readings: OctopusReading[]): void {
-  for (const reading of readings) {
-    const observedAt = Date.parse(reading.startAt);
-    const value = Number(reading.value);
-    if (!Number.isFinite(observedAt) || !Number.isFinite(value) || value < 0) continue;
-    unique.set(`${reading.supplyPoint}:${observedAt}`, reading);
-  }
-}
-
-function mergeReadings(stored: OctopusReading[], live: OctopusReading[]): OctopusReading[] {
-  const unique = new Map<string, OctopusReading>();
-  addMergedReadings(unique, stored);
-  addMergedReadings(unique, live);
-  return Array.from(unique.values());
-}
-
 export function buildOctopusDailyProfile(
   readings: OctopusReading[],
   ranges: OctopusProfileRanges,
@@ -376,12 +360,12 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
 
   const previousStartMs = previousStart.getTime();
   const currentStartMs = currentStart.getTime();
+  const dataThroughMs = Math.min(nowMs, synchronized.stableCutoff);
   const storedRange: OctopusRange = {
     from: new Date(Math.min(previousStartMs, priorityRange.from.getTime())),
-    to: new Date(Math.max(nowMs, priorityRange.to.getTime())),
+    to: new Date(dataThroughMs),
   };
-  const stored = await readStoredOctopusRanges(env, accountNumber, [storedRange]);
-  const readings = mergeReadings(stored, synchronized.liveReadings);
+  const readings = await readStoredOctopusRanges(env, accountNumber, [storedRange]);
   let previousUsage = 0;
   let currentUsage = 0;
   let previousSlots = 0;
@@ -393,11 +377,11 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
       previousUsage += value;
       previousSlots += 1;
     }
-    if (observedAt >= currentStartMs && observedAt < nowMs) currentUsage += value;
+    if (observedAt >= currentStartMs && observedAt < dataThroughMs) currentUsage += value;
   }
 
   const profile = buildOctopusDailyProfile(readings, profileRanges);
-  const elapsed = Math.max(1, nowMs - currentStartMs);
+  const elapsed = Math.max(1, dataThroughMs - currentStartMs);
   const duration = Math.max(1, nextStart.getTime() - currentStartMs);
   const projected = currentUsage * duration / elapsed;
   const expectedSlots = Math.round((currentStartMs - previousStartMs) / DAY_MS) * PROFILE_SLOTS;
