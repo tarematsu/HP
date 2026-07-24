@@ -92,7 +92,7 @@ export function markdown(rows, generatedAt = new Date().toISOString()) {
 
 async function run() {
   const wrangler = process.platform === 'win32'
-    ? 'cloud\\node_modules\\.bin\\wrangler.cmd'
+    ? 'hp\\cloud\\node_modules\\.bin\\wrangler.cmd'
     : 'hp/cloud/node_modules/.bin/wrangler';
   const args = [
     'd1', 'insights', DATABASE,

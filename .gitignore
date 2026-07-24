@@ -1,9 +1,9 @@
 
-native/build/
-native/build-*/
-native/build-ci/
-native/packages/
-native/data/
+hp/native/build/
+hp/native/build-*/
+hp/native/build-ci/
+hp/native/packages/
+hp/native/data/
 data/
 webview2-*/
 **/webview2-*/
@@ -29,9 +29,9 @@ credentials.json
 secrets.json
 
 
-cloud/node_modules/
-cloud/.wrangler/
-cloud/dist/
+hp/cloud/node_modules/
+hp/cloud/.wrangler/
+hp/cloud/dist/
 
 
 *.zip

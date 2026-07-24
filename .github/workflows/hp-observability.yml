@@ -85,7 +85,7 @@ jobs:
       - name: Install pinned Wrangler for D1 insights
         id: install-wrangler
         continue-on-error: true
-        run: npm ci --prefix cloud --ignore-scripts --no-audit --no-fund
+        run: npm ci --prefix hp/cloud --ignore-scripts --no-audit --no-fund
 
       - name: Collect top D1 queries by rows read
         id: d1-insights
