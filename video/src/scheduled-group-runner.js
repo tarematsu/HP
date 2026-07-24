@@ -39,9 +39,13 @@ export async function runCollectionConfigs(env, configs, parentSignal, scope) {
 
   if (!parentSignal?.aborted && successfulSources > 0) {
     const allSourcesSucceeded = successfulSources === configs.length;
-    const combinedFeedCount = await finalizeCompactedFeed(env, undefined, allSourcesSucceeded
-      ? { desiredItems: [...persistence.collectionItems.values()] }
-      : {}).catch(async (error) => {
+    const options = {
+      groupKey: String(scope || 'scheduled-default'),
+      ...(allSourcesSucceeded
+        ? { desiredItems: [...persistence.collectionItems.values()] }
+        : {})
+    };
+    const combinedFeedCount = await finalizeCompactedFeed(env, undefined, options).catch(async (error) => {
       console.error('scheduled-feed-finalization-failed', {
         scope,
         error: String(error?.message || error)
