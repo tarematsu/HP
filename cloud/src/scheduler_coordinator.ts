@@ -19,6 +19,9 @@ const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
 const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
+const VIDEO_FEED_GROUPS_KEY = "video-feed-groups-v1";
+const EXPECTED_SCHEDULED_FEED_GROUPS = 2;
+const MAX_FEED_ITEMS = 2_000;
 
 interface SchedulerEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
@@ -35,8 +38,12 @@ interface DeviceSyncRequest {
 
 interface FeedFinalizeRequest {
   capturedAt?: unknown;
+  groupKey?: unknown;
   desiredItems?: unknown;
 }
+
+type FeedCandidate = Record<string, unknown>;
+type FeedGroups = Record<string, FeedCandidate[]>;
 
 let nextEnsureAllowedAt = 0;
 let nextWatchdogAllowedAt = 0;
@@ -49,6 +56,41 @@ function coordinatorStub(env: Env): DurableObjectStub | null {
   const namespace = namespaceFor(env);
   if (!namespace) return null;
   return namespace.get(namespace.idFromName(COORDINATOR_NAME));
+}
+
+function candidateKey(value: FeedCandidate): string {
+  return String(value.key ?? value.canonicalKey ?? "").trim();
+}
+
+function normalizedCandidates(value: unknown): FeedCandidate[] {
+  if (!Array.isArray(value)) return [];
+  const result: FeedCandidate[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const candidate = raw as FeedCandidate;
+    const key = candidateKey(candidate);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(candidate);
+    if (result.length >= MAX_FEED_ITEMS) break;
+  }
+  return result;
+}
+
+function unionFeedGroups(groups: FeedGroups): FeedCandidate[] {
+  const result: FeedCandidate[] = [];
+  const seen = new Set<string>();
+  for (const candidates of Object.values(groups)) {
+    for (const candidate of candidates) {
+      const key = candidateKey(candidate);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      result.push(candidate);
+      if (result.length >= MAX_FEED_ITEMS) return result;
+    }
+  }
+  return result;
 }
 
 async function signalCoordinator(
@@ -143,6 +185,20 @@ export class SchedulerCoordinator {
     return manifest;
   }
 
+  private async feedCandidates(body: FeedFinalizeRequest): Promise<FeedCandidate[] | undefined> {
+    const groupKey = typeof body.groupKey === "string" ? body.groupKey.trim().slice(0, 200) : "";
+    const submitted = normalizedCandidates(body.desiredItems);
+    if (!groupKey) return submitted.length ? submitted : undefined;
+
+    const groups = await this.state.storage.get<FeedGroups>(VIDEO_FEED_GROUPS_KEY) ?? {};
+    if (Array.isArray(body.desiredItems)) {
+      groups[groupKey] = submitted;
+      await this.state.storage.put(VIDEO_FEED_GROUPS_KEY, groups);
+    }
+    if (Object.keys(groups).length < EXPECTED_SCHEDULED_FEED_GROUPS) return undefined;
+    return unionFeedGroups(groups);
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (request.method !== "POST") {
       return Response.json({ error: "method_not_allowed" }, {
@@ -179,7 +235,7 @@ export class SchedulerCoordinator {
       const capturedAt = typeof body.capturedAt === "string" && body.capturedAt
         ? body.capturedAt
         : new Date().toISOString();
-      const desiredItems = Array.isArray(body.desiredItems) ? body.desiredItems : undefined;
+      const desiredItems = await this.feedCandidates(body);
       const count = await finalizeCompactedFeedLocally(this.env, capturedAt, { desiredItems });
       return Response.json({ count });
     }
