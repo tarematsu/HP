@@ -7,6 +7,7 @@ on:
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/package.json'
+      - '.github/actions/cloudflare-observability-query/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
@@ -22,6 +23,7 @@ on:
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/package.json'
+      - '.github/actions/cloudflare-observability-query/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
@@ -58,6 +60,7 @@ jobs:
           from pathlib import Path
 
           workflow = Path('.github/workflows/hp-observability.yml').read_text()
+          observability_action = Path('.github/actions/cloudflare-observability-query/action.yml').read_text()
           daily = Path('.github/scripts/audit-cloudflare-daily-usage.py').read_text()
           telemetry = Path('.github/scripts/audit-cloudflare-telemetry.py').read_text()
           insights = Path('.github/scripts/query-cloudflare-d1-insights.mjs').read_text()
@@ -93,7 +96,10 @@ jobs:
               'query-cloudflare-d1-insights.mjs',
               'D1_INSIGHTS_OUTCOME',
               'id: observability-query',
-              'LIVE_TAIL_SECONDS: "90"',
+              'uses: ./.github/actions/cloudflare-observability-query',
+              'live-tail-worker: homepanel-cloud',
+              'live-tail-seconds: "90"',
+              'live-tail-probes: /v1/health,/',
               'LIVE_TAIL_LOG: live-tail.log',
               'telemetry-summary.md',
               'Publish persistent observability status',
@@ -102,6 +108,13 @@ jobs:
               'if: always()',
               'set -o pipefail',
               'retention-days: 1',
+          )
+          required_action = (
+              'query-cloudflare-observability.py',
+              'capture-cloudflare-live-tail.mjs',
+              'wait "$query_pid" || query_status=$?',
+              'wait "$tail_pid" || true',
+              'exit "$query_status"',
           )
           required_daily = (
               'queueMessageOperationsAdaptiveGroups',
@@ -147,6 +160,8 @@ jobs:
           )
           for marker in required_workflow:
               assert marker in workflow, marker
+          for marker in required_action:
+              assert marker in observability_action, marker
           for marker in required_daily:
               assert marker in daily, marker
           for marker in required_insights:
