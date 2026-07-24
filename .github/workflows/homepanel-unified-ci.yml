@@ -12,7 +12,7 @@ on:
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
-      - '.github/workflows/fetch-cloudflare-observability.yml'
+      - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
   push:
     branches:
@@ -27,7 +27,7 @@ on:
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
-      - '.github/workflows/fetch-cloudflare-observability.yml'
+      - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
   workflow_dispatch:
 
@@ -57,7 +57,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          workflow = Path('.github/workflows/fetch-cloudflare-observability.yml').read_text()
+          workflow = Path('.github/workflows/hp-observability.yml').read_text()
           daily = Path('.github/scripts/audit-cloudflare-daily-usage.py').read_text()
           telemetry = Path('.github/scripts/audit-cloudflare-telemetry.py').read_text()
           insights = Path('.github/scripts/query-cloudflare-d1-insights.mjs').read_text()
