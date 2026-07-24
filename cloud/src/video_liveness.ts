@@ -13,6 +13,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function livenessResultFailure(value: unknown): Error | null {
+  if (value === null) return new Error("video liveness failed");
+  if (!value || typeof value !== "object") return null;
+  const result = value as Record<string, unknown>;
+  if (result.skipped === true && result.reason === "state-unavailable") {
+    return new Error("video liveness state row unavailable");
+  }
+  return null;
+}
+
 async function persistSnapshotRepairMarker(
   storage: DurableObjectStorage,
 ): Promise<boolean> {
@@ -38,9 +48,8 @@ export async function collectLivenessResults(
       continue;
     }
     fulfilled.push(result.value);
-    if (result.value === null && failure === null) {
-      failure = new Error("video liveness failed");
-    }
+    const resultFailure = livenessResultFailure(result.value);
+    if (resultFailure && failure === null) failure = resultFailure;
   }
   if (failure === null) return fulfilled;
 
