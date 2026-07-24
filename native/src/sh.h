@@ -131,6 +131,17 @@ class StationheadPlayer {
   void FinalizeCompletedAuth() {
     if (!SpotifyAuthorizationActive()) CloseAuthWebView();
   }
+  void RecoverUnavailableAuthorization() {
+    // EnsureAuthController sets authControllerStartedAt_ before the normal
+    // asynchronous creation path. A pending URL with neither a controller nor
+    // a start timestamp means the auth host could not be created; without this
+    // guard Tick() would remain in the interactive-auth branch indefinitely.
+    if (spotifyAuthorization_ && !authController_ &&
+        authControllerStartedAt_ == 0 && !authPendingUrl_.empty()) {
+      FinishSpotifyAuthorization(
+          L"Spotify auth host unavailable; authorization can be retried");
+    }
+  }
   void ToggleView();
   uint32_t ConsumeChangeFlags();
   void SetMuted(bool muted) noexcept;
