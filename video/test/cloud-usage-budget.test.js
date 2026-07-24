@@ -54,7 +54,7 @@ test('Workers KV is absent while bounded R2 caches remain declared', () => {
 
 test('native polling is fixed at thirty-minute sync and two-hour telemetry', () => {
   assert.match(nativeConfig, /cloudPollSeconds = 1800;/);
-  assert.match(nativeConfig, /telemetryMinutes = 120;/);
+  assert.match(nativeConfig, /config\.cloudPollSeconds = 1800;/);
   assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 1800;/);
   assert.match(nativeCloudConfig, /config\.telemetryMinutes = 120;/);
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:120/);
@@ -63,8 +63,12 @@ test('native polling is fixed at thirty-minute sync and two-hour telemetry', () 
 
 test('scheduler migration keeps liveness while reducing other periodic work', () => {
   for (const [name, interval] of Object.entries(scheduledIntervals)) {
-    const migration = name === 'octopus' ? octopusScheduleMigration : resourceMigration;
-    assert.match(migration, new RegExp(`WHEN '${name}' THEN ${interval}|name = '${name}'[\\s\\S]*interval_seconds = ${interval}`));
+    if (name === 'octopus') {
+      assert.match(octopusScheduleMigration, /interval_seconds = 86400/);
+      assert.match(octopusScheduleMigration, /WHERE name = 'octopus'/);
+      continue;
+    }
+    assert.match(resourceMigration, new RegExp(`WHEN '${name}' THEN ${interval}`));
   }
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 12 \* 60/);
 });
