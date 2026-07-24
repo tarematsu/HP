@@ -27,7 +27,7 @@ export interface DeviceSyncManifestRow {
   stationhead_health_version: number;
 }
 
-interface DeviceSpecificSnapshotRow {
+interface DeviceSyncSnapshotRow {
   config_version: number;
   config_updated_at: number;
   config_payload: string | null;
@@ -41,14 +41,15 @@ function requestedVersion(value: unknown): number {
 
 export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
   const row = await env.DB.prepare(
-    `SELECT dashboard_version,
-            environment_version,
-            environment_fetched_at,
-            radar_version,
-            switchbot_version,
-            stationhead_version,
-            stationhead_health_version
-       FROM sync_manifest WHERE id=1`,
+    `SELECT manifest.dashboard_version,
+            manifest.environment_version,
+            manifest.environment_fetched_at,
+            manifest.radar_version,
+            manifest.switchbot_version,
+            manifest.stationhead_version,
+            manifest.stationhead_health_version
+       FROM sync_manifest AS manifest
+      WHERE manifest.id=1`,
   ).first<DeviceSyncManifestRow>();
   return row ?? {
     dashboard_version: 0,
@@ -65,7 +66,7 @@ async function deviceSpecificSnapshot(
   env: Env,
   deviceId: string,
   now: number,
-): Promise<DeviceSpecificSnapshotRow> {
+): Promise<DeviceSyncSnapshotRow> {
   const row = await env.DB.prepare(
     `WITH config AS (
        SELECT version,updated_at,payload FROM device_configs WHERE device_id=?1
@@ -86,7 +87,7 @@ async function deviceSpecificSnapshot(
     deviceId,
     now,
     now - COMMAND_REDELIVERY_MS,
-  ).first<DeviceSpecificSnapshotRow>();
+  ).first<DeviceSyncSnapshotRow>();
   return row ?? {
     config_version: 0,
     config_updated_at: 0,
