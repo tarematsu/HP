@@ -1,9 +1,9 @@
 import { adminPage } from "./admin";
 import { authorizedAction, authorizedAnyDevice, authorizedDevice, deviceIdFromRequest } from "./auth";
 import { json } from "./http";
+import { normalizeRefreshJobNames } from "./refresh_jobs";
 import { methodNotAllowed, etagResponse, unauthorized } from "./response";
-import { requestRefresh } from "./scheduler";
-import { queueSchedulerWatchdog } from "./scheduler_coordinator";
+import { queueSchedulerWake, queueSchedulerWatchdog } from "./scheduler_coordinator";
 import { buildMeta, ensureDashboard, readState, sha256Hex, updateState, WORKER_VERSION } from "./snapshot";
 import { constantTimeEqual } from "./crypto_cache";
 import { updateFileResponse, updateManifestResponse } from "./update_proxy";
@@ -191,9 +191,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (Array.isArray(body.sources) && body.sources.some(value => typeof value !== "string")) {
       return json({ error: "sources must contain only strings" }, { status: 400 });
     }
-    const names = Array.isArray(body.sources) ? body.sources as string[] : undefined;
-    if (!await requestRefresh(env, names)) {
-      return json({ error: "sources must include a supported source" }, { status: 400 });
+    const requested = Array.isArray(body.sources) ? body.sources as string[] : undefined;
+    const names = normalizeRefreshJobNames(requested);
+    if (!names) return json({ error: "sources must include a supported source" }, { status: 400 });
+    if (!queueSchedulerWake(env, ctx, names)) {
+      return json({ error: "scheduler unavailable" }, { status: 503 });
     }
     return json({ queued: true }, { status: 202 });
   }
