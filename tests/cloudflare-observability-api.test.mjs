@@ -137,11 +137,13 @@ test('D1 query cost collector uses GraphQL and passes its privacy self-test', ()
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('live-tail diagnostics redact sensitive request fields', () => {
+test('live-tail diagnostics use resolved context and redact sensitive request fields', () => {
+  assert.match(liveTailScript, /CLOUDFLARE_ACCOUNT_ID/);
   assert.match(liveTailScript, /telemetry\/live-tail/);
   assert.match(liveTailScript, /scriptId: worker/);
   assert.match(liveTailScript, /\[redacted\]/);
   assert.match(liveTailScript, /parsed\.protocol.*parsed\.host.*parsed\.pathname/s);
+  assert.doesNotMatch(liveTailScript, /async function accountId|accounts\?per_page=50/);
   assert.doesNotMatch(liveTailScript, /console\.log\(.*token/);
 });
 
