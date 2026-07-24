@@ -1,6 +1,7 @@
 import videoWorker from "../../video/src/entry-core.js";
 import { LIVENESS_CRON } from "../../video/src/liveness-schedule.js";
 import { livenessDoDatabase } from "./liveness_do_db";
+import { runtimeStorageFor } from "./runtime_storage_registry";
 import type { Env } from "./sources";
 import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 
@@ -13,7 +14,8 @@ export async function runVideoLiveness(
     return;
   }
 
-  const runtimeEnv = storage ? { ...env, DB: livenessDoDatabase(env, storage) } : env;
+  const durableStorage = storage ?? runtimeStorageFor(env);
+  const runtimeEnv = durableStorage ? { ...env, DB: livenessDoDatabase(env, durableStorage) } : env;
   const pending: Promise<unknown>[] = [];
   await videoWorker.scheduled(
     { cron: LIVENESS_CRON },
