@@ -15,6 +15,7 @@ on:
       - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
+      - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
   schedule:
     - cron: "0 1 * * *"
