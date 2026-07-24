@@ -77,17 +77,19 @@ test('failed host creation clears the public visible state', () => {
   );
 });
 
-test('scheduled WebView recreation is not reported as healthy playback', () => {
+test('scheduled WebView recreation and uncommitted audio are not reported as healthy playback', () => {
   const audioPlaying = section(
     playerHeader,
     '[[nodiscard]] bool AudioPlaying() const noexcept',
     '[[nodiscard]] int64_t AudioPlayingSince() const noexcept',
   );
-  assert.match(audioPlaying, /!recreating_\.load\(std::memory_order_relaxed\)/);
-  assert.match(audioPlaying, /audioPlaying_\.load\(std::memory_order_relaxed\)/);
+  assert.match(audioPlaying, /audioPlayingSinceAt_\.load\(std::memory_order_acquire\)/);
+  assert.match(audioPlaying, /playingSince > 0/);
+  assert.match(audioPlaying, /audioPlaying_\.load\(std::memory_order_acquire\)/);
+  assert.match(audioPlaying, /!recreating_\.load\(std::memory_order_acquire\)/);
   assert.match(
     playerHeader,
-    /AudioPlayingSince\(\) const noexcept[\s\S]*return AudioPlaying\(\)[\s\S]*: 0;/,
+    /AudioPlayingSince\(\) const noexcept[\s\S]*playingSince > 0 && AudioPlaying\(\) \? playingSince : 0;/,
   );
   assert.match(
     layoutSource,
