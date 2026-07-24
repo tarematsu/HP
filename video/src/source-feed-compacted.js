@@ -51,6 +51,7 @@ export async function finalizeCompactedFeed(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         capturedAt,
+        groupKey: typeof options.groupKey === 'string' ? options.groupKey : null,
         desiredItems: Array.isArray(options.desiredItems) ? options.desiredItems : null
       })
     });
