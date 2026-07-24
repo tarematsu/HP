@@ -103,9 +103,10 @@ test('Cloudflare context export rejects multiline values and writes canonical va
   }
 });
 
-test('the composite action and deploy config share one resolver implementation', () => {
+test('the composite action is the single production credential resolver', () => {
   const action = readSource('.github/actions/cloudflare-context/action.yml');
   const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
+  const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
 
   assert.match(action, /node \.github\/scripts\/resolve-cloudflare-account\.mjs/);
   assert.doesNotMatch(action, /curl|jq|mapfile/);
@@ -113,4 +114,12 @@ test('the composite action and deploy config share one resolver implementation',
   assert.match(configResolver, /resolveCloudflareAccountId\(\{/);
   assert.match(configResolver, /configuredAccountId/);
   assert.doesNotMatch(configResolver, /async function cloudflareAccountId/);
+
+  assert.match(cloudDeploy, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(cloudDeploy, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
+  assert.doesNotMatch(cloudDeploy, /Validate Cloudflare credentials/);
+  assert.doesNotMatch(
+    cloudDeploy,
+    /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
+  );
 });
