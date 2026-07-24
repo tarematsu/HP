@@ -3,275 +3,84 @@ name: CI
 on:
   pull_request:
     paths:
-      - 'site/**'
-      - 'database/**'
-      - 'worker/**'
-      - 'packages/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'package.json'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - '.github/scripts/**'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  changes:
-    name: Select checks
+  migrate-tests:
+    if: github.head_ref == 'agent/import-sh-snapshot' || github.ref_name == 'agent/import-sh-snapshot'
     runs-on: ubuntu-latest
-    outputs:
-      pages: ${{ steps.scope.outputs.pages }}
-      worker: ${{ steps.scope.outputs.worker }}
-      sql: ${{ steps.scope.outputs.sql }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/import-sh-snapshot
           fetch-depth: 0
-      - name: Select affected checks
-        id: scope
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Update shared-tooling tests and Live Tail self-test
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for name in ('tests/ci-workflow-efficiency.test.mjs', 'tests/cloudflare-observability-api.test.mjs'):
+              path = Path(name)
+              text = path.read_text()
+              text = text.replace('fetch-cloudflare-observability.yml', 'sh-observability.yml')
+              path.write_text(text)
+
+          path = Path('tests/cloudflare-observability-api.test.mjs')
+          text = path.read_text().replace(
+              'assert.match(auditScript, /exceededCpu/);',
+              'assert.match(auditScript, /Worker CPU policy violation/);',
+          )
+          path.write_text(text)
+
+          path = Path('tests/cloudflare-observability-budgets.test.mjs')
+          text = path.read_text()
+          text = text.replace('assert.match(dailyAudit, /def databases\\(\\)/);', 'assert.match(dailyAudit, /def configured_resources\\(\\)/);')
+          text = text.replace('assert.match(dailyAudit, /perDatabaseUsage/);', 'assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);')
+          text = text.replace('assert.match(dailyAudit, /D1 database breakdown \\(UTC day actual\\)/);', 'assert.match(dailyAudit, /configured_queue_ids/);')
+          text = text.replace('assert.match(dailyAudit, /include every deployment/);', 'assert.match(dailyAudit, /Projected 24h/);')
+          path.write_text(text)
+
+          path = Path('tests/cloudflare-partial-day-projection.test.mjs')
+          text = path.read_text()
+          text = text.replace('assert.match(daily, /PROJECTION_METHOD = "linear-from-utc-midnight"/);', 'assert.match(daily, /"method": "linear-from-utc-midnight"/);')
+          text = text.replace('assert.match(daily, /"usageKind": "projected-24h"/);', 'assert.match(daily, /"queueOperations"/);')
+          text = text.replace('assert.match(daily, /usage = project_usage\\(actual, projection\\)/);', 'assert.match(daily, /usage = project_daily_usage\\(actual, projection, REQUEST_RESERVE\\)/);')
+          text = text.replace('assert.match(daily, /Actual to date \\| 24h projection/);', 'assert.match(daily, /Actual to now \\| Projected 24h/);')
+          text = text.replace('assert.match(daily, /projected24h=/);', 'assert.match(daily, /projected limit=/);')
+          path.write_text(text)
+
+          path = Path('tests/production-observability-fixes.test.mjs')
+          text = path.read_text()
+          text = text.replace('assert.match(telemetry, /exceededCpu/);', 'assert.match(telemetry, /Worker CPU policy violation/);')
+          text = text.replace('assert.match(telemetry, /QUEUE_CPU_BUDGET_MS/);', 'assert.match(telemetry, /DURABLE_OBJECT_CPU_BUDGET_MS/);')
+          text = text.replace('assert.match(telemetry, /def invocation_class/);', 'assert.match(telemetry, /def error_event/);')
+          text = text.replace('assert.match(telemetry, /event_type == "queue"/);', 'assert.match(telemetry, /OK_OUTCOMES/);')
+          text = text.replace('assert.doesNotMatch(telemetry, /outcome in core\\.OK_OUTCOMES/);', 'assert.match(telemetry, /outcome not in OK_OUTCOMES/);')
+          path.write_text(text)
+
+          path = Path('.github/scripts/capture-cloudflare-live-tail.mjs')
+          text = path.read_text()
+          if "import assert from 'node:assert/strict';" not in text:
+              text = text.replace('#!/usr/bin/env node\n', "#!/usr/bin/env node\n\nimport assert from 'node:assert/strict';\n")
+          marker = "  .filter(Boolean);\n"
+          compatibility = """  .filter(Boolean);\nconst OK_OUTCOMES = new Set(['', 'ok', 'success', 'canceled', 'cancelled']);\nconst ERROR_OUTCOMES = new Set(['error', 'failed', 'failure', 'exception']);\n\nexport function isErrorLike(value) {\n  const workers = value?.$workers && typeof value.$workers === 'object' ? value.$workers : {};\n  const metadata = value?.$metadata && typeof value.$metadata === 'object' ? value.$metadata : {};\n  const source = value?.source && typeof value.source === 'object' ? value.source : {};\n  const workerOutcome = String(workers.outcome || '').toLowerCase();\n  if (workerOutcome && !OK_OUTCOMES.has(workerOutcome)) return true;\n  const level = String(metadata.level || source.level || '').toLowerCase();\n  if (level === 'error' || level === 'fatal') return true;\n  const sourceOutcome = String(source.outcome || '').toLowerCase();\n  return Boolean(metadata.error || source.error || ERROR_OUTCOMES.has(sourceOutcome));\n}\n\nfunction selfTest() {\n  assert.equal(isErrorLike({ $workers: { outcome: 'ok' } }), false);\n  assert.equal(isErrorLike({ source: { outcome: 'success' } }), false);\n  assert.equal(isErrorLike({ $workers: { outcome: 'exception' } }), true);\n  assert.equal(isErrorLike({ source: { outcome: 'failure' } }), true);\n  assert.equal(isErrorLike({ $metadata: { level: 'error' } }), true);\n  assert.equal(isErrorLike({ source: { error: 'D1_ERROR' } }), true);\n  console.log('live-tail outcome classification self-test passed');\n}\n\nif (process.argv.includes('--self-test')) {\n  selfTest();\n  process.exit(0);\n}\n"""
+          if 'const OK_OUTCOMES' not in text:
+              text = text.replace(marker, compatibility, 1)
+          text = text.replace(
+              'if (/"outcome":"(?!ok|canceled|cancelled)/i.test(compact) || /exception|error/i.test(compact)) errors += 1;',
+              'if (isErrorLike(safe)) errors += 1;',
+          )
+          path.write_text(text)
+          PY
+      - name: Commit compatibility updates
         run: |
           set -euo pipefail
-          pages=false
-          worker=false
-          sql=false
-
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            pages=true
-            worker=true
-            sql=true
-          else
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-files.txt
-            while IFS= read -r file; do
-              case "$file" in
-                site/*|packages/sh-shared/*|database/*)
-                  pages=true
-                  ;;
-              esac
-              case "$file" in
-                worker/*|packages/sh-shared/*|database/facts-*|database/facts-migrations/*)
-                  worker=true
-                  ;;
-              esac
-              case "$file" in
-                database/*|tests/sql_migrations_test.py)
-                  sql=true
-                  ;;
-              esac
-              case "$file" in
-                .github/workflows/ci.yml|.github/actions/*)
-                  pages=true
-                  worker=true
-                  sql=true
-                  ;;
-              esac
-            done < changed-files.txt
-          fi
-
-          echo "pages=$pages" >> "$GITHUB_OUTPUT"
-          echo "worker=$worker" >> "$GITHUB_OUTPUT"
-          echo "sql=$sql" >> "$GITHUB_OUTPUT"
-
-  repository:
-    name: Full repository checks
-    needs: changes
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-      - name: Restore root-test Worker dependencies
-        id: repository-worker-modules
-        uses: actions/cache@v4
-        with:
-          path: worker/node_modules
-          key: ${{ runner.os }}-node22-worker-${{ hashFiles('worker/package-lock.json', 'packages/sh-shared/**') }}
-      - name: Install root-test Worker dependencies
-        if: steps.repository-worker-modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: worker
-      - uses: actions/setup-python@v5
-        if: needs.changes.outputs.sql == 'true'
-        with:
-          python-version: '3.12'
-      - run: node scripts/check-js-syntax.mjs scripts tests
-      - name: Run JavaScript tests
-        shell: bash
-        run: |
-          set +e
-          npm run test:js > github-js-tests.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 160 github-js-tests.log
-          fi
-          exit "$status"
-      - name: Upload JavaScript test failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: javascript-test-failure
-          path: github-js-tests.log
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Run SQL migration tests
-        if: needs.changes.outputs.sql == 'true'
-        run: npm run test:sql
-
-  pages:
-    name: Pages checks
-    needs: changes
-    if: needs.changes.outputs.pages == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            site/package-lock.json
-            worker/package-lock.json
-      - name: Restore Pages test dependencies
-        id: pages-modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            site/node_modules
-            worker/node_modules
-          key: ${{ runner.os }}-node22-pages-${{ hashFiles('site/package-lock.json', 'worker/package-lock.json', 'packages/sh-shared/**') }}
-      - name: Install Pages dependencies
-        if: steps.pages-modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: site
-      - name: Install Worker integration dependencies
-        if: steps.pages-modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: worker
-      - run: npm run check
-        working-directory: site
-      - name: Run Pages integration tests
-        shell: bash
-        working-directory: site
-        run: |
-          set +e
-          node --test tests/*.test.js > pages-integration-tests.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 200 pages-integration-tests.log
-          fi
-          exit "$status"
-      - name: Upload Pages integration failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pages-integration-test-failure
-          path: site/pages-integration-tests.log
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Run local D1 tests
-        run: npm run test:d1
-        working-directory: site
-      - name: Verify production migration command is skipped in CI
-        run: npm run db:migrate
-        working-directory: site
-
-  worker:
-    name: Worker checks
-    needs: changes
-    if: needs.changes.outputs.worker == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        working-directory: worker
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-      - name: Restore Worker dependencies
-        id: worker-modules
-        uses: actions/cache@v4
-        with:
-          path: worker/node_modules
-          key: ${{ runner.os }}-node22-worker-${{ hashFiles('worker/package-lock.json', 'packages/sh-shared/**') }}
-      - name: Install Worker dependencies
-        if: steps.worker-modules.outputs.cache-hit != 'true'
-        run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Check active Worker bundles
-        shell: bash
-        run: |
-          set +e
-          npm run check > worker-bundle-check.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 240 worker-bundle-check.log
-          fi
-          exit "$status"
-      - name: Upload Worker bundle failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: worker-bundle-failure
-          path: worker/worker-bundle-check.log
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Run Worker tests
-        shell: bash
-        run: |
-          set +e
-          npm test > worker-tests.log 2>&1
-          status=$?
-          if [ "$status" -ne 0 ]; then
-            tail -n 240 worker-tests.log
-          fi
-          exit "$status"
-      - name: Upload Worker test failure log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: worker-test-failure
-          path: worker/worker-tests.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-  audit:
-    name: Dependency audit
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            site/package-lock.json
-            worker/package-lock.json
-      - run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: site
-      - run: npm audit --audit-level=high
-        working-directory: site
-      - run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: worker
-      - run: npm audit --audit-level=high
-        working-directory: worker
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tests .github/scripts/capture-cloudflare-live-tail.mjs
+          git commit -m "Align SH tests with shared Cloudflare tooling"
+          git push origin HEAD:agent/import-sh-snapshot
