@@ -27,6 +27,14 @@ function number(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function d1Result<T>(results: T[] = [], changes = 0): D1Result<T> {
+  return {
+    success: true,
+    results,
+    meta: { changes },
+  } as unknown as D1Result<T>;
+}
+
 function normalizeRow(value: Partial<LivenessRuntimeRow> | null | undefined): LivenessRuntimeRow {
   return {
     phase: value?.phase === "death" ? "death" : "base",
@@ -100,10 +108,10 @@ function fakeSelectStatement(
     },
     async all<T>(): Promise<D1Result<T>> {
       const row = await bootstrapRuntime(db, storage, sql);
-      return { success: true, results: [row as T], meta: {} as D1Meta };
+      return d1Result([row as T]);
     },
     async run<T>(): Promise<D1Result<T>> {
-      return { success: true, results: [], meta: { changes: 0 } as D1Meta };
+      return d1Result([], 0);
     },
     async raw<T>(): Promise<T[]> { return []; },
   };
@@ -161,11 +169,11 @@ function fakeUpdateStatement(
         }
         await sendPipelineCheckpoint(env, next);
       }
-      return { success: true, results: [], meta: { changes: 1 } as D1Meta };
+      return d1Result([], 1);
     },
     async first<T>(): Promise<T | null> { return null; },
     async all<T>(): Promise<D1Result<T>> {
-      return { success: true, results: [], meta: { changes: 0 } as D1Meta };
+      return d1Result([], 0);
     },
     async raw<T>(): Promise<T[]> { return []; },
   };
