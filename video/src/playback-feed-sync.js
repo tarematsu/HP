@@ -3,7 +3,8 @@ import {
   ensureD1Compaction,
   feedContentHash,
   maybeCleanupCollectionRuns,
-  withPlaybackFeedFinalization
+  withPlaybackFeedFinalization,
+  writeFeedState
 } from './d1-compaction.js';
 import { PLAYBACK_FEED_LIMIT } from './feed-limits.js';
 import {
@@ -53,26 +54,47 @@ export function planPlaybackFeedChanges(desiredRows, currentRows) {
 export function desiredFeedStatement(db, capturedAt) {
   const cutoffAt = recentFeedCutoff(capturedAt);
   return db.prepare(
-    `SELECT video.id AS videoId
+    `SELECT video.id AS videoId, video.media_url AS mediaUrl
        FROM videos AS video
       WHERE video.status = 'active'
         AND video.last_seen_at >= ?
-        AND NOT EXISTS (
-          SELECT 1 FROM video_blocklist AS bad
-           WHERE bad.canonical_key = video.canonical_key
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM video_death_list AS death
-           WHERE death.canonical_key = video.canonical_key
-        )
       ORDER BY video.last_seen_at DESC, video.id DESC
       LIMIT ?`
   ).bind(cutoffAt, PLAYBACK_FEED_LIMIT);
 }
 
-async function syncPlaybackFeed(db, capturedAt) {
+function desiredItemPayload(desiredItems) {
+  const seen = new Set();
+  const rows = [];
+  for (const item of desiredItems || []) {
+    const key = String(item?.key || item?.canonicalKey || '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ key, rank: rows.length + 1 });
+    if (rows.length >= PLAYBACK_FEED_LIMIT) break;
+  }
+  return JSON.stringify(rows);
+}
+
+export function desiredFeedItemsStatement(db, desiredItems) {
+  return db.prepare(
+    `SELECT video.id AS videoId,
+            video.media_url AS mediaUrl,
+            CAST(json_extract(input.value, '$.rank') AS INTEGER) AS desiredRank
+       FROM json_each(?) AS input
+       INNER JOIN videos AS video
+               ON video.canonical_key = json_extract(input.value, '$.key')
+      WHERE video.status = 'active'
+      ORDER BY desiredRank`
+  ).bind(desiredItemPayload(desiredItems));
+}
+
+export async function syncPlaybackFeed(db, capturedAt, desiredItems) {
+  const desiredStatement = Array.isArray(desiredItems) && desiredItems.length
+    ? desiredFeedItemsStatement(db, desiredItems)
+    : desiredFeedStatement(db, capturedAt);
   const [desiredResult, currentResult] = await db.batch([
-    desiredFeedStatement(db, capturedAt),
+    desiredStatement,
     currentRankingEntriesStatement(db)
   ]);
   const desiredRows = desiredResult?.results || [];
@@ -94,18 +116,32 @@ async function syncPlaybackFeed(db, capturedAt) {
   return { count: plan.desiredCount, rows: desiredRows };
 }
 
-export async function rebuildPlaybackFeed(db, capturedAt = new Date().toISOString()) {
+export async function rebuildPlaybackFeed(
+  db,
+  capturedAt = new Date().toISOString(),
+  options = {}
+) {
   await Promise.all([ensureDbIndexes(db), ensureD1Compaction(db)]);
-  return withPlaybackFeedFinalization(db, async () => {
-    const { count, rows } = await syncPlaybackFeed(db, capturedAt);
+  const task = async () => {
+    const { count, rows } = await syncPlaybackFeed(db, capturedAt, options.desiredItems);
     const hash = await feedContentHash(rows);
+    if (typeof options.publishSnapshot === 'function') {
+      await options.publishSnapshot(rows, hash, capturedAt);
+    }
     return {
       value: count,
       contentHash: hash,
       rowCount: count,
       updatedAt: capturedAt
     };
-  });
+  };
+
+  if (options.lock === false) {
+    const outcome = await task();
+    await writeFeedState(db, outcome.contentHash, outcome.rowCount, outcome.updatedAt);
+    return outcome.value;
+  }
+  return withPlaybackFeedFinalization(db, task);
 }
 
 export async function finalizeCollectionDatabase(env, capturedAt = new Date().toISOString()) {
