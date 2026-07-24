@@ -56,8 +56,9 @@ test('normal playback falls back to active videos when compacted feed is empty',
   assert.equal(page.nextCursor, null);
   const fallbackSql = db.sql.find((sql) => sql.includes('FROM videos AS video'));
   assert.ok(fallbackSql);
-  assert.match(fallbackSql, /video_blocklist/);
-  assert.match(fallbackSql, /video_death_list/);
+  assert.match(fallbackSql, /video\.status = 'active'/);
+  assert.doesNotMatch(fallbackSql, /video_blocklist/);
+  assert.doesNotMatch(fallbackSql, /video_death_list/);
   assert.match(fallbackSql, /ORDER BY video\.id DESC LIMIT \?/);
 });
 
