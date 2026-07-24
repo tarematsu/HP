@@ -75,6 +75,7 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
   const telemetry = read('.github/scripts/audit-cloudflare-telemetry.py');
   const insights = read('.github/scripts/query-cloudflare-d1-insights.mjs');
   const publisher = read('.github/scripts/publish-homepanel-observability-status.mjs');
+  const publisherCore = read('.github/scripts/observability-status-publisher.mjs');
 
   expectAll(daily, [
     'queueMessageOperationsAdaptiveGroups',
@@ -107,16 +108,20 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
   expectAll(publisher, [
     'HomePanel Observability Status',
     '<!-- homepanel-observability-status -->',
-    'MAX_SECTION_CHARS = 12_000',
-    'MAX_ISSUE_BODY_CHARS = 60_000',
+    './observability-status-publisher.mjs',
     'observability/d1-query-insights',
-    'observability/overall',
     'Top D1 queries by rows read',
-    'upsertStatusIssue',
     "statusState('skipped'), 'failure'",
     "statusState('unknown'), 'failure'",
     "overallOutcome({ a: 'success', b: 'skipped' }), 'failure'",
+  ]);
+  expectAll(publisherCore, [
+    'MAX_SECTION_CHARS = 12_000',
+    'MAX_ISSUE_BODY_CHARS = 60_000',
+    "context: 'observability/overall'",
+    'upsertStatusIssue',
     'Bearer [redacted]',
+    'CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)',
   ]);
   assert.ok(!telemetry.includes('R2_BUCKET'));
 });
