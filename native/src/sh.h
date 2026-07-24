@@ -242,6 +242,7 @@ class StationheadPlayer {
   std::atomic<uint32_t> pendingChangeFlags_{0};
   std::atomic<bool> changeMessagePending_{false};
   std::wstring pendingAuthorizationUrl_;
+  std::wstring activeAuthorizationUrl_;
   int64_t createdAt_ = 0;
   int64_t startupScriptDeadline_ = 0;
   int64_t authControllerStartedAt_ = 0;
