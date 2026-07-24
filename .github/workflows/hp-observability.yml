@@ -15,6 +15,7 @@ on:
       - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
+      - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
   schedule:
     - cron: "47 2 * * *"
