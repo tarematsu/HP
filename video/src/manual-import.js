@@ -111,7 +111,7 @@ export async function runManualImport(request, env) {
       deferFeedMaintenance: true,
       details: { clicks: 0, elapsedMs: 0 }
     });
-    if (mergeItems.length) {
+    if (mergeItems.length && Number(result.changed || 0) > 0) {
       result.combinedFeedCount = await finalizeCompactedFeed(env, undefined, { mergeItems });
     } else {
       const feedState = await readFeedState(env.DB);
