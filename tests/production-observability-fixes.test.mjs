@@ -98,8 +98,12 @@ test('Cloudflare audit entrypoints pass offline self-tests', () => {
     'utf8',
   );
   assert.match(freeTier, /Account-wide Cloudflare included-usage audit/);
-  assert.match(freeTier, /configured_resource_ids/);
-  assert.doesNotMatch(freeTier, /core\.resource_ids|per_page=100/);
+  assert.match(freeTier, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
+  assert.match(freeTier, /def aggregate\(row:/);
+  assert.doesNotMatch(
+    freeTier,
+    /configured_resource_ids|core\.|importlib\.util|audit-cloudflare-free-tier-core|per_page=100/,
+  );
   assert.match(freeTier, /_ACCOUNT_SCOPE = "account"/);
   assert.match(freeTier, /_PROJECTION_METHOD = "linear-from-utc-midnight"/);
   assert.match(freeTier, /_DAILY_RATE_METRICS/);
