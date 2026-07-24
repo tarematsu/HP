@@ -3,7 +3,6 @@ import { refreshFeedSnapshot } from "../../video/src/feed-snapshot.js";
 import { LIVENESS_CRON } from "../../video/src/liveness-schedule.js";
 import { refreshCompactedFeedSnapshot } from "../../video/src/source-feed-compacted.js";
 import { livenessDoDatabase } from "./liveness_do_db";
-import { runtimeStorageFor } from "./runtime_storage_registry";
 import type { Env } from "./sources";
 import { readVideoRuntimeActive } from "./video_runtime_activation.js";
 
@@ -16,8 +15,7 @@ export async function runVideoLiveness(
     return;
   }
 
-  const durableStorage = storage ?? runtimeStorageFor(env);
-  const runtimeEnv = durableStorage ? { ...env, DB: livenessDoDatabase(env, durableStorage) } : env;
+  const runtimeEnv = storage ? { ...env, DB: livenessDoDatabase(env, storage) } : env;
   const pending: Promise<unknown>[] = [];
   await videoWorker.scheduled(
     { cron: LIVENESS_CRON },
@@ -38,7 +36,7 @@ export async function runVideoLiveness(
     return Number(row.deadCount ?? 0) > 0 || Number(row.revivedCount ?? 0) > 0;
   });
   if (feedChanged) {
-    if (durableStorage) await refreshFeedSnapshot(env);
+    if (storage) await refreshFeedSnapshot(env);
     else await refreshCompactedFeedSnapshot(env);
   }
 }
