@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/finalize-monorepo.yml
-      - .github/scripts/finalize-monorepo.py
+      - .github/scripts/generate-monorepo-workflows.py
       - .github/scripts/trigger-monorepo.txt
   workflow_dispatch:
 
@@ -23,23 +23,27 @@ jobs:
           ref: agent/import-sh-snapshot
           fetch-depth: 0
 
-      - name: Build unified repository layout
-        run: python3 .github/scripts/finalize-monorepo.py
-
-      - name: Exclude active workflow mutations from the bot commit
+      - name: Fetch pinned SH workflow source
         run: |
-          git checkout HEAD -- .github/workflows
-          git clean -fd .github/workflows
+          set -euo pipefail
+          git clone --depth 1 --branch main https://github.com/tarematsu/SH.git "$RUNNER_TEMP/SH-source"
+          expected="741ccc82c94a17cbe3f3b57f8b6f180105ee1922"
+          current="$(git -C "$RUNNER_TEMP/SH-source" rev-parse HEAD)"
+          if [[ "$current" != "$expected" ]]; then
+            git -C "$RUNNER_TEMP/SH-source" fetch --depth 1 origin "$expected"
+            git -C "$RUNNER_TEMP/SH-source" checkout --detach "$expected"
+          fi
 
-      - name: Stage monorepo
-        run: git add -A
+      - name: Generate active workflow bundle
+        env:
+          SH_SOURCE: ${{ runner.temp }}/SH-source
+        run: python3 .github/scripts/generate-monorepo-workflows.py
 
-      - name: Commit monorepo
+      - name: Commit generated bundle
         run: |
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git commit -m "Unify SH and HP as a production monorepo"
-
-      - name: Push monorepo
-        run: git push origin HEAD:agent/import-sh-snapshot
+          git add generated-workflows
+          git commit -m "Generate unified workflow bundle"
+          git push origin HEAD:agent/import-sh-snapshot
