@@ -65,14 +65,12 @@ jobs:
         run: node .github/scripts/resolve-cloudflare-config.mjs
 
       - name: Validate Cloudflare credentials
-        env:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is not configured"; exit 1; }
           test -n "$CLOUDFLARE_BUILDS_API_TOKEN" || { echo "CLOUDFLARE_BUILDS_API_TOKEN is required to enforce Actions-only deployments"; exit 1; }
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured"; exit 1; }
 
       - name: Enforce GitHub Actions-only Cloudflare deployment
-        env:
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
 
       - name: Validate unified Worker
@@ -86,7 +84,6 @@ jobs:
         id: activation
         working-directory: hp/cloud
         shell: bash
-        env:
         run: |
           set -euo pipefail
           npm run prepare:existing
@@ -145,7 +142,6 @@ jobs:
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
         working-directory: hp/cloud
-        env:
         run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
 
       - name: Report missing radar dispatcher token
