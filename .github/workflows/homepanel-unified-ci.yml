@@ -11,11 +11,13 @@ on:
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
       - 'tests/homepanel-production-contract.test.mjs'
+      - 'tests/observability-status-publisher.test.mjs'
   push:
     branches:
       - main
@@ -28,11 +30,13 @@ on:
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/hp-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
       - 'tests/homepanel-production-contract.test.mjs'
+      - 'tests/observability-status-publisher.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -67,7 +71,9 @@ jobs:
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
           node .github/scripts/publish-homepanel-observability-status.mjs --self-test
-          node --test tests/homepanel-production-contract.test.mjs
+          node --test \
+            tests/homepanel-production-contract.test.mjs \
+            tests/observability-status-publisher.test.mjs
 
       - name: Install HomePanel dependencies
         working-directory: hp/cloud
