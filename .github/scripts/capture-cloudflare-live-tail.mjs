@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 const token = process.env.CLOUDFLARE_API_TOKEN?.trim();
+const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
 const worker = process.env.LIVE_TAIL_WORKER?.trim();
 const durationMs = Math.max(10_000, Number(process.env.LIVE_TAIL_SECONDS || 180) * 1000);
 const probes = (process.env.LIVE_TAIL_PROBES || '')
@@ -40,7 +41,9 @@ if (process.argv.includes('--self-test')) {
   process.exit(0);
 }
 
-if (!token || !worker) throw new Error('CLOUDFLARE_API_TOKEN and LIVE_TAIL_WORKER are required');
+if (!token || !account || !worker) {
+  throw new Error('CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, and LIVE_TAIL_WORKER are required');
+}
 
 const headers = {
   Authorization: `Bearer ${token}`,
@@ -58,15 +61,6 @@ async function api(path, options = {}) {
     throw new Error(`Cloudflare API ${response.status}: ${text.slice(0, 1200)}`);
   }
   return data;
-}
-
-async function accountId() {
-  const override = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
-  if (override) return override;
-  const data = await api('/accounts?per_page=50');
-  const accounts = data.result || [];
-  if (accounts.length !== 1) throw new Error(`Expected one account, got ${accounts.length}`);
-  return accounts[0].id;
 }
 
 function sanitize(value, key = '') {
@@ -105,7 +99,7 @@ function findNumbers(value, path = '', found = []) {
   return found;
 }
 
-async function probeWorker(account) {
+async function probeWorker() {
   if (!probes.length) return;
   try {
     const [accountSubdomain, scriptSubdomain] = await Promise.all([
@@ -129,7 +123,6 @@ async function probeWorker(account) {
   }
 }
 
-const account = await accountId();
 console.log(`LIVE_TAIL_START worker=${worker} seconds=${durationMs / 1000}`);
 const prepared = await api(`/accounts/${account}/workers/observability/telemetry/live-tail`, {
   method: 'POST',
@@ -155,7 +148,7 @@ const finished = new Promise((resolve, reject) => {
         body: JSON.stringify({ scriptId: worker }),
       }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${String(error.message || error).slice(0, 300)}`));
     }, 25_000);
-    probeWorker(account).catch(() => {});
+    probeWorker().catch(() => {});
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
   });
   socket.addEventListener('message', async (message) => {
