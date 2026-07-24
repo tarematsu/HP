@@ -9,7 +9,13 @@ export async function readVideoRuntimeActive(env) {
   const row = await db.prepare(
     'SELECT active FROM video_runtime_state WHERE id = 1'
   ).first();
-  return Number(row?.active ?? 0) === 1;
+  if (!row) {
+    // The activation migration always creates this singleton. Treating a
+    // missing row as an ordinary inactive runtime would make scheduled work
+    // report success forever while request routing only returns 503.
+    throw new Error('video runtime activation state row unavailable');
+  }
+  return Number(row.active) === 1;
 }
 
 export async function videoRuntimeActive(env, now = Date.now()) {
