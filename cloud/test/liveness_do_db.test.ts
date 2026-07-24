@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   livenessDoDatabase,
   VIDEO_LIVENESS_RUNTIME_KEY,
@@ -160,5 +160,36 @@ describe("liveness DO D1 checkpoints", () => {
     ).first()).rejects.toThrow("video liveness state row unavailable");
 
     expect(values.has(VIDEO_LIVENESS_RUNTIME_KEY)).toBe(false);
+  });
+
+  it("surfaces a missing D1 row during checkpoint instead of reporting success", async () => {
+    const { storage, values } = storageWith(runtime());
+    const realDb = {
+      prepare() {
+        const statement = {
+          bind() {
+            return statement;
+          },
+          async run() {
+            return { success: true, results: [], meta: { changes: 0 } };
+          },
+        };
+        return statement;
+      },
+    } as unknown as D1Database;
+    const env = { DB: realDb } as unknown as Parameters<typeof livenessDoDatabase>[0];
+    const db = livenessDoDatabase(env, storage);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await expect(stateUpdate(db, "2026-07-25T00:00:00.000Z").run())
+        .rejects.toThrow("video liveness state row unavailable");
+    } finally {
+      error.mockRestore();
+    }
+
+    const stored = values.get(VIDEO_LIVENESS_RUNTIME_KEY) as RuntimeRow;
+    expect(stored.checkedTotal).toBe(105);
+    expect(stored.lastD1CheckpointAt).toBe(0);
   });
 });
