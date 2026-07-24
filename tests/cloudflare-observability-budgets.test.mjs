@@ -34,10 +34,10 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
     new URL('.github/scripts/audit-cloudflare-daily-usage.py', root),
     'utf8',
   );
-  const freeTierAudit = [
-    await readFile(new URL('.github/scripts/cloudflare_free_tier_audit.py', root), 'utf8'),
-    await readFile(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root), 'utf8'),
-  ].join('\n');
+  const freeTierAudit = await readFile(
+    new URL('.github/scripts/cloudflare_free_tier_audit.py', root),
+    'utf8',
+  );
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /^\s+push:/m);
   assert.match(workflow, /branches: \[main\]/);
@@ -65,10 +65,11 @@ test('observability uses post-deploy, diagnostic-change, and daily complete budg
   assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
   assert.match(dailyAudit, /configured_queue_ids/);
   assert.match(dailyAudit, /Projected 24h/);
-  assert.match(freeTierAudit, /configured_resource_ids/);
+  assert.match(freeTierAudit, /def aggregate\(row:/);
+  assert.match(freeTierAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
   assert.doesNotMatch(
     freeTierAudit,
-    /def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces/,
+    /configured_resource_ids|importlib\.util|audit-cloudflare-free-tier-core|def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces/,
   );
   assert.match(workflow, /id: free-tier-budget/);
   assert.match(workflow, /id: budget-contract/);
@@ -104,4 +105,5 @@ test('D1 query insights are manual-only and duplicate budget paths are gone', as
   await assert.rejects(access(new URL('scripts/cloudflare-worker-request-budget.mjs', root)));
   await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-live-tail.py', root)));
   await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-free-tier-account.py', root)));
+  await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root)));
 });
