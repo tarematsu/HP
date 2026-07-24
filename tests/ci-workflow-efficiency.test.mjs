@@ -94,6 +94,7 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /^  push:\n/m);
   assert.match(observability, /branches: \[main\]/);
   assert.match(observability, /\.github\/workflows\/sh-observability\.yml/);
+  assert.match(observability, /\.github\/actions\/cloudflare-observability-query\/action\.yml/);
   assert.match(observability, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
   assert.doesNotMatch(observability, /^      - '(?:worker|site|packages)\//m);
   assert.match(observability, /^  classify:\n/m);
@@ -116,7 +117,9 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /audit-deployed-cloudflare-telemetry\.py/);
   assert.match(observability, /LIVE_TAIL_LOG: live-tail\.log/);
   assert.doesNotMatch(observability, /audit-cloudflare-live-tail\.py/);
-  assert.match(observability, /LIVE_TAIL_SECONDS: "90"/);
+  assert.match(observability, /uses: \.\/\.github\/actions\/cloudflare-observability-query/);
+  assert.match(observability, /live-tail-worker: sh-runtime-orchestrator/);
+  assert.match(observability, /live-tail-seconds: "90"/);
   assert.match(observability, /id: daily-budget/);
   assert.match(observability, /id: free-tier-budget/);
   assert.match(observability, /id: budget-contract/);
