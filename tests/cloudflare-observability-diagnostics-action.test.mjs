@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { access } from 'node:fs/promises';
 import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
@@ -35,4 +36,15 @@ test('SH and HomePanel workflows use and retrigger the diagnostics action', () =
   assert.match(workflows.sh, /^\s{10}live-tail-worker: sh-runtime-orchestrator$/m);
   assert.match(workflows.hp, /^\s{10}live-tail-worker: homepanel-cloud$/m);
   assert.match(workflows.hp, /^\s{10}live-tail-probes: \/v1\/health,\/$/m);
+});
+
+test('ambiguous action and duplicate telemetry implementation stay removed', async () => {
+  await assert.rejects(access(new URL(
+    '../.github/actions/cloudflare-observability-query/action.yml',
+    import.meta.url,
+  )));
+  await assert.rejects(access(new URL(
+    '../.github/scripts/audit-cloudflare-telemetry-core.py',
+    import.meta.url,
+  )));
 });
