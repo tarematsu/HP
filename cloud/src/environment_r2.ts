@@ -7,6 +7,7 @@ const ENVIRONMENT_STATE_KEY = "environment/v2/latest.json";
 const ENVIRONMENT_BUCKET_MS = 15 * 60_000;
 const ENVIRONMENT_HISTORY_MS = 24 * 60 * 60_000;
 const MAX_CAS_ATTEMPTS = 4;
+const MAX_RECENT_RECEIPTS = 64;
 const CACHE_TTL_MS = 30_000;
 const HEX_DIGITS = "0123456789abcdef";
 const UTF8_ENCODER = new TextEncoder();
@@ -27,10 +28,16 @@ interface StoredDevice {
   buckets: StoredBucket[];
 }
 
+interface StoredReceipt {
+  sequence: number;
+  signature: string;
+}
+
 interface EnvironmentDocument {
   schemaVersion: 2;
   selectedDeviceId: string;
   lastSequences: Record<string, number>;
+  recentReceipts: Record<string, StoredReceipt[]>;
   devices: Record<string, StoredDevice>;
   row: StateRow;
 }
@@ -82,6 +89,14 @@ function validBucket(value: unknown): value is StoredBucket {
     && nonNegativeInteger(row.humidityCount);
 }
 
+function validReceipt(value: unknown): value is StoredReceipt {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return Number.isSafeInteger(row.sequence)
+    && Number(row.sequence) > 0
+    && typeof row.signature === "string";
+}
+
 function validStateRow(value: unknown): value is StateRow {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
@@ -114,6 +129,20 @@ function parseDocument(value: unknown): EnvironmentDocument | null {
     lastSequences[deviceId] = sequence;
   }
 
+  const recentReceipts: Record<string, StoredReceipt[]> = {};
+  if (root.recentReceipts !== undefined) {
+    if (!root.recentReceipts || typeof root.recentReceipts !== "object" || Array.isArray(root.recentReceipts)) {
+      return null;
+    }
+    for (const [deviceId, raw] of Object.entries(root.recentReceipts as Record<string, unknown>)) {
+      if (!Array.isArray(raw) || !raw.every(validReceipt)) return null;
+      recentReceipts[deviceId] = raw
+        .map(receipt => ({ sequence: Number(receipt.sequence), signature: receipt.signature }))
+        .sort((left, right) => left.sequence - right.sequence)
+        .slice(-MAX_RECENT_RECEIPTS);
+    }
+  }
+
   const devices: Record<string, StoredDevice> = {};
   for (const [deviceId, raw] of Object.entries(root.devices as Record<string, unknown>)) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -131,6 +160,7 @@ function parseDocument(value: unknown): EnvironmentDocument | null {
     schemaVersion: 2,
     selectedDeviceId: root.selectedDeviceId,
     lastSequences,
+    recentReceipts,
     devices,
     row: { ...root.row },
   };
@@ -143,6 +173,17 @@ async function sha256Hex(value: string): Promise<string> {
     output += HEX_DIGITS.charAt(byte >>> 4) + HEX_DIGITS.charAt(byte & 0x0f);
   }
   return output;
+}
+
+function sampleSignature(sample: TelemetrySample): string {
+  return JSON.stringify([
+    sample.observedAt,
+    sample.co2 ?? null,
+    sample.temperature ?? null,
+    sample.humidity ?? null,
+    sample.temperatureCorrected ?? null,
+    sample.humidityCorrected ?? null,
+  ]);
 }
 
 function addSample(bucket: StoredBucket, sample: TelemetrySample): void {
@@ -182,6 +223,14 @@ function copyDevices(previous: EnvironmentDocument | null): Record<string, Store
     devices[id] = { deviceId: id, buckets: device.buckets.map(bucket => ({ ...bucket })) };
   }
   return devices;
+}
+
+function copyRecentReceipts(previous: EnvironmentDocument | null): Record<string, StoredReceipt[]> {
+  const receipts: Record<string, StoredReceipt[]> = {};
+  for (const [id, entries] of Object.entries(previous?.recentReceipts ?? {})) {
+    receipts[id] = entries.map(entry => ({ ...entry }));
+  }
+  return receipts;
 }
 
 function stateContentChanged(previous: StateRow | null, next: StateRow): boolean {
@@ -275,10 +324,21 @@ async function nextDocument(
   );
   lastSequences[deviceId] = highest;
 
+  const recentReceipts = copyRecentReceipts(previous);
+  const receiptBySequence = new Map(
+    (recentReceipts[deviceId] ?? []).map(receipt => [receipt.sequence, receipt.signature]),
+  );
+  for (const sample of samples) receiptBySequence.set(sample.sequence, sampleSignature(sample));
+  recentReceipts[deviceId] = [...receiptBySequence.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .slice(-MAX_RECENT_RECEIPTS)
+    .map(([sequence, signature]) => ({ sequence, signature }));
+
   return {
     schemaVersion: 2,
     selectedDeviceId,
     lastSequences,
+    recentReceipts,
     devices,
     row: {
       source: "environment",
@@ -334,19 +394,25 @@ export async function mergeR2EnvironmentTelemetry(
   for (let attempt = 0; attempt < MAX_CAS_ATTEMPTS; attempt += 1) {
     const { document, etag } = await readDocument(bucket);
     const previousSequence = document?.lastSequences[deviceId] ?? 0;
-    const ordered = [...samples]
-      .filter(sample => sample.sequence > previousSequence)
-      .sort((left, right) => left.sequence - right.sequence);
+    const priorReceipts = new Map(
+      (document?.recentReceipts[deviceId] ?? []).map(receipt => [receipt.sequence, receipt.signature]),
+    );
+    const acknowledged = new Set<number>();
+    const ordered = [...samples].sort((left, right) => left.sequence - right.sequence);
     const unique: TelemetrySample[] = [];
     for (const sample of ordered) {
+      if (sample.sequence <= previousSequence) {
+        if (priorReceipts.get(sample.sequence) === sampleSignature(sample)) {
+          acknowledged.add(sample.sequence);
+        }
+        continue;
+      }
       if (unique.at(-1)?.sequence !== sample.sequence) unique.push(sample);
     }
     if (!unique.length) {
       return {
         accepted: 0,
-        acknowledgedSequences: samples
-          .filter(sample => sample.sequence <= previousSequence)
-          .map(sample => sample.sequence),
+        acknowledgedSequences: [...acknowledged].sort((left, right) => left - right),
         lastSequence: previousSequence,
       };
     }
@@ -368,11 +434,10 @@ export async function mergeR2EnvironmentTelemetry(
     });
     if (stateContentChanged(document?.row ?? null, next.row)) markStateChanged(env);
     const lastSequence = next.lastSequences[deviceId] ?? previousSequence;
+    for (const sample of unique) acknowledged.add(sample.sequence);
     return {
       accepted: unique.length,
-      acknowledgedSequences: samples
-        .filter(sample => sample.sequence <= lastSequence)
-        .map(sample => sample.sequence),
+      acknowledgedSequences: [...acknowledged].sort((left, right) => left - right),
       lastSequence,
     };
   }
