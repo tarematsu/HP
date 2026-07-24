@@ -42,6 +42,7 @@ test('HomePanel video runtime keeps deferred status and bounded liveness work', 
 
 test('remaining manual Video Queue workflow shares the fail-closed Cloudflare context', () => {
   const queues = readSource('.github/workflows/video-provision-manual-import-queue.yml');
+  const recovery = readSource('hp/video/scripts/push-manual-import-recovery.mjs');
   expectAll(queues, [
     'uses: ./.github/actions/cloudflare-context',
     'api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}',
@@ -50,6 +51,15 @@ test('remaining manual Video Queue workflow shares the fail-closed Cloudflare co
     'Validate Cloudflare credentials',
     'unset CLOUDFLARE_ACCOUNT_ID',
     'npx --no-install wrangler whoami',
+  ]);
+  expectAll(recovery, [
+    'CLOUDFLARE_ACCOUNT_ID',
+    '/accounts/${accountId}/queues?per_page=100',
+    '/accounts/${accountId}/queues/${queueId}/messages',
+  ]);
+  expectNone(recovery, [
+    'async function accountIds',
+    '/accounts?per_page=50',
   ]);
 });
 
