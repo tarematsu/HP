@@ -229,11 +229,12 @@ void StationheadHandleBase::RaiseActiveHost() const {
     if (!interactive && !status.visible) return;
   }
 
-  const RECT activeBounds = preview ? startupPreviewBounds_ : workspaceBounds_;
-  const int width = std::max(1L, activeBounds.right - activeBounds.left);
-  const int height = std::max(1L, activeBounds.bottom - activeBounds.top);
-  SetWindowPos(host, HWND_TOP, activeBounds.left, activeBounds.top, width, height,
-               SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  // StationheadPlayer owns host/controller geometry. The handle only raises
+  // the already-laid-out active host; moving it here would overwrite resolved
+  // single-window/full-client bounds with the caller's stale half bounds.
+  SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                   SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   if (!preview && interactive) BringMainWindowToFront(host);
 }
 
