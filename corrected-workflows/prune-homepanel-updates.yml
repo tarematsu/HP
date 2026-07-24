@@ -1,0 +1,140 @@
+name: Prune HomePanel update releases
+
+on:
+  workflow_run:
+    workflows:
+      - Native Windows Build
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prune-homepanel-updates
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      UPDATE_BUCKET: ${{ vars.HOMEPANEL_UPDATE_BUCKET || 'homepanel-updates' }}
+      AWS_DEFAULT_REGION: auto
+
+    steps:
+      - name: Validate configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is required" >&2
+            exit 1
+          }
+          test -n "$UPDATE_BUCKET" || {
+            echo "HomePanel update bucket is required" >&2
+            exit 1
+          }
+
+      - name: Discover R2 account and credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            https://api.cloudflare.com/client/v4/user/tokens/verify)"
+          token_id="$(jq -er '.result.id' <<<"$verify_response")"
+          secret_access_key="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)"
+
+          accounts_response="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
+          mapfile -t account_ids < <(jq -er '.result[].id' <<<"$accounts_response")
+          [ "${#account_ids[@]}" -gt 0 ] || {
+            echo "No Cloudflare account is visible to the API token" >&2
+            exit 1
+          }
+
+          echo "::add-mask::$token_id"
+          echo "::add-mask::$secret_access_key"
+          export AWS_ACCESS_KEY_ID="$token_id"
+          export AWS_SECRET_ACCESS_KEY="$secret_access_key"
+
+          matches=()
+          for account_id in "${account_ids[@]}"; do
+            endpoint="https://${account_id}.r2.cloudflarestorage.com"
+            if aws s3api head-bucket \
+              --endpoint-url "$endpoint" \
+              --bucket "$UPDATE_BUCKET" >/dev/null 2>&1; then
+              matches+=("$account_id")
+            fi
+          done
+
+          [ "${#matches[@]}" -eq 1 ] || {
+            echo "Expected exactly one accessible R2 bucket named $UPDATE_BUCKET; found ${#matches[@]}" >&2
+            exit 1
+          }
+
+          echo "AWS_ACCESS_KEY_ID=$token_id" >> "$GITHUB_ENV"
+          echo "AWS_SECRET_ACCESS_KEY=$secret_access_key" >> "$GITHUB_ENV"
+          echo "R2_ENDPOINT=https://${matches[0]}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+
+      - name: Keep only the current release
+        id: prune
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          manifest_file="$(mktemp)"
+          aws s3api get-object \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$UPDATE_BUCKET" \
+            --key updates/latest/update-manifest.json \
+            "$manifest_file" >/dev/null
+
+          current_version="$(jq -er '.version | select(test("^[0-9]{10}$"))' "$manifest_file")"
+          current_prefix="updates/releases/${current_version}/"
+
+          aws s3api list-objects-v2 \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$UPDATE_BUCKET" \
+            --prefix updates/releases/ \
+            --output json > objects.json
+
+          jq -r --arg keep "$current_prefix" \
+            '(.Contents // [])[] | .Key | select(startswith($keep) | not)' \
+            objects.json > obsolete-keys.txt
+
+          deleted=0
+          while IFS= read -r key; do
+            [ -n "$key" ] || continue
+            aws s3api delete-object \
+              --endpoint-url "$R2_ENDPOINT" \
+              --bucket "$UPDATE_BUCKET" \
+              --key "$key" >/dev/null
+            deleted=$((deleted + 1))
+          done < obsolete-keys.txt
+
+          remaining="$(aws s3api list-objects-v2 \
+            --endpoint-url "$R2_ENDPOINT" \
+            --bucket "$UPDATE_BUCKET" \
+            --prefix updates/releases/ \
+            --query 'length(Contents || `[]`)' \
+            --output text)"
+
+          echo "version=$current_version" >> "$GITHUB_OUTPUT"
+          echo "deleted=$deleted" >> "$GITHUB_OUTPUT"
+          {
+            echo "## HomePanel R2 update cleanup"
+            echo
+            echo "- Current version: \`$current_version\`"
+            echo "- Deleted obsolete objects: **$deleted**"
+            echo "- Remaining release objects: **$remaining**"
+          } >> "$GITHUB_STEP_SUMMARY"

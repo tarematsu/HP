@@ -19,7 +19,6 @@ CLOUDFLARE_WORKFLOWS = {
     "deploy-split-pipeline.yml",
     "fetch-cloudflare-d1-usage.yml",
     "hp-observability.yml",
-    "prune-homepanel-updates.yml",
     "sh-observability.yml",
     "video-provision-manual-import-queue.yml",
     "video-worker-cpu-report.yml",
