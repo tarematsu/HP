@@ -88,18 +88,18 @@ test('track-history response capacity covers the production publication', () => 
   assert.ok(TRACK_HISTORY_RESPONSE_MAX_CHUNKS > 80);
 });
 
-test('Cloudflare audit compatibility wrappers pass offline self-tests', () => {
+test('Cloudflare audit entrypoints pass offline self-tests', () => {
   pythonSelfTest('.github/scripts/audit-cloudflare-free-tier.py');
   pythonSelfTest('.github/scripts/audit-cloudflare-telemetry.py');
   pythonSelfTest('.github/scripts/audit-deployed-cloudflare-telemetry.py');
 
   const freeTier = readFileSync(
-    new URL('../.github/scripts/audit-cloudflare-free-tier.py', import.meta.url),
+    new URL('../.github/scripts/cloudflare_free_tier_audit.py', import.meta.url),
     'utf8',
   );
-  assert.match(freeTier, /per_page=50/);
-  assert.doesNotMatch(freeTier, /per_page=100/);
-  assert.match(freeTier, /Project account-wide partial-day Cloudflare usage/);
+  assert.match(freeTier, /Account-wide Cloudflare included-usage audit/);
+  assert.match(freeTier, /configured_resource_ids/);
+  assert.doesNotMatch(freeTier, /core\.resource_ids|per_page=100/);
   assert.match(freeTier, /_ACCOUNT_SCOPE = "account"/);
   assert.match(freeTier, /_PROJECTION_METHOD = "linear-from-utc-midnight"/);
   assert.match(freeTier, /_DAILY_RATE_METRICS/);
