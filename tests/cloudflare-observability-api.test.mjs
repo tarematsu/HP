@@ -84,6 +84,8 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(queryScript, /"view": "events"/);
   assert.match(queryScript, /GITHUB_STEP_SUMMARY/);
   assert.match(queryScript, /urlunsplit/);
+  assert.match(queryScript, /CLOUDFLARE_ACCOUNT_ID/);
+  assert.doesNotMatch(queryScript, /discover_account_id|accounts\?per_page=50|user\/tokens\/verify/);
   assert.match(auditScript, /workers\.get\("cpuTimeMs"\)/);
   assert.match(auditScript, /"view": "events"/);
   assert.match(auditScript, /\$workers\.cpuTimeMs/);
