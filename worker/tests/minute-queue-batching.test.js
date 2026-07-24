@@ -83,8 +83,8 @@ test('runtime isolates all CPU-sensitive derive and rebuild deliveries', () => {
 });
 
 test('derive isolation composes with the merged CPU, KV, and Worker topology contracts', () => {
-  const budget = readFileSync(
-    new URL('../../.github/scripts/enforce-worker-cpu-budget.py', import.meta.url),
+  const audit = readFileSync(
+    new URL('../../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
     'utf8',
   );
   const pagesKv = readFileSync(
@@ -92,8 +92,9 @@ test('derive isolation composes with the merged CPU, KV, and Worker topology con
     'utf8',
   );
   const runtime = config('wrangler.runtime.jsonc');
-  assert.match(budget, /BUDGET_MS = 10\.0/);
-  assert.match(budget, /"comparison": "less_than_or_equal"/);
+  assert.match(audit, /STATELESS_CPU_BUDGET_MS = float\(os\.environ\.get\("CPU_BUDGET_MS", "10"\)\)/);
+  assert.match(audit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
+  assert.match(audit, /current_events/);
   assert.match(pagesKv, /NAMESPACE_PAGE_SIZE = 1000/);
   const consumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
   for (const queue of [
