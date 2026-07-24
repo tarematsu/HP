@@ -55,7 +55,7 @@ test('empty analytics data is explicit and does not claim the target was met', (
 
 test('CPU diagnostics workflow is manual-only', async () => {
   const workflow = await readFile(
-    new URL('../../.github/workflows/video-worker-cpu-report.yml', import.meta.url),
+    new URL('../../../.github/workflows/video-worker-cpu-report.yml', import.meta.url),
     'utf8'
   );
   assert.match(workflow, /^\s*workflow_dispatch:/m);
