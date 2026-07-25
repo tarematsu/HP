@@ -11,7 +11,9 @@
   const MAX_CACHE_POINTS = 30_000;
   const MAX_DRAW_POINTS = 2_400;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
-  const eventDate = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric' });
+  const eventDate = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC', month: 'numeric', day: 'numeric',
+  });
   let series = [];
   let selectedMinute = null;
   let loadingKey = '';
