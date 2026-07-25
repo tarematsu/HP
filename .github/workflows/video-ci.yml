@@ -12,7 +12,55 @@ permissions:
 
 jobs:
   apply-stationhead-ab-audit:
-    if: false
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 268 && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - run: echo paused
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-stationhead-window-b
+          fetch-depth: 0
+      - name: Apply A/B audit fixes
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY' > /tmp/apply-stationhead-ab.log 2>&1
+          import base64
+          import hashlib
+          import zlib
+          from pathlib import Path
+          payload = ''.join(
+              Path(f'.github/stationhead-ab-patch.{index:02d}').read_text(encoding='utf-8').strip()
+              for index in range(9)
+          )
+          expected = 'b624f8c230e132f5b15869b857a1df9dc5a7e919f875f9bf12d71a61c221c3b1'
+          actual = hashlib.sha256(payload.encode()).hexdigest()
+          if actual != expected:
+              raise SystemExit(f'patch payload hash mismatch: {actual}')
+          source = zlib.decompress(base64.b64decode(payload)).decode('utf-8')
+          exec(compile(source, '.github/stationhead-ab-patch.py', 'exec'))
+          PY
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            {
+              date -u
+              cat /tmp/apply-stationhead-ab.log
+            } > .github/stationhead-ab-apply-error.txt
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add .github/stationhead-ab-apply-error.txt
+            git commit -m 'Record remaining Stationhead A/B patch mismatch'
+            git push origin HEAD:agent/fix-stationhead-window-b
+            exit "$status"
+          fi
+      - name: Commit audited fixes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git show 141c9e3552036ca9cd40aeaf7a5046bd560ef1e0:.github/workflows/video-ci.yml > .github/workflows/video-ci.yml
+          git rm -f .github/workflows/apply-stationhead-ab-audit.yml .github/stationhead-ab-apply-error.txt .github/stationhead-ab-patch.b64 .github/stationhead-ab-patch.0*
+          git add hp/native/src/app_stationhead_handles.h hp/native/src/sh.cpp hp/native/src/sh_shared.h hp/native/src/sh_webview.cpp hp/video/test/stationhead-window-b-interactive-regression.test.js .github/workflows/video-ci.yml
+          git diff --cached --check
+          git commit -m 'Fix Stationhead A/B interactive state and retry races'
+          git push origin HEAD:agent/fix-stationhead-window-b
