@@ -6,6 +6,7 @@ const historyPage = readFileSync(new URL('../public/history/index.html', import.
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
+const historyTrackView = readFileSync(new URL('../public/history/history-track-view.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
 const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
@@ -63,21 +64,21 @@ test('history keeps one visible chart and delegates official series rendering', 
   assert.match(broadcastClient, /function draw\(\)/);
 });
 
-test('track history defaults to yesterday as a single day', () => {
+test('track history defaults to yesterday in JST as a single day', () => {
   assert.match(historyPage, /id="trackWeekMode" type="checkbox" checked/);
-  assert.match(historyEntry, /trackDate\.value = yesterday/);
+  assert.match(historyEntry, /JST_OFFSET_MS/);
+  assert.match(historyEntry, /trackDate\.value = jstDate\(-1\)/);
   assert.match(historyEntry, /trackWeekMode\.checked = false/);
   assert.match(historyClient, /if \(el\('trackWeekMode'\)\.checked\)/);
   assert.match(historyClient, /el\('from'\)\.value = mondayOf/);
   assert.match(historyClient, /el\('to'\)\.value = sundayOf/);
 });
 
-test('track ranking observer scopes itself to generated table nodes', () => {
-  assert.match(
-    historyFixes,
-    /\[document\.getElementById\('thead'\), document\.getElementById\('tbody'\)\]/,
-  );
-  assert.match(historyFixes, /observer\.observe\(target, \{ childList: true, subtree: true \}\)/);
+test('track ranking consumes complete full-response rows instead of generated table pages', () => {
+  assert.match(historyFixes, /aggregateCompleteTrackRows/);
+  assert.match(historyFixes, /history:track-rows/);
+  assert.match(historyTrackView, /play_dates: new Set\(\)/);
+  assert.match(historyTrackView, /right\.play_count - left\.play_count/);
   assert.match(historyFixes, /let trackRankingRenderQueued = false/);
   assert.match(historyFixes, /if \(trackRankingRenderQueued\) return/);
   assert.match(historyFixes, /window\.addEventListener\('hashchange', scheduleTrackRanking\)/);
