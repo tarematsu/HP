@@ -8,6 +8,8 @@ namespace hp {
 namespace {
 constexpr int64_t kRadarTileFailureTtlMs = 5 * 60'000;
 constexpr int64_t kDefaultRadarFrameIntervalMs = 5'000;
+constexpr size_t kRadarRainPresenceCacheLimit = 512;
+constexpr wchar_t kNoRainMessage[] = L"しばらく雨は降りません";
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
@@ -17,6 +19,11 @@ struct RadarTile {
   POINT destination{};
   fs::path path;
   std::string fileStamp;
+};
+
+struct RadarRainPresence {
+  std::string fileStamp;
+  bool hasRain = true;
 };
 
 struct CachedRadarSourceDc {
@@ -80,6 +87,60 @@ bool TileFailureActive(const std::map<std::wstring, int64_t>& failures,
                        const std::wstring& url, int64_t now) {
   const auto item = failures.find(url);
   return item != failures.end() && item->second > now;
+}
+
+bool BitmapHasVisiblePixels(HBITMAP bitmap) {
+  BITMAP details{};
+  if (!bitmap || GetObjectW(bitmap, sizeof(details), &details) != sizeof(details) ||
+      !details.bmBits || details.bmBitsPixel != 32 || details.bmWidth <= 0 ||
+      details.bmHeight == 0 || details.bmWidthBytes <= 0) {
+    // Fail closed: an unreadable bitmap must never be treated as a clear forecast.
+    return true;
+  }
+  const size_t width = static_cast<size_t>(details.bmWidth);
+  const size_t height = static_cast<size_t>(
+      details.bmHeight < 0 ? -details.bmHeight : details.bmHeight);
+  const size_t stride = static_cast<size_t>(details.bmWidthBytes);
+  const auto* pixels = static_cast<const uint8_t*>(details.bmBits);
+  for (size_t y = 0; y < height; ++y) {
+    const uint8_t* const row = pixels + y * stride;
+    for (size_t x = 0; x < width; ++x) {
+      if (row[x * 4 + 3] != 0) return true;
+    }
+  }
+  return false;
+}
+
+std::optional<bool> RadarTileHasRain(const RadarTile& tile) {
+  if (tile.url.empty() || tile.path.empty() || tile.fileStamp.empty() ||
+      tile.fileStamp == "missing" || tile.fileStamp == "invalid") {
+    return std::nullopt;
+  }
+  static thread_local std::map<std::wstring, RadarRainPresence> cache;
+  const auto found = cache.find(tile.url);
+  if (found != cache.end() && found->second.fileStamp == tile.fileStamp) {
+    return found->second.hasRain;
+  }
+
+  HBITMAP bitmap = DecodeImageFileToBitmap(tile.path, 256, 256);
+  if (!bitmap) return std::nullopt;
+  const bool hasRain = BitmapHasVisiblePixels(bitmap);
+  DeleteObject(bitmap);
+
+  if (cache.size() >= kRadarRainPresenceCacheLimit && found == cache.end()) {
+    cache.clear();
+  }
+  cache[tile.url] = RadarRainPresence{tile.fileStamp, hasRain};
+  return hasRain;
+}
+
+bool RadarForecastHasNoRain(const std::vector<RadarTile>& tiles) {
+  if (tiles.empty()) return false;
+  for (const RadarTile& tile : tiles) {
+    const std::optional<bool> hasRain = RadarTileHasRain(tile);
+    if (!hasRain.has_value() || *hasRain) return false;
+  }
+  return true;
 }
 
 bool SaveBitmapAsBmp(HBITMAP bitmap, const fs::path& path, int width, int height) {
@@ -198,6 +259,7 @@ void Renderer::ComposeRadarFrame() {
   int64_t validAt = 0;
   int64_t animationIntervalMs = 0;
   bool precomposed = false;
+  bool noRainForecast = false;
   std::wstring signature;
   std::vector<RadarTile> tiles;
   const fs::path uiDir = rootDir_ / L"ui";
@@ -219,14 +281,47 @@ void Renderer::ComposeRadarFrame() {
         const uint32_t selectedIndex = static_cast<uint32_t>(
             (UnixMillis() / frameIntervalMs) % static_cast<int64_t>(frames.Size()));
         if (frames.GetAt(selectedIndex).ValueType() == JsonValueType::Object) {
-          animationIntervalMs = frames.Size() > 1 ? frameIntervalMs : 0;
           const JsonObject frame = frames.GetAt(selectedIndex).GetObject();
           validAt = static_cast<int64_t>(std::max(0.0, json::Number(frame, L"validAt")));
-          const JsonArray frameTiles = json::Array(frame, L"tiles");
+          std::vector<RadarTile> forecastTiles;
+          bool forecastComplete = true;
+          for (uint32_t frameIndex = 0; frameIndex < frames.Size(); ++frameIndex) {
+            if (frames.GetAt(frameIndex).ValueType() != JsonValueType::Object) {
+              forecastComplete = false;
+              continue;
+            }
+            const JsonObject candidateFrame = frames.GetAt(frameIndex).GetObject();
+            const JsonArray candidateTiles = json::Array(candidateFrame, L"tiles");
+            if (candidateTiles.Size() == 0) forecastComplete = false;
+            for (uint32_t tileIndex = 0; tileIndex < candidateTiles.Size(); ++tileIndex) {
+              if (candidateTiles.GetAt(tileIndex).ValueType() != JsonValueType::Object) {
+                forecastComplete = false;
+                continue;
+              }
+              const JsonObject tile = candidateTiles.GetAt(tileIndex).GetObject();
+              const std::wstring url = json::Text(tile, L"url");
+              const POINT destination{
+                  static_cast<LONG>(json::Number(tile, L"destX")),
+                  static_cast<LONG>(json::Number(tile, L"destY")),
+              };
+              const std::optional<fs::path> tilePath = RadarTilePath(dataDir_, url);
+              const std::string tileStamp = tilePath ? file::Stamp(*tilePath) : "invalid";
+              RadarTile parsed{
+                  url, destination, tilePath.value_or(fs::path{}), tileStamp};
+              forecastTiles.push_back(parsed);
+              if (frameIndex == selectedIndex) tiles.push_back(std::move(parsed));
+            }
+          }
+          noRainForecast = !precomposed && forecastComplete &&
+              RadarForecastHasNoRain(forecastTiles);
+          animationIntervalMs = frames.Size() > 1 ? frameIntervalMs : 0;
+          if (noRainForecast) animationIntervalMs = 0;
+
           std::wostringstream signatureStream;
-          signatureStream << L"native-radar-v8|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
+          signatureStream << L"native-radar-v9|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
                           << L"|source:" << sourceWidth << L'x' << sourceHeight
                           << L"|precomposed:" << (precomposed ? 1 : 0)
+                          << L"|no-rain:" << (noRainForecast ? 1 : 0)
                           << L"|animate:" << animationIntervalMs
                           << L"|frame:" << selectedIndex << L'/' << frames.Size()
                           << L"|" << json::Text(frame, L"baseTime")
@@ -236,21 +331,10 @@ void Renderer::ComposeRadarFrame() {
             signatureStream << L"|sat:" << Utf8ToWide(satelliteStamp)
                             << L"|map:" << Utf8ToWide(mapStamp);
           }
-          signatureStream << L"|tiles:" << frameTiles.Size();
-          for (uint32_t index = 0; index < frameTiles.Size(); ++index) {
-            if (frameTiles.GetAt(index).ValueType() != JsonValueType::Object) continue;
-            const JsonObject tile = frameTiles.GetAt(index).GetObject();
-            const std::wstring url = json::Text(tile, L"url");
-            const POINT destination{
-                static_cast<LONG>(json::Number(tile, L"destX")),
-                static_cast<LONG>(json::Number(tile, L"destY")),
-            };
-            const std::optional<fs::path> tilePath = RadarTilePath(dataDir_, url);
-            const std::string tileStamp = tilePath ? file::Stamp(*tilePath) : "invalid";
-            tiles.push_back(RadarTile{
-                url, destination, tilePath.value_or(fs::path{}), tileStamp});
-            signatureStream << L"|" << url << L"@" << destination.x << L"," << destination.y
-                            << L"#" << Utf8ToWide(tileStamp);
+          signatureStream << L"|tiles:" << tiles.size();
+          for (const RadarTile& tile : tiles) {
+            signatureStream << L"|" << tile.url << L"@" << tile.destination.x << L","
+                            << tile.destination.y << L"#" << Utf8ToWide(tile.fileStamp);
           }
           signature = signatureStream.str();
         }
@@ -261,6 +345,7 @@ void Renderer::ComposeRadarFrame() {
       validAt = 0;
       animationIntervalMs = 0;
       precomposed = false;
+      noRainForecast = false;
     }
   }
 
@@ -276,7 +361,7 @@ void Renderer::ComposeRadarFrame() {
       file::MatchesText(cachedSignature, signatureUtf8)) {
     HBITMAP cached = DecodeImageFileToBitmap(cachedFrame, kRadarCanvasWidth, kRadarCanvasHeight);
     if (cached) {
-      std::wstring timeText = RadarTimeFromMillis(validAt);
+      std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
       if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
       HBITMAP previousFrame = nullptr;
       {
@@ -371,7 +456,7 @@ void Renderer::ComposeRadarFrame() {
     return;
   }
 
-  std::wstring timeText = RadarTimeFromMillis(validAt);
+  std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
   if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
 
   // Persist only static radar frames. Serializing the 1920x1280 bitmap for every
