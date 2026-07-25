@@ -55,6 +55,17 @@ export async function messageDataToText(data) {
   throw new TypeError('Unsupported live-tail WebSocket message payload');
 }
 
+export function parseLiveTailMessage(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      unparsed: true,
+      byteLength: new TextEncoder().encode(text).byteLength,
+    };
+  }
+}
+
 async function selfTest() {
   assert.equal(parseDurationSeconds('', 180), 180);
   assert.equal(parseDurationSeconds('1'), 10);
@@ -74,6 +85,9 @@ async function selfTest() {
   assert.equal(await messageDataToText('text'), 'text');
   assert.equal(await messageDataToText(new TextEncoder().encode('bytes')), 'bytes');
   await assert.rejects(() => messageDataToText({}), /Unsupported live-tail/);
+  assert.deepEqual(parseLiveTailMessage('{"ok":true}'), { ok: true });
+  assert.deepEqual(parseLiveTailMessage('token=secret'), { unparsed: true, byteLength: 12 });
+  assert.equal(JSON.stringify(parseLiveTailMessage('token=secret')).includes('secret'), false);
   console.log('live-tail outcome classification self-test passed');
 }
 
@@ -202,8 +216,7 @@ const finished = new Promise((resolve, reject) => {
   socket.addEventListener('message', (message) => {
     const processing = (async () => {
       const text = await messageDataToText(message.data);
-      let parsed;
-      try { parsed = JSON.parse(text); } catch { parsed = { raw: text.slice(0, 1000) }; }
+      const parsed = parseLiveTailMessage(text);
       const safe = sanitize(parsed);
       const cpu = findNumbers(safe);
       for (const [, value] of cpu) maxCpu = maxCpu === null ? value : Math.max(maxCpu, value);
