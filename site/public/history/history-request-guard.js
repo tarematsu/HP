@@ -1,18 +1,22 @@
-const nativeFetch = window.fetch.bind(window);
+const browser = typeof window === 'undefined' ? null : window;
+const nativeFetch = browser?.fetch?.bind(browser) || null;
 const integer = new Intl.NumberFormat('ja-JP');
 let trackRows = [];
 let summaryFrame = 0;
 
 function requestUrl(input) {
   try {
-    return new URL(typeof input === 'string' || input instanceof URL ? input : input?.url, location.href);
+    const value = typeof input === 'string' || input instanceof URL ? input : input?.url;
+    return new URL(value, browser?.location?.href || 'https://history.invalid/');
   } catch {
     return null;
   }
 }
 
 function requestWithUrl(input, url) {
-  return input instanceof Request ? new Request(url, input) : url.href;
+  return typeof Request !== 'undefined' && input instanceof Request
+    ? new Request(url.href, input)
+    : url.href;
 }
 
 function finite(value) {
@@ -42,13 +46,13 @@ export function summarizeCompleteTrackRows(rows) {
 }
 
 function setText(id, value) {
-  const node = document.getElementById(id);
+  const node = browser?.document?.getElementById(id);
   if (node && node.textContent !== value) node.textContent = value;
 }
 
 function applyTrackSummary() {
   summaryFrame = 0;
-  if (location.hash !== '#tracks' || !trackRows.length) return;
+  if (browser?.location?.hash !== '#tracks' || !trackRows.length) return;
   const summary = summarizeCompleteTrackRows(trackRows);
   setText('periodLabel', '有効日数');
   setText('maxLabel', '総再生回数');
@@ -61,13 +65,13 @@ function applyTrackSummary() {
 }
 
 function scheduleTrackSummary() {
-  if (summaryFrame) return;
-  summaryFrame = requestAnimationFrame(applyTrackSummary);
+  if (summaryFrame || !browser?.requestAnimationFrame) return;
+  summaryFrame = browser.requestAnimationFrame(applyTrackSummary);
 }
 
 async function guardedFetch(input, init) {
   const url = requestUrl(input);
-  if (!url || url.origin !== location.origin) return nativeFetch(input, init);
+  if (!url || url.origin !== browser.location.origin) return nativeFetch(input, init);
 
   if (url.pathname === '/api/track-history' && url.searchParams.get('latest') !== '1') {
     url.searchParams.set('ranking', '0');
@@ -92,18 +96,23 @@ async function guardedFetch(input, init) {
   return response;
 }
 
-for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
-  const key = sessionStorage.key(index);
-  if (key?.startsWith('sakurazaka46jp:v1:')) sessionStorage.removeItem(key);
+export function installHistoryRequestGuard() {
+  if (!browser || !nativeFetch) return;
+  for (let index = browser.sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = browser.sessionStorage.key(index);
+    if (key?.startsWith('sakurazaka46jp:v1:')) browser.sessionStorage.removeItem(key);
+  }
+
+  browser.fetch = guardedFetch;
+  browser.addEventListener('hashchange', scheduleTrackSummary);
+  const summaryCards = browser.document.getElementById('summaryCards');
+  if (summaryCards) {
+    new MutationObserver(scheduleTrackSummary).observe(summaryCards, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }
 }
 
-window.fetch = guardedFetch;
-window.addEventListener('hashchange', scheduleTrackSummary);
-const summaryCards = document.getElementById('summaryCards');
-if (summaryCards) {
-  new MutationObserver(scheduleTrackSummary).observe(summaryCards, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-  });
-}
+installHistoryRequestGuard();
