@@ -268,18 +268,32 @@ void Renderer::PaintNativeRadar(HWND hwnd) {
     timeText = radarTimeText_;
     if (hasFrame) StretchRadarInto(scope.dc, bounds, radarFrameBitmap_);
   }
-  HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
+  const bool noRain = hasFrame && timeText == L"しばらく雨は降りません";
   if (!hasFrame) {
     HBRUSH surface = CreateSolidBrush(kWidgetSurface);
     FillRect(scope.dc, &bounds, surface);
     DeleteObject(surface);
+    HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
     SetTextColor(scope.dc, kWidgetMuted);
     DrawTextInRect(scope.dc, L"レーダー画像を準備中", bounds,
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(scope.dc, previousFont);
+  } else if (noRain) {
+    FillRoundRectTranslucent(scope.dc, bounds, RGB(0, 0, 0), radius, 165);
+    const RECT messageBounds = NormalizeInsetRect(
+        bounds, SpanX(bounds, 45), SpanY(bounds, 120),
+        SpanX(bounds, 45), SpanY(bounds, 90));
+    HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Large));
+    SetTextColor(scope.dc, kWidgetText);
+    DrawTextInRect(scope.dc, L"しばらく雨は降りません", messageBounds,
+                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(scope.dc, previousFont);
   }
 
-  const std::wstring chipText =
-      L"雨雲レーダー " + (timeText.empty() ? L"--:--" : timeText);
+  HGDIOBJ previousFont = SelectObject(scope.dc, TierFont(FontTier::Small));
+  const std::wstring chipText = noRain
+      ? L"雨雲レーダー"
+      : L"雨雲レーダー " + (timeText.empty() ? L"--:--" : timeText);
   RECT measure{};
   DrawTextW(scope.dc, chipText.c_str(), -1, &measure,
             DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
