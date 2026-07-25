@@ -102,7 +102,7 @@ test('dual storage failure never falls back to D1 response tables', async () => 
   ), /could not be persisted to KV or R2/);
 });
 
-test('dashboard materialization uses KV and R2 every five minutes without another Queue message', async () => {
+test('dashboard materialization uses KV and R2 without another Queue message', async () => {
   const atEvenMinute = Date.UTC(2026, 6, 20, 0, 35);
   assert.equal(dashboardMaterializationDue(atEvenMinute), true);
   assert.equal(dashboardMaterializationDue(atEvenMinute + 60_000), false);
@@ -122,7 +122,7 @@ test('dashboard materialization uses KV and R2 every five minutes without anothe
   assert.equal(result.storage, 'kv');
   assert.equal(result.mirror_storage, 'r2');
   assert.equal(saves[0][2], 'dashboard');
-  assert.equal(saves[0][5], 300);
+  assert.equal(saves[0][5], 900);
 });
 
 test('the internal Worker endpoint returns a KV response or a closed fallback signal', async () => {
