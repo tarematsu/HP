@@ -62,7 +62,7 @@ jobs:
           }
 
           list_keys() {
-            local prefix="$1" output="$2" cursor="" next_cursor response
+            local prefix="$1" output="$2" cursor="" next_cursor response truncated
             : > "$output"
             while true; do
               local -a query=(--get --data-urlencode "prefix=$prefix")
@@ -70,11 +70,17 @@ jobs:
               response="$(curl --fail-with-body --silent --show-error \
                 -H "$auth_header" "${query[@]}" "$api")"
               jq -e \
-                '.success == true and (.result | type == "array") and all(.result[]?; .key | type == "string")' \
+                '.success == true and
+                 (.result | type == "array") and
+                 all(.result[]?; .key | type == "string") and
+                 (.result_info.is_truncated | type == "boolean")' \
                 <<< "$response" >/dev/null
               jq -c '.result[]?.key' <<< "$response" >> "$output"
-              next_cursor="$(jq -r '.result_info.cursor // empty' <<< "$response")"
-              [[ -n "$next_cursor" ]] || break
+
+              truncated="$(jq -r '.result_info.is_truncated' <<< "$response")"
+              [[ "$truncated" == true ]] || break
+
+              next_cursor="$(jq -er '.result_info.cursor | select(type == "string" and length > 0)' <<< "$response")"
               [[ "$next_cursor" != "$cursor" ]] || {
                 echo "Cloudflare R2 object listing returned a repeated cursor" >&2
                 exit 1
