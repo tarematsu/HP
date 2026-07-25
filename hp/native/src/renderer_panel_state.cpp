@@ -146,6 +146,13 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
             : PanelSection::ClockTime);
   }
 
+  if (clockDayChanged && nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
+      IsWindowVisible(nativeMainWindow_)) {
+    // The collection calendar is date-derived and needs one full repaint at
+    // the local day boundary. This happens only once per day.
+    InvalidateRect(nativeMainWindow_, nullptr, FALSE);
+  }
+
   // Resolving projected playback takes the playback mutex and advances a queue
   // cursor. Skip that work when the main native surface is absent or hidden.
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
