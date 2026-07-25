@@ -6,6 +6,10 @@ const handleHeader = readFileSync(
   new URL('../../native/src/app_stationhead_handles.h', import.meta.url),
   'utf8',
 );
+const handleSource = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
 const appSource = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
@@ -97,4 +101,26 @@ test('pending Spotify auth hides the playback controller in both windows', () =>
     setVisible,
     /selectedTab_ != StationheadTabKind::Auth && controller_/,
   );
+});
+
+test('unmuting either window mutes its peer first', () => {
+  assert.match(handleHeader, /AppStationheadHandle\(\);/);
+  assert.match(handleHeader, /~AppStationheadHandle\(\);/);
+  assert.match(handleHeader, /AppSecondaryStationheadHandle\(\);/);
+  assert.match(handleHeader, /~AppSecondaryStationheadHandle\(\);/);
+  assert.match(handleSource, /StationheadHandleBase\* primaryAudioHandle = nullptr;/);
+  assert.match(handleSource, /StationheadHandleBase\* secondaryAudioHandle = nullptr;/);
+
+  const setMuted = section(
+    handleSource,
+    'void StationheadHandleBase::SetAudioMuted(bool muted) noexcept',
+    'void StationheadHandleBase::SetBounds(',
+  );
+  const peerMuteAt = setMuted.indexOf('peer->SetAudioMuted(true);');
+  const unchangedAt = setMuted.indexOf('if (audioMuted_ == muted) return;');
+  const applyAt = setMuted.indexOf('player_->SetMuted(muted);');
+  assert.ok(peerMuteAt >= 0 && peerMuteAt < unchangedAt);
+  assert.ok(unchangedAt >= 0 && unchangedAt < applyAt);
+  assert.match(setMuted, /if \(!muted\)/);
+  assert.match(setMuted, /PeerAudioHandle\(this\)/);
 });
