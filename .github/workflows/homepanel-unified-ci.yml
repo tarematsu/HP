@@ -11,7 +11,7 @@ on:
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
-      - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
@@ -35,7 +35,7 @@ on:
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
-      - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
@@ -79,7 +79,7 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-          node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
+          python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
           node --test \
             tests/cloudflare-account-context.test.mjs \
             tests/homepanel-*.test.mjs \
@@ -99,9 +99,6 @@ jobs:
         run: |
           set -o pipefail
           npm run check 2>&1 | tee source-check.log
-          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--time-period'
-          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--sort-by'
-          node_modules/.bin/wrangler d1 insights --help | grep -q -- '--json'
 
       - name: Run HomePanel tests
         working-directory: hp/cloud
