@@ -19,11 +19,12 @@ export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 
 const STATUS_CONTEXTS = {
-  daily: 'observability/daily-d1-budget',
+  daily: 'observability/daily-usage-budget',
   freeTier: 'observability/free-tier-budget',
   contract: 'observability/budget-contract',
-  query: 'observability/query',
-  telemetry: 'observability/telemetry',
+  d1Insights: 'observability/d1-query-insights',
+  query: 'observability/cloudflare-query',
+  telemetry: 'observability/telemetry-policy',
 };
 
 function deploymentSummary(activeDeployments) {
@@ -33,10 +34,10 @@ function deploymentSummary(activeDeployments) {
       const versions = Array.isArray(deployment?.version_ids)
         ? deployment.version_ids.join(', ')
         : String(deployment?.version_ids || 'unknown');
-      return `| \`${worker}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
+      return `| \`${worker}\` | \`${deployment?.status || 'active'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
     }).join('\n')
-    : '| - | not captured | not captured | not captured |';
-  return `### Active Worker deployments\n\n| Worker | Deployment | Traffic-bearing versions | Deployed at |\n|---|---|---|---|\n${rows}`;
+    : '| - | not captured | not captured | not captured | not captured |';
+  return `### Active Worker deployments\n\n| Worker | Status | Deployment | Traffic-bearing versions | Deployed at |\n|---|---|---|---|---|\n${rows}`;
 }
 
 function recentMergeSummary(recentMerges) {
@@ -52,6 +53,7 @@ export function buildIssueBody({
   mainSha = 'unknown',
   runUrl,
   trigger,
+  lookbackMinutes = '60',
   outcomes,
   summaries = {},
   activeDeployments = {},
@@ -61,14 +63,16 @@ export function buildIssueBody({
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
 
-This issue is maintained automatically by the Cloudflare Observability workflow.
+This issue is maintained automatically by the unified HP and Stationhead Cloudflare Observability workflow.
 
 - **Overall:** ${overall}
+- **Scope:** HP + Stationhead monorepo, account-wide included usage
 - **Generated:** ${generatedAt}
 - **Trigger:** ${trigger}
 - **Workflow source commit:** \`${targetSha}\`
 - **Current main SHA:** \`${mainSha}\`
 - **Workflow run:** ${runUrl}
+- **Telemetry and D1 insights lookback:** ${lookbackMinutes} minutes
 
 ${deploymentSummary(activeDeployments)}
 
@@ -77,9 +81,10 @@ ${recentMergeSummary(recentMerges)}
 | Gate | Outcome |
 |---|---|
 ${renderOutcomeRows(outcomes)}
-${renderSection('UTC daily request and D1 budgets', summaries.daily)}
-${renderSection('DO, Queues, R2, and KV budgets', summaries.freeTier)}
+${renderSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
+${renderSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier)}
 ${renderSection('Budget contract', summaries.contract)}
+${renderSection('Top D1 queries by rows read', summaries.d1Insights)}
 ${renderSection('Cloudflare metrics and live diagnostics', summaries.observability)}
 ${renderSection('Current-deployment telemetry policy', summaries.telemetry)}
 `;
@@ -116,11 +121,12 @@ async function recentMergedPullRequests(request) {
 export async function publishFromEnvironment() {
   const targetSha = requiredEnv('OBSERVABILITY_TARGET_SHA');
   const runUrl = requiredEnv('OBSERVABILITY_RUN_URL');
-  const request = createGitHubRequest('sh-cloudflare-observability-status');
+  const request = createGitHubRequest('cloudflare-observability-status');
   const outcomes = {
     daily: process.env.DAILY_BUDGET_OUTCOME,
     freeTier: process.env.FREE_TIER_BUDGET_OUTCOME,
     contract: process.env.BUDGET_CONTRACT_OUTCOME,
+    d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
   };
@@ -131,6 +137,7 @@ export async function publishFromEnvironment() {
     daily,
     freeTier,
     contract,
+    d1Insights,
     observability,
     telemetry,
   ] = await Promise.all([
@@ -140,8 +147,9 @@ export async function publishFromEnvironment() {
     readOptionalText('daily-usage/summary.md'),
     readOptionalText('free-tier-usage/summary.md'),
     readOptionalText('observability-gate/summary.md'),
+    readOptionalText('d1-insights/summary.md'),
     readOptionalText('observability-summary.md'),
-    readOptionalText('telemetry-audit.log'),
+    readOptionalText('telemetry-summary.md'),
   ]);
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
@@ -149,8 +157,9 @@ export async function publishFromEnvironment() {
     mainSha,
     runUrl,
     trigger: process.env.OBSERVABILITY_TRIGGER || 'unknown',
+    lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
-    summaries: { daily, freeTier, contract, observability, telemetry },
+    summaries: { daily, freeTier, contract, d1Insights, observability, telemetry },
     activeDeployments,
     recentMerges,
   });
@@ -160,7 +169,7 @@ export async function publishFromEnvironment() {
     runUrl,
     outcomes,
     contexts: STATUS_CONTEXTS,
-    overallDescription: 'Cloudflare observability',
+    overallDescription: 'Unified Cloudflare observability',
   });
   const issue = await upsertStatusIssue({
     request,
@@ -168,7 +177,7 @@ export async function publishFromEnvironment() {
     marker: STATUS_MARKER,
     body,
   });
-  console.log(`Published observability status to issue #${issue.number}`);
+  console.log(`Published unified observability status to issue #${issue.number}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
