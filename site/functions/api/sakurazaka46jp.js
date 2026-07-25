@@ -9,6 +9,8 @@ const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
 const SERIES_CACHE_VERSION = 2;
+const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
+const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
@@ -141,6 +143,37 @@ export function decodeSakurazakaSeriesRows(rows, source) {
   return result;
 }
 
+function normalizedEventName(value) {
+  return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function hasSeriesSamples(row) {
+  return Array.isArray(row?.samples) && row.samples.length > 0;
+}
+
+function duplicateSeries(primary, fallback) {
+  const primaryStart = Number(primary?.started_at);
+  const fallbackStart = Number(fallback?.started_at);
+  const startsAvailable = Number.isFinite(primaryStart) && Number.isFinite(fallbackStart);
+  if (startsAvailable && Math.abs(primaryStart - fallbackStart) <= DUPLICATE_START_TOLERANCE_MS) return true;
+
+  const primaryName = normalizedEventName(primary?.event_name);
+  const fallbackName = normalizedEventName(fallback?.event_name);
+  const genericName = !fallbackName || fallbackName === '公式ステヘ';
+  if (genericName || primaryName !== fallbackName) return false;
+  return !startsAvailable || Math.abs(primaryStart - fallbackStart) <= DUPLICATE_NAME_TOLERANCE_MS;
+}
+
+export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
+  const primary = (Array.isArray(primaryRows) ? primaryRows : []).filter(hasSeriesSamples);
+  const merged = [...primary];
+  for (const fallback of Array.isArray(fallbackRows) ? fallbackRows : []) {
+    if (!hasSeriesSamples(fallback)) continue;
+    if (!primary.some((item) => duplicateSeries(item, fallback))) merged.push(fallback);
+  }
+  return merged;
+}
+
 export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
   const ordered = [...seriesRows].sort((a, b) => (a.started_at || 0) - (b.started_at || 0));
   const result = [];
@@ -214,7 +247,8 @@ async function loadSakurazakaSeries(env, from, to) {
     fromTs,
     toTs,
   );
-  const trimmed = trimSakurazakaSeries(historical.concat(failSafe));
+  const merged = mergeSakurazakaSeriesRows(historical, failSafe);
+  const trimmed = trimSakurazakaSeries(merged);
   let failSafeEventCount = 0;
   for (const item of trimmed.series) {
     if (item.source === 'official_news_fail_safe') failSafeEventCount += 1;
