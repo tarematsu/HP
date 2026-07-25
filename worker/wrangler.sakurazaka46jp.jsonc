@@ -7,10 +7,10 @@
   "preview_urls": false,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 0.1,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 1,
+      "head_sampling_rate": 0.1,
       "persist": true,
       "invocation_logs": true
     }
@@ -40,7 +40,7 @@
         "queue": "stationhead-sakurazaka46jp",
         "max_batch_size": 1,
         "max_batch_timeout": 1,
-        "max_retries": 8,
+        "max_retries": 4,
         "dead_letter_queue": "stationhead-sakurazaka46jp-dlq",
         "max_concurrency": 1
       }
