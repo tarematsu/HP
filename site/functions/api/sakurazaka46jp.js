@@ -199,7 +199,7 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
     if (!/no such table/i.test(String(error?.message || ''))) throw error;
   }
   return {
-    historical: decodeSakurazakaSeriesRows(historicalRows, 'minute_facts'),
+    historical: decodeSakurazakaSeriesRows(historicalRows, 'historical_import'),
     failSafe: decodeSakurazakaSeriesRows(failSafeRows, 'official_news_fail_safe'),
     summaryCount: summaries.length,
   };
