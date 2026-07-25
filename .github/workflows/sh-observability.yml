@@ -89,7 +89,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator
       D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
