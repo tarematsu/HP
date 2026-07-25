@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const SH_CONFIGS = [
   'worker/wrangler.sakurazaka46jp.jsonc',
+  'worker/wrangler.buddies-recovery.jsonc',
   'worker/wrangler.buddies-collector.jsonc',
   'worker/wrangler.runtime.jsonc',
 ];
@@ -39,6 +40,7 @@ test('agent instructions pin the HP monorepo and active Cloudflare topology', as
   const workerNames = configs.map((config) => JSON.parse(config).name);
   assert.deepEqual(workerNames, [
     'sh-sakurazaka46jp',
+    'sh-buddies-recovery',
     'sh-buddies-collector',
     'sh-runtime-orchestrator',
   ]);
