@@ -81,17 +81,6 @@ std::wstring DeviceState(const JsonObject& item) {
   }
   return state;
 }
-
-struct WeatherHourKey {
-  int hour;
-  const wchar_t* key;
-};
-
-constexpr std::array<WeatherHourKey, 12> kWeatherHourOrder{{
-    {22, L"22"}, {23, L"23"}, {0, L"0"}, {1, L"1"},
-    {2, L"2"}, {3, L"3"}, {4, L"4"}, {5, L"5"},
-    {6, L"6"}, {7, L"7"}, {8, L"8"}, {9, L"9"},
-}};
 }  // namespace
 
 bool ParseDashboardSnapshot(
@@ -109,15 +98,21 @@ bool ParseDashboardSnapshot(
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SectionRevision(weather);
     const JsonObject hourly = json::Object(weather, L"hourly");
-    next.weatherHours.reserve(kWeatherHourOrder.size());
-    for (const WeatherHourKey& entry : kWeatherHourOrder) {
+    const double startHourValue = json::Number(weather, L"startHour", 22);
+    const int startHour = std::isfinite(startHourValue) && startHourValue >= 0 && startHourValue < 24
+        ? static_cast<int>(startHourValue)
+        : 22;
+    next.weatherHours.reserve(12);
+    for (int offset = 0; offset < 12; ++offset) {
       try {
-        if (!hourly.HasKey(entry.key)) continue;
-        const auto value = hourly.GetNamedValue(entry.key);
+        const int hour = (startHour + offset) % 24;
+        const std::wstring key = std::to_wstring(hour);
+        if (!hourly.HasKey(key.c_str())) continue;
+        const auto value = hourly.GetNamedValue(key.c_str());
         if (value.ValueType() != JsonValueType::Object) continue;
         const JsonObject item = value.GetObject();
         next.weatherHours.push_back({
-            entry.hour,
+            hour,
             json::Text(item, L"icon"),
             NumberOrNaN(item, L"temp"),
             NumberOrNaN(item, L"rainMm"),

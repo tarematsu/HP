@@ -97,6 +97,40 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(liveness?.nextRunAt)).toBeGreaterThan(0);
   });
 
+  it("migrates a changed cadence without discarding runtime state", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const previousLastSuccessAt = now - 3600;
+    const stub = coordinatorStub();
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.put<RuntimeEnvelope>(RUNTIME_STORAGE_KEY, {
+        version: 2,
+        jobs: [{
+          name: "octopus",
+          intervalSeconds: 86_400,
+          nextRunAt: now + 86_400,
+          lastSuccessAt: previousLastSuccessAt,
+          consecutiveFailures: 2,
+          lastError: "rate limited",
+        }],
+      });
+    });
+
+    const response = await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
+    const stored = await runtime(stub);
+    const octopus = stored?.jobs.find(job => job.name === "octopus");
+
+    expect(response.status).toBe(202);
+    expect(stored?.version).toBe(3);
+    expect(octopus).toMatchObject({
+      intervalSeconds: 43_200,
+      lastSuccessAt: previousLastSuccessAt,
+      consecutiveFailures: 2,
+      lastError: "rate limited",
+    });
+    expect(Number(octopus?.nextRunAt)).toBeGreaterThan(now);
+    expect(Number(octopus?.nextRunAt)).toBeLessThanOrEqual(now + 43_200);
+  });
+
   it("schedules an alarm for the earliest runtime job", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")

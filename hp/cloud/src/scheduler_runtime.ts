@@ -14,7 +14,7 @@ import { runVideoLiveness } from "./video_liveness";
 
 const RUNTIME_STORAGE_KEY = "scheduler-runtime-v2";
 const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
-const RUNTIME_VERSION = 2;
+const RUNTIME_VERSION = 3;
 const MIN_RETRY_SECONDS = 60;
 const MAX_FAILURE_EXPONENT = 4;
 const EMPTY_RECHECK_SECONDS = 24 * 60 * 60;
@@ -53,11 +53,15 @@ interface PendingJobEvent {
   detail: string | null;
 }
 
+function normalizedInterval(row: JobRow): number {
+  return Math.max(MIN_RETRY_SECONDS, Number(row.interval_seconds) || MIN_RETRY_SECONDS);
+}
+
 function normalizedJob(row: JobRow, nowSeconds: number): RuntimeJob {
   const configuredNext = Number(row.next_run_at);
   return {
     name: row.name,
-    intervalSeconds: Math.max(MIN_RETRY_SECONDS, Number(row.interval_seconds) || MIN_RETRY_SECONDS),
+    intervalSeconds: normalizedInterval(row),
     nextRunAt: configuredNext > nowSeconds ? configuredNext : nowSeconds,
     lastSuccessAt: row.last_success_at === null ? null : Number(row.last_success_at),
     consecutiveFailures: Math.max(0, Number(row.consecutive_failures) || 0),
@@ -65,20 +69,58 @@ function normalizedJob(row: JobRow, nowSeconds: number): RuntimeJob {
   };
 }
 
-async function bootstrapRuntime(
-  state: DurableObjectState,
-  env: Env,
-  nowSeconds: number,
-): Promise<RuntimeEnvelope> {
+async function configuredJobRows(env: Env, nowSeconds: number): Promise<JobRow[]> {
   await ensureSystemJobs(env, nowSeconds * 1000);
   const result = await env.DB.prepare(
     `SELECT name,interval_seconds,next_run_at,lease_until,last_success_at,consecutive_failures
        FROM jobs ORDER BY name`,
   ).all<JobRow>();
+  return result.results ?? [];
+}
+
+async function bootstrapRuntime(
+  state: DurableObjectState,
+  env: Env,
+  nowSeconds: number,
+): Promise<RuntimeEnvelope> {
+  const rows = await configuredJobRows(env, nowSeconds);
   const envelope: RuntimeEnvelope = {
     version: RUNTIME_VERSION,
-    jobs: (result.results ?? []).map(row => normalizedJob(row, nowSeconds)),
+    jobs: rows.map(row => normalizedJob(row, nowSeconds)),
   };
+  await state.storage.put(RUNTIME_STORAGE_KEY, envelope);
+  return envelope;
+}
+
+async function migrateRuntime(
+  state: DurableObjectState,
+  env: Env,
+  stored: RuntimeEnvelope,
+  nowSeconds: number,
+): Promise<RuntimeEnvelope> {
+  const rows = await configuredJobRows(env, nowSeconds);
+  const previousJobs = new Map(stored.jobs.map(job => [job.name, job]));
+  const jobs = rows.map(row => {
+    const previous = previousJobs.get(row.name);
+    if (!previous) return normalizedJob(row, nowSeconds);
+
+    const intervalSeconds = normalizedInterval(row);
+    const previousNextRunAt = Number(previous.nextRunAt);
+    const previousLastSuccessAt = Number(previous.lastSuccessAt);
+    return {
+      name: row.name,
+      intervalSeconds,
+      nextRunAt: Number.isFinite(previousNextRunAt)
+        ? Math.max(nowSeconds, Math.min(previousNextRunAt, nowSeconds + intervalSeconds))
+        : normalizedJob(row, nowSeconds).nextRunAt,
+      lastSuccessAt: previous.lastSuccessAt === null || !Number.isFinite(previousLastSuccessAt)
+        ? null
+        : previousLastSuccessAt,
+      consecutiveFailures: Math.max(0, Number(previous.consecutiveFailures) || 0),
+      lastError: typeof previous.lastError === "string" ? previous.lastError : null,
+    } satisfies RuntimeJob;
+  });
+  const envelope: RuntimeEnvelope = { version: RUNTIME_VERSION, jobs };
   await state.storage.put(RUNTIME_STORAGE_KEY, envelope);
   return envelope;
 }
@@ -89,7 +131,10 @@ async function runtimeEnvelope(
   nowSeconds = Math.floor(Date.now() / 1000),
 ): Promise<RuntimeEnvelope> {
   const stored = await state.storage.get<RuntimeEnvelope>(RUNTIME_STORAGE_KEY);
-  if (stored?.version === RUNTIME_VERSION && Array.isArray(stored.jobs)) return stored;
+  if (stored && Array.isArray(stored.jobs)) {
+    if (stored.version === RUNTIME_VERSION) return stored;
+    return migrateRuntime(state, env, stored, nowSeconds);
+  }
   return bootstrapRuntime(state, env, nowSeconds);
 }
 
