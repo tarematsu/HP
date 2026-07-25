@@ -13,10 +13,6 @@ const migrationsDir = join(root, "migrations");
 const databaseIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const placeholderDatabaseId = "00000000-0000-0000-0000-000000000000";
 const placeholderUpdateBucket = "replace-with-your-r2-bucket-name";
-const productionBranch = process.env.HOMEPANEL_PRODUCTION_BRANCH?.trim() || "main";
-const buildBranch = process.env.WORKERS_CI_BRANCH?.trim() || "";
-const cloudflareManagedBuild = process.env.WORKERS_CI === "1";
-const previewBuild = cloudflareManagedBuild && Boolean(buildBranch) && buildBranch !== productionBranch;
 const migrateLocal = process.argv.includes("--migrate-local");
 const migrateRemoteOnly = process.argv.includes("--migrate-only");
 const forceRemoteMigrations = process.argv.includes("--with-migrations")
@@ -31,23 +27,11 @@ if (skipRemoteMigrations && (migrateRemoteOnly || forceRemoteMigrations)) {
   throw new Error("Remote D1 migrations cannot be both forced and skipped");
 }
 
-function cloudflareEnvironment() {
-  const env = { ...process.env, CI: "true" };
-  const token = process.env.CLOUDFLARE_API_TOKEN?.trim()
-    || process.env.CLOUDFLARE_BUILDS_API_TOKEN?.trim();
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim()
-    || process.env.CLOUDFLARE_BUILDS_ACCOUNT_ID?.trim()
-    || process.env.ACCOUNT_ID?.trim();
-  if (token) env.CLOUDFLARE_API_TOKEN = token;
-  if (accountId) env.CLOUDFLARE_ACCOUNT_ID = accountId;
-  return env;
-}
-
 function wrangler(args, capture = false) {
   return execFileSync(process.execPath, [wranglerCli, ...args], {
     cwd: root,
     encoding: capture ? "utf8" : undefined,
-    env: cloudflareEnvironment(),
+    env: { ...process.env, CI: "true" },
     stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit",
   });
 }
@@ -236,22 +220,11 @@ if (migrateLocal) {
   wrangler(["d1", "migrations", "apply", databaseName, "--local", "--config", generatedConfig]);
   process.exit(0);
 }
-if (previewBuild) {
-  console.log(`Preview branch '${buildBranch}': skipping production D1 migrations`);
-  wrangler(["versions", "upload", "--config", generatedConfig]);
-  process.exit(0);
-}
 
-const applyRemoteMigrations = !skipRemoteMigrations && (
-  migrateRemoteOnly || forceRemoteMigrations || !cloudflareManagedBuild
-);
-if (applyRemoteMigrations) {
+if (!skipRemoteMigrations) {
   wrangler(["d1", "migrations", "apply", databaseName, "--remote", "--config", generatedConfig]);
-} else if (skipRemoteMigrations) {
-  console.log("Routine Worker deploy: skipping remote D1 migration discovery");
-  console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
 } else {
-  console.log("Cloudflare managed production build: skipping routine remote migration discovery");
+  console.log("Routine Worker deploy: skipping remote D1 migration discovery");
   console.log("Remote migrations are applied by the dedicated Apply D1 migrations workflow");
 }
 if (migrateRemoteOnly) process.exit(0);
