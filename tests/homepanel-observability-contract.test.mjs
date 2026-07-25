@@ -14,7 +14,9 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'issues: write',
     'statuses: write',
     'D1_CONFIG_GLOBS: hp/cloud/wrangler.jsonc',
-    'D1_DATABASE_NAME: homepanel-data',
+    'D1_QUERY_OUTPUT_DIR: d1-insights',
+    'D1_QUERY_LOOKBACK_MINUTES:',
+    'D1_QUERY_LIMIT: "20"',
     'DAILY_REQUEST_BUDGET: "3000"',
     'DAILY_REQUEST_RESERVE: "0"',
     'DAILY_D1_READ_BUDGET: "50000"',
@@ -22,7 +24,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'DAILY_QUEUE_BUDGET: "1000"',
     'Enforce projected UTC daily Worker, D1, and Queue budgets',
     'Collect top D1 queries by rows read',
-    'query-cloudflare-d1-insights.mjs',
+    'query-cloudflare-d1-costs.py',
     'D1_INSIGHTS_OUTCOME',
     'id: observability-query',
     'uses: ./.github/actions/cloudflare-observability-diagnostics',
@@ -40,7 +42,10 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'tests/homepanel-observability-contract.test.mjs',
     'tests/observability-status-publisher.test.mjs',
   ]);
-  expectAll(unifiedCi, ['tests/homepanel-*.test.mjs']);
+  expectAll(unifiedCi, [
+    'tests/homepanel-*.test.mjs',
+    'python3 .github/scripts/query-cloudflare-d1-costs.py --self-test',
+  ]);
   expectAll(diagnostics, [
     'query-cloudflare-observability.py',
     'capture-cloudflare-live-tail.mjs',
@@ -63,6 +68,18 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'tests/homepanel-runtime-contract.test.mjs',
     'tests/homepanel-video-contract.test.mjs',
     'tests/homepanel-migrations-contract.test.mjs',
+    'query-cloudflare-d1-insights.mjs',
+    'Install pinned Wrangler for D1 insights',
+    'steps.install-wrangler',
+    'npm ci --prefix hp/cloud',
+    /^\s{6}CLOUDFLARE_API_TOKEN:/m,
+  ]);
+  expectNone(unifiedCi, [
+    'query-cloudflare-d1-insights.mjs',
+    'wrangler d1 insights --help',
+    "grep -q -- '--time-period'",
+    "grep -q -- '--sort-by'",
+    "grep -q -- '--json'",
   ]);
   assert.equal(workflow.match(/cron: "/g)?.length, 1);
   assert.ok(workflow.includes('\n  push:'));
@@ -72,7 +89,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
 test('HomePanel observability tools retain budget, privacy, and status behavior', () => {
   const daily = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
   const telemetry = readSource('.github/scripts/audit-cloudflare-telemetry.py');
-  const insights = readSource('.github/scripts/query-cloudflare-d1-insights.mjs');
+  const queryCosts = readSource('.github/scripts/query-cloudflare-d1-costs.py');
   const publisher = readSource('.github/scripts/publish-homepanel-observability-status.mjs');
   const publisherCore = readSource('.github/scripts/observability-status-publisher.mjs');
   const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
@@ -87,16 +104,22 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     'Actual to now',
     'Projected 24h',
   ]);
-  expectAll(insights, [
-    'wrangler',
-    'd1',
-    'insights',
-    '--sort-by',
-    'reads',
-    'totalRowsRead',
-    'sanitizeQuery',
-    'SQL fingerprint',
-    'redactText',
+  expectAll(queryCosts, [
+    'd1QueriesAdaptiveGroups',
+    'sum_rowsRead_DESC',
+    'sum_rowsWritten_DESC',
+    'count_DESC',
+    'sanitize_query',
+    'hashlib.sha256',
+    'rowsRead',
+    'rowsWritten',
+    'D1 query cost insights',
+  ]);
+  expectNone(queryCosts, [
+    'wrangler d1 insights',
+    'spawnSync',
+    'node_modules/.bin/wrangler',
+    '/d1/database',
   ]);
   expectAll(telemetry, [
     'scriptVersion',
