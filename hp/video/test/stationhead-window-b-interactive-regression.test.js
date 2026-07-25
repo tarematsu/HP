@@ -10,6 +10,18 @@ const appSource = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
 );
+const playerSource = readFileSync(
+  new URL('../../native/src/sh.cpp', import.meta.url),
+  'utf8',
+);
+const sharedSource = readFileSync(
+  new URL('../../native/src/sh_shared.h', import.meta.url),
+  'utf8',
+);
+const webviewSource = readFileSync(
+  new URL('../../native/src/sh_webview.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -53,4 +65,47 @@ test('Window B remains constrained to its right-half placement while pending', (
     /secondaryStationhead_->SetBounds\(secondaryPending \? right : bounds\);/,
   );
   assert.match(placement, /secondaryStationhead_->RefreshVisibility\(\);/);
+});
+
+test('Window B keeps confirmed login-required state while audio continues', () => {
+  const applyAudio = section(
+    playerSource,
+    'void StationheadPlayer::ApplyAudioPlaybackState(',
+    'void StationheadPlayer::NavigateCurrentUrl(',
+  );
+  assert.match(applyAudio, /preserveSecondaryLogin = IsSecondary\(\) && loginRequired_/);
+  assert.match(applyAudio, /status_\.loginRequired = preserveSecondaryLogin;/);
+  assert.match(applyAudio, /if \(!preserveSecondaryLogin && !startupPreviewActive_/);
+  assert.match(
+    applyAudio,
+    /PostChange\(preserveSecondaryLogin \? StationheadChangeNone[\s\S]*StationheadChangeReturnMain\)/,
+  );
+});
+
+test('Window B rejects auth-probe results from an obsolete execution', () => {
+  assert.match(
+    sharedSource,
+    /StationheadAuthProbeScript\(int channelId, int64_t probeStartedAt\)/,
+  );
+  assert.match(sharedSource, /message\.probe_started_at = probeStartedAt;/);
+
+  const poll = section(
+    playerSource,
+    'void StationheadPlayer::PollAuthProbe(',
+    '// Locates the Start Listening control',
+  );
+  assert.match(
+    poll,
+    /StationheadAuthProbeScript\(config_\.channelId, authProbeStartedAt_\)/,
+  );
+
+  const handler = section(
+    webviewSource,
+    'if (type == L"stationhead-auth-probe")',
+    'if (!spotifyAuthorization_',
+  );
+  assert.match(handler, /probeStartedAt != authProbeStartedAt_/);
+  assert.match(handler, /ignored a stale auth probe result/);
+  assert.match(handler, /state == L"forbidden"/);
+  assert.match(handler, /playback session retained/);
 });
