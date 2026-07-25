@@ -1,14 +1,16 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const API_ROOT = 'https://api.cloudflare.com/client/v4';
-const GRAPHQL_URL = `${API_ROOT}/graphql`;
+const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const FREE_READ_ROWS_PER_DAY = 5_000_000;
 const FREE_WRITE_ROWS_PER_DAY = 100_000;
 const TARGET_RATIO = 0.5;
 const DEFAULT_WINDOW_MINUTES = 60;
 const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
-if (!token) throw new Error('CLOUDFLARE_API_TOKEN is required');
+const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+if (!token || !accountId) {
+  throw new Error('CLOUDFLARE_API_TOKEN and resolved CLOUDFLARE_ACCOUNT_ID are required');
+}
 
 const outputDir = path.resolve(process.env.D1_USAGE_OUTPUT_DIR || 'd1-usage');
 await mkdir(outputDir, { recursive: true });
@@ -39,14 +41,14 @@ function configuredStart(end) {
   return parsed < earliest ? earliest : parsed;
 }
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
+async function graphql(query, variables) {
+  const response = await fetch(GRAPHQL_URL, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
     },
+    body: JSON.stringify({ query, variables }),
   });
   const text = await response.text();
   let body;
@@ -55,10 +57,12 @@ async function api(url, options = {}) {
   } catch {
     throw new Error(`Cloudflare returned non-JSON (${response.status}): ${text.slice(0, 500)}`);
   }
-  if (!response.ok || body?.success === false || body?.errors?.length) {
-    throw new Error(`Cloudflare API failed (${response.status}): ${JSON.stringify(body?.errors || body).slice(0, 1200)}`);
+  if (!response.ok || body?.errors?.length) {
+    throw new Error(`Cloudflare GraphQL failed (${response.status}): ${JSON.stringify(body?.errors || body).slice(0, 1200)}`);
   }
-  return body;
+  const accounts = body?.data?.viewer?.accounts || [];
+  if (accounts.length !== 1) throw new Error(`Expected one GraphQL account row, got ${accounts.length}`);
+  return accounts[0].d1AnalyticsAdaptiveGroups || [];
 }
 
 async function referencedDatabases() {
@@ -79,24 +83,6 @@ async function referencedDatabases() {
   return databases;
 }
 
-async function discoverAccounts(referenced) {
-  const response = await api(`${API_ROOT}/accounts?per_page=50`);
-  const accounts = [];
-  for (const account of response.result || []) {
-    let listed;
-    try {
-      listed = await api(`${API_ROOT}/accounts/${account.id}/d1/database?per_page=100`);
-    } catch (error) {
-      console.warn(`Skipping inaccessible account: ${error.message}`);
-      continue;
-    }
-    const matches = (listed.result || []).filter((database) => referenced.has(database.uuid || database.id));
-    if (matches.length) accounts.push({ id: account.id, name: account.name, referenced: matches });
-  }
-  if (!accounts.length) throw new Error('No accessible account contains repository D1 databases');
-  return accounts;
-}
-
 const query = `query D1HourlyUsage($accountTag: string!, $start: Time!, $end: Time!) {
   viewer {
     accounts(filter: { accountTag: $accountTag }) {
@@ -111,14 +97,6 @@ const query = `query D1HourlyUsage($accountTag: string!, $start: Time!, $end: Ti
     }
   }
 }`;
-
-async function usageForAccount(accountId, start, end) {
-  const body = await api(GRAPHQL_URL, {
-    method: 'POST',
-    body: JSON.stringify({ query, variables: { accountTag: accountId, start, end } }),
-  });
-  return body.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups || [];
-}
 
 function emptyUsage(extra = {}) {
   return { ...extra, rowsRead: 0, rowsWritten: 0, readQueries: 0, writeQueries: 0 };
@@ -137,32 +115,29 @@ const end = generatedAt.toISOString();
 const start = startDate.toISOString();
 const windowMinutes = Math.max(1, (generatedAt.getTime() - startDate.getTime()) / 60_000);
 const referenced = await referencedDatabases();
-const accounts = await discoverAccounts(referenced);
+const groups = await graphql(query, { accountTag: accountId, start, end });
 const databaseNames = new Map([...referenced.values()].map(({ id, name }) => [id, name]));
 const total = emptyUsage();
 const byDatabase = new Map();
 const byBucket = new Map();
 
-for (const account of accounts) {
-  const groups = await usageForAccount(account.id, start, end);
-  for (const group of groups) {
-    const databaseId = String(group.dimensions?.databaseId || '');
-    if (!referenced.has(databaseId)) continue;
-    const bucket = String(group.dimensions?.datetimeFifteenMinutes || 'unknown');
-    const values = group.sum || {};
-    addUsage(total, values);
+for (const group of groups) {
+  const databaseId = String(group.dimensions?.databaseId || '');
+  if (!referenced.has(databaseId)) continue;
+  const bucket = String(group.dimensions?.datetimeFifteenMinutes || 'unknown');
+  const values = group.sum || {};
+  addUsage(total, values);
 
-    const database = byDatabase.get(databaseId) || emptyUsage({
-      databaseId,
-      databaseName: databaseNames.get(databaseId) || databaseId,
-    });
-    addUsage(database, values);
-    byDatabase.set(databaseId, database);
+  const database = byDatabase.get(databaseId) || emptyUsage({
+    databaseId,
+    databaseName: databaseNames.get(databaseId) || databaseId,
+  });
+  addUsage(database, values);
+  byDatabase.set(databaseId, database);
 
-    const interval = byBucket.get(bucket) || emptyUsage({ bucket });
-    addUsage(interval, values);
-    byBucket.set(bucket, interval);
-  }
+  const interval = byBucket.get(bucket) || emptyUsage({ bucket });
+  addUsage(interval, values);
+  byBucket.set(bucket, interval);
 }
 
 const windowRatio = windowMinutes / (24 * 60);
@@ -217,7 +192,7 @@ const report = {
   },
   ok: violations.length === 0,
   violations,
-  accounts: accounts.map(({ id, name }) => ({ id, name })),
+  accounts: [{ id: accountId, name: null }],
   databases,
   buckets,
 };
