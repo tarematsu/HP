@@ -1,6 +1,7 @@
 const STATE_KEY = 'collector:operational-telemetry';
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 const MAX_PENDING_WINDOWS = 12;
+const MAX_DELIVERIES_PER_SAMPLE = 3;
 const NUMERIC_METRICS = Object.freeze([
   'payload_bytes',
   'queue_total_tracks',
@@ -12,7 +13,11 @@ const NUMERIC_METRICS = Object.freeze([
   'queue_send_ms',
   'outbox_rows_written',
   'outbox_rows_deleted',
+  'outbox_rows_quarantined',
+  'outbox_backoff_ms',
   'pending_flushed',
+  'prepared_fallback',
+  'checkpoint_uncertain',
   'materialization_state_written',
 ]);
 
@@ -32,7 +37,7 @@ function bucketStart(timestamp, duration) {
 function emptyWindow(timestamp, duration) {
   const start = bucketStart(timestamp, duration);
   return {
-    schema_version: 2,
+    schema_version: 3,
     source: 'sh-buddies-collector',
     bucket_start: start,
     bucket_end: start + duration,
@@ -96,25 +101,43 @@ export async function recordCollectorOperationalTelemetry(state, env, sample) {
   const stored = await storage.get(STATE_KEY);
   const telemetry = stored && typeof stored === 'object' && !Array.isArray(stored)
     ? stored
-    : { active: null, pending: [] };
+    : { active: null, pending: [], dropped_windows: 0, delivery_failures: 0 };
   const pending = Array.isArray(telemetry.pending) ? [...telemetry.pending] : [];
+  let droppedWindows = Number(telemetry.dropped_windows || 0);
+  let deliveryFailures = Number(telemetry.delivery_failures || 0);
   let active = telemetry.active;
   if (!active || Number(active.bucket_start) !== currentStart) {
     if (active) pending.push(active);
     active = emptyWindow(sample.timestamp, duration);
   }
   active = addSample(active, sample);
-  while (pending.length > MAX_PENDING_WINDOWS) pending.shift();
+  while (pending.length > MAX_PENDING_WINDOWS) {
+    pending.shift();
+    droppedWindows += 1;
+  }
 
   let deliveryError = null;
-  if (pending.length) {
+  for (let attempt = 0; attempt < MAX_DELIVERIES_PER_SAMPLE && pending.length; attempt += 1) {
     try {
-      if (await deliver(env, pending[0])) pending.shift();
+      if (!await deliver(env, pending[0])) break;
+      pending.shift();
     } catch (error) {
+      deliveryFailures += 1;
       deliveryError = error;
+      break;
     }
   }
-  await storage.put(STATE_KEY, { active, pending });
+  active = {
+    ...active,
+    dropped_windows_total: droppedWindows,
+    delivery_failures_total: deliveryFailures,
+  };
+  await storage.put(STATE_KEY, {
+    active,
+    pending,
+    dropped_windows: droppedWindows,
+    delivery_failures: deliveryFailures,
+  });
   if (deliveryError) throw deliveryError;
   return true;
 }
@@ -123,5 +146,6 @@ export const COLLECTOR_OPERATIONAL_TELEMETRY = Object.freeze({
   state_key: STATE_KEY,
   default_interval_ms: DEFAULT_INTERVAL_MS,
   max_pending_windows: MAX_PENDING_WINDOWS,
+  max_deliveries_per_sample: MAX_DELIVERIES_PER_SAMPLE,
   numeric_metrics: NUMERIC_METRICS,
 });
