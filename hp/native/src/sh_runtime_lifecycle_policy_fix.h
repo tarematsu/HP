@@ -12,16 +12,85 @@ inline bool ReplaceStationheadRuntimeFragment(
   return true;
 }
 
-// The refined login detector owns a recurring five-second timeout. Its original
-// pagehide gate stopped work but still re-armed the timeout forever, retaining an
-// obsolete document after navigation/BFCache transitions. Patch the generated
-// runtime script so pagehide cancels the timer, every entry point rejects an
-// inactive document, and pageshow explicitly resumes one timer.
+// Stationhead composes several document-lifetime policies into one startup
+// script. Patch their generated source at the final policy layer so every timer
+// and MutationObserver stops on pagehide/BFCache entry and is rebuilt only when
+// that exact document receives pageshow again.
 inline std::wstring StationheadAutoplayScriptLifecycleFixed(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
   std::wstring script =
       StationheadAutoplayScriptRuntimeFixed(globalName, messagePrefix);
+
+  static constexpr std::wstring_view kUiLifecycle = LR"JS(  document.addEventListener('visibilitychange', () => {
+    if (pageHidden()) pauseObserver();
+    else resumeObserver();
+  });
+  if (document.documentElement) start();
+)JS";
+  static constexpr std::wstring_view kUiLifecycleFixed = LR"JS(  document.addEventListener('visibilitychange', () => {
+    if (pageHidden()) pauseObserver();
+    else resumeObserver();
+  });
+  window.addEventListener('pagehide', pauseObserver, true);
+  window.addEventListener('pageshow', resumeObserver, true);
+  if (document.documentElement) start();
+)JS";
+
+  static constexpr std::wstring_view kBaseState = LR"JS(  let observer = null;
+  let scanQueued = false;
+  let scanTimer = 0;
+  let lastSignalAt = 0;
+)JS";
+  static constexpr std::wstring_view kBaseStateFixed = LR"JS(  let observer = null;
+  let scanQueued = false;
+  let scanTimer = 0;
+  let pageActive = true;
+  let lastSignalAt = 0;
+)JS";
+  static constexpr std::wstring_view kBaseScan = LR"JS(  const scan = () => {
+    scanQueued = false;
+    scanTimer = 0;
+    const ready = document.readyState !== 'loading' && !!document.body;
+)JS";
+  static constexpr std::wstring_view kBaseScanFixed = LR"JS(  const scan = () => {
+    scanQueued = false;
+    scanTimer = 0;
+    if (!pageActive) return;
+    const ready = document.readyState !== 'loading' && !!document.body;
+)JS";
+  static constexpr std::wstring_view kBaseSchedule = LR"JS(  const schedule = (delay = 100) => {
+    if (scanQueued) return;
+)JS";
+  static constexpr std::wstring_view kBaseScheduleFixed = LR"JS(  const schedule = (delay = 100) => {
+    if (!pageActive || scanQueued) return;
+)JS";
+  static constexpr std::wstring_view kBaseTail = LR"JS(  document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  window.addEventListener('load', schedule, { once: true });
+  schedule();
+  nativeTimeout(schedule, 15000);
+)JS";
+  static constexpr std::wstring_view kBaseTailFixed = LR"JS(  document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  window.addEventListener('load', schedule, { once: true });
+  schedule();
+  const delayedScanTimer = nativeTimeout(schedule, 15000);
+  window.addEventListener('pagehide', () => {
+    pageActive = false;
+    scanQueued = false;
+    if (scanTimer) {
+      nativeClearTimeout(scanTimer);
+      scanTimer = 0;
+    }
+    nativeClearTimeout(delayedScanTimer);
+    observer?.disconnect?.();
+    observer = null;
+  }, true);
+  window.addEventListener('pageshow', () => {
+    pageActive = true;
+    attachObserver();
+    schedule(0);
+  }, true);
+)JS";
 
   static constexpr std::wstring_view kTimerDeclaration = LR"JS(  const nativeTimeout = window.setTimeout.bind(window);
 )JS";
@@ -86,6 +155,16 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   }, true);
 )JS";
 
+  const bool uiLifecycleReplaced = ReplaceStationheadRuntimeFragment(
+      script, kUiLifecycle, kUiLifecycleFixed);
+  const bool baseStateReplaced = ReplaceStationheadRuntimeFragment(
+      script, kBaseState, kBaseStateFixed);
+  const bool baseScanReplaced = ReplaceStationheadRuntimeFragment(
+      script, kBaseScan, kBaseScanFixed);
+  const bool baseScheduleReplaced = ReplaceStationheadRuntimeFragment(
+      script, kBaseSchedule, kBaseScheduleFixed);
+  const bool baseTailReplaced = ReplaceStationheadRuntimeFragment(
+      script, kBaseTail, kBaseTailFixed);
   const bool timerDeclarationReplaced = ReplaceStationheadRuntimeFragment(
       script, kTimerDeclaration, kTimerDeclarationFixed);
   const bool scanReplaced =
@@ -96,8 +175,13 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
       script, kPageLifecycle, kPageLifecycleFixed);
 
   // Static source tests pin every marker. Keeping the booleans observable here
-  // also prevents an optimizer warning while preserving the last known-good
-  // script if an upstream Stationhead policy changes before its test is updated.
+  // also prevents optimizer warnings while preserving the last known-good
+  // generated script if an upstream policy changes before its test is updated.
+  (void)uiLifecycleReplaced;
+  (void)baseStateReplaced;
+  (void)baseScanReplaced;
+  (void)baseScheduleReplaced;
+  (void)baseTailReplaced;
   (void)timerDeclarationReplaced;
   (void)scanReplaced;
   (void)scheduleReplaced;
