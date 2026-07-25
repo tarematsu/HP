@@ -15,7 +15,7 @@ FREE_TIER_REPORT = Path(os.environ.get("FREE_TIER_USAGE_REPORT", "free-tier-usag
 OUT = Path(os.environ.get("OBSERVABILITY_GATE_OUTPUT_DIR", "observability-gate"))
 WORKERS = tuple(value.strip() for value in os.environ.get("CLOUDFLARE_WORKERS", "").split(",") if value.strip())
 
-DAILY_METRICS = ("requests", "rowsRead", "rowsWritten")
+DAILY_METRICS = ("requests", "rowsRead", "rowsWritten", "queueOperations")
 FREE_TIER_METRICS = (
     "queueOperations",
     "doRequests",
@@ -96,18 +96,25 @@ def validate_metrics(
         )
 
 
+def positive_integer(value: Any, label: str, errors: list[str]) -> None:
+    parsed = number(value)
+    if parsed is None or parsed < 1 or not parsed.is_integer():
+        errors.append(f"{label} must be a positive integer")
+
+
 def validate_daily(report: dict[str, Any], workers: tuple[str, ...] = WORKERS) -> list[str]:
     errors: list[str] = []
     validate_metrics(report, DAILY_METRICS, "daily", errors)
     usage = mapping(report.get("usage"), "daily.usage", errors)
-    database_count = number(usage.get("databaseCount"))
-    if database_count is None or database_count < 1 or not database_count.is_integer():
-        errors.append("daily.usage.databaseCount must be a positive integer")
+    positive_integer(usage.get("databaseCount"), "daily.usage.databaseCount", errors)
+    positive_integer(usage.get("queueCount"), "daily.usage.queueCount", errors)
+
     measured = number(usage.get("measuredRequests"))
     reserve = number(usage.get("requestReserve"))
     requests = number(usage.get("requests"))
     if measured is None or reserve is None or requests is None or requests != measured + reserve:
         errors.append("daily requests must equal measuredRequests plus requestReserve")
+
     per_worker = mapping(usage.get("perWorkerRequests"), "daily.usage.perWorkerRequests", errors)
     per_worker_errors = mapping(usage.get("perWorkerErrors"), "daily.usage.perWorkerErrors", errors)
     if workers:
@@ -129,9 +136,7 @@ def validate_free_tier(report: dict[str, Any]) -> list[str]:
     validate_metrics(report, FREE_TIER_METRICS, "freeTier", errors)
     counts = mapping(report.get("resourceCounts"), "freeTier.resourceCounts", errors)
     for key in REQUIRED_RESOURCE_COUNTS:
-        value = number(counts.get(key))
-        if value is None or value < 1 or not value.is_integer():
-            errors.append(f"freeTier.resourceCounts.{key} must be a positive integer")
+        positive_integer(counts.get(key), f"freeTier.resourceCounts.{key}", errors)
     usage = mapping(report.get("usage"), "freeTier.usage", errors)
     unknown_r2 = usage.get("unknownR2ActionsChargedAsClassA")
     if not isinstance(unknown_r2, list) or any(not isinstance(item, str) for item in unknown_r2):
@@ -159,11 +164,18 @@ def self_test() -> int:
             "requestReserve": 1,
             "rowsRead": 50,
             "rowsWritten": 2,
+            "queueOperations": 4,
             "perWorkerRequests": {"a": 30},
             "perWorkerErrors": {"a": 0},
             "databaseCount": 3,
+            "queueCount": 4,
         },
-        "limits": {"requests": 70, "rowsRead": 100, "rowsWritten": 10},
+        "limits": {
+            "requests": 70,
+            "rowsRead": 100,
+            "rowsWritten": 10,
+            "queueOperations": 20,
+        },
         "violations": [],
     }
     free = {
@@ -182,12 +194,19 @@ def self_test() -> int:
     }
     assert validate_daily(daily, ("a",)) == []
     assert validate_free_tier(free) == []
+
     broken_daily = json.loads(json.dumps(daily))
-    broken_daily["usage"].pop("rowsRead")
-    assert any("rowsRead" in item for item in validate_daily(broken_daily, ("a",)))
+    broken_daily["usage"].pop("queueOperations")
+    assert any("queueOperations" in item for item in validate_daily(broken_daily, ("a",)))
+
+    broken_count = json.loads(json.dumps(daily))
+    broken_count["usage"]["queueCount"] = 0
+    assert any("queueCount" in item for item in validate_daily(broken_count, ("a",)))
+
     broken_free = json.loads(json.dumps(free))
     broken_free["resourceCounts"]["kvNamespaces"] = 0
     assert any("kvNamespaces" in item for item in validate_free_tier(broken_free))
+
     inconsistent = json.loads(json.dumps(free))
     inconsistent["usage"]["queueOperations"] = 1
     assert any("inconsistent" in item for item in validate_free_tier(inconsistent))
