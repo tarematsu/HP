@@ -22,7 +22,12 @@ export function overallOutcome(outcomes) {
 
 export function sanitizeText(text) {
   return String(text || '')
-    .replace(/Bearer\s+[A-Za-z0-9._~+\/=:-]+/gi, 'Bearer [redacted]')
+    .replace(
+      /(["']?\bauthorization\b["']?\s*[:=]\s*["']?)([a-z][a-z\d_-]*\s+)?[^\s,;"'}]+/gi,
+      (_match, prefix, scheme = '') => `${prefix}${scheme}[redacted]`,
+    )
+    .replace(/\bBearer\s+[^\s,;"'}]+/gi, 'Bearer [redacted]')
+    .replace(/(["']?\b(?:api[_-]?token|token|secret|api[_-]?key)\b["']?\s*[:=]\s*["']?)[^\s,;"'}]+/gi, '$1[redacted]')
     .replace(/([?&](?:token|key|secret|signature|sig|auth)=)[^\s&#)]+/gi, '$1[redacted]')
     .replace(/(CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)\s*[=:]\s*)\S+/gi, '$1[redacted]');
 }
