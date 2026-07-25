@@ -85,8 +85,10 @@ test('Window B rejects auth-probe results from an obsolete local execution', () 
     '}\n}\n\nStationheadPlayer::StationheadPlayer(',
   );
   assert.match(taggedProbe, /StationheadAuthProbeScript\(channelId\)/);
+  assert.doesNotMatch(taggedProbe, /StationheadAuthProbeScriptNetwork/);
   assert.match(taggedProbe, /probe_started_at/);
   assert.match(taggedProbe, /std::to_wstring\(probeStartedAt\)/);
+  assert.match(taggedProbe, /script\.replace\(at, marker\.size\(\), replacement\)/);
 
   const poll = section(
     playerSource,
