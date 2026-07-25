@@ -14,7 +14,7 @@ import { runVideoLiveness } from "./video_liveness";
 
 const RUNTIME_STORAGE_KEY = "scheduler-runtime-v2";
 const DEVICE_SYNC_MANIFEST_KEY = "device-sync-manifest-v1";
-const RUNTIME_VERSION = 2;
+const RUNTIME_VERSION = 3;
 const MIN_RETRY_SECONDS = 60;
 const MAX_FAILURE_EXPONENT = 4;
 const EMPTY_RECHECK_SECONDS = 24 * 60 * 60;
