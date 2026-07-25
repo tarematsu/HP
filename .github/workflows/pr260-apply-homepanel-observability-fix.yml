@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/scripts/pr260_apply_homepanel_observability_fix.py'
       - '.github/scripts/pr260_finish_homepanel_observability_fix.py'
+      - '.github/scripts/pr260_finalize_homepanel_observability_fix.py'
       - '.github/workflows/pr260-apply-homepanel-observability-fix.yml'
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 .github/scripts/pr260_finish_homepanel_observability_fix.py 2>&1 | tee patch.log
+          python3 .github/scripts/pr260_finalize_homepanel_observability_fix.py 2>&1 | tee patch.log
 
       - name: Validate telemetry policy self-tests
         shell: bash
@@ -44,6 +45,12 @@ jobs:
           path: |
             patch.log
             validation.log
+            .github/scripts/audit-cloudflare-telemetry.py
+            .github/scripts/publish-homepanel-observability-status.mjs
+            .github/workflows/hp-observability.yml
+            .github/workflows/homepanel-unified-ci.yml
+            tests/cloudflare-observability-api.test.mjs
+            tests/homepanel-observability-contract.test.mjs
           if-no-files-found: warn
           retention-days: 1
 
