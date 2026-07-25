@@ -60,8 +60,44 @@ test('obsolete Stationhead documents cancel and do not re-arm login timers', () 
   );
 });
 
+test('base autoplay observer and delayed scans stop across BFCache transitions', () => {
+  assert.match(lifecycleSource, /let pageActive = true;/);
+  assert.match(
+    lifecycleSource,
+    /const schedule = \(delay = 100\) => \{[\s\S]*if \(!pageActive \|\| scanQueued\) return;/,
+  );
+  assert.match(
+    lifecycleSource,
+    /const delayedScanTimer = nativeTimeout\(schedule, 15000\);/,
+  );
+  assert.match(
+    lifecycleSource,
+    /scanQueued = false;[\s\S]*nativeClearTimeout\(scanTimer\);[\s\S]*nativeClearTimeout\(delayedScanTimer\);[\s\S]*observer\?\.disconnect\?\.\(\);[\s\S]*observer = null;/,
+  );
+  assert.match(
+    lifecycleSource,
+    /addEventListener\('pageshow',[\s\S]*attachObserver\(\);[\s\S]*schedule\(0\);/,
+  );
+});
+
+test('audio-only UI observer explicitly pauses on pagehide and resumes on pageshow', () => {
+  assert.match(
+    lifecycleSource,
+    /window\.addEventListener\('pagehide', pauseObserver, true\);/,
+  );
+  assert.match(
+    lifecycleSource,
+    /window\.addEventListener\('pageshow', resumeObserver, true\);/,
+  );
+});
+
 test('every lifecycle marker is pinned and the final autoplay macro uses it', () => {
   for (const marker of [
+    'uiLifecycleReplaced',
+    'baseStateReplaced',
+    'baseScanReplaced',
+    'baseScheduleReplaced',
+    'baseTailReplaced',
     'timerDeclarationReplaced',
     'scanReplaced',
     'scheduleReplaced',
