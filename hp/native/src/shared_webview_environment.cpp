@@ -62,28 +62,43 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
                                        Completion completion) {
   if (!completion) return;
 
-  const std::wstring requestedKey = NormalizePath(userDataFolder);
+  std::wstring requestedKey;
   ComPtr<ICoreWebView2Environment> readyEnvironment;
   bool startCreation = false;
   uint64_t creationGeneration = 0;
   fs::path folderForCreation;
 
-  {
-    std::lock_guard lock(mutex_);
-    Entry& entry = entries_[requestedKey];
-    if (entry.userDataFolder.empty()) entry.userDataFolder = userDataFolder;
-    ++entry.acquireCount;
-    if (entry.environment) {
-      readyEnvironment = entry.environment;
-    } else {
-      entry.pending.push_back(std::move(completion));
-      if (!entry.creating) {
-        entry.creating = true;
-        creationGeneration = ++entry.generation;
-        startCreation = true;
-        folderForCreation = entry.userDataFolder;
+  try {
+    requestedKey = NormalizePath(userDataFolder);
+    {
+      std::lock_guard lock(mutex_);
+      Entry& entry = entries_[requestedKey];
+      if (entry.userDataFolder.empty()) entry.userDataFolder = userDataFolder;
+      ++entry.acquireCount;
+      if (entry.environment) {
+        readyEnvironment = entry.environment;
+      } else {
+        const bool beginCreation = !entry.creating;
+        // Copy every potentially allocating value before publishing the pending
+        // callback or the creating flag. An allocation failure cannot leave a
+        // queued callback behind an environment generation that never starts.
+        fs::path preparedFolder;
+        if (beginCreation) preparedFolder = entry.userDataFolder;
+        entry.pending.push_back(std::move(completion));
+        if (beginCreation) {
+          entry.creating = true;
+          creationGeneration = ++entry.generation;
+          startCreation = true;
+          folderForCreation = std::move(preparedFolder);
+        }
       }
     }
+  } catch (const std::bad_alloc&) {
+    InvokeEnvironmentCompletionNoexcept(completion, E_OUTOFMEMORY, nullptr);
+    return;
+  } catch (...) {
+    InvokeEnvironmentCompletionNoexcept(completion, E_FAIL, nullptr);
+    return;
   }
 
   if (readyEnvironment) {
