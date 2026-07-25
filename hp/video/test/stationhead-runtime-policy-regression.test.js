@@ -68,7 +68,11 @@ test('active runtime policy gates message sources and generic login links', () =
   assert.match(runtimeAutoplay, /addEventListener\('pageshow',[\s\S]*pageActive = true/);
   assert.match(
     runtimeAutoplay,
-    /message\.type === 'stationhead-auth-ready'[\s\S]*nativeTimeout\([\s\S]*if \(pageActive\) nativePost\(message\)/,
+    /message\.type === 'stationhead-auth-ready'[\s\S]*pendingAuthReady = message;[\s\S]*nativeTimeout\([\s\S]*updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/,
+  );
+  assert.match(
+    runtimeAutoplay,
+    /const flushPendingAuthReady = \(\) => \{[\s\S]*homepanelStationheadBlockingLoginVisible !== false[\s\S]*nativePost\?\.\(message\);/,
   );
   assert.match(runtimeAutoplay, /if \(playing\(\)\) baseScan\(\);/);
   assert.match(runtimeAutoplay, /updateBlockingLogin\(\);[\s\S]*5000/);
