@@ -22,22 +22,49 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   return sections;
 }
 
-MainSections SplitRearrangedMainSections(const RECT& client) {
-  const int width = std::max(1L, client.right - client.left);
-  const int gapX = std::max(8, width * 16 / 1000);
-  const int rowWidth = std::max(2, width - gapX);
-  const int musicWidth = std::max(1, rowWidth * 65 / 100);
-  const LONG rowBottom = std::max(client.top + 1, client.bottom);
+struct RearrangedMainLayout {
+  MainSections sections{};
+  RECT wasteCalendar{};
+};
 
-  MainSections sections;
-  sections.music = RECT{client.left, client.top, client.left + musicWidth, rowBottom};
+RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
+  const int width = std::max(1L, client.right - client.left);
+  const int height = std::max(1L, client.bottom - client.top);
+  const int gapX = std::max(8, width * 16 / 1000);
+  const int gapY = std::max(6, height * 35 / 1000);
+  const int rowWidth = std::max(2, width - gapX);
+  const int leftWidth = std::max(1, rowWidth * 65 / 100);
+  const int musicHeight = std::max(1, height / 2);
+  const LONG musicTop = std::max(client.top + 1, client.bottom - musicHeight);
+  const LONG calendarBottom = std::max(client.top + 1, musicTop - gapY);
+
+  RearrangedMainLayout layout;
+  layout.wasteCalendar =
+      RECT{client.left, client.top, client.left + leftWidth, calendarBottom};
+  layout.sections.music =
+      RECT{client.left, musicTop, client.left + leftWidth, client.bottom};
   // MainSections::air is the right-hand slot. The rearranged dashboard uses it
   // for Electricity while Air occupies the expanded side-card slot.
-  sections.air = RECT{sections.music.right + gapX, client.top, client.right, rowBottom};
-  if (sections.air.right <= sections.air.left) {
-    sections.air.right = sections.air.left + 1;
+  layout.sections.air =
+      RECT{layout.sections.music.right + gapX, client.top, client.right, client.bottom};
+  if (layout.wasteCalendar.right <= layout.wasteCalendar.left) {
+    layout.wasteCalendar.right = layout.wasteCalendar.left + 1;
   }
-  return sections;
+  if (layout.wasteCalendar.bottom <= layout.wasteCalendar.top) {
+    layout.wasteCalendar.bottom = layout.wasteCalendar.top + 1;
+  }
+  if (layout.sections.air.right <= layout.sections.air.left) {
+    layout.sections.air.right = layout.sections.air.left + 1;
+  }
+  return layout;
+}
+
+MainSections SplitRearrangedMainSections(const RECT& client) {
+  return ComputeRearrangedMainLayout(client).sections;
+}
+
+RECT RearrangedWasteCalendarRect(const RECT& client) {
+  return ComputeRearrangedMainLayout(client).wasteCalendar;
 }
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {
