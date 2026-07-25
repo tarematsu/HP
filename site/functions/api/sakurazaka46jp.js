@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 2;
+const SERIES_CACHE_VERSION = 3;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
@@ -151,17 +151,30 @@ function hasSeriesSamples(row) {
   return Array.isArray(row?.samples) && row.samples.length > 0;
 }
 
+function genericEventName(value) {
+  const name = normalizedEventName(value);
+  return !name || name === '公式ステヘ';
+}
+
+function similarEventNames(leftValue, rightValue) {
+  const left = normalizedEventName(leftValue);
+  const right = normalizedEventName(rightValue);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  return Math.min(left.length, right.length) >= 4 && (left.includes(right) || right.includes(left));
+}
+
 function duplicateSeries(primary, fallback) {
   const primaryStart = Number(primary?.started_at);
   const fallbackStart = Number(fallback?.started_at);
   const startsAvailable = Number.isFinite(primaryStart) && Number.isFinite(fallbackStart);
-  if (startsAvailable && Math.abs(primaryStart - fallbackStart) <= DUPLICATE_START_TOLERANCE_MS) return true;
+  const startDifference = startsAvailable ? Math.abs(primaryStart - fallbackStart) : Infinity;
+  const namesMatch = similarEventNames(primary?.event_name, fallback?.event_name);
+  const genericName = genericEventName(primary?.event_name) || genericEventName(fallback?.event_name);
 
-  const primaryName = normalizedEventName(primary?.event_name);
-  const fallbackName = normalizedEventName(fallback?.event_name);
-  const genericName = !fallbackName || fallbackName === '公式ステヘ';
-  if (genericName || primaryName !== fallbackName) return false;
-  return !startsAvailable || Math.abs(primaryStart - fallbackStart) <= DUPLICATE_NAME_TOLERANCE_MS;
+  if (startDifference <= DUPLICATE_START_TOLERANCE_MS && (namesMatch || genericName)) return true;
+  if (!namesMatch) return false;
+  return !startsAvailable || startDifference <= DUPLICATE_NAME_TOLERANCE_MS;
 }
 
 export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
@@ -172,6 +185,11 @@ export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
     if (!primary.some((item) => duplicateSeries(item, fallback))) merged.push(fallback);
   }
   return merged;
+}
+
+export function countSakurazakaMissingSummaries(historicalRows, summaryCount) {
+  const available = (Array.isArray(historicalRows) ? historicalRows : []).filter(hasSeriesSamples).length;
+  return Math.max(0, Math.max(0, Number(summaryCount) || 0) - available);
 }
 
 export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
@@ -249,6 +267,7 @@ async function loadSakurazakaSeries(env, from, to) {
   );
   const merged = mergeSakurazakaSeriesRows(historical, failSafe);
   const trimmed = trimSakurazakaSeries(merged);
+  const historicalSeriesCount = historical.filter(hasSeriesSamples).length;
   let failSafeEventCount = 0;
   for (const item of trimmed.series) {
     if (item.source === 'official_news_fail_safe') failSafeEventCount += 1;
@@ -262,7 +281,8 @@ async function loadSakurazakaSeries(env, from, to) {
     series: trimmed.series,
     event_count: trimmed.series.length,
     summary_event_count: summaryCount,
-    missing_series_count: Math.max(0, summaryCount - trimmed.series.length),
+    historical_series_count: historicalSeriesCount,
+    missing_series_count: countSakurazakaMissingSummaries(historical, summaryCount),
     point_count: trimmed.pointCount,
     fail_safe_event_count: failSafeEventCount,
     truncated: trimmed.truncated,
