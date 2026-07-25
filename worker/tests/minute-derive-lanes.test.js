@@ -59,6 +59,32 @@ test('new live facts prefer the empty live derive lane', async () => {
   }]);
 });
 
+test('repair facts preserve their kind and use the ordered rebuild lane', async () => {
+  const sent = [];
+  const liveQueue = {
+    async send(body) { sent.push({ lane: 'live', body }); },
+  };
+  const rebuildQueue = {
+    async send(body, options) { sent.push({ lane: 'rebuild', body, options }); },
+  };
+
+  const trigger = await enqueueMinuteDeriveTrigger({
+    MINUTE_LIVE_DERIVE_QUEUE: liveQueue,
+    MINUTE_DERIVE_QUEUE: rebuildQueue,
+  }, {
+    channel_id: 10,
+    minute_at: 120_000,
+    job_kind: 'repair',
+  });
+
+  assert.equal(trigger.job_kind, 'repair');
+  assert.deepEqual(sent, [{
+    lane: 'rebuild',
+    body: trigger,
+    options: { contentType: 'json' },
+  }]);
+});
+
 test('maintenance recovery seeks ready pending jobs and expired leases through separate indexes', async () => {
   const calls = [];
   const responses = [
@@ -91,6 +117,31 @@ test('maintenance recovery seeks ready pending jobs and expired leases through s
   assert.doesNotMatch(calls.map(({ sql }) => sql).join('\n'), /\sOR\s/);
   assert.deepEqual(calls.map(({ bindings }) => bindings), [[200_000, 2], [200_000, 2]]);
   assert.deepEqual(triggers.map(({ job_kind }) => job_kind), ['live', 'live']);
+});
+
+test('enabled repair recovery preserves repair trigger identity', async () => {
+  const calls = [];
+  const MINUTE_DB = {
+    prepare(sql) {
+      calls.push(sql);
+      return {
+        bind() { return this; },
+        async all() {
+          return calls.length === 1
+            ? { results: [{ id: 7, channel_id: 10, minute_at: 120_000, job_kind: 'repair', job_priority: 200 }] }
+            : { results: [] };
+        },
+      };
+    },
+  };
+
+  const triggers = await pendingMinuteDeriveTriggers({
+    MINUTE_DB,
+    MINUTE_FACT_REPAIR_BURST_ENABLED: true,
+  }, { now: 200_000, limit: 2 });
+
+  assert.deepEqual(triggers.map(({ job_kind }) => job_kind), ['repair']);
+  assert.doesNotMatch(calls.join('\n'), /job_kind!='repair'/);
 });
 
 test('the active production deploy provisions the live derive queue and DLQ', () => {
