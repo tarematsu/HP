@@ -203,6 +203,49 @@ static_assert(StationheadCorePlaybackRequestBoundaryFixed(
 static_assert(!StationheadCorePlaybackRequestBoundaryFixed(
     L"https://stationhead.com.evil.example/timestamp"));
 
+// CDP URL blocking has no resource-context filter. Keep it only for anchored
+// telemetry destinations; image/font decisions belong to WebResourceRequested,
+// where a signed audio URL containing an artwork suffix cannot be rejected.
+inline void BlockStationheadTelemetrySocketsBoundaryFixed(
+    ICoreWebView2* webview) {
+  if (!webview) return;
+  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
+
+  std::wstring blockedUrls = L"{\"urls\":[";
+  bool first = true;
+  const auto appendDomain = [&](std::wstring_view domain) {
+    if (!first) blockedUrls += L',';
+    first = false;
+    blockedUrls += L"\"*://";
+    blockedUrls.append(domain);
+    blockedUrls += L"/*\",\"*://*.";
+    blockedUrls.append(domain);
+    blockedUrls += L"/*\"";
+  };
+  constexpr std::wstring_view kSocketDomains[] = {
+      L"amplitude.com",
+      L"google-analytics.com",
+      L"googletagmanager.com",
+      L"doubleclick.net",
+      L"sentry.io",
+      L"bugsnag.com",
+      L"segment.io",
+      L"segment.com",
+      L"mixpanel.com",
+      L"clarity.ms",
+      L"datadoghq.com",
+      L"datadoghq.eu",
+      L"newrelic.com",
+      L"nr-data.net",
+      L"statsigapi.net",
+      L"launchdarkly.com",
+  };
+  for (const std::wstring_view domain : kSocketDomains) appendDomain(domain);
+  blockedUrls += L"]}";
+  webview->CallDevToolsProtocolMethod(
+      L"Network.setBlockedURLs", blockedUrls.c_str(), nullptr);
+}
+
 // Last resource boundary. The earlier policy is intentionally not called: once
 // an event handler supplies a blocking response, a later handler cannot safely
 // reconstruct the original network request. Register one final handler using
@@ -284,7 +327,7 @@ inline void ApplyStationheadResourceBlockingBoundaryFixed(
           }).Get(),
       &token);
 
-  BlockStationheadTelemetrySockets(webview, config.blockImages);
+  BlockStationheadTelemetrySocketsBoundaryFixed(webview);
   ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(environment, webview);
   ApplyStationheadAdditionalScriptBlockingRuntimeFixed(environment, webview);
 }
