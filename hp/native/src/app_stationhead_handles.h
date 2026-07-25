@@ -71,6 +71,11 @@ class StationheadHandleBase {
   RECT startupPreviewBounds_{0, 0, 1, 1};
   bool startupPreviewActive_ = false;
   bool audioMuted_ = false;
+  // A handle owns exactly one StationheadPlayer lifecycle. Duplicate Start()
+  // calls must not create a second WebView2 controller, and a final Stop() must
+  // not restart the same player with stale asynchronous/recreate state.
+  bool startIssued_ = false;
+  bool stopIssued_ = false;
   mutable bool playbackObserved_ = false;
   mutable int64_t playbackMissingSinceAt_ = 0;
   mutable bool transitionSuppressed_ = false;
