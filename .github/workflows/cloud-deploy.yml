@@ -8,6 +8,8 @@ on:
       - "hp/video/src/**"
       - "hp/video/public/**"
       - "hp/video/package.json"
+      - ".github/actions/cloudflare-context/action.yml"
+      - ".github/scripts/resolve-cloudflare-account.mjs"
       - ".github/workflows/cloud-deploy.yml"
       - ".github/scripts/assert-actions-only-cloudflare.mjs"
   workflow_dispatch:
