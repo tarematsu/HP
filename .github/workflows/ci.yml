@@ -9,7 +9,6 @@ on:
       - 'packages/**'
       - 'scripts/**'
       - 'tests/**'
-      - 'hp/**'
       - 'package.json'
       - '.github/workflows/**'
       - '.github/actions/**'
@@ -17,40 +16,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-observability-fix:
-    name: Apply diagnosed observability fix
-    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref == 'fix/observability-radar-bundle'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/observability-radar-bundle
-          fetch-depth: 0
-          show-progress: false
-      - name: Apply source and regression fixes
-        run: python3 .github/scripts/apply-observability-radar-fix.py
-      - name: Validate telemetry audit
-        run: python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-      - name: Commit non-workflow fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm .github/scripts/apply-observability-radar-fix.py
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/scripts/audit-cloudflare-telemetry.py hp/cloud/src/radar_bundle.ts hp/cloud/test/radar_bundle_connections.test.ts tests/cloudflare-observability-api.test.mjs .github/scripts/apply-observability-radar-fix.py
-          git diff --cached --check
-          git commit -m 'fix: stabilize observability radar diagnostics'
-          git push origin HEAD:fix/observability-radar-bundle
-
   changes:
     name: Select checks
     runs-on: ubuntu-latest
