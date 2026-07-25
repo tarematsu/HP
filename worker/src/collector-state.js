@@ -23,7 +23,7 @@ function collectorState(value, persistCredentials = true) {
       writable: true,
     },
     persistedLastRunAt: {
-      value: Number(value.lastRunAt || 0),
+      value: Number(value.checkpointAt ?? value.lastRunAt ?? 0),
       enumerable: false,
     },
     persistedChannelId: {
@@ -38,7 +38,7 @@ function collectorState(value, persistCredentials = true) {
   return value;
 }
 
-async function cacheCollectorState(env, state) {
+async function cacheCollectorState(env, state, checkpoint = false) {
   if (!state?.authToken || !state?.deviceUid) return false;
   return mergeCollectorHotState(env, COLLECTOR_DO_HOT_STATE.auth_key, {
     id: 'stationhead',
@@ -51,6 +51,9 @@ async function cacheCollectorState(env, state) {
     collectorChannelId: identity(state.channelId),
     collectorStationId: identity(state.stationId),
     collectorUpdatedAt: Date.now(),
+    collectorCheckpointAt: checkpoint
+      ? Number(state.lastRunAt || 0)
+      : Number(state.persistedLastRunAt || 0),
     controlExists: true,
   });
 }
@@ -70,6 +73,11 @@ export function collectorStateFromAuthState(authState, env = {}) {
     lastError: authState?.collectorLastError || null,
     channelId: Number(authState?.collectorChannelId || 0) || null,
     stationId: Number(authState?.collectorStationId || 0) || null,
+    checkpointAt: Number(
+      authState?.collectorCheckpointAt
+      ?? authState?.collectorLastRunAt
+      ?? 0,
+    ),
   }, env.__shPersistCollectorCredentials !== false);
 }
 
@@ -101,13 +109,14 @@ export async function loadCollectorState(env) {
     lastError: row?.last_error || null,
     channelId: Number(row?.last_channel_id || 0) || null,
     stationId: Number(row?.last_station_id || 0) || null,
+    checkpointAt: Number(row?.last_run_at || 0),
   });
 }
 
 export async function saveCollectorState(env, state, patch = {}) {
   Object.assign(state, patch);
   await collectorStateStatement(env.DB, state).run();
-  await cacheCollectorState(env, state);
+  await cacheCollectorState(env, state, true);
 }
 
 function collectorStateStatement(db, state) {
@@ -189,19 +198,19 @@ async function clearFailureBestEffort(db) {
   }
 }
 
-// Durable Object storage carries minute-to-minute progress. D1 remains the
-// durable checkpoint for recovery, credentials, and cross-service diagnostics.
 export async function saveCollectorStateAndClearFailure(env, state, patch = {}) {
   Object.assign(state, patch);
-  await cacheCollectorState(env, state);
+  await cacheCollectorState(env, state, false);
   if (!successfulCollectorStatePersistenceDue(state)) return;
   if (state.clearFailureOnSuccess !== true) {
     await saveSuccessfulCollectorState(env.DB, state);
+    await cacheCollectorState(env, state, true);
     return;
   }
   if (typeof env?.DB?.batch !== 'function') {
     await saveSuccessfulCollectorState(env.DB, state);
     await clearFailureBestEffort(env.DB);
+    await cacheCollectorState(env, state, true);
     return;
   }
   try {
@@ -219,4 +228,5 @@ export async function saveCollectorStateAndClearFailure(env, state, patch = {}) 
     await saveSuccessfulCollectorState(env.DB, state);
     await clearFailureBestEffort(env.DB);
   }
+  await cacheCollectorState(env, state, true);
 }
