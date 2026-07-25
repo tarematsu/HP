@@ -96,6 +96,19 @@ inline bool IsTrustedPopupTarget(LPCWSTR uri) noexcept {
   return IsTrustedMessageUri(uri, origin);
 }
 
+template <typename Handler, typename Sender, typename Args>
+inline HRESULT InvokeEventNoexcept(
+    const ComPtr<Handler>& handler, Sender* sender, Args* args) noexcept {
+  if (!handler) return S_OK;
+  try {
+    return handler->Invoke(sender, args);
+  } catch (...) {
+    // Event callbacks allocate strings, parse JSON, update status and log. A
+    // single allocation or parser exception must never unwind through WebView2.
+    return E_FAIL;
+  }
+}
+
 inline ComPtr<ICoreWebView2WebMessageReceivedEventHandler>
 WrapStationheadWebMessageHandler(
     ICoreWebView2WebMessageReceivedEventHandler* handler) noexcept {
@@ -118,13 +131,7 @@ WrapStationheadWebMessageHandler(
         if (currentSource) CoTaskMemFree(currentSource);
         if (!trusted) return S_OK;
 
-        try {
-          return inner->Invoke(sender, args);
-        } catch (...) {
-          // Never allow a page-controlled message shape or an allocation failure
-          // in a consumer callback to unwind across WebView2's COM boundary.
-          return E_FAIL;
-        }
+        return InvokeEventNoexcept(inner, sender, args);
       });
 }
 
@@ -155,12 +162,76 @@ WrapStationheadNewWindowHandler(
           return S_OK;
         }
 
-        try {
-          return inner->Invoke(sender, args);
-        } catch (...) {
-          args->put_Handled(TRUE);
-          return E_FAIL;
-        }
+        const HRESULT result = InvokeEventNoexcept(inner, sender, args);
+        if (FAILED(result)) args->put_Handled(TRUE);
+        return result;
+      });
+}
+
+inline ComPtr<ICoreWebView2NavigationStartingEventHandler>
+WrapStationheadNavigationStartingHandler(
+    ICoreWebView2NavigationStartingEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2NavigationStartingEventHandler> inner = handler;
+  return Callback<ICoreWebView2NavigationStartingEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender,
+          ICoreWebView2NavigationStartingEventArgs* args) noexcept -> HRESULT {
+        const HRESULT result = InvokeEventNoexcept(inner, sender, args);
+        // Continuing a navigation after its state-tracking callback failed can
+        // leave navigationInFlight_ permanently inconsistent.
+        if (FAILED(result) && args) args->put_Cancel(TRUE);
+        return result;
+      });
+}
+
+inline ComPtr<ICoreWebView2NavigationCompletedEventHandler>
+WrapStationheadNavigationCompletedHandler(
+    ICoreWebView2NavigationCompletedEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2NavigationCompletedEventHandler> inner = handler;
+  return Callback<ICoreWebView2NavigationCompletedEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender,
+          ICoreWebView2NavigationCompletedEventArgs* args) noexcept -> HRESULT {
+        return InvokeEventNoexcept(inner, sender, args);
+      });
+}
+
+inline ComPtr<ICoreWebView2ProcessFailedEventHandler>
+WrapStationheadProcessFailedHandler(
+    ICoreWebView2ProcessFailedEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2ProcessFailedEventHandler> inner = handler;
+  return Callback<ICoreWebView2ProcessFailedEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender,
+          ICoreWebView2ProcessFailedEventArgs* args) noexcept -> HRESULT {
+        return InvokeEventNoexcept(inner, sender, args);
+      });
+}
+
+inline ComPtr<ICoreWebView2WindowCloseRequestedEventHandler>
+WrapStationheadWindowCloseHandler(
+    ICoreWebView2WindowCloseRequestedEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2WindowCloseRequestedEventHandler> inner = handler;
+  return Callback<ICoreWebView2WindowCloseRequestedEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender, IUnknown* args) noexcept -> HRESULT {
+        return InvokeEventNoexcept(inner, sender, args);
+      });
+}
+
+inline ComPtr<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>
+WrapStationheadAudioChangedHandler(
+    ICoreWebView2IsDocumentPlayingAudioChangedEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler> inner = handler;
+  return Callback<ICoreWebView2IsDocumentPlayingAudioChangedEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender, IUnknown* args) noexcept -> HRESULT {
+        return InvokeEventNoexcept(inner, sender, args);
       });
 }
 
@@ -180,4 +251,34 @@ WrapStationheadNewWindowHandler(
   add_NewWindowRequested(                                                     \
       ::hp::stationhead_webview_policy::                                      \
           WrapStationheadNewWindowHandler((handler)).Get(),                   \
+      (token))
+
+#define add_NavigationStarting(handler, token)                                \
+  add_NavigationStarting(                                                     \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadNavigationStartingHandler((handler)).Get(),          \
+      (token))
+
+#define add_NavigationCompleted(handler, token)                               \
+  add_NavigationCompleted(                                                    \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadNavigationCompletedHandler((handler)).Get(),         \
+      (token))
+
+#define add_ProcessFailed(handler, token)                                     \
+  add_ProcessFailed(                                                          \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadProcessFailedHandler((handler)).Get(),               \
+      (token))
+
+#define add_WindowCloseRequested(handler, token)                              \
+  add_WindowCloseRequested(                                                   \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadWindowCloseHandler((handler)).Get(),                 \
+      (token))
+
+#define add_IsDocumentPlayingAudioChanged(handler, token)                     \
+  add_IsDocumentPlayingAudioChanged(                                          \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadAudioChangedHandler((handler)).Get(),                \
       (token))
