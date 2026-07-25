@@ -55,7 +55,6 @@ test('HomePanel observability workflow keeps the production contract', () => {
     '--self-test',
     'node --test',
     'policy-self-test',
-    'POLICY_OUTCOME',
     'tests/homepanel-*.test.mjs',
     'tests/homepanel-runtime-contract.test.mjs',
     'tests/homepanel-video-contract.test.mjs',
@@ -65,6 +64,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'steps.install-wrangler',
     'npm ci --prefix hp/cloud',
   ]);
+  assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
   expectNone(unifiedCi, [
     'query-cloudflare-d1-insights.mjs',
     'wrangler d1 insights --help',
@@ -101,8 +101,8 @@ test('HomePanel observability publisher and usage documentation retain product b
     '--self-test',
     'function selfTest',
     'policy-self-test',
-    'POLICY_OUTCOME',
   ]);
+  assert.doesNotMatch(publisher, /process\.env\.POLICY_OUTCOME/);
   expectAll(usageDocumentation, [
     '.github/workflows/hp-observability.yml',
     '.github/scripts/audit-cloudflare-daily-usage.py',
