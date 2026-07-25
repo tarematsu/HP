@@ -2,30 +2,22 @@ import collectorApp, {
   BUDDIES_COLLECTOR_CRON,
   runBuddiesCollectorScheduled,
 } from './buddies-collector-core.js';
-import { queueAttributedEnv } from './queue-attribution.js';
-
-export {
-  BUDDIES_COLLECTOR_CRON,
-  runBuddiesCollectorScheduled,
-};
-export {
+import {
   BuddiesCollectorCoordinator,
   runAlarmCoordinatedBuddiesCollectorScheduled,
 } from './buddies-collector-do-entry.js';
 
-export function runAttributedBuddiesCollectorScheduled(controller, env, ctx, dependencies) {
-  return runBuddiesCollectorScheduled(
-    controller,
-    queueAttributedEnv(env, 'sh-buddies-collector'),
-    ctx,
-    dependencies,
-  );
-}
+export {
+  BUDDIES_COLLECTOR_CRON,
+  BuddiesCollectorCoordinator,
+  runAlarmCoordinatedBuddiesCollectorScheduled,
+  runBuddiesCollectorScheduled,
+};
 
-// Production uses the direct scheduled surface to avoid one internal request,
-// one alarm invocation, and Durable Object storage operations every minute.
-// The coordinator remains exported as an explicit rollback surface.
+// Production executes each minute inside one Durable Object request. The
+// object serializes collection and keeps hot state; D1 remains the history and
+// checkpoint store. The direct function remains exported for tests/rollback.
 export default {
   ...collectorApp,
-  scheduled: runAttributedBuddiesCollectorScheduled,
+  scheduled: runAlarmCoordinatedBuddiesCollectorScheduled,
 };
