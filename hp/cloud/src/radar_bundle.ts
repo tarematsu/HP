@@ -227,7 +227,8 @@ export async function radarBundleShardResponse(request: Request, env: Env): Prom
       (total, record) => total + record.header.length + record.body.length,
       0,
     );
-    return new Response(bufferedRecords(records, byteLength), {
+    const body = bufferedRecords(records, byteLength);
+    return new Response(body.buffer as ArrayBuffer, {
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(byteLength),
@@ -324,7 +325,7 @@ export async function radarBundleResponseForPayload(
     offset += shard.byteLength;
   }
   if (offset !== totalBytes) throw new Error("radar bundle length changed during assembly");
-  const response = bundleResponse(body, totalBytes, paths.length);
+  const response = bundleResponse(body.buffer as ArrayBuffer, totalBytes, paths.length);
   ctx.waitUntil(cacheBundle(cache, cacheKey, env, response, baseTime, paths.length));
   return response;
 }
