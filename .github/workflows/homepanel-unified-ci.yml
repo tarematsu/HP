@@ -10,19 +10,23 @@ on:
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
+      - '.github/scripts/audit-cloudflare-free-tier.py'
+      - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
-      - '.github/scripts/publish-homepanel-observability-status.mjs'
+      - '.github/scripts/publish-cloudflare-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
-      - '.github/workflows/hp-observability.yml'
+      - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
       - 'tests/cloudflare-account-context.test.mjs'
+      - 'tests/cloudflare-observability-*.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
-      - 'tests/observability-status-publisher.test.mjs'
+      - 'tests/observability-*.test.mjs'
   push:
     branches:
       - main
@@ -34,19 +38,23 @@ on:
       - '.github/actions/cloudflare-context/action.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
+      - '.github/scripts/audit-cloudflare-free-tier.py'
+      - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
-      - '.github/scripts/publish-homepanel-observability-status.mjs'
+      - '.github/scripts/publish-cloudflare-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
-      - '.github/workflows/hp-observability.yml'
+      - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
       - 'tests/cloudflare-account-context.test.mjs'
+      - 'tests/cloudflare-observability-*.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
-      - 'tests/observability-status-publisher.test.mjs'
+      - 'tests/observability-*.test.mjs'
   workflow_dispatch:
 
 permissions:
@@ -78,13 +86,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+          python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
+          python3 .github/scripts/audit-observability-budget-gates.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
           python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
           python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
           node --test \
             tests/cloudflare-account-context.test.mjs \
+            tests/cloudflare-observability-*.test.mjs \
             tests/homepanel-*.test.mjs \
-            tests/observability-status-publisher.test.mjs
+            tests/observability-*.test.mjs
 
       - name: Install HomePanel dependencies
         working-directory: hp/cloud
