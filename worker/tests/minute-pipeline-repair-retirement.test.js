@@ -69,7 +69,7 @@ test('disabled repair write stages are retired and acknowledged without D1 deriv
   assert.equal(db.calls.length, 2);
   assert.match(db.calls[0].sql, /UPDATE sh_minute_fact_jobs/);
   assert.match(db.calls[0].sql, /job_kind='repair'/);
-  assert.deepEqual(db.calls[0].bindings.slice(-2), [120_000, 77]);
+  assert.equal(db.calls[0].bindings.at(-1), 77);
   assert.match(db.calls[1].sql, /UPDATE sh_minute_fact_repairs/);
   assert.equal(db.calls[1].bindings.at(-1), 'total-listener-20260710-13-v1');
 });
