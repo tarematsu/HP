@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -275,27 +275,3 @@ jobs:
         working-directory: worker
       - run: npm audit --audit-level=high
         working-directory: worker
-
-  # BEGIN PR256 TEMPORARY FIX JOB
-  pr256-fix:
-    name: Apply Cloudflare free-tier policy fix
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/import-sh-snapshot
-          fetch-depth: 0
-          show-progress: false
-      - name: Apply policy patch
-        run: python3 .github/scripts/pr256_cloudflare_free_tier_fix.py
-      - name: Commit non-workflow fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/scripts/cloudflare_free_tier_audit.py scripts tests
-          git diff --cached --check
-          git commit -m 'fix: enforce full Cloudflare free-tier budgets'
-          git push origin HEAD:agent/import-sh-snapshot
