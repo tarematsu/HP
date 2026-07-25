@@ -36,11 +36,13 @@ test('refined blocking-login detection invalidates captured auth independently',
   const markBlockingAt = blockingBranch.indexOf(
     'window.__homepanelStationheadBlockingLoginVisible = true;',
   );
+  const clearPendingAt = blockingBranch.indexOf('pendingAuthReady = null;');
   const rejectAt = blockingBranch.indexOf(
     'rejectCapturedAuthForBlockingLogin();',
   );
   const notifyAt = blockingBranch.indexOf('nativePost(loginMessage);');
-  assert.ok(markBlockingAt >= 0 && markBlockingAt < rejectAt);
+  assert.ok(markBlockingAt >= 0 && markBlockingAt < clearPendingAt);
+  assert.ok(clearPendingAt >= 0 && clearPendingAt < rejectAt);
   assert.ok(rejectAt >= 0 && rejectAt < notifyAt);
 });
 
@@ -59,5 +61,41 @@ test('non-blocking login false positives restore the last accepted auth snapshot
   assert.match(
     autoplay,
     /if \(!updateBlockingLogin\(\)\) restoreAuthAfterFalsePositive\(\)/,
+  );
+});
+
+test('auth-ready waits for a stably cleared blocking login surface', () => {
+  const autoplay = section(
+    runtimeFixSource,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  assert.match(autoplay, /let pendingAuthReady = null;/);
+
+  const flushPending = section(
+    autoplay,
+    'const flushPendingAuthReady = () => {',
+    'if (webview && nativePost)',
+  );
+  assert.match(
+    flushPending,
+    /window\.__homepanelStationheadBlockingLoginVisible !== false/,
+  );
+  assert.match(flushPending, /pendingAuthReady = null;/);
+  assert.match(flushPending, /nativePost\?\.\(message\);/);
+
+  const authReadyHandler = section(
+    autoplay,
+    "message.type === 'stationhead-auth-ready') {",
+    'return nativePost(message);',
+  );
+  assert.match(authReadyHandler, /pendingAuthReady = message;/);
+  assert.match(
+    authReadyHandler,
+    /updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/,
+  );
+  assert.match(
+    autoplay,
+    /updateBlockingLogin\(\);\s*flushPendingAuthReady\(\);\s*}\s*schedule\(\);/,
   );
 });
