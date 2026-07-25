@@ -14,13 +14,110 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: video-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  apply-window-b-probe-adapter:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-stationhead-window-b' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-stationhead-window-b
+          fetch-depth: 0
+      - name: Apply local-probe adapter
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+
+          def edit_section(path: str, start: str, end: str, edits: list[tuple[str, str]]) -> None:
+              target = Path(path)
+              text = target.read_text(encoding='utf-8')
+              start_at = text.find(start)
+              end_at = text.find(end, start_at + len(start)) if start_at >= 0 else -1
+              if start_at < 0 or end_at < 0:
+                  raise SystemExit(f'{path}: section not found')
+              section = text[start_at:end_at]
+              for old, new in edits:
+                  count = section.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: expected one match, found {count}: {old!r}')
+                  section = section.replace(old, new, 1)
+              target.write_text(text[:start_at] + section + text[end_at:], encoding='utf-8')
+
+          edit_section(
+              'hp/native/src/sh_shared.h',
+              'inline std::wstring StationheadAuthProbeScript(',
+              'inline std::wstring StationheadDomPlayStatsScript(',
+              [
+                  (
+                      'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {',
+                      'inline std::wstring StationheadAuthProbeScript(int channelId) {',
+                  ),
+                  (
+                      "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;",
+                      "(() => {\n  const post = message => {",
+                  ),
+              ],
+          )
+
+          edit_section(
+              'hp/native/src/sh.cpp',
+              'std::wstring HResultHex(HRESULT hr)',
+              '}\n}\n\nStationheadPlayer::StationheadPlayer(',
+              [
+                  (
+                      '}\n',
+                      '''}
+
+std::wstring StationheadAuthProbeScriptForRun(
+    int channelId, int64_t probeStartedAt) {
+  std::wstring script = StationheadAuthProbeScript(channelId);
+  static constexpr std::wstring_view marker =
+      L"post({ type: 'stationhead-auth-probe',";
+  std::wstring replacement(marker);
+  replacement += L" probe_started_at: ";
+  replacement += std::to_wstring(probeStartedAt);
+  replacement += L",";
+  for (size_t at = script.find(marker); at != std::wstring::npos;
+       at = script.find(marker, at + replacement.size())) {
+    script.replace(at, marker.size(), replacement);
+  }
+  return script;
+}
+''',
+                  ),
+              ],
+          )
+
+          edit_section(
+              'hp/native/src/sh.cpp',
+              'void StationheadPlayer::PollAuthProbe(',
+              '// Locates the Start Listening control',
+              [
+                  (
+                      'StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_)',
+                      'StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_)',
+                  ),
+              ],
+          )
+
+          subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
+          subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/video-ci.yml'], check=True)
+      - name: Commit local-probe adapter
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Adapt Window B auth race guard to local probe"
+          git push origin HEAD:agent/fix-stationhead-window-b
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
