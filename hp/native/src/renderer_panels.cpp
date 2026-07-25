@@ -4,6 +4,7 @@
 #include "version.h"
 #include "renderer_panels/primitives.inc"
 #include "renderer_panels/layout_overrides.inc"
+#include "renderer_panels/waste_calendar_section.inc"
 
 #define SplitSidebarSections SplitRearrangedSidebarSections
 #define SplitMainSections SplitRearrangedMainSections
