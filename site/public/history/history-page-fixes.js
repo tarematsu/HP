@@ -1,3 +1,4 @@
+import { inclusivePresetStart, jstDate } from './history-date-utils.js';
 import { aggregateCompleteTrackRows } from './history-track-view.js';
 
 const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
@@ -5,7 +6,6 @@ const originalMoveTo = CanvasRenderingContext2D.prototype.moveTo;
 const originalLineTo = CanvasRenderingContext2D.prototype.lineTo;
 const originalStroke = CanvasRenderingContext2D.prototype.stroke;
 const pathState = new WeakMap();
-const DAY_MS = 86_400_000;
 const integer = new Intl.NumberFormat('ja-JP');
 let trackRankingRows = [];
 let trackRankingRenderQueued = false;
@@ -131,23 +131,11 @@ function scheduleTrackRanking() {
   });
 }
 
-function todayJst() {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
-}
-
-function shiftDate(value, days) {
-  const date = new Date(`${value}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
 function applyJstPreset(days) {
-  const to = todayJst();
+  const to = jstDate();
   const from = days === 'all'
     ? '2024-05-01'
-    : shiftDate(to, -Math.max(1, Number(days) || 30));
+    : inclusivePresetStart(to, days);
   const fromInput = document.getElementById('from');
   const toInput = document.getElementById('to');
   if (fromInput) fromInput.value = from;
@@ -171,7 +159,7 @@ window.addEventListener('history:runtime-ready', () => {
   if (['#tracks', '#broadcasts'].includes(location.hash)) return;
   const activePreset = document.querySelector('#rangePresets button.active')?.dataset.days || 'all';
   const toInput = document.getElementById('to');
-  if (toInput?.value === todayJst()) return;
+  if (toInput?.value === jstDate()) return;
   applyJstPreset(activePreset);
   document.getElementById('load')?.click();
 });
