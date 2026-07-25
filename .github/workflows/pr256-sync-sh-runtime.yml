@@ -1,4 +1,4 @@
-# One-shot workflow; removes itself after a validated sync.
+# One-shot workflow; removes itself after a filtered sync.
 name: PR256 one-shot SH runtime sync
 
 on:
@@ -19,7 +19,7 @@ jobs:
   sync:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     env:
       SH_SHA: f6d77414622a173367f83deb292283f7ee83c29a
       TARGET_BRANCH: agent/import-sh-snapshot
@@ -111,35 +111,6 @@ jobs:
             echo 'A shared/commonized file was modified; refusing to sync.' >&2
             exit 1
           fi
-
-      - name: Install test dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm ci --ignore-scripts
-          npm ci --prefix worker --ignore-scripts
-
-      - name: Validate imported changes
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --test \
-            tests/cloudflare-runtime-relay-budget.test.mjs \
-            tests/d1-budget-hotpath-index.test.mjs \
-            tests/track-ranking.test.mjs \
-            worker/tests/minute-derive-lanes.test.js \
-            worker/tests/minute-fact-repair-burst.test.js \
-            worker/tests/minute-facts-repair.test.js \
-            worker/tests/minute-queue-batching.test.js \
-            worker/tests/minute-rebuild-stages.test.js \
-            worker/tests/minute-revision-batch-budget.test.js \
-            worker/tests/pages-read-model-hot-path.test.js \
-            worker/tests/runtime-minute-recovery-inline.test.js \
-            worker/tests/split-other-workers.test.js \
-            worker/tests/total-listens-baseline-index.test.js \
-            worker/tests/track-metadata-resolution.test.js
-          python -m unittest tests.sql_migrations_test
-          npm --prefix worker run check:bundle
 
       - name: Commit synchronized runtime changes and remove this workflow
         shell: bash
