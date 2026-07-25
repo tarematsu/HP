@@ -72,7 +72,6 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'Install pinned Wrangler for D1 insights',
     'steps.install-wrangler',
     'npm ci --prefix hp/cloud',
-    /^\s{6}CLOUDFLARE_API_TOKEN:/m,
   ]);
   expectNone(unifiedCi, [
     'query-cloudflare-d1-insights.mjs',
@@ -81,6 +80,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
     "grep -q -- '--sort-by'",
     "grep -q -- '--json'",
   ]);
+  assert.doesNotMatch(workflow, /^\s{6}CLOUDFLARE_API_TOKEN:/m);
   assert.equal(workflow.match(/cron: "/g)?.length, 1);
   assert.ok(workflow.includes('\n  push:'));
   assert.ok(workflow.includes('branches: [main]'));
