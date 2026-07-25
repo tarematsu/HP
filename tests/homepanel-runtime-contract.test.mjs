@@ -40,3 +40,42 @@ test('HomePanel unified runtime keeps storage and scheduler fast paths', () => {
   ]);
   expectAll(octopusHistory, ['octopus_daily_totals', 'readDailyRange']);
 });
+
+test('HomePanel deploy helpers keep the GitHub Actions-only execution path', () => {
+  const guardedDeploy = readSource('hp/cloud/scripts/guarded-deploy.mjs');
+  const deployExisting = readSource('hp/cloud/scripts/deploy-existing.mjs');
+
+  expectAll(guardedDeploy, [
+    'ensureVideoDependencies()',
+    '[deployScript, ...process.argv.slice(2)]',
+    "CI: 'true'",
+  ]);
+  expectNone(guardedDeploy, [
+    'WORKERS_CI',
+    'WORKERS_CI_BRANCH',
+    'HOMEPANEL_PRODUCTION_BRANCH',
+    'HOMEPANEL_ALLOW_INACTIVE_VIDEO_DEPLOY',
+    'activationIsComplete',
+    'video_runtime_state',
+    'versions',
+  ]);
+
+  expectAll(deployExisting, [
+    '--without-migrations',
+    'Routine Worker deploy: skipping remote D1 migration discovery',
+    'Remote migrations are applied by the dedicated Apply D1 migrations workflow',
+    'env: { ...process.env, CI: "true" }',
+  ]);
+  expectNone(deployExisting, [
+    'WORKERS_CI',
+    'WORKERS_CI_BRANCH',
+    'HOMEPANEL_PRODUCTION_BRANCH',
+    'previewBuild',
+    'cloudflareManagedBuild',
+    'versions", "upload',
+    'CLOUDFLARE_BUILDS_ACCOUNT_ID',
+    'CLOUDFLARE_BUILDS_API_TOKEN',
+    'process.env.ACCOUNT_ID',
+    'cloudflareEnvironment',
+  ]);
+});
