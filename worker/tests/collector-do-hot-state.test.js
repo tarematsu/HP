@@ -10,6 +10,7 @@ import { withCollectorDoHotState } from '../src/collector-do-hot-state.js';
 import {
   collectorStateFromAuthState,
   saveCollectorStateAndClearFailure,
+  successfulCollectorStatePersistenceDue,
 } from '../src/collector-state.js';
 
 // These contracts keep DO as the minute-to-minute state layer while retaining
@@ -155,6 +156,20 @@ test('minute collector progress writes to Durable Object before the D1 checkpoin
   assert.equal(hot.collectorLastRunAt, 1_060_000);
   assert.equal(hot.collectorCheckpointAt, 1_000_000);
   assert.equal(hot.collectorStationId, 2);
+});
+
+test('fixed twenty-minute slots force a D1 checkpoint even without a propagated marker', () => {
+  const state = collectorStateFromAuthState({
+    authToken: 'Bearer token',
+    deviceUid: 'device',
+    tokenExpiresAt: Date.now() + 8 * 60 * 60_000,
+    collectorLastRunAt: 1_140_000,
+    collectorLastSuccessAt: 1_140_000,
+    collectorChannelId: 1,
+    collectorStationId: 2,
+  }, { __shPersistCollectorCredentials: false });
+  state.lastRunAt = 1_200_000;
+  assert.equal(successfulCollectorStatePersistenceDue(state), true);
 });
 
 test('twenty-minute progress creates a D1 checkpoint and advances its DO marker', async () => {
