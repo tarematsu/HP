@@ -174,6 +174,14 @@ function findNumbers(value, path = '', found = []) {
   return found;
 }
 
+async function probePath(host, path) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const response = await fetch(`https://${host}${path}`, { redirect: 'manual' });
+    console.log(`LIVE_TAIL_PROBE=${path} status=${response.status}`);
+    await new Promise((resolve) => setTimeout(resolve, 750));
+  }
+}
+
 async function probeWorker() {
   if (!probes.length) return;
   try {
@@ -186,13 +194,7 @@ async function probeWorker() {
       return;
     }
     const host = `${worker}.${accountSubdomain.result.subdomain}.workers.dev`;
-    for (const path of probes) {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const response = await fetch(`https://${host}${path}`, { redirect: 'manual' });
-        console.log(`LIVE_TAIL_PROBE=${path} status=${response.status}`);
-        await new Promise((resolve) => setTimeout(resolve, 750));
-      }
-    }
+    await Promise.all(probes.map((path) => probePath(host, path)));
   } catch (error) {
     console.log(`LIVE_TAIL_PROBE_WARNING=${String(error.message || error).slice(0, 500)}`);
   }
@@ -212,6 +214,7 @@ let maxCpu = null;
 let heartbeat;
 let timer;
 let connected = false;
+let probePromise = Promise.resolve();
 const pendingMessages = new Set();
 
 const finished = new Promise((resolve, reject) => {
@@ -230,7 +233,7 @@ const finished = new Promise((resolve, reject) => {
         body: JSON.stringify({ scriptId: worker }),
       }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${String(error.message || error).slice(0, 300)}`));
     }, 25_000);
-    probeWorker().catch(() => {});
+    probePromise = probeWorker();
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
   });
   socket.addEventListener('message', (message) => {
@@ -268,6 +271,7 @@ const finished = new Promise((resolve, reject) => {
 
 try {
   await finished;
+  await probePromise;
 } finally {
   clearInterval(heartbeat);
   clearTimeout(timer);
