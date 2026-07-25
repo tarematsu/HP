@@ -53,14 +53,16 @@ function maintenanceMessage(controller, task) {
   };
 }
 
-export async function dispatchMinuteMaintenanceGate(controller, env, task, ctx = null) {
+export async function dispatchMinuteMaintenanceGate(
+  controller,
+  env,
+  task,
+  ctx = null,
+  dependencies = EMPTY_DEPENDENCIES,
+) {
   if (!env?.MINUTE_REBUILD_QUEUE?.send) {
-    const result = await runMinuteScheduledWithCollectorPriority(
-      controller,
-      env,
-      ctx,
-      EMPTY_DEPENDENCIES,
-    );
+    const run = dependencies.runScheduled || runMinuteScheduledWithCollectorPriority;
+    const result = await run(controller, env, ctx, dependencies.direct || EMPTY_DEPENDENCIES);
     throwIfSoftFailure(result, 'minute maintenance direct fallback');
     return result;
   }
