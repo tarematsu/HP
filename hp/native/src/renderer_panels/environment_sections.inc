@@ -143,15 +143,6 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
   constexpr int kColumnCount = 6;
   constexpr int kRowCount = 2;
   constexpr int kSlotCount = kColumnCount * kRowCount;
-  static constexpr std::array<int, kSlotCount> kWeatherHourOrder{
-      22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  std::array<const WeatherHourData*, kSlotCount> slotHours{};
-  for (const auto& hour : hours) {
-    const auto slot = std::find(kWeatherHourOrder.begin(), kWeatherHourOrder.end(), hour.hour);
-    if (slot != kWeatherHourOrder.end()) {
-      slotHours[static_cast<size_t>(std::distance(kWeatherHourOrder.begin(), slot))] = &hour;
-    }
-  }
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   const RECT body = content;
@@ -173,7 +164,9 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
         columnIndex == kColumnCount - 1 ? body.right : left + columnWidth,
         row == kRowCount - 1 ? body.bottom : top + rowHeight,
     };
-    const WeatherHourData* hourData = slotHours[static_cast<size_t>(i)];
+    const WeatherHourData* hourData = static_cast<size_t>(i) < hours.size()
+        ? &hours[static_cast<size_t>(i)]
+        : nullptr;
     if (!hourData) continue;
     const int columnHeight = std::max(1, static_cast<int>(column.bottom - column.top));
     const bool hasIcon = !hourData->icon.empty();
