@@ -48,7 +48,7 @@ test('native audio-stop ticks recover a lost page track-ended notification', () 
   assert.match(publicRequest, /HandleTrackEnded\(nowMs, retry\);/);
   assert.match(
     publicRequest,
-    /return trackBoundaryRefreshPending_ \|\|[\s\S]*trackBoundaryPlaybackRecoveryPending_;/,
+    /return trackBoundaryRefreshPending_ \|\|[\s\S]*trackBoundaryPlaybackRecoveryPending_ &&[\s\S]*trackBoundaryPlaybackRecoveryAwaitingNavigation_/,
   );
 
   const tick = section(
@@ -65,6 +65,22 @@ test('native audio-stop ticks recover a lost page track-ended notification', () 
     tick.indexOf('!player_->AudioPlaying()') <
       tick.indexOf('player_->RetryPendingTrackBoundaryRefresh(nowMs)'),
     'the native fallback must never request a refresh while audio is playing',
+  );
+});
+
+test('post-navigation audio recovery cannot be mistaken for a new refresh request', () => {
+  const publicRequest = section(
+    playerHeader,
+    'bool RetryPendingTrackBoundaryRefresh(int64_t nowMs)',
+    'void CancelPendingTrackBoundaryRefresh()',
+  );
+  assert.match(
+    publicRequest,
+    /trackBoundaryPlaybackRecoveryPending_ &&[\s\S]*trackBoundaryPlaybackRecoveryAwaitingNavigation_/,
+  );
+  assert.doesNotMatch(
+    publicRequest,
+    /return trackBoundaryRefreshPending_ \|\|\s*trackBoundaryPlaybackRecoveryPending_;/,
   );
 });
 
