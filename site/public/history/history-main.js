@@ -11,5 +11,6 @@ const trackWeekMode = document.getElementById('trackWeekMode');
 if (trackDate && !trackDate.value) trackDate.value = yesterday;
 if (trackWeekMode) trackWeekMode.checked = false;
 
+await import('/history/history-request-guard.js');
 await import('/history/history-page-fixes.js');
 await import('/history/history-lite.js');
