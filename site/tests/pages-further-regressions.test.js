@@ -93,14 +93,16 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('active Pages history runtimes are UTC-only', () => {
+test('active Pages runtimes are UTC-only', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
   const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
   const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
+  const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+  const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
-  const activeSources = [entry, fixes, history, likes].join('\n');
+  const activeSources = [entry, fixes, history, likes, broadcasts, dashboard].join('\n');
 
   assert.match(entry, /trackDate\.value = utcDate\(-1\)/);
   assert.match(entry, /history:runtime-ready/);
@@ -116,6 +118,10 @@ test('active Pages history runtimes are UTC-only', () => {
   assert.match(likes, /timeZone: 'UTC'/);
   assert.match(likes, /completeTrackRows\(result\.data\.rows\)/);
   assert.match(likes, /else load\(\)/);
+  assert.match(broadcasts, /timeZone: 'UTC'/);
+  assert.match(dashboard, /timeZone: 'UTC'/);
+  assert.match(dashboard, /toLocaleTimeString\('ja-JP', \{[\s\S]*timeZone: 'UTC'/);
+  assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
   assert.match(likesPage, /<script type="module" src="\/history\/history-likes\.js"><\/script>/);
   assert.doesNotMatch(activeSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
