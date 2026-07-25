@@ -6,6 +6,10 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), 'utf8');
 }
 
+function config(path) {
+  return JSON.parse(source(path));
+}
+
 test('inline collection records materialization state after structural changes', () => {
   const runner = source('../src/prepared-collector-runner.js');
   assert.match(runner, /import \{ recordQueueMaterialization \}/);
@@ -29,14 +33,29 @@ test('collector bundle excludes legacy recovery Queue dispatch', () => {
   assert.match(recoveryCore, /BUDDIES_RECOVERY_QUEUE_NAMES/);
 });
 
+test('buddies Workers use low-frequency D1 checkpoints and metadata refresh', () => {
+  for (const path of [
+    '../wrangler.buddies-collector.jsonc',
+    '../wrangler.buddies-recovery.jsonc',
+  ]) {
+    const worker = config(path);
+    assert.equal(worker.vars.MINUTE_FACT_OUTBOX_RECONCILE_MS, 60 * 60_000, path);
+    assert.equal(worker.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 60 * 60_000, path);
+    assert.equal(worker.vars.QUEUE_STABLE_CHECKPOINT_MINUTES, 60, path);
+    assert.equal(worker.vars.METADATA_REFRESH_INTERVAL_MS, 6 * 60 * 60_000, path);
+    assert.equal(worker.vars.COLLECTOR_D1_QUEUE_CURRENT_CACHE_MS, 60 * 60_000, path);
+    assert.equal(worker.vars.COLLECTOR_D1_MATERIALIZATION_CACHE_MS, 5 * 60_000, path);
+  }
+});
+
 test('collector and recovery use sampled invocation and application logs', () => {
   for (const path of [
     '../wrangler.buddies-collector.jsonc',
     '../wrangler.buddies-recovery.jsonc',
   ]) {
-    const config = JSON.parse(source(path));
-    assert.equal(config.observability.head_sampling_rate, 0.1, path);
-    assert.equal(config.observability.logs.head_sampling_rate, 0.1, path);
-    assert.equal(config.observability.logs.invocation_logs, true, path);
+    const worker = config(path);
+    assert.equal(worker.observability.head_sampling_rate, 0.1, path);
+    assert.equal(worker.observability.logs.head_sampling_rate, 0.1, path);
+    assert.equal(worker.observability.logs.invocation_logs, true, path);
   }
 });
