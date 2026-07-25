@@ -82,7 +82,6 @@ export function normalizePlaybackTrack(track, index, playback) {
     thumbnail_url: thumbnailUrl,
     duration_ms: durationMs,
   };
-  if (spotifyId) output.spotify_id = spotifyId;
   if (track.spotify_url && track.spotify_url !== (spotifyId ? `https://open.spotify.com/track/${spotifyId}` : null)) {
     output.spotify_url = track.spotify_url;
   }
