@@ -69,9 +69,10 @@ jobs:
               [[ -z "$cursor" ]] || query+=(--data-urlencode "cursor=$cursor")
               response="$(curl --fail-with-body --silent --show-error \
                 -H "$auth_header" "${query[@]}" "$api")"
-              jq -e '.success == true and (.result | type == "array")' \
+              jq -e \
+                '.success == true and (.result | type == "array") and all(.result[]?; .key | type == "string")' \
                 <<< "$response" >/dev/null
-              jq -r '.result[]?.key' <<< "$response" >> "$output"
+              jq -c '.result[]?.key' <<< "$response" >> "$output"
               [[ "$(jq -r '.result_info.is_truncated // false' <<< "$response")" == true ]] || break
               cursor="$(jq -er '.result_info.cursor | select(length > 0)' <<< "$response")"
             done
@@ -85,24 +86,26 @@ jobs:
           current_version="$(jq -er '.version | select(test("^[0-9]{10}$"))' "$manifest_file")"
           current_prefix="updates/releases/${current_version}/"
 
-          list_keys 'updates/releases/' objects-before.txt
-          awk -v prefix="$current_prefix" 'length && index($0, prefix) != 1' \
-            objects-before.txt > obsolete-keys.txt
+          list_keys 'updates/releases/' objects-before.jsonl
+          jq -Rrc --arg prefix "$current_prefix" \
+            'fromjson | select(startswith($prefix) | not)' \
+            objects-before.jsonl > obsolete-keys.jsonl
 
           deleted=0
-          while IFS= read -r key; do
-            [[ -n "$key" ]] || continue
+          while IFS= read -r encoded_key; do
+            [[ -n "$encoded_key" ]] || continue
+            key="$(jq -r '.' <<< "$encoded_key")"
             response="$(curl --fail-with-body --silent --show-error \
               -X DELETE -H "$auth_header" "$(object_url "$key")")"
             jq -e '.success == true' <<< "$response" >/dev/null
             deleted=$((deleted + 1))
-          done < obsolete-keys.txt
+          done < obsolete-keys.jsonl
 
-          list_keys 'updates/releases/' objects-after.txt
-          remaining="$(grep -c . objects-after.txt || true)"
-          unexpected_remaining="$(awk -v prefix="$current_prefix" \
-            'length && index($0, prefix) != 1 { count++ } END { print count + 0 }' \
-            objects-after.txt)"
+          list_keys 'updates/releases/' objects-after.jsonl
+          remaining="$(grep -c . objects-after.jsonl || true)"
+          unexpected_remaining="$(jq -Rr --arg prefix "$current_prefix" \
+            'fromjson | select(startswith($prefix) | not)' \
+            objects-after.jsonl | grep -c . || true)"
           [[ "$unexpected_remaining" -eq 0 ]] || {
             echo "Obsolete HomePanel release objects remain after cleanup: $unexpected_remaining" >&2
             exit 1
