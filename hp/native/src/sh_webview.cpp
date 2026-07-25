@@ -6,8 +6,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kDailyPlayStatsRetryMs = 30'000;
-
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
@@ -155,6 +153,14 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
             trackBoundaryRefreshPending_ = false;
+            if (IsSecondary()) {
+              // Invalidate a local probe started by the outgoing document.
+              // Internal redirects do not pass through NavigateStationheadUrl(),
+              // so they must clear the execution token here as well.
+              authProbeInFlight_ = false;
+              authProbeStartedAt_ = 0;
+              lastAuthProbeAt_ = 0;
+            }
             UINT64 navigationId = 0;
             if (SUCCEEDED(args->get_NavigationId(&navigationId))) {
               activeNavigationId_.store(navigationId, std::memory_order_release);
@@ -354,8 +360,10 @@ void StationheadPlayer::ConfigureWebView() {
                 log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
                           std::to_wstring(status) + L"; waiting for the page session to refresh");
                 const int64_t now = UnixMillis();
-                lastDailyPlayStatsAt_ = now;
-                nextTickAt_ = now + kDailyPlayStatsRetryMs;
+                lastDailyPlayStatsAt_ =
+                    now - (kStationheadDailyPlayStatsIntervalMs -
+                           kStationheadDailyPlayStatsRetryMs);
+                nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
                 return S_OK;
               }
               if (type == L"stationhead-auth-ready") {
@@ -382,12 +390,21 @@ void StationheadPlayer::ConfigureWebView() {
                 log_.Warn(L"Stationhead authenticated stats unavailable: " + error);
                 if (error == L"no-auth-header") {
                   const int64_t now = UnixMillis();
-                  lastDailyPlayStatsAt_ = now;
-                  nextTickAt_ = now + kDailyPlayStatsRetryMs;
+                  lastDailyPlayStatsAt_ =
+                      now - (kStationheadDailyPlayStatsIntervalMs -
+                             kStationheadDailyPlayStatsRetryMs);
+                  nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
                 }
                 return S_OK;
               }
               if (type == L"stationhead-auth-probe") {
+                const int64_t probeStartedAt = static_cast<int64_t>(
+                    json::Number(message, L"probe_started_at", 0));
+                if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||
+                    probeStartedAt != authProbeStartedAt_) {
+                  log_.Info(L"Secondary Stationhead ignored a stale auth probe result");
+                  return S_OK;
+                }
                 authProbeInFlight_ = false;
                 authProbeStartedAt_ = 0;
                 const std::wstring state = message.GetNamedString(L"state", L"").c_str();
@@ -408,6 +425,13 @@ void StationheadPlayer::ConfigureWebView() {
                 } else if (state == L"no-auth-header") {
                   std::lock_guard lock(mutex_);
                   status_.detail = L"secondary Stationhead auth probe waiting for session";
+                } else if (state == L"forbidden") {
+                  {
+                    std::lock_guard lock(mutex_);
+                    status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";
+                  }
+                  log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");
+                  PostChange();
                 } else {
                   log_.Warn(L"Secondary Stationhead auth probe returned an error");
                 }

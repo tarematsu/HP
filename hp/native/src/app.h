@@ -29,6 +29,7 @@ class App {
 
   static constexpr UINT kUpdateResultMessage = WM_APP + 20;
   static constexpr int kRestartExitCode = 42;
+  static constexpr uint32_t kStationheadStateWakeMs = 2'000;
   static void EnrichRenderStationheadState(
       StationheadStatus& state, StationheadStatus* secondaryStatus,
       const StationheadConfig& config);
@@ -65,7 +66,10 @@ class App {
   void ApplyStationheadWindowPlacement(
       const StationheadStatus& primaryStatus,
       const StationheadStatus& secondaryStatus);
-  void MarkStationheadPlacementDirty() noexcept { stationheadPlacementDirty_ = true; }
+  void MarkStationheadPlacementDirty() noexcept {
+    stationheadPlacementDirty_ = true;
+    ScheduleNextTick(kStationheadStateWakeMs);
+  }
   void ProcessRemoteCommands();
   void SendTelemetryAsync();
   void ClearDisplayCache();
