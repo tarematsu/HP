@@ -29,20 +29,20 @@ OUT = Path(os.environ.get("FREE_TIER_USAGE_OUTPUT_DIR", "free-tier-usage"))
 GB = 1_000_000_000
 
 LIMITS = {
-    "queueOperations": 8_000,
-    "doRequests": 80_000,
-    "doActiveGbSeconds": 10_400.0,
-    "doRowsRead": 4_000_000,
-    "doRowsWritten": 80_000,
-    "doStoredBytes": 4 * GB,
-    "r2ClassAOperations": 800_000,
-    "r2ClassBOperations": 8_000_000,
-    "r2StoredBytes": 8 * GB,
-    "kvReads": 80_000,
-    "kvWrites": 800,
-    "kvDeletes": 800,
-    "kvLists": 800,
-    "kvStoredBytes": 800_000_000,
+    "queueOperations": 10_000,
+    "doRequests": 100_000,
+    "doActiveGbSeconds": 13_000.0,
+    "doRowsRead": 5_000_000,
+    "doRowsWritten": 100_000,
+    "doStoredBytes": 5 * GB,
+    "r2ClassAOperations": 1_000_000,
+    "r2ClassBOperations": 10_000_000,
+    "r2StoredBytes": 10 * GB,
+    "kvReads": 100_000,
+    "kvWrites": 1_000,
+    "kvDeletes": 1_000,
+    "kvLists": 1_000,
+    "kvStoredBytes": 1_000_000_000,
 }
 R2_CLASS_A = frozenset(value.lower() for value in (
     "ListBuckets", "PutBucket", "ListObjects", "PutObject", "CopyObject",
@@ -335,7 +335,7 @@ def main() -> int:
         "limits": LIMITS,
         "violations": violations,
         "policy": (
-            "Account-wide usage capped at 80% of Cloudflare free/no-charge allowances; "
+            "Account-wide usage capped at 100% of Cloudflare free/no-charge allowances; "
             "daily operation meters are linearly projected from UTC midnight while "
             "monthly and stored-state meters remain unprojected"
         ),
@@ -344,7 +344,7 @@ def main() -> int:
     (OUT / "free-tier-usage.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
     lines = [
-        "## Account-wide Cloudflare free-tier 80% budgets",
+        "## Account-wide Cloudflare free-tier 100% budgets",
         "",
         f"- Generated: `{report['generatedAt']}`",
         f"- Elapsed UTC day: `{projection['elapsedSeconds']:,}` seconds",

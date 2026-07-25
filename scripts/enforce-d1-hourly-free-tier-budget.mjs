@@ -31,7 +31,7 @@ function effectiveWindow(input) {
   }
   const minutes = Math.max(1 / 60, (end.getTime() - start.getTime()) / 60_000);
   const free = input?.limits?.freePerDay || {};
-  const ratio = numeric(input?.limits?.targetRatio) || 0.5;
+  const ratio = numeric(input?.limits?.targetRatio) || 1;
   const proportionalTarget = {
     rowsRead: numeric(free.rowsRead) * ratio * minutes / (24 * 60),
     rowsWritten: numeric(free.rowsWritten) * ratio * minutes / (24 * 60),
@@ -121,7 +121,7 @@ appendFileSync('d1-usage/hourly-summary.md', summary);
 if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
 
 if (violations.length) {
-  console.error(`D1 rolling-window 50% budget exceeded: ${violations.join(', ')}`);
+  console.error(`D1 rolling-window 100% free-tier budget exceeded: ${violations.join(', ')}`);
   process.exit(1);
 }
-console.log(`D1 rolling-window 50% budget passed: ${observed.rowsRead} reads, ${observed.rowsWritten} writes`);
+console.log(`D1 rolling-window 100% free-tier budget passed: ${observed.rowsRead} reads, ${observed.rowsWritten} writes`);

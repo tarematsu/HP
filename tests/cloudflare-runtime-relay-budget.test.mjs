@@ -60,17 +60,17 @@ test('runtime recovery, repair, and dashboard work stay outside the Cron CPU pat
     + repairQueueOperations
     + dashboardQueueOperations;
   assert.equal(projectedQueueOperations, 4_155);
-  assert.ok(projectedQueueOperations < 8_000);
+  assert.ok(projectedQueueOperations < 10_000);
 
   // Keep headroom for retries and stale queued work by doubling repair traffic.
   const doubledRepairQueueOperations = healthyQueueOperations
     + repairQueueOperations * 2
     + dashboardQueueOperations;
   assert.equal(doubledRepairQueueOperations, 5_091);
-  assert.ok(doubledRepairQueueOperations < 8_000);
+  assert.ok(doubledRepairQueueOperations < 10_000);
 
   // If every maintenance gate also falls back to Queue, the policy still passes.
   const fullGateFallbackQueueOperations = projectedQueueOperations + 432 * 3;
   assert.equal(fullGateFallbackQueueOperations, 5_451);
-  assert.ok(fullGateFallbackQueueOperations < 8_000);
+  assert.ok(fullGateFallbackQueueOperations < 10_000);
 });

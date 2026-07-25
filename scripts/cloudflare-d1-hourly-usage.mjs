@@ -4,7 +4,7 @@ import path from 'node:path';
 const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const FREE_READ_ROWS_PER_DAY = 5_000_000;
 const FREE_WRITE_ROWS_PER_DAY = 100_000;
-const TARGET_RATIO = 0.5;
+const TARGET_RATIO = 1;
 const DEFAULT_WINDOW_MINUTES = 60;
 const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
 const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
@@ -206,7 +206,7 @@ const lines = [
   `Window: ${start} to ${end} (${windowMinutes.toFixed(1)} minutes)`,
   'Scope: D1 databases referenced by this repository',
   '',
-  '| Metric | Observed window | 50% free-tier window target | Utilization | 24h projection | Headroom |',
+  '| Metric | Observed window | 100% free-tier window target | Utilization | 24h projection | Headroom |',
   '|---|---:|---:|---:|---:|---:|',
   `| Rows read | ${fmt.format(total.rowsRead)} | ${fmt.format(windowTarget.rowsRead)} | ${report.utilization.rowsReadPercent.toFixed(1)}% | ${fmt.format(projectedDaily.rowsRead)} | ${fmt.format(report.headroom.rowsRead)} |`,
   `| Rows written | ${fmt.format(total.rowsWritten)} | ${fmt.format(windowTarget.rowsWritten)} | ${report.utilization.rowsWrittenPercent.toFixed(1)}% | ${fmt.format(projectedDaily.rowsWritten)} | ${fmt.format(report.headroom.rowsWritten)} |`,

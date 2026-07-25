@@ -110,9 +110,10 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /audit-cloudflare-daily-usage\.py/);
   assert.match(observability, /audit-cloudflare-free-tier\.py/);
   assert.match(observability, /audit-observability-budget-gates\.py/);
-  assert.match(observability, /DAILY_REQUEST_BUDGET: "70000"/);
-  assert.match(observability, /DAILY_D1_READ_BUDGET: "3000000"/);
-  assert.match(observability, /DAILY_D1_WRITE_BUDGET: "70000"/);
+  assert.match(observability, /DAILY_REQUEST_BUDGET: "100000"/);
+  assert.match(observability, /DAILY_D1_READ_BUDGET: "5000000"/);
+  assert.match(observability, /DAILY_D1_WRITE_BUDGET: "100000"/);
+  assert.match(observability, /DAILY_QUEUE_BUDGET: "10000"/);
   assert.match(observability, /query-cloudflare-observability\.py/);
   assert.match(observability, /audit-deployed-cloudflare-telemetry\.py/);
   assert.match(observability, /LIVE_TAIL_LOG: live-tail\.log/);

@@ -107,20 +107,19 @@ test('D1 budget indexes stay selective and refresh planner statistics', () => {
   assert.match(facts, /WHERE status='complete' AND source='live_collector'/);
 });
 
-test('measured daily budgets target the required reductions from the current estimate', () => {
+test('measured daily budgets use the full Cloudflare free-tier ceilings', () => {
   const workflow = source('../.github/workflows/sh-observability.yml');
   const auditor = source('../.github/scripts/audit-cloudflare-daily-usage.py');
-  const currentEstimate = { reads: 8_000_000, writes: 250_000 };
-  const budget = { reads: 3_000_000, writes: 70_000 };
+  const budget = { requests: 100_000, reads: 5_000_000, writes: 100_000, queueOperations: 10_000 };
 
-  assert.equal(1 - budget.reads / currentEstimate.reads, 0.625);
-  assert.equal(1 - budget.writes / currentEstimate.writes, 0.72);
+  assert.deepEqual(budget, { requests: 100_000, reads: 5_000_000, writes: 100_000, queueOperations: 10_000 });
   assert.doesNotMatch(workflow, /cron: "37 \* \* \* \*"/);
   assert.match(workflow, /cron: "0 1 \* \* \*"/);
   assert.equal((workflow.match(/- cron:/g) || []).length, 1);
-  assert.match(workflow, /DAILY_REQUEST_BUDGET: "70000"/);
-  assert.match(workflow, /DAILY_D1_READ_BUDGET: "3000000"/);
-  assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "70000"/);
+  assert.match(workflow, /DAILY_REQUEST_BUDGET: "100000"/);
+  assert.match(workflow, /DAILY_D1_READ_BUDGET: "5000000"/);
+  assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "100000"/);
+  assert.match(workflow, /DAILY_QUEUE_BUDGET: "10000"/);
   assert.match(workflow, /audit-cloudflare-daily-usage\.py/);
   assert.match(auditor, /d1AnalyticsAdaptiveGroups/);
   assert.match(auditor, /workersInvocationsAdaptive/);

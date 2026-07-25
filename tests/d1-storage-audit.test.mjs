@@ -21,4 +21,8 @@ test('D1 storage audit is manual and keeps the page walk opt-in', () => {
   assert.doesNotMatch(script, /COUNT\(\*\) FROM sh_minute_facts|COUNT\(\*\) FROM sh_minute_fact_jobs/);
   assert.match(script, /queryRowsRead/);
   assert.match(script, /wrangler\(\['d1', 'list', '--json'\]\)/);
+  assert.match(script, /D1_DATABASE_LIMIT_BYTES = 500_000_000/);
+  assert.match(script, /databaseFileSize >= D1_DATABASE_LIMIT_BYTES/);
+  assert.match(script, /Per-database capacity limit/);
+  assert.match(script, /process\.exitCode = 1/);
 });

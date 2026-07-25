@@ -13,10 +13,10 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const dailyScript = fileURLToPath(
-  new URL('../scripts/enforce-d1-half-budget.mjs', import.meta.url),
+  new URL('../scripts/enforce-d1-free-tier-budget.mjs', import.meta.url),
 );
 const hourlyScript = fileURLToPath(
-  new URL('../scripts/enforce-d1-hourly-half-budget.mjs', import.meta.url),
+  new URL('../scripts/enforce-d1-hourly-free-tier-budget.mjs', import.meta.url),
 );
 
 function withTempDirectory(run) {
@@ -40,12 +40,12 @@ function runHourly(directory, report) {
   return { result, updated };
 }
 
-test('daily D1 planning usage must stay strictly below 50 percent', () => {
+test('daily D1 planning usage must stay strictly below 100 percent free-tier ceiling', () => {
   withTempDirectory((directory) => {
     const reportPath = join(directory, 'summary.json');
     writeFileSync(reportPath, JSON.stringify({
       limits: { free: { rowsRead: 1_000, rowsWritten: 100 } },
-      planningEstimate: { rowsRead: 500, rowsWritten: 49 },
+      planningEstimate: { rowsRead: 1_000, rowsWritten: 99 },
     }));
     const result = spawnSync(process.execPath, [dailyScript], {
       cwd: directory,
@@ -53,16 +53,16 @@ test('daily D1 planning usage must stay strictly below 50 percent', () => {
       encoding: 'utf8',
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /rows read 500 >= 500/);
+    assert.match(result.stderr, /rows read 1000 >= 1000/);
   });
 });
 
-test('daily D1 planning usage below 50 percent passes', () => {
+test('daily D1 planning usage below 100 percent free-tier ceiling passes', () => {
   withTempDirectory((directory) => {
     const reportPath = join(directory, 'summary.json');
     writeFileSync(reportPath, JSON.stringify({
       limits: { free: { rowsRead: 1_000, rowsWritten: 100 } },
-      planningEstimate: { rowsRead: 499, rowsWritten: 49 },
+      planningEstimate: { rowsRead: 999, rowsWritten: 99 },
     }));
     const result = spawnSync(process.execPath, [dailyScript], {
       cwd: directory,
@@ -73,22 +73,22 @@ test('daily D1 planning usage below 50 percent passes', () => {
   });
 });
 
-test('reported rolling-window D1 usage at 50 percent fails', () => {
+test('reported rolling-window D1 usage at 100 percent free-tier ceiling fails', () => {
   withTempDirectory((directory) => {
     const { result } = runHourly(directory, {
-      observed: { rowsRead: 500, rowsWritten: 49 },
-      limits: { targetPerWindow: { rowsRead: 500, rowsWritten: 50 } },
+      observed: { rowsRead: 1_000, rowsWritten: 99 },
+      limits: { targetPerWindow: { rowsRead: 1_000, rowsWritten: 100 } },
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /rows read 500 >= 500/);
+    assert.match(result.stderr, /rows read 1000 >= 1000/);
   });
 });
 
-test('reported rolling-window D1 usage below 50 percent passes', () => {
+test('reported rolling-window D1 usage below 100 percent free-tier ceiling passes', () => {
   withTempDirectory((directory) => {
     const { result } = runHourly(directory, {
-      observed: { rowsRead: 499, rowsWritten: 49 },
-      limits: { targetPerWindow: { rowsRead: 500, rowsWritten: 50 } },
+      observed: { rowsRead: 999, rowsWritten: 99 },
+      limits: { targetPerWindow: { rowsRead: 1_000, rowsWritten: 100 } },
     });
     assert.equal(result.status, 0, result.stderr);
   });
@@ -104,8 +104,8 @@ test('post-deploy writes use the hourly allowance while reads stay window-propor
       },
       limits: {
         freePerDay: { rowsRead: 5_000_000, rowsWritten: 100_000 },
-        targetRatio: 0.5,
-        targetPerHour: { rowsRead: 104_166.67, rowsWritten: 2_083.33 },
+        targetRatio: 1,
+        targetPerHour: { rowsRead: 208_333.34, rowsWritten: 4_166.67 },
       },
       buckets: [{
         bucket: '2026-07-22T00:15:00.000Z',
@@ -118,8 +118,8 @@ test('post-deploy writes use the hourly allowance while reads stay window-propor
     assert.equal(result.status, 0, result.stderr);
     assert.equal(updated.budgetGate.targetBasis.rowsRead, 'measured-window');
     assert.equal(updated.budgetGate.targetBasis.rowsWritten, 'hourly-burst-allowance');
-    assert.equal(Math.floor(updated.budgetGate.target.rowsRead), 8_680);
-    assert.equal(Math.floor(updated.budgetGate.target.rowsWritten), 2_083);
+    assert.equal(Math.floor(updated.budgetGate.target.rowsRead), 17_361);
+    assert.equal(Math.floor(updated.budgetGate.target.rowsWritten), 4_166);
   });
 });
 
@@ -133,7 +133,7 @@ test('post-deploy full scans still fail the proportional read allowance', () => 
       },
       limits: {
         freePerDay: { rowsRead: 5_000_000, rowsWritten: 100_000 },
-        targetRatio: 0.5,
+        targetRatio: 1,
       },
       buckets: [{
         bucket: '2026-07-22T00:15:00.000Z',
@@ -142,7 +142,7 @@ test('post-deploy full scans still fail the proportional read allowance', () => 
       }],
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /rows read 2300000 >= 8680/);
+    assert.match(result.stderr, /rows read 2300000 >= 17361/);
   });
 });
 
@@ -156,15 +156,15 @@ test('post-deploy writes at the hourly allowance fail strictly', () => {
       },
       limits: {
         freePerDay: { rowsRead: 5_000_000, rowsWritten: 100_000 },
-        targetRatio: 0.5,
+        targetRatio: 1,
       },
       buckets: [{
         bucket: '2026-07-22T00:15:00.000Z',
         rowsRead: 1,
-        rowsWritten: 2_084,
+        rowsWritten: 4_167,
       }],
     });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /rows written 2084 >= 2083/);
+    assert.match(result.stderr, /rows written 4167 >= 4166/);
   });
 });

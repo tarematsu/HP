@@ -9,6 +9,7 @@ const deepAudit = /^(1|true|yes)$/i.test(
   String(process.env.D1_STORAGE_DEEP_AUDIT || '').trim(),
 );
 const wranglerScript = path.resolve('worker/node_modules/wrangler/bin/wrangler.js');
+const D1_DATABASE_LIMIT_BYTES = 500_000_000;
 await mkdir(outputDir, { recursive: true });
 
 function wrangler(args) {
@@ -64,6 +65,11 @@ const database = listedDatabases
   .find((item) => String(item.uuid || item.id || item.database_id) === databaseId)
   || listedDatabases.find((item) => String(item.name) === databaseName);
 if (!database) throw new Error(`Wrangler did not list ${databaseName} (${databaseId})`);
+const databaseFileSize = Number(database.file_size);
+if (!Number.isFinite(databaseFileSize) || databaseFileSize < 0) {
+  throw new Error(`Wrangler did not report a valid file_size for ${databaseName}`);
+}
+const capacityExceeded = databaseFileSize >= D1_DATABASE_LIMIT_BYTES;
 
 function query(label, sql) {
   try {
@@ -130,6 +136,12 @@ const report = {
   database,
   sqlite: { pageCount, pageSize, freePages, pragmaBytes, freeBytes },
   queryRowsRead,
+  capacity: {
+    limitBytes: D1_DATABASE_LIMIT_BYTES,
+    fileSizeBytes: databaseFileSize,
+    utilizationPercent: (databaseFileSize / D1_DATABASE_LIMIT_BYTES) * 100,
+    exceeded: capacityExceeded,
+  },
   probes,
 };
 await writeFile(path.join(outputDir, 'storage-audit.json'), `${JSON.stringify(report, null, 2)}\n`);
@@ -140,7 +152,10 @@ const lines = [
   `Generated: ${report.generatedAt}`,
   '',
   `- Database: ${markdown(database.name)} (${markdown(database.uuid || database.id || database.database_id)})`,
-  `- Cloudflare file size: ${formatBytes(database.file_size)}`,
+  `- Cloudflare file size: ${formatBytes(databaseFileSize)}`,
+  `- Per-database capacity limit: ${formatBytes(D1_DATABASE_LIMIT_BYTES)}`,
+  `- Capacity utilization: ${report.capacity.utilizationPercent.toFixed(2)}%`,
+  `- Capacity result: ${capacityExceeded ? 'FAIL' : 'PASS'}`,
   `- Tables reported by API: ${Number(database.num_tables || 0).toLocaleString('en-US')}`,
   `- SQLite page estimate: ${formatBytes(pragmaBytes)}`,
   `- SQLite freelist: ${freePages == null ? 'unavailable' : `${freePages.toLocaleString('en-US')} pages, ${formatBytes(freeBytes)}`}`,
@@ -185,7 +200,9 @@ lines.push('');
 await writeFile(path.join(outputDir, 'storage-audit.md'), `${lines.join('\n')}\n`);
 console.log(JSON.stringify({
   database: database.name,
-  fileSize: database.file_size,
+  fileSize: databaseFileSize,
+  capacityLimitBytes: D1_DATABASE_LIMIT_BYTES,
+  capacityExceeded,
   numTables: database.num_tables,
   pageCount,
   pageSize,
@@ -195,3 +212,7 @@ console.log(JSON.stringify({
   dbstatAvailable: dbstatRows.length > 0,
   sqliteStat1Available: statRows.length > 0,
 }));
+if (capacityExceeded) {
+  console.error(`D1 database capacity exceeded: ${databaseName} ${databaseFileSize} >= ${D1_DATABASE_LIMIT_BYTES} bytes`);
+  process.exitCode = 1;
+}

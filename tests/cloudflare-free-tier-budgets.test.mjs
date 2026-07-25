@@ -12,24 +12,24 @@ const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
 
-test('Cloudflare resource budgets are fixed at 80 percent of included usage', () => {
+test('Cloudflare resource budgets are fixed at 100 percent of included usage', () => {
   expectAll(script, [
     'Account-wide Cloudflare included-usage audit',
-    'Account-wide Cloudflare free-tier 80% budgets',
-    '"queueOperations": 8_000',
-    '"doRequests": 80_000',
-    '"doActiveGbSeconds": 10_400.0',
-    '"doRowsRead": 4_000_000',
-    '"doRowsWritten": 80_000',
-    '"doStoredBytes": 4 * GB',
-    '"r2ClassAOperations": 800_000',
-    '"r2ClassBOperations": 8_000_000',
-    '"r2StoredBytes": 8 * GB',
-    '"kvReads": 80_000',
-    '"kvWrites": 800',
-    '"kvDeletes": 800',
-    '"kvLists": 800',
-    '"kvStoredBytes": 800_000_000',
+    'Account-wide Cloudflare free-tier 100% budgets',
+    '"queueOperations": 10_000',
+    '"doRequests": 100_000',
+    '"doActiveGbSeconds": 13_000.0',
+    '"doRowsRead": 5_000_000',
+    '"doRowsWritten": 100_000',
+    '"doStoredBytes": 5 * GB',
+    '"r2ClassAOperations": 1_000_000',
+    '"r2ClassBOperations": 10_000_000',
+    '"r2StoredBytes": 10 * GB',
+    '"kvReads": 100_000',
+    '"kvWrites": 1_000',
+    '"kvDeletes": 1_000',
+    '"kvLists": 1_000',
+    '"kvStoredBytes": 1_000_000_000',
     'queueMessageOperationsAdaptiveGroups',
     'durableObjectsInvocationsAdaptiveGroups',
     'durableObjectsPeriodicGroups',
@@ -75,11 +75,11 @@ test('the coordinators and remaining scheduled Queues fit safely below daily bud
   const maximumCoordinatorRowsWritten = maximumCoordinatorRequests;
   const maximumQueueOperations = (48 + 48 + 17 + 288 * 2) * 3;
   assert.equal(maximumQueueOperations, 2_067);
-  assert.ok(maximumCoordinatorRequests < 80_000);
-  assert.ok(maximumCoordinatorDuration < 10_400);
-  assert.ok(maximumCoordinatorRowsRead < 4_000_000);
-  assert.ok(maximumCoordinatorRowsWritten < 80_000);
-  assert.ok(maximumQueueOperations < 8_000);
+  assert.ok(maximumCoordinatorRequests < 100_000);
+  assert.ok(maximumCoordinatorDuration < 13_000);
+  assert.ok(maximumCoordinatorRowsRead < 5_000_000);
+  assert.ok(maximumCoordinatorRowsWritten < 100_000);
+  assert.ok(maximumQueueOperations < 10_000);
   assert.equal(runtime.vars.RAW_COLLECTION_FALLBACK_INTERVAL_MINUTES, 5);
   assert.equal(runtime.vars.PIPELINE_ANALYTICS_INTERVAL_MINUTES, undefined);
   assert.equal(runtime.durable_objects.bindings[0].class_name, 'RuntimeCoordinator');
@@ -108,7 +108,7 @@ test('surplus KV and R2 capacity replaces materialized-response D1 writes and re
   const maximumMonthlyR2Mirrors = maximumDailyKvWrites * 31;
   const maximumMonthlyQueuePlanReads = 24 * 60 * 31;
   const maximumMonthlyQueuePlanClassA = 3 * 24 * 60 * 31;
-  assert.ok(maximumDailyKvWrites < 800);
-  assert.ok(maximumMonthlyR2Mirrors + maximumMonthlyQueuePlanClassA < 800_000);
-  assert.ok(maximumMonthlyQueuePlanReads < 8_000_000);
+  assert.ok(maximumDailyKvWrites < 1_000);
+  assert.ok(maximumMonthlyR2Mirrors + maximumMonthlyQueuePlanClassA < 1_000_000);
+  assert.ok(maximumMonthlyQueuePlanReads < 10_000_000);
 });

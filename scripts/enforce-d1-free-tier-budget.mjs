@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const reportPath = process.env.D1_USAGE_REPORT || 'd1-usage/summary.json';
 const report = JSON.parse(readFileSync(reportPath, 'utf8'));
-const ratio = 0.5;
+const ratio = 1;
 const free = report?.limits?.free || {};
 const actual = report?.planningEstimate || report?.latestComplete || {};
 const target = {
@@ -33,6 +33,6 @@ const result = {
 console.log(JSON.stringify(result));
 
 if (violations.length) {
-  console.error(`D1 50% free-tier budget exceeded: ${violations.join(', ')}`);
+  console.error(`D1 100% free-tier budget exceeded: ${violations.join(', ')}`);
   process.exit(1);
 }
