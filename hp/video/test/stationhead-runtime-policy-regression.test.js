@@ -6,6 +6,10 @@ const cmakeSource = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
+const appHeader = readFileSync(
+  new URL('../../native/src/app.h', import.meta.url),
+  'utf8',
+);
 const policySource = readFileSync(
   new URL('../../native/src/sh_polling_policy.h', import.meta.url),
   'utf8',
@@ -34,7 +38,7 @@ test('active runtime policy wraps the existing autoplay implementation', () => {
   const runtimeAutoplay = section(
     runtimeFixSource,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
-    '// Window A\'s successful stats request',
+    "// Window A's successful stats request",
   );
   assert.match(runtimeAutoplay, /StationheadAutoplayScript\(globalName, messagePrefix\)/);
   assert.match(runtimeAutoplay, /homepanel-stationhead-auth-ready/);
@@ -93,4 +97,15 @@ test('runtime policy override is compiled after the base polling policy', () => 
     cmakeSource,
     /target_precompile_headers\(HomePanel PRIVATE[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_runtime_policy_fix\.h\)/,
   );
+});
+
+test('Stationhead state changes shorten the central idle timer', () => {
+  assert.match(appHeader, /kStationheadStateWakeMs = 2'000/);
+  const markDirty = section(
+    appHeader,
+    'void MarkStationheadPlacementDirty() noexcept',
+    'void ProcessRemoteCommands();',
+  );
+  assert.match(markDirty, /stationheadPlacementDirty_ = true;/);
+  assert.match(markDirty, /ScheduleNextTick\(kStationheadStateWakeMs\);/);
 });
