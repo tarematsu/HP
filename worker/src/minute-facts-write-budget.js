@@ -8,6 +8,11 @@ function signalFrom(value) {
   return value?.__COLLECTION_ABORT_SIGNAL || null;
 }
 
+function timeoutDisabled(value) {
+  if (value === false || value === 0) return true;
+  return /^(0|false|off|disabled)$/i.test(String(value ?? '').trim());
+}
+
 function abortError(signal) {
   if (signal?.reason instanceof Error) return signal.reason;
   return Object.assign(new Error('minute fact write aborted'), { name: 'AbortError', code: 'MINUTE_FACT_ABORTED' });
@@ -86,8 +91,14 @@ function rejectedWhenAborted(signal) {
 }
 
 export async function saveMinuteFactWithinBudget(env, input, writer) {
-  const configured = Number(env?.MINUTE_FACT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
-  const timeout = Number.isFinite(configured) ? Math.max(1_000, Math.min(20_000, configured)) : DEFAULT_TIMEOUT_MS;
+  const configured = env?.MINUTE_FACT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS;
+  // Cloudflare D1 calls cannot be cancelled once dispatched. Queue consumers must
+  // wait for the in-flight write instead of rejecting early and redelivering the
+  // same message while the original D1 operation is still committing.
+  if (timeoutDisabled(configured)) return writer(env, input);
+
+  const parsed = Number(configured);
+  const timeout = Number.isFinite(parsed) ? Math.max(1_000, Math.min(20_000, parsed)) : DEFAULT_TIMEOUT_MS;
   const signal = combinedAbortSignal(signalFrom(env), timeout);
   throwIfMinuteFactAborted(signal);
   return Promise.race([

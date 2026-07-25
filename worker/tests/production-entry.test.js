@@ -97,7 +97,8 @@ test('collector and runtime Wrangler configurations own disjoint pipeline stages
   assert.equal(runtime.queues.consumers.some(({ queue }) => collectorQueues.has(queue)), false);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
-  assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 18_000);
+  assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
   assert.match(preparedCollector, /PERSIST_QUEUE: \{ value: null/);
   assert.match(preparedCollector, /INGEST_FINALIZE_QUEUE: \{ value: null/);
   assert.match(minuteProduction, /MINUTE_ENRICHMENT_QUEUE/);

@@ -36,3 +36,20 @@ test('minute fact budget inherits immutable env values and owns guarded bindings
     wrapsMinuteDb: true,
   });
 });
+
+test('disabled Queue write timeout waits for the in-flight D1 writer', async () => {
+  const db = { marker: 'minute-db' };
+  const env = { MINUTE_FACT_TIMEOUT_MS: 0, MINUTE_DB: db };
+  let completed = false;
+
+  const result = await saveMinuteFactWithinBudget(env, { id: 1 }, async (active, input) => {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(active, env);
+    assert.equal(active.MINUTE_DB, db);
+    completed = true;
+    return { input };
+  });
+
+  assert.equal(completed, true);
+  assert.deepEqual(result, { input: { id: 1 } });
+});

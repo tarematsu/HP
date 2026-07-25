@@ -104,7 +104,8 @@ test('core consolidation is validated against the strict 10 ms CPU contract', ()
   );
   assert.match(audit, /STATELESS_CPU_BUDGET_MS = float\(os\.environ\.get\("CPU_BUDGET_MS", "10"\)\)/);
   assert.match(audit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
-  assert.match(audit, /cpu_ms <= item\["budget_ms"\]/);
+  assert.match(audit, /terminal_cpu = cpu_limit_outcome\(event\)/);
+  assert.match(audit, /numeric_overage = cpu_ms is not None and cpu_ms > item\["budget_ms"\]/);
   assert.match(audit, /not truncated and not missing/);
 });
 

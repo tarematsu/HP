@@ -8,6 +8,10 @@ let cronStaggerModulePromise;
 let rollupModulePromise;
 let retentionModulePromise;
 
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
+}
+
 function loadCronStaggerModule() {
   cronStaggerModulePromise ||= import('./cron-stagger.js');
   return cronStaggerModulePromise;
@@ -75,9 +79,10 @@ export async function runMonitorMaintenanceCron(controller, env, dependencies = 
     }
     const runRollup = dependencies.runRollup
       || (await loadRollupModule()).runRollupMaintenanceSafely;
+    const repairDb = enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED) ? env.MINUTE_DB : null;
     return assertMaintenanceSucceeded(
       'rollup maintenance',
-      await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, now),
+      await runRollup(env.BUDDIES_DB, env.OTHER_DB, repairDb, now),
     );
   }
 

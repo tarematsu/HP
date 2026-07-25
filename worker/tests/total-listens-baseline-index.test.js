@@ -37,10 +37,10 @@ function recordingDb() {
   };
 }
 
-test('facts descriptor advances past the repair candidate index', () => {
+test('facts descriptor advances past the retired repair work', () => {
   assert.equal(
     descriptor.schema,
-    'database/facts-migrations/043_retire_repair_candidate_index.sql',
+    'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
   );
 });
 
