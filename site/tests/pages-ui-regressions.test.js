@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import {
   SAKURAZAKA_MINUTE_SERIES_SQL,
+  mergeSakurazakaSeriesRows,
 } from '../functions/api/sakurazaka46jp.js';
 import { onRequestGet as trackHistory } from '../functions/api/track-history.js';
 import {
@@ -13,22 +14,24 @@ import {
 } from '../functions/lib/playback.js';
 import { summarizeCompleteTrackRows } from '../public/history/history-request-guard.js';
 
-test('dashboard playback restores artwork from raw Stationhead metadata', () => {
-  const raw = JSON.stringify({
+test('dashboard playback restores artwork from string and object Stationhead metadata', () => {
+  const rawObject = {
     track: {
       name: 'Test song',
       artist_name: 'Test artist',
       album: { images: [{ url: 'https://images.example.test/cover.jpg' }] },
     },
-  });
-  assert.equal(metadataFallback(raw).thumbnail_url, 'https://images.example.test/cover.jpg');
+  };
+  assert.equal(metadataFallback(JSON.stringify(rawObject)).thumbnail_url, 'https://images.example.test/cover.jpg');
+  assert.equal(metadataFallback(rawObject).thumbnail_url, 'https://images.example.test/cover.jpg');
 
   const normalized = normalizePlaybackTrack({
     spotify_id: 'spotify-test',
-    raw_json: raw,
+    raw_json: rawObject,
     duration_ms: 180000,
   }, 0, { currentIndex: 0, progressMs: 1000 });
   assert.equal(normalized.thumbnail_url, 'https://images.example.test/cover.jpg');
+  assert.equal(normalized.spotify_url, 'https://open.spotify.com/track/spotify-test');
   assert.equal('spotify_id' in normalized, false);
   assert.equal(normalized.is_current, true);
 });
@@ -67,6 +70,30 @@ test('official stream series includes live and migrated minute-fact sources', ()
   assert.deepEqual(points.map((point) => point[1]), [101, 102, 103, 104]);
 });
 
+test('official stream fallback does not duplicate an existing minute-fact series', () => {
+  const primary = [{
+    event_name: 'Official event',
+    started_at: 1_000_000,
+    samples: [{ elapsed: 0, listener: 100, sourceSamples: 1 }],
+    source: 'historical_import',
+  }];
+  const fallback = [{
+    event_name: 'Official event from news',
+    started_at: 1_000_000 + 5 * 60_000,
+    samples: [{ elapsed: 0, listener: 101, sourceSamples: 1 }],
+    source: 'official_news_fail_safe',
+  }, {
+    event_name: 'Missing event',
+    started_at: 2_000_000,
+    samples: [{ elapsed: 0, listener: 200, sourceSamples: 1 }],
+    source: 'official_news_fail_safe',
+  }];
+  const merged = mergeSakurazakaSeriesRows(primary, fallback);
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].source, 'historical_import');
+  assert.equal(merged[1].event_name, 'Missing event');
+});
+
 test('track totals exclude incomplete dates instead of reporting partial plays', () => {
   const summary = summarizeCompleteTrackRows([
     { play_date: '2026-07-20', track_key: 'a', play_count: 3, period_complete: true },
@@ -74,6 +101,14 @@ test('track totals exclude incomplete dates instead of reporting partial plays',
     { play_date: '2026-07-21', track_key: 'c', play_count: 99, play_count_excluded: true },
   ]);
   assert.deepEqual(summary, { days: 1, tracks: 2, total: 5, maximum: 3 });
+});
+
+test('like summary totals all complete weekly rows, not only the bounded ranking', () => {
+  const source = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
+  assert.match(source, /function completeWeekPlayCount\(rows\)/);
+  assert.match(source, /play_count_excluded === true/);
+  assert.match(source, /week_play_count: completeWeekPlayCount\(weekRows\)/);
+  assert.doesNotMatch(source, /week_play_count: state\.rows\.reduce/);
 });
 
 function trackHistoryDb(rankingSize = 0) {
