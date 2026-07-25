@@ -18,7 +18,6 @@ export const STATUS_ISSUE_TITLE = 'HomePanel Observability Status';
 export const STATUS_MARKER = '<!-- homepanel-observability-status -->';
 
 const STATUS_CONTEXTS = {
-  policy: 'observability/policy-self-test',
   daily: 'observability/daily-usage-budget',
   d1Insights: 'observability/d1-query-insights',
   query: 'observability/cloudflare-query',
@@ -63,7 +62,6 @@ export async function publishFromEnvironment() {
   const runUrl = requiredEnv('OBSERVABILITY_RUN_URL');
   const request = createGitHubRequest('homepanel-observability-status');
   const outcomes = {
-    policy: process.env.POLICY_OUTCOME,
     daily: process.env.DAILY_BUDGET_OUTCOME,
     d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
