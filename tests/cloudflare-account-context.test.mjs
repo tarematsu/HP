@@ -108,13 +108,16 @@ test('the composite action is the single production credential resolver', () => 
   const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
   const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
   const pruneUpdates = readSource('.github/workflows/prune-homepanel-updates.yml');
+  const shObservability = readSource('.github/workflows/sh-observability.yml');
+  const hpObservability = readSource('.github/workflows/hp-observability.yml');
+  const nativeBuild = readSource('.github/workflows/native-windows-build.yml');
 
   assert.match(action, /node \.github\/scripts\/resolve-cloudflare-account\.mjs/);
   assert.doesNotMatch(action, /curl|jq|mapfile/);
-  assert.match(configResolver, /from "\.\/resolve-cloudflare-account\.mjs"/);
-  assert.match(configResolver, /resolveCloudflareAccountId\(\{/);
-  assert.match(configResolver, /configuredAccountId/);
-  assert.doesNotMatch(configResolver, /async function cloudflareAccountId/);
+
+  assert.match(configResolver, /stripJsonc/);
+  assert.match(configResolver, /update_bucket/);
+  assert.doesNotMatch(configResolver, /resolve-cloudflare-account|CLOUDFLARE_|account_id/);
 
   assert.match(cloudDeploy, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(cloudDeploy, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
@@ -124,6 +127,38 @@ test('the composite action is the single production credential resolver', () => 
     cloudDeploy,
     /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
   );
+
+  for (const workflow of [shObservability, hpObservability]) {
+    assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-context/);
+    assert.match(workflow, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
+    assert.doesNotMatch(
+      workflow,
+      /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
+    );
+  }
+
+  assert.match(nativeBuild, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(nativeBuild, /node \.github\/scripts\/resolve-cloudflare-config\.mjs/);
+  assert.ok(
+    nativeBuild.indexOf('uses: ./.github/actions/cloudflare-context')
+      < nativeBuild.indexOf('node .github/scripts/resolve-cloudflare-config.mjs'),
+  );
+  assert.equal(
+    nativeBuild.match(/secrets\.CLOUDFLARE_BUILDS_API_TOKEN/g)?.length,
+    1,
+  );
+  assert.doesNotMatch(nativeBuild, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(
+    nativeBuild,
+    /^\s+CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID):/m,
+  );
+  for (const dependency of [
+    '.github/actions/cloudflare-context/action.yml',
+    '.github/scripts/resolve-cloudflare-account.mjs',
+    '.github/scripts/resolve-cloudflare-config.mjs',
+  ]) {
+    assert.equal(nativeBuild.split(dependency).length - 1, 2, dependency);
+  }
 
   assert.match(pruneUpdates, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(pruneUpdates, /\/r2\/buckets\/\$\{UPDATE_BUCKET\}\/objects/);
