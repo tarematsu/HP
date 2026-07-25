@@ -5,7 +5,6 @@ import {
   MAX_ISSUE_BODY_CHARS,
   clipText,
   createGitHubRequest,
-  normalizeOutcome,
   overallOutcome,
   publishCommitStatuses,
   readOptionalJson,
@@ -13,11 +12,8 @@ import {
   renderOutcomeRows,
   renderSection,
   requiredEnv,
-  statusState,
   upsertStatusIssue,
 } from './observability-status-publisher.mjs';
-
-export { normalizeOutcome, overallOutcome, statusState };
 
 export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
