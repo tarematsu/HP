@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import {
+  assertConsumerOwnership,
   hasConsumer,
   pauseQueue,
   removeConsumer,
@@ -11,8 +12,14 @@ import {
 
 const configName = 'wrangler.buddies-collector.jsonc';
 const config = JSON.parse(readFileSync(new URL(`../${configName}`, import.meta.url), 'utf8'));
+const recoveryConfig = JSON.parse(readFileSync(
+  new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
+  'utf8',
+));
 const collectorScript = config.name;
+const recoveryScript = recoveryConfig.name;
 const previousScript = 'sh-runtime-orchestrator';
+const recoveryQueues = Object.freeze(recoveryConfig.queues.consumers.map(({ queue }) => queue));
 const migrations = Object.freeze(config.queues.consumers.map((consumer) => Object.freeze({
   queue: consumer.queue,
   oldScript: previousScript,
@@ -27,6 +34,11 @@ let previousConsumers = new Set();
 let collectorConsumers = new Set();
 
 try {
+  assertConsumerOwnership(recoveryQueues, {
+    requiredScript: recoveryScript,
+    forbiddenScripts: [collectorScript, previousScript],
+  });
+
   previousConsumers = new Set(
     migrations
       .filter(({ queue }) => hasConsumer(queue, previousScript))
@@ -56,6 +68,10 @@ try {
       throw new Error(`runtime still owns buddies collector queue ${queue}`);
     }
   }
+  assertConsumerOwnership(recoveryQueues, {
+    requiredScript: recoveryScript,
+    forbiddenScripts: [collectorScript, previousScript],
+  });
 
   for (const queue of paused) resumeQueue(queue);
   paused.clear();
@@ -84,6 +100,8 @@ try {
 console.log(JSON.stringify({
   event: 'buddies_collector_worker_deployed',
   script: collectorScript,
+  recovery_script: recoveryScript,
+  recovery_queues: recoveryQueues,
   previous_script: previousScript,
   queues: migrations.map(({ queue }) => queue),
 }));
