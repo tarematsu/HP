@@ -46,7 +46,8 @@ test('dedicated collector disables inline comments and recovery bounds the comme
   assert.equal(collector.name, 'sh-buddies-collector');
   assert.equal(recovery.name, 'sh-buddies-recovery');
   assert.equal(configFromEnv(collector.vars).chatLimit, 0);
-  assert.equal(comments.max_batch_size, 1);
+  assert.equal(comments.max_batch_size, 10);
+  assert.equal(comments.max_batch_timeout, 5);
   assert.equal(comments.max_concurrency, 1);
   assert.equal(recovery.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
