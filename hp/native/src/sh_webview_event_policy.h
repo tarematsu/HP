@@ -235,12 +235,25 @@ WrapStationheadAudioChangedHandler(
       });
 }
 
+inline ComPtr<ICoreWebView2WebResourceRequestedEventHandler>
+WrapStationheadWebResourceRequestedHandler(
+    ICoreWebView2WebResourceRequestedEventHandler* handler) noexcept {
+  if (!handler) return {};
+  ComPtr<ICoreWebView2WebResourceRequestedEventHandler> inner = handler;
+  return Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+      [inner = std::move(inner)](
+          ICoreWebView2* sender,
+          ICoreWebView2WebResourceRequestedEventArgs* args) noexcept -> HRESULT {
+        return InvokeEventNoexcept(inner, sender, args);
+      });
+}
+
 }  // namespace stationhead_webview_policy
 }  // namespace hp
 
-// WebView2 event registration is centralized in sh_webview.cpp. Wrapping the
-// registration token here preserves the existing handlers while enforcing the
-// source/target policy before any StationheadPlayer state can be mutated.
+// WebView2 event registration is centralized in Stationhead code. Wrapping the
+// registration token preserves the existing handlers while enforcing origin,
+// popup and exception-containment policy before player state can be mutated.
 #define add_WebMessageReceived(handler, token)                                \
   add_WebMessageReceived(                                                     \
       ::hp::stationhead_webview_policy::                                      \
@@ -281,4 +294,10 @@ WrapStationheadAudioChangedHandler(
   add_IsDocumentPlayingAudioChanged(                                          \
       ::hp::stationhead_webview_policy::                                      \
           WrapStationheadAudioChangedHandler((handler)).Get(),                \
+      (token))
+
+#define add_WebResourceRequested(handler, token)                              \
+  add_WebResourceRequested(                                                   \
+      ::hp::stationhead_webview_policy::                                      \
+          WrapStationheadWebResourceRequestedHandler((handler)).Get(),        \
       (token))
