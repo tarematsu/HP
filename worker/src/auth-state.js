@@ -1,3 +1,9 @@
+import {
+  COLLECTOR_DO_HOT_STATE,
+  getCollectorHotState,
+  mergeCollectorHotState,
+  putCollectorHotState,
+} from './collector-do-hot-state.js';
 import { normalizeBearer, jwtExpiryMs } from './shared.js';
 
 export const DEFAULT_AUTH_STATE_ID = 'stationhead';
@@ -35,6 +41,11 @@ function normalizedStateId(stateId = DEFAULT_AUTH_STATE_ID) {
   return String(stateId || DEFAULT_AUTH_STATE_ID).trim().toLowerCase() || DEFAULT_AUTH_STATE_ID;
 }
 
+function hotStateKey(stateId = DEFAULT_AUTH_STATE_ID) {
+  const id = normalizedStateId(stateId);
+  return id === DEFAULT_AUTH_STATE_ID ? COLLECTOR_DO_HOT_STATE.auth_key : `auth:${id}`;
+}
+
 function fallbackCredentials(env = {}) {
   return {
     authToken: env.STATIONHEAD_AUTH_TOKEN || env.SH_AUTH_TOKEN,
@@ -65,6 +76,36 @@ export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
   };
 }
 
+function validHotAuthState(value, stateId) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const id = normalizedStateId(stateId);
+  if (normalizedStateId(value.id) !== id) return null;
+  const authToken = normalizeBearer(value.authToken);
+  const deviceUid = String(value.deviceUid || '').trim();
+  if (!authToken || !deviceUid) return null;
+  return {
+    ...value,
+    id,
+    authToken,
+    deviceUid,
+    tokenExpiresAt: Number(value.tokenExpiresAt || 0) || jwtExpiryMs(authToken),
+    lastAttemptAt: Number(value.lastAttemptAt || 0),
+    lastSuccessAt: Number(value.lastSuccessAt || 0),
+    lockUntil: Number(value.lockUntil || 0),
+    controlExists: value.controlExists !== false,
+    collectorLastRunAt: Number(value.collectorLastRunAt || 0),
+    collectorLastSuccessAt: Number(value.collectorLastSuccessAt || 0),
+    collectorChannelId: Number(value.collectorChannelId || 0) || null,
+    collectorStationId: Number(value.collectorStationId || 0) || null,
+    collectorUpdatedAt: Number(value.collectorUpdatedAt || 0),
+  };
+}
+
+async function cacheAuthState(env, stateId, state) {
+  if (!state?.authToken || !state?.deviceUid) return false;
+  return putCollectorHotState(env, hotStateKey(stateId), state);
+}
+
 export async function ensureAuthControlSchema(env) {
   if (!env?.DB) throw new Error('D1 binding is missing for auth control state');
   if (authControlSchemaReady) return false;
@@ -74,14 +115,23 @@ export async function ensureAuthControlSchema(env) {
 }
 
 export async function readAuthState(env, stateId = DEFAULT_AUTH_STATE_ID) {
+  const hot = validHotAuthState(
+    await getCollectorHotState(env, hotStateKey(stateId)),
+    stateId,
+  );
+  if (hot) return hot;
   try {
     const row = await env.DB.prepare(AUTH_STATE_SQL).bind(stateId).first();
-    return parseAuthState(row, env, stateId);
+    const state = parseAuthState(row, env, stateId);
+    await cacheAuthState(env, stateId, state);
+    return state;
   } catch (error) {
     if (!missingAuthControlTable(error)) throw error;
     await ensureAuthControlSchema(env);
     const row = await env.DB.prepare(AUTH_STATE_SQL).bind(stateId).first();
-    return parseAuthState(row, env, stateId);
+    const state = parseAuthState(row, env, stateId);
+    await cacheAuthState(env, stateId, state);
+    return state;
   }
 }
 
@@ -89,6 +139,10 @@ export async function ensureAuthControlRow(env, stateId = DEFAULT_AUTH_STATE_ID,
   await ensureAuthControlSchema(env);
   await env.DB.prepare(`INSERT OR IGNORE INTO sh_worker_auth_control (id,updated_at) VALUES (?,?)`)
     .bind(stateId, now).run();
+  await mergeCollectorHotState(env, hotStateKey(stateId), {
+    id: normalizedStateId(stateId),
+    controlExists: true,
+  });
 }
 
 export function resetAuthStateForTests() {
