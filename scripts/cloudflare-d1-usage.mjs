@@ -1,15 +1,17 @@
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const API_ROOT = 'https://api.cloudflare.com/client/v4';
-const GRAPHQL_URL = `${API_ROOT}/graphql`;
+const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
 const FREE_READ_ROWS = 5_000_000;
 const FREE_WRITE_ROWS = 100_000;
 const TARGET_RATIO = 0.5;
 const TARGET_READ_ROWS = FREE_READ_ROWS * TARGET_RATIO;
 const TARGET_WRITE_ROWS = FREE_WRITE_ROWS * TARGET_RATIO;
 const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
-if (!token) throw new Error('CLOUDFLARE_API_TOKEN is required');
+const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+if (!token || !accountId) {
+  throw new Error('CLOUDFLARE_API_TOKEN and resolved CLOUDFLARE_ACCOUNT_ID are required');
+}
 
 const outputDir = path.resolve(process.env.D1_USAGE_OUTPUT_DIR || 'd1-usage');
 await mkdir(outputDir, { recursive: true });
@@ -33,14 +35,14 @@ function percentage(value, limit) {
   return limit > 0 ? (value / limit) * 100 : 0;
 }
 
-async function api(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
+async function graphql(query, variables) {
+  const response = await fetch(GRAPHQL_URL, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      ...(options.headers || {}),
     },
+    body: JSON.stringify({ query, variables }),
   });
   const text = await response.text();
   let body;
@@ -49,10 +51,12 @@ async function api(url, options = {}) {
   } catch {
     throw new Error(`Cloudflare returned non-JSON (${response.status}): ${text.slice(0, 500)}`);
   }
-  if (!response.ok || body?.success === false || body?.errors?.length) {
-    throw new Error(`Cloudflare API failed (${response.status}): ${JSON.stringify(body?.errors || body).slice(0, 1200)}`);
+  if (!response.ok || body?.errors?.length) {
+    throw new Error(`Cloudflare GraphQL failed (${response.status}): ${JSON.stringify(body?.errors || body).slice(0, 1200)}`);
   }
-  return body;
+  const accounts = body?.data?.viewer?.accounts || [];
+  if (accounts.length !== 1) throw new Error(`Expected one GraphQL account row, got ${accounts.length}`);
+  return accounts[0].d1AnalyticsAdaptiveGroups || [];
 }
 
 async function referencedDatabases() {
@@ -71,27 +75,6 @@ async function referencedDatabases() {
   }
   if (!databases.size) throw new Error('No D1 databases found in worker/wrangler*.jsonc');
   return databases;
-}
-
-async function discoverAccounts(referenced) {
-  const accountsResponse = await api(`${API_ROOT}/accounts?per_page=50`);
-  const matches = [];
-  for (const account of accountsResponse.result || []) {
-    let response;
-    try {
-      response = await api(`${API_ROOT}/accounts/${account.id}/d1/database?per_page=100`);
-    } catch (error) {
-      console.warn(`Skipping account ${account.id}: ${error.message}`);
-      continue;
-    }
-    const databases = response.result || [];
-    const referencedHere = databases.filter((database) => referenced.has(database.uuid || database.id));
-    if (referencedHere.length) {
-      matches.push({ id: account.id, name: account.name, databases, referenced: referencedHere });
-    }
-  }
-  if (!matches.length) throw new Error('No accessible Cloudflare account contains the referenced D1 databases');
-  return matches;
 }
 
 const query = `query D1DailyUsage($accountTag: string!, $start: Date!, $end: Date!) {
@@ -118,34 +101,13 @@ const query = `query D1DailyUsage($accountTag: string!, $start: Date!, $end: Dat
   }
 }`;
 
-async function usageForAccount(accountId, start, end) {
-  const body = await api(GRAPHQL_URL, {
-    method: 'POST',
-    body: JSON.stringify({ query, variables: { accountTag: accountId, start, end } }),
-  });
-  return body.data?.viewer?.accounts?.[0]?.d1AnalyticsAdaptiveGroups || [];
-}
-
 const now = new Date();
 const today = isoDate(now);
 const yesterday = isoDate(shiftUtcDate(now, -1));
 const start = isoDate(shiftUtcDate(now, -7));
 const referenced = await referencedDatabases();
-const accounts = await discoverAccounts(referenced);
-
-const databaseNames = new Map();
-for (const account of accounts) {
-  for (const database of account.databases) {
-    databaseNames.set(database.uuid || database.id, database.name || database.uuid || database.id);
-  }
-}
-for (const database of referenced.values()) databaseNames.set(database.id, database.name);
-
-const groups = [];
-for (const account of accounts) {
-  const rows = await usageForAccount(account.id, start, today);
-  for (const row of rows) groups.push({ ...row, accountId: account.id, accountName: account.name });
-}
+const groups = await graphql(query, { accountTag: accountId, start, end: today });
+const databaseNames = new Map([...referenced.values()].map(({ id, name }) => [id, name]));
 
 const daily = new Map();
 const databaseDaily = new Map();
@@ -154,7 +116,8 @@ for (let cursor = new Date(`${start}T00:00:00Z`); isoDate(cursor) <= today; curs
 }
 for (const group of groups) {
   const date = String(group.dimensions?.date || '');
-  const databaseId = String(group.dimensions?.databaseId || 'unknown');
+  const databaseId = String(group.dimensions?.databaseId || '');
+  if (!referenced.has(databaseId)) continue;
   const sum = group.sum || {};
   const values = {
     rowsRead: numeric(sum.rowsRead),
@@ -216,24 +179,21 @@ const planningEstimate = {
   rowsRead: Math.max(latestComplete.rowsRead, sevenDayAverage.rowsRead, projectedToday.rowsRead),
   rowsWritten: Math.max(latestComplete.rowsWritten, sevenDayAverage.rowsWritten, projectedToday.rowsWritten),
 };
-
 const latestDatabaseRows = [...databaseDaily.values()]
   .filter((item) => item.date === yesterday)
   .sort((a, b) => (b.rowsRead + b.rowsWritten) - (a.rowsRead + a.rowsWritten));
 
 const report = {
   generatedAt: now.toISOString(),
+  scope: 'repository-referenced-databases',
   window: { start, end: today, latestCompleteDate: yesterday },
   limits: {
     free: { rowsRead: FREE_READ_ROWS, rowsWritten: FREE_WRITE_ROWS },
     targetRatio: TARGET_RATIO,
     target: { rowsRead: TARGET_READ_ROWS, rowsWritten: TARGET_WRITE_ROWS },
   },
-  accounts: accounts.map((account) => ({ id: account.id, name: account.name })),
-  databases: [...referenced.values()].map((database) => ({
-    ...database,
-    accountId: accounts.find((account) => account.referenced.some((item) => (item.uuid || item.id) === database.id))?.id || null,
-  })),
+  accounts: [{ id: accountId, name: null }],
+  databases: [...referenced.values()].map((database) => ({ ...database, accountId })),
   latestComplete,
   currentPartial,
   projectedToday,
@@ -260,6 +220,7 @@ const lines = [
   '# D1 daily usage',
   '',
   `Generated: ${report.generatedAt}`,
+  'Scope: D1 databases referenced by this repository',
   '',
   '| Metric | Free limit | 50% target | Latest complete day | 7-day average | 7-day maximum | Projected today | Planning estimate | Target utilization |',
   '|---|---:|---:|---:|---:|---:|---:|---:|---:|',
