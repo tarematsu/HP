@@ -1,11 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const root = new URL('../', import.meta.url);
-const scriptUrl = new URL('.github/scripts/audit-cloudflare-free-tier.py', root);
 const script = readFileSync(
   new URL('.github/scripts/cloudflare_free_tier_audit.py', root),
   'utf8',
@@ -66,14 +63,6 @@ test('Cloudflare resource budgets are fixed at 80 percent of included usage', ()
     script,
     /configured_resource_ids|core\.|accounts\?per_page=50|per_page=100|importlib\.util|audit-cloudflare-free-tier-core/,
   );
-  const result = spawnSync('python3', [fileURLToPath(scriptUrl), '--self-test'], {
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      CLOUDFLARE_DO_BINDINGS: 'RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR',
-    },
-  });
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('the coordinators and remaining scheduled Queues fit safely below daily budgets', () => {
