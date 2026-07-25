@@ -4,6 +4,7 @@ import { appendFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const ACCOUNTS_URL = 'https://api.cloudflare.com/client/v4/accounts?per_page=50';
+const ACCOUNT_URL = (accountId) => `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}`;
 
 function singleLine(name, value) {
   const normalized = String(value || '').trim();
@@ -12,17 +13,8 @@ function singleLine(name, value) {
   return normalized;
 }
 
-export async function resolveCloudflareAccountId({
-  token = '',
-  accountId = '',
-  fetchImpl = globalThis.fetch,
-}) {
-  const explicit = String(accountId || '').trim();
-  if (explicit) return singleLine('Cloudflare account ID', explicit);
-
-  const apiToken = singleLine('Cloudflare API token', token);
-  if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
-  const response = await fetchImpl(ACCOUNTS_URL, {
+async function requestCloudflareJson(url, apiToken, fetchImpl) {
+  const response = await fetchImpl(url, {
     headers: {
       Authorization: `Bearer ${apiToken}`,
       Accept: 'application/json',
@@ -41,7 +33,29 @@ export async function resolveCloudflareAccountId({
       .join('; ');
     throw new Error(`Cloudflare account lookup failed: ${detail || response.status}`);
   }
+  return payload;
+}
 
+export async function resolveCloudflareAccountId({
+  token = '',
+  accountId = '',
+  fetchImpl = globalThis.fetch,
+}) {
+  const apiToken = singleLine('Cloudflare API token', token);
+  if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
+
+  const explicit = String(accountId || '').trim();
+  if (explicit) {
+    const requestedAccountId = singleLine('Cloudflare account ID', explicit);
+    const payload = await requestCloudflareJson(ACCOUNT_URL(requestedAccountId), apiToken, fetchImpl);
+    const resolvedAccountId = singleLine('Cloudflare account ID', payload?.result?.id);
+    if (resolvedAccountId !== requestedAccountId) {
+      throw new Error('Cloudflare account lookup returned a different account ID');
+    }
+    return resolvedAccountId;
+  }
+
+  const payload = await requestCloudflareJson(ACCOUNTS_URL, apiToken, fetchImpl);
   const ids = (Array.isArray(payload?.result) ? payload.result : [])
     .map((account) => String(account?.id || '').trim())
     .filter(Boolean);
