@@ -86,8 +86,8 @@ jobs:
           current_prefix="updates/releases/${current_version}/"
 
           list_keys 'updates/releases/' objects-before.txt
-          grep -Fvx '' objects-before.txt \
-            | grep -Fv -- "$current_prefix" > obsolete-keys.txt || true
+          awk -v prefix="$current_prefix" 'length && index($0, prefix) != 1' \
+            objects-before.txt > obsolete-keys.txt
 
           deleted=0
           while IFS= read -r key; do
@@ -100,6 +100,13 @@ jobs:
 
           list_keys 'updates/releases/' objects-after.txt
           remaining="$(grep -c . objects-after.txt || true)"
+          unexpected_remaining="$(awk -v prefix="$current_prefix" \
+            'length && index($0, prefix) != 1 { count++ } END { print count + 0 }' \
+            objects-after.txt)"
+          [[ "$unexpected_remaining" -eq 0 ]] || {
+            echo "Obsolete HomePanel release objects remain after cleanup: $unexpected_remaining" >&2
+            exit 1
+          }
 
           echo "version=$current_version" >> "$GITHUB_OUTPUT"
           echo "deleted=$deleted" >> "$GITHUB_OUTPUT"
