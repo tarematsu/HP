@@ -19,6 +19,8 @@ const queuePlanR2 = readFileSync(new URL('worker/src/queue-plan-r2.js', root), '
 const pagesMiddleware = readFileSync(new URL('site/functions/_middleware.js', root), 'utf8');
 
 test('Cloudflare resource budgets are fixed at 80 percent of included usage', () => {
+  assert.match(script, /Account-wide Cloudflare included-usage audit/);
+  assert.match(script, /Account-wide Cloudflare free-tier 80% budgets/);
   assert.match(script, /"queueOperations": 8_000/);
   assert.match(script, /"doRequests": 80_000/);
   assert.match(script, /"doActiveGbSeconds": 10_400\.0/);
@@ -34,14 +36,36 @@ test('Cloudflare resource budgets are fixed at 80 percent of included usage', ()
   assert.match(script, /"kvLists": 800/);
   assert.match(script, /"kvStoredBytes": 800_000_000/);
   assert.match(script, /queueMessageOperationsAdaptiveGroups/);
+  assert.match(script, /durableObjectsInvocationsAdaptiveGroups/);
   assert.match(script, /durableObjectsPeriodicGroups/);
   assert.match(script, /r2OperationsAdaptiveGroups/);
   assert.match(script, /kvOperationsAdaptiveGroups/);
   assert.match(script, /kvStorageAdaptiveGroups/);
+  assert.match(script, /sum \{ duration rowsRead rowsWritten \}/);
+  assert.match(script, /active_microseconds \/ 1_000_000 \* 0\.128/);
+  assert.match(script, /usage\["doActiveGbSeconds"\] = _durable_object_duration_gb_seconds/);
+  assert.match(script, /def aggregate\(row:/);
+  assert.match(script, /_ACCOUNT_SCOPE = "account"/);
+  assert.match(script, /_PROJECTION_METHOD = "linear-from-utc-midnight"/);
+  assert.match(script, /_DAILY_RATE_METRICS/);
+  assert.match(script, /_MONTHLY_OR_STATE_METRICS/);
+  assert.match(script, /project_daily_allowances/);
+  assert.match(script, /"actualUsage": actual/);
+  assert.match(script, /mixed-daily-projection-and-period-actual/);
+  assert.match(script, /dimensions \{ actionType \}/);
+  assert.match(script, /dimensions \{ datetime \}/);
+  assert.match(script, /dimensions \{ date \}/);
+  assert.match(script, /resource_identifier not in document/);
+  assert.match(script, /"namespaceId"/);
+  assert.match(script, /"queueId"/);
+  assert.match(script, /"bucketName"/);
   assert.doesNotMatch(script, /"pipelineTransformBytes"\s*:/);
   assert.doesNotMatch(script, /^\s+pipelineOperators:/m);
   assert.match(script, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
-  assert.doesNotMatch(script, /accounts\?per_page=50|importlib\.util|audit-cloudflare-free-tier-core/);
+  assert.doesNotMatch(
+    script,
+    /configured_resource_ids|core\.|accounts\?per_page=50|per_page=100|importlib\.util|audit-cloudflare-free-tier-core/,
+  );
   const result = spawnSync('python3', [fileURLToPath(scriptUrl), '--self-test'], {
     encoding: 'utf8',
     env: {
