@@ -40,6 +40,10 @@ export async function onRequestGet({ request, env }) {
       ? Math.min(Math.max(Math.trunc(requestedLimit), 100), 20_000)
       : 10_000;
     const includeRanking = url.searchParams.get('ranking') !== '0';
+    const requestedRankingLimit = Number(url.searchParams.get('ranking_limit'));
+    const rankingLimit = Number.isFinite(requestedRankingLimit) && requestedRankingLimit > 0
+      ? Math.min(Math.max(Math.trunc(requestedRankingLimit), 20), 500)
+      : 200;
 
     const rowsPromise = env.MINUTE_DB.prepare(`SELECT row_json
       FROM sh_pages_track_history_read_model
@@ -58,7 +62,8 @@ export async function onRequestGet({ request, env }) {
     const truncated = rawRows.length > limit;
     const rows = rawRows.slice(0, limit).map((row) => JSON.parse(row.row_json));
     const metadata = status?.payload_json ? JSON.parse(status.payload_json) : {};
-    const ranking = includeRanking && Array.isArray(metadata.ranking) ? metadata.ranking : [];
+    const fullRanking = includeRanking && Array.isArray(metadata.ranking) ? metadata.ranking : [];
+    const ranking = fullRanking.slice(0, rankingLimit);
     const rankingSummary = includeRanking
       && metadata.ranking_summary && typeof metadata.ranking_summary === 'object'
       ? metadata.ranking_summary
@@ -75,6 +80,8 @@ export async function onRequestGet({ request, env }) {
       likes_included: true,
       ranking_included: includeRanking,
       ranking,
+      ranking_limit: includeRanking ? rankingLimit : 0,
+      ranking_truncated: includeRanking && fullRanking.length > ranking.length,
       ranking_summary: rankingSummary,
       ranking_scope: includeRanking ? 'all-time-latest-counter' : null,
       source_row_count: includeRanking ? metadata.source_row_count || 0 : null,
