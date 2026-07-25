@@ -4,6 +4,10 @@ import baseWorker, {
   runCoreScheduled,
 } from './runtime-orchestrator-entry.js';
 import {
+  attributedRuntimeEnv,
+  runBudgetedCoreScheduled,
+} from './runtime-budgeted-entry.js';
+import {
   MINUTE_FACT_REPAIR_BURST_COMPLETE_KEY,
   MINUTE_FACT_REPAIR_BURST_MESSAGE,
   minuteFactRepairBurstEnabled,
@@ -178,7 +182,7 @@ export async function runRuntimeOrchestratorScheduled(
       dispatchRawCollection: runtime.dispatchRawCollection || skipDedicatedRawCollection,
     },
   };
-  const core = dependencies.runDirect || runCoreScheduled;
+  const core = dependencies.runDirect || runBudgetedCoreScheduled;
   const runDirect = async (receivedController, receivedEnv, receivedCtx, receivedDependencies) => {
     const [result, repairBurst] = await Promise.all([
       core(receivedController, receivedEnv, receivedCtx, receivedDependencies),
@@ -235,7 +239,7 @@ export async function runRuntimeOrchestratorQueue(batch, env, ctx, dependencies 
   );
   if (!repairMessages.length) {
     const run = dependencies.runCoreQueue || runCoreQueue;
-    return run(batch, env, ctx, dependencies.core || {});
+    return run(batch, attributedRuntimeEnv(env), ctx, dependencies.core || {});
   }
 
   for (const message of repairMessages) {
@@ -246,7 +250,12 @@ export async function runRuntimeOrchestratorQueue(batch, env, ctx, dependencies 
   );
   if (remaining.length) {
     const run = dependencies.runCoreQueue || runCoreQueue;
-    await run({ ...batch, messages: remaining }, env, ctx, dependencies.core || {});
+    await run(
+      { ...batch, messages: remaining },
+      attributedRuntimeEnv(env),
+      ctx,
+      dependencies.core || {},
+    );
   }
 }
 
