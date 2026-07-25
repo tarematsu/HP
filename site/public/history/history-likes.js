@@ -112,6 +112,13 @@
     });
   }
 
+  function completeWeekPlayCount(rows) {
+    return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
+      if (row?.period_complete === false || row?.play_count_excluded === true) return sum;
+      return sum + Math.max(0, finite(row?.play_count) || 0);
+    }, 0);
+  }
+
   const trackName = (row) => row.title || row.isrc || row.spotify_id || row.track_identity || '曲名不明';
   const artistName = (row) => row.artist || '—';
 
@@ -231,7 +238,7 @@
       state.weekRows = weekRows;
       state.summary = {
         ...(result.data.ranking_summary || {}),
-        week_play_count: state.rows.reduce((sum, row) => sum + (finite(row.week_play_count) || 0), 0),
+        week_play_count: completeWeekPlayCount(weekRows),
       };
       render();
       const cached = result.cached ? ' · キャッシュ' : '';
