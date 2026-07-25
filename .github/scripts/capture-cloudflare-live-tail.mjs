@@ -81,8 +81,12 @@ export function parseLiveTailMessage(text) {
 
 function redactCredentials(value) {
   return value
+    .replace(
+      /(\bauthorization\b\s*[:=]\s*)([a-z][a-z\d_-]*\s+)?[^\s,;"']+/gi,
+      (_match, prefix, scheme = '') => `${prefix}${scheme}[redacted]`,
+    )
     .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [redacted]')
-    .replace(/(\b(?:authorization|api[_-]?token|token|secret|api[_-]?key)\b\s*[:=]\s*)[^\s,;"']+/gi, '$1[redacted]');
+    .replace(/(\b(?:api[_-]?token|token|secret|api[_-]?key)\b\s*[:=]\s*)[^\s,;"']+/gi, '$1[redacted]');
 }
 
 function selfTest() {
@@ -109,6 +113,7 @@ function selfTest() {
   assert.equal(normalizeWebSocketUrl('wss://example.test/tail'), 'wss://example.test/tail');
   assert.throws(() => normalizeWebSocketUrl(''), /valid WebSocket URL/);
   assert.equal(redactCredentials('Authorization: Bearer abc123 token=xyz'), 'Authorization: Bearer [redacted] token=[redacted]');
+  assert.equal(redactCredentials('Authorization: Basic abc123'), 'Authorization: Basic [redacted]');
   assert.equal(redactCredentials('request failed with Bearer abc.def-123'), 'request failed with Bearer [redacted]');
   console.log('live-tail outcome classification self-test passed');
 }
