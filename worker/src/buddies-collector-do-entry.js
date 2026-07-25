@@ -1,4 +1,4 @@
-import coreWorker, {
+import {
   BUDDIES_COLLECTOR_CRON,
   runBuddiesCollectorScheduled as runDirectScheduled,
 } from './buddies-collector-core.js';
@@ -6,6 +6,8 @@ import { recordCollectorOperationalTelemetry } from './collector-operational-tel
 
 const COORDINATOR_NAME = 'scheduled-v1';
 const COORDINATOR_URL = 'https://buddies-collector-coordinator.internal/schedule';
+const LAST_SUCCESSFUL_MINUTE_KEY = 'collector:last-successful-minute';
+const MINUTE_MS = 60_000;
 
 function coordinatorStub(namespace) {
   if (typeof namespace?.getByName === 'function') return namespace.getByName(COORDINATOR_NAME);
@@ -35,6 +37,28 @@ async function scheduleAlarm(stub, scheduledAt) {
   return response.json();
 }
 
+function minuteBucket(timestamp) {
+  return Math.floor(Number(timestamp) / MINUTE_MS) * MINUTE_MS;
+}
+
+function telemetrySample(result) {
+  if (!result || typeof result !== 'object') return {};
+  return {
+    payload_bytes: result.payload_bytes,
+    queue_total_tracks: result.queue_total_tracks,
+    queue_materialized_tracks: result.queue_materialized_tracks,
+    queue_items_written: result.queue_items_written,
+    like_observations_written: result.like_observations_written,
+    d1_rows_written_estimate: result.d1_rows_written_estimate,
+    queue_send_attempts: result.queue_send_attempts,
+    queue_send_ms: result.queue_send_ms,
+    outbox_rows_written: result.outbox_rows_written,
+    outbox_rows_deleted: result.outbox_rows_deleted,
+    pending_flushed: result.pending_flushed,
+    materialization_state_written: result.materialization_state_written === true ? 1 : 0,
+  };
+}
+
 export async function runAlarmCoordinatedBuddiesCollectorScheduled(
   controller,
   env,
@@ -46,13 +70,18 @@ export async function runAlarmCoordinatedBuddiesCollectorScheduled(
     return { skipped: true, reason: 'unsupported-buddies-collector-cron', cron };
   }
   const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  const stub = dependencies.stub || coordinatorStub(env?.BUDDIES_COLLECTOR_COORDINATOR);
+  const namespace = env?.BUDDIES_COLLECTOR_COORDINATOR;
+  const stub = dependencies.stub || coordinatorStub(namespace);
   if (typeof stub?.fetch === 'function') {
     try {
       return await scheduleAlarm(stub, scheduledAt);
     } catch (error) {
       diagnostic('buddies_collector_coordinator_failed', error);
+      throw error;
     }
+  }
+  if (namespace) {
+    throw new Error('buddies collector coordinator binding is unusable');
   }
   return runDirectScheduled(controller, env, ctx, dependencies.direct);
 }
@@ -91,16 +120,33 @@ export class BuddiesCollectorCoordinator {
 
   async alarm() {
     const startedAt = this.now();
+    const currentMinute = minuteBucket(startedAt);
+    const storage = this.state?.storage;
+    if (typeof storage?.get === 'function') {
+      const completedMinute = Number(await storage.get(LAST_SUCCESSFUL_MINUTE_KEY));
+      if (Number.isFinite(completedMinute) && completedMinute === currentMinute) {
+        return {
+          skipped: true,
+          reason: 'collector-minute-already-completed',
+          minute_at: currentMinute,
+        };
+      }
+    }
     try {
       const result = await runDirectScheduled({
         cron: BUDDIES_COLLECTOR_CRON,
         scheduledTime: startedAt,
       }, this.env, {}, this.dependencies.direct);
       const finishedAt = this.now();
+      if (typeof storage?.put === 'function') {
+        await storage.put(LAST_SUCCESSFUL_MINUTE_KEY, currentMinute)
+          .catch((error) => diagnostic('collector_idempotency_checkpoint_failed', error));
+      }
       await recordCollectorOperationalTelemetry(this.state, this.env, {
         ok: true,
         timestamp: finishedAt,
         duration_ms: finishedAt - startedAt,
+        ...telemetrySample(result),
       }).catch((error) => diagnostic('collector_telemetry_failed', error));
       return result;
     } catch (error) {
@@ -133,5 +179,4 @@ export class BuddiesCollectorCoordinator {
 
 export default {
   scheduled: runAlarmCoordinatedBuddiesCollectorScheduled,
-  queue: coreWorker.queue,
 };
