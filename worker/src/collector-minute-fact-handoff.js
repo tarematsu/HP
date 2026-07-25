@@ -1,6 +1,6 @@
 import { sanitizeFailureDetail } from './collector-failure.js';
+import { flushResilientMinuteFactOutbox } from './collector-minute-fact-outbox.js';
 import {
-  flushMinuteFactOutbox,
   sendMinuteFactJob,
   stageMinuteFactOutboxJob,
 } from './minute-facts-queue.js';
@@ -10,6 +10,8 @@ const EMPTY_DELIVERY = Object.freeze({
   failed: 0,
   pending: false,
   current_sent: false,
+  quarantined: 0,
+  backoff_ms: 0,
 });
 const DAILY_CLEANUP_LIMIT = 500;
 const RECOVERY_CLEANUP_LIMIT = 25;
@@ -22,7 +24,7 @@ function count(value) {
 
 async function flushPending(env, options) {
   if (!env?.DB?.prepare || !env?.MINUTE_FACT_QUEUE?.send) return EMPTY_DELIVERY;
-  return flushMinuteFactOutbox(env, { limit: options.flushLimit });
+  return flushResilientMinuteFactOutbox(env, { limit: options.flushLimit });
 }
 
 async function cleanupSentOutbox(env, force = false, now = Date.now()) {
@@ -44,24 +46,43 @@ async function cleanupSentOutbox(env, force = false, now = Date.now()) {
   return count(result?.meta?.changes);
 }
 
+function deliveryTelemetry(pending) {
+  return {
+    pending_flushed: count(pending.sent),
+    pending_failed: count(pending.failed),
+    outbox_rows_quarantined: count(pending.quarantined),
+    outbox_backoff_ms: count(pending.backoff_ms),
+  };
+}
+
+function outboxWriteEstimate(pending, currentStaged = false) {
+  return Number(currentStaged)
+    + count(pending.sent)
+    + count(pending.failed)
+    + count(pending.quarantined);
+}
+
 export async function handoffMinuteFactJob(env, input = {}, options = {}, dependencies = {}) {
   const flush = dependencies.flushPending || flushPending;
   const cleanup = dependencies.cleanupSentOutbox || cleanupSentOutbox;
   const send = dependencies.sendMinuteFactJob || sendMinuteFactJob;
   const stage = dependencies.stageMinuteFactOutboxJob || stageMinuteFactOutboxJob;
   const pending = await flush(env, options);
-  const outboxRowsDeleted = await cleanup(env, count(pending.sent) > 0);
+  const outboxRowsDeleted = await cleanup(
+    env,
+    count(pending.sent) > 0 || count(pending.quarantined) > 0,
+  );
+  const telemetry = deliveryTelemetry(pending);
   if (pending.pending === true || count(pending.failed) > 0) {
     const staged = await stage(env, input, options);
     const { message: _message, ...result } = staged;
     return {
       ...result,
       outbox_pending: true,
-      pending_flushed: count(pending.sent),
-      pending_failed: count(pending.failed),
+      ...telemetry,
       queue_send_ms: 0,
       queue_send_attempts: count(pending.sent) + count(pending.failed),
-      outbox_rows_written: 1 + count(pending.sent) + count(pending.failed),
+      outbox_rows_written: outboxWriteEstimate(pending, true),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: false,
       deferred_behind_pending: true,
@@ -73,11 +94,10 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
     return {
       ...sent,
       outbox_pending: pending.pending === true,
-      pending_flushed: count(pending.sent),
-      pending_failed: count(pending.failed),
+      ...telemetry,
       queue_send_ms: Math.max(0, Date.now() - queueStartedAt),
       queue_send_attempts: 1 + count(pending.sent) + count(pending.failed),
-      outbox_rows_written: count(pending.sent) + count(pending.failed),
+      outbox_rows_written: outboxWriteEstimate(pending),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: true,
     };
@@ -92,11 +112,10 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
     return {
       ...result,
       outbox_pending: true,
-      pending_flushed: count(pending.sent),
-      pending_failed: count(pending.failed),
+      ...telemetry,
       queue_send_ms: Math.max(0, Date.now() - queueStartedAt),
       queue_send_attempts: 1 + count(pending.sent) + count(pending.failed),
-      outbox_rows_written: 1 + count(pending.sent) + count(pending.failed),
+      outbox_rows_written: outboxWriteEstimate(pending, true),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: false,
     };
