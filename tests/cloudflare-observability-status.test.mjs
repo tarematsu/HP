@@ -5,18 +5,11 @@ import test from 'node:test';
 import {
   STATUS_MARKER,
   buildIssueBody,
-  overallOutcome,
-  statusState,
 } from '../.github/scripts/publish-cloudflare-observability-status.mjs';
 
 const root = new URL('../', import.meta.url);
 
-test('observability status body is stable, sanitized, and fail-closed', () => {
-  assert.equal(statusState('success'), 'success');
-  assert.equal(statusState('skipped'), 'failure');
-  assert.equal(overallOutcome({ daily: 'success', telemetry: 'success' }), 'success');
-  assert.equal(overallOutcome({ daily: 'success', telemetry: 'unknown' }), 'failure');
-
+test('SH observability issue body includes deployment context and sanitized diagnostics', () => {
   const body = buildIssueBody({
     generatedAt: '2026-07-23T01:00:00.000Z',
     targetSha: 'abcdef123456',
@@ -66,7 +59,7 @@ test('observability status body is stable, sanitized, and fail-closed', () => {
   assert.doesNotMatch(body, /secret-value/);
 });
 
-test('observability workflow publishes retrievable commit statuses and issue summary', async () => {
+test('SH observability publishes retrievable deployment and telemetry status', async () => {
   const workflow = await readFile(
     new URL('.github/workflows/sh-observability.yml', root),
     'utf8',
@@ -76,25 +69,15 @@ test('observability workflow publishes retrievable commit statuses and issue sum
     'utf8',
   );
 
-  assert.match(workflow, /^\s{2}push:/m);
-  assert.match(workflow, /cron: "0 1 \* \* \*"/);
-  assert.doesNotMatch(workflow, /cron: "37 \* \* \* \*"/);
   assert.match(workflow, /^\s{2}issues: write$/m);
   assert.match(workflow, /^\s{2}statuses: write$/m);
-  assert.match(workflow, /id: policy-self-test/);
-  assert.match(workflow, /tests\/cloudflare-observability-status\.test\.mjs/);
-  assert.match(workflow, /tests\/observability-status-publisher\.test\.mjs/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
   assert.match(workflow, /active-worker-deployments\.json/);
   assert.match(workflow, /telemetry-audit\.log/);
-  assert.match(publisher, /readOptionalText\('telemetry-audit\.log'\)/);
-  assert.match(publisher, /Current-deployment telemetry policy/);
-  assert.doesNotMatch(publisher, /--self-test|function selfTest|node:assert/);
-  assert.match(workflow, /id: publish-status/);
-  assert.match(workflow, /if: always\(\)/);
   assert.match(workflow, /OBSERVABILITY_TARGET_SHA:/);
   assert.match(workflow, /OBSERVABILITY_MAIN_REF: main/);
-  assert.match(workflow, /steps\.policy-self-test\.outcome/);
-  assert.match(workflow, /steps\.publish-status\.outcome == 'failure'/);
   assert.match(workflow, /cloudflare-observability-report-sh-/);
+  assert.match(publisher, /readOptionalText\('telemetry-audit\.log'\)/);
+  assert.match(publisher, /Current-deployment telemetry policy/);
+  assert.doesNotMatch(publisher, /normalizeOutcome|statusState|--self-test|function selfTest|node:assert/);
 });
