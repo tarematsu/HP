@@ -38,18 +38,13 @@ test('runtime recovery, repair, and dashboard work stay outside the Cron CPU pat
   const healthyQueueOperations = healthyMessages * 3;
   assert.equal(healthyQueueOperations, 2_355);
 
-  const repairRunsPerDay = 1_440 / runtime.vars.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES;
-  const repairJobsPerDay = repairRunsPerDay * runtime.vars.MINUTE_FACT_REPAIR_DISPATCH_LIMIT;
-  const chunksPerRepairJob = Math.ceil(
-    runtime.vars.QUEUE_INITIAL_TRACKS / runtime.vars.DERIVE_REVISION_CHUNK_TRACKS,
-  );
-  // Each repair uses trigger, write, rebuild-write, complete, plus revision chunks.
-  const messagesPerRepairJob = 4 + chunksPerRepairJob;
-  const repairMessages = repairRunsPerDay + repairJobsPerDay * messagesPerRepairJob;
-  const repairQueueOperations = repairMessages * 3;
-  assert.equal(repairRunsPerDay, 24);
-  assert.equal(messagesPerRepairJob, 6);
-  assert.equal(repairQueueOperations, 936);
+  // The July repair is complete and retired. No new repair burst or repair
+  // derive messages belong in the steady-state Queue budget.
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
+  const repairRunsPerDay = 0;
+  const repairQueueOperations = 0;
+  assert.equal(repairRunsPerDay, 0);
+  assert.equal(repairQueueOperations, 0);
 
   // Dashboard materialization is isolated from Cron every five minutes.
   const dashboardMessagesPerDay = 1_440 / 5;
@@ -59,18 +54,16 @@ test('runtime recovery, repair, and dashboard work stay outside the Cron CPU pat
   const projectedQueueOperations = healthyQueueOperations
     + repairQueueOperations
     + dashboardQueueOperations;
-  assert.equal(projectedQueueOperations, 4_155);
+  assert.equal(projectedQueueOperations, 3_219);
   assert.ok(projectedQueueOperations < 10_000);
 
-  // Keep headroom for retries and stale queued work by doubling repair traffic.
-  const doubledRepairQueueOperations = healthyQueueOperations
-    + repairQueueOperations * 2
-    + dashboardQueueOperations;
-  assert.equal(doubledRepairQueueOperations, 5_091);
-  assert.ok(doubledRepairQueueOperations < 10_000);
+  // Keep headroom for duplicate delivery and stale queued work.
+  const doubledSteadyStateQueueOperations = projectedQueueOperations * 2;
+  assert.equal(doubledSteadyStateQueueOperations, 6_438);
+  assert.ok(doubledSteadyStateQueueOperations < 10_000);
 
   // If every maintenance gate also falls back to Queue, the policy still passes.
   const fullGateFallbackQueueOperations = projectedQueueOperations + 432 * 3;
-  assert.equal(fullGateFallbackQueueOperations, 5_451);
+  assert.equal(fullGateFallbackQueueOperations, 4_515);
   assert.ok(fullGateFallbackQueueOperations < 10_000);
 });
