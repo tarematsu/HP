@@ -40,9 +40,10 @@ test('track history reads materialized rows and integrated ranking status', () =
   assert.match(trackEndpoint, /worker_materialized_read_model/);
 });
 
-test('track history defaults to yesterday in JST as a single day', () => {
-  assert.match(historyEntry, /JST_OFFSET_MS/);
-  assert.match(historyEntry, /trackDate\.value = jstDate\(-1\)/);
+test('track history defaults to yesterday in UTC as a single day', () => {
+  assert.match(historyEntry, /import \{ utcDate \} from '\.\/history-date-utils\.js'/);
+  assert.match(historyEntry, /trackDate\.value = utcDate\(-1\)/);
+  assert.doesNotMatch(historyEntry, /JST|Asia\/Tokyo|jstDate/);
   assert.match(historyEntry, /trackWeekMode\.checked = false/);
 });
 
