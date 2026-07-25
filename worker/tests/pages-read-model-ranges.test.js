@@ -114,7 +114,7 @@ test('canonical materialized variants keep the intended publication cadence', ()
   ]);
   assert.equal(materialized.get('track-history').cadence_minutes, 1440);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
-  assert.equal(materialized.get('dashboard').cadence_minutes, 5);
+  assert.equal(materialized.get('dashboard').cadence_minutes, 15);
   for (const [key, variant] of materialized) {
     if (key !== 'dashboard' && key !== 'track-history' && key !== 'host-history:summary') {
       assert.equal(variant.cadence_minutes, 360, key);
