@@ -2,8 +2,8 @@ name: Refresh code search index
 
 on:
   schedule:
-    # Every 6 hours. GitHub cron is evaluated in UTC.
-    - cron: "17 */6 * * *"
+    # Every 2 hours. GitHub cron is evaluated in UTC.
+    - cron: "17 */2 * * *"
   workflow_dispatch:
 
 permissions:
@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 5
 
     env:
-      TARGET_REPOSITORY: tarematsu/SH
-      SEARCH_URL: "https://github.com/search?q=repo%3Atarematsu%2FSH%20&type=code"
+      TARGET_REPOSITORY: tarematsu/HP
+      SEARCH_URL: "https://github.com/search?q=repo%3Atarematsu%2FHP%20&type=code"
       GH_TOKEN: ${{ github.token }}
 
     steps:
