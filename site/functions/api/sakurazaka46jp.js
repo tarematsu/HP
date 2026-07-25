@@ -8,6 +8,9 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
+const SERIES_CACHE_VERSION = 2;
+const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
+const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
 
 const json = (data, status = 200) => new Response(JSON.stringify(data), {
@@ -61,9 +64,8 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH minute_points AS (
     ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
   FROM sh_minute_facts f
   LEFT JOIN sh_minute_fact_context c ON c.fact_id=f.id
-  LEFT JOIN sh_hosts h ON h.id=c.host_id
-  WHERE f.source_code IN (3,4)
-    AND f.minute_at>=? AND f.minute_at<?
+  LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id,f.host_id)
+  WHERE f.minute_at>=? AND f.minute_at<?
     AND lower(COALESCE(h.current_handle,''))='sakurazaka46jp'
     AND f.listener_count IS NOT NULL
   GROUP BY elapsed_minute
@@ -141,6 +143,37 @@ export function decodeSakurazakaSeriesRows(rows, source) {
   return result;
 }
 
+function normalizedEventName(value) {
+  return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function hasSeriesSamples(row) {
+  return Array.isArray(row?.samples) && row.samples.length > 0;
+}
+
+function duplicateSeries(primary, fallback) {
+  const primaryStart = Number(primary?.started_at);
+  const fallbackStart = Number(fallback?.started_at);
+  const startsAvailable = Number.isFinite(primaryStart) && Number.isFinite(fallbackStart);
+  if (startsAvailable && Math.abs(primaryStart - fallbackStart) <= DUPLICATE_START_TOLERANCE_MS) return true;
+
+  const primaryName = normalizedEventName(primary?.event_name);
+  const fallbackName = normalizedEventName(fallback?.event_name);
+  const genericName = !fallbackName || fallbackName === '公式ステヘ';
+  if (genericName || primaryName !== fallbackName) return false;
+  return !startsAvailable || Math.abs(primaryStart - fallbackStart) <= DUPLICATE_NAME_TOLERANCE_MS;
+}
+
+export function mergeSakurazakaSeriesRows(primaryRows, fallbackRows) {
+  const primary = (Array.isArray(primaryRows) ? primaryRows : []).filter(hasSeriesSamples);
+  const merged = [...primary];
+  for (const fallback of Array.isArray(fallbackRows) ? fallbackRows : []) {
+    if (!hasSeriesSamples(fallback)) continue;
+    if (!primary.some((item) => duplicateSeries(item, fallback))) merged.push(fallback);
+  }
+  return merged;
+}
+
 export function trimSakurazakaSeries(seriesRows, limit = MAX_POINTS) {
   const ordered = [...seriesRows].sort((a, b) => (a.started_at || 0) - (b.started_at || 0));
   const result = [];
@@ -201,14 +234,21 @@ export async function loadSakurazakaSeriesRows(minuteDb, otherDb, fromTs, toTs) 
   return {
     historical: decodeSakurazakaSeriesRows(historicalRows, 'historical_import'),
     failSafe: decodeSakurazakaSeriesRows(failSafeRows, 'official_news_fail_safe'),
+    summaryCount: summaries.length,
   };
 }
 
 async function loadSakurazakaSeries(env, from, to) {
   const fromTs = parseDateStart(from);
   const toTs = addDays(parseDateStart(to), 1);
-  const { historical, failSafe } = await loadSakurazakaSeriesRows(env.MINUTE_DB, env.OTHER_DB, fromTs, toTs);
-  const trimmed = trimSakurazakaSeries(historical.concat(failSafe));
+  const { historical, failSafe, summaryCount } = await loadSakurazakaSeriesRows(
+    env.MINUTE_DB,
+    env.OTHER_DB,
+    fromTs,
+    toTs,
+  );
+  const merged = mergeSakurazakaSeriesRows(historical, failSafe);
+  const trimmed = trimSakurazakaSeries(merged);
   let failSafeEventCount = 0;
   for (const item of trimmed.series) {
     if (item.source === 'official_news_fail_safe') failSafeEventCount += 1;
@@ -221,6 +261,8 @@ async function loadSakurazakaSeries(env, from, to) {
     timezone: 'UTC',
     series: trimmed.series,
     event_count: trimmed.series.length,
+    summary_event_count: summaryCount,
+    missing_series_count: Math.max(0, summaryCount - trimmed.series.length),
     point_count: trimmed.pointCount,
     fail_safe_event_count: failSafeEventCount,
     truncated: trimmed.truncated,
@@ -243,7 +285,7 @@ export async function onRequestGet({ request, env }) {
     const to = dateParam(toParam, today);
     if (from > to) return json({ ok: false, error: 'from must not be after to' }, 400);
     const payload = await cachedSakurazakaSeries(
-      `sakurazaka46jp:v1:${from}:${to}`,
+      `sakurazaka46jp:v${SERIES_CACHE_VERSION}:${from}:${to}`,
       () => loadSakurazakaSeries(env, from, to),
     );
     return json(payload);
