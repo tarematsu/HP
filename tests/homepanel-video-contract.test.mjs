@@ -63,19 +63,20 @@ test('remaining manual Video Queue workflow shares the fail-closed Cloudflare co
   ]);
 });
 
-test('duplicate Video CPU reporting stays retired in favor of HomePanel observability', async () => {
+test('duplicate Video CPU reporting stays retired in favor of unified observability', async () => {
   for (const path of [
     '../.github/workflows/video-worker-cpu-report.yml',
     '../hp/video/scripts/report-worker-cpu.mjs',
     '../hp/video/scripts/report-worker-invocations.mjs',
     '../hp/video/test/worker-cpu-report.test.js',
     '../hp/video/test/worker-invocation-report.test.js',
+    '../.github/workflows/hp-observability.yml',
   ]) {
     await assert.rejects(access(new URL(path, import.meta.url)), path);
   }
-  const observability = readSource('.github/workflows/hp-observability.yml');
+  const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
     'query-cloudflare-observability.py',
     'audit-cloudflare-telemetry.py',
     'workflow_dispatch:',
