@@ -10,7 +10,7 @@ test('HomePanel R2 cleanup preserves arbitrary object keys and paginates', () =>
     "jq -c '.result[]?.key'",
     'objects-before.jsonl',
     'objects-after.jsonl',
-    'fromjson | select(startswith($prefix) | not)',
+    'fromjson as $key',
     'key="$(jq -r \'.\' <<< "$encoded_key")"',
     'all(.result[]?; .key | type == "string")',
     'split("/") | map(@uri) | join("/")',
@@ -27,4 +27,15 @@ test('HomePanel R2 cleanup preserves arbitrary object keys and paginates', () =>
     "IFS='/' read -r -a segments",
   ]);
   assert.match(workflow, /while IFS= read -r encoded_key/);
+});
+
+test('HomePanel R2 cleanup does not delete a concurrently uploaded newer release', () => {
+  const workflow = readSource('.github/workflows/prune-homepanel-updates.yml');
+
+  expectAll(workflow, [
+    "--arg releases_prefix 'updates/releases/'",
+    '--arg current_version "$current_version"',
+    '($key | ltrimstr($releases_prefix) | split("/")[0]) as $version',
+    '($version | test("^[0-9]{10}$") | not) or $version <= $current_version',
+  ]);
 });
