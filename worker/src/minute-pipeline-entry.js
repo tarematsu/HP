@@ -35,6 +35,11 @@ function enabled(value) {
   return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
 }
 
+function repairExplicitlyDisabled(env = {}) {
+  const value = env?.MINUTE_FACT_REPAIR_BURST_ENABLED;
+  return value != null && value !== '' && !enabled(value);
+}
+
 function liveRevisionMaterializationEnabled(env = {}) {
   const value = env?.LIVE_REVISION_MATERIALIZATION_ENABLED;
   if (value == null || value === '') return historicalRebuildEnabled(env);
@@ -141,12 +146,15 @@ function budgetedLiveWriteBatch(batch, env) {
   const messages = batch?.messages || [];
   return messages.length > 0 && messages.every((message) => {
     const body = message?.body;
+    const jobKind = String(body?.job?.job_kind || 'live');
     return body?.message_type === 'minute-fact-derive-stage'
       && Number(body?.message_version) === 1
       && (body?.stage === 'write' || body?.stage === 'budget-live-write')
       && positiveInteger(body?.job?.id) != null
-      && String(body?.job?.job_kind || 'live') !== 'rebuild'
-      && body?.payload?.rebuild !== true;
+      && jobKind !== 'rebuild'
+      && jobKind !== 'repair'
+      && body?.payload?.rebuild !== true
+      && body?.payload?.rebuild?.repair !== true;
   });
 }
 
@@ -189,7 +197,7 @@ export async function processMinutePipelineBatch(batch, env, ctx, dependencies =
     return consume(batch, env, ctx);
   }
   if ((queueName === REBUILD_DERIVE_QUEUE_NAME || queueName === LIVE_DERIVE_QUEUE_NAME)
-      && !enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED)
+      && repairExplicitlyDisabled(env)
       && repairWorkBatch(batch)) {
     return acknowledgeDisabledRepairWork(batch, env);
   }
