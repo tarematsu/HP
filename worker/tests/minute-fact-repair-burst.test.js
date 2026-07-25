@@ -65,7 +65,7 @@ test('repair candidate scan advances through the existing time index with durabl
   assert.match(repairSource, /MAX_REPAIR_CANDIDATES = 100/);
   assert.match(repairSource, /MAX_REPAIR_ENQUEUES = 100/);
   assert.match(burstSource, /job_kind='repair'/);
-  assert.match(burstSource, /jobKind: 'repair'/);
+  assert.match(burstSource, /job_kind: 'repair'/);
   assert.match(burstSource, /MAX_BURST_CANDIDATES = 20/);
   assert.match(burstSource, /MAX_BURST_ENQUEUES = 2/);
   assert.match(burstSource, /MAX_BURST_DISPATCH = 2/);
