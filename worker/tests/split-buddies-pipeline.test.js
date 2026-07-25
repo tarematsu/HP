@@ -56,7 +56,8 @@ test('collector, recovery, and runtime have one exclusive owner per Queue bounda
     'stationhead-comments',
     'stationhead-buddies-persist',
   ]) {
-    assert.equal(recoveryConsumers.get(queue).max_batch_size, 1, queue);
+    assert.equal(recoveryConsumers.get(queue).max_batch_size, 10, queue);
+    assert.equal(recoveryConsumers.get(queue).max_batch_timeout, 5, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
