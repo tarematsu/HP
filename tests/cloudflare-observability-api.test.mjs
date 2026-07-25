@@ -64,9 +64,16 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
   expectAll(dailyBudgetScript, [
     'workersInvocationsAdaptive',
     'd1AnalyticsAdaptiveGroups',
+    'queueMessageOperationsAdaptiveGroups',
+    'billableOperations',
+    'linear-from-utc-midnight',
+    'project_daily_usage',
     'rowsRead rowsWritten',
     'measuredRequests',
     'requestReserve',
+    'queueOperations',
+    'Actual to now',
+    'Projected 24h',
   ]);
   expectNone(
     `${queryScript}\n${auditScript}\n${deployedAuditScript}\n${dailyBudgetScript}`,
@@ -80,10 +87,23 @@ test('D1 query cost collector uses resolved-account GraphQL and passes its priva
     'sum_rowsRead_DESC',
     'sum_rowsWritten_DESC',
     'count_DESC',
+    'sanitize_query',
+    'hashlib.sha256',
+    'rowsRead',
+    'rowsWritten',
+    'D1 query cost insights',
     'CLOUDFLARE_ACCOUNT_ID',
     'resolved CLOUDFLARE_ACCOUNT_ID',
   ]);
-  expectNone(d1QueryCostScript, ['REST_API', 'def account_id', 'accounts?per_page=50', 'wrangler d1 insights']);
+  expectNone(d1QueryCostScript, [
+    'REST_API',
+    'def account_id',
+    'accounts?per_page=50',
+    'wrangler d1 insights',
+    'spawnSync',
+    'node_modules/.bin/wrangler',
+    '/d1/database',
+  ]);
   const result = spawnSync('python3', [fileURLToPath(d1QueryCostUrl), '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
