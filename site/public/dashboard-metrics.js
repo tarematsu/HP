@@ -3,6 +3,29 @@ import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js';
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
 const nativeFetch = window.fetch.bind(window);
 
+function installImageState(id) {
+  const image = document.getElementById(id);
+  if (!image) return;
+  const loaded = () => {
+    image.classList.add('is-loaded');
+    image.hidden = false;
+  };
+  const failed = () => {
+    image.classList.remove('is-loaded');
+    image.hidden = true;
+  };
+  image.addEventListener('load', loaded);
+  image.addEventListener('error', failed);
+  new MutationObserver(() => {
+    image.classList.remove('is-loaded');
+    if (!image.getAttribute('src')) image.hidden = true;
+  }).observe(image, { attributes: true, attributeFilter: ['src'] });
+  if (image.complete && image.naturalWidth > 0) loaded();
+}
+
+installImageState('channelImage');
+installImageState('trackImage');
+
 function requestUrl(input) {
   if (typeof input === 'string' || input instanceof URL) return String(input);
   return input?.url || '';
