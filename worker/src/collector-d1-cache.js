@@ -7,7 +7,6 @@ const RAW_STATEMENT = Symbol('collector-d1-cache-raw-statement');
 const STATEMENT_SQL = Symbol('collector-d1-cache-statement-sql');
 const CACHED_DATABASE = Symbol('collector-d1-cache-database');
 
-const DEFAULT_AUTH_CACHE_MS = 6 * 60 * 60_000;
 const DEFAULT_QUEUE_CURRENT_CACHE_MS = 60 * 60_000;
 const DEFAULT_MATERIALIZATION_CACHE_MS = 5 * 60_000;
 const MAX_CACHE_MS = 6 * 60 * 60_000;
@@ -32,9 +31,6 @@ function readCategory(sql) {
   if (/FROM sh_queue_current current WHERE current\.station_id IS \?/i.test(source)) {
     return 'queue-current';
   }
-  if (/LEFT JOIN sh_worker_collector_state collector_state[\s\S]*LEFT JOIN sh_worker_auth_control auth_control/i.test(source)) {
-    return 'auth-state';
-  }
   return null;
 }
 
@@ -44,9 +40,6 @@ function cacheDurationMs(category, env = {}) {
       env.COLLECTOR_D1_MATERIALIZATION_CACHE_MS,
       DEFAULT_MATERIALIZATION_CACHE_MS,
     );
-  }
-  if (category === 'auth-state') {
-    return positiveInteger(env.COLLECTOR_D1_AUTH_CACHE_MS, DEFAULT_AUTH_CACHE_MS);
   }
   return positiveInteger(
     env.COLLECTOR_D1_QUEUE_CURRENT_CACHE_MS,
@@ -80,7 +73,6 @@ function invalidatedCategories(sql) {
   const categories = [];
   if (/sh_queue_materialization_state/i.test(source)) categories.push('materialization');
   if (/sh_queue_(?:current|snapshots)/i.test(source)) categories.push('queue-current');
-  if (/sh_worker_(?:collector_state|auth_control)/i.test(source)) categories.push('auth-state');
   return categories;
 }
 
@@ -213,7 +205,6 @@ export function resetCollectorD1CacheForTests(db) {
 }
 
 export const COLLECTOR_D1_CACHE_DEFAULTS = Object.freeze({
-  auth_ms: DEFAULT_AUTH_CACHE_MS,
   queue_current_ms: DEFAULT_QUEUE_CURRENT_CACHE_MS,
   materialization_ms: DEFAULT_MATERIALIZATION_CACHE_MS,
 });
