@@ -93,10 +93,11 @@ jobs:
       CPU_BUDGET_MS: "10"
       QUEUE_CPU_BUDGET_MS: "30000"
       DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
-      DAILY_REQUEST_BUDGET: "70000"
+      DAILY_REQUEST_BUDGET: "100000"
       DAILY_REQUEST_RESERVE: "0"
-      DAILY_D1_READ_BUDGET: "3000000"
-      DAILY_D1_WRITE_BUDGET: "70000"
+      DAILY_D1_READ_BUDGET: "5000000"
+      DAILY_D1_WRITE_BUDGET: "100000"
+      DAILY_QUEUE_BUDGET: "10000"
       DAILY_USAGE_OUTPUT_DIR: daily-usage
       CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator
       CLOUDFLARE_CONFIG_GLOBS: worker/wrangler.runtime.jsonc,worker/wrangler.buddies-collector.jsonc
