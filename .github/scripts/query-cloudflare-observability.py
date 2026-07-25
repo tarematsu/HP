@@ -7,6 +7,7 @@ import datetime as dt
 import html
 import json
 import os
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +19,8 @@ TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
 ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 WORKERS = [item.strip() for item in os.environ.get("CLOUDFLARE_WORKERS", "").split(",") if item.strip()]
 LOOKBACK_MINUTES = max(1, int(os.environ.get("LOOKBACK_MINUTES", "60")))
+ERROR_LEVELS = {"error", "fatal"}
+WARNING_LEVELS = {"warn", "warning"}
 
 
 def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -106,7 +109,7 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
     }
 
 
-def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
+def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
     services = [
         {
             "kind": "filter",
@@ -117,34 +120,30 @@ def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> l
         }
         for worker in WORKERS
     ]
-    error_markers: list[dict[str, Any]] = [
+    diagnostic_markers: list[dict[str, Any]] = [
         {
             "kind": "filter",
             "key": "$metadata.error",
             "operation": "exists",
             "type": "string",
         },
-        {
-            "kind": "filter",
-            "key": "$metadata.level",
-            "operation": "eq",
-            "type": "string",
-            "value": "error",
-        },
-        {
-            "kind": "filter",
-            "key": "$metadata.level",
-            "operation": "eq",
-            "type": "string",
-            "value": "fatal",
-        },
+        *[
+            {
+                "kind": "filter",
+                "key": "$metadata.level",
+                "operation": "eq",
+                "type": "string",
+                "value": level,
+            }
+            for level in ("error", "fatal", "warn", "warning")
+        ],
     ]
     filters: list[dict[str, Any]] = [
         {"kind": "group", "filterCombination": "or", "filters": services},
-        {"kind": "group", "filterCombination": "or", "filters": error_markers},
+        {"kind": "group", "filterCombination": "or", "filters": diagnostic_markers},
     ]
     payload = {
-        "queryId": "github-actions-worker-errors",
+        "queryId": "github-actions-worker-diagnostics",
         "dry": True,
         "timeframe": {
             "from": int(start.timestamp() * 1000),
@@ -152,7 +151,7 @@ def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> l
         },
         "parameters": {
             "view": "events",
-            "limit": 50,
+            "limit": 100,
             "datasets": [],
             "filterCombination": "and",
             "filters": filters,
@@ -183,6 +182,17 @@ def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> l
     return selected
 
 
+def event_severity(event: dict[str, Any]) -> str:
+    metadata = event.get("$metadata") if isinstance(event.get("$metadata"), dict) else {}
+    source = event.get("source") if isinstance(event.get("source"), dict) else {}
+    level = str(metadata.get("level") or source.get("level") or "").strip().lower()
+    if bool(metadata.get("error")) or level in ERROR_LEVELS:
+        return "error"
+    if level in WARNING_LEVELS:
+        return "warning"
+    return "info"
+
+
 def clean_text(value: Any, limit: int = 180) -> str:
     text = " ".join(str(value or "").replace("|", "\\|").split())
     return html.escape(text[:limit]) or "-"
@@ -200,9 +210,10 @@ def event_row(event: dict[str, Any]) -> tuple[str, str, str, str]:
     workers = event.get("$workers") if isinstance(event.get("$workers"), dict) else {}
     worker_event = workers.get("event") if isinstance(workers.get("event"), dict) else {}
     request = worker_event.get("request") if isinstance(worker_event.get("request"), dict) else {}
+    source = event.get("source") if isinstance(event.get("source"), dict) else {}
     service = metadata.get("service") or workers.get("scriptName") or "unknown"
     timestamp = event.get("timestamp") or metadata.get("timestamp") or "-"
-    message = metadata.get("error") or metadata.get("message") or event.get("source") or "error event"
+    message = metadata.get("error") or metadata.get("message") or source.get("message") or source or "diagnostic event"
     url = metadata.get("url") or request.get("url") or worker_event.get("url")
     return clean_text(timestamp, 40), clean_text(service, 80), clean_text(message), clean_url(url)
 
@@ -213,13 +224,47 @@ def number(value: Any) -> str:
     return f"{float(value):.3f}".rstrip("0").rstrip(".")
 
 
+def append_event_section(lines: list[str], title: str, events: list[dict[str, Any]], empty: str) -> None:
+    lines.extend(["", f"### {title} ({len(events)} samples)", ""])
+    if not events:
+        lines.append(empty)
+        return
+    lines.extend(["| Time | Worker | Message | URL |", "|---|---|---|---|"])
+    for event in events[:10]:
+        timestamp, service, message, url = event_row(event)
+        lines.append(f"| {timestamp} | `{service}` | {message} | {url} |")
+
+
+def self_test() -> int:
+    def event(level: str | None = None, error: str | None = None) -> dict[str, Any]:
+        metadata: dict[str, Any] = {}
+        if level is not None:
+            metadata["level"] = level
+        if error is not None:
+            metadata["error"] = error
+        return {"$metadata": metadata}
+
+    assert event_severity(event("error")) == "error"
+    assert event_severity(event("fatal")) == "error"
+    assert event_severity(event(error="boom")) == "error"
+    assert event_severity(event("warn")) == "warning"
+    assert event_severity(event("warning")) == "warning"
+    assert event_severity(event("info")) == "info"
+    print("observability severity self-test passed")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv:
+        return self_test()
     if not TOKEN or not ACCOUNT_ID or not WORKERS:
         raise RuntimeError("Cloudflare token, account ID, and Worker list are required")
     end = dt.datetime.now(dt.timezone.utc)
     start = end - dt.timedelta(minutes=LOOKBACK_MINUTES)
     metrics = [worker_metrics(ACCOUNT_ID, worker, start, end) for worker in WORKERS]
-    errors = telemetry_errors(ACCOUNT_ID, start, end)
+    diagnostics = telemetry_diagnostics(ACCOUNT_ID, start, end)
+    errors = [event for event in diagnostics if event_severity(event) == "error"]
+    warnings = [event for event in diagnostics if event_severity(event) == "warning"]
     total_errors = sum(item["errors"] for item in metrics)
 
     lines = [
@@ -228,6 +273,7 @@ def main() -> int:
         f"- Window: `{iso(start)}` to `{iso(end)}`",
         f"- Account: `{ACCOUNT_ID[:8]}…`",
         "- Sources: GraphQL Analytics API and Workers Observability Telemetry API",
+        f"- Persisted warnings: `{len(warnings)}` (reported without failing the gate)",
         "",
         "| Worker | Requests | Errors | Error rate | Subrequests | CPU p50 ms | CPU p99 ms |",
         "|---|---:|---:|---:|---:|---:|---:|",
@@ -240,14 +286,18 @@ def main() -> int:
             f"{item['subrequests']} | {number(item['cpu_p50_ms'])} | {number(item['cpu_p99_ms'])} |"
         )
 
-    lines.extend(["", f"### Recent error events ({len(errors)} samples)", ""])
-    if errors:
-        lines.extend(["| Time | Worker | Error | URL |", "|---|---|---|---|"])
-        for event in errors[:10]:
-            timestamp, service, message, url = event_row(event)
-            lines.append(f"| {timestamp} | `{service}` | {message} | {url} |")
-    else:
-        lines.append("No matching persisted error events were returned for this window.")
+    append_event_section(
+        lines,
+        "Recent error events",
+        errors,
+        "No matching persisted error events were returned for this window.",
+    )
+    append_event_section(
+        lines,
+        "Recent warning events",
+        warnings,
+        "No matching persisted warning events were returned for this window.",
+    )
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
@@ -255,6 +305,11 @@ def main() -> int:
             summary.write("\n".join(lines) + "\n")
     else:
         print("\n".join(lines))
+    if warnings:
+        print(
+            "::warning title=Cloudflare Worker warnings::"
+            f"persisted_warning_events={len(warnings)} lookback_minutes={LOOKBACK_MINUTES}"
+        )
     if total_errors or errors:
         print(
             "::error title=Cloudflare Worker errors::"
