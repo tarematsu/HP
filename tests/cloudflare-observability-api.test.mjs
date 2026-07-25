@@ -106,6 +106,9 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(deployedAuditScript, /deployed_current_events/);
   assert.match(deployedAuditScript, /audit\.current_events/);
   assert.match(deployedAuditScript, /old_late/);
+  assert.match(deployedAuditScript, /audit\.ACCOUNT_ID/);
+  assert.match(deployedAuditScript, /Cloudflare token, account ID, and Worker list are required/);
+  assert.doesNotMatch(deployedAuditScript, /audit\.account_id\(\)|accounts\?per_page=50/);
   assert.match(dailyBudgetScript, /workersInvocationsAdaptive/);
   assert.match(dailyBudgetScript, /d1AnalyticsAdaptiveGroups/);
   assert.match(dailyBudgetScript, /rowsRead rowsWritten/);
