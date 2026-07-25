@@ -289,27 +289,13 @@ jobs:
           show-progress: false
       - name: Apply policy patch
         run: python3 .github/scripts/pr256_cloudflare_free_tier_fix.py
-      - name: Commit fixes and restore CI workflow
+      - name: Commit non-workflow fixes
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/workflows/ci.yml')
-          text = path.read_text(encoding='utf-8')
-          marker = '\n  # BEGIN PR256 TEMPORARY FIX JOB\n'
-          if marker not in text:
-              raise SystemExit('temporary CI marker missing')
-          text = text.split(marker, 1)[0].replace('permissions:\n  contents: write\n', 'permissions:\n  contents: read\n', 1)
-          path.write_text(text.rstrip() + '\n', encoding='utf-8')
-          PY
-          rm -f \
-            .github/workflows/pr256-cloudflare-free-tier-100.yml \
-            .github/workflows/pr256-apply-cloudflare-free-tier-fix.yml \
-            .github/scripts/pr256_cloudflare_free_tier_fix.py
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add .github/scripts/cloudflare_free_tier_audit.py scripts tests
           git diff --cached --check
           git commit -m 'fix: enforce full Cloudflare free-tier budgets'
           git push origin HEAD:agent/import-sh-snapshot
