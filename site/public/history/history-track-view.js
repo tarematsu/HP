@@ -40,7 +40,12 @@ function trackIdentityKeys(row) {
   if (usableText(row?.spotify_id)) add(`spotify:${usableText(row.spotify_id)}`);
   if (usableText(row?.stationhead_track_id)) add(`stationhead:${usableText(row.stationhead_track_id)}`);
   if (usableText(row?.queue_track_id)) add(`queue:${usableText(row.queue_track_id)}`);
-  add(`name:${normalizedText(displayTrackTitle(row))}|artist:${normalizedText(displayTrackArtist(row))}`);
+  const identityTitle = [row?.title, row?.display_title, row?.raw_title]
+    .map(usableText)
+    .find((value) => value && value !== '曲名不明');
+  if (identityTitle) {
+    add(`name:${normalizedText(identityTitle)}|artist:${normalizedText(displayTrackArtist(row))}`);
+  }
   return keys;
 }
 
