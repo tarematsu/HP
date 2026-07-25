@@ -105,17 +105,31 @@ test('shared WebView environment completion isolates every consumer callback', (
   );
 });
 
-test('shared environment creation converts native setup exceptions into HRESULT failures', () => {
-  assert.match(environmentSource, /catch \(const std::bad_alloc&\)/);
-  assert.match(
+test('shared environment creation converts queue and native setup exceptions into HRESULT failures', () => {
+  const acquire = section(
     environmentSource,
-    /Complete\(requestedKey, creationGeneration, E_OUTOFMEMORY, nullptr\);/,
+    'void SharedWebViewEnvironment::Acquire(',
+    'void SharedWebViewEnvironment::Invalidate(',
   );
-  assert.match(environmentSource, /catch \(\.\.\.\)/);
-  assert.match(
+  assert.ok((acquire.match(/catch \(const std::bad_alloc&\)/g) || []).length >= 2);
+  assert.match(acquire, /InvokeEnvironmentCompletionNoexcept\(completion, E_OUTOFMEMORY, nullptr\);/);
+  assert.match(acquire, /InvokeEnvironmentCompletionNoexcept\(completion, E_FAIL, nullptr\);/);
+  assert.match(acquire, /Complete\(requestedKey, creationGeneration, E_OUTOFMEMORY, nullptr\);/);
+  assert.match(acquire, /Complete\(requestedKey, creationGeneration, E_FAIL, nullptr\);/);
+});
+
+test('startup queue allocates its folder before publishing pending creation state', () => {
+  const acquire = section(
     environmentSource,
-    /Complete\(requestedKey, creationGeneration, E_FAIL, nullptr\);/,
+    'void SharedWebViewEnvironment::Acquire(',
+    'if (readyEnvironment) {',
   );
+  const prepareAt = acquire.indexOf('if (beginCreation) preparedFolder = entry.userDataFolder;');
+  const pendingAt = acquire.indexOf('entry.pending.push_back(std::move(completion));');
+  const creatingAt = acquire.indexOf('entry.creating = true;');
+  const generationAt = acquire.indexOf('creationGeneration = ++entry.generation;');
+  assert.ok(prepareAt >= 0 && prepareAt < pendingAt);
+  assert.ok(pendingAt < creatingAt && creatingAt < generationAt);
 });
 
 test('accepted environment completion closes its generation before callbacks run', () => {
