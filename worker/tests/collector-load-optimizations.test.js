@@ -21,6 +21,14 @@ test('snapshot analysis is computed only in persistence slots', () => {
   assert.match(collector, /payload_bytes/);
 });
 
+test('collector bundle excludes legacy recovery Queue dispatch', () => {
+  const collectorCore = source('../src/buddies-collector-core.js');
+  const recoveryCore = source('../src/buddies-recovery-core.js');
+  assert.doesNotMatch(collectorCore, /runBuddiesRecoveryQueue|BUDDIES_RECOVERY_QUEUE_NAMES|ingestWorker/);
+  assert.match(recoveryCore, /runBuddiesRecoveryQueue/);
+  assert.match(recoveryCore, /BUDDIES_RECOVERY_QUEUE_NAMES/);
+});
+
 test('collector and recovery use sampled invocation and application logs', () => {
   for (const path of [
     '../wrangler.buddies-collector.jsonc',
