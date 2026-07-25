@@ -5,6 +5,7 @@ import {
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const COLLECTOR_STATE_CHECKPOINT_MS = 20 * 60_000;
+const MINUTE_MS = 60_000;
 
 function identity(value) {
   return Number(value || 0) || null;
@@ -170,13 +171,21 @@ function successfulCollectorStateStatement(db, state) {
     : collectorStateStatement(db, state);
 }
 
+function fixedCheckpointSlotDue(current) {
+  if (!Number.isFinite(current) || current <= 0) return false;
+  return Math.floor(current / COLLECTOR_STATE_CHECKPOINT_MS)
+    !== Math.floor((current - MINUTE_MS) / COLLECTOR_STATE_CHECKPOINT_MS);
+}
+
 export function successfulCollectorStatePersistenceDue(state) {
   if (state.persistCredentials !== false || state.clearFailureOnSuccess === true) return true;
   if (identity(state.channelId) !== state.persistedChannelId
       || identity(state.stationId) !== state.persistedStationId) return true;
   const previous = Number(state.persistedLastRunAt || 0);
   const current = Number(state.lastRunAt || 0);
-  return previous <= 0 || (Number.isFinite(current) && current - previous >= COLLECTOR_STATE_CHECKPOINT_MS);
+  return previous <= 0
+    || (Number.isFinite(current) && current - previous >= COLLECTOR_STATE_CHECKPOINT_MS)
+    || fixedCheckpointSlotDue(current);
 }
 
 async function saveSuccessfulCollectorState(db, state) {
