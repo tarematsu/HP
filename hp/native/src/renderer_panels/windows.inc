@@ -236,7 +236,11 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   NativePanelPaintScope scope(*this, hwnd);
   if (!scope.Valid()) return;
   const MainSections sections = SplitMainSections(scope.bounds);
+  const RECT wasteCalendar = RearrangedWasteCalendarRect(scope.bounds);
   RECT overlap{};
+  if (IntersectRect(&overlap, &scope.dirty, &wasteCalendar)) {
+    DrawCourse36WasteCalendar(scope.dc, wasteCalendar);
+  }
   if (IntersectRect(&overlap, &scope.dirty, &sections.music)) {
     DrawMusicSection(scope.dc, sections.music);
   }
