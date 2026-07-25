@@ -62,7 +62,7 @@ jobs:
           }
 
           list_keys() {
-            local prefix="$1" output="$2" cursor="" response
+            local prefix="$1" output="$2" cursor="" next_cursor response
             : > "$output"
             while true; do
               local -a query=(--get --data-urlencode "prefix=$prefix")
@@ -73,8 +73,13 @@ jobs:
                 '.success == true and (.result | type == "array") and all(.result[]?; .key | type == "string")' \
                 <<< "$response" >/dev/null
               jq -c '.result[]?.key' <<< "$response" >> "$output"
-              [[ "$(jq -r '.result_info.is_truncated // false' <<< "$response")" == true ]] || break
-              cursor="$(jq -er '.result_info.cursor | select(length > 0)' <<< "$response")"
+              next_cursor="$(jq -r '.result_info.cursor // empty' <<< "$response")"
+              [[ -n "$next_cursor" ]] || break
+              [[ "$next_cursor" != "$cursor" ]] || {
+                echo "Cloudflare R2 object listing returned a repeated cursor" >&2
+                exit 1
+              }
+              cursor="$next_cursor"
             done
           }
 
