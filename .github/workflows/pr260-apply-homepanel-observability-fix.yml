@@ -55,6 +55,7 @@ jobs:
               tests/homepanel-observability-contract.test.mjs
             git diff --cached --stat
             git commit -m 'fix: harden HomePanel observability contracts'
+            git rev-parse HEAD | tee commit-sha.txt
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           } 2>&1 | tee commit.log
 
@@ -67,6 +68,7 @@ jobs:
             patch.log
             validation.log
             commit.log
+            commit-sha.txt
             .github/scripts/audit-cloudflare-telemetry.py
             .github/scripts/publish-homepanel-observability-status.mjs
             .github/workflows/hp-observability.yml
