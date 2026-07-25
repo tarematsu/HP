@@ -16,9 +16,13 @@ function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, maximum);
 }
 
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
+}
+
 function deriveJobKind(value) {
   const parsed = String(value || '').trim().toLowerCase();
-  return parsed === 'live' || parsed === 'rebuild' ? parsed : null;
+  return parsed === 'live' || parsed === 'rebuild' || parsed === 'repair' ? parsed : null;
 }
 
 function invalidTrigger(detail) {
@@ -60,13 +64,13 @@ export function parseMinuteDeriveTrigger(body) {
 
 export async function enqueueMinuteDeriveTrigger(env, input) {
   const jobKind = deriveJobKind(input?.job_kind) || 'live';
-  const queue = jobKind === 'rebuild'
+  const queue = jobKind === 'rebuild' || jobKind === 'repair'
     ? env?.MINUTE_DERIVE_QUEUE
     : env?.MINUTE_LIVE_DERIVE_QUEUE || env?.MINUTE_DERIVE_QUEUE;
   if (!queue?.send) {
-    throw new Error(jobKind === 'rebuild'
-      ? 'minute rebuild derive Queue binding is missing'
-      : 'minute live derive Queue binding is missing');
+    throw new Error(jobKind === 'live'
+      ? 'minute live derive Queue binding is missing'
+      : 'minute rebuild derive Queue binding is missing');
   }
   const trigger = minuteDeriveTrigger({ ...input, job_kind: jobKind });
   await queue.send(trigger, { contentType: 'json' });
@@ -139,7 +143,10 @@ export async function pendingMinuteDeriveTriggers(env, options = {}) {
   if (!env?.MINUTE_DB) throw new Error('minute derive MINUTE_DB binding is missing');
   const now = integer(options.now) ?? Date.now();
   const limit = positiveInteger(options.limit, 5, 20);
-  const kindFilter = historicalRebuildEnabled(env) ? '' : " AND job_kind!='rebuild'";
+  const filters = [];
+  if (!historicalRebuildEnabled(env)) filters.push("job_kind!='rebuild'");
+  if (!enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED)) filters.push("job_kind!='repair'");
+  const kindFilter = filters.length ? ` AND ${filters.join(' AND ')}` : '';
   const [pending, expired] = await Promise.all([
     env.MINUTE_DB.prepare(`SELECT id,channel_id,minute_at,job_kind,job_priority
       FROM sh_minute_fact_jobs INDEXED BY idx_sh_minute_fact_jobs_pending_ready
