@@ -4,7 +4,7 @@ namespace hp {
 namespace {
 
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
-                                  const RECT& bounds) {
+                                   const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW registered{};
@@ -22,8 +22,8 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   return CreateWindowExW(0, className, title, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-                          bounds.left, bounds.top, width, height, parent, nullptr,
-                          instance, nullptr);
+                           bounds.left, bounds.top, width, height, parent, nullptr,
+                           instance, nullptr);
 }
 
 bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
@@ -49,14 +49,14 @@ bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placeme
 }
 
 bool ControllerBoundsMatch(ICoreWebView2Controller* controller,
-                            const RECT& expected) noexcept {
+                             const RECT& expected) noexcept {
   RECT current{};
   return controller && SUCCEEDED(controller->get_Bounds(&current)) &&
           EqualRect(&current, &expected);
 }
 
 bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
-                                  BOOL expected) noexcept {
+                                   BOOL expected) noexcept {
   BOOL current = FALSE;
   return controller && SUCCEEDED(controller->get_IsVisible(&current)) &&
           current == expected;
@@ -67,9 +67,9 @@ bool ConfiguresSecondaryStationheadWindow(const StationheadConfig& config) noexc
 }
 
 RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
-                                       const StationheadConfig& config,
-                                       HWND parent,
-                                       const RECT& requested) noexcept {
+                                        const StationheadConfig& config,
+                                        HWND parent,
+                                        const RECT& requested) noexcept {
   if (role == StationheadRole::Secondary ||
       ConfiguresSecondaryStationheadWindow(config) ||
       !parent || !IsWindow(parent)) {
@@ -86,14 +86,19 @@ RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
 struct StationheadSurfacePolicy {
   bool showAuth = false;
   bool showStartupPreview = false;
+  bool hidePlaybackForPendingAuth = false;
 };
 
 constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(
     bool startupPreviewActive,
     StationheadTabKind selectedTab,
     bool authSurfaceReady) noexcept {
-  const bool showAuth = selectedTab == StationheadTabKind::Auth && authSurfaceReady;
-  return {showAuth, startupPreviewActive && !showAuth};
+  const bool authSelected = selectedTab == StationheadTabKind::Auth;
+  const bool showAuth = authSelected && authSurfaceReady;
+  const bool hidePlaybackForPendingAuth = authSelected && !authSurfaceReady;
+  return {showAuth,
+          startupPreviewActive && !showAuth && !hidePlaybackForPendingAuth,
+          hidePlaybackForPendingAuth};
 }
 
 static_assert(ResolveStationheadSurfacePolicy(
@@ -104,8 +109,10 @@ static_assert(!ResolveStationheadSurfacePolicy(
                    true, StationheadTabKind::Auth, true).showStartupPreview);
 static_assert(!ResolveStationheadSurfacePolicy(
                    true, StationheadTabKind::Auth, false).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(
+                   true, StationheadTabKind::Auth, false).showStartupPreview);
 static_assert(ResolveStationheadSurfacePolicy(
-                  true, StationheadTabKind::Auth, false).showStartupPreview);
+                  true, StationheadTabKind::Auth, false).hidePlaybackForPendingAuth);
 static_assert(ResolveStationheadSurfacePolicy(
                   false, StationheadTabKind::Auth, true).showAuth);
 
@@ -296,7 +303,9 @@ void StationheadPlayer::SetVisible(bool visible) {
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
-  if (!wasVisible && controller_) controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+  if (!wasVisible && selectedTab_ != StationheadTabKind::Auth && controller_) {
+    controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+  }
 }
 
 void StationheadPlayer::LayoutControllers() {
@@ -308,11 +317,12 @@ void StationheadPlayer::LayoutControllers() {
   const bool authSurfaceReady = authController_ && authWebview_;
   const StationheadSurfacePolicy policy = ResolveStationheadSurfacePolicy(
       startupPreviewActive_, selectedTab_, authSurfaceReady);
+  const bool contentVisible = viewVisible_ && !policy.hidePlaybackForPendingAuth;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(), authController_.Get(),
-                              bounds_, viewVisible_, policy.showAuth,
+                              bounds_, contentVisible, policy.showAuth,
                               policy.showStartupPreview);
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showStartupPreview || policy.showAuth || viewVisible_;
+  status_.visible = policy.showStartupPreview || policy.showAuth || contentVisible;
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {

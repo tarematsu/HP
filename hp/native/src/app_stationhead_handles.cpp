@@ -3,8 +3,18 @@
 namespace hp {
 namespace {
 
+StationheadHandleBase* primaryAudioHandle = nullptr;
+StationheadHandleBase* secondaryAudioHandle = nullptr;
+
 bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
   return status.loginRequired || status.spotifyAuthorization || status.processFailed;
+}
+
+StationheadHandleBase* PeerAudioHandle(
+    const StationheadHandleBase* handle) noexcept {
+  if (handle == primaryAudioHandle) return secondaryAudioHandle;
+  if (handle == secondaryAudioHandle) return primaryAudioHandle;
+  return nullptr;
 }
 }  // namespace
 
@@ -17,6 +27,14 @@ void StationheadHandleBase::Stop() {
 }
 
 void StationheadHandleBase::SetAudioMuted(bool muted) noexcept {
+  if (!muted) {
+    // Audio-profile changes arrive as two sequential calls. Always mute the
+    // outgoing peer before this handle becomes audible so B -> A cannot expose
+    // a short interval where both Stationhead streams are heard.
+    if (StationheadHandleBase* peer = PeerAudioHandle(this)) {
+      peer->SetAudioMuted(true);
+    }
+  }
   if (audioMuted_ == muted) return;
   audioMuted_ = muted;
   ++contentRevision_;
@@ -268,6 +286,14 @@ void StationheadHandleBase::ApplyBounds() {
   RaiseActiveHost();
 }
 
+AppStationheadHandle::AppStationheadHandle() {
+  primaryAudioHandle = this;
+}
+
+AppStationheadHandle::~AppStationheadHandle() {
+  if (primaryAudioHandle == this) primaryAudioHandle = nullptr;
+}
+
 AppStationheadHandle* AppStationheadHandle::operator->() noexcept {
   return this;
 }
@@ -292,6 +318,14 @@ bool AppStationheadHandle::HasAuthTab() const {
 
 void AppStationheadHandle::SelectTab(StationheadTabKind tab) {
   SelectPlayerTab(tab);
+}
+
+AppSecondaryStationheadHandle::AppSecondaryStationheadHandle() {
+  secondaryAudioHandle = this;
+}
+
+AppSecondaryStationheadHandle::~AppSecondaryStationheadHandle() {
+  if (secondaryAudioHandle == this) secondaryAudioHandle = nullptr;
 }
 
 AppSecondaryStationheadHandle* AppSecondaryStationheadHandle::operator->() noexcept {
