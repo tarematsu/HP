@@ -2,8 +2,8 @@ name: Refresh code search index
 
 on:
   schedule:
-    # Every 6 hours. GitHub cron is evaluated in UTC.
-    - cron: "17 */6 * * *"
+    # Every 2 hours. GitHub cron is evaluated in UTC.
+    - cron: "17 */2 * * *"
   workflow_dispatch:
 
 permissions:
