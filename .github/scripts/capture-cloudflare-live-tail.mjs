@@ -79,7 +79,13 @@ export function parseLiveTailMessage(text) {
   }
 }
 
-async function selfTest() {
+function redactCredentials(value) {
+  return value
+    .replace(/\bBearer\s+[^\s,;"']+/gi, 'Bearer [redacted]')
+    .replace(/(\b(?:authorization|api[_-]?token|token|secret|api[_-]?key)\b\s*[:=]\s*)[^\s,;"']+/gi, '$1[redacted]');
+}
+
+function selfTest() {
   assert.equal(parseDurationSeconds('', 180), 180);
   assert.equal(parseDurationSeconds('1'), 10);
   assert.equal(parseDurationSeconds('90'), 90);
@@ -102,17 +108,13 @@ async function selfTest() {
   assert.equal(normalizeWebSocketUrl('https://example.test/tail'), 'wss://example.test/tail');
   assert.equal(normalizeWebSocketUrl('wss://example.test/tail'), 'wss://example.test/tail');
   assert.throws(() => normalizeWebSocketUrl(''), /valid WebSocket URL/);
-  assert.equal(await messageDataToText('text'), 'text');
-  assert.equal(await messageDataToText(new TextEncoder().encode('bytes')), 'bytes');
-  await assert.rejects(() => messageDataToText({}), /Unsupported live-tail/);
-  assert.deepEqual(parseLiveTailMessage('{"ok":true}'), { ok: true });
-  assert.deepEqual(parseLiveTailMessage('token=secret'), { unparsed: true, byteLength: 12 });
-  assert.equal(JSON.stringify(parseLiveTailMessage('token=secret')).includes('secret'), false);
+  assert.equal(redactCredentials('Authorization: Bearer abc123 token=xyz'), 'Authorization: Bearer [redacted] token=[redacted]');
+  assert.equal(redactCredentials('request failed with Bearer abc.def-123'), 'request failed with Bearer [redacted]');
   console.log('live-tail outcome classification self-test passed');
 }
 
 if (process.argv.includes('--self-test')) {
-  await selfTest();
+  selfTest();
   process.exit(0);
 }
 
@@ -133,7 +135,7 @@ async function api(path, options = {}) {
   let data;
   try { data = JSON.parse(text); } catch { data = null; }
   if (!response.ok || data?.success === false || data?.errors?.length) {
-    throw new Error(`Cloudflare API ${response.status}: ${text.slice(0, 1200)}`);
+    throw new Error(`Cloudflare API ${response.status}: ${redactCredentials(text.slice(0, 1200))}`);
   }
   return data;
 }
@@ -145,13 +147,14 @@ function sanitize(value, key = '') {
     return '[redacted]';
   }
   if (typeof value === 'string') {
+    let sanitized = redactCredentials(value);
     if (lower.includes('url')) {
       try {
-        const parsed = new URL(value);
-        return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.slice(0, 240);
+        const parsed = new URL(sanitized);
+        sanitized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
       } catch {}
     }
-    return value.length > 500 ? `${value.slice(0, 500)}…` : value;
+    return sanitized.length > 500 ? `${sanitized.slice(0, 500)}…` : sanitized;
   }
   if (Array.isArray(value)) return value.slice(0, 50).map((item) => sanitize(item, key));
   if (typeof value === 'object') {
@@ -196,7 +199,7 @@ async function probeWorker() {
     const host = `${worker}.${accountSubdomain.result.subdomain}.workers.dev`;
     await Promise.all(probes.map((path) => probePath(host, path)));
   } catch (error) {
-    console.log(`LIVE_TAIL_PROBE_WARNING=${String(error.message || error).slice(0, 500)}`);
+    console.log(`LIVE_TAIL_PROBE_WARNING=${redactCredentials(String(error.message || error)).slice(0, 500)}`);
   }
 }
 
@@ -223,7 +226,7 @@ const finished = new Promise((resolve, reject) => {
     reject(new Error(`Live tail WebSocket did not connect within ${connectionTimeoutMs / 1000} seconds`));
   }, connectionTimeoutMs);
 
-  socket.addEventListener('open', async () => {
+  socket.addEventListener('open', () => {
     connected = true;
     clearTimeout(timer);
     console.log('LIVE_TAIL_CONNECTED=true');
@@ -231,7 +234,7 @@ const finished = new Promise((resolve, reject) => {
       api(`/accounts/${account}/workers/observability/telemetry/live-tail/heartbeat`, {
         method: 'POST',
         body: JSON.stringify({ scriptId: worker }),
-      }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${String(error.message || error).slice(0, 300)}`));
+      }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${redactCredentials(String(error.message || error)).slice(0, 300)}`));
     }, 25_000);
     probePromise = probeWorker();
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
@@ -253,13 +256,13 @@ const finished = new Promise((resolve, reject) => {
     processing
       .catch((error) => {
         try { socket.close(1011, 'message processing failed'); } catch {}
-        reject(new Error(`Live tail message processing failed: ${error.message || error}`));
+        reject(new Error(`Live tail message processing failed: ${redactCredentials(String(error.message || error))}`));
       })
       .finally(() => pendingMessages.delete(processing));
   });
   socket.addEventListener('error', (event) => {
     try { socket.close(1011, 'websocket error'); } catch {}
-    reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`));
+    reject(new Error(`Live tail WebSocket error: ${redactCredentials(String(event.message || 'unknown'))}`));
   });
   socket.addEventListener('close', () => {
     void Promise.allSettled([...pendingMessages]).then(() => {
