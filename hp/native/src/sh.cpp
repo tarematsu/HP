@@ -124,7 +124,9 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
         status_.audioPlaying = true;
         status_.playing = true;
         status_.loginRequired = preserveSecondaryLogin;
-        status_.detail = L"audio observed while track-boundary navigation is still pending";
+        status_.detail = preserveSecondaryLogin
+            ? L"secondary Stationhead login required; audio still present during navigation"
+            : L"audio observed while track-boundary navigation is still pending";
       }
       if (changed) {
         log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
@@ -154,8 +156,10 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
       status_.playing = true;
       status_.loginRequired = preserveSecondaryLogin;
       status_.navigating = false;
-      status_.detail = (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
-                       (source.empty() ? L"" : L" (" + source + L")");
+      status_.detail = preserveSecondaryLogin
+          ? L"secondary Stationhead login required; audio continues"
+          : (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
+                (source.empty() ? L"" : L" (" + source + L")");
     }
     if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {
       SetVisible(false);

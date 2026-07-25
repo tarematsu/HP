@@ -41,6 +41,11 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   let loginReported = false;
   let lastPlaying = null;
   const observedAt = Date.now();
+  const rejectCapturedAuth = () => {
+    const authorization = window.__homepanelStationheadAuthHeaders?.authorization || '';
+    if (authorization) window.__homepanelStationheadRejectedAuthorization = authorization;
+    window.__homepanelStationheadAuthHeaders = null;
+  };
   const labelOf = element => [
     element?.innerText,
     element?.getAttribute?.('aria-label'),
@@ -123,6 +128,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
       }
     } else if (login && !loginReported && Date.now() - observedAt >= 15000) {
       loginReported = true;
+      rejectCapturedAuth();
       try { window.chrome?.webview?.postMessage('{{PREFIX}}-login-required'); } catch (_) {}
     }
   };
@@ -152,6 +158,11 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   for (const eventName of ['play','playing','canplay','pause','ended','stalled','waiting','error']) {
     document.addEventListener(eventName, publishAudio, true);
   }
+  window.addEventListener('homepanel-stationhead-auth-ready', () => {
+    loginReported = false;
+    lastSignalAt = 0;
+    scheduleUnlessPlaying(0);
+  });
   document.addEventListener('DOMContentLoaded', scheduleUnlessPlaying, { once: true });
   window.addEventListener('load', scheduleUnlessPlaying, { once: true });
   schedule();
@@ -213,6 +224,7 @@ inline std::wstring StationheadAuthCaptureScript() {
     window.__homepanelStationheadRejectedAuthorization = null;
     window.__homepanelStationheadAuthHeaders = next;
     if (changed) {
+      try { window.dispatchEvent(new Event('homepanel-stationhead-auth-ready')); } catch (_) {}
       try { window.chrome?.webview?.postMessage({ type: 'stationhead-auth-ready' }); } catch (_) {}
     }
   };

@@ -155,6 +155,14 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
             trackBoundaryRefreshPending_ = false;
+            if (IsSecondary()) {
+              // Invalidate a local probe started by the outgoing document.
+              // Internal redirects do not pass through NavigateStationheadUrl(),
+              // so they must clear the execution token here as well.
+              authProbeInFlight_ = false;
+              authProbeStartedAt_ = 0;
+              lastAuthProbeAt_ = 0;
+            }
             UINT64 navigationId = 0;
             if (SUCCEEDED(args->get_NavigationId(&navigationId))) {
               activeNavigationId_.store(navigationId, std::memory_order_release);
