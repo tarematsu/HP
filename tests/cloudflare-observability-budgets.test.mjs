@@ -79,11 +79,11 @@ test('SH observability runs measured post-deploy and daily gates without repeati
     '--self-test',
     'node --test',
     'policy-self-test',
-    'POLICY_OUTCOME',
     'observability/policy-self-test',
     'tests/cloudflare-observability-status.test.mjs',
     'tests/observability-status-publisher.test.mjs',
   ]);
+  assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
   assert.doesNotMatch(workflow, /^\s{6}- '(?:worker|site|packages)\//m);
   assert.doesNotMatch(workflow, /^\s+pull_request:/m);
   assert.equal((workflow.match(/- cron:/g) || []).length, 1);
