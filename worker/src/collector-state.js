@@ -1,3 +1,7 @@
+import {
+  COLLECTOR_DO_HOT_STATE,
+  mergeCollectorHotState,
+} from './collector-do-hot-state.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const COLLECTOR_STATE_CHECKPOINT_MS = 20 * 60_000;
@@ -32,6 +36,23 @@ function collectorState(value, persistCredentials = true) {
     },
   });
   return value;
+}
+
+async function cacheCollectorState(env, state) {
+  if (!state?.authToken || !state?.deviceUid) return false;
+  return mergeCollectorHotState(env, COLLECTOR_DO_HOT_STATE.auth_key, {
+    id: 'stationhead',
+    authToken: normalizeBearer(state.authToken),
+    deviceUid: String(state.deviceUid || '').trim(),
+    tokenExpiresAt: Number(state.tokenExpiresAt || 0) || jwtExpiryMs(state.authToken),
+    collectorLastRunAt: Number(state.lastRunAt || 0),
+    collectorLastSuccessAt: Number(state.lastSuccessAt || 0),
+    collectorLastError: state.lastError || null,
+    collectorChannelId: identity(state.channelId),
+    collectorStationId: identity(state.stationId),
+    collectorUpdatedAt: Date.now(),
+    controlExists: true,
+  });
 }
 
 export function collectorStateFromAuthState(authState, env = {}) {
@@ -86,6 +107,7 @@ export async function loadCollectorState(env) {
 export async function saveCollectorState(env, state, patch = {}) {
   Object.assign(state, patch);
   await collectorStateStatement(env.DB, state).run();
+  await cacheCollectorState(env, state);
 }
 
 function collectorStateStatement(db, state) {
@@ -167,11 +189,11 @@ async function clearFailureBestEffort(db) {
   }
 }
 
-// Clean ticks persist only collector progress. A tick following a recorded
-// collector error batches the state recovery and incident cleanup so the old
-// failure remains visible until the successful state is durable.
+// Durable Object storage carries minute-to-minute progress. D1 remains the
+// durable checkpoint for recovery, credentials, and cross-service diagnostics.
 export async function saveCollectorStateAndClearFailure(env, state, patch = {}) {
   Object.assign(state, patch);
+  await cacheCollectorState(env, state);
   if (!successfulCollectorStatePersistenceDue(state)) return;
   if (state.clearFailureOnSuccess !== true) {
     await saveSuccessfulCollectorState(env.DB, state);
@@ -194,8 +216,6 @@ export async function saveCollectorStateAndClearFailure(env, state, patch = {}) 
       await collectorStateStatement(env.DB, state).run();
     }
   } catch (error) {
-    // Preserve the old success semantics if only the best-effort incident
-    // cleanup failed: the collector state must still be committed.
     await saveSuccessfulCollectorState(env.DB, state);
     await clearFailureBestEffort(env.DB);
   }
