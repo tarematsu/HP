@@ -17,31 +17,40 @@ const INGEST_QUEUES = Object.freeze([
   'stationhead-buddies-persist',
 ]);
 
-test('dedicated buddies Worker owns the narrow raw collection surface', () => {
+test('collector owns only the scheduled surface and recovery owns legacy Queue lanes', () => {
   const collector = config('../wrangler.buddies-collector.jsonc');
+  const recovery = config('../wrangler.buddies-recovery.jsonc');
   const runtime = config('../wrangler.runtime.jsonc');
-  const entry = source('../src/buddies-collector-entry.js');
+  const collectorEntry = source('../src/buddies-collector-entry.js');
+  const recoveryEntry = source('../src/buddies-recovery-entry.js');
+
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
+  assert.deepEqual(collector.queues.consumers, []);
   assert.equal(
     collector.queues.producers.find(({ binding }) => binding === 'RAW_COLLECTION_QUEUE').queue,
     'stationhead-raw-collection',
   );
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'RAW_COLLECTION_QUEUE'), false);
   assert.equal(runtime.vars.RAW_COLLECTION_ENABLED, false);
-  assert.match(entry, /runBuddiesCollectorScheduled/);
-  assert.doesNotMatch(entry, /\bfetch\s*:/);
+  assert.match(collectorEntry, /runBuddiesCollectorScheduled/);
+  assert.doesNotMatch(collectorEntry, /\bfetch\s*:/);
+  assert.match(recoveryEntry, /runBuddiesCollectorQueue/);
 });
 
-test('dedicated buddies Worker uses one-message ingest switch dispatch', () => {
+test('recovery Worker uses one-message ingest switch dispatch', () => {
   const collector = config('../wrangler.buddies-collector.jsonc');
+  const recovery = config('../wrangler.buddies-recovery.jsonc');
   const runtime = config('../wrangler.runtime.jsonc');
   const entry = source('../src/ingest-channel-optimized-entry.js');
-  const collectorConsumers = new Map(
-    collector.queues.consumers.map((consumer) => [consumer.queue, consumer]),
+  const recoveryConsumers = new Map(
+    recovery.queues.consumers.map((consumer) => [consumer.queue, consumer]),
   );
+  const collectorConsumers = new Set(collector.queues.consumers.map(({ queue }) => queue));
   const runtimeConsumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
   for (const queue of INGEST_QUEUES) {
-    assert.equal(collectorConsumers.get(queue).max_batch_size, 1, queue);
+    assert.equal(recoveryConsumers.get(queue).max_batch_size, 1, queue);
+    assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
   assert.match(entry, /const message = messages\[0\]/);
@@ -50,10 +59,10 @@ test('dedicated buddies Worker uses one-message ingest switch dispatch', () => {
   assert.doesNotMatch(entry, /fetch\s*\(/);
 });
 
-test('persist and comments remain lazy bounded lanes of the dedicated Worker', () => {
-  const collector = config('../wrangler.buddies-collector.jsonc');
+test('persist and comments remain lazy bounded recovery lanes', () => {
+  const recovery = config('../wrangler.buddies-recovery.jsonc');
   const entry = source('../src/ingest-channel-optimized-entry.js');
-  const consumers = new Map(collector.queues.consumers.map((consumer) => [consumer.queue, consumer]));
+  const consumers = new Map(recovery.queues.consumers.map((consumer) => [consumer.queue, consumer]));
   for (const queue of ['stationhead-comments', 'stationhead-buddies-persist']) {
     assert.equal(consumers.get(queue).max_batch_size, 1);
     assert.equal(consumers.get(queue).max_concurrency, 1);
