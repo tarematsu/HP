@@ -6,7 +6,17 @@ const API_BASE = 'https://api.cloudflare.com/client/v4';
 const token = process.env.CLOUDFLARE_API_TOKEN?.trim();
 const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
 const worker = process.env.LIVE_TAIL_WORKER?.trim();
-const durationMs = Math.max(10_000, Number(process.env.LIVE_TAIL_SECONDS || 180) * 1000);
+
+export function parseDurationSeconds(value, fallback = 180) {
+  const raw = String(value ?? '').trim();
+  const seconds = raw ? Number(raw) : fallback;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error('LIVE_TAIL_SECONDS must be a positive finite number');
+  }
+  return Math.max(10, seconds);
+}
+
+const durationMs = parseDurationSeconds(process.env.LIVE_TAIL_SECONDS) * 1000;
 const connectionTimeoutMs = Math.min(30_000, durationMs);
 const probes = (process.env.LIVE_TAIL_PROBES || '')
   .split(',')
@@ -36,6 +46,12 @@ export function normalizeWebSocketUrl(value) {
 }
 
 function selfTest() {
+  assert.equal(parseDurationSeconds('', 180), 180);
+  assert.equal(parseDurationSeconds('1'), 10);
+  assert.equal(parseDurationSeconds('90'), 90);
+  assert.throws(() => parseDurationSeconds('not-a-number'), /positive finite number/);
+  assert.throws(() => parseDurationSeconds('Infinity'), /positive finite number/);
+  assert.throws(() => parseDurationSeconds('0'), /positive finite number/);
   assert.equal(isErrorLike({ $workers: { outcome: 'ok' } }), false);
   assert.equal(isErrorLike({ source: { outcome: 'success' } }), false);
   assert.equal(isErrorLike({ $workers: { outcome: 'exception' } }), true);
