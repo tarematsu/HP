@@ -14,6 +14,10 @@ const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
 );
+const resourceBoundarySource = readFileSync(
+  new URL('../../native/src/sh_runtime_resource_boundary_policy_fix.h', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -135,4 +139,22 @@ test('every Stationhead WebView callback is contained at the COM boundary', () =
     navigationStart,
     /if \(FAILED\(result\) && args\) args->put_Cancel\(TRUE\);/,
   );
+});
+
+test('final WebResourceRequested callback is also exception-contained', () => {
+  assert.match(
+    policySource,
+    /WrapStationheadWebResourceRequestedHandler\([\s\S]*ICoreWebView2WebResourceRequestedEventHandler/,
+  );
+  assert.match(
+    policySource,
+    /#define add_WebResourceRequested\(handler, token\)[\s\S]*WrapStationheadWebResourceRequestedHandler/,
+  );
+  assert.equal(
+    resourceBoundarySource.split('add_WebResourceRequested(').length - 1,
+    1,
+  );
+  const eventsAt = cmakeSource.indexOf('src/sh_webview_event_policy.h');
+  const boundaryAt = cmakeSource.indexOf('src/sh_runtime_resource_boundary_policy_fix.h');
+  assert.ok(eventsAt >= 0 && eventsAt < boundaryAt);
 });
