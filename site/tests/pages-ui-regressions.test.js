@@ -29,7 +29,7 @@ test('dashboard playback restores artwork from raw Stationhead metadata', () => 
     duration_ms: 180000,
   }, 0, { currentIndex: 0, progressMs: 1000 });
   assert.equal(normalized.thumbnail_url, 'https://images.example.test/cover.jpg');
-  assert.equal(normalized.spotify_id, 'spotify-test');
+  assert.equal('spotify_id' in normalized, false);
   assert.equal(normalized.is_current, true);
 });
 
