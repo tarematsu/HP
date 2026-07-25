@@ -15,13 +15,14 @@ function storage() {
     values,
     async get(key) { return values.get(key); },
     async put(key, value) { values.set(key, value); },
+    async delete(key) { values.delete(key); },
     async getAlarm() { return alarm; },
     async setAlarm(value) { alarm = value; },
     alarm() { return alarm; },
   };
 }
 
-test('scheduled collector only arms the Durable Object alarm', async () => {
+test('scheduled collector runs through one Durable Object request', async () => {
   const calls = [];
   const result = await runAlarmCoordinatedBuddiesCollectorScheduled({
     cron: '* * * * *',
@@ -30,18 +31,34 @@ test('scheduled collector only arms the Durable Object alarm', async () => {
     stub: {
       async fetch(_url, init) {
         calls.push(JSON.parse(init.body));
-        return Response.json({ scheduled: true, alarm_at: 123 });
+        return Response.json({ collected: true, scheduled_at: 123 });
       },
     },
     direct: {
       async collectRawChannel() {
-        throw new Error('direct collection must not run from Cron');
+        throw new Error('direct collection must not run outside the Durable Object');
       },
     },
   });
 
+  assert.deepEqual(calls, [{ action: 'run', scheduledTime: 123 }]);
+  assert.deepEqual(result, { collected: true, scheduled_at: 123 });
+});
+
+test('alarm mode remains an explicit rollback option', async () => {
+  const calls = [];
+  await runAlarmCoordinatedBuddiesCollectorScheduled({
+    cron: '* * * * *',
+    scheduledTime: 123,
+  }, { COLLECTOR_COORDINATOR_USE_ALARM: true }, {}, {
+    stub: {
+      async fetch(_url, init) {
+        calls.push(JSON.parse(init.body));
+        return Response.json({ scheduled: true });
+      },
+    },
+  });
   assert.deepEqual(calls, [{ action: 'schedule', scheduledTime: 123 }]);
-  assert.deepEqual(result, { scheduled: true, alarm_at: 123 });
 });
 
 test('coordinator failures fail closed instead of double collecting', async () => {
@@ -51,7 +68,7 @@ test('coordinator failures fail closed instead of double collecting', async () =
     scheduledTime: 123,
   }, { BUDDIES_COLLECTOR_COORDINATOR: {} }, {}, {
     stub: {
-      async fetch() { throw new Error('response lost after alarm scheduling'); },
+      async fetch() { throw new Error('response lost after collection started'); },
     },
     direct: {
       async collectRawChannel() { directCalls += 1; },
@@ -60,7 +77,7 @@ test('coordinator failures fail closed instead of double collecting', async () =
   assert.equal(directCalls, 0);
 });
 
-test('collector coordinator deduplicates pending alarms', async () => {
+test('collector coordinator deduplicates pending rollback alarms', async () => {
   const durableStorage = storage();
   const coordinator = new BuddiesCollectorCoordinator(
     { storage: durableStorage },
@@ -68,13 +85,8 @@ test('collector coordinator deduplicates pending alarms', async () => {
     { now: () => 100 },
   );
 
-  const first = await coordinator.fetch(new Request('https://internal/schedule', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'schedule', scheduledTime: 123 }),
-  }));
-  assert.equal(first.status, 200);
-  assert.equal((await first.json()).scheduled, true);
+  const first = await coordinator.schedule({ scheduledTime: 123 });
+  assert.equal(first.scheduled, true);
   assert.equal(durableStorage.alarm(), 123);
 
   const duplicate = await coordinator.schedule({ scheduledTime: 124 });
@@ -83,7 +95,7 @@ test('collector coordinator deduplicates pending alarms', async () => {
   assert.equal(durableStorage.alarm(), 123);
 });
 
-test('collector alarm runs at most once per successful minute', async () => {
+test('collector Durable Object runs at most once per successful minute', async () => {
   const durableStorage = storage();
   let collections = 0;
   const coordinator = new BuddiesCollectorCoordinator(
@@ -100,14 +112,39 @@ test('collector alarm runs at most once per successful minute', async () => {
     },
   );
 
-  assert.equal((await coordinator.alarm()).collected, true);
-  const duplicate = await coordinator.alarm();
+  assert.equal((await coordinator.runMinute({ scheduledTime: 120_000 })).collected, true);
+  const duplicate = await coordinator.runMinute({ scheduledTime: 120_000 });
   assert.equal(collections, 1);
   assert.equal(duplicate.skipped, true);
   assert.equal(duplicate.reason, 'collector-minute-already-completed');
   const telemetry = durableStorage.values.get('collector:operational-telemetry');
   assert.equal(telemetry.active.payload_bytes_sum, 123);
   assert.equal(telemetry.active.queue_send_attempts_sum, 1);
+});
+
+test('collector execution exposes persistent Durable Object hot state', async () => {
+  const durableStorage = storage();
+  let seen = false;
+  const coordinator = new BuddiesCollectorCoordinator(
+    { storage: durableStorage },
+    { BUDDIES_DB: {} },
+    {
+      now: () => 180_001,
+      direct: {
+        async collectRawChannel(env) {
+          const hot = env.__COLLECTOR_DO_HOT_STATE;
+          assert.equal(typeof hot?.get, 'function');
+          await hot.put('test-state', { value: 7 });
+          assert.deepEqual(await hot.get('test-state'), { value: 7 });
+          seen = true;
+          return {};
+        },
+      },
+    },
+  );
+  await coordinator.runMinute({ scheduledTime: 180_000 });
+  assert.equal(seen, true);
+  assert.deepEqual(durableStorage.values.get('collector:hot:test-state'), { value: 7 });
 });
 
 test('collector telemetry persists completed windows to R2', async () => {
@@ -154,7 +191,7 @@ test('collector telemetry retains a completed window when R2 is unavailable', as
   assert.equal(telemetry.pending[0].duration_ms_max, 12);
 });
 
-test('production collector declares the coordinator migration and sampled logs', () => {
+test('production collector enables direct Durable Object hot state', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
     'utf8',
@@ -167,6 +204,9 @@ test('production collector declares the coordinator migration and sampled logs',
     config.migrations.find(({ tag }) => tag === 'buddies-collector-coordinator-v1').new_sqlite_classes,
     ['BuddiesCollectorCoordinator'],
   );
+  assert.equal(config.vars.COLLECTOR_DO_HOT_STATE_ENABLED, true);
+  assert.equal(config.vars.COLLECTOR_COORDINATOR_USE_ALARM, false);
+  assert.equal(config.vars.COLLECTOR_D1_AUTH_CACHE_MS, 21_600_000);
   assert.equal(config.vars.COLLECTOR_TELEMETRY_INTERVAL_MS, 300_000);
   assert.equal(config.observability.head_sampling_rate, 0.1);
   assert.equal(config.observability.logs.head_sampling_rate, 0.1);
