@@ -23,7 +23,9 @@ StationheadHandleBase::operator bool() const noexcept {
 }
 
 void StationheadHandleBase::Stop() {
-  if (player_) player_->Stop();
+  if (!player_ || stopIssued_) return;
+  stopIssued_ = true;
+  if (startIssued_) player_->Stop();
 }
 
 void StationheadHandleBase::SetAudioMuted(bool muted) noexcept {
@@ -105,7 +107,8 @@ void StationheadHandleBase::RefreshVisibility() {
 }
 
 void StationheadHandleBase::Start() {
-  if (!player_) return;
+  if (!player_ || startIssued_ || stopIssued_) return;
+  startIssued_ = true;
   ApplyInteractiveBounds();
   player_->Start();
   ApplyAudioState();
@@ -113,7 +116,7 @@ void StationheadHandleBase::Start() {
 }
 
 void StationheadHandleBase::Tick(int64_t nowMs) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->RecoverUnavailableAuthorization();
   // Authorization can begin while the steady-state scheduler still carries a
   // much later background deadline. Wake only that interactive state so the
@@ -126,42 +129,46 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
 }
 
 void StationheadHandleBase::Reconnect() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   ApplyInteractiveBounds();
   player_->Reconnect();
   ApplyBounds();
 }
 
 void StationheadHandleBase::RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
-  if (player_) player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (player_ && startIssued_ && !stopIssued_) {
+    player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  }
 }
 
 void StationheadHandleBase::CancelPendingTrackBoundaryRefresh() noexcept {
-  if (player_) player_->CancelPendingTrackBoundaryRefresh();
+  if (player_ && startIssued_ && !stopIssued_) {
+    player_->CancelPendingTrackBoundaryRefresh();
+  }
 }
 
 void StationheadHandleBase::SetPlaybackFallback(
     bool active, const std::wstring& reason) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->SetPlaybackFallback(active, reason);
   ApplyBounds();
 }
 
 void StationheadHandleBase::ShowAfterAudioStop() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   ApplyInteractiveBounds();
   player_->ShowAfterAudioStop();
   ApplyBounds();
 }
 
 void StationheadHandleBase::ReleaseCompletedAuth() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->FinalizeCompletedAuth();
   ApplyBounds();
 }
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
-  if (!player_) return StationheadChangeNone;
+  if (!player_ || !startIssued_ || stopIssued_) return StationheadChangeNone;
   uint32_t flags = player_->ConsumeChangeFlags();
   if ((flags & StationheadChangeReleaseAuth) != 0) {
     // Complete auth teardown before A/B flags are OR-ed by App. Remove only
@@ -178,6 +185,11 @@ uint32_t StationheadHandleBase::ConsumeChangeFlags() {
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
   player_ = std::move(player);
+  startIssued_ = false;
+  stopIssued_ = false;
+  playbackObserved_ = false;
+  playbackMissingSinceAt_ = 0;
+  transitionSuppressed_ = false;
   ++contentRevision_;
   ApplyAudioState();
   ApplyBounds();
@@ -185,6 +197,8 @@ void StationheadHandleBase::AssignPlayer(
 
 void StationheadHandleBase::ResetPlayer() noexcept {
   player_.reset();
+  startIssued_ = false;
+  stopIssued_ = false;
   playbackObserved_ = false;
   playbackMissingSinceAt_ = 0;
   transitionSuppressed_ = false;
@@ -192,11 +206,11 @@ void StationheadHandleBase::ResetPlayer() noexcept {
 }
 
 bool StationheadHandleBase::HasAuthTabPlayer() const {
-  return player_ && player_->HasAuthTab();
+  return player_ && startIssued_ && !stopIssued_ && player_->HasAuthTab();
 }
 
 void StationheadHandleBase::SelectPlayerTab(StationheadTabKind tab) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   if (tab == StationheadTabKind::None) {
     RefreshVisibility();
     return;
@@ -230,7 +244,7 @@ bool StationheadHandleBase::SuppressTrackTransitionGap(
 }
 
 void StationheadHandleBase::ApplyAudioState() const noexcept {
-  if (player_) player_->SetMuted(audioMuted_);
+  if (player_ && !stopIssued_) player_->SetMuted(audioMuted_);
 }
 
 void StationheadHandleBase::BringMainWindowToFront(HWND host) const noexcept {
@@ -243,7 +257,7 @@ void StationheadHandleBase::BringMainWindowToFront(HWND host) const noexcept {
 }
 
 void StationheadHandleBase::RaiseActiveHost() const {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   const bool preview = startupPreviewActive_;
   if (!preview && !player_->SurfaceVisible()) return;
   HWND host = player_->ActiveHostWindowForAccountSetup();
@@ -266,7 +280,7 @@ void StationheadHandleBase::RaiseActiveHost() const {
 }
 
 void StationheadHandleBase::ApplyInteractiveBounds() {
-  if (!player_) return;
+  if (!player_ || stopIssued_) return;
   // The handle is the sole owner of the startup-preview lifetime. Interactive
   // transitions (login, Spotify auth, reconnect, audio-stop recovery) must not
   // clear the player's preview state and then immediately reapply it, because
@@ -276,7 +290,7 @@ void StationheadHandleBase::ApplyInteractiveBounds() {
 }
 
 void StationheadHandleBase::ApplyBounds() {
-  if (!player_) return;
+  if (!player_ || stopIssued_) return;
   if (startupPreviewActive_) {
     player_->SetStartupPreviewBounds(startupPreviewBounds_);
   } else {
