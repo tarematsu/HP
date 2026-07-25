@@ -81,7 +81,7 @@ test('one GitHub Actions workflow owns automatic and manual production deploymen
   }
   assert.doesNotMatch(deploymentWorkflow, /- ingest$/m);
   assert.doesNotMatch(deploymentWorkflow, /- minute-enrichment$/m);
-  for (const command of ['deploy:sakurazaka46jp', 'deploy:buddies-collector', 'deploy:runtime']) {
+  for (const command of ['deploy:sakurazaka46jp', 'deploy:buddies-recovery', 'deploy:buddies-collector', 'deploy:runtime']) {
     assert.match(deploymentWorkflow, new RegExp(command));
   }
   assert.doesNotMatch(deploymentWorkflow, /deploy:ingest/);
@@ -188,11 +188,12 @@ test('the production Worker deployment provisions current Queue boundaries', () 
   }
 });
 
-test('Worker package scripts contain only the three active deployment and bundle operations', () => {
+test('Worker package scripts contain only the four active deployment and bundle operations', () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(workerPackage.scripts).filter(([name]) => name.startsWith('deploy'))),
     {
       deploy: 'node scripts/deploy-connected-worker.mjs',
+      'deploy:buddies-recovery': 'node scripts/deploy-buddies-recovery.mjs',
       'deploy:buddies-collector': 'node scripts/deploy-buddies-collector.mjs',
       'deploy:sakurazaka46jp': 'node scripts/deploy-sakurazaka46jp.mjs',
       'deploy:runtime': 'node scripts/deploy-runtime.mjs',
@@ -201,6 +202,7 @@ test('Worker package scripts contain only the three active deployment and bundle
   assert.equal(workerPackage.scripts.postinstall, undefined);
   assert.equal(workerPackage.scripts['check:ingest-bundle'], undefined);
   assert.equal(workerPackage.scripts['check:minute-enrichment-bundle'], undefined);
+  assert.equal(workerPackage.scripts['check:buddies-recovery-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:buddies-collector-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:sakurazaka46jp-bundle'] !== undefined, true);
   assert.equal(workerPackage.scripts['check:runtime-bundle'] !== undefined, true);
@@ -220,10 +222,12 @@ test('Worker package scripts contain only the three active deployment and bundle
   }
 });
 
-test('observability covers the three active Workers through Cloudflare APIs without R2', () => {
+test('observability covers continuously invoked Workers while account budgets include recovery resources', () => {
   for (const worker of ['sh-sakurazaka46jp', 'sh-buddies-collector', 'sh-runtime-orchestrator']) {
     assert.match(observabilityWorkflow, new RegExp(worker));
   }
+  assert.doesNotMatch(observabilityWorkflow, /CLOUDFLARE_WORKERS:[^\n]*sh-buddies-recovery/);
+  assert.match(observabilityWorkflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc/);
   for (const retired of [
     'sh-buddies-ingest',
     'sh-minute-enrichment',
