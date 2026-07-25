@@ -35,11 +35,15 @@ export async function runBuddiesCollectorScheduled(
     ingestRawCollection: dependencies.ingestRawCollection || ingestRawCollection,
   };
   try {
-    await collect(
+    const collection = await collect(
       rawCollectorEnv(env),
       collectionDependencies,
     );
-    return { collected: true, scheduled_at: scheduledAt };
+    return {
+      collected: true,
+      scheduled_at: scheduledAt,
+      ...(collection && typeof collection === 'object' ? collection : {}),
+    };
   } catch (error) {
     console.error(JSON.stringify({
       event: 'buddies_collection_failed',
