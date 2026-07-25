@@ -53,9 +53,8 @@ test('native WebMessage dispatch requires a matching trusted current origin', ()
   assert.match(wrapper, /if \(!trusted\) return S_OK;/);
   assert.ok(
     wrapper.indexOf('if (!trusted) return S_OK;') <
-      wrapper.indexOf('inner->Invoke(sender, args)'),
+      wrapper.indexOf('InvokeEventNoexcept(inner, sender, args)'),
   );
-  assert.match(wrapper, /catch \(\.\.\.\)[\s\S]*return E_FAIL;/);
   assert.match(
     policySource,
     /#define add_WebMessageReceived\(handler, token\)[\s\S]*WrapStationheadWebMessageHandler/,
@@ -81,7 +80,7 @@ test('unrelated popups are suppressed before auth controller creation', () => {
   const wrapper = section(
     policySource,
     'WrapStationheadNewWindowHandler(',
-    '}  // namespace stationhead_webview_policy',
+    'inline ComPtr<ICoreWebView2NavigationStartingEventHandler>',
   );
   assert.match(wrapper, /sender->get_Source\(&currentSource\)/);
   assert.match(wrapper, /args->get_Uri\(&targetUri\)/);
@@ -89,11 +88,51 @@ test('unrelated popups are suppressed before auth controller creation', () => {
   assert.match(wrapper, /IsTrustedPopupTarget\(targetUri\)/);
   assert.match(wrapper, /if \(!trusted\) \{[\s\S]*args->put_Handled\(TRUE\);[\s\S]*return S_OK;/);
   assert.ok(
-    wrapper.indexOf('if (!trusted) {') < wrapper.indexOf('inner->Invoke(sender, args)'),
+    wrapper.indexOf('if (!trusted) {') <
+      wrapper.indexOf('InvokeEventNoexcept(inner, sender, args)'),
   );
+  assert.match(wrapper, /if \(FAILED\(result\)\) args->put_Handled\(TRUE\);/);
   assert.match(
     policySource,
     /#define add_NewWindowRequested\(handler, token\)[\s\S]*WrapStationheadNewWindowHandler/,
   );
   assert.equal(webviewSource.split('add_NewWindowRequested(').length - 1, 1);
+});
+
+test('every Stationhead WebView callback is contained at the COM boundary', () => {
+  const invoker = section(
+    policySource,
+    'inline HRESULT InvokeEventNoexcept(',
+    'inline ComPtr<ICoreWebView2WebMessageReceivedEventHandler>',
+  );
+  assert.match(invoker, /try \{[\s\S]*handler->Invoke\(sender, args\);/);
+  assert.match(invoker, /catch \(\.\.\.\)[\s\S]*return E_FAIL;/);
+
+  for (const [method, wrapper, expectedCount] of [
+    ['add_NavigationStarting', 'WrapStationheadNavigationStartingHandler', 1],
+    ['add_NavigationCompleted', 'WrapStationheadNavigationCompletedHandler', 2],
+    ['add_ProcessFailed', 'WrapStationheadProcessFailedHandler', 2],
+    ['add_WindowCloseRequested', 'WrapStationheadWindowCloseHandler', 1],
+    ['add_IsDocumentPlayingAudioChanged', 'WrapStationheadAudioChangedHandler', 1],
+  ]) {
+    assert.match(
+      policySource,
+      new RegExp(`#define ${method}\\(handler, token\\)[\\s\\S]*${wrapper}`),
+    );
+    assert.equal(
+      webviewSource.split(`${method}(`).length - 1,
+      expectedCount,
+      `${method} call count changed without updating its policy coverage`,
+    );
+  }
+
+  const navigationStart = section(
+    policySource,
+    'WrapStationheadNavigationStartingHandler(',
+    'inline ComPtr<ICoreWebView2NavigationCompletedEventHandler>',
+  );
+  assert.match(
+    navigationStart,
+    /if \(FAILED\(result\) && args\) args->put_Cancel\(TRUE\);/,
+  );
 });
