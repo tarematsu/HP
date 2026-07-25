@@ -51,18 +51,13 @@ jobs:
           auth_header="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
 
           object_url() {
-            local key="$1" encoded="" segment
-            local -a segments
-            IFS='/' read -r -a segments <<< "$key"
-            for segment in "${segments[@]}"; do
-              segment="$(jq -rn --arg value "$segment" '$value | @uri')"
-              encoded="${encoded:+${encoded}/}${segment}"
-            done
+            local key="$1" encoded
+            encoded="$(jq -rn --arg value "$key" '$value | split("/") | map(@uri) | join("/")')"
             printf '%s/%s' "$api" "$encoded"
           }
 
           list_keys() {
-            local prefix="$1" output="$2" cursor="" next_cursor response truncated
+            local prefix="$1" output="$2" cursor="" next_cursor response
             : > "$output"
             while true; do
               local -a query=(--get --data-urlencode "prefix=$prefix")
@@ -73,14 +68,12 @@ jobs:
                 '.success == true and
                  (.result | type == "array") and
                  all(.result[]?; .key | type == "string") and
-                 (.result_info.is_truncated | type == "boolean")' \
+                 ((.result_info.cursor? // null) | type == "null" or type == "string")' \
                 <<< "$response" >/dev/null
               jq -c '.result[]?.key' <<< "$response" >> "$output"
 
-              truncated="$(jq -r '.result_info.is_truncated' <<< "$response")"
-              [[ "$truncated" == true ]] || break
-
-              next_cursor="$(jq -er '.result_info.cursor | select(type == "string" and length > 0)' <<< "$response")"
+              next_cursor="$(jq -r '.result_info.cursor // empty' <<< "$response")"
+              [[ -n "$next_cursor" ]] || break
               [[ "$next_cursor" != "$cursor" ]] || {
                 echo "Cloudflare R2 object listing returned a repeated cursor" >&2
                 exit 1
