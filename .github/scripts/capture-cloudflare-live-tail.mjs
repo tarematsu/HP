@@ -2,6 +2,8 @@
 
 import assert from 'node:assert/strict';
 
+import { sanitizeText } from './observability-status-publisher.mjs';
+
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 const MAX_TIMER_SECONDS = Math.floor(2_147_483_647 / 1000);
 const token = process.env.CLOUDFLARE_API_TOKEN?.trim();
@@ -79,16 +81,6 @@ export function parseLiveTailMessage(text) {
   }
 }
 
-function redactCredentials(value) {
-  return value
-    .replace(
-      /(["']?\bauthorization\b["']?\s*[:=]\s*["']?)([a-z][a-z\d_-]*\s+)?[^\s,;"'}]+/gi,
-      (_match, prefix, scheme = '') => `${prefix}${scheme}[redacted]`,
-    )
-    .replace(/\bBearer\s+[^\s,;"'}]+/gi, 'Bearer [redacted]')
-    .replace(/(["']?\b(?:api[_-]?token|token|secret|api[_-]?key)\b["']?\s*[:=]\s*["']?)[^\s,;"'}]+/gi, '$1[redacted]');
-}
-
 function selfTest() {
   assert.equal(parseDurationSeconds('', 180), 180);
   assert.equal(parseDurationSeconds('1'), 10);
@@ -112,13 +104,6 @@ function selfTest() {
   assert.equal(normalizeWebSocketUrl('https://example.test/tail'), 'wss://example.test/tail');
   assert.equal(normalizeWebSocketUrl('wss://example.test/tail'), 'wss://example.test/tail');
   assert.throws(() => normalizeWebSocketUrl(''), /valid WebSocket URL/);
-  assert.equal(redactCredentials('Authorization: Bearer abc123 token=xyz'), 'Authorization: Bearer [redacted] token=[redacted]');
-  assert.equal(redactCredentials('Authorization: Basic abc123'), 'Authorization: Basic [redacted]');
-  assert.equal(redactCredentials('request failed with Bearer abc.def-123'), 'request failed with Bearer [redacted]');
-  assert.equal(
-    redactCredentials('{"authorization":"Bearer abc123","api_token":"xyz"}'),
-    '{"authorization":"Bearer [redacted]","api_token":"[redacted]"}',
-  );
   console.log('live-tail outcome classification self-test passed');
 }
 
@@ -144,7 +129,7 @@ async function api(path, options = {}) {
   let data;
   try { data = JSON.parse(text); } catch { data = null; }
   if (!response.ok || data?.success === false || data?.errors?.length) {
-    throw new Error(`Cloudflare API ${response.status}: ${redactCredentials(text.slice(0, 1200))}`);
+    throw new Error(`Cloudflare API ${response.status}: ${sanitizeText(text.slice(0, 1200))}`);
   }
   return data;
 }
@@ -156,7 +141,7 @@ function sanitize(value, key = '') {
     return '[redacted]';
   }
   if (typeof value === 'string') {
-    let sanitized = redactCredentials(value);
+    let sanitized = sanitizeText(value);
     if (lower.includes('url')) {
       try {
         const parsed = new URL(sanitized);
@@ -208,7 +193,7 @@ async function probeWorker() {
     const host = `${worker}.${accountSubdomain.result.subdomain}.workers.dev`;
     await Promise.all(probes.map((path) => probePath(host, path)));
   } catch (error) {
-    console.log(`LIVE_TAIL_PROBE_WARNING=${redactCredentials(String(error.message || error)).slice(0, 500)}`);
+    console.log(`LIVE_TAIL_PROBE_WARNING=${sanitizeText(String(error.message || error)).slice(0, 500)}`);
   }
 }
 
@@ -243,7 +228,7 @@ const finished = new Promise((resolve, reject) => {
       api(`/accounts/${account}/workers/observability/telemetry/live-tail/heartbeat`, {
         method: 'POST',
         body: JSON.stringify({ scriptId: worker }),
-      }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${redactCredentials(String(error.message || error)).slice(0, 300)}`));
+      }).catch((error) => console.log(`LIVE_TAIL_HEARTBEAT_WARNING=${sanitizeText(String(error.message || error)).slice(0, 300)}`));
     }, 25_000);
     probePromise = probeWorker();
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
@@ -265,13 +250,13 @@ const finished = new Promise((resolve, reject) => {
     processing
       .catch((error) => {
         try { socket.close(1011, 'message processing failed'); } catch {}
-        reject(new Error(`Live tail message processing failed: ${redactCredentials(String(error.message || error))}`));
+        reject(new Error(`Live tail message processing failed: ${sanitizeText(String(error.message || error))}`));
       })
       .finally(() => pendingMessages.delete(processing));
   });
   socket.addEventListener('error', (event) => {
     try { socket.close(1011, 'websocket error'); } catch {}
-    reject(new Error(`Live tail WebSocket error: ${redactCredentials(String(event.message || 'unknown'))}`));
+    reject(new Error(`Live tail WebSocket error: ${sanitizeText(String(event.message || 'unknown'))}`));
   });
   socket.addEventListener('close', () => {
     void Promise.allSettled([...pendingMessages]).then(() => {
