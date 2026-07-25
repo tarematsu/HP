@@ -64,7 +64,9 @@ function cacheableOrigin(origin) {
   if (!origin?.ok) return false;
   if (origin.headers.has('set-cookie')) return false;
   const cacheControl = origin.headers.get('cache-control') || '';
-  if (/\b(private|no-store)\b/i.test(cacheControl)) return false;
+  if (/\b(private|no-store|no-cache)\b/i.test(cacheControl)) return false;
+  const vary = origin.headers.get('vary') || '';
+  if (vary.split(',').some((value) => value.trim() === '*')) return false;
   const contentType = origin.headers.get('content-type') || '';
   return !contentType || /^application\/json(?:\s*;|$)/i.test(contentType);
 }
