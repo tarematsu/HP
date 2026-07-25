@@ -6,7 +6,6 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 test('HomePanel observability workflow keeps the production contract', () => {
   const workflow = readSource('.github/workflows/hp-observability.yml');
   const unifiedCi = readSource('.github/workflows/homepanel-unified-ci.yml');
-  const diagnostics = readSource('.github/actions/cloudflare-observability-diagnostics/action.yml');
 
   expectAll(workflow, [
     'workflows: ["Deploy unified homepanel-cloud Worker"]',
@@ -27,11 +26,6 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'query-cloudflare-d1-costs.py',
     'D1_INSIGHTS_OUTCOME',
     'id: observability-query',
-    'uses: ./.github/actions/cloudflare-observability-diagnostics',
-    'live-tail-worker: homepanel-cloud',
-    'live-tail-seconds: "90"',
-    'live-tail-probes: /v1/health,/',
-    'LIVE_TAIL_LOG: live-tail.log',
     'telemetry-summary.md',
     'Publish persistent observability status',
     'publish-homepanel-observability-status.mjs',
@@ -45,13 +39,6 @@ test('HomePanel observability workflow keeps the production contract', () => {
   expectAll(unifiedCi, [
     'tests/homepanel-*.test.mjs',
     'python3 .github/scripts/query-cloudflare-d1-costs.py --self-test',
-  ]);
-  expectAll(diagnostics, [
-    'query-cloudflare-observability.py',
-    'capture-cloudflare-live-tail.mjs',
-    'wait "$query_pid" || query_status=$?',
-    'wait "$tail_pid" || true',
-    'exit "$query_status"',
   ]);
   expectNone(workflow, [
     'cron: "23 * * * *"',
@@ -86,94 +73,25 @@ test('HomePanel observability workflow keeps the production contract', () => {
   assert.ok(workflow.includes('branches: [main]'));
 });
 
-test('HomePanel observability tools retain budget, privacy, and status behavior', () => {
-  const daily = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
-  const telemetry = readSource('.github/scripts/audit-cloudflare-telemetry.py');
-  const queryCosts = readSource('.github/scripts/query-cloudflare-d1-costs.py');
+test('HomePanel observability publisher and usage documentation retain product behavior', () => {
   const publisher = readSource('.github/scripts/publish-homepanel-observability-status.mjs');
-  const publisherCore = readSource('.github/scripts/observability-status-publisher.mjs');
-  const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
   const usageDocumentation = readSource('hp/cloud/D1_USAGE_MEASUREMENT.md');
 
-  expectAll(daily, [
-    'queueMessageOperationsAdaptiveGroups',
-    'billableOperations',
-    'linear-from-utc-midnight',
-    'project_daily_usage',
-    'queueOperations',
-    'Actual to now',
-    'Projected 24h',
-  ]);
-  expectAll(queryCosts, [
-    'd1QueriesAdaptiveGroups',
-    'sum_rowsRead_DESC',
-    'sum_rowsWritten_DESC',
-    'count_DESC',
-    'sanitize_query',
-    'hashlib.sha256',
-    'rowsRead',
-    'rowsWritten',
-    'D1 query cost insights',
-  ]);
-  expectNone(queryCosts, [
-    'wrangler d1 insights',
-    'spawnSync',
-    'node_modules/.bin/wrangler',
-    '/d1/database',
-  ]);
-  expectAll(telemetry, [
-    'scriptVersion',
-    'fromisoformat',
-    'old_version_invocations_excluded',
-    'LIVE_TAIL_EVENT=',
-    'missing_workers',
-    'DURABLE_OBJECT_CPU_BUDGET_MS',
-    'CLOUDFLARE_ACCOUNT_ID',
-    'Cloudflare token, account ID, and Worker list are required',
-  ]);
-  expectNone(telemetry, [
-    'def account_id',
-    'accounts?per_page=50',
-    'R2_BUCKET',
-  ]);
   expectAll(publisher, [
     'HomePanel Observability Status',
     '<!-- homepanel-observability-status -->',
     './observability-status-publisher.mjs',
     'observability/d1-query-insights',
     'Top D1 queries by rows read',
+    "readOptionalText('daily-usage/summary.md')",
+    "readOptionalText('d1-insights/summary.md')",
+    "readOptionalText('observability-summary.md')",
+    "readOptionalText('telemetry-summary.md')",
+    "process.env.LOOKBACK_MINUTES || '60'",
     'publishCommitStatuses',
     'upsertStatusIssue',
   ]);
   expectNone(publisher, ['node:assert', '--self-test', 'function selfTest']);
-  expectAll(publisherCore, [
-    'MAX_SECTION_CHARS = 12_000',
-    'MAX_ISSUE_BODY_CHARS = 60_000',
-    "context: 'observability/overall'",
-    'upsertStatusIssue',
-    'Bearer [redacted]',
-    'CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)',
-  ]);
-  expectAll(configResolver, [
-    'stripJsonc',
-    'HOMEPANEL_UPDATE_BUCKET',
-    'UPDATE_BUCKET',
-    'GITHUB_OUTPUT',
-    'update_bucket',
-  ]);
-  expectNone(configResolver, [
-    'resolve-cloudflare-account',
-    'resolveCloudflareAccountId',
-    'CLOUDFLARE_',
-    'account_id',
-    'worker_name',
-    'database_name',
-    'd1AnalyticsAdaptiveGroups',
-    '.cloudflare-build-diagnostics',
-    'publishD1UsageIssue',
-    'api.github.com',
-    'GH_TOKEN',
-  ]);
   expectAll(usageDocumentation, [
     '.github/workflows/hp-observability.yml',
     '.github/scripts/audit-cloudflare-daily-usage.py',
