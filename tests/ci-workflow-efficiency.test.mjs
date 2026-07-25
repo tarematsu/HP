@@ -88,9 +88,9 @@ test('D1 query insights are manual-only and avoid installing Wrangler', () => {
   assert.doesNotMatch(d1Usage, /sleep ["']?\$|Waiting for the current PR deployment/);
 });
 
-test('Cloudflare observability runs after deploy, safe diagnostic changes, and daily at 01:00 UTC', () => {
+test('unified Cloudflare observability runs after either deploy and daily at 01:00 UTC', () => {
   assert.match(observability, /^  workflow_run:\n/m);
-  assert.match(observability, /workflows: \["Deploy production"\]/);
+  assert.match(observability, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
   assert.match(observability, /^  push:\n/m);
   assert.match(observability, /branches: \[main\]/);
   assert.match(observability, /\.github\/workflows\/sh-observability\.yml/);
@@ -100,7 +100,7 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /^  classify:\n/m);
   assert.match(observability, /Defer deploy-affecting pushes to workflow_run/);
   assert.match(observability, /needs\.classify\.outputs\.run == 'true'/);
-  assert.match(observability, /Deferring Cloudflare diagnostics until Deploy production completes/);
+  assert.match(observability, /Deferring unified Cloudflare diagnostics until production deployment completes/);
   assert.match(observability, /^  schedule:\n/m);
   assert.match(observability, /cron: "0 1 \* \* \*"/);
   assert.equal((observability.match(/- cron:/g) || []).length, 1);
@@ -115,6 +115,7 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /DAILY_D1_WRITE_BUDGET: "100000"/);
   assert.match(observability, /DAILY_QUEUE_BUDGET: "10000"/);
   assert.match(observability, /query-cloudflare-observability\.py/);
+  assert.match(observability, /query-cloudflare-d1-costs\.py/);
   assert.match(observability, /audit-deployed-cloudflare-telemetry\.py/);
   assert.match(observability, /LIVE_TAIL_LOG: live-tail\.log/);
   assert.doesNotMatch(observability, /audit-cloudflare-live-tail\.py/);
@@ -124,12 +125,14 @@ test('Cloudflare observability runs after deploy, safe diagnostic changes, and d
   assert.match(observability, /id: daily-budget/);
   assert.match(observability, /id: free-tier-budget/);
   assert.match(observability, /id: budget-contract/);
+  assert.match(observability, /id: d1-insights/);
   assert.match(observability, /id: observability-query/);
   assert.match(observability, /id: telemetry-policy/);
   assert.match(observability, /continue-on-error: true/);
   assert.match(observability, /steps\.daily-budget\.outcome == 'failure'/);
   assert.match(observability, /steps\.free-tier-budget\.outcome == 'failure'/);
   assert.match(observability, /steps\.budget-contract\.outcome == 'failure'/);
+  assert.match(observability, /steps\.d1-insights\.outcome == 'failure'/);
   assert.match(observability, /steps\.observability-query\.outcome == 'failure'/);
   assert.match(observability, /steps\.telemetry-policy\.outcome == 'failure'/);
   assert.doesNotMatch(observability, /R2_BUCKET|AWS_ACCESS_KEY_ID|aws s3api/);
