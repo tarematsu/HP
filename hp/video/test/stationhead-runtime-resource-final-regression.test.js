@@ -62,6 +62,63 @@ test('legacy blank recovery is not registered by final resource setup', () => {
   );
 });
 
+test('non-playback scripts are matched only on HTTPS Stationhead paths', () => {
+  const predicate = section(
+    finalPolicySource,
+    'inline constexpr bool StationheadNonPlaybackScriptUrlRuntimeFixed(',
+    'inline void ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(',
+  );
+  assert.match(predicate, /StationheadRuntimeScriptPath\(uriLower\)/);
+  assert.match(predicate, /path\.ends_with\(L"\.js"\)/);
+  assert.match(predicate, /path\.find\(needle\)/);
+  assert.doesNotMatch(predicate, /uriLower\.find\(needle\)/);
+
+  assert.match(
+    finalPolicySource,
+    /uriLower\.substr\(0, schemeEnd\) != L"https"/,
+  );
+  assert.match(
+    finalPolicySource,
+    /authority == L"stationhead\.com" \|\|[\s\S]*authority\.ends_with\(L"\.stationhead\.com"\)/,
+  );
+  assert.match(
+    finalPolicySource,
+    /https:\/\/chat-cdn\.stationhead\.com\/assets\/player-runtime-a1b2\.js/,
+  );
+  assert.match(
+    finalPolicySource,
+    /https:\/\/cdn\.example\.com\/assets\/chat-panel-a1b2\.js/,
+  );
+});
+
+test('final policy uses the corrected path-only script blocker', () => {
+  const blocker = section(
+    finalPolicySource,
+    'inline void ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(',
+    '// The legacy additional blocker',
+  );
+  assert.match(
+    blocker,
+    /StationheadNonPlaybackScriptUrlRuntimeFixed\(uriLower\)/,
+  );
+  assert.match(blocker, /https:\/\/stationhead\.com\/\*/);
+  assert.match(blocker, /https:\/\/\*\.stationhead\.com\/\*/);
+
+  const finalPolicy = section(
+    finalPolicySource,
+    'inline void ApplyStationheadResourceBlockingFinalFixed(',
+    '}  // namespace hp',
+  );
+  assert.match(
+    finalPolicy,
+    /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed\(environment, webview\)/,
+  );
+  assert.doesNotMatch(
+    finalPolicy,
+    /ApplyStationheadNonPlaybackScriptBlocking\(environment, webview\)/,
+  );
+});
+
 test('final resource callbacks own only COM and immutable configuration state', () => {
   const finalPolicy = section(
     finalPolicySource,
