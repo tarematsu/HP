@@ -35,14 +35,16 @@ ORDERS = {
 }
 
 OPERATION_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
-    (re.compile(r"\bsh_period_boundary_evidence\b", re.I), "period-boundary-preaggregate", "sh-runtime-orchestrator"),
+    (re.compile(r"\b(?:INSERT\s+INTO|UPDATE)\s+sh_period_boundary_evidence\b", re.I), "period-boundary-write", "sh-buddies-collector/recovery"),
+    (re.compile(r"\b(?:FROM|JOIN)\s+sh_period_boundary_evidence\b", re.I), "period-boundary-read", "sh-runtime-orchestrator"),
     (re.compile(r"\bWITH\s+periods\b[\s\S]*\bsh_channel_snapshots\b", re.I), "period-boundary-fallback", "sh-runtime-orchestrator"),
     (re.compile(r"\bsh_dashboard_history_5m\b", re.I), "dashboard-history", "sh-runtime-orchestrator"),
     (re.compile(r"\bsh_stream_goal_prediction_state\b", re.I), "stream-goal-prediction", "sh-runtime-orchestrator"),
     (re.compile(r"\bsh_minute_fact_jobs\b", re.I), "minute-fact-jobs", "sh-runtime-orchestrator"),
     (re.compile(r"\bsh_minute_facts\b", re.I), "minute-facts", "sh-runtime-orchestrator"),
-    (re.compile(r"\bsh_track_dictionary\b|\bsh_track_metadata\b", re.I), "track-metadata", "sh-runtime-orchestrator"),
-    (re.compile(r"\bsh_queue_current\b|\bsh_queue_items\b|\bsh_queue_snapshots\b", re.I), "queue-state", "sh-buddies-collector"),
+    (re.compile(r"\b(?:INSERT\s+INTO|UPDATE)\s+sh_track_metadata\b", re.I), "track-metadata-write", "sh-buddies-collector/recovery"),
+    (re.compile(r"\bsh_track_dictionary\b|\bsh_track_metadata\b", re.I), "track-metadata-read", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_queue_current\b|\bsh_queue_items\b|\bsh_queue_snapshots\b", re.I), "queue-state", "sh-buddies-collector/recovery"),
     (re.compile(r"\bsh_channel_snapshots\b", re.I), "channel-snapshots", "shared"),
 )
 
@@ -198,6 +200,14 @@ def self_test() -> int:
     })
     assert row and row["efficiency"] == 0.2 and row["count"] == 2
     assert row["worker"] == "sh-runtime-orchestrator" and row["operation"] == "minute-fact-jobs"
+    write = normalized_row("stationhead-buddies", {
+        "dimensions": {"query": "INSERT INTO sh_period_boundary_evidence(mode) VALUES (?)"},
+        "sum": {"rowsWritten": 1},
+        "avg": {},
+        "count": 1,
+    })
+    assert write and write["worker"] == "sh-buddies-collector/recovery"
+    assert write["operation"] == "period-boundary-write"
     print("D1 query cost self-test passed")
     return 0
 
