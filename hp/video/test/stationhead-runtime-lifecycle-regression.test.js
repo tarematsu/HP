@@ -6,6 +6,10 @@ const cmakeSource = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
 );
+const runtimeSource = readFileSync(
+  new URL('../../native/src/sh_runtime_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const lifecycleSource = readFileSync(
   new URL('../../native/src/sh_runtime_lifecycle_policy_fix.h', import.meta.url),
   'utf8',
@@ -17,6 +21,10 @@ function section(source, start, end) {
   const endAt = source.indexOf(end, startAt + start.length);
   assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
   return source.slice(startAt, endAt);
+}
+
+function occurrences(source, needle) {
+  return source.split(needle).length - 1;
 }
 
 test('lifecycle policy is compiled between login and resource policies', () => {
@@ -75,6 +83,19 @@ test('base autoplay and UI observers stop across BFCache transitions', () => {
   assert.match(lifecycleSource, /observer\?\.disconnect\?\.\(\);/);
   assert.match(lifecycleSource, /window\.addEventListener\('pagehide', pauseObserver, true\);/);
   assert.match(lifecycleSource, /window\.addEventListener\('pageshow', resumeObserver, true\);/);
+});
+
+test('login timer replacement marker is unique in its generated source', () => {
+  const marker = [
+    '  const nativeTimeout = window.setTimeout.bind(window);',
+    "  const normalize = value => String(value || '').replace(/\\s+/g, ' ').trim();",
+  ].join('\n');
+  assert.equal(occurrences(runtimeSource, marker), 1);
+  assert.equal(occurrences(lifecycleSource, 'static constexpr std::wstring_view kTimerDeclaration ='), 1);
+  assert.match(
+    lifecycleSource,
+    /kTimerDeclaration = LR"JS\(  const nativeTimeout = window\.setTimeout\.bind\(window\);[\s\S]*const normalize = value/,
+  );
 });
 
 test('every lifecycle marker is pinned and the final autoplay macro uses it', () => {
