@@ -1,24 +1,55 @@
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
+const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
 const nativeFetch = window.fetch.bind(window);
+const imageRetryTimers = new WeakMap();
+
+function clearImageRetry(image) {
+  const timer = imageRetryTimers.get(image);
+  if (timer) clearTimeout(timer);
+  imageRetryTimers.delete(image);
+}
 
 function installImageState(id) {
   const image = document.getElementById(id);
   if (!image) return;
   const loaded = () => {
+    clearImageRetry(image);
+    image.dataset.retryAttempt = '0';
     image.classList.add('is-loaded');
     image.hidden = false;
   };
   const failed = () => {
     image.classList.remove('is-loaded');
     image.hidden = true;
+    const source = image.currentSrc || image.src;
+    const attempt = Math.max(0, Number(image.dataset.retryAttempt) || 0);
+    if (!source || attempt >= IMAGE_RETRY_DELAYS.length) return;
+    image.dataset.retryAttempt = String(attempt + 1);
+    clearImageRetry(image);
+    const timer = setTimeout(() => {
+      imageRetryTimers.delete(image);
+      if (!image.hidden || (image.currentSrc || image.src) !== source) return;
+      image.removeAttribute('src');
+      requestAnimationFrame(() => { image.src = source; });
+    }, IMAGE_RETRY_DELAYS[attempt]);
+    imageRetryTimers.set(image, timer);
   };
   image.addEventListener('load', loaded);
   image.addEventListener('error', failed);
   new MutationObserver(() => {
     image.classList.remove('is-loaded');
-    if (!image.getAttribute('src')) image.hidden = true;
+    const source = image.getAttribute('src') || '';
+    if (!source) {
+      image.hidden = true;
+      return;
+    }
+    if (source !== image.dataset.lastSource) {
+      clearImageRetry(image);
+      image.dataset.lastSource = source;
+      image.dataset.retryAttempt = '0';
+    }
   }).observe(image, { attributes: true, attributeFilter: ['src'] });
   if (image.complete && image.naturalWidth > 0) loaded();
 }
