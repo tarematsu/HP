@@ -91,8 +91,16 @@ jobs:
           current_prefix="updates/releases/${current_version}/"
 
           list_keys 'updates/releases/' objects-before.jsonl
-          jq -Rrc --arg prefix "$current_prefix" \
-            'fromjson | select(startswith($prefix) | not)' \
+          jq -Rrc \
+            --arg releases_prefix 'updates/releases/' \
+            --arg current_prefix "$current_prefix" \
+            --arg current_version "$current_version" \
+            'fromjson as $key |
+             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
+             select(
+               ($key | startswith($current_prefix) | not) and
+               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
+             )' \
             objects-before.jsonl > obsolete-keys.jsonl
 
           deleted=0
@@ -107,8 +115,16 @@ jobs:
 
           list_keys 'updates/releases/' objects-after.jsonl
           remaining="$(grep -c . objects-after.jsonl || true)"
-          unexpected_remaining="$(jq -Rr --arg prefix "$current_prefix" \
-            'fromjson | select(startswith($prefix) | not)' \
+          unexpected_remaining="$(jq -Rr \
+            --arg releases_prefix 'updates/releases/' \
+            --arg current_prefix "$current_prefix" \
+            --arg current_version "$current_version" \
+            'fromjson as $key |
+             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
+             select(
+               ($key | startswith($current_prefix) | not) and
+               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
+             )' \
             objects-after.jsonl | grep -c . || true)"
           [[ "$unexpected_remaining" -eq 0 ]] || {
             echo "Obsolete HomePanel release objects remain after cleanup: $unexpected_remaining" >&2
