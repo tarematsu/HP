@@ -79,6 +79,7 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
           python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
           node --test \
             tests/cloudflare-account-context.test.mjs \

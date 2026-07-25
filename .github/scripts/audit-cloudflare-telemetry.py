@@ -19,6 +19,7 @@ TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
 WORKERS = tuple(value.strip() for value in os.environ.get("CLOUDFLARE_WORKERS", "").split(",") if value.strip())
 LOOKBACK_MINUTES = max(1, int(os.environ.get("LOOKBACK_MINUTES", "60")))
 STATELESS_CPU_BUDGET_MS = float(os.environ.get("CPU_BUDGET_MS", "10"))
+QUEUE_CPU_BUDGET_MS = float(os.environ.get("QUEUE_CPU_BUDGET_MS", "30000"))
 DURABLE_OBJECT_CPU_BUDGET_MS = float(os.environ.get("DURABLE_OBJECT_CPU_BUDGET_MS", "30000"))
 ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
 LIVE_TAIL_LOG = Path(os.environ.get("LIVE_TAIL_LOG", "live-tail.log"))
@@ -174,7 +175,8 @@ def event_key(event: dict[str, Any]) -> str:
 
 def request_id(event: dict[str, Any]) -> str:
     metadata, workers = fields(event)
-    return str(metadata.get("requestId") or workers.get("requestId") or "")
+    identifier = str(metadata.get("requestId") or workers.get("requestId") or "")
+    return f"{worker_name(event)}:{identifier}" if identifier else ""
 
 
 def error_priority(event: dict[str, Any]) -> int:
@@ -219,6 +221,36 @@ def worker_name(event: dict[str, Any]) -> str:
     return str(metadata.get("service") or workers.get("scriptName") or "unknown")
 
 
+def invocation_class(event: dict[str, Any]) -> str:
+    metadata, workers = fields(event)
+    model = str(workers.get("executionModel") or "stateless")
+    if model == "durableObject":
+        return "durableObject"
+    event_type = str(workers.get("eventType") or metadata.get("origin") or "").strip().lower()
+    if event_type == "queue":
+        return "queue"
+    if event_type == "cron":
+        return "cron"
+    if event_type == "fetch":
+        return "http"
+    return "stateless"
+
+
+def cpu_budget_ms(event: dict[str, Any]) -> float:
+    policy = invocation_class(event)
+    if policy == "queue":
+        return QUEUE_CPU_BUDGET_MS
+    if policy == "durableObject":
+        return DURABLE_OBJECT_CPU_BUDGET_MS
+    return STATELESS_CPU_BUDGET_MS
+
+
+def cpu_limit_outcome(event: dict[str, Any]) -> bool:
+    _, workers = fields(event)
+    normalized = "".join(character for character in str(workers.get("outcome") or "").lower() if character.isalnum())
+    return normalized == "exceededcpu"
+
+
 def live_tail_events() -> list[dict[str, Any]]:
     if not LIVE_TAIL_LOG.exists():
         return []
@@ -258,7 +290,6 @@ def detail(event: dict[str, Any]) -> dict[str, Any]:
     request = worker_event.get("request") if isinstance(worker_event.get("request"), dict) else {}
     source = event.get("source") if isinstance(event.get("source"), dict) else {}
     model = str(workers.get("executionModel") or "stateless")
-    budget = DURABLE_OBJECT_CPU_BUDGET_MS if model == "durableObject" else STATELESS_CPU_BUDGET_MS
     message = metadata.get("error") or metadata.get("message") or source.get("message") or "-"
     return {
         "time": str(event.get("timestamp") or metadata.get("timestamp") or "-")[:48],
@@ -266,7 +297,8 @@ def detail(event: dict[str, Any]) -> dict[str, Any]:
         "version": version_id(event)[:80],
         "source": str(event.get("_diagnostic_source") or "persisted"),
         "cpu_ms": finite(workers.get("cpuTimeMs")),
-        "budget_ms": budget,
+        "budget_ms": cpu_budget_ms(event),
+        "budget_class": invocation_class(event),
         "model": model[:40],
         "outcome": str(workers.get("outcome") or "")[:40],
         "event_type": str(workers.get("eventType") or "-")[:40],
@@ -341,9 +373,11 @@ def evaluate(
             current = error_items.get(key)
             if current is None or priority > current[0]:
                 error_items[key] = (priority, item)
-        if cpu_ms is None or cpu_ms <= item["budget_ms"]:
+        terminal_cpu = cpu_limit_outcome(event)
+        numeric_overage = cpu_ms is not None and cpu_ms > item["budget_ms"]
+        if not terminal_cpu and not numeric_overage:
             continue
-        if exempt(event):
+        if not terminal_cpu and exempt(event):
             exempted.append(item)
         else:
             violations.append(item)
@@ -352,60 +386,149 @@ def evaluate(
     return violations, exempted, errors, samples, missing, not truncated and not missing
 
 
+def stats(values: list[float]) -> dict[str, float | int | None]:
+    return {
+        "samples": len(values),
+        "avg_ms": (sum(values) / len(values)) if values else None,
+        "max_ms": max(values) if values else None,
+    }
+
+
+def grouped_cpu_stats(events: list[dict[str, Any]]) -> tuple[dict[str, int], dict[str, dict[str, list[float]]]]:
+    class_counts: dict[str, int] = {}
+    grouped: dict[str, dict[str, list[float]]] = {worker: {} for worker in WORKERS}
+    for event in events:
+        item = detail(event)
+        cpu_ms = item["cpu_ms"]
+        if cpu_ms is None:
+            continue
+        policy = item["budget_class"]
+        class_counts[policy] = class_counts.get(policy, 0) + 1
+        worker = item["worker"]
+        if worker in grouped:
+            grouped[worker].setdefault(policy, []).append(cpu_ms)
+    return class_counts, grouped
+
+
 def self_test() -> int:
-    old = {
-        "timestamp": "2026-07-22T00:00:00Z",
-        "$metadata": {"id": "old", "service": "a", "requestId": "old-request"},
-        "$workers": {"scriptVersion": {"id": "v1"}, "cpuTimeMs": 99, "outcome": "ok"},
-    }
-    persisted_current = {
-        "timestamp": "2026-07-22T01:00:00Z",
-        "$metadata": {"id": "persisted-current", "service": "a", "requestId": "persisted-request"},
-        "$workers": {"scriptVersion": {"id": "v2"}, "cpuTimeMs": 4, "outcome": "ok"},
-    }
-    live_error = {
-        "timestamp": "2026-07-22T01:02:00Z",
-        "$metadata": {"id": "live-error", "service": "a", "requestId": "shared-request"},
-        "$workers": {"scriptVersion": {"id": "v3"}, "cpuTimeMs": 3, "outcome": "exception"},
-        "_diagnostic_source": "live_tail",
-    }
-    live_error_log = {
-        "timestamp": "2026-07-22T01:02:00.100Z",
-        "$metadata": {
-            "id": "live-error-log",
+    def event(
+        identifier: str,
+        *,
+        timestamp: str,
+        version: str,
+        cpu: float | None,
+        event_type: str,
+        model: str = "stateless",
+        outcome: str = "ok",
+        request: str | None = None,
+        level: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any]:
+        metadata: dict[str, Any] = {
+            "id": identifier,
             "service": "a",
-            "requestId": "shared-request",
-            "level": "error",
-            "error": "duplicate console error",
-        },
-        "$workers": {"scriptVersion": {"id": "v3"}, "outcome": "ok"},
-        "_diagnostic_source": "live_tail",
-    }
-    live_ok = {
-        "timestamp": "2026-07-22T01:03:00Z",
-        "$metadata": {"id": "live-ok", "service": "a", "requestId": "live-ok-request"},
-        "$workers": {"scriptVersion": {"id": "v3"}, "cpuTimeMs": 5, "outcome": "ok"},
-        "_diagnostic_source": "live_tail",
-    }
+            "requestId": request or identifier,
+            "origin": event_type,
+        }
+        if level:
+            metadata["level"] = level
+        if error:
+            metadata["error"] = error
+        workers: dict[str, Any] = {
+            "scriptVersion": {"id": version},
+            "outcome": outcome,
+            "eventType": event_type,
+            "executionModel": model,
+        }
+        if cpu is not None:
+            workers["cpuTimeMs"] = cpu
+        return {"timestamp": timestamp, "$metadata": metadata, "$workers": workers}
+
+    old = event("old", timestamp="2026-07-22T00:00:00Z", version="v1", cpu=99, event_type="cron")
+    persisted_current = event(
+        "persisted-current",
+        timestamp="2026-07-22T01:00:00Z",
+        version="v2",
+        cpu=4,
+        event_type="fetch",
+    )
+    live_error = event(
+        "live-error",
+        timestamp="2026-07-22T01:02:00Z",
+        version="v3",
+        cpu=3,
+        event_type="fetch",
+        outcome="exception",
+        request="shared-request",
+    )
+    live_error["_diagnostic_source"] = "live_tail"
+    live_error_log = event(
+        "live-error-log",
+        timestamp="2026-07-22T01:02:00.100Z",
+        version="v3",
+        cpu=None,
+        event_type="fetch",
+        request="shared-request",
+        level="error",
+        error="duplicate console error",
+    )
+    live_error_log["_diagnostic_source"] = "live_tail"
+    cron_overage = event(
+        "cron-overage",
+        timestamp="2026-07-22T01:03:00Z",
+        version="v3",
+        cpu=12,
+        event_type="cron",
+    )
+    queue_ok = event(
+        "queue-ok",
+        timestamp="2026-07-22T01:04:00Z",
+        version="v3",
+        cpu=37,
+        event_type="queue",
+    )
+    durable_ok = event(
+        "durable-ok",
+        timestamp="2026-07-22T01:05:00Z",
+        version="v3",
+        cpu=45,
+        event_type="fetch",
+        model="durableObject",
+    )
+    queue_terminal = event(
+        "queue-terminal",
+        timestamp="2026-07-22T01:06:00Z",
+        version="v3",
+        cpu=1,
+        event_type="queue",
+        outcome="exceededCpu",
+    )
     original = globals()["WORKERS"]
     globals()["WORKERS"] = ("a",)
     try:
         selected, versions, excluded = current_events(
             [old, persisted_current],
-            [live_error, live_error_log, live_ok],
+            [live_error, live_error_log, cron_overage, queue_ok, durable_ok, queue_terminal],
         )
         assert versions == {"a": "v3"}
         assert excluded == 2
-        assert {version_id(event) for event in selected if version_id(event)} == {"v3"}
-        violations, _, errors, samples, missing, coverage = evaluate(selected, False)
-        assert not violations and len(errors) == 1
-        assert errors[0]["outcome"] == "exception"
-        assert samples["a"] == [3.0, 5.0]
+        assert {version_id(item) for item in selected if version_id(item)} == {"v3"}
+        violations, exempted, errors, samples, missing, coverage = evaluate(selected, False)
+        assert {item["outcome"] for item in violations} == {"ok", "exceededCpu"}
+        assert {item["budget_class"] for item in violations} == {"cron", "queue"}
+        assert not exempted
+        assert {item["outcome"] for item in errors} == {"exception", "exceededCpu"}
+        assert len(errors) == 2
+        assert sorted(samples["a"]) == [1.0, 3.0, 12.0, 37.0, 45.0]
         assert not missing and coverage
-        assert timestamp_ms(live_ok) > timestamp_ms(persisted_current) > timestamp_ms(old)
+        assert detail(queue_ok)["budget_class"] == "queue"
+        assert detail(queue_ok)["budget_ms"] == QUEUE_CPU_BUDGET_MS
+        assert detail(durable_ok)["budget_ms"] == DURABLE_OBJECT_CPU_BUDGET_MS
+        assert detail(cron_overage)["budget_ms"] == STATELESS_CPU_BUDGET_MS
+        assert timestamp_ms(queue_terminal) > timestamp_ms(persisted_current) > timestamp_ms(old)
     finally:
         globals()["WORKERS"] = original
-    print("telemetry audit self-test passed")
+    print("invocation-aware telemetry audit self-test passed")
     return 0
 
 
@@ -424,17 +547,17 @@ def main() -> int:
     live = live_tail_events()
     events, versions, old_versions = current_events(persisted, live)
     violations, exempted, errors, samples, missing, coverage_ok = evaluate(events, truncated)
+    class_counts, grouped = grouped_cpu_stats(events)
     model_counts: dict[str, int] = {}
     for event in events:
-        if detail(event)["cpu_ms"] is not None:
-            model = detail(event)["model"]
-            model_counts[model] = model_counts.get(model, 0) + 1
+        item = detail(event)
+        if item["cpu_ms"] is not None:
+            model_counts[item["model"]] = model_counts.get(item["model"], 0) + 1
     worker_stats = {
         worker: {
             "version": versions.get(worker),
-            "samples": len(values),
-            "avg_ms": (sum(values) / len(values)) if values else None,
-            "max_ms": max(values) if values else None,
+            **stats(values),
+            "classes": {policy: stats(class_values) for policy, class_values in grouped[worker].items()},
         }
         for worker, values in samples.items()
     }
@@ -453,10 +576,13 @@ def main() -> int:
         },
         "cpu_policy": {
             "stateless_budget_ms": STATELESS_CPU_BUDGET_MS,
+            "http_cron_budget_ms": STATELESS_CPU_BUDGET_MS,
+            "queue_consumer_budget_ms": QUEUE_CPU_BUDGET_MS,
             "durable_object_budget_ms": DURABLE_OBJECT_CPU_BUDGET_MS,
             "coverage_ok": coverage_ok,
             "missing_workers": missing,
             "models": model_counts,
+            "classes": class_counts,
             "workers": worker_stats,
             "violations": len(violations),
             "exempted": len(exempted),
@@ -466,23 +592,37 @@ def main() -> int:
     }
     print("TELEMETRY_AUDIT=" + json.dumps(report, ensure_ascii=False, separators=(",", ":")))
     print(
-        f"CPU_POLICY stateless_budget_ms={STATELESS_CPU_BUDGET_MS:g} "
+        f"CPU_POLICY http_cron_budget_ms={STATELESS_CPU_BUDGET_MS:g} "
+        f"queue_consumer_budget_ms={QUEUE_CPU_BUDGET_MS:g} "
         f"durable_object_budget_ms={DURABLE_OBJECT_CPU_BUDGET_MS:g} "
         f"samples={sum(len(values) for values in samples.values())} "
         f"violations={len(violations)} exempted={len(exempted)} old_versions={old_versions} "
         f"truncated={truncated} coverage_ok={coverage_ok}"
     )
-    for worker, stats in worker_stats.items():
+    for worker, worker_values in grouped.items():
+        for policy, values in worker_values.items():
+            item_stats = stats(values)
+            budget = (
+                QUEUE_CPU_BUDGET_MS if policy == "queue"
+                else DURABLE_OBJECT_CPU_BUDGET_MS if policy == "durableObject"
+                else STATELESS_CPU_BUDGET_MS
+            )
+            print(
+                f"CPU_CLASS worker={worker} version={versions.get(worker)} class={policy} "
+                f"budget_ms={budget:g} samples={item_stats['samples']} "
+                f"avg_ms={item_stats['avg_ms']} max_ms={item_stats['max_ms']}"
+            )
+    for worker, item_stats in worker_stats.items():
         print(
-            f"CPU_WORKER worker={worker} version={stats['version']} samples={stats['samples']} "
-            f"avg_ms={stats['avg_ms']} max_ms={stats['max_ms']}"
+            f"CPU_WORKER worker={worker} version={item_stats['version']} samples={item_stats['samples']} "
+            f"avg_ms={item_stats['avg_ms']} max_ms={item_stats['max_ms']}"
         )
     for item in violations[:20]:
         print(
             "::error title=Worker CPU policy violation::"
             f"worker={item['worker']} version={item['version']} cpu_ms={item['cpu_ms']} "
-            f"budget_ms={item['budget_ms']} model={item['model']} source={item['source']} "
-            f"outcome={item['outcome']} event={item['event_type']} url={item['url']}"
+            f"budget_ms={item['budget_ms']} class={item['budget_class']} model={item['model']} "
+            f"source={item['source']} outcome={item['outcome']} event={item['event_type']} url={item['url']}"
         )
     for item in errors[:20]:
         print(
@@ -500,7 +640,8 @@ def main() -> int:
         "## Cloudflare Telemetry audit",
         "",
         f"- Window: `{report['window']['from']}` to `{report['window']['to']}`",
-        f"- Stateless CPU policy: `<= {STATELESS_CPU_BUDGET_MS:g} ms` per invocation",
+        f"- HTTP and Cron CPU policy: `<= {STATELESS_CPU_BUDGET_MS:g} ms` per invocation",
+        f"- Queue consumer CPU policy: `<= {QUEUE_CPU_BUDGET_MS:g} ms` per invocation",
         f"- Durable Object CPU policy: `<= {DURABLE_OBJECT_CPU_BUDGET_MS:g} ms` per invocation",
         f"- Current-version CPU samples: `{sum(len(values) for values in samples.values())}`",
         f"- Live-tail samples received: `{len(live)}`",
@@ -509,14 +650,22 @@ def main() -> int:
         f"- CPU violations: `{len(violations)}`",
         f"- Error invocations: `{len(errors)}`",
         "",
-        "| Worker | Version | Samples | Average ms | Maximum ms |",
-        "|---|---|---:|---:|---:|",
+        "| Worker | Class | Budget ms | Samples | Average ms | Maximum ms |",
+        "|---|---|---:|---:|---:|---:|",
     ]
-    for worker, stats in worker_stats.items():
-        version = (stats["version"] or "-")[:12]
-        summary.append(
-            f"| `{worker}` | `{version}` | {stats['samples']} | {stats['avg_ms']} | {stats['max_ms']} |"
-        )
+    for worker, worker_values in grouped.items():
+        version = (versions.get(worker) or "-")[:12]
+        for policy, values in worker_values.items():
+            item_stats = stats(values)
+            budget = (
+                QUEUE_CPU_BUDGET_MS if policy == "queue"
+                else DURABLE_OBJECT_CPU_BUDGET_MS if policy == "durableObject"
+                else STATELESS_CPU_BUDGET_MS
+            )
+            summary.append(
+                f"| `{worker}` (`{version}`) | `{policy}` | {budget:g} | "
+                f"{item_stats['samples']} | {item_stats['avg_ms']} | {item_stats['max_ms']} |"
+            )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         with open(summary_path, "a", encoding="utf-8") as output:

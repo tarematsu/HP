@@ -7,6 +7,7 @@ import {
   createGitHubRequest,
   overallOutcome,
   publishCommitStatuses,
+  readOptionalJson,
   readOptionalText,
   renderOutcomeRows,
   renderSection,
@@ -24,6 +25,19 @@ const STATUS_CONTEXTS = {
   telemetry: 'observability/telemetry-policy',
 };
 
+function deploymentSummary(activeDeployments) {
+  const entries = Object.entries(activeDeployments || {});
+  const rows = entries.length
+    ? entries.map(([worker, deployment]) => {
+        const versions = Array.isArray(deployment?.version_ids)
+          ? deployment.version_ids.join(', ')
+          : String(deployment?.version_ids || 'unknown');
+        return `| \`${worker}\` | \`${deployment?.status || 'unknown'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
+      }).join('\n')
+    : '| - | not captured | not captured | not captured | not captured |';
+  return `### Active Worker deployments\n\n| Worker | Status | Deployment | Traffic-bearing versions | Deployed at |\n|---|---|---|---|---|\n${rows}`;
+}
+
 export function buildIssueBody({
   generatedAt,
   targetSha,
@@ -32,6 +46,7 @@ export function buildIssueBody({
   lookbackMinutes,
   outcomes,
   summaries = {},
+  activeDeployments = {},
 }) {
   const overall = overallOutcome(outcomes);
   const body = `${STATUS_MARKER}
@@ -42,9 +57,11 @@ This issue is maintained automatically by the HomePanel Cloudflare Observability
 - **Overall:** ${overall}
 - **Generated:** ${generatedAt}
 - **Trigger:** ${trigger}
-- **Commit:** \`${targetSha}\`
+- **Workflow source commit:** \`${targetSha}\`
 - **Workflow run:** ${runUrl}
 - **Telemetry and D1 insights lookback:** ${lookbackMinutes} minutes
+
+${deploymentSummary(activeDeployments)}
 
 | Gate | Outcome |
 |---|---|
@@ -67,11 +84,12 @@ export async function publishFromEnvironment() {
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
   };
-  const [daily, d1Insights, observability, telemetry] = await Promise.all([
+  const [daily, d1Insights, observability, telemetry, activeDeployments] = await Promise.all([
     readOptionalText('daily-usage/summary.md'),
     readOptionalText('d1-insights/summary.md'),
     readOptionalText('observability-summary.md'),
     readOptionalText('telemetry-summary.md'),
+    readOptionalJson('active-worker-deployments.json', {}),
   ]);
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
@@ -81,6 +99,7 @@ export async function publishFromEnvironment() {
     lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
     summaries: { daily, d1Insights, observability, telemetry },
+    activeDeployments,
   });
   await publishCommitStatuses({
     request,
