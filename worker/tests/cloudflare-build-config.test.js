@@ -12,6 +12,7 @@ test('only the runtime compatibility build maps to a static Wrangler config', ()
   });
 
   assert.equal(cloudflareBuildConfig('sh-runtime-orchestrator'), 'wrangler.runtime.jsonc');
+  assert.equal(cloudflareBuildConfig('sh-buddies-recovery'), null);
   assert.equal(cloudflareBuildConfig('sh-buddies-collector'), null);
 
   for (const retired of [
