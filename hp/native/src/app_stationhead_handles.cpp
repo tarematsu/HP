@@ -43,6 +43,9 @@ void StationheadHandleBase::ClearStartupPreviewBounds() {
 
 StationheadStatus StationheadHandleBase::RawStatus() const {
   StationheadStatus status = player_ ? player_->Status() : StationheadStatus{};
+  const bool audioPlaying = player_ && player_->AudioPlaying();
+  status.audioPlaying = audioPlaying;
+  status.playing = audioPlaying;
   status.contentRevision = contentRevision_;
   status.audioMuted = audioMuted_;
   return status;
@@ -73,7 +76,7 @@ int64_t StationheadHandleBase::NextWakeAt() const noexcept {
 
 void StationheadHandleBase::RefreshVisibility() {
   if (!player_) return;
-  const StationheadStatus status = player_->Status();
+  const StationheadStatus status = RawStatus();
   if (SuppressTrackTransitionGap(
           status.audioPlaying, RequiresInteractiveStationhead(status))) {
     if (status.visible) player_->KeepPlaybackBehindDashboard();
@@ -93,6 +96,7 @@ void StationheadHandleBase::Start() {
 
 void StationheadHandleBase::Tick(int64_t nowMs) {
   if (!player_) return;
+  player_->RecoverUnavailableAuthorization();
   // Authorization can begin while the steady-state scheduler still carries a
   // much later background deadline. Wake only that interactive state so the
   // auth-controller watchdog is evaluated near its intended 20-second limit
@@ -134,13 +138,21 @@ void StationheadHandleBase::ShowAfterAudioStop() {
 
 void StationheadHandleBase::ReleaseCompletedAuth() {
   if (!player_) return;
-  player_->ReleaseCompletedAuth();
+  player_->FinalizeCompletedAuth();
   ApplyBounds();
 }
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
   if (!player_) return StationheadChangeNone;
-  const uint32_t flags = player_->ConsumeChangeFlags();
+  uint32_t flags = player_->ConsumeChangeFlags();
+  if ((flags & StationheadChangeReleaseAuth) != 0) {
+    // Complete auth teardown before A/B flags are OR-ed by App. Remove only
+    // this player's auth-related ReturnMain request so a simultaneous audio
+    // ReturnMain from the other player is not suppressed by ReleaseAuth.
+    player_->FinalizeCompletedAuth();
+    ApplyBounds();
+    flags &= ~(StationheadChangeReleaseAuth | StationheadChangeReturnMain);
+  }
   ++contentRevision_;
   return flags;
 }
@@ -221,16 +233,17 @@ void StationheadHandleBase::RaiseActiveHost() const {
 
   bool interactive = false;
   if (!preview) {
-    const StationheadStatus status = player_->Status();
+    const StationheadStatus status = RawStatus();
     interactive = IsInteractive(status);
     if (!interactive && !status.visible) return;
   }
 
-  const RECT activeBounds = preview ? startupPreviewBounds_ : workspaceBounds_;
-  const int width = std::max(1L, activeBounds.right - activeBounds.left);
-  const int height = std::max(1L, activeBounds.bottom - activeBounds.top);
-  SetWindowPos(host, HWND_TOP, activeBounds.left, activeBounds.top, width, height,
-               SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  // StationheadPlayer owns host/controller geometry. The handle only raises
+  // the already-laid-out active host; moving it here would overwrite resolved
+  // single-window/full-client bounds with the caller's stale half bounds.
+  SetWindowPos(host, HWND_TOP, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                   SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   if (!preview && interactive) BringMainWindowToFront(host);
 }
 

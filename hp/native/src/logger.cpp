@@ -3,6 +3,65 @@
 namespace hp {
 namespace {
 constexpr size_t kLogFlushThresholdBytes = 64 * 1024;
+
+size_t FindHttpUrlStartCaseInsensitive(
+    const std::wstring& value, size_t startAt) noexcept {
+  static constexpr wchar_t kHttp[] = L"http://";
+  static constexpr wchar_t kHttps[] = L"https://";
+  for (size_t offset = startAt; offset < value.size(); ++offset) {
+    const size_t remaining = value.size() - offset;
+    if (remaining >= std::size(kHttps) - 1 &&
+        _wcsnicmp(value.c_str() + offset, kHttps, std::size(kHttps) - 1) == 0) {
+      return offset;
+    }
+    if (remaining >= std::size(kHttp) - 1 &&
+        _wcsnicmp(value.c_str() + offset, kHttp, std::size(kHttp) - 1) == 0) {
+      return offset;
+    }
+  }
+  return std::wstring::npos;
+}
+
+std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
+  std::wstring sanitized = message;
+  size_t searchAt = 0;
+  while (searchAt < sanitized.size()) {
+    // Preserve the common lowercase fast path while also accepting mixed-case
+    // schemes from external libraries or WebView diagnostics.
+    const size_t httpAt = sanitized.find(L"http://", searchAt);
+    const size_t httpsAt = sanitized.find(L"https://", searchAt);
+    size_t urlAt = std::wstring::npos;
+    if (httpAt == std::wstring::npos) urlAt = httpsAt;
+    else if (httpsAt == std::wstring::npos) urlAt = httpAt;
+    else urlAt = std::min(httpAt, httpsAt);
+    const size_t caseInsensitiveAt =
+        FindHttpUrlStartCaseInsensitive(sanitized, searchAt);
+    if (urlAt == std::wstring::npos ||
+        (caseInsensitiveAt != std::wstring::npos && caseInsensitiveAt < urlAt)) {
+      urlAt = caseInsensitiveAt;
+    }
+    if (urlAt == std::wstring::npos) break;
+
+    // Keep punctuation inside the redacted range. OAuth state and redirect
+    // values can legally contain commas or bracket-like characters, so treating
+    // them as URL terminators could expose the remainder of a query value.
+    const size_t delimiterAt = sanitized.find_first_of(
+        L" \t\r\n\"'<>", urlAt);
+    const size_t urlEnd = delimiterAt == std::wstring::npos
+        ? sanitized.size()
+        : delimiterAt;
+    const size_t sensitiveAt = sanitized.find_first_of(L"?#", urlAt);
+    if (sensitiveAt == std::wstring::npos || sensitiveAt >= urlEnd) {
+      searchAt = urlEnd;
+      continue;
+    }
+
+    const std::wstring marker = L"?[redacted]";
+    sanitized.replace(sensitiveAt, urlEnd - sensitiveAt, marker);
+    searchAt = sensitiveAt + marker.size();
+  }
+  return sanitized;
+}
 }
 
 Logger::Logger(fs::path path, size_t maxBytes, int rotations)
@@ -84,7 +143,7 @@ void Logger::Write(const wchar_t* level, const std::wstring& message) {
   std::string line = header;
   line += WideToUtf8(level);
   line.push_back(' ');
-  line += WideToUtf8(message);
+  line += WideToUtf8(RedactUrlQueryAndFragment(message));
   line.push_back('\n');
 
   std::lock_guard lock(mutex_);

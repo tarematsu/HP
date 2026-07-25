@@ -53,6 +53,22 @@ describe('video runtime activation', () => {
     await expect(readVideoRuntimeActive({ DB: database })).rejects.toThrow('temporary D1 failure');
   });
 
+  it('treats a missing activation singleton as corruption for scheduled work', async () => {
+    const database = {
+      prepare() {
+        return {
+          async first() {
+            return null;
+          }
+        };
+      }
+    };
+
+    await expect(readVideoRuntimeActive({ DB: database }))
+      .rejects.toThrow('video runtime activation state row unavailable');
+    await expect(videoRuntimeActive({ DB: database }, 1)).resolves.toBe(false);
+  });
+
   it('returns a non-cacheable retry response before migration', async () => {
     const response = inactiveVideoRuntimeResponse();
 

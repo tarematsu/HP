@@ -12,6 +12,15 @@ const DEATH_UPPER_KEY_SQL = `(SELECT COALESCE(MAX(canonical_key), '')
   FROM video_death_list)`;
 
 export const LIVENESS_BATCH_SIZE = 5;
+export const BASE_LIVENESS_SELECT_SQL = `SELECT video.id, video.media_url AS mediaUrl,
+       video.canonical_key AS canonicalKey,
+       video.last_http_status AS lastHttpStatus,
+       video.fail_count AS failCount
+  FROM videos AS video INDEXED BY idx_videos_status_id
+ WHERE video.id > ? AND video.id <= ?
+   AND video.status = 'active'
+ ORDER BY video.id
+ LIMIT ?`;
 
 function number(value) {
   const parsed = Number(value);
@@ -159,17 +168,8 @@ async function transitionPhase(db, state) {
 
 async function selectRows(db, state, limit) {
   if (state.phase === BASE_PHASE) {
-    const result = await db.prepare(
-      `SELECT video.id, video.media_url AS mediaUrl,
-              video.canonical_key AS canonicalKey,
-              video.last_http_status AS lastHttpStatus,
-              video.fail_count AS failCount
-         FROM videos AS video
-        WHERE video.id > ? AND video.id <= ?
-          AND video.status = 'active'
-        ORDER BY video.id
-        LIMIT ?`
-    ).bind(state.baseCursorId, state.baseUpperId, limit).all();
+    const result = await db.prepare(BASE_LIVENESS_SELECT_SQL)
+      .bind(state.baseCursorId, state.baseUpperId, limit).all();
     return result.results || [];
   }
 

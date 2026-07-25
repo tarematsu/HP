@@ -9,7 +9,13 @@ void App::EnrichRenderStationheadState(
   state.fallbackUrl = config.fallbackUrl;
   if (secondaryStatus) {
     state.secondaryContentRevision = secondaryStatus->contentRevision;
+    // The dashboard exposes one combined Stationhead health line. Preserve the
+    // primary playback fields, but surface interactive/error states from either
+    // window so a failed or authorizing B window is not hidden by a healthy A.
     state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
+    state.spotifyAuthorization =
+        state.spotifyAuthorization || secondaryStatus->spotifyAuthorization;
+    state.processFailed = state.processFailed || secondaryStatus->processFailed;
     state.secondaryAudioMuted = secondaryStatus->audioMuted;
     state.secondaryPlaying = secondaryStatus->playing;
     state.secondaryUrl = std::move(secondaryStatus->url);

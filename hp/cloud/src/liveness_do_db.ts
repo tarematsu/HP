@@ -2,6 +2,7 @@ import type { Env } from "./sources";
 
 const RUNTIME_KEY = "video-liveness-runtime-v1";
 const D1_CHECKPOINT_MS = 24 * 60 * 60_000;
+const STATE_ROW_UNAVAILABLE = "video liveness state row unavailable";
 
 interface LivenessRuntimeRow {
   phase: "base" | "death";
@@ -64,9 +65,15 @@ async function bootstrapRuntime(
   const stored = await storage.get<LivenessRuntimeRow>(RUNTIME_KEY);
   if (stored) return normalizeRow(stored);
   const row = await db.prepare(selectSql).first<Record<string, unknown>>();
+  if (!row) {
+    // Migrations create the singleton row. Synthesizing a zero cursor here would
+    // hide schema/data loss and let the DO continue without a recoverable D1
+    // checkpoint, so surface the corruption to the scheduler instead.
+    throw new Error(STATE_ROW_UNAVAILABLE);
+  }
   const runtime = normalizeRow({
-    ...(row ?? {}),
-    lastD1CheckpointAt: row?.lastRunAt ? Date.parse(String(row.lastRunAt)) : 0,
+    ...row,
+    lastD1CheckpointAt: row.lastRunAt ? Date.parse(String(row.lastRunAt)) : 0,
   });
   await storage.put(RUNTIME_KEY, runtime);
   return runtime;
@@ -94,10 +101,52 @@ function fakeSelectStatement(
   return statement as unknown as D1PreparedStatement;
 }
 
+async function checkpointRuntime(env: Env, runtime: LivenessRuntimeRow): Promise<void> {
+  const result = await env.DB.prepare(
+    `UPDATE video_liveness_state
+        SET phase = ?1,
+            base_cursor_id = ?2,
+            base_upper_id = ?3,
+            death_cursor_key = ?4,
+            death_upper_key = ?5,
+            cycle = ?6,
+            checked_total = ?7,
+            dead_total = ?8,
+            revived_total = ?9,
+            last_run_at = ?10,
+            last_checked_count = ?11,
+            last_dead_count = ?12,
+            last_revived_count = ?13,
+            last_unknown_count = ?14,
+            last_error = ?15,
+            lock_token = NULL,
+            lock_until = NULL
+      WHERE id = 1`,
+  ).bind(
+    runtime.phase,
+    runtime.baseCursorId,
+    runtime.baseUpperId,
+    runtime.deathCursorKey,
+    runtime.deathUpperKey,
+    runtime.cycle,
+    runtime.checkedTotal,
+    runtime.deadTotal,
+    runtime.revivedTotal,
+    runtime.lastRunAt,
+    runtime.lastCheckedCount,
+    runtime.lastDeadCount,
+    runtime.lastRevivedCount,
+    runtime.lastUnknownCount,
+    runtime.lastError,
+  ).run();
+  if (number(result.meta?.changes) <= 0) {
+    throw new Error(STATE_ROW_UNAVAILABLE);
+  }
+}
+
 function fakeUpdateStatement(
   env: Env,
   storage: DurableObjectStorage,
-  sql: string,
 ): D1PreparedStatement {
   let values: unknown[] = [];
   const statement = {
@@ -137,11 +186,20 @@ function fakeUpdateStatement(
         || completedMs - current.lastD1CheckpointAt >= D1_CHECKPOINT_MS;
       if (checkpoint) {
         try {
-          await env.DB.prepare(sql).bind(...values).run();
+          // D1 is a recoverable checkpoint for the DO-owned runtime. Persist the
+          // cumulative values, not only this run's deltas, otherwise every
+          // non-checkpointed run disappears from checked_total after eviction.
+          await checkpointRuntime(env, next);
           next.lastD1CheckpointAt = completedMs;
           await storage.put(RUNTIME_KEY, next);
         } catch (error) {
           console.error("video-liveness-d1-checkpoint-failed", error instanceof Error ? error.message : String(error));
+          // Transient D1 failures retain the old checkpoint time and retry on the
+          // next run. A missing singleton row is permanent corruption, so do not
+          // report a successful scheduler execution while recovery is impossible.
+          if (error instanceof Error && error.message === STATE_ROW_UNAVAILABLE) {
+            throw error;
+          }
         }
       }
       return d1Result([], 1);
@@ -173,7 +231,7 @@ export function livenessDoDatabase(
             return fakeSelectStatement(real, storage, sql);
           }
           if (normalized.startsWith("update video_liveness_state set phase = coalesce")) {
-            return fakeUpdateStatement(env, storage, sql);
+            return fakeUpdateStatement(env, storage);
           }
           return real.prepare(sql);
         };

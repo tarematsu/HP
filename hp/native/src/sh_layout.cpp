@@ -4,7 +4,7 @@ namespace hp {
 namespace {
 
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
-                                 const RECT& bounds) {
+                                  const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW registered{};
@@ -22,15 +22,15 @@ HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wch
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   return CreateWindowExW(0, className, title, WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-                         bounds.left, bounds.top, width, height, parent, nullptr,
-                         instance, nullptr);
+                          bounds.left, bounds.top, width, height, parent, nullptr,
+                          instance, nullptr);
 }
 
 bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
   RECT client{};
   return window && GetClientRect(window, &client) &&
-         client.right - client.left == width &&
-         client.bottom - client.top == height;
+          client.right - client.left == width &&
+          client.bottom - client.top == height;
 }
 
 bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placement) noexcept {
@@ -49,17 +49,38 @@ bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placeme
 }
 
 bool ControllerBoundsMatch(ICoreWebView2Controller* controller,
-                           const RECT& expected) noexcept {
+                            const RECT& expected) noexcept {
   RECT current{};
   return controller && SUCCEEDED(controller->get_Bounds(&current)) &&
-         EqualRect(&current, &expected);
+          EqualRect(&current, &expected);
 }
 
 bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
-                                 BOOL expected) noexcept {
+                                  BOOL expected) noexcept {
   BOOL current = FALSE;
   return controller && SUCCEEDED(controller->get_IsVisible(&current)) &&
-         current == expected;
+          current == expected;
+}
+
+bool ConfiguresSecondaryStationheadWindow(const StationheadConfig& config) noexcept {
+  return config.secondaryEnabled && !config.secondaryUrl.empty();
+}
+
+RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
+                                       const StationheadConfig& config,
+                                       HWND parent,
+                                       const RECT& requested) noexcept {
+  if (role == StationheadRole::Secondary ||
+      ConfiguresSecondaryStationheadWindow(config) ||
+      !parent || !IsWindow(parent)) {
+    return requested;
+  }
+  RECT client{};
+  if (!GetClientRect(parent, &client) ||
+      client.right <= client.left || client.bottom <= client.top) {
+    return requested;
+  }
+  return client;
 }
 
 struct StationheadSurfacePolicy {
@@ -89,13 +110,13 @@ static_assert(ResolveStationheadSurfacePolicy(
                   false, StationheadTabKind::Auth, true).showAuth);
 
 void ApplyStationheadChildLayout(HWND hostWindow,
-                                 HWND authHostWindow,
-                                 ICoreWebView2Controller* controller,
-                                 ICoreWebView2Controller* authController,
-                                 const RECT& bounds,
-                                 bool contentVisible,
-                                 bool showAuth,
-                                 bool previewVisible) {
+                                  HWND authHostWindow,
+                                  ICoreWebView2Controller* controller,
+                                  ICoreWebView2Controller* authController,
+                                  const RECT& bounds,
+                                  bool contentVisible,
+                                  bool showAuth,
+                                  bool previewVisible) {
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
   const bool fullContent = previewVisible || contentVisible;
@@ -110,6 +131,17 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
   const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
   const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
+
+  if (hostValid) {
+    if (showAuth) {
+      if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
+    } else if (!hostWasVisible ||
+               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
+      SetWindowPos(hostWindow, hostPlacement,
+                   bounds.left, bounds.top, hostWidth, hostHeight,
+                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+    }
+  }
 
   if (controller) {
     if (showAuth) {
@@ -127,14 +159,15 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     }
   }
 
-  if (hostValid) {
+  if (authHostValid) {
     if (showAuth) {
-      if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else if (!hostWasVisible ||
-               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
-      SetWindowPos(hostWindow, hostPlacement,
-                   bounds.left, bounds.top, hostWidth, hostHeight,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+      if (!authWasVisible ||
+          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
+        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
+                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+      }
+    } else if (authWasVisible) {
+      ShowWindow(authHostWindow, SW_HIDE);
     }
   }
 
@@ -149,18 +182,6 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       }
     } else if (!ControllerVisibilityMatches(authController, FALSE)) {
       authController->put_IsVisible(FALSE);
-    }
-  }
-
-  if (authHostValid) {
-    if (showAuth) {
-      if (!authWasVisible ||
-          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
-        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-      }
-    } else if (authWasVisible) {
-      ShowWindow(authHostWindow, SW_HIDE);
     }
   }
 }
@@ -206,10 +227,6 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     selectedTab_ = StationheadTabKind::None;
     LayoutControllers();
     return;
-  }
-  if (!viewVisible_ && selectedTab_ == StationheadTabKind::None) {
-    std::lock_guard lock(mutex_);
-    if (!status_.visible) return;
   }
   if (!EnsureHostWindow()) {
     viewVisible_ = false;
@@ -283,7 +300,11 @@ void StationheadPlayer::SetVisible(bool visible) {
 }
 
 void StationheadPlayer::LayoutControllers() {
-  if (!EnsureHostWindow()) return;
+  if (!EnsureHostWindow()) {
+    std::lock_guard lock(mutex_);
+    status_.visible = false;
+    return;
+  }
   const bool authSurfaceReady = authController_ && authWebview_;
   const StationheadSurfacePolicy policy = ResolveStationheadSurfacePolicy(
       startupPreviewActive_, selectedTab_, authSurfaceReady);
@@ -295,8 +316,9 @@ void StationheadPlayer::LayoutControllers() {
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
-  if (EqualRect(&bounds_, &bounds)) return;
-  bounds_ = bounds;
+  const RECT resolved = ResolveStationheadWorkspaceBounds(role_, config_, window_, bounds);
+  if (EqualRect(&bounds_, &resolved)) return;
+  bounds_ = resolved;
   if (startupPreviewActive_ || viewVisible_ || NeedsInteractiveWindow()) LayoutControllers();
   else KeepPlaybackBehindDashboard();
 }
@@ -330,7 +352,7 @@ bool StationheadPlayer::NeedsInteractiveWindow() const {
   return selectedTab_ == StationheadTabKind::Auth ||
          spotifyAuthorization_ ||
          loginRequired_ ||
-         (controller_ && !audioPlaying_.load(std::memory_order_relaxed));
+         (controller_ && !AudioPlaying());
 }
 
 }  // namespace hp
