@@ -78,7 +78,7 @@ test('duplicate Video CPU reporting stays retired in favor of unified observabil
   expectAll(observability, [
     'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
     'query-cloudflare-observability.py',
-    'audit-cloudflare-telemetry.py',
+    'audit-deployed-cloudflare-telemetry.py',
     'workflow_dispatch:',
     'lookback_minutes:',
   ]);
