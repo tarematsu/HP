@@ -24,7 +24,7 @@ export function minuteFactOutboxRetryDelayMs(attempts) {
 }
 
 async function oldestPendingRow(env) {
-  return env.DB.prepare(`SELECT job_id,attempts,created_at,last_attempt_at,last_error
+  return env.DB.prepare(`SELECT job_id,payload_json,attempts,created_at,last_attempt_at,last_error
     FROM sh_minute_fact_outbox
     WHERE status='pending'
     ORDER BY created_at ASC LIMIT 1`).first();
@@ -46,11 +46,24 @@ async function currentDeliveryState(env, jobId) {
 
 async function quarantineRow(env, row, now) {
   const error = sanitizeFailureDetail(row?.last_error || 'retry limit exceeded').slice(0, 500);
+  let pointer = null;
+  try {
+    const payload = JSON.parse(String(row?.payload_json || ''));
+    if (payload?.message_type === 'minute-fact-pointer') {
+      pointer = {
+        storage_key: String(payload.storage_key || ''),
+        payload_bytes: integer(payload.payload_bytes),
+      };
+    }
+  } catch {
+    // Preserve the failure detail even when the payload itself is malformed.
+  }
   const marker = JSON.stringify({
     quarantined: true,
     quarantined_at: now,
     attempts: integer(row?.attempts),
     last_error: error,
+    ...(pointer ? { pointer } : {}),
   });
   const result = await env.DB.prepare(`UPDATE sh_minute_fact_outbox SET
       status='sent',payload_json=?,sent_at=?,last_attempt_at=?,last_error=?
