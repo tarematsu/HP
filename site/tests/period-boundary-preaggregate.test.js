@@ -81,5 +81,6 @@ test('migration and metadata ingest enforce compact change-only writes', () => {
   assert.match(ingest, /savePeriodBoundaryEvidence/);
   assert.match(ingest, /ON CONFLICT\(spotify_id\) DO UPDATE SET/);
   assert.match(ingest, /excluded\.source IS NOT sh_track_metadata\.source/);
-  assert.match(ingest, /tracks_inspected/);
+  assert.match(ingest, /Array\.isArray\(batchResult\)/);
+  assert.match(ingest, /: statements\.length/);
 });
