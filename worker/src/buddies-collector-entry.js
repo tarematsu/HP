@@ -1,7 +1,5 @@
 export {
   BUDDIES_COLLECTOR_CRON,
-  BUDDIES_COLLECTOR_QUEUE_NAMES,
-  runBuddiesCollectorQueue,
   runBuddiesCollectorScheduled,
 } from './buddies-collector-core.js';
 export {
