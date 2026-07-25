@@ -164,6 +164,10 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key,
     if (iterator == entries_.end()) return;
     Entry& entry = iterator->second;
     if (entry.generation != generation) return;
+    // Close this generation before invoking consumers. A duplicate or delayed
+    // COM completion for the same creation cannot overwrite the accepted
+    // environment or deliver the pending callbacks twice.
+    ++entry.generation;
     entry.creating = false;
     if (SUCCEEDED(result) && environment) {
       entry.environment = environment;
