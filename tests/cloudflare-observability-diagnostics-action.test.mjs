@@ -6,10 +6,7 @@ import test from 'node:test';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const action = read('.github/actions/cloudflare-observability-diagnostics/action.yml');
-const workflows = {
-  sh: read('.github/workflows/sh-observability.yml'),
-  hp: read('.github/workflows/hp-observability.yml'),
-};
+const workflow = read('.github/workflows/sh-observability.yml');
 
 test('shared diagnostics action owns persisted-query and live-tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
@@ -19,23 +16,22 @@ test('shared diagnostics action owns persisted-query and live-tail orchestration
   assert.match(action, /exit "\$query_status"/);
 });
 
-test('SH and HomePanel workflows use and retrigger the diagnostics action', () => {
-  for (const [name, workflow] of Object.entries(workflows)) {
-    assert.match(
-      workflow,
-      /^\s{6}- '\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml'$/m,
-      `${name} trigger path`,
-    );
-    assert.match(
-      workflow,
-      /^\s{8}uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics$/m,
-      `${name} shared action`,
-    );
-    assert.doesNotMatch(workflow, /query_pid=\$!/, `${name} inline orchestration`);
-  }
-  assert.match(workflows.sh, /^\s{10}live-tail-worker: sh-runtime-orchestrator$/m);
-  assert.match(workflows.hp, /^\s{10}live-tail-worker: homepanel-cloud$/m);
-  assert.match(workflows.hp, /^\s{10}live-tail-probes: \/v1\/health,\/$/m);
+test('the unified workflow uses and retriggers the diagnostics action for HP and Stationhead', () => {
+  assert.match(
+    workflow,
+    /^\s{6}- '\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml'$/m,
+  );
+  assert.match(
+    workflow,
+    /^\s{8}uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics$/m,
+  );
+  assert.doesNotMatch(workflow, /query_pid=\$!/);
+  assert.match(workflow, /^\s{10}live-tail-worker: sh-runtime-orchestrator$/m);
+  assert.match(
+    workflow,
+    /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/,
+  );
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
 });
 
 test('ambiguous and superseded observability implementations stay removed', async () => {
@@ -43,6 +39,7 @@ test('ambiguous and superseded observability implementations stay removed', asyn
     '../.github/actions/cloudflare-observability-query/action.yml',
     '../.github/scripts/audit-cloudflare-telemetry-core.py',
     '../.github/scripts/enforce-worker-cpu-budget.py',
+    '../.github/workflows/hp-observability.yml',
   ]) {
     await assert.rejects(access(new URL(path, import.meta.url)), path);
   }
