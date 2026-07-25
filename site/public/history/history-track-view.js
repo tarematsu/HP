@@ -4,36 +4,62 @@ function finite(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function usableText(value) {
+  const text = String(value ?? '').trim();
+  return text || '';
+}
+
 function normalizedText(value) {
-  return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+  return usableText(value).normalize('NFKC').toLowerCase().replace(/\s+/g, ' ');
 }
 
 export function displayTrackTitle(row) {
-  return String(
-    row?.title || row?.display_title || row?.raw_title || row?.isrc || row?.spotify_id || '曲名不明',
-  ).trim() || '曲名不明';
+  for (const candidate of [row?.title, row?.display_title, row?.raw_title, row?.isrc, row?.spotify_id]) {
+    const text = usableText(candidate);
+    if (text) return text;
+  }
+  return '曲名不明';
 }
 
 export function displayTrackArtist(row) {
-  return String(row?.artist || row?.raw_artist || '').trim() || '—';
+  for (const candidate of [row?.artist, row?.raw_artist]) {
+    const text = usableText(candidate);
+    if (text) return text;
+  }
+  return '—';
+}
+
+function trackIdentityKeys(row) {
+  const keys = [];
+  const add = (value) => {
+    const key = usableText(value);
+    if (key && !keys.includes(key)) keys.push(key);
+  };
+  add(row?.track_key);
+  if (usableText(row?.isrc)) add(`isrc:${usableText(row.isrc).toUpperCase()}`);
+  if (usableText(row?.spotify_id)) add(`spotify:${usableText(row.spotify_id)}`);
+  if (usableText(row?.stationhead_track_id)) add(`stationhead:${usableText(row.stationhead_track_id)}`);
+  if (usableText(row?.queue_track_id)) add(`queue:${usableText(row.queue_track_id)}`);
+  add(`name:${normalizedText(displayTrackTitle(row))}|artist:${normalizedText(displayTrackArtist(row))}`);
+  return keys;
 }
 
 export function trackIdentity(row) {
-  const direct = [
-    row?.track_key,
-    row?.isrc && `isrc:${String(row.isrc).toUpperCase()}`,
-    row?.spotify_id && `spotify:${row.spotify_id}`,
-    row?.stationhead_track_id && `stationhead:${row.stationhead_track_id}`,
-    row?.queue_track_id && `queue:${row.queue_track_id}`,
-  ].find(Boolean);
-  if (direct) return String(direct);
-  return `name:${normalizedText(displayTrackTitle(row))}|artist:${normalizedText(displayTrackArtist(row))}`;
+  return trackIdentityKeys(row)[0];
 }
 
 export function normalizeTrackRows(rows) {
   return (Array.isArray(rows) ? rows : []).map((row) => {
-    if (row?.title) return row;
-    return { ...row, title: displayTrackTitle(row) };
+    const title = displayTrackTitle(row);
+    const artist = displayTrackArtist(row);
+    const titleChanged = usableText(row?.title) !== title;
+    const artistChanged = artist !== '—' && usableText(row?.artist) !== artist;
+    if (!titleChanged && !artistChanged) return row;
+    return {
+      ...row,
+      ...(titleChanged ? { title } : {}),
+      ...(artistChanged ? { artist } : {}),
+    };
   });
 }
 
@@ -44,17 +70,47 @@ export function completeTrackRows(rows) {
 }
 
 export function aggregateCompleteTrackRows(rows) {
+  const validRows = completeTrackRows(rows);
+  const parent = new Map();
+  const ensure = (key) => { if (!parent.has(key)) parent.set(key, key); };
+  const find = (key) => {
+    ensure(key);
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root);
+    let current = key;
+    while (parent.get(current) !== current) {
+      const next = parent.get(current);
+      parent.set(current, root);
+      current = next;
+    }
+    return root;
+  };
+  const union = (left, right) => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
+  };
+
+  for (const row of validRows) {
+    const keys = trackIdentityKeys(row);
+    keys.forEach(ensure);
+    for (let index = 1; index < keys.length; index += 1) union(keys[0], keys[index]);
+  }
+
   const aggregate = new Map();
-  for (const row of completeTrackRows(rows)) {
-    const identity = trackIdentity(row);
+  for (const row of validRows) {
+    const keys = trackIdentityKeys(row);
+    const identity = find(keys[0]);
     const count = Math.max(0, finite(row?.play_count) || 0);
     const likes = Math.max(0, finite(row?.like_count) || 0);
     const firstPlayedAt = finite(row?.first_played_at);
     const lastPlayedAt = finite(row?.last_played_at);
+    const rowTitle = displayTrackTitle(row);
+    const rowArtist = displayTrackArtist(row);
     const current = aggregate.get(identity) || {
       identity,
-      title: displayTrackTitle(row),
-      artist: displayTrackArtist(row),
+      title: rowTitle,
+      artist: rowArtist,
       play_count: 0,
       like_count: 0,
       first_played_at: null,
@@ -63,6 +119,8 @@ export function aggregateCompleteTrackRows(rows) {
     };
     current.play_count += count;
     current.like_count = Math.max(current.like_count, likes);
+    if (current.title === '曲名不明' && rowTitle !== '曲名不明') current.title = rowTitle;
+    if (current.artist === '—' && rowArtist !== '—') current.artist = rowArtist;
     if (row?.play_date) current.play_dates.add(String(row.play_date));
     if (firstPlayedAt != null) {
       current.first_played_at = current.first_played_at == null
