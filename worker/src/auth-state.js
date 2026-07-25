@@ -62,6 +62,7 @@ export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
   const fallback = fallbackCredentials(env);
   const authToken = normalizeBearer(row?.auth_token || fallback.authToken);
   const deviceUid = String(row?.device_uid || fallback.deviceUid || '').trim();
+  const collectorLastRunAt = Number(row?.collector_last_run_at || 0);
   return {
     id: normalizedStateId(stateId),
     authToken,
@@ -72,12 +73,13 @@ export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
     lastError: row?.last_error || null,
     lockUntil: Number(row?.lock_until || 0),
     controlExists: Boolean(row?.control_id),
-    collectorLastRunAt: Number(row?.collector_last_run_at || 0),
+    collectorLastRunAt,
     collectorLastSuccessAt: Number(row?.collector_last_success_at || 0),
     collectorLastError: row?.collector_last_error || null,
     collectorChannelId: Number(row?.collector_channel_id || 0) || null,
     collectorStationId: Number(row?.collector_station_id || 0) || null,
     collectorUpdatedAt: Number(row?.collector_updated_at || 0),
+    collectorCheckpointAt: collectorLastRunAt,
   };
 }
 
@@ -90,6 +92,7 @@ function validHotAuthState(value, env, stateId) {
   if (!authToken || !deviceUid) return null;
   const tokenExpiresAt = Number(value.tokenExpiresAt || 0) || jwtExpiryMs(authToken);
   if (tokenExpiresAt && tokenExpiresAt - Date.now() <= refreshBeforeMs(env)) return null;
+  const collectorLastRunAt = Number(value.collectorLastRunAt || 0);
   return {
     ...value,
     id,
@@ -100,11 +103,12 @@ function validHotAuthState(value, env, stateId) {
     lastSuccessAt: Number(value.lastSuccessAt || 0),
     lockUntil: Number(value.lockUntil || 0),
     controlExists: value.controlExists !== false,
-    collectorLastRunAt: Number(value.collectorLastRunAt || 0),
+    collectorLastRunAt,
     collectorLastSuccessAt: Number(value.collectorLastSuccessAt || 0),
     collectorChannelId: Number(value.collectorChannelId || 0) || null,
     collectorStationId: Number(value.collectorStationId || 0) || null,
     collectorUpdatedAt: Number(value.collectorUpdatedAt || 0),
+    collectorCheckpointAt: Number(value.collectorCheckpointAt || collectorLastRunAt || 0),
   };
 }
 
