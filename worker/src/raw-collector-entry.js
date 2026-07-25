@@ -5,7 +5,9 @@ import { jwtExpiryMs, normalizeBearer } from './shared.js';
 const STATE_ID = 'stationhead';
 const RAW_COLLECTION_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
 const SESSION_CACHE_TTL_MS = 5 * 60_000;
+const MINUTE_MS = 60_000;
 const sessionCache = new WeakMap();
+const messageEncoder = new TextEncoder();
 
 function positive(value, fallback) {
   const parsed = Number(value);
@@ -31,6 +33,17 @@ function collectorRequestConfig(env) {
     appVersion: env.STATIONHEAD_APP_VERSION || env.SH_APP_VERSION || '1.0.0',
     requestTimeoutMs: Math.min(positive(env.REQUEST_TIMEOUT_MS, 15_000), 30_000),
   };
+}
+
+function snapshotAnalysisDue(env, observedAt) {
+  const parsed = Number(env?.SNAPSHOT_PERSIST_INTERVAL_MS);
+  const interval = !Number.isFinite(parsed) || parsed < MINUTE_MS
+    ? MINUTE_MS
+    : Math.min(Math.trunc(parsed), 60 * MINUTE_MS);
+  if (interval <= MINUTE_MS) return true;
+  const timestamp = Number(observedAt);
+  if (!Number.isFinite(timestamp) || timestamp < 0) return true;
+  return Math.floor(timestamp / interval) !== Math.floor((timestamp - MINUTE_MS) / interval);
 }
 
 function sessionCacheKey(env) {
@@ -188,7 +201,9 @@ async function directPreparedMessage(base, body, config, env) {
     const snapshot = payload.normalizeSnapshot(channel, state, config);
     const fullQueue = payload.extractQueue(channel, state.stationId);
     const [preparedSnapshot, preparedQueue] = await Promise.all([
-      snapshotAnalysis.prepareSnapshotAnalysis(snapshot),
+      snapshotAnalysisDue(env, base.observed_at)
+        ? snapshotAnalysis.prepareSnapshotAnalysis(snapshot)
+        : null,
       queueAnalysis.prepareQueueAnalysis(fullQueue),
     ]);
     const materialized = await materialization.prepareMaterializedQueue(
@@ -208,6 +223,23 @@ async function directPreparedMessage(base, body, config, env) {
     base.channel = channel;
     return base;
   }
+}
+
+function ingestMetrics(result) {
+  if (!result || typeof result !== 'object') return {};
+  return {
+    snapshot_inserted: result.snapshot_inserted === true,
+    snapshot_skipped: result.snapshot_skipped === true,
+    queue_items_written: Number(result.queue_items_written || 0),
+    like_observations_written: Number(result.like_observations_written || 0),
+    materialization_state_written: result.materialization_state_written === true,
+    d1_rows_written_estimate: Number(result.d1_rows_written_estimate || 0),
+    queue_send_attempts: Number(result.queue_send_attempts || 0),
+    queue_send_ms: Number(result.queue_send_ms || 0),
+    outbox_rows_written: Number(result.outbox_rows_written || 0),
+    outbox_rows_deleted: Number(result.outbox_rows_deleted || 0),
+    pending_flushed: Number(result.pending_flushed || 0),
+  };
 }
 
 export async function collectRawChannel(env, dependencies = {}) {
@@ -238,6 +270,7 @@ export async function collectRawChannel(env, dependencies = {}) {
   }
 
   const body = await response.text();
+  const payloadBytes = messageEncoder.encode(body).byteLength;
   const refreshed = normalizeBearer(response.headers.get('authorization'));
   const persistCredentials = !state.collectorUpdatedAt
     || Boolean(refreshed && refreshed !== state.authToken);
@@ -262,8 +295,9 @@ export async function collectRawChannel(env, dependencies = {}) {
   const message = inlinePreparation
     ? await directPreparedMessage(base, body, config, env)
     : rawMessage(base, body);
-  if (inlinePipeline) await ingestInline(env, message, { inline: true });
-  else await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
+  const ingestResult = inlinePipeline
+    ? await ingestInline(env, message, { inline: true })
+    : await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
   rememberSession(env, {
     ...state,
     authToken: activeToken,
@@ -282,18 +316,25 @@ export async function collectRawChannel(env, dependencies = {}) {
     queueTotalTracks = Number(queue?.total_track_count || trackCount);
     queueMaterializedTracks = Number(queue?.materialized_track_count || trackCount);
   }
+  const metrics = ingestMetrics(ingestResult);
   const event = inlinePipeline ? 'raw_collection_completed_inline' : 'raw_collection_enqueued';
   console.log(JSON.stringify({
     event,
     observed_at: observedAt,
     payload_chars: body.length,
+    payload_bytes: payloadBytes,
     queue_total_tracks: queueTotalTracks,
     queue_materialized_tracks: queueMaterializedTracks,
+    ...metrics,
   }));
   return {
     inline: inlinePipeline,
     message_version: Number(message.message_version || 0),
     observed_at: observedAt,
+    payload_bytes: payloadBytes,
+    queue_total_tracks: queueTotalTracks,
+    queue_materialized_tracks: queueMaterializedTracks,
+    ...metrics,
   };
 }
 
