@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel R2 cleanup preserves arbitrary object keys', () => {
+test('HomePanel R2 cleanup preserves arbitrary object keys and paginates', () => {
   const workflow = readSource('.github/workflows/prune-homepanel-updates.yml');
 
   expectAll(workflow, [
@@ -13,11 +13,15 @@ test('HomePanel R2 cleanup preserves arbitrary object keys', () => {
     'fromjson | select(startswith($prefix) | not)',
     'key="$(jq -r \'.\' <<< "$encoded_key")"',
     'all(.result[]?; .key | type == "string")',
+    "next_cursor=\"$(jq -r '.result_info.cursor // empty' <<< \"$response\")\"",
+    '[[ "$next_cursor" != "$cursor" ]]',
+    'cursor="$next_cursor"',
   ]);
   expectNone(workflow, [
     "jq -r '.result[]?.key'",
     'objects-before.txt',
     'obsolete-keys.txt',
+    '.result_info.is_truncated',
   ]);
   assert.match(workflow, /while IFS= read -r encoded_key/);
 });
