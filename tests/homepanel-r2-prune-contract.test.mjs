@@ -13,7 +13,9 @@ test('HomePanel R2 cleanup preserves arbitrary object keys and paginates', () =>
     'fromjson | select(startswith($prefix) | not)',
     'key="$(jq -r \'.\' <<< "$encoded_key")"',
     'all(.result[]?; .key | type == "string")',
+    'split("/") | map(@uri) | join("/")',
     "next_cursor=\"$(jq -r '.result_info.cursor // empty' <<< \"$response\")\"",
+    '[[ -n "$next_cursor" ]] || break',
     '[[ "$next_cursor" != "$cursor" ]]',
     'cursor="$next_cursor"',
   ]);
@@ -22,6 +24,7 @@ test('HomePanel R2 cleanup preserves arbitrary object keys and paginates', () =>
     'objects-before.txt',
     'obsolete-keys.txt',
     '.result_info.is_truncated',
+    "IFS='/' read -r -a segments",
   ]);
   assert.match(workflow, /while IFS= read -r encoded_key/);
 });
