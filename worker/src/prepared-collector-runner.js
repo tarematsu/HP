@@ -1,6 +1,7 @@
 import { asCollectorFailure } from './collector-failure.js';
 import { configFromEnv } from './collector-config.js';
 import { ingest } from './collector-ingest.js';
+import { handoffMinuteFactJob } from './collector-minute-fact-handoff.js';
 import { buildCollectionPlan } from './collector-plan.js';
 import {
   minuteFactQueue,
@@ -12,7 +13,7 @@ import {
   saveCollectorState,
   saveCollectorStateAndClearFailure,
 } from './collector-state.js';
-import { handoffMinuteFactJob } from './minute-facts-queue.js';
+import { recordQueueMaterialization } from './queue-materialization.js';
 import { jwtExpiryMs } from './shared.js';
 
 const RAW_D1_STATEMENT = Symbol('prepared-collector-raw-d1-statement');
@@ -176,6 +177,24 @@ function minuteAt(observedAt) {
   return Math.floor(Number(observedAt) / 60_000) * 60_000;
 }
 
+function estimateD1RowsWritten({
+  snapshotResult,
+  queueResult,
+  materializationStateWritten,
+  minuteFactJob,
+  checkpointDue,
+}) {
+  return (snapshotResult?.inserted === true ? 2 : 0)
+    + Number(queueResult?.queue_items_written || 0)
+    + Number(queueResult?.like_observations_written || 0) * 2
+    + Number(queueResult?.reachability_checkpoint_written === true)
+    + Number(queueResult?.structure_changed === true || queueResult?.likes_changed === true)
+    + Number(materializationStateWritten === true)
+    + Number(minuteFactJob?.outbox_rows_written || 0)
+    + Number(minuteFactJob?.outbox_rows_deleted || 0)
+    + Number(checkpointDue === true);
+}
+
 export async function collectPreparedOnce(env, source = 'raw-collection-queue') {
   const observedAt = Date.now();
   let stage = 'collector_start';
@@ -209,13 +228,15 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       metadataRetry,
     );
 
+    let snapshotResult = null;
     if (plan.snapshot) {
       stage = 'd1_write_snapshot';
-      await ingest(activeEnv, 'snapshot', snapshot, observedAt, { returnDetails: true });
+      snapshotResult = await ingest(activeEnv, 'snapshot', snapshot, observedAt, { returnDetails: true });
     }
 
     let queueResult = null;
     let metadataPlanned = false;
+    let materializationStateWritten = false;
     if (plan.queue) {
       stage = 'd1_write_queue';
       queueResult = await ingest(activeEnv, 'queue', queue, observedAt, {
@@ -223,6 +244,15 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       });
       metadataPlanned = !activeEnv?.PERSIST_QUEUE?.send
         && (plan.metadataDue || queueResult?.structure_changed === true);
+      if (!activeEnv?.PERSIST_QUEUE?.send && queueResult?.structure_changed === true) {
+        stage = 'd1_write_queue_materialization';
+        materializationStateWritten = await recordQueueMaterialization(
+          activeEnv.DB,
+          queue,
+          null,
+          observedAt,
+        );
+      }
     }
 
     const commentResult = plan.comments
@@ -283,7 +313,7 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
         minute_at: minuteAt(observedAt),
       };
     } else {
-      stage = 'd1_outbox_minute_fact';
+      stage = 'minute_fact_handoff';
       minuteFactJob = await handoffMinuteFactJob(activeEnv, {
         observedAt,
         snapshot: factSnapshot,
@@ -301,6 +331,13 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       });
     }
 
+    const d1RowsWrittenEstimate = estimateD1RowsWritten({
+      snapshotResult,
+      queueResult,
+      materializationStateWritten,
+      minuteFactJob,
+      checkpointDue: !factStage && checkpointDue,
+    });
     const summary = {
       ok: true,
       source,
@@ -318,6 +355,15 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       queue_likes_changed: Boolean(queueResult?.likes_changed),
       queue_items_written: Number(queueResult?.queue_items_written || 0),
       like_observations_written: Number(queueResult?.like_observations_written || 0),
+      snapshot_inserted: snapshotResult?.inserted === true,
+      snapshot_skipped: snapshotResult?.skipped === true,
+      materialization_state_written: materializationStateWritten,
+      d1_rows_written_estimate: d1RowsWrittenEstimate,
+      queue_send_attempts: Number(minuteFactJob?.queue_send_attempts || 0),
+      queue_send_ms: Number(minuteFactJob?.queue_send_ms || 0),
+      outbox_rows_written: Number(minuteFactJob?.outbox_rows_written || 0),
+      outbox_rows_deleted: Number(minuteFactJob?.outbox_rows_deleted || 0),
+      pending_flushed: Number(minuteFactJob?.pending_flushed || 0),
       metadata_saved: 0,
       metadata_deferred: Boolean(queue),
       metadata_delegated: Boolean(metadataPlanned),
