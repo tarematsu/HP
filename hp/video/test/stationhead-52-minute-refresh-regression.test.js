@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const playerHeader = readFileSync(
+  new URL('../../native/src/sh.h', import.meta.url),
+  'utf8',
+);
 const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
@@ -31,6 +35,36 @@ test('52-minute eligibility remains anchored to the last accepted reload', () =>
   assert.match(
     playerSource,
     /lastReloadAt_ = nowMs;[\s\S]*NavigateCurrentUrl\(nowMs, L"track-boundary authentication refresh"\)/,
+  );
+});
+
+test('native audio-stop ticks recover a lost page track-ended notification', () => {
+  const publicRequest = section(
+    playerHeader,
+    'bool RetryPendingTrackBoundaryRefresh(int64_t nowMs)',
+    'void CancelPendingTrackBoundaryRefresh()',
+  );
+  assert.match(publicRequest, /const bool retry = trackBoundaryRefreshPending_;/);
+  assert.match(publicRequest, /HandleTrackEnded\(nowMs, retry\);/);
+  assert.match(
+    publicRequest,
+    /return trackBoundaryRefreshPending_ \|\|[\s\S]*trackBoundaryPlaybackRecoveryPending_;/,
+  );
+
+  const tick = section(
+    handleSource,
+    'void StationheadHandleBase::Tick(int64_t nowMs)',
+    'void StationheadHandleBase::Reconnect()',
+  );
+  assert.match(
+    tick,
+    /if \(!retry\.armed && !player_->AudioPlaying\(\)\) \{[\s\S]*player_->RetryPendingTrackBoundaryRefresh\(nowMs\)/,
+  );
+  assert.match(tick, /if \(active\) \{[\s\S]*ArmBoundaryRetryState\(this, nowMs\);/);
+  assert.ok(
+    tick.indexOf('!player_->AudioPlaying()') <
+      tick.indexOf('player_->RetryPendingTrackBoundaryRefresh(nowMs)'),
+    'the native fallback must never request a refresh while audio is playing',
   );
 });
 
@@ -75,11 +109,14 @@ test('detached retries re-open the App handoff window without resetting 52-minut
     /if \(!retry\.detachedFromAppWindow \|\| nowMs < retry\.retryAt\) return;/,
   );
   assert.match(tick, /retry\.detachedFromAppWindow = false;/);
-  assert.match(tick, /player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/);
+  assert.match(
+    tick,
+    /const bool active = player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/,
+  );
   assert.doesNotMatch(tick, /Reconnect\(|RequestTrackBoundaryRefresh/);
   assert.match(
     tick,
-    /if \(player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/,
+    /if \(!active \|\| player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/,
   );
 });
 
@@ -121,16 +158,21 @@ test('recovery, navigation, auth and lifecycle changes cancel stale retry leases
   }
 });
 
-test('successful navigation stops the retry lease immediately', () => {
+test('only an accepted due request arms the bounded retry lease', () => {
   const retry = section(
     handleSource,
     'void StationheadHandleBase::RetryPendingTrackBoundaryRefresh(int64_t nowMs)',
     'void StationheadHandleBase::CancelPendingTrackBoundaryRefresh()',
   );
-  assert.match(retry, /ArmBoundaryRetryState\(this, nowMs\);/);
-  assert.match(retry, /player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/);
   assert.match(
     retry,
-    /if \(player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/,
+    /const bool active = player_->RetryPendingTrackBoundaryRefresh\(nowMs\);/,
   );
+  assert.match(retry, /if \(!active\) return;/);
+  assert.ok(
+    retry.indexOf('if (!active) return;') <
+      retry.indexOf('ArmBoundaryRetryState(this, nowMs);'),
+    'a not-yet-due native check must not create a retry lease',
+  );
+  assert.match(retry, /if \(player_->Status\(\)\.navigating\) ClearBoundaryRetryState\(this\);/);
 });
