@@ -254,7 +254,10 @@ const finished = new Promise((resolve, reject) => {
       })
       .finally(() => pendingMessages.delete(processing));
   });
-  socket.addEventListener('error', (event) => reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`)));
+  socket.addEventListener('error', (event) => {
+    try { socket.close(1011, 'websocket error'); } catch {}
+    reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`));
+  });
   socket.addEventListener('close', () => {
     void Promise.allSettled([...pendingMessages]).then(() => {
       if (connected) resolve();
