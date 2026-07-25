@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { runMinuteMaintenanceSyncInline } from '../src/minute-maintenance-optimized-entry.js';
+import {
+  dispatchMinuteMaintenanceGate,
+  runMinuteMaintenanceSyncInline,
+} from '../src/minute-maintenance-optimized-entry.js';
 import { recordMinuteFactRuntimeState } from '../src/minute-facts-runtime-state.js';
 import { processMinuteRebuildBatch } from '../src/minute-rebuild-batched-entry.js';
 import { throwIfSoftFailure } from '../src/soft-failure.js';
@@ -50,6 +54,23 @@ test('inline sync rejects a returned soft failure so runtime fallback can enqueu
   );
 });
 
+test('direct maintenance fallback rejects soft failures when the rebuild Queue binding is missing', async () => {
+  await assert.rejects(
+    dispatchMinuteMaintenanceGate(
+      { cron: SYNC_CRON, scheduledTime: SCHEDULED_AT },
+      {},
+      'sync',
+      null,
+      {
+        async runScheduled() {
+          return { failed: true, error: 'direct sync fallback failed' };
+        },
+      },
+    ),
+    /direct sync fallback failed/,
+  );
+});
+
 test('queued sync retries instead of acknowledging a returned soft failure', async () => {
   const events = [];
   const message = queueMessage({
@@ -74,6 +95,17 @@ test('queued sync retries instead of acknowledging a returned soft failure', asy
     console.error = originalError;
   }
   assert.deepEqual(events, ['retry:60']);
+});
+
+test('legacy maintenance Queue checks soft failures before acknowledging rollback traffic', () => {
+  const source = readFileSync(
+    new URL('../src/minute-rebuild-maintenance-entry.js', import.meta.url),
+    'utf8',
+  );
+  const check = source.indexOf("throwIfSoftFailure(result, 'minute maintenance')");
+  const acknowledge = source.indexOf('message.ack()', check);
+  assert.ok(check >= 0, 'legacy Queue must inspect returned maintenance results');
+  assert.ok(acknowledge > check, 'legacy Queue must inspect soft failures before ACK');
 });
 
 test('failed=true is persisted as a failed runtime heartbeat even without an error string', async () => {
