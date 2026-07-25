@@ -83,6 +83,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
       trackBoundaryPlaybackRecoveryAwaitingNavigation_;
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
+  const bool preserveSecondaryLogin = IsSecondary() && loginRequired_;
   // Give the page's own auto-click scanners the same ground truth WebView2's
   // native audio detection already established, instead of leaving them to
   // infer "is it playing" from page-reported signals (like mediaSession
@@ -106,7 +107,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
         std::lock_guard lock(mutex_);
         status_.audioPlaying = true;
         status_.playing = true;
-        status_.loginRequired = false;
+        status_.loginRequired = preserveSecondaryLogin;
         status_.detail = L"audio observed while track-boundary navigation is still pending";
       }
       if (changed) {
@@ -130,19 +131,22 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
                 L" audio recovered after track-boundary refresh");
     }
     resourceBlockingArmed_ = true;
-    loginRequired_ = false;
+    if (!preserveSecondaryLogin) loginRequired_ = false;
     {
       std::lock_guard lock(mutex_);
       status_.audioPlaying = true;
       status_.playing = true;
-      status_.loginRequired = false;
+      status_.loginRequired = preserveSecondaryLogin;
       status_.navigating = false;
       status_.detail = (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
                        (source.empty() ? L"" : L" (" + source + L")");
     }
-    if (!startupPreviewActive_ && !spotifyAuthorization_) SetVisible(false);
+    if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {
+      SetVisible(false);
+    }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
-    PostChange(StationheadChangeReturnMain);
+    PostChange(preserveSecondaryLogin ? StationheadChangeNone
+                                      : StationheadChangeReturnMain);
     return;
   }
 
@@ -421,7 +425,8 @@ void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
   authProbeStartedAt_ = nowMs;
   lastAuthProbeAt_ = nowMs;
   const HRESULT result = webview_->ExecuteScript(
-      StationheadAuthProbeScript(config_.channelId).c_str(), nullptr);
+      StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_).c_str(),
+      nullptr);
   if (FAILED(result)) {
     authProbeInFlight_ = false;
     authProbeStartedAt_ = 0;

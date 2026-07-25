@@ -14,123 +14,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: video-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-window-b-audit-fix:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-stationhead-window-b' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-stationhead-window-b
-          fetch-depth: 0
-      - name: Apply audited Stationhead fixes
-        shell: python
-        run: |
-          from pathlib import Path
-          import subprocess
-
-          def edit_section(path: str, start: str, end: str, edits: list[tuple[str, str]]) -> None:
-              target = Path(path)
-              text = target.read_text(encoding='utf-8')
-              start_at = text.find(start)
-              if start_at < 0:
-                  raise SystemExit(f'{path}: missing section start {start!r}')
-              end_at = text.find(end, start_at + len(start))
-              if end_at < 0:
-                  raise SystemExit(f'{path}: missing section end {end!r}')
-              section = text[start_at:end_at]
-              for old, new in edits:
-                  count = section.count(old)
-                  if count != 1:
-                      raise SystemExit(f'{path}: {old!r} matched {count} times')
-                  section = section.replace(old, new, 1)
-              target.write_text(text[:start_at] + section + text[end_at:], encoding='utf-8')
-
-          edit_section(
-              'hp/native/src/sh_shared.h',
-              'inline std::wstring StationheadAuthProbeScript(',
-              'inline std::wstring StationheadDomPlayStatsScript(',
-              [
-                  (
-                      'inline std::wstring StationheadAuthProbeScript(int channelId) {',
-                      'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {',
-                  ),
-                  (
-                      "(() => {\n  const post = message => {\n    try { window.chrome?.webview?.postMessage(message); } catch (_) {}\n  };",
-                      "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;\n    try { window.chrome?.webview?.postMessage(message); } catch (_) {}\n  };",
-                  ),
-              ],
-          )
-
-          edit_section(
-              'hp/native/src/sh.cpp',
-              'void StationheadPlayer::ApplyAudioPlaybackState(',
-              'void StationheadPlayer::NavigateCurrentUrl(',
-              [
-                  (
-                      '  const bool changed =\n      audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;\n',
-                      '  const bool changed =\n      audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;\n  const bool preserveSecondaryLogin = IsSecondary() && loginRequired_;\n',
-                  ),
-                  (
-                      '        status_.audioPlaying = true;\n        status_.playing = true;\n        status_.loginRequired = false;\n        status_.detail = L"audio observed while track-boundary navigation is still pending";',
-                      '        status_.audioPlaying = true;\n        status_.playing = true;\n        status_.loginRequired = preserveSecondaryLogin;\n        status_.detail = L"audio observed while track-boundary navigation is still pending";',
-                  ),
-                  (
-                      '    resourceBlockingArmed_ = true;\n    loginRequired_ = false;\n    {\n      std::lock_guard lock(mutex_);\n      status_.audioPlaying = true;\n      status_.playing = true;\n      status_.loginRequired = false;',
-                      '    resourceBlockingArmed_ = true;\n    if (!preserveSecondaryLogin) loginRequired_ = false;\n    {\n      std::lock_guard lock(mutex_);\n      status_.audioPlaying = true;\n      status_.playing = true;\n      status_.loginRequired = preserveSecondaryLogin;',
-                  ),
-                  (
-                      '    if (!startupPreviewActive_ && !spotifyAuthorization_) SetVisible(false);\n    if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");\n    PostChange(StationheadChangeReturnMain);',
-                      '    if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {\n      SetVisible(false);\n    }\n    if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");\n    PostChange(preserveSecondaryLogin ? StationheadChangeNone\n                                      : StationheadChangeReturnMain);',
-                  ),
-              ],
-          )
-
-          edit_section(
-              'hp/native/src/sh.cpp',
-              'void StationheadPlayer::PollAuthProbe(',
-              '// Locates the Start Listening control',
-              [
-                  (
-                      '  const HRESULT result = webview_->ExecuteScript(\n      StationheadAuthProbeScript(config_.channelId).c_str(), nullptr);',
-                      '  const HRESULT result = webview_->ExecuteScript(\n      StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_).c_str(),\n      nullptr);',
-                  ),
-              ],
-          )
-
-          edit_section(
-              'hp/native/src/sh_webview.cpp',
-              '              if (type == L"stationhead-auth-probe") {',
-              '              if (!spotifyAuthorization_',
-              [
-                  (
-                      '              if (type == L"stationhead-auth-probe") {\n                authProbeInFlight_ = false;\n                authProbeStartedAt_ = 0;\n                const std::wstring state = message.GetNamedString(L"state", L"").c_str();',
-                      '              if (type == L"stationhead-auth-probe") {\n                const int64_t probeStartedAt = static_cast<int64_t>(\n                    json::Number(message, L"probe_started_at", 0));\n                if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||\n                    probeStartedAt != authProbeStartedAt_) {\n                  log_.Info(L"Secondary Stationhead ignored a stale auth probe result");\n                  return S_OK;\n                }\n                authProbeInFlight_ = false;\n                authProbeStartedAt_ = 0;\n                const std::wstring state = message.GetNamedString(L"state", L"").c_str();',
-                  ),
-                  (
-                      '                } else if (state == L"no-auth-header") {\n                  std::lock_guard lock(mutex_);\n                  status_.detail = L"secondary Stationhead auth probe waiting for session";\n                } else {\n                  log_.Warn(L"Secondary Stationhead auth probe returned an error");\n                }',
-                      '                } else if (state == L"no-auth-header") {\n                  std::lock_guard lock(mutex_);\n                  status_.detail = L"secondary Stationhead auth probe waiting for session";\n                } else if (state == L"forbidden") {\n                  {\n                    std::lock_guard lock(mutex_);\n                    status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";\n                  }\n                  log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");\n                  PostChange();\n                } else {\n                  log_.Warn(L"Secondary Stationhead auth probe returned an error");\n                }',
-                  ),
-              ],
-          )
-
-          subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
-          subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/video-ci.yml'], check=True)
-      - name: Commit audited fix
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Harden Window B authentication state transitions"
-          git push origin HEAD:agent/fix-stationhead-window-b
-
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

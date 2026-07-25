@@ -388,6 +388,13 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               if (type == L"stationhead-auth-probe") {
+                const int64_t probeStartedAt = static_cast<int64_t>(
+                    json::Number(message, L"probe_started_at", 0));
+                if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||
+                    probeStartedAt != authProbeStartedAt_) {
+                  log_.Info(L"Secondary Stationhead ignored a stale auth probe result");
+                  return S_OK;
+                }
                 authProbeInFlight_ = false;
                 authProbeStartedAt_ = 0;
                 const std::wstring state = message.GetNamedString(L"state", L"").c_str();
@@ -408,6 +415,13 @@ void StationheadPlayer::ConfigureWebView() {
                 } else if (state == L"no-auth-header") {
                   std::lock_guard lock(mutex_);
                   status_.detail = L"secondary Stationhead auth probe waiting for session";
+                } else if (state == L"forbidden") {
+                  {
+                    std::lock_guard lock(mutex_);
+                    status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";
+                  }
+                  log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");
+                  PostChange();
                 } else {
                   log_.Warn(L"Secondary Stationhead auth probe returned an error");
                 }
