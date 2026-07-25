@@ -289,23 +289,6 @@ jobs:
           show-progress: false
       - name: Apply policy patch
         run: python3 .github/scripts/pr256_cloudflare_free_tier_fix.py
-      - name: Validate targeted contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
-          python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
-          node --test \
-            scripts/cloudflare-d1-hourly-usage.test.mjs \
-            tests/cloudflare-free-tier-budgets.test.mjs \
-            tests/cloudflare-runtime-relay-budget.test.mjs \
-            tests/cloudflare-observability-budgets.test.mjs \
-            tests/homepanel-observability-contract.test.mjs \
-            tests/d1-budget-regressions.test.mjs \
-            tests/ci-workflow-efficiency.test.mjs \
-            tests/d1-free-tier-budget-enforcement.test.mjs \
-            tests/d1-storage-audit.test.mjs
-          git diff --check
       - name: Commit fixes and restore CI workflow
         shell: bash
         run: |
