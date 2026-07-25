@@ -5,11 +5,14 @@ import test from 'node:test';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
-test('HomePanel production workflows use monorepo paths', () => {
-  const observability = read('.github/workflows/hp-observability.yml');
+test('HomePanel production observability uses monorepo paths', () => {
+  const observability = read('.github/workflows/sh-observability.yml');
   const queryCosts = read('.github/scripts/query-cloudflare-d1-costs.py');
 
-  assert.match(observability, /D1_CONFIG_GLOBS: hp\/cloud\/wrangler\.jsonc/);
+  assert.match(
+    observability,
+    /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/,
+  );
   assert.match(observability, /python3 \.github\/scripts\/query-cloudflare-d1-costs\.py/);
   assert.doesNotMatch(observability, /npm ci --prefix (?:hp\/)?cloud/);
   assert.doesNotMatch(observability, /query-cloudflare-d1-insights\.mjs/);
