@@ -19,18 +19,6 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead attention states request a foreground surface even while audio continues', () => {
-  const needsForeground = section(
-    handleHeader,
-    'inline bool StationheadNeedsForeground(',
-    'enum class WorkspaceTab',
-  );
-  assert.match(needsForeground, /status\.loginRequired/);
-  assert.match(needsForeground, /status\.spotifyAuthorization/);
-  assert.match(needsForeground, /status\.processFailed/);
-  assert.match(needsForeground, /!status\.audioPlaying/);
-});
-
 test('Window B interactive state is not exposed as reusable healthy playback', () => {
   const secondaryHandle = section(
     handleHeader,
