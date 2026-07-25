@@ -44,6 +44,22 @@ test('scheduled collector only arms the Durable Object alarm', async () => {
   assert.deepEqual(result, { scheduled: true, alarm_at: 123 });
 });
 
+test('coordinator failures fail closed instead of double collecting', async () => {
+  let directCalls = 0;
+  await assert.rejects(runAlarmCoordinatedBuddiesCollectorScheduled({
+    cron: '* * * * *',
+    scheduledTime: 123,
+  }, { BUDDIES_COLLECTOR_COORDINATOR: {} }, {}, {
+    stub: {
+      async fetch() { throw new Error('response lost after alarm scheduling'); },
+    },
+    direct: {
+      async collectRawChannel() { directCalls += 1; },
+    },
+  }), /response lost/);
+  assert.equal(directCalls, 0);
+});
+
 test('collector coordinator deduplicates pending alarms', async () => {
   const durableStorage = storage();
   const coordinator = new BuddiesCollectorCoordinator(
@@ -65,6 +81,33 @@ test('collector coordinator deduplicates pending alarms', async () => {
   assert.equal(duplicate.scheduled, false);
   assert.equal(duplicate.reason, 'collector-alarm-pending');
   assert.equal(durableStorage.alarm(), 123);
+});
+
+test('collector alarm runs at most once per successful minute', async () => {
+  const durableStorage = storage();
+  let collections = 0;
+  const coordinator = new BuddiesCollectorCoordinator(
+    { storage: durableStorage },
+    {},
+    {
+      now: () => 120_001,
+      direct: {
+        async collectRawChannel() {
+          collections += 1;
+          return { payload_bytes: 123, queue_send_attempts: 1 };
+        },
+      },
+    },
+  );
+
+  assert.equal((await coordinator.alarm()).collected, true);
+  const duplicate = await coordinator.alarm();
+  assert.equal(collections, 1);
+  assert.equal(duplicate.skipped, true);
+  assert.equal(duplicate.reason, 'collector-minute-already-completed');
+  const telemetry = durableStorage.values.get('collector:operational-telemetry');
+  assert.equal(telemetry.active.payload_bytes_sum, 123);
+  assert.equal(telemetry.active.queue_send_attempts_sum, 1);
 });
 
 test('collector telemetry persists completed windows to R2', async () => {
@@ -111,7 +154,7 @@ test('collector telemetry retains a completed window when R2 is unavailable', as
   assert.equal(telemetry.pending[0].duration_ms_max, 12);
 });
 
-test('production collector declares the coordinator migration', () => {
+test('production collector declares the coordinator migration and sampled logs', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
     'utf8',
@@ -125,4 +168,8 @@ test('production collector declares the coordinator migration', () => {
     ['BuddiesCollectorCoordinator'],
   );
   assert.equal(config.vars.COLLECTOR_TELEMETRY_INTERVAL_MS, 300_000);
+  assert.equal(config.observability.head_sampling_rate, 0.1);
+  assert.equal(config.observability.logs.head_sampling_rate, 0.1);
+  assert.equal(config.observability.logs.invocation_logs, true);
+  assert.deepEqual(config.queues.consumers, []);
 });
