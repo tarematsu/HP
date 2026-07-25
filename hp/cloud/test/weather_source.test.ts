@@ -31,52 +31,68 @@ function weatherNewsHtml(day1: { day: number; rows: string[] }, day2: { day: num
     `</div>`;
 }
 
+function sameDayWindow(
+  startHour: number,
+  selectedHour: number,
+  icon: string,
+  options: { rainMm?: number; pop?: number } = {},
+): string[] {
+  return Array.from({ length: 12 }, (_, offset) => {
+    const hour = startHour + offset;
+    return hour === selectedHour ? row(hour, icon, options) : row(hour, "100", { rainMm: 0, pop: 10 });
+  });
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("WeatherNews hourly parsing", () => {
-  it("reads the 12-hour forecast from 22:00 through 09:00 across both day tables", async () => {
+  it("reads the next 12 complete forecast hours from the next clock boundary", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-11T14:34:00Z")); // 2026-07-11 23:34 JST
     const html = weatherNewsHtml(
       {
         day: 11,
         rows: [
-          row(21, "100", { rainMm: 0, pop: 5 }),
-          row(22, "100", { rainMm: 0, pop: 10 }),
+          row(22, "100", { rainMm: 0, pop: 5 }),
           row(23, "100", { rainMm: 0, pop: 20 }),
         ],
       },
       {
         day: 12,
         rows: [
-          ...Array.from({ length: 10 }, (_, hour) => row(hour, "100", { rainMm: 0, pop: 30 + hour })),
-          row(10, "100", { rainMm: 0, pop: 90 }),
+          ...Array.from({ length: 12 }, (_, hour) => row(hour, "100", { rainMm: 0, pop: 30 + hour })),
+          row(12, "100", { rainMm: 0, pop: 90 }),
         ],
       },
     );
     vi.stubGlobal("fetch", vi.fn(async () => new Response(html)));
 
     const result = await fetchWeather(baseEnv);
-    const payload = result.payload as { forecastDate: string; hourly: Record<string, { pop: number }> };
+    const payload = result.payload as {
+      forecastDate: string;
+      startHour: number;
+      windowStartAt: string;
+      hourly: Record<string, { pop: number }>;
+    };
 
-    expect(payload.forecastDate).toBe("7/11〜7/12");
+    expect(payload.forecastDate).toBe("7/12");
+    expect(payload.startHour).toBe(0);
+    expect(payload.windowStartAt).toBe("2026-07-11T15:00:00.000Z");
     expect(Object.keys(payload.hourly)).toHaveLength(12);
-    expect(payload.hourly["21"]).toBeUndefined();
-    expect(payload.hourly["22"]!.pop).toBe(10);
-    expect(payload.hourly["23"]!.pop).toBe(20);
+    expect(payload.hourly["23"]).toBeUndefined();
     expect(payload.hourly["0"]!.pop).toBe(30);
-    expect(payload.hourly["9"]!.pop).toBe(39);
-    expect(payload.hourly["10"]).toBeUndefined();
+    expect(payload.hourly["11"]!.pop).toBe(41);
+    expect(payload.hourly["12"]).toBeUndefined();
   });
 
   it("does not fabricate a rain probability for a cloudy icon", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-11T20:00:00Z")); // 05:00 JST
+    vi.setSystemTime(new Date("2026-07-11T20:00:00Z")); // 2026-07-12 05:00 JST
     const html = weatherNewsHtml(
-      { day: 12, rows: [row(22, "201", { rainMm: 0 })] },
+      { day: 12, rows: sameDayWindow(5, 5, "201", { rainMm: 0 }) },
       { day: 13, rows: [] },
     );
     vi.stubGlobal("fetch", vi.fn(async () => new Response(html)));
@@ -84,14 +100,14 @@ describe("WeatherNews hourly parsing", () => {
     const result = await fetchWeather(baseEnv);
     const payload = result.payload as { hourly: Record<string, { pop: number }> };
 
-    expect(payload.hourly["22"]!.pop).toBe(10);
+    expect(payload.hourly["5"]!.pop).toBe(10);
   });
 
   it("still infers a wet probability for a rain icon when none is given explicitly", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-11T20:00:00Z")); // 05:00 JST
+    vi.setSystemTime(new Date("2026-07-11T20:00:00Z")); // 2026-07-12 05:00 JST
     const html = weatherNewsHtml(
-      { day: 12, rows: [row(22, "300", { rainMm: 0 })] },
+      { day: 12, rows: sameDayWindow(5, 5, "300", { rainMm: 0 }) },
       { day: 13, rows: [] },
     );
     vi.stubGlobal("fetch", vi.fn(async () => new Response(html)));
@@ -99,6 +115,25 @@ describe("WeatherNews hourly parsing", () => {
     const result = await fetchWeather(baseEnv);
     const payload = result.payload as { hourly: Record<string, { pop: number }> };
 
-    expect(payload.hourly["22"]!.pop).toBe(60);
+    expect(payload.hourly["5"]!.pop).toBe(60);
+  });
+
+  it("changes the stable window marker when the forecast advances by an hour", async () => {
+    vi.useFakeTimers();
+    const html = weatherNewsHtml(
+      { day: 12, rows: Array.from({ length: 18 }, (_, hour) => row(hour, "100", { rainMm: 0, pop: 10 })) },
+      { day: 13, rows: [] },
+    );
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(html)));
+
+    vi.setSystemTime(new Date("2026-07-11T20:00:00Z")); // 05:00 JST
+    const first = await fetchWeather(baseEnv);
+    vi.setSystemTime(new Date("2026-07-11T20:01:00Z")); // 05:01 JST -> 06:00 window
+    const second = await fetchWeather(baseEnv);
+
+    expect((first.payload as { windowStartAt: string }).windowStartAt)
+      .toBe("2026-07-11T20:00:00.000Z");
+    expect((second.payload as { windowStartAt: string }).windowStartAt)
+      .toBe("2026-07-11T21:00:00.000Z");
   });
 });
