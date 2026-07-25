@@ -5,8 +5,12 @@ export const MINUTE_FACT_REPAIR_KEY = 'total-listener-20260710-13-v1';
 export const MINUTE_FACT_REPAIR_PRIORITY = 110;
 export const MINUTE_FACT_REPAIR_START = Date.UTC(2026, 6, 9, 15, 0, 0);
 export const MINUTE_FACT_REPAIR_END = Date.UTC(2026, 6, 13, 15, 0, 0);
-const MAX_REPAIR_CANDIDATES = 20;
-const MAX_REPAIR_ENQUEUES = 4;
+export const MAX_REPAIR_CANDIDATES = 100;
+export const MAX_REPAIR_ENQUEUES = 100;
+const DEFAULT_REPAIR_CANDIDATES = 20;
+const DEFAULT_REPAIR_ENQUEUES = 4;
+const REPAIR_REQUEUE_AFTER_MS = 2 * 60_000;
+const REPAIR_SCAN_STATE_KEY = `repair-scan:${MINUTE_FACT_REPAIR_KEY}`;
 
 export const MINUTE_FACT_REPAIR_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_repairs (
   repair_key TEXT NOT NULL,
@@ -39,9 +43,16 @@ function numberValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
+
 function integer(value) {
   const parsed = numberValue(value);
   return parsed == null ? null : Math.trunc(parsed);
+}
+
+function positiveInteger(value, fallback, maximum) {
+  const parsed = integer(value);
+  if (parsed == null || parsed <= 0) return fallback;
+  return Math.min(parsed, maximum);
 }
 
 function safeJson(value, fallback = null) {
@@ -79,22 +90,84 @@ function expectedRecordId(row) {
   return `repair:${MINUTE_FACT_REPAIR_KEY}:${row.channel_id}:${row.minute_at}`;
 }
 
-function suspectWhere() {
-  return `minute_at>=? AND minute_at<? AND reported_total_listens IS NOT NULL AND (
-    (reported_current_stream_count IS NOT NULL
-      AND reported_current_stream_count=reported_total_listens)
-    OR (reported_current_stream_count IS NULL AND (quality_flags & 64) != 0)
+function suspectWhere(alias = '') {
+  return `${alias}minute_at>=? AND ${alias}minute_at<? AND ${alias}reported_total_listens IS NOT NULL AND (
+    (${alias}reported_current_stream_count IS NOT NULL
+      AND ${alias}reported_current_stream_count=${alias}reported_total_listens)
+    OR (${alias}reported_current_stream_count IS NULL AND (${alias}quality_flags & 64) != 0)
   )`;
 }
 
-async function loadSuspects(minuteDb) {
-  const result = await minuteDb.prepare(`SELECT id,channel_id,minute_at,source_priority,
-      source_record_id,reported_current_stream_count,reported_total_listens
-    FROM sh_minute_facts WHERE ${suspectWhere()}
-    ORDER BY minute_at ASC,channel_id ASC,id ASC LIMIT ?`)
-    .bind(MINUTE_FACT_REPAIR_START, MINUTE_FACT_REPAIR_END, MAX_REPAIR_CANDIDATES)
+async function loadRepairScanState(minuteDb) {
+  const row = await minuteDb.prepare(`SELECT phase,cursor_observed_at,cursor_source_id
+    FROM sh_migration_state WHERE migration_key=? LIMIT 1`)
+    .bind(REPAIR_SCAN_STATE_KEY)
+    .first();
+  return {
+    complete: row?.phase === 'complete',
+    minute_at: Math.max(
+      MINUTE_FACT_REPAIR_START - 1,
+      integer(row?.cursor_observed_at) ?? (MINUTE_FACT_REPAIR_START - 1),
+    ),
+    fact_id: Math.max(0, integer(row?.cursor_source_id) ?? 0),
+  };
+}
+
+async function loadSuspects(minuteDb, limit) {
+  const scan = await loadRepairScanState(minuteDb);
+  if (scan.complete) return { rows: [], scan_complete: true };
+  const result = await minuteDb.prepare(`SELECT f.id,f.channel_id,f.minute_at,f.source_priority,
+      f.source_record_id,f.reported_current_stream_count,f.reported_total_listens
+    FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time
+    WHERE ${suspectWhere('f.')}
+      AND (f.minute_at>? OR (f.minute_at=? AND f.id>?))
+      AND NOT EXISTS (
+        SELECT 1 FROM sh_minute_fact_repairs r
+        WHERE r.repair_key=? AND r.fact_id=f.id
+      )
+    ORDER BY f.minute_at ASC,f.id ASC LIMIT ?`)
+    .bind(
+      MINUTE_FACT_REPAIR_START,
+      MINUTE_FACT_REPAIR_END,
+      scan.minute_at,
+      scan.minute_at,
+      scan.fact_id,
+      MINUTE_FACT_REPAIR_KEY,
+      limit,
+    )
     .all();
-  return result.results || [];
+  return { rows: result.results || [], scan_complete: false };
+}
+
+async function advanceRepairScan(minuteDb, suspects, now) {
+  const last = suspects.at(-1);
+  const phase = last ? 'scanning' : 'complete';
+  const minuteAt = last ? integer(last.minute_at) : MINUTE_FACT_REPAIR_END;
+  const factId = last ? integer(last.id) : 0;
+  await minuteDb.prepare(`INSERT INTO sh_migration_state(
+      migration_key,phase,cursor_observed_at,cursor_source_id,updated_at
+    ) VALUES(?,?,?,?,?)
+    ON CONFLICT(migration_key) DO UPDATE SET
+      phase=CASE
+        WHEN sh_migration_state.phase='complete' OR excluded.phase='complete' THEN 'complete'
+        ELSE excluded.phase
+      END,
+      cursor_observed_at=CASE
+        WHEN excluded.cursor_observed_at>sh_migration_state.cursor_observed_at
+          THEN excluded.cursor_observed_at
+        ELSE sh_migration_state.cursor_observed_at
+      END,
+      cursor_source_id=CASE
+        WHEN excluded.cursor_observed_at>sh_migration_state.cursor_observed_at
+          THEN excluded.cursor_source_id
+        WHEN excluded.cursor_observed_at=sh_migration_state.cursor_observed_at
+          THEN MAX(sh_migration_state.cursor_source_id,excluded.cursor_source_id)
+        ELSE sh_migration_state.cursor_source_id
+      END,
+      updated_at=MAX(sh_migration_state.updated_at,excluded.updated_at)`)
+    .bind(REPAIR_SCAN_STATE_KEY, phase, minuteAt, factId, now)
+    .run();
+  return phase === 'complete';
 }
 
 async function loadSource(sourceDb, fact) {
@@ -170,20 +243,17 @@ async function insertLedger(minuteDb, values, status, lastError, now) {
 
 async function updateLedger(minuteDb, factId, status, lastError, now) {
   await minuteDb.prepare(`UPDATE sh_minute_fact_repairs SET status=?,last_error=?,updated_at=?
-    WHERE repair_key=? AND fact_id=?`).bind(
-    status, lastError || null, now, MINUTE_FACT_REPAIR_KEY, factId,
-  ).run();
-}
-
-async function loadLedger(minuteDb, factId) {
-  return minuteDb.prepare(`SELECT * FROM sh_minute_fact_repairs
-    WHERE repair_key=? AND fact_id=?`).bind(MINUTE_FACT_REPAIR_KEY, factId).first();
+    WHERE repair_key=? AND fact_id=?`)
+    .bind(status, lastError || null, now, MINUTE_FACT_REPAIR_KEY, factId)
+    .run();
 }
 
 async function loadCurrentFact(minuteDb, factId) {
   return minuteDb.prepare(`SELECT channel_id,minute_at,source_priority,source_record_id,
       reported_current_stream_count,reported_total_listens
-    FROM sh_minute_facts WHERE id=?`).bind(factId).first();
+    FROM sh_minute_facts WHERE id=?`)
+    .bind(factId)
+    .first();
 }
 
 function currentMatchesRepair(fact, ledger) {
@@ -203,7 +273,6 @@ function currentMatchesOriginal(fact, ledger) {
 
 async function registerCandidates(env, suspects, now, result) {
   for (const fact of suspects) {
-    if (await loadLedger(env.MINUTE_DB, fact.id)) continue;
     const source = await loadSource(env.DB, fact);
     const expectedTotal = integer(source?.total_listens);
     const expectedCurrent = integer(source?.current_stream_count);
@@ -246,7 +315,7 @@ async function registerCandidates(env, suspects, now, result) {
   }
 }
 
-async function processQueuedRepair(env, ledger, now, result) {
+async function processQueuedRepair(env, ledger, now, result, enqueueLimit) {
   const current = await loadCurrentFact(env.MINUTE_DB, ledger.fact_id);
   if (currentMatchesRepair(current, ledger)) {
     await updateLedger(env.MINUTE_DB, ledger.fact_id, 'repaired', null, now);
@@ -258,7 +327,12 @@ async function processQueuedRepair(env, ledger, now, result) {
     result.preserved += 1;
     return;
   }
-  if (result.enqueued >= MAX_REPAIR_ENQUEUES) return;
+  if (String(ledger.status) === 'queued'
+      && now - Number(ledger.updated_at || 0) < REPAIR_REQUEUE_AFTER_MS) {
+    result.deferred += 1;
+    return;
+  }
+  if (result.enqueued >= enqueueLimit) return;
 
   const source = await env.DB.prepare(`SELECT ${SOURCE_COLUMNS} FROM sh_channel_snapshots
     WHERE id=? LIMIT 1`).bind(ledger.source_snapshot_id).first();
@@ -301,20 +375,22 @@ async function processQueuedRepair(env, ledger, now, result) {
   }
 }
 
-async function processPending(env, now, result) {
+async function processPending(env, now, result, candidateLimit, enqueueLimit) {
   const rows = await env.MINUTE_DB.prepare(`SELECT * FROM sh_minute_fact_repairs
     WHERE repair_key=? AND status IN ('detected','queued')
     ORDER BY updated_at ASC,fact_id ASC LIMIT ?`)
-    .bind(MINUTE_FACT_REPAIR_KEY, MAX_REPAIR_CANDIDATES).all();
+    .bind(MINUTE_FACT_REPAIR_KEY, candidateLimit)
+    .all();
   for (const ledger of rows.results || []) {
-    await processQueuedRepair(env, ledger, now, result);
+    await processQueuedRepair(env, ledger, now, result, enqueueLimit);
   }
 }
 
 async function countPending(minuteDb) {
   const row = await minuteDb.prepare(`SELECT COUNT(*) AS count FROM sh_minute_fact_repairs
     WHERE repair_key=? AND status IN ('detected','queued')`)
-    .bind(MINUTE_FACT_REPAIR_KEY).first();
+    .bind(MINUTE_FACT_REPAIR_KEY)
+    .first();
   return Number(row?.count || 0);
 }
 
@@ -322,18 +398,35 @@ export async function runMinuteFactsRepair(env, now = Date.now()) {
   if (!env?.DB || !env?.MINUTE_DB) {
     return { skipped: true, reason: 'db-binding-missing', repair_key: MINUTE_FACT_REPAIR_KEY };
   }
-  const suspects = await loadSuspects(env.MINUTE_DB);
+  const candidateLimit = positiveInteger(
+    env.MINUTE_FACT_REPAIR_CANDIDATE_LIMIT,
+    DEFAULT_REPAIR_CANDIDATES,
+    MAX_REPAIR_CANDIDATES,
+  );
+  const enqueueLimit = positiveInteger(
+    env.MINUTE_FACT_REPAIR_ENQUEUE_LIMIT,
+    DEFAULT_REPAIR_ENQUEUES,
+    MAX_REPAIR_ENQUEUES,
+  );
+  const scan = await loadSuspects(env.MINUTE_DB, candidateLimit);
+  const suspects = scan.rows;
   const result = {
     skipped: false,
     repair_key: MINUTE_FACT_REPAIR_KEY,
+    candidate_limit: candidateLimit,
+    enqueue_limit: enqueueLimit,
+    scanned: suspects.length,
     detected: 0,
     enqueued: 0,
     repaired: 0,
     preserved: 0,
     unresolved: 0,
+    deferred: 0,
   };
   await registerCandidates(env, suspects, now, result);
-  await processPending(env, now, result);
+  const scanComplete = scan.scan_complete || await advanceRepairScan(env.MINUTE_DB, suspects, now);
+  await processPending(env, now, result, candidateLimit, enqueueLimit);
   result.pending = await countPending(env.MINUTE_DB);
+  result.complete = scanComplete && result.pending === 0;
   return result;
 }

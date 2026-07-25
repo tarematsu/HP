@@ -138,7 +138,7 @@ test('raw collection Queue fallback is capped at five-minute cadence', async () 
 });
 
 test('runtime Cron creates bounded messages for recovery and maintenance gates', () => {
-  assert.deepEqual(runtimeScheduledMessagesFor(BASE + 36 * 60_000).map(({ message_type }) => message_type), [
+  assert.deepEqual(runtimeScheduledMessagesFor(BASE + 31 * 60_000).map(({ message_type }) => message_type), [
     RAW_COLLECTION_TASK_MESSAGE,
     RUNTIME_MINUTE_RECOVERY_MESSAGE,
   ]);
@@ -172,7 +172,7 @@ test('runtime Queue handler isolates recovery, gate, and prediction dispatches',
     queueMessage({
       message_type: RUNTIME_MINUTE_RECOVERY_MESSAGE,
       message_version: 1,
-      scheduled_at: BASE + 36 * 60_000,
+      scheduled_at: BASE + 31 * 60_000,
     }, events, 'recovery-'),
     queueMessage({
       message_type: RUNTIME_MINUTE_GATE_MESSAGE,

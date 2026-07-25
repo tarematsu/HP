@@ -62,6 +62,14 @@ const restoreCompleteMetricMigration = readFileSync(
   new URL('../database/facts-migrations/041_restore_complete_live_metrics.sql', import.meta.url),
   'utf8',
 );
+const repairCandidateMigration = readFileSync(
+  new URL('../database/facts-migrations/042_minute_fact_repair_candidate_index.sql', import.meta.url),
+  'utf8',
+);
+const retireRepairIndexMigration = readFileSync(
+  new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -89,6 +97,8 @@ const expectedMigrations = [
   'database/facts-migrations/039_reduce_fact_write_amplification.sql',
   'database/facts-migrations/040_sparse_live_metric_values.sql',
   'database/facts-migrations/041_restore_complete_live_metrics.sql',
+  'database/facts-migrations/042_minute_fact_repair_candidate_index.sql',
+  'database/facts-migrations/043_retire_repair_candidate_index.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -148,22 +158,38 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(restoreCompleteMetricMigration, /f\.reported_total_listens AS total_listens/);
   assert.match(restoreCompleteMetricMigration, /f\.comment_count AS comment_velocity/);
   assert.doesNotMatch(restoreCompleteMetricMigration, /SELECT previous|PRAGMA optimize/);
+  assert.match(repairCandidateMigration, /idx_sh_minute_facts_repair_candidates/);
+  assert.match(repairCandidateMigration, /ON sh_minute_facts\(minute_at,channel_id,id\)/);
+  assert.match(repairCandidateMigration, /reported_current_stream_count=reported_total_listens/);
+  assert.match(repairCandidateMigration, /quality_flags & 64/);
+  assert.doesNotMatch(repairCandidateMigration, /INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
+  assert.match(retireRepairIndexMigration, /DROP INDEX IF EXISTS idx_sh_minute_facts_repair_candidates/);
+  assert.doesNotMatch(
+    retireRepairIndexMigration,
+    /CREATE INDEX|FROM sh_minute_facts|INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/,
+  );
 });
 
-test('production pauses historical reconstruction while Queue usage exceeds budget', () => {
-  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, false);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, false);
+test('production enables ordinary historical reconstruction and keeps queue-budgeted repair throughput active', () => {
+  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, true);
+  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, true);
   assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
   assert.equal(runtime.vars.DERIVE_DISPATCH_LIMIT, 2);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_SCAN_INTERVAL_MS, 3_600_000);
   assert.equal(runtime.vars.LIVE_DERIVE_DIRECT_QUEUE_ENABLED, true);
   assert.equal(runtime.vars.REVISION_PROGRESS_R2_ENABLED, true);
+  assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
   assert.equal(runtime.vars.REBUILD_MAX_JOBS, 4);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, true);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES, 60);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_CANDIDATE_LIMIT, 20);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_ENQUEUE_LIMIT, 2);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_DISPATCH_LIMIT, 2);
   const historical = runtime.queues.consumers.find(
     ({ queue }) => queue === 'stationhead-minute-derive',
   );
   assert.equal(historical.max_batch_size, 1);
-  assert.equal(historical.max_concurrency, 1);
+  assert.equal(historical.max_concurrency, 250);
 });

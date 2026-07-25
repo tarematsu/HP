@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import worker, {
+  PAGES_DASHBOARD_MATERIALIZATION_MESSAGE,
   PAGES_READ_MODEL_CRON,
   PAGES_READ_MODEL_DISPATCH_MESSAGE,
   pagesVariantDispatchDue,
@@ -27,18 +28,21 @@ test('cron success and failure behavior is preserved for injected canonical task
   assert.equal(await runPagesReadModelCron(
     { cron: PAGES_READ_MODEL_CRON, scheduledTime: BASE + 35 * 60_000 },
     {},
-    { runTask: async () => success },
+    { runTask: async () => success, sendDashboardTask: async () => {} },
   ), success);
 
   await assert.rejects(
     runPagesReadModelCron(
       { cron: PAGES_READ_MODEL_CRON, scheduledTime: BASE + 70 * 60_000 },
       {},
-      { runTask: async () => ({
-        task: { key: 'history:weekly' },
-        responses: [{ key: 'history:weekly', ok: false, error: 'render failed' }],
-        failed: 1,
-      }) },
+      {
+        sendDashboardTask: async () => {},
+        runTask: async () => ({
+          task: { key: 'history:weekly' },
+          responses: [{ key: 'history:weekly', ok: false, error: 'render failed' }],
+          failed: 1,
+        }),
+      },
     ),
     (error) => error instanceof AggregateError
       && error.errors.length === 1
@@ -46,7 +50,7 @@ test('cron success and failure behavior is preserved for injected canonical task
   );
 });
 
-test('production cron dispatches only heavy variant slots through the existing Pages Queue', async () => {
+test('production cron queues heavy variants and five-minute dashboard materialization', async () => {
   const sent = [];
   const timestamp = BASE + 35 * 60_000;
   const result = await runPagesReadModelCron(
@@ -67,14 +71,24 @@ test('production cron dispatches only heavy variant slots through the existing P
     task: 'pages-read-model-variant',
     scheduled_at: timestamp,
   });
-  assert.deepEqual(sent, [{
-    body: {
-      message_type: PAGES_READ_MODEL_DISPATCH_MESSAGE,
-      message_version: 1,
-      scheduled_at: timestamp,
+  assert.deepEqual(sent, [
+    {
+      body: {
+        message_type: PAGES_READ_MODEL_DISPATCH_MESSAGE,
+        message_version: 1,
+        scheduled_at: timestamp,
+      },
+      options: { contentType: 'json' },
     },
-    options: { contentType: 'json' },
-  }]);
+    {
+      body: {
+        message_type: PAGES_DASHBOARD_MATERIALIZATION_MESSAGE,
+        message_version: 1,
+        scheduled_at: timestamp,
+      },
+      options: { contentType: 'json' },
+    },
+  ]);
 });
 
 test('Pages Queue executes a dispatched variant and acknowledges it', async () => {
@@ -106,13 +120,42 @@ test('Pages Queue executes a dispatched variant and acknowledges it', async () =
   assert.equal(retried, false);
 });
 
+test('Pages Queue executes dashboard materialization outside the Cron invocation', async () => {
+  const timestamp = BASE + 35 * 60_000;
+  const events = [];
+  const result = await runPagesReadModelQueue({
+    queue: 'stationhead-pages-read-model-publication',
+    messages: [{
+      body: {
+        message_type: PAGES_DASHBOARD_MATERIALIZATION_MESSAGE,
+        message_version: 1,
+        scheduled_at: timestamp,
+      },
+      ack() { events.push('ack'); },
+      retry() { events.push('retry'); },
+    }],
+  }, {}, {
+    async runDashboardMaterialization(_env, now, dependencies) {
+      assert.equal(now, timestamp);
+      assert.equal(dependencies.throwOnError, true);
+      return { skipped: false, key: 'dashboard', storage: 'kv' };
+    },
+  });
+
+  assert.equal(result.key, 'dashboard');
+  assert.deepEqual(events, ['ack']);
+});
+
 test('cron retains coercion compatibility outside the primitive-string hot path', async () => {
   const success = { responses: [], failed: 0 };
   const boxedCron = new String(PAGES_READ_MODEL_CRON);
   assert.equal(await runPagesReadModelCron(
     { cron: boxedCron, scheduledTime: String(BASE) },
     {},
-    { runTask: async (_env, now) => (assert.equal(now, BASE), success) },
+    {
+      runTask: async (_env, now) => (assert.equal(now, BASE), success),
+      sendDashboardTask: async () => {},
+    },
   ), success);
   assert.deepEqual(await runPagesReadModelCron({ cron: 123 }, {}), {
     skipped: true,
@@ -138,11 +181,15 @@ test('dispatch preserves canonical task selection and daily background behavior'
   ), sentinel);
 });
 
-test('hot paths preload recurring stages and cache only variant modules', () => {
+test('hot paths preload recurring stages and isolate dashboard work behind Queue', () => {
   assert.match(entrySource, /from '\.\/pages-read-model-dispatch\.js'/);
   assert.match(entrySource, /from '\.\/pages-track-history-publication-queue\.js'/);
   assert.match(entrySource, /PAGES_CYCLE_MINUTES = 24 \* 60/);
   assert.match(entrySource, /VARIANT_CADENCE_MINUTES = 6 \* 60/);
+  assert.match(entrySource, /PAGES_DASHBOARD_MATERIALIZATION_MESSAGE/);
+  assert.match(entrySource, /dispatchPagesDashboardMaterialization/);
+  assert.match(entrySource, /pages_dashboard_materialization_queue_failed/);
+  assert.doesNotMatch(entrySource, /const dashboardPromise = dashboard\(/);
   assert.doesNotMatch(entrySource, /responses\.filter\(/);
   assert.doesNotMatch(entrySource, /failures\.map\(/);
   assert.doesNotMatch(entrySource, /fallback = Date\.now\(\)/);

@@ -54,6 +54,10 @@ function rebuildTriggerBatch(batch) {
   return triggerBatchKind(batch, 'rebuild');
 }
 
+function repairTriggerBatch(batch) {
+  return triggerBatchKind(batch, 'repair');
+}
+
 function budgetedLiveRevisionBatch(batch, env) {
   if (liveRevisionMaterializationEnabled(env)) return false;
   const messages = batch?.messages || [];
@@ -113,8 +117,16 @@ export async function processMinutePipelineBatch(batch, env, ctx, dependencies =
     const consume = dependencies.consumeMinuteQueue || consumeMinuteQueue;
     return consume(batch, env, ctx);
   }
-  if (queueName === REBUILD_DERIVE_QUEUE_NAME && !historicalRebuildEnabled(env)) {
+  if (queueName === REBUILD_DERIVE_QUEUE_NAME
+      && !historicalRebuildEnabled(env)
+      && !repairTriggerBatch(batch)) {
     return acknowledgeDisabledHistoricalDerive(batch);
+  }
+  if (queueName === LIVE_DERIVE_QUEUE_NAME && repairTriggerBatch(batch)) {
+    const repairBatch = { ...batch, queue: REBUILD_DERIVE_QUEUE_NAME };
+    const run = dependencies.processMinuteDeriveBatch;
+    if (run) return run(repairBatch, env, dependencies.derive);
+    return processDeriveBatch(repairBatch, env, dependencies.derive);
   }
   if (queueName === LIVE_DERIVE_QUEUE_NAME && rebuildTriggerBatch(batch)) {
     if (!historicalRebuildEnabled(env)) return acknowledgeDisabledHistoricalDerive(batch);
@@ -157,6 +169,7 @@ export {
   budgetedLiveRevisionBatch,
   budgetedLiveWriteBatch,
   rebuildTriggerBatch,
+  repairTriggerBatch,
 };
 
 export default {

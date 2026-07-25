@@ -1,13 +1,49 @@
 import baseWorker, {
   RuntimeCoordinator as StoredRuntimeCoordinator,
+  runCoreQueue,
   runCoreScheduled,
 } from './runtime-orchestrator-entry.js';
+import {
+  MINUTE_FACT_REPAIR_BURST_COMPLETE_KEY,
+  MINUTE_FACT_REPAIR_BURST_MESSAGE,
+  minuteFactRepairBurstEnabled,
+  runMinuteFactRepairBurst,
+} from './minute-fact-repair-burst.js';
 
 const RUNTIME_COORDINATOR_NAME = 'scheduled-v1';
 const DEFAULT_COORDINATOR_LEASE_MS = 70_000;
 const MIN_COORDINATOR_LEASE_MS = 30_000;
 const MAX_COORDINATOR_LEASE_MS = 180_000;
 const COORDINATOR_URL = 'https://runtime-coordinator.internal/lease';
+const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
+const RETRY_30_SECONDS = Object.freeze({ delaySeconds: 30 });
+const MINUTE_MS = 60_000;
+const DEFAULT_REPAIR_BURST_INTERVAL_MINUTES = 60;
+const MIN_REPAIR_BURST_INTERVAL_MINUTES = 15;
+const MAX_REPAIR_BURST_INTERVAL_MINUTES = 24 * 60;
+const REPAIR_BURST_OFFSET_MINUTE = 12;
+
+function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Math.trunc(Number(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(parsed, maximum);
+}
+
+export function minuteFactRepairBurstDue(controller, env = {}) {
+  const scheduledAt = Number(controller?.scheduledTime);
+  const minuteIndex = Math.floor(
+    (Number.isFinite(scheduledAt) ? scheduledAt : Date.now()) / MINUTE_MS,
+  );
+  const interval = Math.max(
+    MIN_REPAIR_BURST_INTERVAL_MINUTES,
+    positiveInteger(
+      env?.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES,
+      DEFAULT_REPAIR_BURST_INTERVAL_MINUTES,
+      MAX_REPAIR_BURST_INTERVAL_MINUTES,
+    ),
+  );
+  return ((minuteIndex % interval) + interval) % interval === REPAIR_BURST_OFFSET_MINUTE;
+}
 
 function coordinatorLeaseMs(value) {
   const parsed = Number(value ?? DEFAULT_COORDINATOR_LEASE_MS);
@@ -76,9 +112,15 @@ export async function runFetchCoordinatedScheduled(controller, env, ctx, depende
   }
 
   const coordinatedEnv = Object.create(env || null);
-  Object.defineProperty(coordinatedEnv, 'PRIMARY_RUN_LOCK_ENABLED', {
-    value: false,
-    enumerable: false,
+  Object.defineProperties(coordinatedEnv, {
+    PRIMARY_RUN_LOCK_ENABLED: {
+      value: false,
+      enumerable: false,
+    },
+    MINUTE_FACT_REPAIR_COMPLETE: {
+      value: claim.repair_complete === true,
+      enumerable: false,
+    },
   });
 
   const result = await direct(controller, coordinatedEnv, ctx, dependencies.direct);
@@ -99,6 +141,28 @@ async function skipDedicatedRawCollection() {
   return { skipped: true, reason: 'dedicated-buddies-collector' };
 }
 
+async function scheduleMinuteFactRepairBurst(controller, env) {
+  if (!minuteFactRepairBurstEnabled(env)) {
+    return { skipped: true, reason: 'repair-burst-disabled' };
+  }
+  if (env?.MINUTE_FACT_REPAIR_COMPLETE === true) {
+    return { skipped: true, reason: 'repair-burst-complete' };
+  }
+  if (!minuteFactRepairBurstDue(controller, env)) {
+    return { skipped: true, reason: 'repair-burst-cadence' };
+  }
+  if (!env?.HOST_MONITOR_QUEUE?.send) {
+    throw new Error('HOST_MONITOR_QUEUE binding is missing for minute fact repair burst');
+  }
+  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
+  await env.HOST_MONITOR_QUEUE.send({
+    message_type: MINUTE_FACT_REPAIR_BURST_MESSAGE,
+    message_version: 1,
+    scheduled_at: scheduledAt,
+  }, JSON_QUEUE_SEND_OPTIONS);
+  return { dispatched: true, scheduled_at: scheduledAt };
+}
+
 export async function runRuntimeOrchestratorScheduled(
   controller,
   env,
@@ -107,22 +171,115 @@ export async function runRuntimeOrchestratorScheduled(
 ) {
   const direct = dependencies.direct || {};
   const runtime = direct.runtime || {};
+  const directDependencies = {
+    ...direct,
+    runtime: {
+      ...runtime,
+      dispatchRawCollection: runtime.dispatchRawCollection || skipDedicatedRawCollection,
+    },
+  };
+  const core = dependencies.runDirect || runCoreScheduled;
+  const runDirect = async (receivedController, receivedEnv, receivedCtx, receivedDependencies) => {
+    const [result, repairBurst] = await Promise.all([
+      core(receivedController, receivedEnv, receivedCtx, receivedDependencies),
+      scheduleMinuteFactRepairBurst(receivedController, receivedEnv),
+    ]);
+    return { ...result, repairBurst };
+  };
   return runFetchCoordinatedScheduled(controller, env, ctx, {
     ...dependencies,
-    direct: {
-      ...direct,
-      runtime: {
-        ...runtime,
-        dispatchRawCollection: runtime.dispatchRawCollection || skipDedicatedRawCollection,
-      },
-    },
+    runDirect,
+    direct: directDependencies,
   });
+}
+
+async function markCoordinatorRepairComplete(env, result) {
+  if (result?.repair?.complete !== true) return false;
+  const stub = coordinatorStub(env?.RUNTIME_COORDINATOR);
+  if (typeof stub?.fetch !== 'function') return false;
+  try {
+    const response = await coordinatorRequest(stub, {
+      action: 'repair-complete',
+      completed_at: Date.now(),
+    });
+    return response?.complete === true;
+  } catch (error) {
+    coordinatorFailure('runtime_coordinator_repair_complete_failed', error);
+    return false;
+  }
+}
+
+async function processRepairBurstMessage(message, env, options = {}) {
+  const body = message?.body || {};
+  try {
+    if (Number(body.message_version) !== 1) {
+      throw new Error('unsupported minute fact repair burst version');
+    }
+    const run = options.runMinuteFactRepairBurst || runMinuteFactRepairBurst;
+    const result = await run(env, { now: Number(body.scheduled_at) || Date.now() });
+    await markCoordinatorRepairComplete(env, result);
+    message.ack();
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'minute_fact_repair_burst_failed',
+      error: String(error?.message || error).slice(0, 800),
+    }));
+    message.retry(RETRY_30_SECONDS);
+  }
+}
+
+export async function runRuntimeOrchestratorQueue(batch, env, ctx, dependencies = {}) {
+  const messages = batch?.messages || [];
+  const repairMessages = messages.filter(
+    (message) => message?.body?.message_type === MINUTE_FACT_REPAIR_BURST_MESSAGE,
+  );
+  if (!repairMessages.length) {
+    const run = dependencies.runCoreQueue || runCoreQueue;
+    return run(batch, env, ctx, dependencies.core || {});
+  }
+
+  for (const message of repairMessages) {
+    await processRepairBurstMessage(message, env, dependencies.repair || {});
+  }
+  const remaining = messages.filter(
+    (message) => message?.body?.message_type !== MINUTE_FACT_REPAIR_BURST_MESSAGE,
+  );
+  if (remaining.length) {
+    const run = dependencies.runCoreQueue || runCoreQueue;
+    await run({ ...batch, messages: remaining }, env, ctx, dependencies.core || {});
+  }
 }
 
 // Fetch-based Durable Object dispatch works with both legacy and current module
 // syntax and avoids invoking RPC methods on a class that does not extend the
 // special DurableObject base class.
 export class RuntimeCoordinator extends StoredRuntimeCoordinator {
+  constructor(state) {
+    super(state);
+    this.repairCompletionFallback = null;
+  }
+
+  async repairComplete() {
+    const storage = this.state?.storage;
+    const stored = typeof storage?.get === 'function'
+      ? await storage.get(MINUTE_FACT_REPAIR_BURST_COMPLETE_KEY)
+      : this.repairCompletionFallback;
+    return Boolean(stored?.complete === true || stored === true || stored === '1');
+  }
+
+  async markRepairComplete(completedAt = Date.now()) {
+    const completed = {
+      complete: true,
+      completed_at: Number(completedAt) || Date.now(),
+    };
+    const storage = this.state?.storage;
+    if (typeof storage?.put === 'function') {
+      await storage.put(MINUTE_FACT_REPAIR_BURST_COMPLETE_KEY, completed);
+    }
+    this.repairCompletionFallback = completed;
+    return completed;
+  }
+
   async fetch(request) {
     if (request?.method !== 'POST') {
       return Response.json({ error: 'method-not-allowed' }, { status: 405 });
@@ -134,10 +291,18 @@ export class RuntimeCoordinator extends StoredRuntimeCoordinator {
       return Response.json({ error: 'invalid-json' }, { status: 400 });
     }
     if (body?.action === 'claim') {
-      return Response.json(await this.claim(body));
+      const claim = await this.claim(body);
+      if (!claim?.claimed) return Response.json(claim);
+      return Response.json({
+        ...claim,
+        repair_complete: await this.repairComplete(),
+      });
     }
     if (body?.action === 'release') {
       return Response.json(await this.release(body?.holder_id, body?.released_at));
+    }
+    if (body?.action === 'repair-complete') {
+      return Response.json(await this.markRepairComplete(body?.completed_at));
     }
     return Response.json({ error: 'invalid-action' }, { status: 400 });
   }
@@ -145,6 +310,6 @@ export class RuntimeCoordinator extends StoredRuntimeCoordinator {
 
 export default {
   fetch: baseWorker.fetch,
-  queue: baseWorker.queue,
+  queue: runRuntimeOrchestratorQueue,
   scheduled: runRuntimeOrchestratorScheduled,
 };

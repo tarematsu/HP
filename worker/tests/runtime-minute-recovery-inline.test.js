@@ -4,15 +4,16 @@ import test from 'node:test';
 import {
   RUNTIME_CRON,
   RUNTIME_MINUTE_RECOVERY_MESSAGE,
+  minuteRecoveryPollDue,
   runRuntimeScheduled,
 } from '../src/runtime-scheduled.js';
 
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-test('runtime Cron runs minute recovery directly without the host-monitor relay', async () => {
+test('runtime Cron relays minute recovery without inline D1 work', async () => {
   const hostBatches = [];
   const recoveryCalls = [];
-  const scheduledAt = BASE + 36 * 60_000;
+  const scheduledAt = BASE + 31 * 60_000;
   const ctx = { waitUntil() {} };
   const env = {
     HOST_MONITOR_QUEUE: {
@@ -36,47 +37,20 @@ test('runtime Cron runs minute recovery directly without the host-monitor relay'
     },
   );
 
-  assert.deepEqual(hostBatches, []);
-  assert.deepEqual(recoveryCalls, [{
-    activeEnv: env,
-    dependencies: { marker: 'recovery' },
-    activeCtx: ctx,
-  }]);
-  assert.deepEqual(result.map(({ task }) => task), ['raw-collection', 'minute-recovery']);
-});
-
-test('a direct minute recovery failure falls back to the relay Queue', async () => {
-  const hostBatches = [];
-  const warnings = [];
-  const scheduledAt = BASE + 36 * 60_000;
-  const originalWarn = console.warn;
-  console.warn = (value) => warnings.push(String(value));
-  try {
-    await runRuntimeScheduled(
-      { cron: RUNTIME_CRON, scheduledTime: scheduledAt },
-      {
-        HOST_MONITOR_QUEUE: {
-          async sendBatch(messages) {
-            hostBatches.push(messages);
-          },
-        },
-      },
-      null,
-      {
-        async dispatchRawCollection() {},
-        async dispatchPendingMinuteFacts() {
-          throw new Error('temporary derive dispatch failure');
-        },
-      },
-    );
-  } finally {
-    console.warn = originalWarn;
-  }
-
+  assert.deepEqual(recoveryCalls, []);
   assert.deepEqual(hostBatches.flat().map(({ body }) => body), [{
     message_type: RUNTIME_MINUTE_RECOVERY_MESSAGE,
     message_version: 1,
     scheduled_at: scheduledAt,
   }]);
-  assert.match(warnings.join('\n'), /inline_minute_recovery_failed/);
+  assert.deepEqual(result.map(({ task }) => task), ['raw-collection', 'minute-recovery']);
+});
+
+test('minute recovery polling runs once per fifteen-minute window', () => {
+  for (const minute of [1, 16, 31, 46]) {
+    assert.equal(minuteRecoveryPollDue(BASE + minute * 60_000), true);
+  }
+  for (const minute of [0, 5, 6, 11, 15, 21, 30, 36, 45, 51, 59]) {
+    assert.equal(minuteRecoveryPollDue(BASE + minute * 60_000), false);
+  }
 });

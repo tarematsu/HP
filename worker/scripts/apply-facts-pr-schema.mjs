@@ -82,14 +82,22 @@ function deploymentMigrations() {
   }
   const changedOutput = execFileSync(
     'git',
-    ['diff', '--name-only', deployBaseSha, deployHeadSha, '--', 'database/facts-migrations'],
+    [
+      'diff', '--name-only', deployBaseSha, deployHeadSha, '--',
+      'database/facts-db.json',
+      'database/facts-migrations',
+    ],
     { cwd: repositoryRoot, env: process.env, encoding: 'utf8' },
   );
   const changed = new Set(String(changedOutput || '').split(/\r?\n/).filter(Boolean));
   const selected = migrationPaths.filter((migration) => changed.has(migration));
-  return selected.length
-    ? { migrations: selected, mode: 'changed-migration-set' }
-    : { migrations: [descriptor.schema], mode: 'schema-tip-fallback' };
+  if (selected.length) {
+    return { migrations: selected, mode: 'changed-migration-set' };
+  }
+  if (changed.has('database/facts-db.json')) {
+    return { migrations: [descriptor.schema], mode: 'schema-tip-fallback' };
+  }
+  return { migrations: [], mode: 'no-migration-changes' };
 }
 
 let deployment = deploymentMigrations();

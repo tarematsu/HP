@@ -9,6 +9,7 @@ import { processTrackHistoryPublicationTask } from './pages-track-history-public
 export const PAGES_READ_MODEL_CRON = '* * * * *';
 export const MINUTE_READ_MODEL_QUEUE = 'stationhead-read-model';
 export const PAGES_READ_MODEL_DISPATCH_MESSAGE = 'stationhead-pages-read-model-dispatch';
+export const PAGES_DASHBOARD_MATERIALIZATION_MESSAGE = 'stationhead-pages-dashboard-materialization';
 const MINUTE_READ_MODEL_MESSAGE = 'stationhead-read-model';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
 const DASHBOARD_MODEL_KEY = 'dashboard';
@@ -118,6 +119,7 @@ export async function runPagesDashboardMaterialization(
       event: 'pages_dashboard_materialization_failed',
       error: String(error?.message || error).slice(0, 500),
     }));
+    if (dependencies.throwOnError === true) throw error;
     return { skipped: true, reason: 'materialization-failed' };
   }
 }
@@ -259,20 +261,46 @@ export async function runPagesReadModelFetch(
   }
 }
 
-async function dispatchPagesVariant(env, timestamp, dependencies) {
+async function sendPagesTask(env, body, dependencies) {
   const send = dependencies.sendScheduledTask
-    || ((body) => env?.PAGES_READ_MODEL_QUEUE?.send(body, JSON_QUEUE_SEND_OPTIONS));
+    || ((message) => env?.PAGES_READ_MODEL_QUEUE?.send(message, JSON_QUEUE_SEND_OPTIONS));
   if (!dependencies.sendScheduledTask && !env?.PAGES_READ_MODEL_QUEUE?.send) {
     throw new Error('PAGES_READ_MODEL_QUEUE binding is missing');
   }
-  await send({
+  await send(body);
+}
+
+async function dispatchPagesVariant(env, timestamp, dependencies) {
+  await sendPagesTask(env, {
     message_type: PAGES_READ_MODEL_DISPATCH_MESSAGE,
+    message_version: 1,
+    scheduled_at: timestamp,
+  }, dependencies);
+  return {
+    dispatched: true,
+    task: 'pages-read-model-variant',
+    scheduled_at: timestamp,
+  };
+}
+
+async function dispatchPagesDashboardMaterialization(env, timestamp, dependencies) {
+  if (!dashboardMaterializationDue(timestamp)) return { skipped: true, reason: 'interval' };
+  const send = dependencies.sendDashboardTask
+    || dependencies.sendScheduledTask
+    || ((message) => env?.PAGES_READ_MODEL_QUEUE?.send(message, JSON_QUEUE_SEND_OPTIONS));
+  if (!dependencies.sendDashboardTask
+      && !dependencies.sendScheduledTask
+      && !env?.PAGES_READ_MODEL_QUEUE?.send) {
+    throw new Error('PAGES_READ_MODEL_QUEUE binding is missing for dashboard materialization');
+  }
+  await send({
+    message_type: PAGES_DASHBOARD_MATERIALIZATION_MESSAGE,
     message_version: 1,
     scheduled_at: timestamp,
   });
   return {
     dispatched: true,
-    task: 'pages-read-model-variant',
+    task: 'pages-dashboard-materialization',
     scheduled_at: timestamp,
   };
 }
@@ -287,26 +315,29 @@ export async function runPagesReadModelCron(controller, env, dependencies = EMPT
     }
   }
   const now = scheduledTimestamp(controller);
-  const dashboard = dependencies.runDashboardMaterialization
-    || runPagesDashboardMaterialization;
-  const dashboardPromise = dashboard(env, now, dependencies.dashboard || EMPTY_DEPENDENCIES);
   if (!dependencies.runTask && pagesVariantDispatchDue(now)) {
     const [result] = await Promise.all([
       dispatchPagesVariant(env, now, dependencies),
-      dashboardPromise,
+      dispatchPagesDashboardMaterialization(env, now, dependencies),
     ]);
     return result;
   }
   const runTask = dependencies.runTask || runDispatchedPagesReadModelTask;
   const [result] = await Promise.all([
     runTask(env, now, dependencies),
-    dashboardPromise,
+    dispatchPagesDashboardMaterialization(env, now, dependencies),
   ]);
   return assertRefreshSucceeded(result);
 }
 
 function dispatchedPagesTask(body) {
   return body?.message_type === PAGES_READ_MODEL_DISPATCH_MESSAGE
+    && Number(body?.message_version) === 1
+    && Number.isFinite(Number(body?.scheduled_at));
+}
+
+function dispatchedDashboardTask(body) {
+  return body?.message_type === PAGES_DASHBOARD_MATERIALIZATION_MESSAGE
     && Number(body?.message_version) === 1
     && Number.isFinite(Number(body?.scheduled_at));
 }
@@ -332,10 +363,34 @@ async function processDispatchedPagesTask(message, env, dependencies) {
   }
 }
 
+async function processDashboardMaterializationTask(message, env, dependencies) {
+  try {
+    const run = dependencies.runDashboardMaterialization || runPagesDashboardMaterialization;
+    const result = await run(
+      env,
+      scheduledTimestamp({ scheduledTime: message.body.scheduled_at }),
+      { ...(dependencies.dashboard || EMPTY_DEPENDENCIES), throwOnError: true },
+    );
+    console.log(JSON.stringify({ event: 'pages_dashboard_materialization_completed', ...result }));
+    message.ack();
+    return result;
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'pages_dashboard_materialization_queue_failed',
+      error: String(error?.message || error).slice(0, 800),
+    }));
+    message.retry();
+    return null;
+  }
+}
+
 export async function runPagesReadModelQueue(batch, env, dependencies = EMPTY_DEPENDENCIES) {
   const messages = batch?.messages;
   if (!messages?.length) return;
   const message = messages[0];
+  if (dispatchedDashboardTask(message.body)) {
+    return processDashboardMaterializationTask(message, env, dependencies);
+  }
   if (dispatchedPagesTask(message.body)) {
     return processDispatchedPagesTask(message, env, dependencies);
   }

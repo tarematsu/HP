@@ -2,17 +2,25 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { activeDeriveEnv, LIVE_DERIVE_QUEUE_NAME } from '../src/minute-derive-entry.js';
 import { writeSparseLiveRevisionChunk } from '../src/minute-revision-materializer.js';
 
-test('production keeps live revisions at one message and one track per invocation', () => {
+test('production keeps live revisions isolated while rebuilds use the configured chunk', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.vars.DERIVE_REVISION_CHUNK_TRACKS, 1);
+  assert.equal(config.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   const consumers = new Map(config.queues.consumers.map((consumer) => [consumer.queue, consumer]));
   assert.equal(consumers.get('stationhead-minute-derive').max_batch_size, 1);
   assert.equal(consumers.get('stationhead-minute-live-derive').max_batch_size, 1);
   assert.equal(consumers.get('stationhead-minute-live-derive').max_concurrency, 2);
   assert.equal(consumers.get('stationhead-buddies-facts').max_batch_size, 1);
   assert.equal(consumers.get('stationhead-minute-rebuild').max_batch_size, 1);
+
+  const live = activeDeriveEnv({ queue: LIVE_DERIVE_QUEUE_NAME }, {
+    DERIVE_REVISION_CHUNK_TRACKS: config.vars.DERIVE_REVISION_CHUNK_TRACKS,
+    MINUTE_LIVE_DERIVE_QUEUE: { send() {} },
+    MINUTE_DERIVE_QUEUE: { send() {} },
+  });
+  assert.equal(live.DERIVE_REVISION_CHUNK_TRACKS, 1);
 });
 
 test('sparse materializer respects the bounded two-track chunk', async () => {

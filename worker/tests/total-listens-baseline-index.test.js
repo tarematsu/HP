@@ -37,10 +37,10 @@ function recordingDb() {
   };
 }
 
-test('facts descriptor advances through the complete live metric restore', () => {
+test('facts descriptor advances past the repair candidate index', () => {
   assert.equal(
     descriptor.schema,
-    'database/facts-migrations/041_restore_complete_live_metrics.sql',
+    'database/facts-migrations/043_retire_repair_candidate_index.sql',
   );
 });
 

@@ -64,7 +64,7 @@ test('defensive paired revision handling caps each message at one track', async 
   assert.deepEqual(events, ['ack:1', 'ack:2']);
 });
 
-test('runtime isolates all CPU-sensitive derive and rebuild deliveries', () => {
+test('runtime keeps live revisions at one track while rebuilds use the configured batch', () => {
   const runtime = config('wrangler.runtime.jsonc');
   const entry = readFileSync(new URL('../src/minute-derive-entry.js', import.meta.url), 'utf8');
   const consumers = new Map(runtime.queues.consumers.map((consumer) => [consumer.queue, consumer]));
@@ -74,7 +74,7 @@ test('runtime isolates all CPU-sensitive derive and rebuild deliveries', () => {
     consumers.get('stationhead-buddies-facts').max_batch_size,
     consumers.get('stationhead-minute-rebuild').max_batch_size,
   ], [1, 1, 1, 1]);
-  assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 1);
+  assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(consumers.get('stationhead-minute-live-derive').max_concurrency, 2);
   assert.equal(consumers.get('stationhead-minute-rebuild').max_concurrency, 1);
   assert.match(entry, /const MAX_LIVE_REVISION_CHUNK_TRACKS = 1/);

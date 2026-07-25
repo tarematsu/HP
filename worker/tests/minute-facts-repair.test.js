@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  MAX_REPAIR_CANDIDATES,
+  MAX_REPAIR_ENQUEUES,
   MINUTE_FACT_REPAIR_END,
   MINUTE_FACT_REPAIR_KEY,
   MINUTE_FACT_REPAIR_PRIORITY,
@@ -18,10 +20,17 @@ test('July repair window is the four JST days and uses a higher source priority'
 });
 
 test('repair matches both the original equality corruption and the old flagged-null form', () => {
-  assert.match(source, /reported_current_stream_count=reported_total_listens/);
+  assert.match(source, /reported_current_stream_count=\$\{alias\}reported_total_listens/);
   assert.match(source, /reported_current_stream_count IS NULL/);
   assert.match(source, /quality_flags & 64/);
   assert.match(source, /source-fingerprint-mismatch/);
+});
+
+test('repair burst raises candidate and enqueue ceilings to one Queue batch', () => {
+  assert.equal(MAX_REPAIR_CANDIDATES, 100);
+  assert.equal(MAX_REPAIR_ENQUEUES, 100);
+  assert.match(source, /MINUTE_FACT_REPAIR_CANDIDATE_LIMIT/);
+  assert.match(source, /MINUTE_FACT_REPAIR_ENQUEUE_LIMIT/);
 });
 
 test('repair is idempotent and protects changed facts from overwrite', () => {

@@ -25,7 +25,7 @@ test('runtime Worker consumes isolated live and rebuild queues', () => {
     'stationhead-buddies-facts',
     'stationhead-minute-rebuild',
   ]);
-  assert.deepEqual(queues.map(({ max_concurrency }) => max_concurrency), [1, 2, 1, 1]);
+  assert.deepEqual(queues.map(({ max_concurrency }) => max_concurrency), [250, 2, 1, 1]);
   assert.equal(
     runtime.queues.producers.find(({ binding }) => binding === 'MINUTE_LIVE_DERIVE_QUEUE').queue,
     'stationhead-minute-live-derive',
