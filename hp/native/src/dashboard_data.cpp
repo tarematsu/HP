@@ -106,9 +106,9 @@ bool ParseDashboardSnapshot(
     for (int offset = 0; offset < 12; ++offset) {
       try {
         const int hour = (startHour + offset) % 24;
-        const winrt::hstring key = std::to_wstring(hour);
-        if (!hourly.HasKey(key)) continue;
-        const auto value = hourly.GetNamedValue(key);
+        const std::wstring key = std::to_wstring(hour);
+        if (!hourly.HasKey(key.c_str())) continue;
+        const auto value = hourly.GetNamedValue(key.c_str());
         if (value.ValueType() != JsonValueType::Object) continue;
         const JsonObject item = value.GetObject();
         next.weatherHours.push_back({
