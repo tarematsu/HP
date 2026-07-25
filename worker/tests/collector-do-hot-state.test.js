@@ -12,6 +12,9 @@ import {
   saveCollectorStateAndClearFailure,
 } from '../src/collector-state.js';
 
+// These contracts keep DO as the minute-to-minute state layer while retaining
+// D1 as the bounded recovery checkpoint and invalidating cached D1 reads safely.
+
 function durableStorage() {
   const values = new Map();
   return {
