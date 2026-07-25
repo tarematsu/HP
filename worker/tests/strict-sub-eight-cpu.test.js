@@ -17,7 +17,8 @@ test('CPU budget keeps the 10 ms ceiling with current-version fail-closed covera
   assert.match(source, /STATELESS_CPU_BUDGET_MS = float\(os\.environ\.get\("CPU_BUDGET_MS", "10"\)\)/);
   assert.match(source, /DURABLE_OBJECT_CPU_BUDGET_MS/);
   assert.match(source, /EXEMPT_MARKERS/);
-  assert.match(source, /cpu_ms <= item\["budget_ms"\]/);
+  assert.match(source, /terminal_cpu = cpu_limit_outcome\(event\)/);
+  assert.match(source, /numeric_overage = cpu_ms is not None and cpu_ms > item\["budget_ms"\]/);
   assert.match(source, /missing = \[worker for worker, values in samples\.items\(\) if not values\]/);
   assert.match(source, /not truncated and not missing/);
   assert.match(source, /current_events/);
