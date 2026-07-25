@@ -26,20 +26,26 @@ jobs:
           set -o pipefail
           python3 .github/scripts/pr260_finish_homepanel_observability_fix.py 2>&1 | tee patch.log
 
+      - name: Validate telemetry policy self-tests
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+            python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
+            node --test tests/cloudflare-observability-api.test.mjs tests/homepanel-observability-contract.test.mjs
+          } 2>&1 | tee validation.log
+
       - name: Upload patch diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: homepanel-observability-patch-${{ github.run_id }}
-          path: patch.log
+          path: |
+            patch.log
+            validation.log
           if-no-files-found: warn
           retention-days: 1
-
-      - name: Validate telemetry policy self-tests
-        run: |
-          python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
-          node --test tests/cloudflare-observability-api.test.mjs tests/homepanel-observability-contract.test.mjs
 
       - name: Commit observability fixes
         shell: bash
