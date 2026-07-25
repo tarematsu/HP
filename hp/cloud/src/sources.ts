@@ -77,6 +77,8 @@ const WEATHER_RAIN = /class="wTable__item r">(-?\d+(?:\.\d+)?)/;
 const WEATHER_TEMP = /class="wTable__item t">(-?\d+(?:\.\d+)?)/;
 const WEATHER_POP = /class="wTable__item (?:p|pop)">\s*(\d{1,3})/i;
 const WEATHER_POP_TEXT = /(?:降水確率\s*)?(\d{1,3})\s*%/;
+const WEATHER_WINDOW_HOURS = 12;
+const HOUR_MS = 60 * 60_000;
 const NEWS_ITEM = /<item>([\s\S]*?)<\/item>/gi;
 const NEWS_TITLE = /<title[^>]*>([\s\S]*?)<\/title>/i;
 const NEWS_DESCRIPTION = /<description[^>]*>([\s\S]*?)<\/description>/i;
@@ -96,14 +98,50 @@ function stripHtml(value: string): string {
     .trim();
 }
 
-function parseWeatherNews(html: string, now = new Date()): { forecastDate: string; hourly: Record<string, unknown> } {
+function weatherGroupDayStart(day: number, windowStart: number): number | null {
+  const anchor = new Date(windowStart);
+  let selected: number | null = null;
+  let selectedDistance = Number.POSITIVE_INFINITY;
+  for (let monthOffset = -1; monthOffset <= 1; monthOffset += 1) {
+    const candidate = Date.UTC(
+      anchor.getUTCFullYear(),
+      anchor.getUTCMonth() + monthOffset,
+      day,
+    );
+    if (new Date(candidate).getUTCDate() !== day) continue;
+    const distance = Math.abs(candidate - windowStart);
+    if (distance < selectedDistance) {
+      selected = candidate;
+      selectedDistance = distance;
+    }
+  }
+  return selected;
+}
+
+function weatherDateLabel(timestampMs: number): string {
+  const date = new Date(timestampMs);
+  return `${date.getUTCMonth() + 1}/${date.getUTCDate()}`;
+}
+
+function parseWeatherNews(html: string, now = new Date()): {
+  forecastDate: string;
+  startHour: number;
+  windowStartAt: string;
+  hourly: Record<string, unknown>;
+} {
   const bodyStart = html.indexOf('id="flick_list"');
   if (bodyStart < 0) throw new Error("WeatherNews hourly table was not found");
-  const jst = new Date(now.getTime() + JST_MS);
-  const nextJst = new Date(jst.getTime() + 86_400_000);
-  const startDay = jst.getUTCDate();
-  const endDay = nextJst.getUTCDate();
-  const forecastDate = `${jst.getUTCMonth() + 1}/${startDay}〜${nextJst.getUTCMonth() + 1}/${endDay}`;
+  const localNowMs = now.getTime() + JST_MS;
+  const windowStart = Math.ceil(localNowMs / HOUR_MS) * HOUR_MS;
+  const windowEnd = windowStart + WEATHER_WINDOW_HOURS * HOUR_MS;
+  const startDate = new Date(windowStart);
+  const endDate = new Date(windowEnd - HOUR_MS);
+  const startLabel = weatherDateLabel(windowStart);
+  const endLabel = weatherDateLabel(windowEnd - HOUR_MS);
+  const forecastDate = startDate.getUTCDate() === endDate.getUTCDate()
+    && startDate.getUTCMonth() === endDate.getUTCMonth()
+    ? startLabel
+    : `${startLabel}〜${endLabel}`;
   const hourly: Record<string, unknown> = {};
   let hourlyCount = 0;
 
@@ -111,14 +149,17 @@ function parseWeatherNews(html: string, now = new Date()): { forecastDate: strin
   for (let groupMatch = WEATHER_GROUP.exec(html); groupMatch; groupMatch = WEATHER_GROUP.exec(html)) {
     const content = groupMatch[1] ?? "";
     const day = numberOrNull(WEATHER_DAY.exec(content)?.[1]);
-    const target = day === startDay ? 1 : day === endDay ? 2 : 0;
-    if (!target) continue;
+    if (day === null) continue;
+    const groupStart = weatherGroupDayStart(day, windowStart);
+    if (groupStart === null) continue;
 
     WEATHER_ROW.lastIndex = 0;
     for (let rowMatch = WEATHER_ROW.exec(content); rowMatch; rowMatch = WEATHER_ROW.exec(content)) {
       const row = rowMatch[1] ?? "";
       const hour = numberOrNull(WEATHER_HOUR.exec(row)?.[1]);
-      if (hour === null || (target === 1 ? hour < 22 : hour > 9)) continue;
+      if (hour === null) continue;
+      const timestamp = groupStart + hour * HOUR_MS;
+      if (timestamp < windowStart || timestamp >= windowEnd) continue;
       const icon = WEATHER_ICON.exec(row)?.[1] ?? "";
       const rainMm = numberOrNull(WEATHER_RAIN.exec(row)?.[1]);
       const temp = numberOrNull(WEATHER_TEMP.exec(row)?.[1]);
@@ -135,20 +176,29 @@ function parseWeatherNews(html: string, now = new Date()): { forecastDate: strin
 
   WEATHER_GROUP.lastIndex = 0;
   WEATHER_ROW.lastIndex = 0;
-  if (!hourlyCount) throw new Error("WeatherNews hourly rows were not found");
-  return { forecastDate, hourly };
+  if (hourlyCount !== WEATHER_WINDOW_HOURS) {
+    throw new Error(`WeatherNews provided ${hourlyCount} of ${WEATHER_WINDOW_HOURS} rolling hourly rows`);
+  }
+  return {
+    forecastDate,
+    startHour: startDate.getUTCHours(),
+    windowStartAt: new Date(windowStart - JST_MS).toISOString(),
+    hourly,
+  };
 }
 
 export async function fetchWeather(env: Env): Promise<SourceResult> {
   const now = new Date();
   const url = env.WEATHERNEWS_URL?.trim();
   if (!url) throw new Error("WEATHERNEWS_URL is not configured");
-  const { forecastDate, hourly } = parseWeatherNews(await fetchText(url), now);
+  const { forecastDate, startHour, windowStartAt, hourly } = parseWeatherNews(await fetchText(url), now);
   return {
     source: "weather",
     payload: {
       city: env.CITY_NAME?.trim() || "Configured location",
       forecastDate,
+      startHour,
+      windowStartAt,
       hourly,
       generatedAt: now.toISOString(),
     },
