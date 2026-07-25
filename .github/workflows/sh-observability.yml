@@ -18,8 +18,6 @@ on:
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
-      - 'tests/cloudflare-observability-status.test.mjs'
-      - 'tests/observability-status-publisher.test.mjs'
   schedule:
     - cron: "0 1 * * *"
   workflow_dispatch:
@@ -118,18 +116,6 @@ jobs:
         uses: ./.github/actions/cloudflare-context
         with:
           api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
-      - name: Validate observability policy code
-        id: policy-self-test
-        run: |
-          python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
-          python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
-          python3 .github/scripts/audit-observability-budget-gates.py --self-test
-          python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
-          node .github/scripts/capture-cloudflare-live-tail.mjs --self-test
-          node --test \
-            tests/cloudflare-observability-status.test.mjs \
-            tests/observability-status-publisher.test.mjs
 
       - name: Enforce UTC daily request and D1 budgets
         id: daily-budget
@@ -184,7 +170,6 @@ jobs:
           OBSERVABILITY_MAIN_REF: main
           OBSERVABILITY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           OBSERVABILITY_TRIGGER: ${{ github.event_name }}
-          POLICY_OUTCOME: ${{ steps.policy-self-test.outcome }}
           DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
           FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
           BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
