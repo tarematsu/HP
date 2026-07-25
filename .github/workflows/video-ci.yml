@@ -35,77 +35,21 @@ jobs:
           from pathlib import Path
           import subprocess
 
-          def edit_section(path: str, start: str, end: str, edits: list[tuple[str, str]]) -> None:
+          def replace_once(path, old, new):
               target = Path(path)
               text = target.read_text(encoding='utf-8')
-              start_at = text.find(start)
-              end_at = text.find(end, start_at + len(start)) if start_at >= 0 else -1
-              if start_at < 0 or end_at < 0:
-                  raise SystemExit(f'{path}: section not found')
-              section = text[start_at:end_at]
-              for old, new in edits:
-                  count = section.count(old)
-                  if count != 1:
-                      raise SystemExit(f'{path}: expected one match, found {count}: {old!r}')
-                  section = section.replace(old, new, 1)
-              target.write_text(text[:start_at] + section + text[end_at:], encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              target.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          edit_section(
-              'hp/native/src/sh_shared.h',
-              'inline std::wstring StationheadAuthProbeScript(',
-              'inline std::wstring StationheadDomPlayStatsScript(',
-              [
-                  (
-                      'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {',
-                      'inline std::wstring StationheadAuthProbeScript(int channelId) {',
-                  ),
-                  (
-                      "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;",
-                      "(() => {\n  const post = message => {",
-                  ),
-              ],
-          )
+          replace_once('hp/native/src/sh_shared.h', 'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {', 'inline std::wstring StationheadAuthProbeScript(int channelId) {')
+          replace_once('hp/native/src/sh_shared.h', "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;", "(() => {\n  const post = message => {")
 
-          edit_section(
-              'hp/native/src/sh.cpp',
-              'std::wstring HResultHex(HRESULT hr)',
-              '}\n}\n\nStationheadPlayer::StationheadPlayer(',
-              [
-                  (
-                      '}\n',
-                      '''}
-
-std::wstring StationheadAuthProbeScriptForRun(
-    int channelId, int64_t probeStartedAt) {
-  std::wstring script = StationheadAuthProbeScript(channelId);
-  static constexpr std::wstring_view marker =
-      L"post({ type: 'stationhead-auth-probe',";
-  std::wstring replacement(marker);
-  replacement += L" probe_started_at: ";
-  replacement += std::to_wstring(probeStartedAt);
-  replacement += L",";
-  for (size_t at = script.find(marker); at != std::wstring::npos;
-       at = script.find(marker, at + replacement.size())) {
-    script.replace(at, marker.size(), replacement);
-  }
-  return script;
-}
-''',
-                  ),
-              ],
-          )
-
-          edit_section(
-              'hp/native/src/sh.cpp',
-              'void StationheadPlayer::PollAuthProbe(',
-              '// Locates the Start Listening control',
-              [
-                  (
-                      'StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_)',
-                      'StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_)',
-                  ),
-              ],
-          )
+          old_namespace_end = "  return output.str();\n}\n}\n\nStationheadPlayer::StationheadPlayer"
+          adapter = "  return output.str();\n}\n\nstd::wstring StationheadAuthProbeScriptForRun(\n    int channelId, int64_t probeStartedAt) {\n  std::wstring script = StationheadAuthProbeScript(channelId);\n  static constexpr std::wstring_view marker =\n      L\"post({ type: 'stationhead-auth-probe',\";\n  std::wstring replacement(marker);\n  replacement += L\" probe_started_at: \";\n  replacement += std::to_wstring(probeStartedAt);\n  replacement += L\",\";\n  for (size_t at = script.find(marker); at != std::wstring::npos;\n       at = script.find(marker, at + replacement.size())) {\n    script.replace(at, marker.size(), replacement);\n  }\n  return script;\n}\n}\n\nStationheadPlayer::StationheadPlayer"
+          replace_once('hp/native/src/sh.cpp', old_namespace_end, adapter)
+          replace_once('hp/native/src/sh.cpp', 'StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_)', 'StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_)')
 
           subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
           subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/video-ci.yml'], check=True)
