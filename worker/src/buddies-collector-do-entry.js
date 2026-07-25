@@ -2,13 +2,19 @@ import {
   BUDDIES_COLLECTOR_CRON,
   runBuddiesCollectorScheduled as runDirectScheduled,
 } from './buddies-collector-core.js';
+import { withCollectorDoHotState } from './collector-do-hot-state.js';
 import { recordCollectorOperationalTelemetry } from './collector-operational-telemetry.js';
+import { queueAttributedEnv } from './queue-attribution.js';
 
 const COORDINATOR_NAME = 'scheduled-v1';
-const COORDINATOR_URL = 'https://buddies-collector-coordinator.internal/schedule';
+const COORDINATOR_URL = 'https://buddies-collector-coordinator.internal/run';
 const PENDING_SCHEDULE_KEY = 'collector:pending-schedule';
 const MINUTE_STATE_KEY = 'collector:minute-state';
 const MINUTE_MS = 60_000;
+
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
+}
 
 function coordinatorStub(namespace) {
   if (typeof namespace?.getByName === 'function') return namespace.getByName(COORDINATOR_NAME);
@@ -26,19 +32,6 @@ function diagnostic(event, error, detail = {}) {
   }));
 }
 
-async function scheduleAlarm(stub, scheduledAt) {
-  const response = await stub.fetch(COORDINATOR_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ action: 'schedule', scheduledTime: scheduledAt }),
-  });
-  if (!response?.ok) {
-    const detail = typeof response?.text === 'function' ? await response.text() : '';
-    throw new Error(`collector coordinator HTTP ${response?.status || 500}: ${detail.slice(0, 300)}`);
-  }
-  return response.json();
-}
-
 function minuteBucket(timestamp) {
   return Math.floor(Number(timestamp) / MINUTE_MS) * MINUTE_MS;
 }
@@ -51,13 +44,17 @@ async function clearStorageKey(storage, key) {
   }
 }
 
-async function clearPendingSchedule(storage, minuteAt) {
-  if (typeof storage?.get !== 'function') return;
-  const pending = await storage.get(PENDING_SCHEDULE_KEY);
-  const pendingMinute = minuteBucket(pending?.scheduled_at ?? pending?.minute_at);
-  if (Number.isFinite(pendingMinute) && pendingMinute === minuteAt) {
-    await clearStorageKey(storage, PENDING_SCHEDULE_KEY);
+async function coordinatorRequest(stub, action, scheduledAt) {
+  const response = await stub.fetch(COORDINATOR_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action, scheduledTime: scheduledAt }),
+  });
+  if (!response?.ok) {
+    const detail = typeof response?.text === 'function' ? await response.text() : '';
+    throw new Error(`collector coordinator HTTP ${response?.status || 500}: ${detail.slice(0, 300)}`);
   }
+  return response.json();
 }
 
 function telemetrySample(result) {
@@ -95,17 +92,21 @@ export async function runAlarmCoordinatedBuddiesCollectorScheduled(
   const namespace = env?.BUDDIES_COLLECTOR_COORDINATOR;
   const stub = dependencies.stub || coordinatorStub(namespace);
   if (typeof stub?.fetch === 'function') {
+    const action = enabled(env?.COLLECTOR_COORDINATOR_USE_ALARM) ? 'schedule' : 'run';
     try {
-      return await scheduleAlarm(stub, scheduledAt);
+      return await coordinatorRequest(stub, action, scheduledAt);
     } catch (error) {
-      diagnostic('buddies_collector_coordinator_failed', error);
+      diagnostic('buddies_collector_coordinator_failed', error, { action });
       throw error;
     }
   }
-  if (namespace) {
-    throw new Error('buddies collector coordinator binding is unusable');
-  }
-  return runDirectScheduled(controller, env, ctx, dependencies.direct);
+  if (namespace) throw new Error('buddies collector coordinator binding is unusable');
+  return runDirectScheduled(
+    controller,
+    queueAttributedEnv(env, 'sh-buddies-collector'),
+    ctx,
+    dependencies.direct,
+  );
 }
 
 export class BuddiesCollectorCoordinator {
@@ -120,59 +121,21 @@ export class BuddiesCollectorCoordinator {
     return Number.isFinite(Number(value)) ? Number(value) : Date.now();
   }
 
-  async schedule(body = {}) {
-    const storage = this.state?.storage;
-    if (typeof storage?.setAlarm !== 'function'
-        || typeof storage?.put !== 'function') {
-      throw new Error('Durable Object alarm storage is unavailable');
-    }
-    const scheduledAt = Number(body?.scheduledTime) || this.now();
-    const scheduledMinute = minuteBucket(scheduledAt);
-    const alarmAt = Math.max(this.now(), scheduledAt);
-    const existing = typeof storage.getAlarm === 'function' ? await storage.getAlarm() : null;
-    if (existing != null && Number.isFinite(Number(existing)) && Number(existing) <= alarmAt) {
-      return {
-        scheduled: false,
-        reason: 'collector-alarm-pending',
-        scheduled_at: scheduledAt,
-        minute_at: scheduledMinute,
-        alarm_at: Number(existing),
-      };
-    }
-    await storage.put(PENDING_SCHEDULE_KEY, {
-      scheduled_at: scheduledAt,
-      minute_at: scheduledMinute,
-      stored_at: this.now(),
-    });
-    try {
-      await storage.setAlarm(alarmAt);
-    } catch (error) {
-      await clearPendingSchedule(storage, scheduledMinute).catch(() => {});
-      throw error;
-    }
-    return {
-      scheduled: true,
-      scheduled_at: scheduledAt,
-      minute_at: scheduledMinute,
-      alarm_at: alarmAt,
-    };
+  activeEnv() {
+    const attributed = queueAttributedEnv(this.env, 'sh-buddies-collector');
+    return withCollectorDoHotState(attributed, this.state?.storage);
   }
 
-  async alarm() {
-    const startedAt = this.now();
+  async runMinute(body = {}) {
     const storage = this.state?.storage;
     if (typeof storage?.get !== 'function' || typeof storage?.put !== 'function') {
       throw new Error('Durable Object state storage is unavailable');
     }
-    const pending = await storage.get(PENDING_SCHEDULE_KEY);
-    const scheduledAt = Number(pending?.scheduled_at);
-    const scheduledMinute = minuteBucket(
-      Number.isFinite(scheduledAt) ? scheduledAt : (pending?.minute_at ?? startedAt),
-    );
+    const scheduledAt = Number(body?.scheduledTime) || this.now();
+    const scheduledMinute = minuteBucket(scheduledAt);
     const minuteState = await storage.get(MINUTE_STATE_KEY);
     if (Number(minuteState?.minute_at) === scheduledMinute) {
       if (minuteState?.status === 'completed') {
-        await clearPendingSchedule(storage, scheduledMinute).catch(() => {});
         return {
           skipped: true,
           reason: 'collector-minute-already-completed',
@@ -180,7 +143,6 @@ export class BuddiesCollectorCoordinator {
         };
       }
       if (minuteState?.status === 'running') {
-        await clearPendingSchedule(storage, scheduledMinute).catch(() => {});
         return {
           skipped: true,
           reason: 'collector-minute-in-flight-or-uncertain',
@@ -189,19 +151,20 @@ export class BuddiesCollectorCoordinator {
       }
     }
 
+    const startedAt = this.now();
     await storage.put(MINUTE_STATE_KEY, {
       minute_at: scheduledMinute,
       status: 'running',
       started_at: startedAt,
-      scheduled_at: Number.isFinite(scheduledAt) ? scheduledAt : scheduledMinute,
+      scheduled_at: scheduledAt,
     });
 
     let collectionCompleted = false;
     try {
       const result = await runDirectScheduled({
         cron: BUDDIES_COLLECTOR_CRON,
-        scheduledTime: Number.isFinite(scheduledAt) ? scheduledAt : scheduledMinute,
-      }, this.env, {}, this.dependencies.direct);
+        scheduledTime: scheduledAt,
+      }, this.activeEnv(), {}, this.dependencies.direct);
       collectionCompleted = true;
       const finishedAt = this.now();
       await storage.put(MINUTE_STATE_KEY, {
@@ -209,9 +172,8 @@ export class BuddiesCollectorCoordinator {
         status: 'completed',
         started_at: startedAt,
         completed_at: finishedAt,
-        scheduled_at: Number.isFinite(scheduledAt) ? scheduledAt : scheduledMinute,
+        scheduled_at: scheduledAt,
       });
-      await clearPendingSchedule(storage, scheduledMinute);
       await recordCollectorOperationalTelemetry(this.state, this.env, {
         ok: true,
         timestamp: finishedAt,
@@ -238,6 +200,49 @@ export class BuddiesCollectorCoordinator {
     }
   }
 
+  async schedule(body = {}) {
+    const storage = this.state?.storage;
+    if (typeof storage?.setAlarm !== 'function' || typeof storage?.put !== 'function') {
+      throw new Error('Durable Object alarm storage is unavailable');
+    }
+    const scheduledAt = Number(body?.scheduledTime) || this.now();
+    const alarmAt = Math.max(this.now(), scheduledAt);
+    const existing = typeof storage.getAlarm === 'function' ? await storage.getAlarm() : null;
+    if (existing != null && Number.isFinite(Number(existing)) && Number(existing) <= alarmAt) {
+      return {
+        scheduled: false,
+        reason: 'collector-alarm-pending',
+        scheduled_at: scheduledAt,
+        minute_at: minuteBucket(scheduledAt),
+        alarm_at: Number(existing),
+      };
+    }
+    await storage.put(PENDING_SCHEDULE_KEY, {
+      scheduled_at: scheduledAt,
+      minute_at: minuteBucket(scheduledAt),
+      stored_at: this.now(),
+    });
+    await storage.setAlarm(alarmAt);
+    return {
+      scheduled: true,
+      scheduled_at: scheduledAt,
+      minute_at: minuteBucket(scheduledAt),
+      alarm_at: alarmAt,
+    };
+  }
+
+  async alarm() {
+    const storage = this.state?.storage;
+    const pending = typeof storage?.get === 'function'
+      ? await storage.get(PENDING_SCHEDULE_KEY)
+      : null;
+    const result = await this.runMinute({
+      scheduledTime: Number(pending?.scheduled_at) || this.now(),
+    });
+    await clearStorageKey(storage, PENDING_SCHEDULE_KEY).catch(() => {});
+    return result;
+  }
+
   async fetch(request) {
     if (request?.method !== 'POST') {
       return Response.json({ error: 'method-not-allowed' }, { status: 405 });
@@ -248,16 +253,16 @@ export class BuddiesCollectorCoordinator {
     } catch {
       return Response.json({ error: 'invalid-json' }, { status: 400 });
     }
-    if (body?.action !== 'schedule') {
-      return Response.json({ error: 'invalid-action' }, { status: 400 });
-    }
-    return Response.json(await this.schedule(body));
+    if (body?.action === 'run') return Response.json(await this.runMinute(body));
+    if (body?.action === 'schedule') return Response.json(await this.schedule(body));
+    return Response.json({ error: 'invalid-action' }, { status: 400 });
   }
 }
 
 export const BUDDIES_COLLECTOR_COORDINATOR_STATE = Object.freeze({
   pending_schedule_key: PENDING_SCHEDULE_KEY,
   minute_state_key: MINUTE_STATE_KEY,
+  default_mode: 'direct-request',
 });
 
 export default {
