@@ -55,7 +55,14 @@ function maintenanceMessage(controller, task) {
 
 export async function dispatchMinuteMaintenanceGate(controller, env, task, ctx = null) {
   if (!env?.MINUTE_REBUILD_QUEUE?.send) {
-    return runMinuteScheduledWithCollectorPriority(controller, env, ctx, EMPTY_DEPENDENCIES);
+    const result = await runMinuteScheduledWithCollectorPriority(
+      controller,
+      env,
+      ctx,
+      EMPTY_DEPENDENCIES,
+    );
+    throwIfSoftFailure(result, 'minute maintenance direct fallback');
+    return result;
   }
   const message = maintenanceMessage(controller, task);
   const maintenance = await loadRebuildMaintenanceEntry();
