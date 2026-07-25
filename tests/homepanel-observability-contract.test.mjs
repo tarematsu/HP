@@ -33,12 +33,14 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'if: always()',
     'set -o pipefail',
     'retention-days: 1',
-    'tests/homepanel-observability-contract.test.mjs',
-    'tests/observability-status-publisher.test.mjs',
   ]);
   expectAll(unifiedCi, [
-    'tests/homepanel-*.test.mjs',
+    'python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test',
+    'python3 .github/scripts/audit-cloudflare-telemetry.py --self-test',
     'python3 .github/scripts/query-cloudflare-d1-costs.py --self-test',
+    'tests/cloudflare-account-context.test.mjs',
+    'tests/homepanel-*.test.mjs',
+    'tests/observability-status-publisher.test.mjs',
   ]);
   expectNone(workflow, [
     'cron: "23 * * * *"',
@@ -50,7 +52,10 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'AUDIT_FROM=',
     '\n  pull_request:',
     'R2_BUCKET',
-    'publish-homepanel-observability-status.mjs --self-test',
+    '--self-test',
+    'node --test',
+    'policy-self-test',
+    'POLICY_OUTCOME',
     'tests/homepanel-*.test.mjs',
     'tests/homepanel-runtime-contract.test.mjs',
     'tests/homepanel-video-contract.test.mjs',
@@ -91,7 +96,13 @@ test('HomePanel observability publisher and usage documentation retain product b
     'publishCommitStatuses',
     'upsertStatusIssue',
   ]);
-  expectNone(publisher, ['node:assert', '--self-test', 'function selfTest']);
+  expectNone(publisher, [
+    'node:assert',
+    '--self-test',
+    'function selfTest',
+    'policy-self-test',
+    'POLICY_OUTCOME',
+  ]);
   expectAll(usageDocumentation, [
     '.github/workflows/hp-observability.yml',
     '.github/scripts/audit-cloudflare-daily-usage.py',
