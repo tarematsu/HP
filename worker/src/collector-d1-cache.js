@@ -144,6 +144,7 @@ function createDatabaseProxy(db, state) {
 
 export function collectorCachedDb(db, env = {}) {
   if (!db || (typeof db !== 'object' && typeof db !== 'function')) return db;
+  if (typeof db.prepare !== 'function') return db;
   if (db[CACHED_DATABASE]) return db;
   let state = databaseStates.get(db);
   if (!state) {
