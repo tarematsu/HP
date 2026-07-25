@@ -363,6 +363,8 @@ export async function collectPreparedOnce(env, source = 'raw-collection-queue') 
       queue_send_ms: Number(minuteFactJob?.queue_send_ms || 0),
       outbox_rows_written: Number(minuteFactJob?.outbox_rows_written || 0),
       outbox_rows_deleted: Number(minuteFactJob?.outbox_rows_deleted || 0),
+      outbox_rows_quarantined: Number(minuteFactJob?.outbox_rows_quarantined || 0),
+      outbox_backoff_ms: Number(minuteFactJob?.outbox_backoff_ms || 0),
       pending_flushed: Number(minuteFactJob?.pending_flushed || 0),
       metadata_saved: 0,
       metadata_deferred: Boolean(queue),
