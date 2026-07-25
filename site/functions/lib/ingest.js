@@ -10,6 +10,7 @@ import {
 import { saveCommentCounts } from './comment-counts.js';
 import { saveLeanHeartbeat, saveLeanQueue, saveLeanSnapshot } from './d1-optimized-ingest.js';
 import { withoutQueueItemLikeMirrors } from './d1-queue-like-write-filter.js';
+import { savePeriodBoundaryEvidence } from './period-boundary-preaggregate.js';
 import {
   markQueueReachability,
   saveQueueReachability,
@@ -23,12 +24,19 @@ const INGEST_HANDLERS = {
     type: body.type,
     ...await saveCommentCounts(env.DB, observedAt, data),
   }),
-  snapshot: async (env, body, observedAt, data) => ({
-    ok: true,
-    type: body.type,
-    accepted: true,
-    ...await saveLeanSnapshot(env.DB, observedAt, data),
-  }),
+  snapshot: async (env, body, observedAt, data) => {
+    const snapshot = await saveLeanSnapshot(env.DB, observedAt, data);
+    const boundary = await savePeriodBoundaryEvidence(env.DB, observedAt, data);
+    return {
+      ok: true,
+      type: body.type,
+      accepted: true,
+      ...snapshot,
+      period_boundary_rows_written: boundary.written,
+      period_boundary_candidates: boundary.candidates || 0,
+      period_boundary_skipped: boundary.skipped === true,
+    };
+  },
   queue: async (env, body, observedAt, data) => {
     const result = await saveLeanQueue(withoutQueueItemLikeMirrors(env.DB), observedAt, body);
     const structuralSnapshotWritten = result.structureChanged === true && result.claim.accepted === true;
@@ -74,8 +82,17 @@ const INGEST_HANDLERS = {
         thumbnail_url=COALESCE(excluded.thumbnail_url,sh_track_metadata.thumbnail_url),
         spotify_url=COALESCE(excluded.spotify_url,sh_track_metadata.spotify_url),
         source=excluded.source,
-        fetched_at=MAX(excluded.fetched_at,sh_track_metadata.fetched_at),
-        raw_json=COALESCE(excluded.raw_json,sh_track_metadata.raw_json)`)
+        fetched_at=excluded.fetched_at,
+        raw_json=COALESCE(excluded.raw_json,sh_track_metadata.raw_json)
+      WHERE
+        (excluded.isrc IS NOT NULL AND excluded.isrc IS NOT sh_track_metadata.isrc)
+        OR (excluded.title IS NOT NULL AND excluded.title IS NOT sh_track_metadata.title)
+        OR (excluded.artist IS NOT NULL AND excluded.artist IS NOT sh_track_metadata.artist)
+        OR (excluded.display_title IS NOT NULL AND excluded.display_title IS NOT sh_track_metadata.display_title)
+        OR (excluded.thumbnail_url IS NOT NULL AND excluded.thumbnail_url IS NOT sh_track_metadata.thumbnail_url)
+        OR (excluded.spotify_url IS NOT NULL AND excluded.spotify_url IS NOT sh_track_metadata.spotify_url)
+        OR excluded.source IS NOT sh_track_metadata.source
+        OR (excluded.raw_json IS NOT NULL AND excluded.raw_json IS NOT sh_track_metadata.raw_json)`)
       .bind(
         text(track.spotify_id),
         text(track.isrc)?.trim().toUpperCase() || null,
@@ -88,8 +105,18 @@ const INGEST_HANDLERS = {
         num(track.fetched_at) ?? observedAt,
         rawJson(track.raw),
       ));
-    if (statements.length) await env.DB.batch(statements);
-    return { ok: true, type: body.type, accepted: true, tracks_written: statements.length };
+    const results = statements.length ? await env.DB.batch(statements) : [];
+    const written = results.reduce(
+      (total, result) => total + Number(result?.meta?.changes || 0),
+      0,
+    );
+    return {
+      ok: true,
+      type: body.type,
+      accepted: true,
+      tracks_inspected: statements.length,
+      tracks_written: written,
+    };
   },
 };
 
