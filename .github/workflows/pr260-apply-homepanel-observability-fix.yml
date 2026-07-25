@@ -37,6 +37,27 @@ jobs:
             node --test tests/cloudflare-observability-api.test.mjs tests/homepanel-observability-contract.test.mjs
           } 2>&1 | tee validation.log
 
+      - name: Commit observability fixes
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            set -euo pipefail
+            git config user.name github-actions[bot]
+            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+            git status --short
+            git add \
+              .github/scripts/audit-cloudflare-telemetry.py \
+              .github/scripts/publish-homepanel-observability-status.mjs \
+              .github/workflows/hp-observability.yml \
+              .github/workflows/homepanel-unified-ci.yml \
+              tests/cloudflare-observability-api.test.mjs \
+              tests/homepanel-observability-contract.test.mjs
+            git diff --cached --stat
+            git commit -m 'fix: harden HomePanel observability contracts'
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          } 2>&1 | tee commit.log
+
       - name: Upload patch diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -45,6 +66,7 @@ jobs:
           path: |
             patch.log
             validation.log
+            commit.log
             .github/scripts/audit-cloudflare-telemetry.py
             .github/scripts/publish-homepanel-observability-status.mjs
             .github/workflows/hp-observability.yml
@@ -53,19 +75,3 @@ jobs:
             tests/homepanel-observability-contract.test.mjs
           if-no-files-found: warn
           retention-days: 1
-
-      - name: Commit observability fixes
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add \
-            .github/scripts/audit-cloudflare-telemetry.py \
-            .github/scripts/publish-homepanel-observability-status.mjs \
-            .github/workflows/hp-observability.yml \
-            .github/workflows/homepanel-unified-ci.yml \
-            tests/cloudflare-observability-api.test.mjs \
-            tests/homepanel-observability-contract.test.mjs
-          git commit -m 'fix: harden HomePanel observability contracts'
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
