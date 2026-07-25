@@ -33,22 +33,28 @@ function queueMessage(body, events, prefix = '') {
   };
 }
 
-test('collector and runtime Worker configs own disjoint Queue boundaries', () => {
+test('collector, recovery, and runtime Worker configs own disjoint Queue boundaries', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
+  const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
   assert.equal(collector.name, 'sh-buddies-collector');
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.equal(recovery.name, 'sh-buddies-recovery');
+  assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
   assert.equal(runtime.name, 'sh-runtime-orchestrator');
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(collector.triggers.crons, [RUNTIME_CRON]);
+  assert.equal(recovery.triggers, undefined);
   assert.deepEqual(runtime.triggers.crons, [RUNTIME_CRON]);
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
+  assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), [
     'BUDDIES_DB',
     'MINUTE_DB',
     'OTHER_DB',
   ]);
-  assert.deepEqual(collector.queues.consumers.map(({ queue }) => queue), [
+  assert.deepEqual(collector.queues.consumers, []);
+  assert.deepEqual(recovery.queues.consumers.map(({ queue }) => queue), [
     'stationhead-raw-collection',
     'stationhead-ingest-finalize',
     'stationhead-comments',
@@ -65,8 +71,8 @@ test('collector and runtime Worker configs own disjoint Queue boundaries', () =>
     'stationhead-buddies-facts',
     'stationhead-minute-rebuild',
   ]);
-  const collectorQueues = new Set(collector.queues.consumers.map(({ queue }) => queue));
-  assert.equal(runtime.queues.consumers.some(({ queue }) => collectorQueues.has(queue)), false);
+  const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
+  assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-buddy-playback'), false);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'BUDDY_PLAYBACK_QUEUE'), false);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_ENRICHMENT_QUEUE'), true);
