@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 
 const API_BASE = 'https://api.cloudflare.com/client/v4';
+const MAX_TIMER_SECONDS = Math.floor(2_147_483_647 / 1000);
 const token = process.env.CLOUDFLARE_API_TOKEN?.trim();
 const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
 const worker = process.env.LIVE_TAIL_WORKER?.trim();
@@ -12,6 +13,9 @@ export function parseDurationSeconds(value, fallback = 180) {
   const seconds = raw ? Number(raw) : fallback;
   if (!Number.isFinite(seconds) || seconds <= 0) {
     throw new Error('LIVE_TAIL_SECONDS must be a positive finite number');
+  }
+  if (seconds > MAX_TIMER_SECONDS) {
+    throw new Error(`LIVE_TAIL_SECONDS must not exceed ${MAX_TIMER_SECONDS}`);
   }
   return Math.max(10, seconds);
 }
@@ -79,9 +83,11 @@ async function selfTest() {
   assert.equal(parseDurationSeconds('', 180), 180);
   assert.equal(parseDurationSeconds('1'), 10);
   assert.equal(parseDurationSeconds('90'), 90);
+  assert.equal(parseDurationSeconds(String(MAX_TIMER_SECONDS)), MAX_TIMER_SECONDS);
   assert.throws(() => parseDurationSeconds('not-a-number'), /positive finite number/);
   assert.throws(() => parseDurationSeconds('Infinity'), /positive finite number/);
   assert.throws(() => parseDurationSeconds('0'), /positive finite number/);
+  assert.throws(() => parseDurationSeconds(String(MAX_TIMER_SECONDS + 1)), /must not exceed/);
   assert.equal(normalizeProbePath('health'), '/health');
   assert.equal(normalizeProbePath('/health?full=1'), '/health?full=1');
   assert.equal(normalizeProbePath(''), '');
