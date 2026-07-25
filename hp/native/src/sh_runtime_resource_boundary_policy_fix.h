@@ -142,8 +142,8 @@ inline constexpr bool StationheadSocialApiRequestBoundaryFixed(
   }
   if (uri.path == L"/plus/status") return true;
 
-  static constexpr std::wstring_view kStationPrefix = L"/station/";
-  static constexpr std::wstring_view kListenerSuffix = L"/listener";
+  constexpr std::wstring_view kStationPrefix = L"/station/";
+  constexpr std::wstring_view kListenerSuffix = L"/listener";
   if (uri.path.starts_with(kStationPrefix)) {
     const std::wstring_view stationPath = uri.path.substr(kStationPrefix.size());
     const size_t separator = stationPath.find(L'/');
