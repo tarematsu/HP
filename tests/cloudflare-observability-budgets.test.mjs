@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { access, readFile } from 'node:fs/promises';
+import { access } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+
+import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 const root = new URL('../', import.meta.url);
 const rootPath = fileURLToPath(root);
@@ -15,101 +17,105 @@ function runSelfTest(path) {
   assert.equal(result.status, 0, `${path} self-test failed:\n${result.stdout}\n${result.stderr}`);
 }
 
-test('observability policy scripts pass offline self-tests', () => {
-  runSelfTest('.github/scripts/audit-cloudflare-daily-usage.py');
-  runSelfTest('.github/scripts/audit-cloudflare-free-tier.py');
-  runSelfTest('.github/scripts/audit-observability-budget-gates.py');
-  runSelfTest('.github/scripts/audit-cloudflare-telemetry.py');
-  runSelfTest('.github/scripts/audit-deployed-cloudflare-telemetry.py');
+test('observability policy scripts pass offline self-tests in CI', () => {
+  for (const path of [
+    '.github/scripts/audit-cloudflare-daily-usage.py',
+    '.github/scripts/audit-cloudflare-free-tier.py',
+    '.github/scripts/audit-observability-budget-gates.py',
+    '.github/scripts/audit-cloudflare-telemetry.py',
+    '.github/scripts/audit-deployed-cloudflare-telemetry.py',
+  ]) runSelfTest(path);
 });
 
-test('observability script changes are covered by pull-request CI', async () => {
-  const ci = await readFile(new URL('.github/workflows/ci.yml', root), 'utf8');
-  assert.match(ci, /^\s{6}- '\.github\/scripts\/\*\*'$/m);
+test('observability script changes are covered by pull-request CI', () => {
+  assert.match(readSource('.github/workflows/ci.yml'), /^\s{6}- '\.github\/scripts\/\*\*'$/m);
 });
 
-test('observability uses post-deploy, diagnostic-change, and daily complete budget checks', async () => {
-  const workflow = await readFile(new URL('.github/workflows/sh-observability.yml', root), 'utf8');
-  const dailyAudit = await readFile(
-    new URL('.github/scripts/audit-cloudflare-daily-usage.py', root),
-    'utf8',
-  );
-  const freeTierAudit = await readFile(
-    new URL('.github/scripts/cloudflare_free_tier_audit.py', root),
-    'utf8',
-  );
-  assert.match(workflow, /workflows: \["Deploy production"\]/);
-  assert.match(workflow, /^\s+push:/m);
-  assert.match(workflow, /branches: \[main\]/);
-  assert.match(workflow, /\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml/);
-  assert.match(workflow, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
+test('SH observability runs measured post-deploy and daily gates without repeating CI self-tests', () => {
+  const workflow = readSource('.github/workflows/sh-observability.yml');
+  const dailyAudit = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
+  const freeTierAudit = readSource('.github/scripts/cloudflare_free_tier_audit.py');
+
+  expectAll(workflow, [
+    'workflows: ["Deploy production"]',
+    'branches: [main]',
+    '.github/actions/cloudflare-observability-diagnostics/action.yml',
+    '.github/scripts/publish-cloudflare-observability-status.mjs',
+    'cron: "0 1 * * *"',
+    'DAILY_REQUEST_BUDGET: "70000"',
+    'DAILY_REQUEST_RESERVE: "0"',
+    'DAILY_D1_READ_BUDGET: "3000000"',
+    'DAILY_D1_WRITE_BUDGET: "70000"',
+    'CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator',
+    'CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV',
+    'CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR',
+    'id: free-tier-budget',
+    'id: budget-contract',
+    'id: observability-query',
+    'id: telemetry-policy',
+    'id: publish-status',
+    "steps.free-tier-budget.outcome == 'failure'",
+    "steps.budget-contract.outcome == 'failure'",
+    "steps.observability-query.outcome == 'failure'",
+    "steps.telemetry-policy.outcome == 'failure'",
+    "steps.publish-status.outcome == 'failure'",
+    'uses: ./.github/actions/cloudflare-observability-diagnostics',
+    'live-tail-worker: sh-runtime-orchestrator',
+    'live-tail-seconds: "90"',
+    'LIVE_TAIL_LOG: live-tail.log',
+    'id: daily-budget',
+    "steps.daily-budget.outcome == 'failure'",
+    'Fail after collecting diagnostics when any observability gate fails',
+    'if: always()',
+    'observability-gate/',
+    'observability-budget-gate.log',
+  ]);
+  expectNone(workflow, [
+    'cron: "37 * * * *"',
+    'CLOUDFLARE_PIPELINE_NAMES',
+    'Pipelines included-usage',
+    'audit-cloudflare-free-tier-account.py',
+    'audit-cloudflare-live-tail.py',
+    '--self-test',
+    'node --test',
+    'policy-self-test',
+    'POLICY_OUTCOME',
+    'observability/policy-self-test',
+    'tests/cloudflare-observability-status.test.mjs',
+    'tests/observability-status-publisher.test.mjs',
+  ]);
   assert.doesNotMatch(workflow, /^\s{6}- '(?:worker|site|packages)\//m);
-  assert.doesNotMatch(workflow, /cron: "37 \* \* \* \*"/);
-  assert.match(workflow, /cron: "0 1 \* \* \*"/);
-  assert.equal((workflow.match(/- cron:/g) || []).length, 1);
   assert.doesNotMatch(workflow, /^\s+pull_request:/m);
-  assert.match(workflow, /DAILY_REQUEST_BUDGET: "70000"/);
-  assert.match(workflow, /DAILY_REQUEST_RESERVE: "0"/);
-  assert.match(workflow, /DAILY_D1_READ_BUDGET: "3000000"/);
-  assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "70000"/);
-  assert.match(workflow, /CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator/);
-  assert.match(workflow, /CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV/);
-  assert.match(
-    workflow,
-    /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR/,
-  );
-  assert.doesNotMatch(workflow, /CLOUDFLARE_PIPELINE_NAMES|Pipelines included-usage/);
-  assert.match(workflow, /audit-cloudflare-free-tier\.py --self-test/);
-  assert.doesNotMatch(workflow, /audit-cloudflare-free-tier-account\.py/);
-  assert.match(workflow, /audit-observability-budget-gates\.py --self-test/);
-  assert.match(workflow, /audit-deployed-cloudflare-telemetry\.py --self-test/);
-  assert.match(workflow, /tests\/cloudflare-observability-status\.test\.mjs/);
-  assert.match(workflow, /tests\/observability-status-publisher\.test\.mjs/);
-  assert.match(dailyAudit, /def configured_resources\(\)/);
-  assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
-  assert.match(dailyAudit, /configured_queue_ids/);
-  assert.match(dailyAudit, /Projected 24h/);
-  assert.match(dailyAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
-  assert.doesNotMatch(dailyAudit, /def account_id|accounts\?per_page=50|urllib\.parse/);
-  assert.match(freeTierAudit, /def aggregate\(row:/);
-  assert.match(freeTierAudit, /ACCOUNT = os\.environ\.get\("CLOUDFLARE_ACCOUNT_ID"/);
+  assert.equal((workflow.match(/- cron:/g) || []).length, 1);
+  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 6);
+
+  expectAll(dailyAudit, [
+    'def configured_resources()',
+    'queueMessageOperationsAdaptiveGroups',
+    'configured_queue_ids',
+    'Projected 24h',
+    'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
+  ]);
+  expectNone(dailyAudit, ['def account_id', 'accounts?per_page=50', 'urllib.parse']);
+  expectAll(freeTierAudit, [
+    'def aggregate(row:',
+    'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
+  ]);
   assert.doesNotMatch(
     freeTierAudit,
     /configured_resource_ids|importlib\.util|audit-cloudflare-free-tier-core|def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces|PIPELINE_NAMES|pipelines\/v1\/pipelines/,
   );
-  assert.match(workflow, /id: free-tier-budget/);
-  assert.match(workflow, /id: budget-contract/);
-  assert.match(workflow, /id: observability-query/);
-  assert.match(workflow, /id: telemetry-policy/);
-  assert.match(workflow, /id: publish-status/);
-  assert.match(workflow, /steps\.free-tier-budget\.outcome == 'failure'/);
-  assert.match(workflow, /steps\.budget-contract\.outcome == 'failure'/);
-  assert.match(workflow, /steps\.observability-query\.outcome == 'failure'/);
-  assert.match(workflow, /steps\.telemetry-policy\.outcome == 'failure'/);
-  assert.match(workflow, /steps\.publish-status\.outcome == 'failure'/);
-  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics/);
-  assert.match(workflow, /live-tail-worker: sh-runtime-orchestrator/);
-  assert.match(workflow, /live-tail-seconds: "90"/);
-  assert.match(workflow, /LIVE_TAIL_LOG: live-tail\.log/);
-  assert.match(workflow, /audit-cloudflare-telemetry\.py --self-test/);
-  assert.doesNotMatch(workflow, /audit-cloudflare-live-tail\.py/);
-  assert.match(workflow, /id: daily-budget/);
-  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 6);
-  assert.match(workflow, /steps\.daily-budget\.outcome == 'failure'/);
-  assert.match(workflow, /Fail after collecting diagnostics when any observability gate fails/);
-  assert.match(workflow, /if: always\(\)/);
-  assert.match(workflow, /observability-gate\//);
-  assert.match(workflow, /observability-budget-gate\.log/);
 });
 
 test('D1 query insights are manual-only and duplicate budget paths are gone', async () => {
-  const workflow = await readFile(new URL('.github/workflows/fetch-cloudflare-d1-usage.yml', root), 'utf8');
+  const workflow = readSource('.github/workflows/fetch-cloudflare-d1-usage.yml');
   assert.match(workflow, /^\s+workflow_dispatch:/m);
-  assert.doesNotMatch(workflow, /^\s+pull_request:/m);
-  assert.doesNotMatch(workflow, /^\s+schedule:/m);
-  await assert.rejects(access(new URL('.github/workflows/cloudflare-worker-request-budget.yml', root)));
-  await assert.rejects(access(new URL('scripts/cloudflare-worker-request-budget.mjs', root)));
-  await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-live-tail.py', root)));
-  await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-free-tier-account.py', root)));
-  await assert.rejects(access(new URL('.github/scripts/audit-cloudflare-free-tier-core.py', root)));
+  assert.doesNotMatch(workflow, /^\s+(?:pull_request|schedule):/m);
+  for (const path of [
+    '.github/workflows/cloudflare-worker-request-budget.yml',
+    'scripts/cloudflare-worker-request-budget.mjs',
+    '.github/scripts/audit-cloudflare-live-tail.py',
+    '.github/scripts/audit-cloudflare-free-tier-account.py',
+    '.github/scripts/audit-cloudflare-free-tier-core.py',
+  ]) await assert.rejects(access(new URL(path, root)), path);
 });
