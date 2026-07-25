@@ -5,18 +5,14 @@ import {
   MAX_ISSUE_BODY_CHARS,
   clipText,
   createGitHubRequest,
-  normalizeOutcome,
   overallOutcome,
   publishCommitStatuses,
   readOptionalText,
   renderOutcomeRows,
   renderSection,
   requiredEnv,
-  statusState,
   upsertStatusIssue,
 } from './observability-status-publisher.mjs';
-
-export { normalizeOutcome, overallOutcome, statusState };
 
 export const STATUS_ISSUE_TITLE = 'HomePanel Observability Status';
 export const STATUS_MARKER = '<!-- homepanel-observability-status -->';
