@@ -11,6 +11,7 @@ on:
       - '.github/workflows/sh-observability.yml'
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-*.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/query-cloudflare-observability.py'
