@@ -24,10 +24,13 @@ test('final resource policy is compiled after every earlier Stationhead policy',
     cmakeSource,
     /set\(HOMEPANEL_STATIONHEAD_SOURCES[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_runtime_policy_fix\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
-  assert.match(
-    cmakeSource,
-    /target_precompile_headers\(HomePanel PRIVATE[\s\S]*src\/sh_polling_policy\.h[\s\S]*src\/sh_runtime_policy_fix\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h\)/,
+  const basePchAt = cmakeSource.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_polling_policy.h\n  src/sh_runtime_policy_fix.h)',
   );
+  const finalPchAt = cmakeSource.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_resource_policy_fix.h)',
+  );
+  assert.ok(basePchAt >= 0 && basePchAt < finalPchAt);
   assert.match(
     finalPolicySource,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingFinalFixed/,
