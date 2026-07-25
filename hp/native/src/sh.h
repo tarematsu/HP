@@ -124,7 +124,8 @@ class StationheadPlayer {
     const bool retry = trackBoundaryRefreshPending_;
     HandleTrackEnded(nowMs, retry);
     return trackBoundaryRefreshPending_ ||
-           trackBoundaryPlaybackRecoveryPending_;
+           (trackBoundaryPlaybackRecoveryPending_ &&
+            trackBoundaryPlaybackRecoveryAwaitingNavigation_);
   }
   void CancelPendingTrackBoundaryRefresh() noexcept {
     trackBoundaryRefreshPending_ = false;
