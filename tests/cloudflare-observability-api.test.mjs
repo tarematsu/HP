@@ -108,15 +108,22 @@ test('D1 query cost collector uses resolved-account GraphQL and passes its priva
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('live-tail diagnostics use resolved context and redact sensitive request fields', () => {
+test('live-tail diagnostics use resolved context and shared credential redaction', () => {
   expectAll(liveTailScript, [
     'CLOUDFLARE_ACCOUNT_ID',
     'telemetry/live-tail',
     'scriptId: worker',
+    "./observability-status-publisher.mjs",
+    'sanitizeText',
     '[redacted]',
   ]);
   assert.match(liveTailScript, /parsed\.protocol.*parsed\.host.*parsed\.pathname/s);
-  expectNone(liveTailScript, ['async function accountId', 'accounts?per_page=50', 'console.log(token']);
+  expectNone(liveTailScript, [
+    'async function accountId',
+    'accounts?per_page=50',
+    'console.log(token',
+    'function redactCredentials',
+  ]);
 });
 
 test('all deployed Workers persist invocation logs and disable Logpush export', () => {
