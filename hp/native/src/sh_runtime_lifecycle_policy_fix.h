@@ -92,10 +92,15 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   }, true);
 )JS";
 
+  // Include the following normalize declaration in the marker. Earlier composed
+  // IIFEs also declare nativeTimeout, but only the refined login IIFE places
+  // normalize immediately after it.
   static constexpr std::wstring_view kTimerDeclaration = LR"JS(  const nativeTimeout = window.setTimeout.bind(window);
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
 )JS";
   static constexpr std::wstring_view kTimerDeclarationFixed = LR"JS(  const nativeTimeout = window.setTimeout.bind(window);
   const nativeClearTimeout = window.clearTimeout.bind(window);
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
 )JS";
   static constexpr std::wstring_view kScan = LR"JS(  const scan = () => {
     baseScan();
