@@ -19,7 +19,6 @@ export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 
 const STATUS_CONTEXTS = {
-  policy: 'observability/policy-self-test',
   daily: 'observability/daily-d1-budget',
   freeTier: 'observability/free-tier-budget',
   contract: 'observability/budget-contract',
@@ -119,7 +118,6 @@ export async function publishFromEnvironment() {
   const runUrl = requiredEnv('OBSERVABILITY_RUN_URL');
   const request = createGitHubRequest('sh-cloudflare-observability-status');
   const outcomes = {
-    policy: process.env.POLICY_OUTCOME,
     daily: process.env.DAILY_BUDGET_OUTCOME,
     freeTier: process.env.FREE_TIER_BUDGET_OUTCOME,
     contract: process.env.BUDGET_CONTRACT_OUTCOME,
