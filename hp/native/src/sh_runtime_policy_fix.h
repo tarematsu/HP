@@ -92,6 +92,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   let robustLoginReported = false;
   let loginMissingSince = 0;
   let timer = 0;
+  let pendingAuthReady = null;
   const restoreAuthAfterFalsePositive = () => {
     const last = window.__homepanelStationheadLastAcceptedAuthHeaders;
     if (!last?.authorization || window.__homepanelStationheadAuthHeaders?.authorization ||
@@ -114,6 +115,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     if (blocking) {
       loginMissingSince = 0;
       window.__homepanelStationheadBlockingLoginVisible = true;
+      pendingAuthReady = null;
       rejectCapturedAuthForBlockingLogin();
       if (!robustLoginReported && pageActive && nativePost) {
         robustLoginReported = true;
@@ -128,6 +130,15 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     }
     return false;
   };
+  const flushPendingAuthReady = () => {
+    if (!pendingAuthReady || !pageActive ||
+        window.__homepanelStationheadBlockingLoginVisible !== false) {
+      return;
+    }
+    const message = pendingAuthReady;
+    pendingAuthReady = null;
+    nativePost?.(message);
+  };
   if (webview && nativePost) {
     try {
       webview.postMessage = message => {
@@ -138,8 +149,11 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
         }
         if (message && typeof message === 'object' &&
             message.type === 'stationhead-auth-ready') {
+          pendingAuthReady = message;
           nativeTimeout(() => {
-            if (pageActive) nativePost(message);
+            if (!pageActive) return;
+            updateBlockingLogin();
+            flushPendingAuthReady();
           }, 0);
           return;
         }
@@ -155,6 +169,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   const scan = () => {
     baseScan();
     updateBlockingLogin();
+    flushPendingAuthReady();
   };
   const schedule = () => {
     if (timer) return;
@@ -163,6 +178,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
       if (pageActive) {
         if (playing()) baseScan();
         updateBlockingLogin();
+        flushPendingAuthReady();
       }
       schedule();
     }, 5000);
