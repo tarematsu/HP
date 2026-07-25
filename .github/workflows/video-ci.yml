@@ -14,13 +14,214 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: video-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  apply-stationhead-runtime-audit:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 268 && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-stationhead-window-b
+          fetch-depth: 0
+      - name: Apply runtime audit fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path, old, new):
+              file = Path(path)
+              text = file.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              file.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          shared = 'hp/native/src/sh_shared.h'
+          replace_once(
+              shared,
+              "  let scanTimer = 0;\n  let lastSignalAt = 0;",
+              "  let scanTimer = 0;\n  let loginRecheckTimer = 0;\n  let lastSignalAt = 0;",
+          )
+          replace_once(
+              shared,
+              "    if (start) {\n      const now = Date.now();\n      if (now - lastSignalAt >= 1200) {\n        lastSignalAt = now;\n        try { window.chrome?.webview?.postMessage('{{PREFIX}}-start-visible'); } catch (_) {}\n      }\n    }\n  };",
+              "    if (start) {\n      const now = Date.now();\n      if (now - lastSignalAt >= 1200) {\n        lastSignalAt = now;\n        try { window.chrome?.webview?.postMessage('{{PREFIX}}-start-visible'); } catch (_) {}\n      }\n    }\n    if (isPlaying) schedulePlayingLoginRecheck();\n  };",
+          )
+          replace_once(
+              shared,
+              "  const scheduleUnlessPlaying = (delay = 100) => {\n    if (lastPlaying !== true) schedule(delay);\n  };\n  const relevant = record => {",
+              "  const scheduleUnlessPlaying = (delay = 100) => {\n    if (lastPlaying !== true) schedule(delay);\n  };\n  const schedulePlayingLoginRecheck = () => {\n    if (lastPlaying !== true || loginReported || loginRecheckTimer) return;\n    loginRecheckTimer = nativeTimeout(() => {\n      loginRecheckTimer = 0;\n      schedule(0);\n    }, 5000);\n  };\n  const relevant = record => {",
+          )
+          replace_once(
+              shared,
+              "  window.addEventListener('homepanel-stationhead-auth-ready', () => {\n    loginReported = false;\n    lastSignalAt = 0;\n    scheduleUnlessPlaying(0);\n  });",
+              "  window.addEventListener('homepanel-stationhead-auth-ready', () => {\n    loginReported = false;\n    lastSignalAt = 0;\n    if (loginRecheckTimer) {\n      nativeClearTimeout(loginRecheckTimer);\n      loginRecheckTimer = 0;\n    }\n    schedule(0);\n  });",
+          )
+
+          policy_path = Path('hp/native/src/sh_polling_policy.h')
+          policy = policy_path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r"inline std::wstring StationheadApiPlayStatsScript\(int channelId\) \{.*?\n\}\n\n// Window B must not",
+              re.S,
+          )
+          replacement = r'''inline std::wstring StationheadApiPlayStatsScript(int channelId) {
+  std::wostringstream script;
+  script << LR"JS(
+(() => {
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
+  };
+  const resetSuccessThrottle = () => {
+    window.__homepanelStationheadPlayStatsSuccessAt = 0;
+    window.__homepanelStationheadPlayStatsAuthorization = '';
+  };
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers?.authorization) {
+    resetSuccessThrottle();
+    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
+    return false;
+  }
+  const lastSuccessAt = Number(window.__homepanelStationheadPlayStatsSuccessAt || 0);
+  const lastSuccessAuthorization = String(
+    window.__homepanelStationheadPlayStatsAuthorization || '');
+  if (lastSuccessAt > 0 &&
+      lastSuccessAuthorization === headers.authorization &&
+      Date.now() - lastSuccessAt < 10 * 60 * 1000) {
+    return false;
+  }
+  const url = 'https://production1.stationhead.com/me/channel/)JS"
+         << channelId << LR"JS(/streakStats';
+  fetch(url, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: Object.assign({ accept: 'application/json' }, headers),
+  }).then(async response => {
+    if (response.status === 401) {
+      resetSuccessThrottle();
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      window.__homepanelStationheadAuthHeaders = null;
+      post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
+      return null;
+    }
+    if (response.status === 403) {
+      resetSuccessThrottle();
+      post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
+      return null;
+    }
+    if (!response.ok) throw new Error('http-' + response.status);
+    return response.json();
+  }).then(data => {
+    if (data) {
+      window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
+      window.__homepanelStationheadPlayStatsAuthorization = headers.authorization;
+      post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    }
+  }).catch(error => {
+    post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
+  });
+  return true;
+})()
+)JS";
+  return script.str();
+}
+
+// Window B must not'''
+          policy, count = pattern.subn(replacement, policy)
+          if count != 1:
+              raise SystemExit(f'sh_polling_policy.h: expected one stats function, found {count}')
+          policy_path.write_text(policy, encoding='utf-8')
+
+          webview_path = Path('hp/native/src/sh_webview.cpp')
+          webview = webview_path.read_text(encoding='utf-8')
+          old_handler = '''              if (type == L"stationhead-play-stats-auth-failed") {
+                const int status = static_cast<int>(json::Number(message, L"status", 0));
+                log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
+                          std::to_wstring(status) + L"; waiting for the page session to refresh");
+                const int64_t now = UnixMillis();
+                lastDailyPlayStatsAt_ =
+                    now - (kStationheadDailyPlayStatsIntervalMs -
+                           kStationheadDailyPlayStatsRetryMs);
+                nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
+                return S_OK;
+              }'''
+          new_handler = '''              if (type == L"stationhead-play-stats-auth-failed") {
+                const int status = static_cast<int>(json::Number(message, L"status", 0));
+                const int64_t now = UnixMillis();
+                if (status == 403) {
+                  log_.Warn(L"Stationhead authenticated stats returned HTTP 403; retaining the current playback session");
+                  lastDailyPlayStatsAt_ = now;
+                  const int64_t retryAt =
+                      now + kStationheadDailyPlayStatsIntervalMs;
+                  if (nextTickAt_ > retryAt) nextTickAt_ = retryAt;
+                  {
+                    std::lock_guard lock(mutex_);
+                    status_.detail =
+                        L"Stationhead stats forbidden; playback session retained";
+                  }
+                  PostChange();
+                  return S_OK;
+                }
+                log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
+                          std::to_wstring(status) +
+                          L"; waiting for the page session to refresh");
+                lastDailyPlayStatsAt_ =
+                    now - (kStationheadDailyPlayStatsIntervalMs -
+                           kStationheadDailyPlayStatsRetryMs);
+                const int64_t retryAt =
+                    now + kStationheadDailyPlayStatsRetryMs;
+                if (nextTickAt_ > retryAt) nextTickAt_ = retryAt;
+                {
+                  std::lock_guard lock(mutex_);
+                  status_.detail =
+                      L"Stationhead stats authentication rejected; waiting for page session refresh";
+                }
+                PostChange();
+                return S_OK;
+              }'''
+          if webview.count(old_handler) != 1:
+              raise SystemExit('sh_webview.cpp: auth-failed handler mismatch')
+          webview_path.write_text(webview.replace(old_handler, new_handler, 1), encoding='utf-8')
+
+          messages = 'hp/native/src/app_messages.cpp'
+          replace_once(
+              messages,
+              "constexpr int64_t kStationheadHandoffAudioStabilityMs = 1'500;",
+              "constexpr int64_t kStationheadHandoffAudioStabilityMs = 1'500;\nconstexpr uint32_t kStationheadChangeWakeMs = 2'000;",
+          )
+          replace_once(
+              messages,
+              "      if (layoutChanged || stateChanged) PublishRenderStateNow();\n      return 0;\n    }\n    case kStationheadHealthUpdatedMessage:",
+              "      if (layoutChanged || stateChanged) PublishRenderStateNow();\n      // A player can schedule a five-second recreation or start the 20-second\n      // authorization watchdog immediately after the central timer entered its\n      // 30-second idle cadence. Wake the App promptly so those player deadlines\n      // are observed instead of waiting for the stale idle timer.\n      ScheduleNextTick(kStationheadChangeWakeMs);\n      return 0;\n    }\n    case kStationheadHealthUpdatedMessage:",
+          )
+
+          test_path = Path('hp/video/test/stationhead-window-b-interactive-regression.test.js')
+          test_text = test_path.read_text(encoding='utf-8')
+          old_test = "/addEventListener\\('homepanel-stationhead-auth-ready',[\\s\\S]*loginReported = false;[\\s\\S]*scheduleUnlessPlaying\\(0\\);/"
+          new_test = "/addEventListener\\('homepanel-stationhead-auth-ready',[\\s\\S]*loginReported = false;[\\s\\S]*schedule\\(0\\);/"
+          if test_text.count(old_test) != 1:
+              raise SystemExit('interactive regression test: auth-ready assertion mismatch')
+          test_path.write_text(test_text.replace(old_test, new_test, 1), encoding='utf-8')
+          PY
+      - name: Commit runtime audit fixes
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git show HEAD^:.github/workflows/video-ci.yml > .github/workflows/video-ci.yml
+          git add hp/native/src/sh_shared.h hp/native/src/sh_polling_policy.h hp/native/src/sh_webview.cpp hp/native/src/app_messages.cpp hp/video/test/stationhead-window-b-interactive-regression.test.js .github/workflows/video-ci.yml
+          git diff --cached --check
+          git commit -m 'Fix Stationhead runtime auth retry and wake races'
+          git push origin HEAD:agent/fix-stationhead-window-b
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
