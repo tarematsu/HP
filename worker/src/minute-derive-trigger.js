@@ -22,7 +22,7 @@ function enabled(value) {
 
 function deriveJobKind(value) {
   const parsed = String(value || '').trim().toLowerCase();
-  return parsed === 'live' || parsed === 'rebuild' || parsed === 'repair' ? parsed : null;
+  return parsed === 'live' || parsed === 'rebuild' ? parsed : null;
 }
 
 function invalidTrigger(detail) {
@@ -64,13 +64,13 @@ export function parseMinuteDeriveTrigger(body) {
 
 export async function enqueueMinuteDeriveTrigger(env, input) {
   const jobKind = deriveJobKind(input?.job_kind) || 'live';
-  const queue = jobKind === 'rebuild' || jobKind === 'repair'
+  const queue = jobKind === 'rebuild'
     ? env?.MINUTE_DERIVE_QUEUE
     : env?.MINUTE_LIVE_DERIVE_QUEUE || env?.MINUTE_DERIVE_QUEUE;
   if (!queue?.send) {
-    throw new Error(jobKind === 'live'
-      ? 'minute live derive Queue binding is missing'
-      : 'minute rebuild derive Queue binding is missing');
+    throw new Error(jobKind === 'rebuild'
+      ? 'minute rebuild derive Queue binding is missing'
+      : 'minute live derive Queue binding is missing');
   }
   const trigger = minuteDeriveTrigger({ ...input, job_kind: jobKind });
   await queue.send(trigger, { contentType: 'json' });
