@@ -21,7 +21,9 @@ export function inferArtistFromDisplayTitle(displayTitle, title) {
 }
 
 export function metadataFallback(rawValue) {
-  const raw = safeJson(rawValue, {}) || {};
+  const raw = rawValue && typeof rawValue === 'object'
+    ? rawValue
+    : safeJson(rawValue, {}) || {};
   const spotify = raw?.spotify || raw?.track || raw;
   const album = spotify?.album || {};
   return {
@@ -82,9 +84,9 @@ export function normalizePlaybackTrack(track, index, playback) {
     thumbnail_url: thumbnailUrl,
     duration_ms: durationMs,
   };
-  if (track.spotify_url && track.spotify_url !== (spotifyId ? `https://open.spotify.com/track/${spotifyId}` : null)) {
-    output.spotify_url = track.spotify_url;
-  }
+  const spotifyUrl = String(track.spotify_url || '').trim();
+  if (spotifyUrl) output.spotify_url = spotifyUrl;
+  else if (spotifyId) output.spotify_url = `https://open.spotify.com/track/${spotifyId}`;
   if (isCurrent) {
     const biteCount = num(track.bite_count);
     if (biteCount != null) output.bite_count = biteCount;
