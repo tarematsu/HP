@@ -10,7 +10,6 @@ const deepAudit = /^(1|true|yes)$/i.test(
 );
 const wranglerScript = path.resolve('worker/node_modules/wrangler/bin/wrangler.js');
 const D1_DATABASE_LIMIT_BYTES = 500_000_000;
-const D1_DATABASE_LIMIT_BYTES = 500_000_000;
 await mkdir(outputDir, { recursive: true });
 
 function wrangler(args) {
@@ -66,11 +65,6 @@ const database = listedDatabases
   .find((item) => String(item.uuid || item.id || item.database_id) === databaseId)
   || listedDatabases.find((item) => String(item.name) === databaseName);
 if (!database) throw new Error(`Wrangler did not list ${databaseName} (${databaseId})`);
-const databaseFileSize = Number(database.file_size);
-if (!Number.isFinite(databaseFileSize) || databaseFileSize < 0) {
-  throw new Error(`Wrangler did not report a valid file_size for ${databaseName}`);
-}
-const capacityExceeded = databaseFileSize >= D1_DATABASE_LIMIT_BYTES;
 const databaseFileSize = Number(database.file_size);
 if (!Number.isFinite(databaseFileSize) || databaseFileSize < 0) {
   throw new Error(`Wrangler did not report a valid file_size for ${databaseName}`);
@@ -218,10 +212,6 @@ console.log(JSON.stringify({
   dbstatAvailable: dbstatRows.length > 0,
   sqliteStat1Available: statRows.length > 0,
 }));
-if (capacityExceeded) {
-  console.error(`D1 database capacity exceeded: ${databaseName} ${databaseFileSize} >= ${D1_DATABASE_LIMIT_BYTES} bytes`);
-  process.exitCode = 1;
-}
 if (capacityExceeded) {
   console.error(`D1 database capacity exceeded: ${databaseName} ${databaseFileSize} >= ${D1_DATABASE_LIMIT_BYTES} bytes`);
   process.exitCode = 1;
