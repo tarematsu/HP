@@ -70,8 +70,7 @@ jobs:
           else
             changed_files="$(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")"
           fi
-          printf '%s
-' "$changed_files"
+          printf '%s\n' "$changed_files"
 
           if grep -Eq '^(hp/cloud/|hp/video/src/|hp/video/public/|hp/video/package\.json$|\.github/actions/cloudflare-context/action\.yml$|\.github/scripts/resolve-cloudflare-account\.mjs$|\.github/workflows/cloud-deploy\.yml$|\.github/scripts/assert-actions-only-cloudflare\.mjs$)' <<<"$changed_files"; then
             echo "run=false" >> "$GITHUB_OUTPUT"
