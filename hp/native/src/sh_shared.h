@@ -294,13 +294,11 @@ inline std::wstring StationheadApiPlayStatsScript(int channelId) {
   return script.str();
 }
 
-inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {
+inline std::wstring StationheadAuthProbeScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
 (() => {
-  const probeStartedAt = )JS" << probeStartedAt << LR"JS(;
   const post = message => {
-    message.probe_started_at = probeStartedAt;
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
   const headers = window.__homepanelStationheadAuthHeaders;

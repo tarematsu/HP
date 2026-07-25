@@ -22,6 +22,22 @@ std::wstring HResultHex(HRESULT hr) {
          << static_cast<unsigned long>(hr);
   return output.str();
 }
+
+std::wstring StationheadAuthProbeScriptForRun(
+    int channelId, int64_t probeStartedAt) {
+  std::wstring script = StationheadAuthProbeScript(channelId);
+  static constexpr std::wstring_view marker =
+      L"post({ type: 'stationhead-auth-probe',";
+  std::wstring replacement(marker);
+  replacement += L" probe_started_at: ";
+  replacement += std::to_wstring(probeStartedAt);
+  replacement += L",";
+  for (size_t at = script.find(marker); at != std::wstring::npos;
+       at = script.find(marker, at + replacement.size())) {
+    script.replace(at, marker.size(), replacement);
+  }
+  return script;
+}
 }
 
 StationheadPlayer::StationheadPlayer(StationheadRole role, HWND window, StationheadConfig config,
@@ -425,7 +441,7 @@ void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
   authProbeStartedAt_ = nowMs;
   lastAuthProbeAt_ = nowMs;
   const HRESULT result = webview_->ExecuteScript(
-      StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_).c_str(),
+      StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_).c_str(),
       nullptr);
   if (FAILED(result)) {
     authProbeInFlight_ = false;

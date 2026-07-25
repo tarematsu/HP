@@ -14,54 +14,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: video-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-window-b-probe-adapter:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-stationhead-window-b' && github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-stationhead-window-b
-          fetch-depth: 0
-      - name: Apply local-probe adapter
-        shell: python
-        run: |
-          from pathlib import Path
-          import subprocess
-
-          def replace_once(path, old, new):
-              target = Path(path)
-              text = target.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}')
-              target.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          replace_once('hp/native/src/sh_shared.h', 'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {', 'inline std::wstring StationheadAuthProbeScript(int channelId) {')
-          replace_once('hp/native/src/sh_shared.h', "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;", "(() => {\n  const post = message => {")
-
-          old_namespace_end = "  return output.str();\n}\n}\n\nStationheadPlayer::StationheadPlayer"
-          adapter = "  return output.str();\n}\n\nstd::wstring StationheadAuthProbeScriptForRun(\n    int channelId, int64_t probeStartedAt) {\n  std::wstring script = StationheadAuthProbeScript(channelId);\n  static constexpr std::wstring_view marker =\n      L\"post({ type: 'stationhead-auth-probe',\";\n  std::wstring replacement(marker);\n  replacement += L\" probe_started_at: \";\n  replacement += std::to_wstring(probeStartedAt);\n  replacement += L\",\";\n  for (size_t at = script.find(marker); at != std::wstring::npos;\n       at = script.find(marker, at + replacement.size())) {\n    script.replace(at, marker.size(), replacement);\n  }\n  return script;\n}\n}\n\nStationheadPlayer::StationheadPlayer"
-          replace_once('hp/native/src/sh.cpp', old_namespace_end, adapter)
-          replace_once('hp/native/src/sh.cpp', 'StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_)', 'StationheadAuthProbeScriptForRun(config_.channelId, authProbeStartedAt_)')
-
-          subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
-          subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/video-ci.yml'], check=True)
-      - name: Commit local-probe adapter
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Adapt Window B auth race guard to local probe"
-          git push origin HEAD:agent/fix-stationhead-window-b
-
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
