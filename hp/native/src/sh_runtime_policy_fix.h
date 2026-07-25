@@ -3,9 +3,9 @@
 namespace hp {
 
 // The base autoplay script reacts to DOM changes, but an SPA can leave the same
-// login control in place while authentication changes underneath it. Keep one
-// low-frequency runtime check per Stationhead document while audio is active,
-// and always recheck immediately after a newly captured authorization header.
+// login control in place while authentication changes underneath it. Add a
+// document-lifetime message gate, distinguish a blocking login surface from a
+// generic header link, and keep one low-frequency check while audio is active.
 inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     const wchar_t* globalName, const wchar_t* messagePrefix) {
   std::wstring script = StationheadAutoplayScript(globalName, messagePrefix);
@@ -21,11 +21,40 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
             << globalName
             << LR"JS(AuthRecheck = true;
   const nativeTimeout = window.setTimeout.bind(window);
-  let timer = 0;
-  const scan = () => {
-    try { window.)JS"
-            << globalName
-            << LR"JS(?.scan?.(0); } catch (_) {}
+  const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
+  const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
+  const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
+  const loginPattern = /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const visible = element => {
+    if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
+        element.getAttribute?.('aria-hidden') === 'true') return false;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+    const style = getComputedStyle(element);
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+      Number(style.opacity || 1) > 0 && style.pointerEvents !== 'none';
+  };
+  const labelOf = element => [
+    element?.innerText,
+    element?.getAttribute?.('aria-label'),
+    element?.textContent,
+    element?.getAttribute?.('title'),
+    element?.getAttribute?.('value'),
+    element?.getAttribute?.('data-testid'),
+  ].map(normalize).find(Boolean) || '';
+  const blockingLoginVisible = () => {
+    const loginRoute = /(^|\/)(login|signin|sign-in|auth)(\/|$)/i.test(
+      String(location.pathname || ''));
+    for (const element of document.querySelectorAll(selector)) {
+      if (!visible(element) || !loginPattern.test(labelOf(element))) continue;
+      const shell = element.closest?.(
+        "form,[role='dialog'],[aria-modal='true'],[data-testid*='login' i],[id*='login' i]");
+      if (loginRoute || shell?.matches?.("form,[role='dialog'],[aria-modal='true']") ||
+          shell?.querySelector?.(credentialSelector)) {
+        return true;
+      }
+    }
+    return false;
   };
   const playing = () => {
     if (typeof window.__homepanelAudioPlaying === 'boolean') {
@@ -35,20 +64,139 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     return Array.from(document.querySelectorAll('audio,video')).some(element =>
       !element.paused && !element.ended && element.readyState >= 2);
   };
+  const webview = window.chrome?.webview;
+  const nativePost = webview?.postMessage?.bind(webview);
+  const loginMessage = ')JS"
+            << messagePrefix
+            << LR"JS(-login-required';
+  let pageActive = true;
+  let robustLoginReported = false;
+  let loginMissingSince = 0;
+  let timer = 0;
+  const updateBlockingLogin = () => {
+    const blocking = blockingLoginVisible();
+    const now = Date.now();
+    if (blocking) {
+      loginMissingSince = 0;
+      window.__homepanelStationheadBlockingLoginVisible = true;
+      if (!robustLoginReported && pageActive && nativePost) {
+        robustLoginReported = true;
+        nativePost(loginMessage);
+      }
+      return true;
+    }
+    if (!loginMissingSince) loginMissingSince = now;
+    if (now - loginMissingSince >= 3000) {
+      window.__homepanelStationheadBlockingLoginVisible = false;
+      robustLoginReported = false;
+    }
+    return false;
+  };
+  if (webview && nativePost) {
+    try {
+      webview.postMessage = message => {
+        if (!pageActive) return;
+        if (message === loginMessage) {
+          updateBlockingLogin();
+          return;
+        }
+        if (message && typeof message === 'object' &&
+            message.type === 'stationhead-auth-ready') {
+          nativeTimeout(() => {
+            if (pageActive) nativePost(message);
+          }, 0);
+          return;
+        }
+        return nativePost(message);
+      };
+    } catch (_) {}
+  }
+  const baseScan = () => {
+    try { window.)JS"
+            << globalName
+            << LR"JS(?.scan?.(0); } catch (_) {}
+  };
+  const scan = () => {
+    baseScan();
+    updateBlockingLogin();
+  };
   const schedule = () => {
     if (timer) return;
     timer = nativeTimeout(() => {
       timer = 0;
-      if (playing()) scan();
+      if (pageActive) {
+        if (playing()) baseScan();
+        updateBlockingLogin();
+      }
       schedule();
     }, 5000);
   };
-  window.addEventListener('homepanel-stationhead-auth-ready', scan);
+  window.addEventListener('pagehide', () => { pageActive = false; }, true);
+  window.addEventListener('pageshow', () => {
+    pageActive = true;
+    scan();
+  }, true);
+  window.addEventListener('homepanel-stationhead-auth-ready', () => {
+    robustLoginReported = false;
+    loginMissingSince = 0;
+    scan();
+  });
+  updateBlockingLogin();
   schedule();
 })()
 )JS";
   script.push_back(L'\n');
   script.append(extension.str());
+  return script;
+}
+
+// The page can complete a fresh login while retaining the same bearer token.
+// The base capture policy deliberately rejects a token once a blocking login
+// surface is observed, so release that rejection only after the refined login
+// detector has observed a stable non-blocking page. The next page-owned request
+// then revalidates and recaptures the same token without an extra API call.
+inline std::wstring StationheadAuthCaptureScriptRuntimeFixed() {
+  std::wstring script = StationheadAuthCaptureScript();
+  script.append(LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
+  if (window.__homepanelStationheadAuthReuseFix) return;
+  window.__homepanelStationheadAuthReuseFix = true;
+  const releaseRejectedAuthorization = authorization => {
+    if (!authorization ||
+        authorization !== window.__homepanelStationheadRejectedAuthorization ||
+        window.__homepanelStationheadBlockingLoginVisible !== false) {
+      return;
+    }
+    window.__homepanelStationheadRejectedAuthorization = null;
+  };
+  const currentFetch = window.fetch ? window.fetch.bind(window) : null;
+  if (currentFetch) {
+    window.fetch = function(input, init) {
+      try {
+        const headers = new Headers((input && input.headers) || {});
+        if (init && init.headers) {
+          const initHeaders = new Headers(init.headers);
+          initHeaders.forEach((value, name) => headers.set(name, value));
+        }
+        releaseRejectedAuthorization(headers.get('authorization') || '');
+      } catch (_) {}
+      return currentFetch(input, init);
+    };
+  }
+  const NativeXhr = window.XMLHttpRequest;
+  if (NativeXhr) {
+    const currentSend = NativeXhr.prototype.send;
+    NativeXhr.prototype.send = function(...args) {
+      try {
+        releaseRejectedAuthorization(this.__homepanelHeaders?.authorization || '');
+      } catch (_) {}
+      return currentSend.apply(this, args);
+    };
+  }
+})()
+)JS");
   return script;
 }
 
@@ -123,5 +271,6 @@ inline std::wstring StationheadApiPlayStatsScriptRuntimeFixed(int channelId) {
 // These macros are intentionally defined after the wrappers. Calls compiled
 // after the precompiled-header boundary use the fixed runtime policy, while the
 // wrapper bodies above still refer to the original policy functions.
+#define StationheadAuthCaptureScript StationheadAuthCaptureScriptRuntimeFixed
 #define StationheadAutoplayScript StationheadAutoplayScriptRuntimeFixed
 #define StationheadApiPlayStatsScript StationheadApiPlayStatsScriptRuntimeFixed
