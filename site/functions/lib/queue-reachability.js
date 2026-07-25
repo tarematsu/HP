@@ -2,7 +2,7 @@ import { bool } from './api-utils.js';
 
 const checkpointRaw = JSON.stringify({ checkpoint: true });
 
-export const QUEUE_REACHABILITY_CHECKPOINT_MS = 60_000;
+export const QUEUE_REACHABILITY_CHECKPOINT_MS = 5 * 60_000;
 
 function numberOrNull(value) {
   if (value == null || value === '') return null;
