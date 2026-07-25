@@ -89,6 +89,17 @@ class AppStationheadHandle final : public StationheadHandleBase {
   void reset() noexcept;
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
+  StationheadStatus Status() const {
+    StationheadStatus status = StationheadHandleBase::Status();
+    if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
+      // Window A can also keep streaming while its interactive account surface
+      // needs attention. In a dual-window layout, keep that surface in the left
+      // half instead of exposing it as reusable healthy playback.
+      status.audioPlaying = false;
+      status.playing = false;
+    }
+    return status;
+  }
 };
 
 class AppSecondaryStationheadHandle final : public StationheadHandleBase {

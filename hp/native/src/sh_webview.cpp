@@ -6,8 +6,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kDailyPlayStatsRetryMs = 30'000;
-
 bool CallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
@@ -362,8 +360,10 @@ void StationheadPlayer::ConfigureWebView() {
                 log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
                           std::to_wstring(status) + L"; waiting for the page session to refresh");
                 const int64_t now = UnixMillis();
-                lastDailyPlayStatsAt_ = now;
-                nextTickAt_ = now + kDailyPlayStatsRetryMs;
+                lastDailyPlayStatsAt_ =
+                    now - (kStationheadDailyPlayStatsIntervalMs -
+                           kStationheadDailyPlayStatsRetryMs);
+                nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
                 return S_OK;
               }
               if (type == L"stationhead-auth-ready") {
@@ -390,8 +390,10 @@ void StationheadPlayer::ConfigureWebView() {
                 log_.Warn(L"Stationhead authenticated stats unavailable: " + error);
                 if (error == L"no-auth-header") {
                   const int64_t now = UnixMillis();
-                  lastDailyPlayStatsAt_ = now;
-                  nextTickAt_ = now + kDailyPlayStatsRetryMs;
+                  lastDailyPlayStatsAt_ =
+                      now - (kStationheadDailyPlayStatsIntervalMs -
+                             kStationheadDailyPlayStatsRetryMs);
+                  nextTickAt_ = now + kStationheadDailyPlayStatsRetryMs;
                 }
                 return S_OK;
               }

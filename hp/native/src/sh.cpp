@@ -4,7 +4,6 @@
 
 namespace hp {
 namespace {
-constexpr int64_t kDailyPlayStatsIntervalMs = 5 * 60'000;
 constexpr int64_t kAuthProbeIntervalMs = 5 * 60'000;
 constexpr int64_t kAuthProbeTimeoutMs = 30'000;
 constexpr int64_t kStationheadTrackBoundaryRefreshDelayMs = 52 * 60'000;
@@ -99,7 +98,7 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
       trackBoundaryPlaybackRecoveryAwaitingNavigation_;
   const bool changed =
       audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
-  const bool preserveSecondaryLogin = IsSecondary() && loginRequired_;
+  const bool preserveLoginRequired = loginRequired_;
   // Give the page's own auto-click scanners the same ground truth WebView2's
   // native audio detection already established, instead of leaving them to
   // infer "is it playing" from page-reported signals (like mediaSession
@@ -123,9 +122,9 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
         std::lock_guard lock(mutex_);
         status_.audioPlaying = true;
         status_.playing = true;
-        status_.loginRequired = preserveSecondaryLogin;
-        status_.detail = preserveSecondaryLogin
-            ? L"secondary Stationhead login required; audio still present during navigation"
+        status_.loginRequired = preserveLoginRequired;
+        status_.detail = preserveLoginRequired
+            ? L"Stationhead login required; audio still present during navigation"
             : L"audio observed while track-boundary navigation is still pending";
       }
       if (changed) {
@@ -149,23 +148,23 @@ void StationheadPlayer::ApplyAudioPlaybackState(bool playing, const std::wstring
                 L" audio recovered after track-boundary refresh");
     }
     resourceBlockingArmed_ = true;
-    if (!preserveSecondaryLogin) loginRequired_ = false;
+    if (!preserveLoginRequired) loginRequired_ = false;
     {
       std::lock_guard lock(mutex_);
       status_.audioPlaying = true;
       status_.playing = true;
-      status_.loginRequired = preserveSecondaryLogin;
+      status_.loginRequired = preserveLoginRequired;
       status_.navigating = false;
-      status_.detail = preserveSecondaryLogin
-          ? L"secondary Stationhead login required; audio continues"
+      status_.detail = preserveLoginRequired
+          ? L"Stationhead login required; audio continues"
           : (usingFallback_ ? L"fallback audio detected" : L"audio detected") +
                 (source.empty() ? L"" : L" (" + source + L")");
     }
-    if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {
+    if (!preserveLoginRequired && !startupPreviewActive_ && !spotifyAuthorization_) {
       SetVisible(false);
     }
     if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
-    PostChange(preserveSecondaryLogin ? StationheadChangeNone
+    PostChange(preserveLoginRequired ? StationheadChangeNone
                                       : StationheadChangeReturnMain);
     return;
   }
@@ -434,9 +433,18 @@ void StationheadPlayer::NavigateStationheadUrl(int64_t nowMs, const std::wstring
 
 void StationheadPlayer::PollDailyPlayStats(int64_t nowMs) {
   if (!webview_) return;
-  lastDailyPlayStatsAt_ = nowMs;
   const std::wstring script = StationheadApiPlayStatsScript(config_.channelId);
-  webview_->ExecuteScript(script.c_str(), nullptr);
+  const HRESULT result = webview_->ExecuteScript(script.c_str(), nullptr);
+  if (FAILED(result)) {
+    lastDailyPlayStatsAt_ =
+        nowMs - (kStationheadDailyPlayStatsIntervalMs -
+                 kStationheadDailyPlayStatsRetryMs);
+    nextTickAt_ = nowMs + kStationheadDailyPlayStatsRetryMs;
+    log_.Warn(L"Stationhead A authenticated stats script could not start " +
+              HResultHex(result));
+    return;
+  }
+  lastDailyPlayStatsAt_ = nowMs;
 }
 
 void StationheadPlayer::PollAuthProbe(int64_t nowMs) {
@@ -791,8 +799,8 @@ void StationheadPlayer::Tick(int64_t nowMs) {
   }
 
   if (!IsSecondary()) {
-    if (nowMs - lastDailyPlayStatsAt_ >= kDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
-    consider(lastDailyPlayStatsAt_ + kDailyPlayStatsIntervalMs);
+    if (nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs) PollDailyPlayStats(nowMs);
+    consider(lastDailyPlayStatsAt_ + kStationheadDailyPlayStatsIntervalMs);
   } else {
     if (authProbeInFlight_ && nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs) {
       authProbeInFlight_ = false;
@@ -832,6 +840,7 @@ void StationheadPlayer::OpenSpotifyAuthorization(const std::wstring& url) {
   {
     std::lock_guard lock(mutex_);
     status_.navigating = true;
+    status_.loginRequired = false;
     status_.detail = L"Spotify login loading";
   }
   if (authWebview_) authWebview_->Navigate(url.c_str());

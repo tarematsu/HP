@@ -31,7 +31,20 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Window B interactive state is not exposed as reusable healthy playback', () => {
+test('Window A and B interactive states are not exposed as reusable healthy playback', () => {
+  const primaryHandle = section(
+    handleHeader,
+    'class AppStationheadHandle final',
+    'class AppSecondaryStationheadHandle final',
+  );
+  assert.match(primaryHandle, /StationheadStatus Status\(\) const/);
+  assert.match(
+    primaryHandle,
+    /status\.loginRequired \|\| status\.spotifyAuthorization \|\| status\.processFailed/,
+  );
+  assert.match(primaryHandle, /status\.audioPlaying = false;/);
+  assert.match(primaryHandle, /status\.playing = false;/);
+
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -67,19 +80,19 @@ test('Window B remains constrained to its right-half placement while pending', (
   assert.match(placement, /secondaryStationhead_->RefreshVisibility\(\);/);
 });
 
-test('Window B keeps confirmed login-required state while audio continues', () => {
+test('Window A and B keep confirmed login-required state while audio continues', () => {
   const applyAudio = section(
     playerSource,
     'void StationheadPlayer::ApplyAudioPlaybackState(',
     'void StationheadPlayer::NavigateCurrentUrl(',
   );
-  assert.match(applyAudio, /preserveSecondaryLogin = IsSecondary\(\) && loginRequired_/);
-  assert.match(applyAudio, /status_\.loginRequired = preserveSecondaryLogin;/);
-  assert.match(applyAudio, /if \(!preserveSecondaryLogin && !startupPreviewActive_/);
-  assert.match(applyAudio, /secondary Stationhead login required; audio continues/);
+  assert.match(applyAudio, /preserveLoginRequired = loginRequired_/);
+  assert.match(applyAudio, /status_\.loginRequired = preserveLoginRequired;/);
+  assert.match(applyAudio, /if \(!preserveLoginRequired && !startupPreviewActive_/);
+  assert.match(applyAudio, /Stationhead login required; audio continues/);
   assert.match(
     applyAudio,
-    /PostChange\(preserveSecondaryLogin \? StationheadChangeNone[\s\S]*StationheadChangeReturnMain\)/,
+    /PostChange\(preserveLoginRequired \? StationheadChangeNone[\s\S]*StationheadChangeReturnMain\)/,
   );
 });
 
@@ -153,4 +166,71 @@ test('login detection rejects the captured token and is re-armed after new authe
   const resetAt = authCapture.indexOf("dispatchEvent(new Event('homepanel-stationhead-auth-ready'))");
   const readyAt = authCapture.indexOf("postMessage({ type: 'stationhead-auth-ready' })");
   assert.ok(resetAt >= 0 && readyAt > resetAt);
+});
+
+
+test('A and B continue login detection while audio remains active', () => {
+  const autoplay = section(
+    sharedSource,
+    'inline std::wstring StationheadAutoplayScript(',
+    'inline std::wstring StationheadVolumeScript(',
+  );
+  const publishAudio = section(
+    autoplay,
+    'const publishAudio = () => {',
+    '// Clicking is handled natively:',
+  );
+  assert.doesNotMatch(publishAudio, /observer\?\.disconnect/);
+  assert.doesNotMatch(publishAudio, /nativeClearTimeout/);
+
+  const scan = section(
+    autoplay,
+    'const scan = () => {',
+    'const schedule = (delay = 100) => {',
+  );
+  assert.doesNotMatch(scan, /if \(isPlaying\)[\s\S]*return;/);
+  assert.match(scan, /!start && !isPlaying && startPattern\.test\(label\)/);
+  const loginAt = scan.indexOf('if (login) {');
+  const startAt = scan.indexOf('if (start) {');
+  assert.ok(loginAt >= 0 && startAt > loginAt);
+
+  assert.match(
+    autoplay,
+    /NativeMutationObserver\(records => \{[\s\S]*records\.some\(relevant\)\) schedule\(\);/,
+  );
+  assert.match(autoplay, /nativeTimeout\(schedule, 15000\);/);
+});
+
+test('Window A schedules failed stats execution and auth errors for a real 30-second retry', () => {
+  const pollStats = section(
+    playerSource,
+    'void StationheadPlayer::PollDailyPlayStats(',
+    'void StationheadPlayer::PollAuthProbe(',
+  );
+  assert.match(pollStats, /const HRESULT result = webview_->ExecuteScript/);
+  assert.match(pollStats, /if \(FAILED\(result\)\)/);
+  assert.match(
+    pollStats,
+    /nowMs - \(kStationheadDailyPlayStatsIntervalMs -[\s\S]*kStationheadDailyPlayStatsRetryMs\)/,
+  );
+  assert.match(
+    pollStats,
+    /nextTickAt_ = nowMs \+ kStationheadDailyPlayStatsRetryMs;/,
+  );
+
+  const retryBackdates = webviewSource.match(
+    /lastDailyPlayStatsAt_ =[\s\S]*?kStationheadDailyPlayStatsIntervalMs -[\s\S]*?kStationheadDailyPlayStatsRetryMs/g,
+  ) || [];
+  assert.equal(retryBackdates.length, 2);
+  assert.doesNotMatch(webviewSource, /lastDailyPlayStatsAt_ = now;[\s\S]*kDailyPlayStatsRetryMs/);
+});
+
+test('Spotify authorization clears both internal and published login-required state', () => {
+  const openAuth = section(
+    playerSource,
+    'void StationheadPlayer::OpenSpotifyAuthorization(',
+    'void StationheadPlayer::FinishSpotifyAuthorization(',
+  );
+  assert.match(openAuth, /loginRequired_ = false;/);
+  assert.match(openAuth, /status_\.loginRequired = false;/);
 });
