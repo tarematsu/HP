@@ -3,6 +3,7 @@ import { historicalRebuildEnabled } from './historical-rebuild-policy.js';
 import { clearCompletedMinuteFactPayloads } from './minute-facts-inbox.js';
 import rebuildWorker from './minute-rebuild-entry.js';
 import { runMinuteScheduled } from './minute-entry.js';
+import { throwIfSoftFailure } from './soft-failure.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
@@ -240,6 +241,7 @@ async function processMinuteRebuildBatch(batch, env, ctx) {
         : message.body?.maintenance_task === 'sync'
           ? await processMinuteMaintenanceSync(env, message.body)
           : await processMinuteMaintenanceRun(env, message.body);
+    throwIfSoftFailure(result, 'minute maintenance');
     logMaintenanceGateResult(result);
     message.ack();
   } catch (error) {
