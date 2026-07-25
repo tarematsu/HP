@@ -13,7 +13,28 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   extension << LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
-  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
+  const webview = window.chrome?.webview;
+  const nativePost = webview?.postMessage?.bind(webview);
+  const topLevelStationhead =
+    (host === 'stationhead.com' || host.endsWith('.stationhead.com')) &&
+    window.top === window;
+  if (!topLevelStationhead) {
+    // AddScriptToExecuteOnDocumentCreated also runs in child frames and after an
+    // external top-level navigation. Remove the page-to-native channel before
+    // either document can emit Stationhead-shaped state messages.
+    if (webview && nativePost) {
+      const blockedPost = () => undefined;
+      try { webview.postMessage = blockedPost; } catch (_) {}
+      try {
+        Object.defineProperty(webview, 'postMessage', {
+          configurable: false,
+          writable: false,
+          value: blockedPost,
+        });
+      } catch (_) {}
+    }
+    return;
+  }
   if (window.)JS"
             << globalName
             << LR"JS(AuthRecheck) return;
@@ -64,8 +85,6 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     return Array.from(document.querySelectorAll('audio,video')).some(element =>
       !element.paused && !element.ended && element.readyState >= 2);
   };
-  const webview = window.chrome?.webview;
-  const nativePost = webview?.postMessage?.bind(webview);
   const loginMessage = ')JS"
             << messagePrefix
             << LR"JS(-login-required';
@@ -160,7 +179,8 @@ inline std::wstring StationheadAuthCaptureScriptRuntimeFixed() {
   script.append(LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
-  if (host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) return;
+  if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
+      window.top !== window) return;
   if (window.__homepanelStationheadAuthReuseFix) return;
   window.__homepanelStationheadAuthReuseFix = true;
   const releaseRejectedAuthorization = authorization => {
