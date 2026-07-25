@@ -178,6 +178,7 @@ let maxCpu = null;
 let heartbeat;
 let timer;
 let connected = false;
+const pendingMessages = new Set();
 
 const finished = new Promise((resolve, reject) => {
   timer = setTimeout(() => {
@@ -199,7 +200,7 @@ const finished = new Promise((resolve, reject) => {
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
   });
   socket.addEventListener('message', (message) => {
-    void (async () => {
+    const processing = (async () => {
       const text = await messageDataToText(message.data);
       let parsed;
       try { parsed = JSON.parse(text); } catch { parsed = { raw: text.slice(0, 1000) }; }
@@ -211,15 +212,21 @@ const finished = new Promise((resolve, reject) => {
       events += 1;
       console.log(`LIVE_TAIL_EVENT=${compact}`);
       if (cpu.length) console.log(`LIVE_TAIL_CPU=${JSON.stringify(cpu)}`);
-    })().catch((error) => {
-      try { socket.close(1011, 'message processing failed'); } catch {}
-      reject(new Error(`Live tail message processing failed: ${error.message || error}`));
-    });
+    })();
+    pendingMessages.add(processing);
+    processing
+      .catch((error) => {
+        try { socket.close(1011, 'message processing failed'); } catch {}
+        reject(new Error(`Live tail message processing failed: ${error.message || error}`));
+      })
+      .finally(() => pendingMessages.delete(processing));
   });
   socket.addEventListener('error', (event) => reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`)));
   socket.addEventListener('close', () => {
-    if (connected) resolve();
-    else reject(new Error('Live tail WebSocket closed before connecting'));
+    void Promise.allSettled([...pendingMessages]).then(() => {
+      if (connected) resolve();
+      else reject(new Error('Live tail WebSocket closed before connecting'));
+    });
   });
 });
 
