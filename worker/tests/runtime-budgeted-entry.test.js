@@ -96,14 +96,19 @@ test('all downstream Queue sends carry producer and operation attribution', asyn
   });
 });
 
-test('runtime configuration applies batch, retry, sampling, and dashboard budgets', () => {
+test('runtime configuration applies safe batching, retry, sampling, and dashboard budgets', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(config.observability.head_sampling_rate, 0.1);
   assert.equal(config.observability.logs.head_sampling_rate, 0.1);
   assert.equal(config.vars.PAGES_DASHBOARD_MATERIALIZATION_INTERVAL_MINUTES, 15);
   assert.equal(config.vars.DERIVE_MAX_ATTEMPTS, 4);
-  const batched = config.queues.consumers.filter(({ queue }) => queue !== 'stationhead-minute-derive');
-  assert.equal(batched.every(({ max_batch_size }) => max_batch_size >= 5), true);
+  const consumers = new Map(config.queues.consumers.map((consumer) => [consumer.queue, consumer]));
+  assert.equal(consumers.get('stationhead-host-monitor').max_batch_size, 10);
+  assert.equal(consumers.get('stationhead-host-monitor').max_batch_timeout, 5);
+  for (const [queue, consumer] of consumers) {
+    if (queue === 'stationhead-host-monitor') continue;
+    assert.equal(consumer.max_batch_size, 1, queue);
+  }
   assert.equal(config.queues.consumers.every(({ max_retries }) => max_retries <= 4), true);
 });
