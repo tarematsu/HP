@@ -47,7 +47,7 @@ test('queue reachability writes a compact checkpoint for unchanged queues', asyn
     is_paused: false,
   });
 
-  assert.equal(QUEUE_REACHABILITY_CHECKPOINT_MS, 5 * 60_000);
+  assert.equal(QUEUE_REACHABILITY_CHECKPOINT_MS, 60 * 60_000);
   assert.equal(result.inserted, true);
   assert.equal(db.calls.length, 1);
   const [call] = db.calls;
@@ -101,13 +101,15 @@ test('rapid pause and resume transitions are never throttled away', async () => 
   assert.deepEqual(rows.map((row) => row.is_paused), [0, 1, 0]);
 });
 
-test('the configured checkpoint boundary writes a new checkpoint', async () => {
+test('stable checkpoints avoid D1 until the configured boundary', async () => {
   const db = sqliteD1();
   const start = 1_700_000_000_000;
   const data = { station_id: 10, queue_id: 20, start_time: 30, is_paused: false };
 
   assert.equal((await saveQueueReachability(db, start, data)).inserted, true);
-  assert.equal((await saveQueueReachability(db, start + 60_000, data)).inserted, false);
+  const cached = await saveQueueReachability(db, start + 60_000, data);
+  assert.equal(cached.inserted, false);
+  assert.equal(cached.skipped, true);
   assert.equal((await saveQueueReachability(db, start + QUEUE_REACHABILITY_CHECKPOINT_MS, data)).inserted, true);
 
   const row = db.sqlite.prepare('SELECT COUNT(*) AS count FROM sh_queue_snapshots').get();
