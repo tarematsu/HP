@@ -303,9 +303,9 @@ def self_test() -> int:
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
-    if not audit.TOKEN or not audit.WORKERS:
-        raise RuntimeError("Cloudflare token and Worker list are required")
-    account = audit.account_id()
+    if not audit.TOKEN or not audit.ACCOUNT_ID or not audit.WORKERS:
+        raise RuntimeError("Cloudflare token, account ID, and Worker list are required")
+    account = audit.ACCOUNT_ID
     active, deployment_metadata, deployment_failures = active_deployments(account)
     payload = deployment_payload(active, deployment_metadata)
     output_path = str(os.environ.get("ACTIVE_WORKER_DEPLOYMENTS_OUTPUT") or "").strip()
