@@ -55,7 +55,12 @@ test('active runtime policy gates message sources and generic login links', () =
   assert.match(runtimeAutoplay, /login\|signin\|sign-in\|auth/);
   assert.match(runtimeAutoplay, /form,\[role='dialog'\],\[aria-modal='true'\]/);
   assert.match(runtimeAutoplay, /credentialSelector/);
-  assert.match(runtimeAutoplay, /if \(message === loginMessage\)[\s\S]*updateBlockingLogin\(\);[\s\S]*return;/);
+  assert.match(runtimeAutoplay, /const restoreAuthAfterFalsePositive = \(\) =>/);
+  assert.match(runtimeAutoplay, /__homepanelStationheadLastAcceptedAuthHeaders/);
+  assert.match(
+    runtimeAutoplay,
+    /if \(message === loginMessage\)[\s\S]*if \(!updateBlockingLogin\(\)\) restoreAuthAfterFalsePositive\(\);[\s\S]*return;/,
+  );
   assert.match(runtimeAutoplay, /homepanelStationheadBlockingLoginVisible = true/);
   assert.match(runtimeAutoplay, /homepanelStationheadBlockingLoginVisible = false/);
   assert.match(runtimeAutoplay, /now - loginMissingSince >= 3000/);
@@ -82,6 +87,8 @@ test('same-token login recovery is accepted only after the blocking UI clears', 
   );
   assert.match(authCapture, /StationheadAuthCaptureScript\(\)/);
   assert.match(authCapture, /window\.top !== window/);
+  assert.match(authCapture, /const rememberAcceptedAuthorization = \(\) =>/);
+  assert.match(authCapture, /__homepanelStationheadLastAcceptedAuthHeaders = Object\.assign/);
   assert.match(authCapture, /const releaseRejectedAuthorization = authorization =>/);
   assert.match(
     authCapture,
@@ -96,7 +103,9 @@ test('same-token login recovery is accepted only after the blocking UI clears', 
     /window\.__homepanelStationheadRejectedAuthorization = null/,
   );
   assert.match(authCapture, /window\.fetch = function\(input, init\)/);
+  assert.match(authCapture, /const result = currentFetch\(input, init\);[\s\S]*rememberAcceptedAuthorization\(\);/);
   assert.match(authCapture, /NativeXhr\.prototype\.send = function/);
+  assert.match(authCapture, /const result = currentSend\.apply\(this, args\);[\s\S]*rememberAcceptedAuthorization\(\);/);
   assert.match(
     runtimeFixSource,
     /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptRuntimeFixed/,
