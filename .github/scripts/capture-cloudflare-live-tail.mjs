@@ -45,7 +45,17 @@ export function normalizeWebSocketUrl(value) {
   throw new Error('Cloudflare live-tail response did not include a valid WebSocket URL');
 }
 
-function selfTest() {
+export async function messageDataToText(data) {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) {
+    return new TextDecoder().decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+  }
+  if (data && typeof data.text === 'function') return data.text();
+  throw new TypeError('Unsupported live-tail WebSocket message payload');
+}
+
+async function selfTest() {
   assert.equal(parseDurationSeconds('', 180), 180);
   assert.equal(parseDurationSeconds('1'), 10);
   assert.equal(parseDurationSeconds('90'), 90);
@@ -61,11 +71,14 @@ function selfTest() {
   assert.equal(normalizeWebSocketUrl('https://example.test/tail'), 'wss://example.test/tail');
   assert.equal(normalizeWebSocketUrl('wss://example.test/tail'), 'wss://example.test/tail');
   assert.throws(() => normalizeWebSocketUrl(''), /valid WebSocket URL/);
+  assert.equal(await messageDataToText('text'), 'text');
+  assert.equal(await messageDataToText(new TextEncoder().encode('bytes')), 'bytes');
+  await assert.rejects(() => messageDataToText({}), /Unsupported live-tail/);
   console.log('live-tail outcome classification self-test passed');
 }
 
 if (process.argv.includes('--self-test')) {
-  selfTest();
+  await selfTest();
   process.exit(0);
 }
 
@@ -185,18 +198,23 @@ const finished = new Promise((resolve, reject) => {
     probeWorker().catch(() => {});
     timer = setTimeout(() => socket.close(1000, 'diagnostic complete'), durationMs);
   });
-  socket.addEventListener('message', async (message) => {
-    let text = typeof message.data === 'string' ? message.data : await message.data.text();
-    let parsed;
-    try { parsed = JSON.parse(text); } catch { parsed = { raw: text.slice(0, 1000) }; }
-    const safe = sanitize(parsed);
-    const cpu = findNumbers(safe);
-    for (const [, value] of cpu) maxCpu = maxCpu === null ? value : Math.max(maxCpu, value);
-    const compact = JSON.stringify(safe);
-    if (isErrorLike(safe)) errors += 1;
-    events += 1;
-    console.log(`LIVE_TAIL_EVENT=${compact}`);
-    if (cpu.length) console.log(`LIVE_TAIL_CPU=${JSON.stringify(cpu)}`);
+  socket.addEventListener('message', (message) => {
+    void (async () => {
+      const text = await messageDataToText(message.data);
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = { raw: text.slice(0, 1000) }; }
+      const safe = sanitize(parsed);
+      const cpu = findNumbers(safe);
+      for (const [, value] of cpu) maxCpu = maxCpu === null ? value : Math.max(maxCpu, value);
+      const compact = JSON.stringify(safe);
+      if (isErrorLike(safe)) errors += 1;
+      events += 1;
+      console.log(`LIVE_TAIL_EVENT=${compact}`);
+      if (cpu.length) console.log(`LIVE_TAIL_CPU=${JSON.stringify(cpu)}`);
+    })().catch((error) => {
+      try { socket.close(1011, 'message processing failed'); } catch {}
+      reject(new Error(`Live tail message processing failed: ${error.message || error}`));
+    });
   });
   socket.addEventListener('error', (event) => reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`)));
   socket.addEventListener('close', () => {
