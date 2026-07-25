@@ -81,7 +81,9 @@ test('SH observability publishes retrievable deployment and telemetry status', a
   assert.match(publisher, /Current-deployment telemetry policy/);
   assert.doesNotMatch(
     `${workflow}\n${publisher}`,
-    /POLICY_OUTCOME|policy-self-test|observability\/policy-self-test|--self-test|node --test/,
+    /policy-self-test|observability\/policy-self-test|--self-test|node --test/,
   );
+  assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
+  assert.doesNotMatch(publisher, /process\.env\.POLICY_OUTCOME/);
   assert.doesNotMatch(publisher, /normalizeOutcome|statusState|function selfTest|node:assert/);
 });
