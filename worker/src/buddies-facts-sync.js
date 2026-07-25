@@ -276,13 +276,16 @@ export async function runBuddiesFactsSync(env, options = {}) {
     legacy_track_likes_enabled: legacyTrackLikesEnabled,
     legacy_rows: Number(legacyRows || 0),
   };
-  console.log(JSON.stringify({
+  const log = JSON.stringify({
     event: 'buddies_facts_sync_summary',
     sync_keys: activeSyncKeys,
     legacy_track_likes_enabled: summary.legacy_track_likes_enabled,
     legacy_rows: summary.legacy_rows,
     rows: summary.rows,
     failed: summary.failed,
-  }));
+    error: summary.error || undefined,
+  });
+  if (summary.failed) console.error(log);
+  else console.log(log);
   return summary;
 }

@@ -117,14 +117,31 @@ def telemetry_errors(account_id: str, start: dt.datetime, end: dt.datetime) -> l
         }
         for worker in WORKERS
     ]
-    filters: list[dict[str, Any]] = [
-        {"kind": "group", "filterCombination": "or", "filters": services},
+    error_markers: list[dict[str, Any]] = [
         {
             "kind": "filter",
             "key": "$metadata.error",
             "operation": "exists",
             "type": "string",
         },
+        {
+            "kind": "filter",
+            "key": "$metadata.level",
+            "operation": "eq",
+            "type": "string",
+            "value": "error",
+        },
+        {
+            "kind": "filter",
+            "key": "$metadata.level",
+            "operation": "eq",
+            "type": "string",
+            "value": "fatal",
+        },
+    ]
+    filters: list[dict[str, Any]] = [
+        {"kind": "group", "filterCombination": "or", "filters": services},
+        {"kind": "group", "filterCombination": "or", "filters": error_markers},
     ]
     payload = {
         "queryId": "github-actions-worker-errors",
@@ -238,9 +255,13 @@ def main() -> int:
             summary.write("\n".join(lines) + "\n")
     else:
         print("\n".join(lines))
-    if total_errors:
-        print(f"::warning title=Cloudflare Worker errors::{total_errors} errors in the last {LOOKBACK_MINUTES} minutes")
-    return 0
+    if total_errors or errors:
+        print(
+            "::error title=Cloudflare Worker errors::"
+            f"invocation_errors={total_errors} persisted_error_events={len(errors)} "
+            f"lookback_minutes={LOOKBACK_MINUTES}"
+        )
+    return 1 if total_errors or errors else 0
 
 
 if __name__ == "__main__":
