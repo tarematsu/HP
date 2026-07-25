@@ -54,6 +54,17 @@ function fakeDb() {
   };
 }
 
+function collectorDb(onWrite) {
+  return {
+    prepare() {
+      return {
+        bind() { return this; },
+        async run() { onWrite(); return { meta: { changes: 1 } }; },
+      };
+    },
+  };
+}
+
 const QUEUE_CURRENT_SQL = `SELECT current.structural_hash,current.likes_hash,
   current.start_time,current.observed_at,
   COALESCE((SELECT MAX(snapshot.observed_at) FROM sh_queue_snapshots snapshot
@@ -103,6 +114,7 @@ test('auth state is served from Durable Object without a D1 query', async () => 
     tokenExpiresAt: expires,
     controlExists: true,
     collectorLastRunAt: 100,
+    collectorCheckpointAt: 50,
   });
   const env = withCollectorDoHotState({
     AUTH_REFRESH_BEFORE_MS: 3_600_000,
@@ -111,20 +123,14 @@ test('auth state is served from Durable Object without a D1 query', async () => 
   const state = await readAuthState(env);
   assert.equal(state.deviceUid, 'device');
   assert.equal(state.collectorLastRunAt, 100);
+  assert.equal(state.collectorCheckpointAt, 50);
 });
 
 test('minute collector progress writes to Durable Object before the D1 checkpoint', async () => {
   const storage = durableStorage();
   let d1Writes = 0;
   const env = withCollectorDoHotState({
-    DB: {
-      prepare() {
-        return {
-          bind() { return this; },
-          async run() { d1Writes += 1; return { meta: { changes: 1 } }; },
-        };
-      },
-    },
+    DB: collectorDb(() => { d1Writes += 1; }),
     __shPersistCollectorCredentials: false,
   }, storage);
   const state = collectorStateFromAuthState({
@@ -132,6 +138,7 @@ test('minute collector progress writes to Durable Object before the D1 checkpoin
     deviceUid: 'device',
     tokenExpiresAt: Date.now() + 8 * 60 * 60_000,
     collectorLastRunAt: 1_000_000,
+    collectorCheckpointAt: 1_000_000,
     collectorLastSuccessAt: 1_000_000,
     collectorChannelId: 1,
     collectorStationId: 2,
@@ -143,5 +150,32 @@ test('minute collector progress writes to Durable Object before the D1 checkpoin
   assert.equal(d1Writes, 0);
   const hot = storage.values.get('collector:hot:auth:stationhead');
   assert.equal(hot.collectorLastRunAt, 1_060_000);
+  assert.equal(hot.collectorCheckpointAt, 1_000_000);
   assert.equal(hot.collectorStationId, 2);
+});
+
+test('twenty-minute progress creates a D1 checkpoint and advances its DO marker', async () => {
+  const storage = durableStorage();
+  let d1Writes = 0;
+  const env = withCollectorDoHotState({
+    DB: collectorDb(() => { d1Writes += 1; }),
+    __shPersistCollectorCredentials: false,
+  }, storage);
+  const state = collectorStateFromAuthState({
+    authToken: 'Bearer token',
+    deviceUid: 'device',
+    tokenExpiresAt: Date.now() + 8 * 60 * 60_000,
+    collectorLastRunAt: 2_140_000,
+    collectorCheckpointAt: 1_000_000,
+    collectorLastSuccessAt: 2_140_000,
+    collectorChannelId: 1,
+    collectorStationId: 2,
+  }, env);
+  await saveCollectorStateAndClearFailure(env, state, {
+    lastRunAt: 2_200_000,
+    lastSuccessAt: 2_200_000,
+  });
+  assert.equal(d1Writes, 1);
+  const hot = storage.values.get('collector:hot:auth:stationhead');
+  assert.equal(hot.collectorCheckpointAt, 2_200_000);
 });
