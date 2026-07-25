@@ -33,6 +33,13 @@ test('soft failure details are redacted before becoming thrown diagnostics', () 
   );
 });
 
+test('numeric failed counters remain completion metrics rather than task soft failures', () => {
+  assert.doesNotThrow(() => throwIfSoftFailure({
+    failed: 1,
+    processed: 10,
+  }, 'minute maintenance'));
+});
+
 test('inline sync rejects a returned soft failure so runtime fallback can enqueue it', async () => {
   await assert.rejects(
     runMinuteMaintenanceSyncInline(
