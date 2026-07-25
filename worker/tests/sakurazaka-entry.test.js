@@ -7,7 +7,7 @@ import {
   runSakurazakaScheduled,
 } from '../src/sakurazaka-entry.js';
 
-test('Sakurazaka cron dispatches one compact task to its dedicated queue', async () => {
+test('Sakurazaka cron dispatches one attributed compact task to its dedicated queue', async () => {
   const sent = [];
   const result = await runSakurazakaScheduled({
     cron: SAKURAZAKA_CRON,
@@ -26,6 +26,8 @@ test('Sakurazaka cron dispatches one compact task to its dedicated queue', async
       message_type: SAKURAZAKA_CYCLE_MESSAGE,
       message_version: 1,
       scheduled_at: 1_700_000_000_000,
+      producer_worker: 'sh-sakurazaka46jp',
+      operation_name: 'sakurazaka-cycle',
     },
     options: { contentType: 'json' },
   }]);
