@@ -27,7 +27,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('active runtime policy gates stale documents and generic login links', () => {
+test('active runtime policy gates message sources and generic login links', () => {
   const baseAutoplay = section(
     policySource,
     'inline std::wstring StationheadAutoplayScript(',
@@ -41,6 +41,16 @@ test('active runtime policy gates stale documents and generic login links', () =
     '// The page can complete a fresh login',
   );
   assert.match(runtimeAutoplay, /StationheadAutoplayScript\(globalName, messagePrefix\)/);
+  assert.match(runtimeAutoplay, /const topLevelStationhead =/);
+  assert.match(runtimeAutoplay, /window\.top === window/);
+  assert.match(runtimeAutoplay, /if \(!topLevelStationhead\)/);
+  assert.match(runtimeAutoplay, /const blockedPost = \(\) => undefined/);
+  assert.match(runtimeAutoplay, /webview\.postMessage = blockedPost/);
+  assert.match(runtimeAutoplay, /Object\.defineProperty\(webview, 'postMessage'/);
+  const sourceGateAt = runtimeAutoplay.indexOf('if (!topLevelStationhead)');
+  const runtimeGuardAt = runtimeAutoplay.indexOf('AuthRecheck) return;');
+  assert.ok(sourceGateAt >= 0 && sourceGateAt < runtimeGuardAt);
+
   assert.match(runtimeAutoplay, /const blockingLoginVisible = \(\) =>/);
   assert.match(runtimeAutoplay, /login\|signin\|sign-in\|auth/);
   assert.match(runtimeAutoplay, /form,\[role='dialog'\],\[aria-modal='true'\]/);
@@ -71,6 +81,7 @@ test('same-token login recovery is accepted only after the blocking UI clears', 
     "// Window A's successful stats request",
   );
   assert.match(authCapture, /StationheadAuthCaptureScript\(\)/);
+  assert.match(authCapture, /window\.top !== window/);
   assert.match(authCapture, /const releaseRejectedAuthorization = authorization =>/);
   assert.match(
     authCapture,
