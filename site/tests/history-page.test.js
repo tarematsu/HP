@@ -64,14 +64,25 @@ test('history keeps one visible chart and delegates official series rendering', 
   assert.match(broadcastClient, /function draw\(\)/);
 });
 
-test('track history defaults to yesterday in JST as a single day', () => {
+test('track history defaults to yesterday in UTC as a single day', () => {
   assert.match(historyPage, /id="trackWeekMode" type="checkbox" checked/);
-  assert.match(historyEntry, /JST_OFFSET_MS/);
-  assert.match(historyEntry, /trackDate\.value = jstDate\(-1\)/);
+  assert.match(historyEntry, /import \{ utcDate \} from '\.\/history-date-utils\.js'/);
+  assert.match(historyEntry, /trackDate\.value = utcDate\(-1\)/);
   assert.match(historyEntry, /trackWeekMode\.checked = false/);
+  assert.doesNotMatch(historyEntry, /JST|Asia\/Tokyo|jstDate/);
   assert.match(historyClient, /if \(el\('trackWeekMode'\)\.checked\)/);
   assert.match(historyClient, /el\('from'\)\.value = mondayOf/);
   assert.match(historyClient, /el\('to'\)\.value = sundayOf/);
+});
+
+test('active history timestamps and range defaults are explicitly UTC', () => {
+  assert.match(historyClient, /timeZone: 'UTC'/);
+  assert.match(historyClient, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
+  assert.match(historyClient, /\['started_at', '開始日時（UTC）'\]/);
+  assert.match(historyFixes, /applyUtcPreset/);
+  assert.match(likesClient, /currentUtcWeekRange/);
+  assert.match(likesClient, /timeZone: 'UTC'/);
+  assert.doesNotMatch([historyEntry, historyClient, historyFixes, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
 test('track ranking consumes complete full-response rows instead of generated table pages', () => {
