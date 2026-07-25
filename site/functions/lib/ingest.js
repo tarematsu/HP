@@ -9,6 +9,7 @@ import {
 } from './api-utils.js';
 import { saveCommentCounts } from './comment-counts.js';
 import { saveLeanHeartbeat, saveLeanQueue, saveLeanSnapshot } from './d1-optimized-ingest.js';
+import { withoutQueueItemLikeMirrors } from './d1-queue-like-write-filter.js';
 import { saveQueueReachability } from './queue-reachability.js';
 
 export * from './queue-ingest-state.js';
@@ -26,7 +27,7 @@ const INGEST_HANDLERS = {
     ...await saveLeanSnapshot(env.DB, observedAt, data),
   }),
   queue: async (env, body, observedAt, data) => {
-    const result = await saveLeanQueue(env.DB, observedAt, body);
+    const result = await saveLeanQueue(withoutQueueItemLikeMirrors(env.DB), observedAt, body);
     const structuralSnapshotWritten = result.structureChanged === true && result.claim.accepted === true;
     const reachability = structuralSnapshotWritten
       ? { inserted: false }
