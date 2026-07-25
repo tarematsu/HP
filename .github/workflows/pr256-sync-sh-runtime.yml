@@ -1,3 +1,4 @@
+# One-shot workflow; removes itself after a validated sync.
 name: PR256 one-shot SH runtime sync
 
 on:
