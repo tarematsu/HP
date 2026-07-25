@@ -7,6 +7,7 @@ import datetime as dt
 import html
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -193,8 +194,26 @@ def event_severity(event: dict[str, Any]) -> str:
     return "info"
 
 
+def sanitize_text(value: Any) -> str:
+    text = str(value or "")
+    text = re.sub(r"\bBearer\s+[^\s,;\"'}]+", "Bearer [redacted]", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"([\"']?\b(?:api[_-]?token|token|secret|api[_-]?key)\b[\"']?\s*[:=]\s*[\"']?)[^\s,;\"'}]+",
+        r"\1[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"([?&](?:token|key|secret|signature|sig|auth)=)[^\s&#)]+",
+        r"\1[redacted]",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
 def clean_text(value: Any, limit: int = 180) -> str:
-    text = " ".join(str(value or "").replace("|", "\\|").split())
+    text = " ".join(sanitize_text(value).replace("|", "\\|").split())
     return html.escape(text[:limit]) or "-"
 
 
@@ -250,6 +269,8 @@ def self_test() -> int:
     assert event_severity(event("warn")) == "warning"
     assert event_severity(event("warning")) == "warning"
     assert event_severity(event("info")) == "info"
+    assert sanitize_text("Bearer abcdefghijklmnop") == "Bearer [redacted]"
+    assert "supersecret" not in sanitize_text("token=supersecret")
     print("observability severity self-test passed")
     return 0
 
