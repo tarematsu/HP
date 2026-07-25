@@ -27,7 +27,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('active runtime policy wraps the existing autoplay implementation', () => {
+test('active runtime policy gates stale documents and generic login links', () => {
   const baseAutoplay = section(
     policySource,
     'inline std::wstring StationheadAutoplayScript(',
@@ -38,16 +38,57 @@ test('active runtime policy wraps the existing autoplay implementation', () => {
   const runtimeAutoplay = section(
     runtimeFixSource,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
-    "// Window A's successful stats request",
+    '// The page can complete a fresh login',
   );
   assert.match(runtimeAutoplay, /StationheadAutoplayScript\(globalName, messagePrefix\)/);
-  assert.match(runtimeAutoplay, /homepanel-stationhead-auth-ready/);
-  assert.match(runtimeAutoplay, /if \(playing\(\)\) scan\(\);/);
-  assert.match(runtimeAutoplay, /5000/);
+  assert.match(runtimeAutoplay, /const blockingLoginVisible = \(\) =>/);
+  assert.match(runtimeAutoplay, /login\|signin\|sign-in\|auth/);
+  assert.match(runtimeAutoplay, /form,\[role='dialog'\],\[aria-modal='true'\]/);
+  assert.match(runtimeAutoplay, /credentialSelector/);
+  assert.match(runtimeAutoplay, /if \(message === loginMessage\)[\s\S]*updateBlockingLogin\(\);[\s\S]*return;/);
+  assert.match(runtimeAutoplay, /homepanelStationheadBlockingLoginVisible = true/);
+  assert.match(runtimeAutoplay, /homepanelStationheadBlockingLoginVisible = false/);
+  assert.match(runtimeAutoplay, /now - loginMissingSince >= 3000/);
+  assert.match(runtimeAutoplay, /addEventListener\('pagehide',[\s\S]*pageActive = false/);
+  assert.match(runtimeAutoplay, /addEventListener\('pageshow',[\s\S]*pageActive = true/);
+  assert.match(
+    runtimeAutoplay,
+    /message\.type === 'stationhead-auth-ready'[\s\S]*nativeTimeout\([\s\S]*if \(pageActive\) nativePost\(message\)/,
+  );
+  assert.match(runtimeAutoplay, /if \(playing\(\)\) baseScan\(\);/);
+  assert.match(runtimeAutoplay, /updateBlockingLogin\(\);[\s\S]*5000/);
   assert.match(runtimeAutoplay, /if \(timer\) return;/);
   assert.match(
     runtimeFixSource,
     /#define StationheadAutoplayScript StationheadAutoplayScriptRuntimeFixed/,
+  );
+});
+
+test('same-token login recovery is accepted only after the blocking UI clears', () => {
+  const authCapture = section(
+    runtimeFixSource,
+    'inline std::wstring StationheadAuthCaptureScriptRuntimeFixed()',
+    "// Window A's successful stats request",
+  );
+  assert.match(authCapture, /StationheadAuthCaptureScript\(\)/);
+  assert.match(authCapture, /const releaseRejectedAuthorization = authorization =>/);
+  assert.match(
+    authCapture,
+    /authorization !== window\.__homepanelStationheadRejectedAuthorization/,
+  );
+  assert.match(
+    authCapture,
+    /window\.__homepanelStationheadBlockingLoginVisible !== false/,
+  );
+  assert.match(
+    authCapture,
+    /window\.__homepanelStationheadRejectedAuthorization = null/,
+  );
+  assert.match(authCapture, /window\.fetch = function\(input, init\)/);
+  assert.match(authCapture, /NativeXhr\.prototype\.send = function/);
+  assert.match(
+    runtimeFixSource,
+    /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptRuntimeFixed/,
   );
 });
 
