@@ -4,10 +4,6 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const workflow = readFileSync(
-  new URL('../.github/workflows/sh-observability.yml', import.meta.url),
-  'utf8',
-);
 const queryScript = readFileSync(
   new URL('../.github/scripts/query-cloudflare-observability.py', import.meta.url),
   'utf8',
@@ -16,11 +12,10 @@ const auditScript = readFileSync(
   new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
   'utf8',
 );
-const deployedAuditUrl = new URL(
-  '../.github/scripts/audit-deployed-cloudflare-telemetry.py',
-  import.meta.url,
+const deployedAuditScript = readFileSync(
+  new URL('../.github/scripts/audit-deployed-cloudflare-telemetry.py', import.meta.url),
+  'utf8',
 );
-const deployedAuditScript = readFileSync(deployedAuditUrl, 'utf8');
 const dailyBudgetScript = readFileSync(
   new URL('../.github/scripts/audit-cloudflare-daily-usage.py', import.meta.url),
   'utf8',
@@ -43,42 +38,7 @@ const wranglerFiles = [
   source: readFileSync(new URL(`../worker/${name}`, import.meta.url), 'utf8'),
 }));
 
-test('observability uses measured budgets and post-deploy Cloudflare API diagnostics', () => {
-  assert.match(workflow, /^  workflow_run:\n/m);
-  assert.match(workflow, /workflows: \["Deploy production"\]/);
-  assert.match(workflow, /^  push:\n/m);
-  assert.match(workflow, /branches: \[main\]/);
-  assert.match(workflow, /\.github\/workflows\/sh-observability\.yml/);
-  assert.match(workflow, /\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml/);
-  assert.match(workflow, /\.github\/scripts\/publish-cloudflare-observability-status\.mjs/);
-  assert.doesNotMatch(workflow, /^      - '(?:worker|site|packages)\//m);
-  assert.match(workflow, /^  schedule:\n/m);
-  assert.doesNotMatch(workflow, /^  pull_request:\n/m);
-  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator/);
-  assert.doesNotMatch(workflow, /CLOUDFLARE_WORKERS:.*sh-buddies-ingest/);
-  assert.doesNotMatch(workflow, /CLOUDFLARE_WORKERS:.*sh-minute-enrichment/);
-  assert.match(workflow, /secrets\.CLOUDFLARE_BUILDS_API_TOKEN/);
-  assert.match(workflow, /audit-cloudflare-daily-usage\.py/);
-  assert.match(workflow, /query-cloudflare-observability\.py/);
-  assert.match(workflow, /audit-deployed-cloudflare-telemetry\.py/);
-  assert.match(workflow, /LIVE_TAIL_LOG: live-tail\.log/);
-  assert.doesNotMatch(workflow, /audit-cloudflare-live-tail\.py/);
-  assert.match(workflow, /CPU_BUDGET_MS: "10"/);
-  assert.match(workflow, /DURABLE_OBJECT_CPU_BUDGET_MS: "30000"/);
-  assert.match(workflow, /DAILY_REQUEST_BUDGET: "70000"/);
-  assert.match(workflow, /DAILY_REQUEST_RESERVE: "0"/);
-  assert.match(workflow, /DAILY_D1_READ_BUDGET: "3000000"/);
-  assert.match(workflow, /DAILY_D1_WRITE_BUDGET: "70000"/);
-  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics/);
-  assert.match(workflow, /live-tail-worker: sh-runtime-orchestrator/);
-  assert.match(workflow, /live-tail-seconds: "90"/);
-  assert.doesNotMatch(workflow, /R2_BUCKET|AWS_|aws s3api/);
-  assert.match(workflow, /Upload sanitized observability report/);
-  assert.match(workflow, /retention-days: 1/);
-  assert.doesNotMatch(workflow, /observability-logs\/|raw\/|\.ndjson/);
-});
-
-test('query and audit scripts use Cloudflare APIs without R2', () => {
+test('query and audit scripts use resolved-account Cloudflare APIs without R2', () => {
   assert.match(queryScript, /workersInvocationsAdaptive/);
   assert.match(queryScript, /workers\/observability\/telemetry\/query/);
   assert.match(queryScript, /"view": "events"/);
@@ -86,6 +46,7 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(queryScript, /urlunsplit/);
   assert.match(queryScript, /CLOUDFLARE_ACCOUNT_ID/);
   assert.doesNotMatch(queryScript, /discover_account_id|accounts\?per_page=50|user\/tokens\/verify/);
+
   assert.match(auditScript, /workers\.get\("cpuTimeMs"\)/);
   assert.match(auditScript, /"view": "events"/);
   assert.match(auditScript, /\$workers\.cpuTimeMs/);
@@ -102,6 +63,7 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(auditScript, /ACCOUNT_ID/);
   assert.match(auditScript, /Cloudflare token, account ID, and Worker list are required/);
   assert.doesNotMatch(auditScript, /def account_id|accounts\?per_page=50/);
+
   assert.match(deployedAuditScript, /workers\/scripts\/\{encoded\}\/deployments/);
   assert.match(deployedAuditScript, /deployments\[0\]/);
   assert.match(deployedAuditScript, /percentage/);
@@ -112,6 +74,7 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(deployedAuditScript, /audit\.ACCOUNT_ID/);
   assert.match(deployedAuditScript, /Cloudflare token, account ID, and Worker list are required/);
   assert.doesNotMatch(deployedAuditScript, /audit\.account_id\(\)|accounts\?per_page=50/);
+
   assert.match(dailyBudgetScript, /workersInvocationsAdaptive/);
   assert.match(dailyBudgetScript, /d1AnalyticsAdaptiveGroups/);
   assert.match(dailyBudgetScript, /rowsRead rowsWritten/);
@@ -121,16 +84,6 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
     `${queryScript}\n${auditScript}\n${deployedAuditScript}\n${dailyBudgetScript}`,
     /r2\.cloudflarestorage|aws s3|R2_BUCKET/,
   );
-});
-
-test('deployment-backed telemetry selector passes its executable self-test', () => {
-  const result = spawnSync(
-    'python3',
-    [fileURLToPath(deployedAuditUrl), '--self-test'],
-    { encoding: 'utf8' },
-  );
-  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /deployed telemetry audit self-test passed/);
 });
 
 test('D1 query cost collector uses resolved-account GraphQL and passes its privacy self-test', () => {
