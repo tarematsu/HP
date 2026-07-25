@@ -49,4 +49,30 @@ describe("radar bundle connection limits", () => {
     expect(maximumActive).toBeLessThanOrEqual(4);
     expect(active).toBe(0);
   });
+
+  it("builds shard bodies without depending on FixedLengthStream", async () => {
+    vi.stubGlobal("FixedLengthStream", class {
+      constructor() {
+        throw new Error("FixedLengthStream must not be used by radar bundle assembly");
+      }
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1, 2, 3, 4]), {
+      status: 200,
+      headers: { "Content-Type": "image/png" },
+    })));
+
+    const response = await radarBundleShardResponse(new Request(
+      "https://scheduler.internal/radar-bundle-shard",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: [tilePath(0), tilePath(1)] }),
+      },
+    ), {} as Env);
+
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    expect(response.status).toBe(200);
+    expect(bytes.length).toBe(Number(response.headers.get("Content-Length")));
+    expect(bytes.length).toBe(Number(response.headers.get("X-HomePanel-Radar-Shard-Bytes")));
+  });
 });

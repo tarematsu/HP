@@ -7,6 +7,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const queryScript = readSource('.github/scripts/query-cloudflare-observability.py');
 const auditScript = readSource('.github/scripts/audit-cloudflare-telemetry.py');
+const auditUrl = new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url);
 const deployedAuditScript = readSource('.github/scripts/audit-deployed-cloudflare-telemetry.py');
 const dailyBudgetScript = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
 const d1QueryCostUrl = new URL('../.github/scripts/query-cloudflare-d1-costs.py', import.meta.url);
@@ -41,6 +42,9 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'DURABLE_OBJECT_CPU_BUDGET_MS',
     'coverage_ok',
     'missing_workers',
+    'request_id',
+    'all_events = merge_events',
+    'error_items',
     'incomplete coverage',
     'Worker CPU policy violation',
     'ACCOUNT_ID',
@@ -79,6 +83,11 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     `${queryScript}\n${auditScript}\n${deployedAuditScript}\n${dailyBudgetScript}`,
     ['r2.cloudflarestorage', 'aws s3', 'R2_BUCKET'],
   );
+});
+
+test('telemetry audit filters live and persisted events to one version and deduplicates invocation errors', () => {
+  const result = spawnSync('python3', [fileURLToPath(auditUrl), '--self-test'], { encoding: 'utf8' });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('D1 query cost collector uses resolved-account GraphQL and passes its privacy self-test', () => {

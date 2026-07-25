@@ -26,11 +26,9 @@ interface BufferedRecord {
 }
 
 interface ShardResponse {
-  response: Response;
+  bytes: Uint8Array;
   byteLength: number;
 }
-
-type FixedWriter = WritableStreamDefaultWriter<Uint8Array>;
 
 function defaultCache(): Cache {
   return (caches as CloudflareCacheStorage).default;
@@ -87,61 +85,17 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-function fixedLengthStream(
-  byteLength: number,
-  write: (writer: FixedWriter) => Promise<void>,
-): ReadableStream<Uint8Array> {
-  const fixed = new FixedLengthStream(byteLength);
-  const writer = fixed.writable.getWriter();
-  void (async () => {
-    try {
-      await write(writer);
-      await writer.close();
-    } catch (error) {
-      await writer.abort(error).catch(() => {});
-    }
-  })();
-  return fixed.readable;
-}
-
-function recordStream(records: readonly BufferedRecord[], byteLength: number): ReadableStream<Uint8Array> {
-  return fixedLengthStream(byteLength, async writer => {
-    for (const record of records) {
-      await writer.write(record.header);
-      await writer.write(record.body);
-    }
-  });
-}
-
-function shardStream(
-  prefix: Uint8Array,
-  responses: readonly Response[],
-  byteLength: number,
-): ReadableStream<Uint8Array> {
-  let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  return fixedLengthStream(byteLength, async writer => {
-    await writer.write(prefix);
-    try {
-      for (const response of responses) {
-        if (!response.body) throw new Error("radar bundle shard body is missing");
-        const reader = response.body.getReader();
-        activeReader = reader;
-        try {
-          for (;;) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            if (chunk.value?.length) await writer.write(chunk.value);
-          }
-        } finally {
-          reader.releaseLock();
-          if (activeReader === reader) activeReader = null;
-        }
-      }
-    } catch (error) {
-      await activeReader?.cancel(error).catch(() => {});
-      throw error;
-    }
-  });
+function bufferedRecords(records: readonly BufferedRecord[], byteLength: number): Uint8Array {
+  const body = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const record of records) {
+    body.set(record.header, offset);
+    offset += record.header.length;
+    body.set(record.body, offset);
+    offset += record.body.length;
+  }
+  if (offset !== byteLength) throw new Error("radar bundle shard length changed during assembly");
+  return body;
 }
 
 function bundleResponse(body: BodyInit, byteLength: number, recordCount: number): Response {
@@ -273,7 +227,7 @@ export async function radarBundleShardResponse(request: Request, env: Env): Prom
       (total, record) => total + record.header.length + record.body.length,
       0,
     );
-    return new Response(recordStream(records, byteLength), {
+    return new Response(bufferedRecords(records, byteLength), {
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(byteLength),
@@ -305,11 +259,11 @@ async function fetchShardResponse(
     response.headers.get("X-HomePanel-Radar-Shard-Bytes")
     ?? response.headers.get("Content-Length"),
   );
-  if (!response.body || !Number.isSafeInteger(byteLength) || byteLength <= 0) {
-    await response.body?.cancel();
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!Number.isSafeInteger(byteLength) || byteLength <= 0 || bytes.length !== byteLength) {
     throw new Error(`radar bundle shard ${index} length is invalid`);
   }
-  return { response, byteLength };
+  return { bytes, byteLength };
 }
 
 export async function radarBundleResponseForPayload(
@@ -358,16 +312,19 @@ export async function radarBundleResponseForPayload(
   const header = bundleHeader(paths.length);
   const totalBytes = shards.reduce((total, shard) => total + shard.byteLength, header.length);
   if (totalBytes > MAX_BUNDLE_BYTES) {
-    await Promise.all(shards.map(shard => shard.response.body?.cancel()));
     console.error("radar bundle exceeded response limit", totalBytes);
     return Response.json({ error: "radar_bundle_too_large" }, { status: 502 });
   }
 
-  const response = bundleResponse(
-    shardStream(header, shards.map(shard => shard.response), totalBytes),
-    totalBytes,
-    paths.length,
-  );
+  const body = new Uint8Array(totalBytes);
+  body.set(header);
+  let offset = header.length;
+  for (const shard of shards) {
+    body.set(shard.bytes, offset);
+    offset += shard.byteLength;
+  }
+  if (offset !== totalBytes) throw new Error("radar bundle length changed during assembly");
+  const response = bundleResponse(body, totalBytes, paths.length);
   ctx.waitUntil(cacheBundle(cache, cacheKey, env, response, baseTime, paths.length));
   return response;
 }
