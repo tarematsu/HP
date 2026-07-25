@@ -14,10 +14,6 @@ const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
 );
-const sharedSource = readFileSync(
-  new URL('../../native/src/sh_shared.h', import.meta.url),
-  'utf8',
-);
 const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
@@ -82,12 +78,15 @@ test('Window B keeps confirmed login-required state while audio continues', () =
   );
 });
 
-test('Window B rejects auth-probe results from an obsolete execution', () => {
-  assert.match(
-    sharedSource,
-    /StationheadAuthProbeScript\(int channelId, int64_t probeStartedAt\)/,
+test('Window B rejects auth-probe results from an obsolete local execution', () => {
+  const taggedProbe = section(
+    playerSource,
+    'std::wstring StationheadAuthProbeScriptForRun(',
+    '}\n}\n\nStationheadPlayer::StationheadPlayer(',
   );
-  assert.match(sharedSource, /message\.probe_started_at = probeStartedAt;/);
+  assert.match(taggedProbe, /StationheadAuthProbeScript\(channelId\)/);
+  assert.match(taggedProbe, /probe_started_at/);
+  assert.match(taggedProbe, /std::to_wstring\(probeStartedAt\)/);
 
   const poll = section(
     playerSource,
@@ -96,7 +95,7 @@ test('Window B rejects auth-probe results from an obsolete execution', () => {
   );
   assert.match(
     poll,
-    /StationheadAuthProbeScript\(config_\.channelId, authProbeStartedAt_\)/,
+    /StationheadAuthProbeScriptForRun\(config_\.channelId, authProbeStartedAt_\)/,
   );
 
   const handler = section(
