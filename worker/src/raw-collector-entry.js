@@ -1,5 +1,6 @@
 import { ensureAuthControlRow, readAuthState } from './auth-state.js';
 import { API_BASE, configFromEnv, shHeaders } from './collector-config.js';
+import { sanitizeFailureDetail } from './collector-failure.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const STATE_ID = 'stationhead';
@@ -169,9 +170,19 @@ export async function ensureSession(env) {
   }
 }
 
-function rawMessage(base, body) {
+function setPreparationFallback(base, detail) {
+  Object.defineProperty(base, 'preparation_fallback', {
+    value: Object.freeze(detail),
+    enumerable: false,
+    configurable: true,
+  });
+  return base;
+}
+
+function rawMessage(base, body, fallback = null) {
   base.message_version = 1;
   base.body = body;
+  if (fallback) setPreparationFallback(base, fallback);
   return base;
 }
 
@@ -179,12 +190,21 @@ async function directPreparedMessage(base, body, config, env) {
   let channel;
   try {
     channel = JSON.parse(body);
-  } catch {
-    return rawMessage(base, body);
+  } catch (error) {
+    return rawMessage(base, body, {
+      reason: 'invalid-json',
+      stage: 'parse-channel-json',
+      error: sanitizeFailureDetail(error?.message || error),
+    });
   }
   if (!channel || typeof channel !== 'object' || Array.isArray(channel)) {
-    return rawMessage(base, body);
+    return rawMessage(base, body, {
+      reason: 'invalid-payload-shape',
+      stage: 'validate-channel-root',
+      error: 'channel payload must be an object',
+    });
   }
+  let stage = 'load-preparation-modules';
   try {
     const [payload, queueAnalysis, materialization, snapshotAnalysis] = await Promise.all([
       import('./collector-payload.js'),
@@ -196,16 +216,22 @@ async function directPreparedMessage(base, body, config, env) {
       channelId: base.auth?.collectorChannelId ?? null,
       stationId: base.auth?.collectorStationId ?? null,
     };
+    stage = 'validate-channel';
     payload.validateChannelPayload(channel, config.channelAlias);
+    stage = 'extract-identifiers';
     payload.extractIds(channel, state);
+    stage = 'normalize-snapshot';
     const snapshot = payload.normalizeSnapshot(channel, state, config);
+    stage = 'extract-queue';
     const fullQueue = payload.extractQueue(channel, state.stationId);
+    stage = 'analyze-payload';
     const [preparedSnapshot, preparedQueue] = await Promise.all([
       snapshotAnalysisDue(env, base.observed_at)
         ? snapshotAnalysis.prepareSnapshotAnalysis(snapshot)
         : null,
       queueAnalysis.prepareQueueAnalysis(fullQueue),
     ]);
+    stage = 'materialize-queue';
     const materialized = await materialization.prepareMaterializedQueue(
       env?.DB,
       fullQueue,
@@ -218,9 +244,14 @@ async function directPreparedMessage(base, body, config, env) {
     if (preparedSnapshot) base.snapshot_analysis = preparedSnapshot;
     if (materialized.analysis) base.queue_analysis = materialized.analysis;
     return base;
-  } catch {
+  } catch (error) {
     base.message_version = 2;
     base.channel = channel;
+    setPreparationFallback(base, {
+      reason: String(error?.code || error?.name || 'prepared-message-failed').slice(0, 120),
+      stage,
+      error: sanitizeFailureDetail(error?.message || error),
+    });
     return base;
   }
 }
@@ -238,6 +269,8 @@ function ingestMetrics(result) {
     queue_send_ms: Number(result.queue_send_ms || 0),
     outbox_rows_written: Number(result.outbox_rows_written || 0),
     outbox_rows_deleted: Number(result.outbox_rows_deleted || 0),
+    outbox_rows_quarantined: Number(result.outbox_rows_quarantined || 0),
+    outbox_backoff_ms: Number(result.outbox_backoff_ms || 0),
     pending_flushed: Number(result.pending_flushed || 0),
   };
 }
@@ -295,6 +328,17 @@ export async function collectRawChannel(env, dependencies = {}) {
   const message = inlinePreparation
     ? await directPreparedMessage(base, body, config, env)
     : rawMessage(base, body);
+  const fallback = message.preparation_fallback || null;
+  if (fallback) {
+    console.warn(JSON.stringify({
+      event: 'raw_collection_preparation_fallback',
+      observed_at: observedAt,
+      message_version: Number(message.message_version || 0),
+      reason: fallback.reason,
+      stage: fallback.stage,
+      error: fallback.error,
+    }));
+  }
   const ingestResult = inlinePipeline
     ? await ingestInline(env, message, { inline: true })
     : await rawCollectionQueue.send(message, RAW_COLLECTION_QUEUE_OPTIONS);
@@ -325,6 +369,9 @@ export async function collectRawChannel(env, dependencies = {}) {
     payload_bytes: payloadBytes,
     queue_total_tracks: queueTotalTracks,
     queue_materialized_tracks: queueMaterializedTracks,
+    prepared_fallback: fallback ? 1 : 0,
+    prepared_fallback_reason: fallback?.reason || null,
+    prepared_fallback_stage: fallback?.stage || null,
     ...metrics,
   }));
   return {
@@ -334,6 +381,9 @@ export async function collectRawChannel(env, dependencies = {}) {
     payload_bytes: payloadBytes,
     queue_total_tracks: queueTotalTracks,
     queue_materialized_tracks: queueMaterializedTracks,
+    prepared_fallback: fallback ? 1 : 0,
+    prepared_fallback_reason: fallback?.reason || null,
+    prepared_fallback_stage: fallback?.stage || null,
     ...metrics,
   };
 }
