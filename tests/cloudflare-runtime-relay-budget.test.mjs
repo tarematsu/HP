@@ -18,8 +18,12 @@ const runtime = JSON.parse(readFileSync(
   new URL('../worker/wrangler.runtime.jsonc', import.meta.url),
   'utf8',
 ));
+const dailyAudit = readFileSync(
+  new URL('../.github/scripts/audit-cloudflare-daily-usage.py', import.meta.url),
+  'utf8',
+);
 
-test('runtime recovery, repair, and dashboard work stay outside the Cron CPU path and Queue budget', () => {
+test('runtime relay subset stays bounded while account-wide Queue usage remains externally measured', () => {
   assert.doesNotMatch(runtimeScheduled, /dispatchMinuteRecoveryWithFallback/);
   assert.match(runtimeScheduled, /dispatchMinuteGateWithFallback/);
   assert.match(runtimeScheduled, /body !== rawMessage && body !== gateMessage/);
@@ -31,39 +35,47 @@ test('runtime recovery, repair, and dashboard work stay outside the Cron CPU pat
   assert.match(pagesReadModel, /PAGES_DASHBOARD_MATERIALIZATION_MESSAGE/);
   assert.match(pagesReadModel, /dispatchPagesDashboardMaterialization/);
 
+  // This model covers only messages deterministically emitted by the runtime
+  // relay and Pages dashboard schedules. It intentionally excludes collector,
+  // derive-stage, retry, DLQ, and other Queue traffic. Account-wide enforcement
+  // remains the unified Cloudflare GraphQL audit below.
+  assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
+  assert.match(dailyAudit, /billableOperations/);
+
   // Prediction: 48/day; hourly maintenance: 48/day; heavy Pages variants:
   // 17/day; pathological raw fallback: two messages every five minutes;
   // recovery relay: one message every fifteen minutes.
-  const healthyMessages = 48 + 48 + 17 + 288 * 2 + 96;
-  const healthyQueueOperations = healthyMessages * 3;
-  assert.equal(healthyQueueOperations, 2_355);
+  const runtimeRelayMessages = 48 + 48 + 17 + 288 * 2 + 96;
+  const runtimeRelayQueueOperations = runtimeRelayMessages * 3;
+  assert.equal(runtimeRelayQueueOperations, 2_355);
 
-  // The July repair is complete and retired. No new repair burst or repair
-  // derive messages belong in the steady-state Queue budget.
+  // The July repair is complete and retired. No new repair burst belongs in
+  // this runtime relay subset. Stale repair stages are handled separately by
+  // the Queue retirement guard and by account-wide observability.
   assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
-  const repairRunsPerDay = 0;
-  const repairQueueOperations = 0;
-  assert.equal(repairRunsPerDay, 0);
-  assert.equal(repairQueueOperations, 0);
+  const repairRelayQueueOperations = 0;
+  assert.equal(repairRelayQueueOperations, 0);
 
   // Dashboard materialization is isolated from Cron every five minutes.
   const dashboardMessagesPerDay = 1_440 / 5;
   const dashboardQueueOperations = dashboardMessagesPerDay * 3;
   assert.equal(dashboardQueueOperations, 864);
 
-  const projectedQueueOperations = healthyQueueOperations
-    + repairQueueOperations
+  const modeledRuntimeSubset = runtimeRelayQueueOperations
+    + repairRelayQueueOperations
     + dashboardQueueOperations;
-  assert.equal(projectedQueueOperations, 3_219);
-  assert.ok(projectedQueueOperations < 10_000);
+  assert.equal(modeledRuntimeSubset, 3_219);
+  assert.ok(modeledRuntimeSubset < 10_000);
 
-  // Keep headroom for duplicate delivery and stale queued work.
-  const doubledSteadyStateQueueOperations = projectedQueueOperations * 2;
-  assert.equal(doubledSteadyStateQueueOperations, 6_438);
-  assert.ok(doubledSteadyStateQueueOperations < 10_000);
+  // Duplicate delivery of this modeled subset alone still has local headroom.
+  // This is not an account-wide Queue forecast.
+  const doubledRuntimeSubset = modeledRuntimeSubset * 2;
+  assert.equal(doubledRuntimeSubset, 6_438);
+  assert.ok(doubledRuntimeSubset < 10_000);
 
-  // If every maintenance gate also falls back to Queue, the policy still passes.
-  const fullGateFallbackQueueOperations = projectedQueueOperations + 432 * 3;
-  assert.equal(fullGateFallbackQueueOperations, 4_515);
-  assert.ok(fullGateFallbackQueueOperations < 10_000);
+  // If every maintenance gate also falls back to Queue, the modeled subset
+  // remains bounded; the account-wide audit is still authoritative.
+  const fullGateFallbackRuntimeSubset = modeledRuntimeSubset + 432 * 3;
+  assert.equal(fullGateFallbackRuntimeSubset, 4_515);
+  assert.ok(fullGateFallbackRuntimeSubset < 10_000);
 });

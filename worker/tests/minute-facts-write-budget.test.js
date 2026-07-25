@@ -53,3 +53,42 @@ test('disabled Queue write timeout waits for the in-flight D1 writer', async () 
   assert.equal(completed, true);
   assert.deepEqual(result, { input: { id: 1 } });
 });
+
+test('runtime timeout disable wins over a derive child timeout override', async () => {
+  const runtime = { MINUTE_FACT_TIMEOUT_MS: 0, MINUTE_DB: { marker: 'db' } };
+  const derive = Object.create(runtime);
+  Object.defineProperty(derive, 'MINUTE_FACT_TIMEOUT_MS', {
+    value: 18_000,
+    enumerable: true,
+    configurable: true,
+  });
+
+  const result = await saveMinuteFactWithinBudget(derive, {}, async (active) => ({
+    sameEnv: active === derive,
+    timeout: active.MINUTE_FACT_TIMEOUT_MS,
+    inheritedDisable: Object.getPrototypeOf(active).MINUTE_FACT_TIMEOUT_MS,
+  }));
+
+  assert.deepEqual(result, {
+    sameEnv: true,
+    timeout: 18_000,
+    inheritedDisable: 0,
+  });
+});
+
+test('disabled timeout still rejects work cancelled before D1 starts', async () => {
+  const controller = new AbortController();
+  controller.abort(new Error('cancelled before start'));
+  let called = false;
+
+  await assert.rejects(
+    saveMinuteFactWithinBudget({
+      MINUTE_FACT_TIMEOUT_MS: 0,
+      __COLLECTION_ABORT_SIGNAL: controller.signal,
+    }, {}, async () => {
+      called = true;
+    }),
+    /cancelled before start/,
+  );
+  assert.equal(called, false);
+});

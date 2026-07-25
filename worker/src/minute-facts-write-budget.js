@@ -8,9 +8,26 @@ function signalFrom(value) {
   return value?.__COLLECTION_ABORT_SIGNAL || null;
 }
 
-function timeoutDisabled(value) {
+export function minuteFactTimeoutDisabled(value) {
   if (value === false || value === 0) return true;
   return /^(0|false|off|disabled)$/i.test(String(value ?? '').trim());
+}
+
+function configuredTimeout(env) {
+  let current = env;
+  let nearest = undefined;
+  while (current) {
+    if (Object.hasOwn(current, 'MINUTE_FACT_TIMEOUT_MS')) {
+      const value = current.MINUTE_FACT_TIMEOUT_MS;
+      // A parent runtime environment may explicitly disable deadlines while a
+      // derive wrapper adds a per-job timeout on a child object. The explicit
+      // disable must win so Queue consumers do not reject an in-flight D1 call.
+      if (minuteFactTimeoutDisabled(value)) return value;
+      if (nearest === undefined) nearest = value;
+    }
+    current = Object.getPrototypeOf(current);
+  }
+  return nearest ?? DEFAULT_TIMEOUT_MS;
 }
 
 function abortError(signal) {
@@ -91,11 +108,15 @@ function rejectedWhenAborted(signal) {
 }
 
 export async function saveMinuteFactWithinBudget(env, input, writer) {
-  const configured = env?.MINUTE_FACT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS;
+  const configured = configuredTimeout(env);
   // Cloudflare D1 calls cannot be cancelled once dispatched. Queue consumers must
   // wait for the in-flight write instead of rejecting early and redelivering the
-  // same message while the original D1 operation is still committing.
-  if (timeoutDisabled(configured)) return writer(env, input);
+  // same message while the original D1 operation is still committing. An abort
+  // that happened before the write still prevents new work from starting.
+  if (minuteFactTimeoutDisabled(configured)) {
+    throwIfMinuteFactAborted(env);
+    return writer(env, input);
+  }
 
   const parsed = Number(configured);
   const timeout = Number.isFinite(parsed) ? Math.max(1_000, Math.min(20_000, parsed)) : DEFAULT_TIMEOUT_MS;
