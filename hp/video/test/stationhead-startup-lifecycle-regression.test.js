@@ -117,3 +117,17 @@ test('shared environment creation converts native setup exceptions into HRESULT 
     /Complete\(requestedKey, creationGeneration, E_FAIL, nullptr\);/,
   );
 });
+
+test('accepted environment completion closes its generation before callbacks run', () => {
+  const complete = section(
+    environmentSource,
+    'void SharedWebViewEnvironment::Complete(',
+    '}  // namespace hp',
+  );
+  const generationCheckAt = complete.indexOf('if (entry.generation != generation) return;');
+  const closeGenerationAt = complete.indexOf('++entry.generation;');
+  const callbackSwapAt = complete.indexOf('callbacks.swap(entry.pending);');
+  assert.ok(generationCheckAt >= 0);
+  assert.ok(closeGenerationAt > generationCheckAt);
+  assert.ok(callbackSwapAt > closeGenerationAt);
+});
