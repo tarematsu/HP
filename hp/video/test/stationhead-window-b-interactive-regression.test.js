@@ -14,6 +14,10 @@ const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
 );
+const sharedSource = readFileSync(
+  new URL('../../native/src/sh_shared.h', import.meta.url),
+  'utf8',
+);
 const webviewSource = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
@@ -72,6 +76,7 @@ test('Window B keeps confirmed login-required state while audio continues', () =
   assert.match(applyAudio, /preserveSecondaryLogin = IsSecondary\(\) && loginRequired_/);
   assert.match(applyAudio, /status_\.loginRequired = preserveSecondaryLogin;/);
   assert.match(applyAudio, /if \(!preserveSecondaryLogin && !startupPreviewActive_/);
+  assert.match(applyAudio, /secondary Stationhead login required; audio continues/);
   assert.match(
     applyAudio,
     /PostChange\(preserveSecondaryLogin \? StationheadChangeNone[\s\S]*StationheadChangeReturnMain\)/,
@@ -100,6 +105,16 @@ test('Window B rejects auth-probe results from an obsolete local execution', () 
     /StationheadAuthProbeScriptForRun\(config_\.channelId, authProbeStartedAt_\)/,
   );
 
+  const navigationStart = section(
+    webviewSource,
+    'const HRESULT navigationStartingResult = webview_->add_NavigationStarting(',
+    'if (FAILED(navigationStartingResult))',
+  );
+  assert.match(
+    navigationStart,
+    /if \(IsSecondary\(\)\)[\s\S]*authProbeInFlight_ = false;[\s\S]*authProbeStartedAt_ = 0;[\s\S]*lastAuthProbeAt_ = 0;/,
+  );
+
   const handler = section(
     webviewSource,
     'if (type == L"stationhead-auth-probe")',
@@ -109,4 +124,33 @@ test('Window B rejects auth-probe results from an obsolete local execution', () 
   assert.match(handler, /ignored a stale auth probe result/);
   assert.match(handler, /state == L"forbidden"/);
   assert.match(handler, /playback session retained/);
+});
+
+test('login detection rejects the captured token and is re-armed after new authentication', () => {
+  const autoplay = section(
+    sharedSource,
+    'inline std::wstring StationheadAutoplayScript(',
+    'inline std::wstring StationheadVolumeScript(',
+  );
+  assert.match(autoplay, /const rejectCapturedAuth = \(\) =>/);
+  assert.match(
+    autoplay,
+    /__homepanelStationheadRejectedAuthorization = authorization;[\s\S]*__homepanelStationheadAuthHeaders = null;/,
+  );
+  const rejectAt = autoplay.indexOf('rejectCapturedAuth();');
+  const reportAt = autoplay.indexOf("postMessage('{{PREFIX}}-login-required')");
+  assert.ok(rejectAt >= 0 && reportAt > rejectAt);
+  assert.match(
+    autoplay,
+    /addEventListener\('homepanel-stationhead-auth-ready',[\s\S]*loginReported = false;[\s\S]*scheduleUnlessPlaying\(0\);/,
+  );
+
+  const authCapture = section(
+    sharedSource,
+    'inline std::wstring StationheadAuthCaptureScript()',
+    'inline std::wstring StationheadApiPlayStatsScript(',
+  );
+  const resetAt = authCapture.indexOf("dispatchEvent(new Event('homepanel-stationhead-auth-ready'))");
+  const readyAt = authCapture.indexOf("postMessage({ type: 'stationhead-auth-ready' })");
+  assert.ok(resetAt >= 0 && readyAt > resetAt);
 });
