@@ -92,6 +92,19 @@ test('media allowlisting requires a parsed HTTPS destination host', () => {
   );
 });
 
+test('CDP blocking is destination-host-only and never applies image suffixes globally', () => {
+  const sockets = section(
+    boundarySource,
+    'inline void BlockStationheadTelemetrySocketsBoundaryFixed(',
+    '// Last resource boundary.',
+  );
+  assert.match(sockets, /const auto appendDomain =/);
+  assert.match(sockets, /blockedUrls \+= L"\\"\*:\/\/"/);
+  assert.match(sockets, /blockedUrls \+= L"\/\*\\",\\"\*:\/\/\*\."/);
+  assert.doesNotMatch(sockets, /\.png|\.jpg|\.jpeg|\.webp|\/avatar|\/artwork|\/thumbnail/);
+  assert.doesNotMatch(sockets, /blockImages/);
+});
+
 test('final resource callback uses only strict block and playback predicates', () => {
   const finalPolicy = section(
     boundarySource,
@@ -104,4 +117,6 @@ test('final resource callback uses only strict block and playback predicates', (
   assert.doesNotMatch(finalPolicy, /StationheadCorePlaybackRequest\(lower\)/);
   assert.match(finalPolicy, /\[env, blockImages, blockFonts\]/);
   assert.doesNotMatch(finalPolicy, /&armed/);
+  assert.match(finalPolicy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
+  assert.doesNotMatch(finalPolicy, /BlockStationheadTelemetrySockets\(webview,/);
 });
