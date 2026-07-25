@@ -7,6 +7,7 @@ const token = process.env.CLOUDFLARE_API_TOKEN?.trim();
 const account = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
 const worker = process.env.LIVE_TAIL_WORKER?.trim();
 const durationMs = Math.max(10_000, Number(process.env.LIVE_TAIL_SECONDS || 180) * 1000);
+const connectionTimeoutMs = Math.min(30_000, durationMs);
 const probes = (process.env.LIVE_TAIL_PROBES || '')
   .split(',')
   .map((value) => value.trim())
@@ -26,6 +27,14 @@ export function isErrorLike(value) {
   return Boolean(metadata.error || source.error || ERROR_OUTCOMES.has(sourceOutcome));
 }
 
+export function normalizeWebSocketUrl(value) {
+  const url = String(value || '').trim();
+  if (url.startsWith('https://')) return `wss://${url.slice('https://'.length)}`;
+  if (url.startsWith('http://')) return `ws://${url.slice('http://'.length)}`;
+  if (url.startsWith('wss://') || url.startsWith('ws://')) return url;
+  throw new Error('Cloudflare live-tail response did not include a valid WebSocket URL');
+}
+
 function selfTest() {
   assert.equal(isErrorLike({ $workers: { outcome: 'ok' } }), false);
   assert.equal(isErrorLike({ source: { outcome: 'success' } }), false);
@@ -33,6 +42,9 @@ function selfTest() {
   assert.equal(isErrorLike({ source: { outcome: 'failure' } }), true);
   assert.equal(isErrorLike({ $metadata: { level: 'error' } }), true);
   assert.equal(isErrorLike({ source: { error: 'D1_ERROR' } }), true);
+  assert.equal(normalizeWebSocketUrl('https://example.test/tail'), 'wss://example.test/tail');
+  assert.equal(normalizeWebSocketUrl('wss://example.test/tail'), 'wss://example.test/tail');
+  assert.throws(() => normalizeWebSocketUrl(''), /valid WebSocket URL/);
   console.log('live-tail outcome classification self-test passed');
 }
 
@@ -128,9 +140,7 @@ const prepared = await api(`/accounts/${account}/workers/observability/telemetry
   method: 'POST',
   body: JSON.stringify({ scriptId: worker }),
 });
-let wsUrl = prepared.result.wsUrl;
-if (wsUrl.startsWith('https://')) wsUrl = `wss://${wsUrl.slice('https://'.length)}`;
-if (wsUrl.startsWith('http://')) wsUrl = `ws://${wsUrl.slice('http://'.length)}`;
+const wsUrl = normalizeWebSocketUrl(prepared.result?.wsUrl);
 
 const socket = new WebSocket(wsUrl);
 let events = 0;
@@ -138,9 +148,17 @@ let errors = 0;
 let maxCpu = null;
 let heartbeat;
 let timer;
+let connected = false;
 
 const finished = new Promise((resolve, reject) => {
+  timer = setTimeout(() => {
+    try { socket.close(1000, 'connection timeout'); } catch {}
+    reject(new Error(`Live tail WebSocket did not connect within ${connectionTimeoutMs / 1000} seconds`));
+  }, connectionTimeoutMs);
+
   socket.addEventListener('open', async () => {
+    connected = true;
+    clearTimeout(timer);
     console.log('LIVE_TAIL_CONNECTED=true');
     heartbeat = setInterval(() => {
       api(`/accounts/${account}/workers/observability/telemetry/live-tail/heartbeat`, {
@@ -165,7 +183,10 @@ const finished = new Promise((resolve, reject) => {
     if (cpu.length) console.log(`LIVE_TAIL_CPU=${JSON.stringify(cpu)}`);
   });
   socket.addEventListener('error', (event) => reject(new Error(`Live tail WebSocket error: ${event.message || 'unknown'}`)));
-  socket.addEventListener('close', () => resolve());
+  socket.addEventListener('close', () => {
+    if (connected) resolve();
+    else reject(new Error('Live tail WebSocket closed before connecting'));
+  });
 });
 
 try {
