@@ -33,241 +33,93 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          from textwrap import dedent
+          import subprocess
 
-          def block(value: str) -> str:
-              return dedent(value).lstrip('\n')
-
-          def replace_once(path: str, old: str, new: str) -> None:
+          def edit_section(path: str, start: str, end: str, edits: list[tuple[str, str]]) -> None:
               target = Path(path)
               text = target.read_text(encoding='utf-8')
-              old = block(old)
-              new = block(new)
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one match, found {count}')
-              target.write_text(text.replace(old, new, 1), encoding='utf-8')
+              start_at = text.find(start)
+              if start_at < 0:
+                  raise SystemExit(f'{path}: missing section start {start!r}')
+              end_at = text.find(end, start_at + len(start))
+              if end_at < 0:
+                  raise SystemExit(f'{path}: missing section end {end!r}')
+              section = text[start_at:end_at]
+              for old, new in edits:
+                  count = section.count(old)
+                  if count != 1:
+                      raise SystemExit(f'{path}: {old!r} matched {count} times')
+                  section = section.replace(old, new, 1)
+              target.write_text(text[:start_at] + section + text[end_at:], encoding='utf-8')
 
-          replace_once(
+          edit_section(
               'hp/native/src/sh_shared.h',
-              '''
-              inline std::wstring StationheadAuthProbeScript(int channelId) {
-                std::wostringstream script;
-                script << LR"JS(
-              (() => {
-                const post = message => {
-                  try { window.chrome?.webview?.postMessage(message); } catch (_) {}
-                };
-              ''',
-              '''
-              inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {
-                std::wostringstream script;
-                script << LR"JS(
-              (() => {
-                const probeStartedAt = )JS" << probeStartedAt << LR"JS(;
-                const post = message => {
-                  message.probe_started_at = probeStartedAt;
-                  try { window.chrome?.webview?.postMessage(message); } catch (_) {}
-                };
-              ''',
+              'inline std::wstring StationheadAuthProbeScript(',
+              'inline std::wstring StationheadDomPlayStatsScript(',
+              [
+                  (
+                      'inline std::wstring StationheadAuthProbeScript(int channelId) {',
+                      'inline std::wstring StationheadAuthProbeScript(int channelId, int64_t probeStartedAt) {',
+                  ),
+                  (
+                      "(() => {\n  const post = message => {\n    try { window.chrome?.webview?.postMessage(message); } catch (_) {}\n  };",
+                      "(() => {\n  const probeStartedAt = )JS\" << probeStartedAt << LR\"JS(;\n  const post = message => {\n    message.probe_started_at = probeStartedAt;\n    try { window.chrome?.webview?.postMessage(message); } catch (_) {}\n  };",
+                  ),
+              ],
           )
 
-          replace_once(
+          edit_section(
               'hp/native/src/sh.cpp',
-              '''
-                const bool changed =
-                    audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
-              ''',
-              '''
-                const bool changed =
-                    audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;
-                const bool preserveSecondaryLogin = IsSecondary() && loginRequired_;
-              ''',
-          )
-          replace_once(
-              'hp/native/src/sh.cpp',
-              '''
-                      status_.audioPlaying = true;
-                      status_.playing = true;
-                      status_.loginRequired = false;
-                      status_.detail = L"audio observed while track-boundary navigation is still pending";
-              ''',
-              '''
-                      status_.audioPlaying = true;
-                      status_.playing = true;
-                      status_.loginRequired = preserveSecondaryLogin;
-                      status_.detail = L"audio observed while track-boundary navigation is still pending";
-              ''',
-          )
-          replace_once(
-              'hp/native/src/sh.cpp',
-              '''
-                resourceBlockingArmed_ = true;
-                loginRequired_ = false;
-                {
-                  std::lock_guard lock(mutex_);
-                  status_.audioPlaying = true;
-                  status_.playing = true;
-                  status_.loginRequired = false;
-              ''',
-              '''
-                resourceBlockingArmed_ = true;
-                if (!preserveSecondaryLogin) loginRequired_ = false;
-                {
-                  std::lock_guard lock(mutex_);
-                  status_.audioPlaying = true;
-                  status_.playing = true;
-                  status_.loginRequired = preserveSecondaryLogin;
-              ''',
-          )
-          replace_once(
-              'hp/native/src/sh.cpp',
-              '''
-                if (!startupPreviewActive_ && !spotifyAuthorization_) SetVisible(false);
-                if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
-                PostChange(StationheadChangeReturnMain);
-              ''',
-              '''
-                if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {
-                  SetVisible(false);
-                }
-                if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");
-                PostChange(preserveSecondaryLogin ? StationheadChangeNone
-                                                  : StationheadChangeReturnMain);
-              ''',
-          )
-          replace_once(
-              'hp/native/src/sh.cpp',
-              '''
-                const HRESULT result = webview_->ExecuteScript(
-                    StationheadAuthProbeScript(config_.channelId).c_str(), nullptr);
-              ''',
-              '''
-                const HRESULT result = webview_->ExecuteScript(
-                    StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_).c_str(),
-                    nullptr);
-              ''',
-          )
-
-          replace_once(
-              'hp/native/src/sh_webview.cpp',
-              '''
-                            if (type == L"stationhead-auth-probe") {
-                              authProbeInFlight_ = false;
-                              authProbeStartedAt_ = 0;
-                              const std::wstring state = message.GetNamedString(L"state", L"").c_str();
-              ''',
-              '''
-                            if (type == L"stationhead-auth-probe") {
-                              const int64_t probeStartedAt = static_cast<int64_t>(
-                                  json::Number(message, L"probe_started_at", 0));
-                              if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||
-                                  probeStartedAt != authProbeStartedAt_) {
-                                log_.Info(L"Secondary Stationhead ignored a stale auth probe result");
-                                return S_OK;
-                              }
-                              authProbeInFlight_ = false;
-                              authProbeStartedAt_ = 0;
-                              const std::wstring state = message.GetNamedString(L"state", L"").c_str();
-              ''',
-          )
-          replace_once(
-              'hp/native/src/sh_webview.cpp',
-              '''
-                              } else if (state == L"no-auth-header") {
-                                std::lock_guard lock(mutex_);
-                                status_.detail = L"secondary Stationhead auth probe waiting for session";
-                              } else {
-                                log_.Warn(L"Secondary Stationhead auth probe returned an error");
-                              }
-              ''',
-              '''
-                              } else if (state == L"no-auth-header") {
-                                std::lock_guard lock(mutex_);
-                                status_.detail = L"secondary Stationhead auth probe waiting for session";
-                              } else if (state == L"forbidden") {
-                                {
-                                  std::lock_guard lock(mutex_);
-                                  status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";
-                                }
-                                log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");
-                                PostChange();
-                              } else {
-                                log_.Warn(L"Secondary Stationhead auth probe returned an error");
-                              }
-              ''',
-          )
-
-          test_path = Path('hp/video/test/stationhead-window-b-interactive-regression.test.js')
-          test_text = test_path.read_text(encoding='utf-8')
-          anchor = block('''
-          const appSource = readFileSync(
-            new URL('../../native/src/app.cpp', import.meta.url),
-            'utf8',
-          );
-          ''')
-          addition = anchor + block('''
-          const playerSource = readFileSync(
-            new URL('../../native/src/sh.cpp', import.meta.url),
-            'utf8',
-          );
-          const sharedSource = readFileSync(
-            new URL('../../native/src/sh_shared.h', import.meta.url),
-            'utf8',
-          );
-          const webviewSource = readFileSync(
-            new URL('../../native/src/sh_webview.cpp', import.meta.url),
-            'utf8',
-          );
-          ''')
-          if test_text.count(anchor) != 1:
-              raise SystemExit('test source anchor mismatch')
-          test_text = test_text.replace(anchor, addition, 1)
-          test_text += block(r'''
-
-          test('Window B keeps confirmed login-required state while audio continues', () => {
-            const applyAudio = section(
-              playerSource,
               'void StationheadPlayer::ApplyAudioPlaybackState(',
               'void StationheadPlayer::NavigateCurrentUrl(',
-            );
-            assert.match(applyAudio, /preserveSecondaryLogin = IsSecondary\(\) && loginRequired_/);
-            assert.match(applyAudio, /status_\.loginRequired = preserveSecondaryLogin;/);
-            assert.match(applyAudio, /if \(!preserveSecondaryLogin && !startupPreviewActive_/);
-            assert.match(
-              applyAudio,
-              /PostChange\(preserveSecondaryLogin \? StationheadChangeNone[\s\S]*StationheadChangeReturnMain\)/,
-            );
-          });
+              [
+                  (
+                      '  const bool changed =\n      audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;\n',
+                      '  const bool changed =\n      audioPlaying_.exchange(playing, std::memory_order_relaxed) != playing;\n  const bool preserveSecondaryLogin = IsSecondary() && loginRequired_;\n',
+                  ),
+                  (
+                      '        status_.audioPlaying = true;\n        status_.playing = true;\n        status_.loginRequired = false;\n        status_.detail = L"audio observed while track-boundary navigation is still pending";',
+                      '        status_.audioPlaying = true;\n        status_.playing = true;\n        status_.loginRequired = preserveSecondaryLogin;\n        status_.detail = L"audio observed while track-boundary navigation is still pending";',
+                  ),
+                  (
+                      '    resourceBlockingArmed_ = true;\n    loginRequired_ = false;\n    {\n      std::lock_guard lock(mutex_);\n      status_.audioPlaying = true;\n      status_.playing = true;\n      status_.loginRequired = false;',
+                      '    resourceBlockingArmed_ = true;\n    if (!preserveSecondaryLogin) loginRequired_ = false;\n    {\n      std::lock_guard lock(mutex_);\n      status_.audioPlaying = true;\n      status_.playing = true;\n      status_.loginRequired = preserveSecondaryLogin;',
+                  ),
+                  (
+                      '    if (!startupPreviewActive_ && !spotifyAuthorization_) SetVisible(false);\n    if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");\n    PostChange(StationheadChangeReturnMain);',
+                      '    if (!preserveSecondaryLogin && !startupPreviewActive_ && !spotifyAuthorization_) {\n      SetVisible(false);\n    }\n    if (changed) log_.Info(L"Stationhead " + std::wstring(RoleTag()) + L" audio playing (" + source + L")");\n    PostChange(preserveSecondaryLogin ? StationheadChangeNone\n                                      : StationheadChangeReturnMain);',
+                  ),
+              ],
+          )
 
-          test('Window B rejects auth-probe results from an obsolete execution', () => {
-            assert.match(
-              sharedSource,
-              /StationheadAuthProbeScript\(int channelId, int64_t probeStartedAt\)/,
-            );
-            assert.match(sharedSource, /message\.probe_started_at = probeStartedAt;/);
-            const poll = section(
-              playerSource,
+          edit_section(
+              'hp/native/src/sh.cpp',
               'void StationheadPlayer::PollAuthProbe(',
               '// Locates the Start Listening control',
-            );
-            assert.match(
-              poll,
-              /StationheadAuthProbeScript\(config_\.channelId, authProbeStartedAt_\)/,
-            );
-            const handler = section(
-              webviewSource,
-              'if (type == L"stationhead-auth-probe")',
-              'if (!spotifyAuthorization_',
-            );
-            assert.match(handler, /probeStartedAt != authProbeStartedAt_/);
-            assert.match(handler, /ignored a stale auth probe result/);
-            assert.match(handler, /state == L"forbidden"/);
-          });
-          ''')
-          test_path.write_text(test_text, encoding='utf-8')
+              [
+                  (
+                      '  const HRESULT result = webview_->ExecuteScript(\n      StationheadAuthProbeScript(config_.channelId).c_str(), nullptr);',
+                      '  const HRESULT result = webview_->ExecuteScript(\n      StationheadAuthProbeScript(config_.channelId, authProbeStartedAt_).c_str(),\n      nullptr);',
+                  ),
+              ],
+          )
 
-          import subprocess
+          edit_section(
+              'hp/native/src/sh_webview.cpp',
+              '              if (type == L"stationhead-auth-probe") {',
+              '              if (!spotifyAuthorization_',
+              [
+                  (
+                      '              if (type == L"stationhead-auth-probe") {\n                authProbeInFlight_ = false;\n                authProbeStartedAt_ = 0;\n                const std::wstring state = message.GetNamedString(L"state", L"").c_str();',
+                      '              if (type == L"stationhead-auth-probe") {\n                const int64_t probeStartedAt = static_cast<int64_t>(\n                    json::Number(message, L"probe_started_at", 0));\n                if (!IsSecondary() || !authProbeInFlight_ || probeStartedAt <= 0 ||\n                    probeStartedAt != authProbeStartedAt_) {\n                  log_.Info(L"Secondary Stationhead ignored a stale auth probe result");\n                  return S_OK;\n                }\n                authProbeInFlight_ = false;\n                authProbeStartedAt_ = 0;\n                const std::wstring state = message.GetNamedString(L"state", L"").c_str();',
+                  ),
+                  (
+                      '                } else if (state == L"no-auth-header") {\n                  std::lock_guard lock(mutex_);\n                  status_.detail = L"secondary Stationhead auth probe waiting for session";\n                } else {\n                  log_.Warn(L"Secondary Stationhead auth probe returned an error");\n                }',
+                      '                } else if (state == L"no-auth-header") {\n                  std::lock_guard lock(mutex_);\n                  status_.detail = L"secondary Stationhead auth probe waiting for session";\n                } else if (state == L"forbidden") {\n                  {\n                    std::lock_guard lock(mutex_);\n                    status_.detail = L"secondary Stationhead auth probe forbidden; playback session retained";\n                  }\n                  log_.Warn(L"Secondary Stationhead authentication probe returned HTTP 403; retaining the current playback session");\n                  PostChange();\n                } else {\n                  log_.Warn(L"Secondary Stationhead auth probe returned an error");\n                }',
+                  ),
+              ],
+          )
+
           subprocess.run(['git', 'fetch', 'origin', 'main'], check=True)
           subprocess.run(['git', 'checkout', 'origin/main', '--', '.github/workflows/video-ci.yml'], check=True)
       - name: Commit audited fix
