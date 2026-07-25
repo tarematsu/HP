@@ -70,6 +70,10 @@ const retireRepairIndexMigration = readFileSync(
   new URL('../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
+const retireRepairWorkMigration = readFileSync(
+  new URL('../database/facts-migrations/044_retire_minute_fact_repair_work.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -99,6 +103,7 @@ const expectedMigrations = [
   'database/facts-migrations/041_restore_complete_live_metrics.sql',
   'database/facts-migrations/042_minute_fact_repair_candidate_index.sql',
   'database/facts-migrations/043_retire_repair_candidate_index.sql',
+  'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -168,9 +173,13 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
     retireRepairIndexMigration,
     /CREATE INDEX|FROM sh_minute_facts|INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/,
   );
+  assert.match(retireRepairWorkMigration, /WHERE job_kind='repair'/);
+  assert.match(retireRepairWorkMigration, /status='done'/);
+  assert.match(retireRepairWorkMigration, /repair-scan:total-listener-20260710-13-v1/);
+  assert.doesNotMatch(retireRepairWorkMigration, /FROM sh_minute_facts|CREATE INDEX|ANALYZE|PRAGMA optimize/);
 });
 
-test('production enables ordinary historical reconstruction and keeps queue-budgeted repair throughput active', () => {
+test('production keeps ordinary reconstruction active and retires the one-time repair burst', () => {
   assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, true);
   assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, true);
   assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
@@ -178,15 +187,13 @@ test('production enables ordinary historical reconstruction and keeps queue-budg
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_SCAN_INTERVAL_MS, 3_600_000);
   assert.equal(runtime.vars.LIVE_DERIVE_DIRECT_QUEUE_ENABLED, true);
+  assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
+  assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
   assert.equal(runtime.vars.REVISION_PROGRESS_R2_ENABLED, true);
   assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
   assert.equal(runtime.vars.REBUILD_MAX_JOBS, 4);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, true);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES, 60);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_CANDIDATE_LIMIT, 20);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_ENQUEUE_LIMIT, 2);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_DISPATCH_LIMIT, 2);
+  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
   const historical = runtime.queues.consumers.find(
     ({ queue }) => queue === 'stationhead-minute-derive',
   );
