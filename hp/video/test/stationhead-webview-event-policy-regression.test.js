@@ -26,7 +26,7 @@ function section(source, start, end) {
 test('WebView event policy is compiled without disturbing resource policy order', () => {
   assert.match(
     cmakeSource,
-    /src\/sh_runtime_lifecycle_policy\.h[\s\S]*src\/sh_webview_event_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
+    /src\/sh_runtime_lifecycle_policy_fix\.h[\s\S]*src\/sh_webview_event_policy\.h[\s\S]*src\/sh_runtime_resource_policy_fix\.h/,
   );
   const lifecycleAt = cmakeSource.indexOf(
     'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_lifecycle_policy_fix.h)',
