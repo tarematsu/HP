@@ -8,7 +8,8 @@ namespace hp {
 inline constexpr int64_t kStationheadTrackTransitionGraceMs = 30'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
-  return !status.audioPlaying;
+  return status.loginRequired || status.spotifyAuthorization ||
+      status.processFailed || !status.audioPlaying;
 }
 
 enum class WorkspaceTab {
@@ -102,6 +103,17 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  StationheadStatus Status() const {
+    StationheadStatus status = StationheadHandleBase::Status();
+    if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
+      // Window B can keep streaming after its authenticated API session expires.
+      // Treat that state as placement-pending so the App keeps the interactive
+      // surface in the right half and does not reuse a healthy-playback snapshot.
+      status.audioPlaying = false;
+      status.playing = false;
+    }
+    return status;
+  }
 };
 
 }  // namespace hp
