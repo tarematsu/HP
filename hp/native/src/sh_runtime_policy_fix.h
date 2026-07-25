@@ -92,6 +92,15 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   let robustLoginReported = false;
   let loginMissingSince = 0;
   let timer = 0;
+  const restoreAuthAfterFalsePositive = () => {
+    const last = window.__homepanelStationheadLastAcceptedAuthHeaders;
+    if (!last?.authorization || window.__homepanelStationheadAuthHeaders?.authorization ||
+        window.__homepanelStationheadRejectedAuthorization !== last.authorization) {
+      return;
+    }
+    window.__homepanelStationheadRejectedAuthorization = null;
+    window.__homepanelStationheadAuthHeaders = Object.assign({}, last);
+  };
   const updateBlockingLogin = () => {
     const blocking = blockingLoginVisible();
     const now = Date.now();
@@ -116,7 +125,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
       webview.postMessage = message => {
         if (!pageActive) return;
         if (message === loginMessage) {
-          updateBlockingLogin();
+          if (!updateBlockingLogin()) restoreAuthAfterFalsePositive();
           return;
         }
         if (message && typeof message === 'object' &&
@@ -183,6 +192,12 @@ inline std::wstring StationheadAuthCaptureScriptRuntimeFixed() {
       window.top !== window) return;
   if (window.__homepanelStationheadAuthReuseFix) return;
   window.__homepanelStationheadAuthReuseFix = true;
+  const rememberAcceptedAuthorization = () => {
+    const headers = window.__homepanelStationheadAuthHeaders;
+    if (headers?.authorization) {
+      window.__homepanelStationheadLastAcceptedAuthHeaders = Object.assign({}, headers);
+    }
+  };
   const releaseRejectedAuthorization = authorization => {
     if (!authorization ||
         authorization !== window.__homepanelStationheadRejectedAuthorization ||
@@ -202,7 +217,9 @@ inline std::wstring StationheadAuthCaptureScriptRuntimeFixed() {
         }
         releaseRejectedAuthorization(headers.get('authorization') || '');
       } catch (_) {}
-      return currentFetch(input, init);
+      const result = currentFetch(input, init);
+      rememberAcceptedAuthorization();
+      return result;
     };
   }
   const NativeXhr = window.XMLHttpRequest;
@@ -212,7 +229,9 @@ inline std::wstring StationheadAuthCaptureScriptRuntimeFixed() {
       try {
         releaseRejectedAuthorization(this.__homepanelHeaders?.authorization || '');
       } catch (_) {}
-      return currentSend.apply(this, args);
+      const result = currentSend.apply(this, args);
+      rememberAcceptedAuthorization();
+      return result;
     };
   }
 })()
