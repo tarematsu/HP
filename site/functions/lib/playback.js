@@ -9,7 +9,7 @@ export function inferArtistFromDisplayTitle(displayTitle, title) {
   const display = String(displayTitle || '').trim();
   const knownTitle = String(title || '').trim();
   if (!display) return null;
-  for (const separator of [' \u2014 ', ' \u2013 ', ' - ', ' \u30fb ', ' \u2022 ']) {
+  for (const separator of [' — ', ' – ', ' - ', ' ・ ', ' • ']) {
     const index = display.lastIndexOf(separator);
     if (index <= 0) continue;
     const left = display.slice(0, index).trim();
@@ -22,10 +22,15 @@ export function inferArtistFromDisplayTitle(displayTitle, title) {
 
 export function metadataFallback(rawValue) {
   const raw = safeJson(rawValue, {}) || {};
-  const spotify = raw?.spotify || raw;
+  const spotify = raw?.spotify || raw?.track || raw;
+  const album = spotify?.album || {};
   return {
-    artist: spotify?.author_name || spotify?.author || null,
-    title: spotify?.title || null,
+    artist: spotify?.author_name || spotify?.author || spotify?.artist_name
+      || spotify?.artist?.name || spotify?.artists?.[0]?.name || null,
+    title: spotify?.title || spotify?.name || null,
+    thumbnail_url: spotify?.thumbnail_url || spotify?.image_url || spotify?.artwork_url
+      || spotify?.album_art_url || album?.thumbnail_url || album?.image_url
+      || album?.artwork_url || album?.images?.[0]?.url || null,
   };
 }
 
@@ -56,13 +61,18 @@ export function computePlayback(queue, now = Date.now()) {
 }
 
 export function normalizePlaybackTrack(track, index, playback) {
-  const fallback = metadataFallback(track.metadata_raw_json);
+  const fallback = metadataFallback(track.metadata_raw_json || track.raw_json);
   const title = String(track.title || fallback.title || '').trim() || null;
   const rawArtist = String(track.artist || fallback.artist || '').trim();
   const artist = (rawArtist && !/^JP[A-Z0-9]{8,}$/i.test(rawArtist)
     ? rawArtist
     : inferArtistFromDisplayTitle(track.display_title || fallback.title, title || fallback.title)) || null;
-  const thumbnailUrl = String(track.thumbnail_url || '').trim() || null;
+  const album = track.album && typeof track.album === 'object' ? track.album : {};
+  const thumbnailUrl = String(
+    track.thumbnail_url || track.image_url || track.artwork_url || track.album_art_url
+      || album.thumbnail_url || album.image_url || album.artwork_url || album.images?.[0]?.url
+      || fallback.thumbnail_url || '',
+  ).trim() || null;
   const spotifyId = String(track.spotify_id || '').trim() || null;
   const durationMs = Math.max(0, num(track.duration_ms) || 0);
   const isCurrent = index === playback.currentIndex;
@@ -72,6 +82,7 @@ export function normalizePlaybackTrack(track, index, playback) {
     thumbnail_url: thumbnailUrl,
     duration_ms: durationMs,
   };
+  if (spotifyId) output.spotify_id = spotifyId;
   if (track.spotify_url && track.spotify_url !== (spotifyId ? `https://open.spotify.com/track/${spotifyId}` : null)) {
     output.spotify_url = track.spotify_url;
   }
