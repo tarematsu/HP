@@ -11,6 +11,16 @@ function clearImageRetry(image) {
   imageRetryTimers.delete(image);
 }
 
+function canonicalImageSource(value) {
+  const source = String(value || '').trim();
+  if (!source) return '';
+  try {
+    return new URL(source, location.href).href;
+  } catch {
+    return source;
+  }
+}
+
 function installImageState(id) {
   const image = document.getElementById(id);
   if (!image) return;
@@ -23,14 +33,14 @@ function installImageState(id) {
   const failed = () => {
     image.classList.remove('is-loaded');
     image.hidden = true;
-    const source = image.currentSrc || image.src;
+    const source = canonicalImageSource(image.currentSrc || image.getAttribute('src') || image.src);
     const attempt = Math.max(0, Number(image.dataset.retryAttempt) || 0);
     if (!source || attempt >= IMAGE_RETRY_DELAYS.length) return;
     image.dataset.retryAttempt = String(attempt + 1);
     clearImageRetry(image);
     const timer = setTimeout(() => {
       imageRetryTimers.delete(image);
-      if (!image.hidden || (image.currentSrc || image.src) !== source) return;
+      if (!image.hidden || canonicalImageSource(image.currentSrc || image.getAttribute('src') || image.src) !== source) return;
       image.removeAttribute('src');
       requestAnimationFrame(() => { image.src = source; });
     }, IMAGE_RETRY_DELAYS[attempt]);
@@ -40,7 +50,7 @@ function installImageState(id) {
   image.addEventListener('error', failed);
   new MutationObserver(() => {
     image.classList.remove('is-loaded');
-    const source = image.getAttribute('src') || '';
+    const source = canonicalImageSource(image.getAttribute('src'));
     if (!source) {
       image.hidden = true;
       return;
@@ -63,7 +73,13 @@ function requestUrl(input) {
 }
 
 function renderPayload(payload) {
-  if (payload?.ok) renderDashboardDailySummaries(payload.daily_summaries);
+  if (!payload?.ok) return;
+  renderDashboardDailySummaries(payload.daily_summaries);
+  const status = document.getElementById('statusMessage');
+  if (status) {
+    status.textContent = '';
+    status.hidden = true;
+  }
 }
 
 function restoreDashboardCache() {
