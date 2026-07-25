@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/scripts/pr260_apply_homepanel_observability_fix.py'
+      - '.github/scripts/pr260_finish_homepanel_observability_fix.py'
       - '.github/workflows/pr260-apply-homepanel-observability-fix.yml'
 
 permissions:
@@ -23,7 +24,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python3 .github/scripts/pr260_apply_homepanel_observability_fix.py 2>&1 | tee patch.log
+          python3 .github/scripts/pr260_finish_homepanel_observability_fix.py 2>&1 | tee patch.log
 
       - name: Upload patch diagnostics
         if: failure()
