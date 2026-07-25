@@ -148,13 +148,17 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     'CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)',
   ]);
   expectAll(configResolver, [
-    './resolve-cloudflare-account.mjs',
-    'resolveCloudflareAccountId',
+    'stripJsonc',
+    'HOMEPANEL_UPDATE_BUCKET',
+    'UPDATE_BUCKET',
     'GITHUB_OUTPUT',
-    'account_id',
     'update_bucket',
   ]);
   expectNone(configResolver, [
+    'resolve-cloudflare-account',
+    'resolveCloudflareAccountId',
+    'CLOUDFLARE_',
+    'account_id',
     'worker_name',
     'database_name',
     'd1AnalyticsAdaptiveGroups',
