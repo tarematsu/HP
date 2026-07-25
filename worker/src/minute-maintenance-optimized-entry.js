@@ -2,6 +2,7 @@ import {
   minuteMaintenanceTask,
   runMinuteScheduledWithCollectorPriority,
 } from './minute-entry.js';
+import { throwIfSoftFailure } from './soft-failure.js';
 
 const MINUTE_DERIVE_DISPATCH_CRON = '* * * * *';
 const EMPTY_DEPENDENCIES = Object.freeze({});
@@ -94,6 +95,7 @@ export async function runMinuteMaintenanceSyncInline(
     clearCompletedPayloads: dependencies.clearCompletedPayloads,
     runScheduled,
   });
+  throwIfSoftFailure(result, 'minute maintenance sync');
   console.log(JSON.stringify({
     event: 'minute_maintenance_sync_inlined',
     task: 'sync',
