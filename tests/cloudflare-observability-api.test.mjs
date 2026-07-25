@@ -127,12 +127,14 @@ test('deployment-backed telemetry selector passes its executable self-test', () 
   assert.match(result.stdout, /deployed telemetry audit self-test passed/);
 });
 
-test('D1 query cost collector uses GraphQL and passes its privacy self-test', () => {
+test('D1 query cost collector uses resolved-account GraphQL and passes its privacy self-test', () => {
   assert.match(d1QueryCostScript, /d1QueriesAdaptiveGroups/);
   assert.match(d1QueryCostScript, /sum_rowsRead_DESC/);
   assert.match(d1QueryCostScript, /sum_rowsWritten_DESC/);
   assert.match(d1QueryCostScript, /count_DESC/);
-  assert.doesNotMatch(d1QueryCostScript, /wrangler d1 insights/);
+  assert.match(d1QueryCostScript, /CLOUDFLARE_ACCOUNT_ID/);
+  assert.match(d1QueryCostScript, /resolved CLOUDFLARE_ACCOUNT_ID/);
+  assert.doesNotMatch(d1QueryCostScript, /REST_API|def account_id|accounts\?per_page=50|wrangler d1 insights/);
   const result = spawnSync('python3', [fileURLToPath(d1QueryCostUrl), '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
