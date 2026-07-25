@@ -7,10 +7,10 @@
   "preview_urls": false,
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 0.1,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 1,
+      "head_sampling_rate": 0.1,
       "persist": true,
       "invocation_logs": true
     }
@@ -28,6 +28,7 @@
     "QUEUE_STABLE_CHECKPOINT_MINUTES": 20,
     "PAGES_TRACK_HISTORY_ROWS_PER_STEP": 25,
     "PAGES_TRACK_HISTORY_CYCLE_ENABLED": false,
+    "PAGES_DASHBOARD_MATERIALIZATION_INTERVAL_MINUTES": 15,
     "AUTH_REFRESH_BEFORE_MS": 3600000,
     "AUTH_REFRESH_COOLDOWN_MS": 300000,
     "AUTH_LOCK_MS": 60000,
@@ -38,7 +39,7 @@
     "MINUTE_FACT_TIMEOUT_MS": 0,
     "MINUTE_FACT_POINTER_QUEUE_ENABLED": false,
     "DERIVE_LEASE_MS": 60000,
-    "DERIVE_MAX_ATTEMPTS": 8,
+    "DERIVE_MAX_ATTEMPTS": 4,
     "DERIVE_REVISION_STAGE_TRACKS": 1,
     "DERIVE_REVISION_CHUNK_TRACKS": 20,
     "DERIVE_REVISION_INTERVAL_SECONDS": 20,
@@ -110,15 +111,15 @@
   ],
   "queues": {
     "consumers": [
-      { "queue": "stationhead-minute-enrichment", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-minute-enrichment-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-track-metadata", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-track-metadata-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-pages-read-model-publication", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-pages-read-model-publication-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-read-model", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-read-model-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-host-monitor", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-host-monitor-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-minute-derive", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-minute-derive-dlq", "max_concurrency": 250 },
-      { "queue": "stationhead-minute-live-derive", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-minute-live-derive-dlq", "max_concurrency": 2 },
-      { "queue": "stationhead-buddies-facts", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-buddies-facts-dlq", "max_concurrency": 1 },
-      { "queue": "stationhead-minute-rebuild", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 8, "dead_letter_queue": "stationhead-minute-rebuild-dlq", "max_concurrency": 1 }
+      { "queue": "stationhead-minute-enrichment", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-minute-enrichment-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-track-metadata", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-track-metadata-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-pages-read-model-publication", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-pages-read-model-publication-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-read-model", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-read-model-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-host-monitor", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-host-monitor-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-minute-derive", "max_batch_size": 1, "max_batch_timeout": 1, "max_retries": 4, "dead_letter_queue": "stationhead-minute-derive-dlq", "max_concurrency": 250 },
+      { "queue": "stationhead-minute-live-derive", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-minute-live-derive-dlq", "max_concurrency": 2 },
+      { "queue": "stationhead-buddies-facts", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-buddies-facts-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-minute-rebuild", "max_batch_size": 5, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-minute-rebuild-dlq", "max_concurrency": 1 }
     ],
     "producers": [
       { "binding": "HOST_MONITOR_QUEUE", "queue": "stationhead-host-monitor" },
