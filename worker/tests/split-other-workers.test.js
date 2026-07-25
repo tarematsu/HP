@@ -72,7 +72,7 @@ test('collector and runtime Worker configs own disjoint Queue boundaries', () =>
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_ENRICHMENT_QUEUE'), true);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), true);
   assert.equal(runtime.vars.RAW_COLLECTION_ENABLED, false);
-  assert.equal(runtime.vars.SNAPSHOT_RETENTION_ENABLED, true);
+  assert.equal(runtime.vars.SNAPSHOT_RETENTION_ENABLED, false);
 });
 
 test('runtime Cron queues rollup and prediction only in their assigned slots', async () => {
