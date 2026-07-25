@@ -178,7 +178,20 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
   player_->Tick(nowMs);
 
   TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
+  if (!retry.armed && !player_->AudioPlaying()) {
+    // Page-side track-ended delivery is an optimization, not the only clock.
+    // While native WebView2 confirms that audio is stopped, ask the player to
+    // evaluate the same 52-minute eligibility predicate. This never reloads a
+    // playing document and becomes active only when HandleTrackEnded accepts
+    // either a due fresh request or an already-pending request.
+    const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+    if (active) {
+      ArmBoundaryRetryState(this, nowMs);
+      if (player_->Status().navigating) ClearBoundaryRetryState(this);
+    }
+  }
   if (!retry.armed) return;
+
   const StationheadStatus status = player_->Status();
   if (player_->AudioPlaying() || status.navigating ||
       RequiresInteractiveStationhead(status) || nowMs >= retry.deadline) {
@@ -193,8 +206,8 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
   // player's lastReloadAt_ baseline or waiting for another page message.
   retry.detachedFromAppWindow = false;
   retry.retryAt = nowMs + kStationheadBoundaryRetryDelayMs;
-  player_->RetryPendingTrackBoundaryRefresh(nowMs);
-  if (player_->Status().navigating) ClearBoundaryRetryState(this);
+  const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (!active || player_->Status().navigating) ClearBoundaryRetryState(this);
 }
 
 void StationheadHandleBase::Reconnect() {
@@ -207,8 +220,9 @@ void StationheadHandleBase::Reconnect() {
 
 void StationheadHandleBase::RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
   if (!player_ || !startIssued_ || stopIssued_) return;
+  const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (!active) return;
   ArmBoundaryRetryState(this, nowMs);
-  player_->RetryPendingTrackBoundaryRefresh(nowMs);
   if (player_->Status().navigating) ClearBoundaryRetryState(this);
 }
 
