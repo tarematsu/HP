@@ -172,6 +172,25 @@ def event_key(event: dict[str, Any]) -> str:
     )
 
 
+def request_id(event: dict[str, Any]) -> str:
+    metadata, workers = fields(event)
+    return str(metadata.get("requestId") or workers.get("requestId") or "")
+
+
+def error_priority(event: dict[str, Any]) -> int:
+    metadata, workers = fields(event)
+    source = event.get("source") if isinstance(event.get("source"), dict) else {}
+    outcome = str(workers.get("outcome") or "").lower()
+    level = str(metadata.get("level") or source.get("level") or "").lower()
+    status = finite(metadata.get("statusCode") or workers.get("statusCode"))
+    return (
+        (8 if outcome not in OK_OUTCOMES else 0)
+        + (4 if finite(workers.get("cpuTimeMs")) is not None else 0)
+        + (2 if status is not None and status >= 500 else 0)
+        + (1 if bool(metadata.get("error")) or level in {"error", "fatal"} else 0)
+    )
+
+
 def timestamp_ms(event: dict[str, Any]) -> float:
     metadata, _ = fields(event)
     raw = event.get("timestamp") or metadata.get("timestamp")
@@ -275,9 +294,10 @@ def current_events(
     persisted: list[dict[str, Any]],
     live: list[dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], dict[str, str], int]:
+    all_events = merge_events(persisted, live)
+    invocations = [event for event in all_events if detail(event)["cpu_ms"] is not None]
     latest: dict[str, tuple[float, str]] = {}
-    persisted_invocations = [event for event in persisted if detail(event)["cpu_ms"] is not None]
-    for event in persisted_invocations:
+    for event in invocations:
         worker = worker_name(event)
         version = version_id(event)
         if worker not in WORKERS or not version:
@@ -287,17 +307,19 @@ def current_events(
             latest[worker] = candidate
     versions = {worker: value[1] for worker, value in latest.items()}
 
-    selected_persisted = []
-    for event in persisted:
+    selected: list[dict[str, Any]] = []
+    for event in all_events:
         worker = worker_name(event)
         if worker not in WORKERS:
             continue
         expected = versions.get(worker)
-        if not expected or version_id(event) == expected:
-            selected_persisted.append(event)
-    selected_invocations = sum(1 for event in selected_persisted if detail(event)["cpu_ms"] is not None)
-    old_versions = len(persisted_invocations) - selected_invocations
-    return merge_events(selected_persisted, live), versions, old_versions
+        observed = version_id(event)
+        if expected and observed and observed != expected:
+            continue
+        selected.append(event)
+    selected_invocations = sum(1 for event in selected if detail(event)["cpu_ms"] is not None)
+    old_versions = len(invocations) - selected_invocations
+    return selected, versions, old_versions
 
 
 def evaluate(
@@ -306,7 +328,7 @@ def evaluate(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, list[float]], list[str], bool]:
     violations: list[dict[str, Any]] = []
     exempted: list[dict[str, Any]] = []
-    errors: list[dict[str, Any]] = []
+    error_items: dict[str, tuple[int, dict[str, Any]]] = {}
     samples: dict[str, list[float]] = {worker: [] for worker in WORKERS}
     for event in events:
         item = detail(event)
@@ -314,13 +336,18 @@ def evaluate(
         if item["worker"] in samples and cpu_ms is not None:
             samples[item["worker"]].append(cpu_ms)
         if error_event(event):
-            errors.append(item)
+            key = request_id(event) or event_key(event)
+            priority = error_priority(event)
+            current = error_items.get(key)
+            if current is None or priority > current[0]:
+                error_items[key] = (priority, item)
         if cpu_ms is None or cpu_ms <= item["budget_ms"]:
             continue
         if exempt(event):
             exempted.append(item)
         else:
             violations.append(item)
+    errors = [item for _, item in error_items.values()]
     missing = [worker for worker, values in samples.items() if not values]
     return violations, exempted, errors, samples, missing, not truncated and not missing
 
@@ -328,31 +355,54 @@ def evaluate(
 def self_test() -> int:
     old = {
         "timestamp": "2026-07-22T00:00:00Z",
-        "$metadata": {"id": "old", "service": "a"},
+        "$metadata": {"id": "old", "service": "a", "requestId": "old-request"},
         "$workers": {"scriptVersion": {"id": "v1"}, "cpuTimeMs": 99, "outcome": "ok"},
     }
-    current = {
+    persisted_current = {
         "timestamp": "2026-07-22T01:00:00Z",
-        "$metadata": {"id": "current", "service": "a"},
+        "$metadata": {"id": "persisted-current", "service": "a", "requestId": "persisted-request"},
         "$workers": {"scriptVersion": {"id": "v2"}, "cpuTimeMs": 4, "outcome": "ok"},
     }
-    live = {
-        "timestamp": "2026-07-22T01:01:00Z",
-        "$metadata": {"id": "live", "service": "a"},
-        "$workers": {"cpuTimeMs": 5, "outcome": "ok"},
+    live_error = {
+        "timestamp": "2026-07-22T01:02:00Z",
+        "$metadata": {"id": "live-error", "service": "a", "requestId": "shared-request"},
+        "$workers": {"scriptVersion": {"id": "v3"}, "cpuTimeMs": 3, "outcome": "exception"},
+        "_diagnostic_source": "live_tail",
+    }
+    live_error_log = {
+        "timestamp": "2026-07-22T01:02:00.100Z",
+        "$metadata": {
+            "id": "live-error-log",
+            "service": "a",
+            "requestId": "shared-request",
+            "level": "error",
+            "error": "duplicate console error",
+        },
+        "$workers": {"scriptVersion": {"id": "v3"}, "outcome": "ok"},
+        "_diagnostic_source": "live_tail",
+    }
+    live_ok = {
+        "timestamp": "2026-07-22T01:03:00Z",
+        "$metadata": {"id": "live-ok", "service": "a", "requestId": "live-ok-request"},
+        "$workers": {"scriptVersion": {"id": "v3"}, "cpuTimeMs": 5, "outcome": "ok"},
         "_diagnostic_source": "live_tail",
     }
     original = globals()["WORKERS"]
     globals()["WORKERS"] = ("a",)
     try:
-        selected, versions, excluded = current_events([old, current], [live])
-        assert versions == {"a": "v2"}
-        assert excluded == 1
-        assert {event_key(event) for event in selected} == {"current", "live"}
+        selected, versions, excluded = current_events(
+            [old, persisted_current],
+            [live_error, live_error_log, live_ok],
+        )
+        assert versions == {"a": "v3"}
+        assert excluded == 2
+        assert {version_id(event) for event in selected if version_id(event)} == {"v3"}
         violations, _, errors, samples, missing, coverage = evaluate(selected, False)
-        assert not violations and not errors and samples["a"] == [4.0, 5.0]
+        assert not violations and len(errors) == 1
+        assert errors[0]["outcome"] == "exception"
+        assert samples["a"] == [3.0, 5.0]
         assert not missing and coverage
-        assert timestamp_ms(current) > timestamp_ms(old)
+        assert timestamp_ms(live_ok) > timestamp_ms(persisted_current) > timestamp_ms(old)
     finally:
         globals()["WORKERS"] = original
     print("telemetry audit self-test passed")
