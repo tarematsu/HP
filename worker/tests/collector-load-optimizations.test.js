@@ -42,9 +42,19 @@ test('buddies Workers use low-frequency D1 checkpoints and metadata refresh', ()
     assert.equal(worker.vars.MINUTE_FACT_OUTBOX_RECONCILE_MS, 60 * 60_000, path);
     assert.equal(worker.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 60 * 60_000, path);
     assert.equal(worker.vars.QUEUE_STABLE_CHECKPOINT_MINUTES, 60, path);
-    assert.equal(worker.vars.METADATA_REFRESH_INTERVAL_MS, 6 * 60 * 60_000, path);
+    assert.equal(worker.vars.METADATA_REFRESH_INTERVAL_MS, 24 * 60 * 60_000, path);
     assert.equal(worker.vars.COLLECTOR_D1_QUEUE_CURRENT_CACHE_MS, 60 * 60_000, path);
     assert.equal(worker.vars.COLLECTOR_D1_MATERIALIZATION_CACHE_MS, 5 * 60_000, path);
+  }
+});
+
+test('recovery batches backlog and limits poison-message redelivery', () => {
+  const recovery = config('../wrangler.buddies-recovery.jsonc');
+  for (const consumer of recovery.queues.consumers) {
+    assert.equal(consumer.max_batch_size, 10, consumer.queue);
+    assert.equal(consumer.max_batch_timeout, 5, consumer.queue);
+    assert.equal(consumer.max_retries, 4, consumer.queue);
+    assert.equal(consumer.max_concurrency, 1, consumer.queue);
   }
 });
 
