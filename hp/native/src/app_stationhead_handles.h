@@ -79,7 +79,8 @@ class StationheadHandleBase {
 
 class AppStationheadHandle final : public StationheadHandleBase {
  public:
-  AppStationheadHandle() = default;
+  AppStationheadHandle();
+  ~AppStationheadHandle();
   AppStationheadHandle(const AppStationheadHandle&) = delete;
   AppStationheadHandle& operator=(const AppStationheadHandle&) = delete;
 
@@ -104,7 +105,8 @@ class AppStationheadHandle final : public StationheadHandleBase {
 
 class AppSecondaryStationheadHandle final : public StationheadHandleBase {
  public:
-  AppSecondaryStationheadHandle() = default;
+  AppSecondaryStationheadHandle();
+  ~AppSecondaryStationheadHandle();
   AppSecondaryStationheadHandle(const AppSecondaryStationheadHandle&) = delete;
   AppSecondaryStationheadHandle& operator=(const AppSecondaryStationheadHandle&) = delete;
 
