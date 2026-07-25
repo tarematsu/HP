@@ -35,7 +35,7 @@ test('collector owns only the scheduled surface and recovery owns legacy Queue l
   assert.equal(runtime.vars.RAW_COLLECTION_ENABLED, false);
   assert.match(collectorEntry, /runBuddiesCollectorScheduled/);
   assert.doesNotMatch(collectorEntry, /\bfetch\s*:/);
-  assert.match(recoveryEntry, /runBuddiesCollectorQueue/);
+  assert.match(recoveryEntry, /runBuddiesRecoveryQueue/);
 });
 
 test('recovery Worker uses one-message ingest switch dispatch', () => {
