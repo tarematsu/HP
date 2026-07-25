@@ -2,9 +2,13 @@
 name: PR256 one-shot SH runtime sync
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/import-sh-snapshot
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
     paths:
       - .github/workflows/pr256-sync-sh-runtime.yml
 
