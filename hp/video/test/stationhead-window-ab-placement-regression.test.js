@@ -10,6 +10,10 @@ const appSource = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
 );
+const layoutSource = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -47,5 +51,50 @@ test('dual-window placement constrains pending A left and pending B right', () =
   assert.match(
     placement,
     /secondaryStationhead_->SetBounds\(secondaryPending \? right : bounds\);/,
+  );
+});
+
+test('pending Spotify auth hides the playback controller in both windows', () => {
+  const policy = section(
+    layoutSource,
+    'struct StationheadSurfacePolicy',
+    'void ApplyStationheadChildLayout(',
+  );
+  assert.match(policy, /bool hidePlaybackForPendingAuth = false;/);
+  assert.match(
+    policy,
+    /hidePlaybackForPendingAuth = authSelected && !authSurfaceReady/,
+  );
+  assert.match(
+    policy,
+    /startupPreviewActive && !showAuth && !hidePlaybackForPendingAuth/,
+  );
+  assert.match(
+    policy,
+    /StationheadTabKind::Auth, false\)\.hidePlaybackForPendingAuth/,
+  );
+
+  const layout = section(
+    layoutSource,
+    'void StationheadPlayer::LayoutControllers()',
+    'void StationheadPlayer::SetBounds(',
+  );
+  assert.match(
+    layout,
+    /contentVisible = viewVisible_ && !policy\.hidePlaybackForPendingAuth/,
+  );
+  assert.match(
+    layout,
+    /status_\.visible = policy\.showStartupPreview \|\| policy\.showAuth \|\| contentVisible/,
+  );
+
+  const setVisible = section(
+    layoutSource,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  assert.match(
+    setVisible,
+    /selectedTab_ != StationheadTabKind::Auth && controller_/,
   );
 });
