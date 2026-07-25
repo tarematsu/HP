@@ -9,6 +9,12 @@ const SESSION_CACHE_TTL_MS = 5 * 60_000;
 const MINUTE_MS = 60_000;
 const sessionCache = new WeakMap();
 const messageEncoder = new TextEncoder();
+const COMPATIBILITY_FALLBACK_STAGES = new Set([
+  'validate-channel',
+  'extract-identifiers',
+  'normalize-snapshot',
+  'extract-queue',
+]);
 
 function positive(value, fallback) {
   const parsed = Number(value);
@@ -245,13 +251,25 @@ async function directPreparedMessage(base, body, config, env) {
     if (materialized.analysis) base.queue_analysis = materialized.analysis;
     return base;
   } catch (error) {
+    const detail = sanitizeFailureDetail(error?.message || error);
+    const reason = String(error?.code || error?.name || 'prepared-message-failed').slice(0, 120);
+    if (!COMPATIBILITY_FALLBACK_STAGES.has(stage)) {
+      console.error(JSON.stringify({
+        event: 'raw_collection_preparation_failed',
+        observed_at: base.observed_at,
+        reason,
+        stage,
+        error: detail,
+      }));
+      const failure = new Error(`prepared collection failed at ${stage}: ${detail}`);
+      failure.name = 'PreparedCollectionError';
+      failure.code = 'PREPARED_COLLECTION_FAILED';
+      failure.stage = stage;
+      throw failure;
+    }
     base.message_version = 2;
     base.channel = channel;
-    setPreparationFallback(base, {
-      reason: String(error?.code || error?.name || 'prepared-message-failed').slice(0, 120),
-      stage,
-      error: sanitizeFailureDetail(error?.message || error),
-    });
+    setPreparationFallback(base, { reason, stage, error: detail });
     return base;
   }
 }
