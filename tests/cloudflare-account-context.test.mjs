@@ -18,17 +18,38 @@ function response(payload, { ok = true, status = 200 } = {}) {
   };
 }
 
-test('explicit Cloudflare account avoids discovery and does not require a token', async () => {
-  let calls = 0;
+test('explicit Cloudflare account is validated with the configured token', async () => {
+  const requests = [];
   const accountId = await resolveCloudflareAccountId({
+    token: 'token',
     accountId: 'account-explicit',
-    fetchImpl: async () => {
-      calls += 1;
-      throw new Error('unexpected lookup');
+    fetchImpl: async (url, init) => {
+      requests.push({ url, init });
+      return response({
+        success: true,
+        result: { id: 'account-explicit' },
+      });
     },
   });
   assert.equal(accountId, 'account-explicit');
-  assert.equal(calls, 0);
+  assert.equal(requests.length, 1);
+  assert.equal(
+    requests[0].url,
+    'https://api.cloudflare.com/client/v4/accounts/account-explicit',
+  );
+  assert.equal(requests[0].init.headers.Authorization, 'Bearer token');
+
+  await assert.rejects(
+    resolveCloudflareAccountId({
+      token: 'token',
+      accountId: 'account-explicit',
+      fetchImpl: async () => response({
+        success: true,
+        result: { id: 'different-account' },
+      }),
+    }),
+    /different account ID/,
+  );
 });
 
 test('Cloudflare account discovery requires exactly one valid account', async () => {
@@ -76,7 +97,10 @@ test('Cloudflare context export rejects multiline values and writes canonical va
     /single line/,
   );
   await assert.rejects(
-    resolveCloudflareAccountId({ accountId: 'account\ninjected' }),
+    resolveCloudflareAccountId({
+      token: 'token',
+      accountId: 'account\ninjected',
+    }),
     /single line/,
   );
 
@@ -87,6 +111,10 @@ test('Cloudflare context export rejects multiline values and writes canonical va
       token: 'token',
       accountId: 'account-1',
       envFile,
+      fetchImpl: async () => response({
+        success: true,
+        result: { id: 'account-1' },
+      }),
     });
     assert.equal(accountId, 'account-1');
     assert.equal(
