@@ -17,7 +17,6 @@ test('SH observability issue body includes deployment context and sanitized diag
     runUrl: 'https://github.com/tarematsu/HP/actions/runs/123',
     trigger: 'schedule',
     outcomes: {
-      policy: 'success',
       daily: 'success',
       freeTier: 'failure',
       contract: 'success',
@@ -47,6 +46,7 @@ test('SH observability issue body includes deployment context and sanitized diag
   assert.match(body, new RegExp(STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(body, /\*\*Overall:\*\* failure/);
   assert.match(body, /\| freeTier \| failure \|/);
+  assert.doesNotMatch(body, /\| policy \|/);
   assert.match(body, /Workflow source commit:\*\* `abcdef123456`/);
   assert.match(body, /Current main SHA:\*\* `fedcba654321`/);
   assert.match(body, /deployment-123/);
@@ -79,5 +79,9 @@ test('SH observability publishes retrievable deployment and telemetry status', a
   assert.match(workflow, /cloudflare-observability-report-sh-/);
   assert.match(publisher, /readOptionalText\('telemetry-audit\.log'\)/);
   assert.match(publisher, /Current-deployment telemetry policy/);
-  assert.doesNotMatch(publisher, /normalizeOutcome|statusState|--self-test|function selfTest|node:assert/);
+  assert.doesNotMatch(
+    `${workflow}\n${publisher}`,
+    /POLICY_OUTCOME|policy-self-test|observability\/policy-self-test|--self-test|node --test/,
+  );
+  assert.doesNotMatch(publisher, /normalizeOutcome|statusState|function selfTest|node:assert/);
 });
