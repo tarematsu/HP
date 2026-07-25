@@ -128,6 +128,13 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     'LIVE_TAIL_EVENT=',
     'missing_workers',
     'DURABLE_OBJECT_CPU_BUDGET_MS',
+    'CLOUDFLARE_ACCOUNT_ID',
+    'Cloudflare token, account ID, and Worker list are required',
+  ]);
+  expectNone(telemetry, [
+    'def account_id',
+    'accounts?per_page=50',
+    'R2_BUCKET',
   ]);
   expectAll(publisher, [
     'HomePanel Observability Status',
@@ -172,5 +179,4 @@ test('HomePanel observability tools retain budget, privacy, and status behavior'
     '.github/scripts/audit-cloudflare-daily-usage.py',
     'does not query usage or publish a separate status issue',
   ]);
-  assert.ok(!telemetry.includes('R2_BUCKET'));
 });
