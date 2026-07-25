@@ -2,6 +2,123 @@
 
 namespace hp {
 
+inline constexpr bool StationheadRuntimeScriptHostUrl(
+    std::wstring_view uriLower) {
+  const size_t schemeEnd = uriLower.find(L"://");
+  if (schemeEnd == std::wstring_view::npos ||
+      uriLower.substr(0, schemeEnd) != L"https") {
+    return false;
+  }
+  const size_t authorityAt = schemeEnd + 3;
+  const size_t authorityEnd = uriLower.find_first_of(L"/?#", authorityAt);
+  std::wstring_view authority = uriLower.substr(
+      authorityAt,
+      authorityEnd == std::wstring_view::npos ? std::wstring_view::npos
+                                               : authorityEnd - authorityAt);
+  if (authority.empty() || authority.find(L'@') != std::wstring_view::npos) {
+    return false;
+  }
+  const size_t portAt = authority.find(L':');
+  if (portAt != std::wstring_view::npos) authority = authority.substr(0, portAt);
+  return authority == L"stationhead.com" ||
+         authority.ends_with(L".stationhead.com");
+}
+
+inline constexpr std::wstring_view StationheadRuntimeScriptPath(
+    std::wstring_view uriLower) {
+  if (!StationheadRuntimeScriptHostUrl(uriLower)) return {};
+  const size_t schemeEnd = uriLower.find(L"://");
+  const size_t authorityAt = schemeEnd + 3;
+  const size_t pathAt = uriLower.find(L'/', authorityAt);
+  if (pathAt == std::wstring_view::npos) return {};
+  const size_t pathEnd = uriLower.find_first_of(L"?#", pathAt);
+  return uriLower.substr(
+      pathAt,
+      pathEnd == std::wstring_view::npos ? std::wstring_view::npos
+                                         : pathEnd - pathAt);
+}
+
+// The earlier blocker searched the complete URI, so a CDN hostname containing
+// "chat" or "listeners" could reject an unrelated player-runtime script. Match
+// only the path of an HTTPS Stationhead request.
+inline constexpr bool StationheadNonPlaybackScriptUrlRuntimeFixed(
+    std::wstring_view uriLower) {
+  const std::wstring_view path = StationheadRuntimeScriptPath(uriLower);
+  if (path.empty() ||
+      (!path.ends_with(L".js") && !path.ends_with(L".mjs"))) {
+    return false;
+  }
+
+  constexpr std::wstring_view kNonPlaybackScriptNeedles[] = {
+      L"chat", L"comment", L"gift", L"tipping", L"trending", L"thread",
+      L"reaction", L"emoji", L"listeners", L"audience", L"leaderboard",
+      L"onboarding", L"walkthrough", L"tutorial", L"survey", L"feedback",
+      L"rating-prompt", L"review-prompt", L"achievement", L"badge-modal",
+      L"milestone", L"moderation-panel", L"search-modal", L"explore-panel",
+      L"apple-music", L"musickit", L"connect-apple", L"music-service",
+      L"service-picker",
+  };
+  for (const std::wstring_view needle : kNonPlaybackScriptNeedles) {
+    if (path.find(needle) != std::wstring_view::npos) return true;
+  }
+  return false;
+}
+
+static_assert(StationheadNonPlaybackScriptUrlRuntimeFixed(
+    L"https://www.stationhead.com/assets/chat-panel-a1b2.js"));
+static_assert(StationheadNonPlaybackScriptUrlRuntimeFixed(
+    L"https://stationhead.com:443/assets/listeners-modal.mjs?build=1"));
+static_assert(!StationheadNonPlaybackScriptUrlRuntimeFixed(
+    L"https://chat-cdn.stationhead.com/assets/player-runtime-a1b2.js"));
+static_assert(!StationheadNonPlaybackScriptUrlRuntimeFixed(
+    L"https://cdn.example.com/assets/chat-panel-a1b2.js"));
+static_assert(!StationheadNonPlaybackScriptUrlRuntimeFixed(
+    L"https://stationhead.com.evil.example/assets/chat-panel-a1b2.js"));
+
+inline void ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(
+    ICoreWebView2Environment* environment,
+    ICoreWebView2* webview) {
+  if (!environment || !webview) return;
+  webview->AddWebResourceRequestedFilter(
+      L"https://stationhead.com/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
+  webview->AddWebResourceRequestedFilter(
+      L"https://*.stationhead.com/*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
+
+  ComPtr<ICoreWebView2Environment> env = environment;
+  EventRegistrationToken ignoredToken{};
+  webview->add_WebResourceRequested(
+      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+          [env](ICoreWebView2*,
+                ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            if (!args) return S_OK;
+            COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
+                COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
+            if (FAILED(args->get_ResourceContext(&context)) ||
+                context != COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
+              return S_OK;
+            }
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+            LPWSTR uriRaw = nullptr;
+            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
+            const std::wstring uriLower = StationheadLowerAscii(uriRaw);
+            CoTaskMemFree(uriRaw);
+            if (!StationheadNonPlaybackScriptUrlRuntimeFixed(uriLower)) {
+              return S_OK;
+            }
+
+            ComPtr<ICoreWebView2WebResourceResponse> response;
+            if (SUCCEEDED(env->CreateWebResourceResponse(
+                    nullptr, 403, L"Blocked non-playback script",
+                    L"Content-Type: application/javascript; charset=utf-8",
+                    &response))) {
+              args->put_Response(response.Get());
+            }
+            return S_OK;
+          }).Get(),
+      &ignoredToken);
+}
+
 // The legacy additional blocker also registers the legacy blank-page recovery
 // script. Keep only its script-resource filtering; the fixed recovery policy is
 // composed once by StationheadAutoplayScriptRuntimeFixed.
@@ -126,7 +243,7 @@ inline void ApplyStationheadResourceBlockingFinalFixed(
       &token);
 
   BlockStationheadTelemetrySockets(webview, config.blockImages);
-  ApplyStationheadNonPlaybackScriptBlocking(environment, webview);
+  ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(environment, webview);
   ApplyStationheadAdditionalScriptBlockingRuntimeFixed(environment, webview);
 }
 
