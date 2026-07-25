@@ -158,7 +158,8 @@ add_executable(HomePanel WIN32
 homepanel_configure_common_target(HomePanel)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_polling_policy.h
-  src/sh_runtime_policy_fix.h
+  src/sh_runtime_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_resource_policy_fix.h)
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
