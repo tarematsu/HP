@@ -4,13 +4,6 @@
 namespace hp {
 namespace {
 
-
-
-
-
-
-
-
 constexpr wchar_t kWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--disable-breakpad "
@@ -23,8 +16,6 @@ constexpr wchar_t kWebView2Arguments[] =
     // back/forward page-state cache while retaining the persistent profile,
     // cookies, DOM storage, Spotify login, and DRM/session state.
     L"--disable-http-cache "
-
-
     L"--disable-backgrounding-occluded-windows "
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
@@ -35,7 +26,22 @@ void ApplyWebView2ProcessHints() noexcept {
                             kWebView2Arguments);
   });
 }
+
+void InvokeEnvironmentCompletionNoexcept(
+    SharedWebViewEnvironment::Completion& completion,
+    HRESULT result,
+    ICoreWebView2Environment* environment) noexcept {
+  if (!completion) return;
+  try {
+    completion(result, environment);
+  } catch (...) {
+    // A and B share one environment creation. A failing consumer callback must
+    // never unwind through WebView2 or prevent the remaining pending consumer
+    // from receiving the same completion. Its own creation watchdog will
+    // recover the failed instance.
+  }
 }
+}  // namespace
 
 SharedWebViewEnvironment& SharedWebViewEnvironment::Instance() {
   static SharedWebViewEnvironment instance;
@@ -81,42 +87,45 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
   }
 
   if (readyEnvironment) {
-    completion(S_OK, readyEnvironment.Get());
+    InvokeEnvironmentCompletionNoexcept(
+        completion, S_OK, readyEnvironment.Get());
     return;
   }
   if (!startCreation) return;
 
-  std::error_code directoryError;
-  fs::create_directories(folderForCreation, directoryError);
-  if (directoryError) {
-    Complete(requestedKey, creationGeneration,
-             HRESULT_FROM_WIN32(directoryError.value()), nullptr);
-    return;
-  }
+  try {
+    std::error_code directoryError;
+    fs::create_directories(folderForCreation, directoryError);
+    if (directoryError) {
+      Complete(requestedKey, creationGeneration,
+               HRESULT_FROM_WIN32(directoryError.value()), nullptr);
+      return;
+    }
 
-
-
-
-
-  ApplyWebView2ProcessHints();
-  ComPtr<CoreWebView2EnvironmentOptions> options =
-      Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
-  if (options) options->put_AdditionalBrowserArguments(kWebView2Arguments);
-  const auto key = std::make_shared<std::wstring>(requestedKey);
-  const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
-      nullptr, folderForCreation.c_str(), options.Get(),
-      Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-          [this, key, creationGeneration](
-              HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-            Complete(*key, creationGeneration,
-                     FAILED(result) || !environment
-                         ? (FAILED(result) ? result : E_POINTER)
-                         : S_OK,
-                     environment);
-            return S_OK;
-          }).Get());
-  if (FAILED(started)) {
-    Complete(requestedKey, creationGeneration, started, nullptr);
+    ApplyWebView2ProcessHints();
+    ComPtr<CoreWebView2EnvironmentOptions> options =
+        Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+    if (options) options->put_AdditionalBrowserArguments(kWebView2Arguments);
+    const auto key = std::make_shared<std::wstring>(requestedKey);
+    const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
+        nullptr, folderForCreation.c_str(), options.Get(),
+        Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+            [this, key, creationGeneration](
+                HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+              Complete(*key, creationGeneration,
+                       FAILED(result) || !environment
+                           ? (FAILED(result) ? result : E_POINTER)
+                           : S_OK,
+                       environment);
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) {
+      Complete(requestedKey, creationGeneration, started, nullptr);
+    }
+  } catch (const std::bad_alloc&) {
+    Complete(requestedKey, creationGeneration, E_OUTOFMEMORY, nullptr);
+  } catch (...) {
+    Complete(requestedKey, creationGeneration, E_FAIL, nullptr);
   }
 }
 
@@ -139,7 +148,9 @@ void SharedWebViewEnvironment::Invalidate(const fs::path& userDataFolder) {
     callbacks.swap(entry.pending);
   }
   const HRESULT timeout = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-  for (auto& callback : callbacks) callback(timeout, nullptr);
+  for (auto& callback : callbacks) {
+    InvokeEnvironmentCompletionNoexcept(callback, timeout, nullptr);
+  }
 }
 
 void SharedWebViewEnvironment::Complete(const std::wstring& key,
@@ -153,6 +164,10 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key,
     if (iterator == entries_.end()) return;
     Entry& entry = iterator->second;
     if (entry.generation != generation) return;
+    // Close this generation before invoking consumers. A duplicate or delayed
+    // COM completion for the same creation cannot overwrite the accepted
+    // environment or deliver the pending callbacks twice.
+    ++entry.generation;
     entry.creating = false;
     if (SUCCEEDED(result) && environment) {
       entry.environment = environment;
@@ -162,7 +177,8 @@ void SharedWebViewEnvironment::Complete(const std::wstring& key,
   }
 
   for (auto& callback : callbacks) {
-    callback(result, readyEnvironment.Get());
+    InvokeEnvironmentCompletionNoexcept(
+        callback, result, readyEnvironment.Get());
   }
 }
 }  // namespace hp
