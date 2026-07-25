@@ -8,9 +8,9 @@ import {
 } from '../functions/api/sakurazaka46jp.js';
 import { inferArtistFromDisplayTitle } from '../functions/lib/playback.js';
 import {
-  currentJstWeekRange,
+  currentUtcWeekRange,
   inclusivePresetStart,
-  jstDate,
+  utcDate,
 } from '../public/history/history-date-utils.js';
 import {
   aggregateCompleteTrackRows,
@@ -59,10 +59,15 @@ test('track rows recover whitespace-only titles and artists before rendering or 
   assert.equal(rows[0].artist, 'Recovered artist');
 });
 
-test('JST week boundaries and inclusive presets do not depend on the UTC calendar day', () => {
-  const mondayAfterMidnightJst = Date.parse('2026-07-26T15:30:00Z');
-  assert.equal(jstDate(0, mondayAfterMidnightJst), '2026-07-27');
-  assert.deepEqual(currentJstWeekRange(mondayAfterMidnightJst), {
+test('UTC week boundaries and inclusive presets use only the UTC calendar day', () => {
+  const sundayUtc = Date.parse('2026-07-26T15:30:00Z');
+  assert.equal(utcDate(0, sundayUtc), '2026-07-26');
+  assert.deepEqual(currentUtcWeekRange(sundayUtc), {
+    from: '2026-07-20',
+    to: '2026-07-26',
+  });
+  const mondayUtc = Date.parse('2026-07-27T00:30:00Z');
+  assert.deepEqual(currentUtcWeekRange(mondayUtc), {
     from: '2026-07-27',
     to: '2026-07-27',
   });
@@ -88,23 +93,37 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('history patches cover session caches, full-row rankings and shared JST dates', () => {
+test('active Pages runtimes are UTC-only', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
+  const history = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
   const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
+  const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
+  const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
-  assert.match(entry, /JST_OFFSET_MS/);
+  const activeSources = [entry, fixes, history, likes, broadcasts, dashboard].join('\n');
+
+  assert.match(entry, /trackDate\.value = utcDate\(-1\)/);
   assert.match(entry, /history:runtime-ready/);
   assert.match(guard, /TRACK_CACHE_PREFIX/);
   assert.match(guard, /Object\.defineProperty\(prototype, 'getItem'/);
   assert.doesNotMatch(guard, /#tracks' \|\| !trackRows\.length/);
   assert.match(fixes, /aggregateCompleteTrackRows/);
+  assert.match(fixes, /applyUtcPreset/);
   assert.match(fixes, /inclusivePresetStart/);
-  assert.match(likes, /currentJstWeekRange/);
+  assert.match(history, /timeZone: 'UTC'/);
+  assert.match(history, /todayUtc/);
+  assert.match(likes, /currentUtcWeekRange/);
+  assert.match(likes, /timeZone: 'UTC'/);
   assert.match(likes, /completeTrackRows\(result\.data\.rows\)/);
   assert.match(likes, /else load\(\)/);
+  assert.match(broadcasts, /timeZone: 'UTC'/);
+  assert.match(dashboard, /timeZone: 'UTC'/);
+  assert.match(dashboard, /toLocaleTimeString\('ja-JP', \{[\s\S]*timeZone: 'UTC'/);
+  assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
   assert.match(likesPage, /<script type="module" src="\/history\/history-likes\.js"><\/script>/);
+  assert.doesNotMatch(activeSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
 test('dashboard image retries use canonical URLs and successful refreshes clear stale errors', () => {

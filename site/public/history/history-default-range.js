@@ -9,7 +9,7 @@
   if (!allButton) return;
 
   allButton.onclick = () => {
-    document.getElementById('to').value = todayJst();
+    document.getElementById('to').value = todayUtc();
     document.getElementById('from').value = defaultFrom;
     $$('.range-presets button').forEach((button) => {
       button.classList.toggle('active', button.dataset.days === 'all');

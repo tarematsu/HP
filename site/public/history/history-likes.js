@@ -1,4 +1,4 @@
-import { currentJstWeekRange } from './history-date-utils.js';
+import { currentUtcWeekRange } from './history-date-utils.js';
 import {
   completeTrackRows,
   displayTrackArtist,
@@ -12,9 +12,12 @@ import {
   const CACHE_MS = 10 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
-  const shortDate = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric' });
+  const shortDate = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC', month: 'numeric', day: 'numeric',
+  });
 
   const state = { rows: [], summary: {}, weekRows: [], controller: null, weekFrom: '', weekTo: '' };
   const el = (id) => document.getElementById(id);
@@ -224,7 +227,7 @@ import {
     state.controller = controller;
     el('load').disabled = true;
     setNotice('読み込み中…');
-    const { from: weekFrom, to: weekTo } = currentJstWeekRange();
+    const { from: weekFrom, to: weekTo } = currentUtcWeekRange();
     state.weekFrom = weekFrom;
     state.weekTo = weekTo;
     const url = `/api/track-history?${new URLSearchParams({ from: weekFrom, to: weekTo, limit: '5000' })}`;
@@ -241,7 +244,7 @@ import {
       };
       render();
       const cached = result.cached ? ' · キャッシュ' : '';
-      setNotice(`${fmt(state.rows.length)}曲 · 今週 ${weekFrom.replaceAll('-', '/')}〜${weekTo.replaceAll('-', '/')}${cached}`);
+      setNotice(`${fmt(state.rows.length)}曲 · UTC週 ${weekFrom.replaceAll('-', '/')}〜${weekTo.replaceAll('-', '/')}${cached}`);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];

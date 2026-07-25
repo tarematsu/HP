@@ -1,8 +1,7 @@
 const DAY_MS = 86_400_000;
-const JST_OFFSET_MS = 9 * 60 * 60_000;
 
-export function jstDate(offsetDays = 0, now = Date.now()) {
-  return new Date(Number(now) + JST_OFFSET_MS + Number(offsetDays || 0) * DAY_MS)
+export function utcDate(offsetDays = 0, now = Date.now()) {
+  return new Date(Number(now) + Number(offsetDays || 0) * DAY_MS)
     .toISOString()
     .slice(0, 10);
 }
@@ -19,8 +18,8 @@ export function mondayOf(value) {
   return date.toISOString().slice(0, 10);
 }
 
-export function currentJstWeekRange(now = Date.now()) {
-  const to = jstDate(0, now);
+export function currentUtcWeekRange(now = Date.now()) {
+  const to = utcDate(0, now);
   return { from: mondayOf(to), to };
 }
 

@@ -106,12 +106,12 @@ function parseDateStart(value, fallback) {
 const todayUtcString = () => new Date().toISOString().slice(0, 10);
 
 export const BROADCAST_SUMMARY_SQL = `SELECT
-  event_name,started_at,ended_at,started_jst,ended_jst,sample_count,
+  event_name,started_at,ended_at,sample_count,
   listener_avg,listener_max,likes_max,distinct_tracks,host_handle,1 AS has_data
 FROM sh_official_broadcast_summary
 WHERE host_handle='sakurazaka46jp' AND started_at>=? AND started_at<?
 UNION ALL
-SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+SELECT NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
   EXISTS(SELECT 1 FROM sh_official_broadcast_summary
     WHERE host_handle='sakurazaka46jp') AS has_data
 WHERE NOT EXISTS (
@@ -146,10 +146,11 @@ async function loadBroadcastPayload(env, from, to) {
       mode: 'broadcasts',
       from,
       to,
+      timezone: 'UTC',
       rows: [],
       setup_required: true,
       storage_source: 'summary-only',
-      diagnostic: { imported_rows: 0, imported_events: 0, first_observed_jst: null, last_observed_jst: null },
+      diagnostic: { imported_rows: 0, imported_events: 0, first_observed_at: null, last_observed_at: null },
     };
   }
   const parsed = parseBroadcastSummaryRows(result.results || []);
@@ -158,21 +159,22 @@ async function loadBroadcastPayload(env, from, to) {
     mode: 'broadcasts',
     from,
     to,
+    timezone: 'UTC',
     rows: parsed.rows,
     setup_required: parsed.setupRequired,
     storage_source: 'other.official_broadcast_summary',
     diagnostic: {
       imported_rows: null,
       imported_events: null,
-      first_observed_jst: null,
-      last_observed_jst: null,
+      first_observed_at: null,
+      last_observed_at: null,
     },
   };
 }
 
 async function loadBroadcasts(env, from, to) {
   const payload = await cachedHistoryLoad(
-    `broadcasts:v5:${from}:${to}`,
+    `broadcasts:v6:${from}:${to}`,
     30000,
     () => loadBroadcastPayload(env, from, to),
   );
@@ -206,7 +208,7 @@ export async function onRequestGet({ request, env }) {
         30000,
         () => loadSummaryWithLive(env, mode, from, to),
       );
-      return json({ ok: true, mode, from, to, ...summary }, 200, {
+      return json({ ok: true, mode, from, to, timezone: 'UTC', ...summary }, 200, {
         'cache-control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=120',
       });
     }
