@@ -106,6 +106,7 @@ test('Cloudflare context export rejects multiline values and writes canonical va
 test('the composite action is the single production credential resolver', () => {
   const action = readSource('.github/actions/cloudflare-context/action.yml');
   const configResolver = readSource('.github/scripts/resolve-cloudflare-config.mjs');
+  const deploymentGuard = readSource('.github/scripts/assert-actions-only-cloudflare.mjs');
   const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
   const pruneUpdates = readSource('.github/workflows/prune-homepanel-updates.yml');
   const shObservability = readSource('.github/workflows/sh-observability.yml');
@@ -119,8 +120,19 @@ test('the composite action is the single production credential resolver', () => 
   assert.match(configResolver, /update_bucket/);
   assert.doesNotMatch(configResolver, /resolve-cloudflare-account|CLOUDFLARE_|account_id/);
 
+  assert.match(deploymentGuard, /process\.env\.CLOUDFLARE_API_TOKEN/);
+  assert.match(deploymentGuard, /process\.env\.CLOUDFLARE_ACCOUNT_ID/);
+  assert.match(deploymentGuard, /CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required/);
+  assert.doesNotMatch(
+    deploymentGuard,
+    /CLOUDFLARE_BUILDS_API_TOKEN|accounts\?(?:page|per_page)|could not be inferred uniquely/,
+  );
+
   assert.match(cloudDeploy, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(cloudDeploy, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
+  assert.match(cloudDeploy, /\.github\/actions\/cloudflare-context\/action\.yml/);
+  assert.match(cloudDeploy, /\.github\/scripts\/resolve-cloudflare-account\.mjs/);
+  assert.match(cloudDeploy, /assert-actions-only-cloudflare\.mjs/);
   assert.doesNotMatch(cloudDeploy, /Validate Cloudflare credentials/);
   assert.doesNotMatch(cloudDeploy, /resolve-cloudflare-config\.mjs/);
   assert.doesNotMatch(
