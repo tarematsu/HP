@@ -26,13 +26,17 @@ const retireRepairIndexMigration = readFileSync(
   new URL('../../database/facts-migrations/043_retire_repair_candidate_index.sql', import.meta.url),
   'utf8',
 );
+const retireRepairWorkMigration = readFileSync(
+  new URL('../../database/facts-migrations/044_retire_minute_fact_repair_work.sql', import.meta.url),
+  'utf8',
+);
 const runtimeConfig = JSON.parse(readFileSync(
   new URL('../wrangler.runtime.jsonc', import.meta.url),
   'utf8',
 ));
 
-test('production repair burst uses bounded hourly registration and dispatch settings', () => {
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, true);
+test('production retires the completed repair burst while preserving bounded settings', () => {
+  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
   assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES, 60);
   assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_CANDIDATE_LIMIT, 20);
   assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_ENQUEUE_LIMIT, 2);
@@ -55,10 +59,13 @@ test('repair candidate scan advances through the existing time index with durabl
   assert.doesNotMatch(repairSource, /INDEXED BY idx_sh_minute_facts_repair_candidates/);
   assert.match(retireRepairIndexMigration, /DROP INDEX IF EXISTS idx_sh_minute_facts_repair_candidates/);
   assert.doesNotMatch(retireRepairIndexMigration, /CREATE INDEX|FROM sh_minute_facts|INSERT|UPDATE|DELETE/);
+  assert.match(retireRepairWorkMigration, /WHERE job_kind='repair'/);
+  assert.match(retireRepairWorkMigration, /status='done'/);
+  assert.match(retireRepairWorkMigration, /phase='complete'/);
   assert.match(repairSource, /MAX_REPAIR_CANDIDATES = 100/);
   assert.match(repairSource, /MAX_REPAIR_ENQUEUES = 100/);
   assert.match(burstSource, /job_kind='repair'/);
-  assert.match(burstSource, /job_kind: 'repair'/);
+  assert.match(burstSource, /jobKind: 'repair'/);
   assert.match(burstSource, /MAX_BURST_CANDIDATES = 20/);
   assert.match(burstSource, /MAX_BURST_ENQUEUES = 2/);
   assert.match(burstSource, /MAX_BURST_DISPATCH = 2/);
