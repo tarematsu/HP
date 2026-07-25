@@ -31,17 +31,21 @@ test('observability script changes are covered by pull-request CI', () => {
   assert.match(readSource('.github/workflows/ci.yml'), /^\s{6}- '\.github\/scripts\/\*\*'$/m);
 });
 
-test('SH observability runs measured post-deploy and daily gates without repeating CI self-tests', () => {
+test('unified observability runs account-wide post-deploy and daily gates', () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const dailyAudit = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
   const freeTierAudit = readSource('.github/scripts/cloudflare_free_tier_audit.py');
+  const budgetContract = readSource('.github/scripts/audit-observability-budget-gates.py');
 
   expectAll(workflow, [
-    'workflows: ["Deploy production"]',
+    'name: Unified Cloudflare Observability',
+    'workflows: ["Deploy production", "Deploy unified homepanel-cloud Worker"]',
     'branches: [main]',
     '.github/actions/cloudflare-observability-diagnostics/action.yml',
     '.github/scripts/publish-cloudflare-observability-status.mjs',
     'cron: "0 1 * * *"',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'DAILY_REQUEST_BUDGET: "100000"',
     'DAILY_REQUEST_RESERVE: "0"',
     'DAILY_D1_READ_BUDGET: "5000000"',
@@ -49,46 +53,32 @@ test('SH observability runs measured post-deploy and daily gates without repeati
     'DAILY_QUEUE_BUDGET: "10000"',
     'CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator',
     'CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV',
-    'CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR',
+    'CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR',
     'id: free-tier-budget',
     'id: budget-contract',
+    'id: d1-insights',
     'id: observability-query',
     'id: telemetry-policy',
     'id: publish-status',
-    "steps.free-tier-budget.outcome == 'failure'",
-    "steps.budget-contract.outcome == 'failure'",
-    "steps.observability-query.outcome == 'failure'",
-    "steps.telemetry-policy.outcome == 'failure'",
-    "steps.publish-status.outcome == 'failure'",
-    'uses: ./.github/actions/cloudflare-observability-diagnostics',
-    'live-tail-worker: sh-runtime-orchestrator',
-    'live-tail-seconds: "90"',
-    'LIVE_TAIL_LOG: live-tail.log',
-    'id: daily-budget',
-    "steps.daily-budget.outcome == 'failure'",
+    'D1_INSIGHTS_OUTCOME',
+    'cloudflare-observability-report-unified-',
     'Fail after collecting diagnostics when any observability gate fails',
-    'if: always()',
     'observability-gate/',
-    'observability-budget-gate.log',
+    'd1-insights/',
   ]);
   expectNone(workflow, [
-    'cron: "37 * * * *"',
-    'CLOUDFLARE_PIPELINE_NAMES',
-    'Pipelines included-usage',
-    'audit-cloudflare-free-tier-account.py',
-    'audit-cloudflare-live-tail.py',
+    'publish-homepanel-observability-status.mjs',
+    'cloudflare-observability-report-sh-',
+    'cloudflare-observability-report-hp-',
     '--self-test',
     'node --test',
     'policy-self-test',
     'observability/policy-self-test',
-    'tests/cloudflare-observability-status.test.mjs',
-    'tests/observability-status-publisher.test.mjs',
   ]);
   assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
-  assert.doesNotMatch(workflow, /^\s{6}- '(?:worker|site|packages)\//m);
   assert.doesNotMatch(workflow, /^\s+pull_request:/m);
   assert.equal((workflow.match(/- cron:/g) || []).length, 1);
-  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 6);
+  assert.equal((workflow.match(/continue-on-error: true/g) || []).length, 7);
 
   expectAll(dailyAudit, [
     'def configured_resources()',
@@ -97,22 +87,24 @@ test('SH observability runs measured post-deploy and daily gates without repeati
     'Projected 24h',
     'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
   ]);
-  expectNone(dailyAudit, ['def account_id', 'accounts?per_page=50', 'urllib.parse']);
   expectAll(freeTierAudit, [
     'def aggregate(row:',
     'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
   ]);
-  assert.doesNotMatch(
-    freeTierAudit,
-    /configured_resource_ids|importlib\.util|audit-cloudflare-free-tier-core|def (?:paginated|resource_ids|durable_object_namespace_ids)\(|workers\/durable_objects\/namespaces|PIPELINE_NAMES|pipelines\/v1\/pipelines/,
-  );
+  expectAll(budgetContract, [
+    'DAILY_METRICS = ("requests", "rowsRead", "rowsWritten", "queueOperations")',
+    'daily.usage.queueCount',
+    'Daily metrics checked: `{len(DAILY_METRICS)}`',
+  ]);
 });
 
-test('D1 query insights are manual-only and duplicate budget paths are gone', async () => {
+test('manual D1 workflow remains manual-only and duplicate status workflows are gone', async () => {
   const workflow = readSource('.github/workflows/fetch-cloudflare-d1-usage.yml');
   assert.match(workflow, /^\s+workflow_dispatch:/m);
   assert.doesNotMatch(workflow, /^\s+(?:pull_request|schedule):/m);
   for (const path of [
+    '.github/workflows/hp-observability.yml',
+    '.github/scripts/publish-homepanel-observability-status.mjs',
     '.github/workflows/cloudflare-worker-request-budget.yml',
     'scripts/cloudflare-worker-request-budget.mjs',
     '.github/scripts/audit-cloudflare-live-tail.py',
