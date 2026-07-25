@@ -16,11 +16,20 @@ export function parseDurationSeconds(value, fallback = 180) {
   return Math.max(10, seconds);
 }
 
+export function normalizeProbePath(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (/^[a-z][a-z\d+.-]*:/i.test(raw) || raw.startsWith('//')) {
+    throw new Error('LIVE_TAIL_PROBES entries must be relative paths');
+  }
+  return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
 const durationMs = parseDurationSeconds(process.env.LIVE_TAIL_SECONDS) * 1000;
 const connectionTimeoutMs = Math.min(30_000, durationMs);
 const probes = (process.env.LIVE_TAIL_PROBES || '')
   .split(',')
-  .map((value) => value.trim())
+  .map(normalizeProbePath)
   .filter(Boolean);
 const OK_OUTCOMES = new Set(['', 'ok', 'success', 'canceled', 'cancelled']);
 const ERROR_OUTCOMES = new Set(['error', 'failed', 'failure', 'exception']);
@@ -73,6 +82,11 @@ async function selfTest() {
   assert.throws(() => parseDurationSeconds('not-a-number'), /positive finite number/);
   assert.throws(() => parseDurationSeconds('Infinity'), /positive finite number/);
   assert.throws(() => parseDurationSeconds('0'), /positive finite number/);
+  assert.equal(normalizeProbePath('health'), '/health');
+  assert.equal(normalizeProbePath('/health?full=1'), '/health?full=1');
+  assert.equal(normalizeProbePath(''), '');
+  assert.throws(() => normalizeProbePath('https://example.test/health'), /relative paths/);
+  assert.throws(() => normalizeProbePath('//example.test/health'), /relative paths/);
   assert.equal(isErrorLike({ $workers: { outcome: 'ok' } }), false);
   assert.equal(isErrorLike({ source: { outcome: 'success' } }), false);
   assert.equal(isErrorLike({ $workers: { outcome: 'exception' } }), true);
