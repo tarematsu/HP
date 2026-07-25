@@ -17,7 +17,6 @@ concurrency:
 
 jobs:
   apply:
-    if: github.event.pull_request.number == 256 && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,14 +32,8 @@ jobs:
           from pathlib import Path
           path = Path('.github/scripts/pr256_cloudflare_free_tier_fix.py')
           text = path.read_text(encoding='utf-8')
-          old = '''    if found != expected:
-              raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")
-          '''
-          new = '''    if found == 0:
-              return
-          if found != expected and not (expected == 1 and found > 1):
-              raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")
-          '''
+          old = '    if found != expected:\n        raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")\n'
+          new = '    if found == 0:\n        return\n    if found != expected and not (expected == 1 and found > 1):\n        raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")\n'
           if text.count(old) != 1:
               raise SystemExit('patcher replace helper contract changed')
           path.write_text(text.replace(old, new), encoding='utf-8')
