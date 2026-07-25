@@ -57,18 +57,6 @@ def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | Non
     return data
 
 
-def account_id() -> str:
-    if ACCOUNT_ID:
-        return ACCOUNT_ID
-    accounts = request_json(f"{API_BASE}/accounts?per_page=50").get("result") or []
-    if len(accounts) != 1:
-        raise RuntimeError(
-            f"Expected one visible Cloudflare account, got {len(accounts)}; "
-            "set repository variable CLOUDFLARE_ACCOUNT_ID"
-        )
-    return str(accounts[0]["id"])
-
-
 def service_filter() -> dict[str, Any]:
     return {
         "kind": "group",
@@ -374,13 +362,12 @@ def self_test() -> int:
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
-    if not TOKEN or not WORKERS:
-        raise RuntimeError("Cloudflare token and Worker list are required")
-    account = account_id()
+    if not TOKEN or not ACCOUNT_ID or not WORKERS:
+        raise RuntimeError("Cloudflare token, account ID, and Worker list are required")
     end = dt.datetime.now(dt.timezone.utc)
     start = parse_start(end)
     persisted, matching, truncated = query_events(
-        account,
+        ACCOUNT_ID,
         int(start.timestamp() * 1000),
         int(end.timestamp() * 1000),
     )
