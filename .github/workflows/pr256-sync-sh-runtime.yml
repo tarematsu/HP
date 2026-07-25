@@ -1,0 +1,153 @@
+name: PR256 one-shot SH runtime sync
+
+on:
+  push:
+    branches:
+      - agent/import-sh-snapshot
+    paths:
+      - .github/workflows/pr256-sync-sh-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SH_SHA: f6d77414622a173367f83deb292283f7ee83c29a
+      TARGET_BRANCH: agent/import-sh-snapshot
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/import-sh-snapshot
+          fetch-depth: 0
+
+      - name: Fetch fixed SH main snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init /tmp/sh
+          git -C /tmp/sh remote add origin https://github.com/tarematsu/SH.git
+          git -C /tmp/sh fetch --depth=1 origin "$SH_SHA"
+          git -C /tmp/sh checkout --detach FETCH_HEAD
+          test "$(git -C /tmp/sh rev-parse HEAD)" = "$SH_SHA"
+
+      - name: Copy SH-specific runtime and D1 changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r path; do
+            [[ -n "$path" ]] || continue
+            mkdir -p "$(dirname "$GITHUB_WORKSPACE/$path")"
+            cp "/tmp/sh/$path" "$GITHUB_WORKSPACE/$path"
+          done <<'FILES'
+          database/facts-db.json
+          database/facts-migrations/042_minute_fact_repair_candidate_index.sql
+          database/facts-migrations/043_retire_repair_candidate_index.sql
+          tests/cloudflare-runtime-relay-budget.test.mjs
+          tests/d1-budget-hotpath-index.test.mjs
+          tests/track-ranking.test.mjs
+          worker/scripts/apply-facts-pr-schema.mjs
+          worker/src/minute-fact-repair-burst.js
+          worker/src/minute-facts-repair.js
+          worker/src/minute-pipeline-entry.js
+          worker/src/pages-read-model-entry.js
+          worker/src/runtime-orchestrator-deployed-entry.js
+          worker/src/runtime-scheduled.js
+          worker/tests/minute-derive-lanes.test.js
+          worker/tests/minute-fact-repair-burst.test.js
+          worker/tests/minute-facts-repair.test.js
+          worker/tests/minute-rebuild-stages.test.js
+          worker/tests/minute-revision-batch-budget.test.js
+          worker/tests/pages-read-model-hot-path.test.js
+          worker/tests/runtime-minute-recovery-inline.test.js
+          worker/tests/split-other-workers.test.js
+          worker/tests/total-listens-baseline-index.test.js
+          worker/tests/track-metadata-resolution.test.js
+          worker/wrangler.runtime.jsonc
+          FILES
+
+      - name: Merge Queue test without reverting shared contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('worker/tests/minute-queue-batching.test.js')
+          text = path.read_text(encoding='utf-8')
+          replacements = (
+              (
+                  "test('runtime isolates all CPU-sensitive derive and rebuild deliveries', () => {",
+                  "test('runtime keeps live revisions at one track while rebuilds use the configured batch', () => {",
+              ),
+              (
+                  'assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 1);',
+                  'assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);',
+              ),
+          )
+          for old, new in replacements:
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected exactly one occurrence: {old}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Reject shared or optimized integration regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only)"
+          printf '%s\n' "$changed"
+          if grep -Ex '(.github/scripts/normalize-cloudflare-projection-warmup.py|.github/workflows/deploy-split-pipeline.yml|.github/workflows/fetch-cloudflare-observability.yml|tests/cloudflare-observability-budgets.test.mjs|tests/deploy-concurrency-generation.test.mjs|tests/deploy-stall-recovery.test.mjs|tests/deploy-workflow-db-gate.test.mjs)' <<<"$changed"; then
+            echo 'A shared/commonized file was modified; refusing to sync.' >&2
+            exit 1
+          fi
+
+      - name: Install test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm ci --prefix worker --ignore-scripts
+
+      - name: Validate imported changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test \
+            tests/cloudflare-runtime-relay-budget.test.mjs \
+            tests/d1-budget-hotpath-index.test.mjs \
+            tests/track-ranking.test.mjs \
+            worker/tests/minute-derive-lanes.test.js \
+            worker/tests/minute-fact-repair-burst.test.js \
+            worker/tests/minute-facts-repair.test.js \
+            worker/tests/minute-queue-batching.test.js \
+            worker/tests/minute-rebuild-stages.test.js \
+            worker/tests/minute-revision-batch-budget.test.js \
+            worker/tests/pages-read-model-hot-path.test.js \
+            worker/tests/runtime-minute-recovery-inline.test.js \
+            worker/tests/split-other-workers.test.js \
+            worker/tests/total-listens-baseline-index.test.js \
+            worker/tests/track-metadata-resolution.test.js
+          python -m unittest tests.sql_migrations_test
+          npm --prefix worker run check:bundle
+
+      - name: Commit synchronized runtime changes and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/pr256-sync-sh-runtime.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && {
+            echo 'No runtime changes remained after filtering.' >&2
+            exit 1
+          }
+          git commit -m "sync: import SH main ${SH_SHA:0:7} runtime changes"
+          git push origin "HEAD:$TARGET_BRANCH"
