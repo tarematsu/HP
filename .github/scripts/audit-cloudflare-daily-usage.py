@@ -11,7 +11,6 @@ import os
 import re
 import sys
 import urllib.error
-import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -57,15 +56,6 @@ def api(url: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     if body.get("success") is False or body.get("errors"):
         raise RuntimeError(f"Cloudflare API error: {json.dumps(body.get('errors'))[:1200]}")
     return body
-
-
-def account_id() -> str:
-    if ACCOUNT:
-        return ACCOUNT
-    rows = api(f"{API}/accounts?per_page=50").get("result") or []
-    if len(rows) != 1:
-        raise RuntimeError(f"Expected one Cloudflare account, got {len(rows)}")
-    return str(rows[0]["id"])
 
 
 def configured_resources() -> tuple[set[str], set[str]]:
@@ -261,12 +251,11 @@ def self_test() -> int:
 def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
-    if not TOKEN or not WORKERS or not CONFIGS or any(value <= 0 for value in LIMITS.values()):
-        raise RuntimeError("Cloudflare credentials, Workers, config globs and positive budgets are required")
+    if not TOKEN or not ACCOUNT or not WORKERS or not CONFIGS or any(value <= 0 for value in LIMITS.values()):
+        raise RuntimeError("Cloudflare token, account ID, Workers, config globs and positive budgets are required")
 
-    account = account_id()
     dbs, queue_names = configured_resources()
-    queue_ids = configured_queue_ids(account, queue_names)
+    queue_ids = configured_queue_ids(ACCOUNT, queue_names)
     now = dt.datetime.now(dt.timezone.utc)
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     date = start.date().isoformat()
@@ -276,7 +265,7 @@ def main() -> int:
         {
             "query": document,
             "variables": {
-                "account": account,
+                "account": ACCOUNT,
                 "start": start.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                 "end": now.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
                 "date": date,

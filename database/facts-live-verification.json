@@ -1,0 +1,10 @@
+{
+  "result": "success",
+  "database_name": "stationhead-minute",
+  "attempt": 1,
+  "fact_count": 2026,
+  "live_fact_count": 489,
+  "last_observed_at": 1783810464769,
+  "last_minute_at": 1783810440000,
+  "checked_at": "2026-07-11T22:55:34.693Z"
+}

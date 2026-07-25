@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { runBuddiesFactsSync } from '../src/buddies-facts-sync.js';
+
+function makeSource(rowsByTable) {
+  return {
+    prepare(sql) {
+      return {
+        sql,
+        params: [],
+        bind(...params) { this.params = params; return this; },
+        async all() {
+          const table = sql.match(/FROM (sh_[a-z_]+)/i)?.[1];
+          return { results: (rowsByTable[table] || []).filter((row) => {
+            const cutoff = this.params[0];
+            const cursorAt = this.params[1];
+            const cursorKey = this.params[3];
+            const rowAt = Number(row.observed_at ?? row.fetched_at);
+            const rowKey = row.spotify_id || Number(row.id);
+            return rowAt < cutoff
+              && (rowAt > cursorAt || (rowAt === cursorAt && String(rowKey) > String(cursorKey || 0)));
+          }).slice(0, this.params.at(-1)) };
+        },
+      };
+    },
+  };
+}
+
+function makeFacts(states, batches, updates) {
+  return {
+    prepare(sql) {
+      return {
+        sql,
+        params: [],
+        bind(...params) { this.params = params; return this; },
+        async first() {
+          return states[this.params[0]] || null;
+        },
+        async all() {
+          return { results: [] };
+        },
+        async run() {
+          if (sql.includes('UPDATE sh_buddies_sync_state')) updates.push({ sql, params: this.params });
+          return { meta: { changes: 1 } };
+        },
+      };
+    },
+    async batch(statements) {
+      batches.push(statements.map((statement) => statement.sql || ''));
+      return statements.map(() => ({ success: true }));
+    },
+  };
+}
+
+function syncFixture() {
+  const source = makeSource({
+    sh_track_like_observations: [{ id: 2, observed_at: 2_000, track_key: 'spotify:t', like_count: 4 }],
+    sh_track_metadata: [{ spotify_id: 't', fetched_at: 3_000, title: 'Song' }],
+  });
+  const states = {
+    'track-likes': { sync_key: 'track-likes' },
+    'track-metadata': { sync_key: 'track-metadata' },
+  };
+  const batches = [];
+  const updates = [];
+  return { source, states, batches, updates };
+}
+
+test('buddies sync disables the legacy track-counter writer by default', async () => {
+  const now = 10_000_000;
+  const { source, states, batches, updates } = syncFixture();
+  const result = await runBuddiesFactsSync({
+    DB: source,
+    MINUTE_DB: makeFacts(states, batches, updates),
+    BUDDIES_SYNC_SOURCE_LAG_MS: 0,
+  }, { now, limit: 10 });
+
+  assert.equal(result.failed, false);
+  assert.equal(result.rows, 1);
+  assert.equal(result.legacy_track_likes_enabled, false);
+  assert.equal(result.legacy_rows, 0);
+  assert.equal(batches.length, 1);
+  assert.equal(updates.length, 0);
+  assert.equal(batches.flat().some((sql) => sql.includes('sh_track_counter_changes')), false);
+  assert.equal(batches.flat().some((sql) => sql.includes('sh_track_metadata')), true);
+});
+
+test('buddies sync requires an explicit flag to run the legacy track-counter writer', async () => {
+  const now = 10_000_000;
+  const { source, states, batches, updates } = syncFixture();
+  const result = await runBuddiesFactsSync({
+    DB: source,
+    MINUTE_DB: makeFacts(states, batches, updates),
+    BUDDIES_SYNC_SOURCE_LAG_MS: 0,
+    BUDDIES_SYNC_TRACK_LIKES_ENABLED: true,
+  }, { now, limit: 10 });
+
+  assert.equal(result.failed, false);
+  assert.equal(result.rows, 2);
+  assert.equal(result.legacy_track_likes_enabled, true);
+  assert.equal(result.legacy_rows, 1);
+  assert.equal(batches.length, 2);
+  assert.equal(updates.length, 0);
+  assert.equal(batches.flat().some((sql) => sql.includes('sh_track_counter_changes')), true);
+  assert.equal(batches.flat().some((sql) => sql.includes('sh_track_metadata')), true);
+  assert.equal(batches.every((batch) => batch.some((sql) => sql.includes('UPDATE sh_buddies_sync_state'))), true);
+});

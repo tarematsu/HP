@@ -1,0 +1,56 @@
+name: Inspect Cloudflare D1 usage and queries
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-d1-insights-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      D1_USAGE_OUTPUT_DIR: d1-usage
+      D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc
+      D1_QUERY_OUTPUT_DIR: d1-usage/query-costs
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Query D1 daily usage
+        run: |
+          node scripts/cloudflare-d1-usage.mjs
+          cat d1-usage/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Query repository rolling-window D1 usage
+        run: |
+          node scripts/cloudflare-d1-hourly-usage.mjs
+          cat d1-usage/hourly-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fetch top D1 queries with GraphQL
+        run: python3 .github/scripts/query-cloudflare-d1-costs.py
+
+      - name: Upload D1 usage and query insights
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-d1-insights-${{ github.run_id }}
+          path: d1-usage/
+          if-no-files-found: error
+          retention-days: 7

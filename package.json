@@ -1,0 +1,28 @@
+{
+  "name": "home-platform",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "npm run check:layout && npm run check:sh && npm run check:hp-cloud && npm run check:hp-video",
+    "check:js": "node scripts/check-js-syntax.mjs",
+    "check:worker-bundle": "npm --prefix worker run check:bundle",
+    "discover:sh": "node scripts/discover-sh-page.mjs",
+    "test:worker": "npm --prefix worker test",
+    "check:site": "npm --prefix site run check",
+    "test:site": "npm --prefix site test",
+    "test:js": "node --test tests/*.test.mjs",
+    "test:sql": "python -m unittest tests.sql_migrations_test",
+    "check:sh": "npm run check:js && npm run test:js && npm run test:sql && npm run check:worker-bundle && npm run test:worker && npm run check:site && npm run test:site",
+    "check:layout": "node scripts/validate-monorepo.mjs",
+    "check:hp-cloud": "npm --prefix hp/cloud run check",
+    "test:hp-cloud": "npm --prefix hp/cloud test",
+    "check:hp-video": "npm --prefix hp/video run check",
+    "test:hp-video": "npm --prefix hp/video test",
+    "test:all": "npm run test:js && npm run test:sql && npm run test:worker && npm run test:site && npm run test:hp-cloud && npm run test:hp-video"
+  },
+  "devDependencies": {
+    "playwright": "^1.54.0"
+  },
+  "description": "Stationhead and HomePanel monorepo"
+}

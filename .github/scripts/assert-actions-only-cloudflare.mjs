@@ -1,15 +1,11 @@
-const token = String(
-  process.env.CLOUDFLARE_BUILDS_API_TOKEN
-  || process.env.CLOUDFLARE_API_TOKEN
-  || ''
-).trim();
-let accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
+const token = String(process.env.CLOUDFLARE_API_TOKEN || '').trim();
+const accountId = String(process.env.CLOUDFLARE_ACCOUNT_ID || '').trim();
 const providerAccount = String(process.env.CLOUDFLARE_GIT_PROVIDER_ACCOUNT || 'tarematsu').trim().toLowerCase();
 const repositoryName = String(process.env.CLOUDFLARE_GIT_REPOSITORY || 'HP').trim().toLowerCase();
 const apiBase = 'https://api.cloudflare.com/client/v4';
 
-if (!token) {
-  throw new Error('CLOUDFLARE_BUILDS_API_TOKEN is required to enforce Actions-only deployments');
+if (!token || !accountId) {
+  throw new Error('CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are required to enforce Actions-only deployments');
 }
 
 async function cloudflare(path) {
@@ -33,15 +29,6 @@ async function cloudflare(path) {
     throw new Error(`Cloudflare API ${response.status} for ${path}: ${errors || 'request failed'}`);
   }
   return payload;
-}
-
-if (!accountId) {
-  const payload = await cloudflare('/accounts?page=1&per_page=100');
-  const accounts = Array.isArray(payload?.result) ? payload.result : [];
-  if (accounts.length !== 1 || !accounts[0]?.id) {
-    throw new Error('Cloudflare account could not be inferred uniquely');
-  }
-  accountId = String(accounts[0].id);
 }
 
 const scriptsPayload = await cloudflare(`/accounts/${encodeURIComponent(accountId)}/workers/scripts`);

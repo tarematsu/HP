@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+import { processMinuteRebuildBatch } from '../src/minute-rebuild-batched-entry.js';
+
+function queueMessage(id, body, events) {
+  return {
+    body,
+    ack() { events.push(`ack:${id}`); },
+    retry(options) { events.push(`retry:${id}:${options?.delaySeconds ?? 0}`); },
+  };
+}
+
+test('mixed maintenance and rebuild messages keep independent ack handling', async () => {
+  const events = [];
+  const calls = [];
+  const messages = [
+    queueMessage(1, {
+      message_type: 'minute-rebuild-stage',
+      message_version: 1,
+      stage: 'maintenance-gate',
+      maintenance_task: 'rebuild',
+    }, events),
+    queueMessage(2, {
+      message_type: 'minute-rebuild-stage',
+      message_version: 1,
+      stage: 'gap-scan',
+    }, events),
+  ];
+  await processMinuteRebuildBatch({ messages }, {}, null, {
+    async processMinuteMaintenanceGate() {
+      calls.push('maintenance');
+      return { stage: 'maintenance-gate', task: 'rebuild', run_id: 'm1' };
+    },
+    async processMinuteRebuildStage() {
+      calls.push('rebuild');
+      return { stage: 'gap-scan', run_id: 'r1' };
+    },
+  });
+  assert.deepEqual(calls, ['maintenance', 'rebuild']);
+  assert.deepEqual(events, ['ack:1', 'ack:2']);
+});
+
+test('maintenance-run sync is routed through payload cleanup ownership', async () => {
+  const events = [];
+  const calls = [];
+  const message = queueMessage(1, {
+    message_type: 'minute-rebuild-stage',
+    message_version: 1,
+    stage: 'maintenance-run',
+    maintenance_task: 'sync',
+  }, events);
+  await processMinuteRebuildBatch({ messages: [message] }, {}, null, {
+    async processMinuteMaintenanceSync() {
+      calls.push('sync-cleanup');
+      return {
+        stage: 'maintenance-run',
+        task: 'sync',
+        payload_cleanup: { cleared: 1000 },
+      };
+    },
+    async processMinuteMaintenanceRun() {
+      calls.push('plain-run');
+      return { stage: 'maintenance-run', task: 'sync' };
+    },
+  });
+  assert.deepEqual(calls, ['sync-cleanup']);
+  assert.deepEqual(events, ['ack:1']);
+});
+
+test('one failed message retries without discarding a successful sibling', async () => {
+  const events = [];
+  let calls = 0;
+  const messages = [
+    queueMessage(1, { message_type: 'minute-rebuild-stage', message_version: 1, stage: 'gap-scan' }, events),
+    queueMessage(2, { message_type: 'minute-rebuild-stage', message_version: 1, stage: 'gap-commit' }, events),
+  ];
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await processMinuteRebuildBatch({ messages }, {}, null, {
+      async processMinuteRebuildStage() {
+        calls += 1;
+        if (calls === 1) throw new Error('transient');
+        return { stage: 'gap-commit', run_id: 'r2' };
+      },
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(events, ['retry:1:60', 'ack:2']);
+});
+
+test('runtime rebuild delivery is capped at one message', () => {
+  const config = JSON.parse(readFileSync(
+    new URL('../wrangler.runtime.jsonc', import.meta.url),
+    'utf8',
+  ));
+  const rebuild = config.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
+  assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
+  assert.equal(rebuild.max_batch_size, 1);
+  assert.equal(rebuild.max_concurrency, 1);
+});

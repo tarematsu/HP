@@ -24,110 +24,112 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       UPDATE_BUCKET: ${{ vars.HOMEPANEL_UPDATE_BUCKET || 'homepanel-updates' }}
-      AWS_DEFAULT_REGION: auto
 
     steps:
-      - name: Validate configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$CLOUDFLARE_API_TOKEN" || {
-            echo "CLOUDFLARE_API_TOKEN or CLOUDFLARE_BUILDS_API_TOKEN is required" >&2
-            exit 1
-          }
-          test -n "$UPDATE_BUCKET" || {
-            echo "HomePanel update bucket is required" >&2
-            exit 1
-          }
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
-      - name: Discover R2 account and credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          verify_response="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            https://api.cloudflare.com/client/v4/user/tokens/verify)"
-          token_id="$(jq -er '.result.id' <<<"$verify_response")"
-          secret_access_key="$(printf '%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)"
-
-          accounts_response="$(curl --fail-with-body --silent --show-error \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            'https://api.cloudflare.com/client/v4/accounts?per_page=50')"
-          mapfile -t account_ids < <(jq -er '.result[].id' <<<"$accounts_response")
-          [ "${#account_ids[@]}" -gt 0 ] || {
-            echo "No Cloudflare account is visible to the API token" >&2
-            exit 1
-          }
-
-          echo "::add-mask::$token_id"
-          echo "::add-mask::$secret_access_key"
-          export AWS_ACCESS_KEY_ID="$token_id"
-          export AWS_SECRET_ACCESS_KEY="$secret_access_key"
-
-          matches=()
-          for account_id in "${account_ids[@]}"; do
-            endpoint="https://${account_id}.r2.cloudflarestorage.com"
-            if aws s3api head-bucket \
-              --endpoint-url "$endpoint" \
-              --bucket "$UPDATE_BUCKET" >/dev/null 2>&1; then
-              matches+=("$account_id")
-            fi
-          done
-
-          [ "${#matches[@]}" -eq 1 ] || {
-            echo "Expected exactly one accessible R2 bucket named $UPDATE_BUCKET; found ${#matches[@]}" >&2
-            exit 1
-          }
-
-          echo "AWS_ACCESS_KEY_ID=$token_id" >> "$GITHUB_ENV"
-          echo "AWS_SECRET_ACCESS_KEY=$secret_access_key" >> "$GITHUB_ENV"
-          echo "R2_ENDPOINT=https://${matches[0]}.r2.cloudflarestorage.com" >> "$GITHUB_ENV"
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
 
       - name: Keep only the current release
         id: prune
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$UPDATE_BUCKET" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]] || {
+            echo "Invalid HomePanel update bucket name" >&2
+            exit 1
+          }
+
+          api="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/r2/buckets/${UPDATE_BUCKET}/objects"
+          auth_header="Authorization: Bearer ${CLOUDFLARE_API_TOKEN}"
+
+          object_url() {
+            local key="$1" encoded
+            encoded="$(jq -rn --arg value "$key" '$value | split("/") | map(@uri) | join("/")')"
+            printf '%s/%s' "$api" "$encoded"
+          }
+
+          list_keys() {
+            local prefix="$1" output="$2" cursor="" next_cursor response
+            : > "$output"
+            while true; do
+              local -a query=(--get --data-urlencode "prefix=$prefix")
+              [[ -z "$cursor" ]] || query+=(--data-urlencode "cursor=$cursor")
+              response="$(curl --fail-with-body --silent --show-error \
+                -H "$auth_header" "${query[@]}" "$api")"
+              jq -e \
+                '.success == true and
+                 (.result | type == "array") and
+                 all(.result[]?; .key | type == "string") and
+                 ((.result_info.cursor? // null) | type == "null" or type == "string")' \
+                <<< "$response" >/dev/null
+              jq -c '.result[]?.key' <<< "$response" >> "$output"
+
+              next_cursor="$(jq -r '.result_info.cursor // empty' <<< "$response")"
+              [[ -n "$next_cursor" ]] || break
+              [[ "$next_cursor" != "$cursor" ]] || {
+                echo "Cloudflare R2 object listing returned a repeated cursor" >&2
+                exit 1
+              }
+              cursor="$next_cursor"
+            done
+          }
 
           manifest_file="$(mktemp)"
-          aws s3api get-object \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket "$UPDATE_BUCKET" \
-            --key updates/latest/update-manifest.json \
-            "$manifest_file" >/dev/null
-
+          curl --fail-with-body --silent --show-error \
+            -H "$auth_header" \
+            "$(object_url 'updates/latest/update-manifest.json')" \
+            --output "$manifest_file"
           current_version="$(jq -er '.version | select(test("^[0-9]{10}$"))' "$manifest_file")"
           current_prefix="updates/releases/${current_version}/"
 
-          aws s3api list-objects-v2 \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket "$UPDATE_BUCKET" \
-            --prefix updates/releases/ \
-            --output json > objects.json
-
-          jq -r --arg keep "$current_prefix" \
-            '(.Contents // [])[] | .Key | select(startswith($keep) | not)' \
-            objects.json > obsolete-keys.txt
+          list_keys 'updates/releases/' objects-before.jsonl
+          jq -Rrc \
+            --arg releases_prefix 'updates/releases/' \
+            --arg current_prefix "$current_prefix" \
+            --arg current_version "$current_version" \
+            'fromjson as $key |
+             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
+             select(
+               ($key | startswith($current_prefix) | not) and
+               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
+             )' \
+            objects-before.jsonl > obsolete-keys.jsonl
 
           deleted=0
-          while IFS= read -r key; do
-            [ -n "$key" ] || continue
-            aws s3api delete-object \
-              --endpoint-url "$R2_ENDPOINT" \
-              --bucket "$UPDATE_BUCKET" \
-              --key "$key" >/dev/null
+          while IFS= read -r encoded_key; do
+            [[ -n "$encoded_key" ]] || continue
+            key="$(jq -r '.' <<< "$encoded_key")"
+            response="$(curl --fail-with-body --silent --show-error \
+              -X DELETE -H "$auth_header" "$(object_url "$key")")"
+            jq -e '.success == true' <<< "$response" >/dev/null
             deleted=$((deleted + 1))
-          done < obsolete-keys.txt
+          done < obsolete-keys.jsonl
 
-          remaining="$(aws s3api list-objects-v2 \
-            --endpoint-url "$R2_ENDPOINT" \
-            --bucket "$UPDATE_BUCKET" \
-            --prefix updates/releases/ \
-            --query 'length(Contents || `[]`)' \
-            --output text)"
+          list_keys 'updates/releases/' objects-after.jsonl
+          remaining="$(grep -c . objects-after.jsonl || true)"
+          unexpected_remaining="$(jq -Rr \
+            --arg releases_prefix 'updates/releases/' \
+            --arg current_prefix "$current_prefix" \
+            --arg current_version "$current_version" \
+            'fromjson as $key |
+             ($key | ltrimstr($releases_prefix) | split("/")[0]) as $version |
+             select(
+               ($key | startswith($current_prefix) | not) and
+               (($version | test("^[0-9]{10}$") | not) or $version <= $current_version)
+             )' \
+            objects-after.jsonl | grep -c . || true)"
+          [[ "$unexpected_remaining" -eq 0 ]] || {
+            echo "Obsolete HomePanel release objects remain after cleanup: $unexpected_remaining" >&2
+            exit 1
+          }
 
           echo "version=$current_version" >> "$GITHUB_OUTPUT"
           echo "deleted=$deleted" >> "$GITHUB_OUTPUT"

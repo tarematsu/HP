@@ -1,57 +1,28 @@
 #!/usr/bin/env node
 
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
+import {
+  MAX_ISSUE_BODY_CHARS,
+  clipText,
+  createGitHubRequest,
+  overallOutcome,
+  publishCommitStatuses,
+  readOptionalText,
+  renderOutcomeRows,
+  renderSection,
+  requiredEnv,
+  upsertStatusIssue,
+} from './observability-status-publisher.mjs';
 
 export const STATUS_ISSUE_TITLE = 'HomePanel Observability Status';
 export const STATUS_MARKER = '<!-- homepanel-observability-status -->';
 
-const VALID_OUTCOMES = new Set(['success', 'failure', 'cancelled', 'skipped']);
-const MAX_SECTION_CHARS = 12_000;
-const MAX_ISSUE_BODY_CHARS = 60_000;
-
-export function normalizeOutcome(value) {
-  const outcome = String(value || '').trim().toLowerCase();
-  return VALID_OUTCOMES.has(outcome) ? outcome : 'unknown';
-}
-
-export function statusState(outcome) {
-  return normalizeOutcome(outcome) === 'success' ? 'success' : 'failure';
-}
-
-export function overallOutcome(outcomes) {
-  return Object.values(outcomes).every((value) => normalizeOutcome(value) === 'success')
-    ? 'success'
-    : 'failure';
-}
-
-function sanitize(text) {
-  return String(text || '')
-    .replace(/Bearer\s+[A-Za-z0-9._~+\/=:-]+/gi, 'Bearer [redacted]')
-    .replace(/([?&](?:token|key|secret|signature|sig|auth)=)[^\s&#)]+/gi, '$1[redacted]')
-    .replace(/(CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN|ACCOUNT_ID)\s*[=:]\s*)\S+/gi, '$1[redacted]');
-}
-
-function clipped(text, maximum = MAX_SECTION_CHARS) {
-  const value = sanitize(text).trim();
-  if (value.length <= maximum) return value;
-  return `${value.slice(0, maximum)}\n\n…truncated…`;
-}
-
-async function readOptional(path) {
-  try {
-    return clipped(await readFile(path, 'utf8'));
-  } catch (error) {
-    if (error?.code === 'ENOENT') return '';
-    throw error;
-  }
-}
-
-function section(title, body) {
-  if (!body) return '';
-  return `\n<details>\n<summary>${title}</summary>\n\n${body}\n\n</details>\n`;
-}
+const STATUS_CONTEXTS = {
+  daily: 'observability/daily-usage-budget',
+  d1Insights: 'observability/d1-query-insights',
+  query: 'observability/cloudflare-query',
+  telemetry: 'observability/telemetry-policy',
+};
 
 export function buildIssueBody({
   generatedAt,
@@ -63,9 +34,6 @@ export function buildIssueBody({
   summaries = {},
 }) {
   const overall = overallOutcome(outcomes);
-  const rows = Object.entries(outcomes)
-    .map(([name, outcome]) => `| ${name} | ${normalizeOutcome(outcome)} |`)
-    .join('\n');
   const body = `${STATUS_MARKER}
 # HomePanel Observability Status
 
@@ -80,112 +48,31 @@ This issue is maintained automatically by the HomePanel Cloudflare Observability
 
 | Gate | Outcome |
 |---|---|
-${rows}
-${section('Projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
-${section('Top D1 queries by rows read', summaries.d1Insights)}
-${section('Cloudflare metrics and persisted errors', summaries.observability)}
-${section('Current-version CPU and error policy', summaries.telemetry)}
+${renderOutcomeRows(outcomes)}
+${renderSection('Projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
+${renderSection('Top D1 queries by rows read', summaries.d1Insights)}
+${renderSection('Cloudflare metrics and persisted errors', summaries.observability)}
+${renderSection('Current-version CPU and error policy', summaries.telemetry)}
 `;
-  return clipped(body, MAX_ISSUE_BODY_CHARS);
-}
-
-function requiredEnv(name) {
-  const value = String(process.env[name] || '').trim();
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-async function githubRequest(method, path, payload) {
-  const repository = requiredEnv('GITHUB_REPOSITORY');
-  const token = requiredEnv('GITHUB_TOKEN');
-  const response = await fetch(`https://api.github.com/repos/${repository}${path}`, {
-    method,
-    headers: {
-      Accept: 'application/vnd.github+json',
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'homepanel-observability-status',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
-    body: payload == null ? undefined : JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let body = null;
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = { message: text.slice(0, 500) };
-    }
-  }
-  if (!response.ok) {
-    throw new Error(`GitHub ${method} ${path} failed: ${response.status} ${text.slice(0, 500)}`);
-  }
-  return body;
-}
-
-async function publishCommitStatuses(targetSha, runUrl, outcomes) {
-  const contexts = {
-    policy: 'observability/policy-self-test',
-    daily: 'observability/daily-usage-budget',
-    d1Insights: 'observability/d1-query-insights',
-    query: 'observability/cloudflare-query',
-    telemetry: 'observability/telemetry-policy',
-  };
-  for (const [key, context] of Object.entries(contexts)) {
-    const outcome = normalizeOutcome(outcomes[key]);
-    await githubRequest('POST', `/statuses/${encodeURIComponent(targetSha)}`, {
-      state: statusState(outcome),
-      context,
-      description: `${key}: ${outcome}`.slice(0, 140),
-      target_url: runUrl,
-    });
-  }
-  const overall = overallOutcome(outcomes);
-  await githubRequest('POST', `/statuses/${encodeURIComponent(targetSha)}`, {
-    state: overall,
-    context: 'observability/overall',
-    description: `HomePanel observability: ${overall}`,
-    target_url: runUrl,
-  });
-}
-
-async function upsertStatusIssue(body) {
-  const issues = await githubRequest('GET', '/issues?state=all&per_page=100&sort=updated&direction=desc');
-  const existing = issues.find((issue) => (
-    !issue.pull_request
-    && issue.title === STATUS_ISSUE_TITLE
-    && String(issue.body || '').includes(STATUS_MARKER)
-  ));
-  if (existing) {
-    return githubRequest('PATCH', `/issues/${existing.number}`, {
-      title: STATUS_ISSUE_TITLE,
-      body,
-      state: 'open',
-    });
-  }
-  return githubRequest('POST', '/issues', {
-    title: STATUS_ISSUE_TITLE,
-    body,
-  });
+  return clipText(body, MAX_ISSUE_BODY_CHARS);
 }
 
 export async function publishFromEnvironment() {
   const targetSha = requiredEnv('OBSERVABILITY_TARGET_SHA');
   const runUrl = requiredEnv('OBSERVABILITY_RUN_URL');
+  const request = createGitHubRequest('homepanel-observability-status');
   const outcomes = {
-    policy: process.env.POLICY_OUTCOME,
     daily: process.env.DAILY_BUDGET_OUTCOME,
     d1Insights: process.env.D1_INSIGHTS_OUTCOME,
     query: process.env.OBSERVABILITY_QUERY_OUTCOME,
     telemetry: process.env.TELEMETRY_POLICY_OUTCOME,
   };
-  const summaries = {
-    daily: await readOptional('daily-usage/summary.md'),
-    d1Insights: await readOptional('d1-insights/summary.md'),
-    observability: await readOptional('observability-summary.md'),
-    telemetry: await readOptional('telemetry-summary.md'),
-  };
+  const [daily, d1Insights, observability, telemetry] = await Promise.all([
+    readOptionalText('daily-usage/summary.md'),
+    readOptionalText('d1-insights/summary.md'),
+    readOptionalText('observability-summary.md'),
+    readOptionalText('telemetry-summary.md'),
+  ]);
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
     targetSha,
@@ -193,53 +80,26 @@ export async function publishFromEnvironment() {
     trigger: process.env.OBSERVABILITY_TRIGGER || 'unknown',
     lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
-    summaries,
+    summaries: { daily, d1Insights, observability, telemetry },
   });
-  await publishCommitStatuses(targetSha, runUrl, outcomes);
-  const issue = await upsertStatusIssue(body);
+  await publishCommitStatuses({
+    request,
+    targetSha,
+    runUrl,
+    outcomes,
+    contexts: STATUS_CONTEXTS,
+    overallDescription: 'HomePanel observability',
+  });
+  const issue = await upsertStatusIssue({
+    request,
+    title: STATUS_ISSUE_TITLE,
+    marker: STATUS_MARKER,
+    body,
+  });
   console.log(`Published HomePanel observability status to issue #${issue.number}`);
 }
 
-function selfTest() {
-  assert.equal(statusState('success'), 'success');
-  assert.equal(statusState('skipped'), 'failure');
-  assert.equal(statusState('unknown'), 'failure');
-  assert.equal(statusState('failure'), 'failure');
-  assert.equal(overallOutcome({ a: 'success', b: 'success' }), 'success');
-  assert.equal(overallOutcome({ a: 'success', b: 'skipped' }), 'failure');
-  assert.equal(overallOutcome({ a: 'success', b: 'unknown' }), 'failure');
-  const body = buildIssueBody({
-    generatedAt: '2026-07-23T00:00:00.000Z',
-    targetSha: 'abc123',
-    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
-    trigger: 'workflow_run',
-    lookbackMinutes: '60',
-    outcomes: {
-      policy: 'success',
-      daily: 'failure',
-      d1Insights: 'success',
-      query: 'skipped',
-      telemetry: 'success',
-    },
-    summaries: {
-      daily: '## Daily\n\n| Metric | Value |\n|---|---:|\n| Queue | 1 |',
-      d1Insights: '## D1 query insights\n\n| SQL fingerprint | Total reads |\n|---|---:|\n| `abc` | 12 |',
-      telemetry: 'Authorization: Bearer secret-value',
-    },
-  });
-  assert.match(body, /HomePanel Observability Status/);
-  assert.match(body, /\*\*Overall:\*\* failure/);
-  assert.match(body, /\| d1Insights \| success \|/);
-  assert.match(body, /Top D1 queries by rows read/);
-  assert.match(body, /abc123/);
-  assert.doesNotMatch(body, /secret-value/);
-  assert.match(body, /Bearer \[redacted\]/);
-  console.log('HomePanel observability status publisher self-test passed');
-}
-
-if (process.argv.includes('--self-test')) {
-  selfTest();
-} else if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   publishFromEnvironment().catch((error) => {
     console.error(`::error title=Publish HomePanel observability status::${String(error?.message || error).replaceAll('\n', ' ').slice(0, 1000)}`);
     process.exitCode = 1;

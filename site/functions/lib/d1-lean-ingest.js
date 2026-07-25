@@ -1,0 +1,383 @@
+import { payloadHash } from './ingest-claim.js';
+import { bool, num, rawJson, text } from './api-utils.js';
+
+const SNAPSHOT_CHECKPOINT_MS = 5 * 60_000;
+const QUEUE_STRUCTURAL_PAYLOAD = Symbol.for('stationhead.queue.structural-payload');
+const SNAPSHOT_HASH_CACHE_LIMIT = 16;
+const SNAPSHOT_SIGNATURE_LENGTH = 23;
+const snapshotHashCache = new Map();
+
+export function resetSnapshotHashCacheForTests() {
+  snapshotHashCache.clear();
+}
+
+function snapshotHashCacheFor(channelKey) {
+  const existing = snapshotHashCache.get(channelKey);
+  if (existing) return existing;
+  if (snapshotHashCache.size >= SNAPSHOT_HASH_CACHE_LIMIT) {
+    const oldest = snapshotHashCache.keys().next().value;
+    if (oldest !== undefined) snapshotHashCache.delete(oldest);
+  }
+  const value = {};
+  snapshotHashCache.set(channelKey, value);
+  return value;
+}
+
+function snapshotRawPayload(data) {
+  const presentation = data?.presentation;
+  if (presentation && typeof presentation === 'object') {
+    const currentStation = presentation.current_station || {};
+    const owner = currentStation.owner || {};
+    return {
+      description: text(presentation.description || currentStation.status),
+      artist_name: text(presentation.artist_name),
+      accent_color: text(presentation.accent_color),
+      images: {
+        medium: { url: text(presentation.images?.medium?.url) },
+        logo: { medium: { url: text(presentation.images?.logo?.medium?.url) } },
+      },
+      current_station: {
+        status: text(currentStation.status),
+        owner: {
+          thumbnail: { url: text(owner.thumbnail?.url) },
+          medium: { url: text(owner.medium?.url) },
+        },
+      },
+    };
+  }
+  const raw = data?.raw || {};
+  const station = raw.current_station || {};
+  const owner = station.owner || {};
+  return {
+    description: text(raw.description || station.status),
+    artist_name: text(raw.artist_name),
+    accent_color: text(raw.accent_color),
+    images: {
+      medium: { url: text(raw.images?.medium?.url) },
+      logo: { medium: { url: text(raw.images?.logo?.medium?.url) } },
+    },
+    current_station: {
+      status: text(station.status),
+      owner: {
+        thumbnail: { url: text(owner.thumbnail?.url) },
+        medium: { url: text(owner.medium?.url) },
+      },
+    },
+  };
+}
+
+function snapshotFrame(data, streamCount) {
+  return {
+    channelId: num(data?.channel_id),
+    channelAlias: text(data?.channel_alias),
+    channelName: text(data?.channel_name),
+    stationId: num(data?.station_id),
+    isLaunched: bool(data?.is_launched),
+    isBroadcasting: bool(data?.is_broadcasting),
+    chatStatus: text(data?.chat_status),
+    listenerCount: num(data?.listener_count),
+    onlineMemberCount: num(data?.online_member_count),
+    totalMemberCount: num(data?.total_member_count),
+    guestCount: num(data?.guest_count),
+    cumulativeListenerCount: num(data?.total_listens),
+    streamGoal: num(data?.stream_goal),
+    streamCount,
+    hostAccountId: num(data?.host_account_id),
+    hostHandle: text(data?.host_handle),
+    broadcastStartTime: num(data?.broadcast_start_time),
+    metadata: snapshotRawPayload(data),
+  };
+}
+
+function snapshotHashPayload(frame) {
+  return {
+    channel_id: frame.channelId,
+    station_id: frame.stationId,
+    is_launched: frame.isLaunched,
+    is_broadcasting: frame.isBroadcasting,
+    chat_status: frame.chatStatus,
+    listener_count: frame.listenerCount,
+    online_member_count: frame.onlineMemberCount,
+    total_member_count: frame.totalMemberCount,
+    guest_count: frame.guestCount,
+    cumulative_listener_count: frame.cumulativeListenerCount,
+    reported_stream_count: frame.streamCount,
+    stream_goal: frame.streamGoal,
+    host_account_id: frame.hostAccountId,
+    host_handle: frame.hostHandle,
+    broadcast_start_time: frame.broadcastStartTime,
+    metadata: frame.metadata,
+  };
+}
+
+function snapshotSignatureMatchesData(signature, data, streamCount) {
+  if (!signature || signature.length !== SNAPSHOT_SIGNATURE_LENGTH) return false;
+  const presentation = data?.presentation;
+  const metadata = presentation && typeof presentation === 'object'
+    ? presentation
+    : data?.raw || {};
+  const currentStation = metadata.current_station || {};
+  const owner = currentStation.owner || {};
+  const images = metadata.images || {};
+  return signature[0] === num(data?.channel_id)
+    && signature[1] === num(data?.station_id)
+    && signature[2] === bool(data?.is_launched)
+    && signature[3] === bool(data?.is_broadcasting)
+    && signature[4] === text(data?.chat_status)
+    && signature[5] === num(data?.listener_count)
+    && signature[6] === num(data?.online_member_count)
+    && signature[7] === num(data?.total_member_count)
+    && signature[8] === num(data?.guest_count)
+    && signature[9] === num(data?.total_listens)
+    && signature[10] === streamCount
+    && signature[11] === num(data?.stream_goal)
+    && signature[12] === num(data?.host_account_id)
+    && signature[13] === text(data?.host_handle)
+    && signature[14] === num(data?.broadcast_start_time)
+    && signature[15] === text(metadata.description || currentStation.status)
+    && signature[16] === text(metadata.artist_name)
+    && signature[17] === text(metadata.accent_color)
+    && signature[18] === text(images.medium?.url)
+    && signature[19] === text(images.logo?.medium?.url)
+    && signature[20] === text(currentStation.status)
+    && signature[21] === text(owner.thumbnail?.url)
+    && signature[22] === text(owner.medium?.url);
+}
+
+function captureSnapshotSignature(frame) {
+  const metadata = frame.metadata || {};
+  const images = metadata.images || {};
+  const currentStation = metadata.current_station || {};
+  const owner = currentStation.owner || {};
+  return [
+    frame.channelId,
+    frame.stationId,
+    frame.isLaunched,
+    frame.isBroadcasting,
+    frame.chatStatus,
+    frame.listenerCount,
+    frame.onlineMemberCount,
+    frame.totalMemberCount,
+    frame.guestCount,
+    frame.cumulativeListenerCount,
+    frame.streamCount,
+    frame.streamGoal,
+    frame.hostAccountId,
+    frame.hostHandle,
+    frame.broadcastStartTime,
+    metadata.description,
+    metadata.artist_name,
+    metadata.accent_color,
+    images.medium?.url,
+    images.logo?.medium?.url,
+    currentStation.status,
+    owner.thumbnail?.url,
+    owner.medium?.url,
+  ];
+}
+
+export function reportedStreamCount(data) {
+  const value = num(data?.current_stream_count);
+  return value != null && value >= 0 ? value : null;
+}
+
+export async function saveLeanSnapshot(db, observedAt, data) {
+  const channelId = num(data?.channel_id);
+  const stationId = num(data?.station_id);
+  const channelKey = String(channelId ?? `station:${stationId ?? 0}`);
+  const current = await db.prepare(`SELECT payload_hash,last_snapshot_at
+    FROM sh_snapshot_current WHERE channel_key=?`).bind(channelKey).first();
+  const streamCount = reportedStreamCount(data);
+  const hashCache = snapshotHashCacheFor(channelKey);
+  const cacheHit = snapshotSignatureMatchesData(hashCache.signature, data, streamCount);
+  let frame = null;
+  let hash = hashCache.hash;
+  if (!cacheHit) {
+    frame = snapshotFrame(data, streamCount);
+    hash = await payloadHash(snapshotHashPayload(frame));
+    hashCache.signature = captureSnapshotSignature(frame);
+    hashCache.hash = hash;
+  }
+  if (current?.payload_hash === hash
+      && observedAt - Number(current.last_snapshot_at || 0) < SNAPSHOT_CHECKPOINT_MS) {
+    return {
+      inserted: false,
+      skipped: true,
+      reportedStreamCount: streamCount,
+      reported_stream_count: streamCount,
+    };
+  }
+
+  frame ||= snapshotFrame(data, streamCount);
+  const common = [
+    observedAt, frame.channelId, frame.channelAlias, frame.channelName, frame.stationId,
+    frame.isLaunched, frame.isBroadcasting, frame.chatStatus,
+    frame.listenerCount, frame.onlineMemberCount, frame.totalMemberCount,
+    frame.guestCount, frame.cumulativeListenerCount, frame.streamGoal,
+    frame.streamCount, null, frame.hostAccountId, frame.hostHandle,
+    frame.broadcastStartTime,
+  ];
+  const velocityBinds = [frame.stationId, observedAt - 120_000, observedAt];
+  const compactRaw = rawJson(frame.metadata);
+
+  await db.batch([
+    db.prepare(`INSERT INTO sh_channel_snapshots (
+      observed_at,channel_id,channel_alias,channel_name,station_id,
+      is_launched,is_broadcasting,chat_status,listener_count,online_member_count,
+      total_member_count,guest_count,total_listens,stream_goal,current_stream_count,
+      validated_stream_count,host_account_id,host_handle,broadcast_start_time,comment_velocity,raw_json
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,(
+      SELECT COALESCE(SUM(comment_count),0) FROM sh_comment_minute_counts
+      WHERE station_id=? AND bucket_start>=? AND bucket_start<=?
+    ),?)`).bind(...common, ...velocityBinds, compactRaw),
+    db.prepare(`INSERT INTO sh_snapshot_current(
+        channel_key,payload_hash,last_snapshot_at,last_stream_count,last_stream_at,updated_at
+      ) VALUES(?,?,?,?,?,?) ON CONFLICT(channel_key) DO UPDATE SET
+      payload_hash=excluded.payload_hash,last_snapshot_at=excluded.last_snapshot_at,
+      last_stream_count=NULL,last_stream_at=NULL,
+      updated_at=excluded.updated_at
+      WHERE excluded.last_snapshot_at>=COALESCE(sh_snapshot_current.last_snapshot_at,0)`)
+      .bind(
+        channelKey,
+        hash,
+        observedAt,
+        null,
+        null,
+        Date.now(),
+      ),
+  ]);
+  return {
+    inserted: true,
+    skipped: false,
+    reportedStreamCount: streamCount,
+    reported_stream_count: streamCount,
+  };
+}
+
+export function queueStructuralPayload(data) {
+  if (data?.[QUEUE_STRUCTURAL_PAYLOAD]) return data[QUEUE_STRUCTURAL_PAYLOAD];
+  return {
+    station_id: num(data?.station_id),
+    queue_id: num(data?.queue_id),
+    start_time: num(data?.start_time),
+    is_paused: bool(data?.is_paused),
+    tracks: (Array.isArray(data?.tracks) ? data.tracks : []).map((track) => ({
+      position: num(track?.position),
+      queue_track_id: num(track?.queue_track_id),
+      stationhead_track_id: num(track?.stationhead_track_id),
+      spotify_id: text(track?.spotify_id),
+      deezer_id: text(track?.deezer_id),
+      isrc: text(track?.isrc),
+      duration_ms: num(track?.duration_ms),
+      preview_url: text(track?.preview_url),
+    })),
+  };
+}
+
+export function normalizedTrackIsrc(track) {
+  const isrc = text(track?.isrc)?.trim().toUpperCase();
+  return isrc || null;
+}
+
+export function normalizedTrackSpotifyId(track) {
+  const spotifyId = text(track?.spotify_id)?.trim();
+  return spotifyId || null;
+}
+
+export function legacyObservationTrackKey(track) {
+  return normalizedTrackIsrc(track) || normalizedTrackSpotifyId(track);
+}
+
+export function observationTrackKey(track) {
+  const isrc = normalizedTrackIsrc(track);
+  if (isrc) return `isrc:${isrc}`;
+  const spotifyId = normalizedTrackSpotifyId(track);
+  return spotifyId ? `spotify:${spotifyId}` : null;
+}
+
+export function observationTrackKeys(track) {
+  const key = observationTrackKey(track);
+  return key ? [key] : [];
+}
+
+function latestRowsByIdentity(latestRows) {
+  const rows = new Map();
+  for (const row of latestRows || []) {
+    const identity = observationTrackKey(row);
+    if (!identity) continue;
+    const previous = rows.get(identity);
+    if (!previous || Number(row?.observed_at || 0) >= Number(previous?.observed_at || 0)) {
+      rows.set(identity, row);
+    }
+  }
+  return rows;
+}
+
+function structuralItemState(track, queueId = null) {
+  return {
+    queue_id: num(queueId ?? track?.queue_id),
+    queue_track_id: num(track?.queue_track_id),
+    stationhead_track_id: num(track?.stationhead_track_id),
+    spotify_id: text(track?.spotify_id),
+    deezer_id: text(track?.deezer_id),
+    isrc: text(track?.isrc),
+    duration_ms: num(track?.duration_ms),
+    preview_url: text(track?.preview_url),
+  };
+}
+
+function sameValue(left, right) {
+  return (left ?? null) === (right ?? null);
+}
+
+export function queueItemsToWriteLean(tracks, existingRows, queueId = null) {
+  const existing = new Map((existingRows || []).map((row) => [Number(row.position), row]));
+  const unique = new Map();
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    const position = num(track?.position);
+    if (position != null) unique.set(position, track);
+  }
+  const changed = [];
+  for (const track of unique.values()) {
+    const previous = existing.get(num(track.position));
+    if (!previous) {
+      changed.push(track);
+      continue;
+    }
+    const current = structuralItemState(track, queueId);
+    if (Object.entries(current).some(([key, value]) => !sameValue(previous[key], value))) changed.push(track);
+  }
+  return changed;
+}
+
+export function planLikeObservations(tracks, latestRows) {
+  return planLikeChanges(tracks, latestRows).observations;
+}
+
+export function planLikeCurrentMigrations(tracks, latestRows) {
+  return planLikeChanges(tracks, latestRows).currentLikeMigrations;
+}
+
+export function planLikeChanges(tracks, latestRows) {
+  const latest = latestRowsByIdentity(latestRows);
+  const unique = new Map();
+  const migrations = [];
+  const seen = new Set();
+  for (const track of Array.isArray(tracks) ? tracks : []) {
+    const canonical = observationTrackKey(track);
+    const likeCount = num(track?.bite_count);
+    if (!canonical || likeCount == null) continue;
+    unique.set(canonical, track);
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    const row = latest.get(canonical);
+    if (row && String(row.track_key || '') !== canonical
+        && num(row.like_count) === likeCount) {
+      migrations.push({ trackKey: canonical, track });
+    }
+  }
+  const observations = [...unique.entries()]
+    .filter(([identity, track]) => num(latest.get(identity)?.like_count) !== num(track.bite_count))
+    .map(([trackKey, track]) => ({ trackKey, track }));
+  return { observations, currentLikeMigrations: migrations };
+}

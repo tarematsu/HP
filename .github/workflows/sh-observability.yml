@@ -1,0 +1,209 @@
+name: Cloudflare Observability
+
+# PR #567's diagnostics intent is preserved by post-deploy and daily audits.
+on:
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sh-observability.yml'
+      - '.github/actions/cloudflare-observability-diagnostics/action.yml'
+      - '.github/scripts/audit-cloudflare-*.py'
+      - '.github/scripts/cloudflare_free_tier_audit.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
+      - '.github/scripts/audit-observability-budget-gates.py'
+      - '.github/scripts/query-cloudflare-observability.py'
+      - '.github/scripts/capture-cloudflare-live-tail.mjs'
+      - '.github/scripts/observability-status-publisher.mjs'
+      - '.github/scripts/publish-cloudflare-observability-status.mjs'
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_minutes:
+        description: Minutes of Cloudflare metrics and persisted errors to inspect
+        required: false
+        default: "60"
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+  statuses: write
+
+concurrency:
+  group: cloudflare-observability-sh-${{ github.event.workflow_run.id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    name: Select safe diagnostic trigger
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - name: Check out push history
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Defer deploy-affecting pushes to workflow_run
+        id: decision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != 'push' ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+            changed_files="$(git ls-files)"
+          else
+            changed_files="$(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")"
+          fi
+          printf '%s\n' "$changed_files"
+
+          if grep -Eq '^(database/facts-db\.json$|database/facts-migrations/|worker/src/|worker/scripts/|worker/wrangler.*\.jsonc$|worker/package(-lock)?\.json$|site/functions/|site/public/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/|\.github/workflows/database\.yml$|\.github/workflows/deploy-split-pipeline\.yml$)' <<<"$changed_files"; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Deferring Cloudflare diagnostics until Deploy production completes."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  observability:
+    needs: classify
+    if: >-
+      needs.classify.outputs.run == 'true' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator
+      D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc
+      LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
+      CPU_BUDGET_MS: "10"
+      QUEUE_CPU_BUDGET_MS: "30000"
+      DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
+      DAILY_REQUEST_BUDGET: "100000"
+      DAILY_REQUEST_RESERVE: "0"
+      DAILY_D1_READ_BUDGET: "5000000"
+      DAILY_D1_WRITE_BUDGET: "100000"
+      DAILY_QUEUE_BUDGET: "10000"
+      DAILY_USAGE_OUTPUT_DIR: daily-usage
+      CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator
+      CLOUDFLARE_CONFIG_GLOBS: worker/wrangler.runtime.jsonc,worker/wrangler.buddies-collector.jsonc
+      CLOUDFLARE_STORAGE_BUCKETS: sh-runtime-analytics
+      CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV
+      CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR
+      FREE_TIER_USAGE_OUTPUT_DIR: free-tier-usage
+      OBSERVABILITY_GATE_OUTPUT_DIR: observability-gate
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          show-progress: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Enforce UTC daily request and D1 budgets
+        id: daily-budget
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
+
+      - name: Enforce DO, Queues, R2, and KV included-usage budgets
+        id: free-tier-budget
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-cloudflare-free-tier.py 2>&1 | tee free-tier-usage-audit.log
+
+      - name: Validate complete budget-gate coverage
+        id: budget-contract
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-observability-budget-gates.py 2>&1 | tee observability-budget-gate.log
+
+      - name: Collect metrics and live events in parallel
+        id: observability-query
+        continue-on-error: true
+        uses: ./.github/actions/cloudflare-observability-diagnostics
+        with:
+          live-tail-worker: sh-runtime-orchestrator
+          live-tail-seconds: "90"
+
+      - name: Enforce current-deployment persisted and live CPU policy
+        id: telemetry-policy
+        continue-on-error: true
+        env:
+          LIVE_TAIL_LOG: live-tail.log
+          ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments.json
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
+
+      - name: Publish persistent observability status
+        id: publish-status
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          OBSERVABILITY_MAIN_REF: main
+          OBSERVABILITY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OBSERVABILITY_TRIGGER: ${{ github.event_name }}
+          DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
+          FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
+          BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
+          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outcome }}
+          TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
+        run: node .github/scripts/publish-cloudflare-observability-status.mjs
+
+      - name: Upload sanitized observability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-observability-report-sh-${{ github.run_id }}
+          path: |
+            daily-usage/
+            daily-usage-audit.log
+            free-tier-usage/
+            free-tier-usage-audit.log
+            observability-gate/
+            observability-budget-gate.log
+            observability-summary.md
+            observability-query.log
+            telemetry-audit.log
+            active-worker-deployments.json
+            live-tail.log
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Fail after collecting diagnostics when any observability gate fails
+        if: >-
+          steps.daily-budget.outcome == 'failure' ||
+          steps.free-tier-budget.outcome == 'failure' ||
+          steps.budget-contract.outcome == 'failure' ||
+          steps.observability-query.outcome == 'failure' ||
+          steps.telemetry-policy.outcome == 'failure' ||
+          steps.publish-status.outcome == 'failure'
+        run: exit 1

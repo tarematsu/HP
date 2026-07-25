@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "skrzk",
+  "compatibility_date": "2026-06-23",
+  "pages_build_output_dir": "./public",
+  "vars": {
+    "HEALTH_ALERT_STALE_MS": 3600000,
+    "MINUTE_FACT_PENDING_ALERT_MS": 900000,
+    "MINUTE_DERIVE_STALE_MS": 360000,
+    "MINUTE_MAINTENANCE_STALE_MS": 1200000,
+    "OTHER_CRON_STALE_MS": 720000,
+    "PAGES_RESPONSE_MAX_AGE_MS": 21900000,
+    "SOLO_BROADCAST_HANDLE": "sakurazaka46jp",
+    "OFFICIAL_NEWS_STALE_MS": 7200000,
+    "CLOUD_HOST_STALE_MS": 7200000
+  },
+  "services": [
+    { "binding": "PAGES_READ_MODEL_SERVICE", "service": "sh-runtime-orchestrator" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "stationhead-buddies",
+      "database_id": "f361aae0-05f0-42bc-8784-77100e80133d"
+    },
+    {
+      "binding": "MINUTE_DB",
+      "database_name": "stationhead-minute",
+      "database_id": "43c12c1e-886d-4496-9c37-61bc8a15bbd7"
+    },
+    {
+      "binding": "OTHER_DB",
+      "database_name": "stationhead-other",
+      "database_id": "21e70e92-6725-4e62-809e-8aadb088cc11"
+    }
+  ]
+}
