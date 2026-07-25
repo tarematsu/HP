@@ -26,6 +26,7 @@ Derive Worker names, D1 databases, Queues, buckets, and bindings from the active
 Stationhead configurations:
 
 - `worker/wrangler.sakurazaka46jp.jsonc`
+- `worker/wrangler.buddies-recovery.jsonc`
 - `worker/wrangler.buddies-collector.jsonc`
 - `worker/wrangler.runtime.jsonc`
 - `site/wrangler.jsonc`
