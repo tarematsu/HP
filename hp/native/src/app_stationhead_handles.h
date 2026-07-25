@@ -8,8 +8,7 @@ namespace hp {
 inline constexpr int64_t kStationheadTrackTransitionGraceMs = 30'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
-  return status.loginRequired || status.spotifyAuthorization ||
-      status.processFailed || !status.audioPlaying;
+  return !status.audioPlaying;
 }
 
 enum class WorkspaceTab {
