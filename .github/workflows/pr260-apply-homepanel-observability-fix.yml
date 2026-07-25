@@ -1,0 +1,45 @@
+name: Apply HomePanel observability fix
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/pr260_apply_homepanel_observability_fix.py'
+      - '.github/workflows/pr260-apply-homepanel-observability-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref == 'agent/fix-homepanel-observability-contract'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Apply diagnosed observability fixes
+        run: python3 .github/scripts/pr260_apply_homepanel_observability_fix.py
+
+      - name: Validate telemetry policy self-tests
+        run: |
+          python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
+          node --test tests/cloudflare-observability-api.test.mjs tests/homepanel-observability-contract.test.mjs
+
+      - name: Commit observability fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add \
+            .github/scripts/audit-cloudflare-telemetry.py \
+            .github/scripts/publish-homepanel-observability-status.mjs \
+            .github/workflows/hp-observability.yml \
+            .github/workflows/homepanel-unified-ci.yml \
+            tests/cloudflare-observability-api.test.mjs \
+            tests/homepanel-observability-contract.test.mjs
+          git commit -m 'fix: harden HomePanel observability contracts'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
