@@ -105,7 +105,8 @@ const INGEST_HANDLERS = {
         num(track.fetched_at) ?? observedAt,
         rawJson(track.raw),
       ));
-    const results = statements.length ? await env.DB.batch(statements) : [];
+    const batchResult = statements.length ? await env.DB.batch(statements) : [];
+    const results = Array.isArray(batchResult) ? batchResult : [];
     const written = results.reduce(
       (total, result) => total + Number(result?.meta?.changes || 0),
       0,
