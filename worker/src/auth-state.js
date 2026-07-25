@@ -53,6 +53,11 @@ function fallbackCredentials(env = {}) {
   };
 }
 
+function refreshBeforeMs(env = {}) {
+  const parsed = Number(env.AUTH_REFRESH_BEFORE_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 3_600_000;
+}
+
 export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
   const fallback = fallbackCredentials(env);
   const authToken = normalizeBearer(row?.auth_token || fallback.authToken);
@@ -76,19 +81,21 @@ export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
   };
 }
 
-function validHotAuthState(value, stateId) {
+function validHotAuthState(value, env, stateId) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const id = normalizedStateId(stateId);
   if (normalizedStateId(value.id) !== id) return null;
   const authToken = normalizeBearer(value.authToken);
   const deviceUid = String(value.deviceUid || '').trim();
   if (!authToken || !deviceUid) return null;
+  const tokenExpiresAt = Number(value.tokenExpiresAt || 0) || jwtExpiryMs(authToken);
+  if (tokenExpiresAt && tokenExpiresAt - Date.now() <= refreshBeforeMs(env)) return null;
   return {
     ...value,
     id,
     authToken,
     deviceUid,
-    tokenExpiresAt: Number(value.tokenExpiresAt || 0) || jwtExpiryMs(authToken),
+    tokenExpiresAt,
     lastAttemptAt: Number(value.lastAttemptAt || 0),
     lastSuccessAt: Number(value.lastSuccessAt || 0),
     lockUntil: Number(value.lockUntil || 0),
@@ -117,6 +124,7 @@ export async function ensureAuthControlSchema(env) {
 export async function readAuthState(env, stateId = DEFAULT_AUTH_STATE_ID) {
   const hot = validHotAuthState(
     await getCollectorHotState(env, hotStateKey(stateId)),
+    env,
     stateId,
   );
   if (hot) return hot;
