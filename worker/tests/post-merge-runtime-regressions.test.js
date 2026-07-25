@@ -51,12 +51,14 @@ test('consolidated Pages route handles minute read-model messages even when batc
   assert.deepEqual(events, ['metadata', 'ack']);
 });
 
-test('optional comments are bounded inside the dedicated collector ingest route', () => {
+test('optional comments are bounded inside the dedicated recovery ingest route', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
+  const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
   const entry = readFileSync(new URL('../src/ingest-channel-optimized-entry.js', import.meta.url), 'utf8');
-  const comments = collector.queues.consumers.find(({ queue }) => queue === 'stationhead-comments');
+  const comments = recovery.queues.consumers.find(({ queue }) => queue === 'stationhead-comments');
   assert.equal(collector.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
+  assert.equal(recovery.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
   assert.equal(comments.max_batch_size, 1);
   assert.equal(comments.max_concurrency, 1);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
