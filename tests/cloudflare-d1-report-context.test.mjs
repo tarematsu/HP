@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { readSource } from './helpers/source-contract.mjs';
 
+const workflow = readSource('.github/workflows/fetch-cloudflare-d1-usage.yml');
 const daily = readSource('scripts/cloudflare-d1-usage.mjs');
 const rolling = readSource('scripts/cloudflare-d1-hourly-usage.mjs');
 const queryCosts = readSource('.github/scripts/query-cloudflare-d1-costs.py');
@@ -30,4 +31,11 @@ test('D1 query-cost collector remains privacy-preserving GraphQL only', () => {
   assert.match(queryCosts, /sanitize_query/);
   assert.match(queryCosts, /hashlib\.sha256/);
   assert.doesNotMatch(queryCosts, /\/d1\/database|wrangler d1 insights/);
+});
+
+test('manual D1 workflow has one credential resolver and no unused npm cache', () => {
+  assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(workflow, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
+  assert.doesNotMatch(workflow, /^\s{6}CLOUDFLARE_API_TOKEN:/m);
+  assert.doesNotMatch(workflow, /cache: npm|cache-dependency-path|npm (?:ci|install)/);
 });
