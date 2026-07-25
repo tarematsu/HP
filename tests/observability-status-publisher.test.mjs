@@ -26,12 +26,21 @@ test('shared publisher normalizes failures and sanitizes diagnostic text', () =>
   assert.equal(overallOutcome({ a: 'success', b: 'success' }), 'success');
   assert.equal(overallOutcome({ a: 'success', b: 'unknown' }), 'failure');
 
-  const sanitized = sanitizeText(
-    'Authorization: Bearer secret-value https://example.test/?token=abc CLOUDFLARE_ACCOUNT_ID=123',
+  const sanitized = sanitizeText([
+    'Authorization: Bearer secret-value',
+    'authorization=Basic basic-value',
+    'https://example.test/?token=query-value',
+    '{"api_token":"json-value","secret":"hidden"}',
+    'CLOUDFLARE_ACCOUNT_ID=123',
+  ].join(' '));
+  assert.doesNotMatch(
+    sanitized,
+    /secret-value|basic-value|query-value|json-value|hidden|ACCOUNT_ID=123/,
   );
-  assert.doesNotMatch(sanitized, /secret-value|token=abc|ACCOUNT_ID=123/);
   assert.match(sanitized, /Bearer \[redacted\]/);
+  assert.match(sanitized, /Basic \[redacted\]/);
   assert.match(sanitized, /token=\[redacted\]/);
+  assert.match(sanitized, /"api_token":"\[redacted\]"/);
   assert.match(sanitized, /CLOUDFLARE_ACCOUNT_ID=\[redacted\]/);
   assert.match(clipText('x'.repeat(20), 10), /^x{10}\n\n…truncated…$/);
 });
