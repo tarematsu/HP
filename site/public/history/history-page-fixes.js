@@ -1,4 +1,4 @@
-import { inclusivePresetStart, jstDate } from './history-date-utils.js';
+import { inclusivePresetStart, utcDate } from './history-date-utils.js';
 import { aggregateCompleteTrackRows } from './history-track-view.js';
 
 const originalBeginPath = CanvasRenderingContext2D.prototype.beginPath;
@@ -131,8 +131,8 @@ function scheduleTrackRanking() {
   });
 }
 
-function applyJstPreset(days) {
-  const to = jstDate();
+function applyUtcPreset(days) {
+  const to = utcDate();
   const from = days === 'all'
     ? '2024-05-01'
     : inclusivePresetStart(to, days);
@@ -151,7 +151,7 @@ rangePresets?.addEventListener('click', (event) => {
   if (!button) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  applyJstPreset(button.dataset.days);
+  applyUtcPreset(button.dataset.days);
   document.getElementById('load')?.click();
 }, true);
 
@@ -159,8 +159,8 @@ window.addEventListener('history:runtime-ready', () => {
   if (['#tracks', '#broadcasts'].includes(location.hash)) return;
   const activePreset = document.querySelector('#rangePresets button.active')?.dataset.days || 'all';
   const toInput = document.getElementById('to');
-  if (toInput?.value === jstDate()) return;
-  applyJstPreset(activePreset);
+  if (toInput?.value === utcDate()) return;
+  applyUtcPreset(activePreset);
   document.getElementById('load')?.click();
 });
 
