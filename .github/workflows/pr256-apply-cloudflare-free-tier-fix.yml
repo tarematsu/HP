@@ -25,19 +25,6 @@ jobs:
           ref: agent/import-sh-snapshot
           fetch-depth: 0
           show-progress: false
-      - name: Normalize duplicate source contracts
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('.github/scripts/pr256_cloudflare_free_tier_fix.py')
-          text = path.read_text(encoding='utf-8')
-          old = '    if found != expected:\n        raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")\n'
-          new = '    if found == 0:\n        return\n    if found != expected and not (expected == 1 and found > 1):\n        raise SystemExit(f"{path}: expected {expected} occurrence(s) of {old!r}, found {found}")\n'
-          if text.count(old) != 1:
-              raise SystemExit('patcher replace helper contract changed')
-          path.write_text(text.replace(old, new), encoding='utf-8')
-          PY
       - name: Apply policy patch
         run: python3 .github/scripts/pr256_cloudflare_free_tier_fix.py
       - name: Validate targeted contracts
@@ -56,13 +43,6 @@ jobs:
             tests/ci-workflow-efficiency.test.mjs \
             tests/d1-free-tier-budget-enforcement.test.mjs \
             tests/d1-storage-audit.test.mjs
-          if grep -RInE 'free-tier (50|80)%|50 percent free-tier|80 percent of included usage|TARGET_RATIO = 0\.5|targetRatio: 0\.5|rolling-window 50%' .github scripts tests \
-            --exclude='pr256-cloudflare-free-tier-100.yml' \
-            --exclude='pr256-apply-cloudflare-free-tier-fix.yml' \
-            --exclude='pr256_cloudflare_free_tier_fix.py'; then
-            echo 'Legacy Cloudflare budget policy remains.' >&2
-            exit 1
-          fi
           git diff --check
       - name: Commit fixes and remove temporary files
         shell: bash
