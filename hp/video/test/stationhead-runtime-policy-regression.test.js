@@ -40,7 +40,19 @@ test('active runtime policy gates message sources and generic login links', () =
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
     '// The page can complete a fresh login',
   );
-  assert.match(runtimeAutoplay, /StationheadAutoplayScript\(globalName, messagePrefix\)/);
+  const audioOnlyAt = runtimeAutoplay.indexOf('StationheadAudioOnlyUiScript()');
+  const blankRecoveryAt = runtimeAutoplay.indexOf(
+    'StationheadBlankPageRecoveryScriptRuntimeFixed()',
+  );
+  const baseAt = runtimeAutoplay.indexOf(
+    'StationheadAutoplayScriptBase(globalName, messagePrefix)',
+  );
+  assert.ok(audioOnlyAt >= 0 && audioOnlyAt < blankRecoveryAt);
+  assert.ok(blankRecoveryAt >= 0 && blankRecoveryAt < baseAt);
+  assert.doesNotMatch(
+    runtimeAutoplay,
+    /StationheadAutoplayScript\(globalName, messagePrefix\)/,
+  );
   assert.match(runtimeAutoplay, /const topLevelStationhead =/);
   assert.match(runtimeAutoplay, /window\.top === window/);
   assert.match(runtimeAutoplay, /if \(!topLevelStationhead\)/);
@@ -80,6 +92,89 @@ test('active runtime policy gates message sources and generic login links', () =
   assert.match(
     runtimeFixSource,
     /#define StationheadAutoplayScript StationheadAutoplayScriptRuntimeFixed/,
+  );
+});
+
+test('blank-page recovery preserves valid account and playback interaction', () => {
+  const recovery = section(
+    runtimeFixSource,
+    'inline std::wstring StationheadBlankPageRecoveryScriptRuntimeFixed()',
+    '// Locate only a genuine playback control',
+  );
+  assert.match(recovery, /window\.top !== window/);
+  assert.match(recovery, /const protectedInteractionVisible = \(\) =>/);
+  assert.match(recovery, /credentialSelector/);
+  assert.match(recovery, /homepanelStationheadBlockingLoginVisible === true/);
+  assert.match(recovery, /start listening\|listen now\|listen live/);
+  assert.match(recovery, /spotify\|connect spotify\|log in\|sign in\|login/);
+  assert.match(
+    recovery,
+    /playing\(\) \|\| protectedInteractionVisible\(\)[\s\S]*blankSince = 0;/,
+  );
+  assert.match(
+    recovery,
+    /pageActive && !playing\(\) && !protectedInteractionVisible\(\)[\s\S]*sparseDarkSurface\(\)[\s\S]*location\.reload\(\)/,
+  );
+});
+
+test('blank-page recovery retires timers with the document lifetime', () => {
+  const recovery = section(
+    runtimeFixSource,
+    'inline std::wstring StationheadBlankPageRecoveryScriptRuntimeFixed()',
+    '// Locate only a genuine playback control',
+  );
+  assert.match(recovery, /const nativeClearInterval = window\.clearInterval\.bind\(window\)/);
+  assert.match(recovery, /const nativeClearTimeout = window\.clearTimeout\.bind\(window\)/);
+  assert.match(recovery, /let pageActive = true;/);
+  assert.match(recovery, /const stop = \(\) => \{/);
+  assert.match(recovery, /nativeClearInterval\(interval\)/);
+  assert.match(recovery, /cancelReload\(\)/);
+  assert.match(recovery, /nativeClearTimeout\(loadCheckTimer\)/);
+  assert.match(recovery, /addEventListener\('pagehide', stop, true\)/);
+  assert.match(
+    recovery,
+    /addEventListener\('pageshow',[\s\S]*pageActive = true;[\s\S]*start\(\);[\s\S]*check\(\);/,
+  );
+});
+
+test('native Start click cannot target account or authorization controls', () => {
+  const locator = section(
+    runtimeFixSource,
+    'inline std::wstring StationheadLocateStartButtonScriptRuntimeFixed()',
+    '// The base resource callback captured',
+  );
+  assert.match(locator, /window\.top !== window/);
+  assert.match(locator, /const accountInteractionVisible = \(\) =>/);
+  assert.match(locator, /credentialSelector/);
+  assert.match(locator, /homepanelStationheadBlockingLoginVisible === true/);
+  assert.match(locator, /if \(!document\.body \|\| playing\(\) \|\| accountInteractionVisible\(\)\) return null;/);
+  assert.match(locator, /login\|signin\|sign-in\|auth\|account\|settings/);
+  assert.match(locator, /spotify\|authorize\|consent/);
+  assert.match(locator, /form,\[role='dialog'\],\[aria-modal='true'\]/);
+  assert.match(locator, /document\.elementFromPoint\(x, y\)/);
+  assert.match(
+    runtimeFixSource,
+    /#define StationheadLocateStartButtonScript StationheadLocateStartButtonScriptRuntimeFixed/,
+  );
+});
+
+test('resource filtering callbacks do not borrow StationheadPlayer lifetime', () => {
+  const blocking = section(
+    runtimeFixSource,
+    'inline void ApplyStationheadResourceBlockingRuntimeFixed(',
+    '// The base autoplay script reacts to DOM changes',
+  );
+  assert.match(blocking, /\(void\)armed;/);
+  assert.match(blocking, /\[env, blockImages, blockFonts\]/);
+  assert.doesNotMatch(blocking, /\[env,\s*&armed/);
+  assert.match(blocking, /StationheadRequestIsBlockable\(lower\)/);
+  assert.match(blocking, /StationheadCorePlaybackRequest\(lower\)/);
+  assert.match(blocking, /BlockStationheadTelemetrySockets\(webview, config\.blockImages\)/);
+  assert.match(blocking, /ApplyStationheadNonPlaybackScriptBlocking\(environment, webview\)/);
+  assert.match(blocking, /ApplyStationheadAdditionalScriptBlocking\(environment, webview\)/);
+  assert.match(
+    runtimeFixSource,
+    /#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingRuntimeFixed/,
   );
 });
 
