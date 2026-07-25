@@ -20,7 +20,19 @@ jobs:
           fetch-depth: 0
 
       - name: Apply diagnosed observability fixes
-        run: python3 .github/scripts/pr260_apply_homepanel_observability_fix.py
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 .github/scripts/pr260_apply_homepanel_observability_fix.py 2>&1 | tee patch.log
+
+      - name: Upload patch diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-observability-patch-${{ github.run_id }}
+          path: patch.log
+          if-no-files-found: warn
+          retention-days: 1
 
       - name: Validate telemetry policy self-tests
         run: |
