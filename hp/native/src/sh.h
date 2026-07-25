@@ -117,8 +117,14 @@ class StationheadPlayer {
     return spotifyAuthorization_;
   }
   void Reconnect();
-  void RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
-    HandleTrackEnded(nowMs, true);
+  bool RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
+    // A native audio-stop tick can enter the same path when the page's
+    // track-ended message was lost. Existing pending requests remain retries;
+    // a fresh request still has to pass the 52-minute eligibility check.
+    const bool retry = trackBoundaryRefreshPending_;
+    HandleTrackEnded(nowMs, retry);
+    return trackBoundaryRefreshPending_ ||
+           trackBoundaryPlaybackRecoveryPending_;
   }
   void CancelPendingTrackBoundaryRefresh() noexcept {
     trackBoundaryRefreshPending_ = false;
