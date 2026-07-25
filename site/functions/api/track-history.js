@@ -39,24 +39,28 @@ export async function onRequestGet({ request, env }) {
     const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
       ? Math.min(Math.max(Math.trunc(requestedLimit), 100), 20_000)
       : 10_000;
+    const includeRanking = url.searchParams.get('ranking') !== '0';
 
-    const [result, status] = await Promise.all([
-      env.MINUTE_DB.prepare(`SELECT row_json
-        FROM sh_pages_track_history_read_model
-        WHERE play_date>=? AND play_date<=?
-        ORDER BY play_date ASC,first_played_at ASC,row_key ASC
-        LIMIT ?`).bind(from, to, limit + 1).all(),
-      env.MINUTE_DB.prepare(`SELECT payload_json
-        FROM sh_pages_payload_read_model
-        WHERE model_key='track-history-status'
-        LIMIT 1`).first(),
-    ]);
+    const rowsPromise = env.MINUTE_DB.prepare(`SELECT row_json
+      FROM sh_pages_track_history_read_model
+      WHERE play_date>=? AND play_date<=?
+      ORDER BY play_date ASC,first_played_at ASC,row_key ASC
+      LIMIT ?`).bind(from, to, limit + 1).all();
+    const statusPromise = includeRanking
+      ? env.MINUTE_DB.prepare(`SELECT payload_json
+          FROM sh_pages_payload_read_model
+          WHERE model_key='track-history-status'
+          LIMIT 1`).first()
+      : Promise.resolve(null);
+    const [result, status] = await Promise.all([rowsPromise, statusPromise]);
+
     const rawRows = result.results || [];
     const truncated = rawRows.length > limit;
     const rows = rawRows.slice(0, limit).map((row) => JSON.parse(row.row_json));
     const metadata = status?.payload_json ? JSON.parse(status.payload_json) : {};
-    const ranking = Array.isArray(metadata.ranking) ? metadata.ranking : [];
-    const rankingSummary = metadata.ranking_summary && typeof metadata.ranking_summary === 'object'
+    const ranking = includeRanking && Array.isArray(metadata.ranking) ? metadata.ranking : [];
+    const rankingSummary = includeRanking
+      && metadata.ranking_summary && typeof metadata.ranking_summary === 'object'
       ? metadata.ranking_summary
       : {};
 
@@ -69,13 +73,16 @@ export async function onRequestGet({ request, env }) {
       rows,
       truncated,
       likes_included: true,
+      ranking_included: includeRanking,
       ranking,
       ranking_summary: rankingSummary,
-      ranking_scope: 'all-time-latest-counter',
-      source_row_count: metadata.source_row_count || 0,
-      excluded_play_count_dates: metadata.excluded_play_count_dates || [],
-      excluded_play_count_date_count: (metadata.excluded_play_count_dates || []).length,
-      generated_at: metadata.generated_at || null,
+      ranking_scope: includeRanking ? 'all-time-latest-counter' : null,
+      source_row_count: includeRanking ? metadata.source_row_count || 0 : null,
+      excluded_play_count_dates: includeRanking ? metadata.excluded_play_count_dates || [] : [],
+      excluded_play_count_date_count: includeRanking
+        ? (metadata.excluded_play_count_dates || []).length
+        : 0,
+      generated_at: includeRanking ? metadata.generated_at || null : null,
       historical_recovery: 'worker_materialized_read_model',
       method: 'precomputed_track_history_read_model',
     });
