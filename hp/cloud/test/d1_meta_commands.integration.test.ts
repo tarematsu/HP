@@ -173,12 +173,12 @@ describe("D1 meta and command optimizations", () => {
     });
   });
 
-  it("sets SwitchBot to fifteen minutes and Octopus to twenty-four hours", async () => {
+  it("sets SwitchBot to fifteen minutes and Octopus to twelve hours", async () => {
     const rows = await env.DB.prepare(
       "SELECT name, interval_seconds FROM jobs WHERE name IN ('switchbot','octopus') ORDER BY name",
     ).all<{ name: string; interval_seconds: number }>();
     expect(rows.results).toEqual([
-      { name: "octopus", interval_seconds: 86_400 },
+      { name: "octopus", interval_seconds: 43_200 },
       { name: "switchbot", interval_seconds: 900 },
     ]);
   });
