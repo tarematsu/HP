@@ -9,6 +9,7 @@ import {
 
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 30 * 60;
+const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
 // The Pages service owns the storage choice. Compact payloads are read from
 // KV and large payloads such as track-history are read from R2 there, so the
 // gateway must not make a storage-specific decision before invoking it.
@@ -60,13 +61,20 @@ function responseCacheTtl(origin, requestedTtl, modelKey, usedMaterialized, now)
   return Math.max(1, Math.min(Math.max(requestedTtl, materializedTtl), remainingSeconds));
 }
 
+function varyTokens(headers) {
+  return (headers.get('vary') || '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function cacheableOrigin(origin) {
   if (!origin?.ok) return false;
   if (origin.headers.has('set-cookie')) return false;
   const cacheControl = origin.headers.get('cache-control') || '';
   if (/\b(private|no-store|no-cache)\b/i.test(cacheControl)) return false;
-  const vary = origin.headers.get('vary') || '';
-  if (vary.split(',').some((value) => value.trim() === '*')) return false;
+  const vary = varyTokens(origin.headers);
+  if (vary.includes('*') || vary.some((value) => !SUPPORTED_SHARED_VARY.has(value))) return false;
   const contentType = origin.headers.get('content-type') || '';
   return !contentType || /^application\/json(?:\s*;|$)/i.test(contentType);
 }
@@ -81,7 +89,7 @@ function sharedResponse(origin, ttlSeconds) {
       `public, max-age=${browserTtl}, s-maxage=${ttlSeconds}, stale-while-revalidate=${ttlSeconds * 2}`,
     );
   }
-  const vary = new Set((headers.get('vary') || '').split(',').map((value) => value.trim().toLowerCase()).filter(Boolean));
+  const vary = new Set(varyTokens(headers));
   vary.add('accept-encoding');
   headers.set('vary', [...vary].join(', '));
   return { response: new Response(origin.body, {

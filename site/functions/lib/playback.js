@@ -5,6 +5,11 @@ export function safeJson(value, fallback = null) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
+function usableArtist(value) {
+  const artist = String(value || '').trim();
+  return artist && !/^JP[A-Z0-9]{8,}$/i.test(artist) ? artist : null;
+}
+
 export function inferArtistFromDisplayTitle(displayTitle, title) {
   const display = String(displayTitle || '').trim();
   const knownTitle = String(title || '').trim();
@@ -14,8 +19,9 @@ export function inferArtistFromDisplayTitle(displayTitle, title) {
     if (index <= 0) continue;
     const left = display.slice(0, index).trim();
     const right = display.slice(index + separator.length).trim();
-    if (!right || /^JP[A-Z0-9]{8,}$/i.test(right)) continue;
-    if (!knownTitle || left === knownTitle || display.startsWith(`${knownTitle}${separator}`)) return right;
+    if (!knownTitle) return usableArtist(right);
+    if (left === knownTitle) return usableArtist(right);
+    if (right === knownTitle) return usableArtist(left);
   }
   return null;
 }
@@ -66,9 +72,8 @@ export function normalizePlaybackTrack(track, index, playback) {
   const fallback = metadataFallback(track.metadata_raw_json || track.raw_json);
   const title = String(track.title || fallback.title || '').trim() || null;
   const rawArtist = String(track.artist || fallback.artist || '').trim();
-  const artist = (rawArtist && !/^JP[A-Z0-9]{8,}$/i.test(rawArtist)
-    ? rawArtist
-    : inferArtistFromDisplayTitle(track.display_title || fallback.title, title || fallback.title)) || null;
+  const artist = (usableArtist(rawArtist)
+    || inferArtistFromDisplayTitle(track.display_title || fallback.title, title || fallback.title)) || null;
   const album = track.album && typeof track.album === 'object' ? track.album : {};
   const thumbnailUrl = String(
     track.thumbnail_url || track.image_url || track.artwork_url || track.album_art_url

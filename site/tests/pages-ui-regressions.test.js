@@ -12,7 +12,7 @@ import {
   metadataFallback,
   normalizePlaybackTrack,
 } from '../functions/lib/playback.js';
-import { summarizeCompleteTrackRows } from '../public/history/history-request-guard.js';
+import { summarizeCompleteTrackRows } from '../public/history/history-track-view.js';
 
 test('dashboard playback restores artwork from string and object Stationhead metadata', () => {
   const rawObject = {
@@ -163,5 +163,5 @@ test('history guard is installed before the consolidated page runtime', () => {
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   assert.ok(entry.indexOf('history-request-guard.js') < entry.indexOf('history-lite.js'));
   assert.match(guard, /searchParams\.set\('ranking', '0'\)/);
-  assert.match(guard, /searchParams\.set\('revision', '2'\)/);
+  assert.match(guard, /searchParams\.set\('revision', '3'\)/);
 });

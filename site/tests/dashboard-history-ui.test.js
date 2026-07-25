@@ -8,6 +8,7 @@ const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
+const historyTrackView = readFileSync(new URL('../public/history/history-track-view.js', import.meta.url), 'utf8');
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
 test('main page renders current track likes from the dashboard response', () => {
@@ -39,20 +40,22 @@ test('track history reads materialized rows and integrated ranking status', () =
   assert.match(trackEndpoint, /worker_materialized_read_model/);
 });
 
-test('track history defaults to yesterday as a single day', () => {
-  assert.match(historyEntry, /Date\.now\(\) - 86_400_000/);
-  assert.match(historyEntry, /trackDate\.value = yesterday/);
+test('track history defaults to yesterday in JST as a single day', () => {
+  assert.match(historyEntry, /JST_OFFSET_MS/);
+  assert.match(historyEntry, /trackDate\.value = jstDate\(-1\)/);
   assert.match(historyEntry, /trackWeekMode\.checked = false/);
 });
 
-test('track history is presented as a daily play-count ranking card view', () => {
+test('track history is presented as a full-period play-count ranking card view', () => {
   assert.match(historyEntry, /import\('\/history\/history-page-fixes\.js'\)/);
-  assert.match(historyFixes, /labels\.indexOf\('再生回数'\)/);
-  assert.match(historyFixes, /\.sort\(\(left, right\) =>/);
+  assert.match(historyFixes, /aggregateCompleteTrackRows/);
+  assert.match(historyFixes, /history:track-rows/);
+  assert.match(historyTrackView, /right\.play_count - left\.play_count/);
   assert.match(historyFixes, /1日の再生数ランキング/);
+  assert.match(historyFixes, /週間再生数ランキング/);
   assert.match(historyFixes, /className = 'like-rank-item'/);
   assert.match(historyFixes, /metric\('再生回数'/);
-  assert.match(historyFixes, /metric\('いいね数'/);
+  assert.match(historyFixes, /metric\('最大いいね'/);
   assert.match(historyFixes, /tableWrap\.hidden = true/);
 });
 

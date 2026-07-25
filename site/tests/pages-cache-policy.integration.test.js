@@ -56,15 +56,27 @@ test('Pages edge cache does not store Vary wildcard responses', async () => {
   assert.equal(writes.length, 0);
 });
 
-test('Pages edge cache still stores ordinary public JSON responses', async () => {
+test('Pages edge cache does not collapse unsupported Vary dimensions', async () => {
   const { response, writes } = await invokeWithOriginHeaders({
     'cache-control': 'public, max-age=60',
     vary: 'origin',
   });
 
   assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+  assert.equal(response.headers.get('vary'), 'origin, accept-encoding');
+  assert.equal(writes.length, 0);
+});
+
+test('Pages edge cache still stores ordinary public JSON responses', async () => {
+  const { response, writes } = await invokeWithOriginHeaders({
+    'cache-control': 'public, max-age=60',
+    vary: 'accept',
+  });
+
+  assert.equal(response.status, 200);
   assert.equal(response.headers.get('x-edge-cache'), 'MISS');
   assert.match(response.headers.get('cache-control') || '', /s-maxage=300/);
-  assert.equal(response.headers.get('vary'), 'origin, accept-encoding');
+  assert.equal(response.headers.get('vary'), 'accept, accept-encoding');
   assert.equal(writes.length, 1);
 });
