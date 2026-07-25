@@ -106,16 +106,16 @@ const INGEST_HANDLERS = {
         rawJson(track.raw),
       ));
     const batchResult = statements.length ? await env.DB.batch(statements) : [];
-    const results = Array.isArray(batchResult) ? batchResult : [];
-    const written = results.reduce(
-      (total, result) => total + Number(result?.meta?.changes || 0),
-      0,
-    );
+    const written = Array.isArray(batchResult)
+      ? batchResult.reduce(
+        (total, result) => total + Number(result?.meta?.changes || 0),
+        0,
+      )
+      : statements.length;
     return {
       ok: true,
       type: body.type,
       accepted: true,
-      tracks_inspected: statements.length,
       tracks_written: written,
     };
   },
