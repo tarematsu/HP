@@ -13,7 +13,7 @@ on:
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-observability.py'
-      - '.github/scripts/query-cloudflare-d1-insights.mjs'
+      - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-homepanel-observability-status.mjs'
@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       lookback_minutes:
-        description: Minutes of Cloudflare metrics, D1 query insights, and persisted errors to inspect
+        description: Minutes of Cloudflare metrics, D1 query costs, and persisted errors to inspect
         required: false
         default: "60"
         type: string
@@ -45,12 +45,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
       CLOUDFLARE_WORKERS: homepanel-cloud
       D1_CONFIG_GLOBS: hp/cloud/wrangler.jsonc
-      D1_DATABASE_NAME: homepanel-data
-      D1_INSIGHTS_OUTPUT_DIR: d1-insights
-      D1_INSIGHTS_LIMIT: "20"
+      D1_QUERY_OUTPUT_DIR: d1-insights
+      D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
+      D1_QUERY_LIMIT: "20"
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       CPU_BUDGET_MS: "10"
       DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
@@ -77,7 +76,7 @@ jobs:
         run: |
           python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
           python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-          node .github/scripts/query-cloudflare-d1-insights.mjs --self-test
+          python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
           node --test \
             tests/homepanel-observability-contract.test.mjs \
             tests/observability-status-publisher.test.mjs
@@ -90,20 +89,14 @@ jobs:
           set -o pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
 
-      - name: Install pinned Wrangler for D1 insights
-        id: install-wrangler
-        continue-on-error: true
-        run: npm ci --prefix hp/cloud --ignore-scripts --no-audit --no-fund
-
       - name: Collect top D1 queries by rows read
         id: d1-insights
-        if: always() && steps.install-wrangler.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           actual_summary="$GITHUB_STEP_SUMMARY"
-          node .github/scripts/query-cloudflare-d1-insights.mjs 2>&1 | tee d1-insights.log
+          python3 .github/scripts/query-cloudflare-d1-costs.py 2>&1 | tee d1-insights.log
           status=${PIPESTATUS[0]}
           if [[ -f d1-insights/summary.md ]]; then
             cat d1-insights/summary.md >> "$actual_summary"
@@ -147,7 +140,7 @@ jobs:
           OBSERVABILITY_TRIGGER: ${{ github.event_name }}
           POLICY_OUTCOME: ${{ steps.policy-self-test.outcome }}
           DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
-          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome || steps.install-wrangler.outcome }}
+          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
           OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
         run: node .github/scripts/publish-homepanel-observability-status.mjs
@@ -173,7 +166,6 @@ jobs:
       - name: Fail after collecting diagnostics when any observability gate fails
         if: >-
           steps.daily-budget.outcome == 'failure' ||
-          steps.install-wrangler.outcome == 'failure' ||
           steps.d1-insights.outcome == 'failure' ||
           steps.observability-query.outcome == 'failure' ||
           steps.telemetry-policy.outcome == 'failure' ||
