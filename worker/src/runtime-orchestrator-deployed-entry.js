@@ -163,6 +163,8 @@ async function scheduleMinuteFactRepairBurst(controller, env) {
     message_type: MINUTE_FACT_REPAIR_BURST_MESSAGE,
     message_version: 1,
     scheduled_at: scheduledAt,
+    producer_worker: 'sh-runtime-orchestrator',
+    operation_name: 'minute-fact-repair-burst',
   }, JSON_QUEUE_SEND_OPTIONS);
   return { dispatched: true, scheduled_at: scheduledAt };
 }
