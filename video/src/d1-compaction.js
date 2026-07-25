@@ -130,8 +130,15 @@ function feedIdValue(row) {
   return value == null ? '' : String(value);
 }
 
+function feedContentValue(row) {
+  return [feedIdValue(row), String(row?.mediaUrl || '')];
+}
+
 export async function feedContentHash(rows) {
-  const value = JSON.stringify((rows || []).map(feedIdValue));
+  // The R2 playback snapshot contains both the stable video id and the current
+  // media URL. Hash both fields so an in-place URL refresh cannot be mistaken
+  // for unchanged feed content and leave clients reading a stale source URL.
+  const value = JSON.stringify((rows || []).map(feedContentValue));
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((part) => part.toString(16).padStart(2, '0')).join('');

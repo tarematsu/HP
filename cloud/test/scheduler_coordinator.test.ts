@@ -236,6 +236,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     });
     const immediateAlarm = await alarmTime(stub);
     const stored = await runtime(stub);
+    const observedNow = Math.floor(Date.now() / 1000);
     const after = await env.DB.prepare(
       "SELECT next_run_at FROM jobs WHERE name='weather'",
     ).first<{ next_run_at: number }>();
@@ -247,8 +248,9 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(Number(immediateAlarm)).toBeLessThan(Number(futureAlarm));
     expect(Number(immediateAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
     expect(stored?.jobs.find(job => job.name === "weather")?.nextRunAt)
-      .toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
+      .toBeLessThanOrEqual(observedNow);
     expect(after).toEqual(before);
-    expect(stored?.jobs.filter(job => job.nextRunAt <= now).map(job => job.name)).toEqual(["weather"]);
+    expect(stored?.jobs.filter(job => job.nextRunAt <= observedNow).map(job => job.name))
+      .toEqual(["weather"]);
   });
 });

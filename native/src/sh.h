@@ -97,10 +97,20 @@ class StationheadPlayer {
   [[nodiscard]] int64_t NextWakeAt() const noexcept { return nextTickAt_; }
   void RequestImmediateTick() noexcept { nextTickAt_ = 0; }
   [[nodiscard]] bool AudioPlaying() const noexcept {
-    return audioPlaying_.load(std::memory_order_relaxed);
+    // A controller is a valid handoff source only after playback has a stable
+    // start timestamp. ScheduleRecreate() and navigation reset that timestamp
+    // before the old controller is closed, preventing a stale final audio bit
+    // from becoming healthy again during the teardown gap.
+    const int64_t playingSince =
+        audioPlayingSinceAt_.load(std::memory_order_acquire);
+    return playingSince > 0 &&
+           audioPlaying_.load(std::memory_order_acquire) &&
+           !recreating_.load(std::memory_order_acquire);
   }
   [[nodiscard]] int64_t AudioPlayingSince() const noexcept {
-    return audioPlayingSinceAt_.load(std::memory_order_relaxed);
+    const int64_t playingSince =
+        audioPlayingSinceAt_.load(std::memory_order_acquire);
+    return playingSince > 0 && AudioPlaying() ? playingSince : 0;
   }
   [[nodiscard]] bool SpotifyAuthorizationActive() const {
     std::lock_guard lock(mutex_);
@@ -118,6 +128,20 @@ class StationheadPlayer {
   void ShowAfterAudioStop();
   void OpenSpotifyAuthorization(const std::wstring& url);
   void ReleaseCompletedAuth();
+  void FinalizeCompletedAuth() {
+    if (!SpotifyAuthorizationActive()) CloseAuthWebView();
+  }
+  void RecoverUnavailableAuthorization() {
+    // EnsureAuthController sets authControllerStartedAt_ before the normal
+    // asynchronous creation path. A pending URL with neither a controller nor
+    // a start timestamp means the auth host could not be created; without this
+    // guard Tick() would remain in the interactive-auth branch indefinitely.
+    if (spotifyAuthorization_ && !authController_ &&
+        authControllerStartedAt_ == 0 && !authPendingUrl_.empty()) {
+      FinishSpotifyAuthorization(
+          L"Spotify auth host unavailable; authorization can be retried");
+    }
+  }
   void ToggleView();
   uint32_t ConsumeChangeFlags();
   void SetMuted(bool muted) noexcept;
@@ -232,6 +256,7 @@ class StationheadPlayer {
   std::atomic<uint32_t> pendingChangeFlags_{0};
   std::atomic<bool> changeMessagePending_{false};
   std::wstring pendingAuthorizationUrl_;
+  std::wstring activeAuthorizationUrl_;
   int64_t createdAt_ = 0;
   int64_t startupScriptDeadline_ = 0;
   int64_t authControllerStartedAt_ = 0;

@@ -1,5 +1,6 @@
 import { applyD1Migrations, env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { BASE_LIVENESS_SELECT_SQL } from "../../video/src/liveness-monitor.js";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
 type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
@@ -60,7 +61,7 @@ describe("video liveness eligibility invariant", () => {
     expect(await readStatus(id)).toBe("active");
   });
 
-  it("keeps excluded rows out of the active liveness cursor", async () => {
+  it("keeps excluded rows out of the runtime active liveness cursor", async () => {
     const timestamp = "2026-07-23T00:00:00.000Z";
     const prior = await env.DB.prepare("SELECT COALESCE(MAX(id),0) AS id FROM videos")
       .first<{ id: number }>();
@@ -77,24 +78,11 @@ describe("video liveness eligibility invariant", () => {
     const eligibleKey = "media.test/eligible.mp4";
     const eligibleId = await insertVideo(eligibleKey);
 
-    const selected = await env.DB.prepare(
-      `SELECT video.id, video.canonical_key AS canonicalKey
-         FROM videos AS video
-        WHERE video.id > ?1 AND video.id <= ?2
-          AND video.status = 'active'
-          AND NOT EXISTS (
-            SELECT 1 FROM video_blocklist AS bad
-             WHERE bad.canonical_key = video.canonical_key
-          )
-          AND NOT EXISTS (
-            SELECT 1 FROM video_death_list AS death
-             WHERE death.canonical_key = video.canonical_key
-          )
-        ORDER BY video.id
-        LIMIT 1`,
-    ).bind(cursorStart, eligibleId).first<{ id: number; canonicalKey: string }>();
+    const selected = await env.DB.prepare(BASE_LIVENESS_SELECT_SQL)
+      .bind(cursorStart, eligibleId, 1)
+      .first<{ id: number; canonicalKey: string }>();
 
-    expect(selected).toEqual({ id: eligibleId, canonicalKey: eligibleKey });
+    expect(selected).toMatchObject({ id: eligibleId, canonicalKey: eligibleKey });
     const activeExcluded = await env.DB.prepare(
       `SELECT COUNT(*) AS count
          FROM videos AS video
