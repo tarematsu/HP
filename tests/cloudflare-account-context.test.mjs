@@ -219,7 +219,9 @@ test('the composite action is the single production credential resolver', () => 
 
   assert.match(pruneUpdates, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(pruneUpdates, /\/r2\/buckets\/\$\{UPDATE_BUCKET\}\/objects/);
-  assert.match(pruneUpdates, /result_info\.is_truncated/);
+  assert.match(pruneUpdates, /result_info\.cursor/);
+  assert.match(pruneUpdates, /returned a repeated cursor/);
+  assert.doesNotMatch(pruneUpdates, /result_info\.is_truncated/);
   assert.match(pruneUpdates, /-X DELETE/);
   assert.doesNotMatch(
     pruneUpdates,
