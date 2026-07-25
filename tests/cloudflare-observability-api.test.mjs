@@ -99,6 +99,9 @@ test('query and audit scripts use Cloudflare APIs without R2', () => {
   assert.match(auditScript, /missing_workers/);
   assert.match(auditScript, /incomplete coverage/);
   assert.match(auditScript, /Worker CPU policy violation/);
+  assert.match(auditScript, /ACCOUNT_ID/);
+  assert.match(auditScript, /Cloudflare token, account ID, and Worker list are required/);
+  assert.doesNotMatch(auditScript, /def account_id|accounts\?per_page=50/);
   assert.match(deployedAuditScript, /workers\/scripts\/\{encoded\}\/deployments/);
   assert.match(deployedAuditScript, /deployments\[0\]/);
   assert.match(deployedAuditScript, /percentage/);
