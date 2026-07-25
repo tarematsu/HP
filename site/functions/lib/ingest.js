@@ -10,7 +10,10 @@ import {
 import { saveCommentCounts } from './comment-counts.js';
 import { saveLeanHeartbeat, saveLeanQueue, saveLeanSnapshot } from './d1-optimized-ingest.js';
 import { withoutQueueItemLikeMirrors } from './d1-queue-like-write-filter.js';
-import { saveQueueReachability } from './queue-reachability.js';
+import {
+  markQueueReachability,
+  saveQueueReachability,
+} from './queue-reachability.js';
 
 export * from './queue-ingest-state.js';
 
@@ -29,9 +32,10 @@ const INGEST_HANDLERS = {
   queue: async (env, body, observedAt, data) => {
     const result = await saveLeanQueue(withoutQueueItemLikeMirrors(env.DB), observedAt, body);
     const structuralSnapshotWritten = result.structureChanged === true && result.claim.accepted === true;
+    if (structuralSnapshotWritten) markQueueReachability(env.DB, observedAt, data);
     const reachability = structuralSnapshotWritten
-      ? { inserted: false }
-      : await saveQueueReachability(env.DB, observedAt, data);
+      ? { inserted: false, skipped: true }
+      : await saveQueueReachability(env.DB, observedAt, data, env);
     return {
       ok: true,
       type: body.type,
@@ -45,6 +49,7 @@ const INGEST_HANDLERS = {
       queue_items_written: result.itemsWritten,
       like_observations_written: result.observationsWritten,
       reachability_checkpoint_written: reachability.inserted,
+      reachability_checkpoint_skipped: reachability.skipped === true,
       reachability_recorded: structuralSnapshotWritten || reachability.inserted,
     };
   },
