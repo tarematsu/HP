@@ -132,7 +132,7 @@ function parseWeatherNews(html: string, now = new Date()): {
   const bodyStart = html.indexOf('id="flick_list"');
   if (bodyStart < 0) throw new Error("WeatherNews hourly table was not found");
   const localNowMs = now.getTime() + JST_MS;
-  const windowStart = Math.ceil(localNowMs / HOUR_MS) * HOUR_MS;
+  const windowStart = Math.floor(localNowMs / HOUR_MS) * HOUR_MS;
   const windowEnd = windowStart + WEATHER_WINDOW_HOURS * HOUR_MS;
   const startDate = new Date(windowStart);
   const endDate = new Date(windowEnd - HOUR_MS);
