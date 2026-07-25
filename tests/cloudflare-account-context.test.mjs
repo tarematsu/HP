@@ -8,7 +8,7 @@ import {
   exportCloudflareContext,
   resolveCloudflareAccountId,
 } from '../.github/scripts/resolve-cloudflare-account.mjs';
-import { readSource } from './helpers/source-contract.mjs';
+import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 function response(payload, { ok = true, status = 200 } = {}) {
   return {
@@ -116,9 +116,26 @@ test('the composite action is the single production credential resolver', () => 
   assert.match(action, /node \.github\/scripts\/resolve-cloudflare-account\.mjs/);
   assert.doesNotMatch(action, /curl|jq|mapfile/);
 
-  assert.match(configResolver, /stripJsonc/);
-  assert.match(configResolver, /update_bucket/);
-  assert.doesNotMatch(configResolver, /resolve-cloudflare-account|CLOUDFLARE_|account_id/);
+  expectAll(configResolver, [
+    'stripJsonc',
+    'HOMEPANEL_UPDATE_BUCKET',
+    'UPDATE_BUCKET',
+    'GITHUB_OUTPUT',
+    'update_bucket',
+  ]);
+  expectNone(configResolver, [
+    'resolve-cloudflare-account',
+    'resolveCloudflareAccountId',
+    'CLOUDFLARE_',
+    'account_id',
+    'worker_name',
+    'database_name',
+    'd1AnalyticsAdaptiveGroups',
+    '.cloudflare-build-diagnostics',
+    'publishD1UsageIssue',
+    'api.github.com',
+    'GH_TOKEN',
+  ]);
 
   assert.match(deploymentGuard, /process\.env\.CLOUDFLARE_API_TOKEN/);
   assert.match(deploymentGuard, /process\.env\.CLOUDFLARE_ACCOUNT_ID/);
