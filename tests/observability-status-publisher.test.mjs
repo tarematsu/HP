@@ -109,7 +109,6 @@ test('shared publisher reopens an existing status issue or creates one', async (
 test('all observability validation workflows track the shared publisher', () => {
   for (const path of [
     '.github/workflows/sh-observability.yml',
-    '.github/workflows/hp-observability.yml',
     '.github/workflows/homepanel-unified-ci.yml',
   ]) {
     assert.match(

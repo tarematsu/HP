@@ -25,10 +25,7 @@ test('explicit Cloudflare account is validated with the configured token', async
     accountId: 'account-explicit',
     fetchImpl: async (url, init) => {
       requests.push({ url, init });
-      return response({
-        success: true,
-        result: { id: 'account-explicit' },
-      });
+      return response({ success: true, result: { id: 'account-explicit' } });
     },
   });
   assert.equal(accountId, 'account-explicit');
@@ -55,10 +52,7 @@ test('explicit Cloudflare account is validated with the configured token', async
 test('Cloudflare account discovery requires exactly one valid account', async () => {
   const accountId = await resolveCloudflareAccountId({
     token: 'token',
-    fetchImpl: async () => response({
-      success: true,
-      result: [{ id: 'account-1' }],
-    }),
+    fetchImpl: async () => response({ success: true, result: [{ id: 'account-1' }] }),
   });
   assert.equal(accountId, 'account-1');
 
@@ -97,10 +91,7 @@ test('Cloudflare context export rejects multiline values and writes canonical va
     /single line/,
   );
   await assert.rejects(
-    resolveCloudflareAccountId({
-      token: 'token',
-      accountId: 'account\ninjected',
-    }),
+    resolveCloudflareAccountId({ token: 'token', accountId: 'account\ninjected' }),
     /single line/,
   );
 
@@ -111,10 +102,7 @@ test('Cloudflare context export rejects multiline values and writes canonical va
       token: 'token',
       accountId: 'account-1',
       envFile,
-      fetchImpl: async () => response({
-        success: true,
-        result: { id: 'account-1' },
-      }),
+      fetchImpl: async () => response({ success: true, result: { id: 'account-1' } }),
     });
     assert.equal(accountId, 'account-1');
     assert.equal(
@@ -137,8 +125,7 @@ test('the composite action is the single production credential resolver', () => 
   const deploymentGuard = readSource('.github/scripts/assert-actions-only-cloudflare.mjs');
   const cloudDeploy = readSource('.github/workflows/cloud-deploy.yml');
   const pruneUpdates = readSource('.github/workflows/prune-homepanel-updates.yml');
-  const shObservability = readSource('.github/workflows/sh-observability.yml');
-  const hpObservability = readSource('.github/workflows/hp-observability.yml');
+  const observability = readSource('.github/workflows/sh-observability.yml');
   const nativeBuild = readSource('.github/workflows/native-windows-build.yml');
 
   assert.match(action, /node \.github\/scripts\/resolve-cloudflare-account\.mjs/);
@@ -185,14 +172,12 @@ test('the composite action is the single production credential resolver', () => 
     /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
   );
 
-  for (const workflow of [shObservability, hpObservability]) {
-    assert.match(workflow, /uses: \.\/\.github\/actions\/cloudflare-context/);
-    assert.match(workflow, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
-    assert.doesNotMatch(
-      workflow,
-      /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
-    );
-  }
+  assert.match(observability, /uses: \.\/\.github\/actions\/cloudflare-context/);
+  assert.match(observability, /api-token: \$\{\{ secrets\.CLOUDFLARE_BUILDS_API_TOKEN \}\}/);
+  assert.doesNotMatch(
+    observability,
+    /^\s{6}CLOUDFLARE_(?:API_TOKEN|BUILDS_API_TOKEN):/m,
+  );
 
   assert.match(nativeBuild, /uses: \.\/\.github\/actions\/cloudflare-context/);
   assert.match(nativeBuild, /node \.github\/scripts\/resolve-cloudflare-config\.mjs/);
@@ -200,10 +185,7 @@ test('the composite action is the single production credential resolver', () => 
     nativeBuild.indexOf('uses: ./.github/actions/cloudflare-context')
       < nativeBuild.indexOf('node .github/scripts/resolve-cloudflare-config.mjs'),
   );
-  assert.equal(
-    nativeBuild.match(/secrets\.CLOUDFLARE_BUILDS_API_TOKEN/g)?.length,
-    1,
-  );
+  assert.equal(nativeBuild.match(/secrets\.CLOUDFLARE_BUILDS_API_TOKEN/g)?.length, 1);
   assert.doesNotMatch(nativeBuild, /secrets\.CLOUDFLARE_API_TOKEN/);
   assert.doesNotMatch(
     nativeBuild,

@@ -9,57 +9,68 @@ import {
 
 const root = new URL('../', import.meta.url);
 
-test('SH observability issue body includes deployment context and sanitized diagnostics', () => {
+test('unified observability issue body includes HP and Stationhead deployment context', () => {
   const body = buildIssueBody({
-    generatedAt: '2026-07-23T01:00:00.000Z',
+    generatedAt: '2026-07-25T01:00:00.000Z',
     targetSha: 'abcdef123456',
     mainSha: 'fedcba654321',
     runUrl: 'https://github.com/tarematsu/HP/actions/runs/123',
     trigger: 'schedule',
+    lookbackMinutes: '60',
     outcomes: {
       daily: 'success',
       freeTier: 'failure',
       contract: 'success',
+      d1Insights: 'success',
       query: 'success',
       telemetry: 'success',
     },
     summaries: {
       daily: '## Daily usage\n\nD1 rows read: 10',
       freeTier: '## Included usage\n\nQueue operations: 20',
-      telemetry: 'TELEMETRY_AUDIT={"authorization":"Bearer secret-value"}',
+      d1Insights: '## D1 query cost insights\n\nDatabases: 4',
+      telemetry: 'Authorization: Bearer secret-value',
     },
     activeDeployments: {
       'sh-runtime-orchestrator': {
-        deployment_id: 'deployment-123',
-        version_ids: ['version-a'],
-        created_on: '2026-07-23T00:55:00Z',
+        status: 'active',
+        deployment_id: 'deployment-sh',
+        version_ids: ['version-sh'],
+        created_on: '2026-07-25T00:55:00Z',
+      },
+      'homepanel-cloud': {
+        status: 'active',
+        deployment_id: 'deployment-hp',
+        version_ids: ['version-hp'],
+        created_on: '2026-07-25T00:56:00Z',
       },
     },
     recentMerges: [{
-      number: 591,
-      title: 'Deploy runtime after migrations',
-      merge_commit_sha: 'merge-sha-591',
-      merged_at: '2026-07-23T00:50:00Z',
+      number: 261,
+      title: 'Fix observability diagnostics',
+      merge_commit_sha: 'merge-sha-261',
+      merged_at: '2026-07-25T00:50:00Z',
     }],
   });
 
   assert.match(body, new RegExp(STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(body, /\*\*Overall:\*\* failure/);
-  assert.match(body, /\| freeTier \| failure \|/);
-  assert.doesNotMatch(body, /\| policy \|/);
+  assert.match(body, /Scope:\*\* HP \+ Stationhead monorepo, account-wide included usage/);
+  assert.match(body, /\| d1Insights \| success \|/);
   assert.match(body, /Workflow source commit:\*\* `abcdef123456`/);
   assert.match(body, /Current main SHA:\*\* `fedcba654321`/);
-  assert.match(body, /deployment-123/);
-  assert.match(body, /version-a/);
-  assert.match(body, /#591 Deploy runtime after migrations/);
-  assert.match(body, /Queue operations: 20/);
-  assert.match(body, /Current-deployment telemetry policy/);
-  assert.match(body, /TELEMETRY_AUDIT/);
+  assert.match(body, /deployment-sh/);
+  assert.match(body, /deployment-hp/);
+  assert.match(body, /version-sh/);
+  assert.match(body, /version-hp/);
+  assert.match(body, /#261 Fix observability diagnostics/);
+  assert.match(body, /Top D1 queries by rows read/);
+  assert.match(body, /Databases: 4/);
   assert.match(body, /Bearer \[redacted\]/);
   assert.doesNotMatch(body, /secret-value/);
 });
 
-test('SH observability publishes retrievable deployment and telemetry status', async () => {
+test('unified workflow publishes one retrievable account-wide status', async () => {
   const workflow = await readFile(
     new URL('.github/workflows/sh-observability.yml', root),
     'utf8',
@@ -69,21 +80,19 @@ test('SH observability publishes retrievable deployment and telemetry status', a
     'utf8',
   );
 
-  assert.match(workflow, /^\s{2}issues: write$/m);
-  assert.match(workflow, /^\s{2}statuses: write$/m);
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
+  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/);
+  assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
+  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR/);
+  assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
+  assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
-  assert.match(workflow, /active-worker-deployments\.json/);
-  assert.match(workflow, /telemetry-audit\.log/);
-  assert.match(workflow, /OBSERVABILITY_TARGET_SHA:/);
-  assert.match(workflow, /OBSERVABILITY_MAIN_REF: main/);
-  assert.match(workflow, /cloudflare-observability-report-sh-/);
-  assert.match(publisher, /readOptionalText\('telemetry-audit\.log'\)/);
-  assert.match(publisher, /Current-deployment telemetry policy/);
+  assert.match(publisher, /readOptionalText\('d1-insights\/summary\.md'\)/);
+  assert.match(publisher, /readOptionalText\('telemetry-summary\.md'\)/);
+  assert.match(publisher, /HP \+ Stationhead monorepo/);
+  assert.match(publisher, /Top D1 queries by rows read/);
   assert.doesNotMatch(
     `${workflow}\n${publisher}`,
-    /policy-self-test|observability\/policy-self-test|--self-test|node --test/,
+    /publish-homepanel-observability-status|HomePanel Observability Status|homepanel-observability-status/,
   );
-  assert.doesNotMatch(workflow, /^\s+POLICY_OUTCOME:/m);
-  assert.doesNotMatch(publisher, /process\.env\.POLICY_OUTCOME/);
-  assert.doesNotMatch(publisher, /normalizeOutcome|statusState|function selfTest|node:assert/);
 });
