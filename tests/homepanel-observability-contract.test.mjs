@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { buildIssueBody } from '../.github/scripts/publish-homepanel-observability-status.mjs';
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 test('HomePanel observability workflow keeps the production contract', () => {
@@ -21,12 +22,20 @@ test('HomePanel observability workflow keeps the production contract', () => {
     'DAILY_D1_READ_BUDGET: "5000000"',
     'DAILY_D1_WRITE_BUDGET: "100000"',
     'DAILY_QUEUE_BUDGET: "10000"',
+    'QUEUE_CPU_BUDGET_MS: "30000"',
+    'Select safe diagnostic trigger',
+    'Defer deploy-affecting pushes to workflow_run',
+    'Deferring HomePanel diagnostics until unified Worker deployment completes.',
+    'needs.classify.outputs.run',
     'Enforce projected UTC daily Worker, D1, and Queue budgets',
     'Collect top D1 queries by rows read',
     'query-cloudflare-d1-costs.py',
     'D1_INSIGHTS_OUTCOME',
     'id: observability-query',
     'telemetry-summary.md',
+    'audit-deployed-cloudflare-telemetry.py',
+    'ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments.json',
+    'active-worker-deployments.json',
     'Publish persistent observability status',
     'publish-homepanel-observability-status.mjs',
     'steps.publish-status.outcome',
@@ -37,6 +46,7 @@ test('HomePanel observability workflow keeps the production contract', () => {
   expectAll(unifiedCi, [
     'python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test',
     'python3 .github/scripts/audit-cloudflare-telemetry.py --self-test',
+    'python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test',
     'python3 .github/scripts/query-cloudflare-d1-costs.py --self-test',
     'tests/cloudflare-account-context.test.mjs',
     'tests/homepanel-*.test.mjs',
@@ -92,6 +102,9 @@ test('HomePanel observability publisher and usage documentation retain product b
     "readOptionalText('d1-insights/summary.md')",
     "readOptionalText('observability-summary.md')",
     "readOptionalText('telemetry-summary.md')",
+    "readOptionalJson('active-worker-deployments.json', {})",
+    'Active Worker deployments',
+    'Workflow source commit',
     "process.env.LOOKBACK_MINUTES || '60'",
     'publishCommitStatuses',
     'upsertStatusIssue',
@@ -103,6 +116,26 @@ test('HomePanel observability publisher and usage documentation retain product b
     'policy-self-test',
   ]);
   assert.doesNotMatch(publisher, /process\.env\.POLICY_OUTCOME/);
+  const issueBody = buildIssueBody({
+    generatedAt: '2026-07-25T00:00:00.000Z',
+    targetSha: 'abc123',
+    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
+    trigger: 'workflow_run',
+    lookbackMinutes: '60',
+    outcomes: { daily: 'success', d1Insights: 'success', query: 'success', telemetry: 'success' },
+    activeDeployments: {
+      'homepanel-cloud': {
+        status: 'active',
+        deployment_id: 'deployment-1',
+        version_ids: ['version-1'],
+        created_on: '2026-07-25T00:00:00Z',
+      },
+    },
+  });
+  assert.match(issueBody, /Workflow source commit.*abc123/s);
+  assert.match(issueBody, /Active Worker deployments/);
+  assert.match(issueBody, /deployment-1/);
+  assert.match(issueBody, /version-1/);
   expectAll(usageDocumentation, [
     '.github/workflows/hp-observability.yml',
     '.github/scripts/audit-cloudflare-daily-usage.py',

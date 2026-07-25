@@ -12,6 +12,7 @@ on:
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-daily-usage.py'
       - '.github/scripts/audit-cloudflare-telemetry.py'
+      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
@@ -37,8 +38,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  classify:
+    name: Select safe diagnostic trigger
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decision.outputs.run }}
+    steps:
+      - name: Check out push history
+        if: github.event_name == 'push'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          show-progress: false
+
+      - name: Defer deploy-affecting pushes to workflow_run
+        id: decision
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before || '' }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != 'push' ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -z "$BEFORE_SHA" || "$BEFORE_SHA" =~ ^0+$ ]]; then
+            changed_files="$(git ls-files)"
+          else
+            changed_files="$(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")"
+          fi
+          printf '%s
+' "$changed_files"
+
+          if grep -Eq '^(hp/cloud/|hp/video/src/|hp/video/public/|hp/video/package\.json$|\.github/actions/cloudflare-context/action\.yml$|\.github/scripts/resolve-cloudflare-account\.mjs$|\.github/workflows/cloud-deploy\.yml$|\.github/scripts/assert-actions-only-cloudflare\.mjs$)' <<<"$changed_files"; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Deferring HomePanel diagnostics until unified Worker deployment completes."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   observability:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    needs: classify
+    if: >-
+      needs.classify.outputs.run == 'true' &&
+      (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -49,6 +95,7 @@ jobs:
       D1_QUERY_LIMIT: "20"
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       CPU_BUDGET_MS: "10"
+      QUEUE_CPU_BUDGET_MS: "30000"
       DURABLE_OBJECT_CPU_BUDGET_MS: "30000"
       DAILY_REQUEST_BUDGET: "100000"
       DAILY_REQUEST_RESERVE: "0"
@@ -99,17 +146,18 @@ jobs:
           live-tail-seconds: "90"
           live-tail-probes: /v1/health,/
 
-      - name: Enforce current-version persisted and live CPU policy
+      - name: Enforce current-deployment persisted and live CPU policy
         id: telemetry-policy
         continue-on-error: true
         env:
           LIVE_TAIL_LOG: live-tail.log
+          ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments.json
         shell: bash
         run: |
           set -o pipefail
           actual_summary="$GITHUB_STEP_SUMMARY"
           GITHUB_STEP_SUMMARY=telemetry-summary.md \
-            python3 .github/scripts/audit-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
+            python3 .github/scripts/audit-deployed-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
           status=${PIPESTATUS[0]}
           if [[ -f telemetry-summary.md ]]; then
             cat telemetry-summary.md >> "$actual_summary"
@@ -145,6 +193,7 @@ jobs:
             observability-query.log
             telemetry-summary.md
             telemetry-audit.log
+            active-worker-deployments.json
             live-tail.log
           if-no-files-found: warn
           retention-days: 1
