@@ -101,12 +101,20 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     window.__homepanelStationheadRejectedAuthorization = null;
     window.__homepanelStationheadAuthHeaders = Object.assign({}, last);
   };
+  const rejectCapturedAuthForBlockingLogin = () => {
+    const authorization = window.__homepanelStationheadAuthHeaders?.authorization || '';
+    if (authorization) {
+      window.__homepanelStationheadRejectedAuthorization = authorization;
+    }
+    window.__homepanelStationheadAuthHeaders = null;
+  };
   const updateBlockingLogin = () => {
     const blocking = blockingLoginVisible();
     const now = Date.now();
     if (blocking) {
       loginMissingSince = 0;
       window.__homepanelStationheadBlockingLoginVisible = true;
+      rejectCapturedAuthForBlockingLogin();
       if (!robustLoginReported && pageActive && nativePost) {
         robustLoginReported = true;
         nativePost(loginMessage);
