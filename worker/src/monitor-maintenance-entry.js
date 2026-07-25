@@ -1,13 +1,12 @@
 import './fetch-guard.js';
 
 export const ROLLUP_MAINTENANCE_CRON = '30 * * * *';
-// Retained only so stale Queue messages from older deployments can be
-// acknowledged safely. New schedules never dispatch this Cron.
 export const SNAPSHOT_RETENTION_CRON = '50 * * * *';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 let cronStaggerModulePromise;
 let rollupModulePromise;
+let retentionModulePromise;
 
 function enabled(value) {
   return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
@@ -21,6 +20,11 @@ function loadCronStaggerModule() {
 function loadRollupModule() {
   rollupModulePromise ||= import('./rollup-maintenance.js');
   return rollupModulePromise;
+}
+
+function loadRetentionModule() {
+  retentionModulePromise ||= import('./snapshot-retention.js');
+  return retentionModulePromise;
 }
 
 function scheduledTimestamp(controller) {
@@ -47,7 +51,7 @@ async function collectorGate(env, now, dependencies = EMPTY_DEPENDENCIES) {
 
 function assertMaintenanceSucceeded(kind, result) {
   const reason = result?.reason;
-  if (reason === 'maintenance-error' || reason === 'db-binding-missing') {
+  if (reason === 'maintenance-error' || reason === 'retention-error' || reason === 'db-binding-missing') {
     throw new Error(`${kind} failed: ${result?.error || reason}`);
   }
   return result;
@@ -55,10 +59,7 @@ function assertMaintenanceSucceeded(kind, result) {
 
 export async function runMonitorMaintenanceCron(controller, env, dependencies = EMPTY_DEPENDENCIES) {
   const cron = monitorCron(controller);
-  if (cron === SNAPSHOT_RETENTION_CRON) {
-    return { skipped: true, reason: 'unlimited-retention' };
-  }
-  if (cron !== ROLLUP_MAINTENANCE_CRON) {
+  if (cron !== ROLLUP_MAINTENANCE_CRON && cron !== SNAPSHOT_RETENTION_CRON) {
     return { skipped: true, reason: 'unsupported-monitor-maintenance-cron', cron };
   }
 
@@ -72,16 +73,22 @@ export async function runMonitorMaintenanceCron(controller, env, dependencies = 
     return { skipped: true, reason: collector.reason, targetMinute: collector.targetMinute };
   }
 
-  if (!env?.BUDDIES_DB || !env?.OTHER_DB) {
-    return assertMaintenanceSucceeded('rollup maintenance', { skipped: true, reason: 'db-binding-missing' });
+  if (cron === ROLLUP_MAINTENANCE_CRON) {
+    if (!env?.BUDDIES_DB || !env?.OTHER_DB) {
+      return assertMaintenanceSucceeded('rollup maintenance', { skipped: true, reason: 'db-binding-missing' });
+    }
+    const runRollup = dependencies.runRollup
+      || (await loadRollupModule()).runRollupMaintenanceSafely;
+    const repairDb = enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED) ? env.MINUTE_DB : null;
+    return assertMaintenanceSucceeded(
+      'rollup maintenance',
+      await runRollup(env.BUDDIES_DB, env.OTHER_DB, repairDb, now),
+    );
   }
-  const runRollup = dependencies.runRollup
-    || (await loadRollupModule()).runRollupMaintenanceSafely;
-  const repairDb = enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED) ? env.MINUTE_DB : null;
-  return assertMaintenanceSucceeded(
-    'rollup maintenance',
-    await runRollup(env.BUDDIES_DB, env.OTHER_DB, repairDb, now),
-  );
+
+  const pruneSnapshots = dependencies.pruneSnapshots
+    || (await loadRetentionModule()).pruneOldSnapshotsSafely;
+  return assertMaintenanceSucceeded('snapshot retention', await pruneSnapshots(env, now));
 }
 
 export default {
