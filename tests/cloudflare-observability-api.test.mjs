@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 const queryScript = readSource('.github/scripts/query-cloudflare-observability.py');
+const queryUrl = new URL('../.github/scripts/query-cloudflare-observability.py', import.meta.url);
 const diagnosticsAction = readSource('.github/actions/cloudflare-observability-diagnostics/action.yml');
 const auditScript = readSource('.github/scripts/audit-cloudflare-telemetry.py');
 const auditUrl = new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url);
@@ -29,6 +30,14 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'workersInvocationsAdaptive',
     'workers/observability/telemetry/query',
     '"view": "events"',
+    '"view": "calculations"',
+    '"operator": "median"',
+    '"operator": "p99"',
+    '$workers.cpuTimeMs',
+    '$workers.eventType',
+    '$workers.executionModel',
+    'parse_cpu_calculations',
+    'CPU by invocation class',
     'GITHUB_STEP_SUMMARY',
     'urlunsplit',
     'CLOUDFLARE_ACCOUNT_ID',
@@ -47,6 +56,8 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'accounts?per_page=50',
     'user/tokens/verify',
     '::warning title=Cloudflare Worker errors',
+    'quantiles { cpuTimeP50 cpuTimeP99 }',
+    'microseconds_to_ms',
   ]);
   expectAll(diagnosticsAction, [
     'persisted_error_events=0',
@@ -116,8 +127,8 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
   );
 });
 
-test('telemetry audits enforce invocation-specific budgets, deployed versions, and deduplicated errors', () => {
-  for (const url of [auditUrl, deployedAuditUrl]) {
+test('observability queries and telemetry audits pass invocation-class self-tests', () => {
+  for (const url of [queryUrl, auditUrl, deployedAuditUrl]) {
     const result = spawnSync('python3', [fileURLToPath(url), '--self-test'], { encoding: 'utf8' });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
   }
