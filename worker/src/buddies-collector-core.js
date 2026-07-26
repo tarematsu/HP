@@ -1,21 +1,13 @@
 import './fetch-guard.js';
 
 import { sanitizeFailureDetail } from './collector-failure.js';
-import ingestWorker, { ingestRawCollection } from './ingest-channel-optimized-entry.js';
+import { ingestRawCollection } from './ingest-channel-optimized-entry.js';
 import { collectRawChannel } from './raw-collector-entry.js';
 import { rawCollectorEnv } from './runtime-env.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 
 export const BUDDIES_COLLECTOR_CRON = '* * * * *';
-export const BUDDIES_COLLECTOR_QUEUE_NAMES = Object.freeze([
-  'stationhead-raw-collection',
-  'stationhead-ingest-finalize',
-  'stationhead-comments',
-  'stationhead-buddies-persist',
-]);
-
-const BUDDIES_COLLECTOR_QUEUE_SET = new Set(BUDDIES_COLLECTOR_QUEUE_NAMES);
 
 export async function runBuddiesCollectorScheduled(
   controller,
@@ -35,11 +27,15 @@ export async function runBuddiesCollectorScheduled(
     ingestRawCollection: dependencies.ingestRawCollection || ingestRawCollection,
   };
   try {
-    await collect(
+    const collection = await collect(
       rawCollectorEnv(env),
       collectionDependencies,
     );
-    return { collected: true, scheduled_at: scheduledAt };
+    return {
+      collected: true,
+      scheduled_at: scheduledAt,
+      ...(collection && typeof collection === 'object' ? collection : {}),
+    };
   } catch (error) {
     console.error(JSON.stringify({
       event: 'buddies_collection_failed',
@@ -50,26 +46,6 @@ export async function runBuddiesCollectorScheduled(
   }
 }
 
-export async function runBuddiesCollectorQueue(
-  batch,
-  env,
-  ctx,
-  dependencies = EMPTY_DEPENDENCIES,
-) {
-  const queueName = String(batch?.queue || '');
-  if (!BUDDIES_COLLECTOR_QUEUE_SET.has(queueName)) {
-    throw new Error(`unsupported buddies collector queue: ${queueName || 'unknown'}`);
-  }
-  const run = dependencies.runIngestQueue || ingestWorker.queue;
-  return run(
-    batch,
-    rawCollectorEnv(env),
-    ctx,
-    dependencies.ingest || EMPTY_DEPENDENCIES,
-  );
-}
-
 export default {
   scheduled: runBuddiesCollectorScheduled,
-  queue: runBuddiesCollectorQueue,
 };

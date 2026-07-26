@@ -1,4 +1,8 @@
 import { sanitizeFailureDetail } from './collector-failure.js';
+import {
+  readMinuteFactRuntimeStateFromDo,
+  recordMinuteFactRuntimeStateInDo,
+} from './runtime-state-do.js';
 
 export const MINUTE_FACT_RUNTIME_STATE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_runtime_state (
   task_name TEXT PRIMARY KEY,
@@ -21,10 +25,21 @@ export const MINUTE_FACT_RUNTIME_STATE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS 
   updated_at INTEGER NOT NULL
 )`;
 
-// Derive and rebuild execute frequently enough that a successful heartbeat
-// does not need a D1 write for every invocation. Failures and backlog changes
-// still write immediately; unchanged success is checkpointed every twenty minutes.
+// D1 remains the compatibility fallback. Production writes diagnostic state to
+// RuntimeCoordinator, so frequent queue/runtime observations use the DO
+// allowance without changing the minute-fact job or history source of truth.
 const RUNTIME_SUCCESS_CHECKPOINT_MS = 20 * 60_000;
+
+function runtimeStateEnv(env) {
+  if (env?.RUNTIME_STATE_COORDINATOR || !env?.RUNTIME_COORDINATOR) return env;
+  const active = Object.create(env || null);
+  Object.defineProperty(active, 'RUNTIME_STATE_COORDINATOR', {
+    value: env.RUNTIME_COORDINATOR,
+    enumerable: false,
+    configurable: true,
+  });
+  return active;
+}
 
 function finiteInteger(value, fallback = null) {
   const parsed = Number(value);
@@ -64,13 +79,21 @@ export async function ensureMinuteFactRuntimeStateSchema(env) {
 }
 
 export async function recordMinuteFactRuntimeState(env, task, outcome = {}, options = {}) {
+  const name = taskName(task);
+  const durable = await recordMinuteFactRuntimeStateInDo(
+    runtimeStateEnv(env),
+    name,
+    outcome,
+    options,
+  );
+  if (durable) return durable;
+
   await ensureMinuteFactRuntimeStateSchema(env);
   const now = finiteInteger(options.now, Date.now());
   const startedAt = finiteInteger(options.startedAt, now);
   const success = successFor(outcome, options);
   const snapshot = minuteFactRuntimeSnapshot(outcome);
   const error = success ? null : sanitizeFailureDetail(outcome?.error?.message || outcome?.error || outcome?.last_error || 'unknown failure').slice(0, 800);
-  const name = taskName(task);
 
   await env.MINUTE_DB.prepare(`INSERT INTO sh_minute_fact_runtime_state(
       task_name,last_started_at,last_success_at,last_failure_at,last_duration_ms,last_error,
@@ -113,12 +136,19 @@ export async function recordMinuteFactRuntimeState(env, task, outcome = {}, opti
 }
 
 export async function readMinuteFactRuntimeState(env, task = null) {
+  const normalizedTask = task == null ? null : taskName(task);
+  const durable = await readMinuteFactRuntimeStateFromDo(
+    runtimeStateEnv(env),
+    normalizedTask,
+  );
+  if (durable !== null) return durable;
+
   await ensureMinuteFactRuntimeStateSchema(env);
-  if (task == null) {
+  if (normalizedTask == null) {
     const result = await env.MINUTE_DB.prepare('SELECT * FROM sh_minute_fact_runtime_state ORDER BY task_name').all();
     return result.results || [];
   }
-  return env.MINUTE_DB.prepare('SELECT * FROM sh_minute_fact_runtime_state WHERE task_name=?').bind(taskName(task)).first();
+  return env.MINUTE_DB.prepare('SELECT * FROM sh_minute_fact_runtime_state WHERE task_name=?').bind(normalizedTask).first();
 }
 
 export function minuteFactRuntimeSignals(state, options = {}) {

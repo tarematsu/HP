@@ -31,10 +31,12 @@ function commentsTask() {
   };
 }
 
-test('collector and runtime have one exclusive owner per Queue boundary', () => {
+test('collector, recovery, and runtime have one exclusive owner per Queue boundary', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
+  const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(
     collector.queues.producers.find(({ binding }) => binding === 'RAW_COLLECTION_QUEUE').queue,
@@ -44,6 +46,9 @@ test('collector and runtime have one exclusive owner per Queue boundary', () => 
   const collectorConsumers = new Map(
     collector.queues.consumers.map((consumer) => [consumer.queue, consumer]),
   );
+  const recoveryConsumers = new Map(
+    recovery.queues.consumers.map((consumer) => [consumer.queue, consumer]),
+  );
   const runtimeConsumers = new Map(runtime.queues.consumers.map((consumer) => [consumer.queue, consumer]));
   for (const queue of [
     'stationhead-raw-collection',
@@ -51,7 +56,9 @@ test('collector and runtime have one exclusive owner per Queue boundary', () => 
     'stationhead-comments',
     'stationhead-buddies-persist',
   ]) {
-    assert.equal(collectorConsumers.get(queue).max_batch_size, 1, queue);
+    assert.equal(recoveryConsumers.get(queue).max_batch_size, 10, queue);
+    assert.equal(recoveryConsumers.get(queue).max_batch_timeout, 5, queue);
+    assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
   for (const queue of [
@@ -62,8 +69,10 @@ test('collector and runtime have one exclusive owner per Queue boundary', () => 
   ]) {
     assert.equal(runtimeConsumers.get(queue).max_batch_size, 1, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
+    assert.equal(recoveryConsumers.has(queue), false, queue);
   }
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
+  assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), [
     'BUDDIES_DB',
     'MINUTE_DB',

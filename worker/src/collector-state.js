@@ -1,6 +1,11 @@
+import {
+  COLLECTOR_DO_HOT_STATE,
+  mergeCollectorHotState,
+} from './collector-do-hot-state.js';
 import { jwtExpiryMs, normalizeBearer } from './shared.js';
 
 const COLLECTOR_STATE_CHECKPOINT_MS = 20 * 60_000;
+const MINUTE_MS = 60_000;
 
 function identity(value) {
   return Number(value || 0) || null;
@@ -19,7 +24,7 @@ function collectorState(value, persistCredentials = true) {
       writable: true,
     },
     persistedLastRunAt: {
-      value: Number(value.lastRunAt || 0),
+      value: Number(value.checkpointAt ?? value.lastRunAt ?? 0),
       enumerable: false,
     },
     persistedChannelId: {
@@ -32,6 +37,26 @@ function collectorState(value, persistCredentials = true) {
     },
   });
   return value;
+}
+
+async function cacheCollectorState(env, state, checkpoint = false) {
+  if (!state?.authToken || !state?.deviceUid) return false;
+  return mergeCollectorHotState(env, COLLECTOR_DO_HOT_STATE.auth_key, {
+    id: 'stationhead',
+    authToken: normalizeBearer(state.authToken),
+    deviceUid: String(state.deviceUid || '').trim(),
+    tokenExpiresAt: Number(state.tokenExpiresAt || 0) || jwtExpiryMs(state.authToken),
+    collectorLastRunAt: Number(state.lastRunAt || 0),
+    collectorLastSuccessAt: Number(state.lastSuccessAt || 0),
+    collectorLastError: state.lastError || null,
+    collectorChannelId: identity(state.channelId),
+    collectorStationId: identity(state.stationId),
+    collectorUpdatedAt: Date.now(),
+    collectorCheckpointAt: checkpoint
+      ? Number(state.lastRunAt || 0)
+      : Number(state.persistedLastRunAt || 0),
+    controlExists: true,
+  });
 }
 
 export function collectorStateFromAuthState(authState, env = {}) {
@@ -49,6 +74,11 @@ export function collectorStateFromAuthState(authState, env = {}) {
     lastError: authState?.collectorLastError || null,
     channelId: Number(authState?.collectorChannelId || 0) || null,
     stationId: Number(authState?.collectorStationId || 0) || null,
+    checkpointAt: Number(
+      authState?.collectorCheckpointAt
+      ?? authState?.collectorLastRunAt
+      ?? 0,
+    ),
   }, env.__shPersistCollectorCredentials !== false);
 }
 
@@ -80,12 +110,14 @@ export async function loadCollectorState(env) {
     lastError: row?.last_error || null,
     channelId: Number(row?.last_channel_id || 0) || null,
     stationId: Number(row?.last_station_id || 0) || null,
+    checkpointAt: Number(row?.last_run_at || 0),
   });
 }
 
 export async function saveCollectorState(env, state, patch = {}) {
   Object.assign(state, patch);
   await collectorStateStatement(env.DB, state).run();
+  await cacheCollectorState(env, state, true);
 }
 
 function collectorStateStatement(db, state) {
@@ -139,13 +171,21 @@ function successfulCollectorStateStatement(db, state) {
     : collectorStateStatement(db, state);
 }
 
+function fixedCheckpointSlotDue(current) {
+  if (!Number.isFinite(current) || current <= 0) return false;
+  return Math.floor(current / COLLECTOR_STATE_CHECKPOINT_MS)
+    !== Math.floor((current - MINUTE_MS) / COLLECTOR_STATE_CHECKPOINT_MS);
+}
+
 export function successfulCollectorStatePersistenceDue(state) {
   if (state.persistCredentials !== false || state.clearFailureOnSuccess === true) return true;
   if (identity(state.channelId) !== state.persistedChannelId
       || identity(state.stationId) !== state.persistedStationId) return true;
   const previous = Number(state.persistedLastRunAt || 0);
   const current = Number(state.lastRunAt || 0);
-  return previous <= 0 || (Number.isFinite(current) && current - previous >= COLLECTOR_STATE_CHECKPOINT_MS);
+  return previous <= 0
+    || (Number.isFinite(current) && current - previous >= COLLECTOR_STATE_CHECKPOINT_MS)
+    || fixedCheckpointSlotDue(current);
 }
 
 async function saveSuccessfulCollectorState(db, state) {
@@ -167,19 +207,19 @@ async function clearFailureBestEffort(db) {
   }
 }
 
-// Clean ticks persist only collector progress. A tick following a recorded
-// collector error batches the state recovery and incident cleanup so the old
-// failure remains visible until the successful state is durable.
 export async function saveCollectorStateAndClearFailure(env, state, patch = {}) {
   Object.assign(state, patch);
+  await cacheCollectorState(env, state, false);
   if (!successfulCollectorStatePersistenceDue(state)) return;
   if (state.clearFailureOnSuccess !== true) {
     await saveSuccessfulCollectorState(env.DB, state);
+    await cacheCollectorState(env, state, true);
     return;
   }
   if (typeof env?.DB?.batch !== 'function') {
     await saveSuccessfulCollectorState(env.DB, state);
     await clearFailureBestEffort(env.DB);
+    await cacheCollectorState(env, state, true);
     return;
   }
   try {
@@ -194,9 +234,8 @@ export async function saveCollectorStateAndClearFailure(env, state, patch = {}) 
       await collectorStateStatement(env.DB, state).run();
     }
   } catch (error) {
-    // Preserve the old success semantics if only the best-effort incident
-    // cleanup failed: the collector state must still be committed.
     await saveSuccessfulCollectorState(env.DB, state);
     await clearFailureBestEffort(env.DB);
   }
+  await cacheCollectorState(env, state, true);
 }

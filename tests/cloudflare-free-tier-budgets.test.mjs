@@ -9,6 +9,8 @@ const responseStore = readSource('worker/src/pages-response-store.js');
 const responseEntry = readSource('worker/src/pages-read-model-entry.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
+const runtimeDoEntry = readSource('worker/src/runtime-do-orchestrator.js');
+const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
 
@@ -69,11 +71,24 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
 });
 
 test('the coordinators and remaining scheduled Queues fit safely below daily budgets', () => {
-  const maximumCoordinatorRequests = 24 * 60 * 2;
-  const maximumCoordinatorDuration = maximumCoordinatorRequests * 1 * 0.128;
-  const maximumCoordinatorRowsRead = maximumCoordinatorRequests;
-  const maximumCoordinatorRowsWritten = maximumCoordinatorRequests;
+  const collectorScheduledRequests = 24 * 60;
+  const runtimeScheduledRequests = 652;
+  const collectorStatusRequests = 24 * 6 * 2 + 24 * 2;
+  const maximumRuntimeStateRequests = 24 * 60 * 10;
+  const maximumCoordinatorRequests = collectorScheduledRequests
+    + runtimeScheduledRequests
+    + collectorStatusRequests
+    + maximumRuntimeStateRequests;
+  const maximumScheduledDuration = (collectorScheduledRequests + runtimeScheduledRequests) * 10 * 0.128;
+  const maximumStatusWaitDuration = collectorStatusRequests * 15 * 0.128;
+  const maximumCoordinatorDuration = maximumScheduledDuration + maximumStatusWaitDuration;
+  const maximumCoordinatorRowsRead = maximumCoordinatorRequests * 32;
+  const maximumCoordinatorRowsWritten = collectorScheduledRequests * 6
+    + runtimeScheduledRequests * 2
+    + maximumRuntimeStateRequests;
   const maximumQueueOperations = (48 + 48 + 17 + 288 * 2) * 3;
+
+  assert.equal(collectorStatusRequests, 336);
   assert.equal(maximumQueueOperations, 2_067);
   assert.ok(maximumCoordinatorRequests < 100_000);
   assert.ok(maximumCoordinatorDuration < 13_000);
@@ -82,15 +97,32 @@ test('the coordinators and remaining scheduled Queues fit safely below daily bud
   assert.ok(maximumQueueOperations < 10_000);
   assert.equal(runtime.vars.RAW_COLLECTION_FALLBACK_INTERVAL_MINUTES, 5);
   assert.equal(runtime.vars.PIPELINE_ANALYTICS_INTERVAL_MINUTES, undefined);
-  assert.equal(runtime.durable_objects.bindings[0].class_name, 'RuntimeCoordinator');
+  assert.equal(runtime.vars.COLLECTOR_STATUS_DO_ENABLED, true);
+  assert.deepEqual(runtime.durable_objects.bindings, [
+    { name: 'RUNTIME_COORDINATOR', class_name: 'RuntimeCoordinator' },
+    {
+      name: 'BUDDIES_COLLECTOR_COORDINATOR',
+      class_name: 'BuddiesCollectorCoordinator',
+      script_name: 'sh-buddies-collector',
+    },
+  ]);
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   expectAll(deployedEntry, [
-    'stub.fetch',
-    "action: 'claim'",
-    "action: 'release'",
-    'return direct(controller, env, ctx, dependencies.direct)',
+    'RuntimeCoordinator',
+    'runRuntimeOrchestratorScheduled',
   ]);
-  assert.match(deployedEntry, /primary-run-in-progress|runtime-coordinator-duplicate/);
+  expectAll(runtimeDoEntry, [
+    'stub.fetch',
+    "action: 'run'",
+    'runtimeOrchestratorDue',
+    'RUNTIME_COORDINATOR_FAIL_OPEN',
+  ]);
+  expectAll(collectorStatus, [
+    "action: 'status'",
+    'BUDDIES_COLLECTOR_COORDINATOR',
+    'COLLECTOR_STATUS_DO_ENABLED',
+  ]);
+  assert.match(runtimeDoEntry, /primary-run-in-progress|runtime-coordinator-duplicate/);
   expectAll(coreEntry, ['runtime:last-scheduled-ticket', 'runPagesReadModelCron']);
   expectNone(coreEntry, ['pages-read-model-scheduled-dispatch']);
 });
@@ -103,7 +135,7 @@ test('surplus KV and R2 capacity replaces materialized-response D1 writes and re
   expectAll(queuePlanR2, ['operational/queue-plan/v1', 'await r2.delete']);
 
   const maximumDailyVariantWrites = 17;
-  const maximumDailyDashboardWrites = 24 * 60 / 5;
+  const maximumDailyDashboardWrites = 24 * 60 / 15;
   const maximumDailyKvWrites = maximumDailyDashboardWrites + maximumDailyVariantWrites;
   const maximumMonthlyR2Mirrors = maximumDailyKvWrites * 31;
   const maximumMonthlyQueuePlanReads = 24 * 60 * 31;

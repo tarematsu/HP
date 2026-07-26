@@ -1,3 +1,5 @@
+import { waitForCollectorCoordinator } from './collector-coordinator-status.js';
+
 // All three workers (buddies/other/minute) share the same "* * * * *" cron.
 // Buddies is the latency-sensitive primary collector that writes the shared DB
 // and is left unstaggered; other/minute delay their own DB-touching work by a
@@ -55,12 +57,21 @@ function priorityPollMs(env = {}, options = {}) {
 }
 
 export async function waitForCollectorCompletion(env = {}, scheduledAt = Date.now(), options = {}) {
+  const targetMinute = collectorMinuteAt(scheduledAt);
+  const maxWaitMs = priorityWaitMs(env, options);
+  const pollMs = priorityPollMs(env, options);
+  const durable = await waitForCollectorCoordinator(env, scheduledAt, {
+    minimumSuccessAt: targetMinute,
+    waitMs: maxWaitMs,
+    pollMs,
+    stub: options.stub,
+  });
+  if (durable) return durable;
+
   const db = env?.BUDDIES_DB || (env?.MINUTE_DB ? null : env?.DB);
   if (!db?.prepare) return { ready: true, reason: 'buddies-db-binding-missing' };
 
-  const targetMinute = collectorMinuteAt(scheduledAt);
-  const deadline = Date.now() + priorityWaitMs(env, options);
-  const pollMs = priorityPollMs(env, options);
+  const deadline = Date.now() + maxWaitMs;
   while (true) {
     try {
       const row = await db.prepare(`SELECT last_run_at,last_success_at,last_error
@@ -68,7 +79,7 @@ export async function waitForCollectorCompletion(env = {}, scheduledAt = Date.no
       if (Number(row?.last_run_at || 0) >= targetMinute
           && Number(row?.last_success_at || 0) >= targetMinute
           && !row?.last_error) {
-        return { ready: true, targetMinute };
+        return { ready: true, targetMinute, source: 'd1-fallback' };
       }
     } catch (error) {
       if (/no such table|no such column/i.test(String(error?.message || error))) {
@@ -76,7 +87,14 @@ export async function waitForCollectorCompletion(env = {}, scheduledAt = Date.no
       }
       throw error;
     }
-    if (Date.now() >= deadline) return { ready: false, reason: 'collector-not-ready', targetMinute };
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(1, deadline - Date.now()))));
+    if (Date.now() >= deadline) {
+      return {
+        ready: false,
+        reason: 'collector-not-ready',
+        targetMinute,
+        source: 'd1-fallback',
+      };
+    }
+    await defaultSleep(Math.min(pollMs, Math.max(1, deadline - Date.now())));
   }
 }

@@ -12,8 +12,8 @@ const dispatch = readFileSync(new URL('../../worker/src/pages-read-model-dispatc
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
 const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
 
-// Pages remains read-only. The production Worker topology is now split into the
-// Sakurazaka monitor, buddies collector, and runtime orchestrator.
+// Pages remains read-only. Production Worker ownership is split across the
+// Sakurazaka monitor, buddies recovery, buddies collector, and runtime orchestrator.
 test('dashboard composes completed daily summaries through a focused loader', () => {
   assert.match(dashboard, /loadDashboardDailySummaries/);
   assert.match(dashboard, /daily_summaries/);
@@ -41,10 +41,11 @@ test('track-history generation and publication remain routed inside the runtime 
   assert.match(entry, /pages-read-model-entry/);
 });
 
-test('only the three split production Workers remain active', () => {
+test('only the four split production Workers remain active', () => {
   const activeBlock = workers.slice(workers.indexOf('ACTIVE_WORKER_NAMES'), workers.indexOf('RETIRED_WORKER_NAMES'));
-  assert.equal((activeBlock.match(/'sh-/g) || []).length, 3);
+  assert.equal((activeBlock.match(/'sh-/g) || []).length, 4);
   assert.match(activeBlock, /'sh-sakurazaka46jp'/);
+  assert.match(activeBlock, /'sh-buddies-recovery'/);
   assert.match(activeBlock, /'sh-buddies-collector'/);
   assert.match(activeBlock, /'sh-runtime-orchestrator'/);
 });

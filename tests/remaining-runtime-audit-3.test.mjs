@@ -56,6 +56,7 @@ test('collector converts the already-read auth state without another DB query', 
     lastError: null,
     channelId: 400,
     stationId: 500,
+    checkpointAt: 200,
   });
 
   const env = withAuthState({ DB: { marker: true }, RUN_SECRET: 'secret' }, authState);

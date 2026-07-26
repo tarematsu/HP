@@ -62,6 +62,27 @@ export function periodBoundaryEvidenceSql(toleranceMs = PERIOD_BOUNDARY_TOLERANC
   FROM ranked GROUP BY period_key ORDER BY period_key ASC`;
 }
 
+export function preaggregatedPeriodBoundaryEvidenceSql() {
+  return `WITH periods AS (
+    SELECT json_extract(value,'$.period_key') AS period_key
+    FROM json_each(?)
+  )
+  SELECT periods.period_key,
+    MAX(CASE WHEN evidence.boundary_name='start' THEN evidence.observed_at END) AS boundary_start_at,
+    MAX(CASE WHEN evidence.boundary_name='end' THEN evidence.observed_at END) AS boundary_end_at,
+    MAX(CASE WHEN evidence.boundary_name='start' THEN evidence.stream_value END) AS stream_start,
+    MAX(CASE WHEN evidence.boundary_name='end' THEN evidence.stream_value END) AS stream_end,
+    MAX(CASE WHEN evidence.boundary_name='start' THEN evidence.member_value END) AS member_start,
+    MAX(CASE WHEN evidence.boundary_name='end' THEN evidence.member_value END) AS member_end,
+    MAX(CASE WHEN evidence.boundary_name='start' THEN 1 ELSE 0 END) AS has_start,
+    MAX(CASE WHEN evidence.boundary_name='end' THEN 1 ELSE 0 END) AS has_end
+  FROM periods
+  LEFT JOIN sh_period_boundary_evidence evidence
+    ON evidence.mode=? AND evidence.period_key=periods.period_key
+  GROUP BY periods.period_key
+  ORDER BY periods.period_key ASC`;
+}
+
 export function summaryRowNeedsBoundaryEvidence(row, mode) {
   const periodKey = String(row?.period_key || '');
   const bounds = expectedPeriodBounds(mode, periodKey);
@@ -110,19 +131,101 @@ function periodPayload(rows, mode) {
   return periods;
 }
 
+async function loadPreaggregatedEvidence(db, payload, mode) {
+  try {
+    const result = await db.prepare(preaggregatedPeriodBoundaryEvidenceSql())
+      .bind(payload, mode)
+      .all();
+    return result.results || [];
+  } catch (error) {
+    if (!/no such table:\s*sh_period_boundary_evidence/i.test(String(error?.message || error))) throw error;
+    return [];
+  }
+}
+
+async function persistLoadedEvidence(db, rows, mode, now = Date.now()) {
+  if (!rows.length || typeof db?.batch !== 'function') return;
+  const statements = [];
+  for (const row of rows) {
+    const periodKey = String(row?.period_key || '');
+    const bounds = expectedPeriodBounds(mode, periodKey);
+    if (!bounds) continue;
+    for (const boundaryName of ['start', 'end']) {
+      const suffix = boundaryName === 'start' ? 'start' : 'end';
+      const observedAt = finiteNumber(row?.[`boundary_${suffix}_at`]);
+      if (observedAt == null) continue;
+      statements.push(db.prepare(`INSERT INTO sh_period_boundary_evidence (
+          mode,period_key,boundary_name,target_at,observed_at,
+          stream_observed_at,stream_value,member_observed_at,member_value,
+          source_id,updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(mode,period_key,boundary_name) DO UPDATE SET
+          target_at=excluded.target_at,
+          observed_at=excluded.observed_at,
+          stream_observed_at=excluded.stream_observed_at,
+          stream_value=excluded.stream_value,
+          member_observed_at=excluded.member_observed_at,
+          member_value=excluded.member_value,
+          updated_at=excluded.updated_at`)
+        .bind(
+          mode,
+          periodKey,
+          boundaryName,
+          boundaryName === 'start' ? bounds.start : bounds.end,
+          observedAt,
+          finiteNumber(row?.[`stream_${suffix}`]) == null ? null : observedAt,
+          finiteNumber(row?.[`stream_${suffix}`]),
+          finiteNumber(row?.[`member_${suffix}`]) == null ? null : observedAt,
+          finiteNumber(row?.[`member_${suffix}`]),
+          null,
+          now,
+        ));
+    }
+  }
+  if (!statements.length) return;
+  try {
+    await db.batch(statements);
+  } catch (error) {
+    if (!/no such table:\s*sh_period_boundary_evidence/i.test(String(error?.message || error))) throw error;
+  }
+}
+
 export async function loadPeriodBoundaryEvidence(db, rows, mode) {
   const periods = periodPayload(rows, mode);
   if (!periods.length) return new Map();
   const payload = JSON.stringify(periods);
+  const preaggregated = await loadPreaggregatedEvidence(db, payload, mode);
+  const complete = new Map();
+  const missingKeys = new Set(periods.map((period) => period.period_key));
+  for (const row of preaggregated) {
+    if (Number(row?.has_start) !== 1 || Number(row?.has_end) !== 1) continue;
+    const key = String(row.period_key);
+    complete.set(key, row);
+    missingKeys.delete(key);
+  }
+  if (!missingKeys.size) return complete;
+
+  const missingPeriods = periods.filter((period) => missingKeys.has(period.period_key));
   const toleranceMs = periodBoundaryToleranceMs(mode);
   let result;
   try {
-    result = await db.prepare(periodBoundaryEvidenceSql(toleranceMs)).bind(payload).all();
+    result = await db.prepare(periodBoundaryEvidenceSql(toleranceMs))
+      .bind(JSON.stringify(missingPeriods))
+      .all();
   } catch (error) {
     if (!/no such table|no such column/i.test(String(error?.message || ''))) throw error;
-    return new Map();
+    return complete;
   }
-  return new Map((result.results || []).map((row) => [String(row.period_key), row]));
+  const loaded = result.results || [];
+  await persistLoadedEvidence(db, loaded, mode).catch((error) => {
+    console.warn(JSON.stringify({
+      event: 'period_boundary_preaggregate_persist_failed',
+      mode,
+      error: String(error?.message || error).slice(0, 300),
+    }));
+  });
+  for (const row of loaded) complete.set(String(row.period_key), row);
+  return complete;
 }
 
 export function applyPeriodBoundaryEvidence(rows, evidence) {

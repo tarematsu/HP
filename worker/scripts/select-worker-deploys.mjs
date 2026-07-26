@@ -6,15 +6,18 @@ const workerRoot = resolve(repositoryRoot, 'worker');
 
 const workerDefinitions = [
   { name: 'sh-sakurazaka46jp', config: 'worker/wrangler.sakurazaka46jp.jsonc', command: 'deploy:sakurazaka46jp' },
+  { name: 'sh-buddies-recovery', config: 'worker/wrangler.buddies-recovery.jsonc', command: 'deploy:buddies-recovery' },
   { name: 'sh-buddies-collector', config: 'worker/wrangler.buddies-collector.jsonc', command: 'deploy:buddies-collector' },
   { name: 'sh-runtime-orchestrator', config: 'worker/wrangler.runtime.jsonc', command: 'deploy:runtime' },
 ];
 
 const gitConnectedWorkers = new Set(['sh-runtime-orchestrator']);
+const recoveryWorker = 'sh-buddies-recovery';
 const collectorWorker = 'sh-buddies-collector';
 const runtimeWorker = 'sh-runtime-orchestrator';
 
 const deployScriptWorkers = new Map([
+  ['worker/scripts/deploy-buddies-recovery.mjs', recoveryWorker],
   ['worker/scripts/deploy-buddies-collector.mjs', collectorWorker],
   ['worker/scripts/deploy-runtime.mjs', runtimeWorker],
   ['worker/scripts/pages-response-kv-namespace.mjs', runtimeWorker],

@@ -93,7 +93,7 @@ jobs:
                 selection='{"workers":["sh-sakurazaka46jp"],"commands":["deploy:sakurazaka46jp"]}'
                 ;;
               buddies-collector)
-                selection='{"workers":["sh-buddies-collector"],"commands":["deploy:buddies-collector"]}'
+                selection='{"workers":["sh-buddies-recovery","sh-buddies-collector"],"commands":["deploy:buddies-recovery","deploy:buddies-collector"]}'
                 ;;
               runtime)
                 minute_db=true

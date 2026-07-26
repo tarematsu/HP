@@ -1,3 +1,5 @@
+import { collectorCachedDb } from './collector-d1-cache.js';
+
 export const MINUTE_PIPELINE_QUEUE_NAMES = Object.freeze([
   'stationhead-minute-derive',
   'stationhead-minute-live-derive',
@@ -18,8 +20,19 @@ function withDatabaseAlias(env, sourceBinding) {
   return active;
 }
 
+function withCollectorReadCache(env) {
+  if (!env?.DB) return env;
+  const active = Object.create(env);
+  Object.defineProperty(active, 'DB', {
+    value: collectorCachedDb(env.DB, env),
+    enumerable: false,
+    configurable: true,
+  });
+  return active;
+}
+
 export function rawCollectorEnv(env) {
-  return withDatabaseAlias(env, 'BUDDIES_DB');
+  return withCollectorReadCache(withDatabaseAlias(env, 'BUDDIES_DB'));
 }
 
 export function minutePipelineEnv(env) {

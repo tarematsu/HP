@@ -13,11 +13,13 @@ test('deployment workflow changes redeploy all active Workers in dependency orde
 
   assert.deepEqual(result.workers, [
     'sh-sakurazaka46jp',
+    'sh-buddies-recovery',
     'sh-buddies-collector',
     'sh-runtime-orchestrator',
   ]);
   assert.deepEqual(result.commands, [
     'deploy:sakurazaka46jp',
+    'deploy:buddies-recovery',
     'deploy:buddies-collector',
     'deploy:runtime',
   ]);

@@ -51,27 +51,30 @@ test('consolidated Pages route handles minute read-model messages even when batc
   assert.deepEqual(events, ['metadata', 'ack']);
 });
 
-test('optional comments are bounded inside the dedicated collector ingest route', () => {
+test('optional comments are bounded inside the dedicated recovery ingest route', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
+  const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
   const entry = readFileSync(new URL('../src/ingest-channel-optimized-entry.js', import.meta.url), 'utf8');
-  const comments = collector.queues.consumers.find(({ queue }) => queue === 'stationhead-comments');
+  const comments = recovery.queues.consumers.find(({ queue }) => queue === 'stationhead-comments');
   assert.equal(collector.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
-  assert.equal(comments.max_batch_size, 1);
+  assert.equal(recovery.vars.COMMENT_CHAIN_MAX_ATTEMPTS, 1);
+  assert.equal(comments.max_batch_size, 10);
+  assert.equal(comments.max_batch_timeout, 5);
   assert.equal(comments.max_concurrency, 1);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-comments'), false);
   assert.match(entry, /CHAT_LIMIT: \{ value: 25/);
 });
 
-test('ingest persists operational snapshots once per twenty-minute slot', () => {
-  const env = { SNAPSHOT_PERSIST_INTERVAL_MS: 20 * MINUTE };
-  const boundary = Date.UTC(2026, 0, 1, 0, 20, 0);
+test('ingest persists operational snapshots once per hourly slot', () => {
+  const env = { SNAPSHOT_PERSIST_INTERVAL_MS: 60 * MINUTE };
+  const boundary = Date.UTC(2026, 0, 1, 1, 0, 0);
   assert.equal(snapshotPersistenceDue(env, boundary), true);
   assert.equal(snapshotPersistenceDue(env, boundary + MINUTE), false);
   assert.equal(snapshotPersistenceDue({}, boundary + MINUTE), true);
 
   const collector = config('wrangler.buddies-collector.jsonc');
-  assert.equal(collector.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 20 * MINUTE);
+  assert.equal(collector.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 60 * MINUTE);
 });
 
 test('ingest drops duplicate collected metadata when the dedicated pipeline owns hydration', () => {

@@ -2,6 +2,16 @@ import { spawnSync } from 'node:child_process';
 
 import { wranglerCommand } from './wrangler-command.mjs';
 
+const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+const SCRIPT_KEYS = new Set([
+  'script',
+  'script_name',
+  'service',
+  'service_name',
+  'worker',
+  'worker_name',
+]);
+
 export function runWrangler(args, { capture = false, allowFailure = false } = {}) {
   const command = wranglerCommand(args);
   const result = spawnSync(command.executable, command.args, {
@@ -18,6 +28,45 @@ export function runWrangler(args, { capture = false, allowFailure = false } = {}
   return result;
 }
 
+export function parseConsumerListOutput(output) {
+  const source = String(output || '').replace(ANSI_ESCAPE, '').trim();
+  if (!source) return null;
+  try {
+    return JSON.parse(source);
+  } catch {
+    for (const [open, close] of [['[', ']'], ['{', '}']]) {
+      const start = source.indexOf(open);
+      const end = source.lastIndexOf(close);
+      if (start < 0 || end <= start) continue;
+      try {
+        return JSON.parse(source.slice(start, end + 1));
+      } catch {
+        // Try the next container shape.
+      }
+    }
+  }
+  throw new Error('consumer list output is not valid JSON');
+}
+
+export function consumerScriptsFromValue(value) {
+  const scripts = new Set();
+  function visit(current, key = '') {
+    if (Array.isArray(current)) {
+      for (const entry of current) visit(entry, key);
+      return;
+    }
+    if (!current || typeof current !== 'object') {
+      if (typeof current === 'string' && SCRIPT_KEYS.has(String(key).toLowerCase())) {
+        scripts.add(current);
+      }
+      return;
+    }
+    for (const [childKey, childValue] of Object.entries(current)) visit(childValue, childKey);
+  }
+  visit(value);
+  return scripts;
+}
+
 export function consumerList(queue) {
   const result = runWrangler(
     ['queues', 'consumer', 'worker', 'list', queue, '--json'],
@@ -27,11 +76,31 @@ export function consumerList(queue) {
     const detail = String(result.stderr || result.stdout || '').trim();
     throw new Error(`consumer list failed for ${queue}${detail ? `: ${detail}` : ''}`);
   }
-  return `${result.stdout || ''}\n${result.stderr || ''}`;
+  return parseConsumerListOutput(`${result.stdout || ''}\n${result.stderr || ''}`);
+}
+
+export function consumerScripts(queue) {
+  return consumerScriptsFromValue(consumerList(queue));
 }
 
 export function hasConsumer(queue, scriptName) {
-  return consumerList(queue).includes(scriptName);
+  return consumerScripts(queue).has(String(scriptName));
+}
+
+export function assertConsumerOwnership(
+  queues,
+  { requiredScript, forbiddenScripts = [] },
+) {
+  for (const queue of queues) {
+    const scripts = consumerScripts(queue);
+    if (requiredScript && !scripts.has(requiredScript)) {
+      throw new Error(`${requiredScript} does not own ${queue}`);
+    }
+    for (const forbidden of forbiddenScripts) {
+      if (scripts.has(forbidden)) throw new Error(`${forbidden} unexpectedly owns ${queue}`);
+    }
+  }
+  return true;
 }
 
 export function pauseQueue(queue) {

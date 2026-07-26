@@ -1,3 +1,9 @@
+import {
+  COLLECTOR_DO_HOT_STATE,
+  getCollectorHotState,
+  mergeCollectorHotState,
+  putCollectorHotState,
+} from './collector-do-hot-state.js';
 import { normalizeBearer, jwtExpiryMs } from './shared.js';
 
 export const DEFAULT_AUTH_STATE_ID = 'stationhead';
@@ -35,6 +41,11 @@ function normalizedStateId(stateId = DEFAULT_AUTH_STATE_ID) {
   return String(stateId || DEFAULT_AUTH_STATE_ID).trim().toLowerCase() || DEFAULT_AUTH_STATE_ID;
 }
 
+function hotStateKey(stateId = DEFAULT_AUTH_STATE_ID) {
+  const id = normalizedStateId(stateId);
+  return id === DEFAULT_AUTH_STATE_ID ? COLLECTOR_DO_HOT_STATE.auth_key : `auth:${id}`;
+}
+
 function fallbackCredentials(env = {}) {
   return {
     authToken: env.STATIONHEAD_AUTH_TOKEN || env.SH_AUTH_TOKEN,
@@ -42,10 +53,16 @@ function fallbackCredentials(env = {}) {
   };
 }
 
+function refreshBeforeMs(env = {}) {
+  const parsed = Number(env.AUTH_REFRESH_BEFORE_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 3_600_000;
+}
+
 export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
   const fallback = fallbackCredentials(env);
   const authToken = normalizeBearer(row?.auth_token || fallback.authToken);
   const deviceUid = String(row?.device_uid || fallback.deviceUid || '').trim();
+  const collectorLastRunAt = Number(row?.collector_last_run_at || 0);
   return {
     id: normalizedStateId(stateId),
     authToken,
@@ -56,13 +73,48 @@ export function parseAuthState(row, env = {}, stateId = DEFAULT_AUTH_STATE_ID) {
     lastError: row?.last_error || null,
     lockUntil: Number(row?.lock_until || 0),
     controlExists: Boolean(row?.control_id),
-    collectorLastRunAt: Number(row?.collector_last_run_at || 0),
+    collectorLastRunAt,
     collectorLastSuccessAt: Number(row?.collector_last_success_at || 0),
     collectorLastError: row?.collector_last_error || null,
     collectorChannelId: Number(row?.collector_channel_id || 0) || null,
     collectorStationId: Number(row?.collector_station_id || 0) || null,
     collectorUpdatedAt: Number(row?.collector_updated_at || 0),
+    collectorCheckpointAt: collectorLastRunAt,
   };
+}
+
+function validHotAuthState(value, env, stateId) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const id = normalizedStateId(stateId);
+  if (normalizedStateId(value.id) !== id) return null;
+  const authToken = normalizeBearer(value.authToken);
+  const deviceUid = String(value.deviceUid || '').trim();
+  if (!authToken || !deviceUid) return null;
+  const tokenExpiresAt = Number(value.tokenExpiresAt || 0) || jwtExpiryMs(authToken);
+  if (tokenExpiresAt && tokenExpiresAt - Date.now() <= refreshBeforeMs(env)) return null;
+  const collectorLastRunAt = Number(value.collectorLastRunAt || 0);
+  return {
+    ...value,
+    id,
+    authToken,
+    deviceUid,
+    tokenExpiresAt,
+    lastAttemptAt: Number(value.lastAttemptAt || 0),
+    lastSuccessAt: Number(value.lastSuccessAt || 0),
+    lockUntil: Number(value.lockUntil || 0),
+    controlExists: value.controlExists !== false,
+    collectorLastRunAt,
+    collectorLastSuccessAt: Number(value.collectorLastSuccessAt || 0),
+    collectorChannelId: Number(value.collectorChannelId || 0) || null,
+    collectorStationId: Number(value.collectorStationId || 0) || null,
+    collectorUpdatedAt: Number(value.collectorUpdatedAt || 0),
+    collectorCheckpointAt: Number(value.collectorCheckpointAt || collectorLastRunAt || 0),
+  };
+}
+
+async function cacheAuthState(env, stateId, state) {
+  if (!state?.authToken || !state?.deviceUid) return false;
+  return putCollectorHotState(env, hotStateKey(stateId), state);
 }
 
 export async function ensureAuthControlSchema(env) {
@@ -74,14 +126,24 @@ export async function ensureAuthControlSchema(env) {
 }
 
 export async function readAuthState(env, stateId = DEFAULT_AUTH_STATE_ID) {
+  const hot = validHotAuthState(
+    await getCollectorHotState(env, hotStateKey(stateId)),
+    env,
+    stateId,
+  );
+  if (hot) return hot;
   try {
     const row = await env.DB.prepare(AUTH_STATE_SQL).bind(stateId).first();
-    return parseAuthState(row, env, stateId);
+    const state = parseAuthState(row, env, stateId);
+    await cacheAuthState(env, stateId, state);
+    return state;
   } catch (error) {
     if (!missingAuthControlTable(error)) throw error;
     await ensureAuthControlSchema(env);
     const row = await env.DB.prepare(AUTH_STATE_SQL).bind(stateId).first();
-    return parseAuthState(row, env, stateId);
+    const state = parseAuthState(row, env, stateId);
+    await cacheAuthState(env, stateId, state);
+    return state;
   }
 }
 
@@ -89,6 +151,10 @@ export async function ensureAuthControlRow(env, stateId = DEFAULT_AUTH_STATE_ID,
   await ensureAuthControlSchema(env);
   await env.DB.prepare(`INSERT OR IGNORE INTO sh_worker_auth_control (id,updated_at) VALUES (?,?)`)
     .bind(stateId, now).run();
+  await mergeCollectorHotState(env, hotStateKey(stateId), {
+    id: normalizedStateId(stateId),
+    controlExists: true,
+  });
 }
 
 export function resetAuthStateForTests() {

@@ -14,10 +14,13 @@ const dailyBudgetScript = readSource('.github/scripts/audit-cloudflare-daily-usa
 const d1QueryCostUrl = new URL('../.github/scripts/query-cloudflare-d1-costs.py', import.meta.url);
 const d1QueryCostScript = readSource('.github/scripts/query-cloudflare-d1-costs.py');
 const liveTailScript = readSource('.github/scripts/capture-cloudflare-live-tail.mjs');
-const wranglerFiles = [
+const fullTelemetryWranglers = [
   'wrangler.sakurazaka46jp.jsonc',
-  'wrangler.buddies-collector.jsonc',
   'wrangler.runtime.jsonc',
+].map((name) => ({ name, source: readSource(`worker/${name}`) }));
+const sampledTelemetryWranglers = [
+  'wrangler.buddies-recovery.jsonc',
+  'wrangler.buddies-collector.jsonc',
 ].map((name) => ({ name, source: readSource(`worker/${name}`) }));
 
 test('query and audit scripts use resolved-account Cloudflare APIs without R2', () => {
@@ -144,7 +147,7 @@ test('live-tail diagnostics use resolved context and shared credential redaction
     'CLOUDFLARE_ACCOUNT_ID',
     'telemetry/live-tail',
     'scriptId: worker',
-    "./observability-status-publisher.mjs",
+    './observability-status-publisher.mjs',
     'sanitizeText',
     '[redacted]',
   ]);
@@ -157,10 +160,18 @@ test('live-tail diagnostics use resolved context and shared credential redaction
   ]);
 });
 
-test('all deployed Workers persist invocation logs and disable Logpush export', () => {
-  for (const { name, source } of wranglerFiles) {
+test('routine Workers retain full invocation telemetry while collector lanes sample invocation and application logs', () => {
+  for (const { name, source } of fullTelemetryWranglers) {
     assert.match(source, /"observability"\s*:\s*\{/u, name);
     assert.match(source, /"enabled"\s*:\s*true/u, name);
+    assert.match(source, /"persist"\s*:\s*true/u, name);
+    assert.match(source, /"invocation_logs"\s*:\s*true/u, name);
+    assert.doesNotMatch(source, /"logpush"\s*:\s*true/u, name);
+  }
+  for (const { name, source } of sampledTelemetryWranglers) {
+    assert.match(source, /"observability"\s*:\s*\{/u, name);
+    assert.match(source, /"enabled"\s*:\s*true/u, name);
+    assert.match(source, /"head_sampling_rate"\s*:\s*0\.1/u, name);
     assert.match(source, /"persist"\s*:\s*true/u, name);
     assert.match(source, /"invocation_logs"\s*:\s*true/u, name);
     assert.doesNotMatch(source, /"logpush"\s*:\s*true/u, name);

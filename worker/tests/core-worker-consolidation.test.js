@@ -231,10 +231,17 @@ test('RuntimeCoordinator persists, releases, and expires one overlap lease row',
   assert.equal(rows.size, 1);
 
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.deepEqual(config.durable_objects.bindings, [{
-    name: 'RUNTIME_COORDINATOR',
-    class_name: 'RuntimeCoordinator',
-  }]);
+  assert.deepEqual(config.durable_objects.bindings, [
+    {
+      name: 'RUNTIME_COORDINATOR',
+      class_name: 'RuntimeCoordinator',
+    },
+    {
+      name: 'BUDDIES_COLLECTOR_COORDINATOR',
+      class_name: 'BuddiesCollectorCoordinator',
+      script_name: 'sh-buddies-collector',
+    },
+  ]);
   assert.deepEqual(config.migrations.at(-1), {
     tag: 'runtime-coordinator-v1',
     new_sqlite_classes: ['RuntimeCoordinator'],
@@ -248,9 +255,13 @@ test('internal Pages fetch is delegated without exposing another Worker', async 
   assert.equal(await response.text(), 'ok');
 });
 
-test('runtime and collector configs preserve domain isolation across three active Workers', () => {
+test('runtime, collector, and recovery configs preserve domain isolation across four active Workers', () => {
   const collector = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
+    'utf8',
+  ));
+  const recovery = JSON.parse(readFileSync(
+    new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
     'utf8',
   ));
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
@@ -258,13 +269,15 @@ test('runtime and collector configs preserve domain isolation across three activ
   const pagesConfig = JSON.parse(readFileSync(new URL('../../site/wrangler.jsonc', import.meta.url), 'utf8'));
   const workers = readFileSync(new URL('../scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
   const collectorConsumers = new Set(collector.queues.consumers.map(({ queue }) => queue));
+  const recoveryConsumers = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   const runtimeConsumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
   for (const queue of [
     'stationhead-raw-collection',
     'stationhead-comments',
     'stationhead-buddies-persist',
   ]) {
-    assert.equal(collectorConsumers.has(queue), true, queue);
+    assert.equal(recoveryConsumers.has(queue), true, queue);
+    assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
   for (const queue of [
@@ -276,7 +289,9 @@ test('runtime and collector configs preserve domain isolation across three activ
   ]) {
     assert.equal(runtimeConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
+    assert.equal(recoveryConsumers.has(queue), false, queue);
   }
+  assert.equal(packageJson.scripts['deploy:buddies-recovery'], 'node scripts/deploy-buddies-recovery.mjs');
   assert.equal(packageJson.scripts['deploy:buddies-collector'], 'node scripts/deploy-buddies-collector.mjs');
   assert.equal('deploy:minute-enrichment' in packageJson.scripts, false);
   assert.equal(packageJson.scripts['deploy:runtime'], 'node scripts/deploy-runtime.mjs');
@@ -290,6 +305,6 @@ test('runtime and collector configs preserve domain isolation across three activ
   );
   assert.deepEqual(
     [...activeBlock.matchAll(/'([^']+)'/g)].map((match) => match[1]),
-    ['sh-sakurazaka46jp', 'sh-buddies-collector', 'sh-runtime-orchestrator'],
+    ['sh-sakurazaka46jp', 'sh-buddies-recovery', 'sh-buddies-collector', 'sh-runtime-orchestrator'],
   );
 });

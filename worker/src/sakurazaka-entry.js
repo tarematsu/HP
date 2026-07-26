@@ -4,6 +4,7 @@ import {
   officialNewsStageTask,
   processOfficialNewsStage,
 } from './other-official-news-stages.js';
+import { queueAttributedEnv } from './queue-attribution.js';
 import { officialNewsProbeDue, scheduledTimestamp } from './sakurazaka-support.js';
 import { ensureSakurazakaSession } from './sakurazaka-auth.js';
 import { runSakurazakaMonitor } from './sakurazaka-monitor.js';
@@ -34,7 +35,8 @@ export async function runSakurazakaScheduled(controller, env) {
   const cron = String(controller?.cron || '');
   if (cron !== SAKURAZAKA_CRON) return { skipped: true, reason: 'unsupported-cron', cron };
   const scheduledAt = scheduledTimestamp(controller);
-  await send(env?.SAKURAZAKA_QUEUE, cycleBody(scheduledAt));
+  const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
+  await send(activeEnv?.SAKURAZAKA_QUEUE, cycleBody(scheduledAt));
   return { dispatched: true, scheduled_at: scheduledAt };
 }
 
@@ -67,9 +69,10 @@ async function processMessage(message, env) {
 
 export async function runSakurazakaQueue(batch, env) {
   const messages = batch?.messages || [];
+  const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
   for (const message of messages) {
     try {
-      const result = await processMessage(message, env);
+      const result = await processMessage(message, activeEnv);
       console.log(JSON.stringify({
         event: 'sakurazaka_task_completed',
         message_type: message?.body?.message_type || null,

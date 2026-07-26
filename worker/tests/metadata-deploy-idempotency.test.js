@@ -8,8 +8,8 @@ const source = readFileSync(
   new URL('../scripts/deploy-runtime.mjs', import.meta.url),
   'utf8',
 );
-const collectorDeploy = readFileSync(
-  new URL('../scripts/deploy-buddies-collector.mjs', import.meta.url),
+const recoveryDeploy = readFileSync(
+  new URL('../scripts/deploy-buddies-recovery.mjs', import.meta.url),
   'utf8',
 );
 const workerApi = readFileSync(
@@ -46,12 +46,12 @@ test('core redeploy rollback preserves pre-existing runtime consumers', () => {
   assert.doesNotMatch(source, /capture: true, allowFailure: true/);
 });
 
-test('collector cutover pauses, verifies, and restores Queue ownership on failure', () => {
-  assert.match(collectorDeploy, /pauseQueue\(migration\.queue\)/);
-  assert.match(collectorDeploy, /removeConsumer\(migration\.queue, previousScript\)/);
-  assert.match(collectorDeploy, /buddies collector consumer missing/);
-  assert.match(collectorDeploy, /restoreConsumer\(migration\)/);
-  assert.match(collectorDeploy, /resumeQueue\(queue\)/);
+test('recovery cutover pauses, verifies, and restores Queue ownership on failure', () => {
+  assert.match(recoveryDeploy, /pauseQueue\(migration\.queue\)/);
+  assert.match(recoveryDeploy, /removeConsumer\(migration\.queue, previousScript\)/);
+  assert.match(recoveryDeploy, /buddies recovery consumer missing/);
+  assert.match(recoveryDeploy, /restoreConsumer\(migration\)/);
+  assert.match(recoveryDeploy, /resumeQueue\(queue\)/);
 });
 
 test('Worker retirement API calls have a bounded timeout', () => {
@@ -79,7 +79,7 @@ test('retired Workers are not deleted while an active replacement is missing', a
   assert.equal(calls.some(({ method }) => method === 'DELETE'), false);
 });
 
-test('retired Workers are deleted after all three active Workers are reachable', async () => {
+test('retired Workers are deleted after all four active Workers are reachable', async () => {
   const calls = [];
   await withWorkerApi(async (url, options = {}) => {
     const href = String(url);
@@ -93,7 +93,7 @@ test('retired Workers are deleted after all three active Workers are reachable',
     };
   }, () => pruneRetiredWorkers(['sh-monitor-other']));
   assert.deepEqual(calls.map(({ method }) => method), [
-    'GET', 'GET', 'GET', 'DELETE', 'GET',
+    'GET', 'GET', 'GET', 'GET', 'DELETE', 'GET',
   ]);
 });
 

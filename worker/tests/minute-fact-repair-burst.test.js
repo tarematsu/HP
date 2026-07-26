@@ -71,7 +71,7 @@ test('repair candidate scan advances through the existing time index with durabl
   assert.match(burstSource, /MAX_BURST_DISPATCH = 2/);
 });
 
-test('coordinated runtime schedules one isolated repair burst in the hourly slot', async () => {
+test('coordinated runtime schedules one isolated attributed repair burst in the hourly slot', async () => {
   const sent = [];
   let kvReads = 0;
   const dueAt = Date.UTC(2026, 0, 1, 0, 12, 0);
@@ -107,6 +107,8 @@ test('coordinated runtime schedules one isolated repair burst in the hourly slot
       message_type: MINUTE_FACT_REPAIR_BURST_MESSAGE,
       message_version: 1,
       scheduled_at: dueAt,
+      producer_worker: 'sh-runtime-orchestrator',
+      operation_name: 'minute-fact-repair-burst',
     },
     options: { contentType: 'json' },
   }]);

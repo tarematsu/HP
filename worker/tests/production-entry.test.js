@@ -45,9 +45,13 @@ test('legacy production entry exposes no HTTP control or health endpoints', asyn
   assert.equal((await productionApp.fetch(new Request('https://buddies.test/favicon.ico'), {}, {})).status, 204);
 });
 
-test('collector and runtime Wrangler configurations own disjoint pipeline stages', () => {
+test('collector, recovery, and runtime Wrangler configurations own disjoint pipeline stages', () => {
   const collector = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
+    'utf8',
+  ));
+  const recovery = JSON.parse(readFileSync(
+    new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
     'utf8',
   ));
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
@@ -62,10 +66,13 @@ test('collector and runtime Wrangler configurations own disjoint pipeline stages
   );
 
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.equal(recovery.main, 'src/buddies-recovery-entry.js');
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(collector.triggers?.crons, ['* * * * *']);
+  assert.equal(recovery.triggers, undefined);
   assert.deepEqual(runtime.triggers?.crons, ['* * * * *']);
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
+  assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.equal(collector.d1_databases[0].database_name, 'stationhead-buddies');
 
@@ -91,11 +98,13 @@ test('collector and runtime Wrangler configurations own disjoint pipeline stages
     'READ_MODEL_QUEUE',
     'PAGES_READ_MODEL_QUEUE',
   ]);
-  assert.equal(collector.queues.consumers.length, 4);
+  assert.equal(collector.queues.consumers.length, 0);
+  assert.equal(recovery.queues.consumers.length, 4);
   assert.equal(runtime.queues.consumers.length, 9);
-  const collectorQueues = new Set(collector.queues.consumers.map(({ queue }) => queue));
-  assert.equal(runtime.queues.consumers.some(({ queue }) => collectorQueues.has(queue)), false);
+  const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
+  assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
+  assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
   assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);

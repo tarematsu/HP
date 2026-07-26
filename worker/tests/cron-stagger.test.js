@@ -3,6 +3,15 @@ import test from 'node:test';
 
 import { applyCronStagger, cronStaggerDelayMs, cronStaggerEnabled, waitForCollectorCompletion } from '../src/cron-stagger.js';
 
+function collectorNamespace(handler) {
+  return {
+    getByName(name) {
+      assert.equal(name, 'scheduled-v1');
+      return { fetch: handler };
+    },
+  };
+}
+
 test('cronStaggerEnabled defaults to true and honors explicit disable', () => {
   assert.equal(cronStaggerEnabled({}), true);
   assert.equal(cronStaggerEnabled({ CRON_STAGGER_ENABLED: 'false' }), false);
@@ -42,7 +51,43 @@ test('applyCronStagger does not sleep for a zero-delay worker', async () => {
   assert.deepEqual(waits, []);
 });
 
-test('collector completion gate waits for the current-minute successful collector write', async () => {
+test('collector completion gate waits through one external Durable Object request', async () => {
+  const requests = [];
+  let d1Reads = 0;
+  const result = await waitForCollectorCompletion({
+    BUDDIES_COLLECTOR_COORDINATOR: collectorNamespace(async (_url, init) => {
+      const body = JSON.parse(init.body);
+      requests.push(body);
+      return Response.json({
+        ready: true,
+        last_success_at: 60_000,
+        minute_at: 60_000,
+        status: 'completed',
+      });
+    }),
+    BUDDIES_DB: {
+      prepare() {
+        d1Reads += 1;
+        throw new Error('D1 must not be read when Collector DO status is available');
+      },
+    },
+    COLLECTOR_PRIORITY_WAIT_MS: 15_000,
+    COLLECTOR_PRIORITY_POLL_MS: 1_000,
+  }, 60_000);
+
+  assert.equal(result.ready, true);
+  assert.equal(result.source, 'durable-object');
+  assert.equal(d1Reads, 0);
+  assert.deepEqual(requests, [{
+    action: 'status',
+    scheduledTime: 60_000,
+    minimumSuccessAt: 60_000,
+    waitMs: 15_000,
+    pollMs: 1_000,
+  }]);
+});
+
+test('collector completion gate waits for the current-minute successful D1 fallback write', async () => {
   let reads = 0;
   const db = {
     prepare() {
@@ -59,7 +104,32 @@ test('collector completion gate waits for the current-minute successful collecto
     60_000,
   );
   assert.equal(result.ready, true);
+  assert.equal(result.source, 'd1-fallback');
   assert.equal(reads, 2);
+});
+
+test('collector completion gate can explicitly disable DO status and use D1', async () => {
+  let doRequests = 0;
+  let d1Reads = 0;
+  const result = await waitForCollectorCompletion({
+    COLLECTOR_STATUS_DO_ENABLED: false,
+    BUDDIES_COLLECTOR_COORDINATOR: collectorNamespace(async () => {
+      doRequests += 1;
+      return Response.json({ ready: true });
+    }),
+    BUDDIES_DB: {
+      prepare() {
+        return { async first() {
+          d1Reads += 1;
+          return { last_run_at: 60_000, last_success_at: 60_000, last_error: null };
+        } };
+      },
+    },
+  }, 60_000);
+  assert.equal(result.ready, true);
+  assert.equal(result.source, 'd1-fallback');
+  assert.equal(doRequests, 0);
+  assert.equal(d1Reads, 1);
 });
 
 test('collector completion gate skips downstream work when collection has not succeeded', async () => {
@@ -70,5 +140,10 @@ test('collector completion gate skips downstream work when collection has not su
     { BUDDIES_DB: db, COLLECTOR_PRIORITY_WAIT_MS: 0 },
     60_000,
   );
-  assert.deepEqual(result, { ready: false, reason: 'collector-not-ready', targetMinute: 60_000 });
+  assert.deepEqual(result, {
+    ready: false,
+    reason: 'collector-not-ready',
+    targetMinute: 60_000,
+    source: 'd1-fallback',
+  });
 });

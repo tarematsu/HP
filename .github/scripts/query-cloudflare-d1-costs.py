@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect sanitized per-query D1 costs from Cloudflare GraphQL analytics."""
+"""Collect sanitized per-query D1 costs with inferred runtime ownership."""
 
 from __future__ import annotations
 
@@ -32,6 +32,25 @@ ORDERS = {
     "rowsRead": "sum_rowsRead_DESC",
     "rowsWritten": "sum_rowsWritten_DESC",
     "count": "count_DESC",
+}
+
+OPERATION_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
+    (re.compile(r"\b(?:INSERT\s+INTO|UPDATE)\s+sh_period_boundary_evidence\b", re.I), "period-boundary-write", "sh-buddies-collector/recovery"),
+    (re.compile(r"\b(?:FROM|JOIN)\s+sh_period_boundary_evidence\b", re.I), "period-boundary-read", "sh-runtime-orchestrator"),
+    (re.compile(r"\bWITH\s+periods\b[\s\S]*\bsh_channel_snapshots\b", re.I), "period-boundary-fallback", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_dashboard_history_5m\b", re.I), "dashboard-history", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_stream_goal_prediction_state\b", re.I), "stream-goal-prediction", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_minute_fact_jobs\b", re.I), "minute-fact-jobs", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_minute_facts\b", re.I), "minute-facts", "sh-runtime-orchestrator"),
+    (re.compile(r"\b(?:INSERT\s+INTO|UPDATE)\s+sh_track_metadata\b", re.I), "track-metadata-write", "sh-buddies-collector/recovery"),
+    (re.compile(r"\bsh_track_dictionary\b|\bsh_track_metadata\b", re.I), "track-metadata-read", "sh-runtime-orchestrator"),
+    (re.compile(r"\bsh_queue_current\b|\bsh_queue_items\b|\bsh_queue_snapshots\b", re.I), "queue-state", "sh-buddies-collector/recovery"),
+    (re.compile(r"\bsh_channel_snapshots\b", re.I), "channel-snapshots", "shared"),
+)
+
+DATABASE_OWNER = {
+    "stationhead-minute": "sh-runtime-orchestrator",
+    "stationhead-other": "sh-runtime-orchestrator",
 }
 
 
@@ -108,6 +127,14 @@ def request(document: str, variables: dict[str, Any]) -> list[dict[str, Any]]:
     return accounts[0].get("d1QueriesAdaptiveGroups") or []
 
 
+def query_attribution(database: str, raw_query: str) -> tuple[str, str, str]:
+    for pattern, operation, worker in OPERATION_PATTERNS:
+        if pattern.search(raw_query):
+            return worker, operation, "sql-pattern"
+    worker = DATABASE_OWNER.get(database, "unknown")
+    return worker, "unclassified", "database-default" if worker != "unknown" else "unattributed"
+
+
 def normalized_row(database: str, raw: dict[str, Any]) -> dict[str, Any] | None:
     raw_query = str((raw.get("dimensions") or {}).get("query") or "").strip()
     if not raw_query:
@@ -115,8 +142,12 @@ def normalized_row(database: str, raw: dict[str, Any]) -> dict[str, Any] | None:
     sums, averages = raw.get("sum") or {}, raw.get("avg") or {}
     rows_read = number(sums.get("rowsRead"))
     rows_returned = number(sums.get("rowsReturned"))
+    worker, operation, attribution = query_attribution(database, raw_query)
     return {
         "database": database,
+        "worker": worker,
+        "operation": operation,
+        "attribution": attribution,
         "fingerprint": hashlib.sha256(raw_query.encode()).hexdigest()[:12],
         "query": sanitize_query(raw_query),
         "rowsRead": round(rows_read),
@@ -136,20 +167,21 @@ def markdown(report: dict[str, Any]) -> str:
         "## D1 query cost insights", "",
         f"- Window: `{report['window']['start']}` to `{report['window']['end']}`",
         f"- Databases: `{report['databaseCount']}`",
-        f"- GraphQL requests: `{report['graphqlRequests']}`", "",
+        f"- GraphQL requests: `{report['graphqlRequests']}`",
+        "- Worker and operation columns are inferred from SQL signatures; Queue messages carry explicit producer metadata.", "",
     ]
     for key, label in (("rowsRead", "Rows read"), ("rowsWritten", "Rows written"), ("count", "Executions")):
         lines.extend([
             f"### Top by {label.lower()}", "",
-            "| DB | Fingerprint | Rows read | Rows written | Runs | Avg ms | Efficiency | Query |",
-            "|---|---|---:|---:|---:|---:|---:|---|",
+            "| DB | Worker | Operation | Fingerprint | Rows read | Rows written | Runs | Avg ms | Efficiency | Query |",
+            "|---|---|---|---|---:|---:|---:|---:|---:|---|",
         ])
         for row in report["top"][key][:15]:
             query = row["query"].replace("|", "\\|")
             lines.append(
-                f"| {row['database']} | `{row['fingerprint']}` | {row['rowsRead']:,} | "
-                f"{row['rowsWritten']:,} | {row['count']:,} | {row['avgDurationMs']:,.3f} | "
-                f"{row['efficiency']:.4f} | `{query}` |"
+                f"| {row['database']} | `{row['worker']}` | `{row['operation']}` | `{row['fingerprint']}` | "
+                f"{row['rowsRead']:,} | {row['rowsWritten']:,} | {row['count']:,} | "
+                f"{row['avgDurationMs']:,.3f} | {row['efficiency']:.4f} | `{query}` |"
             )
         lines.append("")
     return "\n".join(lines)
@@ -160,13 +192,22 @@ def self_test() -> int:
     assert "d1QueriesAdaptiveGroups" in document and "sum_rowsRead_DESC" in document
     sanitized = sanitize_query(" SELECT *  FROM events WHERE token = 'secret-value' AND id = abcdef1234567890abcdef1234567890 ")
     assert "secret-value" not in sanitized and "abcdef123456" not in sanitized
-    row = normalized_row("db", {
-        "dimensions": {"query": "SELECT * FROM events WHERE id = ?"},
+    row = normalized_row("stationhead-minute", {
+        "dimensions": {"query": "SELECT * FROM sh_minute_fact_jobs WHERE id = ?"},
         "sum": {"rowsRead": 10, "rowsReturned": 2, "rowsWritten": 0, "queryDurationMs": 5},
         "avg": {"rowsRead": 5, "rowsWritten": 0, "queryDurationMs": 2.5},
         "count": 2,
     })
     assert row and row["efficiency"] == 0.2 and row["count"] == 2
+    assert row["worker"] == "sh-runtime-orchestrator" and row["operation"] == "minute-fact-jobs"
+    write = normalized_row("stationhead-buddies", {
+        "dimensions": {"query": "INSERT INTO sh_period_boundary_evidence(mode) VALUES (?)"},
+        "sum": {"rowsWritten": 1},
+        "avg": {},
+        "count": 1,
+    })
+    assert write and write["worker"] == "sh-buddies-collector/recovery"
+    assert write["operation"] == "period-boundary-write"
     print("D1 query cost self-test passed")
     return 0
 
@@ -212,6 +253,7 @@ def main() -> int:
             key: sorted(values, key=lambda row: row[key], reverse=True)[:LIMIT]
             for key in ("rowsRead", "rowsWritten", "count")
         },
+        "attribution": "Queue producer metadata is explicit. D1 worker ownership is inferred from SQL patterns because the D1 analytics dataset does not expose the calling Worker.",
         "privacy": "Bound parameters are omitted by Cloudflare; SQL string literals and long hex values are additionally redacted.",
     }
     OUT.mkdir(parents=True, exist_ok=True)

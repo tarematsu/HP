@@ -5,6 +5,7 @@ import test from 'node:test';
 import buddiesCollector, {
   runBuddiesCollectorScheduled,
 } from '../src/buddies-collector-entry.js';
+import buddiesRecovery from '../src/buddies-recovery-entry.js';
 import buddiesMonitor, { collectRawChannel } from '../src/raw-collector-entry.js';
 
 function session() {
@@ -21,6 +22,10 @@ test('the dedicated buddies Worker owns scheduled raw collection', () => {
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
     'utf8',
   ));
+  const recovery = JSON.parse(readFileSync(
+    new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
+    'utf8',
+  ));
   const runtime = JSON.parse(readFileSync(
     new URL('../wrangler.runtime.jsonc', import.meta.url),
     'utf8',
@@ -28,6 +33,9 @@ test('the dedicated buddies Worker owns scheduled raw collection', () => {
 
   assert.equal(collector.name, 'sh-buddies-collector');
   assert.equal(collector.main, 'src/buddies-collector-entry.js');
+  assert.deepEqual(collector.queues.consumers, []);
+  assert.equal(recovery.name, 'sh-buddies-recovery');
+  assert.equal(recovery.queues.consumers.length, 4);
   assert.equal(
     collector.queues.producers.find(({ binding }) => binding === 'RAW_COLLECTION_QUEUE').queue,
     'stationhead-raw-collection',
@@ -50,7 +58,8 @@ test('dedicated scheduled surface invokes collection with the BUDDIES_DB alias',
   });
   assert.deepEqual(calls, [database]);
   assert.deepEqual(result, { collected: true, scheduled_at: 123 });
-  assert.deepEqual(Object.keys(buddiesCollector).sort(), ['queue', 'scheduled']);
+  assert.deepEqual(Object.keys(buddiesCollector), ['scheduled']);
+  assert.deepEqual(Object.keys(buddiesRecovery), ['queue']);
 });
 
 test('scheduled-only raw collector surface registers the collection promise directly', async () => {
