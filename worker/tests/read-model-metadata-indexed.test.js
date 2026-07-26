@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 
 import { loadReadModelTrackMetadata } from '../src/read-model-metadata-indexed.js';
@@ -38,6 +39,24 @@ class MetadataDb {
       },
     };
   }
+}
+
+function sqliteD1(db, queries) {
+  return {
+    prepare(sql) {
+      queries.push(sql);
+      const statement = db.prepare(sql);
+      return {
+        bind(...bindings) {
+          return {
+            async all() {
+              return { results: statement.all(...bindings) };
+            },
+          };
+        },
+      };
+    },
+  };
 }
 
 test('complete dictionary rows avoid metadata scans for matching identifiers', async () => {
@@ -96,8 +115,39 @@ test('incomplete dictionary rows use separate indexed ISRC and Spotify lookups',
   assert.equal(rows[0].thumbnail_url, 'cover');
   assert.equal(db.queries.length, 3);
   assert.match(db.queries[1].sql, /INDEXED BY idx_sh_track_metadata_isrc/);
+  assert.match(db.queries[1].sql, /isrc IS NOT NULL AND TRIM\(isrc\)<>''/);
   assert.match(db.queries[2].sql, /WHERE spotify_id IN/);
   assert.ok(db.queries.every(({ sql }) => !/UNION ALL|\sOR\s/.test(sql)));
+});
+
+test('partial ISRC index executes without a no-query-solution planner error', async () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`
+    CREATE TABLE sh_track_dictionary(
+      isrc TEXT PRIMARY KEY,spotify_id TEXT,title TEXT,artist TEXT,
+      thumbnail_url TEXT,metadata_fetched_at INTEGER
+    );
+    CREATE TABLE sh_track_metadata(
+      spotify_id TEXT PRIMARY KEY,isrc TEXT,title TEXT,artist TEXT,
+      thumbnail_url TEXT,fetched_at INTEGER
+    );
+    CREATE INDEX idx_sh_track_metadata_isrc ON sh_track_metadata(isrc)
+      WHERE isrc IS NOT NULL AND TRIM(isrc)<>'';
+    INSERT INTO sh_track_metadata VALUES(
+      'sp1','JPTEST000001','Song','Artist','cover',10
+    );
+  `);
+  const queries = [];
+  const rows = await loadReadModelTrackMetadata(
+    { MINUTE_DB: sqliteD1(db, queries) },
+    [],
+    ['JPTEST000001'],
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].spotify_id, 'sp1');
+  const indexedQuery = queries.find((sql) => sql.includes('INDEXED BY idx_sh_track_metadata_isrc'));
+  assert.match(indexedQuery, /isrc IS NOT NULL AND TRIM\(isrc\)<>''/);
 });
 
 test('missing local metadata falls back only for unresolved identifiers', async () => {
