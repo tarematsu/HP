@@ -47,13 +47,6 @@ const deploy = await preparePagesReadModelDeployConfig(workerRoot, {
   sourcePath: `${workerRoot}/${configName}`,
   temporaryPath: `${workerRoot}/.wrangler.runtime.deploy-${process.pid}.jsonc`,
 });
-const temporaryConfig = JSON.parse(readFileSync(deploy.configPath, 'utf8'));
-writeFileSync(
-  deploy.configPath,
-  `${JSON.stringify(queueOnlyRuntimeDeployConfig(temporaryConfig), null, 2)}\n`,
-  'utf8',
-);
-
 const paused = new Set();
 const removed = new Set();
 let previousConsumers = new Set();
@@ -62,6 +55,13 @@ let previousRuntimeVersionIds = new Set();
 let deploymentVerification = null;
 
 try {
+  const temporaryConfig = JSON.parse(readFileSync(deploy.configPath, 'utf8'));
+  writeFileSync(
+    deploy.configPath,
+    `${JSON.stringify(queueOnlyRuntimeDeployConfig(temporaryConfig), null, 2)}\n`,
+    'utf8',
+  );
+
   previousRuntimeVersionIds = await readActiveRuntimeVersionIds({ scriptName: runtimeScript });
   previousConsumers = new Set(
     migrations
