@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getDeviceSync } from "../src/device_sync";
-import { requestCoordinatedDeviceSync } from "../src/device_sync_coordinator";
+import { requestCoordinatedDeviceSync } from "../src/device_sync_coordinator_client";
 import type { Env } from "../src/sources";
 
 describe("device sync unchanged fast path", () => {
@@ -69,11 +69,11 @@ describe("device sync unchanged fast path", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const env = {
       DB: {} as D1Database,
-      SCHEDULER_COORDINATOR: {
+      DEVICE_SYNC_COORDINATOR: {
         idFromName: vi.fn(() => ({}) as DurableObjectId),
         get: vi.fn(() => ({ fetch }) as unknown as DurableObjectStub),
       } as unknown as DurableObjectNamespace,
-    } as Env;
+    } as Env & { DEVICE_SYNC_COORDINATOR: DurableObjectNamespace };
 
     try {
       await expect(requestCoordinatedDeviceSync(env, "homepanel-device", {})).resolves.toBeNull();
