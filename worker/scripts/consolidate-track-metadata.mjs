@@ -1,6 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import {
+  metadataValuePresent,
+  normalizedIsrc,
+} from './track-metadata-consolidation-lib.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
@@ -16,6 +20,7 @@ const columns = [
   'spotify_id', 'isrc', 'title', 'artist', 'display_title', 'thumbnail_url',
   'spotify_url', 'source', 'fetched_at', 'raw_json',
 ];
+const mergeColumns = columns.filter((column) => !['spotify_id', 'fetched_at'].includes(column));
 
 if (dropSource && !apply) {
   throw new Error('TRACK_METADATA_DROP_SOURCE=true requires TRACK_METADATA_APPLY=true');
@@ -77,10 +82,6 @@ function quote(value) {
   return `'${String(value).replaceAll('\u0000', '').replaceAll("'", "''")}'`;
 }
 
-function normalizedIsrc(value) {
-  return String(value || '').trim().toUpperCase();
-}
-
 function sourcePage(offset) {
   return rowsFrom(execute(
     sourceDatabase,
@@ -89,18 +90,29 @@ function sourcePage(offset) {
   ));
 }
 
+function presentSql(reference) {
+  return `${reference} IS NOT NULL AND TRIM(${reference})<>''`;
+}
+
+function mergeColumnSql(column) {
+  const existing = `sh_track_metadata.${column}`;
+  const incoming = `excluded.${column}`;
+  return `${column}=CASE
+  WHEN excluded.fetched_at>=sh_track_metadata.fetched_at THEN
+    CASE WHEN ${presentSql(incoming)} THEN ${incoming} ELSE ${existing} END
+  ELSE
+    CASE WHEN ${presentSql(existing)} THEN ${existing} ELSE ${incoming} END
+  END`;
+}
+
 function writePage(database, rows, directory, page) {
+  const updates = [
+    ...mergeColumns.map(mergeColumnSql),
+    'fetched_at=MAX(sh_track_metadata.fetched_at,excluded.fetched_at)',
+  ];
   const statements = rows.map((row) => `INSERT INTO sh_track_metadata(${columns.join(',')}) VALUES(${columns.map((column) => quote(row[column])).join(',')})
 ON CONFLICT(spotify_id) DO UPDATE SET
-  isrc=COALESCE(sh_track_metadata.isrc,excluded.isrc),
-  title=COALESCE(sh_track_metadata.title,excluded.title),
-  artist=COALESCE(sh_track_metadata.artist,excluded.artist),
-  display_title=COALESCE(sh_track_metadata.display_title,excluded.display_title),
-  thumbnail_url=COALESCE(sh_track_metadata.thumbnail_url,excluded.thumbnail_url),
-  spotify_url=COALESCE(sh_track_metadata.spotify_url,excluded.spotify_url),
-  source=COALESCE(sh_track_metadata.source,excluded.source),
-  fetched_at=MAX(sh_track_metadata.fetched_at,excluded.fetched_at),
-  raw_json=COALESCE(sh_track_metadata.raw_json,excluded.raw_json);`);
+  ${updates.join(',\n  ')};`);
   const sqlPath = join(directory, `track-metadata-${page}.sql`);
   writeFileSync(sqlPath, `${statements.join('\n')}\n`, 'utf8');
   wrangler([
@@ -109,36 +121,55 @@ ON CONFLICT(spotify_id) DO UPDATE SET
   ]);
 }
 
+function sameMetadataValue(column, actualValue, sourceValue) {
+  if (column === 'isrc') return normalizedIsrc(actualValue) === normalizedIsrc(sourceValue);
+  return String(actualValue) === String(sourceValue);
+}
+
 function verifyPage(database, sourceRows) {
   const expected = new Map(sourceRows
-    .map((row) => [String(row.spotify_id || '').trim(), normalizedIsrc(row.isrc)])
+    .map((row) => [String(row.spotify_id || '').trim(), row])
     .filter(([spotifyId]) => spotifyId));
   if (expected.size !== sourceRows.length) {
-    throw new Error('Source metadata contains a row without spotify_id');
+    throw new Error('Source metadata contains a row without spotify_id or a duplicate spotify_id');
   }
   if (!expected.size) return { rows: 0, isrcRows: 0 };
 
   const ids = [...expected.keys()];
   const rows = rowsFrom(execute(
     database,
-    `SELECT spotify_id,isrc FROM sh_track_metadata
+    `SELECT ${columns.join(',')} FROM sh_track_metadata
      WHERE spotify_id IN (${ids.map(quote).join(',')})`,
   ));
   const actual = new Map(rows.map((row) => [
     String(row.spotify_id || '').trim(),
-    normalizedIsrc(row.isrc),
+    row,
   ]));
   let verifiedIsrcRows = 0;
-  for (const [spotifyId, isrc] of expected) {
-    if (!actual.has(spotifyId)) {
+  for (const [spotifyId, sourceRow] of expected) {
+    const actualRow = actual.get(spotifyId);
+    if (!actualRow) {
       throw new Error(`Target metadata row missing for spotify_id=${spotifyId}`);
     }
-    if (isrc) {
-      verifiedIsrcRows += 1;
-      if (actual.get(spotifyId) !== isrc) {
-        throw new Error(`Target metadata ISRC mismatch for spotify_id=${spotifyId}`);
+
+    const sourceFetchedAt = Number(sourceRow.fetched_at || 0);
+    const actualFetchedAt = Number(actualRow.fetched_at || 0);
+    if (!Number.isFinite(actualFetchedAt) || actualFetchedAt < sourceFetchedAt) {
+      throw new Error(`Target metadata fetched_at is older for spotify_id=${spotifyId}`);
+    }
+
+    for (const column of mergeColumns) {
+      const sourceValue = sourceRow[column];
+      if (!metadataValuePresent(sourceValue)) continue;
+      if (!metadataValuePresent(actualRow[column])) {
+        throw new Error(`Target metadata ${column} missing for spotify_id=${spotifyId}`);
+      }
+      if (sourceFetchedAt >= actualFetchedAt
+          && !sameMetadataValue(column, actualRow[column], sourceValue)) {
+        throw new Error(`Target metadata ${column} mismatch for spotify_id=${spotifyId}`);
       }
     }
+    if (metadataValuePresent(sourceRow.isrc)) verifiedIsrcRows += 1;
   }
   return { rows: expected.size, isrcRows: verifiedIsrcRows };
 }
