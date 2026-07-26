@@ -29,10 +29,11 @@ describe("SchedulerCoordinator alarm races", () => {
   });
 
   it("keeps an earlier wake scheduled while an alarm is still running", async () => {
-    const tick = deferred<void>();
+    const tick = deferred<string[]>();
     vi.mocked(runRuntimeSchedulerTick).mockReturnValue(tick.promise);
     vi.mocked(refreshRuntimeJobs).mockResolvedValue(1);
-    vi.mocked(runtimeNextWakeAt).mockImplementation(async (_state, _env, nowMs) => nowMs + 60_000);
+    vi.mocked(runtimeNextWakeAt).mockImplementation(async (_state, _env, nowMs) =>
+      (nowMs ?? Date.now()) + 60_000);
 
     let alarmAt: number | null = null;
     const storage = {
@@ -58,7 +59,7 @@ describe("SchedulerCoordinator alarm races", () => {
     const earlyAlarm = alarmAt;
     expect(earlyAlarm).not.toBeNull();
 
-    tick.resolve();
+    tick.resolve([]);
     await runningAlarm;
 
     expect(alarmAt).toBe(earlyAlarm);
