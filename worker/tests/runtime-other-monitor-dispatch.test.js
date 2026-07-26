@@ -1,57 +1,24 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { dispatchStreamPrediction } from '../src/runtime-stream-prediction-dispatch.js';
 import { runRuntimeQueue } from '../src/runtime-queue.js';
 
-const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
+const actionsRunner = readFileSync(
+  new URL('../scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url),
+  'utf8',
+);
+const runtimeConfig = JSON.parse(readFileSync(
+  new URL('../wrangler.runtime.jsonc', import.meta.url),
+  'utf8',
+));
 
-test('runtime prediction executes only at the two scheduled minute slots', async () => {
-  const calls = [];
-  const dependencies = {
-    prediction: async (_env, scheduledAt) => {
-      calls.push(scheduledAt);
-      return { ok: true, scheduled_at: scheduledAt };
-    },
-  };
-
-  const first = await dispatchStreamPrediction(
-    { scheduledTime: BASE + 10 * 60_000 },
-    {},
-    {},
-    { dependencies },
-  );
-  const second = await dispatchStreamPrediction(
-    { scheduledTime: BASE + 40 * 60_000 },
-    {},
-    {},
-    { dependencies },
-  );
-  const idle = await dispatchStreamPrediction(
-    { scheduledTime: BASE + 25 * 60_000 },
-    {},
-    {},
-    { dependencies },
-  );
-
-  assert.deepEqual(calls, [BASE + 10 * 60_000, BASE + 40 * 60_000]);
-  assert.equal(first[0].ok, true);
-  assert.equal(second[0].ok, true);
-  assert.deepEqual(idle, [{ skipped: true, reason: 'stream-prediction-not-due' }]);
-});
-
-test('successful prediction invalidates the runtime health cache once', async () => {
-  let invalidations = 0;
-  await dispatchStreamPrediction(
-    { scheduledTime: BASE + 10 * 60_000 },
-    {},
-    {},
-    {
-      dependencies: { prediction: async () => ({ ok: true }) },
-      healthApp: { invalidateHealthCache() { invalidations += 1; } },
-    },
-  );
-  assert.equal(invalidations, 1);
+test('stream prediction is owned by the bounded offline Actions runner', () => {
+  assert.match(actionsRunner, /runStreamGoalPrediction/);
+  assert.match(actionsRunner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
+  assert.match(actionsRunner, /runtime offline maintenance deadline exceeded/);
+  assert.equal(Object.hasOwn(runtimeConfig.vars, 'STREAM_GOAL_PREDICTION_INTERVAL_MS'), false);
+  assert.equal(runtimeConfig.triggers, undefined);
 });
 
 test('unknown runtime queue messages are discarded without loading a legacy monitor', async () => {

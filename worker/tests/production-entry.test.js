@@ -70,7 +70,8 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(collector.triggers?.crons, ['* * * * *']);
   assert.equal(recovery.triggers, undefined);
-  assert.deepEqual(runtime.triggers?.crons, ['* * * * *']);
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.durable_objects, undefined);
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
@@ -88,31 +89,28 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
     'READ_MODEL_QUEUE',
   ]);
   assert.deepEqual(runtime.queues?.producers.map(({ binding }) => binding), [
-    'HOST_MONITOR_QUEUE',
     'MINUTE_FACT_QUEUE',
     'MINUTE_DERIVE_QUEUE',
     'MINUTE_LIVE_DERIVE_QUEUE',
     'MINUTE_ENRICHMENT_QUEUE',
     'MINUTE_REBUILD_QUEUE',
     'TRACK_METADATA_QUEUE',
-    'READ_MODEL_QUEUE',
-    'PAGES_READ_MODEL_QUEUE',
   ]);
   assert.equal(collector.queues.consumers.length, 0);
   assert.equal(recovery.queues.consumers.length, 4);
-  assert.equal(runtime.queues.consumers.length, 9);
+  assert.equal(runtime.queues.consumers.length, 6);
   const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
   assert.match(preparedCollector, /PERSIST_QUEUE: \{ value: null/);
   assert.match(preparedCollector, /INGEST_FINALIZE_QUEUE: \{ value: null/);
   assert.match(minuteProduction, /MINUTE_ENRICHMENT_QUEUE/);
   assert.match(minuteProduction, /runInlineLiveDerive/);
-  assert.equal(runtime.vars.RAW_COLLECTION_ENABLED, false);
   assert.equal(runtime.kv_namespaces[0].binding, 'PAGES_RESPONSE_KV');
   assert.equal(runtime.r2_buckets[0].binding, 'PAGES_RESPONSE_R2');
   assert.match(source, /JSON\.parse/);
@@ -121,10 +119,10 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.doesNotMatch(source, /response\.json|readModelPresentation|handoffMinuteFactJob/);
 
   const names = Object.keys(runtime.vars || {});
-  for (const prefix of ['BUDDY_PLAYBACK_', 'HOST_', 'SOLO_', 'OFFICIAL_NEWS_']) {
+  for (const prefix of ['BUDDY_PLAYBACK_', 'HOST_', 'SOLO_', 'OFFICIAL_NEWS_', 'PAGES_', 'SNAPSHOT_RETENTION_', 'STREAM_GOAL_']) {
     assert.equal(names.some((name) => name.startsWith(prefix)), false, prefix);
   }
-  for (const prefix of ['DERIVE_', 'REBUILD_', 'HEALTH_ALERT_']) {
+  for (const prefix of ['DERIVE_', 'REBUILD_']) {
     assert.equal(names.some((name) => name.startsWith(prefix)), true, prefix);
   }
 });

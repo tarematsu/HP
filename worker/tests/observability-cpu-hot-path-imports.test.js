@@ -14,8 +14,8 @@ const runtimeEntry = readFileSync(
   new URL('../src/runtime-orchestrator-entry.js', import.meta.url),
   'utf8',
 );
-const runtimeScheduled = readFileSync(
-  new URL('../src/runtime-scheduled.js', import.meta.url),
+const pagesResponseFetch = readFileSync(
+  new URL('../src/pages-response-fetch-entry.js', import.meta.url),
   'utf8',
 );
 const liveCompleteMessage = readFileSync(
@@ -34,16 +34,8 @@ const minuteEnrichment = readFileSync(
   new URL('../src/minute-enrichment-optimized-entry.js', import.meta.url),
   'utf8',
 );
-const trackMetadata = readFileSync(
-  new URL('../src/track-metadata-entry.js', import.meta.url),
-  'utf8',
-);
-const pagesReadModelEntry = readFileSync(
-  new URL('../src/pages-read-model-entry.js', import.meta.url),
-  'utf8',
-);
-const pagesReadModelDispatch = readFileSync(
-  new URL('../src/pages-read-model-dispatch.js', import.meta.url),
+const pagesActions = readFileSync(
+  new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
   'utf8',
 );
 
@@ -87,40 +79,40 @@ test('live trigger uses the narrow lease boundary instead of loading derive and 
   assert.doesNotMatch(liveTriggerEntry, /from '\.\/minute-facts-inbox\.js'/);
 });
 
-test('track metadata modules are loaded before metadata queue work', () => {
-  assert.match(trackMetadata, /from '\.\/committed-metadata-enrichment\.js'/);
-  assert.match(trackMetadata, /from '\.\/read-model-stages\.js'/);
-  assert.doesNotMatch(trackMetadata, /import\('\.\/committed-metadata-enrichment\.js'\)/);
-  assert.doesNotMatch(trackMetadata, /import\('\.\/read-model-stages\.js'\)/);
-});
-
-test('core router keeps queue, fetch and scheduled graphs behind their event routes', () => {
+test('runtime keeps queue and serving graphs lazy without a scheduled graph', () => {
   for (const moduleName of [
-    'ingest-channel-optimized-entry.js',
     'minute-enrichment-optimized-entry.js',
-    'pages-read-model-entry.js',
+    'pages-response-fetch-entry.js',
     'runtime-queue.js',
-    'runtime-scheduled.js',
   ]) {
     assert.match(runtimeEntry, new RegExp(`import\\('./${moduleName.replaceAll('.', '\\.')}'\\)`));
     assert.doesNotMatch(runtimeEntry, new RegExp(`from './${moduleName.replaceAll('.', '\\.')}'`));
   }
-  assert.doesNotMatch(runtimeEntry, /from '\.\/ingest-channel-optimized-entry\.js'/);
-  assert.doesNotMatch(runtimeEntry, /from '\.\/minute-enrichment-optimized-entry\.js'/);
+  assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runtime-scheduled|runCoreScheduled|scheduled\s*:/);
+  assert.doesNotMatch(runtimeEntry, /ingest-channel-optimized-entry/);
+});
+
+test('serving-only Pages module does not import generation or publication graphs', () => {
+  assert.match(pagesResponseFetch, /runPagesResponseFetch/);
+  assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
+  assert.match(pagesResponseFetch, /loadMaterializedResponse/);
+  assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
+});
+
+test('minute enrichment is queue-only and does not preload Pages generation', () => {
+  assert.match(minuteEnrichment, /from '\.\/track-metadata-entry\.js'/);
+  assert.match(minuteEnrichment, /queue: processMinuteEnrichmentBatch/);
+  assert.doesNotMatch(minuteEnrichment, /pagesModulePromise|pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
+});
+
+test('Pages recurring generation is loaded only by the bounded Actions runner', () => {
+  assert.match(pagesActions, /runSplitTrackHistoryCycleStep/);
+  assert.match(pagesActions, /MATERIALIZED_API_VARIANTS/);
+  assert.match(pagesActions, /PAGES_READ_MODEL_DEADLINE_MS/);
+  assert.match(pagesActions, /dueVariantKeys/);
+  assert.equal(JSON.parse(runtimeConfig).triggers, undefined);
 });
 
 test('Cloudflare Pipelines analytics is absent from runtime module graphs', () => {
-  assert.doesNotMatch(runtimeScheduled, /runtime-pipeline-analytics\.js|RUNTIME_ANALYTICS_STREAM/);
   assert.doesNotMatch(runtimeEntry, /runtime-pipeline-analytics\.js|RUNTIME_ANALYTICS_STREAM/);
-});
-
-test('Pages recurring stages preload only inside the Pages route', () => {
-  assert.match(pagesReadModelEntry, /from '\.\/pages-read-model-dispatch\.js'/);
-  assert.match(pagesReadModelEntry, /from '\.\/pages-track-history-publication-queue\.js'/);
-  assert.doesNotMatch(pagesReadModelEntry, /import\('\.\/pages-read-model-dispatch\.js'\)/);
-  assert.doesNotMatch(pagesReadModelEntry, /import\('\.\/pages-track-history-publication-queue\.js'\)/);
-  assert.match(pagesReadModelDispatch, /from '\.\/pages-track-history-split-cycle\.js'/);
-  assert.match(minuteEnrichment, /pagesModulePromise \|\|= import\('\.\/pages-read-model-entry\.js'\)/);
-  assert.doesNotMatch(minuteEnrichment, /from '\.\/pages-read-model-entry\.js'/);
-  assert.equal(JSON.parse(runtimeConfig).vars.PAGES_TRACK_HISTORY_ROWS_PER_STEP, 25);
 });

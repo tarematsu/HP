@@ -54,7 +54,7 @@ test('successful metadata logs are deterministically sampled instead of emitted 
   assert.equal(shouldLogTrackMetadataResult({ job_id: 'job-error', reason: 'degraded' }), true);
 });
 
-test('core config owns metadata and Pages queues while retired configs stay inactive', () => {
+test('core config owns only immediate metadata queues while Pages generation belongs to Actions', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.runtime.jsonc', import.meta.url),
     'utf8',
@@ -63,12 +63,18 @@ test('core config owns metadata and Pages queues while retired configs stay inac
   for (const queue of [
     'stationhead-minute-enrichment',
     'stationhead-track-metadata',
-    'stationhead-pages-read-model-publication',
-    'stationhead-read-model',
   ]) {
     assert.equal(consumers.has(queue), true, queue);
   }
+  for (const queue of [
+    'stationhead-pages-read-model-publication',
+    'stationhead-read-model',
+  ]) {
+    assert.equal(consumers.has(queue), false, queue);
+  }
   assert.equal(config.queues.producers.some(({ binding }) => binding === 'TRACK_METADATA_QUEUE'), true);
+  assert.equal(config.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
+  assert.equal(config.queues.producers.some(({ binding }) => binding === 'READ_MODEL_QUEUE'), false);
   assert.equal(existsSync(new URL('../wrangler.track-metadata.jsonc', import.meta.url)), false);
   assert.equal(existsSync(new URL('../wrangler.minute-enrichment.jsonc', import.meta.url)), false);
 });

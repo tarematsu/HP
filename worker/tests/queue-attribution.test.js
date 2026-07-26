@@ -30,11 +30,11 @@ test('Queue attribution covers single and batched sends without overwriting expl
 test('all active Stationhead entries apply Queue attribution and sampled telemetry', () => {
   const collector = readFileSync(new URL('../src/buddies-collector-do-entry.js', import.meta.url), 'utf8');
   const recovery = readFileSync(new URL('../src/buddies-recovery-entry.js', import.meta.url), 'utf8');
-  const runtime = readFileSync(new URL('../src/runtime-do-orchestrator.js', import.meta.url), 'utf8');
+  const runtime = readFileSync(new URL('../src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
   const sakurazaka = readFileSync(new URL('../src/sakurazaka-entry.js', import.meta.url), 'utf8');
-  for (const source of [collector, recovery, sakurazaka]) assert.match(source, /queueAttributedEnv/);
-  assert.match(runtime, /producer_worker: 'sh-runtime-orchestrator'/);
-  assert.match(runtime, /operation_name: 'minute-fact-repair-burst'/);
+  for (const source of [collector, recovery, runtime, sakurazaka]) assert.match(source, /queueAttributedEnv/);
+  assert.match(runtime, /'sh-runtime-orchestrator'/);
+  assert.doesNotMatch(runtime, /scheduled\s*:/);
 
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.sakurazaka46jp.jsonc', import.meta.url),

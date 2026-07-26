@@ -42,14 +42,19 @@ test('runtime Worker owns single-message rebuild delivery while preserving cache
   assert.doesNotMatch(wrapper, /fetch\s*\(/);
 });
 
-test('runtime scheduled orchestration checks maintenance readiness before Queue dispatch', () => {
-  const scheduled = source('../src/runtime-scheduled.js');
+test('Actions owns maintenance scheduling while compatibility primitives stay bounded', () => {
+  const workflow = source('../../.github/workflows/run-runtime-offline-maintenance.yml');
+  const runner = source('../scripts/run-runtime-offline-maintenance-actions.mjs');
   const wrapper = source('../src/minute-maintenance-optimized-entry.js');
-  assert.match(scheduled, /dispatchMinuteMaintenanceGate/);
+  const runtime = config('../wrangler.runtime.jsonc');
+
+  assert.match(workflow, /run-runtime-offline-maintenance-actions\.mjs/);
+  assert.match(workflow, /timeout-minutes: 15/);
+  assert.match(runner, /runRuntimeOfflineMaintenanceActions/);
+  assert.match(runner, /runtime offline maintenance deadline exceeded/);
   assert.match(wrapper, /loadRebuildMaintenanceEntry/);
   assert.match(wrapper, /processMinuteMaintenanceGate\(env, message,/);
-  assert.match(wrapper, /minute_maintenance_gate_inlined/);
-  assert.match(wrapper, /scheduled: runMinuteMaintenanceScheduled/);
   assert.doesNotMatch(wrapper, /JSON_QUEUE_SEND_OPTIONS|maintenanceDelaySeconds/);
   assert.doesNotMatch(wrapper, /setTimeout|waitForCollectorCompletion|fetch\s*:/);
+  assert.equal(runtime.triggers, undefined);
 });

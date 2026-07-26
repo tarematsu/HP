@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { runDispatchedPagesReadModelTask } from '../src/pages-read-model-dispatch.js';
+import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
 import {
   loadTrackHistoryDayReadModel,
   materializeTrackHistoryRangeThroughR2,
@@ -97,27 +97,22 @@ function dependencies(range) {
   };
 }
 
-test('track-history env preserves non-enumerable Cloudflare bindings while aliasing BUDDIES_DB', async () => {
-  const minuteDb = {};
-  const r2 = new FakeR2();
-  const env = { MINUTE_DB: minuteDb };
-  Object.defineProperty(env, 'PAGES_RESPONSE_R2', {
-    value: r2,
-    enumerable: false,
-  });
+test('Actions aliases the compact MINUTE_DB as the track-history source', async () => {
+  const minuteDb = { name: 'minute' };
   let observedEnv;
-  let observedDependencies;
-  await runDispatchedPagesReadModelTask(env, DAY_START, {
-    async runTrackHistoryStep(activeEnv, _timestamp, activeDependencies) {
+  await runPagesReadModelActions({
+    startedAt: DAY_START + 19 * 60_000,
+    deadlineMs: DAY_START + 30 * 60_000,
+    now: () => DAY_START + 19 * 60_000,
+    env: { DB: {}, BUDDIES_DB: { name: 'buddies' }, MINUTE_DB: minuteDb, OTHER_DB: {} },
+    runTrackHistoryStep: async (activeEnv) => {
       observedEnv = activeEnv;
-      observedDependencies = activeDependencies;
-      return { skipped: true };
+      return { reason: 'track-history-cycle-already-published' };
     },
+    materializeVariant: async (variant) => ({ key: variant.key }),
   });
   assert.equal(observedEnv.MINUTE_DB, minuteDb);
   assert.equal(observedEnv.BUDDIES_DB, minuteDb);
-  assert.equal(observedEnv.PAGES_RESPONSE_R2, r2);
-  assert.equal(typeof observedDependencies.refreshDay, 'function');
 });
 
 test('seven staging shards stay in R2 and the final shard writes a stable day model', async () => {

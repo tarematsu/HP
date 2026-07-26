@@ -5,16 +5,16 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
+import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
 import {
   mergeTrackHistoryExcludedDates,
   trackHistoryRefreshRanges,
 } from '../src/pages-track-history-support.js';
-import { pagesSixHourTask } from '../src/pages-six-hour-read-model.js';
 
 const DAY_MS = 86_400_000;
 const EPOCH = Date.UTC(2024, 4, 1);
 
- test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
+test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
   const now = Date.UTC(2026, 6, 16, 12);
   const currentDay = Date.UTC(2026, 6, 16);
   const ranges = trackHistoryRefreshRanges(now);
@@ -101,7 +101,7 @@ test('incremental excluded-date updates replace only dates inside the refreshed 
   );
 });
 
-test('canonical materialized variants keep the intended publication cadence', () => {
+test('canonical materialized variants keep the intended maximum-age cadence', () => {
   const materialized = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
   assert.deepEqual([...materialized.keys()], [
     'dashboard',
@@ -115,11 +115,6 @@ test('canonical materialized variants keep the intended publication cadence', ()
   assert.equal(materialized.get('track-history').cadence_minutes, 1440);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
   assert.equal(materialized.get('dashboard').cadence_minutes, 15);
-  for (const [key, variant] of materialized) {
-    if (key !== 'dashboard' && key !== 'track-history' && key !== 'host-history:summary') {
-      assert.equal(variant.cadence_minutes, 360, key);
-    }
-  }
 });
 
 test('track history maximum age covers daily source refresh plus edge grace', () => {
@@ -129,15 +124,23 @@ test('track history maximum age covers daily source refresh plus edge grace', ()
   );
 });
 
-test('daily scheduler preserves six-hour variants while using the remaining day for track history', () => {
+test('Actions cadence regenerates only the bounded due variants', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.equal(pagesSixHourTask(cycle).kind, 'track-history-step');
-  assert.equal(pagesSixHourTask(cycle + 35 * 60_000).key, 'history:daily');
-  assert.equal(pagesSixHourTask(cycle + 395 * 60_000).key, 'history:daily');
-  assert.equal(pagesSixHourTask(cycle + 70 * 60_000).key, 'history:weekly');
-  assert.equal(pagesSixHourTask(cycle + 105 * 60_000).key, 'history:monthly');
-  assert.equal(pagesSixHourTask(cycle + 140 * 60_000).key, 'history:broadcasts');
-  assert.equal(pagesSixHourTask(cycle + 410 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesSixHourTask(cycle + 1434 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesSixHourTask(cycle + 1435 * 60_000).kind, 'idle');
+  assert.deepEqual([...dueVariantKeys(cycle + 4 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+    'history:monthly',
+    'host-history:summary',
+    'track-history',
+  ]);
+  assert.deepEqual([...dueVariantKeys(cycle + 19 * 60_000)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 64 * 60_000)], ['dashboard', 'history:daily']);
+  assert.deepEqual([...dueVariantKeys(cycle + 184 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+  ]);
 });

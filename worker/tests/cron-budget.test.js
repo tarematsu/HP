@@ -9,16 +9,18 @@ function config(name) {
 test('active production Workers stay within the account-wide Free cron limit', () => {
   const configs = [
     config('wrangler.sakurazaka46jp.jsonc'),
+    config('wrangler.buddies-collector.jsonc'),
     config('wrangler.runtime.jsonc'),
   ];
   const counts = configs.map((value) => value.triggers?.crons?.length || 0);
 
-  assert.deepEqual(counts, [1, 1]);
+  assert.deepEqual(counts, [1, 1, 0]);
   assert.equal(counts.reduce((sum, count) => sum + count, 0), 2);
 });
 
-test('runtime health threshold tolerates a delayed five-minute task slot', () => {
+test('runtime has no cron or offline health threshold after the Actions cutover', () => {
   const runtime = config('wrangler.runtime.jsonc');
-  assert.deepEqual(runtime.triggers.crons, ['* * * * *']);
-  assert.ok(Number(runtime.vars.OTHER_CRON_STALE_MS) >= 12 * 60_000);
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(Object.hasOwn(runtime.vars, 'OTHER_CRON_STALE_MS'), false);
+  assert.equal(Object.hasOwn(runtime.vars, 'RUNTIME_D1_LEASE_MS'), false);
 });

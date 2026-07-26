@@ -31,7 +31,7 @@ function commentsTask() {
   };
 }
 
-test('collector, recovery, and runtime have one exclusive owner per Queue boundary', () => {
+test('collector, recovery, and runtime have one exclusive owner per active Queue boundary', () => {
   const collector = config('wrangler.buddies-collector.jsonc');
   const recovery = config('wrangler.buddies-recovery.jsonc');
   const runtime = config('wrangler.runtime.jsonc');
@@ -62,14 +62,19 @@ test('collector, recovery, and runtime have one exclusive owner per Queue bounda
     assert.equal(runtimeConsumers.has(queue), false, queue);
   }
   for (const queue of [
-    'stationhead-read-model',
-    'stationhead-buddies-facts',
+    'stationhead-minute-enrichment',
+    'stationhead-track-metadata',
+    'stationhead-minute-derive',
     'stationhead-minute-live-derive',
+    'stationhead-buddies-facts',
     'stationhead-minute-rebuild',
   ]) {
     assert.equal(runtimeConsumers.get(queue).max_batch_size, 1, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(recoveryConsumers.has(queue), false, queue);
+  }
+  for (const retired of ['stationhead-read-model', 'stationhead-pages-read-model-publication']) {
+    assert.equal(runtimeConsumers.has(retired), false, retired);
   }
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
@@ -82,6 +87,7 @@ test('collector, recovery, and runtime have one exclusive owner per Queue bounda
   assert.equal(runtimeConsumers.get('stationhead-buddies-facts').max_concurrency, 1);
   assert.equal(runtimeConsumers.get('stationhead-minute-live-derive').max_concurrency, 2);
   assert.equal(runtimeConsumers.get('stationhead-minute-rebuild').max_concurrency, 1);
+  assert.equal(runtime.triggers, undefined);
 });
 
 test('raw collector emits a compact prepared v3 message for the normal channel shape', async () => {

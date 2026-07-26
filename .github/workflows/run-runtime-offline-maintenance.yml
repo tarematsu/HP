@@ -1,0 +1,41 @@
+name: Run runtime offline maintenance
+
+on:
+  schedule:
+    - cron: '3,33 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runtime-offline-maintenance
+  cancel-in-progress: true
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      FACTS_DATABASE_NAME: stationhead-minute
+      OTHER_DATABASE_NAME: stationhead-other
+      RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Run prediction, rollups, and retention in one pass
+        run: node scripts/run-runtime-offline-maintenance-actions.mjs

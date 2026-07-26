@@ -2,13 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { pagesReadModelTask } from '../src/pages-read-model-dispatch.js';
+import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
 import { advanceTrackHistoryPublication } from '../src/pages-track-history-publication.js';
-import {
-  processTrackHistoryPublicationTask,
-  TRACK_HISTORY_PUBLICATION_ACTIONS,
-  TRACK_HISTORY_PUBLICATION_MESSAGE,
-} from '../src/pages-track-history-publication-queue.js';
 import {
   assembledTrackHistoryPublicationForTest,
   createTrackHistoryPublication,
@@ -27,7 +22,7 @@ function row(index) {
   };
 }
 
-function baseStage() {
+function baseStage(overrides = {}) {
   return {
     generation: CYCLE_START,
     published: false,
@@ -41,6 +36,7 @@ function baseStage() {
     },
     tasks: [{ id: 'recent:0', kind: 'recent', range: { fromTs: CYCLE_START, toTs: CYCLE_START + 1 } }],
     completed: { 'recent:0': { sourceRowCount: 3, excludedDates: [] } },
+    ...overrides,
   };
 }
 
@@ -110,125 +106,92 @@ test('publication advances by bounded rows and commits the manifest separately',
   assert.equal(committed.published, true);
 });
 
-test('cron checkpoints initialization before dispatching the status Queue stage', async () => {
-  const operations = [];
-  const sent = [];
+test('split cycle initializes and advances one publication page inline', async () => {
   const stage = baseStage();
-  const result = await runSplitTrackHistoryCycleStep({ BUDDIES_DB: {}, MINUTE_DB: {} }, CYCLE_START + 12 * 60_000, {
-    loadStage: async () => stage,
-    saveStage: async () => operations.push('save'),
-    sendPublication: async (body) => { operations.push('send'); sent.push(body); },
-  });
+  const saves = [];
+  const result = await runSplitTrackHistoryCycleStep(
+    { BUDDIES_DB: {}, MINUTE_DB: {} },
+    CYCLE_START + 12 * 60_000,
+    {
+      loadStage: async () => stage,
+      finalizeStatus: async () => ({ generated_at: CYCLE_START, source_row_count: 3 }),
+      initializePublication: async (_db, publication) => ({
+        ...publication,
+        phase: 'rows',
+        next_chunk_index: 1,
+        rows_written: 0,
+      }),
+      advancePublication: async (_db, publication) => ({
+        action: 'rows',
+        rows: 40,
+        chunks: 1,
+        published: false,
+        publication: { ...publication, rows_written: 40, next_chunk_index: 2 },
+      }),
+      saveStage: async () => saves.push(stage.publication?.phase || 'none'),
+    },
+  );
 
-  assert.equal(result.task.kind, 'track-history-publish-dispatch');
-  assert.equal(stage.publication_initializing_at, CYCLE_START + 12 * 60_000);
-  assert.equal(stage.publication, undefined);
-  assert.deepEqual(operations, ['save', 'send']);
-  assert.equal(sent[0].message_type, TRACK_HISTORY_PUBLICATION_MESSAGE);
-  assert.equal(sent[0].message_version, 2);
-  assert.equal(sent[0].action, TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS);
+  assert.equal(result.task.kind, 'track-history-publish-step');
+  assert.equal(result.publication.action, 'rows');
+  assert.equal(result.publication.rows_written, 40);
+  assert.equal(stage.published, false);
+  assert.deepEqual(saves, ['rows', 'rows']);
 });
 
-test('status Queue stage checkpoints status before dispatching generation initialization', async () => {
-  const operations = [];
-  const sent = [];
-  const stage = { ...baseStage(), publication_initializing_at: CYCLE_START };
-  const status = { generated_at: CYCLE_START + 1, source_row_count: 9 };
-  const result = await processTrackHistoryPublicationTask({ MINUTE_DB: {} }, {
-    message_type: TRACK_HISTORY_PUBLICATION_MESSAGE,
-    message_version: 2,
-    action: TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS,
-    generation: String(CYCLE_START),
-  }, {
-    now: () => CYCLE_START + 1,
-    loadStage: async () => stage,
-    finalizeStatus: async () => status,
-    saveStage: async () => operations.push('save'),
-    sendPublication: async (body) => { operations.push('send'); sent.push(body); },
-  });
-
-  assert.equal(result.action, TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS);
-  assert.equal(stage.publication_status, status);
-  assert.deepEqual(operations, ['save', 'send']);
-  assert.equal(sent[0].action, TRACK_HISTORY_PUBLICATION_ACTIONS.INITIALIZE);
-});
-
-test('generation initialization checkpoints the prefix before dispatching the first page', async () => {
-  const operations = [];
-  const sent = [];
-  const stage = {
-    ...baseStage(),
-    publication_status: { generated_at: CYCLE_START + 1, source_row_count: 9 },
-    publication_status_updated_at: CYCLE_START + 1,
-  };
-  const result = await processTrackHistoryPublicationTask({ MINUTE_DB: {} }, {
-    message_type: TRACK_HISTORY_PUBLICATION_MESSAGE,
-    message_version: 2,
-    action: TRACK_HISTORY_PUBLICATION_ACTIONS.INITIALIZE,
-    generation: String(CYCLE_START),
-  }, {
-    now: () => CYCLE_START + 2,
-    loadStage: async () => stage,
-    initializePublication: async (_db, publication) => ({ ...publication, prefix_written: true }),
-    saveStage: async () => operations.push('save'),
-    sendPublication: async (body) => { operations.push('send'); sent.push(body); },
-  });
-
-  assert.equal(result.action, TRACK_HISTORY_PUBLICATION_ACTIONS.INITIALIZE);
-  assert.equal(stage.publication.prefix_written, true);
-  assert.equal(stage.publication_status, undefined);
-  assert.deepEqual(operations, ['save', 'send']);
-  assert.equal(sent[0].action, TRACK_HISTORY_PUBLICATION_ACTIONS.PAGE);
-  assert.equal(sent[0].generation, stage.publication.generation);
-});
-
-test('page Queue stage checkpoints one page before sending its continuation', async () => {
-  const operations = [];
-  const stage = {
-    published: false,
+test('split cycle marks the stage published in the same inline state machine', async () => {
+  const stage = baseStage({
     publication: {
       generation: 'generation-1',
-      phase: 'rows',
-      rows_written: 0,
-      next_chunk_index: 1,
-      updated_at: CYCLE_START,
+      phase: 'finalize',
+      rows_written: 40,
+      next_chunk_index: 2,
     },
-  };
-  const result = await processTrackHistoryPublicationTask({ MINUTE_DB: {} }, {
-    message_type: TRACK_HISTORY_PUBLICATION_MESSAGE,
-    message_version: 1,
-    generation: 'generation-1',
-  }, {
-    now: () => CYCLE_START + 1,
-    loadStage: async () => stage,
-    advancePublication: async () => ({
-      action: 'rows',
-      rows: 40,
-      chunks: 1,
-      published: false,
-      publication: { ...stage.publication, rows_written: 40, next_chunk_index: 2, updated_at: CYCLE_START + 1 },
-    }),
-    saveStage: async () => operations.push('save'),
-    sendPublication: async () => operations.push('send'),
   });
+  const result = await runSplitTrackHistoryCycleStep(
+    { BUDDIES_DB: {}, MINUTE_DB: {} },
+    CYCLE_START + 13 * 60_000,
+    {
+      loadStage: async () => stage,
+      advancePublication: async (_db, publication) => ({
+        action: 'publish',
+        published: true,
+        publication: { ...publication, phase: 'published' },
+      }),
+      saveStage: async () => {},
+    },
+  );
 
-  assert.equal(result.rows, 40);
-  assert.deepEqual(operations, ['save', 'send']);
+  assert.equal(result.task.kind, 'track-history-published');
+  assert.equal(result.publication.published, true);
+  assert.equal(stage.published, true);
+  assert.equal(stage.publication.phase, 'published');
 });
 
-test('cron keeps lightweight stalled-publication recovery active through the daily window', () => {
-  assert.equal(pagesReadModelTask(CYCLE_START + 59 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 60 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 174 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 1_434 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 1_435 * 60_000).key, 'pages-read-model-cycle-idle');
+test('Actions runner keeps bounded stalled-publication recovery active without a Worker Queue', async () => {
+  const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
+  let calls = 0;
+  const result = await runPagesReadModelActions({
+    startedAt: CYCLE_START + 19 * 60_000,
+    deadlineMs: CYCLE_START + 30 * 60_000,
+    now: () => CYCLE_START + 19 * 60_000,
+    maxSteps: 3,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => {
+      calls += 1;
+      return {
+        task: { kind: calls === 3 ? 'track-history-published' : 'track-history-publish-step' },
+        stage: { published: calls === 3 },
+        publication: { published: calls === 3, phase: calls === 3 ? 'published' : 'rows' },
+      };
+    },
+    materializeVariant: async (variant) => ({ key: variant.key }),
+  });
 
-  const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.vars.PAGES_TRACK_HISTORY_ROWS_PER_STEP, 25);
-  const publication = config.queues.consumers.find(
-    ({ queue }) => queue === 'stationhead-pages-read-model-publication',
-  );
-  assert.equal(publication.max_batch_size, 1);
-  assert.equal(publication.max_concurrency, 1);
-  assert.equal(config.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), true);
+  assert.equal(result.track_history_steps, 3);
+  assert.equal(result.track_history_result.stage.published, true);
+  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard', 'track-history']);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-pages-read-model-publication'), false);
+  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
+  assert.equal(runtime.triggers, undefined);
 });

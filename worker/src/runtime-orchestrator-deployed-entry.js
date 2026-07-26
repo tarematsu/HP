@@ -1,26 +1,17 @@
 import baseWorker from './runtime-orchestrator-entry.js';
-import { RuntimeCoordinator } from './runtime-coordinator-combined.js';
-import {
-  minuteFactRepairBurstDue,
-  runFetchCoordinatedScheduled,
-  runRuntimeOrchestratorQueue,
-  runRuntimeOrchestratorScheduled,
-  runRuntimeWork,
-  runtimeOrchestratorDue,
-} from './runtime-do-orchestrator.js';
+import { queueAttributedEnv } from './queue-attribution.js';
 
-export {
-  RuntimeCoordinator,
-  minuteFactRepairBurstDue,
-  runFetchCoordinatedScheduled,
-  runRuntimeOrchestratorQueue,
-  runRuntimeOrchestratorScheduled,
-  runRuntimeWork,
-  runtimeOrchestratorDue,
-};
+export async function runRuntimeOrchestratorQueue(batch, env, ctx, dependencies = {}) {
+  const run = dependencies.runCoreQueue || baseWorker.queue;
+  return run(
+    batch,
+    queueAttributedEnv(env, 'sh-runtime-orchestrator'),
+    ctx,
+    dependencies.core || {},
+  );
+}
 
 export default {
   fetch: baseWorker.fetch,
   queue: runRuntimeOrchestratorQueue,
-  scheduled: runRuntimeOrchestratorScheduled,
 };

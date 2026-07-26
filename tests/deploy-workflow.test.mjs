@@ -90,7 +90,11 @@ test('one GitHub Actions workflow owns automatic and manual production deploymen
   assert.match(deploymentWorkflow, /name: Apply MINUTE_DB migrations before deployment/);
   assert.match(deploymentWorkflow, /name: Deploy affected Workers/);
   assert.match(deploymentWorkflow, /name: Build and deploy Pages/);
-  assert.match(deploymentWorkflow, /wrangler pages deploy public --project-name skrzk --branch main/);
+  assert.match(deploymentWorkflow, /name: Resolve Pages production branch/);
+  assert.match(
+    deploymentWorkflow,
+    /wrangler pages deploy public[\s\S]*--project-name skrzk[\s\S]*--branch "\$\{\{ steps\.pages-project\.outputs\.production_branch \}\}"/,
+  );
   assert.match(deploymentWorkflow, /needs: \[select, minute_db\]/);
   assert.match(deploymentWorkflow, /needs: \[select, minute_db, workers\]/);
   assert.match(

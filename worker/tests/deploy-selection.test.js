@@ -17,21 +17,36 @@ function select(paths = [], args = []) {
 }
 
 test('domain modules select every Worker whose bundle imports them', () => {
-  assert.deepEqual(select(['worker/src/persist-channel-entry.js']).workers, [RECOVERY, COLLECTOR, RUNTIME]);
+  assert.deepEqual(select(['worker/src/persist-channel-entry.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
-    'worker/src/pages-read-model-entry.js',
+    'worker/src/pages-response-store.js',
     'worker/src/minute-derive-entry.js',
     'worker/src/minute-rebuild-batched-entry.js',
     'worker/src/runtime-queue.js',
-    'worker/src/runtime-scheduled.js',
   ]) {
     assert.deepEqual(select([path]).workers, [RUNTIME], path);
   }
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
   assert.deepEqual(select(['worker/src/sakurazaka-monitor.js']).workers, [SAKURAZAKA]);
+});
+
+test('Actions-only offline modules do not redeploy Workers', () => {
+  for (const path of [
+    'worker/src/monitor-maintenance-entry.js',
+    'worker/src/pages-read-model-entry.js',
+    'worker/src/pages-read-model-dispatch.js',
+    'worker/src/pages-track-history-publication-queue.js',
+    'worker/src/pages-track-history-split-cycle.js',
+    'worker/src/runtime-budgeted-entry.js',
+    'worker/src/runtime-d1-coordinator.js',
+    'worker/src/runtime-scheduled.js',
+    'worker/src/runtime-stream-prediction-dispatch.js',
+  ]) {
+    assert.deepEqual(select([path]).workers, [], path);
+  }
 });
 
 test('deployment support changes select the owning Worker', () => {

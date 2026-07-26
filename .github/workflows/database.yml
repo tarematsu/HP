@@ -58,7 +58,7 @@ permissions:
 
 concurrency:
   group: sh-database-operations-v2-${{ inputs.operation || github.event_name }}
-  cancel-in-progress: ${{ inputs.operation == 'minute-facts-local-rebuild' }}
+  cancel-in-progress: false
 
 jobs:
   minute-db:
@@ -125,22 +125,21 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm ci --no-audit --no-fund
-      - name: Export generation-only buddies data
+      - name: Export incremental generation window
+        id: window
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p ../.local-minute-facts
-          npx wrangler d1 export "$BUDDIES_DATABASE_NAME" \
-            --remote \
-            --skip-confirmation \
-            --output ../.local-minute-facts/buddies.sql \
-            --table sh_channel_snapshots \
-            --table sh_comment_minute_counts
+          node scripts/minute-facts-actions-window.mjs export
       - name: Generate minute facts in local SQLite
         run: >-
           python ../scripts/rebuild-minute-facts-from-buddies.py
-          --buddies-export ../.local-minute-facts/buddies.sql
+          --snapshots-json ../.local-minute-facts/snapshots.json
+          --comments-json ../.local-minute-facts/comments.json
           --out-dir ../.local-minute-facts/generated
+          --now-ms ${{ steps.window.outputs.cutoff_ms }}
+          --recent-guard-ms 0
       - name: Upload generated facts to MINUTE_DB
         shell: bash
         run: |
@@ -167,6 +166,8 @@ jobs:
               exit 1
             fi
           done
+      - name: Checkpoint Actions maintenance in MINUTE_DB
+        run: node scripts/minute-facts-actions-window.mjs complete
       - name: Verify live data and deployment-critical schema
         run: node scripts/verify-facts-live.mjs
       - name: Remove local buddies data

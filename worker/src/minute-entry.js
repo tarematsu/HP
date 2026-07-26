@@ -1,13 +1,12 @@
 export const MINUTE_FACT_DERIVE_CRON = '*/2 * * * *';
-export const MINUTE_FACT_MAINTENANCE_CRON = '5,7,9,15,17,19,25,27,29,35,37,39,45,47,49,55,57,59 * * * *';
+export const MINUTE_FACT_MAINTENANCE_CRON = '5,7,15,17,25,27,35,37,45,47,55,57 * * * *';
 // Legacy direct routes remain supported for manual invocation and rollback.
 export const MINUTE_FACT_RECOVERY_CRON = '5,15,25,35,45,55 * * * *';
 export const MINUTE_FACT_REBUILD_CRON = '7,17,27,37,47,57 * * * *';
-export const MINUTE_FACT_SYNC_CRON = '9,19,29,39,49,59 * * * *';
 export const MINUTE_FACT_WORKER_CRON = MINUTE_FACT_DERIVE_CRON;
 export const MINUTE_FACT_RECOVERY_MINUTE = 5;
 
-const ACTIVE_HEALTH_TASKS = new Set(['derive', 'recovery', 'rebuild', 'sync']);
+const ACTIVE_HEALTH_TASKS = new Set(['derive', 'recovery', 'rebuild']);
 let healthCache = null;
 let minuteQueueDependenciesPromise;
 
@@ -47,20 +46,17 @@ export function minuteMaintenanceTask(controller = {}) {
   const cron = String(controller.cron || '');
   if (cron === MINUTE_FACT_RECOVERY_CRON) return 'recovery';
   if (cron === MINUTE_FACT_REBUILD_CRON) return 'rebuild';
-  if (cron === MINUTE_FACT_SYNC_CRON) return 'sync';
   if (cron !== MINUTE_FACT_MAINTENANCE_CRON) return null;
   const minute = scheduledMinute(controller);
   if (minute == null) return null;
   const slot = ((minute % 10) + 10) % 10;
   if (slot === 5) return 'recovery';
   if (slot === 7) return 'rebuild';
-  if (slot === 9) return 'sync';
   return null;
 }
 
 export function minuteStaggerApplies(controller = {}) {
-  const task = minuteMaintenanceTask(controller);
-  return task === 'rebuild' || task === 'sync';
+  return minuteMaintenanceTask(controller) === 'rebuild';
 }
 
 function enabled(value) {
@@ -165,12 +161,6 @@ async function runRebuild(env, dependencies) {
   };
 }
 
-async function runSync(env, dependencies) {
-  const runner = dependencies.runSync
-    || (await import('./buddies-facts-sync.js')).runBuddiesFactsSync;
-  return runner(withSourceDatabase(env, 'BUDDIES_DB'), dependencies.sync || {});
-}
-
 async function runRecovery(env, dependencies) {
   if (!enabled(env.MINUTE_FACT_AUTO_REQUEUE_DEAD)) {
     return { skipped: true, reason: 'dead-job-auto-requeue-disabled' };
@@ -198,11 +188,6 @@ export async function runMinuteScheduled(controller = {}, env, dependencies = {}
   }
   if (maintenanceTask === 'rebuild') {
     return runTracked(env, 'rebuild', () => runRebuild(env, dependencies), dependencies);
-  }
-  if (maintenanceTask === 'sync') {
-    if (dependencies.collectorReady === false) return { skipped: true, reason: 'collector-not-ready' };
-    if (!env?.BUDDIES_DB && !env?.DB) return { skipped: true, reason: 'source-db-binding-missing' };
-    return runTracked(env, 'sync', () => runSync(env, dependencies), dependencies);
   }
   return { skipped: true, reason: 'unsupported-minute-facts-cron', cron };
 }

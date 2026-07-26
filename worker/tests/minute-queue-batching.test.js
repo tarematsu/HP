@@ -82,7 +82,7 @@ test('runtime keeps live revisions at one track while rebuilds use the configure
   assert.match(entry, /minute_derive_queue_overloaded/);
 });
 
-test('derive isolation composes with the merged CPU, KV, and Worker topology contracts', () => {
+test('derive isolation composes with queue-only runtime and Actions-owned Pages generation', () => {
   const audit = readFileSync(
     new URL('../../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url),
     'utf8',
@@ -99,12 +99,17 @@ test('derive isolation composes with the merged CPU, KV, and Worker topology con
   const consumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
   for (const queue of [
     'stationhead-minute-enrichment',
-    'stationhead-pages-read-model-publication',
-    'stationhead-read-model',
     'stationhead-track-metadata',
   ]) {
     assert.equal(consumers.has(queue), true, queue);
   }
+  for (const queue of [
+    'stationhead-pages-read-model-publication',
+    'stationhead-read-model',
+  ]) {
+    assert.equal(consumers.has(queue), false, queue);
+  }
+  assert.equal(runtime.triggers, undefined);
   assert.equal(existsSync(new URL('../wrangler.track-metadata.jsonc', import.meta.url)), false);
   assert.equal(existsSync(new URL('../wrangler.minute-enrichment.jsonc', import.meta.url)), false);
 });

@@ -25,7 +25,10 @@ LEGACY_QUALITY_REDUCED = 1024
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--buddies-export", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--buddies-export", type=Path)
+    source.add_argument("--snapshots-json", type=Path)
+    parser.add_argument("--comments-json", type=Path)
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--recent-guard-ms", type=int, default=300_000)
     parser.add_argument("--now-ms", type=int, default=None)
@@ -51,6 +54,69 @@ def execute_dump(connection: sqlite3.Connection, path: Path) -> int:
         statements += 1
     connection.commit()
     return statements
+
+
+def wrangler_rows(path: Path) -> list[dict[str, object]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    containers = payload if isinstance(payload, list) else [payload]
+    for container in containers:
+        if not isinstance(container, dict):
+            continue
+        rows = container.get("results")
+        if not isinstance(rows, list):
+            result = container.get("result")
+            if isinstance(result, dict):
+                rows = result.get("results")
+            elif isinstance(result, list) and result and isinstance(result[0], dict):
+                rows = result[0].get("results")
+        if isinstance(rows, list):
+            return [row for row in rows if isinstance(row, dict)]
+    return []
+
+
+def load_window_json(
+    connection: sqlite3.Connection,
+    snapshots_path: Path,
+    comments_path: Path,
+) -> int:
+    connection.executescript(
+        """
+        CREATE TABLE sh_channel_snapshots(
+          id INTEGER PRIMARY KEY, observed_at INTEGER, channel_id INTEGER,
+          station_id INTEGER, is_broadcasting INTEGER, listener_count INTEGER,
+          online_member_count INTEGER, total_member_count INTEGER,
+          guest_count INTEGER, total_listens INTEGER, current_stream_count INTEGER,
+          broadcast_start_time INTEGER
+        );
+        CREATE TABLE sh_comment_minute_counts(
+          station_id INTEGER, bucket_start INTEGER, comment_count INTEGER,
+          PRIMARY KEY(station_id,bucket_start)
+        );
+        """
+    )
+    snapshots = wrangler_rows(snapshots_path)
+    comments = wrangler_rows(comments_path)
+    snapshot_columns = (
+        "id", "observed_at", "channel_id", "station_id", "is_broadcasting",
+        "listener_count", "online_member_count", "total_member_count",
+        "guest_count", "total_listens", "current_stream_count",
+        "broadcast_start_time",
+    )
+    connection.executemany(
+        f"INSERT OR REPLACE INTO sh_channel_snapshots({','.join(snapshot_columns)}) "
+        f"VALUES({','.join('?' for _ in snapshot_columns)})",
+        [tuple(row.get(column) for column in snapshot_columns) for row in snapshots],
+    )
+    connection.executemany(
+        "INSERT OR REPLACE INTO sh_comment_minute_counts"
+        "(station_id,bucket_start,comment_count) VALUES(?,?,?)",
+        [
+            (row.get("station_id"), row.get("bucket_start"), row.get("comment_count"))
+            for row in comments
+        ],
+    )
+    connection.commit()
+    return len(snapshots) + len(comments)
 
 
 def integer(value: object) -> int | None:
@@ -319,7 +385,18 @@ def main() -> None:
     if local_path.exists():
         local_path.unlink()
     connection = sqlite3.connect(local_path)
-    statements = execute_dump(connection, args.buddies_export)
+    if args.buddies_export:
+        if args.comments_json:
+            raise RuntimeError("--comments-json is only valid with --snapshots-json")
+        statements = execute_dump(connection, args.buddies_export)
+        source_hash = hashlib.sha256(args.buddies_export.read_bytes()).hexdigest()
+    else:
+        if not args.comments_json:
+            raise RuntimeError("--comments-json is required with --snapshots-json")
+        statements = load_window_json(connection, args.snapshots_json, args.comments_json)
+        source_hash = hashlib.sha256(
+            args.snapshots_json.read_bytes() + b"\0" + args.comments_json.read_bytes()
+        ).hexdigest()
     required = {"sh_channel_snapshots", "sh_comment_minute_counts"}
     present = {
         row[0] for row in connection.execute(
@@ -336,7 +413,7 @@ def main() -> None:
     manifest = {
         "ok": True,
         "source_statements": statements,
-        "source_sha256": hashlib.sha256(args.buddies_export.read_bytes()).hexdigest(),
+        "source_sha256": source_hash,
         "cutoff_ms": cutoff,
         "candidates": len(candidates),
         "exact": sum(item["mode"] == "exact" for item in candidates),
