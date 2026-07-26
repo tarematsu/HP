@@ -93,6 +93,25 @@ test('local minute rebuild accepts bounded Wrangler JSON exports', () => {
   assert.equal(manifest.carry_forward, 1);
 });
 
+test('collector snapshot cadence stays within the local carry-forward horizon', () => {
+  const collector = JSON.parse(readFileSync(
+    join(root, 'worker/wrangler.buddies-collector.jsonc'),
+    'utf8',
+  ));
+  const rebuild = readFileSync(
+    join(root, 'scripts/rebuild-minute-facts-from-buddies.py'),
+    'utf8',
+  );
+  const carryMinutes = Number(rebuild.match(/MAX_CARRY_MINUTES\s*=\s*(\d+)/)?.[1]);
+  const persistIntervalMs = Number(collector.vars?.SNAPSHOT_PERSIST_INTERVAL_MS);
+  assert.ok(Number.isFinite(carryMinutes) && carryMinutes > 0);
+  assert.ok(Number.isFinite(persistIntervalMs) && persistIntervalMs > 0);
+  assert.ok(
+    persistIntervalMs <= carryMinutes * 60_000,
+    `snapshot persistence ${persistIntervalMs}ms exceeds ${carryMinutes}-minute carry horizon`,
+  );
+});
+
 test('database workflow exports an incremental window before final upload', () => {
   const workflow = readFileSync(join(root, '.github/workflows/database.yml'), 'utf8');
   const caller = readFileSync(
