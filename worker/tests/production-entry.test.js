@@ -90,7 +90,6 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   ]);
   assert.deepEqual(runtime.queues?.producers.map(({ binding }) => binding), [
     'MINUTE_FACT_QUEUE',
-    'MINUTE_DERIVE_QUEUE',
     'MINUTE_LIVE_DERIVE_QUEUE',
     'MINUTE_ENRICHMENT_QUEUE',
     'TRACK_METADATA_QUEUE',
@@ -103,6 +102,9 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-minute-rebuild'), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
+  assert.equal(runtime.queues.consumers.find(
+    ({ queue }) => queue === 'stationhead-minute-derive',
+  ).max_concurrency, 1);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
@@ -119,10 +121,11 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.doesNotMatch(source, /response\.json|readModelPresentation|handoffMinuteFactJob/);
 
   const names = Object.keys(runtime.vars || {});
-  for (const prefix of ['BUDDY_PLAYBACK_', 'HOST_', 'SOLO_', 'OFFICIAL_NEWS_', 'PAGES_', 'SNAPSHOT_RETENTION_', 'STREAM_GOAL_']) {
+  for (const prefix of [
+    'BUDDY_PLAYBACK_', 'HOST_', 'SOLO_', 'OFFICIAL_NEWS_', 'PAGES_',
+    'SNAPSHOT_RETENTION_', 'STREAM_GOAL_', 'REBUILD_', 'GAP_SCAN_',
+  ]) {
     assert.equal(names.some((name) => name.startsWith(prefix)), false, prefix);
   }
-  for (const prefix of ['DERIVE_', 'REBUILD_']) {
-    assert.equal(names.some((name) => name.startsWith(prefix)), true, prefix);
-  }
+  assert.equal(names.some((name) => name.startsWith('DERIVE_')), true);
 });
