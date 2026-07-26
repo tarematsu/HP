@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   MAX_ISSUE_BODY_CHARS,
   MAX_SECTION_CHARS,
+  clipMarkdown,
   clipText,
   normalizeOutcome,
   overallOutcome,
@@ -48,6 +49,17 @@ test('shared publisher normalizes failures and sanitizes diagnostic text', () =>
   assert.match(sanitized, /"api_token":"\[redacted\]"/);
   assert.match(sanitized, /CLOUDFLARE_ACCOUNT_ID=\[redacted\]/);
   assert.match(clipText('x'.repeat(20), 10), /^x{10}\n\n…truncated…$/);
+
+  const clippedMarkdown = clipMarkdown(
+    `<details>\n<summary>payload</summary>\n\n\`\`\`json\n${'x'.repeat(200)}\n\`\`\`\n\n</details>`,
+    80,
+  );
+  assert.match(clippedMarkdown, /…truncated…/);
+  assert.equal((clippedMarkdown.match(/^```/gm) || []).length % 2, 0);
+  assert.equal(
+    (clippedMarkdown.match(/<details>/g) || []).length,
+    (clippedMarkdown.match(/<\/details>/g) || []).length,
+  );
 });
 
 test('shared publisher emits component and overall commit statuses', async () => {

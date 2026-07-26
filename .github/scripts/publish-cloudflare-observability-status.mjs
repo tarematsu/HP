@@ -3,17 +3,28 @@
 import { pathToFileURL } from 'node:url';
 import {
   MAX_ISSUE_BODY_CHARS,
-  clipText,
+  clipMarkdown,
   createGitHubRequest,
-  overallOutcome,
+  findStatusIssue,
   publishCommitStatuses,
   readOptionalJson,
   readOptionalText,
   renderOutcomeRows,
   renderSection,
   requiredEnv,
+  sanitizeText,
   upsertStatusIssue,
 } from './observability-status-publisher.mjs';
+import {
+  buildObservabilityTriage,
+  diagnosticSectionTitle,
+  observabilityIssueOverall,
+  publicHealthSignal,
+} from './observability-issue-triage.mjs';
+import {
+  extractActionsRunnerHealthBlock,
+  renderActionsRunnerHealthBlock,
+} from './github-actions-runner-health.mjs';
 
 export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
@@ -26,6 +37,16 @@ const STATUS_CONTEXTS = {
   query: 'observability/cloudflare-query',
   telemetry: 'observability/telemetry-policy',
 };
+
+const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({
+  publicHealth: 5_000,
+  daily: 3_500,
+  freeTier: 3_500,
+  contract: 2_000,
+  d1Insights: 7_000,
+  observability: 6_500,
+  telemetry: 6_500,
+});
 
 export function isCurrentMainTarget(targetSha, mainSha) {
   const target = String(targetSha || '').trim();
@@ -40,7 +61,7 @@ function deploymentSummary(activeDeployments) {
       const versions = Array.isArray(deployment?.version_ids)
         ? deployment.version_ids.join(', ')
         : String(deployment?.version_ids || 'unknown');
-      return `| \`${worker}\` | \`${deployment?.status || 'active'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
+      return `| \`${worker}\` | \`${deployment?.status || 'unknown'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
     }).join('\n')
     : '| - | not captured | not captured | not captured | not captured |';
   return `### Active Worker deployments\n\n| Worker | Status | Deployment | Traffic-bearing versions | Deployed at |\n|---|---|---|---|---|\n${rows}`;
@@ -51,6 +72,26 @@ function recentMergeSummary(recentMerges) {
     `- #${pull.number} ${String(pull.title || '').replace(/\s+/g, ' ').trim()} (\`${pull.merge_commit_sha || 'unknown'}\`, ${pull.merged_at || 'unknown'})`
   ));
   return rows.length ? `### Recent merged changes on main\n\n${rows.join('\n')}` : '';
+}
+
+function deploymentAndChangeContext(activeDeployments, recentMerges) {
+  const content = [deploymentSummary(activeDeployments), recentMergeSummary(recentMerges)]
+    .filter(Boolean)
+    .join('\n\n');
+  return `<a id="deployment-context" name="deployment-context"></a>\n## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
+}
+
+function diagnosticSection(id, title, body, state, maximum) {
+  if (!body) return '';
+  const bounded = clipMarkdown(body, maximum);
+  return `<a id="${id}" name="${id}"></a>${renderSection(diagnosticSectionTitle(title, state), bounded)}`;
+}
+
+function pendingRunnerHealthBlock() {
+  return renderActionsRunnerHealthBlock(`### GitHub Actions runner health
+
+- **Overall:** pending
+- Scheduled-run health is refreshed by the lightweight runner diagnostics workflow.`);
 }
 
 export function buildIssueBody({
@@ -64,38 +105,50 @@ export function buildIssueBody({
   summaries = {},
   activeDeployments = {},
   recentMerges = [],
+  actionsRunnerHealthBlock = '',
 }) {
-  const overall = overallOutcome(outcomes);
+  const cloudflareStatus = observabilityIssueOverall({ outcomes, summaries, activeDeployments });
+  const publicHealth = publicHealthSignal(summaries.publicHealth);
+  const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
+  const triage = buildObservabilityTriage({ outcomes, summaries, activeDeployments, runUrl });
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
 
 This issue is maintained automatically by the unified HP and Stationhead Cloudflare Observability workflow.
 
-- **Overall:** ${overall}
+- **Cloudflare status:** ${cloudflareStatus} · **Generated:** ${generatedAt} · **Lookback:** ${lookbackMinutes} minutes · **Trigger:** ${trigger}
 - **Scope:** HP + Stationhead monorepo, account-wide included usage
-- **Generated:** ${generatedAt}
-- **Trigger:** ${trigger}
-- **Workflow source commit:** \`${targetSha}\`
-- **Current main SHA:** \`${mainSha}\`
-- **Workflow run:** ${runUrl}
-- **Telemetry and D1 insights lookback:** ${lookbackMinutes} minutes
+- **Workflow run:** ${runUrl} · **Workflow source commit:** \`${targetSha}\` · **Current main SHA:** \`${mainSha}\`
 
-${deploymentSummary(activeDeployments)}
+${runnerHealth}
 
-${recentMergeSummary(recentMerges)}
+${triage}
+
+<details>
+<summary>Raw gate outcomes</summary>
 
 | Gate | Outcome |
 |---|---|
 ${renderOutcomeRows(outcomes)}
-${renderSection('Public application health endpoint snapshots', summaries.publicHealth)}
-${renderSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
-${renderSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier)}
-${renderSection('Budget contract', summaries.contract)}
-${renderSection('Top D1 queries by rows read', summaries.d1Insights)}
-${renderSection('Cloudflare metrics and live diagnostics', summaries.observability)}
-${renderSection('Current-deployment telemetry policy', summaries.telemetry)}
+
+</details>
+
+${deploymentAndChangeContext(activeDeployments, recentMerges)}
+
+## Detailed diagnostics
+${diagnosticSection('diagnostic-public-health', 'Public application health endpoint snapshots', summaries.publicHealth, publicHealth.state, DIAGNOSTIC_SECTION_LIMITS.publicHealth)}
+${diagnosticSection('diagnostic-daily', 'Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily, outcomes.daily, DIAGNOSTIC_SECTION_LIMITS.daily)}
+${diagnosticSection('diagnostic-free-tier', 'Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier, outcomes.freeTier, DIAGNOSTIC_SECTION_LIMITS.freeTier)}
+${diagnosticSection('diagnostic-contract', 'Budget contract', summaries.contract, outcomes.contract, DIAGNOSTIC_SECTION_LIMITS.contract)}
+${diagnosticSection('diagnostic-d1', 'Top D1 queries by rows read', summaries.d1Insights, outcomes.d1Insights, DIAGNOSTIC_SECTION_LIMITS.d1Insights)}
+${diagnosticSection('diagnostic-observability', 'Cloudflare metrics and live diagnostics', summaries.observability, outcomes.query, DIAGNOSTIC_SECTION_LIMITS.observability)}
+${diagnosticSection('diagnostic-telemetry', 'Current-deployment telemetry policy', summaries.telemetry, outcomes.telemetry, DIAGNOSTIC_SECTION_LIMITS.telemetry)}
 `;
-  return clipText(body, MAX_ISSUE_BODY_CHARS);
+  const safeBody = sanitizeText(body).trim();
+  if (safeBody.length > MAX_ISSUE_BODY_CHARS) {
+    throw new Error(`Observability issue body exceeds ${MAX_ISSUE_BODY_CHARS} characters after bounded rendering`);
+  }
+  return safeBody;
 }
 
 async function currentMainSha(request) {
@@ -160,6 +213,26 @@ export async function publishFromEnvironment() {
     readOptionalText('observability-summary.md'),
     readOptionalText('telemetry-summary.md'),
   ]);
+  await publishCommitStatuses({
+    request,
+    targetSha,
+    runUrl,
+    outcomes,
+    contexts: STATUS_CONTEXTS,
+    overallDescription: 'Unified Cloudflare observability',
+  });
+  if (!isCurrentMainTarget(targetSha, mainSha)) {
+    console.log(
+      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
+    );
+    return;
+  }
+
+  const existingIssue = await findStatusIssue({
+    request,
+    title: STATUS_ISSUE_TITLE,
+    marker: STATUS_MARKER,
+  });
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
     targetSha,
@@ -179,26 +252,14 @@ export async function publishFromEnvironment() {
     },
     activeDeployments,
     recentMerges,
+    actionsRunnerHealthBlock: extractActionsRunnerHealthBlock(existingIssue?.body),
   });
-  await publishCommitStatuses({
-    request,
-    targetSha,
-    runUrl,
-    outcomes,
-    contexts: STATUS_CONTEXTS,
-    overallDescription: 'Unified Cloudflare observability',
-  });
-  if (!isCurrentMainTarget(targetSha, mainSha)) {
-    console.log(
-      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
-    );
-    return;
-  }
   const issue = await upsertStatusIssue({
     request,
     title: STATUS_ISSUE_TITLE,
     marker: STATUS_MARKER,
     body,
+    existingIssue,
   });
   console.log(`Published unified observability status to issue #${issue.number}`);
 }

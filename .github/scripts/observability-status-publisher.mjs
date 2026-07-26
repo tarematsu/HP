@@ -38,9 +38,28 @@ export function clipText(text, maximum = MAX_SECTION_CHARS) {
   return `${value.slice(0, maximum)}\n\n…truncated…`;
 }
 
+export function clipMarkdown(text, maximum = MAX_SECTION_CHARS) {
+  const value = sanitizeText(text).trim();
+  if (value.length <= maximum) return value;
+
+  let clipped = value.slice(0, maximum);
+  const lastNewline = clipped.lastIndexOf('\n');
+  if (lastNewline >= Math.floor(maximum * 0.8)) clipped = clipped.slice(0, lastNewline);
+  clipped = clipped.trimEnd();
+
+  const fenceCount = (clipped.match(/^```/gm) || []).length;
+  if (fenceCount % 2 !== 0) clipped += '\n```';
+
+  const openDetails = (clipped.match(/<details(?:\s[^>]*)?>/gi) || []).length;
+  const closedDetails = (clipped.match(/<\/details>/gi) || []).length;
+  const missingDetails = Math.max(0, openDetails - closedDetails);
+  const closures = missingDetails ? `\n\n${'</details>\n'.repeat(missingDetails).trimEnd()}` : '';
+  return `${clipped}\n\n…truncated…${closures}`;
+}
+
 export async function readOptionalText(path) {
   try {
-    return clipText(await readFile(path, 'utf8'));
+    return clipMarkdown(await readFile(path, 'utf8'));
   } catch (error) {
     if (error?.code === 'ENOENT') return '';
     throw error;
@@ -48,13 +67,13 @@ export async function readOptionalText(path) {
 }
 
 export async function readOptionalJson(path) {
-  const text = await readOptionalText(path);
-  if (!text) return {};
   try {
+    const text = await readFile(path, 'utf8');
     const value = JSON.parse(text);
     return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-  } catch {
-    return {};
+  } catch (error) {
+    if (error?.code === 'ENOENT' || error instanceof SyntaxError) return {};
+    throw error;
   }
 }
 
@@ -133,13 +152,17 @@ export async function publishCommitStatuses({
   });
 }
 
-export async function upsertStatusIssue({ request, title, marker, body }) {
+export async function findStatusIssue({ request, title, marker }) {
   const issues = await request('GET', '/issues?state=all&per_page=100&sort=updated&direction=desc');
-  const existing = issues.find((issue) => (
+  return issues.find((issue) => (
     !issue.pull_request
     && issue.title === title
     && String(issue.body || '').includes(marker)
-  ));
+  )) || null;
+}
+
+export async function upsertStatusIssue({ request, title, marker, body, existingIssue = null }) {
+  const existing = existingIssue || await findStatusIssue({ request, title, marker });
   if (existing) {
     return request('PATCH', `/issues/${existing.number}`, {
       title,
