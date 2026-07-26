@@ -27,7 +27,10 @@ test('mutation requests do not touch the shared cache binding', async () => {
 
   try {
     const response = await entry.fetch(
-      new Request('https://example.com/api/unknown', { method: 'POST' }),
+      new Request('https://example.com/api/unknown', {
+        method: 'POST',
+        headers: { 'X-HomePanel-Internal-Service': 'homepanel-cloud' }
+      }),
       {},
       {}
     );
