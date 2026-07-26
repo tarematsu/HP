@@ -1,0 +1,117 @@
+name: Agent Stationhead layout follow-up
+
+on:
+  push:
+    branches:
+      - agent/optimize-stationhead-window
+    paths:
+      - .github/workflows/agent-stationhead-layout-followup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused layout optimization
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          layout_path = Path('hp/native/src/sh_layout.cpp')
+          source = layout_path.read_text(encoding='utf-8')
+
+          anchor = '''  const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
+          const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
+'''
+          replacement = '''  const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
+          const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
+          // Reuse each synchronous Win32 size read for both host placement and
+          // WebView2 bounds repair. If the host was resized, its controller bounds
+          // are already known to require an update, so no COM bounds read is needed.
+          const bool hostSizeMatches = showAuth ||
+              (hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight));
+          const bool authHostSizeMatches = !showAuth ||
+              (authHostValid && WindowClientSizeMatches(authHostWindow, width, height));
+'''
+          if source.count(anchor) != 1:
+              raise SystemExit('unexpected host visibility anchor count')
+          source = source.replace(anchor, replacement, 1)
+
+          replacements = {
+              '''    } else if (!hostWasVisible ||
+                         !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {''':
+              '''    } else if (!hostWasVisible || !hostSizeMatches ||
+                         !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {''',
+              '''      if (!WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) ||
+                    !ControllerBoundsMatch(controller, contentBounds)) {''':
+              '''      if (!hostSizeMatches ||
+                    !ControllerBoundsMatch(controller, contentBounds)) {''',
+              '''      if (!authWasVisible ||
+                    !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {''':
+              '''      if (!authWasVisible || !authHostSizeMatches ||
+                    !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {''',
+              '''      if (!WindowClientSizeMatches(authHostWindow, width, height) ||
+                    !ControllerBoundsMatch(authController, authBounds)) {''':
+              '''      if (!authHostSizeMatches ||
+                    !ControllerBoundsMatch(authController, authBounds)) {''',
+          }
+          for old, new in replacements.items():
+              if source.count(old) != 1:
+                  raise SystemExit(f'unexpected replacement count for: {old.splitlines()[0]}')
+              source = source.replace(old, new, 1)
+          layout_path.write_text(source, encoding='utf-8')
+
+          test_path = Path('hp/video/test/stationhead-window-optimization-regression.test.js')
+          tests = test_path.read_text(encoding='utf-8')
+          addition = r'''
+
+test('layout reuses host size reads before controller bounds repair', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(hostWindow, hostWidth, hostHeight\)/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(authHostWindow, width, height\)/g) ?? []).length,
+    1,
+  );
+  assert.match(
+    applyLayout,
+    /const bool hostSizeMatches[\s\S]*!hostWasVisible \|\| !hostSizeMatches[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
+  );
+  assert.match(
+    applyLayout,
+    /const bool authHostSizeMatches[\s\S]*!authWasVisible \|\| !authHostSizeMatches[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
+  );
+});
+'''
+          if "layout reuses host size reads before controller bounds repair" in tests:
+              raise SystemExit('regression test already exists')
+          test_path.write_text(tests.rstrip() + addition, encoding='utf-8')
+
+          Path('.github/workflows/agent-stationhead-layout-followup.yml').unlink()
+          PY
+
+      - name: Run focused regression tests
+        run: node --test hp/video/test/stationhead-window-optimization-regression.test.js
+
+      - name: Commit follow-up
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hp/native/src/sh_layout.cpp hp/video/test/stationhead-window-optimization-regression.test.js .github/workflows/agent-stationhead-layout-followup.yml
+          git commit -m "Reuse Stationhead host size checks"
+          git push origin HEAD:agent/optimize-stationhead-window
