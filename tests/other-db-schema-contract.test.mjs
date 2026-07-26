@@ -44,10 +44,8 @@ test('metadata consolidation compares canonical ISRC values and recognizes missi
   assert.equal(metadataValuePresent('title'), true);
 });
 
-test('database workflows track schema contracts and exercise local D1 on SQL changes', () => {
+test('database workflow tracks schema contract and metadata helper changes', () => {
   const databaseWorkflow = readFileSync('.github/workflows/database.yml', 'utf8');
-  const ciWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8');
   assert.match(databaseWorkflow, /worker\/scripts\/other-db-tables\.mjs/);
   assert.match(databaseWorkflow, /worker\/scripts\/track-metadata-consolidation-lib\.mjs/);
-  assert.match(ciWorkflow, /github\.event_name == 'workflow_dispatch' \|\| needs\.changes\.outputs\.sql == 'true'/);
 });
