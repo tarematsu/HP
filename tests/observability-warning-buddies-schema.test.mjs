@@ -28,7 +28,7 @@ test('observability diagnostics report warn and warning levels without failing t
 
   const result = spawnSync('python3', [fileURLToPath(queryUrl), '--self-test'], { encoding: 'utf8' });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  assert.match(result.stdout, /severity self-test passed/u);
+  assert.match(result.stdout, /severity and CPU class self-test passed/u);
 });
 
 test('buddies provisioning repairs and verifies the production track metadata ISRC column', () => {
