@@ -6,6 +6,10 @@ import {
   OTHER_RETIRED_MIGRATIONS,
   OTHER_RETIRED_OBJECTS,
 } from '../worker/scripts/other-db-tables.mjs';
+import {
+  metadataValuePresent,
+  normalizedIsrc,
+} from '../worker/scripts/track-metadata-consolidation-lib.mjs';
 
 test('OTHER_DB schema contract retains rankings and rejects duplicate metadata', () => {
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_channel_rankings'));
@@ -30,4 +34,20 @@ test('remote provisioning and local smoke tests share the schema contract', () =
   assert.match(provisioner, /consolidateLegacyTrackMetadata\(\)/);
   assert.match(smokeTest, /OTHER_REQUIRED_TABLES/);
   assert.match(smokeTest, /migrationFiles\('database\/other-migrations'/);
+});
+
+test('metadata consolidation compares canonical ISRC values and recognizes missing text', () => {
+  assert.equal(normalizedIsrc(' jp-ab c-123 '), 'JPABC123');
+  assert.equal(normalizedIsrc('JPABC123'), 'JPABC123');
+  assert.equal(metadataValuePresent('  '), false);
+  assert.equal(metadataValuePresent(null), false);
+  assert.equal(metadataValuePresent('title'), true);
+});
+
+test('database workflows track schema contracts and exercise local D1 on SQL changes', () => {
+  const databaseWorkflow = readFileSync('.github/workflows/database.yml', 'utf8');
+  const ciWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8');
+  assert.match(databaseWorkflow, /worker\/scripts\/other-db-tables\.mjs/);
+  assert.match(databaseWorkflow, /worker\/scripts\/track-metadata-consolidation-lib\.mjs/);
+  assert.match(ciWorkflow, /github\.event_name == 'workflow_dispatch' \|\| needs\.changes\.outputs\.sql == 'true'/);
 });
