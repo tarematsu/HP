@@ -48,7 +48,7 @@ test('minute ingest writes one inbox row and durably hands off one live derive t
     messages: [queueMessage(splitMessage(), messageCalls)],
   }, {
     MINUTE_DB: minuteDb(() => 1, sqlCalls),
-    MINUTE_DERIVE_QUEUE: {
+    MINUTE_LIVE_DERIVE_QUEUE: {
       async send(body) { triggers.push(body); },
     },
   }, {});
@@ -72,7 +72,7 @@ test('minute ingest writes one inbox row and durably hands off one live derive t
   }]);
 });
 
-test('duplicate inbox delivery resends the derive trigger without extra work', async () => {
+test('duplicate inbox delivery resends the live derive trigger without extra work', async () => {
   const body = splitMessage({
     enrichTrackMetadata: true,
     tracks: [{ spotify_id: 'track-1' }],
@@ -83,7 +83,7 @@ test('duplicate inbox delivery resends the derive trigger without extra work', a
     messages: [queueMessage(body, messageCalls), queueMessage(body, messageCalls)],
   }, {
     MINUTE_DB: minuteDb((call) => (call === 1 ? 1 : 0)),
-    MINUTE_DERIVE_QUEUE: {
+    MINUTE_LIVE_DERIVE_QUEUE: {
       async send(trigger) { triggers.push(trigger); },
     },
   }, {});
@@ -100,7 +100,7 @@ test('duplicate inbox delivery resends the derive trigger without extra work', a
   assert.ok(triggers.every((trigger) => trigger.job_kind === 'live'));
 });
 
-test('legacy read-model failure happens after inbox and derive handoff', async () => {
+test('legacy read-model failure happens after inbox and live derive handoff', async () => {
   const body = minuteFactQueueMessage({
     observedAt: 123_456,
     snapshot: { channel_id: 10, station_id: 5 },
@@ -119,7 +119,7 @@ test('legacy read-model failure happens after inbox and derive handoff', async (
     messages: [queueMessage(body, messageCalls)],
   }, {
     MINUTE_DB: minuteDb(),
-    MINUTE_DERIVE_QUEUE: { async send() { triggers += 1; } },
+    MINUTE_LIVE_DERIVE_QUEUE: { async send() { triggers += 1; } },
   }, {}, {
     async saveMinuteFactReadModels() {
       throw new Error('legacy read model unavailable');
@@ -131,13 +131,13 @@ test('legacy read-model failure happens after inbox and derive handoff', async (
   assert.equal(triggers, 1);
 });
 
-test('derive Queue failure retries the source message after the durable inbox insert', async () => {
+test('live derive Queue failure retries the source message after the durable inbox insert', async () => {
   const messageCalls = [];
   const result = await consumeMinuteQueue({
     messages: [queueMessage(splitMessage(), messageCalls)],
   }, {
     MINUTE_DB: minuteDb(),
-    MINUTE_DERIVE_QUEUE: {
+    MINUTE_LIVE_DERIVE_QUEUE: {
       async send() { throw new Error('derive queue unavailable'); },
     },
   }, {});
