@@ -1,0 +1,133 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const layoutSource = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
+
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
+  assert.notEqual(startAt, -1, `missing section: ${start}`);
+  const endAt = source.indexOf(end, startAt + start.length);
+  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
+  return source.slice(startAt, endAt);
+}
+
+test('unchanged startup preview skips writes only when both surfaces are healthy', () => {
+  const setPreviewBounds = section(
+    layoutSource,
+    'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
+    'void StationheadPlayer::ClearStartupPreviewBounds()',
+  );
+  assert.match(
+    setPreviewBounds,
+    /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)/,
+  );
+  assert.match(setPreviewBounds, /PlaybackSurfaceMatches\(/);
+  assert.match(setPreviewBounds, /HiddenAuthSurfaceMatches\(/);
+  assert.match(setPreviewBounds, /return;/);
+});
+
+test('duplicate hide notifications verify stable playback and auth surfaces', () => {
+  const setVisible = section(
+    layoutSource,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  assert.match(
+    setVisible,
+    /!viewVisible_[\s\S]*selectedTab_ == StationheadTabKind::None[\s\S]*PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
+  );
+  assert.match(setVisible, /const bool hadInteractiveSurface/);
+  assert.match(
+    setVisible,
+    /hadInteractiveSurface && !startupPreviewActive_[\s\S]*GetFocus\(\) != window_[\s\S]*SetFocus\(window_\)/,
+  );
+});
+
+test('reselecting active playback or auth skips only verified layout writes', () => {
+  const setVisible = section(
+    layoutSource,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  assert.match(
+    setVisible,
+    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
+  );
+  assert.match(
+    setVisible,
+    /StationheadTabKind::Auth[\s\S]*authController_ && authWebview_[\s\S]*ActiveAuthSurfaceMatches\([\s\S]*return;/,
+  );
+});
+
+test('fast-path helpers validate host placement, controller bounds and visibility', () => {
+  const playbackMatches = section(
+    layoutSource,
+    'bool PlaybackSurfaceMatches(',
+    'bool HiddenAuthSurfaceMatches(',
+  );
+  assert.match(playbackMatches, /WindowClientSizeMatches\(/);
+  assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
+  assert.match(playbackMatches, /ControllerBoundsMatch\(/);
+  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+
+  const activeAuthMatches = section(
+    layoutSource,
+    'bool ActiveAuthSurfaceMatches(',
+    'bool ConfiguresSecondaryStationheadWindow(',
+  );
+  assert.match(activeAuthMatches, /playbackHidden/);
+  assert.match(activeAuthMatches, /WindowClientSizeMatches\(authHostWindow/);
+  assert.match(activeAuthMatches, /ChildWindowPlacementMatches\(authHostWindow/);
+  assert.match(activeAuthMatches, /ControllerBoundsMatch\(authController/);
+  assert.match(activeAuthMatches, /ControllerVisibilityMatches\(authController, TRUE\)/);
+});
+
+test('host resize is checked before synchronous WebView controller bounds reads', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  const playbackHostCheck = applyLayout.indexOf(
+    'WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)',
+  );
+  const playbackControllerCheck = applyLayout.indexOf(
+    'ControllerBoundsMatch(controller, contentBounds)',
+  );
+  const authHostCheck = applyLayout.indexOf(
+    'WindowClientSizeMatches(authHostWindow, width, height)',
+  );
+  const authControllerCheck = applyLayout.indexOf(
+    'ControllerBoundsMatch(authController, authBounds)',
+  );
+  assert.ok(playbackHostCheck >= 0 && playbackHostCheck < playbackControllerCheck);
+  assert.ok(authHostCheck >= 0 && authHostCheck < authControllerCheck);
+});
+
+test('layout reuses host size reads before controller bounds repair', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(hostWindow, hostWidth, hostHeight\)/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(authHostWindow, width, height\)/g) ?? []).length,
+    1,
+  );
+  assert.match(
+    applyLayout,
+    /const bool hostSizeMatches[\s\S]*!hostWasVisible \|\| !hostSizeMatches[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
+  );
+  assert.match(
+    applyLayout,
+    /const bool authHostSizeMatches[\s\S]*!authWasVisible \|\| !authHostSizeMatches[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
+  );
+});
