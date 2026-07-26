@@ -12,17 +12,39 @@ interface DeviceSyncRequest {
 }
 
 export class DeviceSyncCoordinator {
+  private manifestGeneration = 0;
+  private manifestLoad: Promise<DeviceSyncManifestRow> | null = null;
+
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
   ) {}
 
+  private async loadManifest(): Promise<DeviceSyncManifestRow> {
+    while (true) {
+      const generation = this.manifestGeneration;
+      const manifest = await readDeviceSyncManifest(this.env);
+      if (generation !== this.manifestGeneration) continue;
+
+      await this.state.storage.put(DEVICE_SYNC_MANIFEST_KEY, manifest);
+      if (generation === this.manifestGeneration) return manifest;
+
+      await this.state.storage.delete(DEVICE_SYNC_MANIFEST_KEY);
+    }
+  }
+
   private async manifest(): Promise<DeviceSyncManifestRow> {
     const stored = await this.state.storage.get<DeviceSyncManifestRow>(DEVICE_SYNC_MANIFEST_KEY);
     if (stored) return stored;
-    const manifest = await readDeviceSyncManifest(this.env);
-    await this.state.storage.put(DEVICE_SYNC_MANIFEST_KEY, manifest);
-    return manifest;
+    if (this.manifestLoad) return this.manifestLoad;
+
+    const pending = this.loadManifest();
+    this.manifestLoad = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.manifestLoad === pending) this.manifestLoad = null;
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -35,6 +57,7 @@ export class DeviceSyncCoordinator {
 
     const path = new URL(request.url).pathname;
     if (path === "/invalidate") {
+      this.manifestGeneration += 1;
       await this.state.storage.delete(DEVICE_SYNC_MANIFEST_KEY);
       return Response.json({ invalidated: true }, { status: 202 });
     }
