@@ -97,22 +97,36 @@ test('collector priority timeout does not suppress snapshot rebuild', async () =
   assert.deepEqual(calls, ['stagger', 'rebuild']);
 });
 
-test('runtime owns minute dispatch and maintenance without comment work', async () => {
+test('runtime owns realtime minute queues without scheduled maintenance', async () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  const runtimeSource = readFileSync(new URL('../src/runtime-scheduled.js', import.meta.url), 'utf8');
+  const deployedSource = readFileSync(new URL('../src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
   const minuteSource = readFileSync(new URL('../src/minute-maintenance-entry.js', import.meta.url), 'utf8');
+  const consumers = new Set(config.queues.consumers.map(({ queue }) => queue));
   assert.equal(config.name, 'sh-runtime-orchestrator');
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
-  assert.deepEqual(config.triggers.crons, ['* * * * *']);
+  assert.equal(config.triggers, undefined);
+  assert.doesNotMatch(deployedSource, /scheduled\s*:/);
   assert.equal(MINUTE_FACT_WORKER_CRON, MINUTE_FACT_DERIVE_CRON);
   assert.doesNotMatch(minuteSource, /minute-comments\.js|runMinuteCommentTasks/);
-  assert.match(runtimeSource, /dispatchPendingMinuteFacts/);
-  assert.match(runtimeSource, /dispatchMinuteMaintenanceGate/);
+  for (const queue of [
+    'stationhead-minute-derive',
+    'stationhead-minute-live-derive',
+    'stationhead-buddies-facts',
+    'stationhead-minute-rebuild',
+  ]) {
+    assert.equal(consumers.has(queue), true, queue);
+  }
+  for (const name of [
+    'MINUTE_FACT_REPAIR_BURST_ENABLED',
+    'REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS',
+    'RUNTIME_D1_LEASE_MS',
+  ]) {
+    assert.equal(Object.hasOwn(config.vars, name), false, name);
+  }
   assert.deepEqual(config.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.equal(config.vars.MINUTE_FACT_AUTO_REQUEUE_DEAD, true);
   assert.equal(config.vars.DERIVE_DISPATCH_LIMIT, 2);
   assert.equal(config.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
-  assert.equal(config.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
   assert.equal(config.vars.REBUILD_RECENT_GUARD_MS, 300_000);
 
   assert.deepEqual(await runMinuteScheduled({ cron: '* * * * *' }, {}, {}), {
