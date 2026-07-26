@@ -27,6 +27,12 @@ const STATUS_CONTEXTS = {
   telemetry: 'observability/telemetry-policy',
 };
 
+export function isCurrentMainTarget(targetSha, mainSha) {
+  const target = String(targetSha || '').trim();
+  const current = String(mainSha || '').trim();
+  return Boolean(target && current && current !== 'unknown' && target === current);
+}
+
 function deploymentSummary(activeDeployments) {
   const entries = Object.entries(activeDeployments || {});
   const rows = entries.length
@@ -182,6 +188,12 @@ export async function publishFromEnvironment() {
     contexts: STATUS_CONTEXTS,
     overallDescription: 'Unified Cloudflare observability',
   });
+  if (!isCurrentMainTarget(targetSha, mainSha)) {
+    console.log(
+      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
+    );
+    return;
+  }
   const issue = await upsertStatusIssue({
     request,
     title: STATUS_ISSUE_TITLE,
