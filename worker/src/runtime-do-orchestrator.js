@@ -5,8 +5,16 @@ import {
 } from './runtime-orchestrator-entry.js';
 import {
   attributedRuntimeEnv,
+  pagesScheduledDue,
   runBudgetedCoreScheduled,
 } from './runtime-budgeted-entry.js';
+import {
+  RUNTIME_CRON,
+  maintenanceCronFor,
+  minuteMaintenanceTaskFor,
+  minuteRecoveryPollDue,
+  streamPredictionDue,
+} from './runtime-scheduled.js';
 import {
   MINUTE_FACT_REPAIR_BURST_COMPLETE_KEY,
   MINUTE_FACT_REPAIR_BURST_MESSAGE,
@@ -37,6 +45,19 @@ function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Math.trunc(Number(value));
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.min(parsed, maximum);
+}
+
+export function runtimeOrchestratorDue(controller, env = {}) {
+  const cron = String(controller?.cron || '');
+  if (cron !== RUNTIME_CRON) return true;
+  const scheduledAt = Number(controller?.scheduledTime);
+  const timestamp = Number.isFinite(scheduledAt) ? scheduledAt : Date.now();
+  return pagesScheduledDue(timestamp, env)
+    || minuteRecoveryPollDue(timestamp)
+    || Boolean(minuteMaintenanceTaskFor(timestamp))
+    || streamPredictionDue(timestamp)
+    || Boolean(maintenanceCronFor(timestamp))
+    || (minuteFactRepairBurstEnabled(env) && minuteFactRepairBurstDue(controller, env));
 }
 
 export function minuteFactRepairBurstDue(controller, env = {}) {
@@ -230,6 +251,14 @@ export async function runRuntimeOrchestratorScheduled(
   ctx,
   dependencies = {},
 ) {
+  if (enabled(env?.RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED, false)
+      && !runtimeOrchestratorDue(controller, env)) {
+    return {
+      skipped: true,
+      reason: 'no-runtime-or-pages-task-due',
+      scheduled_at: Number(controller?.scheduledTime) || Date.now(),
+    };
+  }
   return runFetchCoordinatedScheduled(controller, env, ctx, {
     ...dependencies,
     runDirect: (receivedController, receivedEnv, receivedCtx) => runRuntimeWork(
