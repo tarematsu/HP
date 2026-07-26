@@ -74,6 +74,8 @@ test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
     '"service": "homepanel-video"',
     '"class_name": "DeviceSyncCoordinator"',
     '"class_name": "RadarBundleCoordinator"',
+    '"triggers": {',
+    '"crons": []',
   ]);
   expectNone(cloudConfig, ['"browser"', '"queues"', '"assets"']);
   expectAll(videoConfig, [
