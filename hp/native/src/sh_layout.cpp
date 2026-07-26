@@ -191,11 +191,18 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
   const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
   const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
+  // Reuse each synchronous Win32 size read for both host placement and
+  // WebView2 bounds repair. If the host was resized, its controller bounds
+  // are already known to require an update, so no COM bounds read is needed.
+  const bool hostSizeMatches = showAuth ||
+      (hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight));
+  const bool authHostSizeMatches = !showAuth ||
+      (authHostValid && WindowClientSizeMatches(authHostWindow, width, height));
 
   if (hostValid) {
     if (showAuth) {
       if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else if (!hostWasVisible ||
+    } else if (!hostWasVisible || !hostSizeMatches ||
                !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
       SetWindowPos(hostWindow, hostPlacement,
                    bounds.left, bounds.top, hostWidth, hostHeight,
@@ -211,7 +218,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     } else {
       // Check the host first. A resize makes the controller update mandatory,
       // so avoid a synchronous WebView2 COM read on that common transition.
-      if (!WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) ||
+      if (!hostSizeMatches ||
           !ControllerBoundsMatch(controller, contentBounds)) {
         controller->put_Bounds(contentBounds);
       }
@@ -223,7 +230,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authHostValid) {
     if (showAuth) {
-      if (!authWasVisible ||
+      if (!authWasVisible || !authHostSizeMatches ||
           !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
         SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
@@ -235,7 +242,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authController) {
     if (showAuth) {
-      if (!WindowClientSizeMatches(authHostWindow, width, height) ||
+      if (!authHostSizeMatches ||
           !ControllerBoundsMatch(authController, authBounds)) {
         authController->put_Bounds(authBounds);
       }
