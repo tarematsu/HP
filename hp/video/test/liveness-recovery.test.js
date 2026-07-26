@@ -38,10 +38,11 @@ test('obsolete feed-dirty triggers are retired without removing error recovery',
   assert.doesNotMatch(retirementMigration, /liveness_preserve_progress_on_error/i);
 });
 
-test('scheduled liveness delegates directly without a post-task D1 acknowledgement', () => {
+test('scheduled liveness delegates directly inside the private video Worker', () => {
   assert.doesNotMatch(entrySource, /liveness-feed-repair/);
   assert.doesNotMatch(entrySource, /createLivenessRepairContext/);
   assert.match(entrySource, /return core\.scheduled\(controller, env, ctx\)/);
-  assert.match(entrySource, /migrationFreezeEnabled/);
+  assert.match(entrySource, /X-HomePanel-Internal-Service/);
+  assert.doesNotMatch(entrySource, /migrationFreezeEnabled/);
   assert.doesNotMatch(entrySource, /liveness.*acknowledg/i);
 });
