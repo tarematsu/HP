@@ -7,6 +7,7 @@ const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.j
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const candidateLimit = bounded(process.env.TRACK_METADATA_ACTIONS_LIMIT, 100, 1, 500);
+const candidateScanLimit = Math.min(2_000, Math.max(candidateLimit, candidateLimit * 4));
 const lookbackMs = bounded(process.env.TRACK_METADATA_LOOKBACK_MS, 7 * 24 * 60 * 60_000, 60_000, 30 * 24 * 60 * 60_000);
 const refreshMs = bounded(process.env.TRACK_METADATA_REFRESH_MS, 24 * 60 * 60_000, 60_000, 30 * 24 * 60 * 60_000);
 const fetchConcurrency = bounded(process.env.TRACK_METADATA_FETCH_CONCURRENCY, 4, 1, 8);
@@ -70,10 +71,22 @@ function complete(row) {
 
 function candidateRows() {
   const cutoff = now - lookbackMs;
-  return query(buddiesDatabase, `SELECT spotify_id,MAX(isrc) AS isrc,MAX(observed_at) AS observed_at
-    FROM sh_queue_items
+  // sh_queue_items is an occurrence history table. Grouping a seven-day slice
+  // scanned thousands of rows every run. sh_track_like_current already keeps the
+  // latest row per station/track key and has an observed_at index, so read a
+  // bounded newest-first window and deduplicate Spotify IDs in memory.
+  const latest = query(buddiesDatabase, `SELECT spotify_id,isrc,observed_at
+    FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed
     WHERE spotify_id IS NOT NULL AND TRIM(spotify_id)<>'' AND observed_at>=${cutoff}
-    GROUP BY spotify_id ORDER BY observed_at DESC LIMIT ${candidateLimit}`);
+    ORDER BY observed_at DESC LIMIT ${candidateScanLimit}`);
+  const bySpotify = new Map();
+  for (const row of latest) {
+    const spotifyId = text(row?.spotify_id);
+    if (!spotifyId || bySpotify.has(spotifyId)) continue;
+    bySpotify.set(spotifyId, row);
+    if (bySpotify.size >= candidateLimit) break;
+  }
+  return [...bySpotify.values()];
 }
 
 function existingRows(ids, database = factsDatabase) {

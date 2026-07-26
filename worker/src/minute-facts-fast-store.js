@@ -1,3 +1,4 @@
+import { withMinuteD1WriteThrottling } from './minute-d1-write-throttle.js';
 import { saveMinuteFactWithinBudget } from './minute-facts-write-budget.js';
 import { createPartialRevision } from './minute-partial-revision.js';
 import {
@@ -250,5 +251,9 @@ export async function saveOptimizedLiveMinuteFact(env, input) {
 }
 
 export function saveOptimizedMinuteFactWithinBudget(env, input) {
-  return saveMinuteFactWithinBudget(env, input, saveOptimizedLiveMinuteFact);
+  return saveMinuteFactWithinBudget(
+    withMinuteD1WriteThrottling(env),
+    input,
+    saveOptimizedLiveMinuteFact,
+  );
 }

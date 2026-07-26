@@ -15,6 +15,14 @@ test('track metadata backlog repair runs on a bounded Actions runner', () => {
   assert.match(workflow, /TRACK_METADATA_ACTIONS_LIMIT: '150'/);
 });
 
+test('Actions repair reads a bounded latest-state candidate window instead of grouping occurrence history', () => {
+  assert.match(script, /candidateScanLimit = Math\.min\(2_000, Math\.max\(candidateLimit, candidateLimit \* 4\)\)/);
+  assert.match(script, /FROM sh_track_like_current INDEXED BY idx_sh_track_like_current_observed/);
+  assert.match(script, /ORDER BY observed_at DESC LIMIT \$\{candidateScanLimit\}/);
+  assert.match(script, /bySpotify\.has\(spotifyId\)/);
+  assert.doesNotMatch(script, /FROM sh_queue_items[\s\S]*GROUP BY spotify_id/);
+});
+
 test('Actions repair prefers existing buddies metadata before bounded Spotify fetches', () => {
   assert.match(script, /existingRows\(ids, buddiesDatabase\)/);
   assert.match(script, /spotify_oembed_actions/);
