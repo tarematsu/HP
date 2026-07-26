@@ -91,7 +91,9 @@ export async function publishDeploymentHealthFromEnvironment() {
   const request = createGitHubRequest('github-deployment-health');
   const [results, releaseStatus] = await Promise.all([
     collectDeploymentHealth(request),
-    collectNativeReleaseStatus(request).catch(unavailableReleaseStatus),
+    // Step conclusions and artifacts are stable API evidence. Avoid inferring
+    // rollout mode from job logs because Actions logs also echo unexecuted shell branches.
+    collectNativeReleaseStatus(request, { token: '' }).catch(unavailableReleaseStatus),
   ]);
   const deploymentSummary = renderDeploymentHealthSummary(results);
   const releaseSummary = renderNativeReleaseSummary(releaseStatus);
