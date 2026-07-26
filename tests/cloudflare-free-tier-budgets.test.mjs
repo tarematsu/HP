@@ -5,15 +5,16 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const script = readSource('.github/scripts/cloudflare_free_tier_audit.py');
 const runtime = JSON.parse(readSource('worker/wrangler.runtime.jsonc'));
+const collector = JSON.parse(readSource('worker/wrangler.buddies-collector.jsonc'));
 const responseStore = readSource('worker/src/pages-response-store.js');
 const responseEntry = readSource('worker/src/pages-read-model-entry.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
-const runtimeSlimEntry = readSource('worker/src/runtime-slim-orchestrator.js');
-const runtimeD1Coordinator = readSource('worker/src/runtime-d1-coordinator.js');
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
+const pagesActions = readSource('worker/scripts/run-pages-read-model-actions.mjs');
+const offlineActions = readSource('worker/scripts/run-runtime-offline-maintenance-actions.mjs');
 
 test('Cloudflare resource budgets are fixed at 100 percent of included usage', () => {
   expectAll(script, [
@@ -71,54 +72,43 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
   ]);
 });
 
-test('the collector coordinator, D1 lease, and remaining scheduled Queues fit daily budgets', () => {
+test('collector coordination and remaining realtime Queues fit daily budgets without runtime cron', () => {
   const collectorScheduledRequests = 24 * 60;
-  const runtimeScheduledRequests = 652;
   const collectorStatusRequests = 24 * 6 * 2 + 24 * 2;
   const maximumRuntimeStateRequests = 24 * 60 * 10;
   const maximumCoordinatorRequests = collectorScheduledRequests
-    + runtimeScheduledRequests
     + collectorStatusRequests
     + maximumRuntimeStateRequests;
-  const maximumScheduledDuration = (collectorScheduledRequests + runtimeScheduledRequests) * 10 * 0.128;
+  const maximumScheduledDuration = collectorScheduledRequests * 10 * 0.128;
   const maximumStatusWaitDuration = collectorStatusRequests * 15 * 0.128;
   const maximumCoordinatorDuration = maximumScheduledDuration + maximumStatusWaitDuration;
   const maximumCoordinatorRowsRead = maximumCoordinatorRequests * 32;
   const maximumCoordinatorRowsWritten = collectorScheduledRequests * 6
-    + runtimeScheduledRequests * 2
     + maximumRuntimeStateRequests;
-  const maximumQueueOperations = (48 + 48 + 17 + 288 * 2) * 3;
+  const maximumQueueOperations = (48 + 48 + 288 * 2) * 3;
 
   assert.equal(collectorStatusRequests, 336);
-  assert.equal(maximumQueueOperations, 2_067);
+  assert.equal(maximumQueueOperations, 2_016);
   assert.ok(maximumCoordinatorRequests < 100_000);
   assert.ok(maximumCoordinatorDuration < 13_000);
   assert.ok(maximumCoordinatorRowsRead < 5_000_000);
   assert.ok(maximumCoordinatorRowsWritten < 100_000);
   assert.ok(maximumQueueOperations < 10_000);
-  assert.equal(runtime.vars.RAW_COLLECTION_FALLBACK_INTERVAL_MINUTES, 5);
-  assert.equal(runtime.vars.PIPELINE_ANALYTICS_INTERVAL_MINUTES, undefined);
-  assert.equal(runtime.vars.COLLECTOR_STATUS_DO_ENABLED, true);
-  assert.deepEqual(runtime.durable_objects.bindings, [
-    {
-      name: 'BUDDIES_COLLECTOR_COORDINATOR',
-      class_name: 'BuddiesCollectorCoordinator',
-      script_name: 'sh-buddies-collector',
-    },
-  ]);
+
+  assert.deepEqual(collector.triggers.crons, ['* * * * *']);
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.durable_objects, undefined);
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
-  expectAll(deployedEntry, ['runRuntimeOrchestratorScheduled']);
-  expectAll(runtimeSlimEntry, ['runD1CoordinatedScheduled', 'runtimeOrchestratorDue']);
-  expectAll(runtimeD1Coordinator, ['sh_runtime_run_lease', 'claimRuntimeD1Lease']);
+  assert.deepEqual(Object.keys(runtime).includes('triggers'), false);
+  expectNone(deployedEntry, ['scheduled:', 'runRuntimeOrchestratorScheduled']);
+  expectNone(coreEntry, ['runCoreScheduled', 'runtime-scheduled', 'pages-read-model-scheduled-dispatch']);
   expectAll(collectorStatus, [
     "action: 'status'",
     'BUDDIES_COLLECTOR_COORDINATOR',
     'COLLECTOR_STATUS_DO_ENABLED',
   ]);
-  assert.match(runtimeD1Coordinator, /runtime-d1-duplicate-or-active/);
-  expectAll(coreEntry, ['runPagesReadModelCron']);
-  expectNone(coreEntry, ['runtime:last-scheduled-ticket', 'RuntimeCoordinator']);
-  expectNone(coreEntry, ['pages-read-model-scheduled-dispatch']);
+  expectAll(pagesActions, ['PAGES_READ_MODEL_DEADLINE_MS', 'runSplitTrackHistoryCycleStep']);
+  expectAll(offlineActions, ['runRollupMaintenance', 'pruneOldSnapshots', 'runStreamGoalPrediction']);
 });
 
 test('surplus KV and R2 capacity replaces materialized-response D1 writes and reads', () => {
