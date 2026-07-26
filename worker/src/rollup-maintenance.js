@@ -1,7 +1,7 @@
 import {
   DAY_MS,
-  jstDayStartUtc,
-  previousJstDay,
+  previousUtcDay,
+  utcDayStart,
   utcMonthlyRange,
   utcWeeklyRange,
 } from '../../site/functions/lib/time-buckets.js';
@@ -132,8 +132,8 @@ async function rollupFromDaily(otherDb, table, range, now) {
   return upsertSummary(otherDb, table, range.key, aggregate, boundaries, now);
 }
 
-function jstPeriod(dayKey) {
-  const start = jstDayStartUtc(dayKey);
+function utcPeriod(dayKey) {
+  const start = utcDayStart(dayKey);
   return { key: dayKey, start, end: start + DAY_MS };
 }
 
@@ -146,7 +146,7 @@ async function repairSummaryKeys(stateDb, sourceDb, otherDb, stateId, keys, now)
 
   const repairedDays = [];
   for (const key of keys) {
-    if (await rollupDaily(sourceDb, otherDb, jstPeriod(key), now)) repairedDays.push(key);
+    if (await rollupDaily(sourceDb, otherDb, utcPeriod(key), now)) repairedDays.push(key);
   }
   if (repairedDays.length !== keys.length) {
     return { skipped: true, reason: 'repair-source-data-missing', repairedDays };
@@ -211,8 +211,8 @@ async function repairMinuteSourceSummaries(stateDb, minuteDb, otherDb, now) {
 }
 
 // Maintenance state remains in Buddies DB. Summary source rows prefer MINUTE_DB's
-// minute-backed sh_channel_snapshots compatibility view; rollups are stored in
-// OTHER_DB because only monitoring and Pages read them.
+// minute-backed sh_channel_snapshots compatibility view; UTC rollups are stored
+// in OTHER_DB because only monitoring and Pages read them.
 export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now()) {
   // Preserve the old injected/test call shape while production passes MINUTE_DB.
   if (typeof minuteDb === 'number') {
@@ -231,7 +231,7 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
   const summarySourceDb = minuteDb || db;
   const summaryRepair = await repairContaminatedSummaries(db, summarySourceDb, otherDb, now);
   const minuteSourceRepair = await repairMinuteSourceSummaries(db, minuteDb, otherDb, now);
-  const period = previousJstDay(now);
+  const period = previousUtcDay(now);
   const state = await db.prepare(`SELECT last_rollup_key FROM sh_data_maintenance_state WHERE id=?`)
     .bind(STATE_ID).first();
   if (state?.last_rollup_key === period.key) {
