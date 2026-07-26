@@ -206,7 +206,12 @@ jobs:
 
   other-db:
     name: Provision or update stationhead-other
-    if: (github.event_name == 'push' && inputs.operation == '') || inputs.operation == 'other-db'
+    needs: buddies-db
+    if: >-
+      always() && (
+        (github.event_name == 'push' && needs.buddies-db.result == 'success') ||
+        inputs.operation == 'other-db'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
