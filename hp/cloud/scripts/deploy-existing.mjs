@@ -6,7 +6,11 @@ import { stripJsonc } from "./jsonc.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = join(root, "..");
-const wranglerCli = join(root, "node_modules", "wrangler", "bin", "wrangler.js");
+const wranglerCli = [
+  join(root, "node_modules", "wrangler", "bin", "wrangler.js"),
+  join(repositoryRoot, "node_modules", "wrangler", "bin", "wrangler.js"),
+].find(existsSync);
+if (!wranglerCli) throw new Error("Wrangler is not installed in the HomePanel workspace");
 const generatedDir = join(root, ".wrangler", "generated");
 const generatedConfig = join(generatedDir, "homepanel-existing.jsonc");
 const migrationsDir = join(root, "migrations");
