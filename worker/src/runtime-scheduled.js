@@ -1,8 +1,5 @@
 const EMPTY_OPTIONS = Object.freeze({});
-const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 const MINUTE_MS = 60_000;
-const MINUTE_RECOVERY_POLL_INTERVAL_MINUTES = 15;
-const MINUTE_RECOVERY_POLL_OFFSET_MINUTE = 1;
 const DEFAULT_RAW_COLLECTION_FALLBACK_INTERVAL_MINUTES = 5;
 
 export const RUNTIME_CRON = '* * * * *';
@@ -15,24 +12,10 @@ export const RUNTIME_MINUTE_RECOVERY_MESSAGE = 'runtime-minute-recovery-dispatch
 export const RUNTIME_MINUTE_GATE_MESSAGE = 'runtime-minute-maintenance-gate-dispatch';
 export const RUNTIME_STREAM_PREDICTION_MESSAGE = 'runtime-stream-prediction-dispatch';
 
-const MINUTE_FACT_MAINTENANCE_CRON = '5,7,9,15,17,19,25,27,29,35,37,39,45,47,49,55,57,59 * * * *';
-
-let minuteMaintenanceModulePromise;
-let minuteGateModulePromise;
 let rawCollectionSessionModulePromise;
 let rawCollectionFetchModulePromise;
 let rawCollectionTextTransportModulePromise;
 let runtimeEnvModulePromise;
-
-function loadMinuteMaintenanceModule() {
-  minuteMaintenanceModulePromise ||= import('./minute-maintenance-entry.js');
-  return minuteMaintenanceModulePromise;
-}
-
-function loadMinuteGateModule() {
-  minuteGateModulePromise ||= import('./minute-maintenance-optimized-entry.js');
-  return minuteGateModulePromise;
-}
 
 function loadRawCollectionSessionModule() {
   rawCollectionSessionModulePromise ||= import('./raw-collection-session-entry.js');
@@ -54,34 +37,25 @@ function loadRuntimeEnvModule() {
   return runtimeEnvModulePromise;
 }
 
-function utcMinute(timestamp) {
-  const value = Number(timestamp) || 0;
-  return ((Math.floor(value / MINUTE_MS) % 60) + 60) % 60;
+function scheduledTimestamp(controller) {
+  const value = Number(controller?.scheduledTime);
+  return Number.isFinite(value) && value >= 0 ? value : Date.now();
 }
 
-export function maintenanceCronFor(timestamp) {
-  const minute = utcMinute(timestamp);
-  if (minute === 30) return ROLLUP_MAINTENANCE_CRON;
-  if (minute === 50) return SNAPSHOT_RETENTION_CRON;
+export function maintenanceCronFor() {
   return null;
 }
 
-export function minuteMaintenanceTaskFor(timestamp) {
-  const slot = utcMinute(timestamp) % 10;
-  if (slot === 5) return 'recovery';
-  if (slot === 7) return 'rebuild';
-  if (slot === 9) return 'sync';
+export function minuteMaintenanceTaskFor() {
   return null;
 }
 
-export function minuteRecoveryPollDue(timestamp) {
-  return utcMinute(timestamp) % MINUTE_RECOVERY_POLL_INTERVAL_MINUTES
-    === MINUTE_RECOVERY_POLL_OFFSET_MINUTE;
+export function minuteRecoveryPollDue() {
+  return false;
 }
 
-export function streamPredictionDue(timestamp) {
-  const minute = utcMinute(timestamp);
-  return minute === 10 || minute === 40;
+export function streamPredictionDue() {
+  return false;
 }
 
 export function rawCollectionFallbackDue(timestamp, env = {}) {
@@ -93,54 +67,11 @@ export function rawCollectionFallbackDue(timestamp, env = {}) {
 }
 
 export function runtimeScheduledMessagesFor(scheduledAt) {
-  const messages = [{
+  return [{
     message_type: RAW_COLLECTION_TASK_MESSAGE,
     message_version: 1,
     scheduled_at: scheduledAt,
   }];
-  if (minuteRecoveryPollDue(scheduledAt)) {
-    messages.push({
-      message_type: RUNTIME_MINUTE_RECOVERY_MESSAGE,
-      message_version: 1,
-      scheduled_at: scheduledAt,
-    });
-  }
-  const minuteTask = minuteMaintenanceTaskFor(scheduledAt);
-  if (minuteTask) {
-    messages.push({
-      message_type: RUNTIME_MINUTE_GATE_MESSAGE,
-      message_version: 1,
-      task: minuteTask,
-      scheduled_at: scheduledAt,
-    });
-  }
-  if (streamPredictionDue(scheduledAt)) {
-    messages.push({
-      message_type: RUNTIME_STREAM_PREDICTION_MESSAGE,
-      message_version: 1,
-      scheduled_at: scheduledAt,
-    });
-  }
-  const maintenanceCron = maintenanceCronFor(scheduledAt);
-  if (maintenanceCron) {
-    messages.push({
-      message_type: MONITOR_MAINTENANCE_MESSAGE,
-      message_version: 1,
-      cron: maintenanceCron,
-      scheduled_at: scheduledAt,
-    });
-  }
-  return messages;
-}
-
-async function sendRuntimeMessages(queue, messages) {
-  if (!messages.length) return;
-  if (queue?.sendBatch) {
-    await queue.sendBatch(messages.map((body) => ({ body, contentType: 'json' })));
-    return;
-  }
-  if (!queue?.send) throw new Error('HOST_MONITOR_QUEUE binding is missing for runtime dispatch');
-  await Promise.all(messages.map((body) => queue.send(body, JSON_QUEUE_SEND_OPTIONS)));
 }
 
 async function dispatchRawCollectionInline(env, body, options) {
@@ -152,10 +83,9 @@ async function dispatchRawCollectionInline(env, body, options) {
     loadRuntimeEnvModule(),
   ]);
   const active = runtimeEnv.rawCollectorEnv(env);
-  const rawQueue = transport.textTransportQueue(active?.RAW_COLLECTION_QUEUE);
   const fetchEnv = Object.create(active || null);
   Object.defineProperty(fetchEnv, 'RAW_COLLECTION_QUEUE', {
-    value: rawQueue,
+    value: transport.textTransportQueue(active?.RAW_COLLECTION_QUEUE),
     enumerable: false,
     configurable: true,
   });
@@ -176,109 +106,34 @@ async function dispatchRawCollectionWithFallback(env, body, options) {
     if (!rawCollectionFallbackDue(body?.scheduled_at, env)) {
       return { inline: false, fallback: false, reason: 'queue-fallback-cadence' };
     }
-    await sendRuntimeMessages(env?.HOST_MONITOR_QUEUE, [body]);
+    const queue = env?.HOST_MONITOR_QUEUE;
+    if (!queue?.send) throw error;
+    await queue.send(body, { contentType: 'json' });
     return { inline: false, fallback: true };
   }
 }
 
-async function dispatchMinuteGateWithFallback(env, body, ctx, options) {
-  const scheduledAt = Number(body?.scheduled_at) || Date.now();
-  try {
-    await dispatchMinuteMaintenanceGate(
-      { cron: RUNTIME_CRON, scheduledTime: scheduledAt },
-      env,
-      String(body?.task || ''),
-      ctx,
-      options,
-    );
-    return { inline: true, fallback: false };
-  } catch (error) {
-    console.warn(JSON.stringify({
-      event: 'inline_minute_maintenance_gate_failed',
-      task: String(body?.task || ''),
-      scheduled_at: scheduledAt,
-      error: String(error?.message || error).slice(0, 500),
-    }));
-    await sendRuntimeMessages(env?.HOST_MONITOR_QUEUE, [body]);
-    return { inline: false, fallback: true };
-  }
+export async function dispatchMinuteRecovery() {
+  return null;
 }
 
-export async function dispatchMinuteRecovery(controller, env, ctx, options = EMPTY_OPTIONS) {
-  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  if (!minuteRecoveryPollDue(scheduledAt)) return null;
-  const dispatch = options.dispatchPendingMinuteFacts
-    || (await loadMinuteMaintenanceModule()).dispatchPendingMinuteFacts;
-  return dispatch(env, options.minuteDispatchDependencies || EMPTY_OPTIONS, ctx);
+export async function dispatchMinuteMaintenanceGate() {
+  return null;
 }
 
-export async function dispatchMinuteMaintenanceGate(
-  controller,
-  env,
-  task,
-  ctx,
-  options = EMPTY_OPTIONS,
-) {
-  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  const activeTask = task || minuteMaintenanceTaskFor(scheduledAt);
-  if (!activeTask) return null;
-  const dispatch = options.dispatchMinuteMaintenanceGate
-    || (await loadMinuteGateModule()).dispatchMinuteMaintenanceGate;
-  return dispatch({
-    ...controller,
-    cron: MINUTE_FACT_MAINTENANCE_CRON,
-    scheduledTime: scheduledAt,
-  }, env, activeTask, ctx);
+export async function dispatchMinuteMaintenance() {
+  return [];
 }
 
-export async function dispatchMinuteMaintenance(controller, env, ctx, options = EMPTY_OPTIONS) {
-  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  const [deriveResult, gateResult] = await Promise.all([
-    dispatchMinuteRecovery({ ...controller, scheduledTime: scheduledAt }, env, ctx, options),
-    dispatchMinuteMaintenanceGate(
-      { ...controller, scheduledTime: scheduledAt },
-      env,
-      minuteMaintenanceTaskFor(scheduledAt),
-      ctx,
-      options,
-    ),
-  ]);
-  return [
-    ...(deriveResult ? [deriveResult] : []),
-    ...(gateResult ? [gateResult] : []),
-  ];
-}
-
-function runtimeDispatchResult(body) {
-  const type = body.message_type;
-  if (type === RAW_COLLECTION_TASK_MESSAGE) return { dispatched: true, task: 'raw-collection' };
-  if (type === RUNTIME_MINUTE_RECOVERY_MESSAGE) return { dispatched: true, task: 'minute-recovery' };
-  if (type === RUNTIME_MINUTE_GATE_MESSAGE) return { dispatched: true, task: `minute-${body.task}` };
-  if (type === RUNTIME_STREAM_PREDICTION_MESSAGE) return { dispatched: true, task: 'stream-prediction' };
-  return { dispatched: true, task: 'maintenance', cron: body.cron };
-}
-
-export async function runRuntimeScheduled(controller, env, ctx, options = EMPTY_OPTIONS) {
+export async function runRuntimeScheduled(controller, env, _ctx, options = EMPTY_OPTIONS) {
   const cron = String(controller?.cron || '');
   if (cron !== RUNTIME_CRON) {
     return { skipped: true, reason: 'unsupported-runtime-cron', cron };
   }
-  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
-  const messages = runtimeScheduledMessagesFor(scheduledAt);
-  const rawMessage = messages.find((body) => body.message_type === RAW_COLLECTION_TASK_MESSAGE);
-  const gateMessage = messages.find((body) => body.message_type === RUNTIME_MINUTE_GATE_MESSAGE);
-  const queuedMessages = messages.filter(
-    (body) => body !== rawMessage && body !== gateMessage,
-  );
-  await Promise.all([
-    rawMessage ? dispatchRawCollectionWithFallback(env, rawMessage, options) : null,
-    gateMessage ? dispatchMinuteGateWithFallback(env, gateMessage, ctx, options) : null,
-    sendRuntimeMessages(env?.HOST_MONITOR_QUEUE, queuedMessages),
-  ]);
-  return messages.map((body) => ({
-    ...runtimeDispatchResult(body),
-    scheduled_at: scheduledAt,
-  }));
+  const scheduledAt = scheduledTimestamp(controller);
+  const body = runtimeScheduledMessagesFor(scheduledAt)[0];
+  await dispatchRawCollectionWithFallback(env, body, options);
+  return [{ dispatched: true, task: 'raw-collection', scheduled_at: scheduledAt }];
 }
 
 export const runConsolidatedMonitorScheduled = runRuntimeScheduled;
