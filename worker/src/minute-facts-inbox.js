@@ -84,10 +84,12 @@ export const CLEAR_COMPLETED_MINUTE_FACT_PAYLOADS_SQL = `UPDATE sh_minute_fact_j
   RETURNING id`;
 
 export const MINUTE_FACT_INBOX_STATS_SQL = `SELECT
-    pending_count,processing_count,dead_count,
-    rebuild_pending_count,live_pending_count,oldest_pending_minute
-  FROM sh_minute_fact_inbox_stats
-  WHERE id='global'
+    stats.pending_count,stats.processing_count,stats.dead_count,
+    stats.rebuild_pending_count,stats.live_pending_count,
+    pending_age.oldest_pending_at AS oldest_pending_minute
+  FROM sh_minute_fact_inbox_stats stats
+  LEFT JOIN sh_minute_fact_pending_age pending_age ON pending_age.id=stats.id
+  WHERE stats.id='global'
   LIMIT 1`;
 
 export const CLAIM_MINUTE_FACT_JOBS_SQL = `UPDATE sh_minute_fact_jobs SET

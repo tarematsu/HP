@@ -14,7 +14,7 @@ export const MINUTE_FACT_INBOX_HEALTH_SQL = `SELECT
       COUNT(*) AS pending_count,
       COUNT(*) FILTER (WHERE job_kind='rebuild') AS rebuild_pending_count,
       COUNT(*) FILTER (WHERE job_kind='live') AS live_pending_count,
-      MIN(minute_at) AS oldest_pending_minute
+      MIN(updated_at) AS oldest_pending_minute
     FROM sh_minute_fact_jobs
     WHERE status='pending'
   ) pending

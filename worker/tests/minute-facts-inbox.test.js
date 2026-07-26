@@ -5,6 +5,7 @@ import {
   CLEAR_COMPLETED_MINUTE_FACT_PAYLOADS_SQL,
   COMPLETE_MINUTE_FACT_JOB_SQL,
   FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL,
+  MINUTE_FACT_INBOX_STATS_SQL,
   MINUTE_FACT_INBOX_INDEX_SQL,
   MINUTE_FACT_INBOX_SCHEMA_SQL,
   minuteFactJobPayload,
@@ -73,4 +74,10 @@ test('stalled-job recovery finalizes durable facts before releasing expired leas
   assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /status='processing'/);
   assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /NOT EXISTS[\s\S]*FROM sh_minute_facts/);
   assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /status='pending'/);
+});
+
+test('inbox health measures pending wait time instead of the historical source minute', () => {
+  assert.match(MINUTE_FACT_INBOX_STATS_SQL, /sh_minute_fact_pending_age/);
+  assert.match(MINUTE_FACT_INBOX_STATS_SQL, /oldest_pending_at AS oldest_pending_minute/);
+  assert.doesNotMatch(MINUTE_FACT_INBOX_STATS_SQL, /stats\.oldest_pending_minute/);
 });
