@@ -51,7 +51,7 @@ class StationheadBoundaryReloadClockProxy {
 
   operator int64_t() const noexcept { return storage_; }
 
-  void operator=(int64_t candidate) noexcept {
+  int64_t operator=(int64_t candidate) noexcept {
     // The first successful Stationhead navigation establishes the initial
     // 52-minute baseline. Once established, only a readiness message that App
     // accepted for this role may advance it. Generic successful navigations
@@ -68,6 +68,10 @@ class StationheadBoundaryReloadClockProxy {
     }
     ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
     if (accept) storage_ = candidate;
+    // ConfigureWebView intentionally chains `createdAt_ = lastReloadAt_ = now`.
+    // Return the candidate even when the periodic clock write is filtered so
+    // unrelated lifecycle timestamps keep their original semantics.
+    return candidate;
   }
 
  private:
