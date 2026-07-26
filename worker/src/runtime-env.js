@@ -4,7 +4,6 @@ export const MINUTE_PIPELINE_QUEUE_NAMES = Object.freeze([
   'stationhead-minute-derive',
   'stationhead-minute-live-derive',
   'stationhead-buddies-facts',
-  'stationhead-minute-rebuild',
 ]);
 
 const MINUTE_PIPELINE_QUEUE_SET = new Set(MINUTE_PIPELINE_QUEUE_NAMES);
