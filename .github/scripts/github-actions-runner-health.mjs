@@ -94,7 +94,7 @@ export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } =
   const stalledAfter = Number(target.stalledAfterMinutes) * 60_000;
 
   let health = 'unknown';
-  let reason = 'No scheduled runs were returned by the Actions API.';
+  let reason = 'No workflow runs were returned by the Actions API.';
 
   if (latest) {
     if (latest.status === 'queued' || latest.status === 'in_progress') {
@@ -104,26 +104,26 @@ export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } =
         reason = `The latest run has remained ${latest.status} for ${formatDuration(runningFor)}.`;
       } else if (successAge <= staleAfter) {
         health = 'running';
-        reason = `The latest scheduled run is ${latest.status}; the previous success is still fresh.`;
+        reason = `The latest run is ${latest.status}; the previous success is still fresh.`;
       } else {
         health = 'degraded';
         reason = `The latest run is ${latest.status}, but no recent successful completion is available.`;
       }
     } else if (latestAge > staleAfter) {
       health = 'stale';
-      reason = `No scheduled run has started within ${target.staleAfterMinutes} minutes.`;
+      reason = `No operational run has started within ${target.staleAfterMinutes} minutes.`;
     } else if (latest.status === 'completed' && latest.conclusion === 'success') {
       health = 'healthy';
-      reason = 'The latest scheduled run completed successfully.';
+      reason = 'The latest run completed successfully.';
     } else if (latest.status === 'completed' && latest.conclusion === 'skipped') {
       health = successAge <= staleAfter ? 'degraded' : 'failure';
-      reason = 'The latest scheduled run was skipped.';
+      reason = 'The latest run was skipped.';
     } else if (latest.status === 'completed') {
       health = 'failure';
-      reason = `The latest scheduled run concluded with ${latest.conclusion || 'unknown'}.`;
+      reason = `The latest run concluded with ${latest.conclusion || 'unknown'}.`;
     } else {
       health = 'degraded';
-      reason = `The latest scheduled run has unexpected status ${latest.status || 'unknown'}.`;
+      reason = `The latest run has unexpected status ${latest.status || 'unknown'}.`;
     }
   }
 
@@ -149,7 +149,7 @@ export async function collectActionsRunnerHealth(request, {
       const workflow = encodeURIComponent(target.workflow);
       const response = await request(
         'GET',
-        `/actions/workflows/${workflow}/runs?branch=main&event=schedule&per_page=20`,
+        `/actions/workflows/${workflow}/runs?branch=main&per_page=20`,
       );
       return evaluateActionsRunnerHealth(target, response?.workflow_runs, { now });
     } catch (error) {
@@ -193,9 +193,9 @@ export function renderActionsRunnerHealthSummary(results, { now = Date.now() } =
 
 - **Overall:** ${actionsRunnerOverall(results)}
 - **Generated:** ${new Date(now).toISOString()}
-- **Signal:** scheduled workflow runs on \`main\` (GitHub-hosted \`ubuntu-latest\`)
+- **Signal:** operational workflow runs on \`main\` (schedule, workflow chaining, push, or manual)
 
-| Workflow | Health | Cadence | Last scheduled run | Last success | Duration | Consecutive failures |
+| Workflow | Health | Cadence | Last operational run | Last success | Duration | Consecutive failures |
 |---|---|---:|---|---|---:|---:|
 ${rows.join('\n') || '| - | **unknown** | - | none | never | unknown | 0 |'}${details.length ? `\n\n${details.join('\n')}` : ''}`;
 }
