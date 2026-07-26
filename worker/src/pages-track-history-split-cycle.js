@@ -1,16 +1,20 @@
+import { materializedResponseCadenceSeconds } from '../../site/functions/lib/api-contract.js';
 import {
   runTrackHistoryCycleStep as runTrackHistoryShardStep,
   TRACK_HISTORY_ACTIVE_MINUTES,
   TRACK_HISTORY_CYCLE_MS,
   TRACK_HISTORY_STAGE_KEY,
 } from './pages-track-history-cycle.js';
-import { initializeTrackHistoryPublication } from './pages-track-history-publication.js';
 import {
-  enqueueTrackHistoryPublication,
-  TRACK_HISTORY_PUBLICATION_ACTIONS,
-  trackHistoryPublicationRecoveryAction,
-} from './pages-track-history-publication-queue.js';
-import { createTrackHistoryPublication } from './pages-track-history-response.js';
+  advanceTrackHistoryPublication,
+  advanceTrackHistoryR2Publication,
+  initializeTrackHistoryPublication,
+} from './pages-track-history-publication.js';
+import {
+  createTrackHistoryPublication,
+  TRACK_HISTORY_MODEL_KEY,
+} from './pages-track-history-response.js';
+import { promoteMaterializedD1ResponseToR2 } from './pages-response-r2.js';
 import {
   finalizeTrackHistoryStatus,
   loadTrackHistoryStage,
@@ -58,83 +62,110 @@ function responseBase(timestamp, stage) {
   };
 }
 
-function hasPublicationQueue(env, dependencies) {
-  return Boolean(dependencies.sendPublication || env?.PAGES_READ_MODEL_QUEUE?.send);
-}
-
-function actionGeneration(stage, action) {
-  return action === TRACK_HISTORY_PUBLICATION_ACTIONS.PAGE
-    ? stage.publication?.generation
-    : stage.generation;
-}
-
-async function dispatchPublication(env, stage, timestamp, action, dependencies = {}, reason = action) {
-  const generation = actionGeneration(stage, action);
-  if (!generation) throw new Error(`track-history publication ${action} generation is missing`);
-  const enqueue = dependencies.enqueuePublication || enqueueTrackHistoryPublication;
-  await enqueue(env, generation, dependencies, action);
-  return {
-    ...responseBase(timestamp, stage),
-    task: {
-      kind: 'track-history-publish-dispatch',
-      key: 'track-history',
-      generation,
-    },
-    publication: {
-      action: reason,
-      phase: stage.publication?.phase || (stage.publication_status ? 'status-ready' : 'initializing'),
-      rows_written: Number(stage.publication?.rows_written || 0),
-      chunks: Number(stage.publication?.next_chunk_index || 0),
-    },
-  };
-}
-
-async function beginPublicationInitialization(env, stage, timestamp, dependencies = {}, reason = 'start') {
-  stage.published = false;
-  stage.published_at = null;
-  stage.publication_initializing_at = timestamp;
-  stage.updated_at = timestamp;
-  const save = dependencies.saveStage || saveTrackHistoryStage;
-  await save(env.MINUTE_DB, stage, timestamp);
-  return dispatchPublication(
-    env,
-    stage,
-    timestamp,
-    TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS,
-    dependencies,
-    reason,
-  );
-}
-
-async function initializePublicationInline(env, stage, timestamp, dependencies = {}) {
-  const status = await finalizeTrackHistoryStatus(env, stage, timestamp, dependencies);
-  const create = dependencies.createPublication || createTrackHistoryPublication;
-  const initialize = dependencies.initializePublication || initializeTrackHistoryPublication;
-  const publication = create(stage, status, timestamp, env);
-  stage.publication = await initialize(env.MINUTE_DB, publication, dependencies);
-  stage.updated_at = timestamp;
-  const save = dependencies.saveStage || saveTrackHistoryStage;
-  await save(env.MINUTE_DB, stage, timestamp);
-  const { processTrackHistoryPublicationTask } = await import('./pages-track-history-publication-queue.js');
-  return processTrackHistoryPublicationTask(env, {
-    message_type: 'stationhead-pages-track-history-publication',
-    message_version: 1,
-    generation: stage.publication.generation,
-  }, dependencies);
-}
-
-function waitResult(timestamp, stage, reason) {
+function publicationCompleteResult(timestamp, stage, reason = 'track-history-cycle-already-published') {
   return {
     skipped: true,
     reason,
     generated_at: timestamp,
     task: {
-      kind: 'track-history-publish-wait',
-      key: 'track-history',
-      generation: stage.publication?.generation || stage.generation,
+      kind: 'track-history-idle',
+      key: TRACK_HISTORY_STAGE_KEY,
+      generation: stage.generation,
+    },
+    stage: {
+      refresh_mode: stage.refresh_mode,
+      shards: stage.tasks.length,
+      published: true,
     },
     responses: [],
     failed: 0,
+  };
+}
+
+async function ensurePublication(env, stage, timestamp, dependencies) {
+  if (stage.publication) return stage.publication;
+  const finalize = dependencies.finalizeStatus || finalizeTrackHistoryStatus;
+  const create = dependencies.createPublication || createTrackHistoryPublication;
+  const initialize = dependencies.initializePublication || initializeTrackHistoryPublication;
+  const status = await finalize(env, stage, timestamp, dependencies);
+  stage.publication = await initialize(
+    env.MINUTE_DB,
+    create(stage, status, timestamp, env),
+    dependencies,
+  );
+  stage.published = false;
+  stage.published_at = null;
+  stage.updated_at = timestamp;
+  const save = dependencies.saveStage || saveTrackHistoryStage;
+  await save(env.MINUTE_DB, stage, timestamp);
+  return stage.publication;
+}
+
+async function advancePublicationInline(env, stage, timestamp, dependencies) {
+  const publication = await ensurePublication(env, stage, timestamp, dependencies);
+  if (publication.phase === 'published') {
+    stage.published = true;
+    stage.published_at ||= timestamp;
+    stage.updated_at = timestamp;
+    const save = dependencies.saveStage || saveTrackHistoryStage;
+    await save(env.MINUTE_DB, stage, timestamp);
+    return publicationCompleteResult(timestamp, stage, 'track-history-publication-recovered');
+  }
+
+  const r2Days = publication.phase === 'r2-days' && env?.PAGES_RESPONSE_R2;
+  let result;
+  if (r2Days) {
+    const advanceR2 = dependencies.advanceR2Publication || advanceTrackHistoryR2Publication;
+    result = await advanceR2(
+      env.MINUTE_DB,
+      env.PAGES_RESPONSE_R2,
+      publication,
+      timestamp,
+      materializedResponseCadenceSeconds(TRACK_HISTORY_MODEL_KEY),
+      dependencies,
+    );
+  } else {
+    const advance = dependencies.advancePublication || advanceTrackHistoryPublication;
+    result = await advance(env.MINUTE_DB, publication, timestamp, dependencies);
+  }
+
+  stage.publication = result.publication;
+  stage.updated_at = timestamp;
+  let promoted = null;
+  if (result.published) {
+    stage.published = true;
+    stage.published_at = timestamp;
+    if (!r2Days && env?.PAGES_RESPONSE_R2) {
+      const promote = dependencies.promoteResponse || promoteMaterializedD1ResponseToR2;
+      promoted = await promote(
+        env.MINUTE_DB,
+        env.PAGES_RESPONSE_R2,
+        TRACK_HISTORY_MODEL_KEY,
+        timestamp,
+        materializedResponseCadenceSeconds(TRACK_HISTORY_MODEL_KEY),
+      );
+    }
+  }
+  const save = dependencies.saveStage || saveTrackHistoryStage;
+  await save(env.MINUTE_DB, stage, timestamp);
+
+  return {
+    ...responseBase(timestamp, stage),
+    task: {
+      kind: result.published ? 'track-history-published' : 'track-history-publish-step',
+      key: TRACK_HISTORY_MODEL_KEY,
+      generation: stage.publication.generation,
+    },
+    publication: {
+      action: result.action,
+      phase: stage.publication.phase,
+      rows: Number(result.rows || 0),
+      rows_written: Number(stage.publication.rows_written || 0),
+      chunks: Number(result.chunks || 0),
+      days: Number(result.days || 0),
+      published: result.published === true,
+      storage: result.storage || promoted?.storage || (result.published ? 'd1' : null),
+    },
   };
 }
 
@@ -144,27 +175,15 @@ export async function runSplitTrackHistoryCycleStep(env, now = Date.now(), depen
   if (!env?.BUDDIES_DB || !env?.MINUTE_DB) {
     throw new Error('track-history cycle step is missing BUDDIES_DB or MINUTE_DB');
   }
+
   const load = dependencies.loadStage || loadTrackHistoryStage;
   const stage = await load(env.MINUTE_DB);
   const currentGeneration = Math.floor(timestamp / TRACK_HISTORY_CYCLE_MS) * TRACK_HISTORY_CYCLE_MS;
   if (!stage || (stage.published && Number(stage.generation) !== currentGeneration)) {
     return runTrackHistoryShardStep(env, timestamp, dependencies);
   }
-  const queued = hasPublicationQueue(env, dependencies);
-  if (stage.published && !stage.publication) {
-    return queued
-      ? beginPublicationInitialization(env, stage, timestamp, dependencies, 'legacy-stage-migration')
-      : initializePublicationInline(env, stage, timestamp, dependencies);
-  }
-  if (stage.published) {
-    return {
-      skipped: true,
-      reason: 'track-history-cycle-already-published',
-      generated_at: timestamp,
-      task: { kind: 'track-history-idle', key: TRACK_HISTORY_STAGE_KEY, generation: stage.generation },
-      responses: [],
-      failed: 0,
-    };
+  if (stage.published && stage.publication) {
+    return publicationCompleteResult(timestamp, stage);
   }
 
   const nextTask = stage.tasks.find((task) => !stage.completed?.[task.id]);
@@ -176,27 +195,6 @@ export async function runSplitTrackHistoryCycleStep(env, now = Date.now(), depen
     }
     return runLateTrackHistoryShard(env, stage, timestamp, dependencies);
   }
-  if (!queued) return initializePublicationInline(env, stage, timestamp, dependencies);
 
-  if (!stage.publication && !stage.publication_status && !stage.publication_initializing_at) {
-    return beginPublicationInitialization(env, stage, timestamp, dependencies, 'initialized');
-  }
-  const recoveryAction = trackHistoryPublicationRecoveryAction(stage, timestamp);
-  if (recoveryAction) {
-    if (recoveryAction === TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS) {
-      stage.publication_initializing_at = timestamp;
-      stage.updated_at = timestamp;
-      const save = dependencies.saveStage || saveTrackHistoryStage;
-      await save(env.MINUTE_DB, stage, timestamp);
-    }
-    return dispatchPublication(
-      env,
-      stage,
-      timestamp,
-      recoveryAction,
-      dependencies,
-      `stalled-${recoveryAction}-requeue`,
-    );
-  }
-  return waitResult(timestamp, stage, 'track-history-publication-queue-active');
+  return advancePublicationInline(env, stage, timestamp, dependencies);
 }
