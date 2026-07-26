@@ -204,7 +204,7 @@ export async function onRequestGet({ request, env }) {
     }
     if (Object.hasOwn(SUMMARY_TABLES, mode)) {
       const summary = await cachedHistoryLoad(
-        `summary:v4:${mode}:${from}:${to}`,
+        `summary:v5:${mode}:${from}:${to}`,
         30000,
         () => loadSummaryWithLive(env, mode, from, to),
       );

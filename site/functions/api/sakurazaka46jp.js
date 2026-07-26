@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 3;
+const SERIES_CACHE_VERSION = 4;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
@@ -64,7 +64,8 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH minute_points AS (
     ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
   FROM sh_minute_facts f
   LEFT JOIN sh_minute_fact_context c ON c.fact_id=f.id
-  LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id,f.host_id)
+  LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
+  LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id,s.host_id)
   WHERE f.minute_at>=? AND f.minute_at<?
     AND lower(COALESCE(h.current_handle,''))='sakurazaka46jp'
     AND f.listener_count IS NOT NULL

@@ -1,7 +1,7 @@
 import {
   DAY_MS,
-  jstDayStartUtc,
-  previousJstDay,
+  previousUtcDay,
+  utcDayStart,
   utcMonthlyRange,
   utcWeeklyRange,
 } from '../../site/functions/lib/time-buckets.js';
@@ -10,6 +10,16 @@ import { runMinuteFactsRepair } from './minute-facts-repair.js';
 const STATE_ID = 'rollup-retention-v1';
 const STREAM_REPAIR_STATE_ID = 'rollup-stream-repair-2026-07-v4';
 const STREAM_REPAIR_KEYS = Object.freeze(['2026-07-10', '2026-07-11', '2026-07-12', '2026-07-13']);
+const MINUTE_SOURCE_REPAIR_STATE_ID = 'rollup-minute-source-repair-2026-07-v1';
+const MINUTE_SOURCE_REPAIR_KEYS = Object.freeze([
+  '2026-07-20',
+  '2026-07-21',
+  '2026-07-22',
+  '2026-07-23',
+  '2026-07-24',
+  '2026-07-25',
+  '2026-07-26',
+]);
 const STREAM_VALUE_SQL = `COALESCE(
   CASE WHEN validated_stream_count IS NOT NULL AND validated_stream_count>=0
     AND validated_stream_count IS NOT total_listens THEN validated_stream_count END,
@@ -91,15 +101,15 @@ async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt) {
   return true;
 }
 
-async function rollupDaily(db, otherDb, period, now) {
-  const aggregate = await db.prepare(`SELECT MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
+async function rollupDaily(sourceDb, otherDb, period, now) {
+  const aggregate = await sourceDb.prepare(`SELECT MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
       COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
       AVG(listener_count) AS listener_avg,MIN(listener_count) AS listener_min,
       MAX(listener_count) AS listener_max,NULL AS likes_max,NULL AS distinct_tracks,1 AS quality_score
     FROM sh_channel_snapshots WHERE observed_at>=? AND observed_at<?`)
     .bind(period.start, period.end).first();
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return false;
-  const boundaries = await db.prepare(DAILY_BOUNDARIES_SQL)
+  const boundaries = await sourceDb.prepare(DAILY_BOUNDARIES_SQL)
     .bind(period.start, period.end).first();
   return upsertSummary(otherDb, 'sh_daily_summary', period.key, aggregate, boundaries, now);
 }
@@ -122,23 +132,23 @@ async function rollupFromDaily(otherDb, table, range, now) {
   return upsertSummary(otherDb, table, range.key, aggregate, boundaries, now);
 }
 
-function jstPeriod(dayKey) {
-  const start = jstDayStartUtc(dayKey);
+function utcPeriod(dayKey) {
+  const start = utcDayStart(dayKey);
   return { key: dayKey, start, end: start + DAY_MS };
 }
 
-async function repairContaminatedSummaries(db, otherDb, now) {
-  const state = await db.prepare(`SELECT last_rollup_key FROM sh_data_maintenance_state WHERE id=?`)
-    .bind(STREAM_REPAIR_STATE_ID).first();
-  if (state?.last_rollup_key === STREAM_REPAIR_KEYS.at(-1)) {
+async function repairSummaryKeys(stateDb, sourceDb, otherDb, stateId, keys, now) {
+  const state = await stateDb.prepare(`SELECT last_rollup_key FROM sh_data_maintenance_state WHERE id=?`)
+    .bind(stateId).first();
+  if (state?.last_rollup_key === keys.at(-1)) {
     return { skipped: true, reason: 'already-repaired' };
   }
 
   const repairedDays = [];
-  for (const key of STREAM_REPAIR_KEYS) {
-    if (await rollupDaily(db, otherDb, jstPeriod(key), now)) repairedDays.push(key);
+  for (const key of keys) {
+    if (await rollupDaily(sourceDb, otherDb, utcPeriod(key), now)) repairedDays.push(key);
   }
-  if (repairedDays.length !== STREAM_REPAIR_KEYS.length) {
+  if (repairedDays.length !== keys.length) {
     return { skipped: true, reason: 'repair-source-data-missing', repairedDays };
   }
 
@@ -169,17 +179,40 @@ async function repairContaminatedSummaries(db, otherDb, now) {
     };
   }
 
-  await db.prepare(`INSERT INTO sh_data_maintenance_state(
+  await stateDb.prepare(`INSERT INTO sh_data_maintenance_state(
       id,last_rollup_key,last_cleanup_at,legacy_backfill_id,updated_at
     ) VALUES(?,?,0,0,?) ON CONFLICT(id) DO UPDATE SET
       last_rollup_key=excluded.last_rollup_key,updated_at=excluded.updated_at`)
-    .bind(STREAM_REPAIR_STATE_ID, STREAM_REPAIR_KEYS.at(-1), now).run();
+    .bind(stateId, keys.at(-1), now).run();
   return { skipped: false, repairedDays, repairedWeeks, repairedMonths };
 }
 
-// sh_channel_snapshots/sh_data_maintenance_state stay on `db` (buddies'
-// database); the daily/weekly/monthly summary tables this produces live on
-// `otherDb` since they're read exclusively by sh-monitor-other/site.
+async function repairContaminatedSummaries(stateDb, sourceDb, otherDb, now) {
+  return repairSummaryKeys(
+    stateDb,
+    sourceDb,
+    otherDb,
+    STREAM_REPAIR_STATE_ID,
+    STREAM_REPAIR_KEYS,
+    now,
+  );
+}
+
+async function repairMinuteSourceSummaries(stateDb, minuteDb, otherDb, now) {
+  if (!minuteDb) return { skipped: true, reason: 'minute-db-missing' };
+  return repairSummaryKeys(
+    stateDb,
+    minuteDb,
+    otherDb,
+    MINUTE_SOURCE_REPAIR_STATE_ID,
+    MINUTE_SOURCE_REPAIR_KEYS,
+    now,
+  );
+}
+
+// Maintenance state remains in Buddies DB. Summary source rows prefer MINUTE_DB's
+// minute-backed sh_channel_snapshots compatibility view; UTC rollups are stored
+// in OTHER_DB because only monitoring and Pages read them.
 export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now()) {
   // Preserve the old injected/test call shape while production passes MINUTE_DB.
   if (typeof minuteDb === 'number') {
@@ -195,8 +228,10 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
       minuteFactsRepair,
     };
   }
-  const summaryRepair = await repairContaminatedSummaries(db, otherDb, now);
-  const period = previousJstDay(now);
+  const summarySourceDb = minuteDb || db;
+  const summaryRepair = await repairContaminatedSummaries(db, summarySourceDb, otherDb, now);
+  const minuteSourceRepair = await repairMinuteSourceSummaries(db, minuteDb, otherDb, now);
+  const period = previousUtcDay(now);
   const state = await db.prepare(`SELECT last_rollup_key FROM sh_data_maintenance_state WHERE id=?`)
     .bind(STATE_ID).first();
   if (state?.last_rollup_key === period.key) {
@@ -206,9 +241,10 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
       periodKey: period.key,
       minuteFactsRepair,
       summaryRepair,
+      minuteSourceRepair,
     };
   }
-  const dailyWritten = await rollupDaily(db, otherDb, period, now);
+  const dailyWritten = await rollupDaily(summarySourceDb, otherDb, period, now);
   if (!dailyWritten) {
     return {
       skipped: true,
@@ -216,6 +252,7 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
       periodKey: period.key,
       minuteFactsRepair,
       summaryRepair,
+      minuteSourceRepair,
     };
   }
   await rollupFromDaily(otherDb, 'sh_weekly_summary', utcWeeklyRange(period.key), now);
@@ -231,6 +268,7 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
     periodKey: period.key,
     minuteFactsRepair,
     summaryRepair,
+    minuteSourceRepair,
     legacyBackfill: { skipped: true, reason: 'legacy-migration-disabled' },
   };
 }

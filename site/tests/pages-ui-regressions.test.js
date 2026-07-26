@@ -43,27 +43,30 @@ test('dashboard entry reveals images only after their load event', () => {
   assert.match(source, /addEventListener\('error', failed\)/);
 });
 
-test('official stream series includes live and migrated minute-fact sources', () => {
+test('official stream series resolves hosts without the removed minute-fact host column', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`
     CREATE TABLE sh_hosts(id INTEGER PRIMARY KEY,current_handle TEXT);
+    CREATE TABLE sh_broadcast_sessions(id INTEGER PRIMARY KEY,host_id INTEGER);
     CREATE TABLE sh_minute_facts(
       id INTEGER PRIMARY KEY,
       minute_at INTEGER NOT NULL,
       source_code INTEGER NOT NULL,
       listener_count INTEGER,
-      host_id INTEGER
+      broadcast_session_id INTEGER
     );
     CREATE TABLE sh_minute_fact_context(fact_id INTEGER PRIMARY KEY,host_id INTEGER);
     INSERT INTO sh_hosts VALUES(1,'sakurazaka46jp');
+    INSERT INTO sh_broadcast_sessions VALUES(10,1);
     INSERT INTO sh_minute_facts VALUES
-      (1,100000,1,101,1),
-      (2,160000,2,102,1),
+      (1,100000,1,101,10),
+      (2,160000,2,102,10),
       (3,220000,3,103,NULL),
       (4,280000,4,104,NULL);
     INSERT INTO sh_minute_fact_context VALUES(3,1),(4,1);
   `);
 
+  assert.doesNotMatch(SAKURAZAKA_MINUTE_SERIES_SQL, /\bf\.host_id\b/);
   const row = db.prepare(SAKURAZAKA_MINUTE_SERIES_SQL).get(100000, 100000, 340000);
   const points = JSON.parse(row.points_json);
   assert.equal(row.point_count, 4);
