@@ -1,4 +1,5 @@
 import { sanitizeFailureDetail } from './collector-failure.js';
+import { processInlineMinuteFactJob } from './collector-minute-fact-inline.js';
 import { flushResilientMinuteFactOutbox } from './collector-minute-fact-outbox.js';
 import {
   sendMinuteFactJob,
@@ -23,6 +24,10 @@ let lastDailyCleanupMinute = null;
 function count(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 0;
+}
+
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
 }
 
 function positiveInteger(value, fallback) {
@@ -115,6 +120,7 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
   const cleanup = dependencies.cleanupSentOutbox || cleanupSentOutbox;
   const send = dependencies.sendMinuteFactJob || sendMinuteFactJob;
   const stage = dependencies.stageMinuteFactOutboxJob || stageMinuteFactOutboxJob;
+  const processInline = dependencies.processInlineMinuteFactJob || processInlineMinuteFactJob;
   const now = dependencies.now || Date.now;
   const pending = dependencies.flushPending
     ? await dependencies.flushPending(env, options)
@@ -141,9 +147,39 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
       outbox_rows_written: outboxWriteEstimate(pending, true),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: false,
+      inline_handoff: false,
       deferred_behind_pending: true,
     };
   }
+
+  let inlineFailed = false;
+  if (enabled(env?.COLLECTOR_MINUTE_FACT_INLINE_ENABLED) && env?.MINUTE_DB?.prepare) {
+    const inlineStartedAt = Number(now());
+    try {
+      const result = await processInline(env, input, options);
+      rememberOutboxState(env, false, Number(now()) + reconcileMs(env));
+      return {
+        ...result,
+        outbox_pending: false,
+        ...telemetry,
+        queue_send_ms: 0,
+        queue_send_attempts: count(pending.sent) + count(pending.failed),
+        inline_process_ms: Math.max(0, Number(now()) - inlineStartedAt),
+        outbox_rows_written: outboxWriteEstimate(pending),
+        outbox_rows_deleted: outboxRowsDeleted,
+        direct_handoff: false,
+        inline_handoff: true,
+        inline_fallback: false,
+      };
+    } catch (error) {
+      inlineFailed = true;
+      console.warn(JSON.stringify({
+        event: 'minute_fact_inline_handoff_failed',
+        error: sanitizeFailureDetail(error?.message || error),
+      }));
+    }
+  }
+
   const queueStartedAt = Number(now());
   try {
     const sent = await send(env, input, options);
@@ -157,6 +193,8 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
       outbox_rows_written: outboxWriteEstimate(pending),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: true,
+      inline_handoff: false,
+      inline_fallback: inlineFailed,
     };
   } catch (error) {
     const staged = await stage(env, input, options);
@@ -176,6 +214,8 @@ export async function handoffMinuteFactJob(env, input = {}, options = {}, depend
       outbox_rows_written: outboxWriteEstimate(pending, true),
       outbox_rows_deleted: outboxRowsDeleted,
       direct_handoff: false,
+      inline_handoff: false,
+      inline_fallback: inlineFailed,
     };
   }
 }
