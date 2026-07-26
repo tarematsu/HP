@@ -4,12 +4,30 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel video runtime keeps deferred status and bounded liveness work', () => {
+test('HomePanel video runtime is a private bounded service', () => {
+  const entry = readSource('hp/video/src/entry.js');
+  const config = readSource('hp/video/wrangler.jsonc');
   const statusReport = readSource('hp/video/src/status-report.js');
   const statusLists = readSource('hp/video/src/status-lists.js');
   const liveness = readSource('hp/video/src/liveness-monitor.js');
   const schedule = readSource('hp/video/src/liveness-schedule.js');
   const migration = readSource('hp/video/MIGRATION.md');
+
+  expectAll(entry, [
+    "const INTERNAL_HEADER = 'X-HomePanel-Internal-Service'",
+    "pathname === '/api/health'",
+    "return Response.json({ ok: false, error: 'Not found' }, { status: 404 })",
+    'export { VideoFeedCoordinator }',
+  ]);
+  expectAll(config, [
+    '"name": "homepanel-video"',
+    '"workers_dev": false',
+    '"preview_urls": false',
+    '"binding": "BROWSER"',
+    '"queue": "videoscraper-manual-imports"',
+    '"class_name": "VideoFeedCoordinator"',
+    '"0 * * * *"',
+  ]);
 
   expectAll(statusReport, ['status-counts-stale-deferred-to-cleanup']);
   assert.ok(!statusReport.includes('refreshStatusCounts'));
@@ -23,20 +41,21 @@ test('HomePanel video runtime keeps deferred status and bounded liveness work', 
   ]);
   assert.ok(!liveness.includes('MAX(video.id)'));
   expectAll(schedule, ['LIVENESS_INTERVAL_SECONDS = 60 * 60']);
+
   expectAll(migration, [
     'Imported into HP as: `hp/video/`',
-    'hp/cloud/src/unified_worker.js',
+    'Public gateway Worker: `homepanel-cloud`',
+    'Private video Worker: `homepanel-video`',
+    '`VIDEO_SERVICE` Service Binding',
     'interval: one hour',
     'batch size: five URLs',
     'at most 120 normal liveness probes per day',
-    'Pages configuration',
-    'production Wrangler generation',
+    'deploys `homepanel-video` first',
   ]);
   expectNone(migration, [
-    'Imported into HP as: `video/`',
-    'Original VP workflows remain',
-    'interval: 12 minutes',
-    'batch size: one URL',
+    'after migration activation',
+    'A D1 activation flag',
+    'attached to `homepanel-cloud`',
   ]);
 });
 
@@ -63,7 +82,7 @@ test('remaining manual Video Queue workflow shares the fail-closed Cloudflare co
   ]);
 });
 
-test('duplicate Video CPU reporting stays retired in favor of unified observability', async () => {
+test('unified observability includes both HomePanel Workers', async () => {
   for (const path of [
     '../.github/workflows/video-worker-cpu-report.yml',
     '../hp/video/scripts/report-worker-cpu.mjs',
@@ -76,7 +95,8 @@ test('duplicate Video CPU reporting stays retired in favor of unified observabil
   }
   const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
+    'hp/video/wrangler.jsonc',
     'query-cloudflare-observability.py',
     'audit-deployed-cloudflare-telemetry.py',
     'workflow_dispatch:',
