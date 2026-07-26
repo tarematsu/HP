@@ -12,6 +12,7 @@ import {
   statusState,
   upsertStatusIssue,
 } from '../.github/scripts/observability-status-publisher.mjs';
+import { isCurrentMainTarget } from '../.github/scripts/publish-cloudflare-observability-status.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -25,6 +26,10 @@ test('shared publisher normalizes failures and sanitizes diagnostic text', () =>
   assert.equal(statusState('skipped'), 'failure');
   assert.equal(overallOutcome({ a: 'success', b: 'success' }), 'success');
   assert.equal(overallOutcome({ a: 'success', b: 'unknown' }), 'failure');
+  assert.equal(isCurrentMainTarget('abc', 'abc'), true);
+  assert.equal(isCurrentMainTarget('abc', 'def'), false);
+  assert.equal(isCurrentMainTarget('abc', 'unknown'), false);
+  assert.equal(isCurrentMainTarget('', 'abc'), false);
 
   const sanitized = sanitizeText([
     'Authorization: Bearer secret-value',
