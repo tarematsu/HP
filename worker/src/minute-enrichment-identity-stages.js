@@ -16,6 +16,14 @@ function enabled(value) {
   return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
 }
 
+function inlinePipelineEnabled(env) {
+  return enabled(env?.MINUTE_ENRICHMENT_INLINE_PIPELINE_ENABLED);
+}
+
+function inlineBiteEnabled(env) {
+  return inlinePipelineEnabled(env) || enabled(env?.MINUTE_IDENTITY_INLINE_BITE_ENABLED);
+}
+
 function identityFrom(body, expectedStage) {
   if (body?.message_type !== 'minute-fact-enrichment'
       || Number(body?.message_version) !== 1
@@ -149,6 +157,20 @@ export async function processMinuteIdentitySession(
     session_id: sessionId,
     host_id: hostId,
   });
+
+  if (inlinePipelineEnabled(env)) {
+    const runAttach = dependencies.processAttach || processMinuteIdentityAttach;
+    const result = await runAttach(env, message, {
+      ...dependencies,
+      loadCurrentMinute: async () => current,
+    });
+    return {
+      ...result,
+      identity_inlined: true,
+      attach_deferred: false,
+    };
+  }
+
   const send = dependencies.sendAttachStage || sendStage;
   await send(env, message);
 
@@ -188,7 +210,7 @@ export async function processMinuteIdentityAttach(
     host_id: hostId,
   });
 
-  if (enabled(env?.MINUTE_IDENTITY_INLINE_BITE_ENABLED)) {
+  if (inlineBiteEnabled(env)) {
     const runBite = dependencies.processBite || processMinuteIdentityBite;
     const result = await runBite(env, message, {
       ...dependencies,
@@ -249,6 +271,8 @@ export async function processMinuteIdentityBite(
     ...identity,
     session_id: integer(body.session_id),
     host_id: integer(body.host_id),
+    queue_position: integer(body.queue_position),
+    track_id: integer(body.track_id),
     bite_count: biteCount,
   };
 }
