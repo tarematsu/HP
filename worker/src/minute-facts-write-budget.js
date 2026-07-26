@@ -1,3 +1,4 @@
+import { withMinuteD1WriteThrottling } from './minute-d1-write-throttle.js';
 import { combinedAbortSignal } from './request-signal.js';
 
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -108,22 +109,26 @@ function rejectedWhenAborted(signal) {
 }
 
 export async function saveMinuteFactWithinBudget(env, input, writer) {
-  const configured = configuredTimeout(env);
+  // The fast inline live path bypasses the derive/enrichment entrypoints that
+  // previously installed this wrapper. Apply it at the common write boundary
+  // so alias timestamp checkpoints and revision caches cover every fact write.
+  const activeEnv = withMinuteD1WriteThrottling(env);
+  const configured = configuredTimeout(activeEnv);
   // Cloudflare D1 calls cannot be cancelled once dispatched. Queue consumers must
   // wait for the in-flight write instead of rejecting early and redelivering the
   // same message while the original D1 operation is still committing. An abort
   // that happened before the write still prevents new work from starting.
   if (minuteFactTimeoutDisabled(configured)) {
-    throwIfMinuteFactAborted(env);
-    return writer(env, input);
+    throwIfMinuteFactAborted(activeEnv);
+    return writer(activeEnv, input);
   }
 
   const parsed = Number(configured);
   const timeout = Number.isFinite(parsed) ? Math.max(1_000, Math.min(20_000, parsed)) : DEFAULT_TIMEOUT_MS;
-  const signal = combinedAbortSignal(signalFrom(env), timeout);
+  const signal = combinedAbortSignal(signalFrom(activeEnv), timeout);
   throwIfMinuteFactAborted(signal);
   return Promise.race([
-    writer(boundedEnv(env, signal), input),
+    writer(boundedEnv(activeEnv, signal), input),
     rejectedWhenAborted(signal),
   ]);
 }
