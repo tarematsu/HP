@@ -1,0 +1,43 @@
+name: Rebuild pages read models
+
+on:
+  schedule:
+    - cron: '4,19,34,49 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-read-model-rebuild
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    name: Rebuild and publish pages read models
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      FACTS_DATABASE_NAME: stationhead-minute
+      PAGES_READ_MODEL_MAX_STEPS: '1800'
+      PAGES_READ_MODEL_DEADLINE_MS: '720000'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Rebuild all pending read-model shards
+        run: node scripts/run-pages-read-model-actions.mjs
+      - name: Verify serving database
+        run: node scripts/verify-facts-live.mjs
