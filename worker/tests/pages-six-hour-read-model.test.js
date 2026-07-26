@@ -33,7 +33,7 @@ test('Actions cadence replaces the former six-hour minute-slot dispatcher', () =
   ]);
 });
 
-test('one Actions process advances track-history until publication and then renders due variants', async () => {
+test('one Actions process renders the dashboard before advancing and publishing track-history', async () => {
   const calls = [];
   const result = await runPagesReadModelActions({
     startedAt: BASE + 19 * MINUTE_MS,
@@ -43,7 +43,7 @@ test('one Actions process advances track-history until publication and then rend
     env: { DB: {}, BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: {} },
     runTrackHistoryStep: async () => {
       calls.push('track');
-      const published = calls.length === 3;
+      const published = calls.filter((entry) => entry === 'track').length === 3;
       return {
         task: { kind: published ? 'track-history-published' : 'track-history-publish-step' },
         stage: { published },
@@ -57,7 +57,7 @@ test('one Actions process advances track-history until publication and then rend
   });
 
   assert.equal(result.track_history_steps, 3);
-  assert.deepEqual(calls, ['track', 'track', 'track', 'dashboard', 'track-history']);
+  assert.deepEqual(calls, ['dashboard', 'track', 'track', 'track', 'track-history']);
 });
 
 test('track-history shard primitive still rejects only the final idle minutes before reading env', async () => {
