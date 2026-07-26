@@ -57,4 +57,8 @@ test('database workflow keeps the scoped export local until final upload', () =>
   assert.match(workflow, /rebuild-minute-facts-from-buddies\.py/);
   assert.match(workflow, /d1 execute "\$FACTS_DATABASE_NAME"[\s\S]*--file "\$chunk"/);
   assert.doesNotMatch(workflow, /--table sh_worker_collector_state/);
+  assert.match(
+    workflow,
+    /if: \(github\.event_name == 'push' && inputs\.operation == ''\) \|\| inputs\.operation == 'buddies-db'/,
+  );
 });
