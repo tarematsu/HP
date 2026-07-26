@@ -44,8 +44,10 @@ test('metadata consolidation compares canonical ISRC values and recognizes missi
   assert.equal(metadataValuePresent('title'), true);
 });
 
-test('database workflow tracks schema contract and metadata helper changes', () => {
+test('database workflow tracks contracts and serializes cross-database cleanup', () => {
   const databaseWorkflow = readFileSync('.github/workflows/database.yml', 'utf8');
   assert.match(databaseWorkflow, /worker\/scripts\/other-db-tables\.mjs/);
   assert.match(databaseWorkflow, /worker\/scripts\/track-metadata-consolidation-lib\.mjs/);
+  assert.match(databaseWorkflow, /other-db:\n[\s\S]*?needs: buddies-db/);
+  assert.match(databaseWorkflow, /needs\.buddies-db\.result == 'success'/);
 });
