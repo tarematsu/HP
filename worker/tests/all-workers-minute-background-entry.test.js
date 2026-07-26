@@ -26,13 +26,16 @@ test('core Worker routes enrichment through a queue-only one-message wrapper', (
   assert.doesNotMatch(entry, /Symbol\.iterator|fetch\s*\(/);
 });
 
-test('runtime Worker owns single-message rebuild delivery while preserving cached core stages', () => {
+test('legacy rebuild primitives remain source-only after Actions migration', () => {
   const runtime = config('../wrangler.runtime.jsonc');
+  const runtimeEnv = source('../src/runtime-env.js');
+  const pipeline = source('../src/minute-pipeline-entry.js');
   const wrapper = source('../src/minute-rebuild-batched-entry.js');
   const core = source('../src/minute-rebuild-entry.js');
   const rebuild = runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
-  assert.equal(rebuild.max_batch_size, 1);
-  assert.equal(rebuild.max_concurrency, 1);
+  assert.equal(rebuild, undefined);
+  assert.doesNotMatch(runtimeEnv, /stationhead-minute-rebuild/);
+  assert.doesNotMatch(pipeline, /minute-rebuild-batched-entry|MINUTE_REBUILD_QUEUE_NAME/);
   assert.match(core, /runtimeStateModulePromise \|\|=/);
   assert.match(core, /gapScanModulePromise \|\|=/);
   assert.match(core, /backfillModulePromise \|\|=/);
