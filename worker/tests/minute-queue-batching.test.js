@@ -64,7 +64,7 @@ test('defensive paired revision handling caps each message at one track', async 
   assert.deepEqual(events, ['ack:1', 'ack:2']);
 });
 
-test('runtime keeps live revisions at one track while rebuilds use the configured batch', () => {
+test('runtime keeps live revisions at one track while rebuild derive uses the configured batch', () => {
   const runtime = config('wrangler.runtime.jsonc');
   const entry = readFileSync(new URL('../src/minute-derive-entry.js', import.meta.url), 'utf8');
   const consumers = new Map(runtime.queues.consumers.map((consumer) => [consumer.queue, consumer]));
@@ -72,11 +72,10 @@ test('runtime keeps live revisions at one track while rebuilds use the configure
     consumers.get('stationhead-minute-derive').max_batch_size,
     consumers.get('stationhead-minute-live-derive').max_batch_size,
     consumers.get('stationhead-buddies-facts').max_batch_size,
-    consumers.get('stationhead-minute-rebuild').max_batch_size,
-  ], [1, 1, 1, 1]);
+  ], [1, 1, 1]);
   assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(consumers.get('stationhead-minute-live-derive').max_concurrency, 2);
-  assert.equal(consumers.get('stationhead-minute-rebuild').max_concurrency, 1);
+  assert.equal(consumers.has('stationhead-minute-rebuild'), false);
   assert.match(entry, /const MAX_LIVE_REVISION_CHUNK_TRACKS = 1/);
   assert.match(entry, /env\?\.DERIVE_REVISION_CHUNK_TRACKS/);
   assert.match(entry, /minute_derive_queue_overloaded/);
@@ -104,6 +103,7 @@ test('derive isolation composes with queue-only runtime and Actions-owned Pages 
     assert.equal(consumers.has(queue), true, queue);
   }
   for (const queue of [
+    'stationhead-minute-rebuild',
     'stationhead-pages-read-model-publication',
     'stationhead-read-model',
   ]) {
