@@ -39,14 +39,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
-      - name: Restore Worker maintenance dependencies
-        id: worker-modules
-        uses: actions/cache@v4
-        with:
-          path: worker/node_modules
-          key: ${{ runner.os }}-node22-worker-actions-${{ hashFiles('worker/package-lock.json', 'packages/sh-shared/**') }}
       - name: Install Worker dependencies
-        if: steps.worker-modules.outputs.cache-hit != 'true'
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Repair metadata backlog and playback read models
         run: node scripts/repair-track-metadata-actions.mjs
