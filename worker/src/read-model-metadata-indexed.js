@@ -73,7 +73,11 @@ async function metadataRowsBySpotify(db, spotifyIds) {
 
 async function metadataRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
-  const where = `WHERE isrc IN (${placeholders(isrcs.length)})
+  // idx_sh_track_metadata_isrc is a partial index. INDEXED BY becomes a hard
+  // query-planner contract, so repeat its predicate verbatim; otherwise SQLite
+  // returns "no query solution" instead of choosing another access path.
+  const where = `WHERE isrc IS NOT NULL AND TRIM(isrc)<>''
+      AND isrc IN (${placeholders(isrcs.length)})
     ORDER BY fetched_at DESC`;
   try {
     return await runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
