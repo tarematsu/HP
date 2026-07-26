@@ -43,9 +43,61 @@ test('normal minute fact handoff avoids D1 outbox writes', async () => {
   assert.equal(sent.length, 1);
   assert.equal(result.enqueued, true);
   assert.equal(result.direct_handoff, true);
+  assert.equal(result.inline_handoff, false);
   assert.equal(result.outbox_rows_written, 0);
   assert.equal(result.outbox_pending, false);
   assert.equal(db.calls.some(({ sql }) => /INSERT OR IGNORE INTO sh_minute_fact_outbox/.test(sql)), false);
+});
+
+test('enabled collector processes the current minute inline without Queue operations', async () => {
+  const db = fakeDb();
+  let inlineCalls = 0;
+  const result = await handoffMinuteFactJob({
+    DB: db,
+    MINUTE_DB: db,
+    COLLECTOR_MINUTE_FACT_INLINE_ENABLED: true,
+    MINUTE_FACT_QUEUE: { async send() { assert.fail('successful inline work must not send a Queue message'); } },
+  }, input(), {}, {
+    async processInlineMinuteFactJob(_env, value) {
+      inlineCalls += 1;
+      return {
+        enqueued: true,
+        channel_id: value.snapshot.channel_id,
+        minute_at: 1_784_000_000_000,
+      };
+    },
+  });
+
+  assert.equal(inlineCalls, 1);
+  assert.equal(result.enqueued, true);
+  assert.equal(result.inline_handoff, true);
+  assert.equal(result.direct_handoff, false);
+  assert.equal(result.queue_send_attempts, 0);
+  assert.equal(result.inline_fallback, false);
+  assert.equal(result.outbox_rows_written, 0);
+});
+
+test('inline failure falls back to the existing durable Queue handoff', async () => {
+  const db = fakeDb();
+  const sent = [];
+  const result = await handoffMinuteFactJob({
+    DB: db,
+    MINUTE_DB: db,
+    COLLECTOR_MINUTE_FACT_INLINE_ENABLED: true,
+    MINUTE_FACT_QUEUE: { async send(message) { sent.push(message); } },
+  }, input(), {}, {
+    async processInlineMinuteFactJob() {
+      throw new Error('inline unavailable');
+    },
+  });
+
+  assert.equal(sent.length, 1);
+  assert.equal(result.enqueued, true);
+  assert.equal(result.inline_handoff, false);
+  assert.equal(result.inline_fallback, true);
+  assert.equal(result.direct_handoff, true);
+  assert.equal(result.queue_send_attempts, 1);
+  assert.equal(result.outbox_pending, false);
 });
 
 test('failed direct handoff stages only the current job in D1', async () => {
@@ -64,7 +116,10 @@ test('failed direct handoff stages only the current job in D1', async () => {
 
 test('current minute waits behind an older pending outbox backlog', async () => {
   const events = [];
-  const result = await handoffMinuteFactJob({}, input(), {}, {
+  const result = await handoffMinuteFactJob({
+    MINUTE_DB: fakeDb(),
+    COLLECTOR_MINUTE_FACT_INLINE_ENABLED: true,
+  }, input(), {}, {
     async flushPending() {
       events.push('flush');
       return { sent: 3, failed: 0, pending: true, current_sent: false };
@@ -72,6 +127,9 @@ test('current minute waits behind an older pending outbox backlog', async () => 
     async cleanupSentOutbox() {
       events.push('cleanup');
       return 2;
+    },
+    async processInlineMinuteFactJob() {
+      assert.fail('current minute must not overtake pending jobs inline');
     },
     async sendMinuteFactJob() {
       assert.fail('current minute must not overtake pending jobs');
@@ -89,6 +147,7 @@ test('current minute waits behind an older pending outbox backlog', async () => 
 
   assert.deepEqual(events, ['flush', 'cleanup', 'stage']);
   assert.equal(result.direct_handoff, false);
+  assert.equal(result.inline_handoff, false);
   assert.equal(result.deferred_behind_pending, true);
   assert.equal(result.pending_flushed, 3);
   assert.equal(result.outbox_rows_written, 4);
