@@ -1,7 +1,5 @@
 import { execFileSync as defaultExecFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 function jsonStartIndexes(text) {
   const indexes = [];
@@ -155,13 +153,13 @@ function commandFailureDetail(error) {
   return stderr || stdout || String(error?.message || error || '').trim();
 }
 
-export function createWranglerRemoteD1({
-  database,
-  cwd,
-  wranglerScript,
-  execFileSync = defaultExecFileSync,
-  tempPrefix = '.remote-d1-',
-}) {
+export function createWranglerRemoteD1(options = {}) {
+  const {
+    database,
+    cwd,
+    wranglerScript,
+    execFileSync = defaultExecFileSync,
+  } = options;
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
   if (!String(cwd || '').trim()) throw new Error('remote D1 working directory is required');
   if (!String(wranglerScript || '').trim()) throw new Error('Wrangler script path is required');
@@ -206,28 +204,17 @@ export function createWranglerRemoteD1({
   return {
     prepare(sql) { return createStatement(sql); },
     async batch(statements = []) {
-      if (!statements.length) return [];
-      const directory = mkdtempSync(join(cwd, tempPrefix));
-      try {
-        const path = join(directory, 'batch.sql');
-        const rendered = statements.map((item) => {
-          if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
-            throw new TypeError('remote D1 batch received an incompatible statement');
-          }
-          return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
-        });
-        writeFileSync(path, `${rendered.join('\n')}\n`, 'utf8');
-        const results = wranglerD1Results(execute(['--file', path]));
-        if (results.length !== statements.length) {
-          throw new Error(`Wrangler returned ${results.length} D1 batch results for ${statements.length} statements`);
+      const results = [];
+      for (const item of statements) {
+        if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
+          throw new TypeError('remote D1 batch received an incompatible statement');
         }
-        if (results.some((result) => !result.success)) {
-          throw new Error('Wrangler reported an unsuccessful D1 batch statement');
-        }
-        return results;
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
+        results.push(statementResult(execute([
+          '--command',
+          bindD1Sql(item.__sql, item.__bindings),
+        ])));
       }
+      return results;
     },
   };
 }
