@@ -3,6 +3,7 @@
 
 import importlib.util
 from pathlib import Path
+import sys
 
 # Source-contract compatibility markers retained while implementation lives in
 # audit-cloudflare-deployed-telemetry.py:
@@ -32,7 +33,10 @@ module.cron_expression = lambda event: (
 )
 
 try:
-    raise SystemExit(module.main())
+    result = module.main()
+    if "--self-test" in sys.argv:
+        print("deployed telemetry audit self-test passed")
+    raise SystemExit(result)
 except Exception as error:
     print(
         "::error title=Cloudflare deployed-version telemetry audit::"
