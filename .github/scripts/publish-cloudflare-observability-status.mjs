@@ -3,7 +3,7 @@
 import { pathToFileURL } from 'node:url';
 import {
   MAX_ISSUE_BODY_CHARS,
-  clipText,
+  clipMarkdown,
   createGitHubRequest,
   findStatusIssue,
   publishCommitStatuses,
@@ -78,13 +78,13 @@ function deploymentAndChangeContext(activeDeployments, recentMerges) {
   const content = [deploymentSummary(activeDeployments), recentMergeSummary(recentMerges)]
     .filter(Boolean)
     .join('\n\n');
-  return `<a id="deployment-context"></a>\n## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
+  return `<a id="deployment-context" name="deployment-context"></a>\n## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
 }
 
 function diagnosticSection(id, title, body, state, maximum) {
   if (!body) return '';
-  const bounded = clipText(body, maximum);
-  return `<a id="${id}"></a>${renderSection(diagnosticSectionTitle(title, state), bounded)}`;
+  const bounded = clipMarkdown(body, maximum);
+  return `<a id="${id}" name="${id}"></a>${renderSection(diagnosticSectionTitle(title, state), bounded)}`;
 }
 
 function pendingRunnerHealthBlock() {
