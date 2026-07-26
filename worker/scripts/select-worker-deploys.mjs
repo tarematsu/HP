@@ -35,6 +35,20 @@ const allWorkerDeployScripts = new Set([
   'worker/package.json',
 ]);
 
+const actionsOnlySources = new Set([
+  'worker/src/monitor-maintenance-entry.js',
+  'worker/src/pages-read-model-dispatch.js',
+  'worker/src/pages-read-model-entry.js',
+  'worker/src/pages-six-hour-read-model.js',
+  'worker/src/pages-track-history-split-cycle.js',
+  'worker/src/runtime-budgeted-entry.js',
+  'worker/src/runtime-d1-coordinator.js',
+  'worker/src/runtime-do-orchestrator.js',
+  'worker/src/runtime-scheduled.js',
+  'worker/src/runtime-slim-orchestrator.js',
+  'worker/src/runtime-stream-prediction-dispatch.js',
+]);
+
 function repositoryPath(path) {
   return relative(repositoryRoot, path).split(sep).join('/');
 }
@@ -148,6 +162,8 @@ if (changed.all) {
         matched = true;
       }
     }
+
+    if (actionsOnlySources.has(changedPath)) continue;
 
     if (!matched
         && changedPath.startsWith('worker/src/')
