@@ -112,10 +112,10 @@ test('runtime owns realtime minute queues without scheduled maintenance', async 
     'stationhead-minute-derive',
     'stationhead-minute-live-derive',
     'stationhead-buddies-facts',
-    'stationhead-minute-rebuild',
   ]) {
     assert.equal(consumers.has(queue), true, queue);
   }
+  assert.equal(consumers.has('stationhead-minute-rebuild'), false);
   for (const name of [
     'MINUTE_FACT_REPAIR_BURST_ENABLED',
     'REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS',
