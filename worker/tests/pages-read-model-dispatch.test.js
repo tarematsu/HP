@@ -48,8 +48,12 @@ test('track-history completes inside one bounded Actions process and publishes R
   assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
 });
 
-test('workflow runs every fifteen minutes without a Worker cron or read-model Queue', () => {
-  assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
+test('workflow keeps four hourly opportunities without a Worker cron or read-model Queue', () => {
+  assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
+  assert.match(workflow, /cron: '19,49 \* \* \* \*'/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
+  assert.match(workflow, /github\.event\.workflow_run\.head_sha \|\| github\.sha/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.equal(runtime.triggers, undefined);
