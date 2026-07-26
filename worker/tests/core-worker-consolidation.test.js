@@ -129,6 +129,7 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
     assert.equal(recoveryConsumers.has(queue), false, queue);
   }
   for (const retiredQueue of [
+    'stationhead-minute-rebuild',
     'stationhead-pages-read-model-publication',
     'stationhead-read-model',
     'stationhead-host-monitor',
