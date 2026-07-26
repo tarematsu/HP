@@ -12,6 +12,10 @@ export const IDENTITY_BITE_STAGE = 'identity-bite';
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const JSON_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
 
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
+}
+
 function identityFrom(body, expectedStage) {
   if (body?.message_type !== 'minute-fact-enrichment'
       || Number(body?.message_version) !== 1
@@ -48,8 +52,9 @@ async function resolveOrderedSession(db, body, identity, hostId) {
   if (active && Number(active.last_observed_at || 0) > identity.observedAt) {
     const provisional = integer(body.provisional_session_id);
     if (provisional != null && hostId != null) {
-      await db.prepare(`UPDATE sh_broadcast_sessions SET host_id=COALESCE(host_id,?)
-        WHERE id=? AND channel_id=?`).bind(hostId, provisional, identity.channelId).run();
+      await db.prepare(`UPDATE sh_broadcast_sessions SET host_id=?
+        WHERE id=? AND channel_id=? AND host_id IS NULL`)
+        .bind(hostId, provisional, identity.channelId).run();
     }
     return provisional;
   }
@@ -64,30 +69,33 @@ async function resolveOrderedSession(db, body, identity, hostId) {
 }
 
 async function attachSessionAndFact(db, body, identity, sessionId) {
-  const statements = [
-    db.prepare(`UPDATE sh_minute_facts SET
-        broadcast_session_id=COALESCE(?,broadcast_session_id)
-      WHERE channel_id=? AND minute_at=? AND observed_at=? AND source_code=?`)
-      .bind(
-        sessionId,
-        identity.channelId,
-        identity.minuteAt,
-        identity.observedAt,
-        MINUTE_FACT_SOURCE_CODES.live_collector,
-      ),
-  ];
+  const statements = [];
+  if (sessionId != null) {
+    statements.push(
+      db.prepare(`UPDATE sh_minute_facts SET broadcast_session_id=?
+        WHERE channel_id=? AND minute_at=? AND observed_at=? AND source_code=?
+          AND broadcast_session_id IS NULL`)
+        .bind(
+          sessionId,
+          identity.channelId,
+          identity.minuteAt,
+          identity.observedAt,
+          MINUTE_FACT_SOURCE_CODES.live_collector,
+        ),
+    );
+  }
   const revisionId = integer(body.revision_id);
   if (sessionId != null && revisionId != null) {
     statements.push(
       db.prepare(`UPDATE sh_queue_revisions SET session_id=?
-        WHERE id=? AND channel_id=? AND effective_at<=?`)
-        .bind(sessionId, revisionId, identity.channelId, identity.observedAt),
+        WHERE id=? AND channel_id=? AND effective_at<=? AND session_id IS NOT ?`)
+        .bind(sessionId, revisionId, identity.channelId, identity.observedAt, sessionId),
       db.prepare(`UPDATE sh_playback_current SET session_id=?
-        WHERE channel_id=? AND revision_id=? AND last_observed_at<=?`)
-        .bind(sessionId, identity.channelId, revisionId, identity.observedAt),
+        WHERE channel_id=? AND revision_id=? AND last_observed_at<=? AND session_id IS NOT ?`)
+        .bind(sessionId, identity.channelId, revisionId, identity.observedAt, sessionId),
     );
   }
-  await db.batch(statements);
+  if (statements.length) await db.batch(statements);
 }
 
 function continuationMessage(body, stage, extra = {}) {
@@ -179,6 +187,20 @@ export async function processMinuteIdentityAttach(
     session_id: sessionId,
     host_id: hostId,
   });
+
+  if (enabled(env?.MINUTE_IDENTITY_INLINE_BITE_ENABLED)) {
+    const runBite = dependencies.processBite || processMinuteIdentityBite;
+    const result = await runBite(env, message, {
+      ...dependencies,
+      loadCurrentMinute: async () => current,
+    });
+    return {
+      ...result,
+      attach_inlined: true,
+      bite_deferred: false,
+    };
+  }
+
   const send = dependencies.sendBiteStage || sendStage;
   await send(env, message);
 
