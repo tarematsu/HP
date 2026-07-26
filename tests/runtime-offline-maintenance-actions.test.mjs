@@ -9,6 +9,23 @@ const runner = readFileSync(new URL('../worker/scripts/run-runtime-offline-maint
 const deployed = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
+function statusDatabase(writes) {
+  return {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            async run() {
+              writes.push({ sql, values });
+              return { meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
 test('offline runtime maintenance runs frequently and after production deploys', () => {
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
@@ -19,20 +36,27 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(workflow, /run-runtime-offline-maintenance-actions\.mjs/);
   assert.match(runner, /export async function runRuntimeOfflineMaintenanceActions/);
   assert.match(runner, /runtime offline maintenance deadline exceeded/);
+  assert.match(runner, /sh_collector_status/);
+  assert.match(runner, /other-cron/);
 });
 
-test('Actions consolidates prediction rollup and retention without Worker queues', async () => {
+test('Actions consolidates work and persists successful runtime health', async () => {
   const calls = [];
+  const writes = [];
   const now = 1_000;
   const result = await runRuntimeOfflineMaintenanceActions({
     now: () => now,
-    env: { BUDDIES_DB: {}, OTHER_DB: {} },
+    env: { BUDDIES_DB: {}, OTHER_DB: statusDatabase(writes) },
     runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
     runRollup: async () => { calls.push('rollup'); return 'rollup'; },
     runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
   assert.deepEqual(calls, ['prediction', 'rollup', 'retention']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.equal(writes[0].values[0], 'other-cron');
+  assert.equal(writes[1].values[3], now);
+  assert.match(writes[0].sql, /ON CONFLICT\(collector_id\)/);
   assert.deepEqual(result, {
     ok: true,
     event: 'runtime_offline_maintenance_actions_complete',
@@ -44,6 +68,25 @@ test('Actions consolidates prediction rollup and retention without Worker queues
   assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 5000/);
   assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 100/);
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
+});
+
+test('Actions persists runtime maintenance failures for public health', async () => {
+  const writes = [];
+  await assert.rejects(
+    runRuntimeOfflineMaintenanceActions({
+      now: () => 2_000,
+      env: { BUDDIES_DB: {}, OTHER_DB: statusDatabase(writes) },
+      runPrediction: async () => { throw new Error('prediction failed'); },
+      runRollup: async () => assert.fail('rollup must not run'),
+      runRetention: async () => assert.fail('retention must not run'),
+    }),
+    /prediction failed/,
+  );
+
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'error']);
+  assert.equal(writes[1].values[4], 'prediction failed');
+  assert.equal(writes[1].values[5], 'runtime_offline_maintenance_failed');
+  assert.equal(writes[1].values[6], 'offline-maintenance');
 });
 
 test('runtime deployment has no scheduled surface or offline relay queues', () => {
