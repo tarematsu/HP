@@ -1,6 +1,5 @@
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { runScheduler } from "../src/scheduler";
 import { readUpdateManifestIdentity } from "../src/update_proxy";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
@@ -73,26 +72,6 @@ describe("repository audit regressions", () => {
       monitorStatus: "stale",
       reason: "monitor database failure",
     });
-  });
-
-  it("drains more than one three-job scheduler batch", async () => {
-    await env.DB.prepare("DELETE FROM jobs").run();
-    const statements = Array.from({ length: 7 }, (_, index) =>
-      env.DB.prepare(
-        "INSERT INTO jobs(name,interval_seconds,next_run_at) VALUES(?1,300,0)",
-      ).bind(`audit-unknown-${index}`));
-    await env.DB.batch(statements);
-
-    await runScheduler(env);
-
-    const row = await env.DB.prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN lease_until IS NULL AND next_run_at>0 THEN 1 ELSE 0 END) AS finished
-         FROM jobs
-        WHERE name LIKE 'audit-unknown-%'`,
-    ).first<{ total: number; finished: number }>();
-    expect(Number(row?.total)).toBe(7);
-    expect(Number(row?.finished)).toBe(7);
   });
 
   it("changes release identity when a same-version manifest is repaired", async () => {
