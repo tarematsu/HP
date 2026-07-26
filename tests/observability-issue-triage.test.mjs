@@ -111,8 +111,8 @@ test('issue body puts runner and triage first, preserves the runner block, and u
   assert.ok(body.indexOf('## Immediate triage') < body.indexOf('## Deployment and change context'));
   assert.ok(body.indexOf('## Deployment and change context') < body.indexOf('## Detailed diagnostics'));
   assert.match(body, /\*\*Cloudflare status:\*\* failure/);
-  assert.match(body, /<a id="deployment-context"><\/a>/);
-  assert.match(body, /<a id="diagnostic-telemetry"><\/a>/);
+  assert.match(body, /<a id="deployment-context" name="deployment-context"><\/a>/);
+  assert.match(body, /<a id="diagnostic-telemetry" name="diagnostic-telemetry"><\/a>/);
   assert.match(body, /<summary>\[FAIL\] Current-deployment telemetry policy<\/summary>/);
   assert.match(body, /<summary>\[OK\] Public application health endpoint snapshots<\/summary>/);
   assert.equal(extractActionsRunnerHealthBlock(body), runnerBlock);
@@ -141,7 +141,7 @@ test('large diagnostics are clipped per section without breaking Markdown contai
   });
   assert.ok(body.length <= 60_000);
   assert.equal((body.match(/<details>/g) || []).length, (body.match(/<\/details>/g) || []).length);
-  assert.match(body, /<a id="diagnostic-telemetry"><\/a>/);
+  assert.match(body, /<a id="diagnostic-telemetry" name="diagnostic-telemetry"><\/a>/);
   assert.match(body, /…truncated…/);
   assert.match(body, /<\/details>$/);
 });
