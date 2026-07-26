@@ -45,7 +45,7 @@ function routeForFile(absolute) {
 test('every documented canonical Pages API has exactly one Function route', () => {
   const catalog = apiCatalog(0);
   const routes = Object.values(catalog.groups).flat();
-  assert.equal(catalog.contract_version, 3);
+  assert.equal(catalog.contract_version, 4);
   assert.equal('retired' in catalog, false);
   for (const route of routes) {
     const matches = routeCandidates(route.path).filter((candidate) => existsSync(candidate));
