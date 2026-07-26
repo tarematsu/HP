@@ -206,16 +206,27 @@ export function renderActionsRunnerHealthBlock(summary) {
   return `${ACTIONS_RUNNER_HEALTH_START}\n${content}\n${ACTIONS_RUNNER_HEALTH_END}`;
 }
 
+export function extractActionsRunnerHealthBlock(issueBody) {
+  const body = String(issueBody || '');
+  const start = body.indexOf(ACTIONS_RUNNER_HEALTH_START);
+  const end = start >= 0 ? body.indexOf(ACTIONS_RUNNER_HEALTH_END, start) : -1;
+  if (start < 0 || end < 0) return '';
+  return body.slice(start, end + ACTIONS_RUNNER_HEALTH_END.length);
+}
+
 export function replaceActionsRunnerHealthSection(issueBody, summary) {
   const body = String(issueBody || '');
   const block = renderActionsRunnerHealthBlock(summary);
-  const start = body.indexOf(ACTIONS_RUNNER_HEALTH_START);
-  const end = start >= 0 ? body.indexOf(ACTIONS_RUNNER_HEALTH_END, start) : -1;
-  if (start >= 0 && end >= 0) {
-    return `${body.slice(0, start)}${block}${body.slice(end + ACTIONS_RUNNER_HEALTH_END.length)}`;
+  const existing = extractActionsRunnerHealthBlock(body);
+  if (existing) return body.replace(existing, block);
+
+  for (const anchor of [
+    '\n## Deployment and change context',
+    '\n## Detailed diagnostics',
+    '\n### Active Worker deployments',
+  ]) {
+    const index = body.indexOf(anchor);
+    if (index >= 0) return `${body.slice(0, index)}\n\n${block}${body.slice(index)}`;
   }
-  const anchor = '\n### Active Worker deployments';
-  const index = body.indexOf(anchor);
-  if (index >= 0) return `${body.slice(0, index)}\n\n${block}${body.slice(index)}`;
   return `${body.trim()}\n\n${block}\n`;
 }
