@@ -5,7 +5,17 @@ const DEFAULT_DERIVE_STALE_MS = 25 * 60_000;
 const DEFAULT_MAINTENANCE_STALE_MS = 25 * 60_000;
 const RUNTIME_STATE_URL = 'https://sh-runtime-orchestrator.internal/internal/minute-runtime-state';
 
-const SQL = `SELECT
+const INBOX_SQL = `SELECT
+  stats.pending_count,stats.processing_count,stats.dead_count,
+  stats.live_pending_count,
+  COALESCE(pending_age.oldest_pending_at,stats.oldest_pending_minute) AS oldest_pending_minute,
+  stats.updated_at
+FROM sh_minute_fact_inbox_stats stats
+LEFT JOIN sh_minute_fact_pending_age pending_age ON pending_age.id=stats.id
+WHERE stats.id='global'
+LIMIT 1`;
+
+const LEGACY_SQL = `SELECT
   task_name,last_started_at,last_success_at,last_failure_at,last_duration_ms,
   last_error,runs_total,succeeded_total,failed_total,processed_total,
   job_failures_total,last_processed_count,last_failed_count,pending_count,
@@ -53,8 +63,59 @@ function hasAllRuntimeTasks(tasks) {
   return ACTIVE_TASKS.every((taskName) => names.has(taskName));
 }
 
+function inboxRuntimeRows(row = {}) {
+  const updatedAt = integer(row.updated_at, Date.now());
+  const derive = {
+    task_name: 'derive',
+    source: 'inbox',
+    event_driven: 1,
+    last_started_at: updatedAt,
+    last_success_at: updatedAt,
+    last_failure_at: null,
+    last_duration_ms: 0,
+    last_error: null,
+    runs_total: 0,
+    succeeded_total: 0,
+    failed_total: 0,
+    processed_total: 0,
+    job_failures_total: 0,
+    last_processed_count: 0,
+    last_failed_count: 0,
+    pending_count: nonNegative(row.pending_count),
+    processing_count: nonNegative(row.processing_count),
+    dead_count: nonNegative(row.dead_count),
+    oldest_pending_minute: integer(row.oldest_pending_minute),
+    updated_at: updatedAt,
+  };
+  const retired = (taskName) => ({
+    task_name: taskName,
+    source: 'retired',
+    retired: 1,
+    last_started_at: updatedAt,
+    last_success_at: updatedAt,
+    last_failure_at: null,
+    last_duration_ms: 0,
+    last_error: null,
+    runs_total: 0,
+    succeeded_total: 0,
+    failed_total: 0,
+    processed_total: 0,
+    job_failures_total: 0,
+    last_processed_count: 0,
+    last_failed_count: 0,
+    pending_count: 0,
+    processing_count: 0,
+    dead_count: 0,
+    oldest_pending_minute: null,
+    updated_at: updatedAt,
+  });
+  return [derive, retired('recovery'), retired('rebuild')];
+}
+
 export function minuteTaskHealth(row, now, env = {}) {
   const taskName = String(row?.task_name || '');
+  const retired = row?.retired === true || Number(row?.retired) === 1;
+  const eventDriven = row?.event_driven === true || Number(row?.event_driven) === 1;
   const lastStartedAt = integer(row?.last_started_at);
   const lastSuccessAt = integer(row?.last_success_at);
   const lastFailureAt = integer(row?.last_failure_at, 0);
@@ -65,19 +126,23 @@ export function minuteTaskHealth(row, now, env = {}) {
   const staleAfterMs = taskStaleMs(taskName, env);
   const policy = pendingPolicy(env);
   const backlogOwner = taskName === 'derive';
-  const stale = ageMs == null || ageMs >= staleAfterMs;
-  const pendingStale = backlogOwner
+  const stale = retired || eventDriven ? false : ageMs == null || ageMs >= staleAfterMs;
+  const pendingStale = !retired
+    && backlogOwner
     && pendingCount >= policy.count
     && oldestPendingMinute != null
     && oldestPendingMinute > 0
     && oldestPendingMinute <= now - policy.ageMs;
-  const lastRunFailed = lastFailureAt > (lastSuccessAt || 0);
+  const lastRunFailed = !retired && lastFailureAt > (lastSuccessAt || 0);
   return {
     task_name: taskName,
-    ok: !stale
+    ok: retired || (!stale
       && (!backlogOwner || deadCount === 0)
       && !pendingStale
-      && !lastRunFailed,
+      && !lastRunFailed),
+    source: String(row?.source || 'runtime-state'),
+    mode: retired ? 'retired' : eventDriven ? 'event-driven' : 'periodic',
+    retired,
     stale,
     stale_after_ms: staleAfterMs,
     age_ms: ageMs,
@@ -109,7 +174,18 @@ export function minuteTaskHealth(row, now, env = {}) {
 export async function readMinuteHealth(env, now = Date.now()) {
   if (!env?.MINUTE_DB?.prepare) throw new Error('MINUTE_DB binding missing');
   let rows = null;
-  if (env?.PAGES_READ_MODEL_SERVICE?.fetch) {
+
+  try {
+    const inbox = await env.MINUTE_DB.prepare(INBOX_SQL).first();
+    if (inbox) rows = inboxRuntimeRows(inbox);
+  } catch (error) {
+    console.warn(JSON.stringify({
+      event: 'pages_minute_inbox_health_failed',
+      error: String(error?.message || error).slice(0, 500),
+    }));
+  }
+
+  if (!rows && env?.PAGES_READ_MODEL_SERVICE?.fetch) {
     try {
       const response = await env.PAGES_READ_MODEL_SERVICE.fetch(RUNTIME_STATE_URL, { method: 'GET' });
       if (response?.ok) {
@@ -124,7 +200,7 @@ export async function readMinuteHealth(env, now = Date.now()) {
     }
   }
   if (!rows) {
-    const result = await env.MINUTE_DB.prepare(SQL).all();
+    const result = await env.MINUTE_DB.prepare(LEGACY_SQL).all();
     rows = result?.results || [];
   }
   const byName = new Map(rows.map((row) => [String(row.task_name), row]));
