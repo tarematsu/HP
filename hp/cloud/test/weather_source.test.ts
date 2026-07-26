@@ -8,6 +8,11 @@ const baseEnv = {
   WEATHERNEWS_URL: "https://example.invalid/weathernews",
 } satisfies Env;
 
+const currentPageEnv = {
+  ...baseEnv,
+  WEATHERNEWS_URL: "https://weathernews.jp/onebox/35.8524/139.4852/",
+} satisfies Env;
+
 function row(hour: number, icon: string, options: { rainMm?: number; pop?: number } = {}): string {
   const popCell = options.pop !== undefined ? `<div class="wTable__item p">${options.pop}</div>` : "";
   const rainCell = options.rainMm !== undefined ? `<div class="wTable__item r">${options.rainMm}</div>` : "";
@@ -43,12 +48,68 @@ function sameDayWindow(
   });
 }
 
+function currentRow(
+  timestampMs: number,
+  icon: number,
+  options: { rainMm?: number; pop?: number; temp?: number; humidity?: number } = {},
+): Record<string, unknown> {
+  return {
+    "tm ": timestampMs / 1000,
+    "WX ": icon,
+    "PREC ": options.rainMm ?? 0,
+    "POP ": options.pop,
+    "AIRTMP ": options.temp ?? 25,
+    "RHUM ": options.humidity ?? 80,
+  };
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
 describe("WeatherNews hourly parsing", () => {
+  it("reads the current Weathernews page data endpoint", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-11T20:34:00Z")); // 2026-07-12 05:34 JST
+    const windowStart = Date.parse("2026-07-11T20:00:00Z");
+    const rows = Array.from({ length: 12 }, (_, offset) => currentRow(
+      windowStart + offset * 60 * 60_000,
+      offset === 0 ? 200 : offset === 1 ? 650 : offset === 2 ? 300 : 100,
+      offset === 1 ? { pop: 70 } : offset === 2 ? { rainMm: 1.5 } : {},
+    ));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const request = new Request(input);
+      const url = new URL(request.url);
+      expect(url.origin).toBe("https://site.weathernews.jp");
+      expect(url.pathname).toBe("/lba/wxdata/api_data_ss1");
+      expect(url.searchParams.get("lat")).toBe("35.8524");
+      expect(url.searchParams.get("lon")).toBe("139.4852");
+      expect(url.searchParams.get("tm")).toBe(String(Math.floor(Date.now() / 1000)));
+      return new Response(JSON.stringify({ "srf ": rows }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchWeather(currentPageEnv);
+    const payload = result.payload as {
+      forecastDate: string;
+      startHour: number;
+      windowStartAt: string;
+      hourly: Record<string, { pop: number; rainMm: number; temp: number; humidity: number; icon: string }>;
+    };
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(payload.forecastDate).toBe("7/12");
+    expect(payload.startHour).toBe(5);
+    expect(payload.windowStartAt).toBe("2026-07-11T20:00:00.000Z");
+    expect(Object.keys(payload.hourly)).toHaveLength(12);
+    expect(payload.hourly["5"]).toMatchObject({ icon: "200", temp: 25, humidity: 80, rainMm: 0 });
+    expect(payload.hourly["6"]!.pop).toBe(70);
+    expect(payload.hourly["7"]).toMatchObject({ icon: "300", rainMm: 1.5, pop: 100 });
+  });
+
   it("reads the current forecast hour and the following eleven hours", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-11T14:34:00Z")); // 2026-07-11 23:34 JST
