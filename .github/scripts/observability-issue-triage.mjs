@@ -6,37 +6,37 @@ export const OBSERVABILITY_GATE_INFO = Object.freeze({
   daily: Object.freeze({
     label: 'Projected daily usage',
     priority: 'P2',
-    detail: '#cloudflare-projected-utc-daily-budgets',
+    detail: '#diagnostic-daily',
     action: 'Inspect the largest projected D1 and Queue meters, then reduce or defer the responsible operation.',
   }),
   freeTier: Object.freeze({
     label: 'Included-usage budget',
     priority: 'P2',
-    detail: '#account-wide-cloudflare-free-tier-100-budgets',
+    detail: '#diagnostic-free-tier',
     action: 'Identify the included-usage meter over budget and confirm whether the projection needs load reduction.',
   }),
   contract: Object.freeze({
     label: 'Budget coverage contract',
     priority: 'P1',
-    detail: '#observability-budget-gate-coverage',
+    detail: '#diagnostic-contract',
     action: 'Restore missing gate coverage before treating the remaining green budget signals as complete.',
   }),
   d1Insights: Object.freeze({
     label: 'D1 query insights',
     priority: 'P2',
-    detail: '#d1-query-cost-insights',
+    detail: '#diagnostic-d1',
     action: 'Repair query-cost collection, then inspect the top rows-read and rows-written fingerprints.',
   }),
   query: Object.freeze({
     label: 'Cloudflare metrics and live diagnostics',
     priority: 'P1',
-    detail: '#cloudflare-observability',
+    detail: '#diagnostic-observability',
     action: 'Open the diagnostics section and workflow run to isolate the failing API, live-tail, or persisted-error query.',
   }),
   telemetry: Object.freeze({
     label: 'Current-deployment telemetry policy',
     priority: 'P1',
-    detail: '#current-deployment-telemetry-policy',
+    detail: '#diagnostic-telemetry',
     action: 'Inspect current-deployment errors and CPU violations, then correlate them with the active Worker version.',
   }),
 });
@@ -103,13 +103,32 @@ export function publicHealthSignal(summary) {
 export function deploymentSignal(activeDeployments) {
   const entries = Object.entries(activeDeployments || {});
   if (!entries.length) return { state: 'unknown', evidence: 'No active deployment inventory was captured.' };
-  const unhealthy = entries.filter(([, deployment]) => String(deployment?.status || 'active').toLowerCase() !== 'active');
-  if (unhealthy.length) {
+
+  const unavailable = entries.filter(([, deployment]) => {
+    const status = String(deployment?.status || '').trim().toLowerCase();
+    return status && status !== 'active';
+  });
+  if (unavailable.length) {
     return {
       state: 'failure',
-      evidence: `${unhealthy.map(([worker]) => `\`${worker}\``).join(', ')} not reported as active.`,
+      evidence: unavailable
+        .map(([worker, deployment]) => `\`${worker}\` is ${String(deployment?.status || 'unavailable')}`)
+        .join(', '),
     };
   }
+
+  const incomplete = entries.filter(([, deployment]) => {
+    const status = String(deployment?.status || '').trim().toLowerCase();
+    const versions = Array.isArray(deployment?.version_ids) ? deployment.version_ids.filter(Boolean) : [];
+    return status !== 'active' || !String(deployment?.deployment_id || '').trim() || !versions.length;
+  });
+  if (incomplete.length) {
+    return {
+      state: 'unknown',
+      evidence: `${incomplete.map(([worker]) => `\`${worker}\``).join(', ')} has incomplete active-deployment metadata.`,
+    };
+  }
+
   return { state: 'healthy', evidence: `${entries.length}/${entries.length} monitored Workers are active.` };
 }
 
@@ -141,6 +160,16 @@ function incidentLinks(detail, runUrl) {
   return links.join(' · ');
 }
 
+export function observabilityIssueOverall({ outcomes = {}, summaries = {}, activeDeployments = {} }) {
+  const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)
+    .every((key) => normalizeOutcome(outcomes[key]) === 'success');
+  return gatesHealthy
+    && publicHealthSignal(summaries.publicHealth).state === 'healthy'
+    && deploymentSignal(activeDeployments).state === 'healthy'
+    ? 'success'
+    : 'failure';
+}
+
 export function buildObservabilityTriage({ outcomes = {}, summaries = {}, activeDeployments = {}, runUrl = '' }) {
   const publicHealth = publicHealthSignal(summaries.publicHealth);
   const deployments = deploymentSignal(activeDeployments);
@@ -152,7 +181,7 @@ export function buildObservabilityTriage({ outcomes = {}, summaries = {}, active
       area: 'Public availability',
       evidence: publicHealth.evidence,
       action: 'Inspect the public health payload and active deployments before lower-priority budget findings.',
-      detail: '#public-health-endpoint-snapshots',
+      detail: '#diagnostic-public-health',
     });
   }
   if (deployments.state !== 'healthy') {
@@ -161,7 +190,7 @@ export function buildObservabilityTriage({ outcomes = {}, summaries = {}, active
       area: 'Worker deployments',
       evidence: deployments.evidence,
       action: 'Verify traffic-bearing versions and redeploy or roll back any inactive Worker.',
-      detail: '#active-worker-deployments',
+      detail: '#deployment-context',
     });
   }
 
@@ -210,7 +239,7 @@ ${headline}
 |---|---|---|---|---|
 ${incidentRows}${omitted}
 
-**Jump:** [runner health](#github-actions-runner-health) · [deployments](#active-worker-deployments) · [daily budgets](#cloudflare-projected-utc-daily-budgets) · [D1 queries](#d1-query-cost-insights) · [telemetry](#current-deployment-telemetry-policy)
+**Jump:** [runner health](#github-actions-runner-health) · [deployments](#deployment-context) · [daily budgets](#diagnostic-daily) · [D1 queries](#diagnostic-d1) · [telemetry](#diagnostic-telemetry)
 
 <details>
 <summary>Signal matrix</summary>
