@@ -5,11 +5,15 @@ import test from 'node:test';
 import {
   ACTIONS_RUNNER_HEALTH_END,
   ACTIONS_RUNNER_HEALTH_START,
+  MAX_ACTIONS_HEALTH_SUMMARY_CHARS,
   collectActionsRunnerHealth,
   evaluateActionsRunnerHealth,
   renderActionsRunnerHealthSummary,
   replaceActionsRunnerHealthSection,
 } from '../.github/scripts/github-actions-runner-health.mjs';
+import {
+  buildActionsRunnerHealthIssueBody,
+} from '../.github/scripts/publish-github-actions-runner-health.mjs';
 
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
@@ -36,7 +40,7 @@ function run(overrides = {}) {
   };
 }
 
-test('runner health classifies fresh, running, failed, and stale schedules', () => {
+test('runner health classifies fresh, running, failed, stalled, and stale schedules', () => {
   const healthy = evaluateActionsRunnerHealth(target, [run()], { now: NOW });
   assert.equal(healthy.health, 'healthy');
   assert.equal(healthy.durationMs, 180_000);
@@ -54,6 +58,18 @@ test('runner health classifies fresh, running, failed, and stale schedules', () 
   ], { now: NOW });
   assert.equal(failed.health, 'failure');
   assert.equal(failed.consecutiveFailures, 1);
+
+  const stalled = evaluateActionsRunnerHealth(target, [
+    run({
+      status: 'in_progress',
+      conclusion: null,
+      created_at: '2026-07-26T13:00:00.000Z',
+      run_started_at: '2026-07-26T13:01:00.000Z',
+      updated_at: null,
+    }),
+  ], { now: NOW });
+  assert.equal(stalled.health, 'failure');
+  assert.match(stalled.reason, /remained in_progress/);
 
   const stale = evaluateActionsRunnerHealth(target, [
     run({ created_at: '2026-07-26T13:00:00.000Z', updated_at: '2026-07-26T13:03:00.000Z' }),
@@ -88,6 +104,26 @@ test('runner health marker is inserted once and replaced without erasing diagnos
   assert.doesNotMatch(replaced, /first/);
   assert.match(replaced, /second/);
   assert.match(replaced, /Active Worker deployments/);
+});
+
+test('runner health publisher reserves space without truncating existing diagnostics', () => {
+  const tail = '\nEND-OF-CLOUDFLARE-DIAGNOSTICS';
+  const issueBody = `<!-- cloudflare-observability-status -->\n${'x'.repeat(59_000)}${tail}`;
+  const summary = `### GitHub Actions runner health\n\n${'y'.repeat(MAX_ACTIONS_HEALTH_SUMMARY_CHARS + 500)}`;
+  const body = buildActionsRunnerHealthIssueBody(issueBody, summary);
+  assert.match(body, /END-OF-CLOUDFLARE-DIAGNOSTICS/);
+  assert.match(body, /…truncated…/);
+  assert.ok(body.length > 60_000);
+  assert.ok(body.length <= 65_000);
+});
+
+test('status writers share a non-cancelling issue lock', () => {
+  const healthWorkflow = read('.github/workflows/publish-github-actions-runner-health.yml');
+  const observabilityWorkflow = read('.github/workflows/sh-observability.yml');
+  for (const workflow of [healthWorkflow, observabilityWorkflow]) {
+    assert.match(workflow, /group: cloudflare-observability-status-issue/);
+    assert.match(workflow, /cancel-in-progress: false/);
+  }
 });
 
 test('lightweight workflow refreshes after observability publication and on schedule', () => {
