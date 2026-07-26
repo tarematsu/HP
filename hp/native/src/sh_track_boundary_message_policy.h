@@ -20,6 +20,17 @@ inline constexpr bool StationheadBoundaryLeaseAllows(
          now >= expiresAt;
 }
 
+inline constexpr int64_t StationheadBoundaryElapsedMs(
+    ULONGLONG startedAt, ULONGLONG now) noexcept {
+  if (startedAt == 0 || now < startedAt) return 0;
+  constexpr ULONGLONG kMaxSignedMilliseconds =
+      9'223'372'036'854'775'807ULL;
+  const ULONGLONG elapsed = now - startedAt;
+  return elapsed > kMaxSignedMilliseconds
+      ? static_cast<int64_t>(kMaxSignedMilliseconds)
+      : static_cast<int64_t>(elapsed);
+}
+
 static_assert(IsStationheadBoundaryReadyMessage(WM_HP_PRIMARY_RELOAD_READY));
 static_assert(IsStationheadBoundaryReadyMessage(WM_HP_SECONDARY_RELOAD_READY));
 static_assert(!IsStationheadBoundaryReadyMessage(WM_HP_STATIONHEAD_CHANGED));
@@ -34,6 +45,8 @@ static_assert(!StationheadBoundaryLeaseAllows(
 static_assert(StationheadBoundaryLeaseAllows(
     WM_HP_PRIMARY_RELOAD_READY, 10'000,
     WM_HP_SECONDARY_RELOAD_READY, 10'000));
+static_assert(StationheadBoundaryElapsedMs(1'000, 4'120) == 3'120);
+static_assert(StationheadBoundaryElapsedMs(4'120, 1'000) == 0);
 
 namespace stationhead_boundary_message_policy {
 inline SRWLOCK leaseLock = SRWLOCK_INIT;
@@ -41,6 +54,8 @@ inline UINT ownerMessage = 0;
 inline ULONGLONG expiresAt = 0;
 inline bool primaryReloadClockAssignmentPending = false;
 inline bool secondaryReloadClockAssignmentPending = false;
+inline ULONGLONG primaryReloadMonotonicAt = 0;
+inline ULONGLONG secondaryReloadMonotonicAt = 0;
 }  // namespace stationhead_boundary_message_policy
 
 class StationheadBoundaryReloadClockProxy {
@@ -57,21 +72,43 @@ class StationheadBoundaryReloadClockProxy {
     // accepted for this role may advance it. Generic successful navigations
     // (auth return, fallback, reconnect, WebView rebuild) therefore cannot
     // postpone the next periodic authentication refresh.
-    bool accept = storage_ <= 0;
     AcquireSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
+    bool accept = storage_ <= 0;
     bool& pending = secondary_
         ? stationhead_boundary_message_policy::secondaryReloadClockAssignmentPending
         : stationhead_boundary_message_policy::primaryReloadClockAssignmentPending;
+    ULONGLONG& monotonicAt = secondary_
+        ? stationhead_boundary_message_policy::secondaryReloadMonotonicAt
+        : stationhead_boundary_message_policy::primaryReloadMonotonicAt;
     if (pending) {
       pending = false;
       accept = true;
     }
-    ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
     if (accept) storage_ = candidate;
+    if (accept) monotonicAt = GetTickCount64();
+    ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
     // ConfigureWebView intentionally chains `createdAt_ = lastReloadAt_ = now`.
     // Return the candidate even when the periodic clock write is filtered so
     // unrelated lifecycle timestamps keep their original semantics.
     return candidate;
+  }
+
+  friend int64_t operator-(
+      int64_t wallClockNow,
+      const StationheadBoundaryReloadClockProxy& clock) noexcept {
+    // Eligibility is elapsed-time logic, not civil-time logic. Use the same
+    // monotonic clock as the A/B ownership lease so manual clock changes and
+    // NTP corrections cannot force an early refresh or postpone one. The wall
+    // value remains available for diagnostics and for a defensive pre-baseline
+    // fallback, while the established clock always uses GetTickCount64().
+    ULONGLONG monotonicAt = 0;
+    AcquireSRWLockShared(&stationhead_boundary_message_policy::leaseLock);
+    monotonicAt = clock.secondary_
+        ? stationhead_boundary_message_policy::secondaryReloadMonotonicAt
+        : stationhead_boundary_message_policy::primaryReloadMonotonicAt;
+    ReleaseSRWLockShared(&stationhead_boundary_message_policy::leaseLock);
+    if (monotonicAt == 0) return wallClockNow - clock.storage_;
+    return StationheadBoundaryElapsedMs(monotonicAt, GetTickCount64());
   }
 
  private:
