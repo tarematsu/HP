@@ -96,8 +96,8 @@ describe("HomePanel Worker integration", () => {
     expect(page).not.toContain("releases/download/homepanel-latest/manifest.json");
   });
 
-  it("returns a stable JSON 404", async () => {
-    const response = await SELF.fetch("https://homepanel.test/missing");
+  it("returns a stable JSON 404 for an unknown HomePanel API route", async () => {
+    const response = await SELF.fetch("https://homepanel.test/v1/missing");
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: "not found" });
   });
