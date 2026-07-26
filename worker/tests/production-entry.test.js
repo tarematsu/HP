@@ -72,10 +72,11 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(recovery.triggers, undefined);
   assert.equal(runtime.triggers, undefined);
   assert.equal(runtime.durable_objects, undefined);
-  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
+  assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(runtime.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB', 'MINUTE_DB', 'OTHER_DB']);
   assert.equal(collector.d1_databases[0].database_name, 'stationhead-buddies');
+  assert.equal(collector.d1_databases[1].database_name, 'stationhead-minute');
 
   assert.deepEqual(collector.queues?.producers.map(({ binding }) => binding), [
     'RAW_COLLECTION_QUEUE',
@@ -106,6 +107,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
     ({ queue }) => queue === 'stationhead-minute-derive',
   ).max_concurrency, 1);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
+  assert.equal(collector.vars.COLLECTOR_MINUTE_FACT_INLINE_ENABLED, true);
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
