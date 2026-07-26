@@ -56,6 +56,9 @@ test('database workflow keeps the scoped export local until final upload', () =>
   assert.match(workflow, /--table sh_comment_minute_counts/);
   assert.match(workflow, /rebuild-minute-facts-from-buddies\.py/);
   assert.match(workflow, /d1 execute "\$FACTS_DATABASE_NAME"[\s\S]*--file "\$chunk"/);
+  assert.match(workflow, /for attempt in 1 2 3 4 5 6/);
+  assert.match(workflow, /D1 import still busy; retrying/);
+  assert.match(workflow, /Failed to upload \$\(basename "\$chunk"\) after 6 attempts/);
   assert.doesNotMatch(workflow, /--table sh_worker_collector_state/);
   assert.match(
     workflow,
