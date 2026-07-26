@@ -40,7 +40,7 @@ function run(overrides = {}) {
   };
 }
 
-test('runner health classifies fresh, running, failed, stalled, and stale schedules', () => {
+test('runner health classifies fresh, running, failed, stalled, and stale operational runs', () => {
   const healthy = evaluateActionsRunnerHealth(target, [run()], { now: NOW });
   assert.equal(healthy.health, 'healthy');
   assert.equal(healthy.durationMs, 180_000);
@@ -77,7 +77,7 @@ test('runner health classifies fresh, running, failed, stalled, and stale schedu
   assert.equal(stale.health, 'stale');
 });
 
-test('runner health queries scheduled main runs and renders actionable links', async () => {
+test('runner health queries all main workflow runs and renders actionable links', async () => {
   const calls = [];
   const results = await collectActionsRunnerHealth(async (method, path) => {
     calls.push([method, path]);
@@ -85,10 +85,11 @@ test('runner health queries scheduled main runs and renders actionable links', a
   }, { now: NOW, targets: [target] });
   assert.deepEqual(calls, [[
     'GET',
-    '/actions/workflows/run-pages-read-model-rebuild.yml/runs?branch=main&event=schedule&per_page=20',
+    '/actions/workflows/run-pages-read-model-rebuild.yml/runs?branch=main&per_page=20',
   ]]);
   const summary = renderActionsRunnerHealthSummary(results, { now: NOW });
   assert.match(summary, /Overall:\*\* healthy/);
+  assert.match(summary, /operational workflow runs/);
   assert.match(summary, /\[#20\]\(https:\/\/github\.com\/tarematsu\/HP\/actions\/runs\/100\) success/);
 });
 
