@@ -26,9 +26,20 @@ export const MINUTE_FACT_RUNTIME_STATE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS 
 )`;
 
 // D1 remains the compatibility fallback. Production writes diagnostic state to
-// RuntimeStateCoordinator, so frequent queue/runtime observations use the DO
+// RuntimeCoordinator, so frequent queue/runtime observations use the DO
 // allowance without changing the minute-fact job or history source of truth.
 const RUNTIME_SUCCESS_CHECKPOINT_MS = 20 * 60_000;
+
+function runtimeStateEnv(env) {
+  if (env?.RUNTIME_STATE_COORDINATOR || !env?.RUNTIME_COORDINATOR) return env;
+  const active = Object.create(env || null);
+  Object.defineProperty(active, 'RUNTIME_STATE_COORDINATOR', {
+    value: env.RUNTIME_COORDINATOR,
+    enumerable: false,
+    configurable: true,
+  });
+  return active;
+}
 
 function finiteInteger(value, fallback = null) {
   const parsed = Number(value);
@@ -69,7 +80,12 @@ export async function ensureMinuteFactRuntimeStateSchema(env) {
 
 export async function recordMinuteFactRuntimeState(env, task, outcome = {}, options = {}) {
   const name = taskName(task);
-  const durable = await recordMinuteFactRuntimeStateInDo(env, name, outcome, options);
+  const durable = await recordMinuteFactRuntimeStateInDo(
+    runtimeStateEnv(env),
+    name,
+    outcome,
+    options,
+  );
   if (durable) return durable;
 
   await ensureMinuteFactRuntimeStateSchema(env);
@@ -121,7 +137,10 @@ export async function recordMinuteFactRuntimeState(env, task, outcome = {}, opti
 
 export async function readMinuteFactRuntimeState(env, task = null) {
   const normalizedTask = task == null ? null : taskName(task);
-  const durable = await readMinuteFactRuntimeStateFromDo(env, normalizedTask);
+  const durable = await readMinuteFactRuntimeStateFromDo(
+    runtimeStateEnv(env),
+    normalizedTask,
+  );
   if (durable !== null) return durable;
 
   await ensureMinuteFactRuntimeStateSchema(env);
