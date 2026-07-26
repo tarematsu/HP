@@ -4,6 +4,11 @@ const MINUTE_MS = 60_000;
 const MAX_WAIT_MS = 20_000;
 const MAX_POLL_MS = 5_000;
 
+function enabled(value, fallback = true) {
+  if (value == null || value === '') return fallback;
+  return !/^(0|false|no|off)$/i.test(String(value).trim());
+}
+
 function nonNegativeInteger(value, fallback = 0, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Math.trunc(Number(value));
   if (!Number.isFinite(parsed) || parsed < 0) return fallback;
@@ -31,6 +36,7 @@ export function collectorMinuteAt(value = Date.now()) {
 }
 
 export async function waitForCollectorCoordinator(env = {}, scheduledAt = Date.now(), options = {}) {
+  if (!enabled(env?.COLLECTOR_STATUS_DO_ENABLED, true)) return null;
   const stub = options.stub || coordinatorStub(env?.BUDDIES_COLLECTOR_COORDINATOR);
   if (typeof stub?.fetch !== 'function') return null;
 
