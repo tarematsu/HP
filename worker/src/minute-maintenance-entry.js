@@ -59,8 +59,10 @@ async function recordDeriveDispatchState(env, summary, startedAt, dependencies =
 }
 
 function offlineRevision(message) {
-  return message?.revision?.rebuild === true
-    || String(message?.job_kind || message?.job?.job_kind || '').toLowerCase() !== 'live';
+  if (message?.revision?.rebuild === true) return true;
+  const rawKind = message?.job_kind ?? message?.job?.job_kind;
+  if (rawKind == null || rawKind === '') return false;
+  return String(rawKind).toLowerCase() !== 'live';
 }
 
 async function sendQueueMessages(queue, messages) {
