@@ -83,7 +83,7 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   assert.match(workflow, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
   assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/);
   assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
-  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR/);
+  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR/);
   assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
   assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);

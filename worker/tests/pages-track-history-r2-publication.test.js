@@ -2,14 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { advanceTrackHistoryR2Publication } from '../src/pages-track-history-publication.js';
-import {
-  createTrackHistoryPublication,
-} from '../src/pages-track-history-response.js';
-import {
-  processTrackHistoryPublicationTask,
-  TRACK_HISTORY_PUBLICATION_ACTIONS,
-  TRACK_HISTORY_PUBLICATION_MESSAGE,
-} from '../src/pages-track-history-publication-queue.js';
+import { createTrackHistoryPublication } from '../src/pages-track-history-response.js';
+import { runSplitTrackHistoryCycleStep } from '../src/pages-track-history-split-cycle.js';
 
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 6, 22);
@@ -86,23 +80,21 @@ test('R2 publication bootstraps only a missing indexed day and checkpoints progr
   assert.deepEqual(bootstrapped, ['2026-07-22']);
 });
 
-test('publication Queue routes r2-days state away from legacy D1 advancement and promotion', async () => {
+test('inline Actions cycle routes r2-days state without legacy D1 advancement or promotion', async () => {
   const stage = {
     generation: START,
     published: false,
-    publication: publication({ generation: 'r2-generation' }),
+    refresh_mode: 'incremental',
+    tasks: [],
+    completed: {},
+    publication: publication({ generation: 'r2-generation', phase: 'r2-days' }),
   };
   const calls = [];
-  const result = await processTrackHistoryPublicationTask({
+  const result = await runSplitTrackHistoryCycleStep({
+    BUDDIES_DB: {},
     MINUTE_DB: {},
     PAGES_RESPONSE_R2: {},
-  }, {
-    message_type: TRACK_HISTORY_PUBLICATION_MESSAGE,
-    message_version: 2,
-    action: TRACK_HISTORY_PUBLICATION_ACTIONS.PAGE,
-    generation: 'r2-generation',
-  }, {
-    now: () => START + DAY,
+  }, START + DAY, {
     loadStage: async () => stage,
     async advanceR2Publication() {
       calls.push('r2');
@@ -121,6 +113,7 @@ test('publication Queue routes r2-days state away from legacy D1 advancement and
   });
 
   assert.deepEqual(calls, ['r2', 'save']);
-  assert.equal(result.published, true);
-  assert.equal(result.storage, 'r2');
+  assert.equal(result.publication.published, true);
+  assert.equal(result.publication.storage, 'r2');
+  assert.equal(stage.published, true);
 });

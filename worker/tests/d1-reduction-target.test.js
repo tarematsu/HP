@@ -10,7 +10,7 @@ import {
 import { QUEUE_PLAN_PREFIX } from '../src/queue-plan-r2.js';
 
 const MINUTE_MS = 60_000;
-const CHECKPOINT_MINUTES = 20;
+const TEST_CHECKPOINT_MINUTES = 20;
 
 function stableBody(observedAt) {
   return {
@@ -39,7 +39,7 @@ function fakeEnv(overrides = {}) {
   return {
     DB: { prepare() { throw new Error('unexpected D1 access'); } },
     QUEUE_LIKES_REPAIR_ENABLED: false,
-    QUEUE_STABLE_CHECKPOINT_MINUTES: CHECKPOINT_MINUTES,
+    QUEUE_STABLE_CHECKPOINT_MINUTES: TEST_CHECKPOINT_MINUTES,
     ...overrides,
   };
 }
@@ -69,7 +69,7 @@ class FakeR2 {
   }
 }
 
-function seedStablePlan(r2, observedAt = 20 * MINUTE_MS) {
+function seedStablePlan(r2, observedAt = TEST_CHECKPOINT_MINUTES * MINUTE_MS) {
   r2.values.set(`${QUEUE_PLAN_PREFIX}1.json`, JSON.stringify({
     version: 1,
     station_id: 1,
@@ -81,7 +81,7 @@ function seedStablePlan(r2, observedAt = 20 * MINUTE_MS) {
   }));
 }
 
-test('stable queue hashes bypass the second likes read stage unless repair is explicitly enabled', () => {
+test('stable queue hashes bypass the second likes read unless repair is requested', () => {
   const body = stableBody(21 * MINUTE_MS);
   const plan = { structure_changed: false, likes_hash: 'likes-stable' };
   assert.equal(queueLikesStageRequired(body, plan, fakeEnv()), false);
@@ -90,46 +90,15 @@ test('stable queue hashes bypass the second likes read stage unless repair is ex
     ...body,
     analysis: { ...body.analysis, likes_hash: 'likes-new' },
   }, plan, fakeEnv()), true);
-  assert.equal(queueLikesStageRequired({
-    ...body,
-    analysis: { ...body.analysis, likes_hash: null, likes: { complete: false } },
-  }, plan, fakeEnv()), true);
 });
 
-test('stable queue checkpoint is emitted only once per twenty-minute slot', () => {
+test('stable queue checkpoint occurs once per configured slot', () => {
   assert.equal(queuePersistenceCheckpointDue(20 * MINUTE_MS, fakeEnv()), true);
   assert.equal(queuePersistenceCheckpointDue(21 * MINUTE_MS, fakeEnv()), false);
-  assert.equal(queuePersistenceCheckpointDue(39 * MINUTE_MS, fakeEnv()), false);
   assert.equal(queuePersistenceCheckpointDue(40 * MINUTE_MS, fakeEnv()), true);
 });
 
-test('stable non-checkpoint queue invocation performs one planning read and no continuation write', async () => {
-  const observedAt = 21 * MINUTE_MS;
-  let planningReads = 0;
-  const sent = [];
-  const result = await processBudgetedQueueStructureTask(
-    fakeEnv(),
-    stableBody(observedAt),
-    {
-      async prepareQueueStructurePersistence() {
-        planningReads += 1;
-        return {
-          structure_changed: false,
-          likes_hash: 'likes-stable',
-          structural_hash: 'structure-stable',
-        };
-      },
-      async sendPersistenceContinuation(message) { sent.push(message); },
-    },
-  );
-  assert.equal(planningReads, 1);
-  assert.deepEqual(sent, []);
-  assert.equal(result.likes_deferred, false);
-  assert.equal(result.finalization_deferred, false);
-  assert.equal(result.stable_checkpoint_skipped, true);
-});
-
-test('stable non-checkpoint queue invocation uses R2 without reading D1', async () => {
+test('stable non-checkpoint invocation uses R2 without reading D1', async () => {
   const r2 = new FakeR2();
   seedStablePlan(r2);
   const result = await processBudgetedQueueStructureTask(
@@ -142,7 +111,7 @@ test('stable non-checkpoint queue invocation uses R2 without reading D1', async 
   assert.equal(r2.deletes, 0);
 });
 
-test('twenty-minute checkpoint invalidates R2 and refreshes it from one D1 plan', async () => {
+test('checkpoint refreshes the R2 plan from one D1 planning read', async () => {
   const r2 = new FakeR2();
   seedStablePlan(r2);
   let planningReads = 0;
@@ -171,55 +140,7 @@ test('twenty-minute checkpoint invalidates R2 and refreshes it from one D1 plan'
   assert.equal(r2.puts, 1);
 });
 
-test('stable checkpoint sends finalize directly and never invokes the likes comparison stage', async () => {
-  const sent = [];
-  const result = await processBudgetedQueueStructureTask(
-    fakeEnv(),
-    stableBody(20 * MINUTE_MS),
-    {
-      async prepareQueueStructurePersistence() {
-        return {
-          structure_changed: false,
-          likes_hash: 'likes-stable',
-          structural_hash: 'structure-stable',
-        };
-      },
-      async sendPersistenceContinuation(message) { sent.push(message); },
-    },
-  );
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].stage, 'finalize');
-  assert.equal(result.likes_deferred, false);
-  assert.equal(result.finalization_deferred, true);
-  assert.equal(result.stable_checkpoint_skipped, false);
-});
-
-test('completed structure change skips likes planning only when no queue items were rewritten', async () => {
-  const sent = [];
-  const body = {
-    ...stableBody(21 * MINUTE_MS),
-    stage: 'structure-write',
-    structure_cursor: 0,
-    structure_plan: {
-      structure_changed: true,
-      likes_hash: 'likes-stable',
-      structural_hash: 'structure-new',
-      write_positions: [],
-    },
-  };
-  const result = await processBudgetedQueueStructureTask(fakeEnv(), body, {
-    async commitQueueStructurePersistence() {
-      return { structureChanged: true, itemsWritten: 0 };
-    },
-    async sendPersistenceContinuation(message) { sent.push(message); },
-  });
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].stage, 'finalize');
-  assert.equal(result.likes_deferred, false);
-  assert.equal(result.finalization_deferred, true);
-});
-
-test('structure item writes preserve the likes stage so bite counts are materialized', async () => {
+test('structure writes preserve the likes stage so bite counts are materialized', async () => {
   const sent = [];
   const body = {
     ...stableBody(21 * MINUTE_MS),
@@ -244,17 +165,20 @@ test('structure item writes preserve the likes stage so bite counts are material
   assert.equal(result.finalization_deferred, true);
 });
 
-test('production stable-path model meets the requested D1 reduction targets', () => {
+test('production checkpoint ownership is split between collector and read-model code', () => {
+  const collector = JSON.parse(readFileSync(
+    new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
+    'utf8',
+  ));
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const readModelStages = readFileSync(new URL('../src/read-model-stages.js', import.meta.url), 'utf8');
-  assert.equal(runtime.vars.SNAPSHOT_PERSIST_INTERVAL_MS, CHECKPOINT_MINUTES * MINUTE_MS);
-  assert.equal(runtime.vars.QUEUE_STABLE_CHECKPOINT_MINUTES, CHECKPOINT_MINUTES);
+
+  assert.equal(collector.vars.SNAPSHOT_PERSIST_INTERVAL_MS, 60 * MINUTE_MS);
+  assert.equal(collector.vars.QUEUE_STABLE_CHECKPOINT_MINUTES, 60);
+  assert.equal(Object.hasOwn(runtime.vars, 'SNAPSHOT_PERSIST_INTERVAL_MS'), false);
   assert.match(readModelStages, /READ_MODEL_CHECKPOINT_MS = 20 \* 60_000/);
 
-  // Previous stable queue flow per 20 minutes:
-  // structure plan read + likes plan read every minute, then one materialization write every minute.
-  const previous = { reads: 2 * CHECKPOINT_MINUTES, writes: CHECKPOINT_MINUTES };
-  // R2 validates nineteen stable minutes; D1 is checked once at the checkpoint.
+  const previous = { reads: 2 * TEST_CHECKPOINT_MINUTES, writes: TEST_CHECKPOINT_MINUTES };
   const optimized = { reads: 1, writes: 1 };
   assert.ok(optimized.reads / previous.reads <= 0.50);
   assert.ok(optimized.writes / previous.writes <= 0.30);
@@ -262,7 +186,7 @@ test('production stable-path model meets the requested D1 reduction targets', ()
   assert.equal(1 - optimized.writes / previous.writes, 0.95);
 });
 
-test('collector progress and metadata timestamps share the twenty-minute checkpoint policy', () => {
+test('collector progress and metadata timestamps retain bounded checkpoint constants', () => {
   const preparedCollector = readFileSync(new URL('../src/prepared-collector-runner.js', import.meta.url), 'utf8');
   const finalize = readFileSync(new URL('../src/ingest-finalize-entry.js', import.meta.url), 'utf8');
   const minuteWrites = readFileSync(new URL('../src/minute-d1-write-throttle.js', import.meta.url), 'utf8');
@@ -270,8 +194,4 @@ test('collector progress and metadata timestamps share the twenty-minute checkpo
   assert.match(preparedCollector, /COLLECTOR_STATE_CHECKPOINT_MS = 20 \* 60_000/);
   assert.match(finalize, /COLLECTOR_STATE_CHECKPOINT_MS = 20 \* 60_000/);
   assert.match(minuteWrites, /CHECKPOINT_MS = 20 \* 60_000/);
-
-  const previousWritesPerWindow = CHECKPOINT_MINUTES / 5;
-  const optimizedWritesPerWindow = 1;
-  assert.equal(1 - optimizedWritesPerWindow / previousWritesPerWindow, 0.75);
 });

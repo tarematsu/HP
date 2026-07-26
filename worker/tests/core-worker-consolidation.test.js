@@ -3,13 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import coreWorker, {
-  RuntimeCoordinator,
   lightweightLiveBudgetKind,
   lightweightLiveCompleteBatch,
   runCoreFetch,
   runCoreQueue,
-  runCoreScheduled,
-  runCoordinatedScheduled,
 } from '../src/runtime-orchestrator-entry.js';
 
 function batch(queue, body = {}) {
@@ -30,32 +27,21 @@ const LIVE_ENV = Object.freeze({
   HISTORICAL_REBUILD_ENABLED: true,
 });
 
-test('core Worker exposes fetch, scheduled, and queue surfaces', () => {
-  assert.deepEqual(Object.keys(coreWorker).sort(), ['fetch', 'queue', 'scheduled']);
+test('core Worker exposes only fetch and queue surfaces', () => {
+  assert.deepEqual(Object.keys(coreWorker).sort(), ['fetch', 'queue']);
 });
 
-test('core queue keeps domain routes in separate invocations', async () => {
+test('core queue keeps only active runtime routes', async () => {
   const calls = [];
-  const env = { BUDDIES_DB: { name: 'buddies' } };
-  const ctx = {};
   const dependencies = {
-    runIngestQueue: async (_batch, activeEnv) => calls.push(['ingest', activeEnv.DB]),
-    runEnrichmentQueue: async () => calls.push(['enrichment']),
-    runPagesQueue: async () => calls.push(['pages']),
-    runRuntimeQueue: async () => calls.push(['runtime']),
+    runEnrichmentQueue: async () => calls.push('enrichment'),
+    runRuntimeQueue: async () => calls.push('runtime'),
   };
 
-  await runCoreQueue(batch('stationhead-comments'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-minute-enrichment'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-read-model'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-host-monitor'), env, ctx, dependencies);
+  await runCoreQueue(batch('stationhead-minute-enrichment'), {}, {}, dependencies);
+  await runCoreQueue(batch('stationhead-minute-derive'), {}, {}, dependencies);
 
-  assert.deepEqual(calls, [
-    ['ingest', env.BUDDIES_DB],
-    ['enrichment'],
-    ['pages'],
-    ['runtime'],
-  ]);
+  assert.deepEqual(calls, ['enrichment', 'runtime']);
 });
 
 test('all budgeted live stages bypass the common runtime and derive graphs', async () => {
@@ -104,158 +90,14 @@ test('all budgeted live stages bypass the common runtime and derive graphs', asy
   assert.deepEqual(calls, ['trigger', 'revision', 'write', 'complete']);
 });
 
-test('one Durable Object tick runs routine Pages work without a per-minute Queue hop', async () => {
-  const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: 123 };
-  const result = await runCoreScheduled(controller, {}, {}, {
-    runRuntimeScheduled: async () => { calls.push('runtime'); return ['runtime']; },
-    runPagesScheduled: async () => { calls.push('pages'); return { inline: true }; },
-  });
-  assert.deepEqual(calls.sort(), ['pages', 'runtime']);
-  assert.deepEqual(result, { runtime: ['runtime'], pages: { inline: true } });
-});
-
-test('scheduled work claims and releases a Durable Object overlap lease', async () => {
-  const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: 123 };
-  const coordinated = await runCoordinatedScheduled(controller, {}, {}, {
-    stub: {
-      async claim(value) {
-        calls.push(['claim', value]);
-        return { claimed: true, holder_id: 'lease-123', lease_until: 70_123 };
-      },
-      async release(holderId) {
-        calls.push(['release', holderId]);
-        return { released: true };
-      },
-    },
-    runDirect: async (_controller, env) => {
-      calls.push(['direct', env.PRIMARY_RUN_LOCK_ENABLED]);
-      return 'direct';
-    },
-  });
-  assert.equal(coordinated, 'direct');
-  assert.deepEqual(calls, [
-    ['claim', { cron: '* * * * *', scheduledTime: 123, leaseMs: 70_000 }],
-    ['direct', false],
-    ['release', 'lease-123'],
-  ]);
-
-  const duplicate = await runCoordinatedScheduled(controller, {}, {}, {
-    stub: { async claim() { return { claimed: false }; } },
-    runDirect: async () => assert.fail('duplicate tick must not run'),
-  });
-  assert.deepEqual(duplicate, { skipped: true, reason: 'runtime-coordinator-duplicate' });
-
-  const overlap = await runCoordinatedScheduled(controller, {}, {}, {
-    stub: { async claim() { return { claimed: false, reason: 'primary-run-in-progress' }; } },
-    runDirect: async () => assert.fail('overlapping tick must not run'),
-  });
-  assert.deepEqual(overlap, { skipped: true, reason: 'primary-run-in-progress' });
-});
-
-test('coordinator failure falls back to the D1 lease and direct failures keep the DO lease', async () => {
-  const controller = { cron: '* * * * *', scheduledTime: 123 };
-  const fallbackCalls = [];
-  const fallback = await runCoordinatedScheduled(controller, {}, {}, {
-    stub: { async claim() { throw new Error('temporary DO failure'); } },
-    runDirect: async (_controller, env) => {
-      fallbackCalls.push(env.PRIMARY_RUN_LOCK_ENABLED);
-      return 'direct';
-    },
-  });
-  assert.equal(fallback, 'direct');
-  assert.deepEqual(fallbackCalls, [undefined]);
-
-  let releases = 0;
-  await assert.rejects(runCoordinatedScheduled(controller, {}, {}, {
-    stub: {
-      async claim() { return { claimed: true, holder_id: 'lease-123' }; },
-      async release() { releases += 1; },
-    },
-    runDirect: async () => { throw new Error('collection failed'); },
-  }), /collection failed/);
-  assert.equal(releases, 0);
-});
-
-test('RuntimeCoordinator persists, releases, and expires one overlap lease row', async () => {
-  const rows = new Map();
-  const state = {
-    storage: {
-      async get(key) { return rows.get(key); },
-      async put(key, value) { rows.set(key, value); },
-    },
-  };
-  const coordinator = new RuntimeCoordinator(state);
-  const controller = {
-    cron: '* * * * *',
-    scheduledTime: 123,
-    now: 1_000,
-    leaseMs: 70_000,
-  };
-  assert.deepEqual(await coordinator.claim(controller), {
-    claimed: true,
-    holder_id: '* * * * *:123',
-    lease_until: 71_000,
-  });
-  assert.deepEqual(await coordinator.claim(controller), {
-    claimed: false,
-    reason: 'runtime-coordinator-duplicate',
-  });
-  assert.equal(rows.size, 1);
-
-  assert.deepEqual(await coordinator.claim({
-    ...controller,
-    scheduledTime: 124,
-    now: 60_000,
-  }), {
-    claimed: false,
-    reason: 'primary-run-in-progress',
-    lease_until: 71_000,
-  });
-  assert.deepEqual(await coordinator.release('* * * * *:123', 55_000), { released: true });
-  assert.equal(rows.size, 1);
-  assert.deepEqual(await coordinator.claim({
-    ...controller,
-    scheduledTime: 124,
-    now: 60_000,
-  }), {
-    claimed: true,
-    holder_id: '* * * * *:124',
-    lease_until: 130_000,
-  });
-  assert.deepEqual(await coordinator.release('wrong-owner', 61_000), {
-    released: false,
-    reason: 'runtime-coordinator-owner-mismatch',
-  });
-  assert.equal(rows.size, 1);
-
-  const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.deepEqual(config.durable_objects.bindings, [
-    {
-      name: 'RUNTIME_COORDINATOR',
-      class_name: 'RuntimeCoordinator',
-    },
-    {
-      name: 'BUDDIES_COLLECTOR_COORDINATOR',
-      class_name: 'BuddiesCollectorCoordinator',
-      script_name: 'sh-buddies-collector',
-    },
-  ]);
-  assert.deepEqual(config.migrations.at(-1), {
-    tag: 'runtime-coordinator-v1',
-    new_sqlite_classes: ['RuntimeCoordinator'],
-  });
-});
-
-test('internal Pages fetch is delegated without exposing another Worker', async () => {
+test('internal Pages fetch remains delegated to the serving adapter', async () => {
   const response = await runCoreFetch(new Request('https://internal.test/'), {}, {}, {
     runPagesFetch: async () => new Response('ok'),
   });
   assert.equal(await response.text(), 'ok');
 });
 
-test('runtime, collector, and recovery configs preserve domain isolation across four active Workers', () => {
+test('runtime, collector, and recovery configs preserve domain isolation', () => {
   const collector = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
     'utf8',
@@ -271,11 +113,8 @@ test('runtime, collector, and recovery configs preserve domain isolation across 
   const collectorConsumers = new Set(collector.queues.consumers.map(({ queue }) => queue));
   const recoveryConsumers = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   const runtimeConsumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
-  for (const queue of [
-    'stationhead-raw-collection',
-    'stationhead-comments',
-    'stationhead-buddies-persist',
-  ]) {
+
+  for (const queue of ['stationhead-raw-collection', 'stationhead-comments', 'stationhead-buddies-persist']) {
     assert.equal(recoveryConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
@@ -283,17 +122,23 @@ test('runtime, collector, and recovery configs preserve domain isolation across 
   for (const queue of [
     'stationhead-minute-enrichment',
     'stationhead-track-metadata',
-    'stationhead-pages-read-model-publication',
-    'stationhead-host-monitor',
     'stationhead-minute-live-derive',
   ]) {
     assert.equal(runtimeConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(recoveryConsumers.has(queue), false, queue);
   }
+  for (const retiredQueue of [
+    'stationhead-pages-read-model-publication',
+    'stationhead-read-model',
+    'stationhead-host-monitor',
+  ]) {
+    assert.equal(runtimeConsumers.has(retiredQueue), false, retiredQueue);
+  }
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.durable_objects, undefined);
   assert.equal(packageJson.scripts['deploy:buddies-recovery'], 'node scripts/deploy-buddies-recovery.mjs');
   assert.equal(packageJson.scripts['deploy:buddies-collector'], 'node scripts/deploy-buddies-collector.mjs');
-  assert.equal('deploy:minute-enrichment' in packageJson.scripts, false);
   assert.equal(packageJson.scripts['deploy:runtime'], 'node scripts/deploy-runtime.mjs');
   assert.deepEqual(pagesConfig.services, [{
     binding: 'PAGES_READ_MODEL_SERVICE',

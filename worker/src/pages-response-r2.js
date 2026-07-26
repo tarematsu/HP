@@ -1,4 +1,5 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
+const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v1/';
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
@@ -8,6 +9,11 @@ function normalizedModelKey(value) {
 export function pagesR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${R2_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json` : null;
+}
+
+export function pagesActionsR2ResponseKey(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  return key ? `${ACTIONS_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json` : null;
 }
 
 function objectOrNull(value) {
@@ -87,12 +93,42 @@ export async function promoteMaterializedD1ResponseToR2(
   );
 }
 
+async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
+  const key = pagesActionsR2ResponseKey(modelKey);
+  if (!key || typeof r2?.get !== 'function') return null;
+  const object = await r2.get(key);
+  if (!object?.body) return null;
+  let envelope;
+  try {
+    envelope = await object.json();
+  } catch {
+    return null;
+  }
+  if (Number(envelope?.version) !== 1) return null;
+  const updatedAt = Number(envelope?.updated_at);
+  if (!freshEnough(updatedAt, now, maximumAgeMs)) return null;
+  const headers = new Headers(objectOrNull(envelope?.headers) || {});
+  headers.set('x-api-source', 'actions-r2');
+  headers.set('x-materialized-at', String(updatedAt));
+  const cadence = Number(envelope?.cadence_seconds);
+  if (Number.isFinite(cadence) && cadence > 0) {
+    headers.set('x-materialized-cadence-seconds', String(Math.trunc(cadence)));
+  }
+  return new Response(String(envelope?.body || ''), {
+    status: Number(envelope?.status) || 200,
+    headers,
+  });
+}
+
 export async function loadMaterializedR2Response(
   r2,
   modelKey,
   now = Date.now(),
   maximumAgeMs = Number.MAX_SAFE_INTEGER,
 ) {
+  const actions = await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
+  if (actions) return actions;
+
   const key = pagesR2ResponseKey(modelKey);
   if (!key || typeof r2?.get !== 'function') return null;
   const object = await r2.get(key);

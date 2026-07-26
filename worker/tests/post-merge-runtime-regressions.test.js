@@ -15,7 +15,7 @@ import {
   staleUnavailableRevisionSource,
   transientQueueOverload,
 } from '../src/minute-derive-entry.js';
-import { runPagesReadModelQueue } from '../src/pages-read-model-entry.js';
+import { processReadModelMessage } from '../src/read-model-entry.js';
 
 const MINUTE = 60_000;
 
@@ -23,32 +23,30 @@ function config(name) {
   return JSON.parse(readFileSync(new URL(`../${name}`, import.meta.url), 'utf8'));
 }
 
-test('consolidated Pages route handles minute read-model messages even when batch.queue is absent', async () => {
+test('read-model compatibility handoff remains available without a runtime Queue consumer', async () => {
   const events = [];
-  const message = {
-    body: {
-      message_type: 'stationhead-read-model',
-      message_version: 1,
-      job_id: 'read-model:1:2',
-      read_model: {
-        queue: {
-          value: {
-            tracks: [{ title: null, artist: null, album_name: null, thumbnail_url: null }],
-          },
-        },
-      },
-    },
-    ack() { events.push('ack'); },
-    retry() { events.push('retry'); },
-  };
-
-  await runPagesReadModelQueue({ messages: [message] }, {
+  const result = await processReadModelMessage({
     TRACK_METADATA_QUEUE: {
       async send() { events.push('metadata'); },
     },
+  }, {
+    message_type: 'stationhead-read-model',
+    message_version: 1,
+    job_id: 'read-model:1:2',
+    observed_at: 2,
+    read_model: {
+      queue: {
+        value: {
+          tracks: [{ spotify_id: 'track', title: 'Song', artist: 'Artist', album_name: null, thumbnail_url: null }],
+        },
+      },
+    },
   });
 
-  assert.deepEqual(events, ['metadata', 'ack']);
+  assert.deepEqual(result, { deferred: true });
+  assert.deepEqual(events, ['metadata']);
+  const runtime = config('wrangler.runtime.jsonc');
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-read-model'), false);
 });
 
 test('optional comments are bounded inside the dedicated recovery ingest route', () => {

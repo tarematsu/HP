@@ -1,0 +1,44 @@
+name: Repair track metadata
+
+on:
+  schedule:
+    - cron: '12,42 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-metadata-repair
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    name: Consolidate and repair track metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      FACTS_DATABASE_NAME: stationhead-minute
+      TRACK_METADATA_ACTIONS_LIMIT: '150'
+      TRACK_METADATA_LOOKBACK_MS: '604800000'
+      TRACK_METADATA_REFRESH_MS: '86400000'
+      TRACK_METADATA_FETCH_CONCURRENCY: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Repair metadata backlog and playback read models
+        run: node scripts/repair-track-metadata-actions.mjs

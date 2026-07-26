@@ -10,7 +10,7 @@ import { recordMinuteFactRuntimeState } from '../src/minute-facts-runtime-state.
 import { processMinuteRebuildBatch } from '../src/minute-rebuild-batched-entry.js';
 import { throwIfSoftFailure } from '../src/soft-failure.js';
 
-const SYNC_CRON = '5,7,9,15,17,19,25,27,29,35,37,39,45,47,49,55,57,59 * * * *';
+const MAINTENANCE_CRON = '5,7,15,17,25,27,35,37,45,47,55,57 * * * *';
 const SCHEDULED_AT = Date.UTC(2026, 0, 1, 0, 9, 0);
 
 function queueMessage(body, events) {
@@ -40,10 +40,10 @@ test('numeric failed counters remain completion metrics rather than task soft fa
   }, 'minute maintenance'));
 });
 
-test('inline sync rejects a returned soft failure so runtime fallback can enqueue it', async () => {
+test('inline sync rejects a returned soft failure so a caller can retry it', async () => {
   await assert.rejects(
     runMinuteMaintenanceSyncInline(
-      { cron: SYNC_CRON, scheduledTime: SCHEDULED_AT },
+      { cron: MAINTENANCE_CRON, scheduledTime: SCHEDULED_AT },
       {},
       null,
       {
@@ -61,7 +61,7 @@ test('inline sync rejects a returned soft failure so runtime fallback can enqueu
   );
 });
 
-test('inline maintenance normalizes the consolidated runtime cron', async () => {
+test('compatibility inline maintenance uses the current bounded maintenance cron', async () => {
   let cron = null;
   await runMinuteMaintenanceSyncInline(
     { cron: '* * * * *', scheduledTime: SCHEDULED_AT },
@@ -75,13 +75,13 @@ test('inline maintenance normalizes the consolidated runtime cron', async () => 
       },
     },
   );
-  assert.equal(cron, SYNC_CRON);
+  assert.equal(cron, MAINTENANCE_CRON);
 });
 
 test('direct maintenance fallback rejects soft failures when the rebuild Queue binding is missing', async () => {
   await assert.rejects(
     dispatchMinuteMaintenanceGate(
-      { cron: SYNC_CRON, scheduledTime: SCHEDULED_AT },
+      { cron: MAINTENANCE_CRON, scheduledTime: SCHEDULED_AT },
       {},
       'sync',
       null,

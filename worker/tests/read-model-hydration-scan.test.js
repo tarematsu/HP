@@ -155,11 +155,10 @@ test('complete read models use the checkpointed writer directly', async () => {
   assert.strictEqual(written, readModel);
 });
 
-test('core deployment keeps the read-model Queue on a single-message boundary', async () => {
+test('compatibility read-model worker remains one-message but is not deployed as a runtime Queue', async () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const consumer = config.queues.consumers.find(({ queue }) => queue === 'stationhead-read-model');
-  assert.equal(consumer.max_batch_size, 1);
-  assert.equal(consumer.max_concurrency, 1);
+  assert.equal(consumer, undefined);
   assert.deepEqual(Object.keys(readModelWorker), ['queue']);
 
   let acknowledged = 0;

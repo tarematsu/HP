@@ -1,46 +1,58 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import {
-  pagesReadModelTask,
-  runDispatchedPagesReadModelTask,
-} from '../src/pages-read-model-dispatch.js';
-import { pagesSixHourTask } from '../src/pages-six-hour-read-model.js';
+import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
 
-const cycleStart = Date.UTC(2026, 6, 18, 0, 0, 0);
+const runner = readFileSync(
+  new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
+  'utf8',
+);
+const workflow = readFileSync(
+  new URL('../../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url),
+  'utf8',
+);
+const runtime = JSON.parse(readFileSync(
+  new URL('../wrangler.runtime.jsonc', import.meta.url),
+  'utf8',
+));
+const cycleStart = Date.UTC(2026, 6, 18);
 
- test('lightweight Pages dispatch matches the daily scheduler', () => {
-  for (const minute of [0, 1, 35, 50, 59, 70, 105, 140, 175, 395, 410, 430, 790, 1150, 1434, 1435, 1439]) {
-    const now = cycleStart + minute * 60_000;
-    assert.deepEqual(pagesReadModelTask(now), pagesSixHourTask(now));
-  }
-  assert.equal(pagesReadModelTask(cycleStart + 60 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(cycleStart + 1_000 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(cycleStart + 395 * 60_000).key, 'history:daily');
-  assert.equal(pagesReadModelTask(cycleStart + 410 * 60_000).kind, 'track-history-step');
+test('Actions applies tiered read-model cadences instead of a 24-hour minute-slot dispatcher', () => {
+  assert.deepEqual([...dueVariantKeys(cycleStart + 4 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+    'history:monthly',
+    'host-history:summary',
+    'track-history',
+  ]);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 19 * 60_000)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 184 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+  ]);
+  assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
-test('track-history minutes call only the injected stage or recovery runner', async () => {
-  const calls = [];
-  const now = cycleStart + 120 * 60_000;
-  const result = await runDispatchedPagesReadModelTask({
-    BUDDIES_DB: {},
-    MINUTE_DB: {},
-  }, now, {
-    async runTrackHistoryStep(env, timestamp) {
-      calls.push({ env, timestamp });
-      return { skipped: true, reason: 'track-history-publication-queue-active', responses: [], failed: 0 };
-    },
-  });
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].timestamp, now);
-  assert.equal(result.reason, 'track-history-publication-queue-active');
+test('track-history completes inside one bounded Actions process and publishes R2 only when due', () => {
+  assert.match(runner, /export async function runPagesReadModelActions/);
+  assert.match(runner, /runSplitTrackHistoryCycleStep/);
+  assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /trackHistoryPublishedThisRun/);
+  assert.match(runner, /dueKeys\.add\('track-history'\)/);
+  assert.match(runner, /process\.env\.PAGES_READ_MODEL_MAX_STEPS/);
+  assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
 });
 
-test('idle Pages minutes return without loading a materializer', async () => {
-  const now = cycleStart + 1_436 * 60_000;
-  const result = await runDispatchedPagesReadModelTask({}, now);
-  assert.equal(result.skipped, true);
-  assert.equal(result.reason, 'pages-read-model-cycle-idle');
+test('workflow runs every fifteen minutes without a Worker cron or read-model Queue', () => {
+  assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
+  assert.match(workflow, /timeout-minutes: 15/);
+  assert.match(workflow, /cancel-in-progress: true/);
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
+  assert.equal(runtime.queues.producers.some(({ binding }) => binding.includes('READ_MODEL')), false);
 });

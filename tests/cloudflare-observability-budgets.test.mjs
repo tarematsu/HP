@@ -56,7 +56,7 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
     'DAILY_QUEUE_BUDGET: "10000"',
     'CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator',
     'CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV',
-    'CLOUDFLARE_DO_BINDINGS: RUNTIME_COORDINATOR,BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR',
+    'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR',
     'id: free-tier-budget',
     'id: budget-contract',
     'id: d1-insights',

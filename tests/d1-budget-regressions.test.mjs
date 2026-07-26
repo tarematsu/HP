@@ -20,13 +20,16 @@ test('public health uses a primary-key high-water mark instead of a full fact co
   assert.doesNotMatch(text, /COUNT\(\*\) AS count FROM sh_minute_facts/);
 });
 
-test('stream-goal prediction defaults to a six-hour budget', () => {
+test('stream-goal prediction keeps a six-hour library default and Actions owns production cadence', () => {
   assert.equal(streamGoalPredictionIntervalMs({}), 6 * 60 * 60_000);
   assert.equal(streamGoalPredictionIntervalMs({ STREAM_GOAL_PREDICTION_INTERVAL_MS: 1_800_000 }), 1_800_000);
   const entry = source('../worker/src/stream-goal-prediction.js');
-  const config = source('../worker/wrangler.runtime.jsonc');
+  const runtime = JSON.parse(source('../worker/wrangler.runtime.jsonc'));
+  const actions = source('../worker/scripts/run-runtime-offline-maintenance-actions.mjs');
   assert.match(entry, /PREDICTION_WINDOW_MS = 6 \* 60 \* 60_000/);
-  assert.match(config, /"STREAM_GOAL_PREDICTION_INTERVAL_MS"\s*:\s*21600000/);
+  assert.equal(Object.hasOwn(runtime.vars, 'STREAM_GOAL_PREDICTION_INTERVAL_MS'), false);
+  assert.match(actions, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
+  assert.match(actions, /runStreamGoalPrediction/);
 });
 
 test('track-history refresh scans one recent and one backfill day per cycle', () => {

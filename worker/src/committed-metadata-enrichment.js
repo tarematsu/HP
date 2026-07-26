@@ -189,7 +189,7 @@ export async function repairCommittedPlaybackReadModels(env, saved, dependencies
     return { repaired: 0, skipped: true, reason: 'no-metadata-change' };
   }
   const repair = dependencies.repairPlaybackReadModels
-    || (await import('./buddies-facts-sync.js')).repairPlaybackReadModels;
+    || (await import('./playback-read-model-repair.js')).repairPlaybackReadModels;
   try {
     return await repair(env);
   } catch (error) {

@@ -214,14 +214,19 @@ test('gap commit dispatches at most the first prepared candidate per invocation'
   assert.deepEqual(sent.map((body) => body.minute_at), [60_000]);
 });
 
-test('historical reconstruction is enabled with bounded Queue throughput', () => {
+test('historical reconstruction Queue remains for explicit recovery but has no Worker scheduler', () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const entry = readFileSync(new URL('../src/minute-rebuild-entry.js', import.meta.url), 'utf8');
   const rebuild = runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
 
-  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, true);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, true);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
+  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, false);
+  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, false);
+  for (const name of [
+    'MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED',
+    'REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS',
+  ]) {
+    assert.equal(Object.hasOwn(runtime.vars, name), false, name);
+  }
   assert.equal(runtime.vars.DERIVE_DISPATCH_LIMIT, 2);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
   assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
@@ -232,6 +237,7 @@ test('historical reconstruction is enabled with bounded Queue throughput', () =>
   assert.match(entry, /processed_jobs/);
   assert.equal(rebuild.max_batch_size, 1);
   assert.equal(rebuild.max_concurrency, 1);
+  assert.equal(runtime.triggers, undefined);
   assert.equal(
     runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_DERIVE_QUEUE'),
     true,

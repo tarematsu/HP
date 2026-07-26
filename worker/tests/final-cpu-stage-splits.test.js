@@ -16,8 +16,6 @@ import {
   decodeRawCollectionTextMessage,
   textTransportQueue,
 } from '../src/raw-collection-text-transport.js';
-import { runRuntimeQueue } from '../src/runtime-queue.js';
-import { RAW_COLLECTION_TASK_MESSAGE } from '../src/runtime-scheduled.js';
 
 function message(body) {
   const events = [];
@@ -81,37 +79,6 @@ test('raw collection fetch stage uses text transport for the large response body
   const decoded = decodeRawCollectionTextMessage(sent[0].body);
   assert.equal(decoded.message_version, 1);
   assert.equal(decoded.body, '{"id":10}\n{"queue":[]}');
-});
-
-test('runtime routes raw session and fetch stages as independent acknowledgements', async () => {
-  const session = message({
-    message_type: RAW_COLLECTION_TASK_MESSAGE,
-    message_version: 1,
-    scheduled_at: 123,
-  });
-  const fetchStage = message({
-    message_type: RAW_COLLECTION_FETCH_MESSAGE,
-    message_version: 1,
-    channel_alias: 'buddies',
-    auth: { authToken: 'token', deviceUid: 'device' },
-  });
-  const dispatched = [];
-  await runRuntimeQueue({ messages: [session] }, { BUDDIES_DB: {} }, {}, {
-    collectionDependencies: {
-      async ensureSession() { return { authToken: 'token', deviceUid: 'device' }; },
-      async send(body) { dispatched.push(body); },
-    },
-  });
-  await runRuntimeQueue({ messages: [fetchStage] }, {}, {}, {
-    collectionFetchDependencies: {
-      async fetch() { return new Response('{}', { status: 200 }); },
-      async send(body) { dispatched.push(body); },
-    },
-  });
-  assert.deepEqual(session.events, ['ack']);
-  assert.deepEqual(fetchStage.events, ['ack']);
-  assert.equal(dispatched[0].message_type, RAW_COLLECTION_FETCH_MESSAGE);
-  assert.equal(dispatched[1].message_type, 'stationhead-raw-channel');
 });
 
 test('live write preparation preserves source job and complete revision state', async () => {

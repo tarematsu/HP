@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  dashboardMaterializationDue,
-  runPagesDashboardMaterialization,
-  runPagesReadModelFetch,
-} from '../src/pages-read-model-entry.js';
+import { runPagesResponseFetch } from '../src/pages-response-fetch-entry.js';
 import {
   loadMaterializedResponse,
   pagesResponseKey,
   saveMaterializedResponse,
 } from '../src/pages-response-store.js';
-import { runPagesSixHourTask } from '../src/pages-six-hour-read-model.js';
 import {
   ensurePagesResponseNamespace,
   namespaceIdFromList,
@@ -51,6 +46,10 @@ class FakeEdgeCache {
     this.puts += 1;
   }
 }
+
+const request = () => new Request(
+  'https://internal.test/_internal/pages-response?key=history%3Adaily',
+);
 
 test('materialized responses publish once to KV and are served as streams', async () => {
   const kv = new FakeKv();
@@ -102,33 +101,10 @@ test('dual storage failure never falls back to D1 response tables', async () => 
   ), /could not be persisted to KV or R2/);
 });
 
-test('dashboard materialization uses KV and R2 without another Queue message', async () => {
-  const atEvenMinute = Date.UTC(2026, 6, 20, 0, 35);
-  assert.equal(dashboardMaterializationDue(atEvenMinute), true);
-  assert.equal(dashboardMaterializationDue(atEvenMinute + 60_000), false);
-  assert.equal(dashboardMaterializationDue(atEvenMinute + 5 * 60_000), true);
-  const saves = [];
-  const result = await runPagesDashboardMaterialization({
-    MINUTE_DB: {},
-    PAGES_RESPONSE_KV: {},
-    PAGES_RESPONSE_R2: {},
-  }, atEvenMinute, {
-    renderDashboard: async () => Response.json({ ok: true }),
-    saveDashboardResponse: async (...args) => {
-      saves.push(args);
-      return { storage: 'kv', mirror_storage: 'r2', bytes: 11 };
-    },
-  });
-  assert.equal(result.storage, 'kv');
-  assert.equal(result.mirror_storage, 'r2');
-  assert.equal(saves[0][2], 'dashboard');
-  assert.equal(saves[0][5], 900);
-});
-
-test('the internal Worker endpoint returns a KV response or a closed fallback signal', async () => {
+test('internal endpoint returns a KV response or a closed fallback signal', async () => {
   const now = Date.UTC(2026, 6, 20, 0, 35);
-  const hit = await runPagesReadModelFetch(
-    new Request('https://internal.test/_internal/pages-response?key=history%3Adaily'),
+  const hit = await runPagesResponseFetch(
+    request(),
     { PAGES_RESPONSE_KV: {} },
     {
       now: () => now,
@@ -138,18 +114,18 @@ test('the internal Worker endpoint returns a KV response or a closed fallback si
   assert.equal(hit.status, 200);
   assert.deepEqual(await hit.json(), { source: 'kv' });
 
-  const miss = await runPagesReadModelFetch(
-    new Request('https://internal.test/_internal/pages-response?key=history%3Adaily'),
+  const miss = await runPagesResponseFetch(
+    request(),
     {},
-    { loadResponse: async () => null },
+    { loadResponse: async () => null, loadR2Response: async () => null },
   );
   assert.equal(miss.status, 404);
 });
 
-test('the internal Worker endpoint uses R2 when a normal KV model is absent', async () => {
+test('internal endpoint uses R2 when a normal KV model is absent', async () => {
   const calls = [];
-  const response = await runPagesReadModelFetch(
-    new Request('https://internal.test/_internal/pages-response?key=history%3Adaily'),
+  const response = await runPagesResponseFetch(
+    request(),
     {},
     {
       loadResponse: async () => { calls.push('kv'); return null; },
@@ -160,11 +136,24 @@ test('the internal Worker endpoint uses R2 when a normal KV model is absent', as
   assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
-test('the internal Worker endpoint uses Cache API as a same-colo L1 before KV', async () => {
+test('track-history prefers R2 before the legacy KV fallback', async () => {
+  const calls = [];
+  const response = await runPagesResponseFetch(
+    new Request('https://internal.test/_internal/pages-response?key=track-history'),
+    {},
+    {
+      loadR2Response: async () => { calls.push('r2'); return Response.json({ source: 'r2' }); },
+      loadResponse: async () => { calls.push('kv'); return null; },
+    },
+  );
+  assert.deepEqual(calls, ['r2']);
+  assert.deepEqual(await response.json(), { source: 'r2' });
+});
+
+test('internal endpoint uses Cache API as a same-colo L1 before KV', async () => {
   const cache = new FakeEdgeCache();
   const now = Date.UTC(2026, 6, 20, 0, 35);
-  const request = new Request('https://internal.test/_internal/pages-response?key=history%3Adaily');
-  const first = await runPagesReadModelFetch(request, {}, {
+  const first = await runPagesResponseFetch(request(), {}, {
     cache,
     now: () => now,
     loadResponse: async () => {
@@ -177,7 +166,7 @@ test('the internal Worker endpoint uses Cache API as a same-colo L1 before KV', 
   assert.equal(cache.puts, 1);
 
   let kvReads = 0;
-  const second = await runPagesReadModelFetch(request, {}, {
+  const second = await runPagesResponseFetch(request(), {}, {
     cache,
     now: () => now + 1_000,
     loadResponse: async () => {
@@ -190,12 +179,12 @@ test('the internal Worker endpoint uses Cache API as a same-colo L1 before KV', 
   assert.deepEqual(await second.json(), { source: 'kv' });
 });
 
-test('the internal Worker endpoint schedules Cache API writes on the real execution context', async () => {
+test('internal endpoint schedules Cache API writes on the real execution context', async () => {
   const cache = new FakeEdgeCache();
   const waits = [];
   const now = Date.UTC(2026, 6, 20, 0, 35);
-  const response = await runPagesReadModelFetch(
-    new Request('https://internal.test/_internal/pages-response?key=history%3Adaily'),
+  const response = await runPagesResponseFetch(
+    request(),
     {},
     { waitUntil(promise) { waits.push(promise); } },
     {
@@ -211,30 +200,6 @@ test('the internal Worker endpoint schedules Cache API writes on the real execut
   assert.equal(response.status, 200);
   await Promise.all(waits);
   assert.equal(cache.puts, 1);
-});
-
-test('six-hour variants use KV without provisioning D1 response tables', async () => {
-  const calls = [];
-  const now = Date.UTC(2026, 6, 20, 0, 35);
-  const result = await runPagesSixHourTask({
-    BUDDIES_DB: {},
-    MINUTE_DB: { prepare: () => ({ run: async () => {} }) },
-    OTHER_DB: {},
-    PAGES_RESPONSE_KV: { put() {} },
-    PAGES_RESPONSE_R2: { put() {} },
-  }, now, {
-    ensureSchema: async () => {},
-    render: async () => Response.json({ ok: true }),
-    saveResponse: async (...args) => {
-      calls.push(args);
-      return { storage: 'kv', bytes: 11, chunks: 1 };
-    },
-  });
-  assert.equal(result.failed, 0);
-  assert.equal(result.responses[0].storage, 'kv');
-  assert.equal(calls[0][2], 'history:daily');
-  assert.equal(calls[0][5], 21_600);
-  assert.equal(calls[0][6].r2.put instanceof Function, true);
 });
 
 test('deployment resolves the exact namespace and replaces the placeholder id', () => {

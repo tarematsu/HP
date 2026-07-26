@@ -2,68 +2,34 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import deployedWorker, {
-  RuntimeCoordinator,
-  runFetchCoordinatedScheduled,
-} from '../worker/src/runtime-orchestrator-deployed-entry.js';
+import deployedWorker from '../worker/src/runtime-orchestrator-deployed-entry.js';
 import {
   TRACK_HISTORY_RESPONSE_MAX_CHUNKS,
 } from '../worker/src/pages-track-history-response.js';
 
-test('deployed runtime uses fetch-based Durable Object coordination', async () => {
-  assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue', 'scheduled']);
-  const calls = [];
-  const stub = {
-    async fetch(_url, init) {
-      const body = JSON.parse(init.body);
-      calls.push(body);
-      if (body.action === 'claim') {
-        return Response.json({ claimed: true, holder_id: 'holder-1', lease_until: 80_000 });
-      }
-      return Response.json({ released: true });
-    },
-  };
-  const result = await runFetchCoordinatedScheduled(
-    { cron: '* * * * *', scheduledTime: 123 },
-    {},
-    {},
-    {
-      stub,
-      runDirect: async (_controller, env) => {
-        assert.equal(env.PRIMARY_RUN_LOCK_ENABLED, false);
-        return 'ok';
-      },
-    },
-  );
-  assert.equal(result, 'ok');
-  assert.deepEqual(calls.map(({ action }) => action), ['claim', 'release']);
-
-  const rows = new Map();
-  const coordinator = new RuntimeCoordinator({
-    storage: {
-      async get(key) { return rows.get(key); },
-      async put(key, value) { rows.set(key, value); },
-    },
-  });
-  const claimed = await coordinator.fetch(new Request('https://internal/lease', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      action: 'claim',
-      cron: '* * * * *',
-      scheduledTime: 123,
-      now: 1_000,
-      leaseMs: 70_000,
-    }),
-  }));
-  assert.equal(claimed.status, 200);
-  assert.equal((await claimed.json()).claimed, true);
+test('deployed runtime is queue-only with materialized-response serving', () => {
+  assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue']);
 
   const config = JSON.parse(readFileSync(
     new URL('../worker/wrangler.runtime.jsonc', import.meta.url),
     'utf8',
   ));
+  const entry = readFileSync(
+    new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url),
+    'utf8',
+  );
+  const actions = readFileSync(
+    new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url),
+    'utf8',
+  );
+
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
+  assert.equal(config.triggers, undefined);
+  assert.equal(config.durable_objects, undefined);
+  assert.doesNotMatch(entry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
+  assert.match(actions, /runRollupMaintenance/);
+  assert.match(actions, /pruneOldSnapshots/);
+  assert.match(actions, /runStreamGoalPrediction/);
 });
 
 test('track-history response capacity covers the production publication', () => {

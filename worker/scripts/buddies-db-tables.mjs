@@ -22,6 +22,7 @@ export const BUDDIES_DATA_TABLES = Object.freeze([
 
 export const BUDDIES_SCHEMA_ONLY_TABLES = Object.freeze([
   'sh_primary_run_lock',
+  'sh_runtime_run_lease',
   'sh_minute_fact_outbox',
 ]);
 
