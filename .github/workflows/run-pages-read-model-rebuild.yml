@@ -1,8 +1,11 @@
 name: Rebuild pages read models
 
 on:
+  workflow_run:
+    workflows: ["Run runtime offline maintenance"]
+    types: [completed]
   schedule:
-    - cron: '4,19,34,49 * * * *'
+    - cron: '19,49 * * * *'
   push:
     branches: [main]
     paths:
@@ -26,6 +29,10 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
+    if: >-
+      github.event_name != 'workflow_run'
+      || (github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'schedule')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -41,6 +48,8 @@ jobs:
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
