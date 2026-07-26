@@ -107,3 +107,27 @@ test('host resize is checked before synchronous WebView controller bounds reads'
   assert.ok(playbackHostCheck >= 0 && playbackHostCheck < playbackControllerCheck);
   assert.ok(authHostCheck >= 0 && authHostCheck < authControllerCheck);
 });
+
+test('layout reuses host size reads before controller bounds repair', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(hostWindow, hostWidth, hostHeight\)/g) ?? []).length,
+    1,
+  );
+  assert.equal(
+    (applyLayout.match(/WindowClientSizeMatches\(authHostWindow, width, height\)/g) ?? []).length,
+    1,
+  );
+  assert.match(
+    applyLayout,
+    /const bool hostSizeMatches[\s\S]*!hostWasVisible \|\| !hostSizeMatches[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
+  );
+  assert.match(
+    applyLayout,
+    /const bool authHostSizeMatches[\s\S]*!authWasVisible \|\| !authHostSizeMatches[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
+  );
+});
