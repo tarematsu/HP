@@ -62,6 +62,59 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
           current == expected;
 }
 
+bool PlaybackSurfaceMatches(HWND hostWindow,
+                            ICoreWebView2Controller* controller,
+                            const RECT& workspaceBounds,
+                            int width,
+                            int height,
+                            HWND placement) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
+    return false;
+  }
+  const RECT hostBounds{workspaceBounds.left, workspaceBounds.top,
+                        workspaceBounds.left + width,
+                        workspaceBounds.top + height};
+  const RECT controllerBounds{0, 0, width, height};
+  return WindowClientSizeMatches(hostWindow, width, height) &&
+         ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
+         ControllerBoundsMatch(controller, controllerBounds) &&
+         ControllerVisibilityMatches(controller, TRUE);
+}
+
+bool HiddenAuthSurfaceMatches(HWND authHostWindow,
+                              ICoreWebView2Controller* authController) noexcept {
+  const bool hostHidden = !authHostWindow || !IsWindow(authHostWindow) ||
+                          !IsWindowVisible(authHostWindow);
+  const bool controllerHidden = !authController ||
+      ControllerVisibilityMatches(authController, FALSE);
+  return hostHidden && controllerHidden;
+}
+
+bool ActiveAuthSurfaceMatches(HWND hostWindow,
+                              HWND authHostWindow,
+                              ICoreWebView2Controller* controller,
+                              ICoreWebView2Controller* authController,
+                              const RECT& workspaceBounds) noexcept {
+  if (!authHostWindow || !IsWindow(authHostWindow) ||
+      !IsWindowVisible(authHostWindow)) {
+    return false;
+  }
+  const int width = std::max(1L, workspaceBounds.right - workspaceBounds.left);
+  const int height = std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
+  const RECT authHostBounds{workspaceBounds.left, workspaceBounds.top,
+                            workspaceBounds.left + width,
+                            workspaceBounds.top + height};
+  const RECT authBounds{0, 0, width, height};
+  const bool playbackHidden =
+      (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) &&
+      (!controller || ControllerVisibilityMatches(controller, FALSE));
+  return playbackHidden &&
+         WindowClientSizeMatches(authHostWindow, width, height) &&
+         ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP) &&
+         ControllerBoundsMatch(authController, authBounds) &&
+         ControllerVisibilityMatches(authController, TRUE);
+}
+
 bool ConfiguresSecondaryStationheadWindow(const StationheadConfig& config) noexcept {
   return config.secondaryEnabled && !config.secondaryUrl.empty();
 }
@@ -138,11 +191,18 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool authHostValid = authHostWindow && IsWindow(authHostWindow);
   const bool hostWasVisible = hostValid && IsWindowVisible(hostWindow);
   const bool authWasVisible = authHostValid && IsWindowVisible(authHostWindow);
+  // Reuse each synchronous Win32 size read for both host placement and
+  // WebView2 bounds repair. If the host was resized, its controller bounds
+  // are already known to require an update, so no COM bounds read is needed.
+  const bool hostSizeMatches = showAuth ||
+      (hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight));
+  const bool authHostSizeMatches = !showAuth ||
+      (authHostValid && WindowClientSizeMatches(authHostWindow, width, height));
 
   if (hostValid) {
     if (showAuth) {
       if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else if (!hostWasVisible ||
+    } else if (!hostWasVisible || !hostSizeMatches ||
                !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
       SetWindowPos(hostWindow, hostPlacement,
                    bounds.left, bounds.top, hostWidth, hostHeight,
@@ -156,8 +216,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         controller->put_IsVisible(FALSE);
       }
     } else {
-      if (!ControllerBoundsMatch(controller, contentBounds) ||
-          !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
+      // Check the host first. A resize makes the controller update mandatory,
+      // so avoid a synchronous WebView2 COM read on that common transition.
+      if (!hostSizeMatches ||
+          !ControllerBoundsMatch(controller, contentBounds)) {
         controller->put_Bounds(contentBounds);
       }
       if (!ControllerVisibilityMatches(controller, TRUE)) {
@@ -168,7 +230,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authHostValid) {
     if (showAuth) {
-      if (!authWasVisible ||
+      if (!authWasVisible || !authHostSizeMatches ||
           !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
         SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
@@ -180,8 +242,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authController) {
     if (showAuth) {
-      if (!ControllerBoundsMatch(authController, authBounds) ||
-          !WindowClientSizeMatches(authHostWindow, width, height)) {
+      if (!authHostSizeMatches ||
+          !ControllerBoundsMatch(authController, authBounds)) {
         authController->put_Bounds(authBounds);
       }
       if (!ControllerVisibilityMatches(authController, TRUE)) {
@@ -256,6 +318,14 @@ void StationheadPlayer::SetStartupBounds() {
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
+  const int width = std::max(1L, bounds.right - bounds.left);
+  const int height = std::max(1L, bounds.bottom - bounds.top);
+  if (startupPreviewActive_ && EqualRect(&bounds_, &bounds) &&
+      PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds,
+                             width, height, HWND_TOP) &&
+      HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+    return;
+  }
   startupPreviewActive_ = true;
   bounds_ = bounds;
   LayoutControllers();
@@ -276,6 +346,18 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
+    // Audio and render-state notifications can converge on the same hide request.
+    // Verify the stable 1x1 playback surface before skipping all layout writes;
+    // a stale or externally disturbed host/controller still takes the repair path.
+    if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
+        !startupPreviewActive_ && !spotifyAuthorization_ && !loginRequired_ &&
+        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
+                               1, 1, HWND_BOTTOM) &&
+        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+      return;
+    }
+    const bool hadInteractiveSurface =
+        viewVisible_ || selectedTab_ != StationheadTabKind::None;
     selectedTab_ = StationheadTabKind::None;
     if (controller_) KeepPlaybackBehindDashboard();
     else {
@@ -283,7 +365,10 @@ void StationheadPlayer::SetVisible(bool visible) {
       std::lock_guard lock(mutex_);
       status_.visible = startupPreviewActive_;
     }
-    if (window_ && IsWindow(window_)) SetFocus(window_);
+    if (hadInteractiveSurface && !startupPreviewActive_ &&
+        window_ && IsWindow(window_) && GetFocus() != window_) {
+      SetFocus(window_);
+    }
     return;
   }
   if (selectedTab_ == StationheadTabKind::None && !NeedsInteractiveWindow()) {
@@ -298,6 +383,24 @@ void StationheadPlayer::SetVisible(bool visible) {
   if (selectedTab_ == StationheadTabKind::None && !NeedsInteractiveWindow()) {
     KeepPlaybackBehindDashboard();
     return;
+  }
+  // Re-selecting the active surface is common while login/auth state settles.
+  // Skip writes only after confirming both the active and inactive surfaces are
+  // already in the expected Win32 and WebView2 state.
+  if (viewVisible_) {
+    const int width = std::max(1L, bounds_.right - bounds_.left);
+    const int height = std::max(1L, bounds_.bottom - bounds_.top);
+    if (selectedTab_ == StationheadTabKind::Stationhead &&
+        PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
+                               width, height, HWND_TOP) &&
+        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+      return;
+    }
+    if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
+        ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
+                                 authController_.Get(), bounds_)) {
+      return;
+    }
   }
   const bool wasVisible = viewVisible_;
   viewVisible_ = true;
