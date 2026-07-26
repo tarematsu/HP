@@ -23,6 +23,7 @@ LOOKBACK_MINUTES = max(1, int(os.environ.get("LOOKBACK_MINUTES", "60")))
 ERROR_LEVELS = {"error", "fatal"}
 WARNING_LEVELS = {"warn", "warning"}
 CPU_CLASS_ORDER = {"http": 0, "cron": 1, "queue": 2, "durableObject": 3}
+CPU_METRICS = {"count": "cpu_samples", "median": "cpu_p50_ms", "p99": "cpu_p99_ms"}
 
 
 def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -110,6 +111,19 @@ def service_filters() -> list[dict[str, Any]]:
     ]
 
 
+def worker_script_filters() -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": "filter",
+            "key": "$workers.scriptName",
+            "operation": "eq",
+            "type": "string",
+            "value": worker,
+        }
+        for worker in WORKERS
+    ]
+
+
 def group_values(aggregate: dict[str, Any]) -> dict[str, Any]:
     groups = aggregate.get("groups")
     if isinstance(groups, dict):
@@ -136,17 +150,27 @@ def cpu_class_label(event_type: Any, execution_model: Any) -> str:
     return event or model or "unknown"
 
 
+def calculation_metric(calculation: dict[str, Any]) -> str:
+    alias = str(calculation.get("alias") or "").strip()
+    if alias in CPU_METRICS.values():
+        return alias
+    operator = str(calculation.get("calculation") or calculation.get("operator") or "").strip().lower()
+    return CPU_METRICS.get(operator, "")
+
+
 def parse_cpu_calculations(calculations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
     for calculation in calculations:
         if not isinstance(calculation, dict):
             continue
-        metric = str(calculation.get("alias") or calculation.get("calculation") or "").strip()
+        metric = calculation_metric(calculation)
+        if not metric:
+            continue
         for aggregate in calculation.get("aggregates") or []:
             if not isinstance(aggregate, dict):
                 continue
             groups = group_values(aggregate)
-            worker = str(groups.get("$metadata.service") or groups.get("$workers.scriptName") or "")
+            worker = str(groups.get("$workers.scriptName") or groups.get("$metadata.service") or "")
             event_type = str(groups.get("$workers.eventType") or "")
             execution_model = str(groups.get("$workers.executionModel") or "")
             if worker not in WORKERS:
@@ -201,7 +225,7 @@ def telemetry_cpu_metrics(account_id: str, start: dt.datetime, end: dt.datetime)
             "datasets": [],
             "filterCombination": "and",
             "filters": [
-                {"kind": "group", "filterCombination": "or", "filters": service_filters()},
+                {"kind": "group", "filterCombination": "or", "filters": worker_script_filters()},
                 {
                     "kind": "filter",
                     "key": "$workers.cpuTimeMs",
@@ -225,7 +249,7 @@ def telemetry_cpu_metrics(account_id: str, start: dt.datetime, end: dt.datetime)
                 },
             ],
             "groupBys": [
-                {"type": "string", "value": "$metadata.service"},
+                {"type": "string", "value": "$workers.scriptName"},
                 {"type": "string", "value": "$workers.eventType"},
                 {"type": "string", "value": "$workers.executionModel"},
             ],
@@ -399,12 +423,12 @@ def self_test() -> int:
     WORKERS[:] = ["a"]
     try:
         groups_http = [
-            {"key": "$metadata.service", "value": "a"},
+            {"key": "$workers.scriptName", "value": "a"},
             {"key": "$workers.eventType", "value": "fetch"},
             {"key": "$workers.executionModel", "value": "stateless"},
         ]
         groups_queue = [
-            {"key": "$metadata.service", "value": "a"},
+            {"key": "$workers.scriptName", "value": "a"},
             {"key": "$workers.eventType", "value": "queue"},
             {"key": "$workers.executionModel", "value": "stateless"},
         ]
@@ -412,14 +436,17 @@ def self_test() -> int:
             [
                 {
                     "alias": "cpu_samples",
+                    "calculation": "count",
                     "aggregates": [{"value": 9, "groups": groups_http}, {"value": 2, "groups": groups_queue}],
                 },
                 {
                     "alias": "cpu_p50_ms",
+                    "calculation": "median",
                     "aggregates": [{"value": 1.5, "groups": groups_http}, {"value": 40, "groups": groups_queue}],
                 },
                 {
                     "alias": "cpu_p99_ms",
+                    "calculation": "p99",
                     "aggregates": [{"value": 8, "groups": groups_http}, {"value": 200, "groups": groups_queue}],
                 },
             ]
@@ -427,6 +454,19 @@ def self_test() -> int:
         assert [(row["class"], row["samples"]) for row in rows] == [("http", 9), ("queue", 2)]
         assert rows[0]["cpu_p50_ms"] == 1.5 and rows[0]["cpu_p99_ms"] == 8
         assert rows[1]["cpu_p50_ms"] == 40 and rows[1]["cpu_p99_ms"] == 200
+
+        aliasless_rows = parse_cpu_calculations(
+            [
+                {"calculation": "count", "aggregates": [{"count": 4, "groups": groups_http}]},
+                {"calculation": "median", "aggregates": [{"value": 2.5, "groups": groups_http}]},
+                {"calculation": "P99", "aggregates": [{"value": 9.5, "groups": groups_http}]},
+            ]
+        )
+        assert len(aliasless_rows) == 1
+        assert aliasless_rows[0]["samples"] == 4
+        assert aliasless_rows[0]["cpu_p50_ms"] == 2.5
+        assert aliasless_rows[0]["cpu_p99_ms"] == 9.5
+        assert worker_script_filters()[0]["key"] == "$workers.scriptName"
         assert cpu_class_label("scheduled", "stateless") == "cron"
         assert cpu_class_label("fetch", "durableObject") == "durableObject/fetch"
     finally:
@@ -456,7 +496,7 @@ def main() -> int:
         f"- Window: `{iso(start)}` to `{iso(end)}`",
         f"- Account: `{ACCOUNT_ID[:8]}…`",
         "- Sources: GraphQL Analytics API and Workers Observability Telemetry API",
-        "- CPU percentiles are separated by invocation event type and execution model.",
+        "- CPU percentiles are separated by invocation event type and execution model when available.",
         f"- Persisted warnings: `{len(warnings)}` (reported without failing the gate)",
         "",
         "### Worker activity",
