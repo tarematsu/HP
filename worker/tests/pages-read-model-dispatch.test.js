@@ -26,6 +26,7 @@ test('Actions applies tiered read-model cadences instead of a 24-hour minute-slo
     'history:broadcasts',
     'history:monthly',
     'host-history:summary',
+    'track-history',
   ]);
   assert.deepEqual([...dueVariantKeys(cycleStart + 19 * 60_000)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(cycleStart + 184 * 60_000)], [
@@ -37,13 +38,14 @@ test('Actions applies tiered read-model cadences instead of a 24-hour minute-slo
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
-test('track-history completes inside one bounded Actions process', () => {
+test('track-history completes inside one bounded Actions process and publishes R2 only when due', () => {
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /trackHistoryPublishedThisRun/);
+  assert.match(runner, /dueKeys\.add\('track-history'\)/);
   assert.match(runner, /process\.env\.PAGES_READ_MODEL_MAX_STEPS/);
   assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
-  assert.match(runner, /track-history-cycle-already-published/);
 });
 
 test('workflow runs every fifteen minutes without a Worker cron or read-model Queue', () => {
