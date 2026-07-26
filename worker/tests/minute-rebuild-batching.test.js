@@ -92,13 +92,13 @@ test('one failed message retries without discarding a successful sibling', async
   assert.deepEqual(events, ['retry:1:60', 'ack:2']);
 });
 
-test('runtime rebuild delivery is capped at one message', () => {
+test('runtime does not expose the source-only rebuild Queue', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.runtime.jsonc', import.meta.url),
     'utf8',
   ));
   const rebuild = config.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
-  assert.equal(rebuild.max_batch_size, 1);
-  assert.equal(rebuild.max_concurrency, 1);
+  assert.equal(rebuild, undefined);
+  assert.equal(config.queues.producers.some(({ binding }) => binding === 'MINUTE_REBUILD_QUEUE'), false);
 });
