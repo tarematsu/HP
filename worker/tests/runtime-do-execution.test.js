@@ -101,6 +101,32 @@ test('direct mode does not retry an HTTP execution failure as a duplicate succes
   assert.equal(directCalls, 0);
 });
 
+test('production direct mode requires the Durable Object binding unless fail-open is explicit', async () => {
+  let directCalls = 0;
+  await assert.rejects(runFetchCoordinatedScheduled({
+    cron: '* * * * *',
+    scheduledTime: 220_000,
+  }, {
+    RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED: true,
+    RUNTIME_COORDINATOR_FAIL_OPEN: false,
+  }, {}, {
+    async runDirect() { directCalls += 1; },
+  }), /binding is unavailable in direct mode/);
+  assert.equal(directCalls, 0);
+
+  const fallback = await runFetchCoordinatedScheduled({
+    cron: '* * * * *',
+    scheduledTime: 221_000,
+  }, {
+    RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED: true,
+    RUNTIME_COORDINATOR_FAIL_OPEN: true,
+  }, {}, {
+    async runDirect() { directCalls += 1; return 'fallback'; },
+  });
+  assert.equal(fallback, 'fallback');
+  assert.equal(directCalls, 1);
+});
+
 test('RuntimeCoordinator runs the graph once and exposes Durable Object waitUntil', async () => {
   const durableStorage = storage();
   const calls = [];
