@@ -3,9 +3,9 @@ import collectorApp, {
   runBuddiesCollectorScheduled,
 } from './buddies-collector-core.js';
 import {
-  BuddiesCollectorCoordinator,
   runAlarmCoordinatedBuddiesCollectorScheduled,
 } from './buddies-collector-do-entry.js';
+import { BuddiesCollectorCoordinator } from './buddies-collector-coordinator-combined.js';
 
 export {
   BUDDIES_COLLECTOR_CRON,
@@ -15,8 +15,8 @@ export {
 };
 
 // Production executes each minute inside one Durable Object request. The
-// object serializes collection and keeps hot state; D1 remains the history and
-// checkpoint store. The direct function remains exported for tests/rollback.
+// object serializes collection, exposes completion status to dependent Workers,
+// and keeps hot state; D1 remains the history and checkpoint store.
 export default {
   ...collectorApp,
   scheduled: runAlarmCoordinatedBuddiesCollectorScheduled,
