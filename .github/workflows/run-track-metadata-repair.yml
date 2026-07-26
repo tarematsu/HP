@@ -39,6 +39,7 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
-      - run: npm ci --no-audit --no-fund
+      - name: Install Worker dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Repair metadata backlog and playback read models
         run: node scripts/repair-track-metadata-actions.mjs

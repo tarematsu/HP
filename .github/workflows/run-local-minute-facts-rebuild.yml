@@ -12,11 +12,11 @@ on:
 permissions:
   contents: read
 
-# A delayed scheduled run is stale by definition. Cancel it in favor of the newest
-# window; uploads are idempotent and the next run overlaps the cursor by 10 minutes.
+# Never cancel an upload that may already have committed part of its window.
+# Concurrency keeps one active run and coalesces later schedules behind it.
 concurrency:
   group: minute-facts-local-rebuild
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   rebuild:

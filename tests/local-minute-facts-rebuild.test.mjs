@@ -111,7 +111,8 @@ test('database workflow exports an incremental window before final upload', () =
   assert.doesNotMatch(workflow, /--table sh_worker_collector_state/);
   assert.match(caller, /cron: '7,22,37,52 \* \* \* \*'/);
   assert.match(caller, /group: minute-facts-local-rebuild/);
-  assert.match(caller, /cancel-in-progress: true/);
+  assert.match(caller, /cancel-in-progress: false/);
+  assert.match(caller, /Never cancel an upload that may already have committed part of its window/);
   assert.match(
     workflow,
     /if: \(github\.event_name == 'push' && inputs\.operation == ''\) \|\| inputs\.operation == 'buddies-db'/,
