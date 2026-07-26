@@ -39,7 +39,46 @@ namespace stationhead_boundary_message_policy {
 inline SRWLOCK leaseLock = SRWLOCK_INIT;
 inline UINT ownerMessage = 0;
 inline ULONGLONG expiresAt = 0;
+inline bool primaryReloadClockAssignmentPending = false;
+inline bool secondaryReloadClockAssignmentPending = false;
 }  // namespace stationhead_boundary_message_policy
+
+class StationheadBoundaryReloadClockProxy {
+ public:
+  StationheadBoundaryReloadClockProxy(
+      int64_t& storage, bool secondary) noexcept
+      : storage_(storage), secondary_(secondary) {}
+
+  operator int64_t() const noexcept { return storage_; }
+
+  void operator=(int64_t candidate) noexcept {
+    // The first successful Stationhead navigation establishes the initial
+    // 52-minute baseline. Once established, only a readiness message that App
+    // accepted for this role may advance it. Generic successful navigations
+    // (auth return, fallback, reconnect, WebView rebuild) therefore cannot
+    // postpone the next periodic authentication refresh.
+    bool accept = storage_ <= 0;
+    AcquireSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
+    bool& pending = secondary_
+        ? stationhead_boundary_message_policy::secondaryReloadClockAssignmentPending
+        : stationhead_boundary_message_policy::primaryReloadClockAssignmentPending;
+    if (pending) {
+      pending = false;
+      accept = true;
+    }
+    ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
+    if (accept) storage_ = candidate;
+  }
+
+ private:
+  int64_t& storage_;
+  bool secondary_;
+};
+
+inline StationheadBoundaryReloadClockProxy StationheadBoundaryReloadClock(
+    int64_t& storage, bool secondary) noexcept {
+  return StationheadBoundaryReloadClockProxy(storage, secondary);
+}
 
 // Both Stationhead windows can reach the 52-minute boundary in the same App
 // tick. Forward only one role's synchronous readiness messages at a time so A
@@ -77,6 +116,12 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
         completedAt + (result != 0
             ? kStationheadBoundaryCommittedLeaseMs
             : kStationheadBoundaryWaitingLeaseMs);
+    if (result != 0) {
+      bool& pending = message == WM_HP_SECONDARY_RELOAD_READY
+          ? stationhead_boundary_message_policy::secondaryReloadClockAssignmentPending
+          : stationhead_boundary_message_policy::primaryReloadClockAssignmentPending;
+      pending = true;
+    }
   }
   ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
   return result;
@@ -84,7 +129,9 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 
 }  // namespace hp
 
-// This policy header is the final HomePanel PCH layer. Windows headers have
-// already been parsed, so only application call sites are routed through the
-// pass-through wrapper above. Non-Stationhead messages retain native behavior.
+// This policy header is the final HomePanel PCH layer. Windows headers and the
+// policy implementation above have already been parsed, so only application
+// call sites are routed through these final aliases.
 #define SendMessageW SendMessageWWithStationheadBoundaryLease
+#define lastReloadAt_ \
+  (::hp::StationheadBoundaryReloadClock((lastReloadAtStorage_), IsSecondary()))
