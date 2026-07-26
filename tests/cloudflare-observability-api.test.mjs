@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
 const queryScript = readSource('.github/scripts/query-cloudflare-observability.py');
+const diagnosticsAction = readSource('.github/actions/cloudflare-observability-diagnostics/action.yml');
 const auditScript = readSource('.github/scripts/audit-cloudflare-telemetry.py');
 const auditUrl = new URL('../.github/scripts/audit-cloudflare-telemetry.py', import.meta.url);
 const deployedAuditScript = readSource('.github/scripts/audit-deployed-cloudflare-telemetry.py');
@@ -46,6 +47,12 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'accounts?per_page=50',
     'user/tokens/verify',
     '::warning title=Cloudflare Worker errors',
+  ]);
+  expectAll(diagnosticsAction, [
+    'persisted_error_events=0',
+    'Cloudflare Worker aggregate errors',
+    'aggregate_error_only=1',
+    'query_status != 0 && aggregate_error_only == 0',
   ]);
 
   expectAll(auditScript, [
