@@ -41,6 +41,7 @@ test('tiered cadence regenerates only the due variants', () => {
     'history:broadcasts',
     'history:monthly',
     'host-history:summary',
+    'track-history',
   ]);
   assert.deepEqual([...dueVariantKeys(DAY + 19 * 60_000)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(DAY + 64 * 60_000)], ['dashboard', 'history:daily']);
@@ -62,6 +63,27 @@ test('runner completes a published track-history generation and materializes onl
   assert.equal(result.track_history_steps, 1);
   assert.deepEqual(published, ['dashboard']);
   assert.equal(result.published[0].key, 'dashboard');
+});
+
+test('runner publishes track-history immediately when the generation completes', async () => {
+  const published = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 19 * 60_000,
+    deadlineMs: DAY + 30 * 60_000,
+    now: () => DAY + 19 * 60_000,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => ({
+      task: { kind: 'track-history-published' },
+      stage: { published: true },
+      publication: { published: true, phase: 'published' },
+    }),
+    materializeVariant: async (variant) => {
+      published.push(variant.key);
+      return { key: variant.key };
+    },
+  });
+  assert.deepEqual(published, ['dashboard', 'track-history']);
+  assert.equal(result.track_history_result.publication.published, true);
 });
 
 test('runner fails when a generation exceeds its bounded step count', async () => {
