@@ -17,7 +17,7 @@ const INGEST_QUEUES = Object.freeze([
   'stationhead-buddies-persist',
 ]);
 
-test('collector owns only the scheduled surface and recovery owns legacy Queue lanes', () => {
+test('collector owns the scheduled collection surface and recovery owns ingest Queue lanes', () => {
   const collector = config('../wrangler.buddies-collector.jsonc');
   const recovery = config('../wrangler.buddies-recovery.jsonc');
   const runtime = config('../wrangler.runtime.jsonc');
@@ -32,7 +32,8 @@ test('collector owns only the scheduled surface and recovery owns legacy Queue l
     'stationhead-raw-collection',
   );
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'RAW_COLLECTION_QUEUE'), false);
-  assert.equal(runtime.vars.RAW_COLLECTION_ENABLED, false);
+  assert.equal(Object.hasOwn(runtime.vars, 'RAW_COLLECTION_ENABLED'), false);
+  assert.equal(runtime.triggers, undefined);
   assert.match(collectorEntry, /runBuddiesCollectorScheduled/);
   assert.doesNotMatch(collectorEntry, /\bfetch\s*:/);
   assert.match(recoveryEntry, /runBuddiesRecoveryQueue/);
