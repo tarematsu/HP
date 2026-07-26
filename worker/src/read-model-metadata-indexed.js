@@ -23,6 +23,10 @@ function missingSchema(error) {
   return /no such table|no such column/i.test(String(error?.message || error));
 }
 
+function missingIndex(error) {
+  return /no such index/i.test(String(error?.message || error));
+}
+
 function complete(row) {
   return Boolean(row?.title && row?.artist && row?.thumbnail_url);
 }
@@ -69,10 +73,18 @@ async function metadataRowsBySpotify(db, spotifyIds) {
 
 async function metadataRowsByIsrc(db, isrcs) {
   if (!isrcs.length) return [];
-  return runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
-    FROM sh_track_metadata INDEXED BY idx_sh_track_metadata_isrc
-    WHERE isrc IN (${placeholders(isrcs.length)})
-    ORDER BY fetched_at DESC`, isrcs);
+  const where = `WHERE isrc IN (${placeholders(isrcs.length)})
+    ORDER BY fetched_at DESC`;
+  try {
+    return await runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+      FROM sh_track_metadata INDEXED BY idx_sh_track_metadata_isrc
+      ${where}`, isrcs);
+  } catch (error) {
+    if (!missingIndex(error)) throw error;
+    return runRows(db, `SELECT spotify_id,isrc,title,artist,thumbnail_url,fetched_at
+      FROM sh_track_metadata
+      ${where}`, isrcs);
+  }
 }
 
 async function indexedRows(db, spotifyIds, isrcs, { dictionary = false } = {}) {
