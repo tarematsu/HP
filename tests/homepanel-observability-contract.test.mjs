@@ -9,6 +9,7 @@ const root = new URL('../', import.meta.url);
 test('HomePanel observability is covered by the canonical unified workflow and issue', async () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const publisher = readSource('.github/scripts/publish-cloudflare-observability-status.mjs');
+  const deployedTelemetry = readSource('.github/scripts/audit-deployed-cloudflare-telemetry.py');
   const unifiedCi = readSource('.github/workflows/homepanel-unified-ci.yml');
   const usageDocumentation = readSource('hp/cloud/D1_USAGE_MEASUREMENT.md');
 
@@ -37,6 +38,13 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     "readOptionalJson('active-worker-deployments.json')",
     'publishCommitStatuses',
     'upsertStatusIssue',
+  ]);
+  expectAll(deployedTelemetry, [
+    'CRON_COVERAGE_INGESTION_GRACE_SECONDS',
+    'def _next_cron_time(',
+    'def _worker_grace_seconds(',
+    'CPU_COVERAGE_CRON_GRACE',
+    'schedule-aware deployment coverage grace self-test passed',
   ]);
   expectAll(unifiedCi, [
     'python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test',
