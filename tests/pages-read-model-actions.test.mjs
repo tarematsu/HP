@@ -6,6 +6,7 @@ const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const deployedEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
 const runtimeEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
+const responseFetch = readFileSync(new URL('../worker/src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
 const r2Store = readFileSync(new URL('../worker/src/pages-response-r2.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
@@ -30,11 +31,14 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
 });
 
-test('runtime serves materialized responses but owns no read-model scheduler', () => {
+test('runtime serves materialized responses through a serving-only module', () => {
   assert.equal(runtime.triggers, undefined);
   assert.equal(Object.hasOwn(runtime.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
   assert.doesNotMatch(deployedEntry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
-  assert.match(runtimeEntry, /loadPagesResponseModule/);
-  assert.match(runtimeEntry, /runPagesReadModelFetch/);
-  assert.doesNotMatch(runtimeEntry, /runPagesReadModelCron|runCoreScheduled|pagesScheduledDue/);
+  assert.match(runtimeEntry, /pages-response-fetch-entry\.js/);
+  assert.match(runtimeEntry, /runPagesResponseFetch/);
+  assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runPagesReadModelCron|runCoreScheduled|pagesScheduledDue/);
+  assert.match(responseFetch, /loadMaterializedR2Response/);
+  assert.match(responseFetch, /loadMaterializedResponse/);
+  assert.doesNotMatch(responseFetch, /pages-read-model-dispatch|track-history-publication|PAGES_READ_MODEL_QUEUE/);
 });
