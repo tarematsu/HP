@@ -97,6 +97,8 @@ bool ParseDashboardSnapshot(
 
     const JsonObject weather = json::Object(root, L"weather");
     next.revisions.weather = SectionRevision(weather);
+    const std::wstring weatherStatus = json::Text(weather, L"__status", L"ok");
+    next.weatherOutage = weatherStatus != L"ok";
     const JsonObject hourly = json::Object(weather, L"hourly");
     const double startHourValue = json::Number(weather, L"startHour", 22);
     const int startHour = std::isfinite(startHourValue) && startHourValue >= 0 && startHourValue < 24

@@ -300,10 +300,6 @@ function parseWeatherNewsCurrent(payload: unknown, now = new Date()): WeatherFor
   };
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export async function fetchWeather(env: Env): Promise<SourceResult> {
   const now = new Date();
   const url = env.WEATHERNEWS_URL?.trim();
@@ -316,17 +312,7 @@ export async function fetchWeather(env: Env): Promise<SourceResult> {
     endpoint.searchParams.set("lat", String(coordinates.lat));
     endpoint.searchParams.set("lon", String(coordinates.lon));
     endpoint.searchParams.set("tm", String(Math.floor(now.getTime() / 1000)));
-    try {
-      forecast = parseWeatherNewsCurrent(await fetchJson<unknown>(endpoint.toString()), now);
-    } catch (currentError) {
-      try {
-        forecast = parseWeatherNews(await fetchText(url), now);
-      } catch (legacyError) {
-        throw new Error(
-          `WeatherNews current data failed: ${errorText(currentError)}; legacy page failed: ${errorText(legacyError)}`,
-        );
-      }
-    }
+    forecast = parseWeatherNewsCurrent(await fetchJson<unknown>(endpoint.toString()), now);
   } else {
     forecast = parseWeatherNews(await fetchText(url), now);
   }

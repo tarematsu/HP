@@ -146,6 +146,14 @@ void Renderer::DrawWeatherSection(HDC dc, const RECT& card) {
 
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   const RECT body = content;
+  if (nativeDashboard_.weatherOutage) {
+    SelectObject(dc, TierFont(FontTier::Large));
+    SetTextColor(dc, kWidgetDanger);
+    DrawTextInRect(dc, L"障害中", body, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, previousFont);
+    return;
+  }
+
   const int bodyWidth = std::max(1, static_cast<int>(body.right - body.left));
   const int bodyHeight = std::max(1, static_cast<int>(body.bottom - body.top));
   const int columnGap = std::max(3, SpanX(body, 18));
