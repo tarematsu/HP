@@ -31,7 +31,7 @@ function coordinatorEnv(coordinator, db = null) {
   };
 }
 
-test('runtime diagnostic counters are accumulated in the existing RuntimeCoordinator', async () => {
+test('runtime diagnostic counters are accumulated in the existing RuntimeCoordinator namespace', async () => {
   const durableStorage = storage();
   const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {});
   const env = coordinatorEnv(coordinator);
@@ -67,6 +67,26 @@ test('runtime diagnostic counters are accumulated in the existing RuntimeCoordin
     [...durableStorage.values.keys()].some((key) => key === 'runtime-state:task:derive'),
     true,
   );
+});
+
+test('an empty Durable Object state falls back to existing D1 diagnostics during migration', async () => {
+  const durableStorage = storage();
+  const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {});
+  const calls = [];
+  const db = {
+    prepare(sql) {
+      calls.push(sql);
+      return {
+        bind() { return this; },
+        async first() { return { task_name: 'derive', runs_total: 9, pending_count: 0 }; },
+        async all() { return { results: [{ task_name: 'derive', runs_total: 9 }] }; },
+      };
+    },
+  };
+  const env = coordinatorEnv(coordinator, db);
+  assert.equal((await readMinuteFactRuntimeState(env, 'derive')).runs_total, 9);
+  assert.deepEqual(await readMinuteFactRuntimeState(env), [{ task_name: 'derive', runs_total: 9 }]);
+  assert.equal(calls.length, 2);
 });
 
 test('runtime state falls back to D1 when the Durable Object request fails', async () => {
