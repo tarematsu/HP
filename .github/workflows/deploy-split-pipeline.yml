@@ -240,8 +240,14 @@ jobs:
       - name: Check Pages source
         run: npm run check
         working-directory: site
+      - name: Resolve Pages production branch
+        id: pages-project
+        run: node .github/scripts/resolve-pages-production-branch.mjs skrzk
       - name: Deploy Pages from GitHub Actions
-        run: npx wrangler pages deploy public --project-name skrzk --branch main
+        run: >-
+          npx wrangler pages deploy public
+          --project-name skrzk
+          --branch "${{ steps.pages-project.outputs.production_branch }}"
         working-directory: site
       - name: Retire legacy Pages-bound Worker after binding cutover
         run: >-
