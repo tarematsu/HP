@@ -7,7 +7,7 @@ const script = readSource('.github/scripts/cloudflare_free_tier_audit.py');
 const runtime = JSON.parse(readSource('worker/wrangler.runtime.jsonc'));
 const collector = JSON.parse(readSource('worker/wrangler.buddies-collector.jsonc'));
 const responseStore = readSource('worker/src/pages-response-store.js');
-const responseEntry = readSource('worker/src/pages-read-model-entry.js');
+const responseFetch = readSource('worker/src/pages-response-fetch-entry.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
@@ -115,7 +115,8 @@ test('surplus KV and R2 capacity replaces materialized-response D1 writes and re
   expectAll(responseStore, ['if (kvSaved)', 'if (r2Saved) return r2Saved']);
   expectNone(responseStore, ['saveD1Response', 'sh_pages_response_manifest', 'sh_pages_response_chunks']);
   expectNone(pagesMiddleware, ['sh_pages_response_manifest', 'sh_pages_response_chunks']);
-  assert.match(responseEntry, /await loadKv[\s\S]*\|\| await loadR2/);
+  expectAll(responseFetch, ['loadMaterializedResponse', 'loadMaterializedR2Response']);
+  expectNone(responseFetch, ['sh_pages_response_manifest', 'sh_pages_response_chunks', 'runPagesReadModelCron']);
   expectAll(queuePlanR2, ['operational/queue-plan/v1', 'await r2.delete']);
 
   const maximumDailyVariantWrites = 17;
