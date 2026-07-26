@@ -23,7 +23,9 @@ on:
 
 concurrency:
   group: native-windows-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  # Supersede stale PR validation, but never interrupt a main release before
+  # its binaries and manifest have reached R2.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
