@@ -209,7 +209,8 @@ test('unified Cloudflare observability runs after either deploy and daily at 01:
   assert.match(observability, /steps\.free-tier-budget\.outcome == 'failure'/);
   assert.match(observability, /steps\.budget-contract\.outcome == 'failure'/);
   assert.match(observability, /steps\.d1-insights\.outcome == 'failure'/);
-  assert.match(observability, /steps\.observability-query\.outcome == 'failure'/);
+  assert.match(observability, /steps\.observability-query\.outputs\.query-outcome == 'failure'/);
+  assert.match(observability, /steps\.observability-query\.outputs\.public-health-outcome == 'failure'/);
   assert.match(observability, /steps\.telemetry-policy\.outcome == 'failure'/);
   assert.doesNotMatch(observability, /R2_BUCKET|AWS_ACCESS_KEY_ID|aws s3api/);
   assert.match(observability, /Upload sanitized observability report/);
