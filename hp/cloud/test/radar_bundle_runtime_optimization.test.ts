@@ -41,7 +41,7 @@ describe("radar bundle runtime optimization", () => {
     const put = vi.fn(async (_key: string, _body: Uint8Array, _options: PutOptions) => undefined);
     const env = {
       DATA_BUCKET: { put },
-      SCHEDULER_COORDINATOR: namespace,
+      RADAR_BUNDLE_COORDINATOR: namespace,
     } as unknown as Env;
 
     await expect(prewarmRadarBundle(env, payload(), baseTime)).resolves.toBe(true);
