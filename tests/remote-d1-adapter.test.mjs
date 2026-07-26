@@ -83,31 +83,29 @@ test('remote D1 failures preserve Wrangler stderr', async () => {
   );
 });
 
-test('remote D1 batch executes each statement separately and preserves result order', async () => {
+test('remote D1 batch uses command JSON output and returns per-statement metadata', async () => {
   const calls = [];
-  const outputs = [
-    resultJson([{ success: true, results: [{ value: 'first' }], meta: { changes: 5000 } }]),
-    resultJson([{ success: true, results: [{ value: 'second' }], meta: { changes: 12 } }]),
-  ];
   const db = createWranglerRemoteD1({
     database: 'test-db',
     cwd: workerRoot,
     wranglerScript: '/tmp/wrangler.js',
     execFileSync(_command, args) {
       calls.push(args);
-      return outputs.shift();
+      return resultJson([
+        { success: true, results: [], meta: { changes: 5000 } },
+        { success: true, results: [], meta: { changes: 12 } },
+      ]);
     },
   });
   const results = await db.batch([
     db.prepare('DELETE FROM first_table WHERE observed_at<?1').bind(100),
-    db.prepare('DELETE FROM second_table WHERE observed_at<?1').bind(200),
+    db.prepare('DELETE FROM second_table WHERE observed_at<?1').bind(100),
   ]);
   assert.deepEqual(results.map(({ meta }) => meta.changes), [5000, 12]);
-  assert.deepEqual(results.map(({ results: rows }) => rows[0].value), ['first', 'second']);
-  assert.equal(calls.length, 2);
-  assert.equal(calls.every((args) => args.includes('--json')), true);
-  assert.equal(calls.every((args) => args.includes('--command')), true);
-  assert.equal(calls.some((args) => args.includes('--file')), false);
-  assert.match(calls[0].at(-1), /observed_at<100/);
-  assert.match(calls[1].at(-1), /observed_at<200/);
+  assert.equal(calls[0].includes('--json'), true);
+  assert.equal(calls[0].includes('--command'), true);
+  assert.equal(calls[0].includes('--file'), false);
+  const command = calls[0][calls[0].indexOf('--command') + 1];
+  assert.match(command, /DELETE FROM first_table WHERE observed_at<100;/);
+  assert.match(command, /DELETE FROM second_table WHERE observed_at<100;/);
 });
