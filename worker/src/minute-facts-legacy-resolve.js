@@ -41,20 +41,53 @@ function orderedAliasLookup(aliases) {
   };
 }
 
-async function updateExistingHost(db, aliases, accountId, handle, observedAt) {
+async function findExistingHost(db, aliases) {
   const lookup = orderedAliasLookup(aliases);
-  return db.prepare(`UPDATE sh_hosts SET
-      stationhead_account_id=COALESCE(stationhead_account_id,?),
-      current_handle=COALESCE(?,current_handle),
-      last_seen_at=MAX(last_seen_at,?)
-    WHERE id=(
+  return db.prepare(`SELECT id,stationhead_account_id,current_handle,last_seen_at
+    FROM sh_hosts WHERE id=(
       SELECT host_id FROM sh_host_aliases
       WHERE ${lookup.predicate}
       ORDER BY ${lookup.priority} LIMIT 1
+    ) LIMIT 1`)
+    .bind(...lookup.binds)
+    .first();
+}
+
+export function hostCheckpointDue(existing, accountId, handle, observedAt) {
+  if (!existing?.id) return false;
+  if (existing.stationhead_account_id == null && accountId != null) return true;
+  if (handle != null && String(existing.current_handle ?? '') !== String(handle)) return true;
+  return Number(observedAt) - Number(existing.last_seen_at || 0) >= SESSION_HEARTBEAT_MS;
+}
+
+async function checkpointExistingHost(db, existing, accountId, handle, observedAt) {
+  const hostId = Number(existing?.id);
+  if (!Number.isFinite(hostId) || !hostCheckpointDue(existing, accountId, handle, observedAt)) {
+    return hostId;
+  }
+  const row = await db.prepare(`UPDATE sh_hosts SET
+      stationhead_account_id=COALESCE(stationhead_account_id,?),
+      current_handle=COALESCE(?,current_handle),
+      last_seen_at=MAX(last_seen_at,?)
+    WHERE id=? AND (
+      (stationhead_account_id IS NULL AND ? IS NOT NULL)
+      OR (? IS NOT NULL AND current_handle IS NOT ?)
+      OR ?-COALESCE(last_seen_at,0)>=?
     )
     RETURNING id`)
-    .bind(accountId, handle, observedAt, ...lookup.binds)
+    .bind(
+      accountId,
+      handle,
+      observedAt,
+      hostId,
+      accountId,
+      handle,
+      handle,
+      observedAt,
+      SESSION_HEARTBEAT_MS,
+    )
     .first();
+  return Number(row?.id ?? hostId);
 }
 
 async function upsertHostAliases(db, hostId, aliases, observedAt) {
@@ -82,23 +115,17 @@ export async function resolveHost(db, source = {}, observedAt = Date.now()) {
   ]);
   if (!aliases.length) return null;
 
-  const existing = await updateExistingHost(db, aliases, accountId, handle, observedAt);
-  let hostId = Number(existing?.id);
+  const existing = await findExistingHost(db, aliases);
+  let hostId = await checkpointExistingHost(db, existing, accountId, handle, observedAt);
   const canonicalKey = `${aliases[0].type}:${aliases[0].value}`;
   if (!Number.isFinite(hostId)) {
     await db.prepare(`INSERT OR IGNORE INTO sh_hosts(
       canonical_key,stationhead_account_id,current_handle,first_seen_at,last_seen_at
     ) VALUES(?,?,?,?,?)`).bind(canonicalKey, accountId, handle, observedAt, observedAt).run();
-    const row = await db.prepare('SELECT id FROM sh_hosts WHERE canonical_key=?')
+    const row = await db.prepare(`SELECT id,stationhead_account_id,current_handle,last_seen_at
+      FROM sh_hosts WHERE canonical_key=? LIMIT 1`)
       .bind(canonicalKey).first();
-    hostId = Number(row?.id);
-    if (Number.isFinite(hostId)) {
-      await db.prepare(`UPDATE sh_hosts SET
-          stationhead_account_id=COALESCE(stationhead_account_id,?),
-          current_handle=COALESCE(?,current_handle),
-          last_seen_at=MAX(last_seen_at,?)
-        WHERE id=?`).bind(accountId, handle, observedAt, hostId).run();
-    }
+    hostId = await checkpointExistingHost(db, row, accountId, handle, observedAt);
   }
   if (!Number.isFinite(hostId)) return null;
 
