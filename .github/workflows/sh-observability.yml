@@ -17,6 +17,7 @@ on:
       - '.github/scripts/query-cloudflare-observability.py'
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
+      - '.github/scripts/capture-public-health-endpoints.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
   schedule:
@@ -220,6 +221,8 @@ jobs:
             d1-insights.log
             observability-summary.md
             observability-query.log
+            public-health-endpoints.md
+            public-health-endpoints.log
             telemetry-summary.md
             telemetry-audit.log
             active-worker-deployments.json
