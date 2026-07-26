@@ -1,7 +1,5 @@
-import {
-  attachReadModelTrackMetadata,
-  loadReadModelTrackMetadata,
-} from './minute-facts-read-model.js';
+import { attachReadModelTrackMetadata } from './minute-facts-read-model.js';
+import { loadReadModelTrackMetadata } from './read-model-metadata-indexed.js';
 
 function text(value) {
   if (value == null || value === '') return null;
