@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   MATERIALIZED_API_VARIANTS,
@@ -15,9 +16,6 @@ const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
-const maxSteps = Math.max(1, Math.min(3000, Math.trunc(Number(process.env.PAGES_READ_MODEL_MAX_STEPS || 1800))));
-const startedAt = Date.now();
-const deadlineMs = startedAt + Math.max(60_000, Math.trunc(Number(process.env.PAGES_READ_MODEL_DEADLINE_MS || 12 * 60_000)));
 
 function wrangler(args, options = {}) {
   return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -68,7 +66,7 @@ function execute(database, sql, json = true) {
 
 function createStatement(database, sql, bindings = []) {
   const rendered = () => bindSql(sql, bindings);
-  const statement = {
+  return {
     __sql: String(sql),
     __bindings: bindings,
     bind(...values) { return createStatement(database, sql, values); },
@@ -79,7 +77,6 @@ function createStatement(database, sql, bindings = []) {
       return { success: true, meta: rows[0]?.meta || {}, results: rows };
     },
   };
-  return statement;
 }
 
 function createRemoteD1(database) {
@@ -89,7 +86,9 @@ function createRemoteD1(database) {
       const directory = mkdtempSync(join(workerRoot, '.pages-read-model-actions-'));
       try {
         const path = join(directory, 'batch.sql');
-        const sql = statements.map((statement) => `${bindSql(statement.__sql, statement.__bindings || [])};`).join('\n');
+        const sql = statements
+          .map((statement) => `${bindSql(statement.__sql, statement.__bindings || [])};`)
+          .join('\n');
         writeFileSync(path, `${sql}\n`, 'utf8');
         wrangler(['d1', 'execute', database, '--remote', '--yes', '--file', path], { capture: false });
         return statements.map(() => ({ success: true, meta: {} }));
@@ -100,8 +99,8 @@ function createRemoteD1(database) {
   };
 }
 
-function dueVariantKeys(now) {
-  const minute = Math.floor(now / 60_000);
+export function dueVariantKeys(now) {
+  const minute = Math.floor(Number(now) / 60_000);
   const due = new Set(['dashboard']);
   if (minute % 60 === 4) due.add('history:daily');
   if (minute % 180 === 4) {
@@ -124,7 +123,9 @@ function persistedHeaders(response) {
   const headers = {};
   for (const [key, value] of response.headers.entries()) {
     const normalized = key.toLowerCase();
-    if (normalized === 'cache-control' || normalized === 'content-length' || normalized === 'transfer-encoding') continue;
+    if (normalized === 'cache-control'
+        || normalized === 'content-length'
+        || normalized === 'transfer-encoding') continue;
     headers[key] = value;
   }
   if (!headers['content-type']) headers['content-type'] = 'application/json; charset=utf-8';
@@ -158,7 +159,9 @@ async function materializeVariant(variant, env, now) {
     env,
   });
   const body = await response.text();
-  if (!response.ok) throw new Error(`${variant.key} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
+  if (!response.ok) {
+    throw new Error(`${variant.key} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
+  }
   JSON.parse(body);
   const envelope = {
     version: 1,
@@ -175,45 +178,81 @@ async function materializeVariant(variant, env, now) {
   };
 }
 
-const minuteDb = createRemoteD1(factsDatabase);
-const buddiesDb = createRemoteD1(buddiesDatabase);
-const otherDb = createRemoteD1(otherDatabase);
-const env = {
-  DB: buddiesDb,
-  BUDDIES_DB: buddiesDb,
-  MINUTE_DB: minuteDb,
-  OTHER_DB: otherDb,
-  PAGES_TRACK_HISTORY_CYCLE_ENABLED: true,
-};
-
-let steps = 0;
-let lastResult = null;
-let timestamp = Math.floor(startedAt / 86_400_000) * 86_400_000;
-while (steps < maxSteps && Date.now() < deadlineMs) {
-  lastResult = await runSplitTrackHistoryCycleStep({ ...env, BUDDIES_DB: minuteDb }, timestamp, {});
-  steps += 1;
-  timestamp += 60_000;
-  if (lastResult?.reason === 'track-history-cycle-already-published') break;
-  if (lastResult?.stage?.published === true || lastResult?.publication?.phase === 'complete') break;
-}
-if (!lastResult) throw new Error('Pages track-history runner produced no result');
-if (steps >= maxSteps && lastResult?.stage?.published !== true) {
-  throw new Error(`Pages track-history rebuild did not finish within ${steps} steps`);
+function productionEnvironment() {
+  const minuteDb = createRemoteD1(factsDatabase);
+  return {
+    DB: createRemoteD1(buddiesDatabase),
+    BUDDIES_DB: createRemoteD1(buddiesDatabase),
+    MINUTE_DB: minuteDb,
+    OTHER_DB: createRemoteD1(otherDatabase),
+    PAGES_TRACK_HISTORY_CYCLE_ENABLED: true,
+  };
 }
 
-const dueKeys = dueVariantKeys(startedAt);
-const variants = MATERIALIZED_API_VARIANTS.filter((variant) => dueKeys.has(variant.key));
-const published = [];
-for (const variant of variants) {
-  if (Date.now() >= deadlineMs) throw new Error('Pages variant materialization exceeded the Actions deadline');
-  published.push(await materializeVariant(variant, env, startedAt));
+function trackHistoryComplete(result) {
+  return result?.reason === 'track-history-cycle-already-published'
+    || result?.stage?.published === true
+    || result?.publication?.phase === 'complete';
 }
 
-console.log(JSON.stringify({
-  ok: true,
-  event: 'pages_read_model_actions_complete',
-  track_history_steps: steps,
-  elapsed_ms: Date.now() - startedAt,
-  published,
-  track_history_result: lastResult,
-}));
+export async function runPagesReadModelActions(options = {}) {
+  const clock = options.now || Date.now;
+  const startedAt = Number(options.startedAt ?? clock());
+  const maxSteps = Math.max(
+    1,
+    Math.min(3000, Math.trunc(Number(options.maxSteps
+      ?? process.env.PAGES_READ_MODEL_MAX_STEPS
+      ?? 1800))),
+  );
+  const deadlineMs = Number(options.deadlineMs ?? (
+    startedAt + Math.max(
+      60_000,
+      Math.trunc(Number(process.env.PAGES_READ_MODEL_DEADLINE_MS || 12 * 60_000)),
+    )
+  ));
+  const env = options.env || productionEnvironment();
+  const runTrackHistoryStep = options.runTrackHistoryStep || runSplitTrackHistoryCycleStep;
+  const renderVariant = options.materializeVariant || materializeVariant;
+  const variants = options.variants || MATERIALIZED_API_VARIANTS;
+  const trackHistoryEnv = options.trackHistoryEnv || { ...env, BUDDIES_DB: env.MINUTE_DB };
+
+  let steps = 0;
+  let lastResult = null;
+  let timestamp = Math.floor(startedAt / 86_400_000) * 86_400_000;
+  while (steps < maxSteps && Number(clock()) < deadlineMs) {
+    lastResult = await runTrackHistoryStep(trackHistoryEnv, timestamp, {});
+    steps += 1;
+    timestamp += 60_000;
+    if (trackHistoryComplete(lastResult)) break;
+  }
+  if (!lastResult) throw new Error('Pages track-history runner produced no result');
+  if (!trackHistoryComplete(lastResult)) {
+    if (steps >= maxSteps) {
+      throw new Error(`Pages track-history rebuild did not finish within ${steps} steps`);
+    }
+    throw new Error('Pages track-history rebuild exceeded the Actions deadline');
+  }
+
+  const dueKeys = dueVariantKeys(startedAt);
+  const published = [];
+  for (const variant of variants.filter((item) => dueKeys.has(item.key))) {
+    if (Number(clock()) >= deadlineMs) {
+      throw new Error('Pages variant materialization exceeded the Actions deadline');
+    }
+    published.push(await renderVariant(variant, env, startedAt));
+  }
+
+  return {
+    ok: true,
+    event: 'pages_read_model_actions_complete',
+    track_history_steps: steps,
+    elapsed_ms: Math.max(0, Number(clock()) - startedAt),
+    published,
+    track_history_result: lastResult,
+  };
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  console.log(JSON.stringify(await runPagesReadModelActions()));
+}
