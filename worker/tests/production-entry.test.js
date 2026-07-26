@@ -93,15 +93,15 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
     'MINUTE_DERIVE_QUEUE',
     'MINUTE_LIVE_DERIVE_QUEUE',
     'MINUTE_ENRICHMENT_QUEUE',
-    'MINUTE_REBUILD_QUEUE',
     'TRACK_METADATA_QUEUE',
   ]);
   assert.equal(collector.queues.consumers.length, 0);
   assert.equal(recovery.queues.consumers.length, 4);
-  assert.equal(runtime.queues.consumers.length, 6);
+  assert.equal(runtime.queues.consumers.length, 5);
   const recoveryQueues = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   assert.equal(runtime.queues.consumers.some(({ queue }) => recoveryQueues.has(queue)), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-minute-rebuild'), false);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
   assert.equal(collector.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, true);
   assert.equal(recovery.vars.COLLECTOR_INLINE_PIPELINE_ENABLED, false);
