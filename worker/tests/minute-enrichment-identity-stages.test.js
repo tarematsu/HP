@@ -56,6 +56,37 @@ test('identity resolution defers attachment after host and session work', async 
   assert.equal(sent.host_id, 41);
 });
 
+test('production identity resolution completes attachment and bite in the same invocation', async () => {
+  const body = identityBody();
+  const events = [];
+  let currentReads = 0;
+  const result = await processMinuteIdentitySession({
+    MINUTE_DB: {},
+    MINUTE_ENRICHMENT_INLINE_PIPELINE_ENABLED: true,
+  }, body, {
+    loadCurrentMinute: async () => {
+      currentReads += 1;
+      return { id: 5, observed_at: body.observed_at };
+    },
+    resolveHost: async () => { events.push('host'); return 41; },
+    resolveSession: async () => { events.push('session'); return 26; },
+    attachSessionAndFact: async () => { events.push('attach'); },
+    writeCurrentBite: async () => { events.push('bite'); return 9; },
+    sendAttachStage: async () => { events.push('unexpected-attach-send'); },
+    sendBiteStage: async () => { events.push('unexpected-bite-send'); },
+  });
+
+  assert.equal(currentReads, 1);
+  assert.deepEqual(events, ['host', 'session', 'attach', 'bite']);
+  assert.equal(result.pending, false);
+  assert.equal(result.stage, IDENTITY_BITE_STAGE);
+  assert.equal(result.identity_inlined, true);
+  assert.equal(result.attach_inlined, true);
+  assert.equal(result.attach_deferred, false);
+  assert.equal(result.bite_deferred, false);
+  assert.equal(result.bite_count, 9);
+});
+
 test('identity attachment commits context then defers bite work by default', async () => {
   const body = {
     ...identityBody(IDENTITY_ATTACH_STAGE),
@@ -79,7 +110,7 @@ test('identity attachment commits context then defers bite work by default', asy
   assert.equal(Object.hasOwn(sent, 'host_handle'), false);
 });
 
-test('production identity attachment completes bite work without another Queue message', async () => {
+test('legacy identity-only flag still completes bite work without another Queue message', async () => {
   const body = {
     ...identityBody(IDENTITY_ATTACH_STAGE),
     session_id: 26,
@@ -150,6 +181,8 @@ test('identity bite stage performs only the canonical counter write', async () =
   assert.equal(result.pending, false);
   assert.equal(result.bite_count, 9);
   assert.equal(result.session_id, 26);
+  assert.equal(result.queue_position, 2);
+  assert.equal(result.track_id, 300);
   assert.equal(input.revisionId, 30);
   assert.equal(input.position, 2);
   assert.equal(input.trackId, 300);
@@ -217,7 +250,8 @@ test('optimized router sends production identity through all supported stages', 
   assert.equal(biteCalls, 1);
 });
 
-test('runtime enables inline identity bite completion', () => {
+test('runtime enables one-invocation enrichment completion', () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.equal(runtime.vars.MINUTE_IDENTITY_INLINE_BITE_ENABLED, true);
+  assert.equal(runtime.vars.MINUTE_ENRICHMENT_INLINE_PIPELINE_ENABLED, true);
+  assert.equal(Object.hasOwn(runtime.vars, 'MINUTE_IDENTITY_INLINE_BITE_ENABLED'), false);
 });
