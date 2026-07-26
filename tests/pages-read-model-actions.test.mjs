@@ -4,7 +4,8 @@ import test from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
-const runtimeEntry = readFileSync(new URL('../worker/src/runtime-slim-orchestrator.js', import.meta.url), 'utf8');
+const deployedEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
+const runtimeEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
 const r2Store = readFileSync(new URL('../worker/src/pages-response-r2.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
@@ -27,7 +28,15 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(runner, /d1', 'execute'.*--remote/s);
   assert.match(r2Store, /pages-response\/actions-v1/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
-  assert.match(runtimeEntry, /offline-maintenance-moved-to-actions/);
-  assert.doesNotMatch(runtimeEntry, /streamPredictionDue|pagesScheduledDue|maintenanceCronFor/);
-  assert.equal(runtime.vars.PAGES_TRACK_HISTORY_CYCLE_ENABLED, false);
+
+  assert.deepEqual(Object.keys((await import('../worker/src/runtime-orchestrator-deployed-entry.js')).default || {}), undefined);
+});
+
+test('runtime serves materialized responses but owns no read-model scheduler', () => {
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(Object.hasOwn(runtime.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
+  assert.doesNotMatch(deployedEntry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
+  assert.match(runtimeEntry, /loadPagesResponseModule/);
+  assert.match(runtimeEntry, /runPagesReadModelFetch/);
+  assert.doesNotMatch(runtimeEntry, /runPagesReadModelCron|runCoreScheduled|pagesScheduledDue/);
 });
