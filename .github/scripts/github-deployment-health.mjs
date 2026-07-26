@@ -3,18 +3,22 @@ import { sanitizeText } from './observability-status-publisher.mjs';
 export const DEPLOYMENT_HEALTH_START = '<!-- github-deployment-health:start -->';
 export const DEPLOYMENT_HEALTH_END = '<!-- github-deployment-health:end -->';
 export const MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS = 6_000;
+export const DEPLOYMENT_RUN_LOOKBACK = 30;
+
+export const STATIONHEAD_WORKERS = Object.freeze([
+  Object.freeze({ target: 'sh-sakurazaka46jp', command: 'deploy:sakurazaka46jp' }),
+  Object.freeze({ target: 'sh-buddies-recovery', command: 'deploy:buddies-recovery' }),
+  Object.freeze({ target: 'sh-buddies-collector', command: 'deploy:buddies-collector' }),
+  Object.freeze({ target: 'sh-runtime-orchestrator', command: 'deploy:runtime' }),
+]);
+export const STATIONHEAD_TARGETS = Object.freeze([
+  ...STATIONHEAD_WORKERS.map((entry) => entry.target),
+  'Cloudflare Pages (skrzk)',
+]);
 
 export const DEPLOYMENT_WORKFLOWS = Object.freeze([
-  Object.freeze({
-    name: 'Deploy production',
-    workflow: 'deploy-split-pipeline.yml',
-    kind: 'stationhead',
-  }),
-  Object.freeze({
-    name: 'Deploy HomePanel Cloud services',
-    workflow: 'cloud-deploy.yml',
-    kind: 'homepanel',
-  }),
+  Object.freeze({ name: 'Deploy production', workflow: 'deploy-split-pipeline.yml', kind: 'stationhead' }),
+  Object.freeze({ name: 'Deploy HomePanel Cloud services', workflow: 'cloud-deploy.yml', kind: 'homepanel' }),
 ]);
 
 const FAILURE_CONCLUSIONS = new Set([
@@ -44,10 +48,10 @@ function cleanLogLine(line) {
 export function parseDeploymentTargets(logText) {
   const lines = String(logText || '').split(/\r?\n/).map(cleanLogLine);
   const marker = 'DEPLOYMENT_TARGETS_JSON=';
-  const line = lines.find((entry) => entry.includes(marker));
-  if (line) {
-    const raw = line.slice(line.indexOf(marker) + marker.length).trim();
+  for (const markerLine of lines.filter((entry) => entry.includes(marker))) {
     try {
+      const raw = markerLine.slice(markerLine.indexOf(marker) + marker.length).trim();
+      if (!raw.startsWith('{')) continue;
       const parsed = JSON.parse(raw);
       return {
         minute_db: Boolean(parsed?.minute_db),
@@ -56,39 +60,38 @@ export function parseDeploymentTargets(logText) {
         commands: Array.isArray(parsed?.commands) ? parsed.commands.map(String).filter(Boolean) : [],
       };
     } catch {
-      // Fall through to the legacy worker-list parser for older runs.
+      // The shell source itself may contain the marker before the emitted JSON line. Keep scanning.
     }
   }
 
   const normalized = lines.join('\n');
-  const workerMatch = normalized.match(/"workers"\s*:\s*\[([\s\S]*?)\]/);
-  const workers = workerMatch
-    ? [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
-    : [];
-  const commandMatch = normalized.match(/"commands"\s*:\s*\[([\s\S]*?)\]/);
-  const commands = commandMatch
-    ? [...commandMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
-    : [];
-  return { minute_db: false, pages: false, workers, commands };
+  const workerMatches = [...normalized.matchAll(/"workers"\s*:\s*\[([\s\S]*?)\]/g)];
+  const commandMatches = [...normalized.matchAll(/"commands"\s*:\s*\[([\s\S]*?)\]/g)];
+  const workerMatch = workerMatches.at(-1);
+  const commandMatch = commandMatches.at(-1);
+  return {
+    minute_db: false,
+    pages: false,
+    workers: workerMatch ? [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]) : [],
+    commands: commandMatch ? [...commandMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]) : [],
+  };
 }
 
 export function extractDeploymentError(logText, { maximum = 800 } = {}) {
-  const lines = String(logText || '')
-    .split(/\r?\n/)
-    .map(cleanLogLine)
-    .filter(Boolean);
+  const lines = String(logText || '').split(/\r?\n/).map(cleanLogLine).filter(Boolean);
   const preferred = lines.filter((line) => (
     /##\[error\]|::error|\b(?:error|failed|failure|timed out|timeout|exit code)\b/i.test(line)
     && !/^Error: GitHub /i.test(line)
   ));
   const selected = (preferred.length ? preferred : lines.slice(-8))
-    .map((line) => line
-      .replace(/^##\[error\]/i, '')
-      .replace(/^::error(?: title=[^:]*)?::/i, '')
-      .trim())
+    .map((line) => line.replace(/^##\[error\]/i, '').replace(/^::error(?: title=[^:]*)?::/i, '').trim())
     .filter(Boolean);
   const unique = [...new Set(selected)].slice(-4);
   return compact(sanitizeText(unique.join(' | ')) || 'No error details were available from the job log.', maximum);
+}
+
+function normalizedResult(value) {
+  return String(value || '').trim().toLowerCase() || 'unknown';
 }
 
 function jobName(job) {
@@ -97,9 +100,7 @@ function jobName(job) {
 
 function findJob(jobs, patterns) {
   const list = Array.isArray(patterns) ? patterns : [patterns];
-  return (Array.isArray(jobs) ? jobs : []).find((job) => (
-    list.some((pattern) => pattern.test(jobName(job)))
-  )) || null;
+  return (Array.isArray(jobs) ? jobs : []).find((job) => list.some((pattern) => pattern.test(jobName(job)))) || null;
 }
 
 function findStep(job, patterns) {
@@ -109,35 +110,25 @@ function findStep(job, patterns) {
   )) || null;
 }
 
-function normalizedResult(value) {
-  const result = String(value || '').trim().toLowerCase();
-  return result || 'unknown';
+function firstFailure(jobErrors) {
+  return Object.values(jobErrors || {}).find(Boolean) || '';
 }
 
-function componentFromJob({ workflow, target, job, error = '', run }) {
+function componentFromJob({ workflow, target, job, ownError = '', upstreamError = '', run }) {
   const result = normalizedResult(job?.conclusion || job?.status);
-  return {
-    workflow,
-    target,
-    result,
-    error: result === 'success' ? '' : error,
-    run,
-  };
+  let error = '';
+  if (result !== 'success') {
+    error = ownError;
+    if (!error && result === 'skipped' && upstreamError) error = `Blocked by an upstream deployment failure: ${upstreamError}`;
+  }
+  return { workflow, target, result, error, run };
 }
 
 function componentFromStep({ workflow, target, job, step, error = '', run }) {
   const stepResult = normalizedResult(step?.conclusion || step?.status);
   const jobResult = normalizedResult(job?.conclusion || job?.status);
-  const result = step
-    ? stepResult
-    : (jobResult === 'success' ? 'unknown' : jobResult);
-  return {
-    workflow,
-    target,
-    result,
-    error: result === 'success' ? '' : error,
-    run,
-  };
+  const result = step ? stepResult : (jobResult === 'success' ? 'unknown' : jobResult);
+  return { workflow, target, result, error: result === 'success' ? '' : error, run };
 }
 
 export function workerDeploymentResults(logText, commands = [], jobConclusion = 'unknown') {
@@ -152,17 +143,25 @@ export function workerDeploymentResults(logText, commands = [], jobConclusion = 
   const lastStarted = started.at(-1);
   const jobResult = normalizedResult(jobConclusion);
   for (const command of normalizedCommands) {
-    if (!started.includes(command)) {
-      result[command] = 'skipped';
-    } else if (jobResult === 'success') {
-      result[command] = 'success';
-    } else if (command === lastStarted) {
-      result[command] = jobResult;
-    } else {
-      result[command] = 'success';
-    }
+    if (!started.includes(command)) result[command] = 'skipped';
+    else if (jobResult === 'success') result[command] = 'success';
+    else if (command === lastStarted) result[command] = jobResult;
+    else result[command] = 'success';
   }
   return result;
+}
+
+function inferWorkersFromLog(logText) {
+  const commands = String(logText || '')
+    .split(/\r?\n/)
+    .map(cleanLogLine)
+    .map((line) => line.match(/^Deploying\s+(\S+)/i)?.[1] || '')
+    .filter(Boolean);
+  const byCommand = new Map(STATIONHEAD_WORKERS.map((entry) => [entry.command, entry.target]));
+  return {
+    commands,
+    workers: commands.map((command) => byCommand.get(command)).filter(Boolean),
+  };
 }
 
 export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, jobErrors = {}, workerResults = {} }) {
@@ -177,6 +176,7 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
   }
 
   const components = [];
+  const upstreamError = firstFailure(jobErrors);
   if (target.kind === 'stationhead') {
     const databaseJob = findJob(jobs, [/Apply MINUTE_DB migrations/i, /minute_db/i]);
     const workersJob = findJob(jobs, [/Deploy affected Workers/i, /^workers$/i]);
@@ -187,7 +187,8 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
         workflow,
         target: 'MINUTE_DB migrations',
         job: databaseJob,
-        error: jobErrors[databaseJob?.id] || '',
+        ownError: jobErrors[databaseJob?.id] || '',
+        upstreamError,
         run,
       }));
     }
@@ -195,43 +196,49 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
     const workers = Array.isArray(targets.workers) ? targets.workers : [];
     const commands = Array.isArray(targets.commands) ? targets.commands : [];
     for (const [index, worker] of workers.entries()) {
-      const command = commands[index] || '';
-      const workerResult = command ? workerResults[command] : '';
+      const command = commands[index] || STATIONHEAD_WORKERS.find((entry) => entry.target === worker)?.command || '';
       const component = componentFromJob({
         workflow,
         target: worker,
         job: workersJob,
-        error: jobErrors[workersJob?.id] || '',
+        ownError: jobErrors[workersJob?.id] || '',
+        upstreamError,
         run,
       });
+      const workerResult = command ? workerResults[command] : '';
       if (workerResult) {
         component.result = workerResult;
-        component.error = workerResult === 'success' ? '' : component.error;
+        if (workerResult === 'success') component.error = '';
+        else if (workerResult === 'skipped' && component.error) component.error = `Blocked after another Worker deployment failed: ${component.error}`;
       }
       components.push(component);
     }
 
-    components.push(componentFromJob({
-      workflow,
-      target: 'Cloudflare Pages (skrzk)',
-      job: pagesJob,
-      error: jobErrors[pagesJob?.id] || (normalizedResult(run.conclusion) === 'failure' ? Object.values(jobErrors)[0] || '' : ''),
-      run,
-    }));
-
-    if (!components.length) {
-      const fallbackJob = pagesJob || workersJob || databaseJob;
+    const pagesSelected = Boolean(targets.pages)
+      || (pagesJob && normalizedResult(pagesJob.conclusion || pagesJob.status) !== 'skipped');
+    if (pagesSelected) {
       components.push(componentFromJob({
         workflow,
-        target: 'deployment workflow',
-        job: fallbackJob || { conclusion: run.conclusion || run.status },
-        error: jobErrors[fallbackJob?.id] || '',
+        target: 'Cloudflare Pages (skrzk)',
+        job: pagesJob,
+        ownError: jobErrors[pagesJob?.id] || '',
+        upstreamError,
         run,
       }));
     }
+
+    if (!components.length && FAILURE_CONCLUSIONS.has(normalizedResult(run.conclusion || run.status))) {
+      components.push({
+        workflow,
+        target: 'deployment workflow',
+        result: normalizedResult(run.conclusion || run.status),
+        error: upstreamError || 'The workflow failed before deployment targets could be resolved.',
+        run,
+      });
+    }
   } else if (target.kind === 'homepanel') {
     const deployJob = findJob(jobs, [/^deploy$/i, /Deploy HomePanel/i]) || jobs[0] || null;
-    const error = jobErrors[deployJob?.id] || '';
+    const error = jobErrors[deployJob?.id] || upstreamError;
     components.push(componentFromStep({
       workflow,
       target: 'homepanel-video',
@@ -262,13 +269,47 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
   return { target, run, overall, components };
 }
 
-async function latestCompletedRun(request, workflow) {
-  const response = await request(
-    'GET',
-    `/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=main&per_page=10`,
-  );
+export function mergeDeploymentHistory(summaries, expectedTargets = STATIONHEAD_TARGETS) {
+  const ordered = Array.isArray(summaries) ? summaries : [];
+  const latest = new Map();
+  const newestWorkflowFailure = (ordered[0]?.components || [])
+    .find((component) => component.target === 'deployment workflow') || null;
+  let latestMinuteDb = null;
+  for (const summary of ordered) {
+    for (const component of summary?.components || []) {
+      if (component.target === 'deployment workflow') continue;
+      if (component.target === 'MINUTE_DB migrations') {
+        if (!latestMinuteDb) latestMinuteDb = component;
+        continue;
+      }
+      if (!latest.has(component.target)) latest.set(component.target, component);
+    }
+  }
+  const components = [];
+  if (newestWorkflowFailure) components.push(newestWorkflowFailure);
+  if (latestMinuteDb) components.push(latestMinuteDb);
+  for (const target of expectedTargets) {
+    components.push(latest.get(target) || {
+      workflow: 'Deploy production',
+      target,
+      result: 'unknown',
+      error: `No targeted deployment attempt was found in the last ${DEPLOYMENT_RUN_LOOKBACK} completed runs.`,
+      run: null,
+    });
+  }
+  const values = components.map((component) => component.result);
+  const overall = values.some((value) => FAILURE_CONCLUSIONS.has(value))
+    ? 'failure'
+    : values.some((value) => value === 'unknown' || value === 'skipped')
+      ? 'degraded'
+      : 'success';
+  return { target: DEPLOYMENT_WORKFLOWS[0], run: ordered[0]?.run || null, overall, components };
+}
+
+async function recentCompletedRuns(request, workflow) {
+  const response = await request('GET', `/actions/workflows/${encodeURIComponent(workflow)}/runs?branch=main&per_page=${DEPLOYMENT_RUN_LOOKBACK}`);
   return (Array.isArray(response?.workflow_runs) ? response.workflow_runs : [])
-    .find((run) => run?.status === 'completed') || null;
+    .filter((run) => run?.status === 'completed');
 }
 
 async function runJobs(request, runId) {
@@ -291,6 +332,47 @@ async function fetchJobLog(repository, token, jobId) {
   return response.text();
 }
 
+async function inspectDeploymentRun(request, target, run, { repository, token }) {
+  const jobs = await runJobs(request, run.id);
+  const logs = new Map();
+  const jobsToRead = jobs.filter((job) => (
+    FAILURE_CONCLUSIONS.has(normalizedResult(job?.conclusion))
+    || (target.kind === 'stationhead' && /(?:Select deployment targets|Deploy affected Workers)/i.test(jobName(job)))
+  ));
+  await Promise.all(jobsToRead.map(async (job) => {
+    logs.set(job.id, await fetchJobLog(repository, token, job.id));
+  }));
+
+  const jobErrors = {};
+  for (const job of jobs) {
+    if (FAILURE_CONCLUSIONS.has(normalizedResult(job?.conclusion))) {
+      jobErrors[job.id] = extractDeploymentError(logs.get(job.id) || '');
+    }
+  }
+
+  if (target.kind !== 'stationhead') return summarizeDeploymentRun({ target, run, jobs, jobErrors });
+
+  const selectJob = findJob(jobs, [/Select deployment targets/i]);
+  const workersJob = findJob(jobs, [/Deploy affected Workers/i, /^workers$/i]);
+  const pagesJob = findJob(jobs, [/Build and deploy Pages/i, /^pages$/i]);
+  const databaseJob = findJob(jobs, [/Apply MINUTE_DB migrations/i, /minute_db/i]);
+  const workerLog = logs.get(workersJob?.id) || '';
+  const parsed = parseDeploymentTargets(logs.get(selectJob?.id) || '');
+  const inferred = inferWorkersFromLog(workerLog);
+  const deploymentTargets = {
+    minute_db: parsed.minute_db || Boolean(databaseJob && normalizedResult(databaseJob.conclusion || databaseJob.status) !== 'skipped'),
+    pages: parsed.pages || Boolean(pagesJob && normalizedResult(pagesJob.conclusion || pagesJob.status) !== 'skipped'),
+    workers: parsed.workers.length ? parsed.workers : inferred.workers,
+    commands: parsed.commands.length ? parsed.commands : inferred.commands,
+  };
+  const workerResults = workerDeploymentResults(
+    workerLog,
+    deploymentTargets.commands,
+    workersJob?.conclusion || workersJob?.status,
+  );
+  return summarizeDeploymentRun({ target, run, jobs, targets: deploymentTargets, jobErrors, workerResults });
+}
+
 export async function collectDeploymentHealth(request, {
   targets = DEPLOYMENT_WORKFLOWS,
   repository = process.env.GITHUB_REPOSITORY,
@@ -298,38 +380,23 @@ export async function collectDeploymentHealth(request, {
 } = {}) {
   return Promise.all(targets.map(async (target) => {
     try {
-      const run = await latestCompletedRun(request, target.workflow);
-      if (!run) return summarizeDeploymentRun({ target, run: null });
-      const jobs = await runJobs(request, run.id);
-      const logs = new Map();
-      const jobsToRead = jobs.filter((job) => (
-        FAILURE_CONCLUSIONS.has(normalizedResult(job?.conclusion))
-        || (target.kind === 'stationhead' && /(?:Select deployment targets|Deploy affected Workers)/i.test(jobName(job)))
-      ));
-      await Promise.all(jobsToRead.map(async (job) => {
-        logs.set(job.id, await fetchJobLog(repository, token, job.id));
-      }));
-      const selectJob = findJob(jobs, [/Select deployment targets/i]);
-      const deploymentTargets = target.kind === 'stationhead'
-        ? parseDeploymentTargets(logs.get(selectJob?.id) || '')
-        : {};
-      const jobErrors = {};
-      for (const job of jobs) {
-        if (FAILURE_CONCLUSIONS.has(normalizedResult(job?.conclusion))) {
-          jobErrors[job.id] = extractDeploymentError(logs.get(job.id) || '');
-        }
+      const runs = await recentCompletedRuns(request, target.workflow);
+      if (!runs.length) return summarizeDeploymentRun({ target, run: null });
+      if (target.kind === 'homepanel') {
+        return inspectDeploymentRun(request, target, runs[0], { repository, token });
       }
-      const workersJob = target.kind === 'stationhead'
-        ? findJob(jobs, [/Deploy affected Workers/i, /^workers$/i])
-        : null;
-      const workerResults = target.kind === 'stationhead'
-        ? workerDeploymentResults(
-          logs.get(workersJob?.id) || '',
-          deploymentTargets.commands,
-          workersJob?.conclusion || workersJob?.status,
-        )
-        : {};
-      return summarizeDeploymentRun({ target, run, jobs, targets: deploymentTargets, jobErrors, workerResults });
+
+      const summaries = [];
+      const found = new Set();
+      for (const run of runs) {
+        const summary = await inspectDeploymentRun(request, target, run, { repository, token });
+        summaries.push(summary);
+        for (const component of summary.components || []) {
+          if (STATIONHEAD_TARGETS.includes(component.target)) found.add(component.target);
+        }
+        if (found.size === STATIONHEAD_TARGETS.length) break;
+      }
+      return mergeDeploymentHistory(summaries);
     } catch (error) {
       return {
         target,
@@ -381,7 +448,7 @@ export function renderDeploymentHealthSummary(results, { generatedAt = new Date(
 
 - **Overall:** ${deploymentOverall(results)}
 - **Generated:** ${generatedAt}
-- **Signal:** latest completed production deployment workflows on \`main\`
+- **Signal:** latest targeted deployment attempt for every production Pages and Worker target on \`main\`
 
 | Workflow | Target | Result | Commit | Completed | Run |
 |---|---|---|---|---|---|
@@ -407,11 +474,7 @@ export function replaceDeploymentHealthSection(issueBody, summary) {
   const block = renderDeploymentHealthBlock(summary);
   const existing = extractDeploymentHealthBlock(body);
   if (existing) return body.replace(existing, block);
-  for (const anchor of [
-    '\n## Immediate triage',
-    '\n## Deployment and change context',
-    '\n## Detailed diagnostics',
-  ]) {
+  for (const anchor of ['\n## Immediate triage', '\n## Deployment and change context', '\n## Detailed diagnostics']) {
     const index = body.indexOf(anchor);
     if (index >= 0) return `${body.slice(0, index)}\n\n${block}${body.slice(index)}`;
   }
