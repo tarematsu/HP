@@ -1,4 +1,4 @@
-const ACTIVE_TASKS = Object.freeze(['derive', 'recovery', 'rebuild', 'sync']);
+const ACTIVE_TASKS = Object.freeze(['derive', 'recovery', 'rebuild']);
 const DEFAULT_PENDING_STALE_MS = 15 * 60_000;
 const DEFAULT_PENDING_ALERT_COUNT = 20;
 const DEFAULT_DERIVE_STALE_MS = 25 * 60_000;
@@ -11,7 +11,7 @@ const SQL = `SELECT
   job_failures_total,last_processed_count,last_failed_count,pending_count,
   processing_count,dead_count,oldest_pending_minute,updated_at
 FROM sh_minute_fact_runtime_state
-WHERE task_name IN ('derive','recovery','rebuild','sync')
+WHERE task_name IN ('derive','recovery','rebuild')
 ORDER BY task_name`;
 
 function integer(value, fallback = null) {
@@ -34,6 +34,19 @@ function taskStaleMs(taskName, env) {
     : positiveMs(env.MINUTE_MAINTENANCE_STALE_MS, DEFAULT_MAINTENANCE_STALE_MS);
 }
 
+function pendingPolicy(env = {}) {
+  return {
+    count: Math.max(
+      DEFAULT_PENDING_ALERT_COUNT,
+      integer(env.MINUTE_FACT_PENDING_ALERT_COUNT, DEFAULT_PENDING_ALERT_COUNT),
+    ),
+    ageMs: Math.max(
+      DEFAULT_PENDING_STALE_MS,
+      positiveMs(env.MINUTE_FACT_PENDING_ALERT_MS, DEFAULT_PENDING_STALE_MS),
+    ),
+  };
+}
+
 function hasAllRuntimeTasks(tasks) {
   if (!Array.isArray(tasks)) return false;
   const names = new Set(tasks.map((task) => String(task?.task_name || '')));
@@ -41,6 +54,7 @@ function hasAllRuntimeTasks(tasks) {
 }
 
 export function minuteTaskHealth(row, now, env = {}) {
+  const taskName = String(row?.task_name || '');
   const lastStartedAt = integer(row?.last_started_at);
   const lastSuccessAt = integer(row?.last_success_at);
   const lastFailureAt = integer(row?.last_failure_at, 0);
@@ -48,18 +62,22 @@ export function minuteTaskHealth(row, now, env = {}) {
   const pendingCount = nonNegative(row?.pending_count);
   const deadCount = nonNegative(row?.dead_count);
   const ageMs = lastStartedAt == null ? null : Math.max(0, now - lastStartedAt);
-  const staleAfterMs = taskStaleMs(row?.task_name, env);
-  const pendingStaleMs = positiveMs(env.MINUTE_FACT_PENDING_ALERT_MS, DEFAULT_PENDING_STALE_MS);
-  const pendingAlertCount = Math.max(1, integer(env.MINUTE_FACT_PENDING_ALERT_COUNT, DEFAULT_PENDING_ALERT_COUNT));
+  const staleAfterMs = taskStaleMs(taskName, env);
+  const policy = pendingPolicy(env);
+  const backlogOwner = taskName === 'derive';
   const stale = ageMs == null || ageMs >= staleAfterMs;
-  const pendingStale = pendingCount >= pendingAlertCount
+  const pendingStale = backlogOwner
+    && pendingCount >= policy.count
     && oldestPendingMinute != null
     && oldestPendingMinute > 0
-    && oldestPendingMinute <= now - pendingStaleMs;
+    && oldestPendingMinute <= now - policy.ageMs;
   const lastRunFailed = lastFailureAt > (lastSuccessAt || 0);
   return {
-    task_name: String(row?.task_name || ''),
-    ok: !stale && deadCount === 0 && !pendingStale && !lastRunFailed,
+    task_name: taskName,
+    ok: !stale
+      && (!backlogOwner || deadCount === 0)
+      && !pendingStale
+      && !lastRunFailed,
     stale,
     stale_after_ms: staleAfterMs,
     age_ms: ageMs,
@@ -79,6 +97,9 @@ export function minuteTaskHealth(row, now, env = {}) {
     processing_count: nonNegative(row?.processing_count),
     dead_count: deadCount,
     oldest_pending_minute: oldestPendingMinute,
+    backlog_owner: backlogOwner,
+    pending_alert_count: policy.count,
+    pending_alert_ms: policy.ageMs,
     pending_stale: pendingStale,
     last_run_failed: lastRunFailed,
     updated_at: integer(row?.updated_at),
