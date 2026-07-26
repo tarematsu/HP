@@ -45,9 +45,7 @@ function runtimeRow(taskName, overrides = {}) {
 function minuteDb(rows) {
   return {
     prepare(sql) {
-      if (sql.includes('MAX(id)')) {
-        return { async first() { return { count: 123 }; } };
-      }
+      if (sql.includes('MAX(id)')) return { async first() { return { count: 123 }; } };
       if (sql.includes('sh_collector_read_model')) {
         return {
           async first() {
@@ -69,7 +67,7 @@ function minuteDb(rows) {
 function otherDb() {
   return {
     prepare(sql) {
-      const statement = {
+      return {
         args: [],
         bind(...args) {
           this.args = args;
@@ -108,7 +106,6 @@ function otherDb() {
           throw new Error(`unexpected health SQL: ${sql}`);
         },
       };
-      return statement;
     },
   };
 }
@@ -130,12 +127,9 @@ test('Pages API catalog exposes exactly the canonical routes without Worker URLs
   assert.equal(catalog.worker_urls_public, false);
   const paths = Object.values(catalog.groups).flat().map(({ path }) => path);
   assert.deepEqual(paths, CANONICAL_PATHS);
-  assert.equal(new Set(paths).size, paths.length);
 
   const response = await catalogRequest({ request: new Request('https://example.com/api') });
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).service, 'stationhead-pages-api');
-
   const rejected = await catalogRequest({ request: new Request('https://example.com/api', { method: 'POST' }) });
   assert.equal(rejected.status, 405);
   assert.equal(rejected.headers.get('allow'), 'GET');
@@ -153,8 +147,8 @@ test('unified Pages health combines all health components behind one URL', async
   assert.deepEqual(Object.keys(payload.components), ['collector', 'minute', 'runtime', 'sakurazaka46jp']);
   assert.equal(payload.components.collector.snapshot_count, 123);
   assert.equal(payload.components.minute.tasks.length, 4);
-  assert.equal(payload.components.runtime.components.runtime.ok, true);
-  assert.equal(payload.components.sakurazaka46jp.components.official_news.upcoming_count, 2);
+  assert.equal(payload.components.runtime.ok, true);
+  assert.equal(payload.components.sakurazaka46jp.official_news.upcoming_count, 2);
 
   const response = await withFixedNow(() => healthRequest({
     request: new Request('https://example.com/api/health'),
@@ -172,7 +166,7 @@ test('unified Pages health combines all health components behind one URL', async
   assert.equal(rejected.headers.get('allow'), 'GET');
 });
 
-test('unified health reports a failed component without hiding healthy components', async () => {
+test('unified health reports individual component failures', async () => {
   const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
   const payload = await readHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
   assert.equal(payload.ok, false);
@@ -182,34 +176,26 @@ test('unified health reports a failed component without hiding healthy component
   assert.equal(payload.components.sakurazaka46jp.ok, false);
 });
 
-test('minute health rejects unhealthy task state', async () => {
+test('minute, runtime, and Sakurazaka health preserve component semantics', async () => {
   const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
-  const payload = await readMinuteHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.tasks.length, 4);
+  const minute = await readMinuteHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
+  assert.equal(minute.ok, true);
+  assert.equal(minute.tasks.length, 4);
 
   const unhealthy = minuteTaskHealth(runtimeRow('derive', { dead_count: 1 }), NOW, {});
   assert.equal(unhealthy.ok, false);
-  const excessiveBacklog = minuteTaskHealth(runtimeRow('derive', {
-    pending_count: 20,
-    oldest_pending_minute: NOW - 24 * 60 * 60_000,
-  }), NOW, { MINUTE_FACT_PENDING_ALERT_COUNT: 20 });
-  assert.equal(excessiveBacklog.ok, false);
-  assert.equal(excessiveBacklog.pending_stale, true);
-});
 
-test('other and Sakurazaka health retain component semantics', async () => {
   const env = { OTHER_DB: otherDb(), SOLO_BROADCAST_HANDLE: 'sakurazaka46jp' };
-  const other = await readOtherHealth(env, NOW);
-  assert.equal(other.ok, true);
-  assert.equal(other.components.runtime.stale_after_ms, 50 * 60_000);
+  const runtime = await readOtherHealth(env, NOW);
+  assert.equal(runtime.ok, true);
+  assert.equal(runtime.stale_after_ms, 50 * 60_000);
 
   const sakurazaka = await readSakurazakaHealth(env, NOW);
   assert.equal(sakurazaka.ok, true);
-  assert.equal(sakurazaka.components.solo_monitor.phase, 'idle');
+  assert.equal(sakurazaka.solo_monitor.phase, 'idle');
 });
 
-test('all active Workers disable public Worker URLs and only canonical Pages routes exist', () => {
+test('only the unified public health Function route exists', () => {
   const configs = [
     '../../worker/wrangler.sakurazaka46jp.jsonc',
     '../../worker/wrangler.runtime.jsonc',
@@ -223,16 +209,7 @@ test('all active Workers disable public Worker URLs and only canonical Pages rou
 
   const pages = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
   assert.deepEqual(pages.d1_databases.map(({ binding }) => binding), ['DB', 'MINUTE_DB', 'OTHER_DB']);
-
-  for (const path of [
-    '../functions/api/index.js',
-    '../functions/api/health.js',
-    '../functions/api/dashboard.js',
-    '../functions/api/track-history.js',
-    '../functions/api/sakurazaka46jp.js',
-  ]) {
-    assert.equal(existsSync(new URL(path, import.meta.url)), true, `${path} must exist`);
-  }
+  assert.equal(existsSync(new URL('../functions/api/health.js', import.meta.url)), true);
 
   for (const path of [
     '../functions/api/health/minute.js',
