@@ -89,7 +89,8 @@
     "SNAPSHOT_RETENTION_BATCH_SIZE": 1000,
     "SNAPSHOT_RETENTION_MAX_BATCHES": 5,
     "RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED": true,
-    "RUNTIME_COORDINATOR_FAIL_OPEN": false
+    "RUNTIME_COORDINATOR_FAIL_OPEN": false,
+    "RUNTIME_STATE_DO_ENABLED": true
   },
   "triggers": { "crons": ["* * * * *"] },
   "kv_namespaces": [
@@ -100,11 +101,13 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "RUNTIME_COORDINATOR", "class_name": "RuntimeCoordinator" }
+      { "name": "RUNTIME_COORDINATOR", "class_name": "RuntimeCoordinator" },
+      { "name": "RUNTIME_STATE_COORDINATOR", "class_name": "RuntimeStateCoordinator" }
     ]
   },
   "migrations": [
-    { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] }
+    { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] },
+    { "tag": "runtime-state-coordinator-v1", "new_sqlite_classes": ["RuntimeStateCoordinator"] }
   ],
   "d1_databases": [
     { "binding": "BUDDIES_DB", "database_name": "stationhead-buddies", "database_id": "f361aae0-05f0-42bc-8784-77100e80133d" },
