@@ -40,7 +40,7 @@ function recordingDb() {
 test('facts descriptor advances past the retired repair work', () => {
   assert.equal(
     descriptor.schema,
-    'database/facts-migrations/046_track_minute_fact_pending_age.sql',
+    'database/facts-migrations/047_join_latest_daily_members.sql',
   );
 });
 
