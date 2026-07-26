@@ -39,9 +39,10 @@ export default {
     }
     const headers = new Headers(request.headers);
     headers.delete(INTERNAL_HEADER);
+    headers.set('Authorization', `Bearer ${INTERNAL_VALUE}`);
     return core.fetch(
       new Request(request, { headers }),
-      { ...env, INTERNAL_SERVICE_AUTHENTICATED: true },
+      { ...env, ADMIN_TOKEN: INTERNAL_VALUE },
       ctx
     );
   },
