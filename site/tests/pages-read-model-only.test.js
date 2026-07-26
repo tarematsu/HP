@@ -8,8 +8,9 @@ const tracks = readFileSync(new URL('../functions/api/track-history.js', import.
 const ranking = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
 const trackStage = readFileSync(new URL('../../worker/src/pages-track-history-stage.js', import.meta.url), 'utf8');
 const publication = readFileSync(new URL('../../worker/src/pages-track-history-publication-queue.js', import.meta.url), 'utf8');
-const dispatch = readFileSync(new URL('../../worker/src/pages-read-model-dispatch.js', import.meta.url), 'utf8');
+const actions = readFileSync(new URL('../../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
+const runtime = JSON.parse(readFileSync(new URL('../../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
 
 // Pages remains read-only. Production Worker ownership is split across the
@@ -29,16 +30,20 @@ test('Pages track history reads materialized rows and integrated ranking status'
   assert.match(tracks, /worker_materialized_read_model/);
 });
 
-test('track-history generation and publication remain routed inside the runtime Worker', () => {
+test('track-history generation runs in Actions while runtime only serves materialized responses', () => {
   assert.match(ranking, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(ranking, /FROM sh_track_counter_current/);
   assert.match(trackStage, /loadTrackRanking/);
   assert.match(trackStage, /ranking_summary/);
   assert.match(trackStage, /sh_pages_track_history_read_model/);
   assert.match(publication, /processTrackHistoryPublicationTask/);
-  assert.match(dispatch, /pages-track-history-split-cycle/);
-  assert.match(entry, /runPagesReadModelCron/);
-  assert.match(entry, /pages-read-model-entry/);
+  assert.match(actions, /runSplitTrackHistoryCycleStep/);
+  assert.match(actions, /PAGES_READ_MODEL_DEADLINE_MS/);
+  assert.match(actions, /pagesActionsR2ResponseKey/);
+  assert.match(entry, /runPagesReadModelFetch/);
+  assert.doesNotMatch(entry, /runPagesReadModelCron|scheduled\s*:/);
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
 });
 
 test('only the four split production Workers remain active', () => {
