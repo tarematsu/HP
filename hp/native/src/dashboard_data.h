@@ -48,6 +48,6 @@ struct DashboardSnapshot {
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                             std::wstring* error = nullptr);
+                            std::wstring* error = nullptr);
 
 }  // namespace hp
