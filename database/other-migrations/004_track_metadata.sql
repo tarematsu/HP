@@ -1,3 +1,4 @@
 -- Track metadata is shared collector data and is owned by stationhead-buddies.
--- The old OTHER_DB table is removed by 009 after the one-time consolidation.
+-- provision-other-db runs the verification-first consolidation script and
+-- removes any legacy OTHER_DB copy after every source row is confirmed.
 SELECT 1;
