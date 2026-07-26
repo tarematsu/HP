@@ -193,7 +193,7 @@
   }
 
   function cacheKey() {
-    return `sakurazaka46jp:v2:${fromInput.value}:${toInput.value}`;
+    return `sakurazaka46jp:v1:${fromInput.value}:${toInput.value}`;
   }
 
   function readCache() {
