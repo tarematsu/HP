@@ -12,6 +12,7 @@ function enabled(value, fallback = false) {
 }
 
 function finiteInteger(value, fallback = null) {
+  if (value == null || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
@@ -137,15 +138,17 @@ export async function recordMinuteFactRuntimeStateInDo(env, task, outcome = {}, 
         error: sanitizeFailureDetail(outcome.error?.message || outcome.error).slice(0, 800),
       } : {}),
     };
+    const wireOptions = {};
+    const now = finiteInteger(options.now);
+    const startedAt = finiteInteger(options.startedAt);
+    if (now != null) wireOptions.now = now;
+    if (startedAt != null) wireOptions.startedAt = startedAt;
+    if (typeof options.success === 'boolean') wireOptions.success = options.success;
     const result = await requestCoordinator(env, {
       action: 'record',
       task: taskName(task),
       outcome: wireOutcome,
-      options: {
-        now: finiteInteger(options.now),
-        startedAt: finiteInteger(options.startedAt),
-        success: typeof options.success === 'boolean' ? options.success : undefined,
-      },
+      options: wireOptions,
     });
     return result ? publicResult(result) : null;
   } catch (error) {
@@ -224,6 +227,7 @@ export class RuntimeStateCoordinator {
   async read(task = null) {
     if (task != null) return (await this.get(stateKey(task))) || null;
     const index = await this.taskIndex();
+    if (!index.length) return null;
     const states = await Promise.all(index.map((name) => this.get(stateKey(name))));
     return states.filter(Boolean).sort((left, right) => left.task_name.localeCompare(right.task_name));
   }
