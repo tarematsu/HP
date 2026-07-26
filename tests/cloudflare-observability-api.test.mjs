@@ -31,8 +31,22 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'GITHUB_STEP_SUMMARY',
     'urlunsplit',
     'CLOUDFLARE_ACCOUNT_ID',
+    '$metadata.error',
+    '$metadata.level',
+    'WARNING_LEVELS = {"warn", "warning"}',
+    'for level in ("error", "fatal", "warn", "warning")',
+    'persisted_error_events=',
+    'persisted_warning_events=',
+    'Cloudflare Worker warnings',
+    'sanitize_text',
+    'return 1 if total_errors or errors else 0',
   ]);
-  expectNone(queryScript, ['discover_account_id', 'accounts?per_page=50', 'user/tokens/verify']);
+  expectNone(queryScript, [
+    'discover_account_id',
+    'accounts?per_page=50',
+    'user/tokens/verify',
+    '::warning title=Cloudflare Worker errors',
+  ]);
 
   expectAll(auditScript, [
     'workers.get("cpuTimeMs")',
