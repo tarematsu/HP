@@ -17,6 +17,7 @@ function jobSection(source, name, nextName) {
 const ci = workflow('ci.yml');
 const homePanelCi = workflow('homepanel-unified-ci.yml');
 const videoCi = workflow('video-ci.yml');
+const nativeBuild = workflow('native-windows-build.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
 const d1Usage = workflow('fetch-cloudflare-d1-usage.yml');
 const observability = workflow('sh-observability.yml');
@@ -116,6 +117,16 @@ test('Video CI ignores documentation-only changes', () => {
   assert.match(trigger, /hp\/video\/test\/\*\*/);
   assert.match(trigger, /hp\/video\/scripts\/\*\*/);
   assert.doesNotMatch(trigger, /hp\/video\/\*\*/);
+});
+
+test('Native main releases cannot be cancelled before uploading to R2', () => {
+  assert.match(
+    nativeBuild,
+    /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
+  );
+  assert.match(nativeBuild, /- name: Upload update assets to R2/);
+  assert.match(nativeBuild, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(nativeBuild, /updates\/latest\/update-manifest\.json/);
 });
 
 test('Pages builds reuse Worker integration dependencies when inputs are unchanged', () => {
