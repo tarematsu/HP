@@ -219,22 +219,40 @@ test('prepared collector payload and read-model envelope preserve source timesta
   const task = commentsTaskForMinuteFact(commentsTask(), minuteFact);
   assert.equal(task.observed_at, processingObservedAt);
   assert.equal(task.station_id, 123);
-  assert.equal(readModelEnvelopeForMinuteFact(minuteFact).channel.observed_at, processingObservedAt);
-});
 
-test('comments task persists comments and does not forward minute facts', async () => {
-  const saved = [];
-  const result = await processCommentsTask({
-    BUDDIES_DB: {},
-    MINUTE_FACT_QUEUE: { async send() { assert.fail('comments stage must not send minute facts'); } },
-  }, commentsTask(), {
-    async collectComments(_db, task) {
-      saved.push(task.station_id);
-      return { commentsSaved: 4 };
+  const envelope = readModelEnvelopeForMinuteFact({
+    observed_at: rawObservedAt,
+    auth: commentsTask().auth,
+  }, {
+    ...minuteFact,
+    read_model: {
+      channel: { channel_id: 10, observed_at: processingObservedAt, presentation: { description: 'kept' } },
+      queue: { station_id: 123, value: queue },
+      collector: { collector_id: 'cloudflare-worker', updated_at: processingObservedAt },
     },
   });
+  assert.equal(envelope.observed_at, rawObservedAt);
+  assert.equal(envelope.job_id, `read-model:10:${rawObservedAt}`);
+  assert.equal(envelope.read_model.queue.value, queue);
+  assert.equal(envelope.comment_task.station_id, 123);
+});
 
-  assert.deepEqual(saved, [123]);
-  assert.equal(result.comments_saved, 4);
-  assert.equal(result.minute_fact_forwarded, false);
+test('comments task acknowledges only durable success and retries degraded collection', async () => {
+  assert.equal((await processCommentsTask({}, commentsTask(), {
+    collectComments: async () => ({ commentsSaved: 4, degraded: false, errorStage: null }),
+  })).commentsSaved, 4);
+
+  let collected = 0;
+  await assert.rejects(processCommentsTask({}, {
+    ...commentsTask(),
+    message_version: 2,
+    minute_fact: { message_type: 'unknown' },
+  }, {
+    collectComments: async () => { collected += 1; return { commentsSaved: 0, degraded: false }; },
+  }), /message_type is unsupported/);
+  assert.equal(collected, 0);
+
+  await assert.rejects(processCommentsTask({}, commentsTask(), {
+    collectComments: async () => ({ commentsSaved: 0, degraded: true, errorStage: 'd1_write_comments' }),
+  }), /comment collection degraded at d1_write_comments/);
 });
