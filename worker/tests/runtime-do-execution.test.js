@@ -159,6 +159,35 @@ test('production due gate enters the Durable Object only on 652 active minutes p
   assert.equal(requests, 0);
 });
 
+test('RuntimeCoordinator returns HTTP 500 and retains its lease after a graph failure', async () => {
+  const durableStorage = storage();
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {}, {
+      async runDirect() { throw new Error('scheduled graph failed'); },
+    });
+    const request = () => new Request('https://internal/run', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        action: 'run',
+        cron: '* * * * *',
+        scheduledTime: 230_000,
+        leaseMs: 70_000,
+      }),
+    });
+    const failed = await coordinator.fetch(request());
+    assert.equal(failed.status, 500);
+    assert.deepEqual(await failed.json(), { error: 'runtime-run-failed' });
+    const duplicate = await coordinator.fetch(request());
+    assert.equal(duplicate.status, 200);
+    assert.equal((await duplicate.json()).reason, 'runtime-coordinator-duplicate');
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test('RuntimeCoordinator runs the graph once and exposes Durable Object waitUntil', async () => {
   const durableStorage = storage();
   const calls = [];
