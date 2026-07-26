@@ -58,6 +58,10 @@ export async function recordRecoveryOperationalTelemetry(env, sample) {
     acknowledged: Number(previous?.acknowledged || 0) + Number(sample?.acknowledged || 0),
     retried: Number(previous?.retried || 0) + Number(sample?.retried || 0),
     failed: Number(previous?.failed || 0) + Number(sample?.failed || 0),
+    max_attempts_max: Math.max(
+      Number(previous?.max_attempts_max || 0),
+      Math.max(0, Number(sample?.max_attempts || 0)),
+    ),
     duration_ms_sum: Number(previous?.duration_ms_sum || 0) + Math.max(0, Number(sample?.duration_ms || 0)),
     duration_ms_max: Math.max(
       Number(previous?.duration_ms_max || 0),

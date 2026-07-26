@@ -5,6 +5,8 @@ import { recordRecoveryOperationalTelemetry } from './recovery-operational-telem
 import { rawCollectorEnv } from './runtime-env.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
+const RETRY_BASE_SECONDS = 5;
+const RETRY_MAX_SECONDS = 300;
 
 export const BUDDIES_RECOVERY_QUEUE_NAMES = Object.freeze([
   'stationhead-raw-collection',
@@ -14,6 +16,11 @@ export const BUDDIES_RECOVERY_QUEUE_NAMES = Object.freeze([
 ]);
 
 const BUDDIES_RECOVERY_QUEUE_SET = new Set(BUDDIES_RECOVERY_QUEUE_NAMES);
+
+export function recoveryRetryDelaySeconds(attempts) {
+  const attempt = Math.max(1, Math.trunc(Number(attempts) || 1));
+  return Math.min(RETRY_MAX_SECONDS, RETRY_BASE_SECONDS * (2 ** (attempt - 1)));
+}
 
 function bodyType(message) {
   const type = message?.body?.message_type;
@@ -25,6 +32,11 @@ function messageTimestamp(message) {
   if (value instanceof Date) return value.getTime();
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function messageAttempts(message) {
+  const parsed = Math.trunc(Number(message?.attempts));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 function instrumentMessage(message, counters) {
@@ -72,6 +84,10 @@ function messageAge(messages, now) {
   return Math.max(0, now - Math.min(...timestamps));
 }
 
+function retryMessage(message, attempts) {
+  message.retry({ delaySeconds: recoveryRetryDelaySeconds(attempts) });
+}
+
 export async function runBuddiesRecoveryQueue(
   batch,
   env,
@@ -90,6 +106,7 @@ export async function runBuddiesRecoveryQueue(
       acknowledged: 0,
       retried: 0,
       failed: 0,
+      max_attempts: 0,
     };
   }
 
@@ -100,9 +117,12 @@ export async function runBuddiesRecoveryQueue(
   const counters = { acknowledged: 0, retried: 0, failed: 0 };
   const types = {};
   const activeEnv = rawCollectorEnv(env);
+  let maxAttempts = 1;
 
   for (const sourceMessage of messages) {
     const type = bodyType(sourceMessage);
+    const attempts = messageAttempts(sourceMessage);
+    maxAttempts = Math.max(maxAttempts, attempts);
     types[type] = Number(types[type] || 0) + 1;
     const message = instrumentMessage(sourceMessage, counters);
     try {
@@ -112,13 +132,15 @@ export async function runBuddiesRecoveryQueue(
         ctx,
         dependencies.ingest || EMPTY_DEPENDENCIES,
       );
-      if (!message.__recoverySettled()) message.retry();
+      if (!message.__recoverySettled()) retryMessage(message, attempts);
     } catch (error) {
-      if (!message.__recoverySettled()) message.retry();
+      if (!message.__recoverySettled()) retryMessage(message, attempts);
       console.error(JSON.stringify({
         event: 'buddies_recovery_dispatch_failed',
         queue: queueName,
         message_type: type,
+        attempts,
+        retry_delay_seconds: recoveryRetryDelaySeconds(attempts),
         error: String(error?.message || error).slice(0, 800),
       }));
     }
@@ -131,6 +153,7 @@ export async function runBuddiesRecoveryQueue(
     acknowledged: counters.acknowledged,
     retried: counters.retried,
     failed: counters.failed,
+    max_attempts: maxAttempts,
     duration_ms: Math.max(0, finishedAt - startedAt),
     oldest_message_age_ms: messageAge(messages, finishedAt),
     message_types: types,
