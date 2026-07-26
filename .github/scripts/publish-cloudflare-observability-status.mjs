@@ -6,18 +6,19 @@ import {
   clipText,
   createGitHubRequest,
   findStatusIssue,
-  overallOutcome,
   publishCommitStatuses,
   readOptionalJson,
   readOptionalText,
   renderOutcomeRows,
   renderSection,
   requiredEnv,
+  sanitizeText,
   upsertStatusIssue,
 } from './observability-status-publisher.mjs';
 import {
   buildObservabilityTriage,
   diagnosticSectionTitle,
+  observabilityIssueOverall,
   publicHealthSignal,
 } from './observability-issue-triage.mjs';
 import {
@@ -37,6 +38,16 @@ const STATUS_CONTEXTS = {
   telemetry: 'observability/telemetry-policy',
 };
 
+const DIAGNOSTIC_SECTION_LIMITS = Object.freeze({
+  publicHealth: 5_000,
+  daily: 3_500,
+  freeTier: 3_500,
+  contract: 2_000,
+  d1Insights: 7_000,
+  observability: 6_500,
+  telemetry: 6_500,
+});
+
 export function isCurrentMainTarget(targetSha, mainSha) {
   const target = String(targetSha || '').trim();
   const current = String(mainSha || '').trim();
@@ -50,7 +61,7 @@ function deploymentSummary(activeDeployments) {
       const versions = Array.isArray(deployment?.version_ids)
         ? deployment.version_ids.join(', ')
         : String(deployment?.version_ids || 'unknown');
-      return `| \`${worker}\` | \`${deployment?.status || 'active'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
+      return `| \`${worker}\` | \`${deployment?.status || 'unknown'}\` | \`${deployment?.deployment_id || 'unknown'}\` | \`${versions || 'unknown'}\` | ${deployment?.created_on || 'unknown'} |`;
     }).join('\n')
     : '| - | not captured | not captured | not captured | not captured |';
   return `### Active Worker deployments\n\n| Worker | Status | Deployment | Traffic-bearing versions | Deployed at |\n|---|---|---|---|---|\n${rows}`;
@@ -67,11 +78,13 @@ function deploymentAndChangeContext(activeDeployments, recentMerges) {
   const content = [deploymentSummary(activeDeployments), recentMergeSummary(recentMerges)]
     .filter(Boolean)
     .join('\n\n');
-  return `## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
+  return `<a id="deployment-context"></a>\n## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
 }
 
-function diagnosticSection(title, body, state) {
-  return renderSection(diagnosticSectionTitle(title, state), body);
+function diagnosticSection(id, title, body, state, maximum) {
+  if (!body) return '';
+  const bounded = clipText(body, maximum);
+  return `<a id="${id}"></a>${renderSection(diagnosticSectionTitle(title, state), bounded)}`;
 }
 
 function pendingRunnerHealthBlock() {
@@ -94,7 +107,7 @@ export function buildIssueBody({
   recentMerges = [],
   actionsRunnerHealthBlock = '',
 }) {
-  const overall = overallOutcome(outcomes);
+  const cloudflareStatus = observabilityIssueOverall({ outcomes, summaries, activeDeployments });
   const publicHealth = publicHealthSignal(summaries.publicHealth);
   const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
   const triage = buildObservabilityTriage({ outcomes, summaries, activeDeployments, runUrl });
@@ -103,9 +116,11 @@ export function buildIssueBody({
 
 This issue is maintained automatically by the unified HP and Stationhead Cloudflare Observability workflow.
 
-- **Overall:** ${overall} · **Generated:** ${generatedAt} · **Lookback:** ${lookbackMinutes} minutes · **Trigger:** ${trigger}
+- **Cloudflare status:** ${cloudflareStatus} · **Generated:** ${generatedAt} · **Lookback:** ${lookbackMinutes} minutes · **Trigger:** ${trigger}
 - **Scope:** HP + Stationhead monorepo, account-wide included usage
 - **Workflow run:** ${runUrl} · **Workflow source commit:** \`${targetSha}\` · **Current main SHA:** \`${mainSha}\`
+
+${runnerHealth}
 
 ${triage}
 
@@ -118,20 +133,22 @@ ${renderOutcomeRows(outcomes)}
 
 </details>
 
-${runnerHealth}
-
 ${deploymentAndChangeContext(activeDeployments, recentMerges)}
 
 ## Detailed diagnostics
-${diagnosticSection('Public application health endpoint snapshots', summaries.publicHealth, publicHealth.state)}
-${diagnosticSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily, outcomes.daily)}
-${diagnosticSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier, outcomes.freeTier)}
-${diagnosticSection('Budget contract', summaries.contract, outcomes.contract)}
-${diagnosticSection('Top D1 queries by rows read', summaries.d1Insights, outcomes.d1Insights)}
-${diagnosticSection('Cloudflare metrics and live diagnostics', summaries.observability, outcomes.query)}
-${diagnosticSection('Current-deployment telemetry policy', summaries.telemetry, outcomes.telemetry)}
+${diagnosticSection('diagnostic-public-health', 'Public application health endpoint snapshots', summaries.publicHealth, publicHealth.state, DIAGNOSTIC_SECTION_LIMITS.publicHealth)}
+${diagnosticSection('diagnostic-daily', 'Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily, outcomes.daily, DIAGNOSTIC_SECTION_LIMITS.daily)}
+${diagnosticSection('diagnostic-free-tier', 'Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier, outcomes.freeTier, DIAGNOSTIC_SECTION_LIMITS.freeTier)}
+${diagnosticSection('diagnostic-contract', 'Budget contract', summaries.contract, outcomes.contract, DIAGNOSTIC_SECTION_LIMITS.contract)}
+${diagnosticSection('diagnostic-d1', 'Top D1 queries by rows read', summaries.d1Insights, outcomes.d1Insights, DIAGNOSTIC_SECTION_LIMITS.d1Insights)}
+${diagnosticSection('diagnostic-observability', 'Cloudflare metrics and live diagnostics', summaries.observability, outcomes.query, DIAGNOSTIC_SECTION_LIMITS.observability)}
+${diagnosticSection('diagnostic-telemetry', 'Current-deployment telemetry policy', summaries.telemetry, outcomes.telemetry, DIAGNOSTIC_SECTION_LIMITS.telemetry)}
 `;
-  return clipText(body, MAX_ISSUE_BODY_CHARS);
+  const safeBody = sanitizeText(body).trim();
+  if (safeBody.length > MAX_ISSUE_BODY_CHARS) {
+    throw new Error(`Observability issue body exceeds ${MAX_ISSUE_BODY_CHARS} characters after bounded rendering`);
+  }
+  return safeBody;
 }
 
 async function currentMainSha(request) {
