@@ -7,7 +7,7 @@ const dailySummaries = readFileSync(new URL('../functions/lib/dashboard-daily-su
 const tracks = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 const ranking = readFileSync(new URL('../functions/lib/track-ranking.js', import.meta.url), 'utf8');
 const trackStage = readFileSync(new URL('../../worker/src/pages-track-history-stage.js', import.meta.url), 'utf8');
-const publication = readFileSync(new URL('../../worker/src/pages-track-history-publication-queue.js', import.meta.url), 'utf8');
+const splitCycle = readFileSync(new URL('../../worker/src/pages-track-history-split-cycle.js', import.meta.url), 'utf8');
 const actions = readFileSync(new URL('../../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
 const responseFetch = readFileSync(new URL('../../worker/src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
@@ -31,16 +31,21 @@ test('Pages track history reads materialized rows and integrated ranking status'
   assert.match(tracks, /worker_materialized_read_model/);
 });
 
-test('track-history generation runs in Actions while runtime only serves materialized responses', () => {
+test('track-history generation runs inline in Actions while runtime only serves materialized responses', () => {
   assert.match(ranking, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(ranking, /FROM sh_track_counter_current/);
   assert.match(trackStage, /loadTrackRanking/);
   assert.match(trackStage, /ranking_summary/);
   assert.match(trackStage, /sh_pages_track_history_read_model/);
-  assert.match(publication, /processTrackHistoryPublicationTask/);
+  assert.match(splitCycle, /advanceTrackHistoryPublication/);
+  assert.match(splitCycle, /advanceTrackHistoryR2Publication/);
+  assert.match(splitCycle, /advancePublicationInline/);
+  assert.doesNotMatch(splitCycle, /PAGES_READ_MODEL_QUEUE|enqueueTrackHistoryPublication/);
   assert.match(actions, /runSplitTrackHistoryCycleStep/);
   assert.match(actions, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(actions, /pagesActionsR2ResponseKey/);
+  assert.match(actions, /trackHistoryPublishedThisRun/);
+  assert.match(actions, /dueKeys\.add\('track-history'\)/);
   assert.match(entry, /pages-response-fetch-entry\.js/);
   assert.match(entry, /runPagesResponseFetch/);
   assert.doesNotMatch(entry, /pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
