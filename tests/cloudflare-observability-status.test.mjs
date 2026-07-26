@@ -60,7 +60,7 @@ test('unified observability issue body includes HP and Stationhead deployment co
   });
 
   assert.match(body, new RegExp(STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(body, /\*\*Overall:\*\* failure/);
+  assert.match(body, /\*\*Cloudflare status:\*\* failure/);
   assert.match(body, /Scope:\*\* HP \+ Stationhead monorepo, account-wide included usage/);
   assert.match(body, /\| d1Insights \| success \|/);
   assert.match(body, /Workflow source commit:\*\* `abcdef123456`/);
