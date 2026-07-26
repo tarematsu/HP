@@ -1,3 +1,7 @@
+import { readMinuteHealth } from '../lib/health-minute.js';
+import { readOtherHealth } from '../lib/health-other.js';
+import { readSakurazakaHealth } from '../lib/health-sakurazaka.js';
+
 const CACHE_MS = 5 * 60 * 1000;
 const DEFAULT_STALE_MS = 60 * 60 * 1000;
 const MIN_STALE_MS = 5 * 60 * 1000;
@@ -18,9 +22,7 @@ export function healthStaleMs(env = {}) {
 }
 
 export async function cachedSnapshotCount(db, now = Date.now()) {
-  if (snapshotCountCache.value != null && snapshotCountCache.expiresAt > now) {
-    return snapshotCountCache.value;
-  }
+  if (snapshotCountCache.value != null && snapshotCountCache.expiresAt > now) return snapshotCountCache.value;
   const row = await db.prepare('SELECT COALESCE(MAX(id),0) AS count FROM sh_minute_facts').first();
   const value = Number(row?.count || 0);
   snapshotCountCache.value = value;
@@ -60,68 +62,91 @@ export function publicCollectorHealth(state, now, staleAfterMs) {
     && lastSuccessAt != null
     && recoveryBaseline != null
     && lastSuccessAt > recoveryBaseline;
-  const healthy = referenceAt != null
-    && !stale
-    && (!incidentOpen || recoveryPending);
+  const healthy = referenceAt != null && !stale && (!incidentOpen || recoveryPending);
   return {
-    lastRunAt,
-    lastSuccessAt,
-    incidentStartedAt,
-    ageMs,
+    ok: healthy,
+    last_run_at: lastRunAt,
+    last_success_at: lastSuccessAt,
+    age_ms: ageMs,
+    stale_after_ms: staleAfterMs,
     stale,
-    incidentOpen,
-    recoveryPending,
-    healthy,
+    last_error_present: Boolean(state?.last_error),
+    alert_setup_required: Boolean(state?.alert_setup_required || state?.delivery_setup_required),
+    alert_incident_open: incidentOpen,
+    alert_recovery_pending: recoveryPending,
+    alert_delivery_pending: String(state?.pending_event_kind || '').trim() || null,
+    alert_incident_started_at: incidentStartedAt,
+    alert_last_sent_at: finite(state?.last_alert_at),
+    alert_last_recovery_at: finite(state?.last_recovery_at),
+    alert_last_error_present: Boolean(state?.alert_last_error || state?.pending_last_error),
   };
 }
 
-export async function onRequestGet(context) {
+async function readCollectorHealth(env, now) {
+  if (!env?.MINUTE_DB?.prepare) throw new Error('MINUTE_DB binding missing');
+  const [snapshotCount, state] = await Promise.all([
+    cachedSnapshotCount(env.MINUTE_DB, now),
+    loadCollectorState(env.MINUTE_DB),
+  ]);
+  return {
+    ...publicCollectorHealth(state, now, healthStaleMs(env)),
+    snapshot_count: snapshotCount,
+  };
+}
+
+export async function readHealth(env, now = Date.now()) {
+  const results = await Promise.allSettled([
+    readCollectorHealth(env, now),
+    readMinuteHealth(env, now),
+    readOtherHealth(env, now),
+    readSakurazakaHealth(env, now),
+  ]);
+  const names = ['collector', 'minute', 'runtime', 'sakurazaka46jp'];
+  const components = Object.fromEntries(results.map((result, index) => [
+    names[index],
+    result.status === 'fulfilled'
+      ? result.value
+      : { ok: false, error: String(result.reason?.message || result.reason || 'health-check-failed') },
+  ]));
+  return {
+    ok: Object.values(components).every((component) => component.ok),
+    service: 'stationhead-pages-health',
+    services: ['sh-runtime-orchestrator', 'sh-sakurazaka46jp'],
+    gateway: 'cloudflare-pages',
+    checked_at: now,
+    components,
+  };
+}
+
+export async function onRequest(context) {
+  if (context.request.method !== 'GET') {
+    return Response.json({ ok: false, error: 'method-not-allowed' }, {
+      status: 405,
+      headers: { allow: 'GET' },
+    });
+  }
   const now = Date.now();
   try {
-    if (!context.env.MINUTE_DB) throw new Error('MINUTE_DB binding missing');
-    const [snapshotCount, state] = await Promise.all([
-      cachedSnapshotCount(context.env.MINUTE_DB, now),
-      loadCollectorState(context.env.MINUTE_DB),
-    ]);
-    const staleAfterMs = healthStaleMs(context.env);
-    const health = publicCollectorHealth(state, now, staleAfterMs);
-    return Response.json({
-      ok: health.healthy,
-      service: 'sh-runtime-orchestrator',
-      snapshotCount,
-      time: new Date(now).toISOString(),
-      collector_last_run_at: health.lastRunAt,
-      collector_last_success_at: health.lastSuccessAt,
-      collector_age_ms: health.ageMs,
-      collector_stale_after_ms: staleAfterMs,
-      collector_stale: health.stale,
-      collector_last_error_present: Boolean(state?.last_error),
-      alert_setup_required: Boolean(state?.alert_setup_required || state?.delivery_setup_required),
-      alert_incident_open: health.incidentOpen,
-      alert_recovery_pending: health.recoveryPending,
-      alert_delivery_pending: String(state?.pending_event_kind || '').trim() || null,
-      alert_incident_started_at: health.incidentStartedAt,
-      alert_last_sent_at: finite(state?.last_alert_at),
-      alert_last_recovery_at: finite(state?.last_recovery_at),
-      alert_last_error_present: Boolean(state?.alert_last_error || state?.pending_last_error),
-      checked_at: now,
-    }, {
-      status: health.healthy ? 200 : 503,
-      headers: { 'cache-control': 'no-store' },
+    const payload = await readHealth(context.env, now);
+    return Response.json(payload, {
+      status: payload.ok ? 200 : 503,
+      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
     });
   } catch (error) {
     console.error(JSON.stringify({
       event: 'public_health_check_failed',
-      error: String(error?.message || error),
+      error: String(error?.message || error).slice(0, 500),
     }));
     return Response.json({
       ok: false,
-      service: 'sh-runtime-orchestrator',
+      service: 'stationhead-pages-health',
+      gateway: 'cloudflare-pages',
       error: 'health_check_failed',
       checked_at: now,
+      components: {},
     }, {
       status: 503,
-      headers: { 'cache-control': 'no-store' },
+      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
     });
   }
 }
