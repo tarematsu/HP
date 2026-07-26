@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
+
 const runner = readFileSync(
   new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
   'utf8',
@@ -14,21 +16,33 @@ const runtime = JSON.parse(readFileSync(
   new URL('../wrangler.runtime.jsonc', import.meta.url),
   'utf8',
 ));
+const cycleStart = Date.UTC(2026, 6, 18);
 
 test('Actions applies tiered read-model cadences instead of a 24-hour minute-slot dispatcher', () => {
-  assert.match(runner, /const due = new Set\(\['dashboard'\]\)/);
-  assert.match(runner, /minute % 60 === 4[\s\S]*history:daily/);
-  assert.match(runner, /minute % 180 === 4[\s\S]*history:weekly[\s\S]*history:broadcasts/);
-  assert.match(runner, /minute % 360 === 4[\s\S]*history:monthly/);
-  assert.match(runner, /minute % 1440 === 4[\s\S]*host-history:summary/);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 4 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+    'history:monthly',
+    'host-history:summary',
+  ]);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 19 * 60_000)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 184 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+  ]);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
 test('track-history completes inside one bounded Actions process', () => {
+  assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
-  assert.match(runner, /while \(steps < maxSteps && Date\.now\(\) < deadlineMs\)/);
-  assert.match(runner, /PAGES_READ_MODEL_MAX_STEPS \|\| 1800/);
-  assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS \|\| 12 \* 60_000/);
+  assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /process\.env\.PAGES_READ_MODEL_MAX_STEPS/);
+  assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(runner, /track-history-cycle-already-published/);
 });
 
