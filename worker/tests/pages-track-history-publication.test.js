@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { pagesReadModelTask } from '../src/pages-read-model-dispatch.js';
 import { advanceTrackHistoryPublication } from '../src/pages-track-history-publication.js';
 import {
   processTrackHistoryPublicationTask,
@@ -110,7 +109,7 @@ test('publication advances by bounded rows and commits the manifest separately',
   assert.equal(committed.published, true);
 });
 
-test('cron checkpoints initialization before dispatching the status Queue stage', async () => {
+test('cycle checkpoints initialization before dispatching the status stage', async () => {
   const operations = [];
   const sent = [];
   const stage = baseStage();
@@ -129,7 +128,7 @@ test('cron checkpoints initialization before dispatching the status Queue stage'
   assert.equal(sent[0].action, TRACK_HISTORY_PUBLICATION_ACTIONS.STATUS);
 });
 
-test('status Queue stage checkpoints status before dispatching generation initialization', async () => {
+test('status stage checkpoints status before dispatching generation initialization', async () => {
   const operations = [];
   const sent = [];
   const stage = { ...baseStage(), publication_initializing_at: CYCLE_START };
@@ -182,7 +181,7 @@ test('generation initialization checkpoints the prefix before dispatching the fi
   assert.equal(sent[0].generation, stage.publication.generation);
 });
 
-test('page Queue stage checkpoints one page before sending its continuation', async () => {
+test('page stage checkpoints one page before sending its continuation', async () => {
   const operations = [];
   const stage = {
     published: false,
@@ -216,19 +215,15 @@ test('page Queue stage checkpoints one page before sending its continuation', as
   assert.deepEqual(operations, ['save', 'send']);
 });
 
-test('cron keeps lightweight stalled-publication recovery active through the daily window', () => {
-  assert.equal(pagesReadModelTask(CYCLE_START + 59 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 60 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 174 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 1_434 * 60_000).kind, 'track-history-step');
-  assert.equal(pagesReadModelTask(CYCLE_START + 1_435 * 60_000).key, 'pages-read-model-cycle-idle');
+test('Actions runner keeps bounded stalled-publication recovery active without a Worker Queue', () => {
+  const runner = readFileSync(new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+  const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
-  const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.vars.PAGES_TRACK_HISTORY_ROWS_PER_STEP, 25);
-  const publication = config.queues.consumers.find(
-    ({ queue }) => queue === 'stationhead-pages-read-model-publication',
-  );
-  assert.equal(publication.max_batch_size, 1);
-  assert.equal(publication.max_concurrency, 1);
-  assert.equal(config.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), true);
+  assert.match(runner, /runSplitTrackHistoryCycleStep/);
+  assert.match(runner, /PAGES_READ_MODEL_MAX_STEPS \|\| 1800/);
+  assert.match(runner, /while \(steps < maxSteps && Date\.now\(\) < deadlineMs\)/);
+  assert.match(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true/);
+  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-pages-read-model-publication'), false);
+  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
+  assert.equal(runtime.triggers, undefined);
 });
