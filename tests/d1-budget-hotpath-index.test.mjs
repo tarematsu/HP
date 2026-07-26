@@ -82,6 +82,10 @@ const pendingAgeMigration = readFileSync(
   new URL('../database/facts-migrations/046_track_minute_fact_pending_age.sql', import.meta.url),
   'utf8',
 );
+const dailyMemberJoinMigration = readFileSync(
+  new URL('../database/facts-migrations/047_join_latest_daily_members.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -118,6 +122,7 @@ const expectedMigrations = [
   'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
   'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
   'database/facts-migrations/046_track_minute_fact_pending_age.sql',
+  'database/facts-migrations/047_join_latest_daily_members.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -200,6 +205,14 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(pendingAgeMigration, /MIN\(CASE WHEN status='pending' THEN updated_at END\)/);
   assert.match(pendingAgeMigration, /AFTER UPDATE OF status,updated_at/);
   assert.doesNotMatch(pendingAgeMigration, /MIN\(minute_at\)/);
+  assert.match(dailyMemberJoinMigration, /idx_sh_total_member_daily_latest/);
+  assert.match(dailyMemberJoinMigration, /ROW_NUMBER\(\) OVER/);
+  assert.match(dailyMemberJoinMigration, /LEFT JOIN sh_total_member_daily_latest d/);
+  assert.doesNotMatch(
+    dailyMemberJoinMigration,
+    /SELECT d\.last_total_member_count FROM sh_total_member_daily/,
+  );
+  assert.doesNotMatch(dailyMemberJoinMigration, /INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
