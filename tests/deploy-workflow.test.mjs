@@ -244,7 +244,9 @@ test('observability covers continuously invoked Workers while account budgets in
   }
   assert.match(observabilityQuery, /workersInvocationsAdaptive/);
   assert.match(observabilityQuery, /workers\/observability\/telemetry\/query/);
-  assert.match(observabilityQuery, /cpuTimeP99/);
+  assert.match(observabilityQuery, /CPU_CLASS_ORDER/);
+  assert.match(observabilityQuery, /CPU_METRICS/);
+  assert.match(observabilityQuery, /cpu_p99_ms/);
   assert.match(telemetryAudit, /STATELESS_CPU_BUDGET_MS/);
   assert.match(telemetryAudit, /DURABLE_OBJECT_CPU_BUDGET_MS/);
   assert.match(telemetryAudit, /current_events/);
