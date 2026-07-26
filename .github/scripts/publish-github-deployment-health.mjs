@@ -9,6 +9,7 @@ import {
 import {
   MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS,
   collectDeploymentHealth,
+  extractDeploymentHealthBlock,
   renderDeploymentHealthSummary,
   replaceDeploymentHealthSection,
 } from './github-deployment-health.mjs';
@@ -17,8 +18,19 @@ const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 const MAX_DEPLOYMENT_HEALTH_ISSUE_BODY_CHARS = Math.max(MAX_ISSUE_BODY_CHARS, 65_000);
 
 export function buildDeploymentHealthIssueBody(issueBody, summary) {
-  const clippedSummary = clipText(summary, MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS);
-  const body = replaceDeploymentHealthSection(issueBody, clippedSummary);
+  const baseBody = String(issueBody || '');
+  const existing = extractDeploymentHealthBlock(baseBody);
+  const fixedLength = baseBody.length - existing.length;
+  const markerReserve = 120;
+  const available = Math.max(
+    500,
+    Math.min(
+      MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS,
+      MAX_DEPLOYMENT_HEALTH_ISSUE_BODY_CHARS - fixedLength - markerReserve,
+    ),
+  );
+  const clippedSummary = clipText(summary, available);
+  const body = replaceDeploymentHealthSection(baseBody, clippedSummary);
   if (body.length > MAX_DEPLOYMENT_HEALTH_ISSUE_BODY_CHARS) {
     throw new Error(
       `Observability issue body would exceed ${MAX_DEPLOYMENT_HEALTH_ISSUE_BODY_CHARS} characters after adding deployment health`,
