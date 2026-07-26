@@ -70,6 +70,20 @@ test('runtime diagnostic counters are accumulated in the existing RuntimeCoordin
   );
 });
 
+test('Durable Object runtime state treats returned failed=true as a failure', async () => {
+  const durableStorage = storage();
+  const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {});
+  const env = coordinatorEnv(coordinator);
+  const result = await recordMinuteFactRuntimeState(
+    env,
+    'sync',
+    { failed: true, error: null },
+    { now: 110_000, startedAt: 109_000 },
+  );
+  assert.equal(result.ok, false);
+  assert.equal((await readMinuteFactRuntimeState(env, 'sync')).failed_total, 1);
+});
+
 test('an empty Durable Object state falls back to existing D1 diagnostics during migration', async () => {
   const durableStorage = storage();
   const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {});

@@ -9,6 +9,12 @@ const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.j
 const migrationsDir = resolve(repositoryRoot, 'database/buddies-migrations');
 const metadataPath = resolve(repositoryRoot, 'database/buddies-db.json');
 const databaseName = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
+const APPLE_MUSIC_COMPATIBILITY_MIGRATION = '008_remove_apple_music_compatibility.sql';
+const APPLE_MUSIC_COMPATIBILITY_TABLES = Object.freeze([
+  'sh_queue_items',
+  'sh_track_like_current',
+  'sh_track_like_observations',
+]);
 
 function wrangler(args) {
   return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -45,17 +51,31 @@ function remoteRows(command) {
   ]));
 }
 
-function ensureTrackMetadataIsrcColumn() {
-  let columns = new Set(remoteRows('PRAGMA table_info(sh_track_metadata)')
+function tableColumns(table) {
+  return new Set(remoteRows(`PRAGMA table_info(${table})`)
     .map((row) => String(row?.name || '')));
+}
+
+function removeAppleMusicCompatibilityColumns() {
+  for (const table of APPLE_MUSIC_COMPATIBILITY_TABLES) {
+    if (!tableColumns(table).has('apple_music_id')) continue;
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      '--command', `ALTER TABLE ${table} DROP COLUMN apple_music_id`,
+    ]);
+  }
+}
+
+function ensureTrackMetadataIsrcColumn() {
+  let columns = tableColumns('sh_track_metadata');
   if (!columns.has('isrc')) {
     wrangler([
       'd1', 'execute', databaseName,
       '--remote', '--yes',
       '--command', 'ALTER TABLE sh_track_metadata ADD COLUMN isrc TEXT',
     ]);
-    columns = new Set(remoteRows('PRAGMA table_info(sh_track_metadata)')
-      .map((row) => String(row?.name || '')));
+    columns = tableColumns('sh_track_metadata');
   }
   if (!columns.has('isrc')) {
     throw new Error('Buddies schema verification failed; sh_track_metadata.isrc is missing');
@@ -76,6 +96,10 @@ const migrationFiles = readdirSync(migrationsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
 for (const migrationFile of migrationFiles) {
+  if (migrationFile === APPLE_MUSIC_COMPATIBILITY_MIGRATION) {
+    removeAppleMusicCompatibilityColumns();
+    continue;
+  }
   wrangler([
     'd1', 'execute', databaseName,
     '--remote', '--yes',

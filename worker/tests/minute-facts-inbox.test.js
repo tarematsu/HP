@@ -4,9 +4,11 @@ import test from 'node:test';
 import {
   CLEAR_COMPLETED_MINUTE_FACT_PAYLOADS_SQL,
   COMPLETE_MINUTE_FACT_JOB_SQL,
+  FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL,
   MINUTE_FACT_INBOX_INDEX_SQL,
   MINUTE_FACT_INBOX_SCHEMA_SQL,
   minuteFactJobPayload,
+  RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL,
   REQUEUE_DEAD_MINUTE_FACT_JOBS_SQL,
 } from '../src/minute-facts-inbox.js';
 
@@ -60,4 +62,15 @@ test('dead-job recovery only retries missing facts and leaves poison payloads fo
   assert.match(REQUEUE_DEAD_MINUTE_FACT_JOBS_SQL, /invalid minute fact job payload/);
   assert.match(REQUEUE_DEAD_MINUTE_FACT_JOBS_SQL, /unsupported minute fact payload version/);
   assert.match(REQUEUE_DEAD_MINUTE_FACT_JOBS_SQL, /RETURNING id/);
+});
+
+test('stalled-job recovery finalizes durable facts before releasing expired leases', () => {
+  assert.match(FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL, /status='done'/);
+  assert.match(FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL, /EXISTS[\s\S]*FROM sh_minute_facts/);
+  assert.match(FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL, /payload_clearable=1/);
+  assert.match(FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL, /LIMIT \?/);
+  assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /idx_sh_minute_fact_jobs_processing_lease/);
+  assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /status='processing'/);
+  assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /NOT EXISTS[\s\S]*FROM sh_minute_facts/);
+  assert.match(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL, /status='pending'/);
 });
