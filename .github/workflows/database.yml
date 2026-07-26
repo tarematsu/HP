@@ -58,7 +58,7 @@ permissions:
 
 concurrency:
   group: sh-database-operations-v2-${{ inputs.operation || github.event_name }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ inputs.operation == 'minute-facts-local-rebuild' }}
 
 jobs:
   minute-db:
