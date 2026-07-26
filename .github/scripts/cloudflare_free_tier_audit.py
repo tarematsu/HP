@@ -64,11 +64,11 @@ _DAILY_RATE_METRICS = (
 _MONTHLY_OR_STATE_METRICS = tuple(key for key in LIMITS if key not in _DAILY_RATE_METRICS)
 
 
-def api(payload: dict[str, Any]) -> dict[str, Any]:
+def _request(url: str, *, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     request = urllib.request.Request(
-        f"{API}/graphql",
-        data=json.dumps(payload, separators=(",", ":")).encode(),
-        method="POST",
+        url,
+        data=None if payload is None else json.dumps(payload, separators=(",", ":")).encode(),
+        method="GET" if payload is None else "POST",
         headers={
             "Authorization": f"Bearer {TOKEN}",
             "Accept": "application/json",
@@ -87,6 +87,34 @@ def api(payload: dict[str, Any]) -> dict[str, Any]:
     if body.get("success") is False or body.get("errors"):
         raise RuntimeError(f"Cloudflare API error: {json.dumps(body.get('errors'))[:1200]}")
     return body
+
+
+def api(payload: dict[str, Any]) -> dict[str, Any]:
+    return _request(f"{API}/graphql", payload=payload)
+
+
+def queue_names_by_id() -> tuple[dict[str, str], str | None]:
+    names: dict[str, str] = {}
+    try:
+        page = 1
+        while True:
+            body = _request(f"{API}/accounts/{ACCOUNT}/queues?page={page}&per_page=50")
+            rows = body.get("result") or []
+            for row in rows:
+                queue_id = str(row.get("queue_id") or row.get("id") or "").strip()
+                queue_name = str(row.get("queue_name") or row.get("name") or "").strip()
+                if queue_id and queue_name:
+                    names[queue_id] = queue_name
+            info = body.get("result_info") or {}
+            total_pages = int(info.get("total_pages") or 1)
+            if not rows or page >= total_pages:
+                break
+            page += 1
+        return names, None
+    except (RuntimeError, TypeError, ValueError) as error:
+        # Queue-name lookup is diagnostic enrichment. Budget enforcement must
+        # continue with opaque queue IDs when this endpoint is unavailable.
+        return {}, str(error)[:500]
 
 
 def configured_resources() -> tuple[set[str], set[str]]:
@@ -116,6 +144,7 @@ def graphql_document() -> str:
       viewer { accounts(filter: {accountTag: $account}) {
         queues: queueMessageOperationsAdaptiveGroups(limit: 10000, filter: {date_geq: $day, date_leq: $day}) {
           sum { billableOperations }
+          dimensions { queueID actionType consumerType }
         }
         r2ops: r2OperationsAdaptiveGroups(limit: 10000, filter: {datetime_geq: $monthStart, datetime_leq: $now}) {
           sum { requests } dimensions { actionType }
@@ -163,6 +192,57 @@ def latest_size(groups: Any, time_key: str, *size_keys: str) -> int:
         if candidate[0] >= latest[0]:
             latest = candidate
     return latest[1]
+
+
+def queue_operation_breakdown(
+    groups: Any,
+    names_by_id: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    names = names_by_id or {}
+    combined: dict[tuple[str, str, str], int] = {}
+    for group in groups or []:
+        dimensions = group.get("dimensions") or {}
+        queue_id = str(dimensions.get("queueID") or "unknown").strip() or "unknown"
+        action_type = str(dimensions.get("actionType") or "unknown").strip() or "unknown"
+        consumer_type = str(dimensions.get("consumerType") or "").strip()
+        key = (queue_id, action_type, consumer_type)
+        combined[key] = combined.get(key, 0) + count(
+            (group.get("sum") or {}).get("billableOperations")
+        )
+    rows = [
+        {
+            "queueId": queue_id,
+            "queueName": names.get(queue_id),
+            "actionType": action_type,
+            "consumerType": consumer_type or None,
+            "actualOperations": operations,
+        }
+        for (queue_id, action_type, consumer_type), operations in combined.items()
+        if operations > 0
+    ]
+    return sorted(
+        rows,
+        key=lambda row: (
+            -int(row["actualOperations"]),
+            str(row["queueName"] or row["queueId"]),
+            str(row["actionType"]),
+            str(row["consumerType"] or ""),
+        ),
+    )
+
+
+def projected_queue_breakdown(
+    rows: list[dict[str, Any]],
+    projection: dict[str, Any],
+) -> list[dict[str, Any]]:
+    factor = float(projection["factor"])
+    return [
+        {
+            **row,
+            "projectedOperations": math.ceil(metric(row.get("actualOperations")) * factor),
+        }
+        for row in rows
+    ]
 
 
 def _durable_object_duration_gb_seconds(groups: Any) -> float:
@@ -258,9 +338,36 @@ def self_test() -> int:
         assert resource_identifier not in document
     assert "pipelineId" not in document and "activeTime" not in document
     assert "sum { duration rowsRead rowsWritten }" in document
+    assert "dimensions { queueID actionType consumerType }" in document
 
+    queue_groups = [
+        {
+            "dimensions": {
+                "queueID": "queue-a",
+                "actionType": "WriteMessage",
+                "consumerType": None,
+            },
+            "sum": {"billableOperations": 10},
+        },
+        {
+            "dimensions": {
+                "queueID": "queue-a",
+                "actionType": "ReadMessage",
+                "consumerType": "worker",
+            },
+            "sum": {"billableOperations": 12},
+        },
+        {
+            "dimensions": {
+                "queueID": "queue-a",
+                "actionType": "DeleteMessage",
+                "consumerType": "worker",
+            },
+            "sum": {"billableOperations": 8},
+        },
+    ]
     actual = aggregate({
-        "queues": [{"sum": {"billableOperations": 30}}],
+        "queues": queue_groups,
         "r2ops": [
             {"dimensions": {"actionType": "PutObject"}, "sum": {"requests": 2}},
             {"dimensions": {"actionType": "GetObject"}, "sum": {"requests": 5}},
@@ -275,10 +382,19 @@ def self_test() -> int:
         ],
         "kvStorage": [{"dimensions": {"date": "2026-07-23"}, "max": {"byteCount": 200}}],
     })
+    breakdown = queue_operation_breakdown(queue_groups, {"queue-a": "stationhead-test"})
+    assert sum(row["actualOperations"] for row in breakdown) == actual["queueOperations"] == 30
+    assert breakdown[0]["queueName"] == "stationhead-test"
+    assert {row["actionType"] for row in breakdown} == {
+        "WriteMessage", "ReadMessage", "DeleteMessage",
+    }
+
     projection = projection_metadata(dt.datetime(2026, 7, 23, 6, 0, tzinfo=dt.timezone.utc))
     projected = project_daily_allowances(actual, projection)
+    projected_breakdown = projected_queue_breakdown(breakdown, projection)
     assert projection["factor"] == 4
     assert projected["queueOperations"] == 120 and projected["doRequests"] == 40
+    assert sum(row["projectedOperations"] for row in projected_breakdown) == 120
     assert projected["doActiveGbSeconds"] == 10.0
     assert projected["doRowsRead"] == 8 and projected["doRowsWritten"] == 4
     assert projected["kvReads"] == 28 and projected["kvWrites"] == 4
@@ -298,7 +414,7 @@ def main() -> int:
             "Cloudflare token, resolved account ID, runtime Worker, config globs, and KV/DO bindings are required"
         )
 
-    queue_names, buckets = configured_resources()
+    configured_queue_names, buckets = configured_resources()
     now = dt.datetime.now(dt.timezone.utc)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     body = api({
@@ -314,10 +430,28 @@ def main() -> int:
     if len(accounts) != 1:
         raise RuntimeError(f"Expected one GraphQL account row, got {len(accounts)}")
 
-    actual = aggregate(accounts[0])
+    account_row = accounts[0]
+    actual = aggregate(account_row)
     projection = projection_metadata(now)
     usage = project_daily_allowances(actual, projection)
     violations = evaluate(usage)
+
+    names_by_id, queue_name_lookup_error = queue_names_by_id()
+    queue_rows = projected_queue_breakdown(
+        queue_operation_breakdown(account_row.get("queues"), names_by_id),
+        projection,
+    )
+    breakdown_actual = sum(int(row["actualOperations"]) for row in queue_rows)
+    unresolved_configured = sorted(configured_queue_names - set(names_by_id.values())) if names_by_id else []
+    queue_breakdown = {
+        "actualTotal": breakdown_actual,
+        "accountTotal": int(actual["queueOperations"]),
+        "difference": int(actual["queueOperations"]) - breakdown_actual,
+        "queueNameLookupError": queue_name_lookup_error,
+        "unresolvedConfiguredQueues": unresolved_configured,
+        "rows": queue_rows,
+    }
+
     report = {
         "generatedAt": now.isoformat().replace("+00:00", "Z"),
         "worker": WORKER,
@@ -326,8 +460,9 @@ def main() -> int:
         "actualUsage": actual,
         "usage": usage,
         "projection": projection,
+        "queueOperationsBreakdown": queue_breakdown,
         "resourceCounts": {
-            "queues": len(queue_names),
+            "queues": len(configured_queue_names),
             "durableObjectNamespaces": len(DO_BINDINGS),
             "r2Buckets": len(buckets),
             "kvNamespaces": len(KV_BINDINGS),
@@ -360,6 +495,31 @@ def main() -> int:
             f"| {key} | {actual[key]:,} | {usage[key]:,} | {usage_basis(key)} | "
             f"{limit:,} | {'VIOLATION' if key in violations else 'OK'} |"
         )
+
+    lines.extend([
+        "",
+        "### Queue operation breakdown",
+        "",
+        f"- Breakdown coverage: `{breakdown_actual:,}` / `{int(actual['queueOperations']):,}` actual operations",
+    ])
+    if queue_name_lookup_error:
+        lines.append(f"- Queue-name lookup unavailable; displaying queue IDs: `{queue_name_lookup_error}`")
+    if unresolved_configured:
+        lines.append(f"- Configured queue names not returned by the API: `{', '.join(unresolved_configured)}`")
+    lines.extend([
+        "",
+        "| Queue | Queue ID | Action | Consumer | Actual | Projected 24h |",
+        "|---|---|---|---|---:|---:|",
+    ])
+    for row in queue_rows[:50]:
+        lines.append(
+            f"| {row['queueName'] or 'unresolved'} | `{row['queueId']}` | "
+            f"{row['actionType']} | {row['consumerType'] or '-'} | "
+            f"{int(row['actualOperations']):,} | {int(row['projectedOperations']):,} |"
+        )
+    if not queue_rows:
+        lines.append("| - | - | - | - | 0 | 0 |")
+
     summary = "\n".join(lines) + "\n"
     (OUT / "summary.md").write_text(summary, encoding="utf-8")
     if path := os.environ.get("GITHUB_STEP_SUMMARY"):
@@ -367,6 +527,12 @@ def main() -> int:
             output.write(summary)
 
     print("FREE_TIER_USAGE=" + json.dumps(report, separators=(",", ":")))
+    if queue_breakdown["difference"] != 0:
+        print(
+            "::warning title=Cloudflare Queue breakdown coverage::"
+            f"account={queue_breakdown['accountTotal']} breakdown={queue_breakdown['actualTotal']} "
+            f"difference={queue_breakdown['difference']}"
+        )
     for key in violations:
         print(
             f"::error title=Cloudflare free-tier budget exceeded::{key} "
