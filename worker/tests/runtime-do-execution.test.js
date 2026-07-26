@@ -5,7 +5,11 @@ import test from 'node:test';
 import {
   RuntimeCoordinator,
   runFetchCoordinatedScheduled,
+  runRuntimeOrchestratorScheduled,
+  runtimeOrchestratorDue,
 } from '../src/runtime-orchestrator-deployed-entry.js';
+
+const MINUTE_MS = 60_000;
 
 function storage() {
   const values = new Map();
@@ -125,6 +129,34 @@ test('production direct mode requires the Durable Object binding unless fail-ope
   });
   assert.equal(fallback, 'fallback');
   assert.equal(directCalls, 1);
+});
+
+test('production due gate enters the Durable Object only on 652 active minutes per UTC day', async () => {
+  const day = Date.UTC(2026, 0, 1);
+  const env = {
+    RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED: true,
+    PAGES_TRACK_HISTORY_CYCLE_ENABLED: false,
+    MINUTE_FACT_REPAIR_BURST_ENABLED: false,
+  };
+  let due = 0;
+  for (let minute = 0; minute < 24 * 60; minute += 1) {
+    if (runtimeOrchestratorDue({
+      cron: '* * * * *',
+      scheduledTime: day + minute * MINUTE_MS,
+    }, env)) due += 1;
+  }
+  assert.equal(due, 652);
+
+  let requests = 0;
+  const idle = await runRuntimeOrchestratorScheduled({
+    cron: '* * * * *',
+    scheduledTime: day + 2 * MINUTE_MS,
+  }, env, {}, {
+    stub: { async fetch() { requests += 1; return Response.json({}); } },
+  });
+  assert.equal(idle.skipped, true);
+  assert.equal(idle.reason, 'no-runtime-or-pages-task-due');
+  assert.equal(requests, 0);
 });
 
 test('RuntimeCoordinator runs the graph once and exposes Durable Object waitUntil', async () => {
