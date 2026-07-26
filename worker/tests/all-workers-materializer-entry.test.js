@@ -10,39 +10,31 @@ function runtimeConfig() {
   return JSON.parse(source('../wrangler.runtime.jsonc'));
 }
 
-test('core Worker preserves four isolated enrichment and Pages Queue boundaries', () => {
+test('runtime keeps only immediate enrichment Queue boundaries', () => {
   const config = runtimeConfig();
   const enrichment = source('../src/minute-enrichment-optimized-entry.js');
   const metadata = source('../src/track-metadata-entry.js');
-  const queues = [
-    'stationhead-minute-enrichment',
-    'stationhead-track-metadata',
-    'stationhead-pages-read-model-publication',
-    'stationhead-read-model',
-  ];
-  for (const queue of queues) {
+
+  for (const queue of ['stationhead-minute-enrichment', 'stationhead-track-metadata']) {
     const consumer = config.queues.consumers.find((item) => item.queue === queue);
     assert.equal(consumer.max_batch_size, 1, queue);
     assert.equal(consumer.max_concurrency, 1, queue);
   }
+  assert.equal(config.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
+  assert.equal(config.queues.producers.some(({ binding }) => binding.includes('READ_MODEL')), false);
+
   assert.match(enrichment, /TRACK_METADATA_MESSAGE_TYPE/);
   assert.match(enrichment, /processTrackMetadataTask/);
-  assert.match(enrichment, /const message = messages\[0\]/);
   assert.match(metadata, /from '\.\/committed-metadata-enrichment\.js'/);
-  assert.match(metadata, /from '\.\/read-model-stages\.js'/);
-  assert.doesNotMatch(metadata, /committedEnrichmentModulePromise|readModelStagesModulePromise/);
-  assert.match(metadata, /const JSON_QUEUE_SEND_OPTIONS = Object\.freeze/);
   assert.doesNotMatch(enrichment, /for\s*\(const message of/);
 });
 
-test('Pages read model fast-paths successful Cron and one-message Queue invocations', () => {
-  const config = runtimeConfig();
-  const entry = source('../src/pages-read-model-entry.js');
-  const publication = config.queues.consumers.find(
-    ({ queue }) => queue === 'stationhead-pages-read-model-publication',
-  );
-  assert.equal(publication.max_batch_size, 1);
-  assert.match(entry, /if \(declaredFailed === 0\) return result/);
-  assert.match(entry, /const message = messages\[0\]/);
-  assert.doesNotMatch(entry, /EMPTY_MESSAGES|for \(let index = 0; index < messages\.length/);
+test('Pages materialization is owned by the bounded Actions runner', () => {
+  const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
+  const runner = source('../scripts/run-pages-read-model-actions.mjs');
+  assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
+  assert.match(workflow, /timeout-minutes: 15/);
+  assert.match(workflow, /cancel-in-progress: true/);
+  assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
+  assert.match(runner, /pages-response\/actions-v1/);
 });
