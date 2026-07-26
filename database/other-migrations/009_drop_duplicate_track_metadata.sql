@@ -1,4 +1,4 @@
--- Track metadata consolidation is an explicit, verification-first operation.
--- Do not drop the legacy cache from a routine schema apply before the copy
--- has been confirmed against the live BUDDIES_DB.
+-- Cross-database cleanup cannot be performed safely by SQL migration alone.
+-- provision-other-db invokes consolidate-track-metadata.mjs, verifies every
+-- source Spotify row in BUDDIES_DB, and only then drops the legacy table.
 SELECT 1;
