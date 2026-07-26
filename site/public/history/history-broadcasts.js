@@ -193,7 +193,7 @@
   }
 
   function cacheKey() {
-    return `sakurazaka46jp:v1:${fromInput.value}:${toInput.value}`;
+    return `sakurazaka46jp:v2:${fromInput.value}:${toInput.value}`;
   }
 
   function readCache() {
@@ -248,7 +248,16 @@
       draw();
       updateNotice(data);
     } catch (error) {
-      if (error?.name !== 'AbortError' && active()) notice.textContent += `・比較グラフ取得失敗: ${error.message}`;
+      if (error?.name !== 'AbortError' && active()) {
+        series = [];
+        loadedKey = '';
+        loadedMeta = null;
+        draw();
+        const base = notice.textContent
+          .replace(/・比較グラフ取得失敗:.*$/, '')
+          .trim();
+        notice.textContent = `${base}・比較グラフ取得失敗: ${error.message}`;
+      }
     } finally {
       if (loadingKey === key) loadingKey = '';
     }
