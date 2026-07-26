@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "hp/package.json"
+      - "hp/package-lock.json"
       - "hp/cloud/**"
       - "hp/video/**"
       - ".github/actions/cloudflare-context/action.yml"
@@ -45,57 +47,58 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
 
-      - name: Restore npm cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-22-homepanel-${{ hashFiles('hp/cloud/package-lock.json', 'hp/video/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-homepanel-
-
-      - name: Install HomePanel dependencies
-        working-directory: hp/cloud
-        run: npm ci --no-audit --no-fund
-
-      - name: Install video dependencies
-        working-directory: hp/video
-        run: npm install --no-audit --no-fund
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Enforce GitHub Actions-only Cloudflare deployment
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
 
       - name: Validate HomePanel gateway
-        working-directory: hp/cloud
+        working-directory: hp
         run: |
-          npm run check
-          npm test
-          npm run check:unified-bundle
+          npm run check --workspace cloud
+          npm test --workspace cloud
+          npm run check:unified-bundle --workspace cloud
 
       - name: Validate video service
-        working-directory: hp/video
+        working-directory: hp
         run: |
-          npm test
-          npm run check
+          npm test --workspace video
+          npm run check --workspace video
+
+      - name: Detach legacy gateway Queue consumer
+        working-directory: hp
+        shell: bash
+        run: |
+          set -euo pipefail
+          if npm exec --workspace video -- wrangler queues consumer worker remove videoscraper-manual-imports homepanel-cloud; then
+            echo "Detached the manual-import Queue from homepanel-cloud."
+          else
+            echo "No legacy homepanel-cloud Queue consumer remained."
+          fi
 
       - name: Deploy private video service
-        working-directory: hp/video
-        run: npm run deploy
+        working-directory: hp
+        run: npm run deploy --workspace video
 
       - name: Deploy HomePanel gateway
-        working-directory: hp/cloud
+        working-directory: hp
         shell: bash
         env:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npm run deploy
+            npm run deploy --workspace cloud
             exit 0
           fi
 
           if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            npm run deploy
+            npm run deploy --workspace cloud
             exit 0
           fi
 
@@ -104,15 +107,15 @@ jobs:
           fi
 
           if git -C "$GITHUB_WORKSPACE" diff --quiet "$BEFORE_SHA" "$GITHUB_SHA" -- \
+            hp/package-lock.json \
             hp/cloud/migrations \
             hp/cloud/scripts/deploy-existing.mjs \
             hp/cloud/wrangler.jsonc \
-            hp/cloud/package.json \
-            hp/cloud/package-lock.json; then
-            npm run deploy:worker
+            hp/cloud/package.json; then
+            npm run deploy:worker --workspace cloud
           else
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
-            npm run deploy
+            npm run deploy --workspace cloud
           fi
 
       - name: Verify deployed readiness
@@ -133,8 +136,8 @@ jobs:
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
-        working-directory: hp/cloud
-        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npx wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
+        working-directory: hp
+        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npm exec --workspace cloud -- wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
 
       - name: Report missing radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
