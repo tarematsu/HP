@@ -29,9 +29,9 @@ test('the unified workflow uses and retriggers the diagnostics action for HP and
   assert.match(workflow, /^\s{10}live-tail-worker: sh-runtime-orchestrator$/m);
   assert.match(
     workflow,
-    /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/,
+    /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video/,
   );
-  assert.match(workflow, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
 });
 
 test('ambiguous and superseded observability implementations stay removed', async () => {
