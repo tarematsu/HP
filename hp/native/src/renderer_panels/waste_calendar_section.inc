@@ -155,7 +155,7 @@ void DrawCourse36WasteCalendar(HDC dc, const RECT& card) {
   RECT titleRect{content.left, content.top, content.right, content.top + headerHeight};
 
   HGDIOBJ previousFont = SelectObject(
-      dc, CachedUiFont(std::clamp(headerHeight * 58 / 100, 12, 20), FW_SEMIBOLD));
+      dc, CachedUiFont(std::clamp(headerHeight * 45 / 100, 10, 15), FW_NORMAL));
   SetTextColor(dc, kWidgetText);
   DrawTextInRect(dc, L"ごみ収集カレンダー", titleRect,
                  DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
@@ -220,7 +220,7 @@ void DrawCourse36WasteCalendar(HDC dc, const RECT& card) {
     if (itemRect.bottom <= itemRect.top) itemRect.bottom = itemRect.top + 1;
     const Course36WasteVisual visual = Course36VisualFor(Course36WasteForDate(date));
     DrawWidgetCard(dc, itemRect, visual.surface, std::max(5, cellRadius - 2));
-    SelectObject(dc, CachedUiFont(std::clamp(cellHeight * 10 / 100, 10, 15), FW_SEMIBOLD));
+    SelectObject(dc, CachedUiFont(std::clamp(cellHeight * 14 / 100, 14, 22), FW_SEMIBOLD));
     SetTextColor(dc, visual.text);
     std::wstring label = visual.firstLine;
     if (visual.secondLine && *visual.secondLine) {
