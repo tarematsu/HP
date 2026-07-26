@@ -141,7 +141,12 @@ HBITMAP Renderer::NativeWeatherIconBitmap(
   if (!bitmap && night) bitmap = decodeIcon(icon + L"_day.png");
   if (!bitmap) {
     const wchar_t family = icon.front();
-    const std::wstring fallback = family == L'2' ? L"200" :
+    const std::wstring fallback = icon == L"430" ? L"400" :
+        (icon == L"500" || icon == L"550") ? L"100" :
+        icon == L"600" ? L"200" :
+        (icon == L"650" || icon == L"850") ? L"300" :
+        icon == L"950" ? L"400" :
+        family == L'2' ? L"200" :
         family == L'3' ? L"300" : family == L'4' ? L"400" : L"100";
     bitmap = decodeIcon(fallback + (night ? L"_night.png" : L"_day.png"));
     if (!bitmap && night) bitmap = decodeIcon(fallback + L"_day.png");
