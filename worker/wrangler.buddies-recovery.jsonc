@@ -49,10 +49,10 @@
   ],
   "queues": {
     "consumers": [
-      { "queue": "stationhead-raw-collection", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "dead_letter_queue": "stationhead-raw-collection-dlq", "max_concurrency": 4 },
-      { "queue": "stationhead-ingest-finalize", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "dead_letter_queue": "stationhead-ingest-finalize-dlq", "max_concurrency": 4 },
-      { "queue": "stationhead-comments", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "dead_letter_queue": "stationhead-comments-dlq", "max_concurrency": 4 },
-      { "queue": "stationhead-buddies-persist", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 8, "dead_letter_queue": "stationhead-buddies-persist-dlq", "max_concurrency": 4 }
+      { "queue": "stationhead-raw-collection", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-raw-collection-dlq", "max_concurrency": 4 },
+      { "queue": "stationhead-ingest-finalize", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-ingest-finalize-dlq", "max_concurrency": 4 },
+      { "queue": "stationhead-comments", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-comments-dlq", "max_concurrency": 1 },
+      { "queue": "stationhead-buddies-persist", "max_batch_size": 10, "max_batch_timeout": 5, "max_retries": 4, "dead_letter_queue": "stationhead-buddies-persist-dlq", "max_concurrency": 1 }
     ],
     "producers": [
       { "binding": "RAW_COLLECTION_QUEUE", "queue": "stationhead-raw-collection" },
