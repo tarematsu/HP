@@ -32,18 +32,30 @@ test('the player stores the 52-minute clock behind the final PCH proxy', () => {
   assert.doesNotMatch(playerHeader, /int64_t lastReloadAt_ = 0;/);
   assert.match(
     boundaryPolicy,
-    /#define lastReloadAt_[\s\S]*StationheadBoundaryReloadClock\(\(lastReloadAtStorage_\), IsSecondary\(\)\)/,
+    /#define lastReloadAt_[\s\S]*StationheadBoundaryReloadClock\([\s\S]*lastReloadAtStorage_[\s\S]*IsSecondary\(\), webViewConfigured_\)/,
   );
 });
 
-test('the first successful navigation initializes the clock once', () => {
+test('only the first successful navigation initializes the clock', () => {
   const assignment = section(
     boundaryPolicy,
     'int64_t operator=(int64_t candidate) noexcept',
-    'private:',
+    'friend int64_t operator-(',
   );
   assert.match(assignment, /bool accept = storage_ <= 0;/);
+  assert.match(assignment, /if \(accept && !configured_\) accept = false;/);
   assert.match(assignment, /if \(accept\) storage_ = candidate;/);
+
+  const configure = section(
+    webviewSource,
+    'createdAt_ = lastReloadAt_ = UnixMillis();',
+    'void StationheadPlayer::ConfigureAuthWebView()',
+  );
+  assert.ok(
+    configure.indexOf('createdAt_ = lastReloadAt_ = UnixMillis();') <
+      configure.indexOf('webViewConfigured_ = true;'),
+    'pre-navigation ConfigureWebView assignment must be filtered',
+  );
   assert.match(
     webviewSource,
     /if \(success\) \{[\s\S]*lastReloadAt_ = now;/,
@@ -64,7 +76,7 @@ test('an App-accepted boundary message authorizes exactly one later clock assign
   const assignment = section(
     boundaryPolicy,
     'int64_t operator=(int64_t candidate) noexcept',
-    'private:',
+    'friend int64_t operator-(',
   );
   assert.match(assignment, /if \(pending\) \{[\s\S]*pending = false;[\s\S]*accept = true;/);
   assert.ok(
@@ -77,7 +89,7 @@ test('normal successful navigation cannot postpone an established 52-minute cloc
   const assignment = section(
     boundaryPolicy,
     'int64_t operator=(int64_t candidate) noexcept',
-    'private:',
+    'friend int64_t operator-(',
   );
   assert.match(assignment, /bool accept = storage_ <= 0;/);
   assert.match(assignment, /if \(pending\)[\s\S]*accept = true;/);
@@ -92,7 +104,7 @@ test('filtered reload-clock writes preserve ConfigureWebView chained assignment'
   const assignment = section(
     boundaryPolicy,
     'int64_t operator=(int64_t candidate) noexcept',
-    'private:',
+    'friend int64_t operator-(',
   );
   assert.match(assignment, /return candidate;/);
   assert.match(
