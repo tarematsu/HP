@@ -8,6 +8,7 @@ import {
   renderDeploymentHealthSummary,
   replaceDeploymentHealthSection,
   summarizeDeploymentRun,
+  workerDeploymentResults,
 } from '../.github/scripts/github-deployment-health.mjs';
 
 const productionTarget = {
@@ -54,6 +55,7 @@ test('legacy select-job JSON still exposes selected Workers', () => {
 2026-07-27T00:00:00Z }
 `);
   assert.deepEqual(targets.workers, ['sh-runtime-orchestrator']);
+  assert.deepEqual(targets.commands, ['deploy:runtime']);
 });
 
 test('deployment errors are compact and sanitized', () => {
@@ -67,6 +69,25 @@ test('deployment errors are compact and sanitized', () => {
   assert.doesNotMatch(error, /secret-value/);
 });
 
+test('sequential Worker logs distinguish succeeded, failed, and blocked deployments', () => {
+  const results = workerDeploymentResults(`
+Deploying deploy:sakurazaka46jp
+Deploying deploy:buddies-recovery
+Deploying deploy:buddies-collector
+`, [
+    'deploy:sakurazaka46jp',
+    'deploy:buddies-recovery',
+    'deploy:buddies-collector',
+    'deploy:runtime',
+  ], 'failure');
+  assert.deepEqual(results, {
+    'deploy:sakurazaka46jp': 'success',
+    'deploy:buddies-recovery': 'success',
+    'deploy:buddies-collector': 'failure',
+    'deploy:runtime': 'skipped',
+  });
+});
+
 test('production deployment summary lists Pages and all selected Workers', () => {
   const result = summarizeDeploymentRun({
     target: productionTarget,
@@ -75,12 +96,17 @@ test('production deployment summary lists Pages and all selected Workers', () =>
       minute_db: false,
       pages: true,
       workers: ['sh-buddies-recovery', 'sh-buddies-collector'],
+      commands: ['deploy:buddies-recovery', 'deploy:buddies-collector'],
     },
     jobs: [
       { id: 1, name: 'Deploy affected Workers', conclusion: 'failure', status: 'completed' },
       { id: 2, name: 'Build and deploy Pages', conclusion: 'skipped', status: 'completed' },
     ],
     jobErrors: { 1: 'deploy:buddies-collector failed' },
+    workerResults: {
+      'deploy:buddies-recovery': 'success',
+      'deploy:buddies-collector': 'failure',
+    },
   });
   assert.equal(result.overall, 'failure');
   assert.deepEqual(result.components.map((component) => component.target), [
@@ -88,7 +114,8 @@ test('production deployment summary lists Pages and all selected Workers', () =>
     'sh-buddies-collector',
     'Cloudflare Pages (skrzk)',
   ]);
-  assert.equal(result.components[0].result, 'failure');
+  assert.equal(result.components[0].result, 'success');
+  assert.equal(result.components[1].result, 'failure');
   assert.equal(result.components[2].result, 'skipped');
 });
 
