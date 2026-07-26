@@ -46,3 +46,20 @@ test('native pull requests build and package hp/native changes without publishin
   assert.match(publishStep, /if: github\.ref == 'refs\/heads\/main'/);
   assert.doesNotMatch(publishStep, /github\.event_name == 'pull_request'/);
 });
+
+test('native release uses the HomePanel cloud workspace lockfile and Wrangler binary', () => {
+  const installStep = stepSection(
+    'Install Cloudflare CLI dependencies',
+    'Resolve Cloudflare account context',
+  );
+  assert.match(installStep, /npm ci --prefix hp --workspace cloud/);
+  assert.doesNotMatch(installStep, /--prefix hp\/cloud/);
+
+  const publishStep = stepSection('Upload update assets to R2', 'Trigger immediate update rollout');
+  assert.match(
+    publishStep,
+    /npm exec --prefix hp --workspace cloud -- wrangler r2 object put/,
+  );
+  assert.match(publishStep, /Resolve-Path -LiteralPath \$upload\.file/);
+  assert.doesNotMatch(publishStep, /hp\/cloud\/node_modules\/wrangler/);
+});

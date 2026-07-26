@@ -237,7 +237,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
-          npm ci --prefix hp/cloud --no-audit --no-fund
+          npm ci --prefix hp --workspace cloud --no-audit --no-fund
 
       - name: Resolve Cloudflare account context
         if: github.ref == 'refs/heads/main'
@@ -267,7 +267,6 @@ jobs:
 
           $bucket = $env:HOMEPANEL_UPDATE_BUCKET
           $version = $env:HOMEPANEL_BUILD_VERSION
-          $wrangler = Join-Path $PWD "hp/cloud/node_modules/wrangler/bin/wrangler.js"
 
           $uploads = @(
             @{ key = "updates/releases/$version/HomePanel.exe"; file = "HomePanel.exe"; type = "application/octet-stream" },
@@ -278,7 +277,8 @@ jobs:
           )
 
           foreach ($upload in $uploads) {
-            node $wrangler r2 object put "$bucket/$($upload.key)" --remote --file $upload.file --content-type $upload.type
+            $file = (Resolve-Path -LiteralPath $upload.file).Path
+            npm exec --prefix hp --workspace cloud -- wrangler r2 object put "$bucket/$($upload.key)" --remote --file $file --content-type $upload.type
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
