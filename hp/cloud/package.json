@@ -7,6 +7,7 @@
     "check": "tsc --noEmit && node --check src/unified_worker.js && node --check src/video_runtime_activation.js && node --check scripts/deploy-existing.mjs && node --check scripts/guarded-deploy.mjs && node --check scripts/d1-import-utils.mjs",
     "check:unified-bundle": "wrangler deploy --dry-run --outdir=.wrangler/unified-dry-run",
     "test": "vitest run --reporter=verbose",
+    "test:ci": "vitest run --exclude='test/**/*.integration.test.ts' --reporter=dot",
     "test:integration": "vitest run test/worker.integration.test.ts --reporter=verbose",
     "prepare:existing": "node scripts/deploy-existing.mjs --prepare-only",
     "deploy": "node scripts/guarded-deploy.mjs",

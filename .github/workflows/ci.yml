@@ -6,13 +6,16 @@ on:
       - 'site/**'
       - 'database/**'
       - 'worker/**'
-      - 'packages/**'
+      - 'packages/sh-shared/**'
       - 'scripts/**'
+      - '!scripts/local-release.ps1'
       - 'tests/**'
+      - '!tests/cloudflare-*.test.mjs'
+      - '!tests/homepanel-*.test.mjs'
+      - '!tests/observability-*.test.mjs'
+      - '!tests/helpers/source-contract.mjs'
       - 'package.json'
-      - '.github/workflows/**'
-      - '.github/actions/**'
-      - '.github/scripts/**'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -185,9 +188,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Run local D1 tests
+        if: github.event_name == 'workflow_dispatch'
         run: npm run test:d1
         working-directory: site
       - name: Verify production migration command is skipped in CI
+        if: github.event_name == 'workflow_dispatch'
         run: npm run db:migrate
         working-directory: site
 

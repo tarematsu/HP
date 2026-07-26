@@ -28,7 +28,10 @@ test('observability policy scripts pass offline self-tests in CI', () => {
 });
 
 test('observability script changes are covered by pull-request CI', () => {
-  assert.match(readSource('.github/workflows/ci.yml'), /^\s{6}- '\.github\/scripts\/\*\*'$/m);
+  const workflow = readSource('.github/workflows/homepanel-unified-ci.yml');
+  assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-cloudflare-daily-usage\.py'$/m);
+  assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-deployed-cloudflare-telemetry\.py'$/m);
+  assert.match(workflow, /needs\.changes\.outputs\.contracts == 'true'/);
 });
 
 test('unified observability runs account-wide post-deploy and daily gates', () => {
