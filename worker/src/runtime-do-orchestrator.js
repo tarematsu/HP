@@ -93,7 +93,9 @@ async function coordinatorRequest(stub, body) {
   });
   if (!response?.ok) {
     const detail = typeof response?.text === 'function' ? await response.text() : '';
-    throw new Error(`runtime coordinator HTTP ${response?.status || 500}: ${detail.slice(0, 300)}`);
+    const error = new Error(`runtime coordinator HTTP ${response?.status || 500}: ${detail.slice(0, 300)}`);
+    error.code = 'RUNTIME_COORDINATOR_HTTP_ERROR';
+    throw error;
   }
   return response.json();
 }
@@ -104,6 +106,7 @@ async function coordinatorDirectRun(stub, body, attempts = DEFAULT_DIRECT_RUN_AT
     try {
       return await coordinatorRequest(stub, body);
     } catch (error) {
+      if (error?.code === 'RUNTIME_COORDINATOR_HTTP_ERROR') throw error;
       lastError = error;
       coordinatorFailure('runtime_coordinator_direct_run_attempt_failed', error, { attempt });
     }
@@ -350,7 +353,7 @@ export class RuntimeCoordinator extends StoredRuntimeCoordinator {
       const result = await runRuntimeWork(
         controller,
         this.activeEnv(await this.repairComplete()),
-        {},
+        this.state || {},
         this.dependencies,
       );
       await this.release(claim.holder_id);
