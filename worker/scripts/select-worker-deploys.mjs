@@ -38,6 +38,7 @@ const allWorkerDeployScripts = new Set([
 const actionsOnlySources = new Set([
   'worker/src/minute-facts-backfill-stages.js',
   'worker/src/minute-facts-gap-scan.js',
+  'worker/src/minute-maintenance-entry.js',
   'worker/src/minute-rebuild-entry.js',
   'worker/src/monitor-maintenance-entry.js',
   'worker/src/pages-read-model-dispatch.js',
