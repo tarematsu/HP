@@ -349,6 +349,20 @@ export class RuntimeCoordinator {
 }
 
 export async function runCoreFetch(request, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
+  const url = new URL(request.url);
+  if (request.method === 'GET' && url.pathname === '/internal/minute-runtime-state') {
+    const read = dependencies.readMinuteRuntimeState
+      || (await import('./minute-facts-runtime-state.js')).readMinuteFactRuntimeState;
+    const tasks = await read(env);
+    return Response.json({
+      ok: Array.isArray(tasks),
+      service: 'sh-runtime-orchestrator',
+      tasks: Array.isArray(tasks) ? tasks : [],
+      checked_at: Date.now(),
+    }, {
+      headers: { 'cache-control': 'no-store' },
+    });
+  }
   const run = dependencies.runPagesFetch || (await loadPagesModule()).runPagesReadModelFetch;
   return run(request, env, ctx, dependencies.pages || EMPTY_DEPENDENCIES);
 }

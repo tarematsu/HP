@@ -5,6 +5,7 @@ import {
   readMinuteFactRuntimeState,
   recordMinuteFactRuntimeState,
 } from '../src/minute-facts-runtime-state.js';
+import { runCoreFetch } from '../src/runtime-orchestrator-entry.js';
 import { RuntimeCoordinator } from '../src/runtime-orchestrator-deployed-entry.js';
 
 function storage() {
@@ -125,4 +126,23 @@ test('runtime state falls back to D1 when the Durable Object request fails', asy
   assert.equal(calls.some((sql) => /INSERT INTO sh_minute_fact_runtime_state/.test(sql)), true);
   assert.equal(calls.some((sql) => /SELECT \* FROM sh_minute_fact_runtime_state/.test(sql)), true);
   assert.match(warnings.join('\n'), /runtime_state_do_(?:record|read)_failed/);
+});
+
+test('internal service endpoint exposes current Runtime Coordinator diagnostics', async () => {
+  const response = await runCoreFetch(
+    new Request('https://runtime.internal/internal/minute-runtime-state'),
+    {},
+    {},
+    {
+      async readMinuteRuntimeState() {
+        return [{ task_name: 'derive', last_success_at: 123 }];
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual((await response.json()).tasks, [{
+    task_name: 'derive',
+    last_success_at: 123,
+  }]);
 });

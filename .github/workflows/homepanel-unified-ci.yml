@@ -32,6 +32,7 @@ on:
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
+      - '.github/scripts/ci/select-scopes.mjs'
       - 'tests/cloudflare-*.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
@@ -54,6 +55,7 @@ jobs:
       video: ${{ steps.scope.outputs.video }}
       bundle: ${{ steps.scope.outputs.bundle }}
       contracts: ${{ steps.scope.outputs.contracts }}
+      integration: ${{ steps.scope.outputs.integration }}
       migrations: ${{ steps.scope.outputs.migrations }}
     steps:
       - uses: actions/checkout@v4
@@ -70,64 +72,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          cloud=false
-          video=false
-          bundle=false
-          contracts=false
-          migrations=false
-
           if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
-            cloud=true
-            video=true
-            bundle=true
-            contracts=true
-            migrations=true
+            node .github/scripts/ci/select-scopes.mjs homepanel --all
           else
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-files.txt
-            while IFS= read -r file; do
-              case "$file" in
-                hp/cloud/*)
-                  cloud=true
-                  ;;
-              esac
-              case "$file" in
-                hp/video/src/*|hp/video/public/*|hp/video/package.json)
-                  video=true
-                  bundle=true
-                  ;;
-              esac
-              case "$file" in
-                hp/cloud/src/unified_worker.js|hp/cloud/package.json|hp/cloud/package-lock.json|hp/cloud/wrangler*.jsonc)
-                  bundle=true
-                  ;;
-              esac
-              case "$file" in
-                hp/cloud/migrations/*|hp/cloud/scripts/deploy-existing.mjs|hp/cloud/scripts/d1-import-utils.mjs|hp/cloud/wrangler.jsonc)
-                  migrations=true
-                  ;;
-              esac
-              case "$file" in
-                .github/actions/cloudflare-*|.github/scripts/*|.github/workflows/cloud-deploy.yml|.github/workflows/sh-observability.yml|tests/cloudflare-*|tests/helpers/source-contract.mjs|tests/homepanel-*|tests/observability-*)
-                  contracts=true
-                  ;;
-              esac
-              case "$file" in
-                .github/workflows/homepanel-unified-ci.yml)
-                  cloud=true
-                  video=true
-                  bundle=true
-                  contracts=true
-                  migrations=true
-                  ;;
-              esac
-            done < changed-files.txt
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+              node .github/scripts/ci/select-scopes.mjs homepanel
           fi
-
-          echo "cloud=$cloud" >> "$GITHUB_OUTPUT"
-          echo "video=$video" >> "$GITHUB_OUTPUT"
-          echo "bundle=$bundle" >> "$GITHUB_OUTPUT"
-          echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
-          echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
 
   validate:
     needs: changes
@@ -181,7 +131,7 @@ jobs:
           npm run check 2>&1 | tee source-check.log
 
       - name: Run fast HomePanel tests
-        if: needs.changes.outputs.cloud == 'true' && github.event_name != 'workflow_dispatch'
+        if: needs.changes.outputs.cloud == 'true' && needs.changes.outputs.integration != 'true' && github.event_name != 'workflow_dispatch'
         working-directory: hp/cloud
         shell: bash
         run: |
@@ -189,7 +139,7 @@ jobs:
           npm run test:ci 2>&1 | tee test.log
 
       - name: Run full HomePanel tests
-        if: needs.changes.outputs.cloud == 'true' && github.event_name == 'workflow_dispatch'
+        if: needs.changes.outputs.cloud == 'true' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
         working-directory: hp/cloud
         shell: bash
         run: |

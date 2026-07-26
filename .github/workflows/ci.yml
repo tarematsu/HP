@@ -7,8 +7,14 @@ on:
       - 'database/**'
       - 'worker/**'
       - 'packages/sh-shared/**'
-      - 'scripts/**'
-      - '!scripts/local-release.ps1'
+      - 'scripts/check-js-syntax.mjs'
+      - 'scripts/cloudflare-d1-*.mjs'
+      - 'scripts/discover-sh-page.mjs'
+      - 'scripts/enforce-d1-*.mjs'
+      - 'scripts/prepare-other-archive-import.py'
+      - 'scripts/rebuild-local-facts.py'
+      - 'scripts/validate-email-recaps*.ps1'
+      - 'scripts/validate-monorepo.mjs'
       - 'tests/**'
       - '!tests/cloudflare-*.test.mjs'
       - '!tests/homepanel-*.test.mjs'
@@ -16,6 +22,7 @@ on:
       - '!tests/helpers/source-contract.mjs'
       - 'package.json'
       - '.github/workflows/ci.yml'
+      - '.github/scripts/ci/select-scopes.mjs'
   workflow_dispatch:
 
 permissions:
@@ -33,6 +40,7 @@ jobs:
       pages: ${{ steps.scope.outputs.pages }}
       worker: ${{ steps.scope.outputs.worker }}
       sql: ${{ steps.scope.outputs.sql }}
+      repository_full: ${{ steps.scope.outputs.repository_full }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -46,45 +54,12 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          pages=false
-          worker=false
-          sql=false
-
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            pages=true
-            worker=true
-            sql=true
+            node .github/scripts/ci/select-scopes.mjs stationhead --all
           else
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-files.txt
-            while IFS= read -r file; do
-              case "$file" in
-                site/*|packages/sh-shared/*|database/*)
-                  pages=true
-                  ;;
-              esac
-              case "$file" in
-                worker/*|packages/sh-shared/*|database/facts-*|database/facts-migrations/*)
-                  worker=true
-                  ;;
-              esac
-              case "$file" in
-                database/*|tests/sql_migrations_test.py)
-                  sql=true
-                  ;;
-              esac
-              case "$file" in
-                .github/workflows/ci.yml|.github/actions/*)
-                  pages=true
-                  worker=true
-                  sql=true
-                  ;;
-              esac
-            done < changed-files.txt
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+              node .github/scripts/ci/select-scopes.mjs stationhead
           fi
-
-          echo "pages=$pages" >> "$GITHUB_OUTPUT"
-          echo "worker=$worker" >> "$GITHUB_OUTPUT"
-          echo "sql=$sql" >> "$GITHUB_OUTPUT"
 
   repository:
     name: Full repository checks
@@ -96,24 +71,26 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
       - name: Restore root-test Worker dependencies
+        if: needs.changes.outputs.repository_full == 'true'
         id: repository-worker-modules
         uses: actions/cache@v4
         with:
           path: worker/node_modules
           key: ${{ runner.os }}-node22-worker-${{ hashFiles('worker/package-lock.json', 'packages/sh-shared/**') }}
       - name: Install root-test Worker dependencies
-        if: steps.repository-worker-modules.outputs.cache-hit != 'true'
+        if: needs.changes.outputs.repository_full == 'true' && steps.repository-worker-modules.outputs.cache-hit != 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
         working-directory: worker
       - uses: actions/setup-python@v5
         if: needs.changes.outputs.sql == 'true'
         with:
           python-version: '3.12'
-      - run: node scripts/check-js-syntax.mjs scripts tests
+      - run: node scripts/check-js-syntax.mjs scripts tests .github/scripts/ci
+      - name: Run CI workflow contract
+        run: node --test tests/ci-workflow-efficiency.test.mjs
       - name: Run JavaScript tests
+        if: needs.changes.outputs.repository_full == 'true'
         shell: bash
         run: |
           set +e
@@ -124,7 +101,7 @@ jobs:
           fi
           exit "$status"
       - name: Upload JavaScript test failure log
-        if: failure()
+        if: needs.changes.outputs.repository_full == 'true' && failure()
         uses: actions/upload-artifact@v4
         with:
           name: javascript-test-failure
@@ -146,10 +123,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            site/package-lock.json
-            worker/package-lock.json
       - name: Restore Pages test dependencies
         id: pages-modules
         uses: actions/cache@v4
@@ -210,8 +183,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
       - name: Restore Worker dependencies
         id: worker-modules
         uses: actions/cache@v4
