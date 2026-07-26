@@ -4,7 +4,7 @@ namespace hp {
 namespace {
 
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
-                                   const RECT& bounds) {
+                                    const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW registered{};
@@ -156,8 +156,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
         controller->put_IsVisible(FALSE);
       }
     } else {
-      if (!ControllerBoundsMatch(controller, contentBounds) ||
-          !WindowClientSizeMatches(hostWindow, hostWidth, hostHeight)) {
+      // Check the host first. A resize makes the controller update mandatory,
+      // so avoid a synchronous WebView2 COM read on that common transition.
+      if (!WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) ||
+          !ControllerBoundsMatch(controller, contentBounds)) {
         controller->put_Bounds(contentBounds);
       }
       if (!ControllerVisibilityMatches(controller, TRUE)) {
@@ -180,8 +182,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
 
   if (authController) {
     if (showAuth) {
-      if (!ControllerBoundsMatch(authController, authBounds) ||
-          !WindowClientSizeMatches(authHostWindow, width, height)) {
+      if (!WindowClientSizeMatches(authHostWindow, width, height) ||
+          !ControllerBoundsMatch(authController, authBounds)) {
         authController->put_Bounds(authBounds);
       }
       if (!ControllerVisibilityMatches(authController, TRUE)) {
@@ -256,6 +258,7 @@ void StationheadPlayer::SetStartupBounds() {
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
+  if (startupPreviewActive_ && EqualRect(&bounds_, &bounds)) return;
   startupPreviewActive_ = true;
   bounds_ = bounds;
   LayoutControllers();
@@ -276,6 +279,19 @@ void StationheadPlayer::ClearStartupPreviewBounds() {
 
 void StationheadPlayer::SetVisible(bool visible) {
   if (!visible) {
+    // Audio and render-state notifications can converge on the same hide request.
+    // Once the stable 1x1 playback surface is already active, avoid repeating all
+    // host geometry, z-order and WebView2 visibility probes on the UI thread.
+    if (!viewVisible_ && selectedTab_ == StationheadTabKind::None &&
+        !startupPreviewActive_ && !spotifyAuthorization_ && !loginRequired_ &&
+        hostWindow_ && IsWindow(hostWindow_) && IsWindowVisible(hostWindow_) &&
+        WindowClientSizeMatches(hostWindow_, 1, 1) &&
+        (!authHostWindow_ || !IsWindow(authHostWindow_) ||
+         !IsWindowVisible(authHostWindow_))) {
+      return;
+    }
+    const bool hadInteractiveSurface =
+        viewVisible_ || selectedTab_ != StationheadTabKind::None;
     selectedTab_ = StationheadTabKind::None;
     if (controller_) KeepPlaybackBehindDashboard();
     else {
@@ -283,7 +299,10 @@ void StationheadPlayer::SetVisible(bool visible) {
       std::lock_guard lock(mutex_);
       status_.visible = startupPreviewActive_;
     }
-    if (window_ && IsWindow(window_)) SetFocus(window_);
+    if (hadInteractiveSurface && !startupPreviewActive_ &&
+        window_ && IsWindow(window_) && GetFocus() != window_) {
+      SetFocus(window_);
+    }
     return;
   }
   if (selectedTab_ == StationheadTabKind::None && !NeedsInteractiveWindow()) {
@@ -298,6 +317,19 @@ void StationheadPlayer::SetVisible(bool visible) {
   if (selectedTab_ == StationheadTabKind::None && !NeedsInteractiveWindow()) {
     KeepPlaybackBehindDashboard();
     return;
+  }
+  // Re-selecting the active surface is common while login/auth state settles.
+  // Bounds changes and controller creation already call LayoutControllers(), so
+  // a ready visible surface needs no additional Win32 or COM work here.
+  if (viewVisible_) {
+    if (selectedTab_ == StationheadTabKind::Stationhead &&
+        hostWindow_ && IsWindow(hostWindow_) && IsWindowVisible(hostWindow_)) {
+      return;
+    }
+    if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
+        authHostWindow_ && IsWindow(authHostWindow_) && IsWindowVisible(authHostWindow_)) {
+      return;
+    }
   }
   const bool wasVisible = viewVisible_;
   viewVisible_ = true;
