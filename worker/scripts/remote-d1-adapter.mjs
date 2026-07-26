@@ -153,13 +153,12 @@ function commandFailureDetail(error) {
   return stderr || stdout || String(error?.message || error || '').trim();
 }
 
-export function createWranglerRemoteD1(options = {}) {
-  const {
-    database,
-    cwd,
-    wranglerScript,
-    execFileSync = defaultExecFileSync,
-  } = options;
+export function createWranglerRemoteD1({
+  database,
+  cwd,
+  wranglerScript,
+  execFileSync = defaultExecFileSync,
+}) {
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
   if (!String(cwd || '').trim()) throw new Error('remote D1 working directory is required');
   if (!String(wranglerScript || '').trim()) throw new Error('Wrangler script path is required');
@@ -204,15 +203,21 @@ export function createWranglerRemoteD1(options = {}) {
   return {
     prepare(sql) { return createStatement(sql); },
     async batch(statements = []) {
-      const results = [];
-      for (const item of statements) {
+      if (!statements.length) return [];
+      const rendered = statements.map((item) => {
         if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
           throw new TypeError('remote D1 batch received an incompatible statement');
         }
-        results.push(statementResult(execute([
-          '--command',
-          bindD1Sql(item.__sql, item.__bindings),
-        ])));
+        return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
+      });
+      // Remote --file uses D1 import and returns one aggregate result. A multi-query
+      // --command preserves the per-statement results expected by the D1 batch API.
+      const results = wranglerD1Results(execute(['--command', rendered.join('\n')]));
+      if (results.length !== statements.length) {
+        throw new Error(`Wrangler returned ${results.length} D1 batch results for ${statements.length} statements`);
+      }
+      if (results.some((result) => !result.success)) {
+        throw new Error('Wrangler reported an unsuccessful D1 batch statement');
       }
       return results;
     },
