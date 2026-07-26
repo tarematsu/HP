@@ -25,6 +25,7 @@ test('runtime keeps only immediate enrichment Queue boundaries', () => {
 
   assert.match(enrichment, /TRACK_METADATA_MESSAGE_TYPE/);
   assert.match(enrichment, /processTrackMetadataTask/);
+  assert.doesNotMatch(enrichment, /pagesModulePromise|runPagesReadModelCron|PAGES_PUBLICATION_QUEUE_NAME/);
   assert.match(metadata, /from '\.\/committed-metadata-enrichment\.js'/);
   assert.doesNotMatch(enrichment, /for\s*\(const message of/);
 });
@@ -32,9 +33,11 @@ test('runtime keeps only immediate enrichment Queue boundaries', () => {
 test('Pages materialization is owned by the bounded Actions runner', () => {
   const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
   const runner = source('../scripts/run-pages-read-model-actions.mjs');
+  const responseStore = source('../src/pages-response-r2.js');
   assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
-  assert.match(runner, /pages-response\/actions-v1/);
+  assert.match(runner, /pagesActionsR2ResponseKey/);
+  assert.match(responseStore, /pages-response\/actions-v1/);
 });
