@@ -6,18 +6,25 @@ on:
       - agent/optimize-stationhead-window
     paths:
       - .github/workflows/agent-stationhead-layout-followup.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/agent-stationhead-layout-followup.yml
 
 permissions:
   contents: write
 
 jobs:
   patch-and-verify:
+    if: github.event_name == 'push' || github.head_ref == 'agent/optimize-stationhead-window'
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: agent/optimize-stationhead-window
 
       - name: Apply focused layout optimization
         shell: bash
