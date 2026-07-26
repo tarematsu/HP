@@ -11,7 +11,8 @@ const EMPTY_DEPENDENCIES = Object.freeze({});
 export const BUDDIES_COLLECTOR_CRON = '* * * * *';
 
 function collectorRunId(scheduledAt) {
-  return `sh-buddies-collector:${scheduledAt}:${crypto.randomUUID()}`;
+  const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
+  return `sh-buddies-collector:${scheduledAt}:${random}`;
 }
 
 export async function runBuddiesCollectorScheduled(
@@ -25,12 +26,13 @@ export async function runBuddiesCollectorScheduled(
     return { skipped: true, reason: 'unsupported-buddies-collector-cron', cron };
   }
 
-  const scheduledAt = Number(controller?.scheduledTime) || Date.now();
+  const now = dependencies.now || Date.now;
+  const scheduledAt = Number(controller?.scheduledTime) || now();
   const activeEnv = rawCollectorEnv(env);
   const holderId = dependencies.holderId || collectorRunId(scheduledAt);
   const claim = dependencies.claimPrimaryRunLock || claimPrimaryRunLock;
   const release = dependencies.releasePrimaryRunLock || releasePrimaryRunLock;
-  const claimed = await claim(activeEnv, holderId, scheduledAt);
+  const claimed = await claim(activeEnv, holderId, now());
   if (!claimed) {
     return {
       skipped: true,
@@ -46,7 +48,7 @@ export async function runBuddiesCollectorScheduled(
   };
   try {
     const collection = await collect(activeEnv, collectionDependencies);
-    await release(activeEnv, holderId, Date.now());
+    await release(activeEnv, holderId, now());
     return {
       collected: true,
       scheduled_at: scheduledAt,
