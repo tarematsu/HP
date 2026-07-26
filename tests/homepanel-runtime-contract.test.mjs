@@ -10,6 +10,7 @@ test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
   const schedulerRuntime = readSource('hp/cloud/src/scheduler_runtime.ts');
   const schedulerCoordinator = readSource('hp/cloud/src/scheduler_coordinator.ts');
   const deviceSyncCoordinator = readSource('hp/cloud/src/device_sync_coordinator.ts');
+  const deviceSyncClient = readSource('hp/cloud/src/device_sync_coordinator_client.ts');
   const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
   const videoConfig = readSource('hp/video/wrangler.jsonc');
@@ -59,7 +60,13 @@ test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
 
   expectAll(schedulerCoordinator, ['/ensure', '/wake', 'async alarm()']);
   expectNone(schedulerCoordinator, ['video-feed-', 'radar-bundle-shard', 'device-sync-invalidate']);
-  expectAll(deviceSyncCoordinator, ['export class DeviceSyncCoordinator', 'DEVICE_SYNC_COORDINATOR']);
+  expectAll(deviceSyncCoordinator, ['export class DeviceSyncCoordinator', 'readDeviceSyncManifest']);
+  expectNone(deviceSyncCoordinator, ['function coordinatorStub', 'DEVICE_SYNC_COORDINATOR?:']);
+  expectAll(deviceSyncClient, [
+    'DEVICE_SYNC_COORDINATOR?: DurableObjectNamespace',
+    'requestCoordinatedDeviceSync',
+    'invalidateCoordinatedDeviceSyncManifest',
+  ]);
   expectAll(radarCoordinator, ['export class RadarBundleCoordinator', 'radarBundleShardResponse']);
 
   expectAll(cloudConfig, [
