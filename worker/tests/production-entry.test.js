@@ -70,7 +70,7 @@ test('collector, recovery, and runtime Wrangler configurations own disjoint pipe
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(collector.triggers?.crons, ['* * * * *']);
   assert.equal(recovery.triggers, undefined);
-  assert.equal(runtime.triggers, undefined);
+  assert.deepEqual(runtime.triggers, { crons: [] });
   assert.equal(runtime.durable_objects, undefined);
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
   assert.deepEqual(recovery.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
