@@ -2,8 +2,9 @@ name: Resolve Cloudflare context
 description: Export the Cloudflare token and resolve exactly one accessible account
 inputs:
   api-token:
-    description: Cloudflare API token
-    required: true
+    description: Optional Cloudflare API token; falls back to the job environment
+    required: false
+    default: ''
   account-id:
     description: Optional explicit Cloudflare account ID
     required: false
@@ -14,6 +15,6 @@ runs:
     - name: Resolve account
       shell: bash
       env:
-        INPUT_API_TOKEN: ${{ inputs.api-token }}
-        INPUT_ACCOUNT_ID: ${{ inputs.account-id }}
+        INPUT_API_TOKEN: ${{ inputs.api-token || env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_BUILDS_API_TOKEN }}
+        INPUT_ACCOUNT_ID: ${{ inputs.account-id || env.CLOUDFLARE_ACCOUNT_ID }}
       run: node .github/scripts/resolve-cloudflare-account.mjs
