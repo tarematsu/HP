@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 
 import { runRollupMaintenance } from '../src/rollup-maintenance.js';
@@ -13,8 +14,6 @@ const databases = {
   minute: process.env.FACTS_DATABASE_NAME || 'stationhead-minute',
   other: process.env.OTHER_DATABASE_NAME || 'stationhead-other',
 };
-const startedAt = Date.now();
-const deadline = startedAt + Math.max(60_000, Number(process.env.RUNTIME_MAINTENANCE_DEADLINE_MS || 12 * 60_000));
 
 function wrangler(args, capture = true) {
   return execFileSync(process.execPath, [wranglerScript, ...args], {
@@ -90,34 +89,55 @@ function remoteD1(database) {
   };
 }
 
-function ensureTime() {
-  if (Date.now() >= deadline) throw new Error('runtime offline maintenance deadline exceeded');
+function productionEnvironment() {
+  return {
+    BUDDIES_DB: remoteD1(databases.buddies),
+    MINUTE_DB: remoteD1(databases.minute),
+    OTHER_DB: remoteD1(databases.other),
+    SNAPSHOT_RETENTION_ENABLED: true,
+    SNAPSHOT_RETENTION_MS: 30 * 24 * 60 * 60_000,
+    SNAPSHOT_RETENTION_INTERVAL_MS: 6 * 60 * 60_000,
+    SNAPSHOT_RETENTION_BATCH_SIZE: 5000,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 100,
+    STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 * 60_000,
+  };
 }
 
-const env = {
-  BUDDIES_DB: remoteD1(databases.buddies),
-  MINUTE_DB: remoteD1(databases.minute),
-  OTHER_DB: remoteD1(databases.other),
-  SNAPSHOT_RETENTION_ENABLED: true,
-  SNAPSHOT_RETENTION_MS: 30 * 24 * 60 * 60_000,
-  SNAPSHOT_RETENTION_INTERVAL_MS: 6 * 60 * 60_000,
-  SNAPSHOT_RETENTION_BATCH_SIZE: 5000,
-  SNAPSHOT_RETENTION_MAX_BATCHES: 100,
-  STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 * 60_000,
-};
+export async function runRuntimeOfflineMaintenanceActions(options = {}) {
+  const clock = options.now || Date.now;
+  const startedAt = Number(clock());
+  const deadline = startedAt + Math.max(
+    60_000,
+    Number(process.env.RUNTIME_MAINTENANCE_DEADLINE_MS || 12 * 60_000),
+  );
+  const env = options.env || productionEnvironment();
+  const runPrediction = options.runPrediction || runStreamGoalPrediction;
+  const runRollup = options.runRollup || runRollupMaintenance;
+  const runRetention = options.runRetention || pruneOldSnapshots;
+  const ensureTime = () => {
+    if (Number(clock()) >= deadline) {
+      throw new Error('runtime offline maintenance deadline exceeded');
+    }
+  };
 
-ensureTime();
-const prediction = await runStreamGoalPrediction(env, startedAt);
-ensureTime();
-const rollup = await runRollupMaintenance(env.BUDDIES_DB, env.OTHER_DB, null, startedAt);
-ensureTime();
-const retention = await pruneOldSnapshots(env, startedAt);
+  ensureTime();
+  const prediction = await runPrediction(env, startedAt);
+  ensureTime();
+  const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, null, startedAt);
+  ensureTime();
+  const retention = await runRetention(env, startedAt);
 
-console.log(JSON.stringify({
-  ok: true,
-  event: 'runtime_offline_maintenance_actions_complete',
-  elapsed_ms: Date.now() - startedAt,
-  prediction,
-  rollup,
-  retention,
-}));
+  return {
+    ok: true,
+    event: 'runtime_offline_maintenance_actions_complete',
+    elapsed_ms: Math.max(0, Number(clock()) - startedAt),
+    prediction,
+    rollup,
+    retention,
+  };
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  console.log(JSON.stringify(await runRuntimeOfflineMaintenanceActions()));
+}
