@@ -162,7 +162,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Run local D1 tests
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.sql == 'true'
         run: npm run test:d1
         working-directory: site
       - name: Verify production migration command is skipped in CI
