@@ -9,6 +9,7 @@ import { readOtherHealth } from '../functions/lib/health-other.js';
 import { readSakurazakaHealth } from '../functions/lib/health-sakurazaka.js';
 
 const NOW = 1_700_000_000_000;
+const ACTIVE_MINUTE_TASKS = ['derive', 'recovery', 'rebuild'];
 const CANONICAL_PATHS = [
   '/api/health',
   '/api/dashboard',
@@ -40,6 +41,18 @@ function runtimeRow(taskName, overrides = {}) {
     updated_at: NOW - 60_000,
     ...overrides,
   };
+}
+
+function minuteRows() {
+  return [
+    ...ACTIVE_MINUTE_TASKS.map((task) => runtimeRow(task)),
+    runtimeRow('sync', {
+      last_started_at: NOW - 24 * 60 * 60_000,
+      last_success_at: NOW - 24 * 60 * 60_000,
+      failed_total: 10,
+      job_failures_total: 10,
+    }),
+  ];
 }
 
 function minuteDb(rows) {
@@ -136,9 +149,8 @@ test('Pages API catalog exposes exactly the canonical routes without Worker URLs
 });
 
 test('unified Pages health combines all health components behind one URL', async () => {
-  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
   const env = {
-    MINUTE_DB: minuteDb(rows),
+    MINUTE_DB: minuteDb(minuteRows()),
     OTHER_DB: otherDb(),
     SOLO_BROADCAST_HANDLE: 'sakurazaka46jp',
   };
@@ -146,7 +158,7 @@ test('unified Pages health combines all health components behind one URL', async
   assert.equal(payload.ok, true);
   assert.deepEqual(Object.keys(payload.components), ['collector', 'minute', 'runtime', 'sakurazaka46jp']);
   assert.equal(payload.components.collector.snapshot_count, 123);
-  assert.equal(payload.components.minute.tasks.length, 4);
+  assert.deepEqual(payload.components.minute.tasks.map(({ task_name: task }) => task), ACTIVE_MINUTE_TASKS);
   assert.equal(payload.components.runtime.ok, true);
   assert.equal(payload.components.sakurazaka46jp.official_news.upcoming_count, 2);
 
@@ -167,8 +179,7 @@ test('unified Pages health combines all health components behind one URL', async
 });
 
 test('unified health reports individual component failures', async () => {
-  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
-  const payload = await readHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
+  const payload = await readHealth({ MINUTE_DB: minuteDb(minuteRows()) }, NOW);
   assert.equal(payload.ok, false);
   assert.equal(payload.components.collector.ok, true);
   assert.equal(payload.components.minute.ok, true);
@@ -177,10 +188,9 @@ test('unified health reports individual component failures', async () => {
 });
 
 test('minute, runtime, and Sakurazaka health preserve component semantics', async () => {
-  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
-  const minute = await readMinuteHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
+  const minute = await readMinuteHealth({ MINUTE_DB: minuteDb(minuteRows()) }, NOW);
   assert.equal(minute.ok, true);
-  assert.equal(minute.tasks.length, 4);
+  assert.deepEqual(minute.tasks.map(({ task_name: task }) => task), ACTIVE_MINUTE_TASKS);
 
   const unhealthy = minuteTaskHealth(runtimeRow('derive', { dead_count: 1 }), NOW, {});
   assert.equal(unhealthy.ok, false);
@@ -193,6 +203,38 @@ test('minute, runtime, and Sakurazaka health preserve component semantics', asyn
   const sakurazaka = await readSakurazakaHealth(env, NOW);
   assert.equal(sakurazaka.ok, true);
   assert.equal(sakurazaka.solo_monitor.phase, 'idle');
+});
+
+test('minute backlog policy ignores retired sync state and prevents hypersensitive config drift', async () => {
+  const oldPending = {
+    pending_count: 3,
+    oldest_pending_minute: NOW - 60 * 60_000,
+  };
+  const derive = minuteTaskHealth(runtimeRow('derive', oldPending), NOW, {
+    MINUTE_FACT_PENDING_ALERT_COUNT: 1,
+    MINUTE_FACT_PENDING_ALERT_MS: 1,
+  });
+  assert.equal(derive.ok, true);
+  assert.equal(derive.backlog_owner, true);
+  assert.equal(derive.pending_alert_count, 20);
+  assert.equal(derive.pending_alert_ms, 15 * 60_000);
+  assert.equal(derive.pending_stale, false);
+
+  const recovery = minuteTaskHealth(runtimeRow('recovery', {
+    pending_count: 100,
+    dead_count: 4,
+    oldest_pending_minute: NOW - 60 * 60_000,
+  }), NOW, {});
+  assert.equal(recovery.backlog_owner, false);
+  assert.equal(recovery.pending_stale, false);
+  assert.equal(recovery.ok, true);
+
+  const overloaded = minuteTaskHealth(runtimeRow('derive', {
+    pending_count: 20,
+    oldest_pending_minute: NOW - 60 * 60_000,
+  }), NOW, {});
+  assert.equal(overloaded.pending_stale, true);
+  assert.equal(overloaded.ok, false);
 });
 
 test('only the unified public health Function route exists', () => {

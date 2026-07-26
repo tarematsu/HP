@@ -87,6 +87,10 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
   assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
+  assert.match(
+    workflow,
+    /name: Publish persistent observability status[\s\S]*id: publish-status[\s\S]*if: always\(\) && !cancelled\(\)/,
+  );
   assert.match(publisher, /readOptionalText\('d1-insights\/summary\.md'\)/);
   assert.match(publisher, /readOptionalText\('telemetry-summary\.md'\)/);
   assert.match(publisher, /HP \+ Stationhead monorepo/);
