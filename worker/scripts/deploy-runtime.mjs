@@ -80,7 +80,7 @@ try {
     removed.add(migration.queue);
   }
 
-  runWrangler(['deploy', '--config', deploy.configPath]);
+  runWrangler(['deploy', '--config', deploy.configPath], { capture: true, mirror: true });
 
   for (const { queue, oldScript } of migrations) {
     if (!hasConsumer(queue, runtimeScript)) {
