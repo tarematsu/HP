@@ -12,6 +12,12 @@ on:
 permissions:
   contents: read
 
+# A delayed scheduled run is stale by definition. Cancel it in favor of the newest
+# window; uploads are idempotent and the next run overlaps the cursor by 10 minutes.
+concurrency:
+  group: minute-facts-local-rebuild
+  cancel-in-progress: true
+
 jobs:
   rebuild:
     uses: ./.github/workflows/database.yml
