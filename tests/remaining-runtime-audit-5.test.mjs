@@ -9,7 +9,7 @@ test('Sakurazaka comparison reuses formatters and canonical cache keys', () => {
   );
   assert.match(source, /const number = new Intl\.NumberFormat/);
   assert.match(source, /const eventDate = new Intl\.DateTimeFormat/);
-  assert.match(source, /sakurazaka46jp:v1:/);
+  assert.match(source, /sakurazaka46jp:v2:/);
   assert.match(source, /\/api\/sakurazaka46jp\?/);
   assert.doesNotMatch(source, /broadcast-series/);
   assert.doesNotMatch(source, /toLocaleString\(/);
