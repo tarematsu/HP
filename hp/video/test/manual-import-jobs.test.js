@@ -120,16 +120,16 @@ test('job status excludes stored URL payloads', async () => {
   assert.equal('sourceUrl' in status, false);
 });
 
-test('large imports use Queue chaining while preserving D1 finalization state', async () => {
+test('large imports use private Queue chaining while preserving D1 finalization state', async () => {
   const manualImport = await readFile(new URL('../src/manual-import.js', import.meta.url), 'utf8');
   const jobs = await readFile(new URL('../src/manual-import-jobs.js', import.meta.url), 'utf8');
   const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
   const queue = await readFile(new URL('../src/manual-import-queue.js', import.meta.url), 'utf8');
-  const standaloneWrangler = JSON.parse(await readFile(
+  const videoWrangler = JSON.parse(await readFile(
     new URL('../wrangler.jsonc', import.meta.url),
     'utf8'
   ));
-  const unifiedWrangler = JSON.parse(await readFile(
+  const gatewayWrangler = JSON.parse(await readFile(
     new URL('../../cloud/wrangler.jsonc', import.meta.url),
     'utf8'
   ));
@@ -176,12 +176,12 @@ test('large imports use Queue chaining while preserving D1 finalization state', 
   assert.match(queue, /publishManualImportJob/);
   assert.match(queue, /publish\(env, jobId/);
   assert.match(entryCore, /ADMIN_IMPORT_JOB_PATH_PREFIX/);
-  assert.equal(standaloneWrangler.triggers, undefined);
-  assert.equal(standaloneWrangler.queues, undefined);
-  assert.equal(unifiedWrangler.triggers, undefined);
-  assert.equal(unifiedWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
-  assert.equal(unifiedWrangler.queues.consumers[0].max_batch_size, 1);
-  assert.equal(unifiedWrangler.queues.consumers[0].max_concurrency, 1);
+  assert.deepEqual(videoWrangler.triggers?.crons, ['0 * * * *']);
+  assert.equal(videoWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
+  assert.equal(videoWrangler.queues.consumers[0].max_batch_size, 1);
+  assert.equal(videoWrangler.queues.consumers[0].max_concurrency, 1);
+  assert.equal(gatewayWrangler.triggers, undefined);
+  assert.equal(gatewayWrangler.queues, undefined);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS manual_import_job_chunks/);
   assert.match(migration, /failure_count INTEGER NOT NULL DEFAULT 0/);
   assert.match(migration, /url_count INTEGER/);

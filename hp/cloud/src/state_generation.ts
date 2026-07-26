@@ -1,4 +1,4 @@
-import { invalidateCoordinatedDeviceSyncManifest } from "./device_sync_coordinator";
+import { invalidateCoordinatedDeviceSyncManifest } from "./device_sync_coordinator_client";
 import type { Env } from "./sources";
 
 const STATE_GENERATIONS = new WeakMap<object, number>();

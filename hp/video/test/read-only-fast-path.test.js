@@ -14,7 +14,9 @@ test('GET requests do not touch the shared cache binding', async () => {
 
   try {
     const response = await entry.fetch(
-      new Request('https://example.com/'),
+      new Request('https://example.com/', {
+        headers: { 'X-HomePanel-Internal-Service': 'homepanel-cloud' }
+      }),
       {
         MEDIA_HOST: 'video.twimg.com',
         ASSETS: {

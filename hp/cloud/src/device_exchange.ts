@@ -1,6 +1,6 @@
 import { authorizedDevice, deviceIdFromRequest } from "./auth";
 import * as deviceSync from "./device_sync";
-import * as deviceSyncCoordinator from "./device_sync_coordinator";
+import * as deviceSyncCoordinator from "./device_sync_coordinator_client";
 import { queueSchedulerWatchdog } from "./scheduler_coordinator";
 import type { Env } from "./sources";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
@@ -34,12 +34,21 @@ async function applyTelemetry(
   telemetry: unknown,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  const result = await applyCompactTelemetryInput(telemetry, env, deviceId);
-  if (result.status === 200) {
-    payload.telemetry = result.body;
-    return;
+  try {
+    const result = await applyCompactTelemetryInput(telemetry, env, deviceId);
+    if (result.status === 200) {
+      payload.telemetry = result.body;
+      return;
+    }
+    payload.telemetryError = { status: result.status, detail: result.body };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("device-exchange-telemetry-failed", { deviceId, error: message });
+    payload.telemetryError = {
+      status: 503,
+      detail: { error: "telemetry temporarily unavailable" },
+    };
   }
-  payload.telemetryError = { status: result.status, detail: result.body };
 }
 
 export async function deviceExchangeResponse(
@@ -66,11 +75,10 @@ export async function deviceExchangeResponse(
     ? input.versions
     : {};
 
+  queueSchedulerWatchdog(env, ctx);
   const telemetryPayload: Record<string, unknown> = {};
-  if (input.telemetry !== undefined) {
-    queueSchedulerWatchdog(env, ctx);
-    await applyTelemetry(env, deviceId, input.telemetry, telemetryPayload);
-  }
+  if (input.telemetry !== undefined) await applyTelemetry(env, deviceId, input.telemetry, telemetryPayload);
+
   const coordinated = await deviceSyncCoordinator.requestCoordinatedDeviceSync(env, deviceId, versions);
   const payload = coordinated ?? await deviceSync.buildDeviceSyncPayloadForDevice(env, deviceId, versions);
   Object.assign(payload, telemetryPayload);

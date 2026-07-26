@@ -8,29 +8,34 @@ function read(relativePath) {
 
 const packageJson = JSON.parse(read('../package.json'));
 const wrangler = JSON.parse(read('../wrangler.jsonc'));
+const workspace = JSON.parse(read('../../package.json'));
 
-test('dependency installation does not resolve or rewrite a production D1 binding', () => {
+
+test('dependency installation is controlled by the HomePanel workspace lockfile', () => {
   assert.equal(packageJson.scripts.postinstall, undefined);
-  assert.equal(wrangler.name, 'homepanel-video-local-only');
+  assert.deepEqual(workspace.workspaces, ['cloud', 'video']);
+  assert.equal(wrangler.name, 'homepanel-video');
   assert.equal(wrangler.workers_dev, false);
+  assert.equal(wrangler.preview_urls, false);
 
   const database = wrangler.d1_databases?.find((entry) => entry?.binding === 'DB');
-  assert.equal(database?.database_name, 'homepanel-video-local');
-  assert.equal(database?.database_id, '00000000-0000-0000-0000-000000000000');
+  assert.equal(database?.database_name, 'homepanel-data');
+  assert.match(database?.database_id, /^[0-9a-f-]{36}$/i);
 });
 
-test('standalone configuration has no production Queue bindings', () => {
-  assert.equal(wrangler.queues, undefined);
+test('private video configuration owns its bounded Queue consumer', () => {
+  assert.deepEqual(wrangler.queues?.producers, [{
+    binding: 'MANUAL_IMPORT_QUEUE',
+    queue: 'videoscraper-manual-imports'
+  }]);
+  assert.equal(wrangler.queues?.consumers?.[0]?.max_batch_size, 1);
+  assert.equal(wrangler.queues?.consumers?.[0]?.max_concurrency, 1);
+  assert.equal(wrangler.queues?.consumers?.[0]?.dead_letter_queue, 'videoscraper-manual-imports-dlq');
 });
 
-test('production operations remain routed through the unified cloud workspace', () => {
-  for (const command of [
-    'config:production',
-    'deploy',
-    'db:create',
-    'db:migrate:remote',
-    'db:migrate:production'
-  ]) {
-    assert.match(packageJson.scripts[command], /standalone-runtime-retired\.mjs/);
-  }
+test('production operations target only the private video Worker', () => {
+  assert.equal(packageJson.scripts.deploy, 'wrangler deploy --config wrangler.jsonc --keep-vars');
+  assert.equal(packageJson.scripts['db:migrate:remote'], undefined);
+  assert.equal(packageJson.scripts['db:migrate:production'], undefined);
+  assert.equal(packageJson.scripts['db:create'], undefined);
 });

@@ -8,15 +8,17 @@ import entry from '../src/entry.js';
 const entrySource = await readFile(new URL('../src/entry.js', import.meta.url), 'utf8');
 const coreSource = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('Worker entry keeps the migration wrapper narrow and delegates normal traffic', () => {
+test('Worker entry keeps the private-service wrapper narrow and delegates internal traffic', () => {
   assert.notEqual(entry, core);
   assert.equal(typeof entry.fetch, 'function');
   assert.equal(typeof entry.queue, 'function');
   assert.equal(typeof entry.scheduled, 'function');
-  assert.match(entrySource, /migrationFreezeEnabled/);
-  assert.match(entrySource, /return core\.fetch\(request, env, ctx\)/);
+  assert.match(entrySource, /X-HomePanel-Internal-Service/);
+  assert.match(entrySource, /pathname === '\/api\/health'/);
+  assert.match(entrySource, /return core\.fetch\(/);
   assert.match(entrySource, /return core\.queue\(batch, env, ctx\)/);
   assert.match(entrySource, /return core\.scheduled\(controller, env, ctx\)/);
+  assert.doesNotMatch(entrySource, /migrationFreezeEnabled/);
   assert.doesNotMatch(entrySource, /protectPrivateStatusResponse/);
 });
 

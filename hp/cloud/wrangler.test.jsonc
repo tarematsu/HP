@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "homepanel-test",
-  "main": "src/worker_entry.ts",
+  "main": "src/unified_worker.js",
   "compatibility_date": "2026-06-20",
   "workers_dev": false,
   "durable_objects": {
@@ -9,6 +9,14 @@
       {
         "name": "SCHEDULER_COORDINATOR",
         "class_name": "SchedulerCoordinator"
+      },
+      {
+        "name": "DEVICE_SYNC_COORDINATOR",
+        "class_name": "DeviceSyncCoordinator"
+      },
+      {
+        "name": "RADAR_BUNDLE_COORDINATOR",
+        "class_name": "RadarBundleCoordinator"
       }
     ]
   },
@@ -17,6 +25,13 @@
       "tag": "scheduler-coordinator-v1",
       "new_sqlite_classes": [
         "SchedulerCoordinator"
+      ]
+    },
+    {
+      "tag": "homepanel-coordinator-split-v1",
+      "new_sqlite_classes": [
+        "DeviceSyncCoordinator",
+        "RadarBundleCoordinator"
       ]
     }
   ],

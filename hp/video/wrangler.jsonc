@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "homepanel-video-local-only",
+  "name": "homepanel-video",
   "main": "src/entry.js",
   "compatibility_date": "2026-06-30",
   "compatibility_flags": [
@@ -23,22 +23,62 @@
   "browser": {
     "binding": "BROWSER"
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCHEDULER_COORDINATOR",
+        "class_name": "VideoFeedCoordinator"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "video-feed-coordinator-v1",
+      "new_sqlite_classes": [
+        "VideoFeedCoordinator"
+      ]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "homepanel-video-local",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "homepanel-data",
+      "database_id": "1c8eb0f8-cd73-4156-9ba7-b49bb18f13a3",
       "migrations_dir": "migrations"
     }
   ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MANUAL_IMPORT_QUEUE",
+        "queue": "videoscraper-manual-imports"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "videoscraper-manual-imports",
+        "max_batch_size": 1,
+        "max_batch_timeout": 0,
+        "max_retries": 5,
+        "retry_delay": 300,
+        "max_concurrency": 1,
+        "dead_letter_queue": "videoscraper-manual-imports-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 0.1,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 1,
+      "head_sampling_rate": 0.1,
       "persist": true,
-      "invocation_logs": true
+      "invocation_logs": false
     }
   }
 }

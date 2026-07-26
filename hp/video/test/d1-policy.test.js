@@ -18,10 +18,11 @@ const feedSnapshot = await readFile(
 );
 const worker = await readFile(new URL('../src/worker.js', import.meta.url), 'utf8');
 
-test('authenticated status responses bypass shared edge cache and remain private', () => {
+test('authenticated status responses remain private behind the gateway boundary', () => {
   assert.match(entryCore, /if \(!authorized\(request, env\)\) return unauthorized\(\)/);
-  assert.match(entry, /return core\.fetch\(request, env, ctx\)/);
-  assert.match(entry, /migrationFreezeEnabled/);
+  assert.match(entry, /X-HomePanel-Internal-Service/);
+  assert.match(entry, /return core\.fetch\(/);
+  assert.doesNotMatch(entry, /migrationFreezeEnabled/);
   assert.doesNotMatch(entry, /protectPrivateStatusResponse/);
   assert.doesNotMatch(entry, /cache\.match\(/);
   assert.doesNotMatch(entry, /cache\.put\(/);
@@ -45,7 +46,7 @@ test('individual admin collectors merge collected candidates and finalize once',
   assert.doesNotMatch(worker, /json\(await runAndRecord/);
 });
 
-test('compacted finalization serializes through the Durable Object and publishes R2', () => {
+test('compacted finalization serializes through the video Durable Object and publishes R2', () => {
   assert.match(compactedFeed, /video-feed-finalize/);
   assert.match(compactedFeed, /video-feed-stage/);
   assert.match(compactedFeed, /video-feed-refresh/);

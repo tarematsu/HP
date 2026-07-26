@@ -1,44 +1,57 @@
 import core from './entry-core.js';
 
-export function migrationFreezeEnabled(env) {
-  return String(env?.VIDEO_MIGRATION_FREEZE || '').trim().toLowerCase() === 'true';
-}
+export { VideoFeedCoordinator } from './video-feed-coordinator.js';
 
-function frozenApiResponse() {
-  return Response.json({
-    ok: false,
-    error: 'Video data migration is in progress',
-    retryable: true
-  }, {
-    status: 503,
-    headers: {
-      'Cache-Control': 'no-store',
-      'Retry-After': '300'
-    }
-  });
+const INTERNAL_HEADER = 'X-HomePanel-Internal-Service';
+const INTERNAL_VALUE = 'homepanel-cloud';
+
+async function healthResponse(env) {
+  try {
+    const row = await env.DB.prepare('SELECT 1 AS ok').first();
+    const ok = Number(row?.ok) === 1;
+    return Response.json({
+      ok,
+      service: 'homepanel-video',
+      checkedAt: new Date().toISOString()
+    }, {
+      status: ok ? 200 : 503,
+      headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
+    });
+  } catch (error) {
+    return Response.json({
+      ok: false,
+      service: 'homepanel-video',
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+      checkedAt: new Date().toISOString()
+    }, {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }
+    });
+  }
 }
 
 export default {
   async fetch(request, env, ctx) {
-    if (migrationFreezeEnabled(env) && new URL(request.url).pathname.startsWith('/api/')) {
-      return frozenApiResponse();
+    const pathname = new URL(request.url).pathname;
+    if (pathname === '/api/health') return healthResponse(env);
+    if (request.headers.get(INTERNAL_HEADER) !== INTERNAL_VALUE) {
+      return Response.json({ ok: false, error: 'Not found' }, { status: 404 });
     }
-    return core.fetch(request, env, ctx);
+    const headers = new Headers(request.headers);
+    headers.delete(INTERNAL_HEADER);
+    headers.set('Authorization', `Bearer ${INTERNAL_VALUE}`);
+    return core.fetch(
+      new Request(request, { headers }),
+      { ...env, ADMIN_TOKEN: INTERNAL_VALUE },
+      ctx
+    );
   },
 
-  async queue(batch, env, ctx) {
-    if (migrationFreezeEnabled(env)) {
-      console.log('video-migration-freeze-queue-skipped', { messages: batch?.messages?.length || 0 });
-      return undefined;
-    }
+  queue(batch, env, ctx) {
     return core.queue(batch, env, ctx);
   },
 
-  async scheduled(controller, env, ctx) {
-    if (migrationFreezeEnabled(env)) {
-      console.log('video-migration-freeze-scheduled-skipped', { cron: controller?.cron || '' });
-      return undefined;
-    }
+  scheduled(controller, env, ctx) {
     return core.scheduled(controller, env, ctx);
   }
 };

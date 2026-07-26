@@ -3,12 +3,13 @@ name: HomePanel unified Worker CI
 on:
   pull_request:
     paths:
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
       - 'hp/cloud/src/**'
       - 'hp/cloud/test/**'
       - 'hp/cloud/migrations/**'
       - 'hp/cloud/scripts/**'
       - 'hp/cloud/package.json'
-      - 'hp/cloud/package-lock.json'
       - 'hp/cloud/tsconfig.json'
       - 'hp/cloud/vitest.config.ts'
       - 'hp/cloud/wrangler.jsonc'
@@ -92,9 +93,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            hp/cloud/package-lock.json
-            hp/video/package.json
+          cache-dependency-path: hp/package-lock.json
 
       - name: Validate production contracts and observability policies
         if: needs.changes.outputs.contracts == 'true'
@@ -112,44 +111,39 @@ jobs:
             tests/homepanel-*.test.mjs \
             tests/observability-*.test.mjs
 
-      - name: Install HomePanel dependencies
+      - name: Install HomePanel workspace dependencies
         if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.video == 'true'
-        working-directory: hp/cloud
+        working-directory: hp
         run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Install video runtime dependencies
-        if: needs.changes.outputs.bundle == 'true'
-        working-directory: hp/video
-        run: npm install --no-audit --no-fund
 
       - name: Check HomePanel sources
         if: needs.changes.outputs.cloud == 'true'
-        working-directory: hp/cloud
+        working-directory: hp
         shell: bash
         run: |
           set -o pipefail
-          npm run check 2>&1 | tee source-check.log
+          npm run check --workspace cloud 2>&1 | tee cloud/source-check.log
 
       - name: Run fast HomePanel tests
         if: needs.changes.outputs.cloud == 'true' && needs.changes.outputs.integration != 'true' && github.event_name != 'workflow_dispatch'
-        working-directory: hp/cloud
+        working-directory: hp
         shell: bash
         run: |
           set -o pipefail
-          npm run test:ci 2>&1 | tee test.log
+          npm run test:ci --workspace cloud 2>&1 | tee cloud/test.log
 
       - name: Run full HomePanel tests
         if: needs.changes.outputs.cloud == 'true' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
-        working-directory: hp/cloud
+        working-directory: hp
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | tee test.log
+          npm test --workspace cloud 2>&1 | tee cloud/test.log
 
       - name: Build the unified Worker
         if: needs.changes.outputs.bundle == 'true'
-        working-directory: hp/cloud
-        run: npm run check:unified-bundle
+        working-directory: hp
+        run: npm run check:unified-bundle --workspace cloud
 
       - name: Verify local unified D1 migrations
         if: needs.changes.outputs.migrations == 'true'

@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - '.github/workflows/video-hot-path-benchmark.yml'
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
       - 'hp/video/package.json'
       - 'hp/video/scripts/benchmark-hot-path.mjs'
       - 'hp/video/test/hot-path-benchmark.test.js'
@@ -16,9 +18,6 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: hp/video
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,19 +25,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Restore npm cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-22-video-${{ hashFiles('hp/video/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-video-
-      - run: npm install --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Measure warm Worker hot path
+        working-directory: hp
         shell: bash
         run: |
           set -e -o pipefail
-          npm run --silent benchmark:hot-path -- --warmup=1000 --samples=25 --iterations=500 | tee hot-path-benchmark.json
+          npm run --silent benchmark:hot-path --workspace video -- --warmup=1000 --samples=25 --iterations=500 | tee video/hot-path-benchmark.json
       - uses: actions/upload-artifact@v4
         with:
           name: video-hot-path-benchmark-${{ github.event.pull_request.head.sha || github.sha }}

@@ -57,11 +57,18 @@ export function selectHomePanelScopes(files, { all = false } = {}) {
   };
 
   for (const file of files) {
-    if (file.startsWith('hp/cloud/')) scopes.cloud = true;
-    if (/^hp\/video\/(?:src|public)\//.test(file) || file === 'hp/video/package.json') {
+    if (/^hp\/package(?:-lock)?\.json$/.test(file)) {
+      scopes.cloud = true;
       scopes.video = true;
       scopes.bundle = true;
     }
+    if (file.startsWith('hp/cloud/')) scopes.cloud = true;
+    if (/^hp\/video\/(?:src|public|test|scripts)\//.test(file)
+      || ['hp/video/package.json', 'hp/video/wrangler.jsonc'].includes(file)) {
+      scopes.video = true;
+    }
+    if (/^hp\/video\/(?:src|public)\//.test(file)
+      || ['hp/video/package.json', 'hp/video/wrangler.jsonc'].includes(file)) scopes.bundle = true;
     if (/^hp\/cloud\/(?:package(?:-lock)?\.json|wrangler[^/]*\.jsonc)$/.test(file)
       || file === 'hp/cloud/src/unified_worker.js') scopes.bundle = true;
     if (/^hp\/cloud\/test\/.*\.integration\.test\.ts$/.test(file)) scopes.integration = true;

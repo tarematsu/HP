@@ -9,24 +9,25 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
-  "assets": {
-    "directory": "../video/public",
-    "binding": "ASSETS",
-    "run_worker_first": [
-      "/api/*",
-      "/v1/*",
-      "/admin"
-    ],
-    "not_found_handling": "single-page-application"
-  },
-  "browser": {
-    "binding": "BROWSER"
-  },
+  "services": [
+    {
+      "binding": "VIDEO_SERVICE",
+      "service": "homepanel-video"
+    }
+  ],
   "durable_objects": {
     "bindings": [
       {
         "name": "SCHEDULER_COORDINATOR",
         "class_name": "SchedulerCoordinator"
+      },
+      {
+        "name": "DEVICE_SYNC_COORDINATOR",
+        "class_name": "DeviceSyncCoordinator"
+      },
+      {
+        "name": "RADAR_BUNDLE_COORDINATOR",
+        "class_name": "RadarBundleCoordinator"
       }
     ]
   },
@@ -35,6 +36,13 @@
       "tag": "scheduler-coordinator-v1",
       "new_sqlite_classes": [
         "SchedulerCoordinator"
+      ]
+    },
+    {
+      "tag": "homepanel-coordinator-split-v1",
+      "new_sqlite_classes": [
+        "DeviceSyncCoordinator",
+        "RadarBundleCoordinator"
       ]
     }
   ],
@@ -55,33 +63,14 @@
       "binding": "DATA_BUCKET"
     }
   ],
-  "queues": {
-    "producers": [
-      {
-        "binding": "MANUAL_IMPORT_QUEUE",
-        "queue": "videoscraper-manual-imports"
-      }
-    ],
-    "consumers": [
-      {
-        "queue": "videoscraper-manual-imports",
-        "max_batch_size": 1,
-        "max_batch_timeout": 0,
-        "max_retries": 5,
-        "retry_delay": 300,
-        "max_concurrency": 1,
-        "dead_letter_queue": "videoscraper-manual-imports-dlq"
-      }
-    ]
-  },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 0.1,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 1,
+      "head_sampling_rate": 0.1,
       "persist": true,
-      "invocation_logs": true
+      "invocation_logs": false
     }
   }
 }
