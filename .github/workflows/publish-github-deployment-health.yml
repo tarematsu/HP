@@ -2,17 +2,10 @@ name: Publish GitHub deployment health
 
 on:
   workflow_run:
-    workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Unified Cloudflare Observability"]
+    workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability"]
     types: [completed]
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/publish-github-deployment-health.yml'
-      - '.github/scripts/github-deployment-health.mjs'
-      - '.github/scripts/publish-github-deployment-health.mjs'
-      - '.github/scripts/publish-cloudflare-observability-status.mjs'
-      - '.github/workflows/deploy-split-pipeline.yml'
-      - '.github/workflows/cloud-deploy.yml'
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
@@ -28,7 +21,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Update observability issue with deployment health
+    name: Update observability issue with deployment and release health
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -39,7 +32,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Publish Pages and Worker deployment health
+      - name: Publish Pages, Worker, and native release health
         env:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOYMENT_HEALTH_ISSUE_NUMBER: '259'
