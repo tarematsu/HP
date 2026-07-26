@@ -231,10 +231,17 @@ test('RuntimeCoordinator persists, releases, and expires one overlap lease row',
   assert.equal(rows.size, 1);
 
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.deepEqual(config.durable_objects.bindings, [{
-    name: 'RUNTIME_COORDINATOR',
-    class_name: 'RuntimeCoordinator',
-  }]);
+  assert.deepEqual(config.durable_objects.bindings, [
+    {
+      name: 'RUNTIME_COORDINATOR',
+      class_name: 'RuntimeCoordinator',
+    },
+    {
+      name: 'BUDDIES_COLLECTOR_COORDINATOR',
+      class_name: 'BuddiesCollectorCoordinator',
+      script_name: 'sh-buddies-collector',
+    },
+  ]);
   assert.deepEqual(config.migrations.at(-1), {
     tag: 'runtime-coordinator-v1',
     new_sqlite_classes: ['RuntimeCoordinator'],
