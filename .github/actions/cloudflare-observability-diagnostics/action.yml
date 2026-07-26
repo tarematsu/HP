@@ -1,5 +1,5 @@
 name: Run Cloudflare observability diagnostics
-description: Collect persisted telemetry and live-tail diagnostics in parallel
+description: Collect persisted telemetry, live-tail diagnostics, and public health snapshots in parallel
 inputs:
   live-tail-worker:
     description: Cloudflare Worker script to observe with Live Tail
@@ -15,7 +15,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Query persisted telemetry and capture live events
+    - name: Query persisted telemetry, capture live events, and snapshot public health
       shell: bash
       env:
         LIVE_TAIL_WORKER: ${{ inputs.live-tail-worker }}
@@ -36,12 +36,27 @@ runs:
           exit 0
         ) &
         tail_pid=$!
+        (
+          PUBLIC_HEALTH_OUTPUT=public-health-endpoints.md \
+            node .github/scripts/capture-public-health-endpoints.mjs \
+            > public-health-endpoints.log 2>&1
+        ) &
+        health_pid=$!
 
         query_status=0
+        health_status=0
         wait "$query_pid" || query_status=$?
         wait "$tail_pid" || true
+        wait "$health_pid" || health_status=$?
         cat observability-query.log
+        cat public-health-endpoints.log
         if [[ -f observability-summary.md ]]; then
           cat observability-summary.md >> "$actual_summary"
         fi
-        exit "$query_status"
+        if [[ -f public-health-endpoints.md ]]; then
+          cat public-health-endpoints.md >> "$actual_summary"
+        fi
+        if (( query_status != 0 )); then
+          exit "$query_status"
+        fi
+        exit "$health_status"
