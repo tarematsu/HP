@@ -375,7 +375,14 @@ export class RuntimeCoordinator extends StoredRuntimeCoordinator {
     } catch {
       return Response.json({ error: 'invalid-json' }, { status: 400 });
     }
-    if (body?.action === 'run') return Response.json(await this.runScheduled(body));
+    if (body?.action === 'run') {
+      try {
+        return Response.json(await this.runScheduled(body));
+      } catch (error) {
+        coordinatorFailure('runtime_coordinator_run_failed', error);
+        return Response.json({ error: 'runtime-run-failed' }, { status: 500 });
+      }
+    }
     if (body?.action === 'claim') {
       const claim = await this.claim(body);
       if (!claim?.claimed) return Response.json(claim);
