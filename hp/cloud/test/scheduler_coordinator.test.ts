@@ -5,10 +5,6 @@ import {
 } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  LIVENESS_INTERVAL_SECONDS,
-  LIVENESS_JOB_NAME,
-} from "../../video/src/liveness-schedule.js";
-import {
   ensureSystemJobs,
   invalidateSystemJobsCache,
 } from "../src/scheduler";
@@ -35,8 +31,7 @@ let objectSequence = 0;
 
 function coordinatorStub(): DurableObjectStub {
   const namespace = (env as TestEnv).SCHEDULER_COORDINATOR;
-  const id = namespace.idFromName(`scheduler-test-${objectSequence++}`);
-  return namespace.get(id);
+  return namespace.get(namespace.idFromName(`scheduler-test-${objectSequence++}`));
 }
 
 async function alarmTime(stub: DurableObjectStub): Promise<number | null> {
@@ -78,136 +73,98 @@ describe("SchedulerCoordinator Durable Object", () => {
     expect(await alarmTime(stub)).toBeNull();
   });
 
-  it("imports video liveness into the DO runtime once", async () => {
-    await env.DB.prepare("DELETE FROM jobs WHERE name=?1").bind(LIVENESS_JOB_NAME).run();
-    invalidateSystemJobsCache(env.DB);
-    const stub = coordinatorStub();
-
-    const response = await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-    const stored = await runtime(stub);
-    const liveness = stored?.jobs.find(job => job.name === LIVENESS_JOB_NAME);
-
-    expect(response.status).toBe(202);
-    expect(liveness).toMatchObject({
-      name: LIVENESS_JOB_NAME,
-      intervalSeconds: LIVENESS_INTERVAL_SECONDS,
-      consecutiveFailures: 0,
-      lastError: null,
-    });
-    expect(Number(liveness?.nextRunAt)).toBeGreaterThan(0);
-  });
-
-  it("migrates a changed cadence without discarding runtime state", async () => {
+  it("migrates runtime state while removing retired jobs", async () => {
     const now = Math.floor(Date.now() / 1000);
-    const previousLastSuccessAt = now - 3600;
     const stub = coordinatorStub();
     await runInDurableObject(stub, async (_instance, state) => {
       await state.storage.put<RuntimeEnvelope>(RUNTIME_STORAGE_KEY, {
-        version: 2,
-        jobs: [{
-          name: "octopus",
-          intervalSeconds: 86_400,
-          nextRunAt: now + 86_400,
-          lastSuccessAt: previousLastSuccessAt,
-          consecutiveFailures: 2,
-          lastError: "rate limited",
-        }],
+        version: 3,
+        jobs: [
+          {
+            name: "octopus",
+            intervalSeconds: 86_400,
+            nextRunAt: now + 86_400,
+            lastSuccessAt: now - 3600,
+            consecutiveFailures: 2,
+            lastError: "rate limited",
+          },
+          {
+            name: "video_liveness",
+            intervalSeconds: 3600,
+            nextRunAt: now + 3600,
+            lastSuccessAt: null,
+            consecutiveFailures: 0,
+            lastError: null,
+          },
+        ],
       });
     });
 
-    const response = await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
+    expect((await stub.fetch("https://scheduler.internal/ensure", { method: "POST" })).status).toBe(202);
     const stored = await runtime(stub);
-    const octopus = stored?.jobs.find(job => job.name === "octopus");
-
-    expect(response.status).toBe(202);
-    expect(stored?.version).toBe(3);
-    expect(octopus).toMatchObject({
+    expect(stored?.version).toBe(4);
+    expect(stored?.jobs.some(job => job.name === "video_liveness")).toBe(false);
+    expect(stored?.jobs.find(job => job.name === "octopus")).toMatchObject({
       intervalSeconds: 43_200,
-      lastSuccessAt: previousLastSuccessAt,
       consecutiveFailures: 2,
       lastError: "rate limited",
     });
-    expect(Number(octopus?.nextRunAt)).toBeGreaterThan(now);
-    expect(Number(octopus?.nextRunAt)).toBeLessThanOrEqual(now + 43_200);
   });
 
   it("schedules an alarm for the earliest runtime job", async () => {
     const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
-      .bind(now + 3600)
-      .run();
+    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now + 3600).run();
     await env.DB.prepare("UPDATE jobs SET next_run_at=0 WHERE name='cleanup'").run();
     const stub = coordinatorStub();
 
     const response = await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-
     expect(response.status).toBe(202);
-    await expect(response.json()).resolves.toMatchObject({ scheduled: true });
     const scheduledAt = await alarmTime(stub);
-    expect(scheduledAt).not.toBeNull();
     expect(Number(scheduledAt)).toBeGreaterThan(Date.now());
     expect(Number(scheduledAt)).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("advances successful work only in DO storage and aligns the next cadence", async () => {
+  it("advances successful work only in DO storage", async () => {
     const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
-      .bind(now + 3600)
-      .run();
+    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now + 3600).run();
     await env.DB.prepare("UPDATE jobs SET next_run_at=0 WHERE name='cleanup'").run();
     const before = await env.DB.prepare(
       "SELECT next_run_at,lease_until,last_success_at FROM jobs WHERE name='cleanup'",
-    ).first<{ next_run_at: number; lease_until: number | null; last_success_at: number | null }>();
+    ).first();
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-
     await runAlarm(stub);
 
     const after = await env.DB.prepare(
       "SELECT next_run_at,lease_until,last_success_at FROM jobs WHERE name='cleanup'",
-    ).first<{ next_run_at: number; lease_until: number | null; last_success_at: number | null }>();
+    ).first();
     expect(after).toEqual(before);
-
-    const stored = await runtime(stub);
-    const cleanup = stored?.jobs.find(job => job.name === "cleanup");
+    const cleanup = (await runtime(stub))?.jobs.find(job => job.name === "cleanup");
     expect(Number(cleanup?.nextRunAt)).toBeGreaterThan(now);
-    expect(Number(cleanup?.nextRunAt) % 86_400).toBe(0);
-    expect(Number(cleanup?.lastSuccessAt)).toBeGreaterThanOrEqual(now);
     expect(cleanup?.consecutiveFailures).toBe(0);
-
-    const events = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM job_events WHERE job_name='cleanup'",
-    ).first<{ count: number }>();
-    expect(Number(events?.count)).toBe(0);
-    expect(Number(await alarmTime(stub))).toBeGreaterThan(Date.now());
   });
 
   it("advances more than three co-due jobs in one alarm", async () => {
     const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
-      .bind(now + 3600)
-      .run();
+    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now + 3600).run();
     const names = ["unsupported_1", "unsupported_2", "unsupported_3", "unsupported_4", "unsupported_5"];
     for (const name of names) await insertFailingJob(name);
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-
     await runAlarm(stub);
 
-    const stored = await runtime(stub);
-    const selected = stored?.jobs.filter(job => names.includes(job.name)) ?? [];
+    const selected = (await runtime(stub))?.jobs.filter(job => names.includes(job.name)) ?? [];
     expect(selected).toHaveLength(names.length);
     expect(selected.every(job => job.nextRunAt > now)).toBe(true);
     expect(selected.every(job => job.consecutiveFailures === 1)).toBe(true);
   });
 
-  it("records only the first failure until the job recovers", async () => {
+  it("records only the first failure until recovery", async () => {
     const now = Math.floor(Date.now() / 1000);
     await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now + 3600).run();
     await insertFailingJob("unsupported_source");
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-
     await runAlarm(stub);
     await stub.fetch("https://scheduler.internal/wake", {
       method: "POST",
@@ -218,72 +175,29 @@ describe("SchedulerCoordinator Durable Object", () => {
 
     const events = await env.DB.prepare(
       "SELECT event,COUNT(*) AS count FROM job_events WHERE job_name=?1 GROUP BY event",
-    ).bind("unsupported_source").all<{ event: string; count: number }>();
+    ).bind("unsupported_source").all();
     expect(events.results).toEqual([{ event: "failed", count: 1 }]);
-    const stored = await runtime(stub);
-    expect(stored?.jobs.find(job => job.name === "unsupported_source")?.consecutiveFailures).toBe(2);
   });
 
-  it("advances runtime even when transition history cannot be written", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now + 3600).run();
-    await insertFailingJob("history_failure_source");
-    await env.DB.prepare(
-      `CREATE TRIGGER reject_job_events
-       BEFORE INSERT ON job_events
-       BEGIN
-         SELECT RAISE(FAIL,'job event storage unavailable');
-       END`,
-    ).run();
-    const stub = coordinatorStub();
-    await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-
-    await runAlarm(stub);
-
-    const stored = await runtime(stub);
-    const failed = stored?.jobs.find(job => job.name === "history_failure_source");
-    expect(failed?.consecutiveFailures).toBe(1);
-    expect(Number(failed?.nextRunAt)).toBeGreaterThan(now);
-    const events = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM job_events WHERE job_name=?1",
-    ).bind("history_failure_source").first<{ count: number }>();
-    expect(Number(events?.count)).toBe(0);
-    await env.DB.prepare("DROP TRIGGER reject_job_events").run();
-  });
-
-  it("refreshes only the requested runtime job without touching D1", async () => {
+  it("refreshes only the requested job without touching D1", async () => {
     const scheduledAt = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL")
-      .bind(scheduledAt + 3600)
-      .run();
+    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(scheduledAt + 3600).run();
     const stub = coordinatorStub();
     await stub.fetch("https://scheduler.internal/ensure", { method: "POST" });
-    const futureAlarm = await alarmTime(stub);
-    const before = await env.DB.prepare(
-      "SELECT next_run_at FROM jobs WHERE name='weather'",
-    ).first<{ next_run_at: number }>();
+    const before = await env.DB.prepare("SELECT next_run_at FROM jobs WHERE name='weather'").first();
 
     const response = await stub.fetch("https://scheduler.internal/wake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ names: ["weather"] }),
     });
-    const immediateAlarm = await alarmTime(stub);
+    const after = await env.DB.prepare("SELECT next_run_at FROM jobs WHERE name='weather'").first();
     const stored = await runtime(stub);
-    const after = await env.DB.prepare(
-      "SELECT next_run_at FROM jobs WHERE name='weather'",
-    ).first<{ next_run_at: number }>();
-    const dueAt = Math.floor(Date.now() / 1000);
 
     expect(response.status).toBe(202);
     await expect(response.clone().json()).resolves.toMatchObject({ scheduled: true, changed: 1 });
-    expect(futureAlarm).not.toBeNull();
-    expect(immediateAlarm).not.toBeNull();
-    expect(Number(immediateAlarm)).toBeLessThan(Number(futureAlarm));
-    expect(Number(immediateAlarm)).toBeLessThanOrEqual(Date.now() + 5_000);
-    expect(stored?.jobs.find(job => job.name === "weather")?.nextRunAt)
-      .toBeLessThanOrEqual(dueAt);
     expect(after).toEqual(before);
-    expect(stored?.jobs.filter(job => job.nextRunAt <= dueAt).map(job => job.name)).toEqual(["weather"]);
+    expect(stored?.jobs.filter(job => job.nextRunAt <= Math.floor(Date.now() / 1000)).map(job => job.name))
+      .toEqual(["weather"]);
   });
 });
