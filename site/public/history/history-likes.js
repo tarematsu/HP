@@ -1,3 +1,10 @@
+import { currentUtcWeekRange } from './history-date-utils.js';
+import {
+  completeTrackRows,
+  displayTrackArtist,
+  displayTrackTitle,
+} from './history-track-view.js';
+
 (() => {
   'use strict';
 
@@ -5,9 +12,12 @@
   const CACHE_MS = 10 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
-  const shortDate = new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric' });
+  const shortDate = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC', month: 'numeric', day: 'numeric',
+  });
 
   const state = { rows: [], summary: {}, weekRows: [], controller: null, weekFrom: '', weekTo: '' };
   const el = (id) => document.getElementById(id);
@@ -17,13 +27,6 @@
     return Number.isFinite(parsed) ? parsed : null;
   };
   const fmt = (value) => finite(value) == null ? '—' : number.format(Number(value));
-  const todayUtc = () => new Date().toISOString().slice(0, 10);
-
-  function mondayUtc(value = todayUtc()) {
-    const date = new Date(`${value}T00:00:00Z`);
-    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
-    return date.toISOString().slice(0, 10);
-  }
 
   function setNotice(text, error = false) {
     el('notice').textContent = text;
@@ -64,8 +67,8 @@
     const keys = [];
     const spotify = normalizeText(row?.spotify_id);
     const isrc = normalizeText(row?.isrc);
-    const title = normalizeText(row?.title || row?.display_title || row?.raw_title);
-    const artist = normalizeText(row?.artist || row?.raw_artist);
+    const title = normalizeText(displayTrackTitle(row));
+    const artist = normalizeText(displayTrackArtist(row));
     const stationhead = normalizeText(row?.stationhead_track_id);
     if (spotify) keys.push(`spotify:${spotify}`);
     if (isrc) keys.push(`isrc:${isrc}`);
@@ -119,8 +122,8 @@
     }, 0);
   }
 
-  const trackName = (row) => row.title || row.isrc || row.spotify_id || row.track_identity || '曲名不明';
-  const artistName = (row) => row.artist || '—';
+  const trackName = (row) => displayTrackTitle(row);
+  const artistName = (row) => displayTrackArtist(row);
 
   function renderSummary() {
     el('trackCount').textContent = fmt(state.summary.track_count || 0);
@@ -224,8 +227,7 @@
     state.controller = controller;
     el('load').disabled = true;
     setNotice('読み込み中…');
-    const weekFrom = mondayUtc();
-    const weekTo = todayUtc();
+    const { from: weekFrom, to: weekTo } = currentUtcWeekRange();
     state.weekFrom = weekFrom;
     state.weekTo = weekTo;
     const url = `/api/track-history?${new URLSearchParams({ from: weekFrom, to: weekTo, limit: '5000' })}`;
@@ -233,7 +235,7 @@
       const result = await fetchJson(url, controller.signal, force);
       if (controller.signal.aborted) return;
       const rankingRows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
-      const weekRows = Array.isArray(result.data.rows) ? result.data.rows : [];
+      const weekRows = completeTrackRows(result.data.rows);
       state.rows = attachWeeklyPlays(rankingRows, weekRows);
       state.weekRows = weekRows;
       state.summary = {
@@ -242,7 +244,7 @@
       };
       render();
       const cached = result.cached ? ' · キャッシュ' : '';
-      setNotice(`${fmt(state.rows.length)}曲 · 今週 ${weekFrom.replaceAll('-', '/')}〜${weekTo.replaceAll('-', '/')}${cached}`);
+      setNotice(`${fmt(state.rows.length)}曲 · UTC週 ${weekFrom.replaceAll('-', '/')}〜${weekTo.replaceAll('-', '/')}${cached}`);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];
@@ -251,8 +253,10 @@
       render();
       setNotice(`取得失敗: ${error.message}`, true);
     } finally {
-      if (state.controller === controller) state.controller = null;
-      el('load').disabled = false;
+      if (state.controller === controller) {
+        state.controller = null;
+        el('load').disabled = false;
+      }
     }
   }
 
@@ -278,6 +282,7 @@
   el('csv').addEventListener('click', exportCsv);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) state.controller?.abort();
+    else load();
   });
   load();
 })();

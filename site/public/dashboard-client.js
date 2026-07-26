@@ -5,9 +5,11 @@ const DAY_MS = 86_400_000;
 const integer = new Intl.NumberFormat('ja-JP');
 const compact = new Intl.NumberFormat('ja-JP', { notation: 'compact', maximumFractionDigits: 1 });
 const dateTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'UTC',
   month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
 const etaTime = new Intl.DateTimeFormat('ja-JP', {
+  timeZone: 'UTC',
   month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit',
 });
 
@@ -103,7 +105,7 @@ function renderHeader(payload) {
   const latest = payload?.latest || {};
   setText('channelName', latest.channel_name || 'Buddies');
   setText('description', latest.description || latest.artist_name || '');
-  setText('updated', `最終取得 ${safeDate(latest.observed_at)}`);
+  setText('updated', `最終取得 ${safeDate(latest.observed_at)} UTC`);
   setImage('channelImage', latest.channel_image || latest.logo_image, 76);
   if (latest.accent_color) document.documentElement.style.setProperty('--accent', latest.accent_color);
   const broadcasting = latest.is_broadcasting !== 0 && latest.is_broadcasting !== false;
@@ -278,7 +280,7 @@ function renderGoal(payload) {
   if (bar) bar.style.width = `${percent}%`;
   const prediction = payload?.goal_prediction;
   if (prediction?.eta && finite(prediction.rate_per_hour) > 0) {
-    setText('goalEta', safeDate(prediction.eta, etaTime));
+    setText('goalEta', `${safeDate(prediction.eta, etaTime)} UTC`);
     setText('goalRate', `平均 +${number(Math.round(prediction.rate_per_hour))} /時`);
   } else {
     setText('goalEta', current != null && goal > 0 && current >= goal ? '目標達成済み' : '予測データ不足');
@@ -376,7 +378,9 @@ function drawChart() {
   for (let index = 0; index < 5; index += 1) {
     const position = Math.round((rows.length - 1) * index / 4);
     context.fillText(
-      new Date(rows[position].observed_at).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }),
+      new Date(rows[position].observed_at).toLocaleTimeString('ja-JP', {
+        timeZone: 'UTC', hour: '2-digit', minute: '2-digit',
+      }),
       x[position],
       height - 16,
     );
@@ -398,7 +402,7 @@ function selectChartPoint(event) {
     }
   });
   const row = state.chart.rows[selected];
-  setText('chartDetail', `${safeDate(row.observed_at)}　オンライン ${number(row.online_member_count)}人　コメント勢い ${number(chartComment(row))}件 / 2分`);
+  setText('chartDetail', `${safeDate(row.observed_at)} UTC　オンライン ${number(row.online_member_count)}人　コメント勢い ${number(chartComment(row))}件 / 2分`);
 }
 
 function saveCache() {

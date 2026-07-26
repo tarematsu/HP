@@ -4,11 +4,13 @@
   const PAGE_SIZE = 200;
   const CACHE_PREFIX = 'sh.history.v3:';
   const MAX_CACHE_CHARS = 1_500_000;
-  const DAY_MS = 86_400_000;
   const integer = new Intl.NumberFormat('ja-JP');
   const decimal = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
-  const dateOnly = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dateOnly = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
+  });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'UTC',
     year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
   });
 
@@ -34,7 +36,7 @@
     ['first_played_at', '最初の再生'], ['last_played_at', '最後の再生'],
   ];
   const BROADCAST_COLUMNS = [
-    ['event_name', '放送名'], ['started_jst', '開始日時'], ['ended_jst', '終了日時'],
+    ['event_name', '放送名'], ['started_at', '開始日時（UTC）'], ['ended_at', '終了日時（UTC）'],
     ['sample_count', '記録数'], ['listener_avg', '平均同接'], ['listener_min', '最小同接'],
     ['listener_max', '最大同接'], ['likes_max', '最大いいね'], ['distinct_tracks', '曲数'], ['host_handle', 'ホスト'],
   ];
@@ -63,9 +65,6 @@
     return Number.isFinite(number) ? number : null;
   };
   const numberText = (value) => finite(value) == null ? '—' : decimal.format(Number(value));
-  const todayJst = () => new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).format(new Date());
   const todayUtc = () => new Date().toISOString().slice(0, 10);
 
   function parseDate(value) {
@@ -135,13 +134,18 @@
     return date.toISOString().slice(0, 10);
   }
 
+  function shiftDate(value, days) {
+    const date = new Date(`${value}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + Number(days || 0));
+    return date.toISOString().slice(0, 10);
+  }
+
   function applyPreset(days) {
-    const to = new Date();
-    const from = new Date(to);
-    if (days === 'all') from.setTime(Date.UTC(2024, 4, 1));
-    else from.setUTCDate(from.getUTCDate() - Math.max(1, Number(days) || 30));
-    el('from').value = from.toISOString().slice(0, 10);
-    el('to').value = to.toISOString().slice(0, 10);
+    const to = todayUtc();
+    const count = Math.max(1, Math.trunc(Number(days) || 30));
+    const from = days === 'all' ? '2024-05-01' : shiftDate(to, -(count - 1));
+    el('from').value = from;
+    el('to').value = to;
     document.querySelectorAll('#rangePresets button').forEach((button) =>
       button.classList.toggle('active', button.dataset.days === String(days)));
   }
@@ -156,7 +160,7 @@
   function displayCell(key, row, mode = state.mode) {
     const value = row?.[key];
     if (value == null || value === '') return '—';
-    if (key.endsWith('_at') || key.endsWith('_jst')) return formatDate(value, true);
+    if (key.endsWith('_at')) return formatDate(value, true);
     if (key === 'daily_share') return `${numberText(Number(value) * 100)}%`;
     if (key === 'quality_score') return numberText(value);
     if (['rank_change', 'stream_growth', 'member_growth'].includes(key)) {
@@ -424,7 +428,7 @@
       if (mode === 'tracks') await resolveTrackRange(controller.signal, force);
       if (mode === 'broadcasts') {
         el('from').value = '2024-05-01';
-        el('to').value = todayJst();
+        el('to').value = todayUtc();
       }
       const from = el('from').value;
       const to = el('to').value;
@@ -454,7 +458,7 @@
         if (token !== state.requestToken || state.mode !== mode) return;
         state.data = data;
         state.rows = Array.isArray(data.rows) ? data.rows : [];
-        setNotice(`${numberText(state.rows.length)}件を表示${cached ? ' · キャッシュ' : ''}`);
+        setNotice(`${numberText(state.rows.length)}件を表示 · UTC${cached ? ' · キャッシュ' : ''}`);
       }
 
       renderLoadedData();
@@ -493,13 +497,13 @@
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `sh-${state.mode}-${todayJst()}.csv`;
+    link.download = `sh-${state.mode}-${todayUtc()}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   }
 
   function start() {
-    el('to').value = todayJst();
+    el('to').value = todayUtc();
     applyPreset('all');
     document.querySelectorAll('#modeTabs button').forEach((button) =>
       button.addEventListener('click', () => setMode(button.dataset.mode)));

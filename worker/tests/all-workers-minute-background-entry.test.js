@@ -47,7 +47,7 @@ test('runtime scheduled orchestration checks maintenance readiness before Queue 
   const wrapper = source('../src/minute-maintenance-optimized-entry.js');
   assert.match(scheduled, /dispatchMinuteMaintenanceGate/);
   assert.match(wrapper, /loadRebuildMaintenanceEntry/);
-  assert.match(wrapper, /processMinuteMaintenanceGate\(env, message\)/);
+  assert.match(wrapper, /processMinuteMaintenanceGate\(env, message,/);
   assert.match(wrapper, /minute_maintenance_gate_inlined/);
   assert.match(wrapper, /scheduled: runMinuteMaintenanceScheduled/);
   assert.doesNotMatch(wrapper, /JSON_QUEUE_SEND_OPTIONS|maintenanceDelaySeconds/);

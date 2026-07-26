@@ -48,8 +48,8 @@ test('inline collector success skips stable progress before the twenty-minute ch
   const current = state();
 
   Object.assign(current, {
-    lastRunAt: 1_000 + CHECKPOINT_MS - 1,
-    lastSuccessAt: 1_000 + CHECKPOINT_MS - 1,
+    lastRunAt: 1_000 + CHECKPOINT_MS - 60_000 - 1,
+    lastSuccessAt: 1_000 + CHECKPOINT_MS - 60_000 - 1,
     lastError: null,
     channelId: 10,
     stationId: 20,

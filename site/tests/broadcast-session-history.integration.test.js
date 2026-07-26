@@ -7,7 +7,7 @@ import {
   parseBroadcastSummaryRows,
 } from '../functions/api/history.js';
 
-test('broadcast history reads the compact official summary table', () => {
+test('broadcast history reads UTC timestamps from the compact official summary table', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_official_broadcast_summary (
     host_handle TEXT NOT NULL,
@@ -36,8 +36,6 @@ test('broadcast history reads the compact official summary table', () => {
     event_name: 'Event A',
     started_at: 1000,
     ended_at: 2000,
-    started_jst: '2025-01-01 09:00:01',
-    ended_jst: '2025-01-01 09:00:02',
     sample_count: 2,
     listener_avg: 110,
     listener_max: 120,
@@ -47,7 +45,7 @@ test('broadcast history reads the compact official summary table', () => {
   }]);
 });
 
-test('an empty range reports whether the compact summary is provisioned', () => {
+test('an empty UTC range reports whether the compact summary is provisioned', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_official_broadcast_summary (
     host_handle TEXT NOT NULL,event_name TEXT NOT NULL,started_at INTEGER,

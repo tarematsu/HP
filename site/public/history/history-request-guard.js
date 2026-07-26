@@ -32,7 +32,7 @@ function setText(id, value) {
 
 function applyTrackSummary() {
   summaryFrame = 0;
-  if (browser?.location?.hash !== '#tracks' || !trackRows.length) return;
+  if (browser?.location?.hash !== '#tracks') return;
   const summary = summarizeCompleteTrackRows(trackRows);
   setText('periodLabel', '有効日数');
   setText('maxLabel', '総再生回数');

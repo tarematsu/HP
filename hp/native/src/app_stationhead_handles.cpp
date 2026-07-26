@@ -3,9 +3,61 @@
 namespace hp {
 namespace {
 
+StationheadHandleBase* primaryAudioHandle = nullptr;
+StationheadHandleBase* secondaryAudioHandle = nullptr;
+
+constexpr int64_t kStationheadBoundaryRetryDelayMs = 5'000;
+constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
+
+struct TrackBoundaryRetryState {
+  bool armed = false;
+  // True only after App's 30-second handoff window expired while the target
+  // was still stopped. The player's pending bit is deliberately retained and
+  // the handle re-opens a fresh App handoff window at retryAt.
+  bool detachedFromAppWindow = false;
+  int64_t retryAt = 0;
+  int64_t deadline = 0;
+};
+
+TrackBoundaryRetryState primaryBoundaryRetry;
+TrackBoundaryRetryState secondaryBoundaryRetry;
+
+TrackBoundaryRetryState& BoundaryRetryStateFor(
+    const StationheadHandleBase* handle) noexcept {
+  return handle == secondaryAudioHandle
+      ? secondaryBoundaryRetry
+      : primaryBoundaryRetry;
+}
+
+void ClearBoundaryRetryState(const StationheadHandleBase* handle) noexcept {
+  BoundaryRetryStateFor(handle) = {};
+}
+
+void ArmBoundaryRetryState(
+    const StationheadHandleBase* handle, int64_t nowMs) noexcept {
+  TrackBoundaryRetryState& state = BoundaryRetryStateFor(handle);
+  if (!state.armed) {
+    state.armed = true;
+    state.deadline = nowMs + kStationheadBoundaryRetryWindowMs;
+  }
+  state.detachedFromAppWindow = false;
+  state.retryAt = nowMs + kStationheadBoundaryRetryDelayMs;
+}
+
 bool RequiresInteractiveStationhead(const StationheadStatus& status) noexcept {
   return status.loginRequired || status.spotifyAuthorization || status.processFailed;
 }
+
+StationheadHandleBase* PeerAudioHandle(
+    const StationheadHandleBase* handle) noexcept {
+  if (handle == primaryAudioHandle) return secondaryAudioHandle;
+  if (handle == secondaryAudioHandle) return primaryAudioHandle;
+  return nullptr;
+}
+
+static_assert(kStationheadBoundaryRetryDelayMs >= 1'000);
+static_assert(kStationheadBoundaryRetryWindowMs >
+              2 * kStationheadTrackTransitionGraceMs);
 }  // namespace
 
 StationheadHandleBase::operator bool() const noexcept {
@@ -13,10 +65,21 @@ StationheadHandleBase::operator bool() const noexcept {
 }
 
 void StationheadHandleBase::Stop() {
-  if (player_) player_->Stop();
+  if (!player_ || stopIssued_) return;
+  stopIssued_ = true;
+  ClearBoundaryRetryState(this);
+  if (startIssued_) player_->Stop();
 }
 
 void StationheadHandleBase::SetAudioMuted(bool muted) noexcept {
+  if (!muted) {
+    // Audio-profile changes arrive as two sequential calls. Always mute the
+    // outgoing peer before this handle becomes audible so B -> A cannot expose
+    // a short interval where both Stationhead streams are heard.
+    if (StationheadHandleBase* peer = PeerAudioHandle(this)) {
+      peer->SetAudioMuted(true);
+    }
+  }
   if (audioMuted_ == muted) return;
   audioMuted_ = muted;
   ++contentRevision_;
@@ -71,7 +134,13 @@ StationheadStatus StationheadHandleBase::Status() const {
 }
 
 int64_t StationheadHandleBase::NextWakeAt() const noexcept {
-  return player_ ? player_->NextWakeAt() : 0;
+  int64_t next = player_ ? player_->NextWakeAt() : 0;
+  const TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
+  if (retry.armed && retry.detachedFromAppWindow && retry.retryAt > 0 &&
+      (next <= 0 || retry.retryAt < next)) {
+    next = retry.retryAt;
+  }
+  return next;
 }
 
 void StationheadHandleBase::RefreshVisibility() {
@@ -87,7 +156,9 @@ void StationheadHandleBase::RefreshVisibility() {
 }
 
 void StationheadHandleBase::Start() {
-  if (!player_) return;
+  if (!player_ || startIssued_ || stopIssued_) return;
+  startIssued_ = true;
+  ClearBoundaryRetryState(this);
   ApplyInteractiveBounds();
   player_->Start();
   ApplyAudioState();
@@ -95,7 +166,7 @@ void StationheadHandleBase::Start() {
 }
 
 void StationheadHandleBase::Tick(int64_t nowMs) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->RecoverUnavailableAuthorization();
   // Authorization can begin while the steady-state scheduler still carries a
   // much later background deadline. Wake only that interactive state so the
@@ -105,45 +176,97 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
     player_->RequestImmediateTick();
   }
   player_->Tick(nowMs);
+
+  TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
+  if (!retry.armed && !player_->AudioPlaying()) {
+    // Page-side track-ended delivery is an optimization, not the only clock.
+    // While native WebView2 confirms that audio is stopped, ask the player to
+    // evaluate the same 52-minute eligibility predicate. This never reloads a
+    // playing document and becomes active only when HandleTrackEnded accepts
+    // either a due fresh request or an already-pending request.
+    const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+    if (active) {
+      ArmBoundaryRetryState(this, nowMs);
+      if (player_->Status().navigating) ClearBoundaryRetryState(this);
+    }
+  }
+  if (!retry.armed) return;
+
+  const StationheadStatus status = player_->Status();
+  if (player_->AudioPlaying() || status.navigating ||
+      RequiresInteractiveStationhead(status) || nowMs >= retry.deadline) {
+    player_->CancelPendingTrackBoundaryRefresh();
+    ClearBoundaryRetryState(this);
+    return;
+  }
+  if (!retry.detachedFromAppWindow || nowMs < retry.retryAt) return;
+
+  // App no longer owns a handoff grace window, but the player still owns the
+  // same due 52-minute request. Re-open the App window without resetting the
+  // player's lastReloadAt_ baseline or waiting for another page message.
+  retry.detachedFromAppWindow = false;
+  retry.retryAt = nowMs + kStationheadBoundaryRetryDelayMs;
+  const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (!active || player_->Status().navigating) ClearBoundaryRetryState(this);
 }
 
 void StationheadHandleBase::Reconnect() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
+  ClearBoundaryRetryState(this);
   ApplyInteractiveBounds();
   player_->Reconnect();
   ApplyBounds();
 }
 
 void StationheadHandleBase::RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
-  if (player_) player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (!player_ || !startIssued_ || stopIssued_) return;
+  const bool active = player_->RetryPendingTrackBoundaryRefresh(nowMs);
+  if (!active) return;
+  ArmBoundaryRetryState(this, nowMs);
+  if (player_->Status().navigating) ClearBoundaryRetryState(this);
 }
 
 void StationheadHandleBase::CancelPendingTrackBoundaryRefresh() noexcept {
-  if (player_) player_->CancelPendingTrackBoundaryRefresh();
+  if (!player_ || !startIssued_ || stopIssued_) return;
+  TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
+  const int64_t nowMs = UnixMillis();
+  if (retry.armed && !player_->AudioPlaying() && nowMs < retry.deadline) {
+    // Keep the player's pending request alive. Only App's current 30-second
+    // handoff window expired; a peer WebView may still be rebuilding its DRM
+    // session. Retry with a fresh handoff window instead of losing the 52-minute
+    // refresh until a later track-ended message happens to arrive.
+    retry.detachedFromAppWindow = true;
+    retry.retryAt = nowMs + kStationheadBoundaryRetryDelayMs;
+    player_->RequestImmediateTick();
+    return;
+  }
+  player_->CancelPendingTrackBoundaryRefresh();
+  ClearBoundaryRetryState(this);
 }
 
 void StationheadHandleBase::SetPlaybackFallback(
     bool active, const std::wstring& reason) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
+  ClearBoundaryRetryState(this);
   player_->SetPlaybackFallback(active, reason);
   ApplyBounds();
 }
 
 void StationheadHandleBase::ShowAfterAudioStop() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   ApplyInteractiveBounds();
   player_->ShowAfterAudioStop();
   ApplyBounds();
 }
 
 void StationheadHandleBase::ReleaseCompletedAuth() {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   player_->FinalizeCompletedAuth();
   ApplyBounds();
 }
 
 uint32_t StationheadHandleBase::ConsumeChangeFlags() {
-  if (!player_) return StationheadChangeNone;
+  if (!player_ || !startIssued_ || stopIssued_) return StationheadChangeNone;
   uint32_t flags = player_->ConsumeChangeFlags();
   if ((flags & StationheadChangeReleaseAuth) != 0) {
     // Complete auth teardown before A/B flags are OR-ed by App. Remove only
@@ -160,6 +283,12 @@ uint32_t StationheadHandleBase::ConsumeChangeFlags() {
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
   player_ = std::move(player);
+  startIssued_ = false;
+  stopIssued_ = false;
+  playbackObserved_ = false;
+  playbackMissingSinceAt_ = 0;
+  transitionSuppressed_ = false;
+  ClearBoundaryRetryState(this);
   ++contentRevision_;
   ApplyAudioState();
   ApplyBounds();
@@ -167,18 +296,21 @@ void StationheadHandleBase::AssignPlayer(
 
 void StationheadHandleBase::ResetPlayer() noexcept {
   player_.reset();
+  startIssued_ = false;
+  stopIssued_ = false;
   playbackObserved_ = false;
   playbackMissingSinceAt_ = 0;
   transitionSuppressed_ = false;
+  ClearBoundaryRetryState(this);
   ++contentRevision_;
 }
 
 bool StationheadHandleBase::HasAuthTabPlayer() const {
-  return player_ && player_->HasAuthTab();
+  return player_ && startIssued_ && !stopIssued_ && player_->HasAuthTab();
 }
 
 void StationheadHandleBase::SelectPlayerTab(StationheadTabKind tab) {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   if (tab == StationheadTabKind::None) {
     RefreshVisibility();
     return;
@@ -212,7 +344,7 @@ bool StationheadHandleBase::SuppressTrackTransitionGap(
 }
 
 void StationheadHandleBase::ApplyAudioState() const noexcept {
-  if (player_) player_->SetMuted(audioMuted_);
+  if (player_ && !stopIssued_) player_->SetMuted(audioMuted_);
 }
 
 void StationheadHandleBase::BringMainWindowToFront(HWND host) const noexcept {
@@ -225,7 +357,7 @@ void StationheadHandleBase::BringMainWindowToFront(HWND host) const noexcept {
 }
 
 void StationheadHandleBase::RaiseActiveHost() const {
-  if (!player_) return;
+  if (!player_ || !startIssued_ || stopIssued_) return;
   const bool preview = startupPreviewActive_;
   if (!preview && !player_->SurfaceVisible()) return;
   HWND host = player_->ActiveHostWindowForAccountSetup();
@@ -248,7 +380,7 @@ void StationheadHandleBase::RaiseActiveHost() const {
 }
 
 void StationheadHandleBase::ApplyInteractiveBounds() {
-  if (!player_) return;
+  if (!player_ || stopIssued_) return;
   // The handle is the sole owner of the startup-preview lifetime. Interactive
   // transitions (login, Spotify auth, reconnect, audio-stop recovery) must not
   // clear the player's preview state and then immediately reapply it, because
@@ -258,7 +390,7 @@ void StationheadHandleBase::ApplyInteractiveBounds() {
 }
 
 void StationheadHandleBase::ApplyBounds() {
-  if (!player_) return;
+  if (!player_ || stopIssued_) return;
   if (startupPreviewActive_) {
     player_->SetStartupPreviewBounds(startupPreviewBounds_);
   } else {
@@ -266,6 +398,16 @@ void StationheadHandleBase::ApplyBounds() {
     player_->SetBounds(workspaceBounds_);
   }
   RaiseActiveHost();
+}
+
+AppStationheadHandle::AppStationheadHandle() {
+  primaryAudioHandle = this;
+  primaryBoundaryRetry = {};
+}
+
+AppStationheadHandle::~AppStationheadHandle() {
+  ClearBoundaryRetryState(this);
+  if (primaryAudioHandle == this) primaryAudioHandle = nullptr;
 }
 
 AppStationheadHandle* AppStationheadHandle::operator->() noexcept {
@@ -292,6 +434,16 @@ bool AppStationheadHandle::HasAuthTab() const {
 
 void AppStationheadHandle::SelectTab(StationheadTabKind tab) {
   SelectPlayerTab(tab);
+}
+
+AppSecondaryStationheadHandle::AppSecondaryStationheadHandle() {
+  secondaryAudioHandle = this;
+  secondaryBoundaryRetry = {};
+}
+
+AppSecondaryStationheadHandle::~AppSecondaryStationheadHandle() {
+  ClearBoundaryRetryState(this);
+  if (secondaryAudioHandle == this) secondaryAudioHandle = nullptr;
 }
 
 AppSecondaryStationheadHandle* AppSecondaryStationheadHandle::operator->() noexcept {

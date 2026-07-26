@@ -71,6 +71,11 @@ class StationheadHandleBase {
   RECT startupPreviewBounds_{0, 0, 1, 1};
   bool startupPreviewActive_ = false;
   bool audioMuted_ = false;
+  // A handle owns exactly one StationheadPlayer lifecycle. Duplicate Start()
+  // calls must not create a second WebView2 controller, and a final Stop() must
+  // not restart the same player with stale asynchronous/recreate state.
+  bool startIssued_ = false;
+  bool stopIssued_ = false;
   mutable bool playbackObserved_ = false;
   mutable int64_t playbackMissingSinceAt_ = 0;
   mutable bool transitionSuppressed_ = false;
@@ -79,7 +84,8 @@ class StationheadHandleBase {
 
 class AppStationheadHandle final : public StationheadHandleBase {
  public:
-  AppStationheadHandle() = default;
+  AppStationheadHandle();
+  ~AppStationheadHandle();
   AppStationheadHandle(const AppStationheadHandle&) = delete;
   AppStationheadHandle& operator=(const AppStationheadHandle&) = delete;
 
@@ -89,11 +95,23 @@ class AppStationheadHandle final : public StationheadHandleBase {
   void reset() noexcept;
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
+  StationheadStatus Status() const {
+    StationheadStatus status = StationheadHandleBase::Status();
+    if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
+      // Window A can also keep streaming while its interactive account surface
+      // needs attention. In a dual-window layout, keep that surface in the left
+      // half instead of exposing it as reusable healthy playback.
+      status.audioPlaying = false;
+      status.playing = false;
+    }
+    return status;
+  }
 };
 
 class AppSecondaryStationheadHandle final : public StationheadHandleBase {
  public:
-  AppSecondaryStationheadHandle() = default;
+  AppSecondaryStationheadHandle();
+  ~AppSecondaryStationheadHandle();
   AppSecondaryStationheadHandle(const AppSecondaryStationheadHandle&) = delete;
   AppSecondaryStationheadHandle& operator=(const AppSecondaryStationheadHandle&) = delete;
 
@@ -102,6 +120,17 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  StationheadStatus Status() const {
+    StationheadStatus status = StationheadHandleBase::Status();
+    if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
+      // Window B can keep streaming after its authenticated API session expires.
+      // Treat that state as placement-pending so the App keeps the interactive
+      // surface in the right half and does not reuse a healthy-playback snapshot.
+      status.audioPlaying = false;
+      status.playing = false;
+    }
+    return status;
+  }
 };
 
 }  // namespace hp

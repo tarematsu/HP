@@ -117,8 +117,15 @@ class StationheadPlayer {
     return spotifyAuthorization_;
   }
   void Reconnect();
-  void RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
-    HandleTrackEnded(nowMs, true);
+  bool RetryPendingTrackBoundaryRefresh(int64_t nowMs) {
+    // A native audio-stop tick can enter the same path when the page's
+    // track-ended message was lost. Existing pending requests remain retries;
+    // a fresh request still has to pass the 52-minute eligibility check.
+    const bool retry = trackBoundaryRefreshPending_;
+    HandleTrackEnded(nowMs, retry);
+    return trackBoundaryRefreshPending_ ||
+           (trackBoundaryPlaybackRecoveryPending_ &&
+            trackBoundaryPlaybackRecoveryAwaitingNavigation_);
   }
   void CancelPendingTrackBoundaryRefresh() noexcept {
     trackBoundaryRefreshPending_ = false;
@@ -260,7 +267,10 @@ class StationheadPlayer {
   int64_t createdAt_ = 0;
   int64_t startupScriptDeadline_ = 0;
   int64_t authControllerStartedAt_ = 0;
-  int64_t lastReloadAt_ = 0;
+  // The final PCH policy exposes this storage through a write-filtering proxy:
+  // first successful navigation initializes it, then only an App-accepted
+  // 52-minute refresh may advance it.
+  int64_t lastReloadAtStorage_ = 0;
   int64_t lastDailyPlayStatsAt_ = 0;  // Primary only.
   int64_t lastAuthProbeAt_ = 0;       // Secondary only.
   int64_t authProbeStartedAt_ = 0;    // Secondary only.

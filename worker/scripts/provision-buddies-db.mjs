@@ -27,8 +27,39 @@ function parseJsonOutput(output) {
   return JSON.parse(trimmed.slice(start));
 }
 
+function rowsFromJsonOutput(output) {
+  const parsed = parseJsonOutput(output);
+  return (Array.isArray(parsed) ? parsed : [parsed])
+    .flatMap((container) => container?.results || []);
+}
+
 function listDatabases() {
   return parseJsonOutput(wrangler(['d1', 'list', '--json']));
+}
+
+function remoteRows(command) {
+  return rowsFromJsonOutput(wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes', '--json',
+    '--command', command,
+  ]));
+}
+
+function ensureTrackMetadataIsrcColumn() {
+  let columns = new Set(remoteRows('PRAGMA table_info(sh_track_metadata)')
+    .map((row) => String(row?.name || '')));
+  if (!columns.has('isrc')) {
+    wrangler([
+      'd1', 'execute', databaseName,
+      '--remote', '--yes',
+      '--command', 'ALTER TABLE sh_track_metadata ADD COLUMN isrc TEXT',
+    ]);
+    columns = new Set(remoteRows('PRAGMA table_info(sh_track_metadata)')
+      .map((row) => String(row?.name || '')));
+  }
+  if (!columns.has('isrc')) {
+    throw new Error('Buddies schema verification failed; sh_track_metadata.isrc is missing');
+  }
 }
 
 let database = listDatabases().find((item) => item.name === databaseName);
@@ -51,15 +82,12 @@ for (const migrationFile of migrationFiles) {
     '--file', resolve(migrationsDir, migrationFile),
   ]);
 }
+ensureTrackMetadataIsrcColumn();
 
 const tableList = BUDDIES_ALL_TABLES.map((table) => `'${table}'`).join(',');
-const verification = parseJsonOutput(wrangler([
-  'd1', 'execute', databaseName,
-  '--remote', '--yes', '--json',
-  '--command', `SELECT name FROM sqlite_schema WHERE type='table' AND name IN (${tableList}) ORDER BY name`,
-]));
-const rows = (Array.isArray(verification) ? verification : [verification])
-  .flatMap((container) => container?.results || []);
+const rows = remoteRows(
+  `SELECT name FROM sqlite_schema WHERE type='table' AND name IN (${tableList}) ORDER BY name`,
+);
 const installed = new Set(rows.map((row) => row.name));
 const missing = BUDDIES_ALL_TABLES.filter((table) => !installed.has(table));
 if (missing.length) throw new Error(`Buddies schema verification failed; missing: ${missing.join(', ')}`);

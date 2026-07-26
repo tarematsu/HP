@@ -106,3 +106,46 @@ test('buddies sync requires an explicit flag to run the legacy track-counter wri
   assert.equal(batches.flat().some((sql) => sql.includes('sh_track_metadata')), true);
   assert.equal(batches.every((batch) => batch.some((sql) => sql.includes('UPDATE sh_buddies_sync_state'))), true);
 });
+
+test('buddies sync emits sanitized error-level telemetry for returned soft failures', async () => {
+  const batches = [];
+  const updates = [];
+  const source = {
+    prepare() {
+      return {
+        bind() { return this; },
+        async all() {
+          throw new Error('request failed with Bearer abcdefghijklmnop');
+        },
+      };
+    },
+  };
+  const logs = [];
+  const errors = [];
+  const originalLog = console.log;
+  const originalError = console.error;
+  console.log = (value) => logs.push(String(value));
+  console.error = (value) => errors.push(String(value));
+  try {
+    const result = await runBuddiesFactsSync({
+      DB: source,
+      MINUTE_DB: makeFacts({ 'track-metadata': { sync_key: 'track-metadata' } }, batches, updates),
+      BUDDIES_SYNC_SOURCE_LAG_MS: 0,
+    }, { now: 10_000_000, limit: 10 });
+
+    assert.equal(result.failed, true);
+    assert.equal(result.error, 'request failed with Bearer [redacted]');
+  } finally {
+    console.log = originalLog;
+    console.error = originalError;
+  }
+
+  assert.deepEqual(logs, []);
+  assert.equal(errors.length, 1);
+  const event = JSON.parse(errors[0]);
+  assert.equal(event.event, 'buddies_facts_sync_summary');
+  assert.equal(event.failed, true);
+  assert.equal(event.error, 'request failed with Bearer [redacted]');
+  assert.doesNotMatch(errors[0], /abcdefghijklmnop/);
+  assert.equal(updates.length, 1);
+});

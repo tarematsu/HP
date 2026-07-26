@@ -1,0 +1,146 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+import {
+  dispatchMinuteMaintenanceGate,
+  runMinuteMaintenanceSyncInline,
+} from '../src/minute-maintenance-optimized-entry.js';
+import { recordMinuteFactRuntimeState } from '../src/minute-facts-runtime-state.js';
+import { processMinuteRebuildBatch } from '../src/minute-rebuild-batched-entry.js';
+import { throwIfSoftFailure } from '../src/soft-failure.js';
+
+const SYNC_CRON = '5,7,9,15,17,19,25,27,29,35,37,39,45,47,49,55,57,59 * * * *';
+const SCHEDULED_AT = Date.UTC(2026, 0, 1, 0, 9, 0);
+
+function queueMessage(body, events) {
+  return {
+    body,
+    ack() { events.push('ack'); },
+    retry(options) { events.push(`retry:${options?.delaySeconds ?? 0}`); },
+  };
+}
+
+test('soft failure details are redacted before becoming thrown diagnostics', () => {
+  assert.throws(
+    () => throwIfSoftFailure({
+      result: {
+        failed: true,
+        error: 'request failed with Bearer secret-token-value',
+      },
+    }, 'minute maintenance'),
+    /Bearer \[redacted\]/,
+  );
+});
+
+test('numeric failed counters remain completion metrics rather than task soft failures', () => {
+  assert.doesNotThrow(() => throwIfSoftFailure({
+    failed: 1,
+    processed: 10,
+  }, 'minute maintenance'));
+});
+
+test('inline sync rejects a returned soft failure so runtime fallback can enqueue it', async () => {
+  await assert.rejects(
+    runMinuteMaintenanceSyncInline(
+      { cron: SYNC_CRON, scheduledTime: SCHEDULED_AT },
+      {},
+      null,
+      {
+        maintenance: {},
+        async processMinuteMaintenanceSync() {
+          return {
+            stage: 'maintenance-run',
+            task: 'sync',
+            result: { failed: true, error: 'D1 sync temporarily unavailable' },
+          };
+        },
+      },
+    ),
+    /D1 sync temporarily unavailable/,
+  );
+});
+
+test('direct maintenance fallback rejects soft failures when the rebuild Queue binding is missing', async () => {
+  await assert.rejects(
+    dispatchMinuteMaintenanceGate(
+      { cron: SYNC_CRON, scheduledTime: SCHEDULED_AT },
+      {},
+      'sync',
+      null,
+      {
+        async runScheduled() {
+          return { failed: true, error: 'direct sync fallback failed' };
+        },
+      },
+    ),
+    /direct sync fallback failed/,
+  );
+});
+
+test('queued sync retries instead of acknowledging a returned soft failure', async () => {
+  const events = [];
+  const message = queueMessage({
+    message_type: 'minute-rebuild-stage',
+    message_version: 1,
+    stage: 'maintenance-run',
+    maintenance_task: 'sync',
+  }, events);
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await processMinuteRebuildBatch({ messages: [message] }, {}, null, {
+      async processMinuteMaintenanceSync() {
+        return {
+          stage: 'maintenance-run',
+          task: 'sync',
+          result: { failed: true, error: 'metadata copy failed' },
+        };
+      },
+    });
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(events, ['retry:60']);
+});
+
+test('legacy maintenance Queue checks soft failures before acknowledging rollback traffic', () => {
+  const source = readFileSync(
+    new URL('../src/minute-rebuild-maintenance-entry.js', import.meta.url),
+    'utf8',
+  );
+  const check = source.indexOf("throwIfSoftFailure(result, 'minute maintenance')");
+  const acknowledge = source.indexOf('message.ack()', check);
+  assert.ok(check >= 0, 'legacy Queue must inspect returned maintenance results');
+  assert.ok(acknowledge > check, 'legacy Queue must inspect soft failures before ACK');
+});
+
+test('failed=true is persisted as a failed runtime heartbeat even without an error string', async () => {
+  let bound = null;
+  const env = {
+    MINUTE_DB: {
+      prepare() {
+        return {
+          bind(...params) {
+            bound = params;
+            return this;
+          },
+          async run() {
+            return { meta: { changes: 1 } };
+          },
+        };
+      },
+    },
+  };
+  const result = await recordMinuteFactRuntimeState(
+    env,
+    'sync',
+    { failed: true },
+    { now: 2_000, startedAt: 1_000 },
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'unknown failure');
+  assert.equal(bound[5], 'unknown failure');
+  assert.equal(bound[7], 0);
+  assert.equal(bound[8], 1);
+});

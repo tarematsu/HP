@@ -6,6 +6,7 @@ import {
   processMinuteMaintenanceRun,
   processMinuteMaintenanceSync,
 } from './minute-rebuild-maintenance-entry.js';
+import { throwIfSoftFailure } from './soft-failure.js';
 
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 const EMPTY_DEPENDENCIES = Object.freeze({});
@@ -45,6 +46,7 @@ async function processOneMinuteRebuildMessage(message, env, dependencies = EMPTY
           ? dependencies.processMinuteMaintenanceSync || processMinuteMaintenanceSync
           : dependencies.processMinuteMaintenanceRun || processMinuteMaintenanceRun;
       const result = await run(env, message.body, dependencies.maintenance || EMPTY_DEPENDENCIES);
+      throwIfSoftFailure(result, 'minute maintenance');
       console.log(JSON.stringify({
         event: 'minute_maintenance_gate_completed',
         stage: result?.stage,

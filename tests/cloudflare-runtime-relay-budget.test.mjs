@@ -10,6 +10,10 @@ const runtimeOrchestrator = readFileSync(
   new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url),
   'utf8',
 );
+const runtimeDoOrchestrator = readFileSync(
+  new URL('../worker/src/runtime-do-orchestrator.js', import.meta.url),
+  'utf8',
+);
 const pagesReadModel = readFileSync(
   new URL('../worker/src/pages-read-model-entry.js', import.meta.url),
   'utf8',
@@ -31,7 +35,7 @@ test('runtime relay subset stays bounded while account-wide Queue usage remains 
   assert.match(runtimeScheduled, /inline_minute_maintenance_gate_failed/);
   assert.match(runtimeScheduled, /MINUTE_RECOVERY_POLL_INTERVAL_MINUTES = 15/);
   assert.match(runtimeOrchestrator, /minuteFactRepairBurstDue/);
-  assert.match(runtimeOrchestrator, /repair-burst-cadence/);
+  assert.match(runtimeDoOrchestrator, /repair-burst-cadence/);
   assert.match(pagesReadModel, /PAGES_DASHBOARD_MATERIALIZATION_MESSAGE/);
   assert.match(pagesReadModel, /dispatchPagesDashboardMaterialization/);
 
