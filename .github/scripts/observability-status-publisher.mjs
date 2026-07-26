@@ -133,13 +133,17 @@ export async function publishCommitStatuses({
   });
 }
 
-export async function upsertStatusIssue({ request, title, marker, body }) {
+export async function findStatusIssue({ request, title, marker }) {
   const issues = await request('GET', '/issues?state=all&per_page=100&sort=updated&direction=desc');
-  const existing = issues.find((issue) => (
+  return issues.find((issue) => (
     !issue.pull_request
     && issue.title === title
     && String(issue.body || '').includes(marker)
-  ));
+  )) || null;
+}
+
+export async function upsertStatusIssue({ request, title, marker, body, existingIssue = null }) {
+  const existing = existingIssue || await findStatusIssue({ request, title, marker });
   if (existing) {
     return request('PATCH', `/issues/${existing.number}`, {
       title,
