@@ -149,6 +149,25 @@ function trackHistoryPublishedThisRun(result) {
     || result?.publication?.published === true;
 }
 
+async function publishVariants({
+  variants,
+  dueKeys,
+  select,
+  env,
+  startedAt,
+  deadlineMs,
+  clock,
+  renderVariant,
+  published,
+}) {
+  for (const variant of variants.filter((item) => dueKeys.has(item.key) && select(item))) {
+    if (Number(clock()) >= deadlineMs) {
+      throw new Error('Pages variant materialization exceeded the Actions deadline');
+    }
+    published.push(await renderVariant(variant, env, startedAt));
+  }
+}
+
 export async function runPagesReadModelActions(options = {}) {
   const clock = options.now || Date.now;
   const startedAt = Number(options.startedAt ?? clock());
@@ -173,6 +192,23 @@ export async function runPagesReadModelActions(options = {}) {
   const renderVariant = options.materializeVariant || materializeVariant;
   const variants = options.variants || MATERIALIZED_API_VARIANTS;
   const trackHistoryEnv = options.trackHistoryEnv || { ...env, BUDDIES_DB: env.MINUTE_DB };
+  const dueKeys = dueVariantKeys(startedAt);
+  const published = [];
+
+  // Publish the latency-sensitive dashboard and other due read models before
+  // the bounded track-history rebuild. A track-history backlog or failure must
+  // not prevent the 15-minute dashboard response from being refreshed.
+  await publishVariants({
+    variants,
+    dueKeys,
+    select: (variant) => variant.key !== 'track-history',
+    env,
+    startedAt,
+    deadlineMs,
+    clock,
+    renderVariant,
+    published,
+  });
 
   let steps = 0;
   let lastResult = null;
@@ -191,15 +227,18 @@ export async function runPagesReadModelActions(options = {}) {
     throw new Error('Pages track-history rebuild exceeded the Actions deadline');
   }
 
-  const dueKeys = dueVariantKeys(startedAt);
   if (trackHistoryPublishedThisRun(lastResult)) dueKeys.add('track-history');
-  const published = [];
-  for (const variant of variants.filter((item) => dueKeys.has(item.key))) {
-    if (Number(clock()) >= deadlineMs) {
-      throw new Error('Pages variant materialization exceeded the Actions deadline');
-    }
-    published.push(await renderVariant(variant, env, startedAt));
-  }
+  await publishVariants({
+    variants,
+    dueKeys,
+    select: (variant) => variant.key === 'track-history',
+    env,
+    startedAt,
+    deadlineMs,
+    clock,
+    renderVariant,
+    published,
+  });
 
   return {
     ok: true,
