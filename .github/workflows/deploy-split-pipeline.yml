@@ -206,10 +206,19 @@ jobs:
         working-directory: worker
         run: |
           set -euo pipefail
+          : > worker-deployment.log
           while IFS= read -r command; do
-            echo "Deploying $command"
-            npm run "$command"
+            echo "Deploying $command" | tee -a worker-deployment.log
+            npm run "$command" 2>&1 | tee -a worker-deployment.log
           done < <(jq -r '.[]' <<<"$DEPLOY_COMMANDS")
+      - name: Upload Worker deployment failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: worker-deployment-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/worker-deployment.log
+          if-no-files-found: error
+          retention-days: 7
 
   pages:
     name: Build and deploy Pages
