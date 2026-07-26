@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import {
+  dueVariantKeys,
+  runPagesReadModelActions,
+} from '../worker/scripts/run-pages-read-model-actions.mjs';
+
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const deployedEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
@@ -10,6 +15,8 @@ const responseFetch = readFileSync(new URL('../worker/src/pages-response-fetch-e
 const r2Store = readFileSync(new URL('../worker/src/pages-response-r2.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
+const DAY = Date.UTC(2026, 6, 20);
+
 test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
   assert.match(workflow, /group: pages-read-model-rebuild/);
@@ -17,18 +24,56 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
+  assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
-  assert.match(runner, /while \(steps < maxSteps && Date\.now\(\) < deadlineMs\)/);
-  assert.match(runner, /dueVariantKeys/);
-  assert.match(runner, /history:daily/);
-  assert.match(runner, /history:weekly/);
-  assert.match(runner, /history:monthly/);
-  assert.match(runner, /history:broadcasts/);
-  assert.match(runner, /host-history:summary/);
+  assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
   assert.match(runner, /r2', 'object', 'put'/);
   assert.match(runner, /d1', 'execute'.*--remote/s);
   assert.match(r2Store, /pages-response\/actions-v1/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
+});
+
+test('tiered cadence regenerates only the due variants', () => {
+  assert.deepEqual([...dueVariantKeys(DAY + 4 * 60_000)], [
+    'dashboard',
+    'history:daily',
+    'history:weekly',
+    'history:broadcasts',
+    'history:monthly',
+    'host-history:summary',
+  ]);
+  assert.deepEqual([...dueVariantKeys(DAY + 19 * 60_000)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(DAY + 64 * 60_000)], ['dashboard', 'history:daily']);
+});
+
+test('runner completes a published track-history generation and materializes only due variants', async () => {
+  const published = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 19 * 60_000,
+    deadlineMs: DAY + 30 * 60_000,
+    now: () => DAY + 19 * 60_000,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => ({ reason: 'track-history-cycle-already-published' }),
+    materializeVariant: async (variant) => {
+      published.push(variant.key);
+      return { key: variant.key, object_key: `test/${variant.key}` };
+    },
+  });
+  assert.equal(result.track_history_steps, 1);
+  assert.deepEqual(published, ['dashboard']);
+  assert.equal(result.published[0].key, 'dashboard');
+});
+
+test('runner fails when a generation exceeds its bounded step count', async () => {
+  await assert.rejects(runPagesReadModelActions({
+    startedAt: DAY + 19 * 60_000,
+    deadlineMs: DAY + 30 * 60_000,
+    now: () => DAY + 19 * 60_000,
+    maxSteps: 2,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => ({ stage: { published: false } }),
+    materializeVariant: async () => assert.fail('variants must not render after incomplete track-history'),
+  }), /did not finish within 2 steps/);
 });
 
 test('runtime serves materialized responses through a serving-only module', () => {
