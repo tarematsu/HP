@@ -6,6 +6,7 @@ import {
   runRuntimeOrchestratorQueue,
   runRuntimeOrchestratorScheduled,
   runRuntimeWork,
+  runtimeOrchestratorDue,
 } from './runtime-do-orchestrator.js';
 
 export {
@@ -15,6 +16,7 @@ export {
   runRuntimeOrchestratorQueue,
   runRuntimeOrchestratorScheduled,
   runRuntimeWork,
+  runtimeOrchestratorDue,
 };
 
 export default {
