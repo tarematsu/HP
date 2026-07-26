@@ -116,8 +116,13 @@ async function coordinatorDirectRun(stub, body, attempts = DEFAULT_DIRECT_RUN_AT
 
 export async function runFetchCoordinatedScheduled(controller, env, ctx, dependencies = {}) {
   const direct = dependencies.runDirect || runCoreScheduled;
+  const directMode = enabled(env?.RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED, false);
+  const failOpen = enabled(env?.RUNTIME_COORDINATOR_FAIL_OPEN, false);
   const stub = dependencies.stub || coordinatorStub(env?.RUNTIME_COORDINATOR);
   if (typeof stub?.fetch !== 'function') {
+    if (directMode && !failOpen) {
+      throw new Error('runtime coordinator binding is unavailable in direct mode');
+    }
     return direct(controller, env, ctx, dependencies.direct);
   }
 
@@ -128,12 +133,12 @@ export async function runFetchCoordinatedScheduled(controller, env, ctx, depende
     leaseMs: coordinatorLeaseMs(env?.PRIMARY_RUN_LOCK_TTL_MS),
   };
 
-  if (enabled(env?.RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED, false)) {
+  if (directMode) {
     try {
       return await coordinatorDirectRun(stub, { action: 'run', ...request });
     } catch (error) {
       coordinatorFailure('runtime_coordinator_direct_run_failed', error);
-      if (!enabled(env?.RUNTIME_COORDINATOR_FAIL_OPEN, false)) throw error;
+      if (!failOpen) throw error;
       return direct(controller, env, ctx, dependencies.direct);
     }
   }
