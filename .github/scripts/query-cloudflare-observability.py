@@ -22,6 +22,7 @@ WORKERS = [item.strip() for item in os.environ.get("CLOUDFLARE_WORKERS", "").spl
 LOOKBACK_MINUTES = max(1, int(os.environ.get("LOOKBACK_MINUTES", "60")))
 ERROR_LEVELS = {"error", "fatal"}
 WARNING_LEVELS = {"warn", "warning"}
+CPU_CLASS_ORDER = {"http": 0, "cron": 1, "queue": 2, "durableObject": 3}
 
 
 def request_json(url: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -55,15 +56,6 @@ def iso(value: dt.datetime) -> str:
     return value.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
-def microseconds_to_ms(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value) / 1000.0
-    except (TypeError, ValueError):
-        return None
-
-
 def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.datetime) -> dict[str, Any]:
     query = """
       query WorkerMetrics($accountTag: string, $datetimeStart: string, $datetimeEnd: string, $scriptName: string) {
@@ -75,7 +67,6 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
               datetime_leq: $datetimeEnd
             }) {
               sum { requests errors subrequests }
-              quantiles { cpuTimeP50 cpuTimeP99 }
             }
           }
         }
@@ -98,20 +89,16 @@ def worker_metrics(account_id: str, worker: str, start: dt.datetime, end: dt.dat
     rows = (accounts[0].get("workersInvocationsAdaptive") or []) if accounts else []
     row = rows[0] if rows else {}
     sums = row.get("sum") or {}
-    quantiles = row.get("quantiles") or {}
     return {
         "worker": worker,
         "requests": int(sums.get("requests") or 0),
         "errors": int(sums.get("errors") or 0),
         "subrequests": int(sums.get("subrequests") or 0),
-        # Cloudflare GraphQL reports these quantiles in microseconds.
-        "cpu_p50_ms": microseconds_to_ms(quantiles.get("cpuTimeP50")),
-        "cpu_p99_ms": microseconds_to_ms(quantiles.get("cpuTimeP99")),
     }
 
 
-def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
-    services = [
+def service_filters() -> list[dict[str, Any]]:
+    return [
         {
             "kind": "filter",
             "key": "$metadata.service",
@@ -121,6 +108,142 @@ def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime)
         }
         for worker in WORKERS
     ]
+
+
+def group_values(aggregate: dict[str, Any]) -> dict[str, Any]:
+    groups = aggregate.get("groups")
+    if isinstance(groups, dict):
+        return groups
+    values: dict[str, Any] = {}
+    if isinstance(groups, list):
+        for group in groups:
+            if isinstance(group, dict) and group.get("key") is not None:
+                values[str(group["key"])] = group.get("value")
+    return values
+
+
+def cpu_class_label(event_type: Any, execution_model: Any) -> str:
+    event = str(event_type or "").strip().lower()
+    model = str(execution_model or "").strip()
+    if model == "durableObject":
+        return f"durableObject/{event or 'unknown'}"
+    if event == "queue":
+        return "queue"
+    if event in {"scheduled", "cron"}:
+        return "cron"
+    if event == "fetch":
+        return "http"
+    return event or model or "unknown"
+
+
+def parse_cpu_calculations(calculations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for calculation in calculations:
+        if not isinstance(calculation, dict):
+            continue
+        metric = str(calculation.get("alias") or calculation.get("calculation") or "").strip()
+        for aggregate in calculation.get("aggregates") or []:
+            if not isinstance(aggregate, dict):
+                continue
+            groups = group_values(aggregate)
+            worker = str(groups.get("$metadata.service") or groups.get("$workers.scriptName") or "")
+            event_type = str(groups.get("$workers.eventType") or "")
+            execution_model = str(groups.get("$workers.executionModel") or "")
+            if worker not in WORKERS:
+                continue
+            key = (worker, event_type, execution_model)
+            row = grouped.setdefault(
+                key,
+                {
+                    "worker": worker,
+                    "class": cpu_class_label(event_type, execution_model),
+                    "event_type": event_type or "-",
+                    "execution_model": execution_model or "-",
+                    "samples": None,
+                    "cpu_p50_ms": None,
+                    "cpu_p99_ms": None,
+                },
+            )
+            value = aggregate.get("value")
+            if metric == "cpu_samples":
+                sample_value = value if value is not None else aggregate.get("count")
+                if sample_value is not None:
+                    row["samples"] = int(float(sample_value))
+            elif metric == "cpu_p50_ms":
+                row["cpu_p50_ms"] = value
+            elif metric == "cpu_p99_ms":
+                row["cpu_p99_ms"] = value
+    order = {worker: index for index, worker in enumerate(WORKERS)}
+    return sorted(
+        grouped.values(),
+        key=lambda row: (
+            order.get(row["worker"], len(order)),
+            CPU_CLASS_ORDER.get(str(row["class"]).split("/", 1)[0], 99),
+            row["class"],
+            row["event_type"],
+            row["execution_model"],
+        ),
+    )
+
+
+def telemetry_cpu_metrics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
+    payload = {
+        "queryId": "github-actions-worker-cpu-by-invocation-class",
+        "dry": True,
+        "ignoreSeries": True,
+        "timeframe": {
+            "from": int(start.timestamp() * 1000),
+            "to": int(end.timestamp() * 1000),
+        },
+        "parameters": {
+            "view": "calculations",
+            "limit": 2000,
+            "datasets": [],
+            "filterCombination": "and",
+            "filters": [
+                {"kind": "group", "filterCombination": "or", "filters": service_filters()},
+                {
+                    "kind": "filter",
+                    "key": "$workers.cpuTimeMs",
+                    "operation": "exists",
+                    "type": "number",
+                },
+            ],
+            "calculations": [
+                {"operator": "count", "alias": "cpu_samples"},
+                {
+                    "operator": "median",
+                    "alias": "cpu_p50_ms",
+                    "key": "$workers.cpuTimeMs",
+                    "keyType": "number",
+                },
+                {
+                    "operator": "p99",
+                    "alias": "cpu_p99_ms",
+                    "key": "$workers.cpuTimeMs",
+                    "keyType": "number",
+                },
+            ],
+            "groupBys": [
+                {"type": "string", "value": "$metadata.service"},
+                {"type": "string", "value": "$workers.eventType"},
+                {"type": "string", "value": "$workers.executionModel"},
+            ],
+        },
+    }
+    endpoint = f"{API_BASE}/accounts/{account_id}/workers/observability/telemetry/query"
+    try:
+        data = request_json(endpoint, method="POST", payload=payload)
+    except RuntimeError as error:
+        print(f"::warning title=CPU execution-model fallback::{str(error).replace(chr(10), ' ')[:500]}")
+        payload["parameters"]["groupBys"] = payload["parameters"]["groupBys"][:2]
+        data = request_json(endpoint, method="POST", payload=payload)
+    calculations = ((data.get("result") or {}).get("calculations") or [])
+    return parse_cpu_calculations(calculations)
+
+
+def telemetry_diagnostics(account_id: str, start: dt.datetime, end: dt.datetime) -> list[dict[str, Any]]:
+    services = service_filters()
     diagnostic_markers: list[dict[str, Any]] = [
         {
             "kind": "filter",
@@ -271,7 +394,45 @@ def self_test() -> int:
     assert event_severity(event("info")) == "info"
     assert sanitize_text("Bearer abcdefghijklmnop") == "Bearer [redacted]"
     assert "supersecret" not in sanitize_text("token=supersecret")
-    print("observability severity self-test passed")
+
+    original = list(WORKERS)
+    WORKERS[:] = ["a"]
+    try:
+        groups_http = [
+            {"key": "$metadata.service", "value": "a"},
+            {"key": "$workers.eventType", "value": "fetch"},
+            {"key": "$workers.executionModel", "value": "stateless"},
+        ]
+        groups_queue = [
+            {"key": "$metadata.service", "value": "a"},
+            {"key": "$workers.eventType", "value": "queue"},
+            {"key": "$workers.executionModel", "value": "stateless"},
+        ]
+        rows = parse_cpu_calculations(
+            [
+                {
+                    "alias": "cpu_samples",
+                    "aggregates": [{"value": 9, "groups": groups_http}, {"value": 2, "groups": groups_queue}],
+                },
+                {
+                    "alias": "cpu_p50_ms",
+                    "aggregates": [{"value": 1.5, "groups": groups_http}, {"value": 40, "groups": groups_queue}],
+                },
+                {
+                    "alias": "cpu_p99_ms",
+                    "aggregates": [{"value": 8, "groups": groups_http}, {"value": 200, "groups": groups_queue}],
+                },
+            ]
+        )
+        assert [(row["class"], row["samples"]) for row in rows] == [("http", 9), ("queue", 2)]
+        assert rows[0]["cpu_p50_ms"] == 1.5 and rows[0]["cpu_p99_ms"] == 8
+        assert rows[1]["cpu_p50_ms"] == 40 and rows[1]["cpu_p99_ms"] == 200
+        assert cpu_class_label("scheduled", "stateless") == "cron"
+        assert cpu_class_label("fetch", "durableObject") == "durableObject/fetch"
+    finally:
+        WORKERS[:] = original
+
+    print("observability severity and CPU class self-test passed")
     return 0
 
 
@@ -283,6 +444,7 @@ def main() -> int:
     end = dt.datetime.now(dt.timezone.utc)
     start = end - dt.timedelta(minutes=LOOKBACK_MINUTES)
     metrics = [worker_metrics(ACCOUNT_ID, worker, start, end) for worker in WORKERS]
+    cpu_metrics = telemetry_cpu_metrics(ACCOUNT_ID, start, end)
     diagnostics = telemetry_diagnostics(ACCOUNT_ID, start, end)
     errors = [event for event in diagnostics if event_severity(event) == "error"]
     warnings = [event for event in diagnostics if event_severity(event) == "warning"]
@@ -294,18 +456,39 @@ def main() -> int:
         f"- Window: `{iso(start)}` to `{iso(end)}`",
         f"- Account: `{ACCOUNT_ID[:8]}…`",
         "- Sources: GraphQL Analytics API and Workers Observability Telemetry API",
+        "- CPU percentiles are separated by invocation event type and execution model.",
         f"- Persisted warnings: `{len(warnings)}` (reported without failing the gate)",
         "",
-        "| Worker | Requests | Errors | Error rate | Subrequests | CPU p50 ms | CPU p99 ms |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "### Worker activity",
+        "",
+        "| Worker | Requests | Errors | Error rate | Subrequests |",
+        "|---|---:|---:|---:|---:|",
     ]
     for item in metrics:
         requests = item["requests"]
         rate = (item["errors"] / requests * 100) if requests else 0
         lines.append(
-            f"| `{item['worker']}` | {requests} | {item['errors']} | {rate:.2f}% | "
-            f"{item['subrequests']} | {number(item['cpu_p50_ms'])} | {number(item['cpu_p99_ms'])} |"
+            f"| `{item['worker']}` | {requests} | {item['errors']} | {rate:.2f}% | {item['subrequests']} |"
         )
+
+    lines.extend(
+        [
+            "",
+            "### CPU by invocation class",
+            "",
+            "| Worker | Class | Event type | Execution model | Samples | CPU p50 ms | CPU p99 ms |",
+            "|---|---|---|---|---:|---:|---:|",
+        ]
+    )
+    if cpu_metrics:
+        for item in cpu_metrics:
+            lines.append(
+                f"| `{item['worker']}` | `{item['class']}` | `{item['event_type']}` | "
+                f"`{item['execution_model']}` | {item['samples'] if item['samples'] is not None else '-'} | "
+                f"{number(item['cpu_p50_ms'])} | {number(item['cpu_p99_ms'])} |"
+            )
+    else:
+        lines.append("| - | - | - | - | 0 | - | - |")
 
     append_event_section(
         lines,
