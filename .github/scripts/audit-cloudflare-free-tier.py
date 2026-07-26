@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import sys
 
-from cloudflare_free_tier_audit import main, self_test
+from cloudflare_queue_dimension_compat import main, self_test
 
 
 if __name__ == "__main__":
