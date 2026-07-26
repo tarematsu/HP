@@ -43,6 +43,9 @@ function metadataDb(rows, calls) {
         bindings: [],
         bind(...bindings) { this.bindings = bindings; return this; },
         async all() {
+          if (/FROM sh_track_dictionary/.test(sql)) {
+            throw new Error('no such table: sh_track_dictionary');
+          }
           calls.push({ sql, bindings: this.bindings });
           return { results: rows };
         },
@@ -105,8 +108,9 @@ test('playback repair completes partial local metadata from the source database'
   });
 
   assert.deepEqual(result, { repaired: 1, skipped: false });
-  assert.equal(sourceCalls.length, 1);
-  assert.deepEqual(sourceCalls[0].bindings, ['JPX1', 'sp1']);
+  assert.equal(sourceCalls.length, 2);
+  assert.deepEqual(sourceCalls.map((call) => call.bindings), [['JPX1'], ['sp1']]);
+  assert.ok(sourceCalls.every((call) => !/UNION ALL|\sOR\s/.test(call.sql)));
   const saved = JSON.parse(updates[0].bindings[0]);
   assert.equal(saved.tracks[0].title, 'Local Song');
   assert.equal(saved.tracks[0].artist, 'Fresh Artist');
@@ -153,5 +157,5 @@ test('playback repair scans incomplete tracks once and preserves first-seen uniq
   const result = await repairPlaybackReadModels({ MINUTE_DB: minuteDb });
 
   assert.deepEqual(result, { repaired: 0, skipped: false });
-  assert.deepEqual(metadataCalls, [['JPX1', 'JPX2', 'sp1', 'sp2']]);
+  assert.deepEqual(metadataCalls, [['JPX1', 'JPX2'], ['sp1', 'sp2']]);
 });
