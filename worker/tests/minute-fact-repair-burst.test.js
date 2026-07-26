@@ -66,7 +66,7 @@ test('repair candidate scan advances through the existing time index with durabl
   assert.match(burstSource, /MAX_BURST_DISPATCH = 2/);
 });
 
-test('repair triggers bypass the ordinary historical rebuild pause', async () => {
+test('explicit rollback repair triggers bypass the ordinary historical rebuild pause', async () => {
   const calls = [];
   const batch = {
     queue: 'stationhead-minute-derive',
@@ -84,7 +84,10 @@ test('repair triggers bypass the ordinary historical rebuild pause', async () =>
   };
   const result = await processMinutePipelineBatch(
     batch,
-    { HISTORICAL_REBUILD_ENABLED: false },
+    {
+      HISTORICAL_REBUILD_ENABLED: false,
+      MINUTE_FACT_REPAIR_BURST_ENABLED: true,
+    },
     {},
     {
       async processMinuteDeriveBatch(receivedBatch) {
