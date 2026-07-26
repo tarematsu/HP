@@ -1,51 +1,48 @@
-# VP and HomePanel Worker consolidation
+# HomePanel video service architecture
 
-This directory is the imported snapshot of `tarematsu/VP` and is now maintained entirely inside HP.
+This directory is the imported snapshot of `tarematsu/VP` and is maintained entirely inside HP.
 
 - Source commit: `9984a5db4104019a2537a3018aa7b754f9ad4228`
 - Imported into HP as: `hp/video/`
-- Unified Worker: `homepanel-cloud`
-- Unified D1 database: `homepanel-data`
-- Retired video Worker: `videoscraper`
-- Retired video D1 database: `twivideo-swiper-db`
+- Public gateway Worker: `homepanel-cloud`
+- Private video Worker: `homepanel-video`
+- Shared D1 database: `homepanel-data`
+- Retired legacy Worker: `videoscraper`
+- Retired legacy D1 database: `twivideo-swiper-db`
 
 Deleting the former VP repository does not remove any runtime source or production dependency used by HP.
 
 ## Runtime boundary
 
-The unified entry point is `hp/cloud/src/unified_worker.js`.
+`homepanel-cloud` is the only public HomePanel endpoint. Its entry point is `hp/cloud/src/unified_worker.js`.
 
-- `/admin`, `/v1`, and `/v1/*` continue to use the existing HomePanel Worker implementation.
-- `/api/*` and the static application routes continue to use the imported video implementation.
-- Queue events are delegated to the video implementation after migration activation.
-- HomePanel keeps its existing Worker name, URL, secrets, `DB`, R2, and Durable Object namespace.
-- Video uses the same `DB` binding after its schema and rows were migrated into `homepanel-data`.
-- Video assets, Browser Rendering, and manual-import queues are attached to `homepanel-cloud`.
-- Video liveness is registered as the `video_liveness` job in HomePanel's existing `SchedulerCoordinator` Durable Object.
-- The liveness job runs hourly and checks at most five video URLs per run.
-- No Cloudflare Cron Trigger is used for video liveness or automatic video collection.
-- A D1 activation flag keeps video fetch, queue, and liveness work disabled unless the verified unified runtime is active.
+- `/admin`, `/v1`, and `/v1/*` are handled directly by the compact HomePanel implementation.
+- `/api/*` and static video application requests are authenticated at the gateway and forwarded through the `VIDEO_SERVICE` Service Binding.
+- `homepanel-video` has `workers_dev` and preview URLs disabled and rejects requests that do not carry the internal gateway marker.
+- Browser Rendering, static assets, the manual-import Queue consumer, video collection, video liveness, and video feed coordination belong only to `homepanel-video`.
+- HomePanel scheduling, device synchronization, and radar bundle sharding use separate Durable Object classes so one workload cannot block unrelated coordination.
+- Both Workers use the migrated `homepanel-data` D1 database; the gateway retains HomePanel R2 bindings and secrets.
+- The old D1 activation marker and migration-freeze runtime branches were removed after cutover completion.
 
-## Scheduling and free-plan budget
+## Scheduling and bounded work
 
-The shared HomePanel scheduler owns the next alarm and coalesces jobs that become due together. Video liveness therefore does not create a second scheduler or a separate Cron Trigger.
-
-The liveness work budget is intentionally bounded:
+Video liveness runs in the private video Worker from one hourly Cron Trigger.
 
 - interval: one hour;
 - batch size: five URLs;
 - probe: first-byte range request;
 - concurrency: five;
 - timeout: eight seconds;
-- overlap protection: D1 lock;
-- failure retry: HomePanel scheduler exponential backoff, capped at the normal interval.
+- overlap protection: D1 lock.
 
-This produces at most 120 normal liveness probes per day before retries. Failures do not create an independent timer or unbounded fan-out.
+This produces at most 120 normal liveness probes per day before retries. Automatic source collection remains disabled; only explicit authenticated collection requests run collectors.
 
-## Production state
+HomePanel source refreshes remain owned by `SchedulerCoordinator` alarms. Device-sync cache and radar-bundle shard work use `DeviceSyncCoordinator` and `RadarBundleCoordinator`. Video feed candidate state uses `VideoFeedCoordinator` in the private video Worker.
 
-The videoscraper data migration and unified-runtime activation completed successfully. The legacy `videoscraper` Worker and `twivideo-swiper-db` database were subsequently deleted. `homepanel-cloud`, `homepanel-data`, `homepanel-updates`, existing HomePanel secrets, and the scheduler Durable Object namespace remain authoritative.
+## Deployment and rollback
 
-The completed cutover and retirement workflows have been removed so they cannot be rerun against production. Standalone remote deploy, build diagnostics, Pages configuration, production Wrangler generation, and D1 discovery or synchronization tools were removed from `hp/video/`; production operations must use the repository-root workflows and the `hp/cloud/` workspace. The remaining package commands fail closed when a retired production operation is requested.
+`.github/workflows/cloud-deploy.yml` validates both services, deploys `homepanel-video` first, then deploys `homepanel-cloud`, and can verify the authenticated `/v1/ready` endpoint. Deploying the target first prevents the Service Binding from pointing to a missing Worker.
 
-No tablet URL change is required.
+`.github/workflows/homepanel-cloud-rollback.yml` rolls back the private video service first and the public gateway second. Optional explicit version IDs are supported; otherwise Wrangler selects the previous deployment.
+
+The legacy `videoscraper` Worker and `twivideo-swiper-db` database remain retired. No tablet URL change is required.
