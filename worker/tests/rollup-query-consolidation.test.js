@@ -42,7 +42,7 @@ test('weekly and monthly boundary SQL reuses the same two numbered parameters', 
   assert.match(sql, /AS member_end/);
   assert.match(sql, /AS primary_host/);
 
-  const fromDaily = section('async function rollupFromDaily', 'function jstPeriod');
+  const fromDaily = section('async function rollupFromDaily', 'function utcPeriod');
   assert.equal((fromDaily.match(/prepare\(SUMMARY_BOUNDARIES_SQL\)/g) || []).length, 1);
   assert.match(fromDaily, /\.bind\(range\.startKey, range\.endKey\)\.first\(\)/);
   assert.doesNotMatch(fromDaily, /range\.startKey, range\.endKey,\s*range\.startKey/);
