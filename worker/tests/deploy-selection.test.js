@@ -71,6 +71,7 @@ test('deployment support changes select the owning Worker', () => {
     diagnostics: [RUNTIME],
   });
   assert.deepEqual(select(['worker/scripts/pages-response-kv-namespace.mjs']).workers, [RUNTIME]);
+  assert.deepEqual(select(['worker/scripts/verify-runtime-deployment.mjs']).workers, [RUNTIME]);
   assert.deepEqual(select(['worker/scripts/deploy-sakurazaka46jp.mjs']).workers, [SAKURAZAKA]);
 });
 
