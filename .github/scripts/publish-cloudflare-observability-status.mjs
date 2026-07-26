@@ -5,6 +5,7 @@ import {
   MAX_ISSUE_BODY_CHARS,
   clipText,
   createGitHubRequest,
+  findStatusIssue,
   overallOutcome,
   publishCommitStatuses,
   readOptionalJson,
@@ -14,6 +15,15 @@ import {
   requiredEnv,
   upsertStatusIssue,
 } from './observability-status-publisher.mjs';
+import {
+  buildObservabilityTriage,
+  diagnosticSectionTitle,
+  publicHealthSignal,
+} from './observability-issue-triage.mjs';
+import {
+  extractActionsRunnerHealthBlock,
+  renderActionsRunnerHealthBlock,
+} from './github-actions-runner-health.mjs';
 
 export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
@@ -53,6 +63,24 @@ function recentMergeSummary(recentMerges) {
   return rows.length ? `### Recent merged changes on main\n\n${rows.join('\n')}` : '';
 }
 
+function deploymentAndChangeContext(activeDeployments, recentMerges) {
+  const content = [deploymentSummary(activeDeployments), recentMergeSummary(recentMerges)]
+    .filter(Boolean)
+    .join('\n\n');
+  return `## Deployment and change context\n\n<details>\n<summary>Active deployments and recent main changes</summary>\n\n${content}\n\n</details>`;
+}
+
+function diagnosticSection(title, body, state) {
+  return renderSection(diagnosticSectionTitle(title, state), body);
+}
+
+function pendingRunnerHealthBlock() {
+  return renderActionsRunnerHealthBlock(`### GitHub Actions runner health
+
+- **Overall:** pending
+- Scheduled-run health is refreshed by the lightweight runner diagnostics workflow.`);
+}
+
 export function buildIssueBody({
   generatedAt,
   targetSha,
@@ -64,36 +92,44 @@ export function buildIssueBody({
   summaries = {},
   activeDeployments = {},
   recentMerges = [],
+  actionsRunnerHealthBlock = '',
 }) {
   const overall = overallOutcome(outcomes);
+  const publicHealth = publicHealthSignal(summaries.publicHealth);
+  const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
+  const triage = buildObservabilityTriage({ outcomes, summaries, activeDeployments, runUrl });
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
 
 This issue is maintained automatically by the unified HP and Stationhead Cloudflare Observability workflow.
 
-- **Overall:** ${overall}
+- **Overall:** ${overall} · **Generated:** ${generatedAt} · **Lookback:** ${lookbackMinutes} minutes · **Trigger:** ${trigger}
 - **Scope:** HP + Stationhead monorepo, account-wide included usage
-- **Generated:** ${generatedAt}
-- **Trigger:** ${trigger}
-- **Workflow source commit:** \`${targetSha}\`
-- **Current main SHA:** \`${mainSha}\`
-- **Workflow run:** ${runUrl}
-- **Telemetry and D1 insights lookback:** ${lookbackMinutes} minutes
+- **Workflow run:** ${runUrl} · **Workflow source commit:** \`${targetSha}\` · **Current main SHA:** \`${mainSha}\`
 
-${deploymentSummary(activeDeployments)}
+${triage}
 
-${recentMergeSummary(recentMerges)}
+<details>
+<summary>Raw gate outcomes</summary>
 
 | Gate | Outcome |
 |---|---|
 ${renderOutcomeRows(outcomes)}
-${renderSection('Public application health endpoint snapshots', summaries.publicHealth)}
-${renderSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
-${renderSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier)}
-${renderSection('Budget contract', summaries.contract)}
-${renderSection('Top D1 queries by rows read', summaries.d1Insights)}
-${renderSection('Cloudflare metrics and live diagnostics', summaries.observability)}
-${renderSection('Current-deployment telemetry policy', summaries.telemetry)}
+
+</details>
+
+${runnerHealth}
+
+${deploymentAndChangeContext(activeDeployments, recentMerges)}
+
+## Detailed diagnostics
+${diagnosticSection('Public application health endpoint snapshots', summaries.publicHealth, publicHealth.state)}
+${diagnosticSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily, outcomes.daily)}
+${diagnosticSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier, outcomes.freeTier)}
+${diagnosticSection('Budget contract', summaries.contract, outcomes.contract)}
+${diagnosticSection('Top D1 queries by rows read', summaries.d1Insights, outcomes.d1Insights)}
+${diagnosticSection('Cloudflare metrics and live diagnostics', summaries.observability, outcomes.query)}
+${diagnosticSection('Current-deployment telemetry policy', summaries.telemetry, outcomes.telemetry)}
 `;
   return clipText(body, MAX_ISSUE_BODY_CHARS);
 }
@@ -160,6 +196,26 @@ export async function publishFromEnvironment() {
     readOptionalText('observability-summary.md'),
     readOptionalText('telemetry-summary.md'),
   ]);
+  await publishCommitStatuses({
+    request,
+    targetSha,
+    runUrl,
+    outcomes,
+    contexts: STATUS_CONTEXTS,
+    overallDescription: 'Unified Cloudflare observability',
+  });
+  if (!isCurrentMainTarget(targetSha, mainSha)) {
+    console.log(
+      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
+    );
+    return;
+  }
+
+  const existingIssue = await findStatusIssue({
+    request,
+    title: STATUS_ISSUE_TITLE,
+    marker: STATUS_MARKER,
+  });
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
     targetSha,
@@ -179,26 +235,14 @@ export async function publishFromEnvironment() {
     },
     activeDeployments,
     recentMerges,
+    actionsRunnerHealthBlock: extractActionsRunnerHealthBlock(existingIssue?.body),
   });
-  await publishCommitStatuses({
-    request,
-    targetSha,
-    runUrl,
-    outcomes,
-    contexts: STATUS_CONTEXTS,
-    overallDescription: 'Unified Cloudflare observability',
-  });
-  if (!isCurrentMainTarget(targetSha, mainSha)) {
-    console.log(
-      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
-    );
-    return;
-  }
   const issue = await upsertStatusIssue({
     request,
     title: STATUS_ISSUE_TITLE,
     marker: STATUS_MARKER,
     body,
+    existingIssue,
   });
   console.log(`Published unified observability status to issue #${issue.number}`);
 }
