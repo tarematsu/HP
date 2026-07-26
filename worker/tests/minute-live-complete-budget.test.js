@@ -105,7 +105,7 @@ test('malformed live completion messages are acknowledged without a retry loop',
   assert.deepEqual(events, ['ack']);
 });
 
-test('live completion stays on the lightweight pipeline while rebuild uses the full derive path', async () => {
+test('live completion stays lightweight while rebuild completion is retired', async () => {
   const calls = [];
   await processMinutePipelineBatch({
     queue: LIVE_DERIVE_QUEUE_NAME,
@@ -116,24 +116,24 @@ test('live completion stays on the lightweight pipeline while rebuild uses the f
     },
     liveComplete: { marker: true },
     async processMinuteDeriveBatch() {
-      calls.push(['full-derive']);
+      calls.push(['unexpected-full-derive']);
     },
   });
   assert.deepEqual(calls, [['live-complete', { marker: true }]]);
 
-  await processMinutePipelineBatch({
+  const events = [];
+  const result = await processMinutePipelineBatch({
     queue: LIVE_DERIVE_QUEUE_NAME,
-    messages: [{ body: body('rebuild') }],
+    messages: [message(body('rebuild'), events)],
   }, { LIVE_REVISION_MATERIALIZATION_ENABLED: false }, {}, {
     async processBudgetedLiveCompleteBatch() {
       calls.push(['unexpected-lightweight']);
     },
     async processMinuteDeriveBatch() {
-      calls.push(['full-derive']);
+      calls.push(['unexpected-full-derive']);
     },
   });
-  assert.deepEqual(calls, [
-    ['live-complete', { marker: true }],
-    ['full-derive'],
-  ]);
+  assert.equal(result.reason, 'rebuild-actions-owned');
+  assert.deepEqual(events, ['ack']);
+  assert.deepEqual(calls, [['live-complete', { marker: true }]]);
 });
