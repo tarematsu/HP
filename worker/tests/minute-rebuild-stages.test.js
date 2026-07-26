@@ -214,7 +214,7 @@ test('gap commit dispatches at most the first prepared candidate per invocation'
   assert.deepEqual(sent.map((body) => body.minute_at), [60_000]);
 });
 
-test('historical reconstruction Queue remains for explicit recovery but has no Worker scheduler', () => {
+test('historical reconstruction primitives remain source-only after Actions migration', () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const entry = readFileSync(new URL('../src/minute-rebuild-entry.js', import.meta.url), 'utf8');
   const rebuild = runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
@@ -235,8 +235,8 @@ test('historical reconstruction Queue remains for explicit recovery but has no W
   assert.equal(runtime.vars.GAP_SCAN_MAX_JOBS, 4);
   assert.match(entry, /DEFAULT_REBUILD_STAGE_INTERVAL_SECONDS = 15 \* 60/);
   assert.match(entry, /processed_jobs/);
-  assert.equal(rebuild.max_batch_size, 1);
-  assert.equal(rebuild.max_concurrency, 1);
+  assert.equal(rebuild, undefined);
+  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_REBUILD_QUEUE'), false);
   assert.equal(runtime.triggers, undefined);
   assert.equal(
     runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_DERIVE_QUEUE'),
