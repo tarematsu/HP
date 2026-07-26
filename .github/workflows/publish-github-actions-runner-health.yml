@@ -28,6 +28,9 @@ jobs:
     name: Update observability issue with runner health
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: cloudflare-observability-status-issue
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
