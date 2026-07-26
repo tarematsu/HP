@@ -3,6 +3,17 @@ name: Rebuild pages read models
 on:
   schedule:
     - cron: '4,19,34,49 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/run-pages-read-model-rebuild.yml'
+      - 'worker/scripts/run-pages-read-model-actions.mjs'
+      - 'worker/scripts/remote-d1-adapter.mjs'
+      - 'worker/src/pages-**'
+      - 'site/functions/api/dashboard.js'
+      - 'site/functions/api/history.js'
+      - 'site/functions/api/host-history.js'
+      - 'site/functions/api/track-history.js'
   workflow_dispatch:
 
 permissions:
@@ -41,6 +52,17 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Rebuild track history and publish due variants
-        run: node scripts/run-pages-read-model-actions.mjs
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/run-pages-read-model-actions.mjs 2>&1 | tee pages-read-model-actions.log
+      - name: Upload pages read-model failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-read-model-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/pages-read-model-actions.log
+          if-no-files-found: error
+          retention-days: 7
       - name: Verify serving database
         run: node scripts/verify-facts-live.mjs
