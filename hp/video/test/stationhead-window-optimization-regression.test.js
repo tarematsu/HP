@@ -15,7 +15,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('unchanged startup preview bounds do not relayout WebView surfaces', () => {
+test('unchanged startup preview skips writes only when both surfaces are healthy', () => {
   const setPreviewBounds = section(
     layoutSource,
     'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
@@ -23,11 +23,14 @@ test('unchanged startup preview bounds do not relayout WebView surfaces', () => 
   );
   assert.match(
     setPreviewBounds,
-    /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)[\s\S]*return;/,
+    /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)/,
   );
+  assert.match(setPreviewBounds, /PlaybackSurfaceMatches\(/);
+  assert.match(setPreviewBounds, /HiddenAuthSurfaceMatches\(/);
+  assert.match(setPreviewBounds, /return;/);
 });
 
-test('duplicate hide notifications avoid repeated layout and focus churn', () => {
+test('duplicate hide notifications verify stable playback and auth surfaces', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -35,7 +38,7 @@ test('duplicate hide notifications avoid repeated layout and focus churn', () =>
   );
   assert.match(
     setVisible,
-    /!viewVisible_[\s\S]*selectedTab_ == StationheadTabKind::None[\s\S]*hostWindow_ && IsWindow\(hostWindow_\)[\s\S]*return;/,
+    /!viewVisible_[\s\S]*selectedTab_ == StationheadTabKind::None[\s\S]*PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
   assert.match(
@@ -44,7 +47,7 @@ test('duplicate hide notifications avoid repeated layout and focus churn', () =>
   );
 });
 
-test('reselecting a ready active surface skips redundant Win32 and COM layout work', () => {
+test('reselecting active playback or auth skips only verified layout writes', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -52,12 +55,35 @@ test('reselecting a ready active surface skips redundant Win32 and COM layout wo
   );
   assert.match(
     setVisible,
-    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*hostWindow_ && IsWindow\(hostWindow_\)[\s\S]*return;/,
+    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(
     setVisible,
-    /StationheadTabKind::Auth[\s\S]*authController_ && authWebview_[\s\S]*IsWindowVisible\(authHostWindow_\)[\s\S]*return;/,
+    /StationheadTabKind::Auth[\s\S]*authController_ && authWebview_[\s\S]*ActiveAuthSurfaceMatches\([\s\S]*return;/,
   );
+});
+
+test('fast-path helpers validate host placement, controller bounds and visibility', () => {
+  const playbackMatches = section(
+    layoutSource,
+    'bool PlaybackSurfaceMatches(',
+    'bool HiddenAuthSurfaceMatches(',
+  );
+  assert.match(playbackMatches, /WindowClientSizeMatches\(/);
+  assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
+  assert.match(playbackMatches, /ControllerBoundsMatch\(/);
+  assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+
+  const activeAuthMatches = section(
+    layoutSource,
+    'bool ActiveAuthSurfaceMatches(',
+    'bool ConfiguresSecondaryStationheadWindow(',
+  );
+  assert.match(activeAuthMatches, /playbackHidden/);
+  assert.match(activeAuthMatches, /WindowClientSizeMatches\(authHostWindow/);
+  assert.match(activeAuthMatches, /ChildWindowPlacementMatches\(authHostWindow/);
+  assert.match(activeAuthMatches, /ControllerBoundsMatch\(authController/);
+  assert.match(activeAuthMatches, /ControllerVisibilityMatches\(authController, TRUE\)/);
 });
 
 test('host resize is checked before synchronous WebView controller bounds reads', () => {
