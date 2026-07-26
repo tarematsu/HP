@@ -19,6 +19,7 @@ DELETE FROM sh_cloud_host_monitor_state WHERE id LIKE 'profile:%';
 INSERT OR IGNORE INTO sh_worker_auth_control(id,lock_until,updated_at)
 VALUES('sakurazaka46jp',0,0);
 
-ALTER TABLE sh_host_queue_items DROP COLUMN apple_music_id;
+-- The provisioner drops the optional legacy apple_music_id column only when
+-- it still exists, so replaying this migration remains safe.
 
 PRAGMA optimize;

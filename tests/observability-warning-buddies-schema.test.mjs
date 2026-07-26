@@ -10,6 +10,14 @@ const provisionSource = readFileSync(
   new URL('../worker/scripts/provision-buddies-db.mjs', import.meta.url),
   'utf8',
 );
+const otherProvisionSource = readFileSync(
+  new URL('../worker/scripts/provision-other-db.mjs', import.meta.url),
+  'utf8',
+);
+const obsoleteCollectionMigration = readFileSync(
+  new URL('../database/other-migrations/013_remove_obsolete_collection.sql', import.meta.url),
+  'utf8',
+);
 
 test('observability diagnostics report warn and warning levels without failing the warning-only gate', () => {
   assert.match(querySource, /WARNING_LEVELS\s*=\s*\{"warn",\s*"warning"\}/u);
@@ -35,4 +43,11 @@ test('buddies provisioning applies the Apple Music column removal idempotently',
   assert.match(provisionSource, /tableColumns\(table\)\.has\('apple_music_id'\)/u);
   assert.match(provisionSource, /ALTER TABLE \$\{table\} DROP COLUMN apple_music_id/u);
   assert.match(provisionSource, /removeAppleMusicCompatibilityColumns\(\);/u);
+});
+
+test('other provisioning also applies its Apple Music column removal idempotently', () => {
+  assert.match(otherProvisionSource, /PRAGMA table_info\(\$\{APPLE_MUSIC_COMPATIBILITY_TABLE\}\)/u);
+  assert.match(otherProvisionSource, /columns\.has\('apple_music_id'\)/u);
+  assert.match(otherProvisionSource, /removeAppleMusicCompatibilityColumn\(\);/u);
+  assert.doesNotMatch(obsoleteCollectionMigration, /DROP COLUMN apple_music_id/u);
 });
