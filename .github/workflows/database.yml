@@ -8,6 +8,8 @@ on:
       - 'database/other-migrations/**'
       - 'worker/scripts/provision-other-db.mjs'
       - 'worker/scripts/consolidate-track-metadata.mjs'
+      - 'worker/scripts/other-db-tables.mjs'
+      - 'worker/scripts/track-metadata-consolidation-lib.mjs'
       - 'database/buddies-migrations/**'
       - 'worker/scripts/provision-buddies-db.mjs'
       - 'worker/scripts/buddies-db-tables.mjs'
@@ -204,7 +206,12 @@ jobs:
 
   other-db:
     name: Provision or update stationhead-other
-    if: (github.event_name == 'push' && inputs.operation == '') || inputs.operation == 'other-db'
+    needs: buddies-db
+    if: >-
+      always() && (
+        (github.event_name == 'push' && needs.buddies-db.result == 'success') ||
+        inputs.operation == 'other-db'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
