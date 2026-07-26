@@ -20,7 +20,8 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
   assert.match(retention, /name: 'sh_queue_snapshots'/);
   assert.match(retention, /name: 'sh_comment_minute_counts'/);
   assert.match(retention, /timeColumn: 'bucket_start'/);
-  assert.equal(runtime.vars.SNAPSHOT_RETENTION_MS, 30 * 24 * 60 * 60_000);
+  assert.equal(Object.hasOwn(runtime.vars, 'SNAPSHOT_RETENTION_MS'), false);
+  assert.equal(Object.hasOwn(runtime.vars, 'SNAPSHOT_RETENTION_ENABLED'), false);
 });
 
 test('current buddies migration removes the obsolete two-day comment cleanup trigger', () => {
