@@ -81,6 +81,7 @@ ${recentMergeSummary(recentMerges)}
 | Gate | Outcome |
 |---|---|
 ${renderOutcomeRows(outcomes)}
+${renderSection('Public application health endpoint snapshots', summaries.publicHealth)}
 ${renderSection('Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily)}
 ${renderSection('Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier)}
 ${renderSection('Budget contract', summaries.contract)}
@@ -134,6 +135,7 @@ export async function publishFromEnvironment() {
     mainSha,
     activeDeployments,
     recentMerges,
+    publicHealth,
     daily,
     freeTier,
     contract,
@@ -144,6 +146,7 @@ export async function publishFromEnvironment() {
     currentMainSha(request),
     readOptionalJson('active-worker-deployments.json'),
     recentMergedPullRequests(request),
+    readOptionalText('public-health-endpoints.md'),
     readOptionalText('daily-usage/summary.md'),
     readOptionalText('free-tier-usage/summary.md'),
     readOptionalText('observability-gate/summary.md'),
@@ -159,7 +162,15 @@ export async function publishFromEnvironment() {
     trigger: process.env.OBSERVABILITY_TRIGGER || 'unknown',
     lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
-    summaries: { daily, freeTier, contract, d1Insights, observability, telemetry },
+    summaries: {
+      publicHealth,
+      daily,
+      freeTier,
+      contract,
+      d1Insights,
+      observability,
+      telemetry,
+    },
     activeDeployments,
     recentMerges,
   });
