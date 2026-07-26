@@ -40,10 +40,13 @@ INSERT INTO sh_comment_minute_counts VALUES(9,60000,3);
   assert.equal(manifest.candidates, 3);
   assert.equal(manifest.exact, 2);
   assert.equal(manifest.carry_forward, 1);
-  assert.ok(manifest.chunks.every((chunk) => chunk.bytes <= 90_000));
+  assert.ok(manifest.chunks.every((chunk) => chunk.bytes <= 5_000_000));
   const upload = manifest.chunks
     .map((chunk) => readFileSync(join(output, chunk.file), 'utf8'))
     .join('\n');
+  assert.ok(
+    upload.split('\n').filter(Boolean).every((statement) => Buffer.byteLength(statement) <= 90_000),
+  );
   assert.match(upload, /ON CONFLICT\(channel_id,minute_at\) DO UPDATE/);
   assert.match(upload, /source_priority>sh_minute_facts.source_priority/);
   assert.match(upload, /snapshot:1:minute:120000:carry_forward/);
