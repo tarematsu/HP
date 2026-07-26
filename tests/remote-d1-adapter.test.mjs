@@ -66,6 +66,23 @@ test('remote D1 run returns Wrangler meta.changes', async () => {
   assert.match(calls[0].at(-1), /value='next' WHERE id=5/);
 });
 
+test('remote D1 failures preserve Wrangler stderr', async () => {
+  const db = createWranglerRemoteD1({
+    database: 'test-db',
+    cwd: workerRoot,
+    wranglerScript: '/tmp/wrangler.js',
+    execFileSync() {
+      const error = new Error('command failed');
+      error.stderr = 'D1_ERROR: missing table sh_example';
+      throw error;
+    },
+  });
+  await assert.rejects(
+    db.prepare('SELECT * FROM sh_example').all(),
+    /Wrangler D1 execute failed for test-db: D1_ERROR: missing table sh_example/,
+  );
+});
+
 test('remote D1 batch uses JSON output and returns per-statement metadata', async () => {
   const calls = [];
   const db = createWranglerRemoteD1({
