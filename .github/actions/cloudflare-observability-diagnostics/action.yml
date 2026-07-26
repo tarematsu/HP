@@ -12,10 +12,18 @@ inputs:
     description: Optional comma-separated workers.dev probe paths
     required: false
     default: ''
+outputs:
+  query-outcome:
+    description: Result of persisted metrics and telemetry query collection
+    value: ${{ steps.collect.outputs.query-outcome }}
+  public-health-outcome:
+    description: Result of public health endpoint capture
+    value: ${{ steps.collect.outputs.public-health-outcome }}
 runs:
   using: composite
   steps:
     - name: Query persisted telemetry, capture live events, and snapshot public health
+      id: collect
       shell: bash
       env:
         LIVE_TAIL_WORKER: ${{ inputs.live-tail-worker }}
@@ -65,7 +73,15 @@ runs:
         if [[ -f public-health-endpoints.md ]]; then
           cat public-health-endpoints.md >> "$actual_summary"
         fi
+
+        query_outcome=success
         if (( query_status != 0 && aggregate_error_only == 0 )); then
-          exit "$query_status"
+          query_outcome=failure
         fi
-        exit "$health_status"
+        public_health_outcome=success
+        if (( health_status != 0 )); then
+          public_health_outcome=failure
+        fi
+        echo "query-outcome=$query_outcome" >> "$GITHUB_OUTPUT"
+        echo "public-health-outcome=$public_health_outcome" >> "$GITHUB_OUTPUT"
+        exit 0
