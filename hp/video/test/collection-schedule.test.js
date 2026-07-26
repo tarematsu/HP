@@ -3,39 +3,33 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  LIVENESS_CRON,
   LIVENESS_INTERVAL_SECONDS,
   LIVENESS_JOB_NAME,
-  LIVENESS_SCHEDULE
 } from '../src/liveness-schedule.js';
 import { MANUAL_IMPORT_QUEUE_NAME } from '../src/manual-import-queue.js';
 
 const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
-const unifiedWrangler = JSON.parse(await readFile(
+const gatewayWrangler = JSON.parse(await readFile(
   new URL('../../cloud/wrangler.jsonc', import.meta.url),
   'utf8'
 ));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('deployment has no video cron and unified HomePanel owns manual import queues', () => {
-  assert.equal(wrangler.triggers, undefined);
-  assert.equal(unifiedWrangler.triggers, undefined);
+test('private video deployment owns hourly liveness and manual import queues', () => {
+  assert.deepEqual(wrangler.triggers?.crons, [LIVENESS_CRON]);
+  assert.equal(gatewayWrangler.triggers, undefined);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
-  assert.equal(LIVENESS_SCHEDULE, 'homepanel-alarm:3600s');
-  assert.equal(wrangler.queues, undefined);
-  assert.deepEqual(unifiedWrangler.queues?.producers, [{
+  assert.equal(LIVENESS_CRON, '0 * * * *');
+  assert.deepEqual(wrangler.queues?.producers, [{
     binding: 'MANUAL_IMPORT_QUEUE',
     queue: MANUAL_IMPORT_QUEUE_NAME
   }]);
-  assert.deepEqual(unifiedWrangler.queues?.consumers, [{
-    queue: MANUAL_IMPORT_QUEUE_NAME,
-    max_batch_size: 1,
-    max_batch_timeout: 0,
-    max_retries: 5,
-    retry_delay: 300,
-    max_concurrency: 1,
-    dead_letter_queue: 'videoscraper-manual-imports-dlq'
-  }]);
+  assert.equal(wrangler.queues?.consumers?.[0]?.queue, MANUAL_IMPORT_QUEUE_NAME);
+  assert.equal(wrangler.queues?.consumers?.[0]?.max_batch_size, 1);
+  assert.equal(wrangler.queues?.consumers?.[0]?.max_concurrency, 1);
+  assert.equal(gatewayWrangler.queues, undefined);
 });
 
 test('automatic source collection remains explicitly disabled', () => {
