@@ -3,40 +3,33 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import deployedWorker from '../worker/src/runtime-orchestrator-deployed-entry.js';
-import { runD1CoordinatedScheduled } from '../worker/src/runtime-d1-coordinator.js';
 import {
   TRACK_HISTORY_RESPONSE_MAX_CHUNKS,
 } from '../worker/src/pages-track-history-response.js';
 
-test('deployed runtime uses D1 coordination', async () => {
-  assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue', 'scheduled']);
-  const statements = [];
-  const db = {
-    prepare(sql) {
-      statements.push(sql);
-      return {
-        bind() { return this; },
-        async first() { return { holder_id: 'holder-1', lease_until: 80_000 }; },
-        async run() { return { meta: { changes: 1 } }; },
-      };
-    },
-  };
-  const result = await runD1CoordinatedScheduled(
-    { cron: '* * * * *', scheduledTime: 123 },
-    { BUDDIES_DB: db },
-    {},
-    async () => 'ok',
-    { now: 1_000, holderId: 'holder-1' },
-  );
-  assert.equal(result, 'ok');
-  assert.match(statements[0], /INSERT INTO sh_runtime_run_lease/);
-  assert.match(statements[1], /UPDATE sh_runtime_run_lease/);
+test('deployed runtime is queue-only with materialized-response serving', () => {
+  assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue']);
 
   const config = JSON.parse(readFileSync(
     new URL('../worker/wrangler.runtime.jsonc', import.meta.url),
     'utf8',
   ));
+  const entry = readFileSync(
+    new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url),
+    'utf8',
+  );
+  const actions = readFileSync(
+    new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url),
+    'utf8',
+  );
+
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
+  assert.equal(config.triggers, undefined);
+  assert.equal(config.durable_objects, undefined);
+  assert.doesNotMatch(entry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
+  assert.match(actions, /runRollupMaintenance/);
+  assert.match(actions, /pruneOldSnapshots/);
+  assert.match(actions, /runStreamGoalPrediction/);
 });
 
 test('track-history response capacity covers the production publication', () => {
