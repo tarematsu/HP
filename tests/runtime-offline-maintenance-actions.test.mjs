@@ -9,7 +9,10 @@ const runner = readFileSync(new URL('../worker/scripts/run-runtime-offline-maint
 const deployed = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
-test('offline runtime maintenance runs frequently as one bounded Actions job', () => {
+test('offline runtime maintenance runs frequently and after production deploys', () => {
+  assert.match(workflow, /workflows: \["Deploy production"\]/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
   assert.match(workflow, /cron: '3,33 \* \* \* \*'/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
