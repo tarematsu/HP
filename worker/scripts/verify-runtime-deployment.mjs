@@ -28,6 +28,14 @@ function setsDiffer(left, right) {
   return false;
 }
 
+export function queueOnlyRuntimeDeployConfig(value = {}) {
+  const config = structuredClone(value || {});
+  config.triggers = { crons: [] };
+  delete config.durable_objects;
+  delete config.migrations;
+  return config;
+}
+
 export function activeVersionIdsFromDeploymentPayload(payload) {
   const deployments = payload?.result?.deployments;
   if (!Array.isArray(deployments) || !deployments.length) {
