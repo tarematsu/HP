@@ -83,6 +83,7 @@ test('query and audit scripts use resolved-account Cloudflare APIs without R2', 
     'deployed_current_events',
     'audit.current_events',
     'old_late',
+    '"900"',
     'audit.ACCOUNT_ID',
     'Cloudflare token, account ID, and Worker list are required',
   ]);

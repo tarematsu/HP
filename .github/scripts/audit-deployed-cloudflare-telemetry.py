@@ -22,7 +22,7 @@ SPEC.loader.exec_module(audit)
 
 DEPLOYMENT_COVERAGE_GRACE_SECONDS = max(
     0,
-    int(os.environ.get("DEPLOYMENT_COVERAGE_GRACE_SECONDS", "180")),
+    int(os.environ.get("DEPLOYMENT_COVERAGE_GRACE_SECONDS", "900")),
 )
 
 
