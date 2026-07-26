@@ -13,7 +13,8 @@ from pathlib import Path
 
 MINUTE_MS = 60_000
 MAX_CARRY_MINUTES = 5
-MAX_UPLOAD_BYTES = 90_000
+MAX_STATEMENT_BYTES = 90_000
+MAX_UPLOAD_BYTES = 5_000_000
 
 QUEUE_MISSING = 2
 COMMENTS_DEGRADED = 32
@@ -299,13 +300,14 @@ def write_chunks(
 
     for item in candidates:
         statements = fact_statements(connection, item, received_at)
-        statement_bytes = sum(len((statement + "\n").encode("utf-8")) for statement in statements)
-        if statement_bytes > MAX_UPLOAD_BYTES:
-            raise ValueError("one minute fact exceeds the D1 upload size limit")
-        if current and current_bytes + statement_bytes > MAX_UPLOAD_BYTES:
+        encoded_sizes = [len((statement + "\n").encode("utf-8")) for statement in statements]
+        if any(size > MAX_STATEMENT_BYTES for size in encoded_sizes):
+            raise ValueError("one SQL statement exceeds the D1 statement size limit")
+        minute_fact_bytes = sum(encoded_sizes)
+        if current and current_bytes + minute_fact_bytes > MAX_UPLOAD_BYTES:
             flush()
         current.extend(statements)
-        current_bytes += statement_bytes
+        current_bytes += minute_fact_bytes
     flush()
     return chunks
 
