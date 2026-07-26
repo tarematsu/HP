@@ -101,13 +101,11 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "RUNTIME_COORDINATOR", "class_name": "RuntimeCoordinator" },
-      { "name": "RUNTIME_STATE_COORDINATOR", "class_name": "RuntimeStateCoordinator" }
+      { "name": "RUNTIME_COORDINATOR", "class_name": "RuntimeCoordinator" }
     ]
   },
   "migrations": [
-    { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] },
-    { "tag": "runtime-state-coordinator-v1", "new_sqlite_classes": ["RuntimeStateCoordinator"] }
+    { "tag": "runtime-coordinator-v1", "new_sqlite_classes": ["RuntimeCoordinator"] }
   ],
   "d1_databases": [
     { "binding": "BUDDIES_DB", "database_name": "stationhead-buddies", "database_id": "f361aae0-05f0-42bc-8784-77100e80133d" },
