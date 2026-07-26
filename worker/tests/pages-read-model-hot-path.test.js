@@ -8,6 +8,10 @@ const runnerSource = readFileSync(
   new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url),
   'utf8',
 );
+const d1AdapterSource = readFileSync(
+  new URL('../scripts/remote-d1-adapter.mjs', import.meta.url),
+  'utf8',
+);
 const responseSource = readFileSync(
   new URL('../src/pages-response-fetch-entry.js', import.meta.url),
   'utf8',
@@ -58,7 +62,9 @@ test('Actions runner owns rendering, tier selection, D1 reads, and R2 publicatio
   assert.match(runnerSource, /responseHandler/);
   assert.match(runnerSource, /runSplitTrackHistoryCycleStep/);
   assert.match(runnerSource, /dueVariantKeys/);
-  assert.match(runnerSource, /d1', 'execute'.*--remote/s);
+  assert.match(runnerSource, /createWranglerRemoteD1/);
+  assert.match(d1AdapterSource, /'d1', 'execute', database/);
+  assert.match(d1AdapterSource, /'--remote', '--yes', '--json'/);
   assert.match(runnerSource, /r2', 'object', 'put'/);
 });
 
