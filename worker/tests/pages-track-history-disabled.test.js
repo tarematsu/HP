@@ -9,9 +9,13 @@ import {
 
 const NOW = Date.UTC(2026, 6, 24, 0, 30, 0);
 
-test('production config disables automatic track-history materialization', () => {
+test('production runtime omits track-history scheduling while Actions enables it explicitly', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.vars.PAGES_TRACK_HISTORY_CYCLE_ENABLED, false);
+  const runner = readFileSync(new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+  assert.equal(Object.hasOwn(config.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
+  assert.equal(config.triggers, undefined);
+  assert.match(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true/);
+  assert.match(runner, /runSplitTrackHistoryCycleStep/);
 });
 
 test('track-history remains enabled when the flag is absent and accepts explicit true values', () => {
