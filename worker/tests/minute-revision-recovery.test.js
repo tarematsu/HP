@@ -76,6 +76,7 @@ test('recovery reconstructs a compact materialization task from stored progress'
   assert.equal(tasks.length, 1);
   assert.equal(tasks[0].stage, 'revision-materialize');
   assert.equal(tasks[0].job.id, 7);
+  assert.equal(tasks[0].job.job_kind, 'live');
   assert.equal(tasks[0].revision.revision_id, 60);
   assert.equal(tasks[0].revision.visible_item_count, 6);
   assert.equal(tasks[0].revision.total_item_count, 80);
@@ -97,21 +98,21 @@ test('recovery dispatch checkpoint is updated only after the Queue handoff', asy
   assert.deepEqual(db.writes[0].args, [1_000_000, 60, 61]);
 });
 
-test('minute maintenance dispatches fact triggers and one stalled revision together', async () => {
+test('live recovery dispatches fact triggers and one stalled revision together', async () => {
   const batches = [];
   const marked = [];
   const recoveryTask = {
     message_type: 'minute-fact-derive-stage',
     message_version: 1,
     stage: 'revision-materialize',
-    job: { id: 7 },
-    revision: { sparse: true, revision_id: 60 },
+    job: { id: 7, job_kind: 'live' },
+    revision: { sparse: true, rebuild: false, revision_id: 60 },
   };
   const summary = await dispatchPendingMinuteFacts({
     MINUTE_DB: {},
     DERIVE_DISPATCH_LIMIT: 5,
     DERIVE_REVISION_RECOVERY_LIMIT: 1,
-    MINUTE_DERIVE_QUEUE: {
+    MINUTE_LIVE_DERIVE_QUEUE: {
       async sendBatch(messages) { batches.push(messages); },
     },
   }, {
@@ -130,4 +131,5 @@ test('minute maintenance dispatches fact triggers and one stalled revision toget
   assert.deepEqual(marked, [60]);
   assert.equal(summary.dispatched, 1);
   assert.equal(summary.revision_recoveries, 1);
+  assert.equal(summary.rebuild_messages, 0);
 });
