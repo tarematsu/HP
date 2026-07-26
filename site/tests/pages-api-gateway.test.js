@@ -159,6 +159,29 @@ test('Pages minute health reads all active tasks and rejects unhealthy task stat
   assert.equal(response.headers.get('cache-control'), 'no-store');
 });
 
+test('Pages minute health prefers current Runtime Coordinator state and tolerates 15-minute dispatch cadence', async () => {
+  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task, {
+    last_started_at: NOW - 20 * 60_000,
+    last_success_at: NOW - 20 * 60_000,
+  }));
+  const env = {
+    MINUTE_DB: {
+      prepare() {
+        throw new Error('D1 fallback must not be used when the Runtime service is healthy');
+      },
+    },
+    PAGES_READ_MODEL_SERVICE: {
+      async fetch(url) {
+        assert.equal(url, 'https://sh-runtime-orchestrator.internal/internal/minute-runtime-state');
+        return Response.json({ ok: true, tasks: rows });
+      },
+    },
+  };
+  const payload = await readMinuteHealth(env, NOW);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.tasks.every(({ stale_after_ms }) => stale_after_ms === 25 * 60_000), true);
+});
+
 test('Pages other health is scoped to the runtime orchestrator', async () => {
   const env = { OTHER_DB: otherDb() };
   const payload = await readOtherHealth(env, NOW);

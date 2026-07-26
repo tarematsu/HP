@@ -1,7 +1,8 @@
 const ACTIVE_TASKS = Object.freeze(['derive', 'recovery', 'rebuild', 'sync']);
 const DEFAULT_PENDING_STALE_MS = 15 * 60_000;
-const DEFAULT_DERIVE_STALE_MS = 6 * 60_000;
-const DEFAULT_MAINTENANCE_STALE_MS = 20 * 60_000;
+const DEFAULT_DERIVE_STALE_MS = 25 * 60_000;
+const DEFAULT_MAINTENANCE_STALE_MS = 25 * 60_000;
+const RUNTIME_STATE_URL = 'https://sh-runtime-orchestrator.internal/internal/minute-runtime-state';
 
 const SQL = `SELECT
   task_name,last_started_at,last_success_at,last_failure_at,last_duration_ms,
@@ -78,8 +79,27 @@ export function minuteTaskHealth(row, now, env = {}) {
 
 export async function readMinuteHealth(env, now = Date.now()) {
   if (!env?.MINUTE_DB?.prepare) throw new Error('MINUTE_DB binding missing');
-  const result = await env.MINUTE_DB.prepare(SQL).all();
-  const rows = result?.results || [];
+  let rows = null;
+  if (env?.PAGES_READ_MODEL_SERVICE?.fetch) {
+    try {
+      const response = await env.PAGES_READ_MODEL_SERVICE.fetch(RUNTIME_STATE_URL, {
+        method: 'GET',
+      });
+      if (response?.ok) {
+        const payload = await response.json();
+        if (Array.isArray(payload?.tasks)) rows = payload.tasks;
+      }
+    } catch (error) {
+      console.warn(JSON.stringify({
+        event: 'pages_minute_runtime_state_service_failed',
+        error: String(error?.message || error).slice(0, 500),
+      }));
+    }
+  }
+  if (!rows) {
+    const result = await env.MINUTE_DB.prepare(SQL).all();
+    rows = result?.results || [];
+  }
   const byName = new Map(rows.map((row) => [String(row.task_name), row]));
   const tasks = ACTIVE_TASKS.map((taskName) => {
     const row = byName.get(taskName);

@@ -74,6 +74,10 @@ const retireRepairWorkMigration = readFileSync(
   new URL('../database/facts-migrations/044_retire_minute_fact_repair_work.sql', import.meta.url),
   'utf8',
 );
+const reconcileMinuteBacklogMigration = readFileSync(
+  new URL('../database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -104,6 +108,7 @@ const expectedMigrations = [
   'database/facts-migrations/042_minute_fact_repair_candidate_index.sql',
   'database/facts-migrations/043_retire_repair_candidate_index.sql',
   'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
+  'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -177,6 +182,11 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(retireRepairWorkMigration, /status='done'/);
   assert.match(retireRepairWorkMigration, /repair-scan:total-listener-20260710-13-v1/);
   assert.doesNotMatch(retireRepairWorkMigration, /FROM sh_minute_facts|CREATE INDEX|ANALYZE|PRAGMA optimize/);
+  assert.match(reconcileMinuteBacklogMigration, /status IN \('pending','processing','dead'\)/);
+  assert.match(reconcileMinuteBacklogMigration, /unixepoch\('now','-1 day'\)/);
+  assert.match(reconcileMinuteBacklogMigration, /reconciled-existing-minute-fact/);
+  assert.match(reconcileMinuteBacklogMigration, /status='processing'/);
+  assert.match(reconcileMinuteBacklogMigration, /status='pending'/);
 });
 
 test('production keeps ordinary reconstruction active and retires the one-time repair burst', () => {
