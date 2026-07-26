@@ -1,0 +1,17 @@
+{
+  "name": "homepanel-workers",
+  "private": true,
+  "version": "3.0.0",
+  "workspaces": [
+    "cloud",
+    "video"
+  ],
+  "scripts": {
+    "check": "npm run check --workspace cloud && npm run check --workspace video",
+    "test": "npm test --workspace cloud && npm test --workspace video",
+    "bundle": "npm run check:unified-bundle --workspace cloud && npm run check:bundle --workspace video"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
