@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  BUDGET_LIVE_WRITE_STAGE,
   processBudgetedLiveWriteBatch,
   processBudgetedLiveWriteMessage,
 } from '../src/minute-live-write-budget-entry.js';
@@ -18,18 +17,34 @@ function validWriteBody() {
   };
 }
 
-test('valid live write preparation emits the bounded commit continuation', async () => {
-  const sent = [];
-  const result = await processBudgetedLiveWriteMessage({}, validWriteBody(), {
+function inlineCommitDependencies(overrides = {}) {
+  return {
     materializer: {
       shouldMaterializeLiveRevision() { return false; },
     },
+    writeThrottle: { withMinuteD1WriteThrottling: (env) => env },
+    deriveQueue: {
+      async processMinuteDeriveWriteStage(env, body, dependencies) {
+        await dependencies.write(env, body.payload);
+        return { pending: true };
+      },
+    },
+    ...overrides,
+  };
+}
+
+test('valid live writes commit inline when no revision is required', async () => {
+  const saved = [];
+  const sent = [];
+  const result = await processBudgetedLiveWriteMessage({}, validWriteBody(), inlineCommitDependencies({
+    fastStore: {
+      async saveOptimizedMinuteFactWithinBudget(_env, payload) { saved.push(payload); },
+    },
     async sendStage(body) { sent.push(body); },
-  });
-  assert.deepEqual(result, { prepared: true, revision_id: null });
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0].stage, BUDGET_LIVE_WRITE_STAGE);
-  assert.equal(sent[0].job.id, 42);
+  }));
+  assert.deepEqual(result, { pending: true });
+  assert.equal(saved.length, 1);
+  assert.equal(sent.length, 0);
 });
 
 test('malformed live write messages are acknowledged instead of retried forever', async () => {
@@ -50,7 +65,7 @@ test('malformed live write messages are acknowledged instead of retried forever'
   assert.deepEqual(events, ['ack']);
 });
 
-test('transient live write failures still retry with a bounded delay', async () => {
+test('transient inline live write failures still retry with a bounded delay', async () => {
   const events = [];
   const originalError = console.error;
   console.error = () => {};
@@ -61,12 +76,11 @@ test('transient live write failures still retry with a bounded delay', async () 
         ack() { events.push('ack'); },
         retry(options) { events.push(['retry', options]); },
       }],
-    }, {}, {
-      materializer: {
-        shouldMaterializeLiveRevision() { return false; },
+    }, {}, inlineCommitDependencies({
+      fastStore: {
+        async saveOptimizedMinuteFactWithinBudget() { throw new Error('D1 unavailable'); },
       },
-      async sendStage() { throw new Error('Queue unavailable'); },
-    });
+    }));
   } finally {
     console.error = originalError;
   }
