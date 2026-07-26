@@ -46,14 +46,15 @@ const deploy = await preparePagesReadModelDeployConfig(workerRoot, {
   sourcePath: `${workerRoot}/${configName}`,
   temporaryPath: `${workerRoot}/.wrangler.runtime.deploy-${process.pid}.jsonc`,
 });
-const previousRuntimeVersionIds = await readActiveRuntimeVersionIds({ scriptName: runtimeScript });
 const paused = new Set();
 const removed = new Set();
 let previousConsumers = new Set();
 let runtimeConsumers = new Set();
+let previousRuntimeVersionIds = new Set();
 let deploymentVerification = null;
 
 try {
+  previousRuntimeVersionIds = await readActiveRuntimeVersionIds({ scriptName: runtimeScript });
   previousConsumers = new Set(
     migrations
       .filter(({ queue, oldScript }) => oldScript && hasConsumer(queue, oldScript))
