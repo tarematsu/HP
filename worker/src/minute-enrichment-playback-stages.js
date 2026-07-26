@@ -5,6 +5,7 @@ import {
   TRACK_DETECTION_METHOD_CODES,
 } from './minute-facts-store.js';
 import { integer } from './minute-facts-track-descriptor.js';
+import { processMinuteIdentitySession } from './minute-enrichment-identity-stages.js';
 import { updatePlaybackState } from './minute-facts-legacy-revision.js';
 import { requestQueueExpansion } from './queue-materialization.js';
 
@@ -13,6 +14,14 @@ export const PLAYBACK_PATCH_STAGE = 'playback-patch';
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const EMPTY_TRACKS = Object.freeze([]);
 const JSON_QUEUE_OPTIONS = Object.freeze({ contentType: 'json' });
+
+function enabled(value) {
+  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
+}
+
+function inlinePipelineEnabled(env) {
+  return enabled(env?.MINUTE_ENRICHMENT_INLINE_PIPELINE_ENABLED);
+}
 
 function identityFrom(body) {
   const channelId = integer(body?.channel_id);
@@ -25,7 +34,7 @@ function identityFrom(body) {
 }
 
 async function loadPlaybackContext(db, identity) {
-  return db.prepare(`SELECT f.observed_at,
+  return db.prepare(`SELECT f.id,f.observed_at,f.quality_flags,
       p.channel_id AS playback_channel_id,
       p.session_id AS playback_session_id,
       p.revision_id AS playback_revision_id,
@@ -159,7 +168,7 @@ export async function processMinutePlaybackResolve(
   });
   const position = integer(playback?.current_position);
   const trackId = integer(playback?.current_track_id);
-  await sendStage(env, {
+  const message = {
     ...baseIdentityMessage(body, PLAYBACK_PATCH_STAGE),
     queue: compactCurrentBiteQueue(body.queue, position),
     playback: {
@@ -168,7 +177,22 @@ export async function processMinutePlaybackResolve(
       current_schedule_valid: Number(playback?.current_schedule_valid || 0),
       delayed: playback?.delayed === true,
     },
-  }, dependencies);
+  };
+
+  if (inlinePipelineEnabled(env)) {
+    const runPatch = dependencies.processPatch || processMinutePlaybackPatch;
+    const result = await runPatch(env, message, {
+      ...dependencies,
+      loadCurrentMinute: async () => current,
+    });
+    return {
+      ...result,
+      playback_inlined: true,
+      playback_patch_deferred: false,
+    };
+  }
+
+  await sendStage(env, message, dependencies);
   return {
     skipped: false,
     pending: true,
@@ -290,12 +314,28 @@ export async function processMinutePlaybackPatch(
     identity,
     dependencies,
   );
-  await sendStage(env, {
+  const message = {
     ...baseIdentityMessage(body, 'identity'),
     queue: compactCurrentBiteQueue(body.queue, patched.position),
     queue_position: patched.position,
     track_id: patched.trackId,
-  }, dependencies);
+  };
+
+  if (inlinePipelineEnabled(env)) {
+    const runIdentity = dependencies.processIdentity || processMinuteIdentitySession;
+    const result = await runIdentity(env, message, {
+      ...dependencies,
+      loadCurrentMinute: async () => current,
+    });
+    return {
+      ...result,
+      playback_patch_inlined: true,
+      identity_deferred: false,
+      requested_materialized_tracks: expansionRequested,
+    };
+  }
+
+  await sendStage(env, message, dependencies);
   return {
     skipped: false,
     pending: true,
