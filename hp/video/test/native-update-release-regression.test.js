@@ -15,23 +15,27 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('same-version native releases are detected by executable hash', () => {
-  const hashHelper = section(
+test('same-version native releases compare every installed release file', () => {
+  const comparison = section(
     updateSource,
-    'std::wstring InstalledHomePanelSha256(',
-    'bool ManifestExecutableDiffers(',
+    'InstalledFileComparison CompareInstalledFile(',
+    'bool ManifestFilesDiffer(',
   );
-  assert.match(hashHelper, /kMaximumComparableExecutableBytes/);
-  assert.match(hashHelper, /fs::file_size\(/);
-  assert.match(hashHelper, /Sha256Hex\(bytes\)/);
+  assert.match(comparison, /fs::exists\(path, error\)/);
+  assert.match(comparison, /!exists\)[\s\S]*InstalledFileComparison::Differs/);
+  assert.match(comparison, /size != file\.size/);
+  assert.match(comparison, /kMaximumComparableUpdateFileBytes/);
+  assert.match(comparison, /Sha256Hex\(bytes\) == file\.sha256/);
+  assert.match(comparison, /catch \(\.\.\.\)[\s\S]*InstalledFileComparison::Unavailable/);
 
   const manifestDiff = section(
     updateSource,
-    'bool ManifestExecutableDiffers(',
+    'bool ManifestFilesDiffer(',
     '\n\n}  // namespace',
   );
-  assert.match(manifestDiff, /candidate\.name == L"HomePanel\.exe"/);
-  assert.match(manifestDiff, /installedHash != file->sha256/);
+  assert.match(manifestDiff, /for \(const auto& file : manifest\.files\)/);
+  assert.match(manifestDiff, /CompareInstalledFile\(root \/ file\.name, file\)/);
+  assert.doesNotMatch(manifestDiff, /HomePanel\.exe/);
 
   const updateCheck = section(
     updateSource,
@@ -44,8 +48,8 @@ test('same-version native releases are detected by executable hash', () => {
   );
   assert.match(
     updateCheck,
-    /!newerVersion && !IsVersionNewer\(currentVersion, manifest\.version\)[\s\S]*ManifestExecutableDiffers\(manifest, executable\)/,
+    /!newerVersion && !IsVersionNewer\(currentVersion, manifest\.version\)[\s\S]*ManifestFilesDiffer\(manifest, rootDir_\)/,
   );
   assert.match(updateCheck, /if \(!newerVersion && !replacementBuild\)/);
-  assert.match(updateCheck, /if \(replacementBuild\)[\s\S]*same version and a different executable hash/);
+  assert.match(updateCheck, /if \(replacementBuild\)[\s\S]*same version and different release files/);
 });
