@@ -119,11 +119,13 @@ test('Video CI ignores documentation-only changes', () => {
   assert.doesNotMatch(trigger, /hp\/video\/\*\*/);
 });
 
-test('Native main releases cannot be cancelled before uploading to R2', () => {
+test('Native main releases queue without pending-run replacement', () => {
   assert.match(
     nativeBuild,
-    /cancel-in-progress: \$\{\{ github\.event_name == 'pull_request' \}\}/,
+    /group: native-windows-\$\{\{ github\.event_name == 'pull_request' && github\.run_id \|\| github\.ref \}\}/,
   );
+  assert.match(nativeBuild, /queue: max/);
+  assert.doesNotMatch(nativeBuild, /cancel-in-progress:/);
   assert.match(nativeBuild, /- name: Upload update assets to R2/);
   assert.match(nativeBuild, /if: github\.ref == 'refs\/heads\/main'/);
   assert.match(nativeBuild, /updates\/latest\/update-manifest\.json/);

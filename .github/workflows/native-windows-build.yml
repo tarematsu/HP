@@ -22,10 +22,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: native-windows-${{ github.event.pull_request.number || github.ref }}
-  # Supersede stale PR validation, but never interrupt a main release before
-  # its binaries and manifest have reached R2.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: native-windows-${{ github.event_name == 'pull_request' && github.run_id || github.ref }}
+  # Production releases share one FIFO queue so no pending main run can be
+  # replaced before its binaries and manifest reach R2. PR validation uses a
+  # unique group to avoid blocking the release queue.
+  queue: max
 
 jobs:
   build:
