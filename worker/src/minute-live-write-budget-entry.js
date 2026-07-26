@@ -80,30 +80,6 @@ async function sendStage(env, body, dependencies = {}) {
   return queue.send(body, JSON_QUEUE_SEND_OPTIONS);
 }
 
-async function prepareLiveWrite(env, body, dependencies = {}) {
-  const payload = await loadDurableLivePayload(env, body, dependencies);
-  const materializer = dependencies.materializer || await import('./minute-revision-materializer.js');
-  if (!materializer.shouldMaterializeLiveRevision(env, payload)) {
-    await sendStage(env, {
-      ...compactStageBody(env, body),
-      stage: BUDGET_LIVE_WRITE_STAGE,
-    }, dependencies);
-    return { prepared: true, revision_id: null };
-  }
-  const revision = await materializer.prepareSparseLiveRevision(
-    env,
-    payload,
-    { sourceJobId: body?.job?.id },
-    dependencies.materializerDependencies || {},
-  );
-  await sendStage(env, {
-    ...compactStageBody(env, body),
-    stage: BUDGET_LIVE_WRITE_STAGE,
-    prepared_revision: revision,
-  }, dependencies);
-  return { prepared: true, revision_id: Number(revision?.revision_id || 0) || null };
-}
-
 async function commitLiveWrite(env, body, dependencies = {}) {
   const activeEnv = activeQueueEnvironment(env);
   const payload = await loadDurableLivePayload(activeEnv, body, dependencies);
@@ -142,6 +118,30 @@ async function commitLiveWrite(env, body, dependencies = {}) {
     }, dependencies);
   }
   return result;
+}
+
+async function prepareLiveWrite(env, body, dependencies = {}) {
+  const payload = await loadDurableLivePayload(env, body, dependencies);
+  const materializer = dependencies.materializer || await import('./minute-revision-materializer.js');
+  if (!materializer.shouldMaterializeLiveRevision(env, payload)) {
+    return commitLiveWrite(env, {
+      ...body,
+      stage: BUDGET_LIVE_WRITE_STAGE,
+      payload,
+    }, dependencies);
+  }
+  const revision = await materializer.prepareSparseLiveRevision(
+    env,
+    payload,
+    { sourceJobId: body?.job?.id },
+    dependencies.materializerDependencies || {},
+  );
+  await sendStage(env, {
+    ...compactStageBody(env, body),
+    stage: BUDGET_LIVE_WRITE_STAGE,
+    prepared_revision: revision,
+  }, dependencies);
+  return { prepared: true, revision_id: Number(revision?.revision_id || 0) || null };
 }
 
 export async function processBudgetedLiveWriteMessage(env, body, dependencies = {}) {

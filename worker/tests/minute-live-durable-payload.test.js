@@ -122,18 +122,35 @@ test('live revision preparation reloads payload and keeps the continuation compa
   assert.equal(Object.hasOwn(sent, 'payload'), false);
 });
 
-test('live writes without a revision still cross a separate CPU boundary', async () => {
+test('live writes without a revision commit inline and reuse the loaded payload', async () => {
+  let loads = 0;
+  let saved = null;
   let sent = null;
-  await processBudgetedLiveWriteMessage({}, writeStage(), {
-    loadPayload: async () => ({ ...payload(), queue: null }),
+  const result = await processBudgetedLiveWriteMessage({}, writeStage(), {
+    loadPayload: async () => {
+      loads += 1;
+      return { ...payload(), queue: null };
+    },
     materializer: {
       shouldMaterializeLiveRevision: () => false,
+    },
+    writeThrottle: { withMinuteD1WriteThrottling: (env) => env },
+    deriveQueue: {
+      async processMinuteDeriveWriteStage(env, body, dependencies) {
+        await dependencies.write(env, body.payload);
+        return { pending: true };
+      },
+    },
+    fastStore: {
+      async saveOptimizedMinuteFactWithinBudget(_env, value) { saved = value; },
     },
     sendStage: async (message) => { sent = message; },
   });
 
-  assert.equal(sent.stage, BUDGET_LIVE_WRITE_STAGE);
-  assert.equal(Object.hasOwn(sent, 'payload'), false);
+  assert.deepEqual(result, { pending: true });
+  assert.equal(loads, 1);
+  assert.equal(saved.snapshot.channel_id, 10);
+  assert.equal(sent, null);
 });
 
 test('live write commit reloads payload locally and never forwards it', async () => {
