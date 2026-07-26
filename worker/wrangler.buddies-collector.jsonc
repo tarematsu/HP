@@ -22,6 +22,8 @@
     "SH_APP_VERSION": "1.0.0",
     "COLLECTOR_ID": "cloudflare-worker",
     "COLLECTOR_INLINE_PIPELINE_ENABLED": true,
+    "COLLECTOR_DO_HOT_STATE_ENABLED": true,
+    "COLLECTOR_COORDINATOR_USE_ALARM": false,
     "MINUTE_FACT_POINTER_QUEUE_ENABLED": false,
     "MINUTE_FACT_OUTBOX_RECONCILE_MS": 3600000,
     "METADATA_LIMIT": 1,
@@ -39,11 +41,20 @@
     "QUEUE_LOW_WATER_TRACKS": 5,
     "QUEUE_EXPAND_TRACKS": 10,
     "REQUEST_TIMEOUT_MS": 8000,
-    "QUEUE_LIKES_REPAIR_ENABLED": false
+    "QUEUE_LIKES_REPAIR_ENABLED": false,
+    "COLLECTOR_TELEMETRY_INTERVAL_MS": 300000
   },
   "triggers": { "crons": ["* * * * *"] },
   "r2_buckets": [
     { "binding": "PAGES_RESPONSE_R2", "bucket_name": "sh-pages-responses" }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "BUDDIES_COLLECTOR_COORDINATOR", "class_name": "BuddiesCollectorCoordinator" }
+    ]
+  },
+  "migrations": [
+    { "tag": "buddies-collector-coordinator-v1", "new_sqlite_classes": ["BuddiesCollectorCoordinator"] }
   ],
   "d1_databases": [
     { "binding": "BUDDIES_DB", "database_name": "stationhead-buddies", "database_id": "f361aae0-05f0-42bc-8784-77100e80133d" }
