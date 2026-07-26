@@ -1,60 +1,45 @@
-import { rmSync } from 'node:fs';
-import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readdirSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import { BUDDIES_ALL_TABLES } from '../../worker/scripts/buddies-db-tables.mjs';
+import {
+  OTHER_REQUIRED_TABLES,
+  OTHER_RETIRED_MIGRATIONS,
+  OTHER_RETIRED_OBJECTS,
+} from '../../worker/scripts/other-db-tables.mjs';
 
-const stateDirectory = path.resolve('.wrangler-pages-test-state');
-const wranglerScript = path.resolve('node_modules/wrangler/bin/wrangler.js');
-const repositoryRoot = path.resolve('..');
-const configPath = path.resolve('wrangler.jsonc');
+const siteRoot = path.resolve(import.meta.dirname, '..');
+const repositoryRoot = path.resolve(siteRoot, '..');
+const stateDirectory = path.resolve(siteRoot, '.wrangler-pages-test-state');
+const wranglerScript = path.resolve(siteRoot, 'node_modules/wrangler/bin/wrangler.js');
+const configPath = path.resolve(siteRoot, 'wrangler.jsonc');
+
+function migrationFiles(directory, retired = []) {
+  const retiredSet = new Set(retired);
+  return readdirSync(path.resolve(repositoryRoot, directory))
+    .filter((name) => name.endsWith('.sql') && !retiredSet.has(name))
+    .sort()
+    .map((name) => path.join(directory, name));
+}
 
 const databases = [
   {
     binding: 'DB',
-    files: [
-      'database/buddies-migrations/001_initial_schema.sql',
-      'database/buddies-migrations/002_minute_fact_outbox.sql',
-      'database/buddies-migrations/003_compact_sent_minute_fact_outbox.sql',
-      'database/buddies-migrations/004_change_only_like_history.sql',
-      'database/buddies-migrations/005_canonical_track_like_keys.sql',
-    ],
-    requiredTables: [
-      'sh_channel_snapshots',
-      'sh_queue_snapshots',
-      'sh_queue_items',
-      'sh_track_metadata',
-      'sh_ingest_claims',
-      'sh_data_maintenance_state',
-    ],
+    files: migrationFiles('database/buddies-migrations'),
+    requiredTables: BUDDIES_ALL_TABLES,
+    retiredObjects: [],
   },
   {
     binding: 'OTHER_DB',
-    files: [
-      'database/other-migrations/001_initial_schema.sql',
-      'database/other-migrations/002_solo_activity_tables.sql',
-      'database/other-migrations/003_buddy_playback_state.sql',
-      'database/other-migrations/004_track_metadata.sql',
-      'database/other-migrations/007_archive_gap_completion.sql',
-      'database/other-migrations/008_retire_unowned_state.sql',
-      'database/other-migrations/009_drop_duplicate_track_metadata.sql',
-      'database/other-migrations/010_drop_legacy_snapshots.sql',
-      'database/other-migrations/011_buddy_playback_canonical.sql',
-    ],
-    requiredTables: [
-      'sh_host_broadcast_sessions',
-      'sh_official_broadcast_summary',
-      'sh_daily_summary',
-      'sh_weekly_summary',
-      'sh_monthly_summary',
-      'sh_playback_channel_current',
-      'sh_buddy_playback_clock',
-      'sh_buddy_track_metadata',
-    ],
+    files: migrationFiles('database/other-migrations', OTHER_RETIRED_MIGRATIONS),
+    requiredTables: OTHER_REQUIRED_TABLES,
+    retiredObjects: OTHER_RETIRED_OBJECTS,
   },
 ];
 
 function run(args) {
   const result = spawnSync(process.execPath, [wranglerScript, ...args, '--config', configPath], {
-    cwd: process.cwd(),
+    cwd: siteRoot,
     env: { ...process.env, CI: 'true' },
     encoding: 'utf8',
   });
@@ -63,6 +48,34 @@ function run(args) {
     const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
     throw new Error(`${output}\nwrangler ${args.join(' ')} failed with exit code ${result.status}`);
   }
+  return result.stdout;
+}
+
+function parseJsonOutput(output) {
+  const text = String(output || '').trim();
+  const starts = [text.indexOf('['), text.indexOf('{')].filter((index) => index >= 0);
+  if (!starts.length) throw new Error(`Wrangler did not return JSON: ${text.slice(0, 300)}`);
+  return JSON.parse(text.slice(Math.min(...starts)));
+}
+
+function rowsFromJsonOutput(output) {
+  const payload = parseJsonOutput(output);
+  return (Array.isArray(payload) ? payload : [payload])
+    .flatMap((container) => container?.results || container?.result?.[0]?.results || []);
+}
+
+function sqlList(values) {
+  return values.map((value) => `'${String(value).replaceAll("'", "''")}'`).join(',');
+}
+
+function schemaObjects(binding, names) {
+  if (!names.length) return [];
+  return rowsFromJsonOutput(run([
+    'd1', 'execute', binding,
+    '--local', '--persist-to', stateDirectory, '--json',
+    '--command', `SELECT name,type FROM sqlite_schema
+      WHERE name IN (${sqlList(names)}) ORDER BY name`,
+  ]));
 }
 
 function executeFile(binding, filename) {
@@ -70,8 +83,23 @@ function executeFile(binding, filename) {
   run([
     'd1', 'execute', binding,
     '--local', '--persist-to', stateDirectory,
-    '--file', path.join(repositoryRoot, filename),
+    '--file', path.resolve(repositoryRoot, filename),
   ]);
+}
+
+function verifyDatabase(database) {
+  const installed = new Map(schemaObjects(database.binding, database.requiredTables)
+    .map((row) => [String(row.name), String(row.type)]));
+  const missing = database.requiredTables.filter((table) => installed.get(table) !== 'table');
+  if (missing.length) {
+    throw new Error(`${database.binding} is missing required tables: ${missing.join(', ')}`);
+  }
+
+  const retired = schemaObjects(database.binding, database.retiredObjects)
+    .map((row) => String(row.name));
+  if (retired.length) {
+    throw new Error(`${database.binding} still contains retired objects: ${retired.join(', ')}`);
+  }
 }
 
 rmSync(stateDirectory, { recursive: true, force: true });
@@ -79,13 +107,7 @@ rmSync(stateDirectory, { recursive: true, force: true });
 try {
   for (const database of databases) {
     for (const filename of database.files) executeFile(database.binding, filename);
-    for (const table of database.requiredTables) {
-      run([
-        'd1', 'execute', database.binding,
-        '--local', '--persist-to', stateDirectory,
-        '--command', `SELECT COUNT(*) AS row_count FROM ${table};`,
-      ]);
-    }
+    verifyDatabase(database);
   }
   console.log('Current D1 schema smoke test passed.');
 } finally {
