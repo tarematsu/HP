@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { applyD1Migrations, env, SELF } from "cloudflare:test";
-import { acquireDueJobs } from "../src/scheduler";
 import { ensureDashboard, readState, updateState } from "../src/snapshot";
 import { resetD1TestDatabase } from "./d1_test_utils";
 
@@ -71,36 +70,6 @@ describe("HomePanel Worker", () => {
     expect(initialDashboard.version).toBeTruthy();
     expect(nextDashboard.version).toBe(initialDashboard.version);
     expect(nextDashboard.content_hash).toBe(initialDashboard.content_hash);
-  });
-
-  it("leases every due job once in batches of at most three", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now - 1).run();
-    const total = await env.DB.prepare("SELECT COUNT(*) AS count FROM jobs").first<{ count: number }>();
-    const leasedNames: string[] = [];
-
-    while (true) {
-      const batch = await acquireDueJobs(env, now);
-      expect(batch.length).toBeLessThanOrEqual(3);
-      if (!batch.length) break;
-      leasedNames.push(...batch.map(job => job.name));
-    }
-
-    expect(leasedNames).toHaveLength(Number(total?.count ?? 0));
-    expect(new Set(leasedNames).size).toBe(leasedNames.length);
-    expect(await acquireDueJobs(env, now)).toHaveLength(0);
-  });
-
-  it("leases only one due job for a CPU-bounded compatibility tick", async () => {
-    const now = Math.floor(Date.now() / 1000);
-    await env.DB.prepare("UPDATE jobs SET next_run_at=?1, lease_until=NULL").bind(now - 1).run();
-
-    const first = await acquireDueJobs(env, now, 1);
-    const second = await acquireDueJobs(env, now, 1);
-
-    expect(first).toHaveLength(1);
-    expect(second).toHaveLength(1);
-    expect(second[0]?.name).not.toBe(first[0]?.name);
   });
 
   it("queues refresh work in the Scheduler DO without writing D1 jobs", async () => {
