@@ -78,6 +78,10 @@ const reconcileMinuteBacklogMigration = readFileSync(
   new URL('../database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql', import.meta.url),
   'utf8',
 );
+const pendingAgeMigration = readFileSync(
+  new URL('../database/facts-migrations/046_track_minute_fact_pending_age.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -109,6 +113,7 @@ const expectedMigrations = [
   'database/facts-migrations/043_retire_repair_candidate_index.sql',
   'database/facts-migrations/044_retire_minute_fact_repair_work.sql',
   'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
+  'database/facts-migrations/046_track_minute_fact_pending_age.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -187,6 +192,10 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(reconcileMinuteBacklogMigration, /reconciled-existing-minute-fact/);
   assert.match(reconcileMinuteBacklogMigration, /status='processing'/);
   assert.match(reconcileMinuteBacklogMigration, /status='pending'/);
+  assert.match(pendingAgeMigration, /CREATE TABLE IF NOT EXISTS sh_minute_fact_pending_age/);
+  assert.match(pendingAgeMigration, /MIN\(CASE WHEN status='pending' THEN updated_at END\)/);
+  assert.match(pendingAgeMigration, /AFTER UPDATE OF status,updated_at/);
+  assert.doesNotMatch(pendingAgeMigration, /MIN\(minute_at\)/);
 });
 
 test('production keeps ordinary reconstruction active and retires the one-time repair burst', () => {

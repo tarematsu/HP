@@ -26,7 +26,7 @@ test('minute inbox health reads one persisted counter row', async () => {
   const result = await minuteFactInboxStats({ MINUTE_DB });
   assert.equal(result.pending_count, 2);
   assert.match(sql, /FROM sh_minute_fact_inbox_stats/);
-  assert.match(sql, /WHERE id='global'/);
+  assert.match(sql, /WHERE stats\.id='global'/);
   assert.doesNotMatch(sql, /COUNT\(\*\)|MIN\(minute_at\)|SUM\(CASE WHEN/);
 });
 
