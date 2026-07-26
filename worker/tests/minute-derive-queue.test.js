@@ -77,7 +77,7 @@ test('derive Worker lazy-loads only the selected fact store', () => {
   assert.match(source, /import\('\.\/minute-facts-rebuild-store\.js'\)/);
 });
 
-test('derive Queue processing claims and completes exactly one job without default aggregation', async () => {
+test('derive Queue processing claims and completes exactly one live job without default aggregation', async () => {
   const calls = [];
   const result = await processMinuteDeriveTrigger({ MINUTE_DB: {} }, trigger, {
     now: () => 200_000,
@@ -128,13 +128,13 @@ test('derive Queue processing persists failure before requesting a retry', async
   assert.equal(Object.hasOwn(result, 'pending_count'), false);
 });
 
-test('maintenance dispatches bounded triggers and records aggregate health once', async () => {
+test('live recovery dispatches bounded triggers and records aggregate health once', async () => {
   const batches = [];
   const records = [];
   const result = await dispatchPendingMinuteFacts({
     DERIVE_DISPATCH_LIMIT: 5,
     MINUTE_DB: {},
-    MINUTE_DERIVE_QUEUE: {
+    MINUTE_LIVE_DERIVE_QUEUE: {
       async send() {},
       async sendBatch(batch) { batches.push(batch); },
     },
@@ -143,6 +143,7 @@ test('maintenance dispatches bounded triggers and records aggregate health once'
       assert.equal(options.limit, 5);
       return [trigger, minuteDeriveTrigger({ channel_id: 11, minute_at: 180_000 })];
     },
+    loadRevisionRecovery: async () => [],
     stats: async () => ({
       pending_count: 4,
       processing_count: 1,
@@ -156,6 +157,7 @@ test('maintenance dispatches bounded triggers and records aggregate health once'
 
   assert.equal(result.dispatched, 2);
   assert.equal(result.pending_count, 4);
+  assert.equal(result.rebuild_messages, 0);
   assert.equal(batches.length, 1);
   assert.equal(batches[0].length, 2);
   assert.equal(batches[0][0].contentType, 'json');
