@@ -32,6 +32,7 @@ struct DashboardSectionRevisions {
 struct DashboardSnapshot {
   bool loaded = false;
 
+  bool weatherOutage = false;
   std::vector<WeatherHourData> weatherHours;
 
   double lastMonthUsage = std::numeric_limits<double>::quiet_NaN();
@@ -47,6 +48,6 @@ struct DashboardSnapshot {
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                            std::wstring* error = nullptr);
+                             std::wstring* error = nullptr);
 
 }  // namespace hp
