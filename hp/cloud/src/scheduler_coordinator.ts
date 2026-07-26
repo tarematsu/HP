@@ -133,10 +133,10 @@ export class SchedulerCoordinator {
     }
 
     try {
-      await this.state.storage.setAlarm(await this.nextWakeAt());
+      await this.setEarlierAlarm(await this.nextWakeAt());
     } catch (error) {
       console.error("Failed to schedule the next scheduler alarm", error instanceof Error ? error.message : String(error));
-      await this.state.storage.setAlarm(Date.now() + RECOVERY_ALARM_DELAY_MS);
+      await this.setEarlierAlarm(Date.now() + RECOVERY_ALARM_DELAY_MS);
     }
   }
 }
