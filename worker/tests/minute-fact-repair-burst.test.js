@@ -26,18 +26,22 @@ const runtimeConfig = JSON.parse(readFileSync(
   'utf8',
 ));
 
-test('production retires the completed repair burst while preserving bounded settings', () => {
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES, 60);
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_CANDIDATE_LIMIT, 20);
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_ENQUEUE_LIMIT, 2);
-  assert.equal(runtimeConfig.vars.MINUTE_FACT_REPAIR_DISPATCH_LIMIT, 2);
+test('production removes scheduled repair-burst flags while preserving bounded derive settings', () => {
+  for (const name of [
+    'MINUTE_FACT_REPAIR_BURST_ENABLED',
+    'MINUTE_FACT_REPAIR_BURST_INTERVAL_MINUTES',
+    'MINUTE_FACT_REPAIR_CANDIDATE_LIMIT',
+    'MINUTE_FACT_REPAIR_ENQUEUE_LIMIT',
+    'MINUTE_FACT_REPAIR_DISPATCH_LIMIT',
+  ]) {
+    assert.equal(Object.hasOwn(runtimeConfig.vars, name), false, name);
+  }
   assert.equal(runtimeConfig.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
-  const rebuild = runtimeConfig.queues.consumers.find(
+  const derive = runtimeConfig.queues.consumers.find(
     ({ queue }) => queue === 'stationhead-minute-derive',
   );
-  assert.equal(rebuild.max_batch_size, 1);
-  assert.equal(rebuild.max_concurrency, 250);
+  assert.equal(derive.max_batch_size, 1);
+  assert.equal(derive.max_concurrency, 250);
 });
 
 test('repair candidate scan advances through the existing time index with durable state', () => {
