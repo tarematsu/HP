@@ -3,79 +3,106 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel unified runtime keeps storage and scheduler fast paths', () => {
+test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
   const unifiedWorker = readSource('hp/cloud/src/unified_worker.js');
-  const workerEntry = readSource('hp/cloud/src/worker_entry.ts');
   const workerCore = readSource('hp/cloud/src/worker_core.ts');
-  const deviceSync = readSource('hp/cloud/src/device_sync.ts');
   const scheduler = readSource('hp/cloud/src/scheduler.ts');
   const schedulerRuntime = readSource('hp/cloud/src/scheduler_runtime.ts');
-  const octopusHistory = readSource('hp/cloud/src/octopus_history.ts');
-  const radarSource = readSource('hp/cloud/src/radar_source.ts');
-  const radarCache = readSource('hp/cloud/src/radar_bundle_cache.ts');
+  const schedulerCoordinator = readSource('hp/cloud/src/scheduler_coordinator.ts');
+  const deviceSyncCoordinator = readSource('hp/cloud/src/device_sync_coordinator.ts');
+  const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
+  const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
+  const videoConfig = readSource('hp/video/wrangler.jsonc');
+  const videoEntry = readSource('hp/video/src/entry.js');
 
   expectAll(unifiedWorker, [
-    'async scheduled(_controller, env, ctx)',
-    'queueSchedulerWatchdog(env, ctx)',
+    'env?.VIDEO_SERVICE',
+    'videoService.fetch(internalVideoRequest(request))',
+    "export { DeviceSyncCoordinator }",
+    "export { RadarBundleCoordinator }",
   ]);
-  assert.ok(!unifiedWorker.includes('runSchedulerTick'));
-  expectAll(radarSource, ['await prewarmRadarBundle(env, payload']);
-  expectAll(radarCache, ['cache.match(cacheKey)', 'bucket.get(R2_LATEST_BUNDLE_KEY)']);
-  expectNone(workerEntry + workerCore, [
-    'legacy-telemetry-endpoint-used',
-    'receiveTelemetryOptimized',
+  expectNone(unifiedWorker, [
+    "../../video/src/entry.js",
+    'videoRuntimeActive',
+    'async queue(',
+    'async scheduled(',
   ]);
-  expectAll(deviceSync, [
-    'FROM sync_manifest AS manifest',
-    ').first<DeviceSyncSnapshotRow>()',
+
+  expectAll(workerCore, [
+    'path === "/v1/ready"',
+    'path === "/v1/device/exchange"',
+    'path.startsWith("/v1/radar/bundle/")',
+    'path.startsWith("/v1/spotify/")',
   ]);
+  expectNone(workerCore, ['worker.fetch(request, env, ctx)']);
+
   expectAll(schedulerRuntime, [
     'RUNTIME_STORAGE_KEY',
     'state.storage.put(RUNTIME_STORAGE_KEY',
     'INSERT INTO job_events',
   ]);
-  expectAll(scheduler, [
-    'refreshStatusCounts(env.DB',
-    'SYSTEM_JOBS_CACHE_MS = 60 * 60_000',
+  expectNone(schedulerRuntime, [
+    '../../video/',
+    'runVideoLiveness',
+    'DEVICE_SYNC_MANIFEST_KEY',
   ]);
-  expectAll(octopusHistory, ['octopus_daily_totals', 'readDailyRange']);
+  expectAll(scheduler, [
+    'SYSTEM_JOBS_CACHE_MS = 60 * 60_000',
+    "DELETE FROM jobs WHERE name IN ('radar_dispatch','video_liveness')",
+  ]);
+  expectNone(scheduler, [
+    'acquireDueJobs',
+    'finishJob',
+    'runSchedulerTick',
+    '../../video/',
+  ]);
+
+  expectAll(schedulerCoordinator, ['/ensure', '/wake', 'async alarm()']);
+  expectNone(schedulerCoordinator, ['video-feed-', 'radar-bundle-shard', 'device-sync-invalidate']);
+  expectAll(deviceSyncCoordinator, ['export class DeviceSyncCoordinator', 'DEVICE_SYNC_COORDINATOR']);
+  expectAll(radarCoordinator, ['export class RadarBundleCoordinator', 'radarBundleShardResponse']);
+
+  expectAll(cloudConfig, [
+    '"binding": "VIDEO_SERVICE"',
+    '"service": "homepanel-video"',
+    '"class_name": "DeviceSyncCoordinator"',
+    '"class_name": "RadarBundleCoordinator"',
+  ]);
+  expectNone(cloudConfig, ['"browser"', '"queues"', '"assets"']);
+  expectAll(videoConfig, [
+    '"name": "homepanel-video"',
+    '"binding": "BROWSER"',
+    '"queue": "videoscraper-manual-imports"',
+    '"class_name": "VideoFeedCoordinator"',
+  ]);
+  expectAll(videoEntry, ['X-HomePanel-Internal-Service', "pathname === '/api/health'"]);
 });
 
-test('HomePanel deploy helpers keep the GitHub Actions-only execution path', () => {
-  const guardedDeploy = readSource('hp/cloud/scripts/guarded-deploy.mjs');
+test('HomePanel deployment is direct and rollback-capable', () => {
+  const packageJson = readSource('hp/cloud/package.json');
   const deployExisting = readSource('hp/cloud/scripts/deploy-existing.mjs');
+  const deployWorkflow = readSource('.github/workflows/cloud-deploy.yml');
+  const rollbackWorkflow = readSource('.github/workflows/homepanel-cloud-rollback.yml');
 
-  expectAll(guardedDeploy, [
-    'ensureVideoDependencies()',
-    '[deployScript, ...process.argv.slice(2)]',
-    "CI: 'true'",
+  expectAll(packageJson, [
+    '"deploy": "node scripts/deploy-existing.mjs"',
+    '"deploy:worker": "node scripts/deploy-existing.mjs --without-migrations"',
   ]);
-  expectNone(guardedDeploy, [
-    'WORKERS_CI',
-    'WORKERS_CI_BRANCH',
-    'HOMEPANEL_PRODUCTION_BRANCH',
-    'HOMEPANEL_ALLOW_INACTIVE_VIDEO_DEPLOY',
-    'activationIsComplete',
-    'video_runtime_state',
-    'versions',
-  ]);
-
+  expectNone(packageJson, ['guarded-deploy', 'video_runtime_activation']);
   expectAll(deployExisting, [
     '--without-migrations',
     'Routine Worker deploy: skipping remote D1 migration discovery',
-    'Remote migrations are applied by the dedicated Apply D1 migrations workflow',
     'env: { ...process.env, CI: "true" }',
   ]);
-  expectNone(deployExisting, [
-    'WORKERS_CI',
-    'WORKERS_CI_BRANCH',
-    'HOMEPANEL_PRODUCTION_BRANCH',
-    'previewBuild',
-    'cloudflareManagedBuild',
-    'versions", "upload',
-    'CLOUDFLARE_BUILDS_ACCOUNT_ID',
-    'CLOUDFLARE_BUILDS_API_TOKEN',
-    'process.env.ACCOUNT_ID',
-    'cloudflareEnvironment',
+  expectAll(deployWorkflow, [
+    'Deploy private video service',
+    'Deploy HomePanel gateway',
+    'Verify deployed readiness',
   ]);
+  expectAll(rollbackWorkflow, [
+    'wrangler "${args[@]}"',
+    'homepanel-video',
+    'homepanel-cloud',
+  ]);
+  assert.ok(deployWorkflow.indexOf('Deploy private video service') < deployWorkflow.indexOf('Deploy HomePanel gateway'));
 });
