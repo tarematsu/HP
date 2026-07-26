@@ -56,17 +56,17 @@ export function boundedLiveSummaryStart(mode, fromTs, lastBaseEnd, now = Date.no
   return Math.max(fromTs, afterBase, liveSummaryFallbackStart(mode, now));
 }
 
-function periodExpression(mode) {
-  if (mode === 'daily') return `strftime('%Y-%m-%d', observed_at / 1000, 'unixepoch')`;
-  if (mode === 'monthly') return `strftime('%Y-%m', observed_at / 1000, 'unixepoch')`;
-  return `date(observed_at / 1000,'unixepoch','-' || ((CAST(strftime('%w', observed_at / 1000, 'unixepoch') AS INTEGER) + 6) % 7) || ' days')`;
+function periodExpression(mode, column = 'observed_at') {
+  if (mode === 'daily') return `strftime('%Y-%m-%d', ${column} / 1000, 'unixepoch')`;
+  if (mode === 'monthly') return `strftime('%Y-%m', ${column} / 1000, 'unixepoch')`;
+  return `date(${column} / 1000,'unixepoch','-' || ((CAST(strftime('%w', ${column} / 1000, 'unixepoch') AS INTEGER) + 6) % 7) || ' days')`;
 }
 
-export function liveSummarySql(mode) {
+function summarySql(mode, streamColumn) {
   const periodKey = periodExpression(mode);
   return `WITH prepared AS (
     SELECT id,observed_at,listener_count,total_member_count,
-      validated_stream_count AS stream_value,host_handle,
+      ${streamColumn} AS stream_value,host_handle,
       ${periodKey} AS period_key
     FROM sh_channel_snapshots WHERE observed_at>=? AND observed_at<?
   ), ranked AS (
@@ -116,6 +116,14 @@ export function liveSummarySql(mode) {
     primary_hosts.host_handle AS primary_host
   FROM aggregated LEFT JOIN primary_hosts ON primary_hosts.period_key=aggregated.period_key
   ORDER BY aggregated.period_key ASC LIMIT ?`;
+}
+
+export function liveSummarySql(mode) {
+  return summarySql(mode, 'validated_stream_count');
+}
+
+export function minuteSummarySql(mode) {
+  return summarySql(mode, 'current_stream_count');
 }
 
 function normalizeLiveRow(row) {
@@ -186,6 +194,22 @@ export function combineSummaryRows(base, live) {
   };
 }
 
+async function loadLiveSummary(env, mode, liveStart, toTs, limit) {
+  if (liveStart >= toTs) return { result: { results: [] }, sourceDb: env.MINUTE_DB || env.DB };
+  if (env.MINUTE_DB) {
+    try {
+      const result = await env.MINUTE_DB.prepare(minuteSummarySql(mode))
+        .bind(liveStart, toTs, limit)
+        .all();
+      return { result, sourceDb: env.MINUTE_DB };
+    } catch (error) {
+      if (!/no such table|no such view|no such column/i.test(String(error?.message || ''))) throw error;
+    }
+  }
+  const result = await env.DB.prepare(liveSummarySql(mode)).bind(liveStart, toTs, limit).all();
+  return { result, sourceDb: env.DB };
+}
+
 export async function loadSummaryWithLive(env, mode, from, to, now = Date.now()) {
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
@@ -199,16 +223,14 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const lastBaseEnd = finiteNumber(baseRows.at(-1)?.period_end);
   const expectedLiveStart = lastBaseEnd == null ? fromTs : Math.max(fromTs, lastBaseEnd + 1);
   const liveStart = boundedLiveSummaryStart(mode, fromTs, lastBaseEnd, now);
-  const liveResult = liveStart < toTs
-    ? await env.DB.prepare(liveSummarySql(mode)).bind(liveStart, toTs, limit).all()
-    : { results: [] };
-  const liveRows = (liveResult.results || []).map(normalizeLiveRow);
+  const loaded = await loadLiveSummary(env, mode, liveStart, toTs, limit);
+  const liveRows = (loaded.result.results || []).map(normalizeLiveRow);
   const merged = new Map(baseRows.map((row) => [row.period_key, row]));
   liveRows.forEach((row) => merged.set(row.period_key, combineSummaryRows(merged.get(row.period_key), row)));
 
   const rows = [...merged.values()].slice(-limit);
   const evidenceTargets = rowsRequiringBoundaryEvidence(rows, mode, now);
-  const evidence = await loadPeriodBoundaryEvidence(env.DB, evidenceTargets, mode);
+  const evidence = await loadPeriodBoundaryEvidence(loaded.sourceDb || env.DB, evidenceTargets, mode);
   const boundedRows = applyPeriodBoundaryEvidence(rows, evidence);
   const completed = applySummaryCompleteness(boundedRows, mode, now);
   return {
@@ -218,5 +240,6 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
     live_overlay_count: liveRows.length,
     latest_live_observed_at: liveRows.at(-1)?.period_end || null,
     live_truncated: liveStart > expectedLiveStart,
+    live_source: loaded.sourceDb === env.MINUTE_DB ? 'minute_facts' : 'collector_snapshots',
   };
 }
