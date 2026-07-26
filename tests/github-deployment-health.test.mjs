@@ -10,6 +10,7 @@ import {
   summarizeDeploymentRun,
   workerDeploymentResults,
 } from '../.github/scripts/github-deployment-health.mjs';
+import { buildDeploymentHealthIssueBody } from '../.github/scripts/publish-github-deployment-health.mjs';
 
 const productionTarget = {
   name: 'Deploy production',
@@ -150,4 +151,15 @@ test('deployment health block is rendered and replaced without duplicating it', 
   const replaced = replaceDeploymentHealthSection(body, first.replace('01:10', '01:20'));
   assert.equal((replaced.match(/github-deployment-health:start/g) || []).length, 1);
   assert.match(replaced, /01:20/);
+});
+
+test('deployment publisher clips its section to fit a near-limit observability issue', () => {
+  const issueBody = `<!-- cloudflare-observability-status -->
+# Status
+${'x'.repeat(62_000)}
+## Immediate triage`;
+  const body = buildDeploymentHealthIssueBody(issueBody, `### Deployment
+${'y'.repeat(10_000)}`);
+  assert.ok(body.length <= 65_000);
+  assert.match(body, /github-deployment-health:start/);
 });
