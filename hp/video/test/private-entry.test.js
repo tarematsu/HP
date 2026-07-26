@@ -19,11 +19,10 @@ test('private video health checks D1 without the gateway marker', async () => {
     {}
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), {
-    ok: true,
-    service: 'homepanel-video',
-    checkedAt: assert.match.string
-  });
+  const body = await response.json();
+  assert.equal(body.ok, true);
+  assert.equal(body.service, 'homepanel-video');
+  assert.equal(typeof body.checkedAt, 'string');
 });
 
 test('private video worker rejects direct traffic', async () => {
