@@ -182,6 +182,33 @@ test('Pages minute health prefers current Runtime Coordinator state and tolerate
   assert.equal(payload.tasks.every(({ stale_after_ms }) => stale_after_ms === 25 * 60_000), true);
 });
 
+test('Pages minute health falls back to D1 when Runtime Coordinator state is incomplete', async () => {
+  const fallbackRows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
+  let d1Reads = 0;
+  const env = {
+    MINUTE_DB: {
+      prepare(sql) {
+        d1Reads += 1;
+        return minuteDb(fallbackRows).prepare(sql);
+      },
+    },
+    PAGES_READ_MODEL_SERVICE: {
+      async fetch() {
+        return Response.json({ ok: true, tasks: [runtimeRow('derive')] });
+      },
+    },
+  };
+  const payload = await readMinuteHealth(env, NOW);
+  assert.equal(payload.ok, true);
+  assert.equal(d1Reads, 1);
+  assert.deepEqual(payload.tasks.map(({ task_name }) => task_name), [
+    'derive',
+    'recovery',
+    'rebuild',
+    'sync',
+  ]);
+});
+
 test('Pages other health is scoped to the runtime orchestrator', async () => {
   const env = { OTHER_DB: otherDb() };
   const payload = await readOtherHealth(env, NOW);

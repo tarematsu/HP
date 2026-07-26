@@ -9,6 +9,7 @@ const migrationsDir = resolve(repositoryRoot, 'database/other-migrations');
 const metadataPath = resolve(repositoryRoot, 'database/other-db.json');
 const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const BINDING = 'OTHER_DB';
+const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
 
 // Runtime writes the operational tables and Pages reads the public projections.
 // Provisioning updates only those two explicit owners.
@@ -46,8 +47,33 @@ function parseJsonOutput(output) {
   return JSON.parse(trimmed.slice(start));
 }
 
+function rowsFromJsonOutput(output) {
+  const parsed = parseJsonOutput(output);
+  return (Array.isArray(parsed) ? parsed : [parsed])
+    .flatMap((container) => container?.results || []);
+}
+
 function listDatabases() {
   return parseJsonOutput(wrangler(['d1', 'list', '--json']));
+}
+
+function remoteRows(command) {
+  return rowsFromJsonOutput(wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes', '--json',
+    '--command', command,
+  ]));
+}
+
+function removeAppleMusicCompatibilityColumn() {
+  const columns = new Set(remoteRows(`PRAGMA table_info(${APPLE_MUSIC_COMPATIBILITY_TABLE})`)
+    .map((row) => String(row?.name || '')));
+  if (!columns.has('apple_music_id')) return;
+  wrangler([
+    'd1', 'execute', databaseName,
+    '--remote', '--yes',
+    '--command', `ALTER TABLE ${APPLE_MUSIC_COMPATIBILITY_TABLE} DROP COLUMN apple_music_id`,
+  ]);
 }
 
 let database = listDatabases().find((item) => item.name === databaseName);
@@ -86,6 +112,7 @@ for (const migrationFile of migrationFiles) {
     '--file', resolve(migrationsDir, migrationFile),
   ]);
 }
+removeAppleMusicCompatibilityColumn();
 
 writeFileSync(metadataPath, `${JSON.stringify({
   binding: BINDING,

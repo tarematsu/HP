@@ -33,6 +33,12 @@ function taskStaleMs(taskName, env) {
     : positiveMs(env.MINUTE_MAINTENANCE_STALE_MS, DEFAULT_MAINTENANCE_STALE_MS);
 }
 
+function hasAllRuntimeTasks(tasks) {
+  if (!Array.isArray(tasks)) return false;
+  const names = new Set(tasks.map((task) => String(task?.task_name || '')));
+  return ACTIVE_TASKS.every((taskName) => names.has(taskName));
+}
+
 export function minuteTaskHealth(row, now, env = {}) {
   const lastStartedAt = integer(row?.last_started_at);
   const lastSuccessAt = integer(row?.last_success_at);
@@ -87,7 +93,7 @@ export async function readMinuteHealth(env, now = Date.now()) {
       });
       if (response?.ok) {
         const payload = await response.json();
-        if (Array.isArray(payload?.tasks)) rows = payload.tasks;
+        if (hasAllRuntimeTasks(payload?.tasks)) rows = payload.tasks;
       }
     } catch (error) {
       console.warn(JSON.stringify({
