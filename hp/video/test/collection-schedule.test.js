@@ -18,7 +18,7 @@ const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url
 
 test('private video deployment owns hourly liveness and manual import queues', () => {
   assert.deepEqual(wrangler.triggers?.crons, [LIVENESS_CRON]);
-  assert.equal(gatewayWrangler.triggers, undefined);
+  assert.deepEqual(gatewayWrangler.triggers?.crons, []);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
   assert.equal(LIVENESS_CRON, '0 * * * *');
