@@ -61,19 +61,22 @@ inline ULONGLONG secondaryReloadMonotonicAt = 0;
 class StationheadBoundaryReloadClockProxy {
  public:
   StationheadBoundaryReloadClockProxy(
-      int64_t& storage, bool secondary) noexcept
-      : storage_(storage), secondary_(secondary) {}
+      int64_t& storage, bool secondary, bool configured) noexcept
+      : storage_(storage), secondary_(secondary), configured_(configured) {}
 
   operator int64_t() const noexcept { return storage_; }
 
   int64_t operator=(int64_t candidate) noexcept {
-    // The first successful Stationhead navigation establishes the initial
-    // 52-minute baseline. Once established, only a readiness message that App
-    // accepted for this role may advance it. Generic successful navigations
-    // (auth return, fallback, reconnect, WebView rebuild) therefore cannot
-    // postpone the next periodic authentication refresh.
+    // ConfigureWebView writes the chained lifecycle timestamp before it marks
+    // the WebView configured and before initial navigation has committed. Do
+    // not begin the 52-minute interval there. The later successful navigation
+    // callback initializes the baseline; after that, only an App-accepted
+    // boundary refresh may advance it. Generic successful navigations (auth
+    // return, fallback, reconnect, WebView rebuild) therefore cannot postpone
+    // the next periodic authentication refresh.
     AcquireSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
     bool accept = storage_ <= 0;
+    if (accept && !configured_) accept = false;
     bool& pending = secondary_
         ? stationhead_boundary_message_policy::secondaryReloadClockAssignmentPending
         : stationhead_boundary_message_policy::primaryReloadClockAssignmentPending;
@@ -114,11 +117,12 @@ class StationheadBoundaryReloadClockProxy {
  private:
   int64_t& storage_;
   bool secondary_;
+  bool configured_;
 };
 
 inline StationheadBoundaryReloadClockProxy StationheadBoundaryReloadClock(
-    int64_t& storage, bool secondary) noexcept {
-  return StationheadBoundaryReloadClockProxy(storage, secondary);
+    int64_t& storage, bool secondary, bool configured) noexcept {
+  return StationheadBoundaryReloadClockProxy(storage, secondary, configured);
 }
 
 // Both Stationhead windows can reach the 52-minute boundary in the same App
@@ -174,5 +178,6 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 // policy implementation above have already been parsed, so only application
 // call sites are routed through these final aliases.
 #define SendMessageW SendMessageWWithStationheadBoundaryLease
-#define lastReloadAt_ \
-  (::hp::StationheadBoundaryReloadClock((lastReloadAtStorage_), IsSecondary()))
+#define lastReloadAt_                                                        \
+  (::hp::StationheadBoundaryReloadClock(                                    \
+      (lastReloadAtStorage_), IsSecondary(), webViewConfigured_))
