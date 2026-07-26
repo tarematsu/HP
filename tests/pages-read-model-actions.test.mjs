@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+const runtimeEntry = readFileSync(new URL('../worker/src/runtime-slim-orchestrator.js', import.meta.url), 'utf8');
+const r2Store = readFileSync(new URL('../worker/src/pages-response-r2.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 
 test('pages read models rebuild frequently in one bounded Actions job', () => {
@@ -11,11 +13,21 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(workflow, /group: pages-read-model-rebuild/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
+  assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(runner, /while \(steps < maxSteps && Date\.now\(\) < deadlineMs\)/);
-  assert.match(runner, /PAGES_READ_MODEL_MAX_STEPS/);
-  assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
+  assert.match(runner, /dueVariantKeys/);
+  assert.match(runner, /history:daily/);
+  assert.match(runner, /history:weekly/);
+  assert.match(runner, /history:monthly/);
+  assert.match(runner, /history:broadcasts/);
+  assert.match(runner, /host-history:summary/);
+  assert.match(runner, /r2', 'object', 'put'/);
   assert.match(runner, /d1', 'execute'.*--remote/s);
+  assert.match(r2Store, /pages-response\/actions-v1/);
+  assert.match(r2Store, /x-api-source', 'actions-r2'/);
+  assert.match(runtimeEntry, /offline-maintenance-moved-to-actions/);
+  assert.doesNotMatch(runtimeEntry, /streamPredictionDue|pagesScheduledDue|maintenanceCronFor/);
   assert.equal(runtime.vars.PAGES_TRACK_HISTORY_CYCLE_ENABLED, false);
 });
