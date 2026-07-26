@@ -42,6 +42,7 @@ on:
         type: choice
         options:
           - minute-db
+          - minute-facts-local-rebuild
           - payload-purge
           - other-db
           - buddies-db
@@ -94,6 +95,71 @@ jobs:
         run: node scripts/apply-facts-pr-schema.mjs
       - name: Verify live data and deployment-critical schema
         run: node scripts/verify-facts-live.mjs
+
+  minute-facts-local-rebuild:
+    name: Rebuild MINUTE_DB facts from local buddies SQLite
+    if: inputs.operation == 'minute-facts-local-rebuild'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      FACTS_DATABASE_NAME: stationhead-minute
+      FACTS_VERIFY_ATTEMPTS: '5'
+      FACTS_VERIFY_DELAY_MS: '20000'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --no-audit --no-fund
+      - name: Export generation-only buddies data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../.local-minute-facts
+          npx wrangler d1 export "$BUDDIES_DATABASE_NAME" \
+            --remote \
+            --skip-confirmation \
+            --output ../.local-minute-facts/buddies.sql \
+            --table sh_channel_snapshots \
+            --table sh_comment_minute_counts
+      - name: Generate minute facts in local SQLite
+        run: >-
+          python ../scripts/rebuild-minute-facts-from-buddies.py
+          --buddies-export ../.local-minute-facts/buddies.sql
+          --out-dir ../.local-minute-facts/generated
+      - name: Upload generated facts to MINUTE_DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          chunks=(../.local-minute-facts/generated/minute-facts-*.sql)
+          for chunk in "${chunks[@]}"; do
+            echo "Uploading $(basename "$chunk")"
+            npx wrangler d1 execute "$FACTS_DATABASE_NAME" \
+              --remote \
+              --yes \
+              --file "$chunk"
+          done
+      - name: Verify live data and deployment-critical schema
+        run: node scripts/verify-facts-live.mjs
+      - name: Remove local buddies data
+        if: always()
+        shell: bash
+        run: rm -rf ../.local-minute-facts
 
   payload-purge:
     name: Drain existing stationhead-minute payload backlog
