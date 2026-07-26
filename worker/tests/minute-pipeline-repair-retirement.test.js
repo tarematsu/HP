@@ -26,7 +26,7 @@ function recordingDb() {
   };
 }
 
-test('repair write stages are retired by default without D1 derive work', async () => {
+test('repair write stages are retired without D1 derive work', async () => {
   const db = recordingDb();
   const events = [];
   const result = await processMinutePipelineBatch({
@@ -63,7 +63,7 @@ test('repair write stages are retired by default without D1 derive work', async 
 
   assert.deepEqual(events, ['ack']);
   assert.equal(result.skipped, true);
-  assert.equal(result.reason, 'repair-burst-disabled');
+  assert.equal(result.reason, 'repair-actions-owned');
   assert.equal(result.retired, 1);
   assert.equal(db.calls.length, 2);
   assert.match(db.calls[0].sql, /UPDATE sh_minute_fact_jobs/);
@@ -73,7 +73,7 @@ test('repair write stages are retired by default without D1 derive work', async 
   assert.equal(db.calls[1].bindings.at(-1), 'total-listener-20260710-13-v1');
 });
 
-test('repair triggers retire their durable job by default', async () => {
+test('repair triggers retire their durable job by channel and minute', async () => {
   const db = recordingDb();
   const events = [];
   const result = await processMinutePipelineBatch({
@@ -100,7 +100,7 @@ test('repair triggers retire their durable job by default', async () => {
   assert.deepEqual(db.calls[0].bindings.slice(-2), [10, 120_000]);
 });
 
-test('repair processing requires an explicit rollback opt-in', async () => {
+test('deprecated repair flags cannot reactivate Worker processing', async () => {
   const events = [];
   const result = await processMinutePipelineBatch({
     queue: REBUILD_DERIVE_QUEUE_NAME,
@@ -117,12 +117,13 @@ test('repair processing requires an explicit rollback opt-in', async () => {
   }, {
     MINUTE_FACT_REPAIR_BURST_ENABLED: true,
   }, {}, {
-    async processMinuteDeriveBatch(batch) {
-      events.push(`derive:${batch.queue}`);
+    async processMinuteDeriveBatch() {
+      events.push('unexpected-derive');
       return { processed: 1 };
     },
   });
 
-  assert.deepEqual(result, { processed: 1 });
-  assert.deepEqual(events, [`derive:${REBUILD_DERIVE_QUEUE_NAME}`]);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'repair-actions-owned');
+  assert.deepEqual(events, ['ack']);
 });
