@@ -3,6 +3,14 @@ name: Run runtime offline maintenance
 on:
   schedule:
     - cron: '3,33 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/run-runtime-offline-maintenance.yml'
+      - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
+      - 'worker/scripts/remote-d1-adapter.mjs'
+      - 'worker/src/runtime-**'
+      - 'worker/src/minute-facts-**'
   workflow_dispatch:
 
 permissions:
@@ -38,4 +46,15 @@ jobs:
           cache-dependency-path: worker/package-lock.json
       - run: npm ci --no-audit --no-fund
       - name: Run prediction, rollups, and retention in one pass
-        run: node scripts/run-runtime-offline-maintenance-actions.mjs
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee runtime-offline-maintenance.log
+      - name: Upload runtime maintenance failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-maintenance-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worker/runtime-offline-maintenance.log
+          if-no-files-found: error
+          retention-days: 7
