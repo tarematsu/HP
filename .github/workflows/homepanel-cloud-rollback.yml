@@ -1,0 +1,71 @@
+name: Roll back HomePanel Cloud services
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type ROLLBACK_HOMEPANEL
+        required: true
+        type: string
+      video_version:
+        description: Optional homepanel-video version ID; blank selects the previous version
+        required: false
+        type: string
+      gateway_version:
+        description: Optional homepanel-cloud version ID; blank selects the previous version
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-cloud-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Validate confirmation
+        run: test "${{ inputs.confirmation }}" = "ROLLBACK_HOMEPANEL"
+
+      - uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker dependencies
+        run: |
+          npm --prefix hp/cloud ci --no-audit --no-fund
+          npm --prefix hp/video install --no-audit --no-fund
+
+      - name: Roll back video service
+        working-directory: hp/video
+        shell: bash
+        env:
+          VERSION_ID: ${{ inputs.video_version }}
+        run: |
+          set -euo pipefail
+          args=(rollback --name homepanel-video --message "GitHub Actions rollback")
+          if [ -n "$VERSION_ID" ]; then args=(rollback "$VERSION_ID" --name homepanel-video --message "GitHub Actions rollback"); fi
+          npx wrangler "${args[@]}"
+
+      - name: Roll back HomePanel gateway
+        working-directory: hp/cloud
+        shell: bash
+        env:
+          VERSION_ID: ${{ inputs.gateway_version }}
+        run: |
+          set -euo pipefail
+          args=(rollback --name homepanel-cloud --message "GitHub Actions rollback")
+          if [ -n "$VERSION_ID" ]; then args=(rollback "$VERSION_ID" --name homepanel-cloud --message "GitHub Actions rollback"); fi
+          npx wrangler "${args[@]}"
