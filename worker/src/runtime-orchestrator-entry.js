@@ -127,7 +127,7 @@ export async function runCoreQueue(batch, env, ctx, dependencies = EMPTY_DEPENDE
   const queueName = String(batch?.queue || '');
   if (ENRICHMENT_QUEUE_NAMES.has(queueName)) {
     const run = dependencies.runEnrichmentQueue
-      || (await loadEnrichmentModule()).processConsolidatedEnrichmentBatch;
+      || (await loadEnrichmentModule()).processMinuteEnrichmentBatch;
     return run(batch, env, dependencies.enrichment || EMPTY_DEPENDENCIES);
   }
   const liveKind = lightweightLiveBudgetKind(batch, env);
