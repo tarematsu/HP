@@ -22,6 +22,10 @@ function metadataEnv(calls) {
   };
 }
 
+function metadataCalls(calls) {
+  return calls.filter(({ sql }) => /FROM sh_track_metadata/.test(sql));
+}
+
 test('metadata hydration scans incomplete tracks once and preserves key order', async () => {
   const calls = [];
   const model = readModel([
@@ -33,8 +37,13 @@ test('metadata hydration scans incomplete tracks once and preserves key order', 
   ]);
 
   assert.equal(await hydrateReadModelMetadata(metadataEnv(calls), model), model);
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].bindings, ['USA', 'GBB', 'spotify-a', 'spotify-b']);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].bindings, ['USA', 'GBB']);
+  assert.deepEqual(metadataCalls(calls).map((call) => call.bindings), [
+    ['USA', 'GBB'],
+    ['spotify-a', 'spotify-b'],
+  ]);
+  assert.ok(calls.every(({ sql }) => !/UNION ALL|\sOR\s/.test(sql)));
 });
 
 test('metadata hydration keeps collecting the second key type after the first reaches its cap', async () => {
@@ -45,14 +54,11 @@ test('metadata hydration keeps collecting the second key type after the first re
 
   await hydrateReadModelMetadata(metadataEnv(calls), readModel(tracks));
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(
-    calls[0].bindings,
-    [
-      ...Array.from({ length: 80 }, (_, index) => `ISRC${index}`),
-      ...Array.from({ length: 80 }, (_, index) => `spotify-${index}`),
-    ],
-  );
+  const isrcs = Array.from({ length: 80 }, (_, index) => `ISRC${index}`);
+  const spotify = Array.from({ length: 80 }, (_, index) => `spotify-${index}`);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].bindings, isrcs);
+  assert.deepEqual(metadataCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
 });
 
 test('metadata hydration does not spend key capacity on duplicates', async () => {
@@ -67,11 +73,15 @@ test('metadata hydration does not spend key capacity on duplicates', async () =>
 
   await hydrateReadModelMetadata(metadataEnv(calls), readModel(tracks));
 
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].bindings, [
+  const isrcs = [
     'DUPLICATE',
     ...Array.from({ length: 79 }, (_, index) => `ISRC${index}`),
+  ];
+  const spotify = [
     'duplicate',
     ...Array.from({ length: 79 }, (_, index) => `spotify-${index}`),
-  ]);
+  ];
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls[0].bindings, isrcs);
+  assert.deepEqual(metadataCalls(calls).map((call) => call.bindings), [isrcs, spotify]);
 });
