@@ -11,17 +11,11 @@ export class RuntimeCoordinator extends ScheduledRuntimeCoordinator {
     if (request?.method === 'POST') {
       try {
         const body = await request.clone().json();
-        if (body?.action === 'record-runtime-state') {
-          return Response.json(await this.runtimeStateCoordinator.record({
-            ...body,
-            action: 'record',
-          }));
+        if (body?.action === 'record') {
+          return Response.json(await this.runtimeStateCoordinator.record(body));
         }
-        if (body?.action === 'read-runtime-state') {
+        if (body?.action === 'read') {
           return Response.json(await this.runtimeStateCoordinator.read(body?.task));
-        }
-        if (body?.action === 'record' || body?.action === 'read') {
-          return Response.json({ error: 'ambiguous-runtime-state-action' }, { status: 400 });
         }
       } catch {
         // Preserve the parent coordinator's invalid JSON response contract.
