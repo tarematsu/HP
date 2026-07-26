@@ -1,5 +1,6 @@
 export const ACTIONS_RUNNER_HEALTH_START = '<!-- github-actions-runner-health:start -->';
 export const ACTIONS_RUNNER_HEALTH_END = '<!-- github-actions-runner-health:end -->';
+export const MAX_ACTIONS_HEALTH_SUMMARY_CHARS = 4_000;
 
 export const ACTIONS_RUNNER_TARGETS = Object.freeze([
   Object.freeze({
@@ -84,7 +85,7 @@ function consecutiveFailures(runs) {
 
 export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } = {}) {
   const ordered = [...(Array.isArray(runs) ? runs : [])]
-    .sort((left, right) => timestamp(right?.created_at) - timestamp(left?.created_at));
+    .sort((left, right) => (timestamp(right?.created_at) ?? 0) - (timestamp(left?.created_at) ?? 0));
   const latest = ordered[0] || null;
   const lastSuccess = ordered.find((run) => run?.status === 'completed' && run?.conclusion === 'success') || null;
   const latestAge = ageMilliseconds(latest?.created_at, now);
@@ -96,10 +97,7 @@ export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } =
   let reason = 'No scheduled runs were returned by the Actions API.';
 
   if (latest) {
-    if (latestAge > staleAfter) {
-      health = 'stale';
-      reason = `No scheduled run has started within ${target.staleAfterMinutes} minutes.`;
-    } else if (latest.status === 'queued' || latest.status === 'in_progress') {
+    if (latest.status === 'queued' || latest.status === 'in_progress') {
       const runningFor = durationMilliseconds(latest, now);
       if (runningFor != null && runningFor > stalledAfter) {
         health = 'failure';
@@ -111,6 +109,9 @@ export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } =
         health = 'degraded';
         reason = `The latest run is ${latest.status}, but no recent successful completion is available.`;
       }
+    } else if (latestAge > staleAfter) {
+      health = 'stale';
+      reason = `No scheduled run has started within ${target.staleAfterMinutes} minutes.`;
     } else if (latest.status === 'completed' && latest.conclusion === 'success') {
       health = 'healthy';
       reason = 'The latest scheduled run completed successfully.';
