@@ -15,7 +15,6 @@
       "invocation_logs": true
     }
   },
-  "triggers": { "crons": [] },
   "vars": {
     "CHANNEL_ALIAS": "buddies",
     "CHAT_LIMIT": 0,
