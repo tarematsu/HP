@@ -34,7 +34,10 @@ test('Pages materialization is owned by the bounded Actions runner', () => {
   const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
   const runner = source('../scripts/run-pages-read-model-actions.mjs');
   const responseStore = source('../src/pages-response-r2.js');
-  assert.match(workflow, /cron: '4,19,34,49 \* \* \* \*'/);
+  assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
+  assert.match(workflow, /cron: '19,49 \* \* \* \*'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
+  assert.match(workflow, /github\.event\.workflow_run\.head_sha \|\| github\.sha/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
