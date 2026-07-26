@@ -11,6 +11,10 @@ inline constexpr int64_t kStationheadAuthControllerTimeoutMs = 20'000;
 inline constexpr int64_t kStationheadAutoClickRetryMs = 2'500;
 inline constexpr int64_t kStationheadAutoClickSuccessGraceMs = 5'000;
 inline constexpr int64_t kStationheadPostPlaybackStopClickDelayMs = 12'000;
+inline constexpr int64_t kStationheadDailyPlayStatsIntervalMs = 5 * 60'000;
+inline constexpr int64_t kStationheadDailyPlayStatsRetryMs = 30'000;
+static_assert(kStationheadDailyPlayStatsRetryMs <
+              kStationheadDailyPlayStatsIntervalMs);
 
 
 
@@ -41,6 +45,11 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   let loginReported = false;
   let lastPlaying = null;
   const observedAt = Date.now();
+  const rejectCapturedAuth = () => {
+    const authorization = window.__homepanelStationheadAuthHeaders?.authorization || '';
+    if (authorization) window.__homepanelStationheadRejectedAuthorization = authorization;
+    window.__homepanelStationheadAuthHeaders = null;
+  };
   const labelOf = element => [
     element?.innerText,
     element?.getAttribute?.('aria-label'),
@@ -66,24 +75,17 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   };
   const publishAudio = () => {
     const current = playing();
-    if (current) {
-      observer?.disconnect?.();
-      observer = null;
-      if (scanTimer) {
-        nativeClearTimeout(scanTimer);
-        scanTimer = 0;
-        scanQueued = false;
-      }
-    }
+    // Playback can continue after the account session expires. Keep the
+    // lightweight UI observer alive so a newly rendered login control is still
+    // detected while audio remains audible.
     if (current === lastPlaying) return current;
     const wasPlaying = lastPlaying === true;
     lastPlaying = current;
     try { window.chrome?.webview?.postMessage(current ? '{{PREFIX}}-playing' : '{{PREFIX}}-stopped'); } catch (_) {}
     if (!current && wasPlaying) {
-      // Stationhead can briefly stop its audio element between tracks. The
-      // normal observer is disconnected while audio is playing, so wake it
-      // only for this transition and give the page a chance to expose a
-      // Resume/Continue control without waiting for the next reload.
+      // Stationhead can briefly stop its audio element between tracks. Wake
+      // the scan immediately so a Resume/Continue control is handled without
+      // waiting for another DOM mutation.
       lastSignalAt = 0;
       attachObserver();
       schedule(0);
@@ -101,19 +103,22 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
     const ready = document.readyState !== 'loading' && !!document.body;
     const isPlaying = publishAudio();
     if (!ready || !document.body) return;
-    if (isPlaying) {
-      observer?.disconnect?.();
-      observer = null;
-      return;
-    }
     let start = null;
     let login = false;
     for (const element of document.querySelectorAll(selector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
-      if (!start && startPattern.test(label)) start = element;
+      if (!start && !isPlaying && startPattern.test(label)) start = element;
       if (!login && loginPattern.test(label)) login = true;
       if (start && login) break;
+    }
+    if (login) {
+      if (!loginReported && Date.now() - observedAt >= 15000) {
+        loginReported = true;
+        rejectCapturedAuth();
+        try { window.chrome?.webview?.postMessage('{{PREFIX}}-login-required'); } catch (_) {}
+      }
+      return;
     }
     if (start) {
       const now = Date.now();
@@ -121,9 +126,6 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
         lastSignalAt = now;
         try { window.chrome?.webview?.postMessage('{{PREFIX}}-start-visible'); } catch (_) {}
       }
-    } else if (login && !loginReported && Date.now() - observedAt >= 15000) {
-      loginReported = true;
-      try { window.chrome?.webview?.postMessage('{{PREFIX}}-login-required'); } catch (_) {}
     }
   };
   const schedule = (delay = 100) => {
@@ -143,7 +145,7 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   const attachObserver = () => {
     if (!NativeMutationObserver || observer || !document.documentElement) return;
     observer = new NativeMutationObserver(records => {
-      if (records.some(relevant)) scheduleUnlessPlaying();
+      if (records.some(relevant)) schedule();
     });
     observer.observe(document, { childList: true, subtree: true });
   };
@@ -152,10 +154,15 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   for (const eventName of ['play','playing','canplay','pause','ended','stalled','waiting','error']) {
     document.addEventListener(eventName, publishAudio, true);
   }
-  document.addEventListener('DOMContentLoaded', scheduleUnlessPlaying, { once: true });
-  window.addEventListener('load', scheduleUnlessPlaying, { once: true });
+  window.addEventListener('homepanel-stationhead-auth-ready', () => {
+    loginReported = false;
+    lastSignalAt = 0;
+    scheduleUnlessPlaying(0);
+  });
+  document.addEventListener('DOMContentLoaded', schedule, { once: true });
+  window.addEventListener('load', schedule, { once: true });
   schedule();
-  nativeTimeout(scheduleUnlessPlaying, 15000);
+  nativeTimeout(schedule, 15000);
 })()
 )JS";
   const auto replaceAll = [](std::wstring text, std::wstring_view from, std::wstring_view to) {
@@ -213,6 +220,7 @@ inline std::wstring StationheadAuthCaptureScript() {
     window.__homepanelStationheadRejectedAuthorization = null;
     window.__homepanelStationheadAuthHeaders = next;
     if (changed) {
+      try { window.dispatchEvent(new Event('homepanel-stationhead-auth-ready')); } catch (_) {}
       try { window.chrome?.webview?.postMessage({ type: 'stationhead-auth-ready' }); } catch (_) {}
     }
   };
