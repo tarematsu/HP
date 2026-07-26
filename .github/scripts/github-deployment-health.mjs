@@ -65,7 +65,11 @@ export function parseDeploymentTargets(logText) {
   const workers = workerMatch
     ? [...workerMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
     : [];
-  return { minute_db: false, pages: false, workers, commands: [] };
+  const commandMatch = normalized.match(/"commands"\s*:\s*\[([\s\S]*?)\]/);
+  const commands = commandMatch
+    ? [...commandMatch[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
+    : [];
+  return { minute_db: false, pages: false, workers, commands };
 }
 
 export function extractDeploymentError(logText, { maximum = 800 } = {}) {
@@ -136,7 +140,32 @@ function componentFromStep({ workflow, target, job, step, error = '', run }) {
   };
 }
 
-export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, jobErrors = {} }) {
+export function workerDeploymentResults(logText, commands = [], jobConclusion = 'unknown') {
+  const normalizedCommands = Array.isArray(commands) ? commands.map(String).filter(Boolean) : [];
+  const started = String(logText || '')
+    .split(/\r?\n/)
+    .map(cleanLogLine)
+    .map((line) => line.match(/^Deploying\s+(\S+)/i)?.[1] || '')
+    .filter(Boolean);
+  const result = {};
+  if (!started.length) return result;
+  const lastStarted = started.at(-1);
+  const jobResult = normalizedResult(jobConclusion);
+  for (const command of normalizedCommands) {
+    if (!started.includes(command)) {
+      result[command] = 'skipped';
+    } else if (jobResult === 'success') {
+      result[command] = 'success';
+    } else if (command === lastStarted) {
+      result[command] = jobResult;
+    } else {
+      result[command] = 'success';
+    }
+  }
+  return result;
+}
+
+export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, jobErrors = {}, workerResults = {} }) {
   const workflow = target.name;
   if (!run) {
     return {
@@ -164,14 +193,22 @@ export function summarizeDeploymentRun({ target, run, jobs = [], targets = {}, j
     }
 
     const workers = Array.isArray(targets.workers) ? targets.workers : [];
-    for (const worker of workers) {
-      components.push(componentFromJob({
+    const commands = Array.isArray(targets.commands) ? targets.commands : [];
+    for (const [index, worker] of workers.entries()) {
+      const command = commands[index] || '';
+      const workerResult = command ? workerResults[command] : '';
+      const component = componentFromJob({
         workflow,
         target: worker,
         job: workersJob,
         error: jobErrors[workersJob?.id] || '',
         run,
-      }));
+      });
+      if (workerResult) {
+        component.result = workerResult;
+        component.error = workerResult === 'success' ? '' : component.error;
+      }
+      components.push(component);
     }
 
     components.push(componentFromJob({
@@ -267,7 +304,7 @@ export async function collectDeploymentHealth(request, {
       const logs = new Map();
       const jobsToRead = jobs.filter((job) => (
         FAILURE_CONCLUSIONS.has(normalizedResult(job?.conclusion))
-        || (target.kind === 'stationhead' && /Select deployment targets/i.test(jobName(job)))
+        || (target.kind === 'stationhead' && /(?:Select deployment targets|Deploy affected Workers)/i.test(jobName(job)))
       ));
       await Promise.all(jobsToRead.map(async (job) => {
         logs.set(job.id, await fetchJobLog(repository, token, job.id));
@@ -282,7 +319,17 @@ export async function collectDeploymentHealth(request, {
           jobErrors[job.id] = extractDeploymentError(logs.get(job.id) || '');
         }
       }
-      return summarizeDeploymentRun({ target, run, jobs, targets: deploymentTargets, jobErrors });
+      const workersJob = target.kind === 'stationhead'
+        ? findJob(jobs, [/Deploy affected Workers/i, /^workers$/i])
+        : null;
+      const workerResults = target.kind === 'stationhead'
+        ? workerDeploymentResults(
+          logs.get(workersJob?.id) || '',
+          deploymentTargets.commands,
+          workersJob?.conclusion || workersJob?.status,
+        )
+        : {};
+      return summarizeDeploymentRun({ target, run, jobs, targets: deploymentTargets, jobErrors, workerResults });
     } catch (error) {
       return {
         target,
@@ -338,7 +385,7 @@ export function renderDeploymentHealthSummary(results, { generatedAt = new Date(
 
 | Workflow | Target | Result | Commit | Completed | Run |
 |---|---|---|---|---|---|
-${rows.join('\n') || '| - | `none` | **unknown** | `unknown` | unknown | none |'}${failures.length ? `\n\n#### Deployment errors and blocked targets\n\n${failures.join('\n')}` : ''}`;
+${rows.join('\n') || '| - | `none` | **unknown** | `unknown` | unknown | none |'}${failures.length ? `\n\n#### Deployment errors, skipped, and blocked targets\n\n${failures.join('\n')}` : ''}`;
 }
 
 export function renderDeploymentHealthBlock(summary) {
