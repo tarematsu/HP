@@ -28,8 +28,6 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(runner, /d1', 'execute'.*--remote/s);
   assert.match(r2Store, /pages-response\/actions-v1/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
-
-  assert.deepEqual(Object.keys((await import('../worker/src/runtime-orchestrator-deployed-entry.js')).default || {}), undefined);
 });
 
 test('runtime serves materialized responses but owns no read-model scheduler', () => {
