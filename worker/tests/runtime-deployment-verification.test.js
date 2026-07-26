@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   activeVersionIdsFromDeploymentPayload,
   durableObjectBindingsFromPayload,
+  queueOnlyRuntimeDeployConfig,
   schedulesFromPayload,
   verifyRuntimeDeployment,
 } from '../scripts/verify-runtime-deployment.mjs';
@@ -26,6 +27,22 @@ function deployment(version) {
     },
   };
 }
+
+test('temporary runtime deploy config explicitly retires cron and Durable Object surfaces', () => {
+  const source = {
+    name: 'sh-runtime-orchestrator',
+    durable_objects: { bindings: [{ name: 'SCHEDULER_COORDINATOR' }] },
+    migrations: [{ tag: 'v1' }],
+    vars: { KEEP: true },
+  };
+  const deployed = queueOnlyRuntimeDeployConfig(source);
+  assert.deepEqual(deployed.triggers, { crons: [] });
+  assert.equal(deployed.durable_objects, undefined);
+  assert.equal(deployed.migrations, undefined);
+  assert.deepEqual(deployed.vars, { KEEP: true });
+  assert.notEqual(deployed, source);
+  assert.notEqual(deployed.vars, source.vars);
+});
 
 test('runtime deployment payload keeps only traffic-bearing versions', () => {
   assert.deepEqual(
