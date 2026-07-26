@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -14,6 +14,11 @@ import {
   pruneRetiredWorkers,
 } from './cloudflare-workers.mjs';
 import { preparePagesReadModelDeployConfig } from './pages-response-kv-namespace.mjs';
+import {
+  queueOnlyRuntimeDeployConfig,
+  readActiveRuntimeVersionIds,
+  verifyRuntimeDeployment,
+} from './verify-runtime-deployment.mjs';
 
 const workerRoot = fileURLToPath(new URL('..', import.meta.url));
 const configName = 'wrangler.runtime.jsonc';
@@ -46,8 +51,18 @@ const paused = new Set();
 const removed = new Set();
 let previousConsumers = new Set();
 let runtimeConsumers = new Set();
+let previousRuntimeVersionIds = new Set();
+let deploymentVerification = null;
 
 try {
+  const temporaryConfig = JSON.parse(readFileSync(deploy.configPath, 'utf8'));
+  writeFileSync(
+    deploy.configPath,
+    `${JSON.stringify(queueOnlyRuntimeDeployConfig(temporaryConfig), null, 2)}\n`,
+    'utf8',
+  );
+
+  previousRuntimeVersionIds = await readActiveRuntimeVersionIds({ scriptName: runtimeScript });
   previousConsumers = new Set(
     migrations
       .filter(({ queue, oldScript }) => oldScript && hasConsumer(queue, oldScript))
@@ -75,6 +90,11 @@ try {
       throw new Error(`retired core consumer still attached: ${oldScript} on ${queue}`);
     }
   }
+
+  deploymentVerification = await verifyRuntimeDeployment({
+    scriptName: runtimeScript,
+    previousVersionIds: previousRuntimeVersionIds,
+  });
 
   for (const queue of paused) resumeQueue(queue);
   paused.clear();
@@ -119,4 +139,5 @@ console.log(JSON.stringify({
   deferred_retired_scripts: [...DEFERRED_RETIREMENT_WORKERS],
   queues: migrations.map(({ queue }) => queue),
   pages_response_kv_namespace: deploy.namespace.id,
+  deployment_verification: deploymentVerification,
 }));
