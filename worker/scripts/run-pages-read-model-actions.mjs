@@ -108,7 +108,10 @@ export function dueVariantKeys(now) {
     due.add('history:broadcasts');
   }
   if (minute % 360 === 4) due.add('history:monthly');
-  if (minute % 1440 === 4) due.add('host-history:summary');
+  if (minute % 1440 === 4) {
+    due.add('host-history:summary');
+    due.add('track-history');
+  }
   return due;
 }
 
@@ -116,6 +119,7 @@ async function responseHandler(modelKey) {
   if (modelKey === 'dashboard') return (await import('../../site/functions/api/dashboard.js')).onRequestGet;
   if (modelKey.startsWith('history:')) return (await import('../../site/functions/api/history.js')).onRequestGet;
   if (modelKey === 'host-history:summary') return (await import('../../site/functions/api/host-history.js')).onRequestGet;
+  if (modelKey === 'track-history') return (await import('../../site/functions/api/track-history.js')).onRequestGet;
   throw new Error(`unsupported Actions read model: ${modelKey}`);
 }
 
@@ -179,10 +183,11 @@ async function materializeVariant(variant, env, now) {
 }
 
 function productionEnvironment() {
+  const buddiesDb = createRemoteD1(buddiesDatabase);
   const minuteDb = createRemoteD1(factsDatabase);
   return {
-    DB: createRemoteD1(buddiesDatabase),
-    BUDDIES_DB: createRemoteD1(buddiesDatabase),
+    DB: buddiesDb,
+    BUDDIES_DB: buddiesDb,
     MINUTE_DB: minuteDb,
     OTHER_DB: createRemoteD1(otherDatabase),
     PAGES_TRACK_HISTORY_CYCLE_ENABLED: true,
@@ -192,7 +197,13 @@ function productionEnvironment() {
 function trackHistoryComplete(result) {
   return result?.reason === 'track-history-cycle-already-published'
     || result?.stage?.published === true
-    || result?.publication?.phase === 'complete';
+    || result?.publication?.published === true
+    || result?.publication?.phase === 'published';
+}
+
+function trackHistoryPublishedThisRun(result) {
+  return result?.task?.kind === 'track-history-published'
+    || result?.publication?.published === true;
 }
 
 export async function runPagesReadModelActions(options = {}) {
@@ -234,6 +245,7 @@ export async function runPagesReadModelActions(options = {}) {
   }
 
   const dueKeys = dueVariantKeys(startedAt);
+  if (trackHistoryPublishedThisRun(lastResult)) dueKeys.add('track-history');
   const published = [];
   for (const variant of variants.filter((item) => dueKeys.has(item.key))) {
     if (Number(clock()) >= deadlineMs) {
