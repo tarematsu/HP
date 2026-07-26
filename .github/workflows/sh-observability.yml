@@ -3,7 +3,8 @@ name: Unified Cloudflare Observability
 # HPと旧SHを単一のアカウント全体診断・Status Issueで監視する。
 on:
   workflow_run:
-    workflows: ["Deploy production", "Deploy HomePanel Cloud services"]
+    # Core deployment triggers remain explicit: workflows: ["Deploy production", "Deploy HomePanel Cloud services"]
+    workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]
     types: [completed]
   push:
     branches: [main]
