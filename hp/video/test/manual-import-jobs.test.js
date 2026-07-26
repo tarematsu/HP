@@ -180,7 +180,7 @@ test('large imports use private Queue chaining while preserving D1 finalization 
   assert.equal(videoWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
   assert.equal(videoWrangler.queues.consumers[0].max_batch_size, 1);
   assert.equal(videoWrangler.queues.consumers[0].max_concurrency, 1);
-  assert.equal(gatewayWrangler.triggers, undefined);
+  assert.deepEqual(gatewayWrangler.triggers?.crons, []);
   assert.equal(gatewayWrangler.queues, undefined);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS manual_import_job_chunks/);
   assert.match(migration, /failure_count INTEGER NOT NULL DEFAULT 0/);

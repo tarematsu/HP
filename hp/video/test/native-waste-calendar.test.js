@@ -56,6 +56,17 @@ test('course 36 fiscal-year table includes the published July week', () => {
   assert.match(calendar, /プラ製容器/);
 });
 
+test('calendar headers use small text and waste items use medium text', () => {
+  assert.match(
+    calendar,
+    /CachedUiFont\(std::clamp\(headerHeight \* 45 \/ 100, 10, 15\), FW_NORMAL\)/,
+  );
+  assert.match(
+    calendar,
+    /CachedUiFont\(std::clamp\(cellHeight \* 14 \/ 100, 14, 22\), FW_SEMIBOLD\)/,
+  );
+});
+
 test('weekly rules and year-end exceptions follow the published course 36 notes', () => {
   assert.match(calendar, /date\.wDayOfWeek == 2 \|\| date\.wDayOfWeek == 5/);
   assert.match(calendar, /dateKey == 20270101/);
