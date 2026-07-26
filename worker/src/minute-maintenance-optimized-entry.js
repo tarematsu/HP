@@ -1,3 +1,4 @@
+import { collectorReadyForMaintenance } from './collector-coordinator-status.js';
 import {
   minuteMaintenanceTask,
   runMinuteScheduledWithCollectorPriority,
@@ -58,7 +59,9 @@ export async function dispatchMinuteMaintenanceGate(controller, env, task, ctx =
   }
   const message = maintenanceMessage(controller, task);
   const maintenance = await loadRebuildMaintenanceEntry();
-  const result = await maintenance.processMinuteMaintenanceGate(env, message);
+  const result = await maintenance.processMinuteMaintenanceGate(env, message, {
+    checkCollector: collectorReadyForMaintenance,
+  });
   console.log(JSON.stringify({
     event: 'minute_maintenance_gate_inlined',
     task,
