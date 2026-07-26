@@ -7,7 +7,6 @@ import coreWorker, {
   lightweightLiveCompleteBatch,
   runCoreFetch,
   runCoreQueue,
-  runCoreScheduled,
 } from '../src/runtime-orchestrator-entry.js';
 
 function batch(queue, body = {}) {
@@ -28,32 +27,21 @@ const LIVE_ENV = Object.freeze({
   HISTORICAL_REBUILD_ENABLED: true,
 });
 
-test('core Worker exposes fetch, scheduled, and queue surfaces', () => {
-  assert.deepEqual(Object.keys(coreWorker).sort(), ['fetch', 'queue', 'scheduled']);
+test('core Worker exposes only fetch and queue surfaces', () => {
+  assert.deepEqual(Object.keys(coreWorker).sort(), ['fetch', 'queue']);
 });
 
-test('core queue keeps domain routes in separate invocations', async () => {
+test('core queue keeps only active runtime routes', async () => {
   const calls = [];
-  const env = { BUDDIES_DB: { name: 'buddies' } };
-  const ctx = {};
   const dependencies = {
-    runIngestQueue: async (_batch, activeEnv) => calls.push(['ingest', activeEnv.DB]),
-    runEnrichmentQueue: async () => calls.push(['enrichment']),
-    runPagesQueue: async () => calls.push(['pages']),
-    runRuntimeQueue: async () => calls.push(['runtime']),
+    runEnrichmentQueue: async () => calls.push('enrichment'),
+    runRuntimeQueue: async () => calls.push('runtime'),
   };
 
-  await runCoreQueue(batch('stationhead-comments'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-minute-enrichment'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-read-model'), env, ctx, dependencies);
-  await runCoreQueue(batch('stationhead-host-monitor'), env, ctx, dependencies);
+  await runCoreQueue(batch('stationhead-minute-enrichment'), {}, {}, dependencies);
+  await runCoreQueue(batch('stationhead-minute-derive'), {}, {}, dependencies);
 
-  assert.deepEqual(calls, [
-    ['ingest', env.BUDDIES_DB],
-    ['enrichment'],
-    ['pages'],
-    ['runtime'],
-  ]);
+  assert.deepEqual(calls, ['enrichment', 'runtime']);
 });
 
 test('all budgeted live stages bypass the common runtime and derive graphs', async () => {
@@ -102,25 +90,14 @@ test('all budgeted live stages bypass the common runtime and derive graphs', asy
   assert.deepEqual(calls, ['trigger', 'revision', 'write', 'complete']);
 });
 
-test('one scheduled tick runs routine Pages work without a per-minute Queue hop', async () => {
-  const calls = [];
-  const controller = { cron: '* * * * *', scheduledTime: 123 };
-  const result = await runCoreScheduled(controller, {}, {}, {
-    runRuntimeScheduled: async () => { calls.push('runtime'); return ['runtime']; },
-    runPagesScheduled: async () => { calls.push('pages'); return { inline: true }; },
-  });
-  assert.deepEqual(calls.sort(), ['pages', 'runtime']);
-  assert.deepEqual(result, { runtime: ['runtime'], pages: { inline: true } });
-});
-
-test('internal Pages fetch is delegated without exposing another Worker', async () => {
+test('internal Pages fetch remains delegated to the serving adapter', async () => {
   const response = await runCoreFetch(new Request('https://internal.test/'), {}, {}, {
     runPagesFetch: async () => new Response('ok'),
   });
   assert.equal(await response.text(), 'ok');
 });
 
-test('runtime, collector, and recovery configs preserve domain isolation across four active Workers', () => {
+test('runtime, collector, and recovery configs preserve domain isolation', () => {
   const collector = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-collector.jsonc', import.meta.url),
     'utf8',
@@ -136,11 +113,8 @@ test('runtime, collector, and recovery configs preserve domain isolation across 
   const collectorConsumers = new Set(collector.queues.consumers.map(({ queue }) => queue));
   const recoveryConsumers = new Set(recovery.queues.consumers.map(({ queue }) => queue));
   const runtimeConsumers = new Set(runtime.queues.consumers.map(({ queue }) => queue));
-  for (const queue of [
-    'stationhead-raw-collection',
-    'stationhead-comments',
-    'stationhead-buddies-persist',
-  ]) {
+
+  for (const queue of ['stationhead-raw-collection', 'stationhead-comments', 'stationhead-buddies-persist']) {
     assert.equal(recoveryConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(runtimeConsumers.has(queue), false, queue);
@@ -148,17 +122,23 @@ test('runtime, collector, and recovery configs preserve domain isolation across 
   for (const queue of [
     'stationhead-minute-enrichment',
     'stationhead-track-metadata',
-    'stationhead-pages-read-model-publication',
-    'stationhead-host-monitor',
     'stationhead-minute-live-derive',
   ]) {
     assert.equal(runtimeConsumers.has(queue), true, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(recoveryConsumers.has(queue), false, queue);
   }
+  for (const retiredQueue of [
+    'stationhead-pages-read-model-publication',
+    'stationhead-read-model',
+    'stationhead-host-monitor',
+  ]) {
+    assert.equal(runtimeConsumers.has(retiredQueue), false, retiredQueue);
+  }
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.durable_objects, undefined);
   assert.equal(packageJson.scripts['deploy:buddies-recovery'], 'node scripts/deploy-buddies-recovery.mjs');
   assert.equal(packageJson.scripts['deploy:buddies-collector'], 'node scripts/deploy-buddies-collector.mjs');
-  assert.equal('deploy:minute-enrichment' in packageJson.scripts, false);
   assert.equal(packageJson.scripts['deploy:runtime'], 'node scripts/deploy-runtime.mjs');
   assert.deepEqual(pagesConfig.services, [{
     binding: 'PAGES_READ_MODEL_SERVICE',
