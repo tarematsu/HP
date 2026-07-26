@@ -42,14 +42,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
 
-      - name: Install Worker dependencies
-        run: |
-          npm --prefix hp/cloud ci --no-audit --no-fund
-          npm --prefix hp/video install --no-audit --no-fund
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Roll back video service
-        working-directory: hp/video
+        working-directory: hp
         shell: bash
         env:
           VERSION_ID: ${{ inputs.video_version }}
@@ -57,10 +58,10 @@ jobs:
           set -euo pipefail
           args=(rollback --name homepanel-video --message "GitHub Actions rollback")
           if [ -n "$VERSION_ID" ]; then args=(rollback "$VERSION_ID" --name homepanel-video --message "GitHub Actions rollback"); fi
-          npx wrangler "${args[@]}"
+          npm exec --workspace video -- wrangler "${args[@]}"
 
       - name: Roll back HomePanel gateway
-        working-directory: hp/cloud
+        working-directory: hp
         shell: bash
         env:
           VERSION_ID: ${{ inputs.gateway_version }}
@@ -68,4 +69,4 @@ jobs:
           set -euo pipefail
           args=(rollback --name homepanel-cloud --message "GitHub Actions rollback")
           if [ -n "$VERSION_ID" ]; then args=(rollback "$VERSION_ID" --name homepanel-cloud --message "GitHub Actions rollback"); fi
-          npx wrangler "${args[@]}"
+          npm exec --workspace cloud -- wrangler "${args[@]}"
