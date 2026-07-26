@@ -14,12 +14,10 @@ import { consumeMinuteQueue } from './minute-production-entry.js';
 export const LIVE_DERIVE_QUEUE_NAME = 'stationhead-minute-live-derive';
 export const REBUILD_DERIVE_QUEUE_NAME = 'stationhead-minute-derive';
 export const MINUTE_FACTS_QUEUE_NAME = 'stationhead-buddies-facts';
-export const MINUTE_REBUILD_QUEUE_NAME = 'stationhead-minute-rebuild';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const REPAIR_RETIRED_ERROR = 'retired-repair-message-after-disable';
 let deriveModulePromise = null;
-let rebuildModulePromise = null;
 
 async function processDeriveBatch(batch, env, dependencies) {
   const derive = await (deriveModulePromise ||= import('./minute-derive-entry.js'));
@@ -36,8 +34,7 @@ function enabled(value) {
 }
 
 function repairExplicitlyDisabled(env = {}) {
-  const value = env?.MINUTE_FACT_REPAIR_BURST_ENABLED;
-  return value != null && value !== '' && !enabled(value);
+  return !enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED);
 }
 
 function liveRevisionMaterializationEnabled(env = {}) {
@@ -165,22 +162,6 @@ function budgetedLiveCompleteBatch(batch, env) {
     && messages.every((message) => budgetedLiveCompleteMessage(message?.body));
 }
 
-function rebuildEnvironment(env) {
-  if (env?.BUDDIES_DB || !env?.DB) return env;
-  const active = Object.create(env);
-  Object.defineProperty(active, 'BUDDIES_DB', {
-    value: env.DB,
-    enumerable: false,
-    configurable: true,
-  });
-  return active;
-}
-
-async function processRebuildBatch(batch, env, ctx, dependencies) {
-  const rebuild = await (rebuildModulePromise ||= import('./minute-rebuild-batched-entry.js'));
-  return rebuild.processMinuteRebuildBatch(batch, rebuildEnvironment(env), ctx, dependencies);
-}
-
 function acknowledgeDisabledHistoricalDerive(batch) {
   for (const message of batch?.messages || []) message.ack();
   console.log(JSON.stringify({
@@ -239,9 +220,6 @@ export async function processMinutePipelineBatch(batch, env, ctx, dependencies =
     const run = dependencies.processMinuteDeriveBatch;
     if (run) return run(batch, env, dependencies.derive);
     return processDeriveBatch(batch, env, dependencies.derive);
-  }
-  if (queueName === MINUTE_REBUILD_QUEUE_NAME) {
-    return processRebuildBatch(batch, env, ctx, dependencies.rebuild);
   }
   throw new Error(`Unsupported minute pipeline queue: ${queueName || 'missing'}`);
 }
