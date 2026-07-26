@@ -189,7 +189,7 @@ jobs:
 
       - name: Publish persistent observability status
         id: publish-status
-        if: always()
+        if: always() && !cancelled()
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
