@@ -14,6 +14,14 @@ const handleSource = readFileSync(
   new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
   'utf8',
 );
+const boundaryPolicy = readFileSync(
+  new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
+  'utf8',
+);
+const nativeCmake = readFileSync(
+  new URL('../../native/CMakeLists.txt', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -81,6 +89,96 @@ test('post-navigation audio recovery cannot be mistaken for a new refresh reques
   assert.doesNotMatch(
     publicRequest,
     /return trackBoundaryRefreshPending_ \|\|\s*trackBoundaryPlaybackRecoveryPending_;/,
+  );
+});
+
+test('A and B readiness messages share one monotonic ownership lease', () => {
+  assert.match(
+    boundaryPolicy,
+    /kStationheadBoundaryWaitingLeaseMs\s*=\s*40'000/,
+  );
+  assert.match(
+    boundaryPolicy,
+    /kStationheadBoundaryCommittedLeaseMs\s*=\s*3 \* 60'000/,
+  );
+  assert.match(
+    boundaryPolicy,
+    /message == WM_HP_PRIMARY_RELOAD_READY \|\|[\s\S]*message == WM_HP_SECONDARY_RELOAD_READY/,
+  );
+  assert.match(boundaryPolicy, /GetTickCount64\(\)/);
+  assert.doesNotMatch(boundaryPolicy, /UnixMillis\(/);
+  assert.match(boundaryPolicy, /inline SRWLOCK leaseLock = SRWLOCK_INIT;/);
+  assert.match(boundaryPolicy, /inline UINT ownerMessage = 0;/);
+  assert.match(boundaryPolicy, /inline ULONGLONG expiresAt = 0;/);
+});
+
+test('the current role may retry while the peer is rejected until lease expiry', () => {
+  const decision = section(
+    boundaryPolicy,
+    'inline constexpr bool StationheadBoundaryLeaseAllows(',
+    'static_assert(IsStationheadBoundaryReadyMessage',
+  );
+  assert.match(
+    decision,
+    /ownerMessage == 0 \|\| ownerMessage == candidateMessage \|\|[\s\S]*now >= expiresAt/,
+  );
+  assert.match(
+    boundaryPolicy,
+    /static_assert\(!StationheadBoundaryLeaseAllows\([\s\S]*WM_HP_PRIMARY_RELOAD_READY,[\s\S]*WM_HP_SECONDARY_RELOAD_READY, 9'999\)\);/,
+  );
+  assert.match(
+    boundaryPolicy,
+    /static_assert\(StationheadBoundaryLeaseAllows\([\s\S]*WM_HP_PRIMARY_RELOAD_READY,[\s\S]*WM_HP_SECONDARY_RELOAD_READY, 10'000\)\);/,
+  );
+});
+
+test('unrelated SendMessage calls retain native behavior and rejected peers do not enter App', () => {
+  const wrapper = section(
+    boundaryPolicy,
+    'inline LRESULT SendMessageWWithStationheadBoundaryLease(',
+    '}  // namespace hp',
+  );
+  assert.match(
+    wrapper,
+    /if \(!IsStationheadBoundaryReadyMessage\(message\)\) \{[\s\S]*return ::SendMessageW\(window, message, wParam, lParam\);/,
+  );
+  assert.match(wrapper, /if \(!allowed\) return 0;/);
+  assert.ok(
+    wrapper.indexOf('if (!allowed) return 0;') <
+      wrapper.indexOf('const LRESULT result = ::SendMessageW'),
+    'a peer request must be rejected before synchronous App dispatch',
+  );
+});
+
+test('accepted navigation extends the owner lease without blocking same-role retries', () => {
+  const wrapper = section(
+    boundaryPolicy,
+    'inline LRESULT SendMessageWWithStationheadBoundaryLease(',
+    '}  // namespace hp',
+  );
+  assert.match(
+    wrapper,
+    /result != 0[\s\S]*kStationheadBoundaryCommittedLeaseMs[\s\S]*kStationheadBoundaryWaitingLeaseMs/,
+  );
+  assert.match(
+    wrapper,
+    /stationhead_boundary_message_policy::ownerMessage == message/,
+  );
+});
+
+test('the serialization policy is the final HomePanel PCH layer', () => {
+  assert.match(
+    nativeCmake,
+    /src\/sh_runtime_resource_boundary_policy_fix\.h[\s\S]*src\/sh_track_boundary_message_policy\.h[\s\S]*src\/sh\.cpp/,
+  );
+  assert.match(
+    nativeCmake,
+    /target_precompile_headers\(HomePanel PRIVATE[\s\S]*src\/sh_runtime_resource_boundary_policy_fix\.h\)[\s\S]*target_precompile_headers\(HomePanel PRIVATE[\s\S]*src\/sh_track_boundary_message_policy\.h\)/,
+  );
+  assert.ok(
+    boundaryPolicy.indexOf('return ::SendMessageW(window, message, wParam, lParam);') <
+      boundaryPolicy.indexOf('#define SendMessageW SendMessageWWithStationheadBoundaryLease'),
+    'the native call must be compiled before the pass-through macro is installed',
   );
 });
 
