@@ -14,6 +14,10 @@ const runtimeEntry = readFileSync(
   new URL('../src/runtime-orchestrator-entry.js', import.meta.url),
   'utf8',
 );
+const pagesResponseFetch = readFileSync(
+  new URL('../src/pages-response-fetch-entry.js', import.meta.url),
+  'utf8',
+);
 const liveCompleteMessage = readFileSync(
   new URL('../src/minute-live-complete-message.js', import.meta.url),
   'utf8',
@@ -75,17 +79,24 @@ test('live trigger uses the narrow lease boundary instead of loading derive and 
   assert.doesNotMatch(liveTriggerEntry, /from '\.\/minute-facts-inbox\.js'/);
 });
 
-test('runtime keeps queue and fetch graphs lazy without a scheduled graph', () => {
+test('runtime keeps queue and serving graphs lazy without a scheduled graph', () => {
   for (const moduleName of [
     'minute-enrichment-optimized-entry.js',
-    'pages-read-model-entry.js',
+    'pages-response-fetch-entry.js',
     'runtime-queue.js',
   ]) {
     assert.match(runtimeEntry, new RegExp(`import\\('./${moduleName.replaceAll('.', '\\.')}'\\)`));
     assert.doesNotMatch(runtimeEntry, new RegExp(`from './${moduleName.replaceAll('.', '\\.')}'`));
   }
-  assert.doesNotMatch(runtimeEntry, /runtime-scheduled|runCoreScheduled|scheduled\s*:/);
+  assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runtime-scheduled|runCoreScheduled|scheduled\s*:/);
   assert.doesNotMatch(runtimeEntry, /ingest-channel-optimized-entry/);
+});
+
+test('serving-only Pages module does not import generation or publication graphs', () => {
+  assert.match(pagesResponseFetch, /runPagesResponseFetch/);
+  assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
+  assert.match(pagesResponseFetch, /loadMaterializedResponse/);
+  assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
 });
 
 test('minute enrichment is queue-only and does not preload Pages generation', () => {
