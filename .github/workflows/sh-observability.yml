@@ -18,6 +18,8 @@ on:
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/capture-cloudflare-live-tail.mjs'
       - '.github/scripts/capture-public-health-endpoints.mjs'
+      - '.github/scripts/github-actions-runner-health.mjs'
+      - '.github/scripts/observability-issue-triage.mjs'
       - '.github/scripts/observability-status-publisher.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
   schedule:
