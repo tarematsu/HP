@@ -45,7 +45,7 @@ test('production direct mode executes one scheduled graph inside the Durable Obj
   assert.deepEqual(result, { runtime: 'inside-do', pages: 'inside-do' });
 });
 
-test('direct mode retries the same ticket without running the Worker fallback', async () => {
+test('direct mode retries the same ticket after a transport failure', async () => {
   const actions = [];
   let attempts = 0;
   let directCalls = 0;
@@ -73,12 +73,47 @@ test('direct mode retries the same ticket without running the Worker fallback', 
   assert.deepEqual(result, { skipped: true, reason: 'runtime-coordinator-duplicate' });
 });
 
-test('RuntimeCoordinator runs the graph once and releases its local lease', async () => {
+test('direct mode does not retry an HTTP execution failure as a duplicate success', async () => {
+  let attempts = 0;
+  let directCalls = 0;
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await assert.rejects(runFetchCoordinatedScheduled({
+      cron: '* * * * *',
+      scheduledTime: 210_000,
+    }, {
+      RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED: true,
+      RUNTIME_COORDINATOR_FAIL_OPEN: false,
+    }, {}, {
+      stub: {
+        async fetch() {
+          attempts += 1;
+          return new Response('runtime graph failed', { status: 500 });
+        },
+      },
+      async runDirect() { directCalls += 1; },
+    }), /runtime coordinator HTTP 500/);
+  } finally {
+    console.error = originalError;
+  }
+  assert.equal(attempts, 1);
+  assert.equal(directCalls, 0);
+});
+
+test('RuntimeCoordinator runs the graph once and exposes Durable Object waitUntil', async () => {
   const durableStorage = storage();
   const calls = [];
-  const coordinator = new RuntimeCoordinator({ storage: durableStorage }, {}, {
-    async runDirect(controller, env) {
+  const background = [];
+  const state = {
+    storage: durableStorage,
+    waitUntil(task) { background.push(task); },
+  };
+  const coordinator = new RuntimeCoordinator(state, {}, {
+    async runDirect(controller, env, ctx) {
       calls.push({ controller, lock: env.PRIMARY_RUN_LOCK_ENABLED });
+      assert.equal(ctx, state);
+      ctx.waitUntil(Promise.resolve('background'));
       return { runtime: 'ok', pages: 'ok' };
     },
   });
@@ -98,6 +133,7 @@ test('RuntimeCoordinator runs the graph once and releases its local lease', asyn
   assert.equal((await first.json()).runtime, 'ok');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].lock, false);
+  assert.equal(background.length, 1);
 
   const duplicate = await coordinator.fetch(request());
   assert.equal((await duplicate.json()).reason, 'runtime-coordinator-duplicate');
@@ -111,4 +147,9 @@ test('runtime configuration enables DO execution and fail-closed delivery', () =
   ));
   assert.equal(config.vars.RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED, true);
   assert.equal(config.vars.RUNTIME_COORDINATOR_FAIL_OPEN, false);
+  assert.equal(config.vars.RUNTIME_STATE_DO_ENABLED, true);
+  assert.deepEqual(config.durable_objects.bindings, [{
+    name: 'RUNTIME_COORDINATOR',
+    class_name: 'RuntimeCoordinator',
+  }]);
 });
