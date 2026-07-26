@@ -13,7 +13,11 @@ test('shared diagnostics action owns persisted-query and live-tail orchestration
   assert.match(action, /node \.github\/scripts\/capture-cloudflare-live-tail\.mjs/);
   assert.match(action, /wait "\$query_pid" \|\| query_status=\$\?/);
   assert.match(action, /wait "\$tail_pid" \|\| true/);
-  assert.match(action, /exit "\$query_status"/);
+  assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
+  assert.match(action, /id: collect/);
+  assert.match(action, /echo "query-outcome=\$query_outcome" >> "\$GITHUB_OUTPUT"/);
+  assert.match(action, /echo "public-health-outcome=\$public_health_outcome" >> "\$GITHUB_OUTPUT"/);
+  assert.doesNotMatch(action, /exit "\$health_status"/);
 });
 
 test('the unified workflow uses and retriggers the diagnostics action for HP and Stationhead', () => {
@@ -32,6 +36,18 @@ test('the unified workflow uses and retriggers the diagnostics action for HP and
     /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video/,
   );
   assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
+  assert.match(
+    workflow,
+    /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.query-outcome \}\}/,
+  );
+  assert.match(
+    workflow,
+    /steps\.observability-query\.outputs\.public-health-outcome == 'failure'/,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outcome \}\}/,
+  );
 });
 
 test('ambiguous and superseded observability implementations stay removed', async () => {

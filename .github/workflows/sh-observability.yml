@@ -206,7 +206,7 @@ jobs:
           FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
           BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
           D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
-          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outcome }}
+          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
         run: node .github/scripts/publish-cloudflare-observability-status.mjs
 
@@ -241,7 +241,8 @@ jobs:
           steps.free-tier-budget.outcome == 'failure' ||
           steps.budget-contract.outcome == 'failure' ||
           steps.d1-insights.outcome == 'failure' ||
-          steps.observability-query.outcome == 'failure' ||
+          steps.observability-query.outputs.query-outcome == 'failure' ||
+          steps.observability-query.outputs.public-health-outcome == 'failure' ||
           steps.telemetry-policy.outcome == 'failure' ||
           steps.publish-status.outcome == 'failure'
         run: exit 1

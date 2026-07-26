@@ -83,13 +83,12 @@ test('remote D1 failures preserve Wrangler stderr', async () => {
   );
 });
 
-test('remote D1 batch uses JSON output and returns per-statement metadata', async () => {
+test('remote D1 batch uses command JSON output and returns per-statement metadata', async () => {
   const calls = [];
   const db = createWranglerRemoteD1({
     database: 'test-db',
     cwd: workerRoot,
     wranglerScript: '/tmp/wrangler.js',
-    tempPrefix: '.remote-d1-test-',
     execFileSync(_command, args) {
       calls.push(args);
       return resultJson([
@@ -104,5 +103,9 @@ test('remote D1 batch uses JSON output and returns per-statement metadata', asyn
   ]);
   assert.deepEqual(results.map(({ meta }) => meta.changes), [5000, 12]);
   assert.equal(calls[0].includes('--json'), true);
-  assert.equal(calls[0].includes('--file'), true);
+  assert.equal(calls[0].includes('--command'), true);
+  assert.equal(calls[0].includes('--file'), false);
+  const command = calls[0][calls[0].indexOf('--command') + 1];
+  assert.match(command, /DELETE FROM first_table WHERE observed_at<100;/);
+  assert.match(command, /DELETE FROM second_table WHERE observed_at<100;/);
 });

@@ -1,7 +1,5 @@
 import { execFileSync as defaultExecFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 function jsonStartIndexes(text) {
   const indexes = [];
@@ -160,7 +158,6 @@ export function createWranglerRemoteD1({
   cwd,
   wranglerScript,
   execFileSync = defaultExecFileSync,
-  tempPrefix = '.remote-d1-',
 }) {
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
   if (!String(cwd || '').trim()) throw new Error('remote D1 working directory is required');
@@ -207,27 +204,22 @@ export function createWranglerRemoteD1({
     prepare(sql) { return createStatement(sql); },
     async batch(statements = []) {
       if (!statements.length) return [];
-      const directory = mkdtempSync(join(cwd, tempPrefix));
-      try {
-        const path = join(directory, 'batch.sql');
-        const rendered = statements.map((item) => {
-          if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
-            throw new TypeError('remote D1 batch received an incompatible statement');
-          }
-          return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
-        });
-        writeFileSync(path, `${rendered.join('\n')}\n`, 'utf8');
-        const results = wranglerD1Results(execute(['--file', path]));
-        if (results.length !== statements.length) {
-          throw new Error(`Wrangler returned ${results.length} D1 batch results for ${statements.length} statements`);
+      const rendered = statements.map((item) => {
+        if (!item || typeof item.__sql !== 'string' || !Array.isArray(item.__bindings)) {
+          throw new TypeError('remote D1 batch received an incompatible statement');
         }
-        if (results.some((result) => !result.success)) {
-          throw new Error('Wrangler reported an unsuccessful D1 batch statement');
-        }
-        return results;
-      } finally {
-        rmSync(directory, { recursive: true, force: true });
+        return `${bindD1Sql(item.__sql, item.__bindings).replace(/;+\s*$/, '')};`;
+      });
+      // Remote --file uses D1 import and returns one aggregate result. A multi-query
+      // --command preserves the per-statement results expected by the D1 batch API.
+      const results = wranglerD1Results(execute(['--command', rendered.join('\n')]));
+      if (results.length !== statements.length) {
+        throw new Error(`Wrangler returned ${results.length} D1 batch results for ${statements.length} statements`);
       }
+      if (results.some((result) => !result.success)) {
+        throw new Error('Wrangler reported an unsuccessful D1 batch statement');
+      }
+      return results;
     },
   };
 }
