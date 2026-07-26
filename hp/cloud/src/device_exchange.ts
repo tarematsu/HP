@@ -1,6 +1,6 @@
 import { authorizedDevice, deviceIdFromRequest } from "./auth";
 import * as deviceSync from "./device_sync";
-import * as deviceSyncCoordinator from "./device_sync_coordinator";
+import * as deviceSyncCoordinator from "./device_sync_coordinator_client";
 import { queueSchedulerWatchdog } from "./scheduler_coordinator";
 import type { Env } from "./sources";
 import { applyCompactTelemetryInput } from "./telemetry_compact";
