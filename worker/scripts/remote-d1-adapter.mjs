@@ -149,6 +149,12 @@ function statementResult(output) {
   return results[0];
 }
 
+function commandFailureDetail(error) {
+  const stderr = String(error?.stderr || '').trim();
+  const stdout = String(error?.stdout || '').trim();
+  return stderr || stdout || String(error?.message || error || '').trim();
+}
+
 export function createWranglerRemoteD1({
   database,
   cwd,
@@ -160,17 +166,26 @@ export function createWranglerRemoteD1({
   if (!String(cwd || '').trim()) throw new Error('remote D1 working directory is required');
   if (!String(wranglerScript || '').trim()) throw new Error('Wrangler script path is required');
 
-  const execute = (tail) => execFileSync(process.execPath, [
-    wranglerScript,
-    'd1', 'execute', database,
-    '--remote', '--yes', '--json',
-    ...tail,
-  ], {
-    cwd,
-    env: process.env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  const execute = (tail) => {
+    try {
+      return execFileSync(process.execPath, [
+        wranglerScript,
+        'd1', 'execute', database,
+        '--remote', '--yes', '--json',
+        ...tail,
+      ], {
+        cwd,
+        env: process.env,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      const detail = commandFailureDetail(error).slice(0, 4000);
+      const wrapped = new Error(`Wrangler D1 execute failed for ${database}${detail ? `: ${detail}` : ''}`);
+      wrapped.cause = error;
+      throw wrapped;
+    }
+  };
 
   const createStatement = (sql, bindings = []) => ({
     __sql: String(sql),
