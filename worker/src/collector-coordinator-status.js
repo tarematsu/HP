@@ -3,6 +3,8 @@ const COORDINATOR_URL = 'https://buddies-collector-coordinator.internal/status';
 const MINUTE_MS = 60_000;
 const MAX_WAIT_MS = 20_000;
 const MAX_POLL_MS = 5_000;
+const COLLECTOR_STATE_CHECKPOINT_MS = 20 * MINUTE_MS;
+const COLLECTOR_READY_GRACE_MS = 2 * MINUTE_MS;
 
 function enabled(value, fallback = true) {
   if (value == null || value === '') return fallback;
@@ -90,8 +92,50 @@ export async function waitForCollectorCoordinator(env = {}, scheduledAt = Date.n
   }
 }
 
+export async function collectorReadyForMaintenance(env = {}, scheduledAt = Date.now(), options = {}) {
+  const targetMinute = collectorMinuteAt(scheduledAt);
+  const freshnessFloor = targetMinute - COLLECTOR_STATE_CHECKPOINT_MS - COLLECTOR_READY_GRACE_MS;
+  const durable = await waitForCollectorCoordinator(env, scheduledAt, {
+    minimumSuccessAt: freshnessFloor,
+    waitMs: 0,
+    pollMs: options.pollMs,
+    stub: options.stub,
+  });
+  if (durable) {
+    return {
+      ...durable,
+      targetMinute,
+      freshnessFloor,
+    };
+  }
+
+  const db = env?.BUDDIES_DB;
+  if (!db?.prepare) return { ready: true, reason: 'buddies-db-binding-missing' };
+  try {
+    const row = await db.prepare(`SELECT last_run_at,last_success_at,last_error
+      FROM sh_worker_collector_state WHERE id='stationhead' LIMIT 1`).first();
+    const lastRunAt = Number(row?.last_run_at || 0);
+    const lastSuccessAt = Number(row?.last_success_at || 0);
+    return {
+      ready: lastRunAt >= freshnessFloor && lastSuccessAt >= freshnessFloor && !row?.last_error,
+      targetMinute,
+      freshnessFloor,
+      lastRunAt,
+      lastSuccessAt,
+      source: 'd1-fallback',
+    };
+  } catch (error) {
+    if (/no such table|no such column/i.test(String(error?.message || error))) {
+      return { ready: true, reason: 'collector-state-unavailable', targetMinute };
+    }
+    throw error;
+  }
+}
+
 export const COLLECTOR_COORDINATOR_STATUS = Object.freeze({
   coordinator_name: COORDINATOR_NAME,
   max_wait_ms: MAX_WAIT_MS,
   max_poll_ms: MAX_POLL_MS,
+  checkpoint_ms: COLLECTOR_STATE_CHECKPOINT_MS,
+  ready_grace_ms: COLLECTOR_READY_GRACE_MS,
 });
