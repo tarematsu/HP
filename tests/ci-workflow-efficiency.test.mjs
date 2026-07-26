@@ -15,10 +15,15 @@ function jobSection(source, name, nextName) {
 }
 
 const ci = workflow('ci.yml');
+const homePanelCi = workflow('homepanel-unified-ci.yml');
+const videoCi = workflow('video-ci.yml');
 const productionDeploy = workflow('deploy-split-pipeline.yml');
 const d1Usage = workflow('fetch-cloudflare-d1-usage.yml');
 const observability = workflow('sh-observability.yml');
 const sitePackage = JSON.parse(readFileSync(new URL('../site/package.json', import.meta.url), 'utf8'));
+const homePanelPackage = JSON.parse(
+  readFileSync(new URL('../hp/cloud/package.json', import.meta.url), 'utf8'),
+);
 const workerDependencyGuard = readFileSync(
   new URL('../site/scripts/ensure-worker-test-deps.mjs', import.meta.url),
   'utf8',
@@ -29,6 +34,9 @@ test('CI selects affected scopes and keeps repository checks free of Pages depen
   assert.match(ci, /needs\.changes\.outputs\.pages == 'true'/);
   assert.match(ci, /needs\.changes\.outputs\.worker == 'true'/);
   assert.match(ci, /needs\.changes\.outputs\.sql == 'true'/);
+  assert.match(ci, /needs\.changes\.outputs\.repository_full == 'true'/);
+  assert.match(ci, /Run CI workflow contract/);
+  assert.doesNotMatch(ci, /\.github\/workflows\/ci\.yml\|\.github\/actions\/\*/);
 
   const repository = jobSection(ci, 'repository', 'pages');
   assert.match(repository, /uses: actions\/cache@v4/);
@@ -36,10 +44,10 @@ test('CI selects affected scopes and keeps repository checks free of Pages depen
   assert.match(repository, /npm ci --prefer-offline/);
   assert.doesNotMatch(repository, /site\/node_modules/);
   assert.doesNotMatch(repository, /working-directory: site/);
-  assert.match(repository, /check-js-syntax\.mjs scripts tests/);
+  assert.match(repository, /check-js-syntax\.mjs scripts tests \.github\/scripts\/ci/);
 });
 
-test('CI restores workspace dependencies and avoids the Pages pretest reinstall', () => {
+test('CI restores workspace dependencies and keeps expensive D1 checks manual-only', () => {
   const pages = jobSection(ci, 'pages', 'worker');
   const worker = jobSection(ci, 'worker', 'audit');
 
@@ -49,10 +57,65 @@ test('CI restores workspace dependencies and avoids the Pages pretest reinstall'
   assert.match(pages, /node --test tests\/\*\.test\.js/);
   assert.doesNotMatch(pages, /npm run test:integration/);
   assert.match(pages, /cache-hit != 'true'/);
+  assert.match(pages, /if: github\.event_name == 'workflow_dispatch'\n        run: npm run test:d1/);
+  assert.match(pages, /if: github\.event_name == 'workflow_dispatch'\n        run: npm run db:migrate/);
 
   assert.match(worker, /uses: actions\/cache@v4/);
   assert.match(worker, /worker\/node_modules/);
   assert.match(worker, /cache-hit != 'true'/);
+});
+
+test('CI trigger paths stay inside the Stationhead boundary', () => {
+  const trigger = ci.slice(0, ci.indexOf('\npermissions:'));
+  assert.match(trigger, /packages\/sh-shared\/\*\*/);
+  assert.match(trigger, /scripts\/cloudflare-d1-\*\.mjs/);
+  assert.match(trigger, /scripts\/validate-monorepo\.mjs/);
+  assert.doesNotMatch(trigger, /scripts\/\*\*/);
+  assert.doesNotMatch(trigger, /scripts\/local-release\.ps1/);
+  assert.match(trigger, /!tests\/cloudflare-\*\.test\.mjs/);
+  assert.match(trigger, /!tests\/homepanel-\*\.test\.mjs/);
+  assert.match(trigger, /!tests\/observability-\*\.test\.mjs/);
+  assert.match(trigger, /!tests\/helpers\/source-contract\.mjs/);
+  assert.match(trigger, /\.github\/workflows\/ci\.yml/);
+  assert.doesNotMatch(trigger, /\.github\/workflows\/\*\*/);
+  assert.doesNotMatch(trigger, /\.github\/actions\/\*\*/);
+  assert.doesNotMatch(trigger, /\.github\/scripts\/\*\*/);
+  assert.doesNotMatch(trigger, /hp\/\*\*/);
+});
+
+test('HomePanel CI selects folder-scoped checks and keeps full validation off the PR path', () => {
+  const trigger = homePanelCi.slice(0, homePanelCi.indexOf('\npermissions:'));
+  assert.match(trigger, /hp\/cloud\/src\/\*\*/);
+  assert.match(trigger, /hp\/cloud\/test\/\*\*/);
+  assert.match(trigger, /hp\/video\/src\/\*\*/);
+  assert.match(trigger, /tests\/cloudflare-\*\.test\.mjs/);
+  assert.doesNotMatch(trigger, /hp\/cloud\/\*\*/);
+  assert.doesNotMatch(trigger, /^  push:\n/m);
+
+  assert.match(homePanelCi, /^  changes:\n/m);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.cloud == 'true'/);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.video == 'true'/);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.bundle == 'true'/);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.contracts == 'true'/);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.integration == 'true'/);
+  assert.match(homePanelCi, /needs\.changes\.outputs\.migrations == 'true'/);
+  assert.match(homePanelCi, /\.github\/scripts\/ci\/select-scopes\.mjs homepanel/);
+  assert.match(homePanelCi, /npm run test:ci/);
+  assert.match(homePanelCi, /github\.event_name == 'workflow_dispatch'/);
+  assert.equal(
+    homePanelPackage.scripts['test:ci'],
+    "vitest run --exclude='test/**/*.integration.test.ts' --reporter=dot",
+  );
+});
+
+test('Video CI ignores documentation-only changes', () => {
+  const trigger = videoCi.slice(0, videoCi.indexOf('\npermissions:'));
+  assert.match(trigger, /hp\/video\/src\/\*\*/);
+  assert.match(trigger, /hp\/video\/public\/\*\*/);
+  assert.match(trigger, /hp\/video\/migrations\/\*\*/);
+  assert.match(trigger, /hp\/video\/test\/\*\*/);
+  assert.match(trigger, /hp\/video\/scripts\/\*\*/);
+  assert.doesNotMatch(trigger, /hp\/video\/\*\*/);
 });
 
 test('Pages builds reuse Worker integration dependencies when inputs are unchanged', () => {

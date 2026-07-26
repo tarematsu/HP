@@ -3,7 +3,17 @@ name: HomePanel unified Worker CI
 on:
   pull_request:
     paths:
-      - 'hp/cloud/**'
+      - 'hp/cloud/src/**'
+      - 'hp/cloud/test/**'
+      - 'hp/cloud/migrations/**'
+      - 'hp/cloud/scripts/**'
+      - 'hp/cloud/package.json'
+      - 'hp/cloud/package-lock.json'
+      - 'hp/cloud/tsconfig.json'
+      - 'hp/cloud/vitest.config.ts'
+      - 'hp/cloud/wrangler.jsonc'
+      - 'hp/cloud/wrangler.test.jsonc'
+      - 'hp/cloud/.ci-full-trigger'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/package.json'
@@ -22,36 +32,8 @@ on:
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/sh-observability.yml'
       - '.github/workflows/homepanel-unified-ci.yml'
-      - 'tests/cloudflare-account-context.test.mjs'
-      - 'tests/cloudflare-observability-*.test.mjs'
-      - 'tests/helpers/source-contract.mjs'
-      - 'tests/homepanel-*.test.mjs'
-      - 'tests/observability-*.test.mjs'
-  push:
-    branches:
-      - main
-    paths:
-      - 'hp/cloud/**'
-      - 'hp/video/src/**'
-      - 'hp/video/public/**'
-      - 'hp/video/package.json'
-      - '.github/actions/cloudflare-context/action.yml'
-      - '.github/actions/cloudflare-observability-diagnostics/action.yml'
-      - '.github/scripts/audit-cloudflare-daily-usage.py'
-      - '.github/scripts/audit-cloudflare-free-tier.py'
-      - '.github/scripts/audit-observability-budget-gates.py'
-      - '.github/scripts/audit-cloudflare-telemetry.py'
-      - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
-      - '.github/scripts/query-cloudflare-d1-costs.py'
-      - '.github/scripts/resolve-cloudflare-account.mjs'
-      - '.github/scripts/resolve-cloudflare-config.mjs'
-      - '.github/scripts/observability-status-publisher.mjs'
-      - '.github/scripts/publish-cloudflare-observability-status.mjs'
-      - '.github/workflows/cloud-deploy.yml'
-      - '.github/workflows/sh-observability.yml'
-      - '.github/workflows/homepanel-unified-ci.yml'
-      - 'tests/cloudflare-account-context.test.mjs'
-      - 'tests/cloudflare-observability-*.test.mjs'
+      - '.github/scripts/ci/select-scopes.mjs'
+      - 'tests/cloudflare-*.test.mjs'
       - 'tests/helpers/source-contract.mjs'
       - 'tests/homepanel-*.test.mjs'
       - 'tests/observability-*.test.mjs'
@@ -65,9 +47,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
+  changes:
+    name: Select HomePanel checks
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    outputs:
+      cloud: ${{ steps.scope.outputs.cloud }}
+      video: ${{ steps.scope.outputs.video }}
+      bundle: ${{ steps.scope.outputs.bundle }}
+      contracts: ${{ steps.scope.outputs.contracts }}
+      integration: ${{ steps.scope.outputs.integration }}
+      migrations: ${{ steps.scope.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Select affected HomePanel checks
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            node .github/scripts/ci/select-scopes.mjs homepanel --all
+          else
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" |
+              node .github/scripts/ci/select-scopes.mjs homepanel
+          fi
+
+  validate:
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,6 +97,7 @@ jobs:
             hp/video/package.json
 
       - name: Validate production contracts and observability policies
+        if: needs.changes.outputs.contracts == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -92,27 +108,38 @@ jobs:
           python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
           python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
           node --test \
-            tests/cloudflare-account-context.test.mjs \
-            tests/cloudflare-observability-*.test.mjs \
+            tests/cloudflare-*.test.mjs \
             tests/homepanel-*.test.mjs \
             tests/observability-*.test.mjs
 
       - name: Install HomePanel dependencies
+        if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.video == 'true'
         working-directory: hp/cloud
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Install video runtime dependencies
+        if: needs.changes.outputs.bundle == 'true'
         working-directory: hp/video
         run: npm install --no-audit --no-fund
 
       - name: Check HomePanel sources
+        if: needs.changes.outputs.cloud == 'true'
         working-directory: hp/cloud
         shell: bash
         run: |
           set -o pipefail
           npm run check 2>&1 | tee source-check.log
 
-      - name: Run HomePanel tests
+      - name: Run fast HomePanel tests
+        if: needs.changes.outputs.cloud == 'true' && needs.changes.outputs.integration != 'true' && github.event_name != 'workflow_dispatch'
+        working-directory: hp/cloud
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:ci 2>&1 | tee test.log
+
+      - name: Run full HomePanel tests
+        if: needs.changes.outputs.cloud == 'true' && (needs.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
         working-directory: hp/cloud
         shell: bash
         run: |
@@ -120,10 +147,12 @@ jobs:
           npm test 2>&1 | tee test.log
 
       - name: Build the unified Worker
+        if: needs.changes.outputs.bundle == 'true'
         working-directory: hp/cloud
         run: npm run check:unified-bundle
 
       - name: Verify local unified D1 migrations
+        if: needs.changes.outputs.migrations == 'true'
         working-directory: hp/cloud
         shell: bash
         run: |

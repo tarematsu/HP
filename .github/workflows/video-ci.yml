@@ -5,11 +5,25 @@ on:
     branches:
       - main
     paths:
-      - 'hp/video/**'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
+      - 'hp/video/test/**'
+      - 'hp/video/scripts/**'
+      - 'hp/video/package.json'
+      - 'hp/video/wrangler.jsonc'
+      - 'hp/video/.ci-full-trigger'
       - '.github/workflows/video-ci.yml'
   pull_request:
     paths:
-      - 'hp/video/**'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
+      - 'hp/video/test/**'
+      - 'hp/video/scripts/**'
+      - 'hp/video/package.json'
+      - 'hp/video/wrangler.jsonc'
+      - 'hp/video/.ci-full-trigger'
       - '.github/workflows/video-ci.yml'
   workflow_dispatch:
 
