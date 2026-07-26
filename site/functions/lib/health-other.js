@@ -1,4 +1,5 @@
 const OTHER_CRON_ID = 'other-cron';
+const HEALTHY_STATUSES = new Set(['ok', 'running']);
 
 function integer(value, fallback = null) {
   const parsed = Number(value);
@@ -26,7 +27,7 @@ export async function readOtherHealth(env, now = Date.now()) {
   const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 50 * 60_000, 45 * 60_000);
   const ageMs = age(now, row?.last_attempt_at);
   const stale = ageMs == null || ageMs >= staleAfterMs;
-  const failed = Boolean(row) && row.status !== 'ok';
+  const failed = Boolean(row) && !HEALTHY_STATUSES.has(row.status);
   return {
     ok: Boolean(row) && !stale && !failed,
     setup_required: !row,
