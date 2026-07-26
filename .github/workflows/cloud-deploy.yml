@@ -1,13 +1,11 @@
-name: Deploy unified homepanel-cloud Worker
+name: Deploy HomePanel Cloud services
 
 on:
   push:
     branches: [main]
     paths:
       - "hp/cloud/**"
-      - "hp/video/src/**"
-      - "hp/video/public/**"
-      - "hp/video/package.json"
+      - "hp/video/**"
       - ".github/actions/cloudflare-context/action.yml"
       - ".github/scripts/resolve-cloudflare-account.mjs"
       - ".github/workflows/cloud-deploy.yml"
@@ -18,21 +16,25 @@ permissions:
   contents: read
 
 concurrency:
-  group: homepanel-cloud-unified-production
+  group: homepanel-cloud-production
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     environment: production
     env:
       HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
+      HOMEPANEL_BASE_URL: ${{ vars.HOMEPANEL_BASE_URL }}
+      HOMEPANEL_READY_TOKEN: ${{ secrets.HOMEPANEL_READY_TOKEN }}
       RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
 
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
@@ -48,9 +50,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.npm
-          key: ${{ runner.os }}-node-22-deploy-${{ hashFiles('hp/cloud/package-lock.json', 'hp/video/package.json') }}
+          key: ${{ runner.os }}-node-22-homepanel-${{ hashFiles('hp/cloud/package-lock.json', 'hp/video/package.json') }}
           restore-keys: |
-            ${{ runner.os }}-node-22-deploy-
+            ${{ runner.os }}-node-22-homepanel-
 
       - name: Install HomePanel dependencies
         working-directory: hp/cloud
@@ -63,34 +65,24 @@ jobs:
       - name: Enforce GitHub Actions-only Cloudflare deployment
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
 
-      - name: Validate unified Worker
+      - name: Validate HomePanel gateway
         working-directory: hp/cloud
         run: |
           npm run check
           npm test
           npm run check:unified-bundle
 
-      - name: Check whether video cutover is active
-        id: activation
-        working-directory: hp/cloud
-        shell: bash
+      - name: Validate video service
+        working-directory: hp/video
         run: |
-          set -euo pipefail
-          npm run prepare:existing
-          config=.wrangler/generated/homepanel-existing.jsonc
-          output="$RUNNER_TEMP/video-runtime-state.json"
-          if npx wrangler d1 execute homepanel-data --remote --config "$config" \
-            --command "SELECT active FROM video_runtime_state WHERE id=1;" --json > "$output" 2>/dev/null \
-            && grep -Eq '"active"[[:space:]]*:[[:space:]]*1' "$output"; then
-            echo "active=true" >> "$GITHUB_OUTPUT"
-            echo "Verified completed videoscraper cutover."
-          else
-            echo "active=false" >> "$GITHUB_OUTPUT"
-            echo "Video cutover is not active; routine deployment is intentionally skipped."
-          fi
+          npm test
+          npm run check
 
-      - name: Deploy Worker with migration discovery only when required
-        if: steps.activation.outputs.active == 'true'
+      - name: Deploy private video service
+        working-directory: hp/video
+        run: npm run deploy
+
+      - name: Deploy HomePanel gateway
         working-directory: hp/cloud
         shell: bash
         env:
@@ -98,13 +90,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual deployment keeps the conservative migration check."
             npm run deploy
             exit 0
           fi
 
           if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            echo "No usable previous commit; keeping the conservative migration check."
             npm run deploy
             exit 0
           fi
@@ -125,9 +115,21 @@ jobs:
             npm run deploy
           fi
 
-      - name: Report deferred unified deployment
-        if: steps.activation.outputs.active != 'true'
-        run: echo "::notice::Unified homepanel-cloud deployment is deferred because the video runtime activation marker is not active."
+      - name: Verify deployed readiness
+        if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Authorization: Bearer $HOMEPANEL_READY_TOKEN" \
+            "$HOMEPANEL_BASE_URL/v1/ready" \
+            > "$RUNNER_TEMP/homepanel-readiness.json"
+          cat "$RUNNER_TEMP/homepanel-readiness.json"
+
+      - name: Report disabled readiness verification
+        if: ${{ env.HOMEPANEL_BASE_URL == '' || env.HOMEPANEL_READY_TOKEN == '' }}
+        run: echo "::warning::Set HOMEPANEL_BASE_URL variable and HOMEPANEL_READY_TOKEN secret to enable post-deploy readiness verification."
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
