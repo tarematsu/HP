@@ -40,7 +40,7 @@ test('all active Stationhead entries apply Queue attribution and sampled telemet
     new URL('../wrangler.sakurazaka46jp.jsonc', import.meta.url),
     'utf8',
   ));
-  assert.equal(config.observability.head_sampling_rate, 0.1);
-  assert.equal(config.observability.logs.head_sampling_rate, 0.1);
+  assert.equal(config.observability.head_sampling_rate, 1);
+  assert.equal(config.observability.logs.head_sampling_rate, 1);
   assert.equal(config.queues.consumers[0].max_retries, 4);
 });
