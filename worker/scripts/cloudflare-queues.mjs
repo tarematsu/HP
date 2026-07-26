@@ -12,17 +12,25 @@ const SCRIPT_KEYS = new Set([
   'worker_name',
 ]);
 
-export function runWrangler(args, { capture = false, allowFailure = false } = {}) {
+export function runWrangler(
+  args,
+  { capture = false, allowFailure = false, mirror = false } = {},
+) {
   const command = wranglerCommand(args);
+  const captured = capture || mirror;
   const result = spawnSync(command.executable, command.args, {
     cwd: new URL('..', import.meta.url),
     encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    stdio: captured ? ['ignore', 'pipe', 'pipe'] : 'inherit',
     env: process.env,
   });
+  if (captured && mirror) {
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+  }
   if (result.error) throw result.error;
   if (result.status !== 0 && !allowFailure) {
-    const detail = capture ? String(result.stderr || result.stdout || '').trim() : '';
+    const detail = captured ? String(result.stderr || result.stdout || '').trim() : '';
     throw new Error(`wrangler ${args.join(' ')} failed${detail ? `: ${detail}` : ''}`);
   }
   return result;
