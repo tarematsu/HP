@@ -25,6 +25,10 @@ import {
   extractActionsRunnerHealthBlock,
   renderActionsRunnerHealthBlock,
 } from './github-actions-runner-health.mjs';
+import {
+  extractDeploymentHealthBlock,
+  renderDeploymentHealthBlock,
+} from './github-deployment-health.mjs';
 
 export const STATUS_ISSUE_TITLE = 'Cloudflare Observability Status';
 export const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
@@ -94,6 +98,13 @@ function pendingRunnerHealthBlock() {
 - Scheduled-run health is refreshed by the lightweight runner diagnostics workflow.`);
 }
 
+function pendingDeploymentHealthBlock() {
+  return renderDeploymentHealthBlock(`### GitHub deployment health
+
+- **Overall:** pending
+- Pages and Worker deployment health is refreshed by the lightweight deployment diagnostics workflow.`);
+}
+
 export function buildIssueBody({
   generatedAt,
   targetSha,
@@ -106,10 +117,12 @@ export function buildIssueBody({
   activeDeployments = {},
   recentMerges = [],
   actionsRunnerHealthBlock = '',
+  deploymentHealthBlock = '',
 }) {
   const cloudflareStatus = observabilityIssueOverall({ outcomes, summaries, activeDeployments });
   const publicHealth = publicHealthSignal(summaries.publicHealth);
   const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
+  const deploymentHealth = deploymentHealthBlock || pendingDeploymentHealthBlock();
   const triage = buildObservabilityTriage({ outcomes, summaries, activeDeployments, runUrl });
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
@@ -121,6 +134,8 @@ This issue is maintained automatically by the unified HP and Stationhead Cloudfl
 - **Workflow run:** ${runUrl} · **Workflow source commit:** \`${targetSha}\` · **Current main SHA:** \`${mainSha}\`
 
 ${runnerHealth}
+
+${deploymentHealth}
 
 ${triage}
 
@@ -222,17 +237,11 @@ export async function publishFromEnvironment() {
     overallDescription: 'Unified Cloudflare observability',
   });
   if (!isCurrentMainTarget(targetSha, mainSha)) {
-    console.log(
-      `::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`,
-    );
+    console.log(`::warning title=Skip stale observability issue::target_sha=${targetSha} current_main_sha=${mainSha}`);
     return;
   }
 
-  const existingIssue = await findStatusIssue({
-    request,
-    title: STATUS_ISSUE_TITLE,
-    marker: STATUS_MARKER,
-  });
+  const existingIssue = await findStatusIssue({ request, title: STATUS_ISSUE_TITLE, marker: STATUS_MARKER });
   const body = buildIssueBody({
     generatedAt: new Date().toISOString(),
     targetSha,
@@ -241,18 +250,11 @@ export async function publishFromEnvironment() {
     trigger: process.env.OBSERVABILITY_TRIGGER || 'unknown',
     lookbackMinutes: process.env.LOOKBACK_MINUTES || '60',
     outcomes,
-    summaries: {
-      publicHealth,
-      daily,
-      freeTier,
-      contract,
-      d1Insights,
-      observability,
-      telemetry,
-    },
+    summaries: { publicHealth, daily, freeTier, contract, d1Insights, observability, telemetry },
     activeDeployments,
     recentMerges,
     actionsRunnerHealthBlock: extractActionsRunnerHealthBlock(existingIssue?.body),
+    deploymentHealthBlock: extractDeploymentHealthBlock(existingIssue?.body),
   });
   const issue = await upsertStatusIssue({
     request,

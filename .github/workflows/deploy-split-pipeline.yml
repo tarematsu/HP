@@ -121,10 +121,19 @@ jobs:
           fi
 
           echo "$selection" | jq .
+          workers_json="$(jq -c '.workers' <<<"$selection")"
+          commands_json="$(jq -c '.commands' <<<"$selection")"
           echo "minute_db=$minute_db" >> "$GITHUB_OUTPUT"
           echo "pages=$pages" >> "$GITHUB_OUTPUT"
-          echo "workers=$(jq -c '.workers' <<<"$selection")" >> "$GITHUB_OUTPUT"
-          echo "commands=$(jq -c '.commands' <<<"$selection")" >> "$GITHUB_OUTPUT"
+          echo "workers=$workers_json" >> "$GITHUB_OUTPUT"
+          echo "commands=$commands_json" >> "$GITHUB_OUTPUT"
+          deployment_targets="$(jq -cn \
+            --argjson minute_db "$minute_db" \
+            --argjson pages "$pages" \
+            --argjson workers "$workers_json" \
+            --argjson commands "$commands_json" \
+            '{minute_db:$minute_db,pages:$pages,workers:$workers,commands:$commands}')"
+          echo "DEPLOYMENT_TARGETS_JSON=$deployment_targets"
 
   minute_db:
     name: Apply MINUTE_DB migrations before deployment

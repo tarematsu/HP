@@ -9,6 +9,13 @@ import {
 
 const root = new URL('../', import.meta.url);
 
+const deploymentHealthBlock = `<!-- github-deployment-health:start -->
+### GitHub deployment health
+
+- **Overall:** success
+- preserved deployment status
+<!-- github-deployment-health:end -->`;
+
 test('unified observability issue body includes HP and Stationhead deployment context', () => {
   const body = buildIssueBody({
     generatedAt: '2026-07-25T01:00:00.000Z',
@@ -57,6 +64,7 @@ test('unified observability issue body includes HP and Stationhead deployment co
       merge_commit_sha: 'merge-sha-261',
       merged_at: '2026-07-25T00:50:00Z',
     }],
+    deploymentHealthBlock,
   });
 
   assert.match(body, new RegExp(STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -75,18 +83,15 @@ test('unified observability issue body includes HP and Stationhead deployment co
   assert.match(body, /Top D1 queries by rows read/);
   assert.match(body, /Databases: 4/);
   assert.match(body, /Bearer \[redacted\]/);
+  assert.match(body, /preserved deployment status/);
+  assert.equal((body.match(/github-deployment-health:start/g) || []).length, 1);
   assert.doesNotMatch(body, /secret-value/);
 });
 
 test('unified workflow publishes one retrievable account-wide status', async () => {
-  const workflow = await readFile(
-    new URL('.github/workflows/sh-observability.yml', root),
-    'utf8',
-  );
-  const publisher = await readFile(
-    new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root),
-    'utf8',
-  );
+  const workflow = await readFile(new URL('.github/workflows/sh-observability.yml', root), 'utf8');
+  const deployWorkflow = await readFile(new URL('.github/workflows/deploy-split-pipeline.yml', root), 'utf8');
+  const publisher = await readFile(new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root), 'utf8');
 
   assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
   assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video/);
@@ -97,12 +102,11 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
   assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
-  assert.match(
-    workflow,
-    /name: Publish persistent observability status[\s\S]*id: publish-status[\s\S]*if: always\(\) && !cancelled\(\)/,
-  );
+  assert.match(workflow, /name: Publish persistent observability status[\s\S]*id: publish-status[\s\S]*if: always\(\) && !cancelled\(\)/);
+  assert.match(deployWorkflow, /DEPLOYMENT_TARGETS_JSON=\$deployment_targets/);
   assert.match(publisher, /readOptionalText\('d1-insights\/summary\.md'\)/);
   assert.match(publisher, /readOptionalText\('telemetry-summary\.md'\)/);
+  assert.match(publisher, /extractDeploymentHealthBlock\(existingIssue\?\.body\)/);
   assert.match(publisher, /HP \+ Stationhead monorepo/);
   assert.match(publisher, /Top D1 queries by rows read/);
   assert.doesNotMatch(
