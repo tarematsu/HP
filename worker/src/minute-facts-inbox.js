@@ -92,6 +92,33 @@ export const MINUTE_FACT_INBOX_STATS_SQL = `SELECT
   WHERE stats.id='global'
   LIMIT 1`;
 
+export const MINUTE_FACT_INBOX_STATS_COMPAT_SQL = `SELECT
+    pending.pending_count,
+    processing.processing_count,
+    dead.dead_count,
+    pending.rebuild_pending_count,
+    pending.live_pending_count,
+    pending.oldest_pending_minute
+  FROM (
+    SELECT
+      COUNT(*) AS pending_count,
+      COUNT(*) FILTER (WHERE job_kind='rebuild') AS rebuild_pending_count,
+      COUNT(*) FILTER (WHERE job_kind='live') AS live_pending_count,
+      MIN(updated_at) AS oldest_pending_minute
+    FROM sh_minute_fact_jobs
+    WHERE status='pending'
+  ) pending
+  CROSS JOIN (
+    SELECT COUNT(*) AS processing_count
+    FROM sh_minute_fact_jobs
+    WHERE status='processing'
+  ) processing
+  CROSS JOIN (
+    SELECT COUNT(*) AS dead_count
+    FROM sh_minute_fact_jobs
+    WHERE status='dead'
+  ) dead`;
+
 export const CLAIM_MINUTE_FACT_JOBS_SQL = `UPDATE sh_minute_fact_jobs SET
     status='processing',attempts=attempts+1,lease_until=?,updated_at=?
   WHERE id IN (
@@ -294,7 +321,15 @@ export async function recoverStalledMinuteFactJobs(env, options = {}) {
 
 export async function minuteFactInboxStats(env) {
   await ensureMinuteFactInboxSchema(env);
-  const row = await env.MINUTE_DB.prepare(MINUTE_FACT_INBOX_STATS_SQL).first();
+  let row;
+  try {
+    row = await env.MINUTE_DB.prepare(MINUTE_FACT_INBOX_STATS_SQL).first();
+  } catch (error) {
+    if (!/no such table:\s*sh_minute_fact_pending_age/i.test(String(error?.message || error))) {
+      throw error;
+    }
+    row = await env.MINUTE_DB.prepare(MINUTE_FACT_INBOX_STATS_COMPAT_SQL).first();
+  }
   return {
     pending_count: Number(row?.pending_count || 0),
     processing_count: Number(row?.processing_count || 0),

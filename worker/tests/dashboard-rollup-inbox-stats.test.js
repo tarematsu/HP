@@ -168,7 +168,7 @@ test('persisted inbox counters follow insert, claim, completion, retry, and dele
     dead_count: 1,
     rebuild_pending_count: 1,
     live_pending_count: 1,
-    oldest_pending_minute: 50,
+    oldest_pending_minute: 1000,
   });
 
   sqlite.exec("UPDATE sh_minute_fact_jobs SET status='processing',updated_at=1100 WHERE id=2;");
@@ -176,14 +176,14 @@ test('persisted inbox counters follow insert, claim, completion, retry, and dele
   assert.equal(stats.pending_count, 1);
   assert.equal(stats.processing_count, 1);
   assert.equal(stats.rebuild_pending_count, 0);
-  assert.equal(stats.oldest_pending_minute, 100);
+  assert.equal(stats.oldest_pending_minute, 1000);
 
   sqlite.exec("UPDATE sh_minute_fact_jobs SET status='pending',updated_at=1200 WHERE id=2;");
   sqlite.exec('DELETE FROM sh_minute_fact_jobs WHERE id=2;');
   stats = await minuteFactInboxStats({ MINUTE_DB: db });
   assert.equal(stats.pending_count, 1);
   assert.equal(stats.processing_count, 0);
-  assert.equal(stats.oldest_pending_minute, 100);
+  assert.equal(stats.oldest_pending_minute, 1000);
   assert.match(MINUTE_FACT_INBOX_STATS_SQL, /FROM sh_minute_fact_inbox_stats/);
   assert.doesNotMatch(MINUTE_FACT_INBOX_STATS_SQL, /COUNT\(\*\)|MIN\(minute_at\)/);
 });
