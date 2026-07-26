@@ -134,8 +134,8 @@ export async function preserveReadModelForWrite(env, readModel) {
 }
 
 export async function prepareReadModelForWrite(env, readModel) {
-  const hydrated = await hydrateReadModelMetadata(env, readModel);
-  return preserveReadModelForWrite(env, hydrated);
+  const preserved = await preserveReadModelForWrite(env, readModel);
+  return hydrateReadModelMetadata(env, preserved);
 }
 
 export async function writePreparedReadModel(env, readModel) {
