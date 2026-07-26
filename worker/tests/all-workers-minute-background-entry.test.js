@@ -30,11 +30,11 @@ test('retired Worker rebuild and maintenance entrypoints stay deleted', () => {
   const runtime = config('../wrangler.runtime.jsonc');
   const runtimeEnv = source('../src/runtime-env.js');
   const pipeline = source('../src/minute-pipeline-entry.js');
+  const liveRecovery = source('../src/minute-maintenance-entry.js');
 
   for (const path of [
     '../src/minute-rebuild-batched-entry.js',
     '../src/minute-rebuild-maintenance-entry.js',
-    '../src/minute-maintenance-entry.js',
     '../src/minute-maintenance-optimized-entry.js',
     '../src/minute-fact-repair-burst.js',
   ]) {
@@ -54,6 +54,8 @@ test('retired Worker rebuild and maintenance entrypoints stay deleted', () => {
   assert.doesNotMatch(pipeline, /minute-rebuild-batched-entry|MINUTE_REBUILD_QUEUE_NAME/);
   assert.match(pipeline, /repair-actions-owned/);
   assert.match(pipeline, /rebuild-actions-owned/);
+  assert.match(liveRecovery, /MINUTE_LIVE_DERIVE_QUEUE/);
+  assert.doesNotMatch(liveRecovery, /MINUTE_REBUILD_QUEUE|runMinuteScheduled|scheduled\s*:|repair/);
 });
 
 test('Actions owns offline maintenance scheduling', () => {
