@@ -39,7 +39,7 @@ test('the player stores the 52-minute clock behind the final PCH proxy', () => {
 test('the first successful navigation initializes the clock once', () => {
   const assignment = section(
     boundaryPolicy,
-    'void operator=(int64_t candidate) noexcept',
+    'int64_t operator=(int64_t candidate) noexcept',
     'private:',
   );
   assert.match(assignment, /bool accept = storage_ <= 0;/);
@@ -63,7 +63,7 @@ test('an App-accepted boundary message authorizes exactly one later clock assign
 
   const assignment = section(
     boundaryPolicy,
-    'void operator=(int64_t candidate) noexcept',
+    'int64_t operator=(int64_t candidate) noexcept',
     'private:',
   );
   assert.match(assignment, /if \(pending\) \{[\s\S]*pending = false;[\s\S]*accept = true;/);
@@ -76,7 +76,7 @@ test('an App-accepted boundary message authorizes exactly one later clock assign
 test('normal successful navigation cannot postpone an established 52-minute clock', () => {
   const assignment = section(
     boundaryPolicy,
-    'void operator=(int64_t candidate) noexcept',
+    'int64_t operator=(int64_t candidate) noexcept',
     'private:',
   );
   assert.match(assignment, /bool accept = storage_ <= 0;/);
@@ -85,6 +85,24 @@ test('normal successful navigation cannot postpone an established 52-minute cloc
   assert.match(
     playerSource,
     /lastReloadAt_ = nowMs;[\s\S]*track-boundary authentication refresh/,
+  );
+});
+
+test('filtered reload-clock writes preserve ConfigureWebView chained assignment', () => {
+  const assignment = section(
+    boundaryPolicy,
+    'int64_t operator=(int64_t candidate) noexcept',
+    'private:',
+  );
+  assert.match(assignment, /return candidate;/);
+  assert.match(
+    webviewSource,
+    /createdAt_ = lastReloadAt_ = UnixMillis\(\);/,
+  );
+  assert.ok(
+    assignment.indexOf('if (accept) storage_ = candidate;') <
+      assignment.indexOf('return candidate;'),
+    'the independent lifecycle timestamp must receive the current candidate',
   );
 });
 
