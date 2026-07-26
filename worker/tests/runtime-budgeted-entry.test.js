@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { attributedRuntimeEnv } from '../src/runtime-budgeted-entry.js';
+import { queueAttributedEnv } from '../src/queue-attribution.js';
 
 function runtimeConfig() {
   return JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
@@ -10,11 +10,11 @@ function runtimeConfig() {
 
 test('all downstream Queue sends carry producer and operation attribution', async () => {
   const sent = [];
-  const env = attributedRuntimeEnv({
+  const env = queueAttributedEnv({
     MINUTE_DERIVE_QUEUE: {
       async send(body, options) { sent.push({ body, options }); },
     },
-  });
+  }, 'sh-runtime-orchestrator');
   await env.MINUTE_DERIVE_QUEUE.send(
     { message_type: 'minute-fact-derive', message_version: 1 },
     { contentType: 'json' },
