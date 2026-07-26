@@ -9,6 +9,7 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     cadenceMinutes: 15,
     staleAfterMinutes: 40,
     stalledAfterMinutes: 25,
+    ignoreExpectedWorkflowRunSkips: true,
   }),
   Object.freeze({
     name: 'Runtime offline maintenance',
@@ -73,6 +74,15 @@ function runLabel(run) {
   return run.html_url ? `[${number}](${run.html_url}) ${outcome}` : `${number} ${outcome}`;
 }
 
+function expectedWorkflowRunSkip(target, run) {
+  return Boolean(
+    target?.ignoreExpectedWorkflowRunSkips
+      && run?.event === 'workflow_run'
+      && run?.status === 'completed'
+      && run?.conclusion === 'skipped',
+  );
+}
+
 function consecutiveFailures(runs) {
   let count = 0;
   for (const run of runs) {
@@ -85,6 +95,7 @@ function consecutiveFailures(runs) {
 
 export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } = {}) {
   const ordered = [...(Array.isArray(runs) ? runs : [])]
+    .filter((run) => !expectedWorkflowRunSkip(target, run))
     .sort((left, right) => (timestamp(right?.created_at) ?? 0) - (timestamp(left?.created_at) ?? 0));
   const latest = ordered[0] || null;
   const lastSuccess = ordered.find((run) => run?.status === 'completed' && run?.conclusion === 'success') || null;

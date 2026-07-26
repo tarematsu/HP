@@ -29,6 +29,8 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
+    # Deploy-triggered runtime maintenance also emits workflow_run. Those runs are
+    # intentionally skipped here and ignored by the runner-health evaluator.
     if: >-
       github.event_name != 'workflow_run'
       || (github.event.workflow_run.conclusion == 'success'
