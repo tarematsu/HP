@@ -267,7 +267,10 @@ class StationheadPlayer {
   int64_t createdAt_ = 0;
   int64_t startupScriptDeadline_ = 0;
   int64_t authControllerStartedAt_ = 0;
-  int64_t lastReloadAt_ = 0;
+  // The final PCH policy exposes this storage through a write-filtering proxy:
+  // first successful navigation initializes it, then only an App-accepted
+  // 52-minute refresh may advance it.
+  int64_t lastReloadAtStorage_ = 0;
   int64_t lastDailyPlayStatsAt_ = 0;  // Primary only.
   int64_t lastAuthProbeAt_ = 0;       // Secondary only.
   int64_t authProbeStartedAt_ = 0;    // Secondary only.
