@@ -107,5 +107,5 @@ test('FACTS schema publishes materialized cleanup and ranking state', () => {
   assert.match(purgeScript, /payload_clearable=1/);
   assert.match(purgeScript, /remainingEligibleJobId != null/);
   assert.doesNotMatch(purgeScript, /NOT EXISTS \(\s*SELECT 1 FROM sh_queue_revisions/);
-  assert.equal(descriptor.schema, 'database/facts-migrations/046_track_minute_fact_pending_age.sql');
+  assert.equal(descriptor.schema, 'database/facts-migrations/047_join_latest_daily_members.sql');
 });
