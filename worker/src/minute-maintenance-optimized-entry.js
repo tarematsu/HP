@@ -3,6 +3,7 @@ import {
   minuteMaintenanceTask,
   runMinuteScheduledWithCollectorPriority,
 } from './minute-entry.js';
+import { throwIfSoftFailure } from './soft-failure.js';
 
 const MINUTE_DERIVE_DISPATCH_CRON = '* * * * *';
 const EMPTY_DEPENDENCIES = Object.freeze({});
@@ -53,9 +54,18 @@ function maintenanceMessage(controller, task) {
   };
 }
 
-export async function dispatchMinuteMaintenanceGate(controller, env, task, ctx = null) {
+export async function dispatchMinuteMaintenanceGate(
+  controller,
+  env,
+  task,
+  ctx = null,
+  dependencies = EMPTY_DEPENDENCIES,
+) {
   if (!env?.MINUTE_REBUILD_QUEUE?.send) {
-    return runMinuteScheduledWithCollectorPriority(controller, env, ctx, EMPTY_DEPENDENCIES);
+    const run = dependencies.runScheduled || runMinuteScheduledWithCollectorPriority;
+    const result = await run(controller, env, ctx, dependencies.direct || EMPTY_DEPENDENCIES);
+    throwIfSoftFailure(result, 'minute maintenance direct fallback');
+    return result;
   }
   const message = maintenanceMessage(controller, task);
   const maintenance = await loadRebuildMaintenanceEntry();
@@ -97,6 +107,7 @@ export async function runMinuteMaintenanceSyncInline(
     clearCompletedPayloads: dependencies.clearCompletedPayloads,
     runScheduled,
   });
+  throwIfSoftFailure(result, 'minute maintenance sync');
   console.log(JSON.stringify({
     event: 'minute_maintenance_sync_inlined',
     task: 'sync',
@@ -124,7 +135,7 @@ export async function runMinuteMaintenanceScheduled(
     return runMinuteMaintenanceSyncInline(controller, env, ctx, dependencies);
   }
   if (task === 'rebuild') {
-    return dispatchMinuteMaintenanceGate(controller, env, task, ctx);
+    return dispatchMinuteMaintenanceGate(controller, env, task, ctx, dependencies);
   }
   return runMinuteScheduledWithCollectorPriority(controller, env, ctx, EMPTY_DEPENDENCIES);
 }
