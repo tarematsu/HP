@@ -120,6 +120,31 @@ export async function runMinuteMaintenanceSyncInline(
   return { ...result, inline: true };
 }
 
+export async function runMinuteMaintenanceRecoveryInline(
+  controller,
+  env,
+  ctx = null,
+  dependencies = EMPTY_DEPENDENCIES,
+) {
+  const message = { ...maintenanceMessage(controller, 'recovery'), stage: 'maintenance-run' };
+  const maintenance = dependencies.maintenance || await loadRebuildMaintenanceEntry();
+  const processRun = dependencies.processMinuteMaintenanceRun
+    || maintenance.processMinuteMaintenanceRun;
+  const result = await processRun(env, message, {
+    runScheduled: dependencies.runScheduled,
+  });
+  throwIfSoftFailure(result, 'minute maintenance recovery');
+  console.log(JSON.stringify({
+    event: 'minute_maintenance_recovery_inlined',
+    task: 'recovery',
+    run_id: message.run_id,
+    pending: result?.pending === true,
+    skipped: result?.result?.skipped === true,
+    reason: result?.result?.reason,
+  }));
+  return { ...result, inline: true };
+}
+
 export async function runMinuteMaintenanceScheduled(
   controller,
   env,

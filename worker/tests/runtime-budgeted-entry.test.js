@@ -77,6 +77,29 @@ test('scheduled runtime maintenance is inline and Queue is fallback-only', async
   assert.deepEqual(sent, []);
 });
 
+test('recovery and sync maintenance bypass the rebuild Queue', async () => {
+  const calls = [];
+  const sent = [];
+  const env = {
+    HOST_MONITOR_QUEUE: { async send(body) { sent.push(body); } },
+    MINUTE_REBUILD_QUEUE: { async send(body) { sent.push(body); } },
+  };
+  await runBudgetedRuntimeScheduled(
+    { cron: '* * * * *', scheduledTime: 5 * MINUTE_MS },
+    env,
+    {},
+    { async runMinuteRecovery() { calls.push('recovery'); return { inline: true }; } },
+  );
+  await runBudgetedRuntimeScheduled(
+    { cron: '* * * * *', scheduledTime: 9 * MINUTE_MS },
+    env,
+    {},
+    { async runMinuteSync() { calls.push('sync'); return { inline: true }; } },
+  );
+  assert.deepEqual(calls, ['recovery', 'sync']);
+  assert.deepEqual(sent, []);
+});
+
 test('all downstream Queue sends carry producer and operation attribution', async () => {
   const sent = [];
   const env = attributedRuntimeEnv({

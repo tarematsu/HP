@@ -41,6 +41,34 @@ export const REQUEUE_DEAD_MINUTE_FACT_JOBS_SQL = `UPDATE sh_minute_fact_jobs SET
   ) AND status='dead'
   RETURNING id`;
 
+export const FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL = `UPDATE sh_minute_fact_jobs SET
+    status='done',lease_until=NULL,processed_at=COALESCE(processed_at,?),
+    last_error=NULL,payload_clearable=1,updated_at=?
+  WHERE id IN (
+    SELECT jobs.id FROM sh_minute_fact_jobs jobs
+    WHERE jobs.status IN ('pending','processing','dead')
+      AND EXISTS (
+        SELECT 1 FROM sh_minute_facts facts
+        WHERE facts.channel_id=jobs.channel_id AND facts.minute_at=jobs.minute_at
+      )
+    ORDER BY jobs.updated_at ASC,jobs.id ASC LIMIT ?
+  )
+  RETURNING id`;
+
+export const RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL = `UPDATE sh_minute_fact_jobs SET
+    status='pending',next_attempt_at=0,lease_until=NULL,updated_at=?
+  WHERE id IN (
+    SELECT jobs.id FROM sh_minute_fact_jobs jobs
+      INDEXED BY idx_sh_minute_fact_jobs_processing_lease
+    WHERE jobs.status='processing' AND COALESCE(jobs.lease_until,0)<?
+      AND NOT EXISTS (
+        SELECT 1 FROM sh_minute_facts facts
+        WHERE facts.channel_id=jobs.channel_id AND facts.minute_at=jobs.minute_at
+      )
+    ORDER BY jobs.lease_until ASC,jobs.id ASC LIMIT ?
+  )
+  RETURNING id`;
+
 export const COMPLETE_MINUTE_FACT_JOB_SQL = `UPDATE sh_minute_fact_jobs SET
     status='done',lease_until=NULL,processed_at=?,last_error=NULL,
     payload_clearable=0,updated_at=?
@@ -235,6 +263,31 @@ export async function requeueDeadMinuteFactJobs(env, options = {}) {
     .bind(now, limit)
     .all();
   return { requeued: result.results?.length || 0 };
+}
+
+export async function recoverStalledMinuteFactJobs(env, options = {}) {
+  await ensureMinuteFactInboxSchema(env);
+  const now = integer(options.now) ?? Date.now();
+  const limit = positiveInteger(options.limit, 1000, 5000);
+  const deadLimit = positiveInteger(options.deadLimit, 100, 1000);
+  const finalized = await env.MINUTE_DB.prepare(FINALIZE_MATERIALIZED_MINUTE_FACT_JOBS_SQL)
+    .bind(now, now, limit)
+    .all();
+  const released = await env.MINUTE_DB.prepare(RELEASE_EXPIRED_MINUTE_FACT_JOBS_SQL)
+    .bind(now, now, limit)
+    .all();
+  const dead = await requeueDeadMinuteFactJobs(env, { now, limit: deadLimit });
+  const stats = await minuteFactInboxStats(env);
+  return {
+    processed: (finalized.results?.length || 0)
+      + (released.results?.length || 0)
+      + Number(dead.requeued || 0),
+    failed: 0,
+    finalized_count: finalized.results?.length || 0,
+    released_count: released.results?.length || 0,
+    requeued_count: Number(dead.requeued || 0),
+    ...stats,
+  };
 }
 
 export async function minuteFactInboxStats(env) {

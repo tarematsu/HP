@@ -175,9 +175,15 @@ async function runRecovery(env, dependencies) {
   if (!enabled(env.MINUTE_FACT_AUTO_REQUEUE_DEAD)) {
     return { skipped: true, reason: 'dead-job-auto-requeue-disabled' };
   }
-  const runner = dependencies.requeueDead
-    || (await import('./minute-facts-inbox.js')).requeueDeadMinuteFactJobs;
-  return runner(env, { limit: env.MINUTE_FACT_DEAD_REQUEUE_LIMIT });
+  if (dependencies.requeueDead && !dependencies.recoverStalled) {
+    return dependencies.requeueDead(env, { limit: env.MINUTE_FACT_DEAD_REQUEUE_LIMIT });
+  }
+  const runner = dependencies.recoverStalled
+    || (await import('./minute-facts-inbox.js')).recoverStalledMinuteFactJobs;
+  return runner(env, {
+    limit: env.MINUTE_FACT_STALLED_RECOVERY_LIMIT,
+    deadLimit: env.MINUTE_FACT_DEAD_REQUEUE_LIMIT,
+  });
 }
 
 export async function runMinuteScheduled(controller = {}, env, dependencies = {}) {

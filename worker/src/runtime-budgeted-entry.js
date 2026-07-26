@@ -12,6 +12,10 @@ import {
   streamPredictionDue,
 } from './runtime-scheduled.js';
 import {
+  runMinuteMaintenanceRecoveryInline,
+  runMinuteMaintenanceSyncInline,
+} from './minute-maintenance-optimized-entry.js';
+import {
   pagesVariantDispatchDue,
   runPagesDashboardMaterialization,
 } from './pages-read-model-entry.js';
@@ -188,13 +192,32 @@ export async function runBudgetedRuntimeScheduled(
       task: minuteTask,
       scheduled_at: scheduledAt,
     }, `minute-${minuteTask}`);
-    jobs.push(runInlineWithFallback(activeEnv, body, () => dispatchMinuteMaintenanceGate(
-      { ...controller, scheduledTime: scheduledAt },
-      activeEnv,
-      minuteTask,
-      ctx,
-      dependencies,
-    )));
+    const scheduledController = { ...controller, scheduledTime: scheduledAt };
+    if (minuteTask === 'recovery') {
+      const run = dependencies.runMinuteRecovery || runMinuteMaintenanceRecoveryInline;
+      jobs.push(runInlineWithFallback(activeEnv, body, () => run(
+        scheduledController,
+        activeEnv,
+        ctx,
+        dependencies,
+      )));
+    } else if (minuteTask === 'sync') {
+      const run = dependencies.runMinuteSync || runMinuteMaintenanceSyncInline;
+      jobs.push(runInlineWithFallback(activeEnv, body, () => run(
+        scheduledController,
+        activeEnv,
+        ctx,
+        dependencies,
+      )));
+    } else {
+      jobs.push(runInlineWithFallback(activeEnv, body, () => dispatchMinuteMaintenanceGate(
+        scheduledController,
+        activeEnv,
+        minuteTask,
+        ctx,
+        dependencies,
+      )));
+    }
   }
 
   if (streamPredictionDue(scheduledAt)) {

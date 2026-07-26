@@ -31,7 +31,7 @@ function taskName(value) {
 
 function successFor(outcome, options) {
   if (typeof options?.success === 'boolean') return options.success;
-  return outcome?.ok !== false && !outcome?.error;
+  return outcome?.ok !== false && outcome?.failed !== true && !outcome?.error;
 }
 
 function coordinatorStub(namespace) {

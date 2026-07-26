@@ -235,6 +235,7 @@ test('runtime configuration enables DO execution and fail-closed delivery', () =
   assert.equal(config.vars.RUNTIME_COORDINATOR_DIRECT_RUN_ENABLED, true);
   assert.equal(config.vars.RUNTIME_COORDINATOR_FAIL_OPEN, false);
   assert.equal(config.vars.RUNTIME_STATE_DO_ENABLED, true);
+  assert.equal(config.vars.MINUTE_FACT_STALLED_RECOVERY_LIMIT, 1000);
   assert.deepEqual(config.durable_objects.bindings, [
     {
       name: 'RUNTIME_COORDINATOR',
