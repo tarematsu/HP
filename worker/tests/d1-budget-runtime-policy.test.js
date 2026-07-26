@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { historicalRebuildEnabled } from '../src/historical-rebuild-policy.js';
 import { pendingMinuteDeriveTriggers } from '../src/minute-derive-trigger.js';
 import {
-  processMinuteMaintenanceGate,
-} from '../src/minute-rebuild-maintenance-entry.js';
-import { processMinuteRebuildBatch } from '../src/minute-rebuild-batched-entry.js';
-import {
+  LIVE_DERIVE_QUEUE_NAME,
   processMinutePipelineBatch,
   REBUILD_DERIVE_QUEUE_NAME,
 } from '../src/minute-pipeline-entry.js';
@@ -22,83 +19,61 @@ function message(body) {
   };
 }
 
-test('historical rebuild policy is explicitly disabled in the production budget mode', () => {
-  assert.equal(historicalRebuildEnabled({ HISTORICAL_REBUILD_ENABLED: false }), false);
-  assert.equal(historicalRebuildEnabled({ HISTORICAL_REBUILD_ENABLED: 'false' }), false);
-  assert.equal(historicalRebuildEnabled({ HISTORICAL_REBUILD_ENABLED: true }), true);
-  assert.equal(historicalRebuildEnabled({}), true);
+test('production runtime contains no historical rebuild configuration or entrypoints', () => {
+  const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
+  for (const name of Object.keys(runtime.vars || {})) {
+    assert.equal(name.startsWith('REBUILD_'), false, name);
+    assert.equal(name.startsWith('GAP_SCAN_'), false, name);
+  }
+  assert.equal(Object.hasOwn(runtime.vars, 'HISTORICAL_REBUILD_ENABLED'), false);
+  for (const path of [
+    '../src/minute-rebuild-batched-entry.js',
+    '../src/minute-rebuild-maintenance-entry.js',
+    '../src/minute-maintenance-optimized-entry.js',
+  ]) {
+    assert.equal(existsSync(new URL(path, import.meta.url)), false, path);
+  }
 });
 
-test('rebuild maintenance is skipped before collector or D1 work when disabled', async () => {
-  let checked = false;
-  let sent = false;
-  const result = await processMinuteMaintenanceGate({ HISTORICAL_REBUILD_ENABLED: false }, {
-    message_type: 'minute-rebuild-stage',
+test('ordered historical derive backlog is acknowledged without loading D1 derive work', async () => {
+  const queued = message({
+    message_type: 'minute-fact-derive',
     message_version: 1,
-    stage: 'maintenance-gate',
-    maintenance_task: 'rebuild',
-    run_id: 'budget-test',
-    scheduled_at: 1_800_000,
-  }, {
-    async checkCollector() { checked = true; return { ready: true }; },
-    async send() { sent = true; },
+    job_kind: 'rebuild',
   });
-  assert.equal(result.skipped, true);
-  assert.equal(result.reason, 'historical-rebuild-disabled-for-d1-budget');
-  assert.equal(checked, false);
-  assert.equal(sent, false);
-});
-
-test('sync maintenance remains active while historical rebuilding is disabled', async () => {
-  const sent = [];
-  const result = await processMinuteMaintenanceGate({ HISTORICAL_REBUILD_ENABLED: false }, {
-    message_type: 'minute-rebuild-stage',
-    message_version: 1,
-    stage: 'maintenance-gate',
-    maintenance_task: 'sync',
-    run_id: 'sync-test',
-    scheduled_at: 1_800_000,
-  }, {
-    async checkCollector() { return { ready: true }; },
-    async send(body) { sent.push(body); },
-  });
-  assert.equal(result.pending, true);
-  assert.equal(result.dispatched_stage, 'maintenance-run');
-  assert.equal(sent[0].stage, 'maintenance-run');
-});
-
-test('historical derive backlog is acknowledged without loading the D1 handler', async () => {
-  const queued = message({ message_type: 'minute-fact-derive' });
   let delegated = false;
-  await processMinutePipelineBatch({
+  const result = await processMinutePipelineBatch({
     queue: REBUILD_DERIVE_QUEUE_NAME,
     messages: [queued],
-  }, { HISTORICAL_REBUILD_ENABLED: false }, null, {
-    derive: {
-      async processMessage() { delegated = true; },
-    },
+  }, { HISTORICAL_REBUILD_ENABLED: true }, null, {
+    async processMinuteDeriveBatch() { delegated = true; },
   });
   assert.deepEqual(queued.events, ['ack']);
   assert.equal(delegated, false);
+  assert.equal(result.reason, 'rebuild-actions-owned');
 });
 
-test('queued historical rebuild stages drain without D1 work', async () => {
+test('stale historical messages on the live lane are also acknowledged', async () => {
   const queued = message({
-    message_type: 'minute-rebuild-stage',
+    message_type: 'minute-fact-derive-stage',
     message_version: 1,
-    stage: 'backfill',
+    stage: 'write',
+    job: { id: 8, job_kind: 'rebuild' },
+    payload: { rebuild: true },
   });
   let delegated = false;
-  await processMinuteRebuildBatch({ messages: [queued] }, {
-    HISTORICAL_REBUILD_ENABLED: false,
-  }, null, {
-    async processMinuteRebuildStage() { delegated = true; },
+  const result = await processMinutePipelineBatch({
+    queue: LIVE_DERIVE_QUEUE_NAME,
+    messages: [queued],
+  }, {}, null, {
+    async processMinuteDeriveBatch() { delegated = true; },
   });
   assert.deepEqual(queued.events, ['ack']);
   assert.equal(delegated, false);
+  assert.equal(result.reason, 'rebuild-actions-owned');
 });
 
-test('recovery dispatch excludes durable rebuild jobs with indexable predicates', async () => {
+test('recovery dispatch queries only durable live jobs with indexable predicates', async () => {
   const statements = [];
   const db = {
     prepare(sql) {
@@ -112,12 +87,13 @@ test('recovery dispatch excludes durable rebuild jobs with indexable predicates'
   };
   assert.deepEqual(await pendingMinuteDeriveTriggers({
     MINUTE_DB: db,
-    HISTORICAL_REBUILD_ENABLED: false,
+    HISTORICAL_REBUILD_ENABLED: true,
+    MINUTE_FACT_REPAIR_BURST_ENABLED: true,
   }, { now: 123, limit: 2 }), []);
   assert.equal(statements.length, 2);
   for (const statement of statements) {
-    assert.match(statement.sql, /job_kind!='rebuild'/);
-    assert.doesNotMatch(statement.sql, /\sOR\s/);
+    assert.match(statement.sql, /job_kind='live'/);
+    assert.doesNotMatch(statement.sql, /job_kind!='rebuild'|job_kind!='repair'|\sOR\s/);
     assert.deepEqual(statement.args, [123, 2]);
   }
 });
