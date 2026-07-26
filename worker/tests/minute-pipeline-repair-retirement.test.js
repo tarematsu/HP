@@ -26,7 +26,7 @@ function recordingDb() {
   };
 }
 
-test('disabled repair write stages are retired and acknowledged without D1 derive work', async () => {
+test('repair write stages are retired by default without D1 derive work', async () => {
   const db = recordingDb();
   const events = [];
   const result = await processMinutePipelineBatch({
@@ -55,7 +55,6 @@ test('disabled repair write stages are retired and acknowledged without D1 deriv
     }],
   }, {
     MINUTE_DB: db,
-    MINUTE_FACT_REPAIR_BURST_ENABLED: false,
   }, {}, {
     async processMinuteDeriveBatch() {
       events.push('unexpected-derive');
@@ -74,7 +73,7 @@ test('disabled repair write stages are retired and acknowledged without D1 deriv
   assert.equal(db.calls[1].bindings.at(-1), 'total-listener-20260710-13-v1');
 });
 
-test('disabled repair triggers retire their durable job by channel and minute', async () => {
+test('repair triggers retire their durable job by default', async () => {
   const db = recordingDb();
   const events = [];
   const result = await processMinutePipelineBatch({
@@ -92,7 +91,6 @@ test('disabled repair triggers retire their durable job by channel and minute', 
     }],
   }, {
     MINUTE_DB: db,
-    MINUTE_FACT_REPAIR_BURST_ENABLED: false,
   });
 
   assert.deepEqual(events, ['ack']);
@@ -100,4 +98,31 @@ test('disabled repair triggers retire their durable job by channel and minute', 
   assert.equal(db.calls.length, 1);
   assert.match(db.calls[0].sql, /channel_id=\? AND minute_at=\?/);
   assert.deepEqual(db.calls[0].bindings.slice(-2), [10, 120_000]);
+});
+
+test('repair processing requires an explicit rollback opt-in', async () => {
+  const events = [];
+  const result = await processMinutePipelineBatch({
+    queue: REBUILD_DERIVE_QUEUE_NAME,
+    messages: [{
+      body: {
+        message_type: 'minute-fact-derive',
+        message_version: 1,
+        channel_id: 10,
+        minute_at: 120_000,
+        job_kind: 'repair',
+      },
+      ack() { events.push('ack'); },
+    }],
+  }, {
+    MINUTE_FACT_REPAIR_BURST_ENABLED: true,
+  }, {}, {
+    async processMinuteDeriveBatch(batch) {
+      events.push(`derive:${batch.queue}`);
+      return { processed: 1 };
+    },
+  });
+
+  assert.deepEqual(result, { processed: 1 });
+  assert.deepEqual(events, [`derive:${REBUILD_DERIVE_QUEUE_NAME}`]);
 });
