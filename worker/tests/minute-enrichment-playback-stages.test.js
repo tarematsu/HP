@@ -127,6 +127,72 @@ test('playback patch updates the fact, requests expansion, and sends identity', 
   assert.equal(Object.hasOwn(sent, 'playback'), false);
 });
 
+test('production playback completes the full enrichment pipeline in one Queue invocation', async () => {
+  const body = playbackBody(4);
+  const events = [];
+  let currentReads = 0;
+  const result = await processMinutePlaybackResolve({
+    MINUTE_DB: {},
+    BUDDIES_DB: {},
+    MINUTE_ENRICHMENT_INLINE_PIPELINE_ENABLED: true,
+  }, body, {
+    loadCurrentMinute: async () => {
+      currentReads += 1;
+      return { id: 1, observed_at: body.observed_at, quality_flags: 0 };
+    },
+    updatePlaybackState: async () => {
+      events.push('playback');
+      return {
+        current_position: 2,
+        current_track_id: 902,
+        current_schedule_valid: 1,
+        delayed: false,
+      };
+    },
+    patchPlaybackResult: async (_db, _current, _identity, playback) => {
+      events.push('patch');
+      return {
+        position: playback.current_position,
+        trackId: playback.current_track_id,
+      };
+    },
+    requestQueueExpansion: async (_db, _queue, position) => {
+      events.push(`expand:${position}`);
+      return 8;
+    },
+    resolveHost: async () => { events.push('host'); return 51; },
+    resolveSession: async () => { events.push('session'); return 26; },
+    attachSessionAndFact: async () => { events.push('attach'); },
+    writeCurrentBite: async (_db, value) => {
+      events.push('bite');
+      assert.equal(value.position, 2);
+      assert.equal(value.trackId, 902);
+      assert.equal(value.queue.tracks.length, 1);
+      return 302;
+    },
+    sendStage: async () => { events.push('unexpected-stage-send'); },
+    sendAttachStage: async () => { events.push('unexpected-attach-send'); },
+    sendBiteStage: async () => { events.push('unexpected-bite-send'); },
+  });
+
+  assert.equal(currentReads, 1);
+  assert.deepEqual(events, ['playback', 'patch', 'expand:2', 'host', 'session', 'attach', 'bite']);
+  assert.equal(result.pending, false);
+  assert.equal(result.stage, 'identity-bite');
+  assert.equal(result.queue_position, 2);
+  assert.equal(result.track_id, 902);
+  assert.equal(result.bite_count, 302);
+  assert.equal(result.requested_materialized_tracks, 8);
+  assert.equal(result.playback_inlined, true);
+  assert.equal(result.playback_patch_inlined, true);
+  assert.equal(result.identity_inlined, true);
+  assert.equal(result.attach_inlined, true);
+  assert.equal(result.playback_patch_deferred, false);
+  assert.equal(result.identity_deferred, false);
+  assert.equal(result.attach_deferred, false);
+  assert.equal(result.bite_deferred, false);
+});
+
 test('both playback stages reject a stale minute winner before mutation', async () => {
   const body = playbackBody(1);
   let updates = 0;
