@@ -1,7 +1,6 @@
 
 
 
-
 #pragma comment(lib, "version.lib")
 
 #include "app.h"
@@ -9,6 +8,7 @@
 
 namespace hp {
 namespace {
+constexpr uint64_t kMaximumComparableExecutableBytes = 64ull * 1024ull * 1024ull;
 
 void AppendUnsigned(std::wstring& output, unsigned long value) {
   wchar_t buffer[16]{};
@@ -48,6 +48,34 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   return version;
 }
 
+std::wstring InstalledHomePanelSha256(const fs::path& executable) noexcept {
+  try {
+    std::error_code error;
+    const uint64_t size = fs::file_size(executable, error);
+    if (error || size == 0 || size > kMaximumComparableExecutableBytes) return {};
+
+    std::ifstream input(executable, std::ios::binary);
+    if (!input) return {};
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input || input.gcount() != static_cast<std::streamsize>(bytes.size())) return {};
+    return Sha256Hex(bytes);
+  } catch (...) {
+    return {};
+  }
+}
+
+bool ManifestExecutableDiffers(const UpdateManifest& manifest,
+                               const fs::path& executable) noexcept {
+  const auto file = std::find_if(
+      manifest.files.begin(), manifest.files.end(), [](const UpdateFileSpec& candidate) {
+        return candidate.name == L"HomePanel.exe";
+      });
+  if (file == manifest.files.end()) return false;
+  const std::wstring installedHash = InstalledHomePanelSha256(executable);
+  return !installedHash.empty() && installedHash != file->sha256;
+}
+
 }  // namespace
 
 void App::CheckForUpdateAsync(bool install) {
@@ -67,9 +95,14 @@ void App::CheckForUpdateAsync(bool install) {
     try {
       const std::string manifestJson = cloud_->FetchUpdateManifest();
       const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
-      std::wstring currentVersion = InstalledHomePanelVersion(rootDir_ / L"HomePanel.exe");
+      const fs::path executable = rootDir_ / L"HomePanel.exe";
+      std::wstring currentVersion = InstalledHomePanelVersion(executable);
       if (currentVersion.empty()) currentVersion = kVersion;
-      if (!IsVersionNewer(manifest.version, currentVersion)) {
+      const bool newerVersion = IsVersionNewer(manifest.version, currentVersion);
+      const bool replacementBuild =
+          !newerVersion && !IsVersionNewer(currentVersion, manifest.version) &&
+          ManifestExecutableDiffers(manifest, executable);
+      if (!newerVersion && !replacementBuild) {
         if (install) {
           message.reserve(currentVersion.size() + 20);
           message.append(L"すでに最新バージョンです (v");
@@ -81,12 +114,16 @@ void App::CheckForUpdateAsync(bool install) {
         message.append(L"HomePanel ");
         message.append(manifest.version);
         message.append(L" が利用できます");
-      } else if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
-        logger_->Info(L"Verified updater launched for version " + manifest.version);
-        PostMessageW(window_, WM_CLOSE, 0, 0);
-        updateBusy_ = false;
-        return;
       } else {
+        if (replacementBuild) {
+          logger_->Info(L"Applying replacement update with the same version and a different executable hash");
+        }
+        if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
+          logger_->Info(L"Verified updater launched for version " + manifest.version);
+          PostMessageW(window_, WM_CLOSE, 0, 0);
+          updateBusy_ = false;
+          return;
+        }
         message = L"検証済み更新プログラムを起動できませんでした";
       }
     } catch (const std::exception& error) {
