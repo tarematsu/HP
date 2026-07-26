@@ -1,8 +1,8 @@
 import {
   attachReadModelTrackMetadata,
-  loadReadModelTrackMetadata,
   preserveReadModelTrackMetadata,
 } from './minute-facts-read-model.js';
+import { loadReadModelTrackMetadata } from './read-model-metadata-indexed.js';
 import { queueNeedsPreservation } from './read-model-metadata-plan.js';
 
 const READ_MODEL_CHECKPOINT_MS = 20 * 60_000;
