@@ -44,6 +44,12 @@ test('unified observability issue body includes HP and Stationhead deployment co
         version_ids: ['version-hp'],
         created_on: '2026-07-25T00:56:00Z',
       },
+      'homepanel-video': {
+        status: 'active',
+        deployment_id: 'deployment-video',
+        version_ids: ['version-video'],
+        created_on: '2026-07-25T00:56:30Z',
+      },
     },
     recentMerges: [{
       number: 261,
@@ -61,8 +67,10 @@ test('unified observability issue body includes HP and Stationhead deployment co
   assert.match(body, /Current main SHA:\*\* `fedcba654321`/);
   assert.match(body, /deployment-sh/);
   assert.match(body, /deployment-hp/);
+  assert.match(body, /deployment-video/);
   assert.match(body, /version-sh/);
   assert.match(body, /version-hp/);
+  assert.match(body, /version-video/);
   assert.match(body, /#261 Fix observability diagnostics/);
   assert.match(body, /Top D1 queries by rows read/);
   assert.match(body, /Databases: 4/);
@@ -80,10 +88,10 @@ test('unified workflow publishes one retrievable account-wide status', async () 
     'utf8',
   );
 
-  assert.match(workflow, /workflows: \["Deploy production", "Deploy unified homepanel-cloud Worker"\]/);
-  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/);
-  assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
-  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR/);
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
+  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video/);
+  assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc,hp\/video\/wrangler\.jsonc/);
+  assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR/);
   assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
   assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);
