@@ -63,6 +63,9 @@
       "binding": "DATA_BUCKET"
     }
   ],
+  "triggers": {
+    "crons": []
+  },
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.5,
