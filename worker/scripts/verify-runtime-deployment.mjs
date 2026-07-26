@@ -1,5 +1,5 @@
 const API_BASE = 'https://api.cloudflare.com/client/v4';
-const DEFAULT_ATTEMPTS = 10;
+const DEFAULT_ATTEMPTS = 30;
 const DEFAULT_DELAY_MS = 2_000;
 
 function required(value, name) {
