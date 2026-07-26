@@ -172,7 +172,7 @@ jobs:
           }
 
       - name: Package native release
-        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
