@@ -86,6 +86,10 @@ const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
 );
+const offlineActions = readFileSync(
+  new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url),
+  'utf8',
+);
 const runtime = JSON.parse(readFileSync(
   new URL('../worker/wrangler.runtime.jsonc', import.meta.url),
   'utf8',
@@ -198,14 +202,18 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.doesNotMatch(pendingAgeMigration, /MIN\(minute_at\)/);
 });
 
-test('production moves ordinary reconstruction to Actions and retires the one-time repair burst', () => {
+test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
   assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, false);
   assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, false);
-  assert.equal(runtime.vars.MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED, true);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
+  for (const name of [
+    'MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED',
+    'REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS',
+    'MINUTE_FACT_REPAIR_BURST_ENABLED',
+  ]) {
+    assert.equal(Object.hasOwn(runtime.vars, name), false, name);
+  }
   assert.equal(runtime.vars.DERIVE_DISPATCH_LIMIT, 2);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
-  assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_SCAN_INTERVAL_MS, 3_600_000);
   assert.equal(runtime.vars.LIVE_DERIVE_DIRECT_QUEUE_ENABLED, true);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
@@ -213,10 +221,14 @@ test('production moves ordinary reconstruction to Actions and retires the one-ti
   assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
   assert.equal(runtime.vars.REBUILD_MAX_JOBS, 4);
-  assert.equal(runtime.vars.MINUTE_FACT_REPAIR_BURST_ENABLED, false);
+  assert.match(offlineActions, /runRuntimeOfflineMaintenanceActions/);
+  assert.match(offlineActions, /pruneOldSnapshots/);
+  assert.match(offlineActions, /runRollupMaintenance/);
+
   const historical = runtime.queues.consumers.find(
     ({ queue }) => queue === 'stationhead-minute-derive',
   );
   assert.equal(historical.max_batch_size, 1);
   assert.equal(historical.max_concurrency, 250);
+  assert.equal(runtime.triggers, undefined);
 });
