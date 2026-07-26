@@ -73,7 +73,7 @@ function loadEnrichmentModule() {
 }
 
 function loadPagesResponseModule() {
-  pagesResponseModulePromise ||= import('./pages-read-model-entry.js');
+  pagesResponseModulePromise ||= import('./pages-response-fetch-entry.js');
   return pagesResponseModulePromise;
 }
 
@@ -152,7 +152,7 @@ export async function runCoreFetch(request, env, ctx, dependencies = EMPTY_DEPEN
     });
   }
   const run = dependencies.runPagesFetch
-    || (await loadPagesResponseModule()).runPagesReadModelFetch;
+    || (await loadPagesResponseModule()).runPagesResponseFetch;
   return run(request, env, ctx, dependencies.pages || EMPTY_DEPENDENCIES);
 }
 
