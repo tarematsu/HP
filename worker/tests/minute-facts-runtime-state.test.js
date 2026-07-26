@@ -64,7 +64,7 @@ test('runtime state records sanitized task failures and exposes backlog signals'
   assert.equal(values[8], 1);
   assert.deepEqual(minuteFactRuntimeSignals({
     dead_count: 1, pending_count: 2, oldest_pending_minute: 1_000, last_failure_at: 5_000, last_success_at: 4_000,
-  }, { now: 20_000, pendingAgeMs: 10_000 }), {
+  }, { now: 20_000, pendingAgeMs: 10_000, pendingAlertCount: 2 }), {
     has_dead_jobs: true, pending_backlog: true, pending_stale: true, last_run_failed: true,
   });
 });
@@ -84,6 +84,21 @@ test('runtime signals never report stale backlog when the pending count is zero'
   }, { now: 1_000_000, pendingAgeMs: 60_000 }), {
     has_dead_jobs: false,
     pending_backlog: false,
+    pending_stale: false,
+    last_run_failed: false,
+  });
+});
+
+test('runtime signals tolerate a bounded historical rebuild backlog', () => {
+  assert.deepEqual(minuteFactRuntimeSignals({
+    pending_count: 3,
+    oldest_pending_minute: 1,
+    dead_count: 0,
+    last_failure_at: 0,
+    last_success_at: 1,
+  }, { now: 1_000_000, pendingAgeMs: 60_000, pendingAlertCount: 20 }), {
+    has_dead_jobs: false,
+    pending_backlog: true,
     pending_stale: false,
     last_run_failed: false,
   });

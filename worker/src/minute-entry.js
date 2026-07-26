@@ -301,7 +301,10 @@ async function healthResponse(request, env) {
   const tasks = activeMinuteHealthTasks(await readMinuteFactRuntimeState(env));
   const health = tasks.map((task) => ({
     task_name: task.task_name,
-    ...minuteFactRuntimeSignals(task, { pendingAgeMs: env.MINUTE_FACT_PENDING_ALERT_MS }),
+    ...minuteFactRuntimeSignals(task, {
+      pendingAgeMs: env.MINUTE_FACT_PENDING_ALERT_MS,
+      pendingAlertCount: env.MINUTE_FACT_PENDING_ALERT_COUNT,
+    }),
   }));
   const body = JSON.stringify({
     ok: health.every((task) => !task.has_dead_jobs && !task.pending_stale && !task.last_run_failed),

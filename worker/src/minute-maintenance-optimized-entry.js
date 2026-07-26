@@ -1,5 +1,6 @@
 import { collectorReadyForMaintenance } from './collector-coordinator-status.js';
 import {
+  MINUTE_FACT_MAINTENANCE_CRON,
   minuteMaintenanceTask,
   runMinuteScheduledWithCollectorPriority,
 } from './minute-entry.js';
@@ -41,7 +42,6 @@ function isDeriveDispatchCron(controller) {
 
 function maintenanceMessage(controller, task) {
   const scheduledAt = scheduledTimestamp(controller);
-  const cron = typeof controller?.cron === 'string' ? controller.cron : String(controller?.cron || '');
   return {
     message_type: 'minute-rebuild-stage',
     message_version: 1,
@@ -49,7 +49,7 @@ function maintenanceMessage(controller, task) {
     stage: 'maintenance-gate',
     maintenance_task: task,
     scheduled_at: scheduledAt,
-    cron,
+    cron: MINUTE_FACT_MAINTENANCE_CRON,
     attempt: 0,
   };
 }

@@ -61,6 +61,23 @@ test('inline sync rejects a returned soft failure so runtime fallback can enqueu
   );
 });
 
+test('inline maintenance normalizes the consolidated runtime cron', async () => {
+  let cron = null;
+  await runMinuteMaintenanceSyncInline(
+    { cron: '* * * * *', scheduledTime: SCHEDULED_AT },
+    {},
+    null,
+    {
+      maintenance: {},
+      async processMinuteMaintenanceSync(_env, message) {
+        cron = message.cron;
+        return { stage: 'maintenance-run', task: 'sync', result: { failed: false } };
+      },
+    },
+  );
+  assert.equal(cron, SYNC_CRON);
+});
+
 test('direct maintenance fallback rejects soft failures when the rebuild Queue binding is missing', async () => {
   await assert.rejects(
     dispatchMinuteMaintenanceGate(
