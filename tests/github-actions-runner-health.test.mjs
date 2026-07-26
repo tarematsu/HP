@@ -24,6 +24,7 @@ const target = {
   cadenceMinutes: 15,
   staleAfterMinutes: 40,
   stalledAfterMinutes: 25,
+  ignoreExpectedWorkflowRunSkips: true,
 };
 
 function run(overrides = {}) {
@@ -31,6 +32,7 @@ function run(overrides = {}) {
     id: 100,
     run_number: 20,
     html_url: 'https://github.com/tarematsu/HP/actions/runs/100',
+    event: 'schedule',
     status: 'completed',
     conclusion: 'success',
     created_at: '2026-07-26T14:49:00.000Z',
@@ -75,6 +77,28 @@ test('runner health classifies fresh, running, failed, stalled, and stale operat
     run({ created_at: '2026-07-26T13:00:00.000Z', updated_at: '2026-07-26T13:03:00.000Z' }),
   ], { now: NOW });
   assert.equal(stale.health, 'stale');
+});
+
+test('Pages health ignores expected workflow-run skips but retains real skipped runs', () => {
+  const expectedSkip = run({
+    id: 101,
+    run_number: 21,
+    event: 'workflow_run',
+    conclusion: 'skipped',
+    created_at: '2026-07-26T14:59:00.000Z',
+    run_started_at: '2026-07-26T14:59:00.000Z',
+    updated_at: '2026-07-26T14:59:01.000Z',
+  });
+  const ignored = evaluateActionsRunnerHealth(target, [expectedSkip, run()], { now: NOW });
+  assert.equal(ignored.health, 'healthy');
+  assert.equal(ignored.latest.id, 100);
+
+  const scheduledSkip = evaluateActionsRunnerHealth(target, [
+    { ...expectedSkip, event: 'schedule' },
+    run(),
+  ], { now: NOW });
+  assert.equal(scheduledSkip.health, 'degraded');
+  assert.equal(scheduledSkip.latest.id, 101);
 });
 
 test('runner health queries all main workflow runs and renders actionable links', async () => {
