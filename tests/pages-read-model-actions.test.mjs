@@ -9,6 +9,7 @@ import {
 
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+const d1Adapter = readFileSync(new URL('../worker/scripts/remote-d1-adapter.mjs', import.meta.url), 'utf8');
 const deployedEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url), 'utf8');
 const runtimeEntry = readFileSync(new URL('../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
 const responseFetch = readFileSync(new URL('../worker/src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
@@ -27,8 +28,10 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /createWranglerRemoteD1/);
+  assert.match(d1Adapter, /'d1', 'execute', database/);
+  assert.match(d1Adapter, /'--remote', '--yes', '--json'/);
   assert.match(runner, /r2', 'object', 'put'/);
-  assert.match(runner, /d1', 'execute'.*--remote/s);
   assert.match(r2Store, /pages-response\/actions-v1/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
 });
