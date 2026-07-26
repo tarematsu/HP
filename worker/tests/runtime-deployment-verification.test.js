@@ -28,7 +28,7 @@ function deployment(version) {
   };
 }
 
-test('temporary runtime deploy config explicitly retires cron and Durable Object surfaces', () => {
+test('temporary runtime deploy config retires cron and Durable Object surfaces with a deletion migration', () => {
   const source = {
     name: 'sh-runtime-orchestrator',
     durable_objects: { bindings: [{ name: 'SCHEDULER_COORDINATOR' }] },
@@ -38,7 +38,10 @@ test('temporary runtime deploy config explicitly retires cron and Durable Object
   const deployed = queueOnlyRuntimeDeployConfig(source);
   assert.deepEqual(deployed.triggers, { crons: [] });
   assert.equal(deployed.durable_objects, undefined);
-  assert.equal(deployed.migrations, undefined);
+  assert.deepEqual(deployed.migrations, [
+    { tag: 'runtime-coordinator-v1', new_sqlite_classes: ['RuntimeCoordinator'] },
+    { tag: 'runtime-coordinator-v2-retired', deleted_classes: ['RuntimeCoordinator'] },
+  ]);
   assert.deepEqual(deployed.vars, { KEEP: true });
   assert.notEqual(deployed, source);
   assert.notEqual(deployed.vars, source.vars);
