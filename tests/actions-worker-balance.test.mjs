@@ -11,18 +11,19 @@ const scheduledWorkerActions = [
   '.github/workflows/run-pages-read-model-rebuild.yml',
 ];
 
-test('frequent Worker maintenance Actions reuse one dependency cache contract', () => {
+function assertVerifiedNpmCache(workflow, path) {
+  assert.match(workflow, /uses: actions\/setup-node@v4/, path);
+  assert.match(workflow, /cache: npm/, path);
+  assert.match(workflow, /cache-dependency-path: worker\/package-lock\.json/, path);
+  assert.match(workflow, /npm ci --prefer-offline --no-audit --no-fund/, path);
+  assert.doesNotMatch(workflow, /uses: actions\/cache@v4/, path);
+  assert.doesNotMatch(workflow, /path: worker\/node_modules/, path);
+  assert.doesNotMatch(workflow, /outputs\.cache-hit/, path);
+}
+
+test('frequent Worker maintenance Actions verify dependencies against the lockfile', () => {
   for (const path of scheduledWorkerActions) {
-    const workflow = read(path);
-    assert.match(workflow, /uses: actions\/cache@v4/, path);
-    assert.match(workflow, /path: worker\/node_modules/, path);
-    assert.match(
-      workflow,
-      /key: \$\{\{ runner\.os \}\}-node22-worker-actions-\$\{\{ hashFiles\('worker\/package-lock\.json', 'packages\/sh-shared\/\*\*'\) \}\}/,
-      path,
-    );
-    assert.match(workflow, /if: steps\.worker-modules\.outputs\.cache-hit != 'true'/, path);
-    assert.match(workflow, /npm ci --no-audit --no-fund/, path);
+    assertVerifiedNpmCache(read(path), path);
   }
 });
 
@@ -31,6 +32,19 @@ test('incremental minute rebuild never cancels a partially committed upload', ()
   assert.match(workflow, /group: minute-facts-local-rebuild/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /Never cancel an upload that may already have committed part of its window/);
+});
+
+test('minute rebuild keeps package-manager caching without restoring node_modules', () => {
+  const database = read('.github/workflows/database.yml');
+  const rebuild = database.match(
+    /  minute-facts-local-rebuild:([\s\S]*?)\n  payload-purge:/,
+  )?.[1] || '';
+  assert.match(rebuild, /uses: actions\/setup-node@v4/);
+  assert.match(rebuild, /cache: npm/);
+  assert.match(rebuild, /cache-dependency-path: worker\/package-lock\.json/);
+  assert.match(rebuild, /npm ci --no-audit --no-fund/);
+  assert.doesNotMatch(rebuild, /uses: actions\/cache@v4/);
+  assert.doesNotMatch(rebuild, /worker\/node_modules/);
 });
 
 test('runtime keeps the retired ordered lane drain-only until production backlog is verified empty', () => {
