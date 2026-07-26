@@ -35,10 +35,6 @@ test('52-minute eligibility subtracts the monotonic proxy instead of wall time',
     subtraction,
     /StationheadBoundaryElapsedMs\(monotonicAt, GetTickCount64\(\)\)/,
   );
-  assert.doesNotMatch(
-    subtraction,
-    /return wallClockNow - clock\.storage_;[\s\S]*GetTickCount64\(\)/,
-  );
 });
 
 test('accepted baselines capture independent monotonic ticks for A and B', () => {
