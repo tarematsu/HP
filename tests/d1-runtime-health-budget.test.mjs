@@ -9,13 +9,18 @@ function source(path) {
 test('idle minute health reduces D1 probes and heartbeat writes by seventy-five percent', () => {
   const maintenance = source('../worker/src/minute-maintenance-entry.js');
   const health = source('../worker/src/minute-facts-inbox-health.js');
+  const inbox = source('../worker/src/minute-facts-inbox.js');
   const runtimeState = source('../worker/src/minute-facts-runtime-state.js');
+  const compatHealth = inbox.match(
+    /export const MINUTE_FACT_INBOX_STATS_COMPAT_SQL = `([\s\S]*?)`;/,
+  )?.[1] || '';
 
   assert.match(maintenance, /DERIVE_STATE_CHECKPOINT_MS = 20 \* 60_000/);
   assert.match(maintenance, /state_checkpoint_skipped/);
   assert.match(maintenance, /minute-facts-inbox-health\.js/);
-  assert.match(health, /COUNT\(\*\) FILTER \(WHERE job_kind='rebuild'\)/);
-  assert.equal((health.match(/WHERE status='pending'/g) || []).length, 1);
+  assert.match(health, /MINUTE_FACT_INBOX_STATS_COMPAT_SQL/);
+  assert.match(compatHealth, /COUNT\(\*\) FILTER \(WHERE job_kind='rebuild'\)/);
+  assert.equal((compatHealth.match(/WHERE status='pending'/g) || []).length, 1);
   assert.match(runtimeState, /RUNTIME_SUCCESS_CHECKPOINT_MS = 20 \* 60_000/);
 
   const previousPolls = 24 * 60 / 5;
