@@ -10,8 +10,8 @@ const runtimeOrchestrator = readFileSync(
   new URL('../worker/src/runtime-orchestrator-deployed-entry.js', import.meta.url),
   'utf8',
 );
-const runtimeDoOrchestrator = readFileSync(
-  new URL('../worker/src/runtime-do-orchestrator.js', import.meta.url),
+const runtimeSlimOrchestrator = readFileSync(
+  new URL('../worker/src/runtime-slim-orchestrator.js', import.meta.url),
   'utf8',
 );
 const pagesReadModel = readFileSync(
@@ -34,8 +34,8 @@ test('runtime relay subset stays bounded while account-wide Queue usage remains 
   assert.doesNotMatch(runtimeScheduled, /inline_minute_recovery_failed/);
   assert.match(runtimeScheduled, /inline_minute_maintenance_gate_failed/);
   assert.match(runtimeScheduled, /MINUTE_RECOVERY_POLL_INTERVAL_MINUTES = 15/);
-  assert.match(runtimeOrchestrator, /minuteFactRepairBurstDue/);
-  assert.match(runtimeDoOrchestrator, /repair-burst-cadence/);
+  assert.doesNotMatch(runtimeOrchestrator, /minuteFactRepairBurstDue/);
+  assert.match(runtimeSlimOrchestrator, /MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED/);
   assert.match(pagesReadModel, /PAGES_DASHBOARD_MATERIALIZATION_MESSAGE/);
   assert.match(pagesReadModel, /dispatchPagesDashboardMaterialization/);
 
@@ -46,12 +46,12 @@ test('runtime relay subset stays bounded while account-wide Queue usage remains 
   assert.match(dailyAudit, /queueMessageOperationsAdaptiveGroups/);
   assert.match(dailyAudit, /billableOperations/);
 
-  // Prediction: 48/day; hourly maintenance: 48/day; heavy Pages variants:
-  // 17/day; pathological raw fallback: two messages every five minutes;
-  // recovery relay: one message every fifteen minutes.
-  const runtimeRelayMessages = 48 + 48 + 17 + 288 * 2 + 96;
+  // Prediction: 48/day; hourly maintenance: 48/day; recovery: 96/day.
+  // Actions owns recovery/rebuild/sync maintenance and raw collection is
+  // dedicated, so these are only worst-case inline fallback messages.
+  const runtimeRelayMessages = 48 + 48 + 96;
   const runtimeRelayQueueOperations = runtimeRelayMessages * 3;
-  assert.equal(runtimeRelayQueueOperations, 2_355);
+  assert.equal(runtimeRelayQueueOperations, 576);
 
   // The July repair is complete and retired. No new repair burst belongs in
   // this runtime relay subset. Stale repair stages are handled separately by
@@ -60,26 +60,24 @@ test('runtime relay subset stays bounded while account-wide Queue usage remains 
   const repairRelayQueueOperations = 0;
   assert.equal(repairRelayQueueOperations, 0);
 
-  // Dashboard materialization is isolated from Cron every five minutes.
-  const dashboardMessagesPerDay = 1_440 / 5;
-  const dashboardQueueOperations = dashboardMessagesPerDay * 3;
-  assert.equal(dashboardQueueOperations, 864);
+  // Dashboard materialization now runs inline and does not add Queue traffic.
+  const dashboardQueueOperations = 0;
 
   const modeledRuntimeSubset = runtimeRelayQueueOperations
     + repairRelayQueueOperations
     + dashboardQueueOperations;
-  assert.equal(modeledRuntimeSubset, 3_219);
+  assert.equal(modeledRuntimeSubset, 576);
   assert.ok(modeledRuntimeSubset < 10_000);
 
   // Duplicate delivery of this modeled subset alone still has local headroom.
   // This is not an account-wide Queue forecast.
   const doubledRuntimeSubset = modeledRuntimeSubset * 2;
-  assert.equal(doubledRuntimeSubset, 6_438);
+  assert.equal(doubledRuntimeSubset, 1_152);
   assert.ok(doubledRuntimeSubset < 10_000);
 
   // If every maintenance gate also falls back to Queue, the modeled subset
   // remains bounded; the account-wide audit is still authoritative.
-  const fullGateFallbackRuntimeSubset = modeledRuntimeSubset + 432 * 3;
-  assert.equal(fullGateFallbackRuntimeSubset, 4_515);
+  const fullGateFallbackRuntimeSubset = modeledRuntimeSubset;
+  assert.equal(fullGateFallbackRuntimeSubset, 576);
   assert.ok(fullGateFallbackRuntimeSubset < 10_000);
 });

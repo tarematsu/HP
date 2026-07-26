@@ -9,7 +9,8 @@ const responseStore = readSource('worker/src/pages-response-store.js');
 const responseEntry = readSource('worker/src/pages-read-model-entry.js');
 const coreEntry = readSource('worker/src/runtime-orchestrator-entry.js');
 const deployedEntry = readSource('worker/src/runtime-orchestrator-deployed-entry.js');
-const runtimeDoEntry = readSource('worker/src/runtime-do-orchestrator.js');
+const runtimeSlimEntry = readSource('worker/src/runtime-slim-orchestrator.js');
+const runtimeD1Coordinator = readSource('worker/src/runtime-d1-coordinator.js');
 const collectorStatus = readSource('worker/src/collector-coordinator-status.js');
 const queuePlanR2 = readSource('worker/src/queue-plan-r2.js');
 const pagesMiddleware = readSource('site/functions/_middleware.js');
@@ -70,7 +71,7 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
   ]);
 });
 
-test('the coordinators and remaining scheduled Queues fit safely below daily budgets', () => {
+test('the collector coordinator, D1 lease, and remaining scheduled Queues fit daily budgets', () => {
   const collectorScheduledRequests = 24 * 60;
   const runtimeScheduledRequests = 652;
   const collectorStatusRequests = 24 * 6 * 2 + 24 * 2;
@@ -99,7 +100,6 @@ test('the coordinators and remaining scheduled Queues fit safely below daily bud
   assert.equal(runtime.vars.PIPELINE_ANALYTICS_INTERVAL_MINUTES, undefined);
   assert.equal(runtime.vars.COLLECTOR_STATUS_DO_ENABLED, true);
   assert.deepEqual(runtime.durable_objects.bindings, [
-    { name: 'RUNTIME_COORDINATOR', class_name: 'RuntimeCoordinator' },
     {
       name: 'BUDDIES_COLLECTOR_COORDINATOR',
       class_name: 'BuddiesCollectorCoordinator',
@@ -107,23 +107,17 @@ test('the coordinators and remaining scheduled Queues fit safely below daily bud
     },
   ]);
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
-  expectAll(deployedEntry, [
-    'RuntimeCoordinator',
-    'runRuntimeOrchestratorScheduled',
-  ]);
-  expectAll(runtimeDoEntry, [
-    'stub.fetch',
-    "action: 'run'",
-    'runtimeOrchestratorDue',
-    'RUNTIME_COORDINATOR_FAIL_OPEN',
-  ]);
+  expectAll(deployedEntry, ['runRuntimeOrchestratorScheduled']);
+  expectAll(runtimeSlimEntry, ['runD1CoordinatedScheduled', 'runtimeOrchestratorDue']);
+  expectAll(runtimeD1Coordinator, ['sh_runtime_run_lease', 'claimRuntimeD1Lease']);
   expectAll(collectorStatus, [
     "action: 'status'",
     'BUDDIES_COLLECTOR_COORDINATOR',
     'COLLECTOR_STATUS_DO_ENABLED',
   ]);
-  assert.match(runtimeDoEntry, /primary-run-in-progress|runtime-coordinator-duplicate/);
-  expectAll(coreEntry, ['runtime:last-scheduled-ticket', 'runPagesReadModelCron']);
+  assert.match(runtimeD1Coordinator, /runtime-d1-duplicate-or-active/);
+  expectAll(coreEntry, ['runPagesReadModelCron']);
+  expectNone(coreEntry, ['runtime:last-scheduled-ticket', 'RuntimeCoordinator']);
   expectNone(coreEntry, ['pages-read-model-scheduled-dispatch']);
 });
 

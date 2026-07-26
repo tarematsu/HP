@@ -1,18 +1,12 @@
 import baseWorker from './runtime-orchestrator-entry.js';
-import { RuntimeCoordinator } from './runtime-coordinator-combined.js';
 import {
-  minuteFactRepairBurstDue,
-  runFetchCoordinatedScheduled,
   runRuntimeOrchestratorQueue,
   runRuntimeOrchestratorScheduled,
   runRuntimeWork,
   runtimeOrchestratorDue,
-} from './runtime-do-orchestrator.js';
+} from './runtime-slim-orchestrator.js';
 
 export {
-  RuntimeCoordinator,
-  minuteFactRepairBurstDue,
-  runFetchCoordinatedScheduled,
   runRuntimeOrchestratorQueue,
   runRuntimeOrchestratorScheduled,
   runRuntimeWork,

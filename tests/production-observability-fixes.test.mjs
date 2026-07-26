@@ -2,62 +2,35 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import deployedWorker, {
-  RuntimeCoordinator,
-  runFetchCoordinatedScheduled,
-} from '../worker/src/runtime-orchestrator-deployed-entry.js';
+import deployedWorker from '../worker/src/runtime-orchestrator-deployed-entry.js';
+import { runD1CoordinatedScheduled } from '../worker/src/runtime-d1-coordinator.js';
 import {
   TRACK_HISTORY_RESPONSE_MAX_CHUNKS,
 } from '../worker/src/pages-track-history-response.js';
 
-test('deployed runtime uses fetch-based Durable Object coordination', async () => {
+test('deployed runtime uses D1 coordination', async () => {
   assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue', 'scheduled']);
-  const calls = [];
-  const stub = {
-    async fetch(_url, init) {
-      const body = JSON.parse(init.body);
-      calls.push(body);
-      if (body.action === 'claim') {
-        return Response.json({ claimed: true, holder_id: 'holder-1', lease_until: 80_000 });
-      }
-      return Response.json({ released: true });
+  const statements = [];
+  const db = {
+    prepare(sql) {
+      statements.push(sql);
+      return {
+        bind() { return this; },
+        async first() { return { holder_id: 'holder-1', lease_until: 80_000 }; },
+        async run() { return { meta: { changes: 1 } }; },
+      };
     },
   };
-  const result = await runFetchCoordinatedScheduled(
+  const result = await runD1CoordinatedScheduled(
     { cron: '* * * * *', scheduledTime: 123 },
+    { BUDDIES_DB: db },
     {},
-    {},
-    {
-      stub,
-      runDirect: async (_controller, env) => {
-        assert.equal(env.PRIMARY_RUN_LOCK_ENABLED, false);
-        return 'ok';
-      },
-    },
+    async () => 'ok',
+    { now: 1_000, holderId: 'holder-1' },
   );
   assert.equal(result, 'ok');
-  assert.deepEqual(calls.map(({ action }) => action), ['claim', 'release']);
-
-  const rows = new Map();
-  const coordinator = new RuntimeCoordinator({
-    storage: {
-      async get(key) { return rows.get(key); },
-      async put(key, value) { rows.set(key, value); },
-    },
-  });
-  const claimed = await coordinator.fetch(new Request('https://internal/lease', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      action: 'claim',
-      cron: '* * * * *',
-      scheduledTime: 123,
-      now: 1_000,
-      leaseMs: 70_000,
-    }),
-  }));
-  assert.equal(claimed.status, 200);
-  assert.equal((await claimed.json()).claimed, true);
+  assert.match(statements[0], /INSERT INTO sh_runtime_run_lease/);
+  assert.match(statements[1], /UPDATE sh_runtime_run_lease/);
 
   const config = JSON.parse(readFileSync(
     new URL('../worker/wrangler.runtime.jsonc', import.meta.url),

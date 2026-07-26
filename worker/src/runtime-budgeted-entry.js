@@ -47,6 +47,10 @@ function enabled(value, fallback = true) {
   return !/^(0|false|no|off)$/i.test(String(value).trim());
 }
 
+function actionsMaintenanceEnabled(env = {}) {
+  return enabled(env?.MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED, false);
+}
+
 function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Math.trunc(Number(value));
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
@@ -170,7 +174,7 @@ export async function runBudgetedRuntimeScheduled(
   const activeEnv = attributedRuntimeEnv(env);
   const jobs = [];
 
-  if (minuteRecoveryPollDue(scheduledAt)) {
+  if (!actionsMaintenanceEnabled(activeEnv) && minuteRecoveryPollDue(scheduledAt)) {
     const body = attributedBody({
       message_type: RUNTIME_MINUTE_RECOVERY_MESSAGE,
       message_version: 1,
@@ -184,7 +188,9 @@ export async function runBudgetedRuntimeScheduled(
     )));
   }
 
-  const minuteTask = minuteMaintenanceTaskFor(scheduledAt);
+  const minuteTask = actionsMaintenanceEnabled(activeEnv)
+    ? null
+    : minuteMaintenanceTaskFor(scheduledAt);
   if (minuteTask) {
     const body = attributedBody({
       message_type: RUNTIME_MINUTE_GATE_MESSAGE,

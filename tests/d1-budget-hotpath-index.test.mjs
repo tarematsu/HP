@@ -198,9 +198,10 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.doesNotMatch(pendingAgeMigration, /MIN\(minute_at\)/);
 });
 
-test('production keeps ordinary reconstruction active and retires the one-time repair burst', () => {
-  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, true);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, true);
+test('production moves ordinary reconstruction to Actions and retires the one-time repair burst', () => {
+  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, false);
+  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, false);
+  assert.equal(runtime.vars.MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED, true);
   assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS, 3_600_000);
   assert.equal(runtime.vars.DERIVE_DISPATCH_LIMIT, 2);
   assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
@@ -208,7 +209,7 @@ test('production keeps ordinary reconstruction active and retires the one-time r
   assert.equal(runtime.vars.LIVE_DERIVE_DIRECT_QUEUE_ENABLED, true);
   assert.equal(runtime.vars.LIVE_DERIVE_INLINE_ENABLED, true);
   assert.equal(runtime.vars.MINUTE_FACT_TIMEOUT_MS, 0);
-  assert.equal(runtime.vars.REVISION_PROGRESS_R2_ENABLED, true);
+  assert.equal(runtime.vars.REVISION_PROGRESS_R2_ENABLED, false);
   assert.equal(runtime.vars.DERIVE_REVISION_CHUNK_TRACKS, 20);
   assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
   assert.equal(runtime.vars.REBUILD_MAX_JOBS, 4);

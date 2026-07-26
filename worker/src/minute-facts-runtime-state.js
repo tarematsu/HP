@@ -1,8 +1,4 @@
 import { sanitizeFailureDetail } from './collector-failure.js';
-import {
-  readMinuteFactRuntimeStateFromDo,
-  recordMinuteFactRuntimeStateInDo,
-} from './runtime-state-do.js';
 
 export const MINUTE_FACT_RUNTIME_STATE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS sh_minute_fact_runtime_state (
   task_name TEXT PRIMARY KEY,
@@ -25,21 +21,9 @@ export const MINUTE_FACT_RUNTIME_STATE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS 
   updated_at INTEGER NOT NULL
 )`;
 
-// D1 remains the compatibility fallback. Production writes diagnostic state to
-// RuntimeCoordinator, so frequent queue/runtime observations use the DO
-// allowance without changing the minute-fact job or history source of truth.
+// Runtime state is intentionally persisted only in MINUTE_DB. This keeps
+// Actions checkpoints, Worker diagnostics, and public health on one source of truth.
 const RUNTIME_SUCCESS_CHECKPOINT_MS = 20 * 60_000;
-
-function runtimeStateEnv(env) {
-  if (env?.RUNTIME_STATE_COORDINATOR || !env?.RUNTIME_COORDINATOR) return env;
-  const active = Object.create(env || null);
-  Object.defineProperty(active, 'RUNTIME_STATE_COORDINATOR', {
-    value: env.RUNTIME_COORDINATOR,
-    enumerable: false,
-    configurable: true,
-  });
-  return active;
-}
 
 function finiteInteger(value, fallback = null) {
   const parsed = Number(value);
@@ -80,14 +64,6 @@ export async function ensureMinuteFactRuntimeStateSchema(env) {
 
 export async function recordMinuteFactRuntimeState(env, task, outcome = {}, options = {}) {
   const name = taskName(task);
-  const durable = await recordMinuteFactRuntimeStateInDo(
-    runtimeStateEnv(env),
-    name,
-    outcome,
-    options,
-  );
-  if (durable) return durable;
-
   await ensureMinuteFactRuntimeStateSchema(env);
   const now = finiteInteger(options.now, Date.now());
   const startedAt = finiteInteger(options.startedAt, now);
@@ -137,12 +113,6 @@ export async function recordMinuteFactRuntimeState(env, task, outcome = {}, opti
 
 export async function readMinuteFactRuntimeState(env, task = null) {
   const normalizedTask = task == null ? null : taskName(task);
-  const durable = await readMinuteFactRuntimeStateFromDo(
-    runtimeStateEnv(env),
-    normalizedTask,
-  );
-  if (durable !== null) return durable;
-
   await ensureMinuteFactRuntimeStateSchema(env);
   if (normalizedTask == null) {
     const result = await env.MINUTE_DB.prepare('SELECT * FROM sh_minute_fact_runtime_state ORDER BY task_name').all();

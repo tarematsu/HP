@@ -32,12 +32,14 @@ test('runtime orchestration is split by scheduled, Queue, and environment respon
 
   const entry = source('../src/runtime-orchestrator-entry.js');
   const deployedEntry = source('../src/runtime-orchestrator-deployed-entry.js');
-  const doEntry = source('../src/runtime-do-orchestrator.js');
+  const slimEntry = source('../src/runtime-slim-orchestrator.js');
+  const d1Coordinator = source('../src/runtime-d1-coordinator.js');
   assert.match(entry, /runRuntimeScheduled/);
   assert.match(entry, /runRuntimeQueue/);
   assert.doesNotMatch(entry, /for \(const message of messages\)/);
-  assert.match(deployedEntry, /runFetchCoordinatedScheduled/);
-  assert.match(doEntry, /stub\.fetch/);
+  assert.match(deployedEntry, /runRuntimeOrchestratorScheduled/);
+  assert.match(slimEntry, /runD1CoordinatedScheduled/);
+  assert.match(d1Coordinator, /sh_runtime_run_lease/);
 
   const scheduled = source('../src/runtime-scheduled.js');
   assert.match(scheduled, /runtimeScheduledMessagesFor/);
