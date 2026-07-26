@@ -1,11 +1,8 @@
-export const API_CONTRACT_VERSION = 3;
+export const API_CONTRACT_VERSION = 4;
 
 export const API_GROUPS = Object.freeze({
   status: Object.freeze([
-    { path: '/api/health', methods: ['GET'], description: 'Primary collector health summary' },
-    { path: '/api/health/minute', methods: ['GET'], description: 'Minute pipeline task health' },
-    { path: '/api/health/other', methods: ['GET'], description: 'Runtime scheduler health' },
-    { path: '/api/health/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka monitor and official-news health' },
+    { path: '/api/health', methods: ['GET'], description: 'Unified collector, minute pipeline, runtime, and Sakurazaka health' },
   ]),
   dashboard: Object.freeze([
     { path: '/api/dashboard', methods: ['GET'], description: 'Current state, queue, recent history, and completed daily changes' },
@@ -50,7 +47,6 @@ function onlyParameters(url, allowed = []) {
 export function materializedApiKey(input) {
   const url = input instanceof URL ? input : new URL(input);
   const pathname = normalizedPathname(url.pathname);
-
   if (pathname === '/api/dashboard' && onlyParameters(url)) return 'dashboard';
   if (pathname === '/api/history' && onlyParameters(url, ['mode'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
@@ -94,7 +90,6 @@ export function canonicalApiCacheRequest(request) {
   const url = new URL(request.url);
   const pathname = normalizedPathname(url.pathname);
   url.searchParams.delete('v');
-
   if (pathname === '/api/history'
       && String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase() === 'weekly') {
     url.searchParams.delete('mode');
@@ -103,15 +98,11 @@ export function canonicalApiCacheRequest(request) {
       && String(url.searchParams.get('mode') || 'summary').trim().toLowerCase() === 'summary') {
     url.searchParams.delete('mode');
   }
-
   const sorted = [...url.searchParams.entries()].sort(([aKey, aValue], [bKey, bValue]) =>
     aKey.localeCompare(bKey) || aValue.localeCompare(bValue));
   url.search = '';
   for (const [key, value] of sorted) url.searchParams.append(key, value);
-  return new Request(url.toString(), {
-    method: 'GET',
-    headers: { accept: 'application/json' },
-  });
+  return new Request(url.toString(), { method: 'GET', headers: { accept: 'application/json' } });
 }
 
 export function canonicalApiPaths() {

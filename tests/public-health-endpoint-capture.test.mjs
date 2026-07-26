@@ -10,46 +10,39 @@ import {
   renderPublicHealthReport,
 } from '../.github/scripts/capture-public-health-endpoints.mjs';
 
-test('public health capture defaults to all Stationhead health endpoints', () => {
+test('public health capture defaults to the unified Stationhead health endpoint', () => {
   assert.deepEqual(publicHealthEndpoints(''), DEFAULT_PUBLIC_HEALTH_ENDPOINTS);
-  assert.deepEqual(
-    DEFAULT_PUBLIC_HEALTH_ENDPOINTS.map(({ url }) => url),
-    [
-      'https://skrzk.pages.dev/api/health',
-      'https://skrzk.pages.dev/api/health/minute',
-      'https://skrzk.pages.dev/api/health/other',
-      'https://skrzk.pages.dev/api/health/sakurazaka46jp',
-    ],
-  );
+  assert.deepEqual(DEFAULT_PUBLIC_HEALTH_ENDPOINTS, [
+    { name: 'Unified health', url: 'https://skrzk.pages.dev/api/health' },
+  ]);
 });
 
 test('public health capture renders HTTP metadata and formatted JSON bodies', async () => {
   const result = await capturePublicHealthEndpoint(
-    { name: 'Minute pipeline', url: 'https://skrzk.pages.dev/api/health/minute' },
+    { name: 'Unified health', url: 'https://skrzk.pages.dev/api/health' },
     {
       timeoutMs: 1_000,
-      bodyLimit: 2_000,
+      bodyLimit: 8_000,
       fetchImpl: async () => ({
         ok: true,
         status: 200,
         statusText: 'OK',
         headers: { get: () => 'application/json; charset=utf-8' },
-        text: async () => '{"ok":true,"lag":3}',
+        text: async () => '{"ok":true,"components":{"minute":{"ok":true}}}',
       }),
     },
   );
   assert.equal(result.ok, true);
-  assert.match(result.body, /\n  "lag": 3/);
+  assert.match(result.body, /"minute"/);
   const report = renderPublicHealthReport([result], '2026-07-26T00:00:00.000Z');
   assert.match(report, /Public health endpoint snapshots/);
-  assert.match(report, /https:\/\/skrzk\.pages\.dev\/api\/health\/minute/);
+  assert.match(report, /https:\/\/skrzk\.pages\.dev\/api\/health/);
   assert.match(report, /200 OK/);
-  assert.match(report, /"lag": 3/);
 });
 
 test('public health capture preserves failed responses and truncates oversized bodies', async () => {
   const result = await capturePublicHealthEndpoint(
-    { name: 'Other pipeline', url: 'https://skrzk.pages.dev/api/health/other' },
+    { name: 'Unified health', url: 'https://skrzk.pages.dev/api/health' },
     {
       timeoutMs: 1_000,
       bodyLimit: 20,

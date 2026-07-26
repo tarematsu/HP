@@ -7,14 +7,13 @@ The Workers have public URLs disabled. `sh-runtime-orchestrator` owns collection
 Use `GET /api` for the machine-readable endpoint catalog. The public API surface is:
 
 - `GET /api/health`
-- `GET /api/health/minute`
-- `GET /api/health/other`
-- `GET /api/health/sakurazaka46jp`
 - `GET /api/dashboard`
 - `GET /api/history`
 - `GET /api/track-history`
 - `GET /api/sakurazaka46jp`
 - `GET /api/host-history`
+
+`/api/health` is the single public health endpoint. It aggregates collector, minute pipeline, runtime scheduler, official-news, and solo-monitor health into one response and one HTTP status.
 
 `/api/dashboard` includes current state, the complete queue, recent dashboard history, and completed UTC-day member and stream changes. `track-history` includes track like data and the latest all-time ranking. `sakurazaka46jp` provides official broadcast listener series.
 

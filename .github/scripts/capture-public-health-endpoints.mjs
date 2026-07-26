@@ -5,14 +5,11 @@ import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 
 export const DEFAULT_PUBLIC_HEALTH_ENDPOINTS = [
-  { name: 'Overall health', url: 'https://skrzk.pages.dev/api/health' },
-  { name: 'Minute pipeline', url: 'https://skrzk.pages.dev/api/health/minute' },
-  { name: 'Other pipeline', url: 'https://skrzk.pages.dev/api/health/other' },
-  { name: 'Sakurazaka46.jp pipeline', url: 'https://skrzk.pages.dev/api/health/sakurazaka46jp' },
+  { name: 'Unified health', url: 'https://skrzk.pages.dev/api/health' },
 ];
 
 const DEFAULT_TIMEOUT_MS = 15_000;
-const DEFAULT_BODY_LIMIT = 2_000;
+const DEFAULT_BODY_LIMIT = 8_000;
 
 function positiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value || ''), 10);

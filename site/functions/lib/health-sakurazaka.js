@@ -45,7 +45,6 @@ export async function readSakurazakaHealth(env, now = Date.now()) {
 
   const officialStaleMs = positiveMs(env.OFFICIAL_NEWS_STALE_MS, 2 * 60 * 60_000, 30 * 60_000);
   const monitorStaleMs = positiveMs(env.CLOUD_HOST_STALE_MS, 2 * 60 * 60_000, 30 * 60_000);
-
   const officialAgeMs = age(now, official?.last_check_at);
   const officialSetupRequired = officialResult.status === 'rejected' || integer(official?.last_check_at) == null;
   const officialStale = officialAgeMs == null || officialAgeMs >= officialStaleMs;
@@ -67,9 +66,6 @@ export async function readSakurazakaHealth(env, now = Date.now()) {
   const monitorSetupRequired = monitorResult.status === 'rejected' || !monitor;
   const monitorPhase = monitor?.phase || 'idle';
   const monitorActive = monitorPhase === 'provisional' || monitorPhase === 'active';
-  // Outside an official-announcement window the solo monitor deliberately does
-  // no Stationhead probe. An old idle timestamp is therefore not a missed run;
-  // active/provisional sessions still require a fresh heartbeat.
   const monitorStale = monitorActive && (monitorAgeMs == null || monitorAgeMs >= monitorStaleMs);
   const soloMonitor = {
     ok: !monitorSetupRequired && !monitorStale && !monitor?.last_error,
@@ -84,45 +80,5 @@ export async function readSakurazakaHealth(env, now = Date.now()) {
     last_error_present: Boolean(monitor?.last_error),
   };
 
-  const components = { official_news: officialNews, solo_monitor: soloMonitor };
-  return {
-    ok: Object.values(components).every((component) => component.ok),
-    services: ['sh-sakurazaka46jp'],
-    gateway: 'cloudflare-pages',
-    checked_at: now,
-    components,
-  };
-}
-
-export async function onRequest(context) {
-  if (context.request.method !== 'GET') {
-    return Response.json({ ok: false, error: 'method-not-allowed' }, {
-      status: 405,
-      headers: { allow: 'GET' },
-    });
-  }
-  const now = Date.now();
-  try {
-    const payload = await readSakurazakaHealth(context.env, now);
-    return Response.json(payload, {
-      status: payload.ok ? 200 : 503,
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: 'pages_sakurazaka_health_failed',
-      error: String(error?.message || error).slice(0, 500),
-    }));
-    return Response.json({
-      ok: false,
-      services: ['sh-sakurazaka46jp'],
-      gateway: 'cloudflare-pages',
-      error: 'sakurazaka-health-query-failed',
-      checked_at: now,
-      components: {},
-    }, {
-      status: 503,
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
-  }
+  return { ok: officialNews.ok && soloMonitor.ok, official_news: officialNews, solo_monitor: soloMonitor };
 }

@@ -50,10 +50,7 @@ export function minuteTaskHealth(row, now, env = {}) {
   const ageMs = lastStartedAt == null ? null : Math.max(0, now - lastStartedAt);
   const staleAfterMs = taskStaleMs(row?.task_name, env);
   const pendingStaleMs = positiveMs(env.MINUTE_FACT_PENDING_ALERT_MS, DEFAULT_PENDING_STALE_MS);
-  const pendingAlertCount = Math.max(
-    1,
-    integer(env.MINUTE_FACT_PENDING_ALERT_COUNT, DEFAULT_PENDING_ALERT_COUNT),
-  );
+  const pendingAlertCount = Math.max(1, integer(env.MINUTE_FACT_PENDING_ALERT_COUNT, DEFAULT_PENDING_ALERT_COUNT));
   const stale = ageMs == null || ageMs >= staleAfterMs;
   const pendingStale = pendingCount >= pendingAlertCount
     && oldestPendingMinute != null
@@ -93,9 +90,7 @@ export async function readMinuteHealth(env, now = Date.now()) {
   let rows = null;
   if (env?.PAGES_READ_MODEL_SERVICE?.fetch) {
     try {
-      const response = await env.PAGES_READ_MODEL_SERVICE.fetch(RUNTIME_STATE_URL, {
-        method: 'GET',
-      });
+      const response = await env.PAGES_READ_MODEL_SERVICE.fetch(RUNTIME_STATE_URL, { method: 'GET' });
       if (response?.ok) {
         const payload = await response.json();
         if (hasAllRuntimeTasks(payload?.tasks)) rows = payload.tasks;
@@ -114,48 +109,7 @@ export async function readMinuteHealth(env, now = Date.now()) {
   const byName = new Map(rows.map((row) => [String(row.task_name), row]));
   const tasks = ACTIVE_TASKS.map((taskName) => {
     const row = byName.get(taskName);
-    return row
-      ? minuteTaskHealth(row, now, env)
-      : { task_name: taskName, ok: false, setup_required: true, stale: true };
+    return row ? minuteTaskHealth(row, now, env) : { task_name: taskName, ok: false, setup_required: true, stale: true };
   });
-  return {
-    ok: tasks.every((task) => task.ok),
-    service: 'sh-minute-pipeline',
-    gateway: 'cloudflare-pages',
-    checked_at: now,
-    tasks,
-  };
-}
-
-export async function onRequest(context) {
-  if (context.request.method !== 'GET') {
-    return Response.json({ ok: false, error: 'method-not-allowed' }, {
-      status: 405,
-      headers: { allow: 'GET' },
-    });
-  }
-  const now = Date.now();
-  try {
-    const payload = await readMinuteHealth(context.env, now);
-    return Response.json(payload, {
-      status: payload.ok ? 200 : 503,
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
-  } catch (error) {
-    console.error(JSON.stringify({
-      event: 'pages_minute_health_failed',
-      error: String(error?.message || error).slice(0, 500),
-    }));
-    return Response.json({
-      ok: false,
-      service: 'sh-minute-pipeline',
-      gateway: 'cloudflare-pages',
-      error: 'minute-health-query-failed',
-      checked_at: now,
-      tasks: [],
-    }, {
-      status: 503,
-      headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
-    });
-  }
+  return { ok: tasks.every((task) => task.ok), tasks };
 }
