@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { runPagesReadModelActions } from '../scripts/run-pages-read-model-actions.mjs';
 import { advanceTrackHistoryPublication } from '../src/pages-track-history-publication.js';
 import {
   processTrackHistoryPublicationTask,
@@ -215,14 +216,24 @@ test('page stage checkpoints one page before sending its continuation', async ()
   assert.deepEqual(operations, ['save', 'send']);
 });
 
-test('Actions runner keeps bounded stalled-publication recovery active without a Worker Queue', () => {
-  const runner = readFileSync(new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
+test('Actions runner keeps bounded stalled-publication recovery active without a Worker Queue', async () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
+  let calls = 0;
+  const result = await runPagesReadModelActions({
+    startedAt: CYCLE_START + 19 * 60_000,
+    deadlineMs: CYCLE_START + 30 * 60_000,
+    now: () => CYCLE_START + 19 * 60_000,
+    maxSteps: 3,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => {
+      calls += 1;
+      return { stage: { published: calls === 3 } };
+    },
+    materializeVariant: async (variant) => ({ key: variant.key }),
+  });
 
-  assert.match(runner, /runSplitTrackHistoryCycleStep/);
-  assert.match(runner, /PAGES_READ_MODEL_MAX_STEPS \|\| 1800/);
-  assert.match(runner, /while \(steps < maxSteps && Date\.now\(\) < deadlineMs\)/);
-  assert.match(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true/);
+  assert.equal(result.track_history_steps, 3);
+  assert.equal(result.track_history_result.stage.published, true);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-pages-read-model-publication'), false);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
   assert.equal(runtime.triggers, undefined);
