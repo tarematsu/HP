@@ -114,7 +114,7 @@ jobs:
             if grep -Eq '^(database/facts-db\.json$|database/facts-migrations/|worker/scripts/(provision-facts-db|provision-current-facts-db|apply-facts-pr-schema)\.mjs$|\.github/workflows/database\.yml$)' changed-files.txt; then
               minute_db=true
             fi
-            if grep -Eq '^(site/(functions|public)/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/)' changed-files.txt; then
+            if grep -Eq '^(site/(functions|public)/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/|\.github/scripts/resolve-pages-production-branch\.mjs$|\.github/workflows/deploy-split-pipeline\.yml$)' changed-files.txt; then
               pages=true
             fi
             selection="$(node worker/scripts/select-worker-deploys.mjs < changed-files.txt)"
