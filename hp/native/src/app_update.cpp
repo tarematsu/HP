@@ -1,7 +1,6 @@
 
 
 
-
 #pragma comment(lib, "version.lib")
 
 #include "app.h"
@@ -9,6 +8,13 @@
 
 namespace hp {
 namespace {
+constexpr uint64_t kMaximumComparableUpdateFileBytes = 64ull * 1024ull * 1024ull;
+
+enum class InstalledFileComparison {
+  Matches,
+  Differs,
+  Unavailable,
+};
 
 void AppendUnsigned(std::wstring& output, unsigned long value) {
   wchar_t buffer[16]{};
@@ -48,6 +54,46 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   return version;
 }
 
+InstalledFileComparison CompareInstalledFile(const fs::path& path,
+                                             const UpdateFileSpec& file) noexcept {
+  try {
+    std::error_code error;
+    const bool exists = fs::exists(path, error);
+    if (error) return InstalledFileComparison::Unavailable;
+    if (!exists) return InstalledFileComparison::Differs;
+
+    const uint64_t size = fs::file_size(path, error);
+    if (error) return InstalledFileComparison::Unavailable;
+    if (size != file.size) return InstalledFileComparison::Differs;
+    if (size == 0 || size > kMaximumComparableUpdateFileBytes) {
+      return InstalledFileComparison::Unavailable;
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return InstalledFileComparison::Unavailable;
+    std::vector<uint8_t> bytes(static_cast<size_t>(size));
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input || input.gcount() != static_cast<std::streamsize>(bytes.size())) {
+      return InstalledFileComparison::Unavailable;
+    }
+    return Sha256Hex(bytes) == file.sha256
+        ? InstalledFileComparison::Matches
+        : InstalledFileComparison::Differs;
+  } catch (...) {
+    return InstalledFileComparison::Unavailable;
+  }
+}
+
+bool ManifestFilesDiffer(const UpdateManifest& manifest,
+                         const fs::path& root) noexcept {
+  for (const auto& file : manifest.files) {
+    if (CompareInstalledFile(root / file.name, file) == InstalledFileComparison::Differs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 void App::CheckForUpdateAsync(bool install) {
@@ -67,9 +113,14 @@ void App::CheckForUpdateAsync(bool install) {
     try {
       const std::string manifestJson = cloud_->FetchUpdateManifest();
       const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
-      std::wstring currentVersion = InstalledHomePanelVersion(rootDir_ / L"HomePanel.exe");
+      const fs::path executable = rootDir_ / L"HomePanel.exe";
+      std::wstring currentVersion = InstalledHomePanelVersion(executable);
       if (currentVersion.empty()) currentVersion = kVersion;
-      if (!IsVersionNewer(manifest.version, currentVersion)) {
+      const bool newerVersion = IsVersionNewer(manifest.version, currentVersion);
+      const bool replacementBuild =
+          !newerVersion && !IsVersionNewer(currentVersion, manifest.version) &&
+          ManifestFilesDiffer(manifest, rootDir_);
+      if (!newerVersion && !replacementBuild) {
         if (install) {
           message.reserve(currentVersion.size() + 20);
           message.append(L"すでに最新バージョンです (v");
@@ -81,12 +132,16 @@ void App::CheckForUpdateAsync(bool install) {
         message.append(L"HomePanel ");
         message.append(manifest.version);
         message.append(L" が利用できます");
-      } else if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
-        logger_->Info(L"Verified updater launched for version " + manifest.version);
-        PostMessageW(window_, WM_CLOSE, 0, 0);
-        updateBusy_ = false;
-        return;
       } else {
+        if (replacementBuild) {
+          logger_->Info(L"Applying replacement update with the same version and different release files");
+        }
+        if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
+          logger_->Info(L"Verified updater launched for version " + manifest.version);
+          PostMessageW(window_, WM_CLOSE, 0, 0);
+          updateBusy_ = false;
+          return;
+        }
         message = L"検証済み更新プログラムを起動できませんでした";
       }
     } catch (const std::exception& error) {
