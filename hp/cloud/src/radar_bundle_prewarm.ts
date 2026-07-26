@@ -8,7 +8,7 @@ const MAX_BUNDLE_BYTES = 16 * 1024 * 1024;
 const R2_LATEST_BUNDLE_KEY = "radar-bundles/v1/latest.hpb";
 
 interface BundleEnv extends Env {
-  SCHEDULER_COORDINATOR?: DurableObjectNamespace;
+  RADAR_BUNDLE_COORDINATOR?: DurableObjectNamespace;
 }
 
 function writeUint32(target: Uint8Array, offset: number, value: number): void {
@@ -43,7 +43,7 @@ async function fetchShard(
   index: number,
 ): Promise<Uint8Array> {
   const stub = namespace.get(namespace.idFromName(`radar-bundle-${index}`));
-  const response = await stub.fetch("https://scheduler.internal/radar-bundle-shard", {
+  const response = await stub.fetch("https://radar-bundle.internal/shard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ paths }),
@@ -68,7 +68,7 @@ export async function prewarmRadarBundle(
   payload: unknown,
   baseTime: string,
 ): Promise<boolean> {
-  const namespace = (env as BundleEnv).SCHEDULER_COORDINATOR;
+  const namespace = (env as BundleEnv).RADAR_BUNDLE_COORDINATOR;
   const bucket = env.DATA_BUCKET;
   if (!bucket || !namespace) return false;
 
