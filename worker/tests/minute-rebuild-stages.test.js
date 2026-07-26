@@ -147,7 +147,7 @@ test('rebuild commit pauses durable pending work at the configured per-run limit
   assert.deepEqual(h.enqueued, []);
 });
 
-test('durable rebuild commit dispatches one derive trigger without batching fact work', async () => {
+test('source-only rebuild commit can dispatch one injected derive trigger', async () => {
   const h = harness();
   const sent = [];
   const prepared = {
@@ -214,32 +214,24 @@ test('gap commit dispatches at most the first prepared candidate per invocation'
   assert.deepEqual(sent.map((body) => body.minute_at), [60_000]);
 });
 
-test('historical reconstruction primitives remain source-only after Actions migration', () => {
+test('historical reconstruction primitives are not connected to production runtime', () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const entry = readFileSync(new URL('../src/minute-rebuild-entry.js', import.meta.url), 'utf8');
-  const rebuild = runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
+  const selector = readFileSync(new URL('../scripts/select-worker-deploys.mjs', import.meta.url), 'utf8');
 
-  assert.equal(runtime.vars.HISTORICAL_REBUILD_ENABLED, false);
-  assert.equal(runtime.vars.REBUILD_HISTORICAL_BACKFILL_ENABLED, false);
-  for (const name of [
-    'MINUTE_FACT_ACTIONS_MAINTENANCE_ENABLED',
-    'REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS',
-  ]) {
-    assert.equal(Object.hasOwn(runtime.vars, name), false, name);
+  for (const name of Object.keys(runtime.vars || {})) {
+    assert.equal(name.startsWith('REBUILD_'), false, name);
+    assert.equal(name.startsWith('GAP_SCAN_'), false, name);
   }
-  assert.equal(runtime.vars.DERIVE_DISPATCH_LIMIT, 2);
-  assert.equal(runtime.vars.DERIVE_REVISION_RECOVERY_LIMIT, 1);
-  assert.equal(runtime.vars.REBUILD_SOURCE_ROWS, 20);
-  assert.equal(runtime.vars.REBUILD_MAX_JOBS, 4);
-  assert.equal(runtime.vars.GAP_SCAN_WINDOW_MINUTES, 1440);
-  assert.equal(runtime.vars.GAP_SCAN_MAX_JOBS, 4);
+  assert.equal(Object.hasOwn(runtime.vars, 'HISTORICAL_REBUILD_ENABLED'), false);
   assert.match(entry, /DEFAULT_REBUILD_STAGE_INTERVAL_SECONDS = 15 \* 60/);
   assert.match(entry, /processed_jobs/);
-  assert.equal(rebuild, undefined);
-  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_REBUILD_QUEUE'), false);
+  assert.match(selector, /worker\/src\/minute-rebuild-entry\.js/);
+  assert.equal(runtime.queues.consumers.some(
+    ({ queue }) => queue === 'stationhead-minute-rebuild',
+  ), false);
+  assert.equal(runtime.queues.producers.some(
+    ({ binding }) => binding === 'MINUTE_REBUILD_QUEUE' || binding === 'MINUTE_DERIVE_QUEUE',
+  ), false);
   assert.equal(runtime.triggers, undefined);
-  assert.equal(
-    runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_DERIVE_QUEUE'),
-    true,
-  );
 });
