@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 function source(path) {
@@ -26,35 +26,46 @@ test('core Worker routes enrichment through a queue-only one-message wrapper', (
   assert.doesNotMatch(entry, /Symbol\.iterator|fetch\s*\(/);
 });
 
-test('runtime Worker owns single-message rebuild delivery while preserving cached core stages', () => {
+test('retired Worker rebuild and maintenance entrypoints stay deleted', () => {
   const runtime = config('../wrangler.runtime.jsonc');
-  const wrapper = source('../src/minute-rebuild-batched-entry.js');
-  const core = source('../src/minute-rebuild-entry.js');
-  const rebuild = runtime.queues.consumers.find(({ queue }) => queue === 'stationhead-minute-rebuild');
-  assert.equal(rebuild.max_batch_size, 1);
-  assert.equal(rebuild.max_concurrency, 1);
-  assert.match(core, /runtimeStateModulePromise \|\|=/);
-  assert.match(core, /gapScanModulePromise \|\|=/);
-  assert.match(core, /backfillModulePromise \|\|=/);
-  assert.match(wrapper, /for \(const message of messages\)/);
-  assert.match(wrapper, /processMinuteMaintenanceGate/);
-  assert.match(wrapper, /processMinuteRebuildStage/);
-  assert.doesNotMatch(wrapper, /fetch\s*\(/);
+  const runtimeEnv = source('../src/runtime-env.js');
+  const pipeline = source('../src/minute-pipeline-entry.js');
+  const liveRecovery = source('../src/minute-maintenance-entry.js');
+
+  for (const path of [
+    '../src/minute-rebuild-batched-entry.js',
+    '../src/minute-rebuild-maintenance-entry.js',
+    '../src/minute-maintenance-optimized-entry.js',
+    '../src/minute-fact-repair-burst.js',
+  ]) {
+    assert.equal(existsSync(new URL(path, import.meta.url)), false, path);
+  }
+
+  assert.equal(runtime.queues.consumers.some(
+    ({ queue }) => queue === 'stationhead-minute-rebuild',
+  ), false);
+  assert.equal(runtime.queues.producers.some(
+    ({ binding }) => binding === 'MINUTE_DERIVE_QUEUE',
+  ), false);
+  assert.equal(runtime.queues.consumers.find(
+    ({ queue }) => queue === 'stationhead-minute-derive',
+  ).max_concurrency, 1);
+  assert.doesNotMatch(runtimeEnv, /stationhead-minute-rebuild/);
+  assert.doesNotMatch(pipeline, /minute-rebuild-batched-entry|MINUTE_REBUILD_QUEUE_NAME/);
+  assert.match(pipeline, /repair-actions-owned/);
+  assert.match(pipeline, /rebuild-actions-owned/);
+  assert.match(liveRecovery, /MINUTE_LIVE_DERIVE_QUEUE/);
+  assert.doesNotMatch(liveRecovery, /MINUTE_REBUILD_QUEUE|runMinuteScheduled|scheduled\s*:|repair/);
 });
 
-test('Actions owns maintenance scheduling while compatibility primitives stay bounded', () => {
+test('Actions owns offline maintenance scheduling', () => {
   const workflow = source('../../.github/workflows/run-runtime-offline-maintenance.yml');
   const runner = source('../scripts/run-runtime-offline-maintenance-actions.mjs');
-  const wrapper = source('../src/minute-maintenance-optimized-entry.js');
   const runtime = config('../wrangler.runtime.jsonc');
 
   assert.match(workflow, /run-runtime-offline-maintenance-actions\.mjs/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(runner, /runRuntimeOfflineMaintenanceActions/);
   assert.match(runner, /runtime offline maintenance deadline exceeded/);
-  assert.match(wrapper, /loadRebuildMaintenanceEntry/);
-  assert.match(wrapper, /processMinuteMaintenanceGate\(env, message,/);
-  assert.doesNotMatch(wrapper, /JSON_QUEUE_SEND_OPTIONS|maintenanceDelaySeconds/);
-  assert.doesNotMatch(wrapper, /setTimeout|waitForCollectorCompletion|fetch\s*:/);
   assert.equal(runtime.triggers, undefined);
 });

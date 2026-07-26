@@ -52,7 +52,7 @@ test('live derive fallback keeps budget stages available and the full graph lazy
 
   assert.match(minutePipeline, /budgetedLiveCompleteBatch/);
   assert.match(minutePipeline, /import\('\.\/minute-derive-entry\.js'\)/);
-  assert.match(minutePipeline, /import\('\.\/minute-rebuild-batched-entry\.js'\)/);
+  assert.doesNotMatch(minutePipeline, /minute-rebuild-batched-entry|MINUTE_REBUILD_QUEUE_NAME/);
   assert.match(runtimeConfig, /"LIVE_REVISION_MATERIALIZATION_ENABLED"\s*:\s*false/);
 });
 

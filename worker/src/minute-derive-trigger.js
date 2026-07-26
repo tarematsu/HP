@@ -1,5 +1,3 @@
-import { historicalRebuildEnabled } from './historical-rebuild-policy.js';
-
 export const MINUTE_DERIVE_MESSAGE_TYPE = 'minute-fact-derive';
 export const MINUTE_DERIVE_MESSAGE_VERSION = 1;
 export const MINUTE_DIRECT_LIVE_DERIVE_MESSAGE_TYPE = 'minute-fact-live-direct';
@@ -16,10 +14,6 @@ function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, maximum);
 }
 
-function enabled(value) {
-  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
-}
-
 function deriveJobKind(value) {
   const parsed = String(value || '').trim().toLowerCase();
   return parsed === 'live' || parsed === 'rebuild' || parsed === 'repair' ? parsed : null;
@@ -28,6 +22,12 @@ function deriveJobKind(value) {
 function invalidTrigger(detail) {
   const error = new Error(`invalid minute derive trigger: ${detail}`);
   error.code = 'MINUTE_DERIVE_INVALID_TRIGGER';
+  return error;
+}
+
+function offlineWorkError(jobKind) {
+  const error = new Error(`minute ${jobKind} derive work is owned by GitHub Actions`);
+  error.code = 'MINUTE_DERIVE_OFFLINE_WORK_RETIRED';
   return error;
 }
 
@@ -64,16 +64,10 @@ export function parseMinuteDeriveTrigger(body) {
 
 export async function enqueueMinuteDeriveTrigger(env, input) {
   const jobKind = deriveJobKind(input?.job_kind) || 'live';
-  const live = jobKind === 'live';
-  const queue = live
-    ? env?.MINUTE_LIVE_DERIVE_QUEUE || env?.MINUTE_DERIVE_QUEUE
-    : env?.MINUTE_DERIVE_QUEUE;
-  if (!queue?.send) {
-    throw new Error(live
-      ? 'minute live derive Queue binding is missing'
-      : `minute ${jobKind} derive Queue binding is missing`);
-  }
-  const trigger = minuteDeriveTrigger({ ...input, job_kind: jobKind });
+  if (jobKind !== 'live') throw offlineWorkError(jobKind);
+  const queue = env?.MINUTE_LIVE_DERIVE_QUEUE;
+  if (!queue?.send) throw new Error('minute live derive Queue binding is missing');
+  const trigger = minuteDeriveTrigger({ ...input, job_kind: 'live' });
   await queue.send(trigger, { contentType: 'json' });
   return trigger;
 }
@@ -118,7 +112,7 @@ export function parseDirectLiveMinuteDeriveMessage(body) {
 }
 
 export async function enqueueDirectLiveMinuteDerive(env, payload) {
-  const queue = env?.MINUTE_LIVE_DERIVE_QUEUE || env?.MINUTE_DERIVE_QUEUE;
+  const queue = env?.MINUTE_LIVE_DERIVE_QUEUE;
   if (!queue?.send) throw new Error('minute live derive Queue binding is missing');
   const message = minuteDirectLiveDeriveMessage(payload);
   await queue.send(message, { contentType: 'json' });
@@ -144,19 +138,15 @@ export async function pendingMinuteDeriveTriggers(env, options = {}) {
   if (!env?.MINUTE_DB) throw new Error('minute derive MINUTE_DB binding is missing');
   const now = integer(options.now) ?? Date.now();
   const limit = positiveInteger(options.limit, 5, 20);
-  const filters = [];
-  if (!historicalRebuildEnabled(env)) filters.push("job_kind!='rebuild'");
-  if (!enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED)) filters.push("job_kind!='repair'");
-  const kindFilter = filters.length ? ` AND ${filters.join(' AND ')}` : '';
   const [pending, expired] = await Promise.all([
     env.MINUTE_DB.prepare(`SELECT id,channel_id,minute_at,job_kind,job_priority
       FROM sh_minute_fact_jobs INDEXED BY idx_sh_minute_fact_jobs_pending_ready
-      WHERE status='pending' AND next_attempt_at<=?${kindFilter}
+      WHERE status='pending' AND next_attempt_at<=? AND job_kind='live'
       ORDER BY next_attempt_at ASC,job_priority DESC,minute_at ASC,id ASC
       LIMIT ?`).bind(now, limit).all(),
     env.MINUTE_DB.prepare(`SELECT id,channel_id,minute_at,job_kind,job_priority
       FROM sh_minute_fact_jobs INDEXED BY idx_sh_minute_fact_jobs_processing_lease
-      WHERE status='processing' AND lease_until<?${kindFilter}
+      WHERE status='processing' AND lease_until<? AND job_kind='live'
       ORDER BY lease_until ASC,id ASC
       LIMIT ?`).bind(now, limit).all(),
   ]);

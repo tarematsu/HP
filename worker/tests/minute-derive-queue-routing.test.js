@@ -4,7 +4,6 @@ import test from 'node:test';
 import { enqueueMinuteDeriveTrigger } from '../src/minute-derive-trigger.js';
 import {
   LIVE_DERIVE_QUEUE_NAME,
-  REBUILD_DERIVE_QUEUE_NAME,
   processMinutePipelineBatch,
 } from '../src/minute-pipeline-entry.js';
 import { lightweightLiveBudgetKind } from '../src/runtime-orchestrator-entry.js';
@@ -26,39 +25,39 @@ function trigger(jobKind) {
   };
 }
 
-test('derive trigger enqueue selects the Queue from job kind', async () => {
+test('derive trigger enqueue publishes only live work', async () => {
   const sent = [];
   const env = {
     MINUTE_LIVE_DERIVE_QUEUE: {
-      async send(body, options) { sent.push(['live', body, options]); },
+      async send(body, options) { sent.push([body, options]); },
     },
     MINUTE_DERIVE_QUEUE: {
-      async send(body, options) { sent.push(['rebuild', body, options]); },
+      async send() { throw new Error('ordered drain Queue must not receive new work'); },
     },
   };
 
-  await enqueueMinuteDeriveTrigger(env, input('live'));
-  await enqueueMinuteDeriveTrigger(env, input('rebuild'));
+  const live = await enqueueMinuteDeriveTrigger(env, input('live'));
+  assert.equal(live.job_kind, 'live');
+  assert.deepEqual(sent, [[live, { contentType: 'json' }]]);
 
-  assert.deepEqual(sent.map(([queue, body]) => [queue, body.job_kind]), [
-    ['live', 'live'],
-    ['rebuild', 'rebuild'],
-  ]);
-  assert.deepEqual(sent.map(([, , options]) => options), [
-    { contentType: 'json' },
-    { contentType: 'json' },
-  ]);
+  for (const jobKind of ['rebuild', 'repair']) {
+    await assert.rejects(
+      enqueueMinuteDeriveTrigger(env, input(jobKind)),
+      (error) => error?.code === 'MINUTE_DERIVE_OFFLINE_WORK_RETIRED',
+    );
+  }
+  assert.equal(sent.length, 1);
 });
 
-test('rebuild enqueue never falls back to the live Queue', async () => {
-  let liveSends = 0;
+test('live enqueue does not fall back to the ordered drain Queue', async () => {
+  let orderedSends = 0;
   await assert.rejects(
     enqueueMinuteDeriveTrigger({
-      MINUTE_LIVE_DERIVE_QUEUE: { async send() { liveSends += 1; } },
-    }, input('rebuild')),
-    /minute rebuild derive Queue binding is missing/,
+      MINUTE_DERIVE_QUEUE: { async send() { orderedSends += 1; } },
+    }, input('live')),
+    /minute live derive Queue binding is missing/,
   );
-  assert.equal(liveSends, 0);
+  assert.equal(orderedSends, 0);
 });
 
 test('rebuild triggers are excluded from the lightweight live classifier', () => {
@@ -68,27 +67,19 @@ test('rebuild triggers are excluded from the lightweight live classifier', () =>
   }), null);
 });
 
-test('stale rebuild triggers on the live Queue respect the rebuild policy', async () => {
-  const events = [];
-  await processMinutePipelineBatch({
-    queue: LIVE_DERIVE_QUEUE_NAME,
-    messages: [{
-      body: trigger('rebuild'),
-      ack() { events.push('ack'); },
-    }],
-  }, { HISTORICAL_REBUILD_ENABLED: false }, {}, {
-    async processMinuteDeriveBatch() { events.push('derive'); },
-  });
-  assert.deepEqual(events, ['ack']);
-});
-
-test('enabled stale rebuild triggers are normalized to the rebuild Queue', async () => {
-  let routedQueue = null;
-  await processMinutePipelineBatch({
-    queue: LIVE_DERIVE_QUEUE_NAME,
-    messages: [{ body: trigger('rebuild') }],
-  }, { HISTORICAL_REBUILD_ENABLED: true }, {}, {
-    async processMinuteDeriveBatch(batch) { routedQueue = batch.queue; },
-  });
-  assert.equal(routedQueue, REBUILD_DERIVE_QUEUE_NAME);
+test('stale rebuild triggers on the live Queue are always retired', async () => {
+  for (const historicalFlag of [false, true]) {
+    const events = [];
+    const result = await processMinutePipelineBatch({
+      queue: LIVE_DERIVE_QUEUE_NAME,
+      messages: [{
+        body: trigger('rebuild'),
+        ack() { events.push('ack'); },
+      }],
+    }, { HISTORICAL_REBUILD_ENABLED: historicalFlag }, {}, {
+      async processMinuteDeriveBatch() { events.push('unexpected-derive'); },
+    });
+    assert.equal(result.reason, 'rebuild-actions-owned');
+    assert.deepEqual(events, ['ack']);
+  }
 });

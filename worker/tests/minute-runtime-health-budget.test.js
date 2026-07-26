@@ -23,14 +23,14 @@ function idleDependencies(now, calls) {
   };
 }
 
-test('idle recovery polls sample and persist health only once per twenty-minute window', async () => {
+test('idle live recovery polls sample and persist health only once per twenty-minute window', async () => {
   assert.equal(deriveDispatchStateCheckpointDue(6 * MINUTE_MS), false);
   assert.equal(deriveDispatchStateCheckpointDue(21 * MINUTE_MS), true);
 
   const calls = [];
   const env = {
     MINUTE_DB: {},
-    MINUTE_DERIVE_QUEUE: { async send() {} },
+    MINUTE_LIVE_DERIVE_QUEUE: { async send() {} },
   };
   const skipped = await dispatchPendingMinuteFacts(env, idleDependencies(6 * MINUTE_MS, calls));
   assert.equal(skipped.state_checkpoint_skipped, true);
@@ -41,13 +41,13 @@ test('idle recovery polls sample and persist health only once per twenty-minute 
   assert.deepEqual(calls, ['stats', 'record']);
 });
 
-test('dispatched work refreshes health immediately outside the checkpoint slot', async () => {
+test('dispatched live work refreshes health immediately outside the checkpoint slot', async () => {
   const calls = [];
   const trigger = { message_type: 'minute-fact-derive', job_kind: 'live' };
   const sent = [];
   const summary = await dispatchPendingMinuteFacts({
     MINUTE_DB: {},
-    MINUTE_DERIVE_QUEUE: { async send(body) { sent.push(body); } },
+    MINUTE_LIVE_DERIVE_QUEUE: { async send(body) { sent.push(body); } },
   }, {
     now: 6 * MINUTE_MS,
     load: async () => [trigger],
@@ -58,6 +58,7 @@ test('dispatched work refreshes health immediately outside the checkpoint slot',
   assert.deepEqual(sent, [trigger]);
   assert.deepEqual(calls, ['stats', 'record']);
   assert.equal(summary.pending_count, 1);
+  assert.equal(summary.rebuild_messages, 0);
 });
 
 test('minute inbox health delegates to the single persisted counter row', async () => {

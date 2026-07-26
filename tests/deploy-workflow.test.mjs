@@ -38,7 +38,6 @@ const splitQueues = [
   'stationhead-ingest-finalize',
   'stationhead-track-metadata',
   'stationhead-minute-enrichment',
-  'stationhead-minute-rebuild',
   'stationhead-sakurazaka46jp',
   'stationhead-host-monitor',
   'stationhead-pages-read-model-publication',
@@ -190,6 +189,7 @@ test('the production Worker deployment provisions current Queue boundaries', () 
   for (const queue of splitQueues) {
     assert.match(deploymentWorkflow, new RegExp(`${queue} ${queue}-dlq`));
   }
+  assert.doesNotMatch(deploymentWorkflow, /stationhead-minute-rebuild stationhead-minute-rebuild-dlq/);
 });
 
 test('Worker package scripts contain only the four active deployment and bundle operations', () => {

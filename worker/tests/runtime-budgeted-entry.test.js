@@ -42,13 +42,13 @@ test('runtime is queue-only and retains bounded realtime consumers', () => {
     'stationhead-minute-derive',
     'stationhead-minute-live-derive',
     'stationhead-buddies-facts',
-    'stationhead-minute-rebuild',
   ]);
   for (const [queue, consumer] of consumers) {
     assert.equal(consumer.max_batch_size, 1, queue);
     assert.equal(consumer.max_retries <= 4, true, queue);
   }
 
+  assert.equal(consumers.has('stationhead-minute-rebuild'), false);
   assert.equal(consumers.has('stationhead-host-monitor'), false);
   assert.equal(consumers.has('stationhead-read-model'), false);
   assert.equal(consumers.has('stationhead-pages-read-model-publication'), false);

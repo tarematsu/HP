@@ -23,7 +23,6 @@ test('domain modules select every Worker whose bundle imports them', () => {
     'worker/src/track-metadata-entry.js',
     'worker/src/pages-response-store.js',
     'worker/src/minute-derive-entry.js',
-    'worker/src/minute-rebuild-batched-entry.js',
     'worker/src/runtime-queue.js',
   ]) {
     assert.deepEqual(select([path]).workers, [RUNTIME], path);
@@ -35,6 +34,9 @@ test('domain modules select every Worker whose bundle imports them', () => {
 
 test('Actions-only offline modules do not redeploy Workers', () => {
   for (const path of [
+    'worker/src/minute-facts-backfill-stages.js',
+    'worker/src/minute-facts-gap-scan.js',
+    'worker/src/minute-rebuild-entry.js',
     'worker/src/monitor-maintenance-entry.js',
     'worker/src/pages-read-model-entry.js',
     'worker/src/pages-read-model-dispatch.js',

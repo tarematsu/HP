@@ -67,13 +67,16 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
     'stationhead-minute-derive',
     'stationhead-minute-live-derive',
     'stationhead-buddies-facts',
-    'stationhead-minute-rebuild',
   ]) {
     assert.equal(runtimeConsumers.get(queue).max_batch_size, 1, queue);
     assert.equal(collectorConsumers.has(queue), false, queue);
     assert.equal(recoveryConsumers.has(queue), false, queue);
   }
-  for (const retired of ['stationhead-read-model', 'stationhead-pages-read-model-publication']) {
+  for (const retired of [
+    'stationhead-minute-rebuild',
+    'stationhead-read-model',
+    'stationhead-pages-read-model-publication',
+  ]) {
     assert.equal(runtimeConsumers.has(retired), false, retired);
   }
   assert.deepEqual(collector.d1_databases.map(({ binding }) => binding), ['BUDDIES_DB']);
@@ -86,7 +89,7 @@ test('collector, recovery, and runtime have one exclusive owner per active Queue
   assert.equal(collector.queues.producers.find(({ binding }) => binding === 'MINUTE_FACT_QUEUE').queue, 'stationhead-buddies-facts');
   assert.equal(runtimeConsumers.get('stationhead-buddies-facts').max_concurrency, 1);
   assert.equal(runtimeConsumers.get('stationhead-minute-live-derive').max_concurrency, 2);
-  assert.equal(runtimeConsumers.get('stationhead-minute-rebuild').max_concurrency, 1);
+  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'MINUTE_REBUILD_QUEUE'), false);
   assert.equal(runtime.triggers, undefined);
 });
 
