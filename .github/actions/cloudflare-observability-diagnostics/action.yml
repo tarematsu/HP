@@ -48,7 +48,16 @@ runs:
         wait "$query_pid" || query_status=$?
         wait "$tail_pid" || true
         wait "$health_pid" || health_status=$?
-        cat observability-query.log
+
+        aggregate_error_only=0
+        if (( query_status != 0 )) && \
+          grep -Eq '^::error title=Cloudflare Worker errors::invocation_errors=[1-9][0-9]* persisted_error_events=0 ' observability-query.log && \
+          ! grep -q '^::error title=Cloudflare Observability::' observability-query.log; then
+          aggregate_error_only=1
+          sed 's/^::error title=Cloudflare Worker errors::/::warning title=Cloudflare Worker aggregate errors::/' observability-query.log
+        else
+          cat observability-query.log
+        fi
         cat public-health-endpoints.log
         if [[ -f observability-summary.md ]]; then
           cat observability-summary.md >> "$actual_summary"
@@ -56,7 +65,7 @@ runs:
         if [[ -f public-health-endpoints.md ]]; then
           cat public-health-endpoints.md >> "$actual_summary"
         fi
-        if (( query_status != 0 )); then
+        if (( query_status != 0 && aggregate_error_only == 0 )); then
           exit "$query_status"
         fi
         exit "$health_status"
