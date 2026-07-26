@@ -28,6 +28,7 @@ test('pages read models rebuild frequently in one bounded Actions job', () => {
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /variant\.key !== 'track-history'/);
   assert.match(runner, /createWranglerRemoteD1/);
   assert.match(d1Adapter, /'d1', 'execute', database/);
   assert.match(d1Adapter, /'--remote', '--yes', '--json'/);
@@ -89,16 +90,28 @@ test('runner publishes track-history immediately when the generation completes',
   assert.equal(result.track_history_result.publication.published, true);
 });
 
-test('runner fails when a generation exceeds its bounded step count', async () => {
+test('runner refreshes dashboard before reporting an incomplete track-history rebuild', async () => {
+  const events = [];
   await assert.rejects(runPagesReadModelActions({
     startedAt: DAY + 19 * 60_000,
     deadlineMs: DAY + 30 * 60_000,
     now: () => DAY + 19 * 60_000,
     maxSteps: 2,
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => ({ stage: { published: false } }),
-    materializeVariant: async () => assert.fail('variants must not render after incomplete track-history'),
+    runTrackHistoryStep: async () => {
+      events.push('track-history-step');
+      return { stage: { published: false } };
+    },
+    materializeVariant: async (variant) => {
+      events.push(`publish:${variant.key}`);
+      return { key: variant.key };
+    },
   }), /did not finish within 2 steps/);
+  assert.deepEqual(events, [
+    'publish:dashboard',
+    'track-history-step',
+    'track-history-step',
+  ]);
 });
 
 test('runtime serves materialized responses through a serving-only module', () => {
