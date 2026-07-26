@@ -1,5 +1,6 @@
 const ACTIVE_TASKS = Object.freeze(['derive', 'recovery', 'rebuild', 'sync']);
 const DEFAULT_PENDING_STALE_MS = 15 * 60_000;
+const DEFAULT_PENDING_ALERT_COUNT = 20;
 const DEFAULT_DERIVE_STALE_MS = 25 * 60_000;
 const DEFAULT_MAINTENANCE_STALE_MS = 25 * 60_000;
 const RUNTIME_STATE_URL = 'https://sh-runtime-orchestrator.internal/internal/minute-runtime-state';
@@ -49,8 +50,12 @@ export function minuteTaskHealth(row, now, env = {}) {
   const ageMs = lastStartedAt == null ? null : Math.max(0, now - lastStartedAt);
   const staleAfterMs = taskStaleMs(row?.task_name, env);
   const pendingStaleMs = positiveMs(env.MINUTE_FACT_PENDING_ALERT_MS, DEFAULT_PENDING_STALE_MS);
+  const pendingAlertCount = Math.max(
+    1,
+    integer(env.MINUTE_FACT_PENDING_ALERT_COUNT, DEFAULT_PENDING_ALERT_COUNT),
+  );
   const stale = ageMs == null || ageMs >= staleAfterMs;
-  const pendingStale = pendingCount > 0
+  const pendingStale = pendingCount >= pendingAlertCount
     && oldestPendingMinute != null
     && oldestPendingMinute > 0
     && oldestPendingMinute <= now - pendingStaleMs;

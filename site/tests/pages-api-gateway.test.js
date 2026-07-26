@@ -150,6 +150,18 @@ test('Pages minute health reads all active tasks and rejects unhealthy task stat
   const unhealthy = minuteTaskHealth(runtimeRow('derive', { dead_count: 1 }), NOW, {});
   assert.equal(unhealthy.ok, false);
   assert.equal(unhealthy.dead_count, 1);
+  const boundedBacklog = minuteTaskHealth(runtimeRow('derive', {
+    pending_count: 3,
+    oldest_pending_minute: NOW - 24 * 60 * 60_000,
+  }), NOW, { MINUTE_FACT_PENDING_ALERT_COUNT: 20 });
+  assert.equal(boundedBacklog.ok, true);
+  assert.equal(boundedBacklog.pending_stale, false);
+  const excessiveBacklog = minuteTaskHealth(runtimeRow('derive', {
+    pending_count: 20,
+    oldest_pending_minute: NOW - 24 * 60 * 60_000,
+  }), NOW, { MINUTE_FACT_PENDING_ALERT_COUNT: 20 });
+  assert.equal(excessiveBacklog.ok, false);
+  assert.equal(excessiveBacklog.pending_stale, true);
 
   const response = await withFixedNow(() => minuteHealthRequest({
     request: new Request('https://example.com/api/health/minute'),
