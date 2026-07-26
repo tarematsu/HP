@@ -7,7 +7,6 @@ import minuteApp, {
   MINUTE_FACT_MAINTENANCE_CRON,
   MINUTE_FACT_RECOVERY_CRON,
   MINUTE_FACT_REBUILD_CRON,
-  MINUTE_FACT_SYNC_CRON,
   MINUTE_FACT_WORKER_CRON,
   minuteMaintenanceTask,
   minuteStaggerApplies,
@@ -42,7 +41,7 @@ test('minute worker routes derive and rebuild through the buddies source only', 
   assert.equal(Object.hasOwn(env, 'DB'), false);
 });
 
-test('combined maintenance cron isolates recovery, rebuild and sync by minute slot', async () => {
+test('combined maintenance cron isolates recovery and rebuild by minute slot', async () => {
   const calls = [];
   const env = {
     BUDDIES_DB: { name: 'buddies' },
@@ -52,19 +51,16 @@ test('combined maintenance cron isolates recovery, rebuild and sync by minute sl
   const dependencies = {
     requeueDead: async (_env, options) => { calls.push(`recovery:${options.limit}`); return 'recovery'; },
     runRebuild: async () => { calls.push('rebuild'); return 'rebuild'; },
-    runSync: async () => { calls.push('sync'); return 'sync'; },
   };
 
   assert.equal(await runMinuteScheduled({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 5 * 60_000 }, env, dependencies), 'recovery');
   assert.equal(await runMinuteScheduled({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 7 * 60_000 }, env, dependencies), 'rebuild');
-  assert.equal(await runMinuteScheduled({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 9 * 60_000 }, env, dependencies), 'sync');
-  assert.deepEqual(calls, ['recovery:20', 'rebuild', 'sync']);
+  assert.deepEqual(calls, ['recovery:20', 'rebuild']);
 });
 
 test('legacy direct maintenance routes remain supported', () => {
   assert.equal(minuteMaintenanceTask({ cron: MINUTE_FACT_RECOVERY_CRON }), 'recovery');
   assert.equal(minuteMaintenanceTask({ cron: MINUTE_FACT_REBUILD_CRON }), 'rebuild');
-  assert.equal(minuteMaintenanceTask({ cron: MINUTE_FACT_SYNC_CRON }), 'sync');
 });
 
 test('derive avoids collector stagger and readiness reads', async () => {
@@ -101,23 +97,6 @@ test('collector priority timeout does not suppress snapshot rebuild', async () =
   assert.deepEqual(calls, ['stagger', 'rebuild']);
 });
 
-test('collector priority timeout skips only optional buddies synchronization', async () => {
-  const calls = [];
-  const result = await runMinuteScheduledWithCollectorPriority(
-    { cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 9 * 60_000 },
-    { BUDDIES_DB: { name: 'buddies' } },
-    {},
-    {
-      applyStagger: async () => { calls.push('stagger'); },
-      waitForCollector: async () => ({ ready: false, reason: 'collector-not-ready', targetMinute: 9 * 60_000 }),
-      runSync: async () => { calls.push('sync'); return 'sync'; },
-    },
-  );
-
-  assert.deepEqual(result, { skipped: true, reason: 'collector-not-ready' });
-  assert.deepEqual(calls, ['stagger']);
-});
-
 test('runtime owns minute dispatch and maintenance without comment work', async () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const runtimeSource = readFileSync(new URL('../src/runtime-scheduled.js', import.meta.url), 'utf8');
@@ -143,14 +122,14 @@ test('runtime owns minute dispatch and maintenance without comment work', async 
   });
 });
 
-test('minute stagger applies only to rebuild and sync slots', () => {
+test('minute stagger applies only to rebuild slots', () => {
   assert.equal(minuteStaggerApplies({ cron: MINUTE_FACT_DERIVE_CRON }), false);
   assert.equal(minuteStaggerApplies({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 5 * 60_000 }), false);
   assert.equal(minuteStaggerApplies({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 7 * 60_000 }), true);
-  assert.equal(minuteStaggerApplies({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 9 * 60_000 }), true);
+  assert.equal(minuteStaggerApplies({ cron: MINUTE_FACT_MAINTENANCE_CRON, scheduledTime: 9 * 60_000 }), false);
 });
 
-test('minute health excludes retired comment tasks', () => {
+test('minute health excludes retired tasks including sync', () => {
   assert.deepEqual(activeMinuteHealthTasks([
     { task_name: 'comments' },
     { task_name: 'derive' },
@@ -158,7 +137,7 @@ test('minute health excludes retired comment tasks', () => {
     { task_name: 'rebuild' },
     { task_name: 'sync' },
     { task_name: 'retired' },
-  ]).map(({ task_name }) => task_name), ['derive', 'recovery', 'rebuild', 'sync']);
+  ]).map(({ task_name }) => task_name), ['derive', 'recovery', 'rebuild']);
 });
 
 test('minute worker /health responses are cached across repeated requests', async () => {
