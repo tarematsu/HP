@@ -41,16 +41,21 @@ test('unsettled recovery messages retry with attempt-aware delay', async () => {
   assert.equal(summary.max_attempts, 3);
 });
 
-test('recovery consumers have bounded scale-out and a larger retry budget', () => {
+test('recovery scales catch-up lanes while preserving sequential write lanes', () => {
   const config = JSON.parse(readFileSync(
     new URL('../wrangler.buddies-recovery.jsonc', import.meta.url),
     'utf8',
   ));
+  const consumers = new Map(config.queues.consumers.map((consumer) => [consumer.queue, consumer]));
 
-  assert.equal(config.queues.consumers.length, 4);
-  for (const consumer of config.queues.consumers) {
-    assert.equal(consumer.max_retries, 8);
-    assert.equal(consumer.max_concurrency, 4);
+  assert.equal(consumers.size, 4);
+  assert.equal(consumers.get('stationhead-raw-collection').max_concurrency, 4);
+  assert.equal(consumers.get('stationhead-ingest-finalize').max_concurrency, 4);
+  assert.equal(consumers.get('stationhead-comments').max_concurrency, 1);
+  assert.equal(consumers.get('stationhead-buddies-persist').max_concurrency, 1);
+
+  for (const consumer of consumers.values()) {
+    assert.equal(consumer.max_retries, 4);
     assert.equal(typeof consumer.dead_letter_queue, 'string');
   }
 });
