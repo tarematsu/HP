@@ -73,12 +73,12 @@
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 0.1,
+    "head_sampling_rate": 0.5,
     "logs": {
       "enabled": true,
-      "head_sampling_rate": 0.1,
+      "head_sampling_rate": 0.5,
       "persist": true,
-      "invocation_logs": false
+      "invocation_logs": true
     }
   }
 }
