@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   ROLLUP_MAINTENANCE_CRON,
   SNAPSHOT_RETENTION_CRON,
+  runMonitorMaintenanceCron,
 } from '../src/monitor-maintenance-entry.js';
 import {
   MONITOR_MAINTENANCE_MESSAGE,
@@ -229,6 +230,33 @@ test('runtime Queue handler executes maintenance and preserves ack ownership', a
     },
   );
   assert.deepEqual(events, ['stagger', 'rollup', 'ack']);
+});
+
+test('consolidated runtime refreshes the Other health heartbeat', async () => {
+  const writes = [];
+  const otherDb = {
+    prepare(sql) {
+      assert.match(sql, /INSERT INTO sh_collector_status/);
+      return {
+        bind(...values) {
+          writes.push(values);
+          return this;
+        },
+        async run() { return { success: true }; },
+      };
+    },
+  };
+  const result = await runMonitorMaintenanceCron(
+    { cron: ROLLUP_MAINTENANCE_CRON, scheduledTime: BASE },
+    { BUDDIES_DB: {}, OTHER_DB: otherDb },
+    {
+      applyStagger: async () => {},
+      waitForCollector: async () => ({ ready: true }),
+      runRollup: async () => ({ skipped: false, rolledUp: true }),
+    },
+  );
+  assert.equal(result.rolledUp, true);
+  assert.deepEqual(writes, [['other-cron', 'ok', BASE, BASE, null, BASE]]);
 });
 
 test('runtime Queue router discards unknown messages without legacy delegation', async () => {

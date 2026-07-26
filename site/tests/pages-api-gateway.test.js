@@ -214,6 +214,7 @@ test('Pages other health is scoped to the runtime orchestrator', async () => {
   const payload = await readOtherHealth(env, NOW);
   assert.equal(payload.ok, true);
   assert.equal(payload.components.runtime.ok, true);
+  assert.equal(payload.components.runtime.stale_after_ms, 50 * 60_000);
   assert.deepEqual(payload.services, ['sh-runtime-orchestrator']);
 
   const response = await withFixedNow(() => otherHealthRequest({
@@ -237,6 +238,44 @@ test('Pages Sakurazaka health combines official news and solo monitor state', as
   }));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).gateway, 'cloudflare-pages');
+});
+
+test('Pages Sakurazaka health allows an old idle state but not an old active session', async () => {
+  function stateDb(phase) {
+    return {
+      prepare(sql) {
+        return {
+          bind() { return this; },
+          async first() {
+            if (sql.includes('sh_official_news_monitor_state')) {
+              return {
+                last_check_at: NOW - 60_000,
+                last_success_at: NOW - 60_000,
+                last_error: null,
+                upcoming_count: 0,
+                active_count: 0,
+              };
+            }
+            return {
+              phase,
+              session_id: phase === 'active' ? 1 : null,
+              station_id: phase === 'active' ? 2 : null,
+              last_success_at: NOW - 24 * 60 * 60_000,
+              last_error: null,
+              updated_at: NOW - 24 * 60 * 60_000,
+            };
+          },
+        };
+      },
+    };
+  }
+  const idle = await readSakurazakaHealth({ OTHER_DB: stateDb('idle') }, NOW);
+  assert.equal(idle.ok, true);
+  assert.equal(idle.components.solo_monitor.stale, false);
+
+  const active = await readSakurazakaHealth({ OTHER_DB: stateDb('active') }, NOW);
+  assert.equal(active.ok, false);
+  assert.equal(active.components.solo_monitor.stale, true);
 });
 
 test('all active Workers disable workers.dev and preview URLs', () => {

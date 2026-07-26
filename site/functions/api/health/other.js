@@ -23,7 +23,7 @@ async function readTask(db) {
 export async function readOtherHealth(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding missing');
   const row = await readTask(env.OTHER_DB);
-  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 45 * 60_000, 30 * 60_000);
+  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 50 * 60_000, 45 * 60_000);
   const ageMs = age(now, row?.last_attempt_at);
   const stale = ageMs == null || ageMs >= staleAfterMs;
   const failed = Boolean(row) && row.status !== 'ok';

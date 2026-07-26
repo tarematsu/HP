@@ -65,14 +65,19 @@ export async function readSakurazakaHealth(env, now = Date.now()) {
   const monitorReference = integer(monitor?.updated_at) ?? integer(monitor?.last_success_at);
   const monitorAgeMs = age(now, monitorReference);
   const monitorSetupRequired = monitorResult.status === 'rejected' || !monitor;
-  const monitorStale = monitorAgeMs == null || monitorAgeMs >= monitorStaleMs;
+  const monitorPhase = monitor?.phase || 'idle';
+  const monitorActive = monitorPhase === 'provisional' || monitorPhase === 'active';
+  // Outside an official-announcement window the solo monitor deliberately does
+  // no Stationhead probe. An old idle timestamp is therefore not a missed run;
+  // active/provisional sessions still require a fresh heartbeat.
+  const monitorStale = monitorActive && (monitorAgeMs == null || monitorAgeMs >= monitorStaleMs);
   const soloMonitor = {
     ok: !monitorSetupRequired && !monitorStale && !monitor?.last_error,
     setup_required: monitorSetupRequired,
     stale: monitorStale,
     stale_after_ms: monitorStaleMs,
     age_ms: monitorAgeMs,
-    phase: monitor?.phase || 'idle',
+    phase: monitorPhase,
     session_id: integer(monitor?.session_id),
     station_id: integer(monitor?.station_id),
     last_success_at: integer(monitor?.last_success_at),
