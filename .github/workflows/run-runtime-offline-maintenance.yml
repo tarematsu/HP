@@ -30,7 +30,7 @@ jobs:
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
-          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
