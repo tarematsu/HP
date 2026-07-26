@@ -5,6 +5,8 @@ on:
     branches:
       - main
     paths:
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/migrations/**'
@@ -16,6 +18,8 @@ on:
       - '.github/workflows/video-ci.yml'
   pull_request:
     paths:
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/migrations/**'
@@ -38,9 +42,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: hp/video
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,24 +49,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Restore npm cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-22-video-${{ hashFiles('hp/video/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-22-video-
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
       - name: Run syntax checks
-        run: npm run check:syntax
+        working-directory: hp
+        run: npm run check:syntax --workspace video
       - name: Run repository audit
-        run: npm run check:audit
+        working-directory: hp
+        run: npm run check:audit --workspace video
       - name: Run tests
+        working-directory: hp
         shell: bash
         run: |
           set -o pipefail
-          npm test 2>&1 | tee test-output.log
+          npm test --workspace video 2>&1 | tee video/test-output.log
       - name: Upload failed test output
         if: failure()
         uses: actions/upload-artifact@v4
@@ -75,4 +75,5 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: Validate Worker bundle
-        run: npm run check:bundle
+        working-directory: hp
+        run: npm run check:bundle --workspace video
