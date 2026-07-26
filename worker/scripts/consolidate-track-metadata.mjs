@@ -63,6 +63,14 @@ function countRows(database) {
   return Number(rows[0]?.row_count || 0);
 }
 
+function tableExists(database) {
+  const rows = rowsFrom(execute(
+    database,
+    "SELECT COUNT(*) AS object_count FROM sqlite_schema WHERE type='table' AND name='sh_track_metadata'",
+  ));
+  return Number(rows[0]?.object_count || 0) > 0;
+}
+
 function quote(value) {
   if (value == null) return 'NULL';
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
@@ -104,8 +112,11 @@ ON CONFLICT(spotify_id) DO UPDATE SET
 function verifyPage(database, sourceRows) {
   const expected = new Map(sourceRows
     .map((row) => [String(row.spotify_id || '').trim(), normalizedIsrc(row.isrc)])
-    .filter(([spotifyId, isrc]) => spotifyId && isrc));
-  if (!expected.size) return 0;
+    .filter(([spotifyId]) => spotifyId));
+  if (expected.size !== sourceRows.length) {
+    throw new Error('Source metadata contains a row without spotify_id');
+  }
+  if (!expected.size) return { rows: 0, isrcRows: 0 };
 
   const ids = [...expected.keys()];
   const rows = rowsFrom(execute(
@@ -117,12 +128,26 @@ function verifyPage(database, sourceRows) {
     String(row.spotify_id || '').trim(),
     normalizedIsrc(row.isrc),
   ]));
+  let verifiedIsrcRows = 0;
   for (const [spotifyId, isrc] of expected) {
-    if (actual.get(spotifyId) !== isrc) {
-      throw new Error(`Target metadata ISRC mismatch for spotify_id=${spotifyId}`);
+    if (!actual.has(spotifyId)) {
+      throw new Error(`Target metadata row missing for spotify_id=${spotifyId}`);
+    }
+    if (isrc) {
+      verifiedIsrcRows += 1;
+      if (actual.get(spotifyId) !== isrc) {
+        throw new Error(`Target metadata ISRC mismatch for spotify_id=${spotifyId}`);
+      }
     }
   }
-  return expected.size;
+  return { rows: expected.size, isrcRows: verifiedIsrcRows };
+}
+
+function dropSourceTable() {
+  executeDdl(sourceDatabase, 'DROP TABLE IF EXISTS sh_track_metadata');
+  if (tableExists(sourceDatabase)) {
+    throw new Error('Legacy OTHER_DB sh_track_metadata table still exists after DROP TABLE');
+  }
 }
 
 let sourceCount;
@@ -137,7 +162,7 @@ try {
 }
 
 const targetBefore = countRows(targetDatabase);
-if (!apply || sourceCount === 0) {
+if (!apply) {
   console.log(JSON.stringify({
     ok: true,
     applied: false,
@@ -150,25 +175,47 @@ if (!apply || sourceCount === 0) {
   process.exit(0);
 }
 
+if (sourceCount === 0) {
+  if (dropSource) dropSourceTable();
+  console.log(JSON.stringify({
+    ok: true,
+    applied: true,
+    source_database: sourceDatabase,
+    target_database: targetDatabase,
+    source_rows: 0,
+    copied_rows: 0,
+    verified_rows: 0,
+    verified_isrc_rows: 0,
+    target_rows_before: targetBefore,
+    target_rows_after: targetBefore,
+    drop_source: dropSource,
+  }));
+  process.exit(0);
+}
+
 const tempDirectory = mkdtempSync(join(workerRoot, '.track-metadata-'));
 try {
   let copied = 0;
+  let verifiedRows = 0;
   let verifiedIsrcRows = 0;
   for (let offset = 0, page = 0; offset < sourceCount; offset += pageSize, page += 1) {
     const rows = sourcePage(offset);
     if (!rows.length) break;
     writePage(targetDatabase, rows, tempDirectory, page);
-    verifiedIsrcRows += verifyPage(targetDatabase, rows);
+    const verification = verifyPage(targetDatabase, rows);
+    verifiedRows += verification.rows;
+    verifiedIsrcRows += verification.isrcRows;
     copied += rows.length;
   }
 
+  if (copied !== sourceCount || verifiedRows !== sourceCount) {
+    throw new Error(`Metadata consolidation incomplete: source=${sourceCount}, copied=${copied}, verified=${verifiedRows}`);
+  }
   const targetAfter = countRows(targetDatabase);
   if (targetAfter < sourceCount) {
     throw new Error(`Target metadata count ${targetAfter} is smaller than source count ${sourceCount}`);
   }
-  if (dropSource) {
-    executeDdl(sourceDatabase, 'DROP TABLE IF EXISTS sh_track_metadata');
-  }
+  if (dropSource) dropSourceTable();
   console.log(JSON.stringify({
     ok: true,
     applied: true,
@@ -176,6 +223,7 @@ try {
     target_database: targetDatabase,
     source_rows: sourceCount,
     copied_rows: copied,
+    verified_rows: verifiedRows,
     verified_isrc_rows: verifiedIsrcRows,
     target_rows_before: targetBefore,
     target_rows_after: targetAfter,
