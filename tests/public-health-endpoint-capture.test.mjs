@@ -68,13 +68,17 @@ test('public health capture preserves failed responses and truncates oversized b
   assert.equal(formatResponseBody('not-json', 'application/json'), 'not-json');
 });
 
-test('observability diagnostics action publishes public health snapshots into the status issue', () => {
+test('observability diagnostics action publishes and retains public health snapshots', () => {
   const root = new URL('../', import.meta.url);
   const action = readFileSync(new URL('.github/actions/cloudflare-observability-diagnostics/action.yml', root), 'utf8');
+  const workflow = readFileSync(new URL('.github/workflows/sh-observability.yml', root), 'utf8');
   const publisher = readFileSync(new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root), 'utf8');
   assert.match(action, /capture-public-health-endpoints\.mjs/);
   assert.match(action, /wait "\$health_pid" \|\| health_status=\$\?/);
   assert.match(action, /public-health-endpoints\.md/);
+  assert.match(workflow, /^\s{6}- '\.github\/scripts\/capture-public-health-endpoints\.mjs'$/m);
+  assert.match(workflow, /^\s{12}public-health-endpoints\.md$/m);
+  assert.match(workflow, /^\s{12}public-health-endpoints\.log$/m);
   assert.match(publisher, /readOptionalText\('public-health-endpoints\.md'\)/);
   assert.match(publisher, /Public application health endpoint snapshots/);
 });
