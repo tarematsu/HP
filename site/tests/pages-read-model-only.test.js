@@ -10,6 +10,7 @@ const trackStage = readFileSync(new URL('../../worker/src/pages-track-history-st
 const publication = readFileSync(new URL('../../worker/src/pages-track-history-publication-queue.js', import.meta.url), 'utf8');
 const actions = readFileSync(new URL('../../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../../worker/src/runtime-orchestrator-entry.js', import.meta.url), 'utf8');
+const responseFetch = readFileSync(new URL('../../worker/src/pages-response-fetch-entry.js', import.meta.url), 'utf8');
 const runtime = JSON.parse(readFileSync(new URL('../../worker/wrangler.runtime.jsonc', import.meta.url), 'utf8'));
 const workers = readFileSync(new URL('../../worker/scripts/cloudflare-workers.mjs', import.meta.url), 'utf8');
 
@@ -40,8 +41,12 @@ test('track-history generation runs in Actions while runtime only serves materia
   assert.match(actions, /runSplitTrackHistoryCycleStep/);
   assert.match(actions, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(actions, /pagesActionsR2ResponseKey/);
-  assert.match(entry, /runPagesReadModelFetch/);
-  assert.doesNotMatch(entry, /runPagesReadModelCron|scheduled\s*:/);
+  assert.match(entry, /pages-response-fetch-entry\.js/);
+  assert.match(entry, /runPagesResponseFetch/);
+  assert.doesNotMatch(entry, /pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
+  assert.match(responseFetch, /loadMaterializedR2Response/);
+  assert.match(responseFetch, /loadMaterializedResponse/);
+  assert.doesNotMatch(responseFetch, /pages-read-model-dispatch|track-history-publication|PAGES_READ_MODEL_QUEUE/);
   assert.equal(runtime.triggers, undefined);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
 });
