@@ -4,7 +4,7 @@ namespace hp {
 namespace {
 
 HWND CreateStationheadChildHost(HWND parent, const wchar_t* className, const wchar_t* title,
-                                    const RECT& bounds) {
+                                   const RECT& bounds) {
   if (!parent || !IsWindow(parent)) return nullptr;
   const HINSTANCE instance = GetModuleHandleW(nullptr);
   WNDCLASSW registered{};
