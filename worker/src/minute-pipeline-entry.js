@@ -1,4 +1,3 @@
-import { historicalRebuildEnabled } from './historical-rebuild-policy.js';
 import {
   budgetedLiveCompleteMessage,
   processBudgetedLiveCompleteBatch,
@@ -16,7 +15,7 @@ export const REBUILD_DERIVE_QUEUE_NAME = 'stationhead-minute-derive';
 export const MINUTE_FACTS_QUEUE_NAME = 'stationhead-buddies-facts';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
-const REPAIR_RETIRED_ERROR = 'retired-repair-message-after-disable';
+const REPAIR_RETIRED_ERROR = 'retired-repair-message-after-actions-migration';
 let deriveModulePromise = null;
 
 async function processDeriveBatch(batch, env, dependencies) {
@@ -29,23 +28,14 @@ function positiveInteger(value) {
   return Number.isFinite(parsed) && Math.trunc(parsed) > 0 ? Math.trunc(parsed) : null;
 }
 
-function enabled(value) {
-  return value === true || value === 1 || /^(1|true|yes|on)$/i.test(String(value || ''));
-}
-
-function repairExplicitlyDisabled(env = {}) {
-  return !enabled(env?.MINUTE_FACT_REPAIR_BURST_ENABLED);
-}
-
 function liveRevisionMaterializationEnabled(env = {}) {
   const value = env?.LIVE_REVISION_MATERIALIZATION_ENABLED;
-  if (value == null || value === '') return historicalRebuildEnabled(env);
+  if (value == null || value === '') return false;
   return !['0', 'false', 'no', 'off'].includes(String(value).trim().toLowerCase());
 }
 
 function triggerBatchKind(batch, jobKind) {
-  const messages = batch?.messages || [];
-  return messages.length > 0 && messages.every((message) => {
+  return (batch?.messages || []).some((message) => {
     const body = message?.body;
     return body?.message_type === 'minute-fact-derive'
       && Number(body?.message_version) === 1
@@ -61,8 +51,20 @@ function repairWorkMessage(body) {
 }
 
 function repairWorkBatch(batch) {
-  const messages = batch?.messages || [];
-  return messages.length > 0 && messages.every((message) => repairWorkMessage(message?.body));
+  return (batch?.messages || []).some((message) => repairWorkMessage(message?.body));
+}
+
+function rebuildWorkMessage(body) {
+  const rebuild = body?.payload?.rebuild;
+  return String(body?.job_kind || '') === 'rebuild'
+    || String(body?.job?.job_kind || '') === 'rebuild'
+    || body?.revision?.rebuild === true
+    || rebuild === true
+    || (Boolean(rebuild) && rebuild?.repair !== true);
+}
+
+function rebuildWorkBatch(batch) {
+  return (batch?.messages || []).some((message) => rebuildWorkMessage(message?.body));
 }
 
 async function retireRepairJob(env, body, now) {
@@ -109,11 +111,23 @@ async function acknowledgeDisabledRepairWork(batch, env) {
     message.ack();
   }
   const result = {
-    event: 'minute_repair_derive_skipped',
+    event: 'minute_repair_derive_retired',
     skipped: true,
-    reason: 'repair-burst-disabled',
+    reason: 'repair-actions-owned',
     messages: batch?.messages?.length || 0,
     retired,
+  };
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function acknowledgeDisabledHistoricalDerive(batch) {
+  for (const message of batch?.messages || []) message.ack();
+  const result = {
+    event: 'minute_historical_derive_retired',
+    skipped: true,
+    messages: batch?.messages?.length || 0,
+    reason: 'rebuild-actions-owned',
   };
   console.log(JSON.stringify(result));
   return result;
@@ -148,8 +162,7 @@ function budgetedLiveWriteBatch(batch, env) {
       && Number(body?.message_version) === 1
       && (body?.stage === 'write' || body?.stage === 'budget-live-write')
       && positiveInteger(body?.job?.id) != null
-      && jobKind !== 'rebuild'
-      && jobKind !== 'repair'
+      && jobKind === 'live'
       && body?.payload?.rebuild !== true
       && body?.payload?.rebuild?.repair !== true;
   });
@@ -162,15 +175,6 @@ function budgetedLiveCompleteBatch(batch, env) {
     && messages.every((message) => budgetedLiveCompleteMessage(message?.body));
 }
 
-function acknowledgeDisabledHistoricalDerive(batch) {
-  for (const message of batch?.messages || []) message.ack();
-  console.log(JSON.stringify({
-    event: 'minute_historical_derive_skipped',
-    messages: batch?.messages?.length || 0,
-    reason: 'historical-rebuild-disabled-for-d1-budget',
-  }));
-}
-
 export async function processMinutePipelineBatch(batch, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
   const queueName = String(batch?.queue || '');
   if (queueName === MINUTE_FACTS_QUEUE_NAME) {
@@ -178,27 +182,15 @@ export async function processMinutePipelineBatch(batch, env, ctx, dependencies =
     return consume(batch, env, ctx);
   }
   if ((queueName === REBUILD_DERIVE_QUEUE_NAME || queueName === LIVE_DERIVE_QUEUE_NAME)
-      && repairExplicitlyDisabled(env)
       && repairWorkBatch(batch)) {
     return acknowledgeDisabledRepairWork(batch, env);
   }
-  if (queueName === REBUILD_DERIVE_QUEUE_NAME
-      && !historicalRebuildEnabled(env)
-      && !repairTriggerBatch(batch)) {
+  if (queueName === REBUILD_DERIVE_QUEUE_NAME) {
     return acknowledgeDisabledHistoricalDerive(batch);
   }
-  if (queueName === LIVE_DERIVE_QUEUE_NAME && repairTriggerBatch(batch)) {
-    const repairBatch = { ...batch, queue: REBUILD_DERIVE_QUEUE_NAME };
-    const run = dependencies.processMinuteDeriveBatch;
-    if (run) return run(repairBatch, env, dependencies.derive);
-    return processDeriveBatch(repairBatch, env, dependencies.derive);
-  }
-  if (queueName === LIVE_DERIVE_QUEUE_NAME && rebuildTriggerBatch(batch)) {
-    if (!historicalRebuildEnabled(env)) return acknowledgeDisabledHistoricalDerive(batch);
-    const rebuildBatch = { ...batch, queue: REBUILD_DERIVE_QUEUE_NAME };
-    const run = dependencies.processMinuteDeriveBatch;
-    if (run) return run(rebuildBatch, env, dependencies.derive);
-    return processDeriveBatch(rebuildBatch, env, dependencies.derive);
+  if (queueName === LIVE_DERIVE_QUEUE_NAME
+      && (rebuildTriggerBatch(batch) || rebuildWorkBatch(batch))) {
+    return acknowledgeDisabledHistoricalDerive(batch);
   }
   if (queueName === LIVE_DERIVE_QUEUE_NAME && budgetedLiveTriggerBatch(batch, env)) {
     const run = dependencies.processBudgetedLiveTriggerBatch || processBudgetedLiveTriggerBatch;
@@ -216,7 +208,7 @@ export async function processMinutePipelineBatch(batch, env, ctx, dependencies =
     const run = dependencies.processBudgetedLiveCompleteBatch || processBudgetedLiveCompleteBatch;
     return run(batch, env, dependencies.liveComplete);
   }
-  if (queueName === REBUILD_DERIVE_QUEUE_NAME || queueName === LIVE_DERIVE_QUEUE_NAME) {
+  if (queueName === LIVE_DERIVE_QUEUE_NAME) {
     const run = dependencies.processMinuteDeriveBatch;
     if (run) return run(batch, env, dependencies.derive);
     return processDeriveBatch(batch, env, dependencies.derive);
@@ -232,6 +224,7 @@ export {
   budgetedLiveRevisionBatch,
   budgetedLiveWriteBatch,
   rebuildTriggerBatch,
+  rebuildWorkBatch,
   repairTriggerBatch,
   repairWorkBatch,
 };
