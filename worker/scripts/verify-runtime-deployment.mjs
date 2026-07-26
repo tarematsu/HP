@@ -1,6 +1,10 @@
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 const DEFAULT_ATTEMPTS = 30;
 const DEFAULT_DELAY_MS = 2_000;
+const RUNTIME_COORDINATOR_MIGRATIONS = Object.freeze([
+  Object.freeze({ tag: 'runtime-coordinator-v1', new_sqlite_classes: ['RuntimeCoordinator'] }),
+  Object.freeze({ tag: 'runtime-coordinator-v2-retired', deleted_classes: ['RuntimeCoordinator'] }),
+]);
 
 function required(value, name) {
   const normalized = String(value || '').trim();
@@ -32,7 +36,7 @@ export function queueOnlyRuntimeDeployConfig(value = {}) {
   const config = structuredClone(value || {});
   config.triggers = { crons: [] };
   delete config.durable_objects;
-  delete config.migrations;
+  config.migrations = structuredClone(RUNTIME_COORDINATOR_MIGRATIONS);
   return config;
 }
 
