@@ -12,7 +12,7 @@ import { normalizeRefreshJobNames } from "./refresh_jobs";
 import { methodNotAllowed, etagResponse, suppliedEtags, unauthorized } from "./response";
 import { radarBundleResponse } from "./radar_bundle";
 import { cachedRadarBundleResponse } from "./radar_bundle_cache";
-import { radarFrameResponse, fetchRadar } from "./radar_source";
+import { radarFrameResponse } from "./radar_source";
 import { queueSchedulerWake } from "./scheduler_coordinator";
 import { buildMeta, ensureDashboard, readState, sha256Hex, updateState, WORKER_VERSION } from "./snapshot";
 import { constantTimeEqual } from "./crypto_cache";
@@ -47,6 +47,11 @@ interface RuntimeBindings extends Env {
   RADAR_BUNDLE_COORDINATOR?: DurableObjectNamespace;
 }
 
+interface ReadinessCheck {
+  ok: boolean;
+  detail?: string;
+}
+
 function notModified(etag: string): Response {
   return new Response(null, {
     status: 304,
@@ -61,30 +66,32 @@ function notModified(etag: string): Response {
 async function readinessResponse(request: Request, env: Env): Promise<Response> {
   if (!authorizedAction(request, env)) return unauthorized();
   const bindings = env as RuntimeBindings;
-  const checks: Record<string, { ok: boolean; detail?: string }> = {
-    d1: { ok: false },
+  const d1Check: ReadinessCheck = { ok: false };
+  const videoServiceCheck: ReadinessCheck = { ok: false };
+  const checks = {
+    d1: d1Check,
     scheduler: { ok: Boolean(bindings.SCHEDULER_COORDINATOR) },
     deviceSync: { ok: Boolean(bindings.DEVICE_SYNC_COORDINATOR) },
     radarCoordinator: { ok: Boolean(bindings.RADAR_BUNDLE_COORDINATOR) },
     dataBucket: { ok: Boolean(env.DATA_BUCKET) },
-    videoService: { ok: false },
-  };
+    videoService: videoServiceCheck,
+  } satisfies Record<string, ReadinessCheck>;
 
   try {
     const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
-    checks.d1.ok = Number(row?.ok) === 1;
+    d1Check.ok = Number(row?.ok) === 1;
   } catch (error) {
-    checks.d1.detail = error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200);
+    d1Check.detail = error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200);
   }
 
   try {
     if (!bindings.VIDEO_SERVICE) throw new Error("binding unavailable");
     const response = await bindings.VIDEO_SERVICE.fetch("https://video.internal/api/health");
-    checks.videoService.ok = response.ok;
-    if (!response.ok) checks.videoService.detail = `HTTP ${response.status}`;
+    videoServiceCheck.ok = response.ok;
+    if (!response.ok) videoServiceCheck.detail = `HTTP ${response.status}`;
     await response.body?.cancel();
   } catch (error) {
-    checks.videoService.detail = error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200);
+    videoServiceCheck.detail = error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200);
   }
 
   const ok = Object.values(checks).every(check => check.ok);
