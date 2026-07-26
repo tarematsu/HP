@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Compatibility entrypoint for the active-deployment telemetry audit."""
 
+import importlib.util
 from pathlib import Path
-import runpy
 
 # Source-contract compatibility markers retained while implementation lives in
 # audit-cloudflare-deployed-telemetry.py:
@@ -18,4 +18,24 @@ import runpy
 # Cloudflare token, account ID, and Worker list are required
 
 TARGET = Path(__file__).with_name("audit-cloudflare-deployed-telemetry.py")
-runpy.run_path(str(TARGET), run_name="__main__")
+SPEC = importlib.util.spec_from_file_location("active_cloudflare_telemetry_audit", TARGET)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError(f"Could not load active telemetry audit from {TARGET}")
+module = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(module)
+
+# Only five-field Cron expressions are eligible for schedule reconciliation.
+# Application error messages must never be mistaken for removed Cron triggers.
+_original_cron_expression = module.cron_expression
+module.cron_expression = lambda event: (
+    value if len((value := _original_cron_expression(event)).split()) == 5 else ""
+)
+
+try:
+    raise SystemExit(module.main())
+except Exception as error:
+    print(
+        "::error title=Cloudflare deployed-version telemetry audit::"
+        + str(error).replace("\n", " ")[:1000]
+    )
+    raise
