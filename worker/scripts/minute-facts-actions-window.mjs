@@ -13,7 +13,7 @@ const MINUTE_MS = 60_000;
 const RECENT_GUARD_MS = 5 * MINUTE_MS;
 const OVERLAP_MS = 10 * MINUTE_MS;
 const MAX_CATCHUP_MS = 24 * 60 * MINUTE_MS;
-const ACTION_TASKS = Object.freeze(['recovery', 'rebuild', 'sync']);
+const ACTION_TASKS = Object.freeze(['recovery', 'rebuild']);
 
 function wrangler(database, command, options = {}) {
   const args = [
@@ -60,7 +60,7 @@ function exportWindow(now = Date.now()) {
     factsDatabase,
     `SELECT MIN(last_success_at) AS cursor_at
        FROM sh_minute_fact_runtime_state
-      WHERE task_name IN ('recovery','rebuild','sync')`,
+      WHERE task_name IN ('recovery','rebuild')`,
   ));
   const cursor = Number(cursorRows[0]?.cursor_at);
   const fallbackStart = cutoff - MAX_CATCHUP_MS;
