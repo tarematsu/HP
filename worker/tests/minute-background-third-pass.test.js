@@ -1,142 +1,42 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import {
-  historicalBackfillDue,
-  processMinuteMaintenanceGate,
-  processMinuteMaintenanceSync,
-} from '../src/minute-rebuild-maintenance-entry.js';
-import { processMinuteRebuildStage } from '../src/minute-rebuild-entry.js';
-
-const MAINTENANCE_CRON = '5,7,9,15,17,19,25,27,29,35,37,39,45,47,49,55,57,59 * * * *';
-const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
-
-function gateBody(task = 'rebuild', attempt = 0, scheduledAt = BASE) {
-  return {
-    message_type: 'minute-rebuild-stage',
-    message_version: 1,
-    run_id: `minute-maintenance:${task}:${scheduledAt}`,
-    stage: 'maintenance-gate',
-    maintenance_task: task,
-    scheduled_at: scheduledAt,
-    cron: MAINTENANCE_CRON,
-    attempt,
-  };
+function source(path) {
+  return readFileSync(new URL(path, import.meta.url), 'utf8');
 }
 
-test('maintenance gate performs one collector check and requeues without an in-Invocation polling loop', async () => {
-  const sent = [];
-  const result = await processMinuteMaintenanceGate({}, gateBody('rebuild'), {
-    checkCollector: async () => ({ ready: false, reason: 'collector-not-ready' }),
-    send: async (body, delaySeconds) => sent.push({ body, delaySeconds }),
-  });
-
-  assert.equal(result.requeued, true);
-  assert.equal(result.attempt, 1);
-  assert.equal(sent[0].body.attempt, 1);
-  assert.equal(sent[0].delaySeconds, 4);
+test('Worker maintenance gates and rebuild Queue wrappers remain deleted', () => {
+  for (const path of [
+    '../src/minute-rebuild-batched-entry.js',
+    '../src/minute-rebuild-maintenance-entry.js',
+    '../src/minute-maintenance-optimized-entry.js',
+  ]) {
+    assert.equal(existsSync(new URL(path, import.meta.url)), false, path);
+  }
+  const runtime = JSON.parse(source('../wrangler.runtime.jsonc'));
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(runtime.queues.consumers.some(
+    ({ queue }) => queue === 'stationhead-minute-rebuild',
+  ), false);
+  assert.equal(runtime.queues.producers.some(
+    ({ binding }) => binding === 'MINUTE_DERIVE_QUEUE',
+  ), false);
 });
 
-test('historical backfill follows the configured interval and can be disabled', () => {
-  const daily = { REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS: 86_400_000 };
-  assert.equal(historicalBackfillDue(daily, BASE), true);
-  assert.equal(historicalBackfillDue(daily, BASE + 17 * 60_000), false);
-  assert.equal(historicalBackfillDue({ ...daily, REBUILD_HISTORICAL_BACKFILL_ENABLED: false }, BASE), false);
+test('lower-level rebuild primitives remain available only to bounded Actions code', () => {
+  const rebuild = source('../src/minute-rebuild-entry.js');
+  const selector = source('../scripts/select-worker-deploys.mjs');
+  const actions = source('../scripts/minute-facts-actions-window.mjs');
 
-  const resumed = { REBUILD_HISTORICAL_BACKFILL_INTERVAL_MS: 600_000 };
-  assert.equal(historicalBackfillDue(resumed, BASE + 9 * 60_000), false);
-  assert.equal(historicalBackfillDue(resumed, BASE + 10 * 60_000), true);
-});
-
-test('ready maintenance gate always dispatches gap repair but marks historical backfill only when due', async () => {
-  const sent = [];
-  const dependencies = {
-    checkCollector: async () => ({ ready: true }),
-    send: async (body, delaySeconds) => sent.push({ body, delaySeconds }),
-  };
-  const daily = await processMinuteMaintenanceGate({}, gateBody('rebuild', 0, BASE), dependencies);
-  const incremental = await processMinuteMaintenanceGate(
-    {},
-    gateBody('rebuild', 0, BASE + 17 * 60_000),
-    dependencies,
-  );
-
-  assert.equal(daily.dispatched_stage, 'gap-scan');
-  assert.equal(daily.historical_backfill_due, true);
-  assert.equal(sent[0].body.allow_backfill, true);
-  assert.equal(incremental.dispatched_stage, 'gap-scan');
-  assert.equal(incremental.historical_backfill_due, false);
-  assert.equal(sent[1].body.allow_backfill, false);
-});
-
-test('non-daily gap repair completes without entering historical backfill', async () => {
-  const enqueued = [];
-  const recorded = [];
-  const result = await processMinuteRebuildStage({
-    BUDDIES_DB: {},
-    MINUTE_DB: {},
-  }, {
-    message_type: 'minute-rebuild-stage',
-    message_version: 1,
-    run_id: 'incremental-gap-only',
-    stage: 'gap-scan',
-    scheduled_at: BASE + 17 * 60_000,
-    allow_backfill: false,
-  }, {
-    runGapScan: async () => ({ processed: 0, missing_minutes: 0 }),
-    recordStage: async (_env, task, value) => recorded.push({ task, value }),
-    enqueueStage: async (_env, _task, stage) => enqueued.push(stage),
-  });
-
-  assert.equal(result.pending, false);
-  assert.equal(recorded.length, 1);
-  assert.deepEqual(enqueued, []);
-});
-
-test('ready maintenance gate dispatches the consolidated run invocation', async () => {
-  const sent = [];
-  const sync = await processMinuteMaintenanceGate({}, gateBody('sync'), {
-    checkCollector: async () => ({ ready: true }),
-    send: async (body, delaySeconds) => sent.push({ body, delaySeconds }),
-  });
-  assert.equal(sync.pending, true);
-  assert.equal(sync.dispatched_stage, 'maintenance-run');
-  assert.equal(sent[0].body.stage, 'maintenance-run');
-  assert.equal(sent[0].delaySeconds, 0);
-});
-
-test('sync maintenance drains completed payloads before the scheduled sync work', async () => {
-  let scheduled = null;
-  const events = [];
-  const result = await processMinuteMaintenanceSync({
-    MINUTE_FACT_PAYLOAD_CLEANUP_LIMIT: 2500,
-  }, {
-    ...gateBody('sync'),
-    stage: 'maintenance-run',
-  }, {
-    clearCompletedPayloads: async (_env, options) => {
-      events.push('cleanup');
-      assert.deepEqual(options, { now: BASE, limit: 2500 });
-      return { cleared: 2500 };
-    },
-    runScheduled: async (controller, _env, dependencies) => {
-      events.push('sync');
-      scheduled = { controller, dependencies };
-      return { event: 'sync-complete' };
-    },
-  });
-  assert.deepEqual(events, ['cleanup', 'sync']);
-  assert.equal(result.pending, false);
-  assert.equal(result.stage, 'maintenance-run');
-  assert.deepEqual(result.payload_cleanup, { cleared: 2500 });
-  assert.equal(scheduled.controller.scheduledTime, BASE);
-  assert.equal(scheduled.dependencies.collectorReady, true);
+  assert.match(rebuild, /processMinuteRebuildStage/);
+  assert.match(selector, /worker\/src\/minute-rebuild-entry\.js/);
+  assert.match(actions, /cutoff_ms|complete/);
 });
 
 test('enrichment production wrapper logs fixed fields instead of spreading the complete result', () => {
-  const source = readFileSync(new URL('../src/minute-enrichment-optimized-entry.js', import.meta.url), 'utf8');
-  assert.match(source, /function logMinuteEnrichmentResult/);
-  assert.match(source, /const RETRY_30_SECONDS = Object\.freeze/);
-  assert.doesNotMatch(source, /minute_enrichment_completed', \.\.\.result/);
+  const enrichment = source('../src/minute-enrichment-optimized-entry.js');
+  assert.match(enrichment, /function logMinuteEnrichmentResult/);
+  assert.match(enrichment, /const RETRY_30_SECONDS = Object\.freeze/);
+  assert.doesNotMatch(enrichment, /minute_enrichment_completed', \.\.\.result/);
 });
