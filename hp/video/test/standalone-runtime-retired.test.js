@@ -4,32 +4,23 @@ import test from 'node:test';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
-const retired = 'node scripts/standalone-runtime-retired.mjs';
 
-test('remote video deployment and migration commands remain disabled', () => {
-  for (const name of [
-    'config:production',
-    'deploy',
-    'db:create',
-    'db:migrate:remote',
-    'db:migrate:production'
-  ]) {
-    assert.match(pkg.scripts[name], new RegExp(`^${retired.replaceAll('.', '\\.')}`));
-  }
-
-  assert.doesNotMatch(pkg.scripts.deploy, /wrangler deploy/);
-  assert.doesNotMatch(pkg.scripts['db:migrate:remote'], /wrangler d1/);
+test('video deployment is explicit and remote database ownership stays in cloud migrations', () => {
+  assert.equal(pkg.scripts.deploy, 'wrangler deploy --config wrangler.jsonc --keep-vars');
+  assert.equal(pkg.scripts['db:migrate:remote'], undefined);
+  assert.equal(pkg.scripts['db:migrate:production'], undefined);
   assert.equal(pkg.scripts.postinstall, undefined);
   assert.equal(pkg.scripts.dev, 'wrangler dev --local');
 });
 
-test('standalone Wrangler config cannot target retired production resources', () => {
-  assert.equal(wrangler.name, 'homepanel-video-local-only');
+test('private Wrangler config targets only the HomePanel video service', () => {
+  assert.equal(wrangler.name, 'homepanel-video');
   assert.equal(wrangler.workers_dev, false);
-  assert.equal(wrangler.queues, undefined);
+  assert.equal(wrangler.preview_urls, false);
+  assert.equal(wrangler.queues?.consumers?.[0]?.max_concurrency, 1);
   const database = wrangler.d1_databases?.find((entry) => entry.binding === 'DB');
-  assert.equal(database?.database_name, 'homepanel-video-local');
-  assert.equal(database?.database_id, '00000000-0000-0000-0000-000000000000');
+  assert.equal(database?.database_name, 'homepanel-data');
+  assert.match(database?.database_id, /^[0-9a-f-]{36}$/i);
 });
 
 test('retired standalone configuration tools stay removed', async () => {
