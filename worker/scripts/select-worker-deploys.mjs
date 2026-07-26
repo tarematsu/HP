@@ -38,6 +38,7 @@ const allWorkerDeployScripts = new Set([
 const actionsOnlySources = new Set([
   'worker/src/monitor-maintenance-entry.js',
   'worker/src/pages-read-model-dispatch.js',
+  'worker/src/pages-read-model-entry.js',
   'worker/src/pages-six-hour-read-model.js',
   'worker/src/pages-track-history-split-cycle.js',
   'worker/src/runtime-budgeted-entry.js',
