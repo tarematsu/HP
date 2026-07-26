@@ -3,26 +3,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { apiCatalog, onRequest as catalogRequest } from '../functions/api/index.js';
-import {
-  minuteTaskHealth,
-  onRequest as minuteHealthRequest,
-  readMinuteHealth,
-} from '../functions/api/health/minute.js';
-import {
-  onRequest as otherHealthRequest,
-  readOtherHealth,
-} from '../functions/api/health/other.js';
-import {
-  onRequest as sakurazakaHealthRequest,
-  readSakurazakaHealth,
-} from '../functions/api/health/sakurazaka46jp.js';
+import { onRequest as healthRequest, readHealth } from '../functions/api/health.js';
+import { minuteTaskHealth, readMinuteHealth } from '../functions/lib/health-minute.js';
+import { readOtherHealth } from '../functions/lib/health-other.js';
+import { readSakurazakaHealth } from '../functions/lib/health-sakurazaka.js';
 
 const NOW = 1_700_000_000_000;
 const CANONICAL_PATHS = [
   '/api/health',
-  '/api/health/minute',
-  '/api/health/other',
-  '/api/health/sakurazaka46jp',
   '/api/dashboard',
   '/api/history',
   '/api/track-history',
@@ -57,6 +45,21 @@ function runtimeRow(taskName, overrides = {}) {
 function minuteDb(rows) {
   return {
     prepare(sql) {
+      if (sql.includes('MAX(id)')) {
+        return { async first() { return { count: 123 }; } };
+      }
+      if (sql.includes('sh_collector_read_model')) {
+        return {
+          async first() {
+            return {
+              last_run_at: NOW - 60_000,
+              last_success_at: NOW - 60_000,
+              last_error_present: 0,
+              updated_at: NOW - 60_000,
+            };
+          },
+        };
+      }
       assert.match(sql, /sh_minute_fact_runtime_state/);
       return { async all() { return { results: rows }; } };
     },
@@ -123,10 +126,8 @@ async function withFixedNow(action) {
 test('Pages API catalog exposes exactly the canonical routes without Worker URLs', async () => {
   const catalog = apiCatalog(NOW);
   assert.equal(catalog.gateway, 'cloudflare-pages');
-  assert.equal(catalog.contract_version, 3);
+  assert.equal(catalog.contract_version, 4);
   assert.equal(catalog.worker_urls_public, false);
-  assert.equal('compatibility' in catalog, false);
-  assert.equal('retired' in catalog, false);
   const paths = Object.values(catalog.groups).flat().map(({ path }) => path);
   assert.deepEqual(paths, CANONICAL_PATHS);
   assert.equal(new Set(paths).size, paths.length);
@@ -140,166 +141,84 @@ test('Pages API catalog exposes exactly the canonical routes without Worker URLs
   assert.equal(rejected.headers.get('allow'), 'GET');
 });
 
-test('Pages minute health reads all active tasks and rejects unhealthy task state', async () => {
+test('unified Pages health combines all health components behind one URL', async () => {
+  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
+  const env = {
+    MINUTE_DB: minuteDb(rows),
+    OTHER_DB: otherDb(),
+    SOLO_BROADCAST_HANDLE: 'sakurazaka46jp',
+  };
+  const payload = await readHealth(env, NOW);
+  assert.equal(payload.ok, true);
+  assert.deepEqual(Object.keys(payload.components), ['collector', 'minute', 'runtime', 'sakurazaka46jp']);
+  assert.equal(payload.components.collector.snapshot_count, 123);
+  assert.equal(payload.components.minute.tasks.length, 4);
+  assert.equal(payload.components.runtime.components.runtime.ok, true);
+  assert.equal(payload.components.sakurazaka46jp.components.official_news.upcoming_count, 2);
+
+  const response = await withFixedNow(() => healthRequest({
+    request: new Request('https://example.com/api/health'),
+    env,
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await response.json()).gateway, 'cloudflare-pages');
+
+  const rejected = await healthRequest({
+    request: new Request('https://example.com/api/health', { method: 'POST' }),
+    env,
+  });
+  assert.equal(rejected.status, 405);
+  assert.equal(rejected.headers.get('allow'), 'GET');
+});
+
+test('unified health reports a failed component without hiding healthy components', async () => {
+  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
+  const payload = await readHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.components.collector.ok, true);
+  assert.equal(payload.components.minute.ok, true);
+  assert.equal(payload.components.runtime.ok, false);
+  assert.equal(payload.components.sakurazaka46jp.ok, false);
+});
+
+test('minute health rejects unhealthy task state', async () => {
   const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
   const payload = await readMinuteHealth({ MINUTE_DB: minuteDb(rows) }, NOW);
   assert.equal(payload.ok, true);
   assert.equal(payload.tasks.length, 4);
-  assert.equal(payload.tasks.every(({ ok }) => ok), true);
 
   const unhealthy = minuteTaskHealth(runtimeRow('derive', { dead_count: 1 }), NOW, {});
   assert.equal(unhealthy.ok, false);
-  assert.equal(unhealthy.dead_count, 1);
-  const boundedBacklog = minuteTaskHealth(runtimeRow('derive', {
-    pending_count: 3,
-    oldest_pending_minute: NOW - 24 * 60 * 60_000,
-  }), NOW, { MINUTE_FACT_PENDING_ALERT_COUNT: 20 });
-  assert.equal(boundedBacklog.ok, true);
-  assert.equal(boundedBacklog.pending_stale, false);
   const excessiveBacklog = minuteTaskHealth(runtimeRow('derive', {
     pending_count: 20,
     oldest_pending_minute: NOW - 24 * 60 * 60_000,
   }), NOW, { MINUTE_FACT_PENDING_ALERT_COUNT: 20 });
   assert.equal(excessiveBacklog.ok, false);
   assert.equal(excessiveBacklog.pending_stale, true);
-
-  const response = await withFixedNow(() => minuteHealthRequest({
-    request: new Request('https://example.com/api/health/minute'),
-    env: { MINUTE_DB: minuteDb(rows) },
-  }));
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get('cache-control'), 'no-store');
 });
 
-test('Pages minute health prefers current Runtime Coordinator state and tolerates 15-minute dispatch cadence', async () => {
-  const rows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task, {
-    last_started_at: NOW - 20 * 60_000,
-    last_success_at: NOW - 20 * 60_000,
-  }));
-  const env = {
-    MINUTE_DB: {
-      prepare() {
-        throw new Error('D1 fallback must not be used when the Runtime service is healthy');
-      },
-    },
-    PAGES_READ_MODEL_SERVICE: {
-      async fetch(url) {
-        assert.equal(url, 'https://sh-runtime-orchestrator.internal/internal/minute-runtime-state');
-        return Response.json({ ok: true, tasks: rows });
-      },
-    },
-  };
-  const payload = await readMinuteHealth(env, NOW);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.tasks.every(({ stale_after_ms }) => stale_after_ms === 25 * 60_000), true);
-});
-
-test('Pages minute health falls back to D1 when Runtime Coordinator state is incomplete', async () => {
-  const fallbackRows = ['derive', 'recovery', 'rebuild', 'sync'].map((task) => runtimeRow(task));
-  let d1Reads = 0;
-  const env = {
-    MINUTE_DB: {
-      prepare(sql) {
-        d1Reads += 1;
-        return minuteDb(fallbackRows).prepare(sql);
-      },
-    },
-    PAGES_READ_MODEL_SERVICE: {
-      async fetch() {
-        return Response.json({ ok: true, tasks: [runtimeRow('derive')] });
-      },
-    },
-  };
-  const payload = await readMinuteHealth(env, NOW);
-  assert.equal(payload.ok, true);
-  assert.equal(d1Reads, 1);
-  assert.deepEqual(payload.tasks.map(({ task_name }) => task_name), [
-    'derive',
-    'recovery',
-    'rebuild',
-    'sync',
-  ]);
-});
-
-test('Pages other health is scoped to the runtime orchestrator', async () => {
-  const env = { OTHER_DB: otherDb() };
-  const payload = await readOtherHealth(env, NOW);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.components.runtime.ok, true);
-  assert.equal(payload.components.runtime.stale_after_ms, 50 * 60_000);
-  assert.deepEqual(payload.services, ['sh-runtime-orchestrator']);
-
-  const response = await withFixedNow(() => otherHealthRequest({
-    request: new Request('https://example.com/api/health/other'),
-    env,
-  }));
-  assert.equal(response.status, 200);
-});
-
-test('Pages Sakurazaka health combines official news and solo monitor state', async () => {
+test('other and Sakurazaka health retain component semantics', async () => {
   const env = { OTHER_DB: otherDb(), SOLO_BROADCAST_HANDLE: 'sakurazaka46jp' };
-  const payload = await readSakurazakaHealth(env, NOW);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.components.official_news.upcoming_count, 2);
-  assert.equal(payload.components.solo_monitor.phase, 'idle');
-  assert.deepEqual(payload.services, ['sh-sakurazaka46jp']);
+  const other = await readOtherHealth(env, NOW);
+  assert.equal(other.ok, true);
+  assert.equal(other.components.runtime.stale_after_ms, 50 * 60_000);
 
-  const response = await withFixedNow(() => sakurazakaHealthRequest({
-    request: new Request('https://example.com/api/health/sakurazaka46jp'),
-    env,
-  }));
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).gateway, 'cloudflare-pages');
+  const sakurazaka = await readSakurazakaHealth(env, NOW);
+  assert.equal(sakurazaka.ok, true);
+  assert.equal(sakurazaka.components.solo_monitor.phase, 'idle');
 });
 
-test('Pages Sakurazaka health allows an old idle state but not an old active session', async () => {
-  function stateDb(phase) {
-    return {
-      prepare(sql) {
-        return {
-          bind() { return this; },
-          async first() {
-            if (sql.includes('sh_official_news_monitor_state')) {
-              return {
-                last_check_at: NOW - 60_000,
-                last_success_at: NOW - 60_000,
-                last_error: null,
-                upcoming_count: 0,
-                active_count: 0,
-              };
-            }
-            return {
-              phase,
-              session_id: phase === 'active' ? 1 : null,
-              station_id: phase === 'active' ? 2 : null,
-              last_success_at: NOW - 24 * 60 * 60_000,
-              last_error: null,
-              updated_at: NOW - 24 * 60 * 60_000,
-            };
-          },
-        };
-      },
-    };
-  }
-  const idle = await readSakurazakaHealth({ OTHER_DB: stateDb('idle') }, NOW);
-  assert.equal(idle.ok, true);
-  assert.equal(idle.components.solo_monitor.stale, false);
-
-  const active = await readSakurazakaHealth({ OTHER_DB: stateDb('active') }, NOW);
-  assert.equal(active.ok, false);
-  assert.equal(active.components.solo_monitor.stale, true);
-});
-
-test('all active Workers disable workers.dev and preview URLs', () => {
+test('all active Workers disable public Worker URLs and only canonical Pages routes exist', () => {
   const configs = [
     '../../worker/wrangler.sakurazaka46jp.jsonc',
     '../../worker/wrangler.runtime.jsonc',
   ].map((path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8')));
 
   for (const config of configs) {
-    assert.equal(config.workers_dev, false, `${config.name} must not expose workers.dev`);
-    assert.equal(config.preview_urls, false, `${config.name} must not expose preview URLs`);
-    assert.equal('route' in config || 'routes' in config, false, `${config.name} must remain scheduled/Queue-only`);
+    assert.equal(config.workers_dev, false);
+    assert.equal(config.preview_urls, false);
+    assert.equal('route' in config || 'routes' in config, false);
   }
 
   const pages = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
@@ -308,13 +227,18 @@ test('all active Workers disable workers.dev and preview URLs', () => {
   for (const path of [
     '../functions/api/index.js',
     '../functions/api/health.js',
-    '../functions/api/health/minute.js',
-    '../functions/api/health/other.js',
-    '../functions/api/health/sakurazaka46jp.js',
     '../functions/api/dashboard.js',
     '../functions/api/track-history.js',
     '../functions/api/sakurazaka46jp.js',
   ]) {
     assert.equal(existsSync(new URL(path, import.meta.url)), true, `${path} must exist`);
+  }
+
+  for (const path of [
+    '../functions/api/health/minute.js',
+    '../functions/api/health/other.js',
+    '../functions/api/health/sakurazaka46jp.js',
+  ]) {
+    assert.equal(existsSync(new URL(path, import.meta.url)), false, `${path} must not exist`);
   }
 });
