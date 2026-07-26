@@ -120,6 +120,10 @@ jobs:
             selection="$(node worker/scripts/select-worker-deploys.mjs < changed-files.txt)"
           fi
 
+          if jq -e '.workers | index("sh-runtime-orchestrator") != null' <<<"$selection" >/dev/null; then
+            pages=true
+          fi
+
           echo "$selection" | jq .
           workers_json="$(jq -c '.workers' <<<"$selection")"
           commands_json="$(jq -c '.commands' <<<"$selection")"
