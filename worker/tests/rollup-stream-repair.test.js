@@ -16,9 +16,17 @@ test('July contaminated summaries are retried from corrected daily source data',
   assert.match(source, /rollup-stream-repair-2026-07-v4/);
   assert.match(source, /runMinuteFactsRepair/);
   assert.match(source, /minute-facts-repair-pending/);
-  assert.match(source, /rollupDaily\(db, otherDb, jstPeriod\(key\), now\)/);
+  assert.match(source, /rollupDaily\(sourceDb, otherDb, jstPeriod\(key\), now\)/);
   assert.match(source, /rollupFromDaily\(otherDb, 'sh_weekly_summary'/);
   assert.match(source, /rollupFromDaily\(otherDb, 'sh_monthly_summary'/);
+});
+
+test('sparse Pages summaries are rebuilt from MINUTE_DB', () => {
+  assert.match(source, /const summarySourceDb = minuteDb \|\| db/);
+  assert.match(source, /rollup-minute-source-repair-2026-07-v1/);
+  assert.match(source, /'2026-07-20'[\s\S]*'2026-07-26'/);
+  assert.match(source, /repairMinuteSourceSummaries\(db, minuteDb, otherDb, now\)/);
+  assert.match(source, /rollupDaily\(summarySourceDb, otherDb, period, now\)/);
 });
 
 test('minute fact repair uses a remote preflight and never destructively nulls facts', () => {
