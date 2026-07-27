@@ -32,6 +32,55 @@ inline constexpr int64_t StationheadBoundaryElapsedMs(
       : static_cast<int64_t>(elapsed);
 }
 
+// A projected deadline is normally represented as the current civil time plus
+// its monotonic remaining duration. Once the uptime deadline has expired, do
+// not keep re-projecting it to a moving "now": Tick() captures nowMs before it
+// reads the deadline, so that representation could remain a few milliseconds
+// ahead and make an already-expired retry look pending indefinitely.
+inline constexpr int64_t StationheadOperationalDeadlineValue(
+    bool active, bool reached, int64_t projectedWallDeadline) noexcept {
+  if (!active) return 0;
+  return reached ? 1 : projectedWallDeadline;
+}
+
+inline int64_t StationheadProjectedDeadlineValue(
+    const MonotonicProjectedDeadline& deadline) noexcept {
+  return StationheadOperationalDeadlineValue(
+      deadline.Active(), deadline.Reached(), static_cast<int64_t>(deadline));
+}
+
+// Operational deadline comparisons always use uptime. The int64_t operand is a
+// Tick-local wall-clock snapshot retained for the surrounding legacy API; it
+// must not decide whether a monotonic deadline has expired.
+inline bool operator>=(
+    int64_t, const MonotonicProjectedDeadline& deadline) noexcept {
+  return deadline.Reached();
+}
+
+inline bool operator<(
+    int64_t, const MonotonicProjectedDeadline& deadline) noexcept {
+  return deadline.Active() && !deadline.Reached();
+}
+
+inline bool operator>(
+    const MonotonicProjectedDeadline& deadline, int64_t candidate) noexcept {
+  if (candidate == 0) return deadline.Active();
+  return StationheadProjectedDeadlineValue(deadline) > candidate;
+}
+
+inline bool operator<=(
+    const MonotonicProjectedDeadline& deadline, int64_t candidate) noexcept {
+  if (candidate == 0) return !deadline.Active();
+  return StationheadProjectedDeadlineValue(deadline) <= candidate;
+}
+
+inline bool operator<(
+    const MonotonicProjectedDeadline& deadline, int64_t candidate) noexcept {
+  if (!deadline.Active()) return false;
+  if (deadline.Reached()) return candidate > 1;
+  return static_cast<int64_t>(deadline) < candidate;
+}
+
 static_assert(IsStationheadBoundaryReadyMessage(WM_HP_PRIMARY_RELOAD_READY));
 static_assert(IsStationheadBoundaryReadyMessage(WM_HP_SECONDARY_RELOAD_READY));
 static_assert(!IsStationheadBoundaryReadyMessage(WM_HP_STATIONHEAD_CHANGED));
@@ -48,6 +97,9 @@ static_assert(StationheadBoundaryLeaseAllows(
     WM_HP_SECONDARY_RELOAD_READY, 10'000));
 static_assert(StationheadBoundaryElapsedMs(1'000, 4'120) == 3'120);
 static_assert(StationheadBoundaryElapsedMs(4'120, 1'000) == 0);
+static_assert(StationheadOperationalDeadlineValue(false, false, 42) == 0);
+static_assert(StationheadOperationalDeadlineValue(true, true, 42) == 1);
+static_assert(StationheadOperationalDeadlineValue(true, false, 42) == 42);
 
 namespace stationhead_boundary_message_policy {
 inline SRWLOCK leaseLock = SRWLOCK_INIT;
@@ -76,7 +128,7 @@ inline int64_t& StationheadAutoClickDeadlineStorage(
       ? stationhead_boundary_message_policy::secondaryAutoClickExposed
       : stationhead_boundary_message_policy::primaryAutoClickExposed;
   if (storage != exposed) deadline = storage;
-  storage = static_cast<int64_t>(deadline);
+  storage = StationheadProjectedDeadlineValue(deadline);
   exposed = storage;
   return storage;
 }
