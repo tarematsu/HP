@@ -1,6 +1,23 @@
 #pragma once
 #include "common.h"
 
+namespace hp {
+
+inline constexpr bool StationheadPlaybackNavigationActive(
+    bool navigationInFlight,
+    bool statusNavigating,
+    bool spotifyAuthorization) noexcept {
+  return navigationInFlight || (statusNavigating && !spotifyAuthorization);
+}
+
+static_assert(StationheadPlaybackNavigationActive(true, false, false));
+static_assert(StationheadPlaybackNavigationActive(true, true, true));
+static_assert(StationheadPlaybackNavigationActive(false, true, false));
+static_assert(!StationheadPlaybackNavigationActive(false, true, true));
+static_assert(!StationheadPlaybackNavigationActive(false, false, false));
+
+}  // namespace hp
+
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
 // source-rewriting macros before any implementation file is compiled. This keeps
 // the public class layout in one place while replacing the old track-boundary
@@ -51,8 +68,9 @@
       statusNavigating = status_.navigating;                                  \
     }                                                                         \
     const bool navigationActive =                                             \
-        navigationInFlight_.load(std::memory_order_acquire) ||                \
-        statusNavigating;                                                     \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
     if (navigationActive) {                                                   \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 1;                                 \
