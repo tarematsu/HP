@@ -78,3 +78,66 @@ test('runner completes a published track-history generation and materializes onl
   assert.deepEqual(published, ['dashboard']);
   assert.equal(result.published[0].key, 'dashboard');
 });
+
+test('runner publishes track-history immediately when the generation completes', async () => {
+  const published = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 19 * 60_000,
+    deadlineMs: DAY + 30 * 60_000,
+    now: () => DAY + 19 * 60_000,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => ({
+      task: { kind: 'track-history-published' },
+      stage: { published: true },
+      publication: { published: true, phase: 'published' },
+    }),
+    materializeVariant: async (variant) => {
+      published.push(variant.key);
+      return { key: variant.key };
+    },
+  });
+  assert.deepEqual(published, ['dashboard', 'track-history']);
+  assert.equal(result.track_history_result.publication.published, true);
+  assert.equal(result.track_history_deferred, false);
+});
+
+test('runner refreshes dashboard and safely defers an incomplete track-history rebuild', async () => {
+  const events = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 19 * 60_000,
+    deadlineMs: DAY + 30 * 60_000,
+    now: () => DAY + 19 * 60_000,
+    maxSteps: 2,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    runTrackHistoryStep: async () => {
+      events.push('track-history-step');
+      return { stage: { published: false } };
+    },
+    materializeVariant: async (variant) => {
+      events.push(`publish:${variant.key}`);
+      return { key: variant.key };
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.event, 'pages_read_model_actions_deferred');
+  assert.equal(result.track_history_steps, 2);
+  assert.equal(result.track_history_deferred, true);
+  assert.equal(result.track_history_defer_reason, 'step-budget');
+  assert.deepEqual(events, [
+    'publish:dashboard',
+    'track-history-step',
+    'track-history-step',
+  ]);
+});
+
+test('runtime serves materialized responses through a serving-only module', () => {
+  assert.equal(runtime.triggers, undefined);
+  assert.equal(Object.hasOwn(runtime.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
+  assert.doesNotMatch(deployedEntry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
+  assert.match(runtimeEntry, /pages-response-fetch-entry\.js/);
+  assert.match(runtimeEntry, /runPagesResponseFetch/);
+  assert.doesNotMatch(runtimeEntry, /pages-read-model-entry|runPagesReadModelCron|runCoreScheduled|pagesScheduledDue/);
+  assert.match(responseFetch, /loadMaterializedR2Response/);
+  assert.match(responseFetch, /loadMaterializedResponse/);
+  assert.doesNotMatch(responseFetch, /pages-read-model-dispatch|track-history-publication|PAGES_READ_MODEL_QUEUE/);
+});
