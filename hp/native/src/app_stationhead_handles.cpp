@@ -15,8 +15,8 @@ struct TrackBoundaryRetryState {
   // was still stopped. The player's pending bit is deliberately retained and
   // the handle re-opens a fresh App handoff window at retryAt.
   bool detachedFromAppWindow = false;
-  int64_t retryAt = 0;
-  int64_t deadline = 0;
+  MonotonicProjectedDeadline retryAt;
+  MonotonicProjectedDeadline deadline;
 };
 
 TrackBoundaryRetryState primaryBoundaryRetry;
