@@ -39,6 +39,7 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(runner, /sh_collector_status/);
   assert.match(runner, /other-cron/);
   assert.match(runner, /runRollup\(env\.BUDDIES_DB, env\.OTHER_DB, env\.MINUTE_DB, startedAt\)/);
+  assert.match(runner, /runOfflineMinuteRebuilds/);
 });
 
 test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () => {
@@ -57,10 +58,17 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
       assert.deepEqual(args, [buddiesDb, otherDb, minuteDb, now]);
       return 'rollup';
     },
+    runRebuilds: async (env, dependencies) => {
+      calls.push('rebuilds');
+      assert.equal(env.BUDDIES_DB, buddiesDb);
+      assert.equal(env.MINUTE_DB, minuteDb);
+      assert.equal(dependencies.now(), now);
+      return 'rebuilds';
+    },
     runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
-  assert.deepEqual(calls, ['prediction', 'rollup', 'retention']);
+  assert.deepEqual(calls, ['prediction', 'rollup', 'rebuilds', 'retention']);
   assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
   assert.equal(writes[0].values[0], 'other-cron');
   assert.equal(writes[1].values[3], now);
@@ -71,6 +79,7 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
     elapsed_ms: 0,
     prediction: 'prediction',
     rollup: 'rollup',
+    rebuilds: 'rebuilds',
     retention: 'retention',
   });
   assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 5000/);
@@ -86,6 +95,7 @@ test('Actions persists runtime maintenance failures for public health', async ()
       env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
       runPrediction: async () => { throw new Error('prediction failed'); },
       runRollup: async () => assert.fail('rollup must not run'),
+      runRebuilds: async () => assert.fail('rebuilds must not run'),
       runRetention: async () => assert.fail('retention must not run'),
     }),
     /prediction failed/,
