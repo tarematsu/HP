@@ -99,7 +99,7 @@ test('pending Spotify auth hides the playback controller in both windows', () =>
   );
   assert.match(
     setVisible,
-    /selectedTab_ != StationheadTabKind::Auth && controller_/,
+    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*activeController = authController_\.Get\(\);[\s\S]*activeHost = authHostWindow_;[\s\S]*if \(activeController && activeHost/,
   );
 });
 
