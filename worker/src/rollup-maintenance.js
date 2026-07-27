@@ -5,8 +5,7 @@ import {
   utcMonthlyRange,
   utcWeeklyRange,
 } from '../../site/functions/lib/time-buckets.js';
-import { REBUILD_STATE_KEY } from './minute-facts-backfill.js';
-import { runMinuteFactsRepair } from './minute-facts-repair.js';
+import { minuteFactReconcileCandidates, reconcileMinuteFactsForDay } from './minute-facts-day-reconcile.js';
 
 const STATE_ID = 'rollup-retention-v1';
 const STREAM_REPAIR_STATE_ID = 'rollup-stream-repair-2026-07-v4';
@@ -66,21 +65,7 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function integer(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
-}
-
-function safeJson(value, fallback) {
-  try {
-    const parsed = JSON.parse(String(value ?? ''));
-    return parsed ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt) {
+async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt, qualityFlags = '["live_rollup"]') {
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return false;
   const streamStart = finite(boundaries?.stream_start);
   const streamEnd = finite(boundaries?.stream_end);
@@ -111,12 +96,12 @@ async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt) {
     streamStart != null && streamEnd != null && streamEnd >= streamStart ? streamEnd - streamStart : null,
     memberStart, memberEnd, memberStart != null && memberEnd != null ? memberEnd - memberStart : null,
     finite(aggregate.likes_max), finite(aggregate.distinct_tracks), boundaries?.primary_host || null,
-    finite(aggregate.quality_score) ?? 1, '["live_rollup"]', updatedAt,
+    finite(aggregate.quality_score) ?? 1, qualityFlags, updatedAt,
   ).run();
   return true;
 }
 
-async function rollupDaily(sourceDb, otherDb, period, now) {
+async function rollupDaily(sourceDb, otherDb, period, now, qualityFlags = '["live_rollup"]') {
   const aggregate = await sourceDb.prepare(`SELECT MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
       COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
       AVG(listener_count) AS listener_avg,MIN(listener_count) AS listener_min,
@@ -126,7 +111,7 @@ async function rollupDaily(sourceDb, otherDb, period, now) {
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return false;
   const boundaries = await sourceDb.prepare(DAILY_BOUNDARIES_SQL)
     .bind(period.start, period.end).first();
-  return upsertSummary(otherDb, 'sh_daily_summary', period.key, aggregate, boundaries, now);
+  return upsertSummary(otherDb, 'sh_daily_summary', period.key, aggregate, boundaries, now, qualityFlags);
 }
 
 async function rollupFromDaily(otherDb, table, range, now) {
@@ -228,7 +213,7 @@ async function repairMinuteSourceSummaries(stateDb, minuteDb, otherDb, now) {
 const IMMUTABLE_SUMMARY_STATE_ID = 'immutable-summary-rollups-v1';
 
 async function loadSummary(db, table, key) {
-  return db.prepare(`SELECT period_key,sample_count,updated_at FROM ${table}
+  return db.prepare(`SELECT period_key,sample_count,quality_flags,updated_at FROM ${table}
     WHERE period_key=? LIMIT 1`).bind(key).first();
 }
 
@@ -247,139 +232,53 @@ async function blockedMinuteJobs(minuteDb, period) {
   return Number(row?.count || 0);
 }
 
-async function loadRebuildState(minuteDb) {
-  try {
-    return await minuteDb.prepare(`SELECT cursor_observed_at,cursor_snapshot_id,pending_json
-      FROM sh_minute_fact_rebuild_state WHERE rebuild_key=? LIMIT 1`)
-      .bind(REBUILD_STATE_KEY).first();
-  } catch (error) {
-    if (/no such table/i.test(String(error?.message || error))) return null;
-    throw error;
-  }
-}
-
-function pendingRebuildCandidates(state, period) {
-  return safeJson(state?.pending_json, []).filter((candidate) => {
-    const minuteAt = integer(candidate?.minuteAt);
-    return minuteAt != null && minuteAt >= period.start && minuteAt < period.end;
-  }).length;
-}
-
-async function unscannedSourceExists(sourceDb, state, period) {
-  const cursorAt = integer(state?.cursor_observed_at) ?? 0;
-  const cursorId = integer(state?.cursor_snapshot_id) ?? 0;
-  const row = await sourceDb.prepare(`SELECT 1 AS pending FROM sh_channel_snapshots
-    WHERE observed_at>=? AND observed_at<?
-      AND (observed_at>? OR (observed_at=? AND id>?))
-    LIMIT 1`)
-    .bind(period.start, period.end, cursorAt, cursorAt, cursorId)
-    .first();
-  return Boolean(row);
-}
-
-async function latestMinuteFactRebuildAt(minuteDb, period) {
-  const [jobs, repairs] = await Promise.all([
-    minuteDb.prepare(`SELECT MAX(COALESCE(processed_at,updated_at)) AS updated_at
-      FROM sh_minute_fact_jobs
-      WHERE minute_at>=? AND minute_at<? AND status='done'
-        AND job_kind IN ('rebuild','repair')`)
-      .bind(period.start, period.end).first(),
-    minuteDb.prepare(`SELECT MAX(updated_at) AS updated_at
-      FROM sh_minute_fact_repairs
-      WHERE minute_at>=? AND minute_at<? AND status='repaired'`)
-      .bind(period.start, period.end).first()
-      .catch((error) => {
-        if (/no such table/i.test(String(error?.message || error))) return null;
-        throw error;
-      }),
-  ]);
-  return Math.max(
-    0,
-    integer(jobs?.updated_at) ?? 0,
-    integer(repairs?.updated_at) ?? 0,
-  );
-}
-
 async function immutableDailyReady(sourceDb, minuteDb, period) {
-  const rebuildState = await loadRebuildState(minuteDb);
-  if (!rebuildState) {
-    return {
-      ready: false,
-      reason: 'minute-facts-rebuild-state-missing',
-      sourceMinutes: 0,
-      factMinutes: 0,
-      blocked: 0,
-      pendingRebuild: 0,
-      unscannedSource: true,
-    };
-  }
-  const pendingRebuild = pendingRebuildCandidates(rebuildState, period);
-  const [sourceMinutes, factMinutes, blocked, unscannedSource] = await Promise.all([
+  const [sourceMinutes, factMinutes, blocked] = await Promise.all([
     distinctSourceMinutes(sourceDb, period),
     distinctSourceMinutes(minuteDb, period),
     blockedMinuteJobs(minuteDb, period),
-    unscannedSourceExists(sourceDb, rebuildState, period),
   ]);
   return {
-    ready: sourceMinutes > 0
-      && factMinutes >= sourceMinutes
-      && blocked === 0
-      && pendingRebuild === 0
-      && !unscannedSource,
-    reason: pendingRebuild > 0 || unscannedSource
-      ? 'minute-facts-rebuild-pending'
-      : blocked > 0
-        ? 'minute-fact-jobs-pending'
-        : factMinutes < sourceMinutes
-          ? 'minute-facts-incomplete'
-          : sourceMinutes < 1
-            ? 'buddies-source-empty'
-            : null,
+    ready: sourceMinutes > 0 && factMinutes >= sourceMinutes && blocked === 0,
     sourceMinutes,
     factMinutes,
     blocked,
-    pendingRebuild,
-    unscannedSource,
   };
 }
 
-async function rebuildDailyWhenComplete(sourceDb, minuteDb, otherDb, period, now) {
-  const [existing, readiness, latestRebuildAt] = await Promise.all([
-    loadSummary(otherDb, 'sh_daily_summary', period.key),
-    immutableDailyReady(sourceDb, minuteDb, period),
-    latestMinuteFactRebuildAt(minuteDb, period),
+function summaryGeneration(summary) {
+  const flags = String(summary?.quality_flags || '');
+  const match = flags.match(/minute_generation:([^"\]]+)/);
+  return match?.[1] || null;
+}
+
+async function rebuildDailyWhenComplete(minuteDb, otherDb, period, reconciliation, now) {
+  const existing = await loadSummary(otherDb, 'sh_daily_summary', period.key);
+  if (!reconciliation.complete) {
+    return {
+      skipped: true,
+      reason: reconciliation.blocked ? 'minute-facts-dead-jobs' : 'minute-facts-incomplete',
+      periodKey: period.key,
+      reconciliation,
+    };
+  }
+  if (existing && summaryGeneration(existing) === reconciliation.generation) {
+    return { skipped: true, reason: 'already-current', periodKey: period.key, reconciliation };
+  }
+  const qualityFlags = JSON.stringify([
+    'daily_reconciled',
+    'minute_generation:' + reconciliation.generation,
   ]);
-  if (!readiness.ready) {
-    return {
-      skipped: true,
-      reason: readiness.reason || 'minute-facts-incomplete',
-      periodKey: period.key,
-      existingSampleCount: Number(existing?.sample_count || 0),
-      latestRebuildAt,
-      readiness,
-    };
-  }
-  const existingUpdatedAt = integer(existing?.updated_at) ?? 0;
-  if (existing
-      && Number(existing.sample_count || 0) === readiness.factMinutes
-      && existingUpdatedAt >= latestRebuildAt) {
-    return {
-      skipped: true,
-      reason: 'already-current',
-      periodKey: period.key,
-      latestRebuildAt,
-      readiness,
-    };
-  }
-  const written = await rollupDaily(minuteDb, otherDb, period, now);
+  const written = await rollupDaily(minuteDb, otherDb, period, now, qualityFlags);
   return {
     skipped: !written,
     rebuilt: Boolean(existing && written),
+    generated: Boolean(!existing && written),
     reason: written ? null : 'minute-facts-empty',
     periodKey: period.key,
-    previousSampleCount: Number(existing?.sample_count || 0),
-    latestRebuildAt,
-    readiness,
+    previousGeneration: summaryGeneration(existing),
+    generation: reconciliation.generation,
+    reconciliation,
   };
 }
 
@@ -438,38 +337,36 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
     minuteDb = null;
   }
   if (!db || !otherDb || !minuteDb) return { skipped: true, reason: 'db-binding-missing' };
-  const period = previousUtcDay(now);
-  const minuteFactsRepair = await runMinuteFactsRepair({ DB: db, MINUTE_DB: minuteDb }, now);
-  if (!minuteFactsRepair.complete) {
-    return {
-      skipped: true,
-      reason: 'minute-facts-rebuild-pending',
-      periodKey: period.key,
-      minuteFactsRepair,
-    };
+  const periods = minuteFactReconcileCandidates(now);
+  const results = [];
+  for (const period of periods) {
+    const reconciliation = await reconcileMinuteFactsForDay({ DB: db, MINUTE_DB: minuteDb }, period, now);
+    if (!reconciliation.complete) {
+      results.push({ periodKey: period.key, reconciliation, skipped: true });
+      continue;
+    }
+    const daily = await rebuildDailyWhenComplete(minuteDb, otherDb, period, reconciliation, now);
+    const weekRange = utcWeeklyRange(period.key);
+    const weekly = await refreshWeekly(
+      otherDb,
+      weekRange,
+      now,
+      daily.rebuilt === true || daily.generated === true,
+    );
+    const monthRange = utcMonthlyRange(period.key);
+    const monthly = await refreshMonthly(
+      otherDb,
+      monthRange,
+      now,
+      daily.rebuilt === true || daily.generated === true || weekly.rebuilt === true,
+    );
+    await db.prepare('INSERT INTO sh_data_maintenance_state(id,last_rollup_key,last_cleanup_at,legacy_backfill_id,updated_at) VALUES(?,?,0,0,?) ON CONFLICT(id) DO UPDATE SET last_rollup_key=excluded.last_rollup_key,updated_at=excluded.updated_at')
+      .bind('minute-day:' + period.key, reconciliation.generation, now).run();
+    results.push({ periodKey: period.key, reconciliation, daily, weekly, monthly });
   }
-  const daily = await rebuildDailyWhenComplete(db, minuteDb, otherDb, period, now);
-  const weekRange = utcWeeklyRange(period.key);
-  const weekly = await refreshWeekly(otherDb, weekRange, now, daily.rebuilt === true);
-  const monthRange = utcMonthlyRange(period.key);
-  const monthly = await refreshMonthly(
-    otherDb,
-    monthRange,
-    now,
-    daily.rebuilt === true || weekly.rebuilt === true,
-  );
-  await db.prepare(`INSERT INTO sh_data_maintenance_state(
-      id,last_rollup_key,last_cleanup_at,legacy_backfill_id,updated_at
-    ) VALUES(?,?,0,0,?) ON CONFLICT(id) DO UPDATE SET
-      last_rollup_key=excluded.last_rollup_key,updated_at=excluded.updated_at`)
-    .bind(IMMUTABLE_SUMMARY_STATE_ID, period.key, now).run();
   return {
-    skipped: daily.skipped && weekly.skipped && monthly.skipped,
-    periodKey: period.key,
-    minuteFactsRepair,
-    daily,
-    weekly,
-    monthly,
+    skipped: results.every((result) => result.skipped || result.daily?.skipped),
+    periods: results,
     legacyBackfill: { skipped: true, reason: 'legacy-migration-disabled' },
   };
 }
