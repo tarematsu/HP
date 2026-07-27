@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-import { runRollupMaintenance } from '../src/rollup-maintenance.js';
+import { runRollupMaintenance } from '../src/rollup-maintenance-coordinator.js';
 import { pruneOldSnapshots } from '../src/snapshot-retention.js';
 import { runStreamGoalPrediction } from '../src/stream-goal-prediction.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
