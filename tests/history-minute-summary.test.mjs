@@ -17,7 +17,7 @@ const rollupSource = readFileSync(
   'utf8',
 );
 
-test('minute history summary uses dense facts and current stream boundaries', () => {
+ test('minute history summary uses dense facts and current stream boundaries', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_channel_snapshots(
     id INTEGER PRIMARY KEY,
@@ -60,11 +60,12 @@ test('daily minute overlay keeps a bounded fallback and starts after persisted r
   );
 });
 
-test('offline rollups repair Minute Facts before rebuilding stale summaries', () => {
-  assert.match(rollupSource, /runMinuteFactsRepair\(\{ DB: db, MINUTE_DB: minuteDb \}, now\)/);
-  assert.match(rollupSource, /minute-facts-rebuild-pending/);
-  assert.match(rollupSource, /rebuildDailyWhenComplete\(db, minuteDb, otherDb, period, now\)/);
+test('offline rollups reconcile missing Minute Facts before rebuilding summaries', () => {
+  assert.match(rollupSource, /reconcileMinuteFactsForDay/);
+  assert.match(rollupSource, /minuteFactReconcileCandidates\(now\)/);
+  assert.match(rollupSource, /minute-facts-incomplete/);
+  assert.match(rollupSource, /rebuildDailyWhenComplete/);
   assert.match(rollupSource, /daily-summaries-incomplete/);
   assert.match(rollupSource, /weekly-summaries-incomplete/);
-  assert.match(rollupSource, /rollupDaily\(minuteDb, otherDb, period, now\)/);
+  assert.match(rollupSource, /rollupDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
 });

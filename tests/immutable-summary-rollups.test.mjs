@@ -2,38 +2,25 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// Promotion order: Minute Facts repair -> daily -> weekly -> monthly.
-const source = readFileSync(new URL('../worker/src/rollup-maintenance.js', import.meta.url), 'utf8');
+const rollup = readFileSync(new URL('../worker/src/rollup-maintenance.js', import.meta.url), 'utf8');
+const reconcile = readFileSync(new URL('../worker/src/minute-facts-day-reconcile.js', import.meta.url), 'utf8');
 
-test('daily summaries rebuild only after all Minute Facts work completes', () => {
-  assert.match(source, /runMinuteFactsRepair\(\{ DB: db, MINUTE_DB: minuteDb \}, now\)/);
-  assert.match(source, /minute-facts-rebuild-pending/);
-  assert.match(source, /loadSummary\(otherDb, 'sh_daily_summary'/);
-  assert.match(source, /distinctSourceMinutes\(sourceDb, period\)/);
-  assert.match(source, /distinctSourceMinutes\(minuteDb, period\)/);
-  assert.match(source, /status<>'done'/);
-  assert.match(source, /pendingRebuildCandidates/);
-  assert.match(source, /unscannedSourceExists/);
-  assert.match(source, /latestMinuteFactRebuildAt/);
-  assert.match(source, /existingUpdatedAt >= latestRebuildAt/);
-  assert.match(source, /rollupDaily\(minuteDb, otherDb, period, now\)/);
-  assert.ok(
-    source.indexOf('runMinuteFactsRepair({ DB: db, MINUTE_DB: minuteDb }, now)')
-      < source.indexOf('rebuildDailyWhenComplete(db, minuteDb, otherDb, period, now)'),
-  );
+test('daily reconciliation compares channel-minute key sets and enqueues only missing facts', () => {
+  assert.match(reconcile, /PARTITION BY channel_id,CAST\(observed_at\/60000 AS INTEGER\)/);
+  assert.match(reconcile, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(reconcile, /missing\.slice\(0, enqueueLimit\)/);
+  assert.match(reconcile, /jobKind: 'rebuild'/);
+  assert.match(reconcile, /status IN \('pending','processing','dead'\)/);
 });
 
-test('same-size repairs still rebuild once and then become current', () => {
-  assert.match(source, /job_kind IN \('rebuild','repair'\)/);
-  assert.match(source, /status='repaired'/);
-  assert.match(source, /Number\(existing\.sample_count \|\| 0\) === readiness\.factMinutes/);
-  assert.match(source, /existingUpdatedAt >= latestRebuildAt/);
-  assert.match(source, /reason: 'already-current'/);
+test('stale historical days are retried and summaries use source generations', () => {
+  assert.match(rollup, /minuteFactReconcileCandidates\(now\)/);
+  assert.match(rollup, /for \(const period of periods\)/);
+  assert.match(rollup, /minute_generation:/);
+  assert.match(rollup, /summaryGeneration\(existing\) === reconciliation\.generation/);
+  assert.match(rollup, /daily\.rebuilt === true \|\| daily\.generated === true/);
 });
 
-test('daily rebuild cascades to weekly and monthly summaries', () => {
-  assert.match(source, /refreshWeekly\(otherDb, weekRange, now, daily\.rebuilt === true\)/);
-  assert.match(source, /daily\.rebuilt === true \|\| weekly\.rebuilt === true/);
-  assert.match(source, /daily-summaries-incomplete/);
-  assert.match(source, /weekly-summaries-incomplete/);
+test('legacy global Minute Facts repair is removed from the rollup path', () => {
+  assert.doesNotMatch(rollup, /runMinuteFactsRepair/);
 });
