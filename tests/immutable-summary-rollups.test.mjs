@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+// Promotion order is immutable: minute facts -> daily -> weekly -> monthly.
 const source = readFileSync(new URL('../worker/src/rollup-maintenance.js', import.meta.url), 'utf8');
 
 test('daily summaries are immutable and completeness-gated', () => {
