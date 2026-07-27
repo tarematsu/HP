@@ -124,10 +124,10 @@ test('layout reuses host size reads before controller bounds repair', () => {
   );
   assert.match(
     applyLayout,
-    /const bool hostSizeMatches[\s\S]*!hostWasVisible \|\| !hostSizeMatches[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
+    /const bool hostSizeMatches[\s\S]*\(!hostSizeMatches \|\| !hostPlacementMatches\)[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
   );
   assert.match(
     applyLayout,
-    /const bool authHostSizeMatches[\s\S]*!authWasVisible \|\| !authHostSizeMatches[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
+    /const bool authHostSizeMatches[\s\S]*\(!authHostSizeMatches \|\| !authHostPlacementMatches\)[\s\S]*if \(!authHostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(authController, authBounds\)/,
   );
 });
