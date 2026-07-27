@@ -7,6 +7,10 @@ import {
   createGitHubRequest,
 } from './observability-status-publisher.mjs';
 import {
+  replaceObservabilityCurrentMainSha,
+  resolveObservabilityMainSha,
+} from './observability-issue-header.mjs';
+import {
   ACTIONS_RUNNER_HEALTH_END,
   ACTIONS_RUNNER_HEALTH_START,
   MAX_ACTIONS_HEALTH_SUMMARY_CHARS,
@@ -54,7 +58,10 @@ export async function publishActionsRunnerHealthFromEnvironment() {
   }
   const request = createGitHubRequest('github-actions-runner-health');
   const now = Date.now();
-  const results = await collectActionsRunnerHealth(request, { now });
+  const [results, mainSha] = await Promise.all([
+    collectActionsRunnerHealth(request, { now }),
+    resolveObservabilityMainSha(request),
+  ]);
   const summary = renderActionsRunnerHealthSummary(results, { now });
 
   // Read immediately before the write so the patch is based on the newest serialized issue body.
@@ -62,7 +69,8 @@ export async function publishActionsRunnerHealthFromEnvironment() {
   if (issue?.pull_request || !String(issue?.body || '').includes(STATUS_MARKER)) {
     throw new Error(`Issue #${issueNumber} is not the Cloudflare observability status issue`);
   }
-  const body = buildActionsRunnerHealthIssueBody(issue.body, summary);
+  const synchronizedBody = replaceObservabilityCurrentMainSha(issue.body, mainSha);
+  const body = buildActionsRunnerHealthIssueBody(synchronizedBody, summary);
   await request('PATCH', `/issues/${issueNumber}`, {
     title: issue.title,
     body,
