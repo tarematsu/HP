@@ -13,7 +13,7 @@ on:
       - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/runtime-**'
-      - 'worker/src/minute-facts-**'
+      - 'worker/src/minute-**'
       - 'worker/src/rollup-**'
   workflow_dispatch:
 
