@@ -288,6 +288,12 @@ bool StationheadPlayer::EnsureHostWindow() {
 }
 
 bool StationheadPlayer::EnsureAuthHostWindow() {
+  // Repeated authorization requests update authPendingUrl_. While one profile
+  // controller is already being created, retain that latest URL and let the
+  // existing callback navigate it instead of starting a second controller for
+  // the same host/profile. CloseAuthWebView() clears the timestamp before an
+  // intentional replacement can begin.
+  if (authControllerStartedAt_.Active() && !authController_) return false;
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
   authHostWindow_ = IsSecondary()
       ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost",
