@@ -115,7 +115,7 @@ class StationheadHandleBase {
   bool startIssued_ = false;
   bool stopIssued_ = false;
   mutable bool playbackObserved_ = false;
-  mutable int64_t playbackMissingSinceAt_ = 0;
+  mutable MonotonicElapsedTimestamp playbackMissingSinceAt_;
   mutable bool transitionSuppressed_ = false;
   mutable uint64_t contentRevision_ = 1;
   inline static StationheadHandleBase* startupPrimaryHandle_ = nullptr;
