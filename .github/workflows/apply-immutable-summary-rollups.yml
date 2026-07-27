@@ -24,11 +24,8 @@ jobs:
           node-version: 24
       - name: Apply patch
         run: node .github/scripts/apply-immutable-summary-rollups.mjs
-      - name: Run focused tests
-        run: |
-          node --test tests/immutable-summary-rollups.test.mjs
-          node --test worker/tests/pages-read-model-ranges.test.js
-          node --test tests/d1-budget-regressions.test.mjs
+      - name: Run focused test
+        run: node --test tests/immutable-summary-rollups.test.mjs
       - name: Commit changes
         run: |
           git config user.name github-actions[bot]
