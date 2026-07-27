@@ -11,25 +11,34 @@ test('rollups reject total-listener values masquerading as total streams', () =>
   assert.match(source, /COALESCE\([\s\S]*validated_stream_count[\s\S]*current_stream_count/);
 });
 
-test('July contaminated summaries are retried from corrected UTC daily source data', () => {
-  assert.match(source, /'2026-07-10', '2026-07-11', '2026-07-12', '2026-07-13'/);
-  assert.match(source, /rollup-stream-repair-2026-07-v4/);
+test('daily summaries finalize only after BUDDIES rebuild and Minute Facts checks', () => {
   assert.match(source, /runMinuteFactsRepair/);
-  assert.match(source, /minute-facts-repair-pending/);
-  assert.match(source, /rollupDaily\(sourceDb, otherDb, utcPeriod\(key\), now\)/);
-  assert.match(source, /rollupFromDaily\(otherDb, 'sh_weekly_summary'/);
-  assert.match(source, /rollupFromDaily\(otherDb, 'sh_monthly_summary'/);
+  assert.match(source, /sh_minute_fact_rebuild_state/);
+  assert.match(source, /pendingCandidatesInPeriod/);
+  assert.match(source, /unscannedSourceExists/);
+  assert.match(source, /unfinishedMinuteJobs/);
+  assert.match(source, /unfinishedRepairs/);
+  assert.match(source, /sourceMinuteKeys/);
+  assert.match(source, /factMinuteKeys/);
+  assert.match(source, /minute-facts-incomplete/);
 });
 
-test('sparse Pages summaries are rebuilt from MINUTE_DB using UTC periods', () => {
-  assert.match(source, /const summarySourceDb = minuteDb \|\| db/);
-  assert.match(source, /rollup-minute-source-repair-2026-07-v1/);
-  assert.match(source, /'2026-07-20'[\s\S]*'2026-07-26'/);
-  assert.match(source, /repairMinuteSourceSummaries\(db, minuteDb, otherDb, now\)/);
-  assert.match(source, /rollupDaily\(summarySourceDb, otherDb, period, now\)/);
-  assert.match(source, /const period = previousUtcDay\(now\)/);
-  assert.match(source, /const start = utcDayStart\(dayKey\)/);
-  assert.doesNotMatch(source, /previousJstDay|jstDayStartUtc|jstPeriod/);
+test('summary hierarchy is immutable and lower-level complete', () => {
+  assert.match(source, /INSERT OR IGNORE INTO \$\{table\}/);
+  assert.doesNotMatch(source, /ON CONFLICT\(period_key\) DO UPDATE/);
+  assert.match(source, /finalizeNextDaily/);
+  assert.match(source, /finalizeNextWeekly/);
+  assert.match(source, /finalizeNextMonthly/);
+  assert.match(source, /daily-summaries-incomplete/);
+  assert.match(source, /weekly-summaries-incomplete/);
+  assert.doesNotMatch(source, /repairSummaryKeys|repairContaminatedSummaries|repairMinuteSourceSummaries/);
+});
+
+test('daily aggregation reads Minute Facts and not raw BUDDIES snapshots', () => {
+  assert.match(source, /rollupDailyOnce\(minuteDb, otherDb, period, now\)/);
+  assert.match(source, /inspectDailySummaryReadiness\(sourceDb, minuteDb, period\)/);
+  assert.match(source, /FROM sh_channel_snapshots[\s\S]*WHERE observed_at>=\? AND observed_at<\?/);
+  assert.doesNotMatch(source, /const summarySourceDb = minuteDb \|\| db/);
 });
 
 test('minute fact repair uses a remote preflight and never destructively nulls facts', () => {
@@ -38,14 +47,4 @@ test('minute fact repair uses a remote preflight and never destructively nulls f
   assert.match(repair, /source-verified Queue repairs/);
   assert.doesNotMatch(repair, /SET reported_current_stream_count=NULL/);
   assert.doesNotMatch(repair, /UPDATE sh_minute_facts/);
-});
-
-test('repair is marked complete only after every weekly and monthly write succeeds', () => {
-  assert.match(source, /repairedWeeks\.length !== weeks\.size/);
-  assert.match(source, /repairedMonths\.length !== months\.size/);
-  assert.match(source, /repair-summary-write-incomplete/);
-  const incompleteCheck = source.indexOf("reason: 'repair-summary-write-incomplete'");
-  const stateWrite = source.indexOf('INSERT INTO sh_data_maintenance_state', incompleteCheck);
-  assert.ok(incompleteCheck >= 0);
-  assert.ok(stateWrite > incompleteCheck);
 });
