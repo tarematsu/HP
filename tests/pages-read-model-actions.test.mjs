@@ -31,12 +31,14 @@ test('pages read models keep operational opportunities across independent trigge
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
+  assert.match(workflow, /PAGES_READ_MODEL_MAX_STEPS: '4'/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.match(runner, /runSplitTrackHistoryCycleStep/);
+  assert.match(runner, /MAX_TRACK_HISTORY_STEPS = 16/);
   assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
+  assert.match(runner, /pages_read_model_actions_deferred/);
   assert.match(runner, /variant\.key !== 'track-history'/);
-  assert.match(runner, /createWranglerRemoteD1/);
   assert.match(d1Adapter, /'d1', 'execute', database/);
   assert.match(d1Adapter, /'--remote', '--yes', '--json'/);
   assert.match(runner, /r2', 'object', 'put'/);
@@ -72,6 +74,7 @@ test('runner completes a published track-history generation and materializes onl
     },
   });
   assert.equal(result.track_history_steps, 1);
+  assert.equal(result.track_history_deferred, false);
   assert.deepEqual(published, ['dashboard']);
   assert.equal(result.published[0].key, 'dashboard');
 });
@@ -95,11 +98,12 @@ test('runner publishes track-history immediately when the generation completes',
   });
   assert.deepEqual(published, ['dashboard', 'track-history']);
   assert.equal(result.track_history_result.publication.published, true);
+  assert.equal(result.track_history_deferred, false);
 });
 
-test('runner refreshes dashboard before reporting an incomplete track-history rebuild', async () => {
+test('runner refreshes dashboard and safely defers an incomplete track-history rebuild', async () => {
   const events = [];
-  await assert.rejects(runPagesReadModelActions({
+  const result = await runPagesReadModelActions({
     startedAt: DAY + 19 * 60_000,
     deadlineMs: DAY + 30 * 60_000,
     now: () => DAY + 19 * 60_000,
@@ -113,7 +117,12 @@ test('runner refreshes dashboard before reporting an incomplete track-history re
       events.push(`publish:${variant.key}`);
       return { key: variant.key };
     },
-  }), /did not finish within 2 steps/);
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.event, 'pages_read_model_actions_deferred');
+  assert.equal(result.track_history_steps, 2);
+  assert.equal(result.track_history_deferred, true);
+  assert.equal(result.track_history_defer_reason, 'step-budget');
   assert.deepEqual(events, [
     'publish:dashboard',
     'track-history-step',
