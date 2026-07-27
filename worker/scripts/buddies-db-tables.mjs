@@ -18,6 +18,7 @@ export const BUDDIES_DATA_TABLES = Object.freeze([
   'sh_ingest_claims',
   'sh_ingest_conflicts',
   'sh_data_maintenance_state',
+  'sh_rollup_materialization_state',
 ]);
 
 export const BUDDIES_SCHEMA_ONLY_TABLES = Object.freeze([
