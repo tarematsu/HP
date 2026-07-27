@@ -23,6 +23,15 @@ async function processDeriveBatch(batch, env, dependencies) {
   return derive.processMinuteDeriveBatch(batch, env, dependencies);
 }
 
+function singleMessageBatch(batch, message) {
+  const scoped = Object.create(batch || null);
+  Object.defineProperties(scoped, {
+    queue: { value: batch?.queue, enumerable: true },
+    messages: { value: [message], enumerable: true },
+  });
+  return scoped;
+}
+
 function positiveInteger(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && Math.trunc(parsed) > 0 ? Math.trunc(parsed) : null;
@@ -177,6 +186,29 @@ function budgetedLiveCompleteBatch(batch, env) {
 
 export async function processMinutePipelineBatch(batch, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
   const queueName = String(batch?.queue || '');
+  const messages = Array.from(batch?.messages || []);
+  if (messages.length > 1) {
+    console.warn(JSON.stringify({
+      event: 'minute_pipeline_batch_split',
+      queue: queueName || 'missing',
+      messages: messages.length,
+    }));
+    const results = [];
+    for (const message of messages) {
+      results.push(await processMinutePipelineBatch(
+        singleMessageBatch(batch, message),
+        env,
+        ctx,
+        dependencies,
+      ));
+    }
+    return {
+      event: 'minute_pipeline_batch_split_completed',
+      queue: queueName,
+      messages: messages.length,
+      results,
+    };
+  }
   if (queueName === MINUTE_FACTS_QUEUE_NAME) {
     const consume = dependencies.consumeMinuteQueue || consumeMinuteQueue;
     return consume(batch, env, ctx);
@@ -227,6 +259,7 @@ export {
   rebuildWorkBatch,
   repairTriggerBatch,
   repairWorkBatch,
+  singleMessageBatch,
 };
 
 export default {
