@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+import { runOfflineMinuteRebuilds } from '../src/minute-offline-rebuild.js';
 import { runRollupMaintenance } from '../src/rollup-maintenance-coordinator.js';
 import { pruneOldSnapshots } from '../src/snapshot-retention.js';
 import { runStreamGoalPrediction } from '../src/stream-goal-prediction.js';
@@ -110,6 +111,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   const env = options.env || productionEnvironment();
   const runPrediction = options.runPrediction || runStreamGoalPrediction;
   const runRollup = options.runRollup || runRollupMaintenance;
+  const runRebuilds = options.runRebuilds || runOfflineMinuteRebuilds;
   const runRetention = options.runRetention || pruneOldSnapshots;
   const ensureTime = () => {
     if (Number(clock()) >= deadline) {
@@ -129,6 +131,8 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     ensureTime();
     const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, startedAt);
     ensureTime();
+    const rebuilds = await runRebuilds(env, { now: clock });
+    ensureTime();
     const retention = await runRetention(env, startedAt);
     const finishedAt = timestamp(clock, startedAt);
 
@@ -145,6 +149,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
       elapsed_ms: Math.max(0, finishedAt - startedAt),
       prediction,
       rollup,
+      rebuilds,
       retention,
     };
   } catch (error) {
