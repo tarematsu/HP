@@ -16,10 +16,10 @@ test('rollup maintenance uses an expiring single-run lease', () => {
 
 test('successful rollup runs are throttled to one execution per hour', () => {
   const state = { status: 'idle', last_error: null, updated_at: 1_000 };
-  assert.equal(shouldThrottleRollupMaintenance(state, 1_500, 1_000), true);
-  assert.equal(shouldThrottleRollupMaintenance(state, 2_000, 1_000), false);
-  assert.equal(shouldThrottleRollupMaintenance({ ...state, status: 'running' }, 1_500, 1_000), false);
-  assert.equal(shouldThrottleRollupMaintenance({ ...state, last_error: 'failed' }, 1_500, 1_000), false);
+  assert.equal(shouldThrottleRollupMaintenance(state, 60_999, 60_000), true);
+  assert.equal(shouldThrottleRollupMaintenance(state, 61_000, 60_000), false);
+  assert.equal(shouldThrottleRollupMaintenance({ ...state, status: 'running' }, 60_999, 60_000), false);
+  assert.equal(shouldThrottleRollupMaintenance({ ...state, last_error: 'failed' }, 60_999, 60_000), false);
   assert.match(coordinator, /DEFAULT_RUN_INTERVAL_MS = 60 \* 60_000/);
   assert.match(coordinator, /rollup-maintenance-cadence/);
 });
