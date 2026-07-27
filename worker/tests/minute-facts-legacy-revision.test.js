@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 
-import { updatePlaybackState, writeCurrentBite } from '../src/minute-facts-legacy-revision.js';
+import {
+  PLAYBACK_STATE_HEARTBEAT_MS,
+  updatePlaybackState,
+  writeCurrentBite,
+} from '../src/minute-facts-legacy-revision.js';
 
 function createDatabase() {
   const sqlite = new DatabaseSync(':memory:');
@@ -119,6 +123,49 @@ test('revision changes within one queue instance preserve pause accumulation', a
   assert.equal(state.paused_total_ms, 120_000);
   assert.equal(state.pause_started_at, null);
   assert.equal(state.is_paused, 0);
+});
+
+test('unchanged playback state writes only on the bounded heartbeat', async () => {
+  const db = createDatabase();
+  const queueStartTime = 1_700_000_000_000;
+  const firstObservedAt = queueStartTime + 60_000;
+  db.sqlite.exec('INSERT INTO sh_queue_revision_items VALUES (1,0,101,7200000,0,1)');
+
+  await updatePlaybackState(db, {
+    channelId: 10,
+    sessionId: 20,
+    revisionId: 1,
+    queueStartTime,
+    observedAt: firstObservedAt,
+    isPaused: false,
+  });
+  await updatePlaybackState(db, {
+    channelId: 10,
+    sessionId: 20,
+    revisionId: 1,
+    queueStartTime,
+    observedAt: firstObservedAt + 60_000,
+    isPaused: false,
+  });
+
+  let state = db.sqlite.prepare(`SELECT last_observed_at,current_position
+    FROM sh_playback_current WHERE channel_id=10`).get();
+  assert.equal(state.last_observed_at, firstObservedAt);
+  assert.equal(state.current_position, 0);
+
+  await updatePlaybackState(db, {
+    channelId: 10,
+    sessionId: 20,
+    revisionId: 1,
+    queueStartTime,
+    observedAt: firstObservedAt + PLAYBACK_STATE_HEARTBEAT_MS,
+    isPaused: false,
+  });
+
+  state = db.sqlite.prepare(`SELECT last_observed_at,current_position
+    FROM sh_playback_current WHERE channel_id=10`).get();
+  assert.equal(state.last_observed_at, firstObservedAt + PLAYBACK_STATE_HEARTBEAT_MS);
+  assert.equal(state.current_position, 0);
 });
 
 test('current bite uses one conditional insert and records only count changes', async () => {
