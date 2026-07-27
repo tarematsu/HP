@@ -49,7 +49,7 @@ test('Window B defers its actual player start until Window A is configured', () 
   const deferred = section(
     secondaryHandle,
     '  void TryStartDeferred() {',
-    '  uint64_t startupRequestedAtTick_',
+    '  void ApplyDeferredStartupPreview() {',
   );
   assert.match(deferred, /StationheadHandleBase\* primary = StartupPrimaryHandle\(\);/);
   assert.match(deferred, /primary && primary->RawStatus\(\)\.created/);
@@ -100,11 +100,64 @@ test('deferred Window B starts and ticks in one scheduler pass', () => {
   );
   const startAt = tick.indexOf('TryStartDeferred();');
   const tickAt = tick.indexOf('StationheadHandleBase::Tick(nowMs);');
-  assert.ok(startAt >= 0 && tickAt > startAt);
+  const previewAt = tick.indexOf('ApplyDeferredStartupPreview();');
+  assert.ok(startAt >= 0 && tickAt > startAt && previewAt > tickAt);
   assert.match(tick, /if \(PlayerStarted\(\)\)/);
 });
 
-test('shutdown cancels a pending Window B startup request', () => {
+test('Window A covers both preview halves until Window B has a configured controller', () => {
+  const primaryHandle = section(
+    handleHeader,
+    'class AppStationheadHandle final',
+    'class AppSecondaryStationheadHandle final',
+  );
+  const primaryPreview = section(
+    primaryHandle,
+    '  void SetStartupPreviewBounds(const RECT& bounds) {',
+    '  void ClearStartupPreviewBounds() {',
+  );
+  assert.match(primaryPreview, /SetStartupPrimaryHandle\(this\);/);
+  assert.match(primaryHandle, /void ExpandStartupPreviewForSecondary\(/);
+  assert.match(primaryHandle, /void RestoreRequestedStartupPreviewBounds\(\)/);
+
+  const secondaryHandle = section(
+    handleHeader,
+    'class AppSecondaryStationheadHandle final',
+    '}  // namespace hp',
+  );
+  const secondaryPreview = section(
+    secondaryHandle,
+    '  void SetStartupPreviewBounds(const RECT& bounds) {',
+    '  void ClearStartupPreviewBounds() {',
+  );
+  assert.match(secondaryPreview, /pendingStartupPreviewBounds_ = bounds;/);
+  assert.match(secondaryPreview, /primary->ExpandStartupPreviewForSecondary\(bounds\);/);
+  assert.doesNotMatch(
+    secondaryPreview,
+    /StationheadHandleBase::SetStartupPreviewBounds\(bounds\)/,
+  );
+});
+
+test('Window B exposes its preview only after created and then restores Window A left', () => {
+  const secondaryHandle = section(
+    handleHeader,
+    'class AppSecondaryStationheadHandle final',
+    '}  // namespace hp',
+  );
+  const preview = section(
+    secondaryHandle,
+    '  void ApplyDeferredStartupPreview() {',
+    '  RECT pendingStartupPreviewBounds_',
+  );
+  assert.match(preview, /!RawStatus\(\)\.created/);
+  const applyAt = preview.indexOf(
+    'StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);',
+  );
+  const restoreAt = preview.indexOf('primary->RestoreRequestedStartupPreviewBounds();');
+  assert.ok(applyAt >= 0 && restoreAt > applyAt);
+});
+
+test('shutdown cancels pending Window B startup and preview requests', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -115,7 +168,8 @@ test('shutdown cancels a pending Window B startup request', () => {
     '  void Stop() {',
     '  StationheadStatus Status() const',
   );
-  const clearAt = stop.indexOf('startupRequestedAtTick_ = 0;');
+  const requestClearAt = stop.indexOf('startupRequestedAtTick_ = 0;');
+  const previewClearAt = stop.indexOf('startupPreviewRequested_ = false;');
   const stopAt = stop.indexOf('StationheadHandleBase::Stop();');
-  assert.ok(clearAt >= 0 && stopAt > clearAt);
+  assert.ok(requestClearAt >= 0 && previewClearAt > requestClearAt && stopAt > previewClearAt);
 });
