@@ -77,7 +77,7 @@ test('Window B startup fallback uses monotonic uptime instead of wall clock', ()
   const readiness = section(
     handleHeader,
     'inline constexpr bool SecondaryStationheadStartupReady(',
-    'enum class WorkspaceTab',
+    'inline bool StationheadStartupPreviewReady(',
   );
   assert.match(readiness, /nowTick >= requestedAtTick/);
   assert.match(
@@ -149,7 +149,7 @@ test('Window A covers both preview halves while Window B is deferred', () => {
   assert.ok(expandAt >= 0 && requestAt > expandAt);
 });
 
-test('Window B exposes its preview only after created and then restores Window A left', () => {
+test('Window B exposes its preview only after useful content and then restores Window A left', () => {
   const secondaryHandle = section(
     handleHeader,
     'class AppSecondaryStationheadHandle final',
@@ -160,12 +160,14 @@ test('Window B exposes its preview only after created and then restores Window A
     '  void ApplyDeferredStartupPreview() {',
     '  RECT pendingStartupPreviewBounds_',
   );
-  assert.match(preview, /!RawStatus\(\)\.created/);
+  assert.match(preview, /const StationheadStatus status = RawStatus\(\);/);
+  assert.match(preview, /!StationheadStartupPreviewReady\(status\)/);
+  const readyAt = preview.indexOf('StationheadStartupPreviewReady(status)');
   const applyAt = preview.indexOf(
     'StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);',
   );
   const restoreAt = preview.indexOf('primary->RestoreRequestedStartupPreviewBounds();');
-  assert.ok(applyAt >= 0 && restoreAt > applyAt);
+  assert.ok(readyAt >= 0 && applyAt > readyAt && restoreAt > applyAt);
 });
 
 test('shutdown cancels pending Window B startup and preview requests', () => {
