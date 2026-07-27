@@ -1,6 +1,8 @@
 const MIN_TREND_SECONDS = 10 * 60;
+const MIN_PACE_ALERT_SECONDS = 20 * 60;
 const MAX_TREND_SECONDS = 2 * 60 * 60;
 const DAY_SECONDS = 24 * 60 * 60;
+const PACE_WARNING_RATIO = 0.8;
 
 const D1_SNAPSHOT_METRICS = Object.freeze([
   Object.freeze({ key: 'rowsRead', label: 'D1 rows read' }),
@@ -83,6 +85,19 @@ function durationLabel(seconds) {
   return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
+function paceAssessment(trend) {
+  const ratio = trend.recentProjected24h / trend.current.limit;
+  return {
+    ratio,
+    percent: ratio * 100,
+    state: ratio >= 1 ? 'failure' : ratio >= PACE_WARNING_RATIO ? 'degraded' : 'healthy',
+  };
+}
+
+function percentLabel(value) {
+  return `${Number(value || 0).toFixed(1)}%`;
+}
+
 export function calculateDailyMetricTrend({
   metricLabel,
   currentSummary = '',
@@ -110,6 +125,44 @@ export function calculateDailyMetricTrend({
     delta,
     recentProjected24h: Math.ceil((delta * DAY_SECONDS) / elapsedSeconds),
   };
+}
+
+export function classifyDailyMetricPace({
+  metricLabel,
+  currentSummary = '',
+  previousIssueBody = '',
+  generatedAt = '',
+} = {}) {
+  const trend = calculateDailyMetricTrend({
+    metricLabel,
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
+  if (!trend || trend.elapsedSeconds < MIN_PACE_ALERT_SECONDS) return null;
+
+  const assessment = paceAssessment(trend);
+  return {
+    ...trend,
+    ...assessment,
+    evidence: `${metricLabel} increased by ${trend.delta.toLocaleString('en-US')} over ${durationLabel(trend.elapsedSeconds)} (recent pace ${trend.recentProjected24h.toLocaleString('en-US')}/day, ${percentLabel(assessment.percent)} of ${trend.current.limit.toLocaleString('en-US')}/day limit).`,
+  };
+}
+
+export function classifyDailyD1SnapshotPaces({
+  currentSummary = '',
+  previousIssueBody = '',
+  generatedAt = '',
+} = {}) {
+  return Object.fromEntries(D1_SNAPSHOT_METRICS.map((metric) => [
+    metric.key,
+    classifyDailyMetricPace({
+      metricLabel: metric.label,
+      currentSummary,
+      previousIssueBody,
+      generatedAt,
+    }),
+  ]));
 }
 
 export function classifyDailyRowsReadTrend({
@@ -155,13 +208,18 @@ export function renderDailyD1SnapshotPace({
   }
 
   const rows = trends.map(({ metric, trend }) => {
-    const paceState = trend.recentProjected24h < trend.current.limit ? 'within limit' : 'above limit';
-    return `| ${metric.label} | +${trend.delta.toLocaleString('en-US')} | ${durationLabel(trend.elapsedSeconds)} | ${trend.recentProjected24h.toLocaleString('en-US')}/day | ${trend.current.limit.toLocaleString('en-US')}/day | ${paceState} |`;
+    const assessment = paceAssessment(trend);
+    const paceState = assessment.state === 'failure'
+      ? 'above limit'
+      : assessment.state === 'degraded'
+        ? 'watch'
+        : 'within limit';
+    return `| ${metric.label} | +${trend.delta.toLocaleString('en-US')} | ${durationLabel(trend.elapsedSeconds)} | ${trend.recentProjected24h.toLocaleString('en-US')}/day | ${trend.current.limit.toLocaleString('en-US')}/day | ${percentLabel(assessment.percent)} | ${paceState} |`;
   }).join('\n');
 
   return `### D1 snapshot delta pace
 
-| Metric | Snapshot delta | Interval | Recent 24h pace | Daily limit | Pace status |
-|---|---:|---:|---:|---:|---|
+| Metric | Snapshot delta | Interval | Recent 24h pace | Daily limit | Pace usage | Pace status |
+|---|---:|---:|---:|---:|---:|---|
 ${rows}`;
 }
