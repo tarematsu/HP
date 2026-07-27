@@ -43,7 +43,7 @@ test('auto-click lvalue storage synchronizes external writes into uptime', () =>
     'class StationheadBoundaryReloadClockProxy',
   );
   assert.match(proxy, /if \(storage != exposed\) deadline = storage;/);
-  assert.match(proxy, /storage = static_cast<int64_t>\(deadline\);/);
+  assert.match(proxy, /storage = StationheadProjectedDeadlineValue\(deadline\);/);
   assert.match(proxy, /exposed = storage;/);
   assert.match(proxy, /return storage;/);
 });
