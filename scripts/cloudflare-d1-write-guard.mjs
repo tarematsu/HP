@@ -13,14 +13,29 @@ function positiveInteger(value, fallback, minimum, maximum) {
   return Math.max(minimum, Math.min(maximum, parsed));
 }
 
+function configuredLimit(value) {
+  return positiveInteger(value, DEFAULT_LIMIT, 1, 1_000_000);
+}
+
 export function guardDecision(rowsWritten, limit = DEFAULT_LIMIT) {
   const observed = Math.max(0, Number(rowsWritten) || 0);
-  const configuredLimit = positiveInteger(limit, DEFAULT_LIMIT, 1, 1_000_000);
+  const limitValue = configuredLimit(limit);
   return {
-    allowed: observed < configuredLimit,
+    allowed: observed < limitValue,
     rowsWritten: observed,
-    limit: configuredLimit,
-    headroom: Math.max(0, configuredLimit - observed),
+    limit: limitValue,
+    headroom: Math.max(0, limitValue - observed),
+  };
+}
+
+export function unavailableGuardDecision(error, limit = DEFAULT_LIMIT) {
+  return {
+    allowed: false,
+    rowsWritten: null,
+    limit: configuredLimit(limit),
+    headroom: 0,
+    reason: 'telemetry-unavailable',
+    error: String(error?.message || error || 'D1 write telemetry unavailable').slice(0, 800),
   };
 }
 
@@ -81,11 +96,8 @@ export async function runD1WriteGuard(options = {}) {
   if (!token || !accountId) {
     throw new Error('CLOUDFLARE_API_TOKEN and resolved CLOUDFLARE_ACCOUNT_ID are required');
   }
-  const limit = positiveInteger(
+  const limit = configuredLimit(
     options.limit ?? process.env.D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT,
-    DEFAULT_LIMIT,
-    1,
-    1_000_000,
   );
   const windowMinutes = positiveInteger(
     options.windowMinutes ?? process.env.D1_ACTIONS_WRITE_WINDOW_MINUTES,
@@ -110,13 +122,40 @@ export async function runD1WriteGuard(options = {}) {
   };
 }
 
+export async function runD1WriteGuardCli(options = {}) {
+  const run = options.run || runD1WriteGuard;
+  try {
+    const result = await run(options);
+    return {
+      ...result,
+      reason: result.allowed ? 'within-budget' : 'budget-exceeded',
+    };
+  } catch (error) {
+    return unavailableGuardDecision(
+      error,
+      options.limit ?? process.env.D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT,
+    );
+  }
+}
+
+async function writeGithubOutput(result, output) {
+  if (!output) return;
+  const { appendFile } = await import('node:fs/promises');
+  const rowsWritten = result.rowsWritten == null ? 'unknown' : result.rowsWritten;
+  await appendFile(output, [
+    `allowed=${result.allowed}`,
+    `rows_written=${rowsWritten}`,
+    `limit=${result.limit}`,
+    `reason=${result.reason}`,
+    '',
+  ].join('\n'));
+}
+
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  const result = await runD1WriteGuard();
-  const output = process.env.GITHUB_OUTPUT;
-  if (output) {
-    const { appendFile } = await import('node:fs/promises');
-    await appendFile(output, `allowed=${result.allowed}\nrows_written=${result.rowsWritten}\nlimit=${result.limit}\n`);
-  }
-  console.log(JSON.stringify({ event: 'd1_actions_write_guard', ...result }));
+  const result = await runD1WriteGuardCli();
+  await writeGithubOutput(result, process.env.GITHUB_OUTPUT);
+  const event = { event: 'd1_actions_write_guard', ...result };
+  if (result.reason === 'telemetry-unavailable') console.warn(JSON.stringify(event));
+  else console.log(JSON.stringify(event));
 }
