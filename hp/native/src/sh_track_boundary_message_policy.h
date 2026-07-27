@@ -1,6 +1,93 @@
 #pragma once
 #include "common.h"
+
+// Extend StationheadPlayer while sh.h is parsed, then remove the temporary
+// source-rewriting macros before any implementation file is compiled. This keeps
+// the public class layout in one place while replacing the old track-boundary
+// trigger with one elapsed-time policy.
+#define NextWakeAt()                                                          \
+  NextWakeAt() const noexcept {                                               \
+    int64_t next = NextWakeAtBase();                                          \
+    if (periodicRefreshStartedAt_.Active()) {                                 \
+      const int64_t due =                                                     \
+          periodicRefreshStartedAt_ + kPeriodicRefreshIntervalMs;             \
+      if (next <= 0 || due < next) next = due;                                \
+    }                                                                         \
+    return next;                                                              \
+  }                                                                           \
+  [[nodiscard]] int64_t NextWakeAtBase()
+
+#define RecoverUnavailableAuthorization()                                    \
+  RecoverUnavailableAuthorization() {                                        \
+    RecoverUnavailableAuthorizationBase();                                   \
+    RefreshPeriodicNavigation(UnixMillis());                                  \
+  }                                                                           \
+  void RecoverUnavailableAuthorizationBase()
+
+#define RetryPendingTrackBoundaryRefresh(parameters)                         \
+  RetryPendingTrackBoundaryRefresh(parameters) {                             \
+    (void)nowMs;                                                              \
+    trackBoundaryRefreshPending_ = false;                                     \
+    return false;                                                             \
+  }                                                                           \
+  bool RetryPendingTrackBoundaryRefreshDisabled(parameters)
+
+#define nextAutoClickAt_                                                      \
+  nextAutoClickAt_ = 0;                                                       \
+  static constexpr int64_t kPeriodicRefreshIntervalMs = 55 * 60'000;          \
+  void RefreshPeriodicNavigation(int64_t nowMs) {                             \
+    const auto lifecycle = createCallbackAlive_;                              \
+    const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
+    if (!webview_ || previousLifecycle != lifecycle) {                        \
+      periodicRefreshLifecycle_ = lifecycle;                                  \
+      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshNavigationObserved_ = 0;                                 \
+      if (!webview_) return;                                                   \
+    }                                                                         \
+                                                                                \
+    bool statusNavigating = false;                                            \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                            \
+      statusNavigating = status_.navigating;                                  \
+    }                                                                         \
+    const bool navigationActive =                                             \
+        navigationInFlight_.load(std::memory_order_acquire) ||                \
+        statusNavigating;                                                     \
+    if (navigationActive) {                                                   \
+      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshNavigationObserved_ = 1;                                 \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
+        spotifyAuthorization_ || loginRequired_ ||                            \
+        recreating_.load(std::memory_order_relaxed)) {                        \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (periodicRefreshNavigationObserved_ != 0 ||                            \
+        !periodicRefreshStartedAt_.Active()) {                                \
+      periodicRefreshNavigationObserved_ = 0;                                 \
+      periodicRefreshStartedAt_ = nowMs;                                      \
+      return;                                                                 \
+    }                                                                         \
+    if (nowMs - periodicRefreshStartedAt_ < kPeriodicRefreshIntervalMs) {      \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    periodicRefreshStartedAt_ = nowMs;                                        \
+    NavigateCurrentUrl(nowMs, L"55-minute periodic refresh");                \
+  }                                                                           \
+  MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
+  std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
+  int64_t periodicRefreshNavigationObserved_
+
 #include "sh.h"
+
+#undef nextAutoClickAt_
+#undef RetryPendingTrackBoundaryRefresh
+#undef RecoverUnavailableAuthorization
+#undef NextWakeAt
 
 namespace hp {
 
@@ -32,11 +119,6 @@ inline constexpr int64_t StationheadBoundaryElapsedMs(
       : static_cast<int64_t>(elapsed);
 }
 
-// A projected deadline is normally represented as the current civil time plus
-// its monotonic remaining duration. Once the uptime deadline has expired, do
-// not keep re-projecting it to a moving "now": Tick() captures nowMs before it
-// reads the deadline, so that representation could remain a few milliseconds
-// ahead and make an already-expired retry look pending indefinitely.
 inline constexpr int64_t StationheadOperationalDeadlineValue(
     bool active, bool reached, int64_t projectedWallDeadline) noexcept {
   if (!active) return 0;
@@ -49,9 +131,6 @@ inline int64_t StationheadProjectedDeadlineValue(
       deadline.Active(), deadline.Reached(), static_cast<int64_t>(deadline));
 }
 
-// Operational deadline comparisons always use uptime. The int64_t operand is a
-// Tick-local wall-clock snapshot retained for the surrounding legacy API; it
-// must not decide whether a monotonic deadline has expired.
 inline bool operator>=(
     int64_t, const MonotonicProjectedDeadline& deadline) noexcept {
   return deadline.Reached();
@@ -62,9 +141,6 @@ inline bool operator<(
   return deadline.Active() && !deadline.Reached();
 }
 
-// These overloads are intentionally limited to the integer-zero checks used by
-// the legacy call sites. Matching the literal's actual type avoids MSVC treating
-// the overload and the class's int64_t conversion as equally good candidates.
 inline bool operator>(
     const MonotonicProjectedDeadline& deadline, int candidate) noexcept {
   if (candidate == 0) return deadline.Active();
@@ -118,10 +194,6 @@ inline int64_t primaryAutoClickExposed = 0;
 inline int64_t secondaryAutoClickExposed = 0;
 }  // namespace stationhead_boundary_message_policy
 
-// The player source uses nextAutoClickAt_ as an ordinary int64_t lvalue: it is
-// assigned directly, compared against nowMs, passed to the scheduler, and used
-// as both sides of std::max. Keep that source contract while synchronizing each
-// externally written wall deadline into an uptime-backed deadline before reads.
 inline int64_t& StationheadAutoClickDeadlineStorage(
     int64_t& storage, bool secondary) noexcept {
   MonotonicProjectedDeadline& deadline = secondary
@@ -145,13 +217,6 @@ class StationheadBoundaryReloadClockProxy {
   operator int64_t() const noexcept { return storage_; }
 
   int64_t operator=(int64_t candidate) noexcept {
-    // ConfigureWebView writes the chained lifecycle timestamp before it marks
-    // the WebView configured and before initial navigation has committed. Do
-    // not begin the 52-minute interval there. The later successful navigation
-    // callback initializes the baseline; after that, only an App-accepted
-    // boundary refresh may advance it. Generic successful navigations (auth
-    // return, fallback, reconnect, WebView rebuild) therefore cannot postpone
-    // the next periodic authentication refresh.
     AcquireSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
     bool accept = storage_ <= 0;
     if (accept && !configured_) accept = false;
@@ -168,20 +233,12 @@ class StationheadBoundaryReloadClockProxy {
     if (accept) storage_ = candidate;
     if (accept) monotonicAt = GetTickCount64();
     ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
-    // ConfigureWebView intentionally chains `createdAt_ = lastReloadAt_ = now`.
-    // Return the candidate even when the periodic clock write is filtered so
-    // unrelated lifecycle timestamps keep their original semantics.
     return candidate;
   }
 
   friend int64_t operator-(
       int64_t wallClockNow,
       const StationheadBoundaryReloadClockProxy& clock) noexcept {
-    // Eligibility is elapsed-time logic, not civil-time logic. Use the same
-    // monotonic clock as the A/B ownership lease so manual clock changes and
-    // NTP corrections cannot force an early refresh or postpone one. The wall
-    // value remains available for diagnostics and for a defensive pre-baseline
-    // fallback, while the established clock always uses GetTickCount64().
     ULONGLONG monotonicAt = 0;
     AcquireSRWLockShared(&stationhead_boundary_message_policy::leaseLock);
     monotonicAt = clock.secondary_
@@ -203,12 +260,6 @@ inline StationheadBoundaryReloadClockProxy StationheadBoundaryReloadClock(
   return StationheadBoundaryReloadClockProxy(storage, secondary, configured);
 }
 
-// Both Stationhead windows can reach the 52-minute boundary in the same App
-// tick. Forward only one role's synchronous readiness messages at a time so A
-// and B cannot both wait for the other side to become the stable handoff source.
-// The same role may retry freely. A rejected peer receives the normal zero
-// result, so its existing bounded retry state remains armed without entering the
-// App handoff state concurrently.
 inline LRESULT SendMessageWWithStationheadBoundaryLease(
     HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept {
   if (!IsStationheadBoundaryReadyMessage(message)) {
@@ -252,9 +303,6 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 
 }  // namespace hp
 
-// This policy header is the final HomePanel PCH layer. Windows headers and the
-// policy implementation above have already been parsed, so only application
-// call sites are routed through these final aliases.
 #define SendMessageW SendMessageWWithStationheadBoundaryLease
 #define lastReloadAt_                                                        \
   (::hp::StationheadBoundaryReloadClock(                                    \
