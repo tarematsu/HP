@@ -26,15 +26,19 @@ function section(source, start, end) {
 test('expired ordinary player wake uses a fresh clock read after projection', () => {
   const wakePolicy = section(
     clockPolicy,
-    'inline bool StationheadStartupAwareWakePending(',
+    'inline int64_t StationheadPolicyWallMillis()',
     '// These overloads are intentionally limited',
   );
   const projectionAt = wakePolicy.indexOf(
     'const int64_t projected = static_cast<int64_t>(deadline);',
   );
-  const freshNowAt = wakePolicy.indexOf('projected > UnixMillis()');
+  const freshNowAt = wakePolicy.indexOf(
+    'projected > StationheadPolicyWallMillis()',
+  );
   assert.ok(projectionAt >= 0 && freshNowAt > projectionAt);
+  assert.match(wakePolicy, /GetSystemTimeAsFileTime\(&fileTime\)/);
   assert.match(wakePolicy, /projected > 0/);
+  assert.doesNotMatch(wakePolicy, /UnixMillis\(/);
   assert.match(
     wakePolicy,
     /operator<\([\s\S]*const StartupAwareWakeDeadline& deadline[\s\S]*StationheadStartupAwareWakePending\(deadline\)/,
@@ -67,6 +71,6 @@ test('startup watchdogs still bypass the ordinary wake gate', () => {
   assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
   assert.match(
     clockPolicy,
-    /return projected > 0 && projected > UnixMillis\(\);/,
+    /return projected > 0 && projected > StationheadPolicyWallMillis\(\);/,
   );
 });
