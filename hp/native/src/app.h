@@ -96,9 +96,13 @@ class App {
   std::thread updateThread_;
   int exitCode_ = 0;
   int startupShowCommand_ = SW_SHOW;
-  int64_t startupAt_ = 0;
-  int64_t dashboardAudioReadySince_ = 0;
-  int64_t playbackReadyAt_ = 0;
+  // Startup fallbacks are elapsed-time decisions. Keep their UTC assignments
+  // for existing telemetry/news timestamps, but calculate all differences from
+  // GetTickCount64() so an OS clock correction cannot expose the dashboard too
+  // early or postpone it indefinitely.
+  MonotonicElapsedTimestamp startupAt_;
+  MonotonicElapsedTimestamp dashboardAudioReadySince_;
+  MonotonicElapsedTimestamp playbackReadyAt_;
   bool secondaryStarted_ = false;
   bool rendererStarted_ = false;
   bool cloudStarted_ = false;
