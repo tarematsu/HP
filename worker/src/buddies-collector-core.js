@@ -11,12 +11,49 @@ import { collectRawChannel } from './raw-collector-entry.js';
 import { rawCollectorEnv } from './runtime-env.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
+const MINUTE_MS = 60_000;
+const LIVE_RECOVERY_POLL_INTERVAL_MS = 5 * MINUTE_MS;
 
 export const BUDDIES_COLLECTOR_CRON = '* * * * *';
 
 function collectorRunId(scheduledAt) {
   const random = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
   return `sh-buddies-collector:${scheduledAt}:${random}`;
+}
+
+export function minuteLiveRecoveryDispatchDue(scheduledAt) {
+  const timestamp = Number(scheduledAt);
+  if (!Number.isFinite(timestamp) || timestamp < 0) return false;
+  return Math.floor(timestamp / LIVE_RECOVERY_POLL_INTERVAL_MS)
+    !== Math.floor((timestamp - MINUTE_MS) / LIVE_RECOVERY_POLL_INTERVAL_MS);
+}
+
+function recoveryBindingsAvailable(env) {
+  const queue = env?.MINUTE_LIVE_DERIVE_QUEUE;
+  return typeof env?.MINUTE_DB?.prepare === 'function'
+    && (typeof queue?.send === 'function' || typeof queue?.sendBatch === 'function');
+}
+
+async function dispatchMinuteLiveRecovery(activeEnv, scheduledAt, ctx, dependencies) {
+  if (!minuteLiveRecoveryDispatchDue(scheduledAt)) return null;
+  const injected = dependencies.dispatchPendingMinuteFacts;
+  if (!injected && !recoveryBindingsAvailable(activeEnv)) return null;
+  try {
+    const dispatch = injected
+      || (await import('./minute-maintenance-entry.js')).dispatchPendingMinuteFacts;
+    return await dispatch(activeEnv, {
+      ...(dependencies.minuteRecovery || EMPTY_DEPENDENCIES),
+      now: scheduledAt,
+    }, ctx);
+  } catch (error) {
+    const detail = sanitizeFailureDetail(error?.message || error);
+    console.warn(JSON.stringify({
+      event: 'minute_live_recovery_dispatch_failed',
+      scheduled_at: scheduledAt,
+      error: detail,
+    }));
+    return { failed: true, error: detail };
+  }
 }
 
 async function clearRecordedFailure(clear, env) {
@@ -33,7 +70,7 @@ async function clearRecordedFailure(clear, env) {
 export async function runBuddiesCollectorScheduled(
   controller,
   env,
-  _ctx,
+  ctx,
   dependencies = EMPTY_DEPENDENCIES,
 ) {
   const cron = String(controller?.cron || '');
@@ -67,10 +104,17 @@ export async function runBuddiesCollectorScheduled(
     const collection = await collect(activeEnv, collectionDependencies);
     await clearRecordedFailure(clear, activeEnv);
     await release(activeEnv, holderId, now());
+    const minuteLiveRecovery = await dispatchMinuteLiveRecovery(
+      activeEnv,
+      scheduledAt,
+      ctx,
+      dependencies,
+    );
     return {
       collected: true,
       scheduled_at: scheduledAt,
       ...(collection && typeof collection === 'object' ? collection : {}),
+      ...(minuteLiveRecovery ? { minute_live_recovery: minuteLiveRecovery } : {}),
     };
   } catch (error) {
     let recorded = null;
