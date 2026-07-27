@@ -59,7 +59,7 @@ test('startup script and recreate deadlines are converted once to uptime deadlin
   const deadlineClock = section(
     playerHeader,
     'class MonotonicDeadline',
-    'class StartupAwareWakeDeadline',
+    'class MonotonicProjectedDeadline',
   );
   assert.match(deadlineClock, /wallDeadline - wallNow/);
   assert.match(deadlineClock, /deadlineTick_/);
@@ -83,7 +83,11 @@ test('startup watchdogs bypass the ordinary long player wake deadline', () => {
   assert.match(wakeClock, /creating_->load/);
   assert.match(wakeClock, /startupScriptDeadline_->Active\(\)/);
   assert.match(wakeClock, /authControllerStartedAt_->Active\(\)/);
-  assert.match(wakeClock, /startupWatchdogPending \? 0 : value_/);
+  assert.match(
+    wakeClock,
+    /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/,
+  );
+  assert.match(wakeClock, /MonotonicProjectedDeadline value_;/);
   assert.match(
     playerHeader,
     /StartupAwareWakeDeadline nextTickAt_\{[\s\S]*creating_[\s\S]*startupScriptDeadline_[\s\S]*authControllerStartedAt_[\s\S]*startupNavigationStarted_/,
