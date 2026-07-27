@@ -23,7 +23,7 @@ test('missing status performs a full 35-day refresh and one-day bounded backfill
   assert.equal(ranges.previousFullAt, null);
   assert.deepEqual(ranges.recent, {
     fromTs: currentDay - 35 * DAY_MS,
-    toTs: currentDay + DAY_MS,
+    toTs: currentDay,
   });
   assert.deepEqual(ranges.fullRecent, ranges.recent);
   assert.deepEqual(ranges.backfill, {
@@ -32,7 +32,7 @@ test('missing status performs a full 35-day refresh and one-day bounded backfill
   });
 });
 
-test('recent status limits incremental refresh to the latest day', () => {
+test('recent status limits incremental refresh to the latest completed day', () => {
   const now = Date.UTC(2026, 6, 16, 12, 31);
   const currentDay = Date.UTC(2026, 6, 16);
   const fullAt = Date.UTC(2026, 6, 15, 0, 31);
@@ -42,11 +42,11 @@ test('recent status limits incremental refresh to the latest day', () => {
   assert.equal(ranges.previousFullAt, fullAt);
   assert.deepEqual(ranges.recent, {
     fromTs: currentDay - DAY_MS,
-    toTs: currentDay + DAY_MS,
+    toTs: currentDay,
   });
   assert.deepEqual(ranges.fullRecent, {
     fromTs: currentDay - 35 * DAY_MS,
-    toTs: currentDay + DAY_MS,
+    toTs: currentDay,
   });
 });
 
