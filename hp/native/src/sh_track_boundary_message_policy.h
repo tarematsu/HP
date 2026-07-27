@@ -62,6 +62,25 @@ inline bool operator<(
   return deadline.Active() && !deadline.Reached();
 }
 
+// StartupAwareWakeDeadline wraps a projected operational deadline but exposes
+// only the legacy int64_t conversion. After the wrapped uptime deadline expires,
+// that conversion becomes the current civil time. Comparing it with the stale
+// nowMs captured at the beginning of Tick() can therefore keep returning true.
+// Compare the projection with a fresh civil-clock read taken after conversion:
+// a future monotonic deadline remains ahead, while an expired projection is no
+// later than that fresh read. Startup watchdogs still convert to zero and bypass
+// the ordinary wake gate immediately.
+inline bool StationheadStartupAwareWakePending(
+    const StartupAwareWakeDeadline& deadline) noexcept {
+  const int64_t projected = static_cast<int64_t>(deadline);
+  return projected > 0 && projected > UnixMillis();
+}
+
+inline bool operator<(
+    int64_t, const StartupAwareWakeDeadline& deadline) noexcept {
+  return StationheadStartupAwareWakePending(deadline);
+}
+
 // These overloads are intentionally limited to the integer-zero checks used by
 // the legacy call sites. Matching the literal's actual type avoids MSVC treating
 // the overload and the class's int64_t conversion as equally good candidates.
