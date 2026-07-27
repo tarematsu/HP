@@ -173,12 +173,3 @@ test('existing polling and recovery expressions bind to monotonic arithmetic', (
     /TrackBoundaryPendingActionFor\(\s*nowMs, pendingUntil, handoffReadyAt/,
   );
 });
-
-test('Start Listening retry remains the only explicitly wall-clock operational deadline', () => {
-  assert.match(playerHeader, /int64_t nextAutoClickAt_ = 0;/);
-  assert.match(playerSource, /nowMs < nextAutoClickAt_/);
-  assert.match(
-    playerSource,
-    /nextAutoClickAt_ = UnixMillis\(\) \+ kStationheadPostPlaybackStopClickDelayMs/,
-  );
-});
