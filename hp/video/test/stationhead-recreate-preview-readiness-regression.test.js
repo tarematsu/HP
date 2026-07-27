@@ -14,6 +14,10 @@ const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
 );
+const layoutSource = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -79,4 +83,20 @@ test('earliest recreate request is compared in monotonic uptime space', () => {
     '}  // namespace hp',
   );
   assert.match(schedule, /candidate < recreateAt_/);
+});
+
+test('pending Spotify auth creation coalesces repeated controller requests', () => {
+  const ensureAuthHost = section(
+    layoutSource,
+    'bool StationheadPlayer::EnsureAuthHostWindow() {',
+    'void StationheadPlayer::KeepPlaybackBehindDashboard()',
+  );
+  const pendingGuardAt = ensureAuthHost.indexOf(
+    'if (authControllerStartedAt_.Active() && !authController_) return false;',
+  );
+  const existingHostAt = ensureAuthHost.indexOf(
+    'if (authHostWindow_ && IsWindow(authHostWindow_)) return true;',
+  );
+  assert.ok(pendingGuardAt >= 0 && existingHostAt > pendingGuardAt);
+  assert.match(playerSource, /authPendingUrl_ = url;/);
 });
