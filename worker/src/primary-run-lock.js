@@ -58,12 +58,16 @@ function noSuchTable(error) {
 async function claimHotStateLock(env, holderId, now) {
   const current = await getCollectorHotState(env, HOT_STATE_KEY);
   if (current && Number(current.lease_until) >= now) return false;
-  return putCollectorHotState(env, HOT_STATE_KEY, {
+  // The hot-state helper deliberately reports storage failures as false. The
+  // collection lock is fail-open, so inability to persist the lease must not
+  // suppress collection and create a data gap.
+  await putCollectorHotState(env, HOT_STATE_KEY, {
     scope: SCOPE,
     holder_id: holderId,
     claimed_at: now,
     lease_until: now + ttlMs(env),
   });
+  return true;
 }
 
 async function releaseHotStateLock(env, holderId) {
