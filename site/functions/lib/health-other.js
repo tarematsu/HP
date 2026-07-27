@@ -24,7 +24,9 @@ async function readTask(db) {
 export async function readOtherHealth(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding missing');
   const row = await readTask(env.OTHER_DB);
-  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 50 * 60_000, 45 * 60_000);
+  // Match the GitHub Actions runner-health policy so the public endpoint does not
+  // fail before the operational monitor when a scheduled run is delayed.
+  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 75 * 60_000, 60 * 60_000);
   const ageMs = age(now, row?.last_attempt_at);
   const stale = ageMs == null || ageMs >= staleAfterMs;
   const failed = Boolean(row) && !HEALTHY_STATUSES.has(row.status);
