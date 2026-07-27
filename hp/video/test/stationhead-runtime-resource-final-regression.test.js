@@ -37,28 +37,17 @@ test('final resource policy is compiled after every earlier Stationhead policy',
   );
 });
 
-test('legacy blank recovery is not registered by final resource setup', () => {
-  const additional = section(
-    finalPolicySource,
-    'inline void ApplyStationheadAdditionalScriptBlockingRuntimeFixed(',
-    '// Final resource policy.',
-  );
-  assert.doesNotMatch(additional, /StationheadBlankPageRecoveryScript/);
-  assert.doesNotMatch(additional, /AddScriptToExecuteOnDocumentCreated/);
-  assert.match(additional, /StationheadAdditionalNonPlaybackScriptUrl\(uriLower\)/);
-
+test('final resource setup does not register legacy blank-page recovery', () => {
   const finalPolicy = section(
     finalPolicySource,
     'inline void ApplyStationheadResourceBlockingFinalFixed(',
     '}  // namespace hp',
   );
+  assert.doesNotMatch(finalPolicy, /StationheadBlankPageRecoveryScript/);
+  assert.doesNotMatch(finalPolicy, /AddScriptToExecuteOnDocumentCreated/);
   assert.match(
     finalPolicy,
-    /ApplyStationheadAdditionalScriptBlockingRuntimeFixed\(environment, webview\)/,
-  );
-  assert.doesNotMatch(
-    finalPolicy,
-    /ApplyStationheadAdditionalScriptBlocking\(environment, webview\)/,
+    /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/,
   );
 });
 
@@ -66,7 +55,7 @@ test('non-playback scripts are matched only on HTTPS Stationhead paths', () => {
   const predicate = section(
     finalPolicySource,
     'inline constexpr bool StationheadNonPlaybackScriptUrlRuntimeFixed(',
-    'inline void ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(',
+    '// Final resource policy.',
   );
   assert.match(predicate, /StationheadRuntimeScriptPath\(uriLower\)/);
   assert.match(predicate, /path\.ends_with\(L"\.js"\)/);
@@ -91,35 +80,31 @@ test('non-playback scripts are matched only on HTTPS Stationhead paths', () => {
   );
 });
 
-test('final policy uses the corrected path-only script blocker', () => {
-  const blocker = section(
-    finalPolicySource,
-    'inline void ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(',
-    '// The legacy additional blocker',
-  );
-  assert.match(
-    blocker,
-    /StationheadNonPlaybackScriptUrlRuntimeFixed\(uriLower\)/,
-  );
-  assert.match(blocker, /https:\/\/stationhead\.com\/\*/);
-  assert.match(blocker, /https:\/\/\*\.stationhead\.com\/\*/);
-
+test('script blocking is consolidated into the single final callback', () => {
   const finalPolicy = section(
     finalPolicySource,
     'inline void ApplyStationheadResourceBlockingFinalFixed(',
     '}  // namespace hp',
   );
+  assert.equal(
+    (finalPolicy.match(/add_WebResourceRequested\(/g) || []).length,
+    1,
+  );
   assert.match(
     finalPolicy,
-    /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed\(environment, webview\)/,
+    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT[\s\S]*StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)[\s\S]*StationheadAdditionalNonPlaybackScriptUrl\(lower\)/,
   );
   assert.doesNotMatch(
-    finalPolicy,
-    /ApplyStationheadNonPlaybackScriptBlocking\(environment, webview\)/,
+    finalPolicySource,
+    /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed/,
+  );
+  assert.doesNotMatch(
+    finalPolicySource,
+    /ApplyStationheadAdditionalScriptBlockingRuntimeFixed/,
   );
 });
 
-test('final resource callbacks own only COM and immutable configuration state', () => {
+test('final resource callback preserves playback and immutable-state guards', () => {
   const finalPolicy = section(
     finalPolicySource,
     'inline void ApplyStationheadResourceBlockingFinalFixed(',
@@ -130,5 +115,12 @@ test('final resource callbacks own only COM and immutable configuration state', 
   assert.doesNotMatch(finalPolicy, /&armed/);
   assert.match(finalPolicy, /StationheadRequestIsBlockable\(lower\)/);
   assert.match(finalPolicy, /StationheadCorePlaybackRequest\(lower\)/);
-  assert.match(finalPolicy, /BlockStationheadTelemetrySockets\(webview, config\.blockImages\)/);
+  assert.match(
+    finalPolicy,
+    /BlockStationheadTelemetrySockets\(webview, config\.blockImages\)/,
+  );
+  assert.match(
+    finalPolicy,
+    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA[\s\S]*!StationheadCorePlaybackRequest\(lower\)/,
+  );
 });

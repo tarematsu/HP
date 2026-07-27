@@ -105,14 +105,22 @@ test('CDP blocking is destination-host-only and never applies image suffixes glo
   assert.doesNotMatch(sockets, /blockImages/);
 });
 
-test('final resource callback uses only strict block and playback predicates', () => {
+test('final resource callback consolidates strict, script, and playback predicates', () => {
   const finalPolicy = section(
     boundarySource,
     'inline void ApplyStationheadResourceBlockingBoundaryFixed(',
     '}  // namespace hp',
   );
+  assert.equal(
+    (finalPolicy.match(/add_WebResourceRequested\(/g) || []).length,
+    1,
+  );
   assert.match(finalPolicy, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
+  assert.match(finalPolicy, /StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)/);
+  assert.match(finalPolicy, /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/);
   assert.match(finalPolicy, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
+  assert.doesNotMatch(finalPolicy, /ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed/);
+  assert.doesNotMatch(finalPolicy, /ApplyStationheadAdditionalScriptBlockingRuntimeFixed/);
   assert.doesNotMatch(finalPolicy, /StationheadRequestIsBlockable\(lower\)/);
   assert.doesNotMatch(finalPolicy, /StationheadCorePlaybackRequest\(lower\)/);
   assert.match(finalPolicy, /\[env, blockImages, blockFonts\]/);

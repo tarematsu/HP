@@ -246,10 +246,10 @@ inline void BlockStationheadTelemetrySocketsBoundaryFixed(
       L"Network.setBlockedURLs", blockedUrls.c_str(), nullptr);
 }
 
-// Last resource boundary. The earlier policy is intentionally not called: once
-// an event handler supplies a blocking response, a later handler cannot safely
-// reconstruct the original network request. Register one final handler using
-// strict destination-host and Stationhead-API path classification.
+// Last resource boundary. Register one handler using strict destination-host,
+// Stationhead-API path, and non-playback script classification. Keeping all
+// checks in this final callback avoids duplicate COM callbacks and URI parsing
+// while preserving the playback/media boundary.
 inline void ApplyStationheadResourceBlockingBoundaryFixed(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -307,6 +307,11 @@ inline void ApplyStationheadResourceBlockingBoundaryFixed(
                 }
               }
               block = StationheadRequestIsBlockableBoundaryFixed(lower);
+              if (!block && hasContext &&
+                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
+                block = StationheadNonPlaybackScriptUrlRuntimeFixed(lower) ||
+                        StationheadAdditionalNonPlaybackScriptUrl(lower);
+              }
               if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
                 block = true;
               }
@@ -328,8 +333,6 @@ inline void ApplyStationheadResourceBlockingBoundaryFixed(
       &token);
 
   BlockStationheadTelemetrySocketsBoundaryFixed(webview);
-  ApplyStationheadNonPlaybackScriptBlockingRuntimeFixed(environment, webview);
-  ApplyStationheadAdditionalScriptBlockingRuntimeFixed(environment, webview);
 }
 
 }  // namespace hp
