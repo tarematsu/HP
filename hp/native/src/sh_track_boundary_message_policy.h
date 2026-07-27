@@ -226,6 +226,42 @@ inline int64_t& StationheadAutoClickDeadlineStorage(
   return storage;
 }
 
+class StationheadNavigationInFlightProxy {
+ public:
+  StationheadNavigationInFlightProxy(
+      std::atomic<bool>& storage,
+      MonotonicElapsedTimestamp& refreshStartedAt,
+      int64_t& navigationObserved) noexcept
+      : storage_(storage),
+        refreshStartedAt_(refreshStartedAt),
+        navigationObserved_(navigationObserved) {}
+
+  void store(bool value, std::memory_order order) noexcept {
+    if (value) {
+      refreshStartedAt_ = 0;
+      navigationObserved_ = 1;
+    }
+    storage_.store(value, order);
+  }
+
+  [[nodiscard]] bool load(std::memory_order order) const noexcept {
+    return storage_.load(order);
+  }
+
+ private:
+  std::atomic<bool>& storage_;
+  MonotonicElapsedTimestamp& refreshStartedAt_;
+  int64_t& navigationObserved_;
+};
+
+inline StationheadNavigationInFlightProxy StationheadNavigationInFlightStorage(
+    std::atomic<bool>& storage,
+    MonotonicElapsedTimestamp& refreshStartedAt,
+    int64_t& navigationObserved) noexcept {
+  return StationheadNavigationInFlightProxy(
+      storage, refreshStartedAt, navigationObserved);
+}
+
 class StationheadBoundaryReloadClockProxy {
  public:
   StationheadBoundaryReloadClockProxy(
@@ -328,3 +364,7 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                               \
       (nextAutoClickAt_), IsSecondary()))
+#define navigationInFlight_                                                  \
+  (::hp::StationheadNavigationInFlightStorage(                              \
+      (navigationInFlight_), periodicRefreshStartedAt_,                     \
+      periodicRefreshNavigationObserved_))
