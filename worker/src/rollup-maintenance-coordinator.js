@@ -3,6 +3,7 @@ import { runRollupMaintenance as runBaseRollupMaintenance } from './rollup-maint
 const RUN_PERIOD_TYPE = 'run';
 const RUN_PERIOD_KEY = 'rollup-maintenance';
 const DEFAULT_LEASE_MS = 15 * 60_000;
+const DEFAULT_RUN_INTERVAL_MS = 60 * 60_000;
 const MAX_RETRY_MS = 24 * 60 * 60_000;
 
 function integer(value, fallback = 0) {
@@ -18,6 +19,21 @@ function retryDelay(attemptCount) {
 function leaseOwner(now) {
   const suffix = globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2);
   return `rollup:${now}:${suffix}`;
+}
+
+export function shouldThrottleRollupMaintenance(state, now, intervalMs = DEFAULT_RUN_INTERVAL_MS) {
+  if (!state || state.status !== 'idle' || state.last_error) return false;
+  const lastFinishedAt = integer(state.updated_at);
+  const interval = Math.max(60_000, integer(intervalMs, DEFAULT_RUN_INTERVAL_MS));
+  return lastFinishedAt > 0 && Number(now) < lastFinishedAt + interval;
+}
+
+async function loadRunCadenceState(db) {
+  return db.prepare(`SELECT status,last_error,updated_at
+    FROM sh_rollup_materialization_state
+    WHERE period_type=? AND period_key=? LIMIT 1`)
+    .bind(RUN_PERIOD_TYPE, RUN_PERIOD_KEY)
+    .first();
 }
 
 async function acquireRunLease(db, owner, now, leaseMs) {
@@ -153,6 +169,18 @@ async function persistRunResults(db, result, now) {
 
 export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now()) {
   if (!db || !otherDb || !minuteDb) return { skipped: true, reason: 'db-binding-missing' };
+  const cadenceState = await loadRunCadenceState(db);
+  if (shouldThrottleRollupMaintenance(cadenceState, now)) {
+    const lastRunAt = integer(cadenceState.updated_at);
+    return {
+      skipped: true,
+      reason: 'rollup-maintenance-cadence',
+      coordinator: {
+        lastRunAt,
+        nextRunAt: lastRunAt + DEFAULT_RUN_INTERVAL_MS,
+      },
+    };
+  }
   const owner = leaseOwner(now);
   const leaseMs = DEFAULT_LEASE_MS;
   if (!(await acquireRunLease(db, owner, now, leaseMs))) {
