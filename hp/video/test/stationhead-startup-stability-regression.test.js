@@ -181,8 +181,16 @@ test('shutdown cancels pending Window B startup and preview requests', () => {
     '  void Stop() {',
     '  StationheadStatus Status() const',
   );
-  const requestClearAt = stop.indexOf('startupRequestedAtTick_ = 0;');
-  const previewClearAt = stop.indexOf('startupPreviewRequested_ = false;');
+  const resetAt = stop.indexOf('ResetDeferredStartupState(true);');
   const stopAt = stop.indexOf('StationheadHandleBase::Stop();');
-  assert.ok(requestClearAt >= 0 && previewClearAt > requestClearAt && stopAt > previewClearAt);
+  assert.ok(resetAt >= 0 && stopAt > resetAt);
+
+  const reset = section(
+    secondaryHandle,
+    '  void ResetDeferredStartupState(bool restorePrimary) noexcept {',
+    '  void TryStartDeferred() {',
+  );
+  assert.match(reset, /startupRequestedAtTick_ = 0;/);
+  assert.match(reset, /startupPreviewRequested_ = false;/);
+  assert.match(reset, /startupPreviewApplied_ = false;/);
 });
