@@ -1,6 +1,8 @@
 -- Current counter values are already maintained transactionally by
 -- trg_sh_track_counter_current. Read the one-row projection instead of scanning
 -- the append-only change log, then retire the now-unused occurrence/time index.
+-- Keep this migration metadata-only: refreshing full-table statistics here would
+-- be charged as D1 rows read during every reapplication.
 
 DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time;
 
@@ -62,6 +64,3 @@ LEFT JOIN sh_queue_revisions r ON r.id=v.queue_revision_id
 LEFT JOIN sh_queue_revision_items i
   ON i.revision_id=v.queue_revision_id
   AND i.position=COALESCE(f.queue_position_patch,v.queue_position);
-
-ANALYZE sh_track_counter_current;
-PRAGMA optimize;
