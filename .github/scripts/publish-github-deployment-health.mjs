@@ -6,6 +6,7 @@ import {
   clipText,
   createGitHubRequest,
 } from './observability-status-publisher.mjs';
+import { replaceObservabilityCurrentMainSha } from './observability-issue-header.mjs';
 import {
   MAX_DEPLOYMENT_HEALTH_SUMMARY_CHARS,
   collectDeploymentHealth,
@@ -97,7 +98,8 @@ export async function publishDeploymentHealthFromEnvironment() {
   if (issue?.pull_request || !String(issue?.body || '').includes(STATUS_MARKER)) {
     throw new Error(`Issue #${issueNumber} is not the Cloudflare observability status issue`);
   }
-  const body = buildDeploymentHealthIssueBody(issue.body, deploymentSummary, releaseSummary);
+  const synchronizedBody = replaceObservabilityCurrentMainSha(issue.body, releaseStatus?.main?.sha);
+  const body = buildDeploymentHealthIssueBody(synchronizedBody, deploymentSummary, releaseSummary);
   await request('PATCH', `/issues/${issueNumber}`, {
     title: issue.title,
     body,
