@@ -5,7 +5,7 @@ on:
     workflows: ["Deploy production"]
     types: [completed]
   schedule:
-    - cron: '7,37 * * * *'
+    - cron: '11,41 * * * *'
   push:
     branches: [main]
     paths:
