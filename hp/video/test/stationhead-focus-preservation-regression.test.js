@@ -48,32 +48,75 @@ test('hide evaluates the resulting surface before returning focus to Main', () =
   );
 });
 
-test('a still-visible auth or login surface keeps keyboard focus', () => {
+test('focus preservation resolves the direct Stationhead host after WebView child focus', () => {
+  const detector = section(
+    finalPolicySource,
+    'inline bool StationheadFocusRemainsInteractive(',
+    'inline HWND SetFocusAfterStationheadHide(',
+  );
+
+  assert.match(detector, /HWND surface = focused;/);
+  assert.match(detector, /HWND parent = GetParent\(surface\);/);
+  assert.match(
+    detector,
+    /while \(parent && parent != target\) \{[\s\S]*surface = parent;[\s\S]*parent = GetParent\(surface\);[\s\S]*\}/,
+  );
+  assert.match(detector, /parent != target \|\| !IsWindowVisible\(surface\)/);
+});
+
+test('a full-size visible auth or login surface keeps keyboard focus', () => {
+  const detector = section(
+    finalPolicySource,
+    'inline bool StationheadFocusRemainsInteractive(',
+    'inline HWND SetFocusAfterStationheadHide(',
+  );
   const wrapper = section(
     finalPolicySource,
     'inline HWND SetFocusAfterStationheadHide(',
     '\n}\n\n}  // namespace hp',
   );
 
+  assert.match(detector, /GetClientRect\(surface, &client\)/);
+  assert.match(
+    detector,
+    /StationheadFocusSurfaceIsInteractive\([\s\S]*client\.right - client\.left,[\s\S]*client\.bottom - client\.top\)/,
+  );
   assert.match(wrapper, /const HWND focused = GetFocus\(\);/);
   assert.match(
     wrapper,
-    /focused && focused != target && IsWindow\(focused\) &&[\s\S]*IsWindowVisible\(focused\)/,
+    /if \(StationheadFocusRemainsInteractive\(target, focused\)\) return focused;/,
   );
+});
+
+test('the visible 1x1 playback host is not treated as interactive', () => {
+  const sizePolicy = section(
+    finalPolicySource,
+    'inline constexpr bool StationheadFocusSurfaceIsInteractive(',
+    'inline bool StationheadFocusRemainsInteractive(',
+  );
+
+  assert.match(sizePolicy, /return width > 1 && height > 1;/);
+  assert.match(sizePolicy, /static_assert\(!StationheadFocusSurfaceIsInteractive\(1, 1\)\);/);
+  assert.match(sizePolicy, /static_assert\(!StationheadFocusSurfaceIsInteractive\(1, 720\)\);/);
+  assert.match(sizePolicy, /static_assert\(!StationheadFocusSurfaceIsInteractive\(1280, 1\)\);/);
+  assert.match(sizePolicy, /static_assert\(StationheadFocusSurfaceIsInteractive\(2, 2\)\);/);
+  assert.match(finalPolicySource, /host remains WS_VISIBLE[\s\S]*collapsed to a 1x1 surface/);
+});
+
+test('collapsed, hidden or invalid Stationhead focus is restored to the parent', () => {
+  const wrapper = section(
+    finalPolicySource,
+    'inline HWND SetFocusAfterStationheadHide(',
+    '\n}\n\n}  // namespace hp',
+  );
+
   assertOrdered(wrapper, [
-    'IsWindowVisible(focused)',
+    'StationheadFocusRemainsInteractive(target, focused)',
     'return focused;',
     'return ::SetFocus(target);',
   ]);
-});
-
-test('hidden or invalid Stationhead focus is restored to the parent window', () => {
   assert.match(
     finalPolicySource,
     /#define SetFocus\(target\) \(::hp::SetFocusAfterStationheadHide\(\(target\)\)\)/,
-  );
-  assert.match(
-    finalPolicySource,
-    /current focus is gone, invalid, or belongs to a surface that is actually hidden/,
   );
 });
