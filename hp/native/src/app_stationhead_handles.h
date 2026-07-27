@@ -162,7 +162,7 @@ class AppStationheadHandle final : public StationheadHandleBase {
   }
   void Stop() {
     StationheadHandleBase::Stop();
-    if (StartupPrimaryHandle() == this) SetStartupPrimaryHandle(nullptr);
+    ResetStartupPreviewState();
   }
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
@@ -179,6 +179,12 @@ class AppStationheadHandle final : public StationheadHandleBase {
   }
 
  private:
+  void ResetStartupPreviewState() noexcept {
+    if (StartupPrimaryHandle() == this) SetStartupPrimaryHandle(nullptr);
+    requestedStartupPreviewBounds_ = RECT{0, 0, 1, 1};
+    startupPreviewRequested_ = false;
+  }
+
   RECT requestedStartupPreviewBounds_{0, 0, 1, 1};
   bool startupPreviewRequested_ = false;
 };
@@ -205,8 +211,7 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     ApplyDeferredStartupPreview();
   }
   void ClearStartupPreviewBounds() {
-    startupPreviewRequested_ = false;
-    startupPreviewApplied_ = false;
+    ResetDeferredStartupState(true);
     StationheadHandleBase::ClearStartupPreviewBounds();
   }
   void Start() {
@@ -232,9 +237,7 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     }
   }
   void Stop() {
-    startupRequestedAtTick_ = 0;
-    startupPreviewRequested_ = false;
-    startupPreviewApplied_ = false;
+    ResetDeferredStartupState(true);
     StationheadHandleBase::Stop();
   }
   StationheadStatus Status() const {
@@ -252,6 +255,18 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
  private:
   [[nodiscard]] static AppStationheadHandle* StartupPrimary() noexcept {
     return static_cast<AppStationheadHandle*>(StartupPrimaryHandle());
+  }
+
+  void ResetDeferredStartupState(bool restorePrimary) noexcept {
+    if (restorePrimary && startupPreviewRequested_ && !startupPreviewApplied_) {
+      if (AppStationheadHandle* primary = StartupPrimary()) {
+        primary->RestoreRequestedStartupPreviewBounds();
+      }
+    }
+    pendingStartupPreviewBounds_ = RECT{0, 0, 1, 1};
+    startupRequestedAtTick_ = 0;
+    startupPreviewRequested_ = false;
+    startupPreviewApplied_ = false;
   }
 
   void TryStartDeferred() {
