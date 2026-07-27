@@ -27,10 +27,12 @@ test('runtime queue no longer imports offline maintenance or collection graphs',
   assert.doesNotMatch(queue, /raw-collection-session|raw-collection-fetch/);
 });
 
-test('offline runtime coordinators are not part of the deployed graph', () => {
+test('offline runtime coordinators are absent while live-job coordination remains isolated', () => {
   const config = JSON.parse(source('../wrangler.runtime.jsonc'));
   assert.equal(config.triggers, undefined);
-  assert.equal(config.durable_objects, undefined);
+  assert.deepEqual(config.durable_objects, {
+    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+  });
   assert.equal(config.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
   assert.equal(config.queues.consumers.some(({ queue }) => queue.includes('read-model')), false);
   assert.equal(existsSync(new URL('../src/other-monitor-entry.js', import.meta.url)), false);
