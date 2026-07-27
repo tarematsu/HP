@@ -151,9 +151,13 @@ test('status writers share a non-cancelling issue lock', () => {
   }
 });
 
-test('lightweight workflow refreshes after observability and operational workflow changes', () => {
+test('lightweight workflow refreshes after observability, Pages completion, and workflow changes', () => {
   const workflow = read('.github/workflows/publish-github-actions-runner-health.yml');
-  assert.match(workflow, /workflows: \["Unified Cloudflare Observability"\]/);
+  assert.match(
+    workflow,
+    /workflows: \["Unified Cloudflare Observability", "Rebuild pages read models"\]/,
+  );
+  assert.match(workflow, /Unified observability can finish while the chained Pages run is still active/);
   assert.match(workflow, /\.github\/workflows\/run-runtime-offline-maintenance\.yml/);
   assert.match(workflow, /\.github\/workflows\/run-pages-read-model-rebuild\.yml/);
   assert.match(workflow, /cron: '2,17,32,47 \* \* \* \*'/);
