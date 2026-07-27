@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: runtime-offline-maintenance
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   maintain:
