@@ -35,7 +35,6 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-// Keep uptime-based scheduling separate from persisted UTC event timestamps.
 test('backdated elapsed timestamps retain their initial elapsed duration', () => {
   const elapsed = section(
     playerHeader,
