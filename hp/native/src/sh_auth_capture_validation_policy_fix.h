@@ -25,9 +25,11 @@ inline std::wstring StationheadAuthCaptureScriptResponseValidated() {
     window.__homepanelStationheadRejectedAuthorization = null;
   };
 )JS";
-  static constexpr std::wstring_view kAcceptanceHelpersFixed = LR"JS(  const trustedStationheadRequest = value => {
+  static constexpr std::wstring_view kAcceptanceHelpersFixed = LR"JS(  const NativeURL = window.URL;
+  const trustedStationheadRequest = value => {
     try {
-      const parsed = new URL(String(value || ''), location.href);
+      if (!NativeURL) return false;
+      const parsed = new NativeURL(String(value || ''), location.href);
       const targetHost = String(parsed.hostname || '').toLowerCase();
       return parsed.protocol === 'https:' &&
         (targetHost === 'stationhead.com' ||
@@ -48,6 +50,11 @@ inline std::wstring StationheadAuthCaptureScriptResponseValidated() {
   };
   const acceptAuthorizationCandidate = candidate => {
     if (!candidate?.authorization) return;
+    if (window.__homepanelStationheadRejectedAuthorization ===
+          candidate.authorization &&
+        window.__homepanelStationheadBlockingLoginVisible !== false) {
+      return;
+    }
     const current = window.__homepanelStationheadAuthHeaders;
     if (current?.authorization &&
         current.authorization !== candidate.authorization) {
@@ -122,7 +129,7 @@ inline std::wstring StationheadAuthCaptureScriptResponseValidated() {
           initHeaders.forEach((value, name) => headers.set(name, value));
         }
         const requestUrl = typeof input === 'string' ? input :
-          (window.URL && input instanceof window.URL ? input.href :
+          (NativeURL && input instanceof NativeURL ? input.href :
             (input && input.url) || '');
         if (trustedStationheadRequest(requestUrl)) {
           candidate = candidateFromHeaders(headers);
