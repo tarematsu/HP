@@ -30,12 +30,14 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
-    # Deploy-triggered runtime maintenance also emits workflow_run. Those runs are
-    # intentionally skipped here and ignored by the runner-health evaluator.
+    # Deployment-triggered runtime maintenance has event=workflow_run and is intentionally
+    # skipped. Direct push, schedule, and manual maintenance runs are operational inputs.
     if: >-
       github.event_name != 'workflow_run'
       || (github.event.workflow_run.conclusion == 'success'
-        && github.event.workflow_run.event == 'schedule')
+        && (github.event.workflow_run.event == 'schedule'
+          || github.event.workflow_run.event == 'push'
+          || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
