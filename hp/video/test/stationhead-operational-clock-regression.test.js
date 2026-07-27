@@ -18,6 +18,14 @@ const handleSource = readFileSync(
   new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
   'utf8',
 );
+const appHeader = readFileSync(
+  new URL('../../native/src/app.h', import.meta.url),
+  'utf8',
+);
+const appMessages = readFileSync(
+  new URL('../../native/src/app_messages.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -86,6 +94,18 @@ test('track-boundary and periodic operational clocks use monotonic wrappers', ()
   );
   assert.match(retryState, /MonotonicProjectedDeadline retryAt;/);
   assert.match(retryState, /MonotonicProjectedDeadline deadline;/);
+
+  for (const field of [
+    'primaryTrackBoundaryPendingUntil_',
+    'secondaryTrackBoundaryPendingUntil_',
+    'primaryTrackBoundaryHandoffReadyAt_',
+    'secondaryTrackBoundaryHandoffReadyAt_',
+  ]) {
+    assert.match(
+      appHeader,
+      new RegExp(`MonotonicProjectedDeadline ${field};`),
+    );
+  }
 });
 
 test('existing polling and recovery expressions bind to monotonic arithmetic', () => {
@@ -123,4 +143,16 @@ test('existing polling and recovery expressions bind to monotonic arithmetic', (
   );
   assert.match(retryTick, /nowMs >= retry\.deadline/);
   assert.match(retryTick, /nowMs < retry\.retryAt/);
+
+  const appPending = section(
+    appMessages,
+    'void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs)',
+    'LRESULT App::HandleMessage(',
+  );
+  assert.match(appPending, /auto& pendingUntil/);
+  assert.match(appPending, /auto& handoffReadyAt/);
+  assert.match(
+    appPending,
+    /TrackBoundaryPendingActionFor\(\s*nowMs, pendingUntil, handoffReadyAt/,
+  );
 });
