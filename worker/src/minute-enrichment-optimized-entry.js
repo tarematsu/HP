@@ -106,11 +106,8 @@ function isTrackMetadataDelivery(batch, body) {
     || body?.message_type === TRACK_METADATA_MESSAGE_TYPE;
 }
 
-async function processMinuteEnrichmentBatch(batch, env, dependencies = EMPTY_DEPENDENCIES) {
-  const messages = batch.messages;
-  if (!messages?.length) return;
-  const message = messages[0];
-  const metadata = isTrackMetadataDelivery(batch, message.body);
+async function processMinuteEnrichmentMessage(batch, message, env, dependencies) {
+  const metadata = isTrackMetadataDelivery(batch, message?.body);
   const activeEnv = metadata
     ? env
     : dependencies === EMPTY_DEPENDENCIES
@@ -119,27 +116,54 @@ async function processMinuteEnrichmentBatch(batch, env, dependencies = EMPTY_DEP
   try {
     if (metadata) {
       const run = dependencies.processTrackMetadataTask || processTrackMetadataTask;
-      const result = await run(activeEnv, message.body, dependencies.metadata || EMPTY_DEPENDENCIES);
+      const result = await run(activeEnv, message?.body, dependencies.metadata || EMPTY_DEPENDENCIES);
       if (shouldLogTrackMetadataResult(result)) {
         console.log(JSON.stringify({ event: 'track_metadata_task_completed', ...result }));
       }
     } else {
-      const result = await processOptimizedMinuteEnrichment(activeEnv, message.body, dependencies);
+      const result = await processOptimizedMinuteEnrichment(activeEnv, message?.body, dependencies);
       logMinuteEnrichmentResult(result);
     }
     message.ack();
+    return { acknowledged: true, retried: false };
   } catch (error) {
     console.error(JSON.stringify({
       event: metadata ? 'track_metadata_task_failed' : 'minute_enrichment_failed',
       error: String(error?.message || error).slice(0, 800),
     }));
     message.retry(RETRY_30_SECONDS);
+    return { acknowledged: false, retried: true };
   }
+}
+
+async function processMinuteEnrichmentBatch(batch, env, dependencies = EMPTY_DEPENDENCIES) {
+  const messages = Array.from(batch?.messages || []);
+  if (!messages.length) return;
+  if (messages.length > 1) {
+    console.warn(JSON.stringify({
+      event: 'minute_enrichment_batch_split',
+      queue: String(batch?.queue || 'unknown'),
+      messages: messages.length,
+    }));
+  }
+  let acknowledged = 0;
+  let retried = 0;
+  for (const message of messages) {
+    const result = await processMinuteEnrichmentMessage(batch, message, env, dependencies);
+    acknowledged += result.acknowledged ? 1 : 0;
+    retried += result.retried ? 1 : 0;
+  }
+  return {
+    messages: messages.length,
+    acknowledged,
+    retried,
+  };
 }
 
 export {
   isTrackMetadataDelivery,
   processMinuteEnrichmentBatch,
+  processMinuteEnrichmentMessage,
   processOptimizedMinuteEnrichment,
   productionEnrichmentEnv,
   shouldLogMinuteEnrichmentResult,
