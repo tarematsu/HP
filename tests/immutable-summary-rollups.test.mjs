@@ -45,3 +45,12 @@ test('stale historical days are retried and summaries use source generations', (
 test('legacy global Minute Facts repair remains removed from the rollup path', () => {
   assert.doesNotMatch(rollup, /runMinuteFactsRepair/);
 });
+
+
+test('dirty days persist and aggregate generations propagate to dependent summaries', () => {
+  assert.match(rollup, /persistentDirtyPeriods/);
+  assert.match(rollup, /last_rollup_key LIKE 'dirty:%'/);
+  assert.match(rollup, /persistReconcileState/);
+  assert.match(rollup, /daily_generation:/);
+  assert.match(rollup, /rangeGeneration\(dailyRows\)/);
+});
