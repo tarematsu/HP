@@ -34,8 +34,10 @@ test('runtime is queue-only and retains bounded realtime consumers and live-job 
   assert.deepEqual(config.durable_objects, {
     bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
   });
-  assert.equal(config.observability.head_sampling_rate, 0.1);
-  assert.equal(config.observability.logs.head_sampling_rate, 0.1);
+  assert.equal(config.observability.head_sampling_rate, 1);
+  assert.equal(config.observability.logs.head_sampling_rate, 1);
+  assert.equal(config.observability.logs.persist, true);
+  assert.equal(config.observability.logs.invocation_logs, true);
 
   const consumers = new Map(config.queues.consumers.map((consumer) => [consumer.queue, consumer]));
   assert.deepEqual([...consumers.keys()], [
