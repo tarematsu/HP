@@ -15,7 +15,8 @@ inline bool ReplaceStationheadRuntimeFragment(
 // Stationhead composes several document-lifetime policies into one startup
 // script. Patch their generated source at the final policy layer so every timer
 // and MutationObserver stops on pagehide/BFCache entry and is rebuilt only when
-// that exact document receives pageshow again.
+// that exact document receives pageshow again. Stable playback uses an adaptive
+// login fallback cadence so both long-lived WebViews avoid redundant DOM scans.
 inline std::wstring StationheadAutoplayScriptLifecycleFixed(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
@@ -128,16 +129,30 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
     }, 5000);
   };
 )JS";
-  static constexpr std::wstring_view kScheduleFixed = LR"JS(  const schedule = () => {
+  static constexpr std::wstring_view kScheduleFixed = LR"JS(  const stablePlaybackRecheckMs = 30000;
+  const interactiveRecheckMs = 5000;
+  const nextRecheckDelay = () =>
+    playing() &&
+    !pendingAuthReady &&
+    window.__homepanelStationheadBlockingLoginVisible !== true
+      ? stablePlaybackRecheckMs
+      : interactiveRecheckMs;
+  const schedule = (delay = nextRecheckDelay()) => {
     if (!pageActive || timer) return;
     timer = nativeTimeout(() => {
       timer = 0;
       if (!pageActive) return;
-      if (playing()) baseScan();
       updateBlockingLogin();
       flushPendingAuthReady();
       schedule();
-    }, 5000);
+    }, delay);
+  };
+  const reschedule = (delay = 0) => {
+    if (timer) {
+      nativeClearTimeout(timer);
+      timer = 0;
+    }
+    schedule(delay);
   };
 )JS";
   static constexpr std::wstring_view kPageLifecycle = LR"JS(  window.addEventListener('pagehide', () => { pageActive = false; }, true);
@@ -156,8 +171,31 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   window.addEventListener('pageshow', () => {
     pageActive = true;
     scan();
-    schedule();
+    reschedule();
   }, true);
+)JS";
+  static constexpr std::wstring_view kAuthReadyTail = LR"JS(  window.addEventListener('homepanel-stationhead-auth-ready', () => {
+    robustLoginReported = false;
+    loginMissingSince = 0;
+    scan();
+  });
+  updateBlockingLogin();
+  schedule();
+)JS";
+  static constexpr std::wstring_view kAuthReadyTailFixed = LR"JS(  const recheckAfterPlaybackStateChange = () => {
+    if (pageActive) reschedule();
+  };
+  for (const eventName of ['play','playing','pause','ended','stalled','waiting','error']) {
+    document.addEventListener(eventName, recheckAfterPlaybackStateChange, true);
+  }
+  window.addEventListener('homepanel-stationhead-auth-ready', () => {
+    robustLoginReported = false;
+    loginMissingSince = 0;
+    scan();
+    reschedule();
+  });
+  updateBlockingLogin();
+  schedule();
 )JS";
 
   const bool uiLifecycleReplaced = ReplaceStationheadRuntimeFragment(
@@ -178,6 +216,8 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
       ReplaceStationheadRuntimeFragment(script, kSchedule, kScheduleFixed);
   const bool lifecycleReplaced = ReplaceStationheadRuntimeFragment(
       script, kPageLifecycle, kPageLifecycleFixed);
+  const bool authReadyTailReplaced = ReplaceStationheadRuntimeFragment(
+      script, kAuthReadyTail, kAuthReadyTailFixed);
 
   // Static source tests pin every marker. Keeping the booleans observable here
   // also prevents an optimizer warning while preserving the last known-good
@@ -192,6 +232,7 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   (void)scanReplaced;
   (void)scheduleReplaced;
   (void)lifecycleReplaced;
+  (void)authReadyTailReplaced;
   return script;
 }
 

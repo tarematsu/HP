@@ -59,7 +59,7 @@ test('obsolete Stationhead documents cancel and do not re-arm login timers', () 
   assert.match(wrapper, /if \(!pageActive \|\| timer\) return;/);
   assert.match(
     wrapper,
-    /timer = nativeTimeout\(\(\) => \{[\s\S]*if \(!pageActive\) return;[\s\S]*schedule\(\);/,
+    /timer = nativeTimeout\(\(\) => \{[\s\S]*if \(!pageActive\) return;[\s\S]*schedule\(\);[\s\S]*\}, delay\);/,
   );
   assert.match(
     wrapper,
@@ -67,11 +67,41 @@ test('obsolete Stationhead documents cancel and do not re-arm login timers', () 
   );
   assert.match(
     wrapper,
-    /addEventListener\('pageshow',[\s\S]*pageActive = true;[\s\S]*scan\(\);[\s\S]*schedule\(\);/,
+    /addEventListener\('pageshow',[\s\S]*pageActive = true;[\s\S]*scan\(\);[\s\S]*reschedule\(\);/,
   );
   assert.match(
     wrapper,
     /const scan = \(\) => \{[\s\S]*if \(!pageActive\) return;[\s\S]*baseScan\(\);/,
+  );
+});
+
+test('stable playback backs off periodic DOM scans without delaying transitions', () => {
+  const wrapper = section(
+    lifecycleSource,
+    'inline std::wstring StationheadAutoplayScriptLifecycleFixed(',
+    '}  // namespace hp',
+  );
+  assert.match(wrapper, /const stablePlaybackRecheckMs = 30000;/);
+  assert.match(wrapper, /const interactiveRecheckMs = 5000;/);
+  assert.match(
+    wrapper,
+    /const nextRecheckDelay = \(\) =>[\s\S]*playing\(\)[\s\S]*!pendingAuthReady[\s\S]*homepanelStationheadBlockingLoginVisible !== true/,
+  );
+  const fixedSchedule = section(
+    lifecycleSource,
+    'static constexpr std::wstring_view kScheduleFixed =',
+    'static constexpr std::wstring_view kPageLifecycle =',
+  );
+  assert.doesNotMatch(fixedSchedule, /if \(playing\(\)\) baseScan\(\);/);
+  assert.match(fixedSchedule, /const schedule = \(delay = nextRecheckDelay\(\)\) =>/);
+  assert.match(fixedSchedule, /const reschedule = \(delay = 0\) =>/);
+  assert.match(
+    wrapper,
+    /for \(const eventName of \['play','playing','pause','ended','stalled','waiting','error'\]\)[\s\S]*reschedule\(\)/,
+  );
+  assert.match(
+    wrapper,
+    /homepanel-stationhead-auth-ready[\s\S]*scan\(\);[\s\S]*reschedule\(\);/,
   );
 });
 
@@ -109,6 +139,7 @@ test('every lifecycle marker is pinned and the final autoplay macro uses it', ()
     'scanReplaced',
     'scheduleReplaced',
     'lifecycleReplaced',
+    'authReadyTailReplaced',
   ]) {
     assert.match(lifecycleSource, new RegExp(`const bool ${marker}`));
     assert.match(lifecycleSource, new RegExp(`\\(void\\)${marker};`));
