@@ -77,6 +77,10 @@ function d1BudgetSkip(options = {}) {
     rows_read: optionalMetric(
       options.d1RowsRead ?? process.env.RUNTIME_MAINTENANCE_D1_ROWS_READ,
     ),
+    projected_rows_read: optionalMetric(
+      options.d1ProjectedRowsRead
+      ?? process.env.RUNTIME_MAINTENANCE_D1_PROJECTED_ROWS_READ,
+    ),
     read_limit: optionalMetric(
       options.d1ReadLimit ?? process.env.RUNTIME_MAINTENANCE_D1_READ_LIMIT,
     ),
@@ -157,10 +161,14 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   const budget = d1BudgetSkip(options);
   if (budget) {
     const finishedAt = timestamp(clock, startedAt);
+    const summary = `Deferred by D1 Actions guard (${budget.reason})`.slice(0, 1000);
     await writeMaintenanceStatus(env.OTHER_DB, {
       status: 'ok',
       attemptAt: startedAt,
-      successAt: finishedAt,
+      failureCode: 'runtime_offline_maintenance_deferred',
+      failureStage: 'd1-budget-guard',
+      failureSummary: summary,
+      failureHint: 'Heavy maintenance will resume automatically when D1 usage returns within budget.',
       updatedAt: finishedAt,
     });
     return {
@@ -169,6 +177,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
       event: 'runtime_offline_maintenance_actions_budget_skipped',
       reason: 'd1-actions-budget',
       elapsed_ms: Math.max(0, finishedAt - startedAt),
+      last_success_preserved: true,
       budget,
     };
   }
