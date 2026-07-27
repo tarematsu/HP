@@ -1,6 +1,23 @@
 #pragma once
 #include "common.h"
 
+namespace hp {
+
+inline constexpr bool StationheadPlaybackNavigationActive(
+    bool navigationInFlight,
+    bool statusNavigating,
+    bool spotifyAuthorization) noexcept {
+  return navigationInFlight || (statusNavigating && !spotifyAuthorization);
+}
+
+static_assert(StationheadPlaybackNavigationActive(true, false, false));
+static_assert(StationheadPlaybackNavigationActive(true, true, true));
+static_assert(StationheadPlaybackNavigationActive(false, true, false));
+static_assert(!StationheadPlaybackNavigationActive(false, true, true));
+static_assert(!StationheadPlaybackNavigationActive(false, false, false));
+
+}  // namespace hp
+
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
 // source-rewriting macros before any implementation file is compiled. This keeps
 // the public class layout in one place while replacing the old track-boundary
@@ -51,8 +68,9 @@
       statusNavigating = status_.navigating;                                  \
     }                                                                         \
     const bool navigationActive =                                             \
-        navigationInFlight_.load(std::memory_order_acquire) ||                \
-        statusNavigating;                                                     \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
     if (navigationActive) {                                                   \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 1;                                 \
@@ -208,6 +226,42 @@ inline int64_t& StationheadAutoClickDeadlineStorage(
   return storage;
 }
 
+class StationheadNavigationInFlightProxy {
+ public:
+  StationheadNavigationInFlightProxy(
+      std::atomic<bool>& storage,
+      MonotonicElapsedTimestamp& refreshStartedAt,
+      int64_t& navigationObserved) noexcept
+      : storage_(storage),
+        refreshStartedAt_(refreshStartedAt),
+        navigationObserved_(navigationObserved) {}
+
+  void store(bool value, std::memory_order order) noexcept {
+    if (value) {
+      refreshStartedAt_ = 0;
+      navigationObserved_ = 1;
+    }
+    storage_.store(value, order);
+  }
+
+  [[nodiscard]] bool load(std::memory_order order) const noexcept {
+    return storage_.load(order);
+  }
+
+ private:
+  std::atomic<bool>& storage_;
+  MonotonicElapsedTimestamp& refreshStartedAt_;
+  int64_t& navigationObserved_;
+};
+
+inline StationheadNavigationInFlightProxy StationheadNavigationInFlightStorage(
+    std::atomic<bool>& storage,
+    MonotonicElapsedTimestamp& refreshStartedAt,
+    int64_t& navigationObserved) noexcept {
+  return StationheadNavigationInFlightProxy(
+      storage, refreshStartedAt, navigationObserved);
+}
+
 class StationheadBoundaryReloadClockProxy {
  public:
   StationheadBoundaryReloadClockProxy(
@@ -310,3 +364,7 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                               \
       (nextAutoClickAt_), IsSecondary()))
+#define navigationInFlight_                                                  \
+  (::hp::StationheadNavigationInFlightStorage(                              \
+      (navigationInFlight_), periodicRefreshStartedAt_,                     \
+      periodicRefreshNavigationObserved_))
