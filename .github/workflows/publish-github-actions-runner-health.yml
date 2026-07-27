@@ -2,7 +2,9 @@ name: Publish GitHub Actions runner health
 
 on:
   workflow_run:
-    workflows: ["Unified Cloudflare Observability"]
+    # Unified observability can finish while the chained Pages run is still active.
+    # Refresh again when Pages completes so issue #259 does not remain stuck on running.
+    workflows: ["Unified Cloudflare Observability", "Rebuild pages read models"]
     types: [completed]
   push:
     branches: [main]
