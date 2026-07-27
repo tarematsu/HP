@@ -6,6 +6,7 @@ import {
   bindD1Sql,
   createWranglerRemoteD1,
   parseWranglerD1Json,
+  transientWranglerD1Failure,
   wranglerD1Results,
 } from '../worker/scripts/remote-d1-adapter.mjs';
 
@@ -66,12 +67,44 @@ test('remote D1 run returns Wrangler meta.changes', async () => {
   assert.match(calls[0].at(-1), /value='next' WHERE id=5/);
 });
 
-test('remote D1 failures preserve Wrangler stderr', async () => {
+test('remote D1 retries Cloudflare code 7500 and preserves exponential delays', async () => {
+  let attempts = 0;
+  const delays = [];
+  const transient = new Error('command failed');
+  transient.stdout = JSON.stringify({ error: { code: 7500, notes: [{ text: 'internal error; reference = e_test' }] } });
+  assert.equal(transientWranglerD1Failure(transient), true);
+
+  const db = createWranglerRemoteD1({
+    database: 'test-db',
+    cwd: workerRoot,
+    wranglerScript: '/tmp/wrangler.js',
+    maxRetries: 2,
+    retryDelayMs: 100,
+    sleepSync(milliseconds) { delays.push(milliseconds); },
+    execFileSync() {
+      attempts += 1;
+      if (attempts < 3) throw transient;
+      return resultJson([{ success: true, results: [{ value: 1 }], meta: {} }]);
+    },
+  });
+
+  assert.deepEqual(await db.prepare('SELECT 1 AS value').all(), {
+    success: true,
+    results: [{ value: 1 }],
+    meta: {},
+  });
+  assert.equal(attempts, 3);
+  assert.deepEqual(delays, [100, 200]);
+});
+
+test('remote D1 permanent failures are not retried and preserve Wrangler stderr', async () => {
+  let attempts = 0;
   const db = createWranglerRemoteD1({
     database: 'test-db',
     cwd: workerRoot,
     wranglerScript: '/tmp/wrangler.js',
     execFileSync() {
+      attempts += 1;
       const error = new Error('command failed');
       error.stderr = 'D1_ERROR: missing table sh_example';
       throw error;
@@ -81,6 +114,7 @@ test('remote D1 failures preserve Wrangler stderr', async () => {
     db.prepare('SELECT * FROM sh_example').all(),
     /Wrangler D1 execute failed for test-db: D1_ERROR: missing table sh_example/,
   );
+  assert.equal(attempts, 1);
 });
 
 test('remote D1 batch uses command JSON output and returns per-statement metadata', async () => {
