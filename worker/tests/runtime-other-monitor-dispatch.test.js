@@ -21,12 +21,18 @@ test('stream prediction is owned by the bounded offline Actions runner', () => {
   assert.equal(runtimeConfig.triggers, undefined);
 });
 
-test('unknown runtime queue messages are discarded without loading a legacy monitor', async () => {
+test('unknown runtime queue messages retry without loading a legacy monitor', async () => {
   const calls = [];
-  await runRuntimeQueue({ messages: [{
-    body: { message_type: 'retired-monitor-task' },
-    ack() { calls.push('ack'); },
-    retry() { calls.push('retry'); },
-  }] }, {}, {});
-  assert.deepEqual(calls, ['ack']);
+  const originalError = console.error;
+  console.error = () => {};
+  try {
+    await runRuntimeQueue({ messages: [{
+      body: { message_type: 'retired-monitor-task' },
+      ack() { calls.push('ack'); },
+      retry(options) { calls.push(['retry', options]); },
+    }] }, {}, {});
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(calls, [['retry', { delaySeconds: 60 }]]);
 });
