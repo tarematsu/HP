@@ -302,10 +302,19 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     const StationheadStatus status = RawStatus();
     if (!status.spotifyAuthorization) {
       startupAuthReadyObserved_ = false;
-    } else if (!status.navigating && status.detail == L"Spotify login ready") {
-      // Keep the completed Auth surface ready even if a later playback audio
-      // callback updates the shared status detail before the next App tick.
-      startupAuthReadyObserved_ = true;
+    } else {
+      // A new direct navigation reports navigating=true. A popup controller has
+      // no available Auth surface until its controller/WebView has been created.
+      // Clear the previous session's ready latch in either pending state.
+      if (status.navigating || !status.authAvailable) {
+        startupAuthReadyObserved_ = false;
+      }
+      if (!status.navigating && status.authAvailable &&
+          status.detail == L"Spotify login ready") {
+        // Keep the completed Auth surface ready even if a later playback audio
+        // callback updates the shared status detail before the next App tick.
+        startupAuthReadyObserved_ = true;
+      }
     }
     if (status.spotifyAuthorization && startupAuthReadyObserved_) {
       StationheadStatus authReadyStatus = status;

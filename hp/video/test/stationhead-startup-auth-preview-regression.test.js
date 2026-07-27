@@ -125,7 +125,8 @@ test('Window B latches completed Auth readiness across later playback updates', 
   assert.match(apply, /const StationheadStatus status = RawStatus\(\);/);
   assertOrdered(apply, [
     'if (!status.spotifyAuthorization)',
-    'startupAuthReadyObserved_ = false;',
+    'status.navigating || !status.authAvailable',
+    '!status.navigating && status.authAvailable',
     'status.detail == L"Spotify login ready"',
     'startupAuthReadyObserved_ = true;',
     'if (status.spotifyAuthorization && startupAuthReadyObserved_)',
@@ -134,6 +135,32 @@ test('Window B latches completed Auth readiness across later playback updates', 
     'StationheadStartupPreviewReady(authReadyStatus)',
     'StationheadStartupPreviewReady(status)',
   ]);
+});
+
+test('Window B clears a previous Auth-ready latch for a replacement session', () => {
+  const secondary = section(
+    handleHeader,
+    'class AppSecondaryStationheadHandle final',
+    '}  // namespace hp',
+  );
+  const apply = section(
+    secondary,
+    'void ApplyDeferredStartupPreview() {',
+    'RECT pendingStartupPreviewBounds_',
+  );
+
+  assert.match(
+    apply,
+    /if \(status\.navigating \|\| !status\.authAvailable\) \{[\s\S]*startupAuthReadyObserved_ = false;/,
+  );
+  assert.match(
+    apply,
+    /if \(!status\.navigating && status\.authAvailable &&[\s\S]*status\.detail == L"Spotify login ready"\)/,
+  );
+  assert.ok(
+    apply.indexOf('status.navigating || !status.authAvailable') <
+      apply.indexOf('if (status.spotifyAuthorization && startupAuthReadyObserved_)'),
+  );
 });
 
 test('Window B re-evaluates deferred preview on the posted state-change event', () => {
