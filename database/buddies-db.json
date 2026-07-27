@@ -3,5 +3,5 @@
   "database_name": "stationhead-buddies",
   "database_id": "f361aae0-05f0-42bc-8784-77100e80133d",
   "migrations_dir": "database/buddies-migrations",
-  "schema": "database/buddies-migrations/011_track_metadata_isrc_index.sql"
+  "schema": "database/buddies-migrations/012_rollup_materialization_state.sql"
 }
