@@ -27,7 +27,8 @@ test('pages read models keep operational opportunities without duplicate push ch
   assert.match(workflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
   assert.match(workflow, /Pushes that affect Pages already trigger this workflow directly/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
-  assert.match(workflow, /group: pages-read-model-rebuild/);
+  assert.match(workflow, /group: pages-read-model-rebuild-\$\{\{[\s\S]*?'ignored-chain' \|\| 'operational' \}\}/);
+  assert.match(workflow, /isolate them from operational runs before concurrency cancellation/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
