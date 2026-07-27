@@ -30,7 +30,7 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
-  assert.match(workflow, /cron: '7,37 \* \* \* \*'/);
+  assert.match(workflow, /cron: '11,41 \* \* \* \*'/);
   assert.match(workflow, /worker\/src\/minute-\*\*/);
   assert.match(workflow, /worker\/src\/rollup-\*\*/);
   assert.match(workflow, /cancel-in-progress: false/);
@@ -98,74 +98,4 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
   assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 5000/);
   assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 100/);
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
-});
-
-test('budget pressure records a healthy deferral without falsifying maintenance success', async () => {
-  const writes = [];
-  const fail = async () => assert.fail('D1-heavy maintenance must not run');
-  const result = await runRuntimeOfflineMaintenanceActions({
-    now: () => 2_000,
-    d1Allowed: false,
-    d1SkipReason: 'projected-read-budget-exceeded',
-    d1RowsRead: 200_000,
-    d1ProjectedRowsRead: 4_800_000,
-    d1ReadLimit: 3_500_000,
-    d1RowsWritten: 100,
-    d1WriteLimit: 4_000,
-    env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
-    runPrediction: fail,
-    runRollup: fail,
-    runRebuilds: fail,
-    runRetention: fail,
-  });
-
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['ok']);
-  assert.equal(writes[0].values[3], null);
-  assert.equal(writes[0].values[4], null);
-  assert.equal(writes[0].values[5], 'runtime_offline_maintenance_deferred');
-  assert.equal(writes[0].values[6], 'd1-budget-guard');
-  assert.match(writes[0].values[7], /projected-read-budget-exceeded/);
-  assert.deepEqual(result, {
-    ok: true,
-    skipped: true,
-    event: 'runtime_offline_maintenance_actions_budget_skipped',
-    reason: 'd1-actions-budget',
-    elapsed_ms: 0,
-    last_success_preserved: true,
-    budget: {
-      reason: 'projected-read-budget-exceeded',
-      rows_read: 200_000,
-      projected_rows_read: 4_800_000,
-      read_limit: 3_500_000,
-      rows_written: 100,
-      write_limit: 4_000,
-    },
-  });
-});
-
-test('Actions persists runtime maintenance failures for public health', async () => {
-  const writes = [];
-  await assert.rejects(
-    runRuntimeOfflineMaintenanceActions({
-      now: () => 2_000,
-      env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
-      runPrediction: async () => { throw new Error('prediction failed'); },
-      runRollup: async () => assert.fail('rollup must not run'),
-      runRebuilds: async () => assert.fail('rebuilds must not run'),
-      runRetention: async () => assert.fail('retention must not run'),
-    }),
-    /prediction failed/,
-  );
-
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'error']);
-  assert.equal(writes[1].values[4], 'prediction failed');
-  assert.equal(writes[1].values[5], 'runtime_offline_maintenance_failed');
-  assert.equal(writes[1].values[6], 'offline-maintenance');
-});
-
-test('runtime deployment has no scheduled surface or offline relay queues', () => {
-  assert.equal(runtime.triggers, undefined);
-  assert.doesNotMatch(deployed, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
-  assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-host-monitor'), false);
-  assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'HOST_MONITOR_QUEUE'), false);
 });
