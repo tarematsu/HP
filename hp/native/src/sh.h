@@ -29,6 +29,123 @@ enum StationheadChangeFlags : uint32_t {
   StationheadChangeShowPlayer = 1u << 2,
 };
 
+// Keep elapsed-time decisions independent of system-clock changes while still
+// retaining the assigned UTC value for logging and persisted timestamps.
+class MonotonicElapsedTimestamp {
+ public:
+  MonotonicElapsedTimestamp() noexcept = default;
+
+  MonotonicElapsedTimestamp& operator=(int64_t wallTime) noexcept {
+    wallTime_ = wallTime;
+    if (wallTime <= 0) {
+      startedTick_ = 0;
+      return *this;
+    }
+    const uint64_t nowTick = GetTickCount64();
+    startedTick_ = nowTick == 0 ? 1 : nowTick;
+    return *this;
+  }
+
+  [[nodiscard]] bool Active() const noexcept { return startedTick_ != 0; }
+  [[nodiscard]] int64_t WallTime() const noexcept { return wallTime_; }
+  [[nodiscard]] int64_t ElapsedMilliseconds() const noexcept {
+    if (!Active()) return 0;
+    const uint64_t nowTick = GetTickCount64();
+    const uint64_t elapsed = nowTick >= startedTick_ ? nowTick - startedTick_ : 0;
+    return elapsed > static_cast<uint64_t>(INT64_MAX)
+        ? INT64_MAX
+        : static_cast<int64_t>(elapsed);
+  }
+
+  operator int64_t() const noexcept { return wallTime_; }
+
+  friend int64_t operator-(
+      int64_t, const MonotonicElapsedTimestamp& timestamp) noexcept {
+    return timestamp.ElapsedMilliseconds();
+  }
+
+ private:
+  int64_t wallTime_ = 0;
+  uint64_t startedTick_ = 0;
+};
+
+// Converts an assigned UTC deadline into an uptime deadline once. Subsequent
+// clock corrections cannot make a startup watchdog fire early or stall.
+class MonotonicDeadline {
+ public:
+  MonotonicDeadline() noexcept = default;
+
+  MonotonicDeadline& operator=(int64_t wallDeadline) noexcept {
+    wallDeadline_ = wallDeadline;
+    if (wallDeadline <= 0) {
+      deadlineTick_ = 0;
+      return *this;
+    }
+    const int64_t wallNow = UnixMillis();
+    const uint64_t delay = wallDeadline > wallNow
+        ? static_cast<uint64_t>(wallDeadline - wallNow)
+        : 0;
+    const uint64_t nowTick = GetTickCount64();
+    deadlineTick_ = delay > UINT64_MAX - nowTick
+        ? UINT64_MAX
+        : nowTick + delay;
+    if (deadlineTick_ == 0) deadlineTick_ = 1;
+    return *this;
+  }
+
+  [[nodiscard]] bool Active() const noexcept { return deadlineTick_ != 0; }
+  [[nodiscard]] bool Reached() const noexcept {
+    return Active() && GetTickCount64() >= deadlineTick_;
+  }
+
+  operator int64_t() const noexcept { return wallDeadline_; }
+
+  friend bool operator>=(int64_t, const MonotonicDeadline& deadline) noexcept {
+    return deadline.Reached();
+  }
+
+ private:
+  int64_t wallDeadline_ = 0;
+  uint64_t deadlineTick_ = 0;
+};
+
+// The ordinary scheduler may sleep for minutes after a stable document. During
+// controller creation, required-script registration, or auth-controller
+// creation, expose an immediate wake instead so the watchdogs are evaluated on
+// every App startup tick.
+class StartupAwareWakeDeadline {
+ public:
+  StartupAwareWakeDeadline(
+      const std::atomic<bool>& creating,
+      const MonotonicDeadline& startupScriptDeadline,
+      const MonotonicElapsedTimestamp& authControllerStartedAt,
+      const bool& startupNavigationStarted) noexcept
+      : creating_(&creating),
+        startupScriptDeadline_(&startupScriptDeadline),
+        authControllerStartedAt_(&authControllerStartedAt),
+        startupNavigationStarted_(&startupNavigationStarted) {}
+
+  StartupAwareWakeDeadline& operator=(int64_t value) noexcept {
+    value_ = value;
+    return *this;
+  }
+
+  operator int64_t() const noexcept {
+    const bool startupWatchdogPending =
+        creating_->load(std::memory_order_relaxed) ||
+        (!*startupNavigationStarted_ && startupScriptDeadline_->Active()) ||
+        authControllerStartedAt_->Active();
+    return startupWatchdogPending ? 0 : value_;
+  }
+
+ private:
+  const std::atomic<bool>* creating_;
+  const MonotonicDeadline* startupScriptDeadline_;
+  const MonotonicElapsedTimestamp* authControllerStartedAt_;
+  const bool* startupNavigationStarted_;
+  int64_t value_ = 0;
+};
+
 struct StationheadDailyPlayPoint {
   int64_t dayStartMsUtc = 0;
   int value = 0;
@@ -86,7 +203,7 @@ struct StationheadStatus {
 class StationheadPlayer {
  public:
   StationheadPlayer(StationheadRole role, HWND window, StationheadConfig config,
-                     fs::path userDataFolder, Logger& log);
+                    fs::path userDataFolder, Logger& log);
   StationheadPlayer(const StationheadPlayer&) = delete;
   StationheadPlayer& operator=(const StationheadPlayer&) = delete;
   ~StationheadPlayer();
@@ -251,8 +368,8 @@ class StationheadPlayer {
   bool trackBoundaryPlaybackRecoveryPending_ = false;
   bool trackBoundaryPlaybackRecoveryAwaitingNavigation_ = false;
   int64_t trackBoundaryPlaybackRecoveryDeadline_ = 0;
-  int64_t creationStartedAt_ = 0;
-  int64_t recreateAt_ = 0;
+  MonotonicElapsedTimestamp creationStartedAt_;
+  MonotonicDeadline recreateAt_;
   std::atomic<bool> shuttingDown_{false};
   std::atomic<bool> audioPlaying_{false};
   std::atomic<int64_t> audioPlayingSinceAt_{0};
@@ -264,9 +381,9 @@ class StationheadPlayer {
   std::atomic<bool> changeMessagePending_{false};
   std::wstring pendingAuthorizationUrl_;
   std::wstring activeAuthorizationUrl_;
-  int64_t createdAt_ = 0;
-  int64_t startupScriptDeadline_ = 0;
-  int64_t authControllerStartedAt_ = 0;
+  MonotonicElapsedTimestamp createdAt_;
+  MonotonicDeadline startupScriptDeadline_;
+  MonotonicElapsedTimestamp authControllerStartedAt_;
   // The final PCH policy exposes this storage through a write-filtering proxy:
   // first successful navigation initializes it, then only an App-accepted
   // 52-minute refresh may advance it.
@@ -282,7 +399,9 @@ class StationheadPlayer {
   bool startupScriptRegistrationComplete_ = false;
   bool startupNavigationStarted_ = false;
   bool stationNavigationStarted_ = false;
-  int64_t nextTickAt_ = 0;
+  StartupAwareWakeDeadline nextTickAt_{
+      creating_, startupScriptDeadline_, authControllerStartedAt_,
+      startupNavigationStarted_};
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
   bool loginRequired_ = false;
