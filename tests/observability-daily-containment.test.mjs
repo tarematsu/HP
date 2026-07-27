@@ -4,11 +4,19 @@ import test from 'node:test';
 import {
   classifyDailyRowsReadTrend,
   parseDailyRowsReadSnapshot,
+  parseDailyRowsWrittenSnapshot,
+  renderDailyD1SnapshotPace,
 } from '../.github/scripts/observability-daily-trend.mjs';
 import { buildObservabilityTriage } from '../.github/scripts/observability-issue-triage.mjs';
 import { buildIssueBody } from '../.github/scripts/publish-cloudflare-observability-status.mjs';
 
-function dailySummary(actual, projected = 406_087_050, date = '2026-07-27') {
+function dailySummary(
+  actual,
+  projected = 406_087_050,
+  date = '2026-07-27',
+  writesActual = 36_859,
+  writesProjected = 55_510,
+) {
   return `## Cloudflare projected UTC daily budgets
 
 - Date: \`${date}\`
@@ -18,12 +26,17 @@ function dailySummary(actual, projected = 406_087_050, date = '2026-07-27') {
 |---|---:|---:|---:|---:|---|
 | Worker and Pages requests | 10 | 20 | 100,000 | 99,980 | OK |
 | D1 rows read | ${actual.toLocaleString('en-US')} | ${projected.toLocaleString('en-US')} | 5,000,000 | 0 | VIOLATION (actual) |
-| D1 rows written | 10 | 20 | 100,000 | 99,980 | OK |
+| D1 rows written | ${writesActual.toLocaleString('en-US')} | ${writesProjected.toLocaleString('en-US')} | 100,000 | ${Math.max(0, 100_000 - writesProjected).toLocaleString('en-US')} | OK |
 | Queue billable operations | 10 | 20 | 10,000 | 9,980 | OK |
 `;
 }
 
-function previousIssue({ actual = 227_541_173, generatedAt = '2026-07-27T12:47:26.833Z', date = '2026-07-27' } = {}) {
+function previousIssue({
+  actual = 227_541_173,
+  writesActual = 36_100,
+  generatedAt = '2026-07-27T12:47:26.833Z',
+  date = '2026-07-27',
+} = {}) {
   return `<!-- cloudflare-observability-status -->
 # Cloudflare Observability Status
 
@@ -33,7 +46,7 @@ function previousIssue({ actual = 227_541_173, generatedAt = '2026-07-27T12:47:2
 <details>
 <summary>[FAIL] Account-wide projected UTC daily Worker, D1, and Queue budgets</summary>
 
-${dailySummary(actual, 428_471_490, date)}
+${dailySummary(actual, 428_471_490, date, writesActual, 54_000)}
 </details>
 
 <a id="diagnostic-free-tier" name="diagnostic-free-tier"></a>`;
@@ -65,7 +78,7 @@ const deployments = {
 
 const generatedAt = '2026-07-27T13:28:42.647Z';
 
-test('daily rows-read parser accepts actual-source violation rows', () => {
+test('daily D1 parsers accept read violations and healthy write rows', () => {
   assert.deepEqual(parseDailyRowsReadSnapshot(summaries.daily), {
     date: '2026-07-27',
     actual: 227_545_050,
@@ -73,6 +86,14 @@ test('daily rows-read parser accepts actual-source violation rows', () => {
     limit: 5_000_000,
     status: 'VIOLATION (actual)',
     violationSource: 'actual',
+  });
+  assert.deepEqual(parseDailyRowsWrittenSnapshot(summaries.daily), {
+    date: '2026-07-27',
+    actual: 36_859,
+    projected: 55_510,
+    limit: 100_000,
+    status: 'OK',
+    violationSource: '',
   });
 });
 
@@ -100,6 +121,17 @@ test('historical daily breach is contained when the recent delta pace is within 
   assert.match(triage, /recent pace 135,288\/day vs 5,000,000\/day limit/);
   assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
   assert.doesNotMatch(triage, /ACTION REQUIRED/);
+});
+
+test('snapshot pace renders D1 reads and writes from the same interval', () => {
+  const pace = renderDailyD1SnapshotPace({
+    currentSummary: summaries.daily,
+    previousIssueBody: previousIssue(),
+    generatedAt,
+  });
+  assert.match(pace, /D1 snapshot delta pace/);
+  assert.match(pace, /\| D1 rows read \| \+3,877 \| 41m \| 135,288\/day \| 5,000,000\/day \| within limit \|/);
+  assert.match(pace, /\| D1 rows written \| \+759 \| 41m \| 26,486\/day \| 100,000\/day \| within limit \|/);
 });
 
 test('current runaway pace remains an active daily-usage incident', () => {
@@ -140,7 +172,7 @@ test('trend classification fails closed across UTC dates or short samples', () =
   }), null);
 });
 
-test('issue builder passes the previous snapshot into immediate triage', () => {
+test('issue builder publishes read and write snapshot pace in daily diagnostics', () => {
   const body = buildIssueBody({
     generatedAt,
     targetSha: 'abc',
@@ -153,5 +185,7 @@ test('issue builder passes the previous snapshot into immediate triage', () => {
     previousIssueBody: previousIssue(),
   });
   assert.match(body, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
+  assert.match(body, /### D1 snapshot delta pace/);
+  assert.match(body, /D1 rows written \| \+759 \| 41m \| 26,486\/day/);
   assert.match(body, /\*\*Cloudflare status:\*\* failure/);
 });
