@@ -134,6 +134,8 @@ export function buildIssueBody({
     outcomes,
     summaries: renderedSummaries,
     activeDeployments,
+    previousIssueBody,
+    generatedAt,
   });
   const publicHealth = publicHealthSignal(renderedSummaries.publicHealth);
   const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
