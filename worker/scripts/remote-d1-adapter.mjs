@@ -1,6 +1,9 @@
 import { execFileSync as defaultExecFileSync } from 'node:child_process';
 import { Buffer } from 'node:buffer';
 
+const DEFAULT_MAX_RETRIES = 2;
+const DEFAULT_RETRY_DELAY_MS = 1_000;
+
 function jsonStartIndexes(text) {
   const indexes = [];
   for (let index = 0; index < text.length; index += 1) {
@@ -153,35 +156,60 @@ function commandFailureDetail(error) {
   return stderr || stdout || String(error?.message || error || '').trim();
 }
 
+export function transientWranglerD1Failure(error) {
+  const detail = commandFailureDetail(error);
+  return /["']?code["']?\s*:\s*7500\b/i.test(detail)
+    || /internal error; reference\s*=/i.test(detail)
+    || /\b(?:ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b|socket hang up|fetch failed/i.test(detail);
+}
+
+function defaultSleepSync(milliseconds) {
+  if (!(milliseconds > 0)) return;
+  const state = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(state, 0, 0, milliseconds);
+}
+
 export function createWranglerRemoteD1({
   database,
   cwd,
   wranglerScript,
   execFileSync = defaultExecFileSync,
+  maxRetries = DEFAULT_MAX_RETRIES,
+  retryDelayMs = DEFAULT_RETRY_DELAY_MS,
+  sleepSync = defaultSleepSync,
 }) {
   if (!String(database || '').trim()) throw new Error('remote D1 database name is required');
   if (!String(cwd || '').trim()) throw new Error('remote D1 working directory is required');
   if (!String(wranglerScript || '').trim()) throw new Error('Wrangler script path is required');
+  const retryCount = Math.max(0, Math.min(5, Math.trunc(Number(maxRetries)) || 0));
+  const baseRetryDelayMs = Math.max(0, Math.min(30_000, Math.trunc(Number(retryDelayMs)) || 0));
 
   const execute = (tail) => {
-    try {
-      return execFileSync(process.execPath, [
-        wranglerScript,
-        'd1', 'execute', database,
-        '--remote', '--yes', '--json',
-        ...tail,
-      ], {
-        cwd,
-        env: process.env,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      });
-    } catch (error) {
-      const detail = commandFailureDetail(error).slice(0, 4000);
-      const wrapped = new Error(`Wrangler D1 execute failed for ${database}${detail ? `: ${detail}` : ''}`);
-      wrapped.cause = error;
-      throw wrapped;
+    for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+      try {
+        return execFileSync(process.execPath, [
+          wranglerScript,
+          'd1', 'execute', database,
+          '--remote', '--yes', '--json',
+          ...tail,
+        ], {
+          cwd,
+          env: process.env,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+      } catch (error) {
+        if (attempt < retryCount && transientWranglerD1Failure(error)) {
+          sleepSync(baseRetryDelayMs * (2 ** attempt));
+          continue;
+        }
+        const detail = commandFailureDetail(error).slice(0, 4000);
+        const wrapped = new Error(`Wrangler D1 execute failed for ${database}${detail ? `: ${detail}` : ''}`);
+        wrapped.cause = error;
+        throw wrapped;
+      }
     }
+    throw new Error(`Wrangler D1 execute exhausted retries for ${database}`);
   };
 
   const createStatement = (sql, bindings = []) => ({
@@ -214,7 +242,7 @@ export function createWranglerRemoteD1({
       // --command preserves the per-statement results expected by the D1 batch API.
       const results = wranglerD1Results(execute(['--command', rendered.join('\n')]));
       if (results.length !== statements.length) {
-        throw new Error(`Wrangler returned ${results.length} D1 batch results for ${statements.length} statements`);
+        throw new Error(`Wrangler returned ${results.length} D1 results for ${statements.length} statements`);
       }
       if (results.some((result) => !result.success)) {
         throw new Error('Wrangler reported an unsuccessful D1 batch statement');
