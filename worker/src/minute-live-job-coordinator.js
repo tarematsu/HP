@@ -137,12 +137,7 @@ export class MinuteLiveJobCoordinator {
       const key = this.storageKey(id);
       const current = await this.state.storage.get(key);
       if (!current) continue;
-      await this.state.storage.put(key, {
-        ...current,
-        attempts: Math.max(0, Number(current.attempts || 0) - 1),
-        lease_until: 0,
-        released_at: integer(body.now) ?? Date.now(),
-      });
+      await this.state.storage.delete(key);
       released += 1;
     }
     return { released };
