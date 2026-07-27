@@ -41,11 +41,14 @@ _CRON_INGESTION_GRACE_SECONDS = max(
     int(os.environ.get("CRON_COVERAGE_INGESTION_GRACE_SECONDS", "300")),
 )
 _active_schedules: dict[str, set[str] | None] = {}
+_active_deployments: dict[str, dict[str, object]] = {}
 _activity_requests: dict[str, int] | None = None
 _activity_failures: dict[str, str] = {}
 _coverage_missing_workers: list[str] = []
+_telemetry_window: tuple[dt.datetime, dt.datetime] | None = None
 _original_active_worker_state = module.active_worker_state
 _original_coverage_after_grace = module.coverage_after_grace
+_original_query_events = module.audit.query_events
 
 
 def _field_values(field: str, lower: int, upper: int, *, day_of_week: bool = False) -> set[int]:
@@ -134,9 +137,20 @@ def _worker_grace_seconds(
 
 def _active_worker_state(account: str):
     result = _original_active_worker_state(account)
+    _active_deployments.clear()
+    _active_deployments.update(result[1])
     _active_schedules.clear()
     _active_schedules.update(result[2])
     return result
+
+
+def _capture_query_events(account: str, start_ms: int, end_ms: int):
+    global _telemetry_window
+    _telemetry_window = (
+        dt.datetime.fromtimestamp(start_ms / 1000, tz=dt.timezone.utc),
+        dt.datetime.fromtimestamp(end_ms / 1000, tz=dt.timezone.utc),
+    )
+    return _original_query_events(account, start_ms, end_ms)
 
 
 def _coverage_grace_workers(
@@ -170,6 +184,28 @@ def _iso(value: dt.datetime) -> str:
     return value.astimezone(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _deployment_activity_window(
+    worker: str,
+    start: dt.datetime,
+    end: dt.datetime,
+) -> tuple[dt.datetime, dt.datetime]:
+    created = module.deployment_time(
+        str((_active_deployments.get(worker) or {}).get("created_on") or "")
+    )
+    if created is None:
+        return start, end
+    return max(start, min(created, end)), end
+
+
+def _activity_window(worker: str) -> tuple[dt.datetime, dt.datetime]:
+    if _telemetry_window is not None:
+        start, end = _telemetry_window
+    else:
+        end = dt.datetime.now(dt.timezone.utc)
+        start = module.audit.parse_start(end)
+    return _deployment_activity_window(worker, start, end)
+
+
 def _load_activity_requests() -> dict[str, int]:
     global _activity_requests
     if _activity_requests is not None:
@@ -190,11 +226,12 @@ def _load_activity_requests() -> dict[str, int]:
         }
       }
     """
-    end = dt.datetime.now(dt.timezone.utc)
-    start = module.audit.parse_start(end)
     activity: dict[str, int] = {}
+    windows: dict[str, dict[str, str]] = {}
     failures: dict[str, str] = {}
     for worker in module.audit.WORKERS:
+        start, end = _activity_window(worker)
+        windows[worker] = {"from": _iso(start), "to": _iso(end)}
         try:
             response = module.audit.request_json(
                 f"{module.audit.API_BASE}/graphql",
@@ -218,6 +255,7 @@ def _load_activity_requests() -> dict[str, int]:
     _activity_requests = activity
     _activity_failures.clear()
     _activity_failures.update(failures)
+    print("WORKER_ACTIVITY_WINDOWS=" + json.dumps(windows, separators=(",", ":")))
     print("WORKER_ACTIVITY_REQUESTS=" + json.dumps(activity, separators=(",", ":")))
     for worker, detail in failures.items():
         print(
@@ -265,7 +303,7 @@ def _coverage_after_grace(
     if idle:
         print(
             "CPU_COVERAGE_IDLE "
-            f"workers={','.join(idle)} reason=no-invocations-and-no-cron"
+            f"workers={','.join(idle)} reason=no-current-deployment-invocations-and-no-cron"
         )
     return unresolved, pending, coverage
 
@@ -288,6 +326,7 @@ def _rewrite_missing_coverage_summary() -> None:
 module.active_worker_state = _active_worker_state
 module.coverage_grace_workers = _coverage_grace_workers
 module.coverage_after_grace = _coverage_after_grace
+module.audit.query_events = _capture_query_events
 
 
 def _self_test_schedule_grace() -> None:
@@ -317,6 +356,26 @@ def _self_test_schedule_grace() -> None:
         module.audit.WORKERS = original_workers
         _active_schedules.clear()
 
+    window_start = dt.datetime(2026, 7, 26, 19, 0, tzinfo=dt.timezone.utc)
+    window_end = dt.datetime(2026, 7, 26, 20, 0, tzinfo=dt.timezone.utc)
+    _active_deployments["new"] = {"created_on": "2026-07-26T19:45:00Z"}
+    _active_deployments["future"] = {"created_on": "2026-07-26T20:05:00Z"}
+    try:
+        assert _deployment_activity_window("new", window_start, window_end) == (
+            dt.datetime(2026, 7, 26, 19, 45, tzinfo=dt.timezone.utc),
+            window_end,
+        )
+        assert _deployment_activity_window("unknown", window_start, window_end) == (
+            window_start,
+            window_end,
+        )
+        assert _deployment_activity_window("future", window_start, window_end) == (
+            window_end,
+            window_end,
+        )
+    finally:
+        _active_deployments.clear()
+
     unresolved, pending, idle, coverage = _coverage_after_activity(
         ["idle", "active"],
         ["new"],
@@ -344,7 +403,7 @@ def _self_test_schedule_grace() -> None:
         {"idle": set()},
     )
     assert not unresolved and not pending and idle == ["idle"] and coverage
-    print("schedule-aware and activity-aware deployment coverage self-test passed")
+    print("schedule-aware, deployment-aware, and activity-aware coverage self-test passed")
 
 
 try:
