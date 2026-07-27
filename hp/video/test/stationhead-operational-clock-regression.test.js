@@ -35,6 +35,9 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
+// These source-contract tests keep uptime-based operational scheduling separate
+// from persisted UTC event timestamps. They intentionally cover only timers
+// converted in this change set.
 test('backdated elapsed timestamps retain their initial elapsed duration', () => {
   const elapsed = section(
     playerHeader,
