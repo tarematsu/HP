@@ -127,7 +127,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
-    const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, null, startedAt);
+    const rollup = await runRollup(env.BUDDIES_DB, env.OTHER_DB, env.MINUTE_DB, startedAt);
     ensureTime();
     const retention = await runRetention(env, startedAt);
     const finishedAt = timestamp(clock, startedAt);
