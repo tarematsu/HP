@@ -28,7 +28,7 @@ on:
       - '.github/scripts/query-cloudflare-d1-costs.py'
       - '.github/scripts/resolve-cloudflare-account.mjs'
       - '.github/scripts/resolve-cloudflare-config.mjs'
-      - '.github/scripts/observability-status-publisher.mjs'
+      - '.github/scripts/observability-*.mjs'
       - '.github/scripts/publish-cloudflare-observability-status.mjs'
       - '.github/workflows/cloud-deploy.yml'
       - '.github/workflows/sh-observability.yml'
