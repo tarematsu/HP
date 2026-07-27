@@ -44,12 +44,15 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'CRON_COVERAGE_INGESTION_GRACE_SECONDS',
     'def _next_cron_time(',
     'def _worker_grace_seconds(',
+    'def _deployment_activity_window(',
+    'module.audit.query_events = _capture_query_events',
     'CPU_COVERAGE_CRON_GRACE',
     'workersInvocationsAdaptive',
+    'WORKER_ACTIVITY_WINDOWS',
     'CPU_COVERAGE_IDLE',
-    'no-invocations-and-no-cron',
+    'no-current-deployment-invocations-and-no-cron',
     'CPU coverage failure',
-    'schedule-aware and activity-aware deployment coverage self-test passed',
+    'schedule-aware, deployment-aware, and activity-aware coverage self-test passed',
   ]);
   expectAll(unifiedCi, [
     'python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test',
