@@ -1,0 +1,38 @@
+name: Apply immutable summary rollups
+
+on:
+  push:
+    branches:
+      - agent/compress-observability-d1-load
+    paths:
+      - .github/scripts/apply-immutable-summary-rollups.mjs
+      - .github/workflows/apply-immutable-summary-rollups.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/compress-observability-d1-load
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Apply patch
+        run: node .github/scripts/apply-immutable-summary-rollups.mjs
+      - name: Run focused tests
+        run: |
+          node --test tests/immutable-summary-rollups.test.mjs
+          node --test worker/tests/pages-read-model-ranges.test.js
+          node --test tests/d1-budget-regressions.test.mjs
+      - name: Commit changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Make summary rollups immutable and dependency-gated"
+          git push origin HEAD:agent/compress-observability-d1-load
