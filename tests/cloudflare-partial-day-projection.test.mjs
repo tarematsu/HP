@@ -27,15 +27,23 @@ test('partial UTC-day budget audits pass executable projection tests', () => {
   runSelfTest(freeTierPath);
 });
 
-test('daily Worker and D1 gates use 24-hour projected values', () => {
+test('daily Worker and D1 gates use warmup-aware 24-hour projected values', () => {
   assert.match(daily, /"method": "linear-from-utc-midnight"/);
   assert.match(daily, /DAY_SECONDS \/ elapsed/);
+  assert.match(daily, /DAILY_PROJECTION_MIN_ELAPSED_SECONDS/);
+  assert.match(daily, /"enforceProjected": elapsed >= PROJECTION_MIN_ELAPSED_SECONDS/);
   assert.match(daily, /"actualUsage": actual/);
+  assert.match(daily, /"violationSources": violation_sources/);
   assert.match(daily, /"queueOperations"/);
   assert.match(daily, /usage = project_daily_usage\(actual, projection, REQUEST_RESERVE\)/);
-  assert.match(daily, /violations = evaluate\(usage, LIMITS\)/);
+  assert.match(
+    daily,
+    /violations, violation_sources = evaluate\(actual, usage, LIMITS, projection\["enforceProjected"\]\)/,
+  );
+  assert.match(daily, /actual limit breaches still fail immediately/);
+  assert.match(daily, /status = "WARMUP"/);
   assert.match(daily, /Actual to now \| Projected 24h/);
-  assert.match(daily, /projected limit=/);
+  assert.match(daily, /actual=.*projected=/);
 });
 
 test('account-wide gate projects only daily allowance meters', () => {
