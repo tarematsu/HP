@@ -3,6 +3,10 @@ const MIN_PACE_ALERT_SECONDS = 20 * 60;
 const MAX_TREND_SECONDS = 2 * 60 * 60;
 const DAY_SECONDS = 24 * 60 * 60;
 const PACE_WARNING_RATIO = 0.8;
+const SNAPSHOT_HISTORY_LIMIT = 8;
+
+const SNAPSHOT_HISTORY_START = '<!-- d1-snapshot-history:start';
+const SNAPSHOT_HISTORY_END = 'd1-snapshot-history:end -->';
 
 const D1_SNAPSHOT_METRICS = Object.freeze([
   Object.freeze({ key: 'rowsRead', label: 'D1 rows read' }),
@@ -10,7 +14,7 @@ const D1_SNAPSHOT_METRICS = Object.freeze([
 ]);
 
 function integer(value) {
-  const normalized = String(value || '').replaceAll(',', '').trim();
+  const normalized = String(value ?? '').replaceAll(',', '').trim();
   if (!/^\d+$/.test(normalized)) return null;
   const parsed = Number.parseInt(normalized, 10);
   return Number.isSafeInteger(parsed) ? parsed : null;
@@ -98,32 +102,144 @@ function percentLabel(value) {
   return `${Number(value || 0).toFixed(1)}%`;
 }
 
+function historyMetricKey(metricLabel) {
+  const normalized = String(metricLabel || '').trim().toLowerCase();
+  return D1_SNAPSHOT_METRICS.find((metric) => metric.label.toLowerCase() === normalized)?.key || '';
+}
+
+function snapshotHistoryEntry(summary, generatedAt) {
+  const timestamp = Date.parse(String(generatedAt || ''));
+  const rowsRead = parseDailyRowsReadSnapshot(summary);
+  const rowsWritten = parseDailyRowsWrittenSnapshot(summary);
+  const date = rowsRead?.date || rowsWritten?.date || '';
+  if (!Number.isFinite(timestamp) || !date) return null;
+
+  return {
+    generatedAt: new Date(timestamp).toISOString(),
+    date,
+    rowsRead: rowsRead?.actual ?? null,
+    rowsWritten: rowsWritten?.actual ?? null,
+  };
+}
+
+function normalizeHistoryEntry(entry) {
+  const timestamp = Date.parse(String(entry?.generatedAt || ''));
+  const date = String(entry?.date || '').trim();
+  const rowsRead = entry?.rowsRead == null ? null : integer(entry.rowsRead);
+  const rowsWritten = entry?.rowsWritten == null ? null : integer(entry.rowsWritten);
+  if (!Number.isFinite(timestamp) || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (rowsRead == null && rowsWritten == null) return null;
+  return {
+    generatedAt: new Date(timestamp).toISOString(),
+    date,
+    rowsRead,
+    rowsWritten,
+  };
+}
+
+function deduplicateHistory(entries) {
+  const byTimestamp = new Map();
+  for (const candidate of entries || []) {
+    const entry = normalizeHistoryEntry(candidate);
+    if (!entry) continue;
+    byTimestamp.set(`${entry.date}:${entry.generatedAt}`, entry);
+  }
+  return [...byTimestamp.values()]
+    .sort((left, right) => Date.parse(left.generatedAt) - Date.parse(right.generatedAt))
+    .slice(-SNAPSHOT_HISTORY_LIMIT);
+}
+
+export function parseD1SnapshotHistory(issueBody) {
+  const body = String(issueBody || '');
+  const start = body.indexOf(SNAPSHOT_HISTORY_START);
+  const end = start < 0 ? -1 : body.indexOf(SNAPSHOT_HISTORY_END, start + SNAPSHOT_HISTORY_START.length);
+  let persisted = [];
+
+  if (start >= 0 && end >= 0) {
+    const payloadStart = body.indexOf('\n', start);
+    if (payloadStart >= 0 && payloadStart < end) {
+      const payload = body.slice(payloadStart + 1, end).trim();
+      try {
+        const parsed = JSON.parse(payload);
+        persisted = Array.isArray(parsed?.snapshots) ? parsed.snapshots : [];
+      } catch {
+        persisted = [];
+      }
+    }
+  }
+
+  const previousTimestamp = issueGeneratedAt(body);
+  const fallback = previousTimestamp == null
+    ? null
+    : snapshotHistoryEntry(dailyDiagnostic(body), new Date(previousTimestamp).toISOString());
+  return deduplicateHistory([...persisted, fallback].filter(Boolean));
+}
+
+export function renderD1SnapshotHistory({
+  currentSummary = '',
+  previousIssueBody = '',
+  generatedAt = '',
+} = {}) {
+  const current = snapshotHistoryEntry(currentSummary, generatedAt);
+  const snapshots = deduplicateHistory([
+    ...parseD1SnapshotHistory(previousIssueBody),
+    current,
+  ].filter(Boolean));
+  if (!snapshots.length) return '';
+  return `${SNAPSHOT_HISTORY_START}
+${JSON.stringify({ version: 1, snapshots })}
+${SNAPSHOT_HISTORY_END}`;
+}
+
+function previousMetricSnapshots(previousIssueBody, metricLabel) {
+  const key = historyMetricKey(metricLabel);
+  if (!key) return [];
+  return parseD1SnapshotHistory(previousIssueBody)
+    .filter((entry) => entry[key] != null)
+    .map((entry) => ({
+      date: entry.date,
+      actual: entry[key],
+      generatedAt: entry.generatedAt,
+    }));
+}
+
 export function calculateDailyMetricTrend({
   metricLabel,
   currentSummary = '',
   previousIssueBody = '',
   generatedAt = '',
+  minimumElapsedSeconds = MIN_TREND_SECONDS,
 } = {}) {
   const current = parseDailyMetricSnapshot(currentSummary, metricLabel);
-  const previous = parseDailyMetricSnapshot(dailyDiagnostic(previousIssueBody), metricLabel);
   const currentTimestamp = Date.parse(String(generatedAt || ''));
-  const previousTimestamp = issueGeneratedAt(previousIssueBody);
+  if (!current || !Number.isFinite(currentTimestamp)) return null;
 
-  if (!current || !previous || !Number.isFinite(currentTimestamp) || previousTimestamp == null) return null;
-  if (current.date !== previous.date) return null;
+  const minimum = Math.max(MIN_TREND_SECONDS, Number(minimumElapsedSeconds) || MIN_TREND_SECONDS);
+  const candidates = previousMetricSnapshots(previousIssueBody, metricLabel)
+    .map((previous) => {
+      const previousTimestamp = Date.parse(previous.generatedAt);
+      const elapsedSeconds = Math.round((currentTimestamp - previousTimestamp) / 1000);
+      const delta = current.actual - previous.actual;
+      return { previous, previousTimestamp, elapsedSeconds, delta };
+    })
+    .filter(({ previous, previousTimestamp, elapsedSeconds, delta }) => (
+      Number.isFinite(previousTimestamp)
+      && previous.date === current.date
+      && elapsedSeconds >= minimum
+      && elapsedSeconds <= MAX_TREND_SECONDS
+      && delta >= 0
+    ))
+    .sort((left, right) => right.previousTimestamp - left.previousTimestamp);
 
-  const elapsedSeconds = Math.round((currentTimestamp - previousTimestamp) / 1000);
-  if (elapsedSeconds < MIN_TREND_SECONDS || elapsedSeconds > MAX_TREND_SECONDS) return null;
-
-  const delta = current.actual - previous.actual;
-  if (delta < 0) return null;
+  const selected = candidates[0];
+  if (!selected) return null;
 
   return {
     current,
-    previous,
-    elapsedSeconds,
-    delta,
-    recentProjected24h: Math.ceil((delta * DAY_SECONDS) / elapsedSeconds),
+    previous: selected.previous,
+    elapsedSeconds: selected.elapsedSeconds,
+    delta: selected.delta,
+    recentProjected24h: Math.ceil((selected.delta * DAY_SECONDS) / selected.elapsedSeconds),
   };
 }
 
@@ -138,8 +254,9 @@ export function classifyDailyMetricPace({
     currentSummary,
     previousIssueBody,
     generatedAt,
+    minimumElapsedSeconds: MIN_PACE_ALERT_SECONDS,
   });
-  if (!trend || trend.elapsedSeconds < MIN_PACE_ALERT_SECONDS) return null;
+  if (!trend) return null;
 
   const assessment = paceAssessment(trend);
   return {
@@ -175,6 +292,7 @@ export function classifyDailyRowsReadTrend({
     currentSummary,
     previousIssueBody,
     generatedAt,
+    minimumElapsedSeconds: MIN_PACE_ALERT_SECONDS,
   });
   if (!trend || trend.current.violationSource !== 'actual' || trend.current.actual < trend.current.limit) return null;
 
@@ -193,6 +311,11 @@ export function renderDailyD1SnapshotPace({
   previousIssueBody = '',
   generatedAt = '',
 } = {}) {
+  const history = renderD1SnapshotHistory({
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
   const trends = D1_SNAPSHOT_METRICS.map((metric) => ({
     metric,
     trend: calculateDailyMetricTrend({
@@ -204,7 +327,9 @@ export function renderDailyD1SnapshotPace({
   })).filter(({ trend }) => trend);
 
   if (!trends.length) {
-    return `### D1 snapshot delta pace\n\n- Comparable snapshot unavailable. A prior snapshot from the same UTC date and a 10m–2h interval is required.`;
+    return [history, '### D1 snapshot delta pace\n\n- Comparable snapshot unavailable. A prior snapshot from the same UTC date and a 10m–2h interval is required.']
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   const rows = trends.map(({ metric, trend }) => {
@@ -217,9 +342,11 @@ export function renderDailyD1SnapshotPace({
     return `| ${metric.label} | +${trend.delta.toLocaleString('en-US')} | ${durationLabel(trend.elapsedSeconds)} | ${trend.recentProjected24h.toLocaleString('en-US')}/day | ${trend.current.limit.toLocaleString('en-US')}/day | ${percentLabel(assessment.percent)} | ${paceState} |`;
   }).join('\n');
 
-  return `### D1 snapshot delta pace
+  return `${history ? `${history}\n\n` : ''}### D1 snapshot delta pace
 
 | Metric | Snapshot delta | Interval | Recent 24h pace | Daily limit | Pace usage | Pace status |
 |---|---:|---:|---:|---:|---:|---|
-${rows}`;
+${rows}
+
+_Alert and containment classification use the newest comparable snapshot at least 20 minutes old._`;
 }
