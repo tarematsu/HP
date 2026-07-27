@@ -1,5 +1,6 @@
 #pragma once
 #include "common.h"
+#include "sh.h"
 
 namespace hp {
 
@@ -56,7 +57,29 @@ inline bool primaryReloadClockAssignmentPending = false;
 inline bool secondaryReloadClockAssignmentPending = false;
 inline ULONGLONG primaryReloadMonotonicAt = 0;
 inline ULONGLONG secondaryReloadMonotonicAt = 0;
+inline MonotonicProjectedDeadline primaryAutoClickDeadline;
+inline MonotonicProjectedDeadline secondaryAutoClickDeadline;
+inline int64_t primaryAutoClickExposed = 0;
+inline int64_t secondaryAutoClickExposed = 0;
 }  // namespace stationhead_boundary_message_policy
+
+// The player source uses nextAutoClickAt_ as an ordinary int64_t lvalue: it is
+// assigned directly, compared against nowMs, passed to the scheduler, and used
+// as both sides of std::max. Keep that source contract while synchronizing each
+// externally written wall deadline into an uptime-backed deadline before reads.
+inline int64_t& StationheadAutoClickDeadlineStorage(
+    int64_t& storage, bool secondary) noexcept {
+  MonotonicProjectedDeadline& deadline = secondary
+      ? stationhead_boundary_message_policy::secondaryAutoClickDeadline
+      : stationhead_boundary_message_policy::primaryAutoClickDeadline;
+  int64_t& exposed = secondary
+      ? stationhead_boundary_message_policy::secondaryAutoClickExposed
+      : stationhead_boundary_message_policy::primaryAutoClickExposed;
+  if (storage != exposed) deadline = storage;
+  storage = static_cast<int64_t>(deadline);
+  exposed = storage;
+  return storage;
+}
 
 class StationheadBoundaryReloadClockProxy {
  public:
@@ -181,3 +204,6 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 #define lastReloadAt_                                                        \
   (::hp::StationheadBoundaryReloadClock(                                    \
       (lastReloadAtStorage_), IsSecondary(), webViewConfigured_))
+#define nextAutoClickAt_                                                     \
+  (::hp::StationheadAutoClickDeadlineStorage(                               \
+      (nextAutoClickAt_), IsSecondary()))
