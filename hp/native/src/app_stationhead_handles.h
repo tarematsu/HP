@@ -120,7 +120,34 @@ class AppStationheadHandle final : public StationheadHandleBase {
   const AppStationheadHandle* operator->() const noexcept;
   AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void SetStartupPreviewBounds(const RECT& bounds) {
+    requestedStartupPreviewBounds_ = bounds;
+    startupPreviewRequested_ = true;
+    // Register A before App submits B's preview bounds. B can then temporarily
+    // expand A over both halves without exposing an empty secondary child host.
+    SetStartupPrimaryHandle(this);
+    StationheadHandleBase::SetStartupPreviewBounds(bounds);
+  }
+  void ClearStartupPreviewBounds() {
+    startupPreviewRequested_ = false;
+    StationheadHandleBase::ClearStartupPreviewBounds();
+  }
+  void ExpandStartupPreviewForSecondary(const RECT& secondaryBounds) {
+    if (!startupPreviewRequested_) return;
+    const RECT expanded{
+        std::min(requestedStartupPreviewBounds_.left, secondaryBounds.left),
+        std::min(requestedStartupPreviewBounds_.top, secondaryBounds.top),
+        std::max(requestedStartupPreviewBounds_.right, secondaryBounds.right),
+        std::max(requestedStartupPreviewBounds_.bottom, secondaryBounds.bottom)};
+    StationheadHandleBase::SetStartupPreviewBounds(expanded);
+  }
+  void RestoreRequestedStartupPreviewBounds() {
+    if (startupPreviewRequested_) {
+      StationheadHandleBase::SetStartupPreviewBounds(requestedStartupPreviewBounds_);
+    }
+  }
   void Start() {
+    if (!CanStartPlayer()) return;
     SetStartupPrimaryHandle(this);
     StationheadHandleBase::Start();
   }
@@ -141,6 +168,10 @@ class AppStationheadHandle final : public StationheadHandleBase {
     }
     return status;
   }
+
+ private:
+  RECT requestedStartupPreviewBounds_{0, 0, 1, 1};
+  bool startupPreviewRequested_ = false;
 };
 
 class AppSecondaryStationheadHandle final : public StationheadHandleBase {
@@ -155,6 +186,20 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void SetStartupPreviewBounds(const RECT& bounds) {
+    pendingStartupPreviewBounds_ = bounds;
+    startupPreviewRequested_ = true;
+    startupPreviewApplied_ = false;
+    if (AppStationheadHandle* primary = StartupPrimary()) {
+      primary->ExpandStartupPreviewForSecondary(bounds);
+    }
+    ApplyDeferredStartupPreview();
+  }
+  void ClearStartupPreviewBounds() {
+    startupPreviewRequested_ = false;
+    startupPreviewApplied_ = false;
+    StationheadHandleBase::ClearStartupPreviewBounds();
+  }
   void Start() {
     if (!CanStartPlayer()) return;
     if (startupRequestedAtTick_ == 0) {
@@ -165,10 +210,15 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   }
   void Tick(int64_t nowMs) {
     TryStartDeferred();
-    if (PlayerStarted()) StationheadHandleBase::Tick(nowMs);
+    if (PlayerStarted()) {
+      StationheadHandleBase::Tick(nowMs);
+      ApplyDeferredStartupPreview();
+    }
   }
   void Stop() {
     startupRequestedAtTick_ = 0;
+    startupPreviewRequested_ = false;
+    startupPreviewApplied_ = false;
     StationheadHandleBase::Stop();
   }
   StationheadStatus Status() const {
@@ -184,6 +234,10 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   }
 
  private:
+  [[nodiscard]] static AppStationheadHandle* StartupPrimary() noexcept {
+    return static_cast<AppStationheadHandle*>(StartupPrimaryHandle());
+  }
+
   void TryStartDeferred() {
     if (!CanStartPlayer() || startupRequestedAtTick_ == 0) return;
     StationheadHandleBase* primary = StartupPrimaryHandle();
@@ -196,7 +250,24 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     if (PlayerStarted()) startupRequestedAtTick_ = 0;
   }
 
+  void ApplyDeferredStartupPreview() {
+    if (!startupPreviewRequested_ || startupPreviewApplied_ || !PlayerStarted() ||
+        !RawStatus().created) {
+      return;
+    }
+    // The controller is configured before its host is exposed. Prepare B first
+    // while A still covers both halves, then restore A to the requested left half.
+    StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);
+    startupPreviewApplied_ = true;
+    if (AppStationheadHandle* primary = StartupPrimary()) {
+      primary->RestoreRequestedStartupPreviewBounds();
+    }
+  }
+
+  RECT pendingStartupPreviewBounds_{0, 0, 1, 1};
   uint64_t startupRequestedAtTick_ = 0;
+  bool startupPreviewRequested_ = false;
+  bool startupPreviewApplied_ = false;
 };
 
 }  // namespace hp
