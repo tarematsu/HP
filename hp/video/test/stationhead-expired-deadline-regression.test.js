@@ -40,11 +40,11 @@ test('Tick-local comparisons query monotonic reachability directly', () => {
   );
   assert.match(
     policy,
-    /operator>\([\s\S]*const MonotonicProjectedDeadline& deadline, int64_t candidate[\s\S]*candidate == 0[\s\S]*deadline\.Active\(\)/,
+    /operator>\([\s\S]*const MonotonicProjectedDeadline& deadline, int candidate[\s\S]*candidate == 0[\s\S]*deadline\.Active\(\)/,
   );
   assert.match(
     policy,
-    /operator<=\([\s\S]*const MonotonicProjectedDeadline& deadline, int64_t candidate[\s\S]*candidate == 0[\s\S]*!deadline\.Active\(\)/,
+    /operator<=\([\s\S]*const MonotonicProjectedDeadline& deadline, int candidate[\s\S]*candidate == 0[\s\S]*!deadline\.Active\(\)/,
   );
 });
 
