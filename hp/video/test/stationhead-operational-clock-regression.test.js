@@ -10,6 +10,14 @@ const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url),
   'utf8',
 );
+const handleHeader = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.h', import.meta.url),
+  'utf8',
+);
+const handleSource = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -66,6 +74,10 @@ test('track-boundary and periodic operational clocks use monotonic wrappers', ()
     playerHeader,
     /MonotonicElapsedTimestamp authProbeStartedAt_;/,
   );
+  assert.match(
+    handleHeader,
+    /MonotonicElapsedTimestamp playbackMissingSinceAt_;/,
+  );
 });
 
 test('existing polling and recovery expressions bind to monotonic arithmetic', () => {
@@ -85,4 +97,14 @@ test('existing polling and recovery expressions bind to monotonic arithmetic', (
   assert.match(tick, /nowMs - authProbeStartedAt_ >= kAuthProbeTimeoutMs/);
   assert.match(tick, /lastAuthProbeAt_ \+ kAuthProbeIntervalMs/);
   assert.match(tick, /nowMs >= trackBoundaryPlaybackRecoveryDeadline_/);
+
+  const transitionGap = section(
+    handleSource,
+    'bool StationheadHandleBase::SuppressTrackTransitionGap(',
+    'void StationheadHandleBase::ApplyAudioState()',
+  );
+  assert.match(
+    transitionGap,
+    /now - playbackMissingSinceAt_ < kStationheadTrackTransitionGraceMs/,
+  );
 });
