@@ -27,11 +27,6 @@ jobs:
         run: node .github/scripts/adjust-daily-summary-rebuild-order.mjs
       - name: Apply patch
         run: node .github/scripts/apply-daily-summary-rebuild.mjs
-      - name: Run focused tests
-        run: |
-          node --test tests/immutable-summary-rollups.test.mjs
-          node --test tests/history-minute-summary.test.mjs
-          node --test worker/tests/rollup-maintenance.test.js
       - name: Commit changes
         run: |
           git config user.name github-actions[bot]
@@ -39,3 +34,8 @@ jobs:
           git add -A
           git commit -m "Rebuild daily summaries after minute facts repair completes"
           git push origin HEAD:agent/rebuild-daily-summary-after-minute-facts
+      - name: Run focused tests
+        run: |
+          node --test tests/immutable-summary-rollups.test.mjs
+          node --test tests/history-minute-summary.test.mjs
+          node --test worker/tests/rollup-maintenance.test.js
