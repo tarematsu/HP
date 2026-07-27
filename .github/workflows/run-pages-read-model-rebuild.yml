@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/run-pages-read-model-rebuild.yml'
+      - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-**'
@@ -48,6 +49,7 @@ jobs:
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_MAX_STEPS: '1800'
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
+      D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,9 +63,18 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
+      - name: Check hourly D1 write budget
+        id: d1-write-budget
+        run: node ../scripts/cloudflare-d1-write-guard.mjs
+      - name: Record D1 write-budget skip
+        if: steps.d1-write-budget.outputs.allowed != 'true'
+        run: |
+          echo "Skipping Actions read-model/history generation: ${{ steps.d1-write-budget.outputs.rows_written }} D1 rows were written in the last hour (limit ${{ steps.d1-write-budget.outputs.limit }})." | tee pages-read-model-actions.log
       - name: Install Worker dependencies
+        if: steps.d1-write-budget.outputs.allowed == 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Rebuild track history and publish due variants
+        if: steps.d1-write-budget.outputs.allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
@@ -77,4 +88,5 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Verify serving database
+        if: steps.d1-write-budget.outputs.allowed == 'true'
         run: node scripts/verify-facts-live.mjs
