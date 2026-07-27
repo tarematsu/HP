@@ -197,8 +197,7 @@ export async function writeCurrentBite(db, input) {
       queue_revision_id,track_id,track_key,count_value,source,source_record_id
     ) SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
     WHERE ? IS NOT (
-      SELECT count_value FROM sh_track_counter_changes
-      WHERE occurrence_key=? ORDER BY observed_at DESC,id DESC LIMIT 1
+      SELECT count_value FROM sh_track_counter_current WHERE occurrence_key=?
     )`).bind(
     integer(observedAt), occurrenceKey, integer(channelId), integer(stationId), integer(queue?.queue_id),
     timestampMs(queue?.start_time), integer(position), integer(sourceTrack?.queue_track_id),

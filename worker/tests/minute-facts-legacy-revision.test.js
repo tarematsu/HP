@@ -58,6 +58,25 @@ function createDatabase() {
       source TEXT,
       source_record_id TEXT UNIQUE
     );
+    CREATE TABLE sh_track_counter_current (
+      occurrence_key TEXT PRIMARY KEY,
+      count_value INTEGER NOT NULL,
+      observed_at INTEGER NOT NULL,
+      change_id INTEGER NOT NULL
+    );
+    CREATE TRIGGER trg_sh_track_counter_current
+    AFTER INSERT ON sh_track_counter_changes
+    BEGIN
+      INSERT INTO sh_track_counter_current(
+        occurrence_key,count_value,observed_at,change_id
+      ) VALUES(
+        NEW.occurrence_key,NEW.count_value,NEW.observed_at,NEW.id
+      ) ON CONFLICT(occurrence_key) DO UPDATE SET
+        count_value=excluded.count_value,
+        observed_at=excluded.observed_at,
+        change_id=excluded.change_id
+      WHERE excluded.observed_at>=sh_track_counter_current.observed_at;
+    END;
   `);
   return {
     sqlite,
@@ -216,7 +235,11 @@ test('current bite uses one conditional insert and records only count changes', 
   const rows = db.sqlite.prepare(`SELECT count_value FROM sh_track_counter_changes
     ORDER BY observed_at,id`).all();
   assert.deepEqual(rows.map((row) => Number(row.count_value)), [5, 6]);
+  const current = db.sqlite.prepare(`SELECT count_value FROM sh_track_counter_current
+    WHERE occurrence_key='revision:60:0'`).get();
+  assert.equal(Number(current.count_value), 6);
   assert.equal(db.preparedSql.length, 3);
   assert.ok(db.preparedSql.every((sql) => sql.includes('INSERT OR IGNORE INTO sh_track_counter_changes')));
   assert.ok(db.preparedSql.every((sql) => sql.includes('WHERE ? IS NOT')));
+  assert.ok(db.preparedSql.every((sql) => sql.includes('FROM sh_track_counter_current')));
 });
