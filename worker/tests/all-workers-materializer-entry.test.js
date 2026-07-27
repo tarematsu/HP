@@ -25,9 +25,9 @@ test('runtime keeps only immediate enrichment Queue boundaries', () => {
 
   assert.match(enrichment, /TRACK_METADATA_MESSAGE_TYPE/);
   assert.match(enrichment, /processTrackMetadataTask/);
-  assert.doesNotMatch(enrichment, /pagesModulePromise|runPagesReadModelCron|PAGES_PUBLICATION_QUEUE_NAME/);
+  assert.match(enrichment, /for \(const message of messages\)/);
+  assert.doesNotMatch(enrichment, /Promise\.all\(messages|pagesModulePromise|runPagesReadModelCron|PAGES_PUBLICATION_QUEUE_NAME/);
   assert.match(metadata, /from '\.\/committed-metadata-enrichment\.js'/);
-  assert.doesNotMatch(enrichment, /for\s*\(const message of/);
 });
 
 test('Pages materialization is owned by the bounded Actions runner', () => {
