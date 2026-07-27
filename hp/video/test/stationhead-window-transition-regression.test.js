@@ -69,3 +69,59 @@ test('hidden destination hosts are sized without exposing an empty frame', () =>
     /if \(showAuth && authHostValid &&[\s\S]*SetWindowPos\(authHostWindow, HWND_TOP,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
   );
 });
+
+test('focus follows the selected WebView2 surface after visual handoff', () => {
+  const setVisible = section(
+    layoutSource,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  assert.match(
+    layoutSource,
+    /bool WindowContainsFocus\(HWND window\) noexcept[\s\S]*focused == window \|\| IsChild\(window, focused\)/,
+  );
+  assert.match(
+    setVisible,
+    /PlaybackSurfaceMatches\([\s\S]*HiddenAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
+  );
+  assert.match(
+    setVisible,
+    /ActiveAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(authHostWindow_\)[\s\S]*return;/,
+  );
+
+  const focusCommit = setVisible.slice(setVisible.lastIndexOf('  viewVisible_ = true;'));
+  assertOrdered(focusCommit, [
+    'LayoutControllers();',
+    'ApplyMute();',
+    'if (selectedTab_ == StationheadTabKind::Auth)',
+    'activeController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);',
+  ]);
+});
+
+test('hiding Stationhead only returns focus when an interactive surface owned it', () => {
+  const setVisible = section(
+    layoutSource,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  assert.match(
+    setVisible,
+    /const bool interactiveSurfaceHadFocus =[\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*WindowContainsFocus\(authHostWindow_\)/,
+  );
+  assert.match(
+    setVisible,
+    /hadInteractiveSurface && interactiveSurfaceHadFocus &&[\s\S]*SetFocus\(window_\)/,
+  );
+});
+
+test('pending auth creation never raises the collapsed playback host', () => {
+  const activeHost = section(
+    layoutSource,
+    'HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept',
+    'bool StationheadPlayer::NeedsInteractiveWindow() const',
+  );
+  assert.match(
+    activeHost,
+    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*return authHostWindow_;[\s\S]*return nullptr;[\s\S]*return hostWindow_;/,
+  );
+});
