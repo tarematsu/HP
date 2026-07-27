@@ -71,3 +71,5 @@ WrapStationheadAuthStableProcessFailedHandler(
       ::hp::stationhead_auth_process_failure_policy::                            \
           WrapStationheadAuthStableProcessFailedHandler((handler)).Get(),        \
       (token))
+
+#include "sh_auth_completion_message_policy_fix.h"
