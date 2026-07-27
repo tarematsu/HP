@@ -18,7 +18,7 @@ export function trackHistoryRefreshRanges(now, backfillState = null, statusState
   const currentDayStart = Math.floor(now / DAY_MS) * DAY_MS;
   const fullRecentFrom = currentDayStart - TRACK_HISTORY_DAYS * DAY_MS;
   const hourlyRecentFrom = currentDayStart - TRACK_HISTORY_HOURLY_DAYS * DAY_MS;
-  const toTs = currentDayStart + DAY_MS;
+  const toTs = currentDayStart;
   const previousFullAt = validTimestamp(
     statusState?.full_reconciled_at ?? statusState?.generated_at,
   );
