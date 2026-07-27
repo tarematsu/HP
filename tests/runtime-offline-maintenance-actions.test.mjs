@@ -30,7 +30,7 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(workflow, /workflows: \["Deploy production"\]/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
-  assert.match(workflow, /cron: '7,37 \* \* \* \*'/);
+  assert.match(workflow, /cron: '11,41 \* \* \* \*'/);
   assert.match(workflow, /worker\/src\/minute-\*\*/);
   assert.match(workflow, /worker\/src\/rollup-\*\*/);
   assert.match(workflow, /cancel-in-progress: false/);

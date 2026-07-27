@@ -20,7 +20,7 @@ const DAY = Date.UTC(2026, 6, 20);
 
 test('pages read models keep operational opportunities without duplicate push chaining', () => {
   assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
-  assert.match(workflow, /cron: '23,53 \* \* \* \*'/);
+  assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
   assert.doesNotMatch(workflow, /github\.event\.workflow_run\.event == 'push'/);

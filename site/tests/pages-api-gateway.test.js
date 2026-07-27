@@ -198,7 +198,7 @@ test('minute, runtime, and Sakurazaka health preserve component semantics', asyn
   const env = { OTHER_DB: otherDb(), SOLO_BROADCAST_HANDLE: 'sakurazaka46jp' };
   const runtime = await readOtherHealth(env, NOW);
   assert.equal(runtime.ok, true);
-  assert.equal(runtime.stale_after_ms, 50 * 60_000);
+  assert.equal(runtime.stale_after_ms, 75 * 60_000);
 
   const sakurazaka = await readSakurazakaHealth(env, NOW);
   assert.equal(sakurazaka.ok, true);
