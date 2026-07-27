@@ -118,12 +118,20 @@ export function buildIssueBody({
   recentMerges = [],
   actionsRunnerHealthBlock = '',
   deploymentHealthBlock = '',
+  previousIssueBody = '',
 }) {
   const cloudflareStatus = observabilityIssueOverall({ outcomes, summaries, activeDeployments });
   const publicHealth = publicHealthSignal(summaries.publicHealth);
   const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
   const deploymentHealth = deploymentHealthBlock || pendingDeploymentHealthBlock();
-  const triage = buildObservabilityTriage({ outcomes, summaries, activeDeployments, runUrl });
+  const triage = buildObservabilityTriage({
+    outcomes,
+    summaries,
+    activeDeployments,
+    runUrl,
+    previousIssueBody,
+    generatedAt,
+  });
   const body = `${STATUS_MARKER}
 # Cloudflare Observability Status
 
@@ -255,6 +263,7 @@ export async function publishFromEnvironment() {
     recentMerges,
     actionsRunnerHealthBlock: extractActionsRunnerHealthBlock(existingIssue?.body),
     deploymentHealthBlock: extractDeploymentHealthBlock(existingIssue?.body),
+    previousIssueBody: existingIssue?.body,
   });
   const issue = await upsertStatusIssue({
     request,
