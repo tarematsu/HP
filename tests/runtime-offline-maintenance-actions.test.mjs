@@ -31,6 +31,7 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
   assert.match(workflow, /cron: '3,33 \* \* \* \*'/);
+  assert.match(workflow, /worker\/src\/rollup-\*\*/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /run-runtime-offline-maintenance-actions\.mjs/);
