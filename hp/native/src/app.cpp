@@ -160,7 +160,7 @@ void App::StartServices() {
   }
   ApplyStartupStationheadPreview();
   startupAt_ = UnixMillis();
-  lastNewsRotateAt_ = newsCount_ > 1 ? startupAt_ : 0;
+  lastNewsRotateAt_ = newsCount_ > 1 ? static_cast<int64_t>(startupAt_) : 0;
 
   // Route audio before either WebView can emit its first audio.
   ApplyScheduledStationheadAudioProfile(true);
