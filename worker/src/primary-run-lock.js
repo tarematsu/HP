@@ -1,16 +1,18 @@
+import {
+  deleteCollectorHotState,
+  getCollectorHotState,
+  putCollectorHotState,
+} from './collector-do-hot-state.js';
+
 // Cross-tick mutex for the buddies worker's primary collection cycle.
 //
-// main-scheduler.js's flight de-dup (primaryFlightsByContext) only prevents
-// re-entrancy within a single request context; Cloudflare hands every cron
-// invocation a fresh context, so a slow collection run (close to the 55s
-// watchdog) can still overlap with the next minute's independent run. This
-// claims a short-lived D1 lease before starting collection so an overlapping
-// tick skips instead of racing the still-running one. The lease is only
-// released on a clean finish; a timed-out/crashed run lets it expire on its
-// own TTL rather than releasing early, which would just let the very next
-// tick start against a collection that may still be running in the
-// background (Cloudflare aborting our await doesn't forcibly stop it).
+// The deployed collector runs inside BuddiesCollectorCoordinator, so the lease
+// lives in that Durable Object's strongly consistent storage. D1 remains only
+// as a fail-open compatibility fallback for direct/failover execution where no
+// coordinator hot-state API is present. This keeps operational state writes
+// away from the database that owns collected Stationhead facts.
 const SCOPE = 'stationhead-primary-run';
+const HOT_STATE_KEY = 'lease:primary-run';
 const DEFAULT_TTL_MS = 70_000;
 const MIN_TTL_MS = 30_000;
 const MAX_TTL_MS = 180_000;
@@ -44,21 +46,46 @@ export function primaryRunLockEnabled(env = {}) {
   return !['0', 'false', 'no', 'off'].includes(String(configured).trim().toLowerCase());
 }
 
+function hotStateAvailable(env = {}) {
+  const api = env?.__COLLECTOR_DO_HOT_STATE;
+  return api && typeof api.get === 'function' && typeof api.put === 'function';
+}
+
 function noSuchTable(error) {
   return /no such table/i.test(String(error?.message || ''));
 }
 
-// The lock table is owned by the buddies D1 migrations. Do not run schema DDL
-// on fresh isolates: a missing migration already fails open below, preserving
-// collection availability without charging the normal cron path for CREATE TABLE.
-//
-// Fails open (treats the run as claimed) on any error or when disabled or
-// when there's no DB binding at all, so a lock-table problem can never block
-// the primary collection cycle itself -- the worst case reverts to today's
-// unguarded overlap, not a stuck collector.
+async function claimHotStateLock(env, holderId, now) {
+  const current = await getCollectorHotState(env, HOT_STATE_KEY);
+  if (current && Number(current.lease_until) >= now) return false;
+  return putCollectorHotState(env, HOT_STATE_KEY, {
+    scope: SCOPE,
+    holder_id: holderId,
+    claimed_at: now,
+    lease_until: now + ttlMs(env),
+  });
+}
+
+async function releaseHotStateLock(env, holderId) {
+  const current = await getCollectorHotState(env, HOT_STATE_KEY);
+  if (!current || current.holder_id !== holderId) return false;
+  return deleteCollectorHotState(env, HOT_STATE_KEY);
+}
+
 export async function claimPrimaryRunLock(env, holderId, now = Date.now()) {
-  if (!env?.DB) return true;
   if (!primaryRunLockEnabled(env)) return true;
+  if (hotStateAvailable(env)) {
+    try {
+      return await claimHotStateLock(env, holderId, now);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'primary_run_lock_do_claim_failed',
+        error: String(error?.message || error).slice(0, 500),
+      }));
+      return true;
+    }
+  }
+  if (!env?.DB) return true;
   try {
     const leaseUntil = now + ttlMs(env);
     const row = await env.DB.prepare(CLAIM_SQL)
@@ -75,13 +102,19 @@ export async function claimPrimaryRunLock(env, holderId, now = Date.now()) {
   }
 }
 
-// Read-only check other workers can use to back off heavy/bursty D1 writes
-// (e.g. snapshot retention) while buddies is actively mid-collection, since
-// D1/SQLite serializes writes database-wide -- a large write burst from
-// another worker can add latency to buddies' own writes even on unrelated
-// tables. Fails open (treats buddies as not active) on any error so a
-// lock-table problem can never make another worker's task starve forever.
 export async function isPrimaryRunLockActive(env, now = Date.now()) {
+  if (hotStateAvailable(env)) {
+    try {
+      const current = await getCollectorHotState(env, HOT_STATE_KEY);
+      return Boolean(current) && Number(current.lease_until) > now;
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'primary_run_lock_do_status_check_failed',
+        error: String(error?.message || error).slice(0, 500),
+      }));
+      return false;
+    }
+  }
   if (!env?.DB) return false;
   try {
     const row = await env.DB.prepare(STATUS_SQL).bind(SCOPE).first();
@@ -97,8 +130,19 @@ export async function isPrimaryRunLockActive(env, now = Date.now()) {
 }
 
 export async function releasePrimaryRunLock(env, holderId, now = Date.now()) {
-  if (!env?.DB) return false;
   if (!primaryRunLockEnabled(env)) return false;
+  if (hotStateAvailable(env)) {
+    try {
+      return await releaseHotStateLock(env, holderId);
+    } catch (error) {
+      console.error(JSON.stringify({
+        event: 'primary_run_lock_do_release_failed',
+        error: String(error?.message || error).slice(0, 500),
+      }));
+      return false;
+    }
+  }
+  if (!env?.DB) return false;
   try {
     const result = await env.DB.prepare(RELEASE_SQL).bind(now, SCOPE, holderId).run();
     return Number(result?.meta?.changes || 0) > 0;
@@ -111,3 +155,10 @@ export async function releasePrimaryRunLock(env, holderId, now = Date.now()) {
     return false;
   }
 }
+
+export const PRIMARY_RUN_LOCK_STATE = Object.freeze({
+  scope: SCOPE,
+  hot_state_key: HOT_STATE_KEY,
+  preferred_store: 'durable-object',
+  fallback_store: 'd1',
+});
