@@ -86,6 +86,10 @@ const dailyMemberJoinMigration = readFileSync(
   new URL('../database/facts-migrations/047_join_latest_daily_members.sql', import.meta.url),
   'utf8',
 );
+const counterCurrentMigration = readFileSync(
+  new URL('../database/facts-migrations/048_use_counter_current_projection.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -123,6 +127,7 @@ const expectedMigrations = [
   'database/facts-migrations/045_reconcile_minute_fact_job_backlog.sql',
   'database/facts-migrations/046_track_minute_fact_pending_age.sql',
   'database/facts-migrations/047_join_latest_daily_members.sql',
+  'database/facts-migrations/048_use_counter_current_projection.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -213,6 +218,9 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
     /SELECT d\.last_total_member_count FROM sh_total_member_daily/,
   );
   assert.doesNotMatch(dailyMemberJoinMigration, /INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
+  assert.match(counterCurrentMigration, /DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time/);
+  assert.match(counterCurrentMigration, /FROM sh_track_counter_current cc/);
+  assert.doesNotMatch(counterCurrentMigration, /FROM sh_track_counter_changes cc/);
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
