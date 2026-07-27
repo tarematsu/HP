@@ -33,6 +33,12 @@ bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
           client.bottom - client.top == height;
 }
 
+bool WindowContainsFocus(HWND window) noexcept {
+  const HWND focused = GetFocus();
+  return window && IsWindow(window) && focused &&
+         (focused == window || IsChild(window, focused));
+}
+
 bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placement) noexcept {
   if (!window) return false;
   HWND parent = GetParent(window);
@@ -372,6 +378,8 @@ void StationheadPlayer::SetVisible(bool visible) {
     }
     const bool hadInteractiveSurface =
         viewVisible_ || selectedTab_ != StationheadTabKind::None;
+    const bool interactiveSurfaceHadFocus =
+        WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_);
     selectedTab_ = StationheadTabKind::None;
     if (controller_) KeepPlaybackBehindDashboard();
     else {
@@ -379,8 +387,9 @@ void StationheadPlayer::SetVisible(bool visible) {
       std::lock_guard lock(mutex_);
       status_.visible = startupPreviewActive_;
     }
-    if (hadInteractiveSurface && !startupPreviewActive_ &&
-        window_ && IsWindow(window_) && GetFocus() != window_) {
+    if (hadInteractiveSurface && interactiveSurfaceHadFocus &&
+        !startupPreviewActive_ && window_ && IsWindow(window_) &&
+        GetFocus() != window_) {
       SetFocus(window_);
     }
     return;
@@ -399,29 +408,37 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
   // Re-selecting the active surface is common while login/auth state settles.
-  // Skip writes only after confirming both the active and inactive surfaces are
-  // already in the expected Win32 and WebView2 state.
+  // Skip writes only after confirming geometry, visibility, and keyboard focus
+  // already belong to the selected WebView2 surface.
   if (viewVisible_) {
     const int width = std::max(1L, bounds_.right - bounds_.left);
     const int height = std::max(1L, bounds_.bottom - bounds_.top);
     if (selectedTab_ == StationheadTabKind::Stationhead &&
         PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
                                width, height, HWND_TOP) &&
-        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) &&
+        WindowContainsFocus(hostWindow_)) {
       return;
     }
     if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
-                                 authController_.Get(), bounds_)) {
+                                 authController_.Get(), bounds_) &&
+        WindowContainsFocus(authHostWindow_)) {
       return;
     }
   }
-  const bool wasVisible = viewVisible_;
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
-  if (!wasVisible && selectedTab_ != StationheadTabKind::Auth && controller_) {
-    controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+
+  ICoreWebView2Controller* activeController = controller_.Get();
+  HWND activeHost = hostWindow_;
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    activeController = authController_.Get();
+    activeHost = authHostWindow_;
+  }
+  if (activeController && activeHost && !WindowContainsFocus(activeHost)) {
+    activeController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
   }
 }
 
@@ -468,9 +485,14 @@ bool StationheadPlayer::HasAuthTab() const {
 }
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
-  if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
-      authHostWindow_ && IsWindow(authHostWindow_)) {
-    return authHostWindow_;
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    if (authController_ && authWebview_ &&
+        authHostWindow_ && IsWindow(authHostWindow_)) {
+      return authHostWindow_;
+    }
+    // The playback surface is intentionally collapsed while an auth controller
+    // is pending. Do not raise that 1x1 host over the dashboard as a substitute.
+    return nullptr;
   }
   return hostWindow_;
 }
