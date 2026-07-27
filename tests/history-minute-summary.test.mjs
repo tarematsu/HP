@@ -60,10 +60,11 @@ test('daily minute overlay keeps a bounded fallback and starts after persisted r
   );
 });
 
-test('offline history rollups use immutable dependency-gated promotion', () => {
-  assert.match(rollupSource, /summaryExists\(otherDb, 'sh_daily_summary'/);
-  assert.match(rollupSource, /insertDailyOnce\(db, minuteDb, otherDb, period, now\)/);
+test('offline rollups repair Minute Facts before rebuilding stale summaries', () => {
+  assert.match(rollupSource, /runMinuteFactsRepair\(\{ DB: db, MINUTE_DB: minuteDb \}, now\)/);
+  assert.match(rollupSource, /minute-facts-rebuild-pending/);
+  assert.match(rollupSource, /rebuildDailyWhenComplete\(db, minuteDb, otherDb, period, now\)/);
   assert.match(rollupSource, /daily-summaries-incomplete/);
   assert.match(rollupSource, /weekly-summaries-incomplete/);
-  assert.match(rollupSource, /INSERT INTO sh_daily_summary/);
+  assert.match(rollupSource, /rollupDaily\(minuteDb, otherDb, period, now\)/);
 });
