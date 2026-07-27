@@ -11,6 +11,10 @@ const metadataIndexMigration = readFileSync(
   new URL('../../database/buddies-migrations/011_track_metadata_isrc_index.sql', import.meta.url),
   'utf8',
 );
+const materializationMigration = readFileSync(
+  new URL('../../database/buddies-migrations/012_rollup_materialization_state.sql', import.meta.url),
+  'utf8',
+);
 const manifest = JSON.parse(readFileSync(
   new URL('../../database/buddies-db.json', import.meta.url),
   'utf8',
@@ -29,7 +33,7 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
 });
 
 test('current buddies schema keeps retention safe and indexes metadata ISRC fallback', () => {
-  assert.equal(manifest.schema, 'database/buddies-migrations/011_track_metadata_isrc_index.sql');
+  assert.equal(manifest.schema, 'database/buddies-migrations/012_rollup_materialization_state.sql');
   assert.match(retentionMigration, /DROP TRIGGER IF EXISTS trg_sh_claim_retention/);
   assert.doesNotMatch(retentionMigration, /172800000/);
   assert.doesNotMatch(retentionMigration, /DELETE FROM sh_comment_minute_counts/);
@@ -37,4 +41,6 @@ test('current buddies schema keeps retention safe and indexes metadata ISRC fall
   assert.match(metadataIndexMigration, /ON sh_track_metadata\(isrc\)/);
   assert.match(metadataIndexMigration, /WHERE isrc IS NOT NULL AND TRIM\(isrc\)<>''/);
   assert.doesNotMatch(metadataIndexMigration, /INSERT|UPDATE|DELETE|ANALYZE|PRAGMA optimize/);
+  assert.match(materializationMigration, /CREATE TABLE IF NOT EXISTS sh_rollup_materialization_state/);
+  assert.doesNotMatch(materializationMigration, /DELETE FROM sh_channel_snapshots|DELETE FROM sh_queue_snapshots/);
 });
