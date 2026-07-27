@@ -6,6 +6,15 @@
 
 DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time;
 
+-- Queue-revision writes previously maintained four general-purpose indexes after
+-- dedicated access paths had replaced them. The table UNIQUE constraint covers
+-- channel/effective identity, while the reuse, sparse-recovery, payload-blocking,
+-- track-history, recent-complete, and session indexes retain every active query.
+DROP INDEX IF EXISTS idx_sh_queue_revisions_channel_effective;
+DROP INDEX IF EXISTS idx_sh_queue_revisions_coverage;
+DROP INDEX IF EXISTS idx_sh_queue_revisions_source_job;
+DROP INDEX IF EXISTS idx_sh_queue_revisions_materialization;
+
 DROP VIEW IF EXISTS sh_queue_items;
 CREATE VIEW sh_queue_items AS
 SELECT CAST(r.id*1000000+i.position AS INTEGER) AS id,
