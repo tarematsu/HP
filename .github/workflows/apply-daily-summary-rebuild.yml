@@ -36,3 +36,5 @@ jobs:
           git add -A
           git commit -m "Rebuild daily summaries after minute facts catch up"
           git push origin HEAD:agent/rebuild-daily-summary-after-minute-facts
+
+# retrigger 2026-07-27
