@@ -41,7 +41,8 @@ test('Window B defers its actual player start until Window A is configured', () 
     '  void Start() {',
     '  void Tick(int64_t nowMs) {',
   );
-  assert.match(start, /startupRequestedAtTick_ = GetTickCount64\(\);/);
+  assert.match(start, /const uint64_t nowTick = GetTickCount64\(\);/);
+  assert.match(start, /startupRequestedAtTick_ = nowTick == 0 \? 1 : nowTick;/);
   assert.match(start, /TryStartDeferred\(\);/);
   assert.doesNotMatch(start, /StationheadHandleBase::Start\(\)/);
 
@@ -50,12 +51,22 @@ test('Window B defers its actual player start until Window A is configured', () 
     '  void TryStartDeferred() {',
     '  uint64_t startupRequestedAtTick_',
   );
-  assert.match(
-    deferred,
-    /stationheadStartupPrimaryHandle->RawStatus\(\)\.created/,
-  );
+  assert.match(deferred, /StationheadHandleBase\* primary = StartupPrimaryHandle\(\);/);
+  assert.match(deferred, /primary && primary->RawStatus\(\)\.created/);
   assert.match(deferred, /SecondaryStationheadStartupReady\(/);
   assert.match(deferred, /StationheadHandleBase::Start\(\);/);
+});
+
+test('startup coordination remains private to the handle lifecycle', () => {
+  const baseHandle = section(
+    handleHeader,
+    'class StationheadHandleBase',
+    'class AppStationheadHandle final',
+  );
+  assert.match(baseHandle, /inline static StationheadHandleBase\* startupPrimaryHandle_ = nullptr;/);
+  assert.match(baseHandle, /SetStartupPrimaryHandle\(/);
+  assert.match(baseHandle, /StartupPrimaryHandle\(\)/);
+  assert.doesNotMatch(handleHeader, /inline StationheadHandleBase\* stationheadStartupPrimaryHandle/);
 });
 
 test('Window B startup fallback uses monotonic uptime instead of wall clock', () => {
