@@ -62,18 +62,30 @@ inline bool operator<(
   return deadline.Active() && !deadline.Reached();
 }
 
-// StartupAwareWakeDeadline wraps a projected operational deadline but exposes
-// only the legacy int64_t conversion. After the wrapped uptime deadline expires,
-// that conversion becomes the current civil time. Comparing it with the stale
-// nowMs captured at the beginning of Tick() can therefore keep returning true.
-// Compare the projection with a fresh civil-clock read taken after conversion:
-// a future monotonic deadline remains ahead, while an expired projection is no
-// later than that fresh read. Startup watchdogs still convert to zero and bypass
-// the ordinary wake gate immediately.
+// StartupAwareWakeDeadline exposes a freshly projected UTC deadline through its
+// legacy int64_t interface. Read the same Win32 system clock immediately after
+// projection so an expired value cannot stay a few milliseconds ahead of the
+// stale nowMs captured at Tick entry. This helper is isolated from the A/B
+// boundary ownership lease below, which remains purely uptime-based.
+inline int64_t StationheadPolicyWallMillis() noexcept {
+  FILETIME fileTime{};
+  GetSystemTimeAsFileTime(&fileTime);
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart = fileTime.dwLowDateTime;
+  ticks.HighPart = fileTime.dwHighDateTime;
+  constexpr ULONGLONG kUnixEpochFileTimeTicks = 116'444'736'000'000'000ULL;
+  if (ticks.QuadPart <= kUnixEpochFileTimeTicks) return 0;
+  const ULONGLONG milliseconds =
+      (ticks.QuadPart - kUnixEpochFileTimeTicks) / 10'000ULL;
+  return milliseconds > static_cast<ULONGLONG>(INT64_MAX)
+      ? INT64_MAX
+      : static_cast<int64_t>(milliseconds);
+}
+
 inline bool StationheadStartupAwareWakePending(
     const StartupAwareWakeDeadline& deadline) noexcept {
   const int64_t projected = static_cast<int64_t>(deadline);
-  return projected > 0 && projected > UnixMillis();
+  return projected > 0 && projected > StationheadPolicyWallMillis();
 }
 
 inline bool operator<(
