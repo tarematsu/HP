@@ -1,0 +1,50 @@
+name: Apply D1 usage compression patch
+
+on:
+  push:
+    branches: [agent/compress-observability-d1-load]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/compress-observability-d1-load
+          fetch-depth: 0
+
+      - name: Apply focused patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .github/agent-compress-d1.patch
+          git apply .github/agent-compress-d1.patch
+          rm .github/agent-compress-d1.patch
+          rm .github/workflows/agent-apply-compress-d1.yml
+
+      - name: Install Worker dependencies
+        run: npm ci --prefix worker --no-audit --no-fund
+
+      - name: Run focused tests
+        run: |
+          node --test \
+            worker/tests/observability-hotpaths-v2.test.js \
+            worker/tests/pages-read-model-ranges.test.js \
+            tests/history-minute-summary.test.mjs \
+            tests/d1-budget-regressions.test.mjs
+          python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+
+      - name: Commit applied changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Compress observability D1 workload"
+          git push origin HEAD:agent/compress-observability-d1-load
