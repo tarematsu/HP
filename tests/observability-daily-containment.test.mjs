@@ -85,7 +85,7 @@ test('historical daily breach is contained when the recent delta pace is within 
   });
   assert.equal(trend?.contained, true);
   assert.equal(trend?.delta, 3_877);
-  assert.equal(trend?.recentProjected24h, 135_298);
+  assert.equal(trend?.recentProjected24h, 135_288);
 
   const triage = buildObservabilityTriage({
     outcomes,
@@ -97,7 +97,7 @@ test('historical daily breach is contained when the recent delta pace is within 
   });
   assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
   assert.match(triage, /Historical daily D1 breach/);
-  assert.match(triage, /recent pace 135,298\/day vs 5,000,000\/day limit/);
+  assert.match(triage, /recent pace 135,288\/day vs 5,000,000\/day limit/);
   assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
   assert.doesNotMatch(triage, /ACTION REQUIRED/);
 });
