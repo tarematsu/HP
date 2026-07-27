@@ -11,22 +11,24 @@ test('rollups reject total-listener values masquerading as total streams', () =>
   assert.match(source, /COALESCE\([\s\S]*validated_stream_count[\s\S]*current_stream_count/);
 });
 
-test('daily promotion is immutable and waits for complete minute facts', () => {
-  assert.match(source, /summaryExists\(otherDb, 'sh_daily_summary'/);
+test('daily rebuild waits for Minute Facts repair and complete source coverage', () => {
+  assert.match(source, /runMinuteFactsRepair\(\{ DB: db, MINUTE_DB: minuteDb \}, now\)/);
+  assert.match(source, /reason: 'minute-facts-rebuild-pending'/);
+  assert.match(source, /loadSummary\(otherDb, 'sh_daily_summary'/);
   assert.match(source, /distinctSourceMinutes\(sourceDb, period\)/);
   assert.match(source, /distinctSourceMinutes\(minuteDb, period\)/);
   assert.match(source, /status<>'done'/);
   assert.match(source, /reason: 'minute-facts-incomplete'/);
-  assert.match(source, /INSERT INTO sh_daily_summary/);
+  assert.match(source, /rollupDaily\(minuteDb, otherDb, period, now\)/);
 });
 
-test('weekly and monthly summaries are promoted only after lower levels are complete', () => {
+test('daily rebuild refreshes dependent weekly and monthly summaries', () => {
   assert.match(source, /completeDailyRange/);
   assert.match(source, /daily-summaries-incomplete/);
   assert.match(source, /completeWeeklyCoverage/);
   assert.match(source, /weekly-summaries-incomplete/);
-  assert.match(source, /rollupFromDaily\(otherDb, 'sh_weekly_summary'/);
-  assert.match(source, /rollupFromDaily\(otherDb, 'sh_monthly_summary'/);
+  assert.match(source, /refreshWeekly\(otherDb, weekRange, now, daily\.rebuilt === true\)/);
+  assert.match(source, /daily\.rebuilt === true \|\| weekly\.rebuilt === true/);
   assert.match(source, /const period = previousUtcDay\(now\)/);
 });
 
