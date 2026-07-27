@@ -281,6 +281,20 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
   return result;
 }
 
+// A hide request can be rejected while login or Spotify authorization remains
+// interactive. In that case KeepPlaybackBehindDashboard() leaves the selected
+// Stationhead host visible and focused. Do not steal focus to the dashboard just
+// because the original request said "hide"; restore the parent only when the
+// current focus is gone, invalid, or belongs to a surface that is actually hidden.
+inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
+  const HWND focused = GetFocus();
+  if (focused && focused != target && IsWindow(focused) &&
+      IsWindowVisible(focused)) {
+    return focused;
+  }
+  return ::SetFocus(target);
+}
+
 }  // namespace hp
 
 // This policy header is the final HomePanel PCH layer. Windows headers and the
@@ -293,3 +307,4 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                               \
       (nextAutoClickAt_), IsSecondary()))
+#define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
