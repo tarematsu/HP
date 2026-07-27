@@ -142,6 +142,21 @@ test('runner health publisher reserves space without truncating existing diagnos
   assert.ok(body.length <= 65_000);
 });
 
+test('runner health publisher fits a replacement into a near-limit issue body', () => {
+  const tail = '\nEND-OF-NEAR-LIMIT-DIAGNOSTICS';
+  const existing = `${ACTIONS_RUNNER_HEALTH_START}\nold runner health\n${ACTIONS_RUNNER_HEALTH_END}`;
+  const issueBody = `<!-- cloudflare-observability-status -->\n${'x'.repeat(64_300)}${tail}\n${existing}`;
+  const summary = `### GitHub Actions runner health\n\n${'y'.repeat(MAX_ACTIONS_HEALTH_SUMMARY_CHARS + 500)}`;
+  const body = buildActionsRunnerHealthIssueBody(issueBody, summary);
+
+  assert.match(body, /END-OF-NEAR-LIMIT-DIAGNOSTICS/);
+  assert.match(body, /### GitHub Actions runner health/);
+  assert.match(body, /…truncated…/);
+  assert.doesNotMatch(body, /old runner health/);
+  assert.equal(body.match(new RegExp(ACTIONS_RUNNER_HEALTH_START, 'g')).length, 1);
+  assert.ok(body.length <= 65_000);
+});
+
 test('status writers share a non-cancelling issue lock', () => {
   const healthWorkflow = read('.github/workflows/publish-github-actions-runner-health.yml');
   const observabilityWorkflow = read('.github/workflows/sh-observability.yml');
