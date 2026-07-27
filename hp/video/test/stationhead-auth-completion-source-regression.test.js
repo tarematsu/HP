@@ -66,7 +66,8 @@ test('existing playback string messages and auth handler ownership stay unchange
     webviewSource,
     /type != L"spotify-connected" && type != L"spotify-error"/,
   );
-  assert.match(webviewSource, /primary-playing|secondary-playing/);
+  assert.match(webviewSource, /TryGetWebMessageAsString\(&rawText\)/);
+  assert.match(webviewSource, /message == prefix \+ L"-playing"/);
   assert.doesNotMatch(
     completionPolicy,
     /Navigate\(|Reload\(|Close\(|FinishSpotifyAuthorization/,
