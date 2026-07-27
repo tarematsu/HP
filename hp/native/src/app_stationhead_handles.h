@@ -76,6 +76,12 @@ class StationheadHandleBase {
   [[nodiscard]] bool PlayerStarted() const noexcept {
     return player_ && startIssued_ && !stopIssued_;
   }
+  static void SetStartupPrimaryHandle(StationheadHandleBase* handle) noexcept {
+    startupPrimaryHandle_ = handle;
+  }
+  [[nodiscard]] static StationheadHandleBase* StartupPrimaryHandle() noexcept {
+    return startupPrimaryHandle_;
+  }
 
  private:
   bool IsInteractive(const StationheadStatus& status) const noexcept;
@@ -100,12 +106,8 @@ class StationheadHandleBase {
   mutable int64_t playbackMissingSinceAt_ = 0;
   mutable bool transitionSuppressed_ = false;
   mutable uint64_t contentRevision_ = 1;
+  inline static StationheadHandleBase* startupPrimaryHandle_ = nullptr;
 };
-
-// The App starts A first. B consults this handle during its short deferred
-// startup window so the two profile controllers are not configured at the same
-// time on a cold WebView2 environment.
-inline StationheadHandleBase* stationheadStartupPrimaryHandle = nullptr;
 
 class AppStationheadHandle final : public StationheadHandleBase {
  public:
@@ -119,14 +121,12 @@ class AppStationheadHandle final : public StationheadHandleBase {
   AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
   void Start() {
-    stationheadStartupPrimaryHandle = this;
+    SetStartupPrimaryHandle(this);
     StationheadHandleBase::Start();
   }
   void Stop() {
     StationheadHandleBase::Stop();
-    if (stationheadStartupPrimaryHandle == this) {
-      stationheadStartupPrimaryHandle = nullptr;
-    }
+    if (StartupPrimaryHandle() == this) SetStartupPrimaryHandle(nullptr);
   }
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
@@ -158,7 +158,8 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   void Start() {
     if (!CanStartPlayer()) return;
     if (startupRequestedAtTick_ == 0) {
-      startupRequestedAtTick_ = GetTickCount64();
+      const uint64_t nowTick = GetTickCount64();
+      startupRequestedAtTick_ = nowTick == 0 ? 1 : nowTick;
     }
     TryStartDeferred();
   }
@@ -185,11 +186,10 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
  private:
   void TryStartDeferred() {
     if (!CanStartPlayer() || startupRequestedAtTick_ == 0) return;
-    const bool primaryCreated = stationheadStartupPrimaryHandle &&
-        stationheadStartupPrimaryHandle->RawStatus().created;
-    if (stationheadStartupPrimaryHandle &&
-        !SecondaryStationheadStartupReady(
-            primaryCreated, GetTickCount64(), startupRequestedAtTick_)) {
+    StationheadHandleBase* primary = StartupPrimaryHandle();
+    const bool primaryCreated = primary && primary->RawStatus().created;
+    if (primary && !SecondaryStationheadStartupReady(
+                       primaryCreated, GetTickCount64(), startupRequestedAtTick_)) {
       return;
     }
     StationheadHandleBase::Start();
