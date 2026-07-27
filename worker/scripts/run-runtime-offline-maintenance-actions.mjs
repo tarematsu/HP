@@ -54,6 +54,41 @@ function errorText(error) {
   return String(error?.message || error || 'runtime offline maintenance failed').slice(0, 1000);
 }
 
+function explicitFalse(value) {
+  return value === false
+    || value === 0
+    || /^(0|false|no|off)$/i.test(String(value ?? '').trim());
+}
+
+function optionalMetric(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
+}
+
+function d1BudgetSkip(options = {}) {
+  const allowed = options.d1Allowed ?? process.env.RUNTIME_MAINTENANCE_D1_ALLOWED;
+  if (!explicitFalse(allowed)) return null;
+  return {
+    reason: String(
+      options.d1SkipReason
+      ?? process.env.RUNTIME_MAINTENANCE_D1_SKIP_REASON
+      ?? 'budget-exceeded',
+    ).slice(0, 120),
+    rows_read: optionalMetric(
+      options.d1RowsRead ?? process.env.RUNTIME_MAINTENANCE_D1_ROWS_READ,
+    ),
+    read_limit: optionalMetric(
+      options.d1ReadLimit ?? process.env.RUNTIME_MAINTENANCE_D1_READ_LIMIT,
+    ),
+    rows_written: optionalMetric(
+      options.d1RowsWritten ?? process.env.RUNTIME_MAINTENANCE_D1_ROWS_WRITTEN,
+    ),
+    write_limit: optionalMetric(
+      options.d1WriteLimit ?? process.env.RUNTIME_MAINTENANCE_D1_WRITE_LIMIT,
+    ),
+  };
+}
+
 async function writeMaintenanceStatus(db, {
   status,
   attemptAt,
@@ -126,6 +161,25 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   });
 
   try {
+    const budget = d1BudgetSkip(options);
+    if (budget) {
+      const finishedAt = timestamp(clock, startedAt);
+      await writeMaintenanceStatus(env.OTHER_DB, {
+        status: 'ok',
+        attemptAt: startedAt,
+        successAt: finishedAt,
+        updatedAt: finishedAt,
+      });
+      return {
+        ok: true,
+        skipped: true,
+        event: 'runtime_offline_maintenance_actions_budget_skipped',
+        reason: 'd1-actions-budget',
+        elapsed_ms: Math.max(0, finishedAt - startedAt),
+        budget,
+      };
+    }
+
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
