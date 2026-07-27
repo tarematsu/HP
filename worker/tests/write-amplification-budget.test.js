@@ -20,6 +20,8 @@ const counterProjectionMigration = readFileSync(
 const MINUTES_PER_DAY = 24 * 60;
 const FIVE_MINUTE_BUCKETS_PER_DAY = MINUTES_PER_DAY / 5;
 const COUNTER_CHANGES_PER_HOUR = 9;
+const QUEUE_REVISIONS_PER_HOUR = 3;
+const RETIRED_QUEUE_REVISION_INDEXES = 4;
 const PLAYBACK_OBSERVATIONS_PER_HOUR = 16;
 const PLAYBACK_HEARTBEATS_PER_HOUR = 3;
 
@@ -33,6 +35,10 @@ test('steady-state write reductions cover the measured daily overage', () => {
   assert.match(reductionMigration, /idx_sh_counter_changes_source/);
   assert.match(reductionMigration, /idx_sh_counter_changes_track_time/);
   assert.match(counterProjectionMigration, /idx_sh_counter_changes_occurrence_time/);
+  assert.match(counterProjectionMigration, /idx_sh_queue_revisions_channel_effective/);
+  assert.match(counterProjectionMigration, /idx_sh_queue_revisions_coverage/);
+  assert.match(counterProjectionMigration, /idx_sh_queue_revisions_source_job/);
+  assert.match(counterProjectionMigration, /idx_sh_queue_revisions_materialization/);
   assert.match(legacyRevision, /PLAYBACK_STATE_HEARTBEAT_MS = 20 \* 60_000/);
   assert.match(
     legacyRevision,
@@ -46,6 +52,9 @@ test('steady-state write reductions cover the measured daily overage', () => {
   const savedRollupWrites = MINUTES_PER_DAY - FIVE_MINUTE_BUCKETS_PER_DAY;
   const savedCounterIndexWrites = COUNTER_CHANGES_PER_HOUR * 24 * 2;
   const savedCounterOccurrenceIndexWrites = COUNTER_CHANGES_PER_HOUR * 24;
+  const savedQueueRevisionIndexWrites = QUEUE_REVISIONS_PER_HOUR
+    * 24
+    * RETIRED_QUEUE_REVISION_INDEXES;
   const savedPlaybackHeartbeatWrites = (
     PLAYBACK_OBSERVATIONS_PER_HOUR - PLAYBACK_HEARTBEATS_PER_HOUR
   ) * 24;
@@ -55,8 +64,9 @@ test('steady-state write reductions cover the measured daily overage', () => {
     + savedRollupWrites
     + savedCounterIndexWrites
     + savedCounterOccurrenceIndexWrites
+    + savedQueueRevisionIndexWrites
     + savedPlaybackHeartbeatWrites;
 
-  assert.equal(projectedSavedWrites, 6_431);
+  assert.equal(projectedSavedWrites, 6_719);
   assert.ok(projectedSavedWrites > 5_027);
 });
