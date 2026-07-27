@@ -1,3 +1,8 @@
+import {
+  claimCoordinatedLiveJob,
+  releaseCoordinatedLiveJobs,
+} from './minute-live-job-coordinator.js';
+
 function integer(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
@@ -9,7 +14,7 @@ function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, maximum);
 }
 
-export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
+async function claimD1LiveDeriveJob(env, trigger, options = {}) {
   const db = env?.MINUTE_DB;
   if (!db?.prepare) throw new Error('minute live derive MINUTE_DB binding is missing');
   const now = integer(options.now) ?? Date.now();
@@ -35,7 +40,7 @@ export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
   return result.results?.[0] || null;
 }
 
-export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
+async function releaseD1LiveDeriveJobs(env, jobIds, options = {}) {
   const ids = (Array.isArray(jobIds) ? jobIds : [jobIds])
     .map((value) => integer(value))
     .filter((value) => value != null && value > 0);
@@ -52,3 +57,20 @@ export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
     .run();
   return { released: Number(result?.meta?.changes || 0) };
 }
+
+export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
+  const coordinated = await claimCoordinatedLiveJob(env, trigger, options);
+  if (coordinated !== undefined) return coordinated;
+  return claimD1LiveDeriveJob(env, trigger, options);
+}
+
+export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
+  const coordinated = await releaseCoordinatedLiveJobs(env, jobIds, options);
+  if (coordinated !== undefined) return coordinated;
+  return releaseD1LiveDeriveJobs(env, jobIds, options);
+}
+
+export const MINUTE_LIVE_TRIGGER_LEASE = Object.freeze({
+  preferred_store: 'durable-object',
+  fallback_store: 'd1',
+});
