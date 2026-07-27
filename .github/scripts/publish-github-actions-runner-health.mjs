@@ -7,18 +7,38 @@ import {
   createGitHubRequest,
 } from './observability-status-publisher.mjs';
 import {
+  ACTIONS_RUNNER_HEALTH_END,
+  ACTIONS_RUNNER_HEALTH_START,
   MAX_ACTIONS_HEALTH_SUMMARY_CHARS,
   collectActionsRunnerHealth,
+  extractActionsRunnerHealthBlock,
   renderActionsRunnerHealthSummary,
   replaceActionsRunnerHealthSection,
 } from './github-actions-runner-health.mjs';
 
 const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
-const MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS = 65_000;
+const MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS = Math.max(MAX_ISSUE_BODY_CHARS, 65_000);
+const CLIPPED_TEXT_SUFFIX_CHARS = '\n\n…truncated…'.length;
+const RUNNER_HEALTH_BLOCK_OVERHEAD = ACTIONS_RUNNER_HEALTH_START.length
+  + ACTIONS_RUNNER_HEALTH_END.length
+  + 2;
 
 export function buildActionsRunnerHealthIssueBody(issueBody, summary) {
-  const clippedSummary = clipText(summary, MAX_ACTIONS_HEALTH_SUMMARY_CHARS);
-  const body = replaceActionsRunnerHealthSection(issueBody, clippedSummary);
+  const baseBody = String(issueBody || '');
+  const existing = extractActionsRunnerHealthBlock(baseBody);
+  const fixedLength = baseBody.length - existing.length;
+  const availableSummaryChars = Math.max(
+    0,
+    MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS
+      - fixedLength
+      - RUNNER_HEALTH_BLOCK_OVERHEAD
+      - CLIPPED_TEXT_SUFFIX_CHARS,
+  );
+  const clippedSummary = clipText(
+    summary,
+    Math.min(MAX_ACTIONS_HEALTH_SUMMARY_CHARS, availableSummaryChars),
+  );
+  const body = replaceActionsRunnerHealthSection(baseBody, clippedSummary);
   if (body.length > MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS) {
     throw new Error(
       `Observability issue body would exceed ${MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS} characters after adding runner health`,
