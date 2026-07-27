@@ -21,6 +21,18 @@ inline constexpr bool SecondaryStationheadStartupReady(
       nowTick - requestedAtTick >= kStationheadSecondaryStartupFallbackMs;
 }
 
+// A configured controller is not yet a useful startup surface: required script
+// registration and the first navigation can still be pending. Keep A covering
+// both halves until B has either produced audio, entered an interactive account
+// flow, or completed its first Stationhead navigation successfully.
+inline bool StationheadStartupPreviewReady(
+    const StationheadStatus& status) noexcept {
+  return status.audioPlaying || status.loginRequired ||
+      status.spotifyAuthorization ||
+      (status.created && !status.navigating && !status.processFailed &&
+       status.detail == L"station loaded");
+}
+
 static_assert(SecondaryStationheadStartupReady(true, 1, 1));
 static_assert(!SecondaryStationheadStartupReady(false, 7'999, 1));
 static_assert(SecondaryStationheadStartupReady(false, 8'001, 1));
@@ -255,12 +267,14 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   }
 
   void ApplyDeferredStartupPreview() {
-    if (!startupPreviewRequested_ || startupPreviewApplied_ || !PlayerStarted() ||
-        !RawStatus().created) {
+    if (!startupPreviewRequested_ || startupPreviewApplied_ || !PlayerStarted()) {
       return;
     }
-    // The controller is configured before its host is exposed. Prepare B first
-    // while A still covers both halves, then restore A to the requested left half.
+    const StationheadStatus status = RawStatus();
+    if (!StationheadStartupPreviewReady(status)) return;
+    // The controller and its first useful document are ready before the host is
+    // exposed. Prepare B first while A still covers both halves, then restore A
+    // to the requested left half.
     StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);
     startupPreviewApplied_ = true;
     if (AppStationheadHandle* primary = StartupPrimary()) {
