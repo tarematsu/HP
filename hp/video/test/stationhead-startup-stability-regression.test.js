@@ -105,18 +105,19 @@ test('deferred Window B starts and ticks in one scheduler pass', () => {
   assert.match(tick, /if \(PlayerStarted\(\)\)/);
 });
 
-test('Window A covers both preview halves until Window B has a configured controller', () => {
+test('Window A covers both preview halves while Window B is deferred', () => {
   const primaryHandle = section(
     handleHeader,
     'class AppStationheadHandle final',
     'class AppSecondaryStationheadHandle final',
   );
-  const primaryPreview = section(
+  const primaryStart = section(
     primaryHandle,
-    '  void SetStartupPreviewBounds(const RECT& bounds) {',
-    '  void ClearStartupPreviewBounds() {',
+    '  void Start() {',
+    '  void Stop() {',
   );
-  assert.match(primaryPreview, /SetStartupPrimaryHandle\(this\);/);
+  assert.match(primaryStart, /if \(!CanStartPlayer\(\)\) return;/);
+  assert.match(primaryStart, /SetStartupPrimaryHandle\(this\);/);
   assert.match(primaryHandle, /void ExpandStartupPreviewForSecondary\(/);
   assert.match(primaryHandle, /void RestoreRequestedStartupPreviewBounds\(\)/);
 
@@ -131,11 +132,21 @@ test('Window A covers both preview halves until Window B has a configured contro
     '  void ClearStartupPreviewBounds() {',
   );
   assert.match(secondaryPreview, /pendingStartupPreviewBounds_ = bounds;/);
-  assert.match(secondaryPreview, /primary->ExpandStartupPreviewForSecondary\(bounds\);/);
   assert.doesNotMatch(
     secondaryPreview,
     /StationheadHandleBase::SetStartupPreviewBounds\(bounds\)/,
   );
+
+  const secondaryStart = section(
+    secondaryHandle,
+    '  void Start() {',
+    '  void Tick(int64_t nowMs) {',
+  );
+  const expandAt = secondaryStart.indexOf(
+    'primary->ExpandStartupPreviewForSecondary(pendingStartupPreviewBounds_);',
+  );
+  const requestAt = secondaryStart.indexOf('startupRequestedAtTick_');
+  assert.ok(expandAt >= 0 && requestAt > expandAt);
 });
 
 test('Window B exposes its preview only after created and then restores Window A left', () => {
