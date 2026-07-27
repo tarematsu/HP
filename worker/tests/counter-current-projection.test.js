@@ -140,3 +140,9 @@ test('runtime counter-change guard reads the current projection instead of appen
   assert.match(migration, /DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time/);
   assert.match(migration, /FROM sh_track_counter_current cc/);
 });
+
+test('counter projection migration remains metadata-only and never analyzes the full table', () => {
+  assert.doesNotMatch(migration, /\bANALYZE\b/i);
+  assert.doesNotMatch(migration, /\bPRAGMA\s+optimize\b/i);
+  assert.doesNotMatch(migration, /\bINSERT\b|\bUPDATE\b|\bDELETE\b/i);
+});
