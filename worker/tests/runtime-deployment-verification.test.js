@@ -28,19 +28,28 @@ function deployment(version) {
   };
 }
 
-test('temporary runtime deploy config retires cron and Durable Object surfaces with a deletion migration', () => {
+const LIVE_COORDINATOR = {
+  name: 'MINUTE_LIVE_JOB_COORDINATOR',
+  class_name: 'MinuteLiveJobCoordinator',
+};
+
+test('temporary runtime deploy config retires cron and preserves only the live job Durable Object', () => {
   const source = {
     name: 'sh-runtime-orchestrator',
-    durable_objects: { bindings: [{ name: 'SCHEDULER_COORDINATOR' }] },
+    durable_objects: { bindings: [
+      { name: 'SCHEDULER_COORDINATOR', class_name: 'RuntimeCoordinator' },
+      LIVE_COORDINATOR,
+    ] },
     migrations: [{ tag: 'v1' }],
     vars: { KEEP: true },
   };
   const deployed = queueOnlyRuntimeDeployConfig(source);
   assert.deepEqual(deployed.triggers, { crons: [] });
-  assert.equal(deployed.durable_objects, undefined);
+  assert.deepEqual(deployed.durable_objects, { bindings: [LIVE_COORDINATOR] });
   assert.deepEqual(deployed.migrations, [
     { tag: 'runtime-coordinator-v1', new_sqlite_classes: ['RuntimeCoordinator'] },
     { tag: 'runtime-coordinator-v2-retired', deleted_classes: ['RuntimeCoordinator'] },
+    { tag: 'minute-live-job-coordinator-v1', new_sqlite_classes: ['MinuteLiveJobCoordinator'] },
   ]);
   assert.deepEqual(deployed.vars, { KEEP: true });
   assert.notEqual(deployed, source);
@@ -65,7 +74,7 @@ test('runtime deployment payload keeps only traffic-bearing versions', () => {
   }).length, 1);
 });
 
-test('runtime deployment verification waits for a new version and enforces queue-only architecture', async () => {
+test('runtime deployment verification waits for a new version and enforces queue plus live-job DO architecture', async () => {
   let deploymentReads = 0;
   const result = await verifyRuntimeDeployment({
     accountId: 'account',
@@ -81,7 +90,13 @@ test('runtime deployment verification waits for a new version and enforces queue
       }
       if (url.endsWith('/schedules')) return response({ success: true, result: { schedules: [] } });
       if (url.endsWith('/settings')) {
-        return response({ success: true, result: { bindings: [{ name: 'MINUTE_DB', type: 'd1' }] } });
+        return response({
+          success: true,
+          result: { bindings: [
+            { name: 'MINUTE_DB', type: 'd1' },
+            { name: 'MINUTE_LIVE_JOB_COORDINATOR', type: 'durable_object_namespace' },
+          ] },
+        });
       }
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -91,7 +106,7 @@ test('runtime deployment verification waits for a new version and enforces queue
   assert.deepEqual(result.active_version_ids, ['v2']);
   assert.equal(result.version_changed, true);
   assert.equal(result.cron_triggers, 0);
-  assert.equal(result.durable_object_bindings, 0);
+  assert.equal(result.durable_object_bindings, 1);
 });
 
 test('runtime deployment verification rejects an unchanged active version', async () => {
@@ -109,7 +124,7 @@ test('runtime deployment verification rejects an unchanged active version', asyn
   );
 });
 
-test('runtime deployment verification rejects retired cron and Durable Object surfaces', async () => {
+test('runtime deployment verification rejects cron, missing, or unexpected Durable Object surfaces', async () => {
   await assert.rejects(
     verifyRuntimeDeployment({
       accountId: 'account',
@@ -135,14 +150,34 @@ test('runtime deployment verification rejects retired cron and Durable Object su
         if (url.endsWith('/deployments')) return response(deployment('v2'));
         if (url.endsWith('/schedules')) return response({ success: true, result: [] });
         if (url.endsWith('/settings')) {
+          return response({ success: true, result: { bindings: [{ name: 'MINUTE_DB', type: 'd1' }] } });
+        }
+        throw new Error(`unexpected URL: ${url}`);
+      },
+    }),
+    /missing Durable Object binding/,
+  );
+
+  await assert.rejects(
+    verifyRuntimeDeployment({
+      accountId: 'account',
+      token: 'token',
+      previousVersionIds: ['v1'],
+      fetchImpl: async (url) => {
+        if (url.endsWith('/deployments')) return response(deployment('v2'));
+        if (url.endsWith('/schedules')) return response({ success: true, result: [] });
+        if (url.endsWith('/settings')) {
           return response({
             success: true,
-            result: { bindings: [{ name: 'SCHEDULER_COORDINATOR', type: 'durable_object_namespace' }] },
+            result: { bindings: [
+              { name: 'MINUTE_LIVE_JOB_COORDINATOR', type: 'durable_object_namespace' },
+              { name: 'SCHEDULER_COORDINATOR', type: 'durable_object_namespace' },
+            ] },
           });
         }
         throw new Error(`unexpected URL: ${url}`);
       },
     }),
-    /still has Durable Object bindings/,
+    /unexpected Durable Object bindings/,
   );
 });

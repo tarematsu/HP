@@ -1,3 +1,5 @@
+import { failBudgetedLiveDeriveJob } from './minute-live-trigger-lease.js';
+
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 export const BUDGET_LIVE_WRITE_STAGE = 'budget-live-write';
@@ -99,6 +101,7 @@ async function commitLiveWrite(env, body, dependencies = {}) {
     { ...body, stage: 'write', payload },
     {
       stageRevision: false,
+      fail: dependencies.fail || failBudgetedLiveDeriveJob,
       async write(active, value) {
         return fastStore.saveOptimizedMinuteFactWithinBudget(active, {
           ...value,

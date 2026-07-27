@@ -1,6 +1,8 @@
 import baseWorker from './runtime-orchestrator-entry.js';
 import { queueAttributedEnv } from './queue-attribution.js';
 
+export { MinuteLiveJobCoordinator } from './minute-live-job-coordinator.js';
+
 export async function runRuntimeOrchestratorQueue(batch, env, ctx, dependencies = {}) {
   const run = dependencies.runCoreQueue || baseWorker.queue;
   return run(

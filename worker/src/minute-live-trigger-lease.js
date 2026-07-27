@@ -1,3 +1,9 @@
+import { sanitizeFailureDetail } from './collector-failure.js';
+import {
+  claimCoordinatedLiveJob,
+  releaseCoordinatedLiveJobs,
+} from './minute-live-job-coordinator.js';
+
 function integer(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
@@ -9,7 +15,7 @@ function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   return Math.min(parsed, maximum);
 }
 
-export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
+async function claimD1LiveDeriveJob(env, trigger, options = {}) {
   const db = env?.MINUTE_DB;
   if (!db?.prepare) throw new Error('minute live derive MINUTE_DB binding is missing');
   const now = integer(options.now) ?? Date.now();
@@ -35,7 +41,7 @@ export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
   return result.results?.[0] || null;
 }
 
-export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
+async function releaseD1LiveDeriveJobs(env, jobIds, options = {}) {
   const ids = (Array.isArray(jobIds) ? jobIds : [jobIds])
     .map((value) => integer(value))
     .filter((value) => value != null && value > 0);
@@ -52,3 +58,46 @@ export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
     .run();
   return { released: Number(result?.meta?.changes || 0) };
 }
+
+export async function claimBudgetedLiveDeriveJob(env, trigger, options = {}) {
+  const coordinated = await claimCoordinatedLiveJob(env, trigger, options);
+  if (coordinated !== undefined) return coordinated;
+  return claimD1LiveDeriveJob(env, trigger, options);
+}
+
+export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
+  const coordinated = await releaseCoordinatedLiveJobs(env, jobIds, options);
+  if (coordinated !== undefined) return coordinated;
+  return releaseD1LiveDeriveJobs(env, jobIds, options);
+}
+
+export async function failBudgetedLiveDeriveJob(env, job, error, options = {}) {
+  const db = env?.MINUTE_DB;
+  if (!db?.prepare) throw new Error('minute live derive MINUTE_DB binding is missing');
+  const now = integer(options.now) ?? Date.now();
+  const attempts = positiveInteger(job?.attempts, 1, 1_000);
+  const maxAttempts = positiveInteger(options.maxAttempts, 8, 100);
+  const terminal = attempts >= maxAttempts;
+  const retryDelayMs = positiveInteger(options.retryDelayMs, 60_000, 60 * 60_000);
+  const message = sanitizeFailureDetail(error?.message || error).slice(0, 800);
+  await db.prepare(`UPDATE sh_minute_fact_jobs SET
+      status=?,attempts=MAX(attempts,?),next_attempt_at=?,lease_until=NULL,
+      last_error=?,updated_at=?
+    WHERE id=? AND status IN ('pending','processing')`)
+    .bind(
+      terminal ? 'dead' : 'pending',
+      attempts,
+      terminal ? 0 : now + retryDelayMs,
+      message,
+      now,
+      integer(job?.id),
+    )
+    .run();
+  await releaseCoordinatedLiveJobs(env, [job?.id], { now }).catch(() => {});
+  return { terminal, attempts };
+}
+
+export const MINUTE_LIVE_TRIGGER_LEASE = Object.freeze({
+  preferred_store: 'durable-object',
+  fallback_store: 'd1',
+});

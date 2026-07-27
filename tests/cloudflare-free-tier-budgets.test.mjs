@@ -16,6 +16,7 @@ const pagesMiddleware = readSource('site/functions/_middleware.js');
 const pagesActions = readSource('worker/scripts/run-pages-read-model-actions.mjs');
 const offlineActions = readSource('worker/scripts/run-runtime-offline-maintenance-actions.mjs');
 
+
 test('Cloudflare resource budgets are fixed at 100 percent of included usage', () => {
   expectAll(script, [
     'Account-wide Cloudflare included-usage audit',
@@ -79,19 +80,23 @@ test('Cloudflare resource budgets are fixed at 100 percent of included usage', (
   ]);
 });
 
-test('collector coordination and remaining realtime Queues fit daily budgets without runtime cron', () => {
+test('collector coordination and runtime live-job DO fit daily budgets without runtime cron', () => {
   const collectorScheduledRequests = 24 * 60;
   const collectorStatusRequests = 24 * 6 * 2 + 24 * 2;
-  const maximumRuntimeStateRequests = 24 * 60 * 10;
+  const maximumRuntimeD1StateRequests = 24 * 60 * 9;
+  const runtimeLiveJobDoRequests = 24 * 60 * 2;
+  const runtimeLiveJobDoRowsWritten = 24 * 60 * 2;
   const maximumCoordinatorRequests = collectorScheduledRequests
     + collectorStatusRequests
-    + maximumRuntimeStateRequests;
+    + runtimeLiveJobDoRequests;
   const maximumScheduledDuration = collectorScheduledRequests * 10 * 0.128;
   const maximumStatusWaitDuration = collectorStatusRequests * 15 * 0.128;
   const maximumCoordinatorDuration = maximumScheduledDuration + maximumStatusWaitDuration;
   const maximumCoordinatorRowsRead = maximumCoordinatorRequests * 32;
-  const maximumCoordinatorRowsWritten = collectorScheduledRequests * 6
-    + maximumRuntimeStateRequests;
+  const maximumD1RowsWritten = collectorScheduledRequests * 6
+    + maximumRuntimeD1StateRequests;
+  const maximumDoRowsWritten = collectorScheduledRequests * 6
+    + runtimeLiveJobDoRowsWritten;
   const maximumQueueOperations = (48 + 48 + 288 * 2) * 3;
 
   assert.equal(collectorStatusRequests, 336);
@@ -99,15 +104,19 @@ test('collector coordination and remaining realtime Queues fit daily budgets wit
   assert.ok(maximumCoordinatorRequests < 100_000);
   assert.ok(maximumCoordinatorDuration < 13_000);
   assert.ok(maximumCoordinatorRowsRead < 5_000_000);
-  assert.ok(maximumCoordinatorRowsWritten < 100_000);
+  assert.ok(maximumD1RowsWritten < 100_000);
+  assert.ok(maximumDoRowsWritten < 100_000);
   assert.ok(maximumQueueOperations < 10_000);
 
   assert.deepEqual(collector.triggers.crons, ['* * * * *']);
   assert.equal(runtime.triggers, undefined);
-  assert.equal(runtime.durable_objects, undefined);
+  assert.deepEqual(runtime.durable_objects, {
+    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+  });
   assert.equal(runtime.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.deepEqual(Object.keys(runtime).includes('triggers'), false);
   expectNone(deployedEntry, ['scheduled:', 'runRuntimeOrchestratorScheduled']);
+  expectAll(deployedEntry, ['MinuteLiveJobCoordinator']);
   expectNone(coreEntry, ['runCoreScheduled', 'runtime-scheduled', 'pages-read-model-scheduled-dispatch']);
   expectAll(collectorStatus, [
     "action: 'status'",

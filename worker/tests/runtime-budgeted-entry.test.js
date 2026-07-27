@@ -27,11 +27,13 @@ test('all downstream Queue sends carry producer and operation attribution', asyn
   });
 });
 
-test('runtime is queue-only and retains bounded realtime consumers', () => {
+test('runtime is queue-only and retains bounded realtime consumers and live-job coordination', () => {
   const config = runtimeConfig();
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(config.triggers, undefined);
-  assert.equal(config.durable_objects, undefined);
+  assert.deepEqual(config.durable_objects, {
+    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+  });
   assert.equal(config.observability.head_sampling_rate, 0.1);
   assert.equal(config.observability.logs.head_sampling_rate, 0.1);
 

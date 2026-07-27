@@ -1,11 +1,14 @@
-import { COMPLETE_MINUTE_FACT_JOB_SQL } from './minute-facts-inbox.js';
 import { budgetedLiveCompleteMessage } from './minute-live-complete-message.js';
+import { completeCoordinatedLiveJob } from './minute-live-job-coordinator.js';
 
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 
 export { budgetedLiveCompleteMessage };
 
-export const COMPLETE_LIVE_MINUTE_FACT_JOB_SQL = COMPLETE_MINUTE_FACT_JOB_SQL;
+export const COMPLETE_LIVE_MINUTE_FACT_JOB_SQL = `UPDATE sh_minute_fact_jobs SET
+    status='done',lease_until=NULL,processed_at=?,last_error=NULL,
+    payload_clearable=0,updated_at=?
+  WHERE id=? AND status IN ('pending','processing')`;
 
 function integer(value) {
   const parsed = Number(value);
@@ -25,9 +28,11 @@ export async function completeBudgetedLiveJob(env, body, dependencies = {}) {
   if (dependencies.complete) return dependencies.complete(env, jobId, now);
   const db = env?.MINUTE_DB;
   if (!db?.prepare) throw new Error('minute live completion MINUTE_DB binding is missing');
-  return db.prepare(COMPLETE_LIVE_MINUTE_FACT_JOB_SQL)
+  const result = await db.prepare(COMPLETE_LIVE_MINUTE_FACT_JOB_SQL)
     .bind(now, now, jobId)
     .run();
+  await completeCoordinatedLiveJob(env, jobId);
+  return result;
 }
 
 export async function processBudgetedLiveCompleteBatch(batch, env, dependencies = {}) {

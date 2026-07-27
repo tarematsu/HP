@@ -137,7 +137,13 @@ test('runtime, collector, and recovery configs preserve domain isolation', () =>
     assert.equal(runtimeConsumers.has(retiredQueue), false, retiredQueue);
   }
   assert.equal(runtime.triggers, undefined);
-  assert.equal(runtime.durable_objects, undefined);
+  assert.deepEqual(runtime.durable_objects, {
+    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+  });
+  assert.deepEqual(runtime.migrations.at(-1), {
+    tag: 'minute-live-job-coordinator-v1',
+    new_sqlite_classes: ['MinuteLiveJobCoordinator'],
+  });
   assert.equal(packageJson.scripts['deploy:buddies-recovery'], 'node scripts/deploy-buddies-recovery.mjs');
   assert.equal(packageJson.scripts['deploy:buddies-collector'], 'node scripts/deploy-buddies-collector.mjs');
   assert.equal(packageJson.scripts['deploy:runtime'], 'node scripts/deploy-runtime.mjs');

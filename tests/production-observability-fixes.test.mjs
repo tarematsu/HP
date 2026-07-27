@@ -7,7 +7,7 @@ import {
   TRACK_HISTORY_RESPONSE_MAX_CHUNKS,
 } from '../worker/src/pages-track-history-response.js';
 
-test('deployed runtime is queue-only with materialized-response serving', () => {
+test('deployed runtime is queue-only with materialized-response serving and live-job coordination', () => {
   assert.deepEqual(Object.keys(deployedWorker).sort(), ['fetch', 'queue']);
 
   const config = JSON.parse(readFileSync(
@@ -25,8 +25,11 @@ test('deployed runtime is queue-only with materialized-response serving', () => 
 
   assert.equal(config.main, 'src/runtime-orchestrator-deployed-entry.js');
   assert.equal(config.triggers, undefined);
-  assert.equal(config.durable_objects, undefined);
+  assert.deepEqual(config.durable_objects, {
+    bindings: [{ name: 'MINUTE_LIVE_JOB_COORDINATOR', class_name: 'MinuteLiveJobCoordinator' }],
+  });
   assert.doesNotMatch(entry, /scheduled\s*:|runRuntimeOrchestratorScheduled/);
+  assert.match(entry, /MinuteLiveJobCoordinator/);
   assert.match(actions, /runRollupMaintenance/);
   assert.match(actions, /pruneOldSnapshots/);
   assert.match(actions, /runStreamGoalPrediction/);
