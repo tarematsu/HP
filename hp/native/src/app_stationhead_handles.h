@@ -123,9 +123,6 @@ class AppStationheadHandle final : public StationheadHandleBase {
   void SetStartupPreviewBounds(const RECT& bounds) {
     requestedStartupPreviewBounds_ = bounds;
     startupPreviewRequested_ = true;
-    // Register A before App submits B's preview bounds. B can then temporarily
-    // expand A over both halves without exposing an empty secondary child host.
-    SetStartupPrimaryHandle(this);
     StationheadHandleBase::SetStartupPreviewBounds(bounds);
   }
   void ClearStartupPreviewBounds() {
@@ -202,6 +199,13 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   }
   void Start() {
     if (!CanStartPlayer()) return;
+    // A has now registered its real one-way lifecycle. Expand A before the main
+    // window is shown, while B keeps only the requested bounds in memory.
+    if (startupPreviewRequested_) {
+      if (AppStationheadHandle* primary = StartupPrimary()) {
+        primary->ExpandStartupPreviewForSecondary(pendingStartupPreviewBounds_);
+      }
+    }
     if (startupRequestedAtTick_ == 0) {
       const uint64_t nowTick = GetTickCount64();
       startupRequestedAtTick_ = nowTick == 0 ? 1 : nowTick;
