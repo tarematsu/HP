@@ -1,4 +1,7 @@
-import { classifyDailyRowsReadTrend } from './observability-daily-trend.mjs';
+import {
+  classifyDailyD1SnapshotPaces,
+  classifyDailyRowsReadTrend,
+} from './observability-daily-trend.mjs';
 import { normalizeOutcome } from './observability-status-publisher.mjs';
 
 const PRIORITY_ORDER = Object.freeze({ P0: 0, P1: 1, P2: 2, P3: 3 });
@@ -163,10 +166,24 @@ function incidentLinks(detail, runUrl) {
   return links.join(' · ');
 }
 
-export function observabilityIssueOverall({ outcomes = {}, summaries = {}, activeDeployments = {} }) {
+export function observabilityIssueOverall({
+  outcomes = {},
+  summaries = {},
+  activeDeployments = {},
+  previousIssueBody = '',
+  generatedAt = '',
+}) {
   const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)
     .every((key) => normalizeOutcome(outcomes[key]) === 'success');
+  const d1Paces = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody,
+    generatedAt,
+  });
+  const recentD1PacesHealthy = Object.values(d1Paces)
+    .every((pace) => !pace || pace.state !== 'failure');
   return gatesHealthy
+    && recentD1PacesHealthy
     && publicHealthSignal(summaries.publicHealth).state === 'healthy'
     && deploymentSignal(activeDeployments).state === 'healthy'
     ? 'success'
@@ -188,6 +205,13 @@ export function buildObservabilityTriage({
     previousIssueBody,
     generatedAt,
   });
+  const d1Paces = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody,
+    generatedAt,
+  });
+  const readPace = d1Paces.rowsRead;
+  const writePace = d1Paces.rowsWritten;
   const incidents = [];
 
   if (publicHealth.state !== 'healthy') {
@@ -207,6 +231,27 @@ export function buildObservabilityTriage({
       evidence: deployments.evidence,
       action: 'Verify traffic-bearing versions and redeploy or roll back any inactive Worker.',
       detail: '#deployment-context',
+      contained: false,
+    });
+  }
+
+  if (readPace?.state === 'failure' && !readPace.current.violationSource) {
+    incidents.push({
+      priority: 'P2',
+      area: 'Recent D1 read pace',
+      evidence: readPace.evidence,
+      action: 'Inspect the top rows-read fingerprints and defer nonessential D1-heavy work before the UTC-day projection catches up.',
+      detail: '#diagnostic-d1',
+      contained: false,
+    });
+  }
+  if (writePace?.state === 'failure' && !writePace.current.violationSource) {
+    incidents.push({
+      priority: 'P2',
+      area: 'Recent D1 write pace',
+      evidence: writePace.evidence,
+      action: 'Inspect the top rows-written fingerprints and suppress redundant upserts, heartbeat writes, or nonessential maintenance.',
+      detail: '#diagnostic-d1',
       contained: false,
     });
   }
@@ -240,12 +285,17 @@ export function buildObservabilityTriage({
     || left.area.localeCompare(right.area)
   ));
 
-  const onlyContained = incidents.length > 0 && incidents.every((incident) => incident.contained);
+  const activeIncidents = incidents.filter((incident) => !incident.contained);
+  const containedIncidents = incidents.filter((incident) => incident.contained);
+  const primary = activeIncidents[0] || incidents[0];
+  const containedSuffix = containedIncidents.length
+    ? `; ${containedIncidents.length} contained historical signal${containedIncidents.length === 1 ? '' : 's'}`
+    : '';
   const headline = !incidents.length
     ? '> **HEALTHY — no active observability incidents were detected.**'
-    : onlyContained
-      ? `> **CONTAINED — ${incidents.length} historical signal${incidents.length === 1 ? '' : 's'} remain${incidents.length === 1 ? 's' : ''} until the UTC counter resets.** **${incidents[0].area}** — ${escapeCell(incidents[0].evidence)}`
-      : `> **ACTION REQUIRED — ${incidents.length} active signal${incidents.length === 1 ? '' : 's'}.** Highest priority: **${incidents[0].area}** — ${escapeCell(incidents[0].evidence)}`;
+    : !activeIncidents.length
+      ? `> **CONTAINED — ${containedIncidents.length} historical signal${containedIncidents.length === 1 ? '' : 's'} remain${containedIncidents.length === 1 ? 's' : ''} until the UTC counter resets.** **${primary.area}** — ${escapeCell(primary.evidence)}`
+      : `> **ACTION REQUIRED — ${activeIncidents.length} active signal${activeIncidents.length === 1 ? '' : 's'}${containedSuffix}.** Highest priority: **${primary.area}** — ${escapeCell(primary.evidence)}`;
   const incidentRows = incidents.length
     ? incidents.slice(0, 8).map((incident) => (
       `| **${incident.priority}** | ${escapeCell(incident.area)} | ${escapeCell(incident.evidence)} | ${escapeCell(incident.action)} | ${incidentLinks(incident.detail, runUrl)} |`
@@ -253,9 +303,12 @@ export function buildObservabilityTriage({
     : '| - | No active incidents | All monitored gates and availability signals are healthy. | Continue routine monitoring. | - |';
   const omitted = incidents.length > 8 ? `\n\n_${incidents.length - 8} lower-priority signals omitted; open the gate matrix and detailed diagnostics below._` : '';
 
+  const paceUnavailable = 'Comparable snapshot pace unavailable; requires the same UTC date and a 20m–2h interval.';
   const matrixRows = [
     ['Public endpoint', publicHealth.state, publicHealth.evidence],
     ['Worker deployments', deployments.state, deployments.evidence],
+    ['Recent D1 rows read pace', readPace?.state || 'unknown', readPace?.evidence || paceUnavailable],
+    ['Recent D1 rows written pace', writePace?.state || 'unknown', writePace?.evidence || paceUnavailable],
     ...Object.entries(OBSERVABILITY_GATE_INFO).map(([key, info]) => (
       key === 'daily' && dailyTrend?.contained
         ? [info.label, 'contained', dailyTrend.evidence]
