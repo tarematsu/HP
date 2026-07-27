@@ -26,3 +26,5 @@ static_assert(kInteractiveAuthMemoryTarget ==
 #undef COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
 #define COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW                              \
   ::hp::stationhead_auth_memory_policy::kInteractiveAuthMemoryTarget
+
+#include "sh_auth_process_failure_policy_fix.h"
