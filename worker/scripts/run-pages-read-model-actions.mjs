@@ -17,6 +17,8 @@ const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
+const DEFAULT_TRACK_HISTORY_STEPS = 4;
+const MAX_TRACK_HISTORY_STEPS = 16;
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
@@ -174,9 +176,9 @@ export async function runPagesReadModelActions(options = {}) {
   if (!Number.isFinite(startedAt)) throw new Error('Pages read-model start time is invalid');
   const maxSteps = positiveInteger(
     options.maxSteps ?? process.env.PAGES_READ_MODEL_MAX_STEPS,
-    1800,
+    DEFAULT_TRACK_HISTORY_STEPS,
     1,
-    3000,
+    MAX_TRACK_HISTORY_STEPS,
   );
   const configuredDeadline = Number(options.deadlineMs);
   const deadlineMs = Number.isFinite(configuredDeadline)
@@ -219,31 +221,46 @@ export async function runPagesReadModelActions(options = {}) {
     timestamp += 60_000;
     if (trackHistoryComplete(lastResult)) break;
   }
-  if (!lastResult) throw new Error('Pages track-history runner produced no result');
-  if (!trackHistoryComplete(lastResult)) {
-    if (steps >= maxSteps) {
-      throw new Error(`Pages track-history rebuild did not finish within ${steps} steps`);
-    }
-    throw new Error('Pages track-history rebuild exceeded the Actions deadline');
+
+  const complete = trackHistoryComplete(lastResult);
+  const deferred = !complete;
+  const deferReason = deferred
+    ? (steps >= maxSteps ? 'step-budget' : 'deadline')
+    : null;
+  if (!lastResult) {
+    lastResult = {
+      skipped: true,
+      reason: 'track-history-actions-deferred',
+      stage: { published: false },
+    };
   }
 
-  if (trackHistoryPublishedThisRun(lastResult)) dueKeys.add('track-history');
-  await publishVariants({
-    variants,
-    dueKeys,
-    select: (variant) => variant.key === 'track-history',
-    env,
-    startedAt,
-    deadlineMs,
-    clock,
-    renderVariant,
-    published,
-  });
+  // An incomplete generation remains persisted in D1 and is resumed by the next
+  // Actions run. Keep the existing KV/R2 track-history response active until a
+  // complete generation is ready to publish.
+  if (complete) {
+    if (trackHistoryPublishedThisRun(lastResult)) dueKeys.add('track-history');
+    await publishVariants({
+      variants,
+      dueKeys,
+      select: (variant) => variant.key === 'track-history',
+      env,
+      startedAt,
+      deadlineMs,
+      clock,
+      renderVariant,
+      published,
+    });
+  }
 
   return {
     ok: true,
-    event: 'pages_read_model_actions_complete',
+    event: deferred
+      ? 'pages_read_model_actions_deferred'
+      : 'pages_read_model_actions_complete',
     track_history_steps: steps,
+    track_history_deferred: deferred,
+    track_history_defer_reason: deferReason,
     elapsed_ms: Math.max(0, Number(clock()) - startedAt),
     published,
     track_history_result: lastResult,

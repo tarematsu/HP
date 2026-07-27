@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/run-runtime-offline-maintenance.yml'
+      - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-runtime-offline-maintenance-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/runtime-**'
@@ -38,6 +39,9 @@ jobs:
       FACTS_DATABASE_NAME: stationhead-minute
       OTHER_DATABASE_NAME: stationhead-other
       RUNTIME_MAINTENANCE_DEADLINE_MS: '720000'
+      D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
+      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
+      D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -51,10 +55,32 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
+      - name: Check D1 Actions read and write budgets
+        id: d1-budget
+        run: node ../scripts/cloudflare-d1-write-guard.mjs
+      - name: Summarize D1 budget decision
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### D1 Actions budget"
+            echo "- Decision: ${{ steps.d1-budget.outputs.reason }}"
+            echo "- UTC-day reads: ${{ steps.d1-budget.outputs.rows_read }} / ${{ steps.d1-budget.outputs.read_limit }}"
+            echo "- Projected UTC-day reads: ${{ steps.d1-budget.outputs.projected_rows_read }} / ${{ steps.d1-budget.outputs.read_limit }}"
+            echo "- Hourly writes: ${{ steps.d1-budget.outputs.rows_written }} / ${{ steps.d1-budget.outputs.limit }}"
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
-      - name: Run prediction, rollups, and retention in one pass
+      - name: Run budget-aware prediction, rollups, and retention in one pass
         shell: bash
+        env:
+          RUNTIME_MAINTENANCE_D1_ALLOWED: ${{ steps.d1-budget.outputs.allowed }}
+          RUNTIME_MAINTENANCE_D1_SKIP_REASON: ${{ steps.d1-budget.outputs.reason }}
+          RUNTIME_MAINTENANCE_D1_ROWS_READ: ${{ steps.d1-budget.outputs.rows_read }}
+          RUNTIME_MAINTENANCE_D1_PROJECTED_ROWS_READ: ${{ steps.d1-budget.outputs.projected_rows_read }}
+          RUNTIME_MAINTENANCE_D1_READ_LIMIT: ${{ steps.d1-budget.outputs.read_limit }}
+          RUNTIME_MAINTENANCE_D1_ROWS_WRITTEN: ${{ steps.d1-budget.outputs.rows_written }}
+          RUNTIME_MAINTENANCE_D1_WRITE_LIMIT: ${{ steps.d1-budget.outputs.limit }}
         run: |
           set -o pipefail
           node scripts/run-runtime-offline-maintenance-actions.mjs 2>&1 | tee runtime-offline-maintenance.log

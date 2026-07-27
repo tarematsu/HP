@@ -49,9 +49,11 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
-      PAGES_READ_MODEL_MAX_STEPS: '1800'
+      PAGES_READ_MODEL_MAX_STEPS: '4'
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
+      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
+      D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,17 +67,28 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: worker/package-lock.json
-      - name: Check hourly D1 write budget
+      - name: Check D1 Actions read and write budgets
         id: d1-write-budget
         run: node ../scripts/cloudflare-d1-write-guard.mjs
-      - name: Record D1 write-budget skip
+      - name: Summarize D1 budget decision
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### D1 Actions budget"
+            echo "- Decision: ${{ steps.d1-write-budget.outputs.reason }}"
+            echo "- UTC-day reads: ${{ steps.d1-write-budget.outputs.rows_read }} / ${{ steps.d1-write-budget.outputs.read_limit }}"
+            echo "- Projected UTC-day reads: ${{ steps.d1-write-budget.outputs.projected_rows_read }} / ${{ steps.d1-write-budget.outputs.read_limit }}"
+            echo "- Hourly writes: ${{ steps.d1-write-budget.outputs.rows_written }} / ${{ steps.d1-write-budget.outputs.limit }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Record D1 budget skip
         if: steps.d1-write-budget.outputs.allowed != 'true'
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Skipping Actions read-model/history generation: D1 write telemetry is unavailable, so the guard failed closed." | tee pages-read-model-actions.log
+            echo "Skipping Actions read-model/history generation: D1 telemetry is unavailable, so the guard failed closed. Existing KV/R2 responses remain active." | tee pages-read-model-actions.log
           else
-            echo "Skipping Actions read-model/history generation: ${{ steps.d1-write-budget.outputs.rows_written }} D1 rows were written in the last hour (limit ${{ steps.d1-write-budget.outputs.limit }})." | tee pages-read-model-actions.log
+            echo "Skipping Actions read-model/history generation: D1 usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         if: steps.d1-write-budget.outputs.allowed == 'true'
