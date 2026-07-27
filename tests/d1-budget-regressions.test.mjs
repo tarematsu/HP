@@ -32,7 +32,7 @@ test('stream-goal prediction keeps a six-hour library default and Actions owns p
   assert.match(actions, /runStreamGoalPrediction/);
 });
 
-test('track-history refresh scans one recent and one backfill day per cycle', () => {
+test('track-history refresh scans one completed recent and one backfill day per cycle', () => {
   const now = Date.UTC(2026, 6, 19, 12);
   const currentDay = Math.floor(now / DAY_MS) * DAY_MS;
   const previousFullAt = currentDay - 2 * DAY_MS;
@@ -43,7 +43,7 @@ test('track-history refresh scans one recent and one backfill day per cycle', ()
   );
   assert.equal(ranges.fullReconcile, false);
   assert.equal(ranges.recent.fromTs, currentDay - DAY_MS);
-  assert.equal(ranges.recent.toTs, currentDay + DAY_MS);
+  assert.equal(ranges.recent.toTs, currentDay);
   assert.equal(ranges.backfill.toTs - ranges.backfill.fromTs, DAY_MS);
 
   const monthly = trackHistoryRefreshRanges(
@@ -53,13 +53,16 @@ test('track-history refresh scans one recent and one backfill day per cycle', ()
   );
   assert.equal(monthly.fullReconcile, true);
   assert.equal(monthly.recent.fromTs, currentDay - 35 * DAY_MS);
+  assert.equal(monthly.recent.toTs, currentDay);
 });
 
-test('Pages track-history shards limit queue starts to two days without changing binds', () => {
+test('Pages track-history shards use materialized queue starts without changing binds', () => {
   const bounded = boundedTrackHistorySql();
   assert.match(bounded, /queue_bounds AS \(\s*SELECT \? AS range_end/);
-  assert.match(bounded, /items\.start_time>=bounds\.range_end-172800000/);
+  assert.match(bounded, /FROM sh_track_history_queue_starts starts/);
+  assert.match(bounded, /starts\.start_time>=bounds\.range_end-172800000/);
   assert.doesNotMatch(bounded, /WHERE start_time IS NOT NULL AND start_time < \?/);
+  assert.doesNotMatch(bounded, /FROM sh_queue_items items/);
   assert.equal((bounded.match(/\?/g) || []).length, (TRACK_HISTORY_SQL.match(/\?/g) || []).length);
 });
 
