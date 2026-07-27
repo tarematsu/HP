@@ -45,7 +45,7 @@ test('response-validated auth capture is compiled after auth navigation policy',
   );
   assert.match(
     validationPolicy,
-    /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript \\\n  StationheadAuthCaptureScriptResponseValidated/,
+    /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript[\s\\]+StationheadAuthCaptureScriptResponseValidated/,
   );
 });
 
