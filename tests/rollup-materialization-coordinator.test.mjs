@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const coordinator = readFileSync(new URL('../worker/src/rollup-maintenance-coordinator.js', import.meta.url), 'utf8');
+const migration = readFileSync(new URL('../database/buddies-migrations/012_rollup_materialization_state.sql', import.meta.url), 'utf8');
+const actions = readFileSync(new URL('../worker/scripts/run-runtime-offline-maintenance-actions.mjs', import.meta.url), 'utf8');
+
+test('rollup maintenance uses an expiring single-run lease', () => {
+  assert.match(coordinator, /lease_until<=\?5/);
+  assert.match(coordinator, /rollup-maintenance-lease-held/);
+  assert.match(coordinator, /releaseRunLease/);
+});
+
+test('period state is normalized and daily publication failures restore dirty state', () => {
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_rollup_materialization_state/);
+  assert.match(migration, /PRIMARY KEY\(period_type, period_key\)/);
+  assert.match(coordinator, /dailyPublished/);
+  assert.match(coordinator, /dirty:/);
+  assert.match(coordinator, /next_attempt_at/);
+  assert.match(coordinator, /quarantined/);
+});
+
+test('runtime maintenance routes rollups through the coordinator', () => {
+  assert.match(actions, /rollup-maintenance-coordinator\.js/);
+  assert.doesNotMatch(actions, /from '\.\.\/src\/rollup-maintenance\.js'/);
+});
