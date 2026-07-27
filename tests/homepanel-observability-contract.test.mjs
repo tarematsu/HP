@@ -15,7 +15,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
 
   expectAll(workflow, [
     'name: Unified Cloudflare Observability',
-    'workflows: ["Deploy production", "Deploy HomePanel Cloud services"]',
+    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
     'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
     'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
@@ -44,7 +44,11 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'def _next_cron_time(',
     'def _worker_grace_seconds(',
     'CPU_COVERAGE_CRON_GRACE',
-    'schedule-aware deployment coverage grace self-test passed',
+    'workersInvocationsAdaptive',
+    'CPU_COVERAGE_IDLE',
+    'no-invocations-and-no-cron',
+    'CPU coverage failure',
+    'schedule-aware and activity-aware deployment coverage self-test passed',
   ]);
   expectAll(unifiedCi, [
     'python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test',
