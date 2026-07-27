@@ -52,12 +52,13 @@ test('summary upsert consumes one combined boundary row', () => {
   const upsert = section('async function upsertSummary', 'async function rollupDaily');
   assert.match(
     upsert,
-    /async function upsertSummary\(db, table, key, aggregate, boundaries, updatedAt\)/,
+    /async function upsertSummary\(db, table, key, aggregate, boundaries, updatedAt, qualityFlags/,
   );
   assert.match(upsert, /finite\(boundaries\?\.stream_start\)/);
   assert.match(upsert, /finite\(boundaries\?\.stream_end\)/);
   assert.match(upsert, /finite\(boundaries\?\.member_start\)/);
   assert.match(upsert, /finite\(boundaries\?\.member_end\)/);
   assert.match(upsert, /boundaries\?\.primary_host \|\| null/);
+  assert.match(upsert, /qualityFlags, updatedAt/);
   assert.doesNotMatch(upsert, /\bfirst\?\.|\blast\?\.|\bprimaryHost\b/);
 });
