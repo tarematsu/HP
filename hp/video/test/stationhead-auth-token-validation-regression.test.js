@@ -71,7 +71,7 @@ test('fetch tokens are accepted only after a trusted Stationhead response', () =
   assert.match(fixedFetch, /trustedStationheadRequest\(requestUrl\)/);
   assert.match(
     fixedFetch,
-    /window\.URL && input instanceof window\.URL \? input\.href/,
+    /NativeURL && input instanceof NativeURL \? input\.href/,
   );
   assert.match(fixedFetch, /const result = currentFetch\(input, init\);/);
   assert.equal(occurrences(fixedFetch, 'currentFetch(input, init)'), 1);
@@ -107,10 +107,16 @@ test('401 cannot remain in the false-positive recovery cache', () => {
     'static constexpr std::wstring_view kAcceptanceHelpersFixed',
     'static constexpr std::wstring_view kFetchCapture',
   );
+  assert.match(helpers, /const NativeURL = window\.URL;/);
+  assert.match(helpers, /new NativeURL\(String\(value \|\| ''\), location\.href\)/);
   assert.match(helpers, /parsed\.protocol === 'https:'/);
   assert.match(
     helpers,
     /targetHost === 'stationhead\.com'[\s\S]*targetHost\.endsWith\('\.stationhead\.com'\)/,
+  );
+  assert.match(
+    helpers,
+    /RejectedAuthorization ===[\s\S]*candidate\.authorization[\s\S]*BlockingLoginVisible !== false[\s\S]*return;/,
   );
   assert.match(
     helpers,
