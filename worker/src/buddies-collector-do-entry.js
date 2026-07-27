@@ -78,6 +78,10 @@ function telemetrySample(result) {
   };
 }
 
+function primaryRunDeferred(result) {
+  return result?.skipped === true && result?.reason === 'collector-run-already-active';
+}
+
 export async function runAlarmCoordinatedBuddiesCollectorScheduled(
   controller,
   env,
@@ -165,8 +169,37 @@ export class BuddiesCollectorCoordinator {
         cron: BUDDIES_COLLECTOR_CRON,
         scheduledTime: scheduledAt,
       }, this.activeEnv(), {}, this.dependencies.direct);
-      collectionCompleted = true;
       const finishedAt = this.now();
+      if (primaryRunDeferred(result)) {
+        await storage.put(MINUTE_STATE_KEY, {
+          minute_at: scheduledMinute,
+          status: 'deferred',
+          reason: result.reason,
+          started_at: startedAt,
+          deferred_at: finishedAt,
+          scheduled_at: scheduledAt,
+        });
+        console.warn(JSON.stringify({
+          event: 'collector_minute_deferred',
+          reason: result.reason,
+          minute_at: scheduledMinute,
+          scheduled_at: scheduledAt,
+        }));
+        await recordCollectorOperationalTelemetry(this.state, this.env, {
+          ok: true,
+          skipped: true,
+          timestamp: finishedAt,
+          duration_ms: finishedAt - startedAt,
+          primary_lock_deferred: 1,
+        }).catch((error) => diagnostic('collector_telemetry_failed', error));
+        return {
+          ...result,
+          minute_at: scheduledMinute,
+          retryable: true,
+        };
+      }
+
+      collectionCompleted = true;
       await storage.put(MINUTE_STATE_KEY, {
         minute_at: scheduledMinute,
         status: 'completed',

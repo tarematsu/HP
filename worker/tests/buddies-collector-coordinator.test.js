@@ -122,6 +122,58 @@ test('collector Durable Object runs at most once per successful minute', async (
   assert.equal(telemetry.active.queue_send_attempts_sum, 1);
 });
 
+test('collector lease contention stays deferred and can retry the same minute', async () => {
+  const durableStorage = storage();
+  let allowClaim = false;
+  let collections = 0;
+  let now = 240_001;
+  const coordinator = new BuddiesCollectorCoordinator(
+    { storage: durableStorage },
+    {},
+    {
+      now: () => now,
+      direct: {
+        now: () => now,
+        holderId: 'lease-test',
+        async claimPrimaryRunLock() { return allowClaim; },
+        async collectRawChannel() {
+          collections += 1;
+          return { payload_bytes: 42 };
+        },
+        async clearCollectorFailure() {},
+        async releasePrimaryRunLock() { return true; },
+      },
+    },
+  );
+
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const deferred = await coordinator.runMinute({ scheduledTime: 240_000 });
+    assert.equal(deferred.skipped, true);
+    assert.equal(deferred.reason, 'collector-run-already-active');
+    assert.equal(deferred.retryable, true);
+    assert.equal(durableStorage.values.get('collector:minute-state').status, 'deferred');
+    assert.equal(durableStorage.values.has('collector:last-success'), false);
+
+    const deferredTelemetry = durableStorage.values.get('collector:operational-telemetry');
+    assert.equal(deferredTelemetry.active.collections, 0);
+    assert.equal(deferredTelemetry.active.failures, 0);
+    assert.equal(deferredTelemetry.active.skipped, 1);
+    assert.equal(deferredTelemetry.active.primary_lock_deferred_sum, 1);
+
+    allowClaim = true;
+    now = 240_101;
+    const retry = await coordinator.runMinute({ scheduledTime: 240_000 });
+    assert.equal(retry.collected, true);
+    assert.equal(collections, 1);
+    assert.equal(durableStorage.values.get('collector:minute-state').status, 'completed');
+    assert.equal(durableStorage.values.get('collector:last-success').minute_at, 240_000);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test('collector execution exposes persistent Durable Object hot state', async () => {
   const durableStorage = storage();
   let seen = false;
