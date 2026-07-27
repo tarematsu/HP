@@ -281,17 +281,46 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
   return result;
 }
 
+inline constexpr bool StationheadFocusSurfaceIsInteractive(
+    LONG width, LONG height) noexcept {
+  return width > 1 && height > 1;
+}
+
+static_assert(!StationheadFocusSurfaceIsInteractive(1, 1));
+static_assert(!StationheadFocusSurfaceIsInteractive(1, 720));
+static_assert(!StationheadFocusSurfaceIsInteractive(1280, 1));
+static_assert(StationheadFocusSurfaceIsInteractive(2, 2));
+
 // A hide request can be rejected while login or Spotify authorization remains
 // interactive. In that case KeepPlaybackBehindDashboard() leaves the selected
-// Stationhead host visible and focused. Do not steal focus to the dashboard just
-// because the original request said "hide"; restore the parent only when the
-// current focus is gone, invalid, or belongs to a surface that is actually hidden.
+// Stationhead host visible and focused. Ordinary playback hides differently: its
+// host remains WS_VISIBLE for audio continuity but is collapsed to a 1x1 surface.
+// Preserve focus only when the focused descendant belongs to a direct child of
+// the target that is still visible and has interactive geometry.
+inline bool StationheadFocusRemainsInteractive(
+    HWND target, HWND focused) noexcept {
+  if (!target || !focused || focused == target ||
+      !IsWindow(target) || !IsWindow(focused)) {
+    return false;
+  }
+
+  HWND surface = focused;
+  HWND parent = GetParent(surface);
+  while (parent && parent != target) {
+    surface = parent;
+    parent = GetParent(surface);
+  }
+  if (parent != target || !IsWindowVisible(surface)) return false;
+
+  RECT client{};
+  if (!GetClientRect(surface, &client)) return false;
+  return StationheadFocusSurfaceIsInteractive(
+      client.right - client.left, client.bottom - client.top);
+}
+
 inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
   const HWND focused = GetFocus();
-  if (focused && focused != target && IsWindow(focused) &&
-      IsWindowVisible(focused)) {
-    return focused;
-  }
+  if (StationheadFocusRemainsInteractive(target, focused)) return focused;
   return ::SetFocus(target);
 }
 
