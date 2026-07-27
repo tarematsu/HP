@@ -89,3 +89,5 @@ static_assert(kAuthControllerStableTimeoutMs <=
 // native timeout uses compiled after this final PCH layer.
 #define kStationheadAuthControllerTimeoutMs                                      \
   ::hp::stationhead_auth_navigation_policy::kAuthControllerStableTimeoutMs
+
+#include "sh_auth_capture_validation_policy_fix.h"
