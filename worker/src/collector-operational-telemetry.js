@@ -18,6 +18,7 @@ const NUMERIC_METRICS = Object.freeze([
   'pending_flushed',
   'prepared_fallback',
   'checkpoint_uncertain',
+  'primary_lock_deferred',
   'materialization_state_written',
 ]);
 
@@ -37,12 +38,13 @@ function bucketStart(timestamp, duration) {
 function emptyWindow(timestamp, duration) {
   const start = bucketStart(timestamp, duration);
   return {
-    schema_version: 3,
+    schema_version: 4,
     source: 'sh-buddies-collector',
     bucket_start: start,
     bucket_end: start + duration,
     collections: 0,
     failures: 0,
+    skipped: 0,
     duration_ms_sum: 0,
     duration_ms_max: 0,
     updated_at: timestamp,
@@ -68,10 +70,12 @@ function addMetrics(window, sample) {
 
 function addSample(window, sample) {
   const duration = Math.max(0, Number(sample.duration_ms) || 0);
+  const skipped = sample?.skipped === true;
   return addMetrics({
     ...window,
-    collections: Number(window.collections || 0) + (sample.ok ? 1 : 0),
-    failures: Number(window.failures || 0) + (sample.ok ? 0 : 1),
+    collections: Number(window.collections || 0) + (sample.ok && !skipped ? 1 : 0),
+    failures: Number(window.failures || 0) + (!sample.ok && !skipped ? 1 : 0),
+    skipped: Number(window.skipped || 0) + (skipped ? 1 : 0),
     duration_ms_sum: Number(window.duration_ms_sum || 0) + duration,
     duration_ms_max: Math.max(Number(window.duration_ms_max || 0), duration),
     updated_at: sample.timestamp,
