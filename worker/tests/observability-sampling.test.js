@@ -6,12 +6,16 @@ function config(name) {
   return JSON.parse(readFileSync(new URL(`../wrangler.${name}.jsonc`, import.meta.url), 'utf8'));
 }
 
-test('low-traffic Sakurazaka worker persists every invocation for deterministic coverage', () => {
-  const sakurazaka = config('sakurazaka46jp');
-  assert.equal(sakurazaka.observability.enabled, true);
-  assert.equal(sakurazaka.observability.head_sampling_rate, 1);
-  assert.equal(sakurazaka.observability.logs.enabled, true);
-  assert.equal(sakurazaka.observability.logs.persist, true);
-  assert.equal(sakurazaka.observability.logs.invocation_logs, true);
-  assert.equal(sakurazaka.observability.logs.head_sampling_rate, 1);
+function assertCompleteInvocationCoverage(worker) {
+  assert.equal(worker.observability.enabled, true);
+  assert.equal(worker.observability.head_sampling_rate, 1);
+  assert.equal(worker.observability.logs.enabled, true);
+  assert.equal(worker.observability.logs.persist, true);
+  assert.equal(worker.observability.logs.invocation_logs, true);
+  assert.equal(worker.observability.logs.head_sampling_rate, 1);
+}
+
+test('low-traffic Workers persist every invocation for deterministic CPU coverage', () => {
+  assertCompleteInvocationCoverage(config('sakurazaka46jp'));
+  assertCompleteInvocationCoverage(config('runtime'));
 });
