@@ -33,6 +33,12 @@ bool WindowClientSizeMatches(HWND window, int width, int height) noexcept {
           client.bottom - client.top == height;
 }
 
+bool WindowContainsFocus(HWND window) noexcept {
+  const HWND focused = GetFocus();
+  return window && IsWindow(window) && focused &&
+         (focused == window || IsChild(window, focused));
+}
+
 bool ChildWindowPlacementMatches(HWND window, const RECT& expected, HWND placement) noexcept {
   if (!window) return false;
   HWND parent = GetParent(window);
@@ -198,50 +204,29 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       (hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight));
   const bool authHostSizeMatches = !showAuth ||
       (authHostValid && WindowClientSizeMatches(authHostWindow, width, height));
+  const bool hostPlacementMatches = hostValid &&
+      ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
+  const bool authHostPlacementMatches = authHostValid &&
+      ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
 
-  if (hostValid) {
-    if (showAuth) {
-      if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else if (!hostWasVisible || !hostSizeMatches ||
-               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
-      SetWindowPos(hostWindow, hostPlacement,
-                   bounds.left, bounds.top, hostWidth, hostHeight,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-    }
+  // Prepare the destination host while it is still hidden. WebView2 controller
+  // bounds and visibility are then committed before the destination host is
+  // exposed, so playback/auth transitions cannot reveal an empty child window.
+  if (!showAuth && hostValid &&
+      (!hostSizeMatches || !hostPlacementMatches)) {
+    SetWindowPos(hostWindow, hostPlacement,
+                 bounds.left, bounds.top, hostWidth, hostHeight,
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+  }
+  if (showAuth && authHostValid &&
+      (!authHostSizeMatches || !authHostPlacementMatches)) {
+    SetWindowPos(authHostWindow, HWND_TOP,
+                 bounds.left, bounds.top, width, height,
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
   }
 
-  if (controller) {
-    if (showAuth) {
-      if (!ControllerVisibilityMatches(controller, FALSE)) {
-        controller->put_IsVisible(FALSE);
-      }
-    } else {
-      // Check the host first. A resize makes the controller update mandatory,
-      // so avoid a synchronous WebView2 COM read on that common transition.
-      if (!hostSizeMatches ||
-          !ControllerBoundsMatch(controller, contentBounds)) {
-        controller->put_Bounds(contentBounds);
-      }
-      if (!ControllerVisibilityMatches(controller, TRUE)) {
-        controller->put_IsVisible(TRUE);
-      }
-    }
-  }
-
-  if (authHostValid) {
-    if (showAuth) {
-      if (!authWasVisible || !authHostSizeMatches ||
-          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
-        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-      }
-    } else if (authWasVisible) {
-      ShowWindow(authHostWindow, SW_HIDE);
-    }
-  }
-
-  if (authController) {
-    if (showAuth) {
+  if (showAuth) {
+    if (authController) {
       if (!authHostSizeMatches ||
           !ControllerBoundsMatch(authController, authBounds)) {
         authController->put_Bounds(authBounds);
@@ -249,9 +234,44 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       if (!ControllerVisibilityMatches(authController, TRUE)) {
         authController->put_IsVisible(TRUE);
       }
-    } else if (!ControllerVisibilityMatches(authController, FALSE)) {
-      authController->put_IsVisible(FALSE);
     }
+    if (authHostValid && !authWasVisible) {
+      SetWindowPos(authHostWindow, HWND_TOP,
+                   bounds.left, bounds.top, width, height,
+                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+    }
+
+    // The replacement surface is now complete and on top. Retire playback only
+    // after that point to avoid a transient dashboard/black frame between them.
+    if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
+    if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
+      controller->put_IsVisible(FALSE);
+    }
+    return;
+  }
+
+  if (controller) {
+    // Check the host first. A resize makes the controller update mandatory,
+    // so avoid a synchronous WebView2 COM read on that common transition.
+    if (!hostSizeMatches ||
+        !ControllerBoundsMatch(controller, contentBounds)) {
+      controller->put_Bounds(contentBounds);
+    }
+    if (!ControllerVisibilityMatches(controller, TRUE)) {
+      controller->put_IsVisible(TRUE);
+    }
+  }
+  if (hostValid && !hostWasVisible) {
+    SetWindowPos(hostWindow, hostPlacement,
+                 bounds.left, bounds.top, hostWidth, hostHeight,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  }
+
+  // Playback is now ready, including the stable 1x1 behind-dashboard state.
+  // Hide the old auth surface last so every transition retains a complete frame.
+  if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
+  if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
+    authController->put_IsVisible(FALSE);
   }
 }
 
@@ -268,6 +288,12 @@ bool StationheadPlayer::EnsureHostWindow() {
 }
 
 bool StationheadPlayer::EnsureAuthHostWindow() {
+  // Repeated authorization requests update authPendingUrl_. While one profile
+  // controller is already being created, retain that latest URL and let the
+  // existing callback navigate it instead of starting a second controller for
+  // the same host/profile. CloseAuthWebView() clears the timestamp before an
+  // intentional replacement can begin.
+  if (authControllerStartedAt_.Active() && !authController_) return false;
   if (authHostWindow_ && IsWindow(authHostWindow_)) return true;
   authHostWindow_ = IsSecondary()
       ? CreateStationheadChildHost(window_, L"HomePanelSecondarySpotifyAuthHost",
@@ -358,6 +384,8 @@ void StationheadPlayer::SetVisible(bool visible) {
     }
     const bool hadInteractiveSurface =
         viewVisible_ || selectedTab_ != StationheadTabKind::None;
+    const bool interactiveSurfaceHadFocus =
+        WindowContainsFocus(hostWindow_) || WindowContainsFocus(authHostWindow_);
     selectedTab_ = StationheadTabKind::None;
     if (controller_) KeepPlaybackBehindDashboard();
     else {
@@ -365,8 +393,9 @@ void StationheadPlayer::SetVisible(bool visible) {
       std::lock_guard lock(mutex_);
       status_.visible = startupPreviewActive_;
     }
-    if (hadInteractiveSurface && !startupPreviewActive_ &&
-        window_ && IsWindow(window_) && GetFocus() != window_) {
+    if (hadInteractiveSurface && interactiveSurfaceHadFocus &&
+        !startupPreviewActive_ && window_ && IsWindow(window_) &&
+        GetFocus() != window_) {
       SetFocus(window_);
     }
     return;
@@ -385,29 +414,37 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
   // Re-selecting the active surface is common while login/auth state settles.
-  // Skip writes only after confirming both the active and inactive surfaces are
-  // already in the expected Win32 and WebView2 state.
+  // Skip writes only after confirming geometry, visibility, and keyboard focus
+  // already belong to the selected WebView2 surface.
   if (viewVisible_) {
     const int width = std::max(1L, bounds_.right - bounds_.left);
     const int height = std::max(1L, bounds_.bottom - bounds_.top);
     if (selectedTab_ == StationheadTabKind::Stationhead &&
         PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
                                width, height, HWND_TOP) &&
-        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
+        HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) &&
+        WindowContainsFocus(hostWindow_)) {
       return;
     }
     if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
         ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
-                                 authController_.Get(), bounds_)) {
+                                 authController_.Get(), bounds_) &&
+        WindowContainsFocus(authHostWindow_)) {
       return;
     }
   }
-  const bool wasVisible = viewVisible_;
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
-  if (!wasVisible && selectedTab_ != StationheadTabKind::Auth && controller_) {
-    controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+
+  ICoreWebView2Controller* activeController = controller_.Get();
+  HWND activeHost = hostWindow_;
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    activeController = authController_.Get();
+    activeHost = authHostWindow_;
+  }
+  if (activeController && activeHost && !WindowContainsFocus(activeHost)) {
+    activeController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
   }
 }
 
@@ -454,9 +491,14 @@ bool StationheadPlayer::HasAuthTab() const {
 }
 
 HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
-  if (selectedTab_ == StationheadTabKind::Auth && authController_ && authWebview_ &&
-      authHostWindow_ && IsWindow(authHostWindow_)) {
-    return authHostWindow_;
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    if (authController_ && authWebview_ &&
+        authHostWindow_ && IsWindow(authHostWindow_)) {
+      return authHostWindow_;
+    }
+    // The playback surface is intentionally collapsed while an auth controller
+    // is pending. Do not raise that 1x1 host over the dashboard as a substitute.
+    return nullptr;
   }
   return hostWindow_;
 }

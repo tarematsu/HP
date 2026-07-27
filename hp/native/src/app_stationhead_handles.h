@@ -6,10 +6,36 @@ namespace hp {
 // Give the refreshed side enough time to rebuild its EME/Widevine playback
 // pipeline before the other side is allowed to start its own boundary refresh.
 inline constexpr int64_t kStationheadTrackTransitionGraceMs = 30'000;
+inline constexpr uint64_t kStationheadSecondaryStartupFallbackMs = 8'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
   return !status.audioPlaying;
 }
+
+inline constexpr bool SecondaryStationheadStartupReady(
+    bool primaryCreated,
+    uint64_t nowTick,
+    uint64_t requestedAtTick) noexcept {
+  if (primaryCreated) return true;
+  return requestedAtTick > 0 && nowTick >= requestedAtTick &&
+      nowTick - requestedAtTick >= kStationheadSecondaryStartupFallbackMs;
+}
+
+// A configured controller is not yet a useful startup surface: required script
+// registration and the first navigation can still be pending. Keep A covering
+// both halves until B has either produced audio, entered an interactive account
+// flow, or completed its first Stationhead navigation successfully.
+inline bool StationheadStartupPreviewReady(
+    const StationheadStatus& status) noexcept {
+  return status.audioPlaying || status.loginRequired ||
+      status.spotifyAuthorization ||
+      (status.created && !status.navigating && !status.processFailed &&
+       status.detail == L"station loaded");
+}
+
+static_assert(SecondaryStationheadStartupReady(true, 1, 1));
+static_assert(!SecondaryStationheadStartupReady(false, 7'999, 1));
+static_assert(SecondaryStationheadStartupReady(false, 8'001, 1));
 
 enum class WorkspaceTab {
   Main = 0,
@@ -56,6 +82,18 @@ class StationheadHandleBase {
   void ResetPlayer() noexcept;
   bool HasAuthTabPlayer() const;
   void SelectPlayerTab(StationheadTabKind tab);
+  [[nodiscard]] bool CanStartPlayer() const noexcept {
+    return player_ && !startIssued_ && !stopIssued_;
+  }
+  [[nodiscard]] bool PlayerStarted() const noexcept {
+    return player_ && startIssued_ && !stopIssued_;
+  }
+  static void SetStartupPrimaryHandle(StationheadHandleBase* handle) noexcept {
+    startupPrimaryHandle_ = handle;
+  }
+  [[nodiscard]] static StationheadHandleBase* StartupPrimaryHandle() noexcept {
+    return startupPrimaryHandle_;
+  }
 
  private:
   bool IsInteractive(const StationheadStatus& status) const noexcept;
@@ -77,9 +115,10 @@ class StationheadHandleBase {
   bool startIssued_ = false;
   bool stopIssued_ = false;
   mutable bool playbackObserved_ = false;
-  mutable int64_t playbackMissingSinceAt_ = 0;
+  mutable MonotonicElapsedTimestamp playbackMissingSinceAt_;
   mutable bool transitionSuppressed_ = false;
   mutable uint64_t contentRevision_ = 1;
+  inline static StationheadHandleBase* startupPrimaryHandle_ = nullptr;
 };
 
 class AppStationheadHandle final : public StationheadHandleBase {
@@ -93,6 +132,38 @@ class AppStationheadHandle final : public StationheadHandleBase {
   const AppStationheadHandle* operator->() const noexcept;
   AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void SetStartupPreviewBounds(const RECT& bounds) {
+    requestedStartupPreviewBounds_ = bounds;
+    startupPreviewRequested_ = true;
+    StationheadHandleBase::SetStartupPreviewBounds(bounds);
+  }
+  void ClearStartupPreviewBounds() {
+    startupPreviewRequested_ = false;
+    StationheadHandleBase::ClearStartupPreviewBounds();
+  }
+  void ExpandStartupPreviewForSecondary(const RECT& secondaryBounds) {
+    if (!startupPreviewRequested_) return;
+    const RECT expanded{
+        std::min(requestedStartupPreviewBounds_.left, secondaryBounds.left),
+        std::min(requestedStartupPreviewBounds_.top, secondaryBounds.top),
+        std::max(requestedStartupPreviewBounds_.right, secondaryBounds.right),
+        std::max(requestedStartupPreviewBounds_.bottom, secondaryBounds.bottom)};
+    StationheadHandleBase::SetStartupPreviewBounds(expanded);
+  }
+  void RestoreRequestedStartupPreviewBounds() {
+    if (startupPreviewRequested_) {
+      StationheadHandleBase::SetStartupPreviewBounds(requestedStartupPreviewBounds_);
+    }
+  }
+  void Start() {
+    if (!CanStartPlayer()) return;
+    SetStartupPrimaryHandle(this);
+    StationheadHandleBase::Start();
+  }
+  void Stop() {
+    StationheadHandleBase::Stop();
+    ResetStartupPreviewState();
+  }
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
   StationheadStatus Status() const {
@@ -106,6 +177,16 @@ class AppStationheadHandle final : public StationheadHandleBase {
     }
     return status;
   }
+
+ private:
+  void ResetStartupPreviewState() noexcept {
+    if (StartupPrimaryHandle() == this) SetStartupPrimaryHandle(nullptr);
+    requestedStartupPreviewBounds_ = RECT{0, 0, 1, 1};
+    startupPreviewRequested_ = false;
+  }
+
+  RECT requestedStartupPreviewBounds_{0, 0, 1, 1};
+  bool startupPreviewRequested_ = false;
 };
 
 class AppSecondaryStationheadHandle final : public StationheadHandleBase {
@@ -120,6 +201,45 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void SetStartupPreviewBounds(const RECT& bounds) {
+    pendingStartupPreviewBounds_ = bounds;
+    startupPreviewRequested_ = true;
+    startupPreviewApplied_ = false;
+    if (AppStationheadHandle* primary = StartupPrimary()) {
+      primary->ExpandStartupPreviewForSecondary(bounds);
+    }
+    ApplyDeferredStartupPreview();
+  }
+  void ClearStartupPreviewBounds() {
+    ResetDeferredStartupState(true);
+    StationheadHandleBase::ClearStartupPreviewBounds();
+  }
+  void Start() {
+    if (!CanStartPlayer()) return;
+    // A has now registered its real one-way lifecycle. Expand A before the main
+    // window is shown, while B keeps only the requested bounds in memory.
+    if (startupPreviewRequested_) {
+      if (AppStationheadHandle* primary = StartupPrimary()) {
+        primary->ExpandStartupPreviewForSecondary(pendingStartupPreviewBounds_);
+      }
+    }
+    if (startupRequestedAtTick_ == 0) {
+      const uint64_t nowTick = GetTickCount64();
+      startupRequestedAtTick_ = nowTick == 0 ? 1 : nowTick;
+    }
+    TryStartDeferred();
+  }
+  void Tick(int64_t nowMs) {
+    TryStartDeferred();
+    if (PlayerStarted()) {
+      StationheadHandleBase::Tick(nowMs);
+      ApplyDeferredStartupPreview();
+    }
+  }
+  void Stop() {
+    ResetDeferredStartupState(true);
+    StationheadHandleBase::Stop();
+  }
   StationheadStatus Status() const {
     StationheadStatus status = StationheadHandleBase::Status();
     if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
@@ -131,6 +251,56 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     }
     return status;
   }
+
+ private:
+  [[nodiscard]] static AppStationheadHandle* StartupPrimary() noexcept {
+    return static_cast<AppStationheadHandle*>(StartupPrimaryHandle());
+  }
+
+  void ResetDeferredStartupState(bool restorePrimary) noexcept {
+    if (restorePrimary && startupPreviewRequested_ && !startupPreviewApplied_) {
+      if (AppStationheadHandle* primary = StartupPrimary()) {
+        primary->RestoreRequestedStartupPreviewBounds();
+      }
+    }
+    pendingStartupPreviewBounds_ = RECT{0, 0, 1, 1};
+    startupRequestedAtTick_ = 0;
+    startupPreviewRequested_ = false;
+    startupPreviewApplied_ = false;
+  }
+
+  void TryStartDeferred() {
+    if (!CanStartPlayer() || startupRequestedAtTick_ == 0) return;
+    StationheadHandleBase* primary = StartupPrimaryHandle();
+    const bool primaryCreated = primary && primary->RawStatus().created;
+    if (primary && !SecondaryStationheadStartupReady(
+                       primaryCreated, GetTickCount64(), startupRequestedAtTick_)) {
+      return;
+    }
+    StationheadHandleBase::Start();
+    if (PlayerStarted()) startupRequestedAtTick_ = 0;
+  }
+
+  void ApplyDeferredStartupPreview() {
+    if (!startupPreviewRequested_ || startupPreviewApplied_ || !PlayerStarted()) {
+      return;
+    }
+    const StationheadStatus status = RawStatus();
+    if (!StationheadStartupPreviewReady(status)) return;
+    // The controller and its first useful document are ready before the host is
+    // exposed. Prepare B first while A still covers both halves, then restore A
+    // to the requested left half.
+    StationheadHandleBase::SetStartupPreviewBounds(pendingStartupPreviewBounds_);
+    startupPreviewApplied_ = true;
+    if (AppStationheadHandle* primary = StartupPrimary()) {
+      primary->RestoreRequestedStartupPreviewBounds();
+    }
+  }
+
+  RECT pendingStartupPreviewBounds_{0, 0, 1, 1};
+  uint64_t startupRequestedAtTick_ = 0;
+  bool startupPreviewRequested_ = false;
+  bool startupPreviewApplied_ = false;
 };
 
 }  // namespace hp

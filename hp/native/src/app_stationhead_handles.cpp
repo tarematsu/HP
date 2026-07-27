@@ -15,8 +15,8 @@ struct TrackBoundaryRetryState {
   // was still stopped. The player's pending bit is deliberately retained and
   // the handle re-opens a fresh App handoff window at retryAt.
   bool detachedFromAppWindow = false;
-  int64_t retryAt = 0;
-  int64_t deadline = 0;
+  MonotonicProjectedDeadline retryAt;
+  MonotonicProjectedDeadline deadline;
 };
 
 TrackBoundaryRetryState primaryBoundaryRetry;
@@ -282,6 +282,8 @@ uint32_t StationheadHandleBase::ConsumeChangeFlags() {
 
 void StationheadHandleBase::AssignPlayer(
     std::unique_ptr<StationheadPlayer> player) noexcept {
+  startupPreviewBounds_ = RECT{0, 0, 1, 1};
+  startupPreviewActive_ = false;
   player_ = std::move(player);
   startIssued_ = false;
   stopIssued_ = false;
@@ -295,6 +297,8 @@ void StationheadHandleBase::AssignPlayer(
 }
 
 void StationheadHandleBase::ResetPlayer() noexcept {
+  startupPreviewBounds_ = RECT{0, 0, 1, 1};
+  startupPreviewActive_ = false;
   player_.reset();
   startIssued_ = false;
   stopIssued_ = false;
@@ -406,6 +410,7 @@ AppStationheadHandle::AppStationheadHandle() {
 }
 
 AppStationheadHandle::~AppStationheadHandle() {
+  ResetStartupPreviewState();
   ClearBoundaryRetryState(this);
   if (primaryAudioHandle == this) primaryAudioHandle = nullptr;
 }
@@ -420,11 +425,13 @@ const AppStationheadHandle* AppStationheadHandle::operator->() const noexcept {
 
 AppStationheadHandle& AppStationheadHandle::operator=(
     std::unique_ptr<StationheadPlayer> player) noexcept {
+  ResetStartupPreviewState();
   AssignPlayer(std::move(player));
   return *this;
 }
 
 void AppStationheadHandle::reset() noexcept {
+  ResetStartupPreviewState();
   ResetPlayer();
 }
 
@@ -442,6 +449,7 @@ AppSecondaryStationheadHandle::AppSecondaryStationheadHandle() {
 }
 
 AppSecondaryStationheadHandle::~AppSecondaryStationheadHandle() {
+  ResetDeferredStartupState(true);
   ClearBoundaryRetryState(this);
   if (secondaryAudioHandle == this) secondaryAudioHandle = nullptr;
 }
@@ -457,11 +465,13 @@ AppSecondaryStationheadHandle::operator->() const noexcept {
 
 AppSecondaryStationheadHandle& AppSecondaryStationheadHandle::operator=(
     std::unique_ptr<StationheadPlayer> player) noexcept {
+  ResetDeferredStartupState(true);
   AssignPlayer(std::move(player));
   return *this;
 }
 
 void AppSecondaryStationheadHandle::reset() noexcept {
+  ResetDeferredStartupState(true);
   ResetPlayer();
 }
 

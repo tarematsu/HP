@@ -96,9 +96,13 @@ class App {
   std::thread updateThread_;
   int exitCode_ = 0;
   int startupShowCommand_ = SW_SHOW;
-  int64_t startupAt_ = 0;
-  int64_t dashboardAudioReadySince_ = 0;
-  int64_t playbackReadyAt_ = 0;
+  // Startup fallbacks are elapsed-time decisions. Keep their UTC assignments
+  // for existing telemetry/news timestamps, but calculate all differences from
+  // GetTickCount64() so an OS clock correction cannot expose the dashboard too
+  // early or postpone it indefinitely.
+  MonotonicElapsedTimestamp startupAt_;
+  MonotonicElapsedTimestamp dashboardAudioReadySince_;
+  MonotonicElapsedTimestamp playbackReadyAt_;
   bool secondaryStarted_ = false;
   bool rendererStarted_ = false;
   bool cloudStarted_ = false;
@@ -106,10 +110,13 @@ class App {
   bool stationheadPlaybackFallbackActive_ = false;
   bool stationheadPlaybackNoNextTrackObserved_ = false;
   uint64_t stationheadPlaybackFallbackRevision_ = 0;
-  int64_t primaryTrackBoundaryPendingUntil_ = 0;
-  int64_t secondaryTrackBoundaryPendingUntil_ = 0;
-  int64_t primaryTrackBoundaryHandoffReadyAt_ = 0;
-  int64_t secondaryTrackBoundaryHandoffReadyAt_ = 0;
+  // Track-boundary handoff windows are operational delays. Re-project them to
+  // the current civil clock only at scheduler boundaries; their actual expiry
+  // remains tied to GetTickCount64().
+  MonotonicProjectedDeadline primaryTrackBoundaryPendingUntil_;
+  MonotonicProjectedDeadline secondaryTrackBoundaryPendingUntil_;
+  MonotonicProjectedDeadline primaryTrackBoundaryHandoffReadyAt_;
+  MonotonicProjectedDeadline secondaryTrackBoundaryHandoffReadyAt_;
   int64_t lastTelemetryAt_ = 0;
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t lastStationheadPlayStatsUpdatedAt_ = 0;

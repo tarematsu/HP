@@ -85,8 +85,8 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 
 void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
   const auto process = [this, nowMs](
-                           int64_t& pendingUntil,
-                           int64_t& handoffReadyAt,
+                           auto& pendingUntil,
+                           auto& handoffReadyAt,
                            auto& pendingPlayer,
                            auto& otherPlayer,
                            bool otherRequired,
