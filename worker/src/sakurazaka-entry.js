@@ -90,20 +90,46 @@ export async function runSakurazakaQueue(batch, env) {
   }
 }
 
-async function health(env) {
-  const [monitor, news] = await Promise.all([
-    env.OTHER_DB.prepare(`SELECT phase,last_success_at,last_error,updated_at
-      FROM sh_cloud_host_monitor_state WHERE id=? LIMIT 1`)
-      .bind(`solo:${env.SOLO_BROADCAST_HANDLE || 'sakurazaka46jp'}`).first(),
-    env.OTHER_DB.prepare(`SELECT last_check_at,last_success_at,last_error,updated_at
-      FROM sh_official_news_monitor_state WHERE id='official-news' LIMIT 1`).first(),
-  ]).catch(() => [null, null]);
+async function readHealthState(db, sql, bindings = []) {
+  if (typeof db?.prepare !== 'function') throw new Error('OTHER_DB binding is unavailable');
+  let statement = db.prepare(sql);
+  if (bindings.length) statement = statement.bind(...bindings);
+  return statement.first();
+}
+
+function healthComponent(result, component, degraded) {
+  if (result.status === 'fulfilled') return result.value || null;
+  degraded.push(component);
+  console.error(JSON.stringify({
+    event: 'sakurazaka_health_component_failed',
+    component,
+    error: String(result.reason?.message || result.reason).slice(0, 500),
+  }));
+  return null;
+}
+
+export async function sakurazakaHealth(env) {
+  const monitorId = `solo:${env?.SOLO_BROADCAST_HANDLE || 'sakurazaka46jp'}`;
+  const [monitorResult, newsResult] = await Promise.allSettled([
+    readHealthState(env?.OTHER_DB, `SELECT phase,last_success_at,last_error,updated_at
+      FROM sh_cloud_host_monitor_state WHERE id=? LIMIT 1`, [monitorId]),
+    readHealthState(env?.OTHER_DB, `SELECT last_check_at,last_success_at,last_error,updated_at
+      FROM sh_official_news_monitor_state WHERE id='official-news' LIMIT 1`),
+  ]);
+  const degraded = [];
+  const monitor = healthComponent(monitorResult, 'monitor', degraded);
+  const news = healthComponent(newsResult, 'official_news', degraded);
+  const ok = degraded.length === 0;
   return Response.json({
-    ok: true,
+    ok,
     worker: 'sh-sakurazaka46jp',
-    monitor: monitor || null,
-    official_news: news || null,
-  }, { headers: { 'cache-control': 'no-store' } });
+    monitor,
+    official_news: news,
+    ...(degraded.length ? { degraded_components: degraded } : {}),
+  }, {
+    status: ok ? 200 : 503,
+    headers: { 'cache-control': 'no-store' },
+  });
 }
 
 export default {
@@ -112,7 +138,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
-      return health(env);
+      return sakurazakaHealth(env);
     }
     return Response.json({ ok: false, error: 'not found' }, { status: 404 });
   },
