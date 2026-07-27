@@ -104,6 +104,10 @@ test('scheduled WebView recreation and uncommitted audio are not reported as hea
     /AudioPlayingSince\(\) const noexcept[\s\S]*playingSince > 0 && AudioPlaying\(\) \? playingSince : 0;/,
   );
   assert.match(
+    playerHeader,
+    /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/,
+  );
+  assert.match(
     layoutSource,
     /bool StationheadPlayer::NeedsInteractiveWindow\(\) const[\s\S]*controller_ && !AudioPlaying\(\)/,
   );
