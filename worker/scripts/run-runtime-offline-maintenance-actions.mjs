@@ -154,6 +154,25 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     }
   };
 
+  const budget = d1BudgetSkip(options);
+  if (budget) {
+    const finishedAt = timestamp(clock, startedAt);
+    await writeMaintenanceStatus(env.OTHER_DB, {
+      status: 'ok',
+      attemptAt: startedAt,
+      successAt: finishedAt,
+      updatedAt: finishedAt,
+    });
+    return {
+      ok: true,
+      skipped: true,
+      event: 'runtime_offline_maintenance_actions_budget_skipped',
+      reason: 'd1-actions-budget',
+      elapsed_ms: Math.max(0, finishedAt - startedAt),
+      budget,
+    };
+  }
+
   await writeMaintenanceStatus(env.OTHER_DB, {
     status: 'running',
     attemptAt: startedAt,
@@ -161,25 +180,6 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   });
 
   try {
-    const budget = d1BudgetSkip(options);
-    if (budget) {
-      const finishedAt = timestamp(clock, startedAt);
-      await writeMaintenanceStatus(env.OTHER_DB, {
-        status: 'ok',
-        attemptAt: startedAt,
-        successAt: finishedAt,
-        updatedAt: finishedAt,
-      });
-      return {
-        ok: true,
-        skipped: true,
-        event: 'runtime_offline_maintenance_actions_budget_skipped',
-        reason: 'd1-actions-budget',
-        elapsed_ms: Math.max(0, finishedAt - startedAt),
-        budget,
-      };
-    }
-
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
