@@ -9,6 +9,10 @@ const rootPath = fileURLToPath(root);
 const dailyPath = '.github/scripts/audit-cloudflare-daily-usage.py';
 const freeTierPath = '.github/scripts/audit-cloudflare-free-tier.py';
 const daily = readFileSync(new URL(`../${dailyPath}`, import.meta.url), 'utf8');
+const workflow = readFileSync(
+  new URL('../.github/workflows/sh-observability.yml', import.meta.url),
+  'utf8',
+);
 const freeTier = readFileSync(
   new URL('../.github/scripts/cloudflare_free_tier_audit.py', import.meta.url),
   'utf8',
@@ -27,11 +31,12 @@ test('partial UTC-day budget audits pass executable projection tests', () => {
   runSelfTest(freeTierPath);
 });
 
-test('daily Worker and D1 gates use warmup-aware 24-hour projected values', () => {
+test('production Worker and D1 gates enforce projected values immediately', () => {
   assert.match(daily, /"method": "linear-from-utc-midnight"/);
   assert.match(daily, /DAY_SECONDS \/ elapsed/);
   assert.match(daily, /DAILY_PROJECTION_MIN_ELAPSED_SECONDS/);
   assert.match(daily, /"enforceProjected": elapsed >= PROJECTION_MIN_ELAPSED_SECONDS/);
+  assert.match(workflow, /DAILY_PROJECTION_MIN_ELAPSED_SECONDS: "0"/);
   assert.match(daily, /"actualUsage": actual/);
   assert.match(daily, /"violationSources": violation_sources/);
   assert.match(daily, /"queueOperations"/);
@@ -40,8 +45,6 @@ test('daily Worker and D1 gates use warmup-aware 24-hour projected values', () =
     daily,
     /violations, violation_sources = evaluate\(actual, usage, LIMITS, projection\["enforceProjected"\]\)/,
   );
-  assert.match(daily, /actual limit breaches still fail immediately/);
-  assert.match(daily, /status = "WARMUP"/);
   assert.match(daily, /Actual to now \| Projected 24h/);
   assert.match(daily, /actual=.*projected=/);
 });
