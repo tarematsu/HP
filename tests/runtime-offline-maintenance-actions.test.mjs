@@ -33,7 +33,7 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(workflow, /cron: '3,33 \* \* \* \*'/);
   assert.match(workflow, /worker\/src\/minute-\*\*/);
   assert.match(workflow, /worker\/src\/rollup-\*\*/);
-  assert.match(workflow, /cancel-in-progress: true/);
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /run-runtime-offline-maintenance-actions\.mjs/);
   assert.match(runner, /export async function runRuntimeOfflineMaintenanceActions/);
