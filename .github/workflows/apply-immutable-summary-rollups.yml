@@ -1,9 +1,9 @@
 name: Apply immutable summary rollups
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/compress-observability-d1-load
+      - main
     paths:
       - .github/scripts/apply-immutable-summary-rollups.mjs
       - .github/workflows/apply-immutable-summary-rollups.yml
