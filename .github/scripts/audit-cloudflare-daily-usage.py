@@ -31,6 +31,10 @@ OUT = Path(os.environ.get("DAILY_USAGE_OUTPUT_DIR", "daily-usage"))
 DB_RE = re.compile(r'"database_id"\s*:\s*"([0-9a-fA-F-]{36})"')
 QUEUE_RE = re.compile(r'"(?:queue|dead_letter_queue)"\s*:\s*"([^"]+)"')
 DAY_SECONDS = 24 * 60 * 60
+PROJECTION_MIN_ELAPSED_SECONDS = max(
+    0,
+    min(DAY_SECONDS, int(os.environ.get("DAILY_PROJECTION_MIN_ELAPSED_SECONDS", "3600"))),
+)
 
 
 def api(url: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -193,6 +197,8 @@ def projection_metadata(now: dt.datetime) -> dict[str, Any]:
         "periodSeconds": DAY_SECONDS,
         "elapsedSeconds": elapsed,
         "factor": DAY_SECONDS / elapsed,
+        "minimumEnforcementSeconds": PROJECTION_MIN_ELAPSED_SECONDS,
+        "enforceProjected": elapsed >= PROJECTION_MIN_ELAPSED_SECONDS,
     }
 
 
@@ -207,8 +213,26 @@ def project_daily_usage(actual: dict[str, Any], projection: dict[str, Any], rese
     return result
 
 
-def evaluate(usage: dict[str, Any], limits: dict[str, int]) -> list[str]:
-    return [key for key in ("requests", "rowsRead", "rowsWritten", "queueOperations") if usage[key] >= limits[key]]
+def measured_value(actual: dict[str, Any], key: str) -> int:
+    return number(actual.get("measuredRequests" if key == "requests" else key))
+
+
+def evaluate(
+    actual: dict[str, Any],
+    usage: dict[str, Any],
+    limits: dict[str, int],
+    enforce_projected: bool,
+) -> tuple[list[str], dict[str, str]]:
+    violations: list[str] = []
+    sources: dict[str, str] = {}
+    for key in ("requests", "rowsRead", "rowsWritten", "queueOperations"):
+        if measured_value(actual, key) >= limits[key]:
+            violations.append(key)
+            sources[key] = "actual"
+        elif enforce_projected and usage[key] >= limits[key]:
+            violations.append(key)
+            sources[key] = "projected"
+    return violations, sources
 
 
 def self_test() -> int:
@@ -236,14 +260,38 @@ def self_test() -> int:
     projection = projection_metadata(dt.datetime(2026, 7, 23, 6, 0, tzinfo=dt.timezone.utc))
     usage = project_daily_usage(actual, projection, 5)
     assert projection["factor"] == 4
+    assert projection["enforceProjected"] is True
     assert actual["measuredRequests"] == 30 and usage["measuredRequests"] == 120
     assert usage["requests"] == 125
     assert usage["rowsRead"] == 200 and usage["rowsWritten"] == 8
     assert usage["queueOperations"] == 160
-    assert evaluate(usage, {"requests": 126, "rowsRead": 201, "rowsWritten": 9, "queueOperations": 161}) == []
-    assert evaluate(usage, {"requests": 125, "rowsRead": 200, "rowsWritten": 8, "queueOperations": 160}) == [
-        "requests", "rowsRead", "rowsWritten", "queueOperations"
-    ]
+    violations, sources = evaluate(
+        actual,
+        usage,
+        {"requests": 126, "rowsRead": 201, "rowsWritten": 9, "queueOperations": 161},
+        projection["enforceProjected"],
+    )
+    assert violations == [] and sources == {}
+    violations, sources = evaluate(
+        actual,
+        usage,
+        {"requests": 125, "rowsRead": 200, "rowsWritten": 8, "queueOperations": 160},
+        projection["enforceProjected"],
+    )
+    assert violations == ["requests", "rowsRead", "rowsWritten", "queueOperations"]
+    assert set(sources.values()) == {"projected"}
+
+    warmup = projection_metadata(dt.datetime(2026, 7, 23, 0, 5, tzinfo=dt.timezone.utc))
+    warmup_usage = project_daily_usage(actual, warmup, 5)
+    assert warmup["factor"] == 288
+    assert warmup["enforceProjected"] is False
+    limits = {"requests": 126, "rowsRead": 201, "rowsWritten": 9, "queueOperations": 161}
+    violations, sources = evaluate(actual, warmup_usage, limits, warmup["enforceProjected"])
+    assert violations == [] and sources == {}
+    actual_breach = {**actual, "rowsRead": 201}
+    violations, sources = evaluate(actual_breach, warmup_usage, limits, warmup["enforceProjected"])
+    assert violations == ["rowsRead"] and sources == {"rowsRead": "actual"}
+
     print("daily projected budget self-test passed")
     return 0
 
@@ -279,7 +327,7 @@ def main() -> int:
     actual = aggregate(accounts[0], WORKERS, dbs, queue_ids)
     projection = projection_metadata(now)
     usage = project_daily_usage(actual, projection, REQUEST_RESERVE)
-    violations = evaluate(usage, LIMITS)
+    violations, violation_sources = evaluate(actual, usage, LIMITS, projection["enforceProjected"])
     report = {
         "date": date,
         "generatedAt": now.isoformat().replace("+00:00", "Z"),
@@ -288,6 +336,7 @@ def main() -> int:
         "projection": projection,
         "limits": LIMITS,
         "violations": violations,
+        "violationSources": violation_sources,
         "source": "Cloudflare GraphQL usage query plus configured Queue metadata lookup",
     }
     OUT.mkdir(parents=True, exist_ok=True)
@@ -299,11 +348,19 @@ def main() -> int:
         "rowsWritten": "D1 rows written",
         "queueOperations": "Queue billable operations",
     }
+    if projection["enforceProjected"]:
+        enforcement = "active"
+    else:
+        enforcement = (
+            f"warm-up until {projection['minimumEnforcementSeconds']:,} observed seconds; "
+            "actual limit breaches still fail immediately"
+        )
     lines = [
         "## Cloudflare projected UTC daily budgets", "",
         f"- Date: `{date}`",
         f"- Observed UTC seconds: `{projection['elapsedSeconds']:,}` / `{projection['periodSeconds']:,}`",
         f"- Projection: `{projection['method']}` (`{projection['factor']:.3f}x`)",
+        f"- Projection enforcement: `{enforcement}`",
         f"- D1 databases: `{len(dbs)}`",
         f"- Queues: `{len(queue_ids)}`",
         f"- Actual Worker requests so far: `{actual['measuredRequests']:,}`",
@@ -312,11 +369,18 @@ def main() -> int:
         "|---|---:|---:|---:|---:|---|",
     ]
     for key in ("requests", "rowsRead", "rowsWritten", "queueOperations"):
-        actual_value = actual["measuredRequests"] if key == "requests" else actual[key]
+        actual_value = measured_value(actual, key)
         projected_value, limit = usage[key], LIMITS[key]
+        source = violation_sources.get(key)
+        if source:
+            status = f"VIOLATION ({source})"
+        elif not projection["enforceProjected"] and projected_value >= limit:
+            status = "WARMUP"
+        else:
+            status = "OK"
         lines.append(
             f"| {labels[key]} | {actual_value:,} | {projected_value:,} | {limit:,} | "
-            f"{max(0, limit - projected_value):,} | {'VIOLATION' if key in violations else 'OK'} |"
+            f"{max(0, limit - projected_value):,} | {status} |"
         )
     summary = "\n".join(lines) + "\n"
     (OUT / "summary.md").write_text(summary)
@@ -325,10 +389,13 @@ def main() -> int:
             output.write(summary)
     print("DAILY_USAGE=" + json.dumps(report, separators=(",", ":")))
     for key in violations:
+        source = violation_sources[key]
+        actual_value = measured_value(actual, key)
+        value = actual_value if source == "actual" else usage[key]
         print(
-            f"::error title=Cloudflare projected daily budget exceeded::"
-            f"{labels[key]}={usage[key]} projected limit={LIMITS[key]} "
-            f"actual={actual['measuredRequests'] if key == 'requests' else actual[key]}"
+            f"::error title=Cloudflare daily budget exceeded::"
+            f"{labels[key]}={value} {source} limit={LIMITS[key]} "
+            f"actual={actual_value} projected={usage[key]}"
         )
     return 1 if violations else 0
 
