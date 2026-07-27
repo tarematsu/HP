@@ -16,6 +16,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
   expectAll(workflow, [
     'name: Unified Cloudflare Observability',
     'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
+    ".github/workflows/publish-github-actions-runner-health.yml",
     'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
     'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
