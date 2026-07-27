@@ -50,7 +50,38 @@ test('periodic reload ignores playback and track transition state', () => {
   assert.match(injected, /spotifyAuthorization_ \|\| loginRequired_/);
 });
 
-test('every completed navigation restarts the simple 55-minute clock', () => {
+test('Spotify auth does not masquerade as playback navigation', () => {
+  const decision = section(
+    policy,
+    'inline constexpr bool StationheadPlaybackNavigationActive(',
+    '}  // namespace hp',
+  );
+  assert.match(
+    decision,
+    /return navigationInFlight \|\| \(statusNavigating && !spotifyAuthorization\);/,
+  );
+  assert.match(
+    policy,
+    /static_assert\(!StationheadPlaybackNavigationActive\(false, true, true\)\);/,
+  );
+  assert.match(
+    policy,
+    /static_assert\(StationheadPlaybackNavigationActive\(true, true, true\)\);/,
+  );
+
+  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
+  assert.match(
+    injected,
+    /StationheadPlaybackNavigationActive\([\s\S]*navigationInFlight_\.load[\s\S]*statusNavigating, spotifyAuthorization_\)/,
+  );
+  assert.ok(
+    injected.indexOf('StationheadPlaybackNavigationActive(') <
+      injected.indexOf('spotifyAuthorization_ || loginRequired_'),
+    'a real playback navigation must still reset the clock when auth overlaps it',
+  );
+});
+
+test('every completed playback navigation restarts the simple 55-minute clock', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
   assert.match(injected, /if \(navigationActive\) \{[\s\S]*periodicRefreshStartedAt_ = 0;[\s\S]*periodicRefreshNavigationObserved_ = 1;/);
   assert.match(injected, /periodicRefreshNavigationObserved_ != 0 \|\|[\s\S]*!periodicRefreshStartedAt_\.Active\(\)[\s\S]*periodicRefreshStartedAt_ = nowMs;/);
