@@ -80,7 +80,7 @@ test('trusted hosts use exact or dot-delimited suffixes and HTTPS port 443', () 
   assert.match(policySource, /!IsSpotifyHost\(L"spotify\.com\.example\.net"\)/);
 });
 
-test('unrelated popups are suppressed before auth controller creation', () => {
+test('unrelated and unhandled trusted popups are contained before browser escape', () => {
   const wrapper = section(
     policySource,
     'WrapStationheadNewWindowHandler(',
@@ -95,7 +95,15 @@ test('unrelated popups are suppressed before auth controller creation', () => {
     wrapper.indexOf('if (!trusted) {') <
       wrapper.indexOf('InvokeEventNoexcept(inner, sender, args)'),
   );
-  assert.match(wrapper, /if \(FAILED\(result\)\) args->put_Handled\(TRUE\);/);
+  assert.match(wrapper, /args->get_Handled\(&handled\)/);
+  assert.match(
+    wrapper,
+    /FAILED\(result\) \|\| FAILED\(handledResult\) \|\| handled == FALSE/,
+  );
+  assert.match(
+    wrapper,
+    /handled == FALSE[\s\S]*args->put_Handled\(TRUE\);/,
+  );
   assert.match(
     policySource,
     /#define add_NewWindowRequested\(handler, token\)[\s\S]*WrapStationheadNewWindowHandler/,
