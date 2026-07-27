@@ -10,11 +10,13 @@ inline bool IsStationheadAuthCompletionMessage(
   if (FAILED(args->get_WebMessageAsJson(&messageRaw)) || !messageRaw) {
     return false;
   }
+  const std::wstring messageJson = messageRaw;
+  CoTaskMemFree(messageRaw);
 
   bool completion = false;
   try {
     const auto message =
-        winrt::Windows::Data::Json::JsonObject::Parse(messageRaw);
+        winrt::Windows::Data::Json::JsonObject::Parse(messageJson);
     const std::wstring type =
         message.GetNamedString(L"type", L"").c_str();
     completion = type == L"spotify-connected" || type == L"spotify-error";
@@ -22,7 +24,6 @@ inline bool IsStationheadAuthCompletionMessage(
     // String messages and unrelated malformed page messages retain the existing
     // handler behavior. Only recognized auth-completion objects are gated here.
   }
-  CoTaskMemFree(messageRaw);
   return completion;
 }
 
