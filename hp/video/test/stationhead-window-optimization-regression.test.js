@@ -41,9 +41,10 @@ test('duplicate hide notifications verify stable playback and auth surfaces', ()
     /!viewVisible_[\s\S]*selectedTab_ == StationheadTabKind::None[\s\S]*PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
   );
   assert.match(setVisible, /const bool hadInteractiveSurface/);
+  assert.match(setVisible, /const bool interactiveSurfaceHadFocus/);
   assert.match(
     setVisible,
-    /hadInteractiveSurface && !startupPreviewActive_[\s\S]*GetFocus\(\) != window_[\s\S]*SetFocus\(window_\)/,
+    /hadInteractiveSurface && interactiveSurfaceHadFocus &&[\s\S]*GetFocus\(\) != window_[\s\S]*SetFocus\(window_\)/,
   );
 });
 
@@ -55,11 +56,11 @@ test('reselecting active playback or auth skips only verified layout writes', ()
   );
   assert.match(
     setVisible,
-    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*return;/,
+    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
   );
   assert.match(
     setVisible,
-    /StationheadTabKind::Auth[\s\S]*authController_ && authWebview_[\s\S]*ActiveAuthSurfaceMatches\([\s\S]*return;/,
+    /StationheadTabKind::Auth[\s\S]*authController_ && authWebview_[\s\S]*ActiveAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(authHostWindow_\)[\s\S]*return;/,
   );
 });
 
