@@ -115,7 +115,7 @@ test('budget pressure records a healthy skip without running D1-heavy tasks', as
     runRetention: fail,
   });
 
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['ok']);
   assert.deepEqual(result, {
     ok: true,
     skipped: true,
