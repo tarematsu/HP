@@ -91,6 +91,46 @@ class MonotonicElapsedTimestamp {
   uint64_t initialElapsedMs_ = 0;
 };
 
+// Audio callbacks and App handoff checks share this timestamp. Preserve the
+// existing atomic load/store interface, but project the returned start time from
+// uptime so a system-clock correction cannot invalidate continuous-audio age.
+class AtomicMonotonicElapsedTimestamp {
+ public:
+  AtomicMonotonicElapsedTimestamp() noexcept = default;
+  AtomicMonotonicElapsedTimestamp(const AtomicMonotonicElapsedTimestamp&) = delete;
+  AtomicMonotonicElapsedTimestamp& operator=(
+      const AtomicMonotonicElapsedTimestamp&) = delete;
+
+  void store(
+      int64_t wallTime,
+      std::memory_order order = std::memory_order_seq_cst) noexcept {
+    if (wallTime <= 0) {
+      wallTime_.store(0, order);
+      startedTick_.store(0, std::memory_order_relaxed);
+      return;
+    }
+    const uint64_t nowTick = GetTickCount64();
+    startedTick_.store(nowTick == 0 ? 1 : nowTick, std::memory_order_relaxed);
+    wallTime_.store(wallTime, order);
+  }
+
+  [[nodiscard]] int64_t load(
+      std::memory_order order = std::memory_order_seq_cst) const noexcept {
+    const int64_t wallTime = wallTime_.load(order);
+    const uint64_t startedTick = startedTick_.load(std::memory_order_acquire);
+    if (wallTime <= 0 || startedTick == 0) return 0;
+    const uint64_t nowTick = GetTickCount64();
+    const uint64_t elapsed = nowTick >= startedTick ? nowTick - startedTick : 0;
+    const int64_t wallNow = UnixMillis();
+    if (wallNow <= 1 || elapsed >= static_cast<uint64_t>(wallNow - 1)) return 1;
+    return wallNow - static_cast<int64_t>(elapsed);
+  }
+
+ private:
+  std::atomic<int64_t> wallTime_{0};
+  std::atomic<uint64_t> startedTick_{0};
+};
+
 // Converts an assigned UTC deadline into an uptime deadline once. Subsequent
 // clock corrections cannot make a startup watchdog fire early or stall.
 class MonotonicDeadline {
@@ -448,7 +488,7 @@ class StationheadPlayer {
   MonotonicDeadline recreateAt_;
   std::atomic<bool> shuttingDown_{false};
   std::atomic<bool> audioPlaying_{false};
-  std::atomic<int64_t> audioPlayingSinceAt_{0};
+  AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;
   std::atomic<bool> audioMuted_{false};
   std::atomic<double> audioVolume_{1.0};
   mutable std::atomic<int> appliedMuted_{-1};
