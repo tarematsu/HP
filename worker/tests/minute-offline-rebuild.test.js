@@ -54,9 +54,11 @@ test('offline rebuild runner keeps live work out and exposes the source DB alias
     MINUTE_DB: minuteDb,
   }, {
     maxJobs: 12,
+    maxPasses: 1,
     leaseMs: 90_000,
     runBudgetMs: 20_000,
     claim: customClaim,
+    now: () => 1_000,
     async run(env, dependencies) {
       assert.equal(env.DB, buddiesDb);
       assert.equal(env.MINUTE_DB, minuteDb);
@@ -67,11 +69,63 @@ test('offline rebuild runner keeps live work out and exposes the source DB alias
       return { processed_rebuild: 3, processed_live: 0 };
     },
   });
-  assert.deepEqual(result, { processed_rebuild: 3, processed_live: 0 });
+  assert.deepEqual(result, {
+    event: 'offline_minute_rebuild_summary',
+    passes: 1,
+    processed: 0,
+    processed_rebuild: 3,
+    processed_live: 0,
+    failed: 0,
+    dead: 0,
+    skipped_budget: 0,
+    duration_ms: 0,
+    budget_exhausted: false,
+  });
+});
+
+test('offline rebuild runner drains multiple passes and stops when no work remains', async () => {
+  let calls = 0;
+  const result = await runOfflineMinuteRebuilds({
+    BUDDIES_DB: {},
+    MINUTE_DB: {},
+  }, {
+    maxPasses: 6,
+    totalBudgetMs: 360_000,
+    now: () => 10_000,
+    async run() {
+      calls += 1;
+      if (calls <= 2) {
+        return {
+          processed: 8,
+          processed_rebuild: 8,
+          processed_live: 0,
+          failed: 0,
+          pending_count: 24 - calls * 8,
+        };
+      }
+      return {
+        processed: 0,
+        processed_rebuild: 0,
+        processed_live: 0,
+        failed: 0,
+        pending_count: 8,
+      };
+    },
+  });
+
+  assert.equal(calls, 3);
+  assert.equal(result.passes, 3);
+  assert.equal(result.processed, 16);
+  assert.equal(result.processed_rebuild, 16);
+  assert.equal(result.processed_live, 0);
+  assert.equal(result.pending_count, 8);
+  assert.equal(result.budget_exhausted, false);
 });
 
 test('offline rebuild policy is bounded and rebuild-only', () => {
   assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.job_kind, 'rebuild');
   assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_jobs, 50);
   assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.run_budget_ms, 55_000);
+  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.max_passes, 6);
+  assert.equal(OFFLINE_MINUTE_REBUILD_POLICY.total_budget_ms, 6 * 60_000);
 });
