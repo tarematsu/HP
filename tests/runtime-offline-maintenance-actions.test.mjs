@@ -38,17 +38,25 @@ test('offline runtime maintenance runs frequently and after production deploys',
   assert.match(runner, /runtime offline maintenance deadline exceeded/);
   assert.match(runner, /sh_collector_status/);
   assert.match(runner, /other-cron/);
+  assert.match(runner, /runRollup\(env\.BUDDIES_DB, env\.OTHER_DB, env\.MINUTE_DB, startedAt\)/);
 });
 
-test('Actions consolidates work and persists successful runtime health', async () => {
+test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () => {
   const calls = [];
   const writes = [];
   const now = 1_000;
+  const buddiesDb = { name: 'buddies' };
+  const minuteDb = { name: 'minute' };
+  const otherDb = statusDatabase(writes);
   const result = await runRuntimeOfflineMaintenanceActions({
     now: () => now,
-    env: { BUDDIES_DB: {}, OTHER_DB: statusDatabase(writes) },
+    env: { BUDDIES_DB: buddiesDb, MINUTE_DB: minuteDb, OTHER_DB: otherDb },
     runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
-    runRollup: async () => { calls.push('rollup'); return 'rollup'; },
+    runRollup: async (...args) => {
+      calls.push('rollup');
+      assert.deepEqual(args, [buddiesDb, otherDb, minuteDb, now]);
+      return 'rollup';
+    },
     runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
@@ -75,7 +83,7 @@ test('Actions persists runtime maintenance failures for public health', async ()
   await assert.rejects(
     runRuntimeOfflineMaintenanceActions({
       now: () => 2_000,
-      env: { BUDDIES_DB: {}, OTHER_DB: statusDatabase(writes) },
+      env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
       runPrediction: async () => { throw new Error('prediction failed'); },
       runRollup: async () => assert.fail('rollup must not run'),
       runRetention: async () => assert.fail('retention must not run'),
