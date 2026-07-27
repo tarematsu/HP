@@ -53,12 +53,13 @@ test('track-history advances in bounded Actions slices and publishes R2 only whe
   assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
 });
 
-test('workflow keeps four hourly opportunities without a Worker cron or read-model Queue', () => {
+test('workflow keeps scheduled opportunities without duplicate push chaining or Worker queues', () => {
   assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
   assert.match(workflow, /cron: '23,53 \* \* \* \*'/);
   assert.match(workflow, /PAGES_READ_MODEL_MAX_STEPS: '4'/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.event == 'push'/);
   assert.match(workflow, /github\.event\.workflow_run\.head_sha \|\| github\.sha/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
