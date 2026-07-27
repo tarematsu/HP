@@ -23,14 +23,18 @@ inline constexpr bool SecondaryStationheadStartupReady(
 
 // A configured controller is not yet a useful startup surface: required script
 // registration and the first navigation can still be pending. Keep A covering
-// both halves until B has either produced audio, entered an interactive account
-// flow, or completed its first Stationhead navigation successfully.
+// both halves until B has either produced audio, reached a usable login surface,
+// or completed its first Stationhead navigation successfully. Active Spotify
+// auth always takes precedence over playback: the playback document may remain
+// audible while the pending-auth layout intentionally hides both B surfaces.
 inline bool StationheadStartupPreviewReady(
     const StationheadStatus& status) noexcept {
-  return status.audioPlaying || status.loginRequired ||
-      status.spotifyAuthorization ||
-      (status.created && !status.navigating && !status.processFailed &&
-       status.detail == L"station loaded");
+  if (status.spotifyAuthorization) {
+    return !status.navigating && status.detail == L"Spotify login ready";
+  }
+  if (status.audioPlaying || status.loginRequired) return true;
+  return status.created && !status.navigating && !status.processFailed &&
+      status.detail == L"station loaded";
 }
 
 static_assert(SecondaryStationheadStartupReady(true, 1, 1));
@@ -205,6 +209,7 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     pendingStartupPreviewBounds_ = bounds;
     startupPreviewRequested_ = true;
     startupPreviewApplied_ = false;
+    startupAuthReadyObserved_ = false;
     if (AppStationheadHandle* primary = StartupPrimary()) {
       primary->ExpandStartupPreviewForSecondary(bounds);
     }
@@ -240,6 +245,14 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     ResetDeferredStartupState(true);
     StationheadHandleBase::Stop();
   }
+  uint32_t ConsumeChangeFlags() {
+    const uint32_t flags = StationheadHandleBase::ConsumeChangeFlags();
+    // Navigation/auth callbacks post WM_HP_STATIONHEAD_CHANGED immediately.
+    // Re-evaluate before waiting for the next timer tick so A continues covering
+    // B until the destination surface is complete, then hands over in one event.
+    ApplyDeferredStartupPreview();
+    return flags;
+  }
   StationheadStatus Status() const {
     StationheadStatus status = StationheadHandleBase::Status();
     if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
@@ -267,6 +280,7 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     startupRequestedAtTick_ = 0;
     startupPreviewRequested_ = false;
     startupPreviewApplied_ = false;
+    startupAuthReadyObserved_ = false;
   }
 
   void TryStartDeferred() {
@@ -286,7 +300,21 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
       return;
     }
     const StationheadStatus status = RawStatus();
-    if (!StationheadStartupPreviewReady(status)) return;
+    if (!status.spotifyAuthorization) {
+      startupAuthReadyObserved_ = false;
+    } else if (!status.navigating && status.detail == L"Spotify login ready") {
+      // Keep the completed Auth surface ready even if a later playback audio
+      // callback updates the shared status detail before the next App tick.
+      startupAuthReadyObserved_ = true;
+    }
+    if (status.spotifyAuthorization && startupAuthReadyObserved_) {
+      StationheadStatus authReadyStatus = status;
+      authReadyStatus.navigating = false;
+      authReadyStatus.detail = L"Spotify login ready";
+      if (!StationheadStartupPreviewReady(authReadyStatus)) return;
+    } else if (!StationheadStartupPreviewReady(status)) {
+      return;
+    }
     // The controller and its first useful document are ready before the host is
     // exposed. Prepare B first while A still covers both halves, then restore A
     // to the requested left half.
@@ -301,6 +329,7 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   uint64_t startupRequestedAtTick_ = 0;
   bool startupPreviewRequested_ = false;
   bool startupPreviewApplied_ = false;
+  bool startupAuthReadyObserved_ = false;
 };
 
 }  // namespace hp
