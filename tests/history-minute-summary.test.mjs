@@ -8,6 +8,11 @@ import {
   minuteSummarySql,
 } from '../site/functions/lib/history-summary.js';
 
+const summarySource = readFileSync(
+  new URL('../site/functions/lib/history-summary.js', import.meta.url),
+  'utf8',
+);
+
 test('minute history summary uses dense facts and current stream boundaries', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_channel_snapshots(
@@ -39,11 +44,15 @@ test('minute history summary uses dense facts and current stream boundaries', ()
   assert.doesNotMatch(sql, /validated_stream_count AS stream_value/);
 });
 
-test('daily minute overlay replaces the recent two weeks', () => {
+test('daily minute overlay keeps a bounded fallback and starts after persisted rollups', () => {
   const now = Date.parse('2026-07-27T12:00:00Z');
   assert.equal(
     minuteSummaryFallbackStart('daily', now),
     Date.parse('2026-07-13T00:00:00Z'),
+  );
+  assert.match(
+    summarySource,
+    /Math\.max\(fromTs, expectedLiveStart, minuteSummaryFallbackStart\(mode, now\)\)/,
   );
 });
 
