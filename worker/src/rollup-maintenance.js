@@ -5,6 +5,7 @@ import {
   utcMonthlyRange,
   utcWeeklyRange,
 } from '../../site/functions/lib/time-buckets.js';
+import { REBUILD_STATE_KEY } from './minute-facts-backfill.js';
 import { runMinuteFactsRepair } from './minute-facts-repair.js';
 
 const STATE_ID = 'rollup-retention-v1';
@@ -63,6 +64,20 @@ function finite(value) {
   if (value == null || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function integer(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function safeJson(value, fallback) {
+  try {
+    const parsed = JSON.parse(String(value ?? ''));
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt) {
@@ -232,36 +247,129 @@ async function blockedMinuteJobs(minuteDb, period) {
   return Number(row?.count || 0);
 }
 
+async function loadRebuildState(minuteDb) {
+  try {
+    return await minuteDb.prepare(`SELECT cursor_observed_at,cursor_snapshot_id,pending_json
+      FROM sh_minute_fact_rebuild_state WHERE rebuild_key=? LIMIT 1`)
+      .bind(REBUILD_STATE_KEY).first();
+  } catch (error) {
+    if (/no such table/i.test(String(error?.message || error))) return null;
+    throw error;
+  }
+}
+
+function pendingRebuildCandidates(state, period) {
+  return safeJson(state?.pending_json, []).filter((candidate) => {
+    const minuteAt = integer(candidate?.minuteAt);
+    return minuteAt != null && minuteAt >= period.start && minuteAt < period.end;
+  }).length;
+}
+
+async function unscannedSourceExists(sourceDb, state, period) {
+  const cursorAt = integer(state?.cursor_observed_at) ?? 0;
+  const cursorId = integer(state?.cursor_snapshot_id) ?? 0;
+  const row = await sourceDb.prepare(`SELECT 1 AS pending FROM sh_channel_snapshots
+    WHERE observed_at>=? AND observed_at<?
+      AND (observed_at>? OR (observed_at=? AND id>?))
+    LIMIT 1`)
+    .bind(period.start, period.end, cursorAt, cursorAt, cursorId)
+    .first();
+  return Boolean(row);
+}
+
+async function latestMinuteFactRebuildAt(minuteDb, period) {
+  const [jobs, repairs] = await Promise.all([
+    minuteDb.prepare(`SELECT MAX(COALESCE(processed_at,updated_at)) AS updated_at
+      FROM sh_minute_fact_jobs
+      WHERE minute_at>=? AND minute_at<? AND status='done'
+        AND job_kind IN ('rebuild','repair')`)
+      .bind(period.start, period.end).first(),
+    minuteDb.prepare(`SELECT MAX(updated_at) AS updated_at
+      FROM sh_minute_fact_repairs
+      WHERE minute_at>=? AND minute_at<? AND status='repaired'`)
+      .bind(period.start, period.end).first()
+      .catch((error) => {
+        if (/no such table/i.test(String(error?.message || error))) return null;
+        throw error;
+      }),
+  ]);
+  return Math.max(
+    0,
+    integer(jobs?.updated_at) ?? 0,
+    integer(repairs?.updated_at) ?? 0,
+  );
+}
+
 async function immutableDailyReady(sourceDb, minuteDb, period) {
-  const [sourceMinutes, factMinutes, blocked] = await Promise.all([
+  const rebuildState = await loadRebuildState(minuteDb);
+  if (!rebuildState) {
+    return {
+      ready: false,
+      reason: 'minute-facts-rebuild-state-missing',
+      sourceMinutes: 0,
+      factMinutes: 0,
+      blocked: 0,
+      pendingRebuild: 0,
+      unscannedSource: true,
+    };
+  }
+  const pendingRebuild = pendingRebuildCandidates(rebuildState, period);
+  const [sourceMinutes, factMinutes, blocked, unscannedSource] = await Promise.all([
     distinctSourceMinutes(sourceDb, period),
     distinctSourceMinutes(minuteDb, period),
     blockedMinuteJobs(minuteDb, period),
+    unscannedSourceExists(sourceDb, rebuildState, period),
   ]);
   return {
-    ready: sourceMinutes > 0 && factMinutes >= sourceMinutes && blocked === 0,
+    ready: sourceMinutes > 0
+      && factMinutes >= sourceMinutes
+      && blocked === 0
+      && pendingRebuild === 0
+      && !unscannedSource,
+    reason: pendingRebuild > 0 || unscannedSource
+      ? 'minute-facts-rebuild-pending'
+      : blocked > 0
+        ? 'minute-fact-jobs-pending'
+        : factMinutes < sourceMinutes
+          ? 'minute-facts-incomplete'
+          : sourceMinutes < 1
+            ? 'buddies-source-empty'
+            : null,
     sourceMinutes,
     factMinutes,
     blocked,
+    pendingRebuild,
+    unscannedSource,
   };
 }
 
 async function rebuildDailyWhenComplete(sourceDb, minuteDb, otherDb, period, now) {
-  const [existing, readiness] = await Promise.all([
+  const [existing, readiness, latestRebuildAt] = await Promise.all([
     loadSummary(otherDb, 'sh_daily_summary', period.key),
     immutableDailyReady(sourceDb, minuteDb, period),
+    latestMinuteFactRebuildAt(minuteDb, period),
   ]);
   if (!readiness.ready) {
     return {
       skipped: true,
-      reason: 'minute-facts-incomplete',
+      reason: readiness.reason || 'minute-facts-incomplete',
       periodKey: period.key,
       existingSampleCount: Number(existing?.sample_count || 0),
+      latestRebuildAt,
       readiness,
     };
   }
-  if (existing && Number(existing.sample_count || 0) === readiness.factMinutes) {
-    return { skipped: true, reason: 'already-current', periodKey: period.key, readiness };
+  const existingUpdatedAt = integer(existing?.updated_at) ?? 0;
+  if (existing
+      && Number(existing.sample_count || 0) === readiness.factMinutes
+      && existingUpdatedAt >= latestRebuildAt) {
+    return {
+      skipped: true,
+      reason: 'already-current',
+      periodKey: period.key,
+      latestRebuildAt,
+      readiness,
+    };
   }
   const written = await rollupDaily(minuteDb, otherDb, period, now);
   return {
@@ -270,6 +378,7 @@ async function rebuildDailyWhenComplete(sourceDb, minuteDb, otherDb, period, now
     reason: written ? null : 'minute-facts-empty',
     periodKey: period.key,
     previousSampleCount: Number(existing?.sample_count || 0),
+    latestRebuildAt,
     readiness,
   };
 }
@@ -357,6 +466,7 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
   return {
     skipped: daily.skipped && weekly.skipped && monthly.skipped,
     periodKey: period.key,
+    minuteFactsRepair,
     daily,
     weekly,
     monthly,

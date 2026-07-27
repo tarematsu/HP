@@ -18,8 +18,18 @@ test('daily rebuild waits for Minute Facts repair and complete source coverage',
   assert.match(source, /distinctSourceMinutes\(sourceDb, period\)/);
   assert.match(source, /distinctSourceMinutes\(minuteDb, period\)/);
   assert.match(source, /status<>'done'/);
-  assert.match(source, /reason: 'minute-facts-incomplete'/);
+  assert.match(source, /sh_minute_fact_rebuild_state/);
+  assert.match(source, /pendingRebuildCandidates/);
+  assert.match(source, /unscannedSourceExists/);
   assert.match(source, /rollupDaily\(minuteDb, otherDb, period, now\)/);
+});
+
+test('completed rebuild timestamps force one daily recreation even when counts match', () => {
+  assert.match(source, /latestMinuteFactRebuildAt/);
+  assert.match(source, /job_kind IN \('rebuild','repair'\)/);
+  assert.match(source, /status='repaired'/);
+  assert.match(source, /existingUpdatedAt >= latestRebuildAt/);
+  assert.match(source, /rebuilt: Boolean\(existing && written\)/);
 });
 
 test('daily rebuild refreshes dependent weekly and monthly summaries', () => {
