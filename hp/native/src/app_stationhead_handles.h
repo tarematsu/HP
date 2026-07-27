@@ -6,10 +6,24 @@ namespace hp {
 // Give the refreshed side enough time to rebuild its EME/Widevine playback
 // pipeline before the other side is allowed to start its own boundary refresh.
 inline constexpr int64_t kStationheadTrackTransitionGraceMs = 30'000;
+inline constexpr uint64_t kStationheadSecondaryStartupFallbackMs = 8'000;
 
 inline bool StationheadNeedsForeground(const StationheadStatus& status) noexcept {
   return !status.audioPlaying;
 }
+
+inline constexpr bool SecondaryStationheadStartupReady(
+    bool primaryCreated,
+    uint64_t nowTick,
+    uint64_t requestedAtTick) noexcept {
+  if (primaryCreated) return true;
+  return requestedAtTick > 0 && nowTick >= requestedAtTick &&
+      nowTick - requestedAtTick >= kStationheadSecondaryStartupFallbackMs;
+}
+
+static_assert(SecondaryStationheadStartupReady(true, 1, 1));
+static_assert(!SecondaryStationheadStartupReady(false, 7'999, 1));
+static_assert(SecondaryStationheadStartupReady(false, 8'001, 1));
 
 enum class WorkspaceTab {
   Main = 0,
@@ -56,6 +70,12 @@ class StationheadHandleBase {
   void ResetPlayer() noexcept;
   bool HasAuthTabPlayer() const;
   void SelectPlayerTab(StationheadTabKind tab);
+  [[nodiscard]] bool CanStartPlayer() const noexcept {
+    return player_ && !startIssued_ && !stopIssued_;
+  }
+  [[nodiscard]] bool PlayerStarted() const noexcept {
+    return player_ && startIssued_ && !stopIssued_;
+  }
 
  private:
   bool IsInteractive(const StationheadStatus& status) const noexcept;
@@ -82,6 +102,11 @@ class StationheadHandleBase {
   mutable uint64_t contentRevision_ = 1;
 };
 
+// The App starts A first. B consults this handle during its short deferred
+// startup window so the two profile controllers are not configured at the same
+// time on a cold WebView2 environment.
+inline StationheadHandleBase* stationheadStartupPrimaryHandle = nullptr;
+
 class AppStationheadHandle final : public StationheadHandleBase {
  public:
   AppStationheadHandle();
@@ -93,6 +118,16 @@ class AppStationheadHandle final : public StationheadHandleBase {
   const AppStationheadHandle* operator->() const noexcept;
   AppStationheadHandle& operator=(std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void Start() {
+    stationheadStartupPrimaryHandle = this;
+    StationheadHandleBase::Start();
+  }
+  void Stop() {
+    StationheadHandleBase::Stop();
+    if (stationheadStartupPrimaryHandle == this) {
+      stationheadStartupPrimaryHandle = nullptr;
+    }
+  }
   bool HasAuthTab() const;
   void SelectTab(StationheadTabKind tab);
   StationheadStatus Status() const {
@@ -120,6 +155,21 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
   AppSecondaryStationheadHandle& operator=(
       std::unique_ptr<StationheadPlayer> player) noexcept;
   void reset() noexcept;
+  void Start() {
+    if (!CanStartPlayer()) return;
+    if (startupRequestedAtTick_ == 0) {
+      startupRequestedAtTick_ = GetTickCount64();
+    }
+    TryStartDeferred();
+  }
+  void Tick(int64_t nowMs) {
+    TryStartDeferred();
+    if (PlayerStarted()) StationheadHandleBase::Tick(nowMs);
+  }
+  void Stop() {
+    startupRequestedAtTick_ = 0;
+    StationheadHandleBase::Stop();
+  }
   StationheadStatus Status() const {
     StationheadStatus status = StationheadHandleBase::Status();
     if (status.loginRequired || status.spotifyAuthorization || status.processFailed) {
@@ -131,6 +181,22 @@ class AppSecondaryStationheadHandle final : public StationheadHandleBase {
     }
     return status;
   }
+
+ private:
+  void TryStartDeferred() {
+    if (!CanStartPlayer() || startupRequestedAtTick_ == 0) return;
+    const bool primaryCreated = stationheadStartupPrimaryHandle &&
+        stationheadStartupPrimaryHandle->RawStatus().created;
+    if (stationheadStartupPrimaryHandle &&
+        !SecondaryStationheadStartupReady(
+            primaryCreated, GetTickCount64(), startupRequestedAtTick_)) {
+      return;
+    }
+    StationheadHandleBase::Start();
+    if (PlayerStarted()) startupRequestedAtTick_ = 0;
+  }
+
+  uint64_t startupRequestedAtTick_ = 0;
 };
 
 }  // namespace hp
