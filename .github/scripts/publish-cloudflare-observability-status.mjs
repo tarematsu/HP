@@ -21,6 +21,7 @@ import {
   observabilityIssueOverall,
   publicHealthSignal,
 } from './observability-issue-triage.mjs';
+import { renderDailyD1SnapshotPace } from './observability-daily-trend.mjs';
 import {
   extractActionsRunnerHealthBlock,
   renderActionsRunnerHealthBlock,
@@ -120,13 +121,26 @@ export function buildIssueBody({
   deploymentHealthBlock = '',
   previousIssueBody = '',
 }) {
-  const cloudflareStatus = observabilityIssueOverall({ outcomes, summaries, activeDeployments });
-  const publicHealth = publicHealthSignal(summaries.publicHealth);
+  const dailySnapshotPace = renderDailyD1SnapshotPace({
+    currentSummary: summaries.daily,
+    previousIssueBody,
+    generatedAt,
+  });
+  const renderedSummaries = {
+    ...summaries,
+    daily: [summaries.daily, dailySnapshotPace].filter(Boolean).join('\n\n'),
+  };
+  const cloudflareStatus = observabilityIssueOverall({
+    outcomes,
+    summaries: renderedSummaries,
+    activeDeployments,
+  });
+  const publicHealth = publicHealthSignal(renderedSummaries.publicHealth);
   const runnerHealth = actionsRunnerHealthBlock || pendingRunnerHealthBlock();
   const deploymentHealth = deploymentHealthBlock || pendingDeploymentHealthBlock();
   const triage = buildObservabilityTriage({
     outcomes,
-    summaries,
+    summaries: renderedSummaries,
     activeDeployments,
     runUrl,
     previousIssueBody,
@@ -159,13 +173,13 @@ ${renderOutcomeRows(outcomes)}
 ${deploymentAndChangeContext(activeDeployments, recentMerges)}
 
 ## Detailed diagnostics
-${diagnosticSection('diagnostic-public-health', 'Public application health endpoint snapshots', summaries.publicHealth, publicHealth.state, DIAGNOSTIC_SECTION_LIMITS.publicHealth)}
-${diagnosticSection('diagnostic-daily', 'Account-wide projected UTC daily Worker, D1, and Queue budgets', summaries.daily, outcomes.daily, DIAGNOSTIC_SECTION_LIMITS.daily)}
-${diagnosticSection('diagnostic-free-tier', 'Account-wide DO, Queues, R2, and KV budgets', summaries.freeTier, outcomes.freeTier, DIAGNOSTIC_SECTION_LIMITS.freeTier)}
-${diagnosticSection('diagnostic-contract', 'Budget contract', summaries.contract, outcomes.contract, DIAGNOSTIC_SECTION_LIMITS.contract)}
-${diagnosticSection('diagnostic-d1', 'Top D1 queries by rows read', summaries.d1Insights, outcomes.d1Insights, DIAGNOSTIC_SECTION_LIMITS.d1Insights)}
-${diagnosticSection('diagnostic-observability', 'Cloudflare metrics and live diagnostics', summaries.observability, outcomes.query, DIAGNOSTIC_SECTION_LIMITS.observability)}
-${diagnosticSection('diagnostic-telemetry', 'Current-deployment telemetry policy', summaries.telemetry, outcomes.telemetry, DIAGNOSTIC_SECTION_LIMITS.telemetry)}
+${diagnosticSection('diagnostic-public-health', 'Public application health endpoint snapshots', renderedSummaries.publicHealth, publicHealth.state, DIAGNOSTIC_SECTION_LIMITS.publicHealth)}
+${diagnosticSection('diagnostic-daily', 'Account-wide projected UTC daily Worker, D1, and Queue budgets', renderedSummaries.daily, outcomes.daily, DIAGNOSTIC_SECTION_LIMITS.daily)}
+${diagnosticSection('diagnostic-free-tier', 'Account-wide DO, Queues, R2, and KV budgets', renderedSummaries.freeTier, outcomes.freeTier, DIAGNOSTIC_SECTION_LIMITS.freeTier)}
+${diagnosticSection('diagnostic-contract', 'Budget contract', renderedSummaries.contract, outcomes.contract, DIAGNOSTIC_SECTION_LIMITS.contract)}
+${diagnosticSection('diagnostic-d1', 'Top D1 queries by rows read', renderedSummaries.d1Insights, outcomes.d1Insights, DIAGNOSTIC_SECTION_LIMITS.d1Insights)}
+${diagnosticSection('diagnostic-observability', 'Cloudflare metrics and live diagnostics', renderedSummaries.observability, outcomes.query, DIAGNOSTIC_SECTION_LIMITS.observability)}
+${diagnosticSection('diagnostic-telemetry', 'Current-deployment telemetry policy', renderedSummaries.telemetry, outcomes.telemetry, DIAGNOSTIC_SECTION_LIMITS.telemetry)}
 `;
   const safeBody = sanitizeText(body).trim();
   if (safeBody.length > MAX_ISSUE_BODY_CHARS) {
