@@ -65,5 +65,8 @@ test('startup watchdogs still bypass the ordinary wake gate', () => {
     'struct StationheadDailyPlayPoint',
   );
   assert.match(wake, /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/);
-  assert.match(clockPolicy, /if \(projected > 0/);
+  assert.match(
+    clockPolicy,
+    /return projected > 0 && projected > UnixMillis\(\);/,
+  );
 });
