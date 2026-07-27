@@ -30,13 +30,13 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
-    # Deployment-triggered runtime maintenance has event=workflow_run and is intentionally
-    # skipped. Direct push, schedule, and manual maintenance runs are operational inputs.
+    # Pushes that affect Pages already trigger this workflow directly. Chaining a
+    # Runtime push completion would start the same SHA twice and cancel one run.
+    # Runtime schedules and manual runs remain independent operational inputs.
     if: >-
       github.event_name != 'workflow_run'
       || (github.event.workflow_run.conclusion == 'success'
         && (github.event.workflow_run.event == 'schedule'
-          || github.event.workflow_run.event == 'push'
           || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
