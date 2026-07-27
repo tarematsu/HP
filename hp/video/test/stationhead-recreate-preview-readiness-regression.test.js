@@ -60,7 +60,11 @@ test('delayed WebView recreation keeps the App scheduler on a fast wake', () => 
   );
   assert.match(wake, /const std::atomic<bool>& recreating/);
   assert.match(wake, /recreating_->load\(std::memory_order_relaxed\)/);
-  assert.match(wake, /startupWatchdogPending \? 0 : value_/);
+  assert.match(
+    wake,
+    /startupWatchdogPending \? 0 : static_cast<int64_t>\(value_\)/,
+  );
+  assert.match(wake, /MonotonicProjectedDeadline value_;/);
   assert.match(
     playerHeader,
     /StartupAwareWakeDeadline nextTickAt_\{[\s\S]*creating_, recreating_, startupScriptDeadline_/,
@@ -71,7 +75,7 @@ test('earliest recreate request is compared in monotonic uptime space', () => {
   const deadline = section(
     playerHeader,
     'class MonotonicDeadline',
-    'class StartupAwareWakeDeadline',
+    'class MonotonicProjectedDeadline',
   );
   assert.match(deadline, /friend bool operator<\(/);
   assert.match(deadline, /TickForWallDeadline\(candidateWallDeadline\)/);
