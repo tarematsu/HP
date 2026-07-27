@@ -163,7 +163,16 @@ WrapStationheadNewWindowHandler(
         }
 
         const HRESULT result = InvokeEventNoexcept(inner, sender, args);
-        if (FAILED(result)) args->put_Handled(TRUE);
+        BOOL handled = FALSE;
+        const HRESULT handledResult = args->get_Handled(&handled);
+        if (FAILED(result) || FAILED(handledResult) || handled == FALSE) {
+          // Trusted Spotify requests must also remain inside the native surface.
+          // The inner handler deliberately leaves Handled false when the auth
+          // host is unavailable or another controller creation is already in
+          // flight. Suppress that fallback instead of allowing WebView2 to open
+          // an unmanaged popup or the system browser outside the kiosk window.
+          args->put_Handled(TRUE);
+        }
         return result;
       });
 }
