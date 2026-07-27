@@ -198,50 +198,29 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       (hostValid && WindowClientSizeMatches(hostWindow, hostWidth, hostHeight));
   const bool authHostSizeMatches = !showAuth ||
       (authHostValid && WindowClientSizeMatches(authHostWindow, width, height));
+  const bool hostPlacementMatches = hostValid &&
+      ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
+  const bool authHostPlacementMatches = authHostValid &&
+      ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
 
-  if (hostValid) {
-    if (showAuth) {
-      if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
-    } else if (!hostWasVisible || !hostSizeMatches ||
-               !ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement)) {
-      SetWindowPos(hostWindow, hostPlacement,
-                   bounds.left, bounds.top, hostWidth, hostHeight,
-                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-    }
+  // Prepare the destination host while it is still hidden. WebView2 controller
+  // bounds and visibility are then committed before the destination host is
+  // exposed, so playback/auth transitions cannot reveal an empty child window.
+  if (!showAuth && hostValid &&
+      (!hostSizeMatches || !hostPlacementMatches)) {
+    SetWindowPos(hostWindow, hostPlacement,
+                 bounds.left, bounds.top, hostWidth, hostHeight,
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+  }
+  if (showAuth && authHostValid &&
+      (!authHostSizeMatches || !authHostPlacementMatches)) {
+    SetWindowPos(authHostWindow, HWND_TOP,
+                 bounds.left, bounds.top, width, height,
+                 SWP_NOACTIVATE | SWP_NOSENDCHANGING);
   }
 
-  if (controller) {
-    if (showAuth) {
-      if (!ControllerVisibilityMatches(controller, FALSE)) {
-        controller->put_IsVisible(FALSE);
-      }
-    } else {
-      // Check the host first. A resize makes the controller update mandatory,
-      // so avoid a synchronous WebView2 COM read on that common transition.
-      if (!hostSizeMatches ||
-          !ControllerBoundsMatch(controller, contentBounds)) {
-        controller->put_Bounds(contentBounds);
-      }
-      if (!ControllerVisibilityMatches(controller, TRUE)) {
-        controller->put_IsVisible(TRUE);
-      }
-    }
-  }
-
-  if (authHostValid) {
-    if (showAuth) {
-      if (!authWasVisible || !authHostSizeMatches ||
-          !ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP)) {
-        SetWindowPos(authHostWindow, HWND_TOP, bounds.left, bounds.top, width, height,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-      }
-    } else if (authWasVisible) {
-      ShowWindow(authHostWindow, SW_HIDE);
-    }
-  }
-
-  if (authController) {
-    if (showAuth) {
+  if (showAuth) {
+    if (authController) {
       if (!authHostSizeMatches ||
           !ControllerBoundsMatch(authController, authBounds)) {
         authController->put_Bounds(authBounds);
@@ -249,9 +228,44 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       if (!ControllerVisibilityMatches(authController, TRUE)) {
         authController->put_IsVisible(TRUE);
       }
-    } else if (!ControllerVisibilityMatches(authController, FALSE)) {
-      authController->put_IsVisible(FALSE);
     }
+    if (authHostValid && !authWasVisible) {
+      SetWindowPos(authHostWindow, HWND_TOP,
+                   bounds.left, bounds.top, width, height,
+                   SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+    }
+
+    // The replacement surface is now complete and on top. Retire playback only
+    // after that point to avoid a transient dashboard/black frame between them.
+    if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
+    if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
+      controller->put_IsVisible(FALSE);
+    }
+    return;
+  }
+
+  if (controller) {
+    // Check the host first. A resize makes the controller update mandatory,
+    // so avoid a synchronous WebView2 COM read on that common transition.
+    if (!hostSizeMatches ||
+        !ControllerBoundsMatch(controller, contentBounds)) {
+      controller->put_Bounds(contentBounds);
+    }
+    if (!ControllerVisibilityMatches(controller, TRUE)) {
+      controller->put_IsVisible(TRUE);
+    }
+  }
+  if (hostValid && !hostWasVisible) {
+    SetWindowPos(hostWindow, hostPlacement,
+                 bounds.left, bounds.top, hostWidth, hostHeight,
+                 SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  }
+
+  // Playback is now ready, including the stable 1x1 behind-dashboard state.
+  // Hide the old auth surface last so every transition retains a complete frame.
+  if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
+  if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
+    authController->put_IsVisible(FALSE);
   }
 }
 
