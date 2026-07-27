@@ -1,4 +1,5 @@
 #pragma once
+#include "sh_auth_navigation_policy_fix.h"
 
 namespace hp {
 
