@@ -18,11 +18,14 @@ const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.json
 
 const DAY = Date.UTC(2026, 6, 20);
 
-test('pages read models keep four operational opportunities per hour across independent triggers', () => {
+test('pages read models keep operational opportunities across independent triggers', () => {
   assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
   assert.match(workflow, /cron: '19,49 \* \* \* \*'/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
+  assert.match(workflow, /Deployment-triggered runtime maintenance has event=workflow_run/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
   assert.match(workflow, /group: pages-read-model-rebuild/);
   assert.match(workflow, /cancel-in-progress: true/);
