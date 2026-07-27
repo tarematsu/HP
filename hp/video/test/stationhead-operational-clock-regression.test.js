@@ -78,6 +78,14 @@ test('track-boundary and periodic operational clocks use monotonic wrappers', ()
     handleHeader,
     /MonotonicElapsedTimestamp playbackMissingSinceAt_;/,
   );
+
+  const retryState = section(
+    handleSource,
+    'struct TrackBoundaryRetryState',
+    'TrackBoundaryRetryState primaryBoundaryRetry',
+  );
+  assert.match(retryState, /MonotonicProjectedDeadline retryAt;/);
+  assert.match(retryState, /MonotonicProjectedDeadline deadline;/);
 });
 
 test('existing polling and recovery expressions bind to monotonic arithmetic', () => {
@@ -107,4 +115,12 @@ test('existing polling and recovery expressions bind to monotonic arithmetic', (
     transitionGap,
     /now - playbackMissingSinceAt_ < kStationheadTrackTransitionGraceMs/,
   );
+
+  const retryTick = section(
+    handleSource,
+    'void StationheadHandleBase::Tick(int64_t nowMs)',
+    'void StationheadHandleBase::Reconnect()',
+  );
+  assert.match(retryTick, /nowMs >= retry\.deadline/);
+  assert.match(retryTick, /nowMs < retry\.retryAt/);
 });
