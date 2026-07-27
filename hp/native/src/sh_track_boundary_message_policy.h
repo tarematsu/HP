@@ -62,14 +62,17 @@ inline bool operator<(
   return deadline.Active() && !deadline.Reached();
 }
 
+// These overloads are intentionally limited to the integer-zero checks used by
+// the legacy call sites. Matching the literal's actual type avoids MSVC treating
+// the overload and the class's int64_t conversion as equally good candidates.
 inline bool operator>(
-    const MonotonicProjectedDeadline& deadline, int64_t candidate) noexcept {
+    const MonotonicProjectedDeadline& deadline, int candidate) noexcept {
   if (candidate == 0) return deadline.Active();
   return StationheadProjectedDeadlineValue(deadline) > candidate;
 }
 
 inline bool operator<=(
-    const MonotonicProjectedDeadline& deadline, int64_t candidate) noexcept {
+    const MonotonicProjectedDeadline& deadline, int candidate) noexcept {
   if (candidate == 0) return !deadline.Active();
   return StationheadProjectedDeadlineValue(deadline) <= candidate;
 }
