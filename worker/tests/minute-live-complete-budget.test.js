@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { COMPLETE_MINUTE_FACT_JOB_SQL } from '../src/minute-facts-inbox.js';
 import {
   budgetedLiveCompleteMessage,
   COMPLETE_LIVE_MINUTE_FACT_JOB_SQL,
@@ -40,8 +39,9 @@ test('live completion validator rejects rebuild and malformed messages', () => {
   assert.equal(budgetedLiveCompleteMessage({ ...body(), stage: 'write' }), false);
 });
 
-test('lightweight completion SQL stays identical to the canonical completion contract', () => {
-  assert.equal(COMPLETE_LIVE_MINUTE_FACT_JOB_SQL, COMPLETE_MINUTE_FACT_JOB_SQL);
+test('live completion accepts both DO-claimed pending rows and legacy D1 processing rows', () => {
+  assert.match(COMPLETE_LIVE_MINUTE_FACT_JOB_SQL, /status IN \('pending','processing'\)/);
+  assert.doesNotMatch(COMPLETE_LIVE_MINUTE_FACT_JOB_SQL, /status='processing'$/);
 });
 
 test('live completion performs only the bounded job completion update', async () => {
@@ -62,6 +62,7 @@ test('live completion performs only the bounded job completion update', async ()
   assert.equal(result.meta.changes, 1);
   assert.match(calls[0][1], /UPDATE sh_minute_fact_jobs/);
   assert.match(calls[0][1], /payload_clearable=0/);
+  assert.match(calls[0][1], /status IN \('pending','processing'\)/);
   assert.doesNotMatch(calls[0][1], /sh_queue_revisions/);
   assert.deepEqual(calls[1], ['bind', [500, 500, 42]]);
   assert.deepEqual(calls[2], ['run']);
