@@ -11,6 +11,8 @@ import {
 } from './minute-facts-normalize.js';
 import { resolveTrack } from './minute-facts-legacy-resolve.js';
 
+export const PLAYBACK_STATE_HEARTBEAT_MS = 20 * 60_000;
+
 async function loadTrackMetadata(oldDb, tracks) {
   if (!oldDb) return new Map();
   const ids = [...new Set((tracks || []).map((track) => text(track?.spotify_id)).filter(Boolean))];
@@ -141,9 +143,19 @@ export async function updatePlaybackState(db, input) {
       queue_start_time=excluded.queue_start_time,is_paused=excluded.is_paused,
       paused_total_ms=excluded.paused_total_ms,pause_started_at=excluded.pause_started_at,
       last_observed_at=excluded.last_observed_at,current_position=excluded.current_position
-    WHERE excluded.last_observed_at>=sh_playback_current.last_observed_at`).bind(
+    WHERE excluded.last_observed_at>=sh_playback_current.last_observed_at
+      AND (
+        excluded.session_id IS NOT sh_playback_current.session_id
+        OR excluded.revision_id IS NOT sh_playback_current.revision_id
+        OR excluded.queue_start_time IS NOT sh_playback_current.queue_start_time
+        OR excluded.is_paused IS NOT sh_playback_current.is_paused
+        OR excluded.paused_total_ms IS NOT sh_playback_current.paused_total_ms
+        OR excluded.pause_started_at IS NOT sh_playback_current.pause_started_at
+        OR excluded.current_position IS NOT sh_playback_current.current_position
+        OR excluded.last_observed_at-sh_playback_current.last_observed_at>=?
+      )`).bind(
     channelId, sessionId, revisionId, queueStartTime, paused ? 1 : 0, pausedTotal,
-    pauseStartedAt, observedAt, currentPosition,
+    pauseStartedAt, observedAt, currentPosition, PLAYBACK_STATE_HEARTBEAT_MS,
   ).run();
   return {
     revision_id: revisionId,
