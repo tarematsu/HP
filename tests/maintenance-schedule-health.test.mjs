@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const root = new URL('../', import.meta.url);
+const read = (path) => readFileSync(new URL(path, root), 'utf8');
+
+function cron(workflow) {
+  return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
+}
+
+test('runtime and Pages schedules remain staggered after re-registration', () => {
+  const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
+  const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
+
+  assert.equal(cron(runtime), '11,41 * * * *');
+  assert.equal(cron(pages), '26,56 * * * *');
+  assert.match(pages, /workflows: \["Run runtime offline maintenance"\]/);
+  assert.match(runtime, /cancel-in-progress: false/);
+});
+
+test('public runtime health uses the runner-health stale threshold', () => {
+  const config = JSON.parse(read('site/wrangler.jsonc'));
+  const healthSource = read('site/functions/lib/health-other.js');
+  const runnerPolicy = read('.github/scripts/github-actions-runner-health.mjs');
+
+  assert.equal(config.vars.OTHER_CRON_STALE_MS, 75 * 60_000);
+  assert.match(healthSource, /75 \* 60_000/);
+  assert.match(runnerPolicy, /name: 'Runtime offline maintenance'[\s\S]*?staleAfterMinutes: 75/);
+});
