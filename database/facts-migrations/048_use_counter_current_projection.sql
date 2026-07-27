@@ -1,8 +1,8 @@
 -- Current counter values are already maintained transactionally by
 -- trg_sh_track_counter_current. Read the one-row projection instead of scanning
 -- the append-only change log, then retire the now-unused occurrence/time index.
--- Keep this migration metadata-only: ANALYZE on the current projection scans the
--- full table and is charged as D1 rows read during every reapplication.
+-- Keep this migration metadata-only: refreshing full-table statistics here would
+-- be charged as D1 rows read during every reapplication.
 
 DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time;
 
