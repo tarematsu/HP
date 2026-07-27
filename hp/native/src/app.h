@@ -110,10 +110,13 @@ class App {
   bool stationheadPlaybackFallbackActive_ = false;
   bool stationheadPlaybackNoNextTrackObserved_ = false;
   uint64_t stationheadPlaybackFallbackRevision_ = 0;
-  int64_t primaryTrackBoundaryPendingUntil_ = 0;
-  int64_t secondaryTrackBoundaryPendingUntil_ = 0;
-  int64_t primaryTrackBoundaryHandoffReadyAt_ = 0;
-  int64_t secondaryTrackBoundaryHandoffReadyAt_ = 0;
+  // Track-boundary handoff windows are operational delays. Re-project them to
+  // the current civil clock only at scheduler boundaries; their actual expiry
+  // remains tied to GetTickCount64().
+  MonotonicProjectedDeadline primaryTrackBoundaryPendingUntil_;
+  MonotonicProjectedDeadline secondaryTrackBoundaryPendingUntil_;
+  MonotonicProjectedDeadline primaryTrackBoundaryHandoffReadyAt_;
+  MonotonicProjectedDeadline secondaryTrackBoundaryHandoffReadyAt_;
   int64_t lastTelemetryAt_ = 0;
   int64_t lastAirHistorySavedAt_ = 0;
   int64_t lastStationheadPlayStatsUpdatedAt_ = 0;
