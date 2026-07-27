@@ -8,6 +8,15 @@ import {
   minuteSummarySql,
 } from '../site/functions/lib/history-summary.js';
 
+const summarySource = readFileSync(
+  new URL('../site/functions/lib/history-summary.js', import.meta.url),
+  'utf8',
+);
+const rollupSource = readFileSync(
+  new URL('../worker/src/rollup-maintenance.js', import.meta.url),
+  'utf8',
+);
+
 test('minute history summary uses dense facts and current stream boundaries', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_channel_snapshots(
@@ -39,21 +48,22 @@ test('minute history summary uses dense facts and current stream boundaries', ()
   assert.doesNotMatch(sql, /validated_stream_count AS stream_value/);
 });
 
-test('daily minute overlay replaces the recent two weeks', () => {
+test('minute overlay starts after the latest finalized summary', () => {
   const now = Date.parse('2026-07-27T12:00:00Z');
   assert.equal(
     minuteSummaryFallbackStart('daily', now),
     Date.parse('2026-07-13T00:00:00Z'),
   );
+  assert.match(
+    summarySource,
+    /Math\.max\(fromTs, expectedLiveStart, minuteSummaryFallbackStart\(mode, now\)\)/,
+  );
 });
 
-test('offline history rollups prefer MINUTE_DB and repair the sparse July range', () => {
-  const source = readFileSync(
-    new URL('../worker/src/rollup-maintenance.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(source, /const summarySourceDb = minuteDb \|\| db/);
-  assert.match(source, /rollupDaily\(summarySourceDb, otherDb, period, now\)/);
-  assert.match(source, /rollup-minute-source-repair-2026-07-v1/);
-  assert.match(source, /'2026-07-20'[\s\S]*'2026-07-26'/);
+test('offline rollups use immutable Minute Facts finalization', () => {
+  assert.match(rollupSource, /FINAL_DAILY_FLAGS = '\["minute_facts_final"\]'/);
+  assert.match(rollupSource, /INSERT OR IGNORE INTO \$\{table\}/);
+  assert.match(rollupSource, /inspectDailySummaryReadiness/);
+  assert.doesNotMatch(rollupSource, /rollup-minute-source-repair-2026-07-v1/);
+  assert.doesNotMatch(rollupSource, /repairMinuteSourceSummaries/);
 });
