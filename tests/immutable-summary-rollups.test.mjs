@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-// Promotion order is immutable: minute facts -> daily -> weekly -> monthly.
+// Promotion order: Minute Facts repair -> daily -> weekly -> monthly.
 const source = readFileSync(new URL('../worker/src/rollup-maintenance.js', import.meta.url), 'utf8');
 
-test('daily summaries rebuild only after minute facts catch up with BUDDIES', () => {
+test('daily summaries rebuild only after Minute Facts repair completes', () => {
+  assert.match(source, /runMinuteFactsRepair\(\{ DB: db, MINUTE_DB: minuteDb \}, now\)/);
+  assert.match(source, /minute-facts-rebuild-pending/);
   assert.match(source, /loadSummary\(otherDb, 'sh_daily_summary'/);
   assert.match(source, /distinctSourceMinutes\(sourceDb, period\)/);
   assert.match(source, /distinctSourceMinutes\(minuteDb, period\)/);
@@ -13,6 +15,10 @@ test('daily summaries rebuild only after minute facts catch up with BUDDIES', ()
   assert.match(source, /existingSampleCount/);
   assert.match(source, /existing\.sample_count \|\| 0\) === readiness\.factMinutes/);
   assert.match(source, /rollupDaily\(minuteDb, otherDb, period, now\)/);
+  assert.ok(
+    source.indexOf('runMinuteFactsRepair({ DB: db, MINUTE_DB: minuteDb }, now)')
+      < source.indexOf('rebuildDailyWhenComplete(db, minuteDb, otherDb, period, now)'),
+  );
 });
 
 test('daily rebuild cascades to weekly and monthly summaries', () => {
