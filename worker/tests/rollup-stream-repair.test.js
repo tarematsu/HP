@@ -5,6 +5,10 @@ import test from 'node:test';
 const source = readFileSync(new URL('../src/rollup-maintenance.js', import.meta.url), 'utf8');
 const reconcile = readFileSync(new URL('../src/minute-facts-day-reconcile.js', import.meta.url), 'utf8');
 const repair = readFileSync(new URL('../scripts/repair-july-stream-facts.mjs', import.meta.url), 'utf8');
+const observedIndexMigration = readFileSync(
+  new URL('../../database/facts-migrations/048_force_rollup_observed_index.sql', import.meta.url),
+  'utf8',
+);
 
 test('rollups reject total-listener values masquerading as total streams', () => {
   assert.match(source, /validated_stream_count IS NOT total_listens/);
@@ -29,6 +33,12 @@ test('daily rebuild refreshes dependent weekly and monthly summaries', () => {
   assert.match(source, /daily\.rebuilt === true \|\| daily\.generated === true/);
   assert.match(source, /weekly\.rebuilt === true/);
   assert.match(source, /minuteFactReconcileCandidates\(now\)/);
+});
+
+test('minute rollup compatibility view forces the observed-time index', () => {
+  assert.match(observedIndexMigration, /INDEXED BY idx_sh_minute_facts_observed_id/);
+  assert.match(observedIndexMigration, /CREATE INDEX IF NOT EXISTS idx_sh_minute_facts_observed_id/);
+  assert.match(observedIndexMigration, /PRAGMA optimize/);
 });
 
 test('legacy special-case runtime repair is removed', () => {

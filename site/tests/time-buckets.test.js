@@ -10,6 +10,8 @@ import {
   previousJstDay,
   previousUtcDay,
   utcDayKey,
+  utcMonthlyRange,
+  utcWeeklyRange,
 } from '../functions/lib/time-buckets.js';
 
 test('minuteBucket floors timestamps to the minute', () => {
@@ -37,4 +39,20 @@ test('previous day helpers return bounded UTC ranges', () => {
   assert.equal(jst.end - jst.start, DAY_MS);
   assert.equal(utc.key, '2026-07-08');
   assert.equal(jst.key, '2026-07-08');
+});
+
+test('weekly and monthly ranges expose matching key and timestamp bounds', () => {
+  const week = utcWeeklyRange('2026-07-30');
+  assert.equal(week.key, '2026-07-27');
+  assert.equal(week.startKey, '2026-07-27');
+  assert.equal(week.endKey, '2026-08-03');
+  assert.equal(week.start, Date.parse('2026-07-27T00:00:00Z'));
+  assert.equal(week.end - week.start, 7 * DAY_MS);
+
+  const month = utcMonthlyRange('2026-07-30');
+  assert.equal(month.key, '2026-07');
+  assert.equal(month.startKey, '2026-07-01');
+  assert.equal(month.endKey, '2026-08-01');
+  assert.equal(month.start, Date.parse('2026-07-01T00:00:00Z'));
+  assert.equal(month.end, Date.parse('2026-08-01T00:00:00Z'));
 });

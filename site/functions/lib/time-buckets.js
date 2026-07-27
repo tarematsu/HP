@@ -38,18 +38,22 @@ export function previousJstDay(now = Date.now()) {
 export function utcWeeklyRange(dayKey) {
   const date = new Date(`${dayKey}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  const start = date.getTime();
   const startKey = date.toISOString().slice(0, 10);
   date.setUTCDate(date.getUTCDate() + 7);
-  return { key: startKey, startKey, endKey: date.toISOString().slice(0, 10) };
+  const end = date.getTime();
+  return { key: startKey, startKey, endKey: date.toISOString().slice(0, 10), start, end };
 }
 
 export function utcMonthlyRange(dayKey) {
   const [year, month] = dayKey.split('-').map(Number);
-  const start = new Date(Date.UTC(year, month - 1, 1));
-  const end = new Date(Date.UTC(year, month, 1));
+  const startDate = new Date(Date.UTC(year, month - 1, 1));
+  const endDate = new Date(Date.UTC(year, month, 1));
   return {
     key: dayKey.slice(0, 7),
-    startKey: start.toISOString().slice(0, 10),
-    endKey: end.toISOString().slice(0, 10),
+    startKey: startDate.toISOString().slice(0, 10),
+    endKey: endDate.toISOString().slice(0, 10),
+    start: startDate.getTime(),
+    end: endDate.getTime(),
   };
 }
