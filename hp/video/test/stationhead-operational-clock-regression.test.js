@@ -39,13 +39,30 @@ test('backdated elapsed timestamps retain their initial elapsed duration', () =>
   const elapsed = section(
     playerHeader,
     'class MonotonicElapsedTimestamp',
-    'class MonotonicDeadline',
+    'class AtomicMonotonicElapsedTimestamp',
   );
   assert.match(elapsed, /initialElapsedMs_ = wallTime < wallNow/);
   assert.match(elapsed, /initialElapsedMs_ \+ elapsedSinceAssignment/);
   assert.match(elapsed, /friend int64_t operator\+\(/);
   assert.match(elapsed, /intervalMs > elapsed \? intervalMs - elapsed : 0/);
   assert.match(elapsed, /wallNow \+ remaining/);
+});
+
+test('atomic audio start timestamps are re-projected from uptime', () => {
+  const atomicElapsed = section(
+    playerHeader,
+    'class AtomicMonotonicElapsedTimestamp',
+    'class MonotonicDeadline',
+  );
+  assert.match(atomicElapsed, /void store\(/);
+  assert.match(atomicElapsed, /int64_t load\(/);
+  assert.match(atomicElapsed, /startedTick_\.store/);
+  assert.match(atomicElapsed, /GetTickCount64\(\)/);
+  assert.match(atomicElapsed, /return wallNow - static_cast<int64_t>\(elapsed\);/);
+  assert.match(
+    playerHeader,
+    /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/,
+  );
 });
 
 test('ordinary player wake deadlines are re-projected from uptime', () => {
