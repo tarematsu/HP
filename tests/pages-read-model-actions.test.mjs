@@ -18,14 +18,14 @@ const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.json
 
 const DAY = Date.UTC(2026, 6, 20);
 
-test('pages read models keep operational opportunities across independent triggers', () => {
+test('pages read models keep operational opportunities without duplicate push chaining', () => {
   assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
   assert.match(workflow, /cron: '23,53 \* \* \* \*'/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
   assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
-  assert.match(workflow, /github\.event\.workflow_run\.event == 'push'/);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.event == 'push'/);
   assert.match(workflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
-  assert.match(workflow, /Deployment-triggered runtime maintenance has event=workflow_run/);
+  assert.match(workflow, /Pushes that affect Pages already trigger this workflow directly/);
   assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
   assert.match(workflow, /group: pages-read-model-rebuild/);
   assert.match(workflow, /cancel-in-progress: true/);
