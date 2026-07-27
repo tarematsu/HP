@@ -81,6 +81,24 @@ test('Spotify auth does not masquerade as playback navigation', () => {
   );
 });
 
+test('playback navigation starts are recorded even when they finish between App ticks', () => {
+  const proxy = section(
+    policy,
+    'class StationheadNavigationInFlightProxy',
+    'class StationheadBoundaryReloadClockProxy',
+  );
+  assert.match(proxy, /void store\(bool value, std::memory_order order\)/);
+  assert.match(
+    proxy,
+    /if \(value\) \{[\s\S]*refreshStartedAt_ = 0;[\s\S]*navigationObserved_ = 1;[\s\S]*storage_\.store\(value, order\);/,
+  );
+  assert.match(proxy, /bool load\(std::memory_order order\) const noexcept/);
+  assert.match(
+    policy,
+    /#define navigationInFlight_[\s\S]*StationheadNavigationInFlightStorage\([\s\S]*periodicRefreshStartedAt_[\s\S]*periodicRefreshNavigationObserved_/,
+  );
+});
+
 test('every completed playback navigation restarts the simple 55-minute clock', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
   assert.match(injected, /if \(navigationActive\) \{[\s\S]*periodicRefreshStartedAt_ = 0;[\s\S]*periodicRefreshNavigationObserved_ = 1;/);
