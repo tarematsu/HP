@@ -51,7 +51,7 @@ test('response-validated auth capture is compiled after auth navigation policy',
 
 test('optimistic base auth-cache markers are replaced exactly once', () => {
   assert.equal(occurrences(runtimePolicy, 'rememberAcceptedAuthorization();'), 2);
-  assert.equal(occurrences(runtimePolicy, 'releaseRejectedAuthorization('), 3);
+  assert.equal(occurrences(runtimePolicy, 'releaseRejectedAuthorization('), 2);
   for (const marker of [
     'acceptanceHelpersReplaced',
     'fetchCaptureReplaced',
