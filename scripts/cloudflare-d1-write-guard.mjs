@@ -3,8 +3,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const GRAPHQL_URL = 'https://api.cloudflare.com/client/v4/graphql';
+const DAY_MS = 86_400_000;
 const DEFAULT_WRITE_LIMIT = 4_000;
 const DEFAULT_WRITE_WINDOW_MINUTES = 60;
+const DEFAULT_READ_PROJECTION_MINUTES = 60;
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function positiveInteger(value, fallback, minimum, maximum) {
@@ -20,6 +22,18 @@ function configuredWriteLimit(value) {
 function configuredReadLimit(value) {
   if (value == null || String(value).trim() === '' || Number(value) <= 0) return null;
   return positiveInteger(value, 1, 1, 1_000_000_000);
+}
+
+function configuredProjectionMinutes(value) {
+  return positiveInteger(value, DEFAULT_READ_PROJECTION_MINUTES, 15, 360);
+}
+
+export function projectedDailyRows(rowsRead, elapsedMs, minimumMinutes = DEFAULT_READ_PROJECTION_MINUTES) {
+  const observed = Math.max(0, Number(rowsRead) || 0);
+  const minimumMs = configuredProjectionMinutes(minimumMinutes) * 60_000;
+  const elapsed = Math.max(0, Math.min(DAY_MS, Number(elapsedMs) || 0));
+  const denominator = Math.max(minimumMs, elapsed);
+  return Math.max(observed, Math.ceil((observed * DAY_MS) / denominator));
 }
 
 export function guardDecision(rowsWritten, limit = DEFAULT_WRITE_LIMIT) {
@@ -38,12 +52,19 @@ export function combinedGuardDecision(
   rowsRead,
   writeLimit = DEFAULT_WRITE_LIMIT,
   readLimit = null,
+  projectedRows = null,
 ) {
   const write = guardDecision(rowsWritten, writeLimit);
   const normalizedReadLimit = configuredReadLimit(readLimit);
   if (normalizedReadLimit == null) return write;
   const observedRead = Math.max(0, Number(rowsRead) || 0);
-  const readAllowed = observedRead < normalizedReadLimit;
+  const actualReadAllowed = observedRead < normalizedReadLimit;
+  const hasProjection = projectedRows != null && Number.isFinite(Number(projectedRows));
+  const projectedRead = hasProjection
+    ? Math.max(observedRead, Math.max(0, Math.trunc(Number(projectedRows))))
+    : null;
+  const projectedReadAllowed = projectedRead == null || projectedRead < normalizedReadLimit;
+  const readAllowed = actualReadAllowed && projectedReadAllowed;
   return {
     ...write,
     allowed: write.allowed && readAllowed,
@@ -52,10 +73,21 @@ export function combinedGuardDecision(
     rowsRead: observedRead,
     readLimit: normalizedReadLimit,
     readHeadroom: Math.max(0, normalizedReadLimit - observedRead),
+    ...(projectedRead == null ? {} : {
+      actualReadAllowed,
+      projectedRowsRead: projectedRead,
+      projectedReadAllowed,
+      projectedReadHeadroom: Math.max(0, normalizedReadLimit - projectedRead),
+    }),
   };
 }
 
-export function unavailableGuardDecision(error, limit = DEFAULT_WRITE_LIMIT, readLimit = null) {
+export function unavailableGuardDecision(
+  error,
+  limit = DEFAULT_WRITE_LIMIT,
+  readLimit = null,
+  projectionMinutes = DEFAULT_READ_PROJECTION_MINUTES,
+) {
   const result = {
     allowed: false,
     rowsWritten: null,
@@ -69,9 +101,14 @@ export function unavailableGuardDecision(error, limit = DEFAULT_WRITE_LIMIT, rea
     Object.assign(result, {
       writeAllowed: false,
       readAllowed: false,
+      actualReadAllowed: false,
       rowsRead: null,
       readLimit: normalizedReadLimit,
       readHeadroom: 0,
+      projectedRowsRead: null,
+      projectedReadAllowed: false,
+      projectedReadHeadroom: 0,
+      projectionMinutes: configuredProjectionMinutes(projectionMinutes),
     });
   }
   return result;
@@ -153,6 +190,9 @@ export async function runD1WriteGuard(options = {}) {
   const readLimit = configuredReadLimit(
     options.readLimit ?? process.env.D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT,
   );
+  const projectionMinutes = configuredProjectionMinutes(
+    options.projectionMinutes ?? process.env.D1_ACTIONS_READ_PROJECTION_MINUTES,
+  );
   const writeWindowMinutes = positiveInteger(
     options.windowMinutes ?? process.env.D1_ACTIONS_WRITE_WINDOW_MINUTES,
     DEFAULT_WRITE_WINDOW_MINUTES,
@@ -169,6 +209,7 @@ export async function runD1WriteGuard(options = {}) {
 
   let rowsRead = null;
   let readStart = null;
+  let projectedRows = null;
   if (readLimit != null) {
     readStart = utcDayStart(now);
     const readGroups = options.readGroups
@@ -176,12 +217,20 @@ export async function runD1WriteGuard(options = {}) {
         ? writeGroups
         : await queryD1Usage({ token, accountId, start: readStart, end }));
     rowsRead = sumMetric(readGroups, databaseIds, 'rowsRead');
+    projectedRows = projectedDailyRows(
+      rowsRead,
+      now.getTime() - new Date(readStart).getTime(),
+      projectionMinutes,
+    );
   }
 
   return {
-    ...combinedGuardDecision(rowsWritten, rowsRead, writeLimit, readLimit),
+    ...combinedGuardDecision(rowsWritten, rowsRead, writeLimit, readLimit, projectedRows),
     window: { start: writeStart, end, minutes: writeWindowMinutes },
-    ...(readLimit == null ? {} : { readWindow: { start: readStart, end, scope: 'utc-day' } }),
+    ...(readLimit == null ? {} : {
+      readWindow: { start: readStart, end, scope: 'utc-day' },
+      projectionMinutes,
+    }),
     databaseCount: databaseIds.size,
   };
 }
@@ -190,12 +239,19 @@ function guardReason(result) {
   if (result.allowed) return 'within-budget';
   if (result.readLimit == null) return 'budget-exceeded';
   if (!result.readAllowed && !result.writeAllowed) return 'read-and-write-budget-exceeded';
-  if (!result.readAllowed) return 'read-budget-exceeded';
+  if (!result.readAllowed) {
+    if (result.actualReadAllowed && result.projectedReadAllowed === false) {
+      return 'projected-read-budget-exceeded';
+    }
+    return 'read-budget-exceeded';
+  }
   return 'write-budget-exceeded';
 }
 
 export async function runD1WriteGuardCli(options = {}) {
   const readLimit = options.readLimit ?? process.env.D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT;
+  const projectionMinutes = options.projectionMinutes
+    ?? process.env.D1_ACTIONS_READ_PROJECTION_MINUTES;
   try {
     const result = await (options.run || runD1WriteGuard)(options);
     return {
@@ -207,6 +263,7 @@ export async function runD1WriteGuardCli(options = {}) {
       error,
       options.limit ?? process.env.D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT,
       readLimit,
+      projectionMinutes,
     );
   }
 }
@@ -219,13 +276,19 @@ async function writeGithubOutput(result, output) {
     `allowed=${result.allowed}`,
     `rows_written=${rowsWritten}`,
     `limit=${result.limit}`,
+    `headroom=${result.headroom}`,
     `reason=${result.reason}`,
   ];
   if (result.readLimit != null) {
     lines.push(
       `rows_read=${result.rowsRead == null ? 'unknown' : result.rowsRead}`,
       `read_limit=${result.readLimit}`,
+      `read_headroom=${result.readHeadroom}`,
+      `projected_rows_read=${result.projectedRowsRead == null ? 'unknown' : result.projectedRowsRead}`,
+      `projected_read_headroom=${result.projectedReadHeadroom}`,
+      `projection_minutes=${result.projectionMinutes}`,
       `read_allowed=${result.readAllowed}`,
+      `projected_read_allowed=${result.projectedReadAllowed}`,
       `write_allowed=${result.writeAllowed}`,
     );
   }
