@@ -82,16 +82,16 @@ test('sub-day exclusion refresh replaces only the active UTC day', () => {
   ), ['2025-12-31', '2026-01-02']);
 });
 
-test('monthly full reconciliation and bounded backfill fit comfortably inside the daily window', () => {
+test('monthly full reconciliation excludes the open UTC day', () => {
   const stage = createTrackHistoryCycleStage(BASE, null, {});
   assert.equal(stage.generation, CYCLE_START);
   assert.equal(stage.refresh_mode, 'full');
-  assert.equal(stage.tasks.filter(({ kind }) => kind === 'recent').length, 288);
+  assert.equal(stage.tasks.filter(({ kind }) => kind === 'recent').length, 280);
   assert.equal(stage.tasks.filter(({ kind }) => kind === 'backfill').length, 8);
   assert.equal(stage.tasks.length + 1 <= TRACK_HISTORY_ACTIVE_MINUTES - 17, true);
 });
 
-test('same-month stage refreshes sixteen recent shards when backfill is complete', () => {
+test('same-month stage refreshes one completed recent day when backfill is complete', () => {
   const initial = incrementalState();
   const stage = createTrackHistoryCycleStage(
     BASE,
@@ -99,18 +99,15 @@ test('same-month stage refreshes sixteen recent shards when backfill is complete
     initial[STATUS_KEY],
   );
   assert.equal(stage.refresh_mode, 'incremental');
-  assert.equal(stage.tasks.length, 16);
+  assert.equal(stage.tasks.length, 8);
   assert.equal(stage.tasks.every(({ kind }) => kind === 'recent'), true);
   assert.deepEqual(
     stage.tasks.map(({ cleanup_day: cleanupDay }) => cleanupDay),
-    [
-      false, false, false, false, false, false, false, true,
-      false, false, false, false, false, false, false, true,
-    ],
+    [false, false, false, false, false, false, false, true],
   );
 });
 
-test('cycle core processes shards and cleans each day only after its final shard', async () => {
+test('cycle core processes the completed day and cleans after its final shard', async () => {
   const memory = memoryDependencies(incrementalState());
   const env = { BUDDIES_DB: {}, MINUTE_DB: {} };
   const refreshed = [];
@@ -123,25 +120,22 @@ test('cycle core processes shards and cleans each day only after its final shard
   };
 
   let result;
-  for (let minute = 1; minute <= 16; minute += 1) {
+  for (let minute = 1; minute <= 8; minute += 1) {
     result = await runTrackHistoryCycleStep(env, BASE + minute * MINUTE_MS, dependencies);
     assert.equal(result.completed, minute);
   }
-  const ready = await runTrackHistoryCycleStep(env, BASE + 17 * MINUTE_MS, dependencies);
+  const ready = await runTrackHistoryCycleStep(env, BASE + 9 * MINUTE_MS, dependencies);
 
   assert.equal(ready.skipped, true);
   assert.equal(ready.reason, 'track-history-shards-complete');
   assert.equal(ready.task.kind, 'track-history-publish-ready');
-  assert.equal(refreshed.length, 16);
+  assert.equal(refreshed.length, 8);
   assert.deepEqual(
     refreshed.map(({ options }) => options.cleanupDay),
-    [
-      false, false, false, false, false, false, false, true,
-      false, false, false, false, false, false, false, true,
-    ],
+    [false, false, false, false, false, false, false, true],
   );
   assert.equal(refreshed.every(({ options }) => options.generation === CYCLE_START), true);
   assert.equal(memory.state.get(TRACK_HISTORY_STAGE_KEY).published, false);
   assert.equal(memory.state.has(STATUS_KEY), true);
-  assert.equal(result.completed, 16);
+  assert.equal(result.completed, 8);
 });

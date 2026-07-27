@@ -247,7 +247,7 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
   const lastBaseEnd = finiteNumber(baseRows.at(-1)?.period_end);
   const expectedLiveStart = lastBaseEnd == null ? fromTs : Math.max(fromTs, lastBaseEnd + 1);
   const liveStart = env.MINUTE_DB
-    ? Math.max(fromTs, minuteSummaryFallbackStart(mode, now))
+    ? Math.max(fromTs, expectedLiveStart, minuteSummaryFallbackStart(mode, now))
     : boundedLiveSummaryStart(mode, fromTs, lastBaseEnd, now);
   const loaded = await loadLiveSummary(env, mode, liveStart, toTs, limit);
   const liveRows = (loaded.result.results || []).map(normalizeLiveRow);
