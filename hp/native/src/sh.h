@@ -81,15 +81,7 @@ class MonotonicDeadline {
       deadlineTick_ = 0;
       return *this;
     }
-    const int64_t wallNow = UnixMillis();
-    const uint64_t delay = wallDeadline > wallNow
-        ? static_cast<uint64_t>(wallDeadline - wallNow)
-        : 0;
-    const uint64_t nowTick = GetTickCount64();
-    deadlineTick_ = delay > UINT64_MAX - nowTick
-        ? UINT64_MAX
-        : nowTick + delay;
-    if (deadlineTick_ == 0) deadlineTick_ = 1;
+    deadlineTick_ = TickForWallDeadline(wallDeadline);
     return *this;
   }
 
@@ -104,23 +96,49 @@ class MonotonicDeadline {
     return deadline.Reached();
   }
 
+  // ScheduleRecreate keeps the earliest pending request. Compare candidate and
+  // current deadlines in uptime space so an OS clock correction between two
+  // failures cannot replace an earlier retry with a later one.
+  friend bool operator<(
+      int64_t candidateWallDeadline,
+      const MonotonicDeadline& current) noexcept {
+    return !current.Active() ||
+        TickForWallDeadline(candidateWallDeadline) < current.deadlineTick_;
+  }
+
  private:
+  [[nodiscard]] static uint64_t TickForWallDeadline(
+      int64_t wallDeadline) noexcept {
+    const int64_t wallNow = UnixMillis();
+    const uint64_t delay = wallDeadline > wallNow
+        ? static_cast<uint64_t>(wallDeadline - wallNow)
+        : 0;
+    const uint64_t nowTick = GetTickCount64();
+    uint64_t deadlineTick = delay > UINT64_MAX - nowTick
+        ? UINT64_MAX
+        : nowTick + delay;
+    if (deadlineTick == 0) deadlineTick = 1;
+    return deadlineTick;
+  }
+
   int64_t wallDeadline_ = 0;
   uint64_t deadlineTick_ = 0;
 };
 
 // The ordinary scheduler may sleep for minutes after a stable document. During
-// controller creation, required-script registration, or auth-controller
-// creation, expose an immediate wake instead so the watchdogs are evaluated on
-// every App startup tick.
+// controller creation, delayed recreation, required-script registration, or
+// auth-controller creation, expose an immediate wake so watchdog and recovery
+// deadlines are evaluated on each App foreground tick.
 class StartupAwareWakeDeadline {
  public:
   StartupAwareWakeDeadline(
       const std::atomic<bool>& creating,
+      const std::atomic<bool>& recreating,
       const MonotonicDeadline& startupScriptDeadline,
       const MonotonicElapsedTimestamp& authControllerStartedAt,
       const bool& startupNavigationStarted) noexcept
       : creating_(&creating),
+        recreating_(&recreating),
         startupScriptDeadline_(&startupScriptDeadline),
         authControllerStartedAt_(&authControllerStartedAt),
         startupNavigationStarted_(&startupNavigationStarted) {}
@@ -133,6 +151,7 @@ class StartupAwareWakeDeadline {
   operator int64_t() const noexcept {
     const bool startupWatchdogPending =
         creating_->load(std::memory_order_relaxed) ||
+        recreating_->load(std::memory_order_relaxed) ||
         (!*startupNavigationStarted_ && startupScriptDeadline_->Active()) ||
         authControllerStartedAt_->Active();
     return startupWatchdogPending ? 0 : value_;
@@ -140,6 +159,7 @@ class StartupAwareWakeDeadline {
 
  private:
   const std::atomic<bool>* creating_;
+  const std::atomic<bool>* recreating_;
   const MonotonicDeadline* startupScriptDeadline_;
   const MonotonicElapsedTimestamp* authControllerStartedAt_;
   const bool* startupNavigationStarted_;
@@ -400,7 +420,7 @@ class StationheadPlayer {
   bool startupNavigationStarted_ = false;
   bool stationNavigationStarted_ = false;
   StartupAwareWakeDeadline nextTickAt_{
-      creating_, startupScriptDeadline_, authControllerStartedAt_,
+      creating_, recreating_, startupScriptDeadline_, authControllerStartedAt_,
       startupNavigationStarted_};
   std::wstring authPendingUrl_;
   bool spotifyAuthorization_ = false;
