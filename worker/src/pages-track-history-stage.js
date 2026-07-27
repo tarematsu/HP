@@ -24,12 +24,11 @@ const UNBOUNDED_QUEUE_STARTS_SQL = `WITH RECURSIVE queue_starts AS (
 const BOUNDED_QUEUE_STARTS_SQL = `WITH RECURSIVE queue_bounds AS (
       SELECT ? AS range_end
     ), queue_starts AS (
-      SELECT DISTINCT items.station_id,items.start_time
-      FROM sh_queue_items items
+      SELECT starts.station_id,starts.start_time
+      FROM sh_track_history_queue_starts starts
       CROSS JOIN queue_bounds bounds
-      WHERE items.start_time IS NOT NULL
-        AND items.start_time>=bounds.range_end-${TRACK_HISTORY_QUEUE_LOOKBACK_MS}
-        AND items.start_time<bounds.range_end
+      WHERE starts.start_time>=bounds.range_end-${TRACK_HISTORY_QUEUE_LOOKBACK_MS}
+        AND starts.start_time<bounds.range_end
     )`;
 const BOUNDED_TRACK_HISTORY_SQL = TRACK_HISTORY_SQL.replace(
   UNBOUNDED_QUEUE_STARTS_SQL,
