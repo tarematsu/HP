@@ -98,7 +98,7 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc,hp\/video\/wrangler\.jsonc/);
   assert.match(workflow, /CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR/);
   assert.match(workflow, /^\s+- '\.github\/scripts\/github-actions-runner-health\.mjs'$/m);
-  assert.match(workflow, /^\s+- '\.github\/scripts\/observability-issue-triage\.mjs'$/m);
+  assert.match(workflow, /^\s+- '\.github\/scripts\/observability-\*\.mjs'$/m);
   assert.match(workflow, /D1_INSIGHTS_OUTCOME:/);
   assert.match(workflow, /cloudflare-observability-report-unified-/);
   assert.match(workflow, /ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments\.json/);

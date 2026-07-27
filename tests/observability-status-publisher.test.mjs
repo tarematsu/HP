@@ -130,7 +130,7 @@ test('all observability validation workflows track the shared publisher', () => 
   ]) {
     assert.match(
       read(path),
-      /^\s{6}- '\.github\/scripts\/observability-status-publisher\.mjs'$/m,
+      /^\s{6}- '\.github\/scripts\/observability-\*\.mjs'$/m,
       path,
     );
   }
