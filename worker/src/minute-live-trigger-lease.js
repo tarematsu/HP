@@ -1,3 +1,4 @@
+import { sanitizeFailureDetail } from './collector-failure.js';
 import {
   claimCoordinatedLiveJob,
   releaseCoordinatedLiveJobs,
@@ -68,6 +69,32 @@ export async function releaseBudgetedLiveDeriveJob(env, jobIds, options = {}) {
   const coordinated = await releaseCoordinatedLiveJobs(env, jobIds, options);
   if (coordinated !== undefined) return coordinated;
   return releaseD1LiveDeriveJobs(env, jobIds, options);
+}
+
+export async function failBudgetedLiveDeriveJob(env, job, error, options = {}) {
+  const db = env?.MINUTE_DB;
+  if (!db?.prepare) throw new Error('minute live derive MINUTE_DB binding is missing');
+  const now = integer(options.now) ?? Date.now();
+  const attempts = positiveInteger(job?.attempts, 1, 1_000);
+  const maxAttempts = positiveInteger(options.maxAttempts, 8, 100);
+  const terminal = attempts >= maxAttempts;
+  const retryDelayMs = positiveInteger(options.retryDelayMs, 60_000, 60 * 60_000);
+  const message = sanitizeFailureDetail(error?.message || error).slice(0, 800);
+  await db.prepare(`UPDATE sh_minute_fact_jobs SET
+      status=?,attempts=MAX(attempts,?),next_attempt_at=?,lease_until=NULL,
+      last_error=?,updated_at=?
+    WHERE id=? AND status IN ('pending','processing')`)
+    .bind(
+      terminal ? 'dead' : 'pending',
+      attempts,
+      terminal ? 0 : now + retryDelayMs,
+      message,
+      now,
+      integer(job?.id),
+    )
+    .run();
+  await releaseCoordinatedLiveJobs(env, [job?.id], { now }).catch(() => {});
+  return { terminal, attempts };
 }
 
 export const MINUTE_LIVE_TRIGGER_LEASE = Object.freeze({
