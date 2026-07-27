@@ -100,16 +100,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
-          python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
-          python3 .github/scripts/audit-observability-budget-gates.py --self-test
-          python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
-          python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
-          python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
-          node --test \
-            tests/cloudflare-*.test.mjs \
-            tests/homepanel-*.test.mjs \
-            tests/observability-*.test.mjs
+          {
+            python3 .github/scripts/audit-cloudflare-daily-usage.py --self-test
+            python3 .github/scripts/audit-cloudflare-free-tier.py --self-test
+            python3 .github/scripts/audit-observability-budget-gates.py --self-test
+            python3 .github/scripts/audit-cloudflare-telemetry.py --self-test
+            python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test
+            python3 .github/scripts/query-cloudflare-d1-costs.py --self-test
+            node --test \
+              tests/cloudflare-*.test.mjs \
+              tests/homepanel-*.test.mjs \
+              tests/observability-*.test.mjs
+          } 2>&1 | tee observability-contracts.log
 
       - name: Install HomePanel workspace dependencies
         if: needs.changes.outputs.cloud == 'true' || needs.changes.outputs.video == 'true'
@@ -164,6 +166,7 @@ jobs:
         with:
           name: homepanel-unified-validation-output-${{ github.run_id }}
           path: |
+            observability-contracts.log
             hp/cloud/source-check.log
             hp/cloud/test.log
             hp/cloud/d1-validation.log
