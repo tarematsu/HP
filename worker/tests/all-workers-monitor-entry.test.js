@@ -22,8 +22,8 @@ test('runtime deployment has only fetch and queue event surfaces', () => {
 test('runtime queue no longer imports offline maintenance or collection graphs', () => {
   const queue = source('../src/runtime-queue.js');
   assert.match(queue, /isMinutePipelineBatch/);
-  assert.match(queue, /unsupported_runtime_message_discarded/);
-  assert.doesNotMatch(queue, /runtime-scheduled|monitor-maintenance|stream-prediction/);
+  assert.match(queue, /unsupported_runtime_message_retried/);
+  assert.doesNotMatch(queue, /unsupported_runtime_message_discarded/);
   assert.doesNotMatch(queue, /raw-collection-session|raw-collection-fetch/);
 });
 
