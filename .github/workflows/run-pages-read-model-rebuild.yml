@@ -23,8 +23,11 @@ on:
 permissions:
   contents: read
 
+# A workflow_run event is still created when the Runtime job itself was started
+# by push or deploy chaining. Those runs are intentionally skipped below, so
+# isolate them from operational runs before concurrency cancellation is applied.
 concurrency:
-  group: pages-read-model-rebuild
+  group: pages-read-model-rebuild-${{ github.event_name == 'workflow_run' && github.event.workflow_run.event != 'schedule' && github.event.workflow_run.event != 'workflow_dispatch' && 'ignored-chain' || 'operational' }}
   cancel-in-progress: true
 
 jobs:
