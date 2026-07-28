@@ -48,8 +48,8 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
     '.github/scripts/publish-cloudflare-observability-status.mjs',
     '.github/scripts/observability-workflow-outcome.mjs',
     'cron: "0 1 * * *"',
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
-    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'DAILY_REQUEST_BUDGET: "100000"',
     'DAILY_REQUEST_RESERVE: "0"',
     'DAILY_D1_READ_BUDGET: "5000000"',
@@ -77,6 +77,8 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
     'd1-insights/',
   ]);
   expectNone(workflow, [
+    'homepanel-video',
+    'hp/video/wrangler.jsonc',
     'publish-homepanel-observability-status.mjs',
     'cloudflare-observability-report-sh-',
     'cloudflare-observability-report-hp-',

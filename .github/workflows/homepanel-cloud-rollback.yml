@@ -1,4 +1,4 @@
-name: Roll back HomePanel Cloud services
+name: Roll back HomePanel Cloud
 
 on:
   workflow_dispatch:
@@ -6,10 +6,6 @@ on:
       confirmation:
         description: Type ROLLBACK_HOMEPANEL
         required: true
-        type: string
-      video_version:
-        description: Optional homepanel-video version ID; blank selects the previous version
-        required: false
         type: string
       gateway_version:
         description: Optional homepanel-cloud version ID; blank selects the previous version
@@ -49,18 +45,7 @@ jobs:
         working-directory: hp
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Roll back video service
-        working-directory: hp
-        shell: bash
-        env:
-          VERSION_ID: ${{ inputs.video_version }}
-        run: |
-          set -euo pipefail
-          args=(rollback --name homepanel-video --message "GitHub Actions rollback")
-          if [ -n "$VERSION_ID" ]; then args=(rollback "$VERSION_ID" --name homepanel-video --message "GitHub Actions rollback"); fi
-          npm exec --workspace video -- wrangler "${args[@]}"
-
-      - name: Roll back HomePanel gateway
+      - name: Roll back HomePanel Cloud
         working-directory: hp
         shell: bash
         env:

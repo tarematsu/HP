@@ -6,7 +6,7 @@ This directory is the imported snapshot of `tarematsu/VP` and is maintained enti
 - Imported into HP as: `hp/video/`
 - Production Worker: `homepanel-cloud`
 - Shared D1 database: `homepanel-data`
-- Retired standalone Worker: `homepanel-video`
+- Deleted standalone Worker: `homepanel-video`
 - Retired legacy Worker: `videoscraper`
 - Retired legacy D1 database: `twivideo-swiper-db`
 
@@ -14,15 +14,14 @@ Deleting the former VP repository does not remove any runtime source or producti
 
 ## Runtime boundary
 
-`homepanel-cloud` is the only active HomePanel Worker and public endpoint. Its entry point is `hp/cloud/src/unified_worker.js`.
+`homepanel-cloud` is the only HomePanel Worker and public endpoint. Its entry point is `hp/cloud/src/unified_worker.js`.
 
 - `/admin`, `/v1`, and `/v1/*` are handled by the compact HomePanel implementation.
 - `/api/*` and static video application requests are authenticated and handled in the same Worker by importing `hp/video/src/entry.js`.
 - Browser Rendering, static assets, the manual-import Queue consumer, video collection, video liveness, and video feed coordination are bound directly to `homepanel-cloud`.
 - HomePanel scheduling, device synchronization, radar bundle sharding, and video feed coordination retain separate Durable Object classes so one workload cannot block unrelated coordination.
 - All runtime paths use the migrated `homepanel-data` D1 database; HomePanel R2 bindings and secrets remain on the unified Worker.
-- The `VIDEO_SERVICE` Service Binding is removed.
-- `homepanel-video` is deployed only as a binding-free 410 response stub so its previous production version remains available for emergency rollback.
+- The `VIDEO_SERVICE` Service Binding and standalone `homepanel-video` Worker are removed.
 
 ## Scheduling and bounded work
 
@@ -41,8 +40,8 @@ HomePanel source refreshes remain owned by `SchedulerCoordinator` alarms. Device
 
 ## Deployment and rollback
 
-`.github/workflows/cloud-deploy.yml` validates both source workspaces, deploys the integrated `homepanel-cloud` Worker, then replaces `homepanel-video` with the retired stub. Deploying the unified Worker first avoids an interruption during cutover.
+`.github/workflows/cloud-deploy.yml` validates both source workspaces, deploys `homepanel-cloud`, then idempotently deletes any remaining `homepanel-video` Worker deployment.
 
-`.github/workflows/homepanel-cloud-rollback.yml` intentionally retains two-service rollback support. It can restore the previous active `homepanel-video` version before rolling `homepanel-cloud` back to a pre-integration version.
+`.github/workflows/homepanel-cloud-rollback.yml` rolls back only `homepanel-cloud`. Restoring the deleted standalone video Worker is intentionally unsupported.
 
 The legacy `videoscraper` Worker and `twivideo-swiper-db` database remain retired. No tablet URL change is required.

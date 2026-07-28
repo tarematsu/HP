@@ -64,11 +64,11 @@ export function selectHomePanelScopes(files, { all = false } = {}) {
     }
     if (file.startsWith('hp/cloud/')) scopes.cloud = true;
     if (/^hp\/video\/(?:src|public|test|scripts)\//.test(file)
-      || ['hp/video/package.json', 'hp/video/wrangler.jsonc'].includes(file)) {
+      || file === 'hp/video/package.json') {
       scopes.video = true;
     }
     if (/^hp\/video\/(?:src|public)\//.test(file)
-      || ['hp/video/package.json', 'hp/video/wrangler.jsonc'].includes(file)) scopes.bundle = true;
+      || file === 'hp/video/package.json') scopes.bundle = true;
     if (/^hp\/cloud\/(?:package(?:-lock)?\.json|wrangler[^/]*\.jsonc)$/.test(file)
       || file === 'hp/cloud/src/unified_worker.js') scopes.bundle = true;
     if (/^hp\/cloud\/test\/.*\.integration\.test\.ts$/.test(file)) scopes.integration = true;

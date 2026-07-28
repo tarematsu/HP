@@ -7,26 +7,28 @@ on:
     paths:
       - 'hp/package.json'
       - 'hp/package-lock.json'
+      - 'hp/cloud/src/unified_worker.js'
+      - 'hp/cloud/wrangler.jsonc'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/migrations/**'
       - 'hp/video/test/**'
       - 'hp/video/scripts/**'
       - 'hp/video/package.json'
-      - 'hp/video/wrangler.jsonc'
       - 'hp/video/.ci-full-trigger'
       - '.github/workflows/video-ci.yml'
   pull_request:
     paths:
       - 'hp/package.json'
       - 'hp/package-lock.json'
+      - 'hp/cloud/src/unified_worker.js'
+      - 'hp/cloud/wrangler.jsonc'
       - 'hp/video/src/**'
       - 'hp/video/public/**'
       - 'hp/video/migrations/**'
       - 'hp/video/test/**'
       - 'hp/video/scripts/**'
       - 'hp/video/package.json'
-      - 'hp/video/wrangler.jsonc'
       - 'hp/video/.ci-full-trigger'
       - '.github/workflows/video-ci.yml'
   workflow_dispatch:
@@ -74,6 +76,6 @@ jobs:
           path: hp/video/test-output.log
           if-no-files-found: warn
           retention-days: 7
-      - name: Validate Worker bundle
+      - name: Validate integrated Worker bundle
         working-directory: hp
-        run: npm run check:bundle --workspace video
+        run: npm run check:unified-bundle --workspace cloud

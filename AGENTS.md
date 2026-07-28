@@ -13,7 +13,7 @@ This repository is `tarematsu/HP`. It is the canonical monorepo for the Stationh
 
 - Stationhead: `worker/`, `site/`, `database/`, `packages/`, `scripts/`, `tests/`
 - HomePanel Cloud: `hp/cloud/`
-- HomePanel Video: `hp/video/`
+- HomePanel Video runtime and assets: `hp/video/` (integrated into `homepanel-cloud`)
 - HomePanel Native: `hp/native/`
 - Shared GitHub automation: `.github/actions/`, `.github/scripts/`, `.github/workflows/`
 
@@ -31,10 +31,9 @@ Stationhead configurations:
 - `worker/wrangler.runtime.jsonc`
 - `site/wrangler.jsonc`
 
-HomePanel configurations:
+HomePanel configuration:
 
 - `hp/cloud/wrangler.jsonc`
-- `hp/video/wrangler.jsonc`
 
 Treat resources absent from those active configurations as outside this repository unless the user explicitly requests a cross-repository comparison.
 
@@ -42,8 +41,8 @@ Treat resources absent from those active configurations as outside this reposito
 
 - GitHub Actions is the supported production build and deployment path.
 - Stationhead production deployment is owned by `.github/workflows/deploy-split-pipeline.yml`.
-- HomePanel Cloud deployment is owned by `.github/workflows/cloud-deploy.yml`.
-- HomePanel Native and Video use their dedicated repository-level workflows.
+- HomePanel Cloud, including the video runtime, is deployed by `.github/workflows/cloud-deploy.yml`.
+- HomePanel Native uses its dedicated repository-level workflow.
 - Pull requests may validate and bundle code but must not deploy production resources.
 - Do not add Cloudflare Git polling or Cloudflare-managed repository deployments.
 

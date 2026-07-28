@@ -17,9 +17,9 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'name: Unified Cloudflare Observability',
     'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
     ".github/workflows/publish-github-actions-runner-health.yml",
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
-    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
-    'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
+    'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
     'D1_QUERY_OUTPUT_DIR: d1-insights',
     'D1_INSIGHTS_OUTCOME',
@@ -29,6 +29,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'cloudflare-observability-report-unified-',
     'Deferring unified Cloudflare diagnostics until production deployment completes.',
   ]);
+  expectNone(workflow, ['homepanel-video', 'hp/video/wrangler.jsonc']);
   expectAll(publisher, [
     'Cloudflare Observability Status',
     '<!-- cloudflare-observability-status -->',
