@@ -19,7 +19,10 @@ test('Stationhead WebView disables HTTP and page-state caches before first navig
   assert.match(environment, /L"--disable-http-cache "/);
   assert.match(environment, /--disable-features=BackForwardCache,/);
   assert.match(environment, /ApplyWebView2ProcessHints\(\);[\s\S]*CreateCoreWebView2EnvironmentWithOptions/);
-  assert.match(environment, /put_AdditionalBrowserArguments\(kWebView2Arguments\)/);
+  assert.match(
+    environment,
+    /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
+  );
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
