@@ -6,6 +6,7 @@ bool InstallRuntimeAssets() noexcept;
 namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
+constexpr ULONG kNativePanelTimerToleranceMs = 100;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -95,8 +96,15 @@ void Renderer::SetVisible(bool visible) {
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     if (visible) {
       if (!nativePanelTimerActive_) {
-        nativePanelTimerActive_ =
-            SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+        // The clock still updates once per second, but Windows may align this
+        // timer with nearby App/WebView wakeups instead of waking the CPU for a
+        // separate exact deadline. Fall back for older timer implementations.
+        const UINT_PTR coalesced = SetCoalescableTimer(
+            nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs,
+            nullptr, kNativePanelTimerToleranceMs);
+        nativePanelTimerActive_ = coalesced != 0 ||
+            SetTimer(nativeMainWindow_, kNativePanelTickTimer,
+                     kNativePanelTickMs, nullptr) != 0;
       }
     } else if (nativePanelTimerActive_) {
       KillTimer(nativeMainWindow_, kNativePanelTickTimer);
@@ -105,7 +113,33 @@ void Renderer::SetVisible(bool visible) {
   } else {
     nativePanelTimerActive_ = false;
   }
-  if (visibilityChanged && !visible) ReleaseNativePanelSurfaces();
+
+  if (!visibilityChanged) return;
+  if (visible) {
+    // Radar animation and its large composition surfaces are needed only while
+    // the native Dashboard is visible. Recreate them on demand after a tab or
+    // authorization surface returns to Main.
+    StartRadarCompose();
+    NotifyRadarUpdated();
+    InvalidateAllNativePanels();
+    return;
+  }
+
+  // A 1920x1280 32-bit radar frame is roughly 10 MiB, before decoded tiles,
+  // artwork, weather icons, panel back buffers and cached static sections. Stop
+  // the only worker that touches the radar cache before releasing all native
+  // display-only bitmaps. Stationhead playback and the lightweight dashboard
+  // data poll remain active, so switching back is immediate and state-correct.
+  StopRadarCompose();
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
+    radarFrameBitmap_ = nullptr;
+    radarTimeText_ = L"--:--";
+    radarSignature_.clear();
+  }
+  radarFailedTiles_.clear();
+  ResetNativeBitmapCaches();
 }
 
 void Renderer::QueueAction(UiAction action) {
