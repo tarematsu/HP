@@ -8,6 +8,7 @@ const SAKURAZAKA = 'sh-sakurazaka46jp';
 const RECOVERY = 'sh-buddies-recovery';
 const COLLECTOR = 'sh-buddies-collector';
 const RUNTIME = 'sh-runtime-orchestrator';
+const ALL_WORKERS = [SAKURAZAKA, RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
   return JSON.parse(execFileSync(process.execPath, [selector, ...args], {
@@ -21,10 +22,13 @@ test('domain modules select every Worker whose bundle imports them', () => {
   for (const path of [
     'site/functions/lib/d1-lean-ingest.js',
     'site/functions/lib/d1-optimized-ingest.js',
-    'worker/src/persist-structure-stages.js',
   ]) {
-    assert.deepEqual(select([path]).workers, [RECOVERY, COLLECTOR], path);
+    assert.deepEqual(select([path]).workers, ALL_WORKERS, path);
   }
+  assert.deepEqual(
+    select(['worker/src/persist-structure-stages.js']).workers,
+    [RECOVERY, COLLECTOR],
+  );
   for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
@@ -133,7 +137,7 @@ test('shared package and unresolved Worker source changes select all Workers', (
 
 test('manual selection preserves dependency order', () => {
   const result = select([], ['--all']);
-  assert.deepEqual(result.workers, [SAKURAZAKA, RECOVERY, COLLECTOR, RUNTIME]);
+  assert.deepEqual(result.workers, ALL_WORKERS);
   assert.deepEqual(result.commands, [
     'deploy:sakurazaka46jp',
     'deploy:buddies-recovery',
