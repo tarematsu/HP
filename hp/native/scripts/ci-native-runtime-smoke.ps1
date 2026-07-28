@@ -5,7 +5,7 @@ param(
 
   [int]$DashboardTimeoutSeconds = 55,
 
-  [int]$ActionDelayMilliseconds = 1_250,
+  [int]$ActionDelayMilliseconds = 1250,
 
   [string]$OutputDirectory
 )
@@ -233,7 +233,7 @@ try {
       $mainWindow, [uint32]0x0010, [UIntPtr]::Zero, [IntPtr]::Zero)) {
     throw "Failed to post WM_CLOSE to HomePanel."
   }
-  if (-not $process.WaitForExit(15_000)) {
+  if (-not $process.WaitForExit(15000)) {
     throw "HomePanel did not exit within 15 seconds after WM_CLOSE."
   }
   if ($process.ExitCode -ne 0) {
@@ -284,7 +284,7 @@ try {
     $process.Refresh()
     if (-not $process.HasExited) {
       Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-      $process.WaitForExit(5_000) | Out-Null
+      $process.WaitForExit(5000) | Out-Null
     }
   }
 
