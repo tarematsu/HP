@@ -34,6 +34,23 @@ test('native playback thread cannot terminate the process on an escaped exceptio
   assert.match(start, /Sleep\(1'000\)/);
 });
 
+test('native playback retry always balances its COM apartment', () => {
+  const apartment = section(
+    playback,
+    'struct ScopedPlaybackComApartment',
+    'void AppendSignatureBytes(',
+  );
+  assert.match(apartment, /CoInitializeEx\(nullptr, COINIT_MULTITHREADED\)/);
+  assert.match(apartment, /if \(SUCCEEDED\(result\)\) CoUninitialize\(\)/);
+  const loop = section(
+    playback,
+    'void Renderer::NativePlaybackLoop()',
+    '}  // namespace hp',
+  );
+  assert.match(loop, /ScopedPlaybackComApartment apartment/);
+  assert.doesNotMatch(loop, /const HRESULT apartment/);
+});
+
 test('radar compose thread cannot terminate the process on an escaped exception', () => {
   const start = section(
     radar,
@@ -46,6 +63,19 @@ test('radar compose thread cannot terminate the process on an escaped exception'
   assert.match(start, /catch \(\.\.\.\)/);
   assert.match(start, /radarComposeStopping_\.load\(std::memory_order_acquire\)/);
   assert.match(start, /Sleep\(1'000\)/);
+});
+
+test('radar compose retry always balances its COM apartment', () => {
+  const apartment = section(
+    radar,
+    'struct ScopedRadarComApartment',
+    'struct RadarCompositionSurface',
+  );
+  assert.match(apartment, /CoInitializeEx\(nullptr, COINIT_MULTITHREADED\)/);
+  assert.match(apartment, /if \(SUCCEEDED\(result\)\) CoUninitialize\(\)/);
+  const loop = section(radar, 'void Renderer::RadarComposeLoop()', 'void Renderer::ComposeRadarFrame()');
+  assert.match(loop, /ScopedRadarComApartment apartment/);
+  assert.doesNotMatch(loop, /const HRESULT apartment/);
 });
 
 test('Cloud startup rolls back a partially created thread set', () => {
@@ -91,6 +121,7 @@ test('radar composition owns its bitmap and memory DC until publication', () => 
   );
   assert.match(surface, /~RadarCompositionSurface\(\) \{\s*Reset\(\);/);
   assert.match(surface, /previous\s*&&\s*previous\s*!=\s*HGDI_ERROR/);
+  assert.match(surface, /void FinishDrawing\(\) noexcept/);
   assert.match(surface, /DeleteDC\(dc\)/);
   assert.match(surface, /DeleteObject\(bitmap\)/);
   assert.match(surface, /HBITMAP Release\(\) noexcept/);
@@ -102,8 +133,13 @@ test('radar composition owns its bitmap and memory DC until publication', () => 
   );
   assert.match(compose, /RadarCompositionSurface surface/);
   assert.match(compose, /if \(!surface\.Initialize\(info, &pixels\)\) return/);
+  assert.match(compose, /surface\.FinishDrawing\(\)/);
   assert.match(compose, /SaveBitmapAsBmp\(surface\.bitmap/);
   assert.match(compose, /HBITMAP composed = surface\.Release\(\)/);
+  assert.ok(
+    compose.indexOf('surface.FinishDrawing()') < compose.indexOf('SaveBitmapAsBmp(surface.bitmap'),
+    'bitmap must be deselected before GetDIBits-based persistence',
+  );
 });
 
 test('radar bitmap blending rejects failed GDI selections', () => {
