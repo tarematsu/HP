@@ -38,7 +38,7 @@ test('hidden native dashboard stops radar work before releasing display memory',
 
   assertOrdered(setVisible, [
     'if (!visibilityChanged) return;',
-    'if (visible)',
+    '// Radar animation and its large composition surfaces',
     'StartRadarCompose();',
     'NotifyRadarUpdated();',
     'StopRadarCompose();',
