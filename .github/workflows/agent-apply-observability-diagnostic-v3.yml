@@ -1,0 +1,101 @@
+name: Apply observability diagnostic fix
+
+on:
+  push:
+    branches: [agent/fix-observability-diagnostic-v3]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-fix-observability-diagnostic-v3
+  cancel-in-progress: false
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-observability-diagnostic-v3
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fix contained observability classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { readFileSync, writeFileSync } = require('node:fs');
+
+          function replaceExactly(source, before, after, label) {
+            const matches = source.split(before).length - 1;
+            if (matches !== 1) throw new Error(`${label}: expected one match, found ${matches}`);
+            return source.replace(before, after);
+          }
+
+          const triagePath = '.github/scripts/observability-issue-triage.mjs';
+          let triage = readFileSync(triagePath, 'utf8');
+          triage = replaceExactly(
+            triage,
+            `function outcomeEvidence(key, outcome, summaries) {\n  if (normalizeOutcome(outcome) === 'success') return 'No failure reported.';\n  const summary = summaries?.[key] || '';\n  if (key === 'daily' || key === 'freeTier') {\n    const violations = extractViolationEvidence(summary);\n    if (violations.length) return violations.join('; ');\n  }\n  return firstDiagnosticLine(summary);\n}\n`,
+            `function outcomeEvidence(key, outcome, summaries) {\n  if (normalizeOutcome(outcome) === 'success') return 'No failure reported.';\n  const summary = summaries?.[key] || '';\n  if (key === 'daily' || key === 'freeTier') {\n    const violations = extractViolationEvidence(summary);\n    if (violations.length) return violations.join('; ');\n  }\n  return firstDiagnosticLine(summary);\n}\n\nfunction containedHistoricalDailyFailure({\n  outcome,\n  summary,\n  previousIssueBody,\n  generatedAt,\n}) {\n  if (normalizeOutcome(outcome) === 'success') return false;\n  const trend = classifyDailyRowsReadTrend({\n    currentSummary: summary,\n    previousIssueBody,\n    generatedAt,\n  });\n  const violations = extractViolationEvidence(summary, { limit: 20 });\n  return Boolean(\n    trend?.contained\n      && violations.length === 1\n      && /^D1 rows read\\b/i.test(violations[0]),\n  );\n}\n`,
+            'contained historical daily helper',
+          );
+          triage = replaceExactly(
+            triage,
+            `  const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)\n    .every((key) => normalizeOutcome(outcomes[key]) === 'success');`,
+            `  const dailyFailureContained = containedHistoricalDailyFailure({\n    outcome: outcomes.daily,\n    summary: summaries.daily,\n    previousIssueBody,\n    generatedAt,\n  });\n  const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)\n    .every((key) => (\n      normalizeOutcome(outcomes[key]) === 'success'\n      || (key === 'daily' && dailyFailureContained)\n    ));`,
+            'overall gate classification',
+          );
+          triage = replaceExactly(
+            triage,
+            `  const dailyTrend = classifyDailyRowsReadTrend({\n    currentSummary: summaries.daily,\n    previousIssueBody,\n    generatedAt,\n  });`,
+            `  const dailyFailureContained = containedHistoricalDailyFailure({\n    outcome: outcomes.daily,\n    summary: summaries.daily,\n    previousIssueBody,\n    generatedAt,\n  });`,
+            'triage daily classification',
+          );
+          triage = replaceExactly(
+            triage,
+            `    if (key === 'daily' && dailyTrend?.contained) {`,
+            `    if (key === 'daily' && dailyFailureContained) {`,
+            'triage containment condition',
+          );
+          triage = replaceExactly(
+            triage,
+            `        evidence: dailyTrend.evidence,`,
+            `        evidence: classifyDailyRowsReadTrend({\n          currentSummary: summaries.daily,\n          previousIssueBody,\n          generatedAt,\n        }).evidence,`,
+            'contained incident evidence',
+          );
+          writeFileSync(triagePath, triage);
+
+          const testPath = 'tests/observability-daily-containment.test.mjs';
+          let tests = readFileSync(testPath, 'utf8');
+          tests = replaceExactly(
+            tests,
+            `test('issue builder publishes read and write snapshot pace in daily diagnostics', () => {`,
+            `test('contained historical daily breach publishes a successful Cloudflare status', () => {`,
+            'contained test title',
+          );
+          const failureAssertion = `  assert.match(body, /\\*\\*Cloudflare status:\\*\\* failure/);`;
+          const assertionIndex = tests.lastIndexOf(failureAssertion);
+          if (assertionIndex < 0) throw new Error('contained status assertion not found');
+          tests = `${tests.slice(0, assertionIndex)}  assert.match(body, /\\*\\*Cloudflare status:\\*\\* success/);${tests.slice(assertionIndex + failureAssertion.length)}`;
+          tests += `\n\ntest('another daily-budget violation remains active beside a contained D1 read breach', () => {\n  const queueViolation = summaries.daily.replace(\n    '| Queue billable operations | 10 | 20 | 10,000 | 9,980 | OK |',\n    '| Queue billable operations | 11,000 | 12,000 | 10,000 | 0 | VIOLATION (actual) |',\n  );\n  const body = buildIssueBody({\n    generatedAt,\n    targetSha: 'abc',\n    mainSha: 'abc',\n    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',\n    trigger: 'workflow_run',\n    outcomes,\n    summaries: { ...summaries, daily: queueViolation },\n    activeDeployments: deployments,\n    previousIssueBody: previousIssue(),\n  });\n  assert.match(body, /\\*\\*Cloudflare status:\\*\\* failure/);\n  assert.match(body, /ACTION REQUIRED — 1 active signal/);\n  assert.match(body, /Queue billable operations/);\n  assert.doesNotMatch(body, /CONTAINED — 1 historical signal remains/);\n});\n`;
+          writeFileSync(testPath, tests);
+          NODE
+
+          rm .github/workflows/agent-apply-observability-diagnostic-v3.yml
+          git diff --check
+      - name: Run observability regression tests
+        run: node --test tests/observability-daily-containment.test.mjs tests/observability-issue-triage.test.mjs
+      - name: Commit tested fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/scripts/observability-issue-triage.mjs tests/observability-daily-containment.test.mjs .github/workflows/agent-apply-observability-diagnostic-v3.yml
+          git commit -m "Fix contained observability status classification"
+          git push origin HEAD:agent/fix-observability-diagnostic-v3
