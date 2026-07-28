@@ -147,7 +147,15 @@ void ReplaceOne(const fs::path& source, const fs::path& target) {
   }
 }
 
+DWORD FindHomePanelProcess(const fs::path& root);
+
 void RestartHomePanel(const fs::path& root) {
+  const DWORD existingPid = FindHomePanelProcess(root);
+  if (existingPid) {
+    Log(root, L"Waiting for the previous HomePanel process before restart");
+    WaitForExit(existingPid);
+  }
+
   const fs::path executable = root / L"HomePanel.exe";
   std::wstring command = QuotePath(executable);
   std::vector<wchar_t> buffer(command.begin(), command.end());
