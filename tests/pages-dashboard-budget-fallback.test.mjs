@@ -26,7 +26,7 @@ test('D1 budget deferral still executes a critical dashboard publication', () =>
     workflow,
     /name: Rebuild track history and publish due variants\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
   );
-  assert.match(workflow, /The bounded dashboard refresh will still run\./);
+  assert.match(workflow, /bounded dashboard refresh will still run\./);
 });
 
 test('dashboard budget fallback cannot publish history or execute track-history work', async () => {
