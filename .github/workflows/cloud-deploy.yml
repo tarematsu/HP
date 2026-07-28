@@ -148,6 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/homepanel-public-health.json"
+          status_output="$RUNNER_TEMP/homepanel-public-health.status"
           set +e
           http_status="$(curl --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
@@ -156,6 +157,7 @@ jobs:
             "$HOMEPANEL_HEALTH_URL")"
           curl_status=$?
           set -e
+          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"
           cat "$output" || true
           if (( curl_status != 0 )); then
             echo "::error::HomePanel public health request failed with curl status $curl_status and HTTP $http_status"
@@ -178,6 +180,7 @@ jobs:
           set -euo pipefail
           : "${RADAR_DISPATCH_TOKEN:?Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification}"
           output="$RUNNER_TEMP/homepanel-readiness.json"
+          status_output="$RUNNER_TEMP/homepanel-readiness.status"
           set +e
           http_status="$(curl --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
@@ -187,6 +190,7 @@ jobs:
             "$HOMEPANEL_BASE_URL/v1/ready")"
           curl_status=$?
           set -e
+          printf 'curl_status=%s\nhttp_status=%s\n' "$curl_status" "$http_status" > "$status_output"
           cat "$output" || true
           if (( curl_status != 0 )); then
             echo "::error::HomePanel readiness request failed with curl status $curl_status and HTTP $http_status"
@@ -209,3 +213,16 @@ jobs:
               throw new Error(`Unexpected HomePanel readiness response (HTTP ${status}): ${JSON.stringify(payload)}`);
             }
           ' "$output" "$http_status"
+
+      - name: Upload HomePanel readiness diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-readiness-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/homepanel-public-health.json
+            ${{ runner.temp }}/homepanel-public-health.status
+            ${{ runner.temp }}/homepanel-readiness.json
+            ${{ runner.temp }}/homepanel-readiness.status
+          if-no-files-found: ignore
+          retention-days: 7
