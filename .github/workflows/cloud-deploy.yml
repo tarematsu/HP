@@ -11,6 +11,7 @@ on:
       - ".github/actions/cloudflare-context/action.yml"
       - ".github/scripts/resolve-cloudflare-account.mjs"
       - ".github/scripts/delete-cloudflare-worker.mjs"
+      - ".github/scripts/summarize-homepanel-deploy-failure.mjs"
       - ".github/workflows/cloud-deploy.yml"
       - ".github/scripts/assert-actions-only-cloudflare.mjs"
   workflow_dispatch:
@@ -74,13 +75,25 @@ jobs:
           BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -euo pipefail
+          deploy_log="$RUNNER_TEMP/homepanel-deploy.log"
+          run_deploy() {
+            set +e
+            "$@" 2>&1 | tee "$deploy_log"
+            status=${PIPESTATUS[0]}
+            set -e
+            if (( status != 0 )); then
+              node "$GITHUB_WORKSPACE/.github/scripts/summarize-homepanel-deploy-failure.mjs" "$deploy_log" || true
+              exit "$status"
+            fi
+          }
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            npm run deploy --workspace cloud
+            run_deploy npm run deploy --workspace cloud
             exit 0
           fi
 
           if [ -z "${BEFORE_SHA:-}" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
-            npm run deploy --workspace cloud
+            run_deploy npm run deploy --workspace cloud
             exit 0
           fi
 
@@ -94,11 +107,20 @@ jobs:
             hp/cloud/scripts/deploy-existing.mjs \
             hp/cloud/wrangler.jsonc \
             hp/cloud/package.json; then
-            npm run deploy:worker --workspace cloud
+            run_deploy npm run deploy:worker --workspace cloud
           else
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
-            npm run deploy --workspace cloud
+            run_deploy npm run deploy --workspace cloud
           fi
+
+      - name: Upload HomePanel deployment failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-deploy-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/homepanel-deploy.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Deploy private video service deletion — Delete retired homepanel-video Worker
         run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video
