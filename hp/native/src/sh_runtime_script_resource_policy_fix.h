@@ -30,9 +30,10 @@ inline constexpr std::wstring_view kNonPlaybackScriptDomains[] = {
     L"mouseflow.com",
     L"sprig.com",
     L"userleap.com",
-    // HomePanel uses Stationhead's Spotify path only. This Apple sign-in SDK was
-    // observed on both live station pages and is independent of audio playback.
+    // HomePanel uses Stationhead's Spotify path only. These identity SDKs were
+    // observed on both live station pages and are independent of audio playback.
     L"appleid.cdn-apple.com",
+    L"accounts.google.com",
 };
 
 // These lists are retained for the live audit's body-signal classification.
@@ -117,6 +118,8 @@ static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://static.zdassets.com/ekr/snippet.js"));
 static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://accounts.google.com/gsi/client"));
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/assets/SelectedGIF-BaAx9j6X.js"));
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
