@@ -105,7 +105,17 @@ test('the live Tooltip hash is replaced by a child-preserving exact-path stub', 
   assert.match(stub, /uri\.path == path/);
   assert.match(stub, /export const T=\(\{children\}\)=>children\?\?null;/);
   assert.doesNotMatch(stub, /uri\.path\.find\([^)]*tooltip/i);
-  assert.match(policySource, /Tooltip-DIFFERENT\.js"\)\.empty\(\)/);
+  assert.match(policySource, /tooltip-different\.js"\)\.empty\(\)/);
+});
+
+test('script replacement lowercases the URI before exact-path classification', () => {
+  const policy = section(
+    policySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(',
+    '}  // namespace hp',
+  );
+  assert.match(policy, /lower = StationheadLowerAscii\(uriRaw\)/);
+  assert.match(policy, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
 });
 
 test('script replacement happens before download with a real stub stream and one handler', () => {
