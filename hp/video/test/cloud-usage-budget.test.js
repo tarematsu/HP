@@ -65,6 +65,7 @@ test('each hot coordination workload has an independent Durable Object', () => {
   assert.match(feedCoordinator, /EXPECTED_SCHEDULED_FEED_GROUPS = 2/);
   assert.match(feedCoordinator, /video-feed-stage/);
   assert.match(feedCoordinator, /video-feed-refresh/);
+  assert.match(feedCoordinator, /video-liveness-run/);
   assert.match(feedSnapshot, /SNAPSHOT_KEY = 'video\/playback-feed\/v1\.json'/);
 });
 
@@ -103,8 +104,8 @@ test('device exchange isolates telemetry and uses a dedicated sync coordinator',
   assert.match(deviceSyncCoordinator, /DEVICE_SYNC_MANIFEST_KEY/);
 });
 
-test('video liveness is hourly, bounded, and isolated from Cloudflare Cron', () => {
-  assert.equal(videoConfig.triggers, undefined);
+test('video liveness is hourly, bounded, and isolated in the private Worker', () => {
+  assert.deepEqual(videoConfig.triggers.crons, ['0 * * * *']);
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(livenessMonitor, /LIVENESS_BATCH_SIZE = 5/);
   assert.match(livenessMonitor, /PROBE_CONCURRENCY = 5/);
