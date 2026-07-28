@@ -2,7 +2,17 @@
 
 #include "cloud_client.h"
 #include "config.h"
+#include "update_shutdown_protocol.h"
 
+namespace hp {
+int ShowUpdaterMessage(const wchar_t* text, const wchar_t* title, UINT type) {
+  return MessageBoxW(
+      nullptr, text, title, type | MB_TOPMOST | MB_SETFOREGROUND);
+}
+}  // namespace hp
+
+#undef WM_CLOSE
+#define WM_CLOSE hp::kUpdateShutdownMessage
 #define RunStandalone LegacyRunStandalone
 #define InstallPendingUpdate LegacyInstallPendingUpdate
 #define wWinMain HomePanelLegacyUpdaterMain
@@ -10,6 +20,7 @@
 #undef wWinMain
 #undef InstallPendingUpdate
 #undef RunStandalone
+#undef WM_CLOSE
 
 namespace hp {
 namespace {
@@ -141,6 +152,13 @@ int HardenedRunStandalone(const fs::path& root) {
     throw std::runtime_error("installed HomePanel version could not be read");
   }
   Log(root, L"Authenticated update check started for installed version " + installedVersion);
+  if (ShowUpdaterMessage(
+          L"HomePanelの更新情報を確認します。\n通信中もこのUpdaterは終了せず、結果を表示します。",
+          L"HomePanel Updater",
+          MB_ICONINFORMATION | MB_OKCANCEL | MB_DEFBUTTON1) != IDOK) {
+    Log(root, L"Authenticated update check cancelled before network access");
+    return 0;
+  }
 
   const std::string initialManifestJson = FetchAuthorizedManifest(root);
   const UpdateManifest initialManifest = ParseUpdateManifest(initialManifestJson);
@@ -152,13 +170,12 @@ int HardenedRunStandalone(const fs::path& root) {
   const std::wstring prompt = initiallyNewer
       ? L"HomePanelとUpdaterを " + initialManifest.version + L" に更新します。\n\n続行しますか？"
       : L"HomePanelとUpdaterは最新版です。\n現在の版を認証付きの更新配信から再取得して検証・修復しますか？";
-  if (MessageBoxW(nullptr, prompt.c_str(), L"HomePanel Updater",
-                  MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON1) != IDYES) {
+  if (ShowUpdaterMessage(
+          prompt.c_str(), L"HomePanel Updater",
+          MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON1) != IDYES) {
     Log(root, L"Authenticated update cancelled");
     return 0;
   }
-
-
 
   const std::string manifestJson = FetchAuthorizedManifest(root);
   const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
@@ -172,7 +189,6 @@ int HardenedRunStandalone(const fs::path& root) {
 
   const fs::path pending = WritePendingManifest(root, manifestJson);
   const DWORD appPid = FindHomePanelProcess(root);
-  if (appPid) RequestHomePanelExit(appPid);
   if (!LaunchRunner(root, pending, manifest.version, appPid)) {
     throw std::runtime_error("cannot start the staged updater");
   }
@@ -347,12 +363,14 @@ int RelaunchFromHomePanelRoot(
   const std::filesystem::path bootstrap =
       root / L"HomePanelUpdater.bootstrap.exe";
   if (!CopyFileW(source.c_str(), bootstrap.c_str(), FALSE)) {
-    MessageBoxW(nullptr,
-                L"HomePanelのフォルダーへUpdaterを準備できませんでした。\n"
-                L"書き込み権限とウイルス対策ソフトの隔離状況を確認してください。",
-                L"HomePanel Updater", MB_ICONERROR | MB_OK);
+    hp::ShowUpdaterMessage(
+        L"HomePanelのフォルダーへUpdaterを準備できませんでした。\n"
+        L"書き込み権限とウイルス対策ソフトの隔離状況を確認してください。",
+        L"HomePanel Updater", MB_ICONERROR | MB_OK);
     return 1;
   }
+  const std::wstring zoneIdentifier = bootstrap.wstring() + L":Zone.Identifier";
+  DeleteFileW(zoneIdentifier.c_str());
 
   std::wstring command = L"\"" + bootstrap.wstring() + L"\"";
   std::vector<wchar_t> commandBuffer(command.begin(), command.end());
@@ -362,10 +380,12 @@ int RelaunchFromHomePanelRoot(
   if (!CreateProcessW(bootstrap.c_str(), commandBuffer.data(), nullptr, nullptr,
                       FALSE, 0, nullptr, root.c_str(), &startup, &process)) {
     DeleteFileW(bootstrap.c_str());
-    MessageBoxW(nullptr, L"HomePanel Updaterを起動できませんでした。",
-                L"HomePanel Updater", MB_ICONERROR | MB_OK);
+    hp::ShowUpdaterMessage(
+        L"HomePanel Updaterを起動できませんでした。",
+        L"HomePanel Updater", MB_ICONERROR | MB_OK);
     return 1;
   }
+  AllowSetForegroundWindow(process.dwProcessId);
   CloseHandle(process.hThread);
   CloseHandle(process.hProcess);
   return 0;
@@ -399,8 +419,7 @@ int WINAPI wWinMain(
         const std::filesystem::path resolved =
             ResolveHomePanelRoot(executable);
         if (resolved.empty()) {
-          MessageBoxW(
-              nullptr,
+          hp::ShowUpdaterMessage(
               L"HomePanelの設置先を特定できませんでした。\n"
               L"HomePanelUpdater.exeをC:\\HomePanelに置くか、HomePanel.exeと同じフォルダーから実行してください。",
               L"HomePanel Updater", MB_ICONERROR | MB_OK);
@@ -422,8 +441,9 @@ int WINAPI wWinMain(
     }
     if (mutexError == ERROR_ALREADY_EXISTS) {
       if (!runnerMode) {
-        MessageBoxW(nullptr, L"HomePanel Updaterはすでに実行中です。",
-                    L"HomePanel Updater", MB_ICONINFORMATION | MB_OK);
+        hp::ShowUpdaterMessage(
+            L"HomePanel Updaterはすでに実行中です。",
+            L"HomePanel Updater", MB_ICONINFORMATION | MB_OK);
       }
       return 0;
     }
@@ -452,8 +472,8 @@ int WINAPI wWinMain(
         }
       }
     }
-    MessageBoxW(nullptr, message.c_str(), L"HomePanel update failed",
-                MB_ICONERROR | MB_OK);
+    hp::ShowUpdaterMessage(
+        message.c_str(), L"HomePanel update failed", MB_ICONERROR | MB_OK);
     return 1;
   }
 }
