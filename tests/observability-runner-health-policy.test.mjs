@@ -25,10 +25,11 @@ test('publisher tolerates normal GitHub schedule delay before declaring Pages st
   const pages = targets.find(({ workflow }) => workflow === 'run-pages-read-model-rebuild.yml');
   const runtime = targets.find(({ workflow }) => workflow === 'run-runtime-offline-maintenance.yml');
 
-  assert.equal(pages.staleAfterMinutes, 60);
+  assert.equal(pages.cadenceMinutes, 30);
+  assert.equal(pages.staleAfterMinutes, 75);
   assert.equal(runtime.staleAfterMinutes, 75);
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(43)], { now: NOW }).health, 'healthy');
-  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(61)], { now: NOW }).health, 'stale');
+  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(60)], { now: NOW }).health, 'healthy');
+  assert.equal(evaluateActionsRunnerHealth(pages, [successfulRun(76)], { now: NOW }).health, 'stale');
 });
 
 test('publisher target policy does not mutate caller-owned targets', () => {
