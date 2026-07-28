@@ -33,13 +33,15 @@ if (-not $OutputDirectory) {
   $OutputDirectory = Join-Path (Split-Path -Parent $updaterSource) "ci-updater-runtime-smoke"
 }
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
-$installRoot = Join-Path $OutputDirectory "install-root"
+$temporaryBase = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$installRoot = Join-Path $temporaryBase ("homepanel-updater-smoke-" + [Guid]::NewGuid().ToString("N"))
 $dataDirectory = Join-Path $installRoot "data"
 $manifestPath = Join-Path $dataDirectory "pending-update.json"
 $eventPath = Join-Path $OutputDirectory "application-errors.txt"
 
 Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $installRoot, $dataDirectory | Out-Null
+Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $OutputDirectory, $installRoot, $dataDirectory | Out-Null
 Copy-Item -LiteralPath $homePanelSource -Destination (Join-Path $installRoot "HomePanel.exe") -Force
 Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $installRoot "HomePanelUpdater.exe") -Force
 Copy-Item -LiteralPath $loaderSource -Destination (Join-Path $installRoot "WebView2Loader.dll") -Force
@@ -187,6 +189,7 @@ $updaterLogPath = Join-Path $dataDirectory "homepanel-updater.log"
 $homePanelLogPath = Join-Path $dataDirectory "homepanel.log"
 $updaterProcess = $null
 $homePanelProcess = $null
+$homePanelExitCode = $null
 $startedAt = Get-Date
 
 try {
@@ -200,13 +203,12 @@ try {
     "--manifest", $manifestPath,
     "--version", $Version
   )
-  $startParameters = @{
+  $updaterProcess = Start-Process @{
     FilePath = $updaterPath
     ArgumentList = $processArguments
     WorkingDirectory = $installRoot
     PassThru = $true
   }
-  $updaterProcess = Start-Process @startParameters
 
   $updaterDeadline = [DateTime]::UtcNow.AddSeconds(60)
   while ([DateTime]::UtcNow -lt $updaterDeadline) {
@@ -281,8 +283,17 @@ try {
   if (-not $homePanelProcess.WaitForExit(15000)) {
     throw "Restarted HomePanel did not exit after SC_CLOSE."
   }
-  if ($homePanelProcess.ExitCode -ne 0) {
-    throw "Restarted HomePanel returned exit code $($homePanelProcess.ExitCode)."
+  $homePanelProcess.Refresh()
+  try {
+    $homePanelExitCode = [int]$homePanelProcess.ExitCode
+  } catch {
+    # A Process object attached after updater restart may not expose ExitCode on
+    # hosted runners. The durable homepanel.log clean-exit marker below remains
+    # the authoritative result and also detects every non-zero application exit.
+    $homePanelExitCode = $null
+  }
+  if ($null -ne $homePanelExitCode -and $homePanelExitCode -ne 0) {
+    throw "Restarted HomePanel returned exit code $homePanelExitCode."
   }
 
   if (-not (Test-Path -LiteralPath $homePanelLogPath)) {
@@ -312,7 +323,8 @@ try {
     manifestRemoved = $true
     installedFilesUnchanged = $true
     homePanelRestarted = $true
-    homePanelExitCode = $homePanelProcess.ExitCode
+    homePanelExitCode = $homePanelExitCode
+    homePanelCleanExitConfirmedByLog = $true
     version = $Version
     files = $after
     completedAtUtc = [DateTime]::UtcNow.ToString("o")
@@ -321,6 +333,18 @@ try {
 
   Write-Host "HomePanelUpdater runtime smoke test passed."
 } catch {
+  if (Test-Path -LiteralPath $updaterLogPath) {
+    Copy-Item -LiteralPath $updaterLogPath -Destination (Join-Path $OutputDirectory "homepanel-updater.log") -Force -ErrorAction SilentlyContinue
+    Write-Host "----- HomePanelUpdater log -----"
+    Get-Content -LiteralPath $updaterLogPath -ErrorAction SilentlyContinue | Write-Host
+  }
+  if (Test-Path -LiteralPath $homePanelLogPath) {
+    Copy-Item -LiteralPath $homePanelLogPath -Destination (Join-Path $OutputDirectory "homepanel.log") -Force -ErrorAction SilentlyContinue
+  }
+  Save-ApplicationErrors -StartedAt $startedAt | Out-Null
+  $_ | Out-String | Set-Content -LiteralPath (Join-Path $OutputDirectory "failure.txt") -Encoding utf8
+  throw
+} finally {
   if ($updaterProcess) {
     $updaterProcess.Refresh()
     if (-not $updaterProcess.HasExited) {
@@ -334,15 +358,5 @@ try {
       Stop-Process -Id $homePanelProcess.Id -Force -ErrorAction SilentlyContinue
     }
   }
-  if (Test-Path -LiteralPath $updaterLogPath) {
-    Copy-Item -LiteralPath $updaterLogPath -Destination (Join-Path $OutputDirectory "homepanel-updater.log") -Force -ErrorAction SilentlyContinue
-    Write-Host "----- HomePanelUpdater log -----"
-    Get-Content -LiteralPath $updaterLogPath -ErrorAction SilentlyContinue | Write-Host
-  }
-  if (Test-Path -LiteralPath $homePanelLogPath) {
-    Copy-Item -LiteralPath $homePanelLogPath -Destination (Join-Path $OutputDirectory "homepanel.log") -Force -ErrorAction SilentlyContinue
-  }
-  Save-ApplicationErrors -StartedAt $startedAt | Out-Null
-  $_ | Out-String | Set-Content -LiteralPath (Join-Path $OutputDirectory "failure.txt") -Encoding utf8
-  throw
+  Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
