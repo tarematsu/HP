@@ -134,6 +134,7 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/sh_runtime_resource_policy_fix.h
   src/sh_runtime_resource_boundary_policy_fix.h
   src/sh_runtime_resource_filter_policy_fix.h
+  src/sh_runtime_script_resource_policy_fix.h
   src/sh_track_boundary_message_policy.h
   src/sh.cpp
   src/sh_webview.cpp
@@ -178,6 +179,8 @@ target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_resource_boundary_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_resource_filter_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_script_resource_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_track_boundary_message_policy.h)
 add_dependencies(HomePanel homepanel_version_files)
