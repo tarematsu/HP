@@ -1,0 +1,76 @@
+name: Apply observability contained-status fix
+
+on:
+  push:
+    branches: [agent/fix-observability-contained-status]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agent-fix-observability-contained-status
+  cancel-in-progress: false
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-observability-contained-status
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply contained-status classification fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { readFileSync, writeFileSync } = require('node:fs');
+
+          function replaceExactly(source, before, after, label) {
+            const count = source.split(before).length - 1;
+            if (count !== 1) throw new Error(`${label}: expected one match, found ${count}`);
+            return source.replace(before, after);
+          }
+
+          const triagePath = '.github/scripts/observability-issue-triage.mjs';
+          let triage = readFileSync(triagePath, 'utf8');
+          triage = replaceExactly(
+            triage,
+            `  const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)\n    .every((key) => normalizeOutcome(outcomes[key]) === 'success');`,
+            `  const dailyTrend = classifyDailyRowsReadTrend({\n    currentSummary: summaries.daily,\n    previousIssueBody,\n    generatedAt,\n  });\n  const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)\n    .every((key) => (\n      normalizeOutcome(outcomes[key]) === 'success'\n      || (key === 'daily' && dailyTrend?.contained)\n    ));`,
+            'overall gate classification',
+          );
+          writeFileSync(triagePath, triage);
+
+          const testPath = 'tests/observability-daily-containment.test.mjs';
+          let test = readFileSync(testPath, 'utf8');
+          test = replaceExactly(
+            test,
+            `test('issue builder publishes read and write snapshot pace in daily diagnostics', () => {`,
+            `test('contained historical daily breach publishes a successful Cloudflare status', () => {`,
+            'containment test title',
+          );
+          const failureAssertion = `  assert.match(body, /\\*\\*Cloudflare status:\\*\\* failure/);`;
+          const assertionIndex = test.lastIndexOf(failureAssertion);
+          if (assertionIndex < 0) throw new Error('contained-status assertion was not found');
+          test = `${test.slice(0, assertionIndex)}  assert.match(body, /\\*\\*Cloudflare status:\\*\\* success/);${test.slice(assertionIndex + failureAssertion.length)}`;
+          writeFileSync(testPath, test);
+          NODE
+
+          rm .github/workflows/agent-apply-observability-contained-status-fix.yml
+          git diff --check
+      - name: Run observability regression tests
+        run: node --test tests/observability-daily-containment.test.mjs tests/observability-issue-triage.test.mjs
+      - name: Commit tested fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/scripts/observability-issue-triage.mjs tests/observability-daily-containment.test.mjs .github/workflows/agent-apply-observability-contained-status-fix.yml
+          git commit -m "Treat contained D1 breaches as healthy"
+          git push origin HEAD:agent/fix-observability-contained-status
