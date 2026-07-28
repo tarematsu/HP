@@ -34,6 +34,10 @@ function timestamp(value) {
   return Number.isFinite(milliseconds) ? milliseconds : null;
 }
 
+function operationalTimestamp(run) {
+  return run?.run_started_at || run?.created_at || run?.updated_at || null;
+}
+
 function ageMilliseconds(value, now) {
   const milliseconds = timestamp(value);
   return milliseconds == null ? Number.POSITIVE_INFINITY : Math.max(0, now - milliseconds);
@@ -96,11 +100,13 @@ function consecutiveFailures(runs) {
 export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } = {}) {
   const ordered = [...(Array.isArray(runs) ? runs : [])]
     .filter((run) => !expectedWorkflowRunSkip(target, run))
-    .sort((left, right) => (timestamp(right?.created_at) ?? 0) - (timestamp(left?.created_at) ?? 0));
+    .sort((left, right) => (
+      (timestamp(operationalTimestamp(right)) ?? 0) - (timestamp(operationalTimestamp(left)) ?? 0)
+    ));
   const latest = ordered[0] || null;
   const lastSuccess = ordered.find((run) => run?.status === 'completed' && run?.conclusion === 'success') || null;
-  const latestAge = ageMilliseconds(latest?.created_at, now);
-  const successAge = ageMilliseconds(lastSuccess?.updated_at || lastSuccess?.created_at, now);
+  const latestAge = ageMilliseconds(operationalTimestamp(latest), now);
+  const successAge = ageMilliseconds(lastSuccess?.updated_at || operationalTimestamp(lastSuccess), now);
   const staleAfter = Number(target.staleAfterMinutes) * 60_000;
   const stalledAfter = Number(target.stalledAfterMinutes) * 60_000;
 
@@ -191,9 +197,9 @@ export function actionsRunnerOverall(results) {
 
 export function renderActionsRunnerHealthSummary(results, { now = Date.now() } = {}) {
   const rows = (Array.isArray(results) ? results : []).map((result) => {
-    const lastRun = `${runLabel(result.latest)} (${formatAge(result.latest?.created_at, now)})`;
+    const lastRun = `${runLabel(result.latest)} (${formatAge(operationalTimestamp(result.latest), now)})`;
     const lastSuccess = result.lastSuccess
-      ? `${formatAge(result.lastSuccess.updated_at || result.lastSuccess.created_at, now)}`
+      ? `${formatAge(result.lastSuccess.updated_at || operationalTimestamp(result.lastSuccess), now)}`
       : 'never';
     return `| ${result.name} | **${result.health}** | ${result.cadenceMinutes}m | ${lastRun} | ${lastSuccess} | ${formatDuration(result.durationMs)} | ${result.consecutiveFailures} |`;
   });
