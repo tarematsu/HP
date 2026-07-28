@@ -74,6 +74,12 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
 
   expectAll(cloudConfig, [
     '"directory": "../video/public"',
+    '"run_worker_first": [',
+    '"/api/*"',
+    '"/v1"',
+    '"/v1/*"',
+    '"/admin"',
+    '"not_found_handling": "single-page-application"',
     '"binding": "BROWSER"',
     '"queue": "videoscraper-manual-imports"',
     '"name": "VIDEO_FEED_COORDINATOR"',
