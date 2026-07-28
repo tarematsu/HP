@@ -29,7 +29,11 @@ const RUNNER_HEALTH_BLOCK_OVERHEAD = ACTIONS_RUNNER_HEALTH_START.length
   + 2;
 
 export function publisherActionsRunnerTargets(targets = ACTIONS_RUNNER_TARGETS) {
-  return (Array.isArray(targets) ? targets : []).map((target) => ({ ...target }));
+  return (Array.isArray(targets) ? targets : []).map((target) => (
+    target.workflow === 'run-pages-read-model-rebuild.yml'
+      ? { ...target, staleAfterMinutes: Math.max(Number(target.staleAfterMinutes) || 0, 60) }
+      : { ...target }
+  ));
 }
 
 export function buildActionsRunnerHealthIssueBody(issueBody, summary) {
