@@ -13,7 +13,7 @@ import {
   extractDeploymentHealthBlock,
   renderDeploymentHealthSummary,
   replaceDeploymentHealthSection,
-} from './github-deployment-health.mjs';
+} from './github-deployment-health-current.mjs';
 import {
   MAX_NATIVE_RELEASE_SUMMARY_CHARS,
   collectNativeReleaseStatus,
