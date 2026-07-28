@@ -1,0 +1,100 @@
+name: Native Runtime Smoke
+
+on:
+  pull_request:
+    paths:
+      - "hp/native/**"
+      - ".github/workflows/native-runtime-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "hp/native/**"
+      - ".github/workflows/native-runtime-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-runtime-smoke-${{ github.event_name == 'pull_request' && github.run_id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: windows-2022
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          show-progress: false
+
+      - name: Define build version
+        id: version
+        shell: pwsh
+        run: |
+          $tz = [TimeZoneInfo]::FindSystemTimeZoneById("Tokyo Standard Time")
+          $version = [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz).ToString("yyMMddHHmm")
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Restore WebView2 SDK cache
+        uses: actions/cache@v4
+        with:
+          path: hp/native/packages/Microsoft.Web.WebView2.1.0.4022.49
+          key: ${{ runner.os }}-webview2-1.0.4022.49
+
+      - name: Install WebView2 SDK
+        shell: pwsh
+        run: |
+          $packageRoot = "hp/native/packages"
+          $packageDir = Join-Path $packageRoot "Microsoft.Web.WebView2.1.0.4022.49"
+          if (Test-Path -LiteralPath (Join-Path $packageDir "build/native/include/WebView2.h")) {
+            Write-Host "WebView2 SDK already available."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          nuget install Microsoft.Web.WebView2 -Version 1.0.4022.49 -OutputDirectory $packageRoot -NonInteractive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Configure native runtime smoke build
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force hp/native/ci-logs | Out-Null
+          cmake -S hp/native -B hp/native/build-runtime-smoke `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DHOMEPANEL_CI_STRICT=ON `
+            -DHOMEPANEL_CI_STATIC_ANALYSIS=OFF `
+            2>&1 | Tee-Object hp/native/ci-logs/runtime-smoke-configure.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build HomePanel runtime smoke binary
+        shell: pwsh
+        env:
+          HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cmake --build hp/native/build-runtime-smoke --config Release --target HomePanel --parallel `
+            2>&1 | Tee-Object hp/native/ci-logs/runtime-smoke-build.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run native window and audio-control smoke test
+        shell: pwsh
+        run: |
+          & hp/native/scripts/ci-native-runtime-smoke.ps1 `
+            -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
+            -OutputDirectory hp/native/ci-runtime-smoke
+
+      - name: Upload native runtime diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-runtime-smoke-${{ github.run_id }}
+          path: |
+            hp/native/ci-runtime-smoke
+            hp/native/ci-logs/runtime-smoke-*.log
+          if-no-files-found: warn
+          retention-days: 14
