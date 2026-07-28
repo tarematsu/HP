@@ -10,10 +10,6 @@ const policySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_filter_policy_fix.h', import.meta.url),
   'utf8',
 );
-const playerSource = readFileSync(
-  new URL('../../native/src/sh.cpp', import.meta.url),
-  'utf8',
-);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -73,7 +69,7 @@ test('optional image and font filters follow their configuration', () => {
   assert.match(policySource, /\[env, blockImages, blockFonts\]/);
 });
 
-test('source-aware filters cover iframes and worker-owned requests', () => {
+test('source-aware filters cover every current request source on both players', () => {
   const filterHelper = section(
     policySource,
     'inline void AddStationheadResourceFilter(',
@@ -97,28 +93,28 @@ test('source-aware filters cover iframes and worker-owned requests', () => {
   assert.match(policy, /ComPtr<ICoreWebView2_22> sourceAwareWebView/);
   assert.match(
     policy,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
+  );
+  assert.doesNotMatch(
+    policy,
     /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL/,
   );
-  assert.match(
-    policy,
-    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT/,
-  );
+  assert.doesNotMatch(policy, /get_Profile|get_ProfileName|stationhead-secondary/);
   assert.match(policy, /AddStationheadResourceFilter\([\s\S]*sourceKinds/);
 });
 
-test('only the primary profile owns environment-wide worker filters', () => {
-  const owner = section(
+test('worker coverage does not depend on a fixed primary owner', () => {
+  assert.doesNotMatch(
     policySource,
-    'inline bool StationheadOwnsEnvironmentWorkerFilters(',
-    'inline void AddStationheadResourceFilter(',
+    /StationheadOwnsEnvironmentWorkerFilters|ownsWorkerFilters|L"Default"/,
   );
-  assert.match(owner, /ICoreWebView2_13/);
-  assert.match(owner, /get_Profile\(&profile\)/);
-  assert.match(owner, /get_ProfileName\(&profileNameRaw\)/);
-  assert.match(owner, /_wcsicmp\(profileNameRaw, L"Default"\) == 0/);
   assert.match(
-    playerSource,
-    /profileName_\(role == StationheadRole::Secondary \? L"stationhead-secondary" : L"Default"\)/,
+    policySource,
+    /Register the complete current source mask on both playback WebViews/,
+  );
+  assert.match(
+    policySource,
+    /Secondary keeps worker blocking active instead of depending on a fixed owner/,
   );
 });
 
