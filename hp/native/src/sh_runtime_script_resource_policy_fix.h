@@ -142,10 +142,10 @@ static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
 static_assert(!StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/lottieanimationviewnonlazy-ve60c2no.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/Tooltip-CXAFiWY6.js") ==
+    L"https://www.stationhead.com/assets/tooltip-cxafiwy6.js") ==
     "export const T=({children})=>children??null;");
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/Tooltip-DIFFERENT.js").empty());
+    L"https://www.stationhead.com/assets/tooltip-different.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/player-runtime.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
