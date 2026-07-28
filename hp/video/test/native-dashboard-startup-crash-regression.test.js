@@ -21,6 +21,10 @@ function section(source, start, end) {
 
 test('persisted playback snapshots cannot trigger fallback during dashboard startup', () => {
   assert.match(playbackResolve, /kPlaybackFallbackMaximumAgeMs\s*=\s*30'000/);
+  assert.match(
+    playbackResolve,
+    /gPlaybackFallbackProcessStartedAtMs\s*=\s*UnixMillis\(\)/,
+  );
   const freshness = section(
     playbackResolve,
     'bool ProjectionFreshForFallback(',
@@ -28,6 +32,10 @@ test('persisted playback snapshots cannot trigger fallback during dashboard star
   );
   assert.match(freshness, /projection\.stale/);
   assert.match(freshness, /projection\.fetchedAt\s*<=\s*0/);
+  assert.match(
+    freshness,
+    /projection\.fetchedAt\s*<\s*gPlaybackFallbackProcessStartedAtMs/,
+  );
   assert.match(freshness, /nowMs\s*-\s*projection\.fetchedAt\s*<=\s*kPlaybackFallbackMaximumAgeMs/);
 
   const ended = section(
@@ -54,6 +62,34 @@ test('dashboard initialization rolls back every partially started stage', () => 
     initialize,
     /catch \(\.\.\.\) \{\s*StopRadarCompose\(\);\s*StopNativePlaybackBridge\(\);\s*DestroyNativeStaticWindows\(\);\s*throw;/,
   );
+});
+
+test('native paint setup always balances BeginPaint when construction fails', () => {
+  const paintScope = section(
+    panelWindows,
+    'Renderer::NativePanelPaintScope::NativePanelPaintScope(',
+    'Renderer::NativePanelPaintScope::~NativePanelPaintScope()',
+  );
+  assert.match(paintScope, /paintDc\s*=\s*BeginPaint\(hwnd, &paint\)/);
+  assert.match(paintScope, /previousBitmap\s*==\s*HGDI_ERROR/);
+  assert.match(paintScope, /catch \(\.\.\.\)/);
+  assert.match(
+    paintScope,
+    /catch \(\.\.\.\) \{[\s\S]*EndPaint\(hwnd, &paint\);[\s\S]*paintDc = nullptr;[\s\S]*throw;/,
+  );
+});
+
+test('native panel class registration failure remains retryable', () => {
+  const ensureWindows = section(
+    panelWindows,
+    'bool Renderer::EnsureNativeStaticWindows()',
+    'void Renderer::ApplyNativeStaticBounds()',
+  );
+  assert.match(ensureWindows, /std::call_once\(classOnce/);
+  assert.match(ensureWindows, /SetLastError\(ERROR_SUCCESS\)/);
+  assert.match(ensureWindows, /!RegisterClassW\(&windowClass\)/);
+  assert.match(ensureWindows, /GetLastError\(\)\s*!=\s*ERROR_CLASS_ALREADY_EXISTS/);
+  assert.match(ensureWindows, /throw std::runtime_error/);
 });
 
 test('native dashboard child callbacks do not leak C++ exceptions through user32', () => {
