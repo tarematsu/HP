@@ -10,6 +10,7 @@ const readNative = relative => readFileSync(
 const lifecycle = readNative('renderer_lifecycle.cpp');
 const playbackResolve = readNative('dashboard_playback_resolve.cpp');
 const panelWindows = readNative('renderer_panels/windows.inc');
+const bitmapCache = readNative('renderer_bitmap_cache.cpp');
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -76,6 +77,20 @@ test('native paint setup always balances BeginPaint when construction fails', ()
   assert.match(
     paintScope,
     /catch \(\.\.\.\) \{[\s\S]*EndPaint\(hwnd, &paint\);[\s\S]*paintDc = nullptr;[\s\S]*throw;/,
+  );
+});
+
+test('panel section cache restores selected GDI objects when drawing throws', () => {
+  const cachedSection = section(
+    bitmapCache,
+    'void Renderer::DrawCachedPanelSection(',
+    'HBITMAP Renderer::NativePanelBackBuffer(',
+  );
+  assert.match(cachedSection, /previous\s*==\s*HGDI_ERROR/);
+  assert.match(cachedSection, /catch \(\.\.\.\)/);
+  assert.match(
+    cachedSection,
+    /catch \(\.\.\.\) \{\s*SelectObject\(memoryDc, previous\);\s*DeleteObject\(bitmap\);\s*throw;/,
   );
 });
 
