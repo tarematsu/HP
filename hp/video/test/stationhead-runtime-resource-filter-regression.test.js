@@ -10,6 +10,10 @@ const policySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_filter_policy_fix.h', import.meta.url),
   'utf8',
 );
+const playerSource = readFileSync(
+  new URL('../../native/src/sh.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -49,7 +53,7 @@ test('unused stylesheet callbacks are not registered', () => {
   );
   assert.doesNotMatch(
     policy,
-    /AddWebResourceRequestedFilter\([\s\S]{0,80}COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/,
+    /addFilter\([\s\S]{0,80}COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/,
   );
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
@@ -60,13 +64,62 @@ test('unused stylesheet callbacks are not registered', () => {
 test('optional image and font filters follow their configuration', () => {
   assert.match(
     policySource,
-    /if \(blockImages\) \{[\s\S]*COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE[\s\S]*\}/,
+    /if \(blockImages\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\);[\s\S]*\}/,
   );
   assert.match(
     policySource,
-    /if \(blockFonts\) \{[\s\S]*COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT[\s\S]*\}/,
+    /if \(blockFonts\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\);[\s\S]*\}/,
   );
   assert.match(policySource, /\[env, blockImages, blockFonts\]/);
+});
+
+test('source-aware filters cover iframes and worker-owned requests', () => {
+  const filterHelper = section(
+    policySource,
+    'inline void AddStationheadResourceFilter(',
+    '// The strict resource boundary',
+  );
+  assert.match(filterHelper, /ICoreWebView2_22\* sourceAwareWebView/);
+  assert.match(
+    filterHelper,
+    /AddWebResourceRequestedFilterWithRequestSourceKinds\([\s\S]*sourceKinds/,
+  );
+  assert.match(
+    filterHelper,
+    /if \(FAILED\(result\) && webview\) \{[\s\S]*AddWebResourceRequestedFilter\(L"\*", context\);/,
+  );
+
+  const policy = section(
+    policySource,
+    'inline void ApplyStationheadResourceBlockingFilterFixed(',
+    'ComPtr<ICoreWebView2Environment> env = environment;',
+  );
+  assert.match(policy, /ComPtr<ICoreWebView2_22> sourceAwareWebView/);
+  assert.match(
+    policy,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL/,
+  );
+  assert.match(
+    policy,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT/,
+  );
+  assert.match(policy, /AddStationheadResourceFilter\([\s\S]*sourceKinds/);
+});
+
+test('only the primary profile owns environment-wide worker filters', () => {
+  const owner = section(
+    policySource,
+    'inline bool StationheadOwnsEnvironmentWorkerFilters(',
+    'inline void AddStationheadResourceFilter(',
+  );
+  assert.match(owner, /ICoreWebView2_13/);
+  assert.match(owner, /get_Profile\(&profile\)/);
+  assert.match(owner, /get_ProfileName\(&profileNameRaw\)/);
+  assert.match(owner, /_wcsicmp\(profileNameRaw, L"Default"\) == 0/);
+  assert.match(
+    playerSource,
+    /profileName_\(role == StationheadRole::Secondary \? L"stationhead-secondary" : L"Default"\)/,
+  );
 });
 
 test('ping requests are rejected without URI allocation', () => {
