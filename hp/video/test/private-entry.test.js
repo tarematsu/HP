@@ -46,3 +46,32 @@ test('gateway-marked requests reach the video runtime', async () => {
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), { ok: false, error: 'Not found' });
 });
+
+test('hourly Cron delegates liveness work to the Durable Object', async () => {
+  const calls = [];
+  const pending = [];
+  worker.scheduled(
+    { cron: '0 * * * *' },
+    {
+      SCHEDULER_COORDINATOR: {
+        getByName(name) {
+          assert.equal(name, 'video-liveness');
+          return {
+            async fetch(url, init) {
+              calls.push({ url, init });
+              return Response.json({ ok: true, checkedCount: 5 });
+            }
+          };
+        }
+      }
+    },
+    { waitUntil(task) { pending.push(task); } }
+  );
+
+  assert.equal(pending.length, 1);
+  await pending[0];
+  assert.deepEqual(calls, [{
+    url: 'https://homepanel.internal/video-liveness-run',
+    init: { method: 'POST' }
+  }]);
+});
