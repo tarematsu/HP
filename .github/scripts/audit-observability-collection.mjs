@@ -14,6 +14,11 @@ export const REQUIRED_CLOUDFLARE_WORKERS = Object.freeze([
   'homepanel-cloud',
 ]);
 
+export const REQUIRED_PUBLIC_HEALTH_ENDPOINTS = Object.freeze([
+  'Unified health',
+  'HomePanel Cloud health',
+]);
+
 function compact(value, maximum = 300) {
   const text = sanitizeText(String(value || '')).replace(/\s+/g, ' ').trim();
   return text.length <= maximum ? text : `${text.slice(0, maximum - 1)}…`;
@@ -85,13 +90,19 @@ export function evaluateCollectionCoverage({
     );
   }
 
-  const publicHealthOk = Boolean(publicHealthSummary.trim())
-    && (/\b200\s+OK\b/i.test(publicHealthSummary) || /\|\s*[^|\n]+\|\s*success\s*\|/i.test(publicHealthSummary));
-  add(
-    'Public health snapshot',
-    publicHealthOk,
-    publicHealthOk ? 'A definitive successful public endpoint snapshot was captured.' : 'No definitive successful public endpoint snapshot was captured.',
-  );
+  for (const endpoint of REQUIRED_PUBLIC_HEALTH_ENDPOINTS) {
+    const successfulRow = new RegExp(
+      `^\\|\\s*${escapeRegExp(endpoint)}\\s*\\|\\s*success\\s*\\|\\s*200(?:\\s+OK)?\\s*\\|`,
+      'mi',
+    ).test(publicHealthSummary);
+    add(
+      `Public health: ${endpoint}`,
+      successfulRow,
+      successfulRow
+        ? `${endpoint} returned a definitive HTTP 200 success.`
+        : `${endpoint} is missing or did not return HTTP 200 success.`,
+    );
+  }
 
   const unsafeFallback = /::warning title=Telemetry filter fallback::/m.test(observabilityQueryLog);
   add(
@@ -130,7 +141,7 @@ export function renderCollectionSummary(result) {
   const rows = result.checks.map((check) => (
     `| ${check.ok ? 'OK' : 'FAIL'} | ${check.name.replaceAll('|', '\\|')} | ${check.evidence.replaceAll('|', '\\|')} |`
   ));
-  return `## Observability collection integrity\n\n- Overall: \`${result.failures.length ? 'FAILURE' : 'OK'}\`\n- Required Workers: \`${REQUIRED_CLOUDFLARE_WORKERS.join('`, `')}\`\n- Failed checks: \`${result.failures.length}\`\n\n| State | Check | Evidence |\n|---|---|---|\n${rows.join('\n')}`;
+  return `## Observability collection integrity\n\n- Overall: \`${result.failures.length ? 'FAILURE' : 'OK'}\`\n- Required Workers: \`${REQUIRED_CLOUDFLARE_WORKERS.join('`, `')}\`\n- Required public health: \`${REQUIRED_PUBLIC_HEALTH_ENDPOINTS.join('`, `')}\`\n- Failed checks: \`${result.failures.length}\`\n\n| State | Check | Evidence |\n|---|---|---|\n${rows.join('\n')}`;
 }
 
 async function selfTest() {
@@ -142,13 +153,16 @@ async function selfTest() {
   }]));
   const telemetry = REQUIRED_CLOUDFLARE_WORKERS.map((worker) => `CPU_WORKER worker=${worker} version=v1 samples=1`).join('\n');
   const liveTail = REQUIRED_CLOUDFLARE_WORKERS.map((worker) => `LIVE_TAIL_SUMMARY worker=${worker} events=0 error_like=0 max_cpu_field=null`).join('\n');
+  const publicHealth = REQUIRED_PUBLIC_HEALTH_ENDPOINTS
+    .map((endpoint) => `| ${endpoint} | success | 200 OK | 10 ms |`)
+    .join('\n');
   const healthy = evaluateCollectionCoverage({
     configured: [...REQUIRED_CLOUDFLARE_WORKERS],
     deployments: deploymentEntries,
     observabilitySummary: workerRows,
     telemetryLog: telemetry,
     liveTailLog: liveTail,
-    publicHealthSummary: '| Unified health | success | 200 OK |',
+    publicHealthSummary: publicHealth,
   });
   assert.equal(healthy.failures.length, 0);
 
@@ -158,12 +172,12 @@ async function selfTest() {
     observabilitySummary: workerRows,
     telemetryLog: telemetry,
     liveTailLog: liveTail.replace(/^LIVE_TAIL_SUMMARY worker=sh-runtime-orchestrator.*$/m, ''),
-    publicHealthSummary: '',
+    publicHealthSummary: publicHealth.replace(/^.*HomePanel Cloud health.*$/m, ''),
     observabilityQueryLog: '::warning title=Telemetry filter fallback::rejected',
   });
   assert.ok(broken.failures.some((check) => check.name === 'Configured Worker contract'));
   assert.ok(broken.failures.some((check) => check.name === 'Live tail: sh-runtime-orchestrator'));
-  assert.ok(broken.failures.some((check) => check.name === 'Public health snapshot'));
+  assert.ok(broken.failures.some((check) => check.name === 'Public health: HomePanel Cloud health'));
   assert.ok(broken.failures.some((check) => check.name === 'Persisted diagnostic filter integrity'));
   console.log('observability collection integrity self-test passed');
 }
