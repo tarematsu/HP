@@ -193,7 +193,7 @@ export async function runPagesReadModelActions(options = {}) {
   const renderVariant = options.materializeVariant || materializeVariant;
   const variants = options.variants || MATERIALIZED_API_VARIANTS;
   const trackHistoryEnv = options.trackHistoryEnv || { ...env, BUDDIES_DB: env.MINUTE_DB };
-  const dueKeys = dueVariantKeys(startedAt);
+  const dueKeys = new Set(options.dueKeys || dueVariantKeys(startedAt));
   const published = [];
 
   // Publish the latency-sensitive dashboard and other due read models before
