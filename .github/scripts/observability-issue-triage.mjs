@@ -65,10 +65,12 @@ function markdownRows(text) {
     .filter((cells) => cells.length > 1 && !cells.every((cell) => /^:?-{3,}:?$/.test(cell)));
 }
 
+function violationRows(text) {
+  return markdownRows(text).filter((cells) => cells.some((cell) => FAILURE_CELL.test(cell)));
+}
+
 export function extractViolationEvidence(text, { limit = 3 } = {}) {
-  const rows = markdownRows(text);
-  return rows
-    .filter((cells) => cells.some((cell) => FAILURE_CELL.test(cell)))
+  return violationRows(text)
     .slice(0, limit)
     .map((cells) => {
       const statusIndex = cells.findIndex((cell) => FAILURE_CELL.test(cell));
@@ -147,6 +149,24 @@ function outcomeEvidence(key, outcome, summaries) {
   return firstDiagnosticLine(summary);
 }
 
+function containedHistoricalDailyTrend({
+  outcome,
+  summary,
+  previousIssueBody,
+  generatedAt,
+}) {
+  if (normalizeOutcome(outcome) === 'success') return null;
+  const trend = classifyDailyRowsReadTrend({
+    currentSummary: summary,
+    previousIssueBody,
+    generatedAt,
+  });
+  if (!trend?.contained) return null;
+  const violations = violationRows(summary);
+  if (violations.length !== 1 || !/^D1 rows read$/i.test(violations[0][0])) return null;
+  return trend;
+}
+
 function stateLabel(state) {
   switch (state) {
     case 'healthy':
@@ -173,15 +193,16 @@ export function observabilityIssueOverall({
   previousIssueBody = '',
   generatedAt = '',
 }) {
-  const dailyTrend = classifyDailyRowsReadTrend({
-    currentSummary: summaries.daily,
+  const dailyTrend = containedHistoricalDailyTrend({
+    outcome: outcomes.daily,
+    summary: summaries.daily,
     previousIssueBody,
     generatedAt,
   });
   const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)
     .every((key) => (
       normalizeOutcome(outcomes[key]) === 'success'
-      || (key === 'daily' && dailyTrend?.contained)
+      || (key === 'daily' && Boolean(dailyTrend))
     ));
   const d1Paces = classifyDailyD1SnapshotPaces({
     currentSummary: summaries.daily,
@@ -208,8 +229,9 @@ export function buildObservabilityTriage({
 }) {
   const publicHealth = publicHealthSignal(summaries.publicHealth);
   const deployments = deploymentSignal(activeDeployments);
-  const dailyTrend = classifyDailyRowsReadTrend({
-    currentSummary: summaries.daily,
+  const dailyTrend = containedHistoricalDailyTrend({
+    outcome: outcomes.daily,
+    summary: summaries.daily,
     previousIssueBody,
     generatedAt,
   });
@@ -267,7 +289,7 @@ export function buildObservabilityTriage({
   for (const [key, info] of Object.entries(OBSERVABILITY_GATE_INFO)) {
     const outcome = normalizeOutcome(outcomes[key]);
     if (outcome === 'success') continue;
-    if (key === 'daily' && dailyTrend?.contained) {
+    if (key === 'daily' && dailyTrend) {
       incidents.push({
         priority: 'P3',
         area: 'Historical daily D1 breach',
@@ -318,7 +340,7 @@ export function buildObservabilityTriage({
     ['Recent D1 rows read pace', readPace?.state || 'unknown', readPace?.evidence || paceUnavailable],
     ['Recent D1 rows written pace', writePace?.state || 'unknown', writePace?.evidence || paceUnavailable],
     ...Object.entries(OBSERVABILITY_GATE_INFO).map(([key, info]) => (
-      key === 'daily' && dailyTrend?.contained
+      key === 'daily' && dailyTrend
         ? [info.label, 'contained', dailyTrend.evidence]
         : [info.label, normalizeOutcome(outcomes[key]), outcomeEvidence(key, outcomes[key], summaries)]
     )),
