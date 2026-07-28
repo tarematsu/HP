@@ -31,10 +31,12 @@ test('observability script changes are covered by pull-request CI', () => {
   const workflow = readSource('.github/workflows/homepanel-unified-ci.yml');
   assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-cloudflare-daily-usage\.py'$/m);
   assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-deployed-cloudflare-telemetry\.py'$/m);
+  assert.match(workflow, /^\s{6}- '\.github\/scripts\/observability-\*\.mjs'$/m);
+  assert.match(workflow, /tests\/observability-\*\.test\.mjs/);
   assert.match(workflow, /needs\.changes\.outputs\.contracts == 'true'/);
 });
 
-test('unified observability runs account-wide post-deploy and daily gates', () => {
+test('unified observability runs account-wide post-deploy, collection, and daily gates', () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const dailyAudit = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
   const freeTierAudit = readSource('.github/scripts/cloudflare_free_tier_audit.py');
@@ -42,13 +44,14 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
 
   expectAll(workflow, [
     'name: Unified Cloudflare Observability',
-    'workflows: ["Deploy production", "Deploy HomePanel Cloud services"]',
+    'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
     'branches: [main]',
     '.github/actions/cloudflare-observability-diagnostics/action.yml',
+    '.github/scripts/audit-observability-collection.mjs',
     '.github/scripts/publish-cloudflare-observability-status.mjs',
     '.github/scripts/observability-workflow-outcome.mjs',
     'cron: "0 1 * * *"',
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'DAILY_REQUEST_BUDGET: "100000"',
     'DAILY_REQUEST_RESERVE: "0"',
@@ -67,6 +70,8 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
     'id: publish-status',
     'id: publish-overall',
     'D1_INSIGHTS_OUTCOME',
+    'LIVE_TAIL_OUTCOME',
+    'PUBLIC_HEALTH_OUTCOME',
     'OBSERVABILITY_OVERALL',
     '--publish-status',
     'cloudflare-observability-report-unified-',
@@ -75,6 +80,8 @@ test('unified observability runs account-wide post-deploy and daily gates', () =
     'steps.resolve-outcome.outputs.overall',
     'observability-gate/',
     'd1-insights/',
+    'collection-summary.md',
+    'live-tail/',
   ]);
   expectNone(workflow, [
     'homepanel-video',
