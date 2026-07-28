@@ -1,5 +1,5 @@
 import { adminPage } from "./admin";
-import { authorizedAction, authorizedAnyDevice, authorizedDevice, deviceIdFromRequest } from "./auth";
+import { authorizedAction, authorizedAnyDevice, authorizedDevice, authorizedReadiness, deviceIdFromRequest } from "./auth";
 import {
   cachedDashboard,
   cachedDashboardEtag,
@@ -64,7 +64,7 @@ function notModified(etag: string): Response {
 }
 
 async function readinessResponse(request: Request, env: Env): Promise<Response> {
-  if (!authorizedAction(request, env)) return unauthorized();
+  if (!authorizedReadiness(request, env)) return unauthorized();
   const bindings = env as RuntimeBindings;
   const d1Check: ReadinessCheck = { ok: false };
   const videoServiceCheck: ReadinessCheck = { ok: false };

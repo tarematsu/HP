@@ -16,6 +16,7 @@ export default defineConfig({
           API_TOKEN: "test-action",
           DEVICE_TOKEN: "test-device",
           ADMIN_TOKEN: "test-video-admin",
+          GITHUB_RADAR_DISPATCH_TOKEN: "test-radar-dispatch",
           HOMEPANEL_DEVICE_TOKENS: JSON.stringify({
             "ci-device": "test-device",
             "homepanel-device": "test-device",
