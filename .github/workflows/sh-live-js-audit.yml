@@ -71,5 +71,6 @@ jobs:
         with:
           name: stationhead-live-js-audit-${{ github.run_id }}
           path: .sh-js-audit/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
