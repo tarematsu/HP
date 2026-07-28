@@ -23,7 +23,7 @@ concurrency:
 jobs:
   smoke:
     runs-on: windows-2022
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -72,12 +72,13 @@ jobs:
             2>&1 | Tee-Object hp/native/ci-logs/runtime-smoke-configure.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Build HomePanel runtime smoke binary
+      - name: Build HomePanel and updater runtime smoke binaries
         shell: pwsh
         env:
           HOMEPANEL_BUILD_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          cmake --build hp/native/build-runtime-smoke --config Release --target HomePanel --parallel `
+          cmake --build hp/native/build-runtime-smoke --config Release `
+            --target HomePanel HomePanelUpdater --parallel `
             2>&1 | Tee-Object hp/native/ci-logs/runtime-smoke-build.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -88,6 +89,17 @@ jobs:
             -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
             -OutputDirectory hp/native/ci-runtime-smoke
 
+      - name: Run updater verification and restart smoke test
+        shell: pwsh
+        run: |
+          & hp/native/scripts/ci-updater-runtime-smoke.ps1 `
+            -HomePanelExecutable hp/native/build-runtime-smoke/Release/HomePanel.exe `
+            -UpdaterExecutable hp/native/build-runtime-smoke/Release/HomePanelUpdater.exe `
+            -WebView2Loader hp/native/build-runtime-smoke/Release/WebView2Loader.dll `
+            -ConfigExample hp/native/config.example.json `
+            -Version "${{ steps.version.outputs.version }}" `
+            -OutputDirectory hp/native/ci-updater-runtime-smoke
+
       - name: Upload native runtime diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -95,6 +107,7 @@ jobs:
           name: native-runtime-smoke-${{ github.run_id }}
           path: |
             hp/native/ci-runtime-smoke
+            hp/native/ci-updater-runtime-smoke
             hp/native/ci-logs/runtime-smoke-*.log
           if-no-files-found: warn
           retention-days: 14
