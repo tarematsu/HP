@@ -92,13 +92,15 @@ void App::ProcessRemoteCommands() {
       }
 
       bool success = command == L"check_update";
-      std::wstring result = success ? L"verified update check started" : L"unsupported command";
+      std::wstring result = success ? L"verified automatic update check started" : L"unsupported command";
       if (success) {
         if (updateBusy_.load(std::memory_order_acquire)) {
           logger_->Info(L"Update install command deferred because an update check is already running");
           continue;
         }
-        CheckForUpdateAsync(true);
+        // Cloud release commands install genuinely newer versions automatically,
+        // but never reinterpret a same-version hash difference as an automatic repair.
+        CheckForUpdateAsync(true, false);
       }
 
       pendingAcks[id] = success;

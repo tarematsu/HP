@@ -34,13 +34,16 @@ test('verified updater shutdown does not use a generic WM_CLOSE', () => {
   assert.match(startupFallback, /WM_SYSCOMMAND[\s\S]*SC_CLOSE[\s\S]*gUserCloseRequested = true/);
 });
 
-test('standalone updater is visible before network access', () => {
+test('standalone and runner updater remain visible during blocking work', () => {
   const helper = section(
     updaterEntry,
     'int ShowUpdaterMessage(',
-    '}  // namespace hp',
+    '#undef WM_CLOSE',
   );
   assert.match(helper, /MB_TOPMOST\s*\|\s*MB_SETFOREGROUND/);
+  assert.match(helper, /class UpdaterProgressWindow/);
+  assert.match(helper, /WS_EX_TOPMOST/);
+  assert.match(helper, /RedrawWindow\(/);
 
   const standalone = section(
     updaterEntry,
@@ -50,10 +53,38 @@ test('standalone updater is visible before network access', () => {
   assert.ok(
     standalone.indexOf('ShowUpdaterMessage(') <
       standalone.indexOf('FetchAuthorizedManifest(root)'),
-    'standalone updater must show progress before its first network request',
+    'standalone updater must show confirmation before its first network request',
   );
+  assert.match(standalone, /UpdaterProgressWindow progress\(L"更新情報を取得しています/);
+
+  const install = section(
+    updaterEntry,
+    'void HardenedInstallPendingUpdate(',
+    '\n}\n\n}\n}\n\nnamespace {',
+  );
+  assert.match(install, /UpdaterProgressWindow progress\(L"更新ファイルをダウンロード/);
+  assert.match(install, /progress\.SetText\(L"HomePanelを終了して更新ファイルを適用/);
+  assert.match(install, /progress\.SetText\(L"更新が完了しました。HomePanelを再起動/);
+
   assert.match(updaterEntry, /Zone\.Identifier/);
   assert.match(updaterEntry, /AllowSetForegroundWindow\(process\.dwProcessId\)/);
+});
+
+test('in-app update uses the verified force-stop path instead of a duplicate parent wait', () => {
+  const install = section(
+    updaterEntry,
+    'void HardenedInstallPendingUpdate(',
+    '\n}\n\n}\n}\n\nnamespace {',
+  );
+  const parentGuard = install.indexOf('if (arguments.parentPid != arguments.appPid)');
+  const parentWait = install.indexOf('WaitForExit(arguments.parentPid)');
+  const appStop = install.indexOf('EnsureHomePanelStopped(arguments.appPid, arguments.root)');
+  assert.ok(parentGuard >= 0 && parentGuard < parentWait);
+  assert.ok(parentWait >= 0 && parentWait < appStop);
+  assert.match(
+    install,
+    /if \(arguments\.parentPid != arguments\.appPid\) \{\s*WaitForExit\(arguments\.parentPid\);\s*\}\s*EnsureHomePanelStopped/,
+  );
 });
 
 test('native callback and worker exceptions cannot terminate the process silently', () => {

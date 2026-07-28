@@ -55,7 +55,7 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
 }
 
 InstalledFileComparison CompareInstalledFile(const fs::path& path,
-                                             const UpdateFileSpec& file) noexcept {
+                                              const UpdateFileSpec& file) noexcept {
   try {
     std::error_code error;
     const bool exists = fs::exists(path, error);
@@ -97,6 +97,10 @@ bool ManifestFilesDiffer(const UpdateManifest& manifest,
 }  // namespace
 
 void App::CheckForUpdateAsync(bool install) {
+  CheckForUpdateAsync(install, install);
+}
+
+void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair) {
   if (updateBusy_.exchange(true)) {
     if (install) {
       ShowToast(L"更新確認はすでに実行中です", 4000);
@@ -108,7 +112,7 @@ void App::CheckForUpdateAsync(bool install) {
     ShowToast(L"署名・ハッシュを確認して更新を準備しています", 15'000);
   }
 
-  updateThread_ = std::thread([this, install] {
+  updateThread_ = std::thread([this, install, allowSameVersionRepair] {
     std::wstring message;
     try {
       const std::string manifestJson = cloud_->FetchUpdateManifest();
@@ -117,8 +121,10 @@ void App::CheckForUpdateAsync(bool install) {
       std::wstring currentVersion = InstalledHomePanelVersion(executable);
       if (currentVersion.empty()) currentVersion = kVersion;
       const bool newerVersion = IsVersionNewer(manifest.version, currentVersion);
+      const bool sameVersion =
+          !newerVersion && !IsVersionNewer(currentVersion, manifest.version);
       const bool replacementBuild =
-          !newerVersion && !IsVersionNewer(currentVersion, manifest.version) &&
+          sameVersion && allowSameVersionRepair &&
           ManifestFilesDiffer(manifest, rootDir_);
       if (!newerVersion && !replacementBuild) {
         if (install) {
@@ -134,7 +140,8 @@ void App::CheckForUpdateAsync(bool install) {
         message.append(L" が利用できます");
       } else {
         if (replacementBuild) {
-          logger_->Info(L"Applying replacement update with the same version and different release files");
+          logger_->Info(
+              L"Applying an explicitly requested repair for the same version and different release files");
         }
         if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
           logger_->Info(
