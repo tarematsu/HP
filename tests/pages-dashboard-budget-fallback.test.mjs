@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  BUDGET_SAFE_VARIANTS,
   DASHBOARD_ONLY_VARIANTS,
   refreshPagesDashboardActions,
 } from '../worker/scripts/refresh-pages-dashboard-actions.mjs';
@@ -13,11 +14,19 @@ const workflow = readFileSync(
 );
 
 const NOW = Date.UTC(2026, 6, 28, 0, 4);
+const SAFE_KEYS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
+];
 
-test('D1 budget deferral still executes a critical dashboard publication', () => {
+test('D1 budget deferral still publishes dashboard and bounded summaries', () => {
   assert.match(workflow, /name: Record D1 budget deferral/);
   assert.match(workflow, /name: Install Worker dependencies\n        run: npm ci/);
-  assert.match(workflow, /name: Refresh critical dashboard during D1 budget deferral/);
+  assert.match(workflow, /name: Refresh budget-safe read models during D1 budget deferral/);
   assert.match(
     workflow,
     /if: steps\.d1-write-budget\.outputs\.allowed != 'true'[\s\S]*node scripts\/refresh-pages-dashboard-actions\.mjs/,
@@ -26,11 +35,13 @@ test('D1 budget deferral still executes a critical dashboard publication', () =>
     workflow,
     /name: Rebuild track history and publish due variants\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
   );
-  assert.match(workflow, /bounded dashboard refresh will still run\./);
+  assert.match(workflow, /bounded dashboard and summary refresh will still run\./);
+  assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
 });
 
-test('dashboard budget fallback cannot publish history or execute track-history work', async () => {
+test('budget fallback publishes safe summaries but cannot execute track-history work', async () => {
   assert.deepEqual(DASHBOARD_ONLY_VARIANTS.map(({ key }) => key), ['dashboard']);
+  assert.deepEqual(BUDGET_SAFE_VARIANTS.map(({ key }) => key), SAFE_KEYS);
   const published = [];
   const result = await refreshPagesDashboardActions({
     startedAt: NOW,
@@ -44,8 +55,8 @@ test('dashboard budget fallback cannot publish history or execute track-history 
   });
 
   assert.equal(result.ok, true);
-  assert.deepEqual(published, ['dashboard']);
+  assert.deepEqual(published, SAFE_KEYS);
   assert.equal(result.track_history_steps, 1);
-  assert.equal(result.track_history_result.reason, 'dashboard-only-budget-fallback');
-  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard']);
+  assert.equal(result.track_history_result.reason, 'budget-safe-summary-fallback');
+  assert.deepEqual(result.published.map(({ key }) => key), SAFE_KEYS);
 });
