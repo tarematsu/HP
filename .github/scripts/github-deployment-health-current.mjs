@@ -108,7 +108,7 @@ export function summarizeCurrentHomePanelDeployment({ run, jobs = [], jobError =
 
   const job = jobs.find((entry) => /^deploy$/i.test(String(entry?.name || '').trim())) || jobs[0] || null;
   const cloudStep = findStep(job, /^Deploy HomePanel Cloud$/i);
-  const retiredDeletionStep = findStep(job, /^Deploy private video service deletion\b.*Delete retired homepanel-video Worker$/i);
+  const retiredDeletionStep = findStep(job, /Delete retired homepanel-video Worker$/i);
   const components = [
     component({
       workflow: target.name,
