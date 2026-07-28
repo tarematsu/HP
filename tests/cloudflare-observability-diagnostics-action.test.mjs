@@ -8,6 +8,7 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const action = read('.github/actions/cloudflare-observability-diagnostics/action.yml');
 const workflow = read('.github/workflows/sh-observability.yml');
 const resolver = read('.github/scripts/observability-workflow-outcome.mjs');
+const collectionAudit = read('.github/scripts/audit-observability-collection.mjs');
 
 const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud';
 
@@ -18,7 +19,7 @@ test('shared diagnostics action owns persisted-query, public health, and fail-cl
   assert.match(action, /IFS=',' read -ra requested_workers/);
   assert.match(action, /tail_pids\+=/);
   assert.match(action, /wait "\$\{tail_pids\[\$index\]\}" \|\| worker_status=\$\?/);
-  assert.match(action, /LIVE_TAIL_SUMMARY/);
+  assert.match(collectionAudit, /LIVE_TAIL_SUMMARY worker=/);
   assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
   assert.match(action, /^outputs:\n[\s\S]*live-tail-outcome:/m);
   assert.match(action, /echo "live-tail-outcome=\$live_tail_outcome" >> "\$GITHUB_OUTPUT"/);
