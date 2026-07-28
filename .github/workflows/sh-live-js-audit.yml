@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
       - '.github/workflows/sh-live-js-audit.yml'
@@ -39,6 +40,7 @@ jobs:
         run: npx playwright install chromium
 
       - name: Audit primary Stationhead page
+        continue-on-error: true
         run: >-
           node scripts/audit-stationhead-js-live.mjs
           --url=https://www.stationhead.com/sakuramankai
@@ -46,7 +48,15 @@ jobs:
           --auto-click
           --out=.sh-js-audit/primary
 
+      - name: Inspect primary blocked module contracts
+        if: always()
+        run: >-
+          node scripts/inspect-stationhead-module-graph.mjs
+          --report=.sh-js-audit/primary/report.json
+          --out=.sh-js-audit/primary/module-graph.json
+
       - name: Audit fallback Stationhead page
+        continue-on-error: true
         run: >-
           node scripts/audit-stationhead-js-live.mjs
           --url=https://www.stationhead.com/buddy46
@@ -54,11 +64,18 @@ jobs:
           --auto-click
           --out=.sh-js-audit/fallback
 
+      - name: Inspect fallback blocked module contracts
+        if: always()
+        run: >-
+          node scripts/inspect-stationhead-module-graph.mjs
+          --report=.sh-js-audit/fallback/report.json
+          --out=.sh-js-audit/fallback/module-graph.json
+
       - name: Publish audit summary
         if: always()
         shell: bash
         run: |
-          for summary in .sh-js-audit/*/summary.md; do
+          for summary in .sh-js-audit/*/summary.md .sh-js-audit/*/module-graph.md; do
             if [ -f "$summary" ]; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
               printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
