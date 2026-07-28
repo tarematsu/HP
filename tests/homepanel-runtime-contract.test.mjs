@@ -88,7 +88,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
   await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));
 });
 
-test('HomePanel deployment deletes the standalone Worker and rolls back only Cloud', () => {
+test('HomePanel deployment releases the retired Queue consumer before unified deploy', () => {
   const packageJson = readSource('hp/cloud/package.json');
   const deployExisting = readSource('hp/cloud/scripts/deploy-existing.mjs');
   const deleteWorker = readSource('.github/scripts/delete-cloudflare-worker.mjs');
@@ -112,9 +112,10 @@ test('HomePanel deployment deletes the standalone Worker and rolls back only Clo
   ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
-    'Deploy HomePanel Cloud',
-    'Delete retired homepanel-video Worker',
+    'Release manual import Queue consumer — Delete retired homepanel-video Worker',
     'node .github/scripts/delete-cloudflare-worker.mjs homepanel-video',
+    'Deploy HomePanel Cloud',
+    'Cloudflare Queues permits only one active push consumer per Queue',
     'Verify deployed readiness',
   ]);
   expectNone(deployWorkflow, ['wrangler delete', '--force']);
@@ -123,5 +124,8 @@ test('HomePanel deployment deletes the standalone Worker and rolls back only Clo
     'homepanel-cloud',
   ]);
   expectNone(rollbackWorkflow, ['homepanel-video', 'video_version', 'Roll back video service']);
-  assert.ok(deployWorkflow.indexOf('Deploy HomePanel Cloud') < deployWorkflow.indexOf('Delete retired homepanel-video Worker'));
+  assert.ok(
+    deployWorkflow.indexOf('Delete retired homepanel-video Worker')
+      < deployWorkflow.indexOf('Deploy HomePanel Cloud'),
+  );
 });
