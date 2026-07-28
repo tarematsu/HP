@@ -25,12 +25,15 @@ function safeName(value) {
     .slice(0, 100) || 'stationhead';
 }
 
-function extractWideArray(source, name) {
+function extractWideArray(source, name, required = true) {
   const match = source.match(new RegExp(
     `(?:inline\\s+)?constexpr\\s+std::wstring_view\\s+${name}\\[\\]\\s*=\\s*\\{([\\s\\S]*?)\\};`,
   ));
-  if (!match) throw new Error(`Could not find ${name} in native policy`);
-  return [...match[1].matchAll(/L"([^"]+)"/g)].map((entry) => entry[1]);
+  if (!match) {
+    if (required) throw new Error(`Could not find ${name} in native policy`);
+    return [];
+  }
+  return [...match[1].matchAll(/L"([^"]+)"/g)].map((entry) => entry[1].toLowerCase());
 }
 
 function hostMatches(host, domain) {
@@ -78,55 +81,63 @@ async function loadPolicy() {
   );
   return {
     scriptDomains: extractWideArray(scriptHeader, 'kNonPlaybackScriptDomains'),
-    protectedTokens: extractWideArray(scriptHeader, 'kProtectedScriptNeedles'),
-    optionalTokens: extractWideArray(scriptHeader, 'kNonPlaybackScriptNeedles'),
+    protectedTokens: extractWideArray(scriptHeader, 'kProtectedScriptNeedles', false),
+    optionalTokens: extractWideArray(scriptHeader, 'kNonPlaybackScriptNeedles', false),
+    knownModuleTokens: extractWideArray(scriptHeader, 'kKnownOptionalModuleNeedles'),
     telemetryDomains: extractWideArray(boundaryHeader, 'kTelemetryDomains'),
   };
 }
 
 function classifyScript(url, policy) {
   const uri = parseUrl(url);
-  if (!uri.valid || uri.scheme !== 'https') {
-    return { block: false, reason: 'non-https-or-invalid', protectedBy: [] };
-  }
+  const allowed = { block: false, mode: 'pass', reason: 'outside-script-policy' };
+  if (!uri.valid || uri.scheme !== 'https') return allowed;
 
   for (const domain of policy.telemetryDomains) {
     if (hostMatches(uri.host, domain)) {
-      return { block: true, reason: `telemetry-domain:${domain}`, protectedBy: [] };
+      return { block: true, mode: 'empty-classic', reason: `telemetry-domain:${domain}` };
     }
   }
   if (hostMatches(uri.host, 'connect.facebook.net')) {
-    return { block: true, reason: 'telemetry-domain:connect.facebook.net', protectedBy: [] };
+    return { block: true, mode: 'empty-classic', reason: 'telemetry-domain:connect.facebook.net' };
   }
   if (hostMatches(uri.host, 'facebook.com') && uri.path.startsWith('/tr')) {
-    return { block: true, reason: 'telemetry-path:facebook.com/tr', protectedBy: [] };
+    return { block: true, mode: 'empty-classic', reason: 'telemetry-path:facebook.com/tr' };
   }
   if ((hostMatches(uri.host, 'twitter.com') || hostMatches(uri.host, 'x.com')) &&
       uri.path.startsWith('/i/')) {
-    return { block: true, reason: 'telemetry-path:social-pixel', protectedBy: [] };
+    return { block: true, mode: 'empty-classic', reason: 'telemetry-path:social-pixel' };
   }
 
   for (const domain of policy.scriptDomains) {
     if (hostMatches(uri.host, domain)) {
-      return { block: true, reason: `optional-sdk-domain:${domain}`, protectedBy: [] };
+      return { block: true, mode: 'empty-classic', reason: `optional-sdk-domain:${domain}` };
     }
   }
 
   if (!hostMatches(uri.host, 'stationhead.com') ||
       (!uri.path.endsWith('.js') && !uri.path.endsWith('.mjs'))) {
-    return { block: false, reason: 'outside-stationhead-script-policy', protectedBy: [] };
+    return allowed;
+  }
+
+  for (const token of policy.knownModuleTokens) {
+    if (uri.path.includes(token)) {
+      return {
+        block: true,
+        mode: 'module-stub',
+        reason: `known-module-stub:${token}`,
+        body: 'export const LottieAnimationViewNonLazy=()=>null;',
+      };
+    }
   }
 
   const protectedBy = policy.protectedTokens.filter((token) => uri.path.includes(token));
-  if (protectedBy.length) {
-    return { block: false, reason: 'protected-path-token', protectedBy };
-  }
-
-  const optionalBy = policy.optionalTokens.filter((token) => uri.path.includes(token));
-  if (optionalBy.length) {
-    return { block: true, reason: `optional-path-token:${optionalBy.join(',')}`, protectedBy: [] };
-  }
-  return { block: false, reason: 'unclassified-stationhead-script', protectedBy: [] };
+  return {
+    block: false,
+    mode: 'pass',
+    reason: protectedBy.length ? 'protected-path-token' : 'unclassified-stationhead-script',
+    protectedBy,
+  };
 }
 
 async function clickPlaybackCandidate(page) {
@@ -180,12 +191,16 @@ async function runCapture({ browser, targetUrl, durationMs, policy, intercept })
         await route.continue();
         return;
       }
-      intercepted.push({ url: request.url(), reason: classification.reason });
+      intercepted.push({
+        url: request.url(),
+        mode: classification.mode,
+        reason: classification.reason,
+      });
       await route.fulfill({
         status: 200,
         contentType: 'application/javascript; charset=utf-8',
         headers: { 'cache-control': 'no-store' },
-        body: '',
+        body: classification.body || '',
       });
     });
   }
@@ -319,8 +334,8 @@ function markdown(report) {
     ? (report.classifiedBlockedEncodedBytes / report.baselineEncodedBytes * 100).toFixed(1)
     : '0.0';
   const lines = [
-    `# Stationhead live JavaScript audit`,
-    ``,
+    '# Stationhead live JavaScript audit',
+    '',
     `- Target: ${report.targetUrl}`,
     `- Final URL: ${report.baselineFinalUrl}`,
     `- Baseline unique scripts: ${report.baselineUniqueScripts}`,
@@ -333,20 +348,22 @@ function markdown(report) {
     `- Opaque mixed bundles (optional + protected signals): ${report.mixedOpaque.length}`,
     `- Baseline page errors: ${report.baseline.pageErrors.length}`,
     `- Blocked-run page errors: ${report.blocked.pageErrors.length}`,
-    ``,
-    `## Largest currently blocked scripts`,
+    `- Baseline auto-click: ${report.baseline.clicked || 'none'}`,
+    `- Blocked-run auto-click: ${report.blocked.clicked || 'none'}`,
+    '',
+    '## Largest currently blocked scripts',
     ...report.classifiedBlocked.slice(0, 20).map((item) =>
-      `- ${formatBytes(item.encodedBytes)} — ${item.url} — ${item.classification.reason}`),
-    ``,
-    `## Opaque optional-only candidates`,
+      `- ${formatBytes(item.encodedBytes)} — ${item.url} — ${item.classification.reason} (${item.classification.mode})`),
+    '',
+    '## Opaque optional-only candidates',
     ...report.likelyOptionalOpaque.slice(0, 20).map((item) =>
       `- ${formatBytes(item.encodedBytes)} — ${item.url} — signals: ${item.optionalSignals.join(', ')}`),
-    ``,
-    `## Opaque mixed bundles (do not block as a whole)`,
+    '',
+    '## Opaque mixed bundles (do not block as a whole)',
     ...report.mixedOpaque.slice(0, 20).map((item) =>
       `- ${formatBytes(item.encodedBytes)} — ${item.url} — optional: ${item.optionalSignals.join(', ')}; protected: ${item.protectedSignals.join(', ')}`),
-    ``,
-    `## Interception misses`,
+    '',
+    '## Interception misses',
     ...(report.missedInterceptions.length
       ? report.missedInterceptions.map((url) => `- ${url}`)
       : ['- none']),
@@ -371,7 +388,11 @@ async function main() {
     const summary = markdown(report);
     await writeFile(path.join(outDir, 'summary.md'), summary);
     console.log(summary);
-    if (report.missedInterceptions.length) process.exitCode = 2;
+    if (report.missedInterceptions.length ||
+        report.blocked.pageErrors.length > report.baseline.pageErrors.length ||
+        !report.blocked.finalState.bodyText) {
+      process.exitCode = 2;
+    }
   } finally {
     await browser.close();
   }
