@@ -11,6 +11,7 @@ import {
   requiredEnv,
 } from './observability-status-publisher.mjs';
 import { observabilityIssueOverall } from './observability-issue-triage.mjs';
+import { publishObservabilitySystemStatusFromEnvironment } from './observability-system-status.mjs';
 import {
   STATUS_ISSUE_TITLE,
   STATUS_MARKER,
@@ -152,6 +153,7 @@ export async function publishOverallFromEnvironment() {
     runUrl,
     overall: requiredEnv('OBSERVABILITY_OVERALL'),
   });
+  await publishObservabilitySystemStatusFromEnvironment();
   return true;
 }
 
