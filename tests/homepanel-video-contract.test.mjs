@@ -26,6 +26,9 @@ test('HomePanel video runtime is a private bounded service', () => {
     '"binding": "BROWSER"',
     '"queue": "videoscraper-manual-imports"',
     '"class_name": "VideoFeedCoordinator"',
+  ]);
+  expectNone(config, [
+    '"triggers"',
     '"0 * * * *"',
   ]);
 
