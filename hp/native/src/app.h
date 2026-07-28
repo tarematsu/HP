@@ -75,6 +75,7 @@ class App {
   void SendTelemetryAsync();
   void ClearDisplayCache();
   void CheckForUpdateAsync(bool install);
+  void CheckForUpdateAsync(bool install, bool allowSameVersionRepair);
   bool LaunchVerifiedUpdater(
       const std::wstring& version, const std::string& manifestJson);
 
