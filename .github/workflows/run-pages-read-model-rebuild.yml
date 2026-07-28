@@ -1,6 +1,9 @@
 name: Rebuild pages read models
 
 on:
+  workflow_run:
+    workflows: ["Run runtime offline maintenance"]
+    types: [completed]
   schedule:
     - cron: '26,56 * * * *'
   push:
@@ -29,6 +32,14 @@ concurrency:
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
+    # A Runtime push completion is an ignored-chain because the same SHA already
+    # enters through the direct push trigger. Scheduled and manual completions
+    # remain independent operational inputs.
+    if: >-
+      github.event_name != 'workflow_run'
+      || (github.event.workflow_run.conclusion == 'success'
+        && (github.event.workflow_run.event == 'schedule'
+          || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -48,7 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:
