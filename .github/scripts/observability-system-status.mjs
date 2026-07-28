@@ -1,7 +1,14 @@
+#!/usr/bin/env node
+
+import { pathToFileURL } from 'node:url';
+
+import { createGitHubRequest } from './observability-status-publisher.mjs';
+
 export const SYSTEM_STATUS_MARKER = '<!-- observability-system-status -->';
 
 const SUCCESS_STATES = new Set(['success', 'healthy', 'running']);
 const PENDING_STATES = new Set(['pending']);
+const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 
 function compactState(value, fallback = 'unknown') {
   return String(value || '').trim().toLowerCase() || fallback;
@@ -56,8 +63,8 @@ export function renderObservabilitySystemStatus(issueBody) {
 
 export function synchronizeObservabilitySystemStatus(issueBody) {
   let body = String(issueBody || '');
-  const existing = new RegExp(`${SYSTEM_STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n- \\*\\*System status:\\*\\*[^\\n]*(?:\\n|$)`, 'g');
-  body = body.replace(existing, '');
+  const escapedMarker = SYSTEM_STATUS_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  body = body.replace(new RegExp(`${escapedMarker}\\n- \\*\\*System status:\\*\\*[^\\n]*(?:\\n|$)`, 'g'), '');
   const block = renderObservabilitySystemStatus(body);
   const scopeLine = body.match(/^- \*\*Scope:\*\*[^\n]*$/m);
   if (scopeLine?.index != null) {
@@ -70,4 +77,32 @@ export function synchronizeObservabilitySystemStatus(issueBody) {
     return `${body.slice(0, insertAt)}\n\n${block}${body.slice(insertAt)}`;
   }
   return `${block}\n${body}`.trim();
+}
+
+export async function publishObservabilitySystemStatusFromEnvironment() {
+  const issueNumber = Number.parseInt(process.env.OBSERVABILITY_STATUS_ISSUE_NUMBER || '259', 10);
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new Error('OBSERVABILITY_STATUS_ISSUE_NUMBER must be a positive integer');
+  }
+  const request = createGitHubRequest('observability-system-status');
+  const issue = await request('GET', `/issues/${issueNumber}`);
+  if (issue?.pull_request || !String(issue?.body || '').includes(STATUS_MARKER)) {
+    throw new Error(`Issue #${issueNumber} is not the Cloudflare observability status issue`);
+  }
+  const body = synchronizeObservabilitySystemStatus(issue.body);
+  await request('PATCH', `/issues/${issueNumber}`, {
+    title: issue.title,
+    body,
+    state: 'open',
+  });
+  const status = observabilitySystemStatus(body);
+  console.log(`Published unified observability system status to issue #${issueNumber}: ${status.overall}`);
+  return status;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  publishObservabilitySystemStatusFromEnvironment().catch((error) => {
+    console.error(`::error title=Publish observability system status::${String(error?.message || error).replaceAll('\n', ' ').slice(0, 1000)}`);
+    process.exitCode = 1;
+  });
 }
