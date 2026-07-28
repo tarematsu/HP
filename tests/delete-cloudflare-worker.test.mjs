@@ -102,7 +102,7 @@ test('detaches the matching Queue consumer and retries Worker deletion', async (
   assert.equal(calls[2].url, 'https://api.cloudflare.com/client/v4/accounts/account-123/queues/queue-1/consumers/consumer-1');
 });
 
-test('lists Queue consumers separately when the Queue list omits consumer details', async () => {
+test('lists Queue consumers separately when embedded consumers are empty but the count is non-zero', async () => {
   const calls = [];
   const detached = await detachQueueConsumersForWorker({
     ...options,
@@ -111,7 +111,12 @@ test('lists Queue consumers separately when the Queue list omits consumer detail
       if (/\/queues\?/.test(url)) {
         return json({
           success: true,
-          result: [{ queue_id: 'queue-2', queue_name: 'manual-imports' }],
+          result: [{
+            queue_id: 'queue-2',
+            queue_name: 'manual-imports',
+            consumers: [],
+            consumers_total_count: 1,
+          }],
           result_info: { total_pages: 1 },
         });
       }
@@ -134,6 +139,32 @@ test('lists Queue consumers separately when the Queue list omits consumer detail
 
   assert.equal(detached.length, 1);
   assert.deepEqual(calls.map(({ method }) => method), ['GET', 'GET', 'DELETE']);
+});
+
+test('does not query consumer details when the Queue reports zero consumers', async () => {
+  const calls = [];
+  const detached = await detachQueueConsumersForWorker({
+    ...options,
+    fetchImpl: async (url, init = {}) => {
+      calls.push({ url, method: init.method || 'GET' });
+      if (/\/queues\?/.test(url)) {
+        return json({
+          success: true,
+          result: [{
+            queue_id: 'queue-3',
+            queue_name: 'empty-queue',
+            consumers: [],
+            consumers_total_count: 0,
+          }],
+          result_info: { total_pages: 1 },
+        });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+
+  assert.deepEqual(detached, []);
+  assert.deepEqual(calls.map(({ method }) => method), ['GET']);
 });
 
 test('fails closed when a Queue conflict has no matching consumer', async () => {
