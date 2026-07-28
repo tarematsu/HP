@@ -9,11 +9,20 @@ constexpr int64_t kStartupFallbackFirstDelayMs = 60'000;
 constexpr int64_t kStartupFallbackRetryMs = 5'000;
 constexpr int kStartupFallbackAttempts = 7;
 constexpr DWORD kWindowCallbackExceptionCode = 0xe0000002u;
+constexpr wchar_t kUpdaterInstallerMutexName[] =
+    L"Local\\HomePanelUpdaterInstaller";
 
 HWND gProtectedWindow = nullptr;
 WNDPROC gOriginalWindowProc = nullptr;
 App* gProtectedOwner = nullptr;
 bool gUserCloseRequested = false;
+
+bool VerifiedUpdaterInstallerRunning() noexcept {
+  HANDLE mutex = OpenMutexW(SYNCHRONIZE, FALSE, kUpdaterInstallerMutexName);
+  if (!mutex) return false;
+  CloseHandle(mutex);
+  return true;
+}
 
 void LogWindowCallbackFailure() noexcept {
   try {
@@ -36,7 +45,11 @@ LRESULT CALLBACK ProtectedWindowProc(
     return CallWindowProcW(original, window, WM_CLOSE, 0, 0);
   }
   if (message == WM_CLOSE) {
-    if (!gUserCloseRequested) return 0;
+    // Current and older updater runners use the same installer mutex. Accept
+    // their legacy WM_CLOSE only while that verified single-instance runner is
+    // active; unrelated posted closes remain blocked. This also provides the
+    // one-version compatibility bridge needed to update the updater itself.
+    if (!gUserCloseRequested && !VerifiedUpdaterInstallerRunning()) return 0;
     gUserCloseRequested = false;
   }
 
