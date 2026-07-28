@@ -19,6 +19,13 @@ function select(paths = [], args = []) {
 test('domain modules select every Worker whose bundle imports them', () => {
   assert.deepEqual(select(['worker/src/persist-channel-entry.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [
+    'site/functions/lib/d1-lean-ingest.js',
+    'site/functions/lib/d1-optimized-ingest.js',
+    'worker/src/persist-structure-stages.js',
+  ]) {
+    assert.deepEqual(select([path]).workers, [RECOVERY, COLLECTOR], path);
+  }
+  for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
     'worker/src/pages-response-store.js',
