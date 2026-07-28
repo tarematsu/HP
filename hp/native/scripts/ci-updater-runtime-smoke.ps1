@@ -203,12 +203,13 @@ try {
     "--manifest", $manifestPath,
     "--version", $Version
   )
-  $updaterProcess = Start-Process @{
+  $startParameters = @{
     FilePath = $updaterPath
     ArgumentList = $processArguments
     WorkingDirectory = $installRoot
     PassThru = $true
   }
+  $updaterProcess = Start-Process @startParameters
 
   $updaterDeadline = [DateTime]::UtcNow.AddSeconds(60)
   while ([DateTime]::UtcNow -lt $updaterDeadline) {
