@@ -4,8 +4,17 @@ import { writeFile } from 'node:fs/promises';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 
+import {
+  resolveCloudflareWorkerPublicUrl,
+  workerHealthUrl,
+} from './cloudflare-worker-public-url.mjs';
+
 export const DEFAULT_PUBLIC_HEALTH_ENDPOINTS = [
   { name: 'Unified health', url: 'https://skrzk.pages.dev/api/health' },
+];
+
+export const DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS = [
+  { name: 'HomePanel Cloud health', scriptName: 'homepanel-cloud', path: '/api/health' },
 ];
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -29,6 +38,20 @@ export function publicHealthEndpoints(value = process.env.PUBLIC_HEALTH_ENDPOINT
   const configured = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
   if (!configured.length) return DEFAULT_PUBLIC_HEALTH_ENDPOINTS;
   return configured.map((url, index) => ({ name: endpointName(url, index), url }));
+}
+
+export function cloudflarePublicHealthWorkers(
+  value = process.env.CLOUDFLARE_PUBLIC_HEALTH_WORKERS,
+) {
+  const configured = String(value || '').split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (!configured.length) return DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS;
+  return configured.map((entry) => {
+    const [name, scriptName, path = '/'] = entry.split('|').map((part) => part.trim());
+    if (!name || !scriptName) {
+      throw new Error(`Invalid CLOUDFLARE_PUBLIC_HEALTH_WORKERS entry: ${entry}`);
+    }
+    return { name, scriptName, path: path || '/' };
+  });
 }
 
 export function formatResponseBody(text, contentType = '') {
@@ -58,11 +81,53 @@ function errorMessage(error) {
   return String(error?.message || error || 'request failed').replaceAll('\n', ' ').slice(0, 500);
 }
 
+export async function resolveCloudflarePublicHealthEndpoints({
+  value = process.env.CLOUDFLARE_PUBLIC_HEALTH_WORKERS,
+  accountId = process.env.CLOUDFLARE_ACCOUNT_ID,
+  apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_BUILDS_API_TOKEN,
+  fetchImpl = globalThis.fetch,
+} = {}) {
+  const workers = cloudflarePublicHealthWorkers(value);
+  return Promise.all(workers.map(async (worker) => {
+    try {
+      const baseUrl = await resolveCloudflareWorkerPublicUrl({
+        accountId,
+        apiToken,
+        scriptName: worker.scriptName,
+        fetchImpl,
+      });
+      return {
+        name: worker.name,
+        url: workerHealthUrl(baseUrl, worker.path),
+      };
+    } catch (error) {
+      return {
+        name: worker.name,
+        url: `unresolved://${worker.scriptName}${worker.path.startsWith('/') ? worker.path : `/${worker.path}`}`,
+        resolutionError: errorMessage(error),
+      };
+    }
+  }));
+}
+
 export async function capturePublicHealthEndpoint(endpoint, {
   fetchImpl = fetch,
   timeoutMs = positiveInteger(process.env.PUBLIC_HEALTH_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
   bodyLimit = positiveInteger(process.env.PUBLIC_HEALTH_BODY_LIMIT, DEFAULT_BODY_LIMIT),
 } = {}) {
+  if (endpoint?.resolutionError) {
+    return {
+      ...endpoint,
+      ok: false,
+      status: null,
+      statusText: '',
+      contentType: 'unavailable',
+      elapsedMs: 0,
+      body: '(endpoint resolution failed)',
+      error: endpoint.resolutionError,
+    };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = performance.now();
@@ -124,11 +189,25 @@ export function renderPublicHealthReport(results, generatedAt = new Date().toISO
   return `## Public health endpoint snapshots\n\n- **Captured:** ${generatedAt}\n- **Endpoints:** ${results.length}\n\n| Endpoint | Result | HTTP / error | Latency |\n|---|---|---|---|\n${rows || '| - | failure | no endpoints configured | - |'}\n\n${details}`;
 }
 
-export async function captureFromEnvironment() {
-  const endpoints = publicHealthEndpoints();
-  const results = await Promise.all(endpoints.map((endpoint) => capturePublicHealthEndpoint(endpoint)));
+export async function captureFromEnvironment({
+  fetchImpl = globalThis.fetch,
+  env = process.env,
+} = {}) {
+  const [cloudflareEndpoints] = await Promise.all([
+    resolveCloudflarePublicHealthEndpoints({
+      value: env.CLOUDFLARE_PUBLIC_HEALTH_WORKERS,
+      accountId: env.CLOUDFLARE_ACCOUNT_ID,
+      apiToken: env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_BUILDS_API_TOKEN,
+      fetchImpl,
+    }),
+  ]);
+  const endpoints = [
+    ...publicHealthEndpoints(env.PUBLIC_HEALTH_ENDPOINTS),
+    ...cloudflareEndpoints,
+  ];
+  const results = await Promise.all(endpoints.map((endpoint) => capturePublicHealthEndpoint(endpoint, { fetchImpl })));
   const report = renderPublicHealthReport(results);
-  const output = String(process.env.PUBLIC_HEALTH_OUTPUT || 'public-health-endpoints.md').trim();
+  const output = String(env.PUBLIC_HEALTH_OUTPUT || 'public-health-endpoints.md').trim();
   await writeFile(output, `${report}\n`, 'utf8');
   console.log(report);
   if (results.some((result) => !result.ok)) process.exitCode = 1;
