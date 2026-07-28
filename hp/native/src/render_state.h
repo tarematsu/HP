@@ -5,7 +5,10 @@
 
 namespace hp {
 
-inline constexpr UINT kRendererActionMessage = WM_APP + 11;
+// Keep dashboard actions outside the update/control message range. This used to
+// share WM_APP + 11 with kUpdateShutdownMessage, so every A/B or MUTE click was
+// intercepted by ProtectedWindowProc and converted into WM_CLOSE.
+inline constexpr UINT kRendererActionMessage = WM_APP + 22;
 
 enum class UiAction {
   None,
