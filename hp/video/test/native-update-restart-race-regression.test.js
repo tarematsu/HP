@@ -10,6 +10,10 @@ const updaterEntrySource = readFileSync(
   new URL('../../native/src/updater_entry.cpp', import.meta.url),
   'utf8',
 );
+const appUpdateSource = readFileSync(
+  new URL('../../native/src/app_update.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -19,23 +23,73 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('updater restart waits for the previous native app process to exit', () => {
-  assert.match(
+test('native app remains active while the updater validates release files', () => {
+  const check = section(
+    appUpdateSource,
+    'void App::CheckForUpdateAsync(bool install)',
+    'bool App::LaunchVerifiedUpdater(',
+  );
+  const launched = section(
+    check,
+    'if (LaunchVerifiedUpdater(manifest.version, manifestJson))',
+    'message = L"検証済み更新プログラムを起動できませんでした"',
+  );
+  assert.doesNotMatch(launched, /WM_CLOSE/);
+
+  const launch = section(
+    appUpdateSource,
+    'bool App::LaunchVerifiedUpdater(',
+    '\n}\n\n}  // namespace hp',
+  );
+  assert.match(launch, /command\.append\(L" --app-pid "\)/);
+  assert.match(launch, /AppendUnsigned\(command, GetCurrentProcessId\(\)\)/g);
+});
+
+test('only a verified runner can request HomePanel shutdown', () => {
+  assert.match(updaterSource, /bool gRunnerMode = false/);
+
+  const requestExit = section(
     updaterSource,
-    /DWORD FindHomePanelProcess\(const fs::path& root\);\s+void RestartHomePanel/,
+    'void RequestHomePanelExit(DWORD pid)',
+    'void EnsureHomePanelStopped(',
+  );
+  assert.match(requestExit, /if \(!gRunnerMode \|\| !pid\) return/);
+
+  const waitForParent = section(
+    updaterSource,
+    'void WaitForExit(DWORD pid)',
+    'void ReplaceOne(',
+  );
+  assert.ok(
+    waitForParent.indexOf('RequestHomePanelExit(pid)') <
+      waitForParent.indexOf('WaitForSingleObject('),
+    'the runner must request graceful shutdown only after downloads and verification finish',
   );
 
+  const ensureStopped = section(
+    updaterSource,
+    'void EnsureHomePanelStopped(DWORD pid, const fs::path& root)',
+    'bool LaunchRunner(',
+  );
+  assert.ok(
+    ensureStopped.indexOf('RequestHomePanelExit(pid)') <
+      ensureStopped.indexOf('WaitForSingleObject('),
+    'standalone updates must request graceful app shutdown immediately before installation',
+  );
+});
+
+test('failure recovery does not wait on a HomePanel instance that is still healthy', () => {
   const restart = section(
     updaterSource,
     'void RestartHomePanel(const fs::path& root)',
     'void RestoreBackup(',
   );
   assert.match(restart, /const DWORD existingPid = FindHomePanelProcess\(root\)/);
-  assert.match(restart, /WaitForExit\(existingPid\)/);
+  assert.match(restart, /if \(existingPid\)[\s\S]*return;/);
+  assert.doesNotMatch(restart, /WaitForExit\(existingPid\)/);
   assert.ok(
-    restart.indexOf('WaitForExit(existingPid)') <
-      restart.indexOf('CreateProcessW('),
-    'the previous HomePanel process must exit before a replacement is launched',
+    restart.indexOf('return;') < restart.indexOf('CreateProcessW('),
+    'an existing healthy app must be left running instead of blocking recovery',
   );
 });
 

@@ -11,6 +11,7 @@ constexpr wchar_t kStandaloneMutexName[] = L"Local\\HomePanelUpdaterStandalone";
 constexpr wchar_t kInstallerMutexName[] = L"Local\\HomePanelUpdaterInstaller";
 constexpr DWORD kGracefulExitTimeoutMs = 15'000;
 constexpr DWORD kForcedExitTimeoutMs = 5'000;
+bool gRunnerMode = false;
 
 struct ScopedHandle {
   HANDLE value = nullptr;
@@ -61,7 +62,10 @@ fs::path ExecutableRoot() {
 
 Arguments ParseArguments(int argc, wchar_t** argv) {
   Arguments result;
-  if (argc == 1) return result;
+  if (argc == 1) {
+    gRunnerMode = false;
+    return result;
+  }
   if ((argc - 1) % 2 != 0) throw std::runtime_error("invalid updater arguments");
   result.runnerMode = true;
   for (int index = 1; index + 1 < argc; index += 2) {
@@ -85,6 +89,7 @@ Arguments ParseArguments(int argc, wchar_t** argv) {
   std::transform(manifestPath.begin(), manifestPath.end(), manifestPath.begin(), towlower);
   std::transform(expectedPrefix.begin(), expectedPrefix.end(), expectedPrefix.begin(), towlower);
   if (manifestPath.rfind(expectedPrefix, 0) != 0) throw std::runtime_error("manifest path is outside HomePanel data");
+  gRunnerMode = true;
   return result;
 }
 
@@ -129,10 +134,13 @@ void WriteBytes(const fs::path& path, const std::vector<uint8_t>& bytes) {
   }
 }
 
+void RequestHomePanelExit(DWORD pid);
+
 void WaitForExit(DWORD pid) {
   if (!pid) return;
   ScopedHandle process(OpenProcess(SYNCHRONIZE, FALSE, pid));
   if (!process.value) return;
+  RequestHomePanelExit(pid);
   const DWORD wait = WaitForSingleObject(process.value, 90'000);
   if (wait != WAIT_OBJECT_0) throw std::runtime_error("update parent did not exit before timeout");
 }
@@ -152,8 +160,8 @@ DWORD FindHomePanelProcess(const fs::path& root);
 void RestartHomePanel(const fs::path& root) {
   const DWORD existingPid = FindHomePanelProcess(root);
   if (existingPid) {
-    Log(root, L"Waiting for the previous HomePanel process before restart");
-    WaitForExit(existingPid);
+    Log(root, L"HomePanel is already running; restart was not required");
+    return;
   }
 
   const fs::path executable = root / L"HomePanel.exe";
@@ -223,7 +231,8 @@ BOOL CALLBACK CloseHomePanelWindow(HWND window, LPARAM parameter) {
 }
 
 void RequestHomePanelExit(DWORD pid) {
-  if (pid) EnumWindows(CloseHomePanelWindow, static_cast<LPARAM>(pid));
+  if (!gRunnerMode || !pid) return;
+  EnumWindows(CloseHomePanelWindow, static_cast<LPARAM>(pid));
 }
 
 void EnsureHomePanelStopped(DWORD pid, const fs::path& root) {
@@ -232,6 +241,7 @@ void EnsureHomePanelStopped(DWORD pid, const fs::path& root) {
   ScopedHandle process(OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
   if (!process.value || !ProcessMatchesExecutable(process.value, expected)) return;
 
+  RequestHomePanelExit(pid);
   const DWORD graceful = WaitForSingleObject(process.value, kGracefulExitTimeoutMs);
   if (graceful == WAIT_OBJECT_0) return;
   if (graceful == WAIT_FAILED) throw std::runtime_error("cannot wait for HomePanel to exit");
