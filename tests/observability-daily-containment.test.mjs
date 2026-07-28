@@ -260,3 +260,25 @@ test('contained historical daily breach publishes a successful Cloudflare status
   assert.match(body, /D1 rows written \| \+759 \| 41m \| 26,486\/day \| 100,000\/day \| 26\.5%/);
   assert.match(body, /\*\*Cloudflare status:\*\* success/);
 });
+
+test('another daily-budget violation remains active beside a contained D1 read breach', () => {
+  const queueViolation = summaries.daily.replace(
+    '| Queue billable operations | 10 | 20 | 10,000 | 9,980 | OK |',
+    '| Queue billable operations | 11,000 | 12,000 | 10,000 | 0 | VIOLATION (actual) |',
+  );
+  const body = buildIssueBody({
+    generatedAt,
+    targetSha: 'abc',
+    mainSha: 'abc',
+    runUrl: 'https://github.com/tarematsu/HP/actions/runs/1',
+    trigger: 'workflow_run',
+    outcomes,
+    summaries: { ...summaries, daily: queueViolation },
+    activeDeployments: deployments,
+    previousIssueBody: previousIssue(),
+  });
+  assert.match(body, /\*\*Cloudflare status:\*\* failure/);
+  assert.match(body, /ACTION REQUIRED — 1 active signal/);
+  assert.match(body, /Queue billable operations/);
+  assert.doesNotMatch(body, /CONTAINED — 1 historical signal remains/);
+});
