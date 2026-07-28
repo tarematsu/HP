@@ -15,6 +15,7 @@ on:
       - '.github/scripts/audit-cloudflare-*.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/audit-observability-collection.mjs'
+      - '.github/scripts/cloudflare-worker-public-url.mjs'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/query-cloudflare-observability.py'
@@ -97,6 +98,7 @@ jobs:
       cancel-in-progress: false
     env:
       CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud
+      CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"
       D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       D1_QUERY_OUTPUT_DIR: d1-insights
       D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
@@ -218,84 +220,3 @@ jobs:
           if (( telemetry_status != 0 || collection_status != 0 )); then
             exit 1
           fi
-
-      - name: Resolve semantic observability outcome
-        id: resolve-outcome
-        if: always() && !cancelled()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          OBSERVABILITY_MAIN_REF: main
-          DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
-          FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
-          BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
-          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
-          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
-          TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
-        run: node .github/scripts/observability-workflow-outcome.mjs
-
-      - name: Publish persistent observability status
-        id: publish-status
-        if: always() && !cancelled()
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          OBSERVABILITY_MAIN_REF: main
-          OBSERVABILITY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OBSERVABILITY_TRIGGER: ${{ github.event_name }}
-          DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
-          FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
-          BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
-          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
-          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
-          TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
-        run: node .github/scripts/publish-cloudflare-observability-status.mjs
-
-      - name: Publish semantic observability overall status
-        id: publish-overall
-        if: >-
-          always() && !cancelled() &&
-          steps.resolve-outcome.outputs.current_main_target == 'true'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-          OBSERVABILITY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OBSERVABILITY_OVERALL: ${{ steps.resolve-outcome.outputs.overall }}
-        run: node .github/scripts/observability-workflow-outcome.mjs --publish-status
-
-      - name: Upload sanitized observability report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloudflare-observability-report-unified-${{ github.run_id }}
-          path: |
-            daily-usage/
-            daily-usage-audit.log
-            free-tier-usage/
-            free-tier-usage-audit.log
-            observability-gate/
-            observability-budget-gate.log
-            d1-insights/
-            d1-insights.log
-            observability-summary.md
-            observability-query.log
-            public-health-endpoints.md
-            public-health-endpoints.log
-            telemetry-summary.md
-            telemetry-audit.log
-            collection-summary.md
-            collection-audit.log
-            active-worker-deployments.json
-            live-tail.log
-            live-tail/
-          if-no-files-found: warn
-          retention-days: 1
-
-      - name: Fail when current-main observability remains unhealthy
-        if: >-
-          steps.publish-status.outcome == 'failure' ||
-          steps.publish-overall.outcome == 'failure' ||
-          (steps.resolve-outcome.outputs.current_main_target == 'true' &&
-            steps.resolve-outcome.outputs.overall == 'failure')
-        run: exit 1
