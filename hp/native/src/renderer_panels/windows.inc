@@ -23,26 +23,45 @@ HFONT Renderer::TierFont(FontTier tier) const {
   }
 }
 
-Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND hwnd)
-    : hwnd(hwnd), paintDc(BeginPaint(hwnd, &paint)) {
+Renderer::NativePanelPaintScope::NativePanelPaintScope(Renderer& renderer, HWND target)
+    : hwnd(target) {
+  paintDc = BeginPaint(hwnd, &paint);
   if (!paintDc) return;
-  GetClientRect(hwnd, &bounds);
-  dirty = paint.rcPaint;
-  if (IsRectEmpty(&dirty)) dirty = bounds;
-  IntersectRect(&dirty, &dirty, &bounds);
-  dc = NativePanelMemoryDc(paintDc);
-  HBITMAP bitmap = renderer.NativePanelBackBuffer(
-      hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
-  if (!dc || !bitmap) {
+  try {
+    GetClientRect(hwnd, &bounds);
+    dirty = paint.rcPaint;
+    if (IsRectEmpty(&dirty)) dirty = bounds;
+    IntersectRect(&dirty, &dirty, &bounds);
+    dc = NativePanelMemoryDc(paintDc);
+    HBITMAP bitmap = renderer.NativePanelBackBuffer(
+        hwnd, paintDc, std::max(1L, bounds.right), std::max(1L, bounds.bottom));
+    if (!dc || !bitmap) {
+      dc = nullptr;
+      FillWidgetBackground(paintDc, bounds);
+      return;
+    }
+    SelectClipRgn(dc, nullptr);
+    previousBitmap = SelectObject(dc, bitmap);
+    if (!previousBitmap || previousBitmap == HGDI_ERROR) {
+      previousBitmap = nullptr;
+      dc = nullptr;
+      FillWidgetBackground(paintDc, bounds);
+      return;
+    }
+    IntersectClipRect(dc, dirty.left, dirty.top, dirty.right, dirty.bottom);
+    FillWidgetBackground(dc, dirty);
+    SetBkMode(dc, TRANSPARENT);
+  } catch (...) {
+    if (dc && previousBitmap) {
+      SelectClipRgn(dc, nullptr);
+      SelectObject(dc, previousBitmap);
+    }
+    EndPaint(hwnd, &paint);
+    paintDc = nullptr;
     dc = nullptr;
-    FillWidgetBackground(paintDc, bounds);
-    return;
+    previousBitmap = nullptr;
+    throw;
   }
-  SelectClipRgn(dc, nullptr);
-  previousBitmap = SelectObject(dc, bitmap);
-  IntersectClipRect(dc, dirty.left, dirty.top, dirty.right, dirty.bottom);
-  FillWidgetBackground(dc, dirty);
-  SetBkMode(dc, TRANSPARENT);
 }
 
 Renderer::NativePanelPaintScope::~NativePanelPaintScope() {
@@ -51,7 +70,7 @@ Renderer::NativePanelPaintScope::~NativePanelPaintScope() {
     BitBlt(paintDc, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top,
            dc, dirty.left, dirty.top, SRCCOPY);
     SelectClipRgn(dc, nullptr);
-    SelectObject(dc, previousBitmap);
+    if (previousBitmap) SelectObject(dc, previousBitmap);
   }
   EndPaint(hwnd, &paint);
 }
@@ -67,7 +86,11 @@ bool Renderer::EnsureNativeStaticWindows() {
     windowClass.lpszClassName = kStaticClassName;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = nullptr;
-    RegisterClassW(&windowClass);
+    SetLastError(ERROR_SUCCESS);
+    if (!RegisterClassW(&windowClass) &&
+        GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      throw std::runtime_error("native dashboard window class registration failed");
+    }
   });
 
   const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
