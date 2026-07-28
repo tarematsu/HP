@@ -148,19 +148,27 @@ jobs:
         run: |
           set -euo pipefail
           output="$RUNNER_TEMP/homepanel-public-health.json"
-          curl --fail --silent --show-error \
+          set +e
+          http_status="$(curl --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
+            --output "$output" --write-out "%{http_code}" \
             -H "Accept: application/json" \
-            "$HOMEPANEL_HEALTH_URL" \
-            > "$output"
-          cat "$output"
+            "$HOMEPANEL_HEALTH_URL")"
+          curl_status=$?
+          set -e
+          cat "$output" || true
+          if (( curl_status != 0 )); then
+            echo "::error::HomePanel public health request failed with curl status $curl_status and HTTP $http_status"
+            exit "$curl_status"
+          fi
           node -e '
             const fs = require("node:fs");
             const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-            if (payload?.ok !== true || payload?.service !== "homepanel-video") {
-              throw new Error(`Unexpected HomePanel public health response: ${JSON.stringify(payload)}`);
+            const status = Number(process.argv[2]);
+            if (status !== 200 || payload?.ok !== true || payload?.service !== "homepanel-video") {
+              throw new Error(`Unexpected HomePanel public health response (HTTP ${status}): ${JSON.stringify(payload)}`);
             }
-          ' "$output"
+          ' "$output" "$http_status"
 
       - name: Verify authenticated deployed readiness
         shell: bash
@@ -170,25 +178,34 @@ jobs:
           set -euo pipefail
           : "${RADAR_DISPATCH_TOKEN:?Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification}"
           output="$RUNNER_TEMP/homepanel-readiness.json"
-          curl --fail --silent --show-error \
+          set +e
+          http_status="$(curl --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
+            --output "$output" --write-out "%{http_code}" \
             -H "Accept: application/json" \
             -H "Authorization: Bearer $RADAR_DISPATCH_TOKEN" \
-            "$HOMEPANEL_BASE_URL/v1/ready" \
-            > "$output"
-          cat "$output"
+            "$HOMEPANEL_BASE_URL/v1/ready")"
+          curl_status=$?
+          set -e
+          cat "$output" || true
+          if (( curl_status != 0 )); then
+            echo "::error::HomePanel readiness request failed with curl status $curl_status and HTTP $http_status"
+            exit "$curl_status"
+          fi
           node -e '
             const fs = require("node:fs");
             const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const status = Number(process.argv[2]);
             const checks = payload?.checks && typeof payload.checks === "object"
               ? Object.values(payload.checks)
               : [];
             if (
-              payload?.ok !== true
+              status !== 200
+              || payload?.ok !== true
               || payload?.service !== "homepanel-cloud"
               || checks.length === 0
               || checks.some(check => check?.ok !== true)
             ) {
-              throw new Error(`Unexpected HomePanel readiness response: ${JSON.stringify(payload)}`);
+              throw new Error(`Unexpected HomePanel readiness response (HTTP ${status}): ${JSON.stringify(payload)}`);
             }
-          ' "$output"
+          ' "$output" "$http_status"
