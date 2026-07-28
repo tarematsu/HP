@@ -70,9 +70,10 @@ jobs:
 
       # Cloudflare Queues permits only one active push consumer per Queue. The
       # retired standalone Worker must release its consumer before the unified
-      # Worker can attach to videoscraper-manual-imports.
+      # Worker can attach to videoscraper-manual-imports. The Queue is explicit
+      # because legacy consumer records may omit script_name.
       - name: Release manual import Queue consumer — Delete retired homepanel-video Worker
-        run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video
+        run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video videoscraper-manual-imports
 
       - name: Deploy HomePanel Cloud
         working-directory: hp
