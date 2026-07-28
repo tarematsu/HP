@@ -105,7 +105,33 @@ void Renderer::SetVisible(bool visible) {
   } else {
     nativePanelTimerActive_ = false;
   }
-  if (visibilityChanged && !visible) ReleaseNativePanelSurfaces();
+
+  if (!visibilityChanged) return;
+  if (visible) {
+    // Radar animation and its large composition surfaces are needed only while
+    // the native Dashboard is visible. Recreate them on demand after a tab or
+    // authorization surface returns to Main.
+    StartRadarCompose();
+    NotifyRadarUpdated();
+    InvalidateAllNativePanels();
+    return;
+  }
+
+  // A 1920x1280 32-bit radar frame is roughly 10 MiB, before decoded tiles,
+  // artwork, weather icons, panel back buffers and cached static sections. Stop
+  // the only worker that touches the radar cache before releasing all native
+  // display-only bitmaps. Stationhead playback and the lightweight dashboard
+  // data poll remain active, so switching back is immediate and state-correct.
+  StopRadarCompose();
+  {
+    std::lock_guard lock(radarFrameMutex_);
+    if (radarFrameBitmap_) DeleteObject(radarFrameBitmap_);
+    radarFrameBitmap_ = nullptr;
+    radarTimeText_ = L"--:--";
+    radarSignature_.clear();
+  }
+  radarFailedTiles_.clear();
+  ResetNativeBitmapCaches();
 }
 
 void Renderer::QueueAction(UiAction action) {
