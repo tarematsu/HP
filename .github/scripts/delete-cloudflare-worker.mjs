@@ -12,6 +12,16 @@ function singleLine(name, value) {
   return normalized;
 }
 
+function optionalSingleLines(name, values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .map((value) => {
+      if (/[\r\n]/.test(value)) throw new Error(`${name} must be a single line`);
+      return value;
+    }))];
+}
+
 function errorCodes(payload) {
   return (Array.isArray(payload?.errors) ? payload.errors : [])
     .map((error) => Number(error?.code))
@@ -58,12 +68,19 @@ function queueId(queue) {
   return String(queue?.queue_id || queue?.id || '').trim();
 }
 
-function workerConsumers(consumers, scriptName) {
-  return (Array.isArray(consumers) ? consumers : []).filter((consumer) => (
-    String(consumer?.type || 'worker') === 'worker'
-      && String(consumer?.script_name || '').trim() === scriptName
-      && String(consumer?.consumer_id || '').trim()
-  ));
+function queueName(queue) {
+  return String(queue?.queue_name || queue?.name || '').trim();
+}
+
+function workerConsumers(consumers, scriptName, allowExplicitQueueConsumer = false) {
+  return (Array.isArray(consumers) ? consumers : []).filter((consumer) => {
+    const type = String(consumer?.type || 'worker').trim();
+    const consumerId = String(consumer?.consumer_id || '').trim();
+    const consumerScript = String(consumer?.script_name || '').trim();
+    return type === 'worker'
+      && Boolean(consumerId)
+      && (consumerScript === scriptName || allowExplicitQueueConsumer);
+  });
 }
 
 async function listQueues({ account, token, fetchImpl }) {
@@ -105,19 +122,23 @@ export async function detachQueueConsumersForWorker({
   accountId,
   apiToken,
   scriptName,
+  queueNames = [],
   fetchImpl = globalThis.fetch,
 }) {
   const account = singleLine('Cloudflare account ID', accountId);
   const token = singleLine('Cloudflare API token', apiToken);
   const worker = singleLine('Cloudflare Worker name', scriptName);
+  const explicitQueues = new Set(optionalSingleLines('Cloudflare Queue name', queueNames));
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
 
   const detached = [];
   for (const queue of await listQueues({ account, token, fetchImpl })) {
     const id = queueId(queue);
     if (!id) continue;
+    const name = queueName(queue);
+    const explicitCutover = explicitQueues.has(name) || explicitQueues.has(id);
     const consumers = await queueConsumers({ account, token, fetchImpl, queue });
-    for (const consumer of workerConsumers(consumers, worker)) {
+    for (const consumer of workerConsumers(consumers, worker, explicitCutover)) {
       const consumerId = String(consumer.consumer_id).trim();
       const url = `${API_BASE}/accounts/${encodeURIComponent(account)}/queues/${encodeURIComponent(id)}/consumers/${encodeURIComponent(consumerId)}`;
       await apiRequest({
@@ -129,7 +150,7 @@ export async function detachQueueConsumersForWorker({
       });
       detached.push({
         queueId: id,
-        queueName: String(queue?.queue_name || consumer?.queue_name || id),
+        queueName: name || String(consumer?.queue_name || id),
         consumerId,
       });
     }
@@ -164,11 +185,13 @@ export async function deleteCloudflareWorker({
   accountId,
   apiToken,
   scriptName,
+  queueNames = [],
   fetchImpl = globalThis.fetch,
 }) {
   const account = singleLine('Cloudflare account ID', accountId);
   const token = singleLine('Cloudflare API token', apiToken);
   const worker = singleLine('Cloudflare Worker name', scriptName);
+  const cutoverQueues = optionalSingleLines('Cloudflare Queue name', queueNames);
   if (typeof fetchImpl !== 'function') throw new Error('fetch implementation is required');
 
   const first = await deleteWorkerOnce({ account, token, worker, fetchImpl });
@@ -183,10 +206,12 @@ export async function deleteCloudflareWorker({
     accountId: account,
     apiToken: token,
     scriptName: worker,
+    queueNames: cutoverQueues,
     fetchImpl,
   });
   if (!detached.length) {
-    throw new Error(`Cloudflare Worker deletion failed: ${first.detail}; no matching Queue consumer was found`);
+    const scope = cutoverQueues.length ? ` in explicit Queue(s): ${cutoverQueues.join(', ')}` : '';
+    throw new Error(`Cloudflare Worker deletion failed: ${first.detail}; no matching Queue consumer was found${scope}`);
   }
 
   const second = await deleteWorkerOnce({ account, token, worker, fetchImpl });
@@ -202,10 +227,12 @@ export async function deleteCloudflareWorker({
 
 async function main() {
   const scriptName = singleLine('Cloudflare Worker name', process.argv[2]);
+  const queueNames = process.argv.slice(3);
   const result = await deleteCloudflareWorker({
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_BUILDS_API_TOKEN,
     scriptName,
+    queueNames,
   });
   if (result.detachedConsumers) {
     console.log(`${scriptName}: detached ${result.detachedConsumers} Queue consumer(s).`);
