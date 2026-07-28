@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('HomePanel deployment resolves workers.dev and requires public D1 health after every deploy', () => {
+test('HomePanel deployment resolves workers.dev and requires public and authenticated readiness after every deploy', () => {
   const workflow = read('.github/workflows/cloud-deploy.yml');
   const resolver = read('.github/scripts/cloudflare-worker-public-url.mjs');
   const healthRoute = read('hp/video/src/entry.js');
@@ -18,11 +18,26 @@ test('HomePanel deployment resolves workers.dev and requires public D1 health af
     'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
     'payload?.ok !== true',
     'payload?.service !== "homepanel-video"',
+    'HOMEPANEL_API_TOKEN: ${{ secrets.API_TOKEN }}',
     'name: Verify authenticated deployed readiness',
     'HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}',
-    'Public HomePanel D1 health passed',
+    'GitHub Actions secret API_TOKEN is required for /v1/ready verification',
+    'Authorization: Bearer $HOMEPANEL_API_TOKEN',
+    '$HOMEPANEL_BASE_URL/v1/ready',
+    'payload?.service !== "homepanel-cloud"',
+    'checks.some(check => check?.ok !== true)',
   ]) assert.match(workflow, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
+  assert.doesNotMatch(workflow, /HOMEPANEL_READY_TOKEN/);
+  assert.doesNotMatch(workflow, /secrets\.HOMEPANEL_READY_TOKEN/);
+  assert.doesNotMatch(workflow, /Report disabled authenticated readiness verification/);
+  const authenticatedStepStart = workflow.indexOf('- name: Verify authenticated deployed readiness');
+  const authenticatedStepEnd = workflow.indexOf('\n      - name:', authenticatedStepStart + 1);
+  const authenticatedStep = workflow.slice(
+    authenticatedStepStart,
+    authenticatedStepEnd === -1 ? workflow.length : authenticatedStepEnd,
+  );
+  assert.doesNotMatch(authenticatedStep, /\n\s+if:/);
   assert.doesNotMatch(workflow, /HOMEPANEL_BASE_URL: \$\{\{ vars\.HOMEPANEL_BASE_URL \}\}/);
   assert.doesNotMatch(workflow, /Set HOMEPANEL_BASE_URL variable/);
   assert.ok(
@@ -32,6 +47,10 @@ test('HomePanel deployment resolves workers.dev and requires public D1 health af
   assert.ok(
     workflow.indexOf('- name: Resolve deployed HomePanel public URL')
       < workflow.indexOf('- name: Verify deployed readiness'),
+  );
+  assert.ok(
+    workflow.indexOf('- name: Verify deployed readiness')
+      < workflow.indexOf('- name: Verify authenticated deployed readiness'),
   );
 
   assert.match(resolver, /workers\/subdomain/);
