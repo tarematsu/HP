@@ -63,7 +63,7 @@ export function evaluateCollectionCoverage({
         : 'Worker is absent from active-worker-deployments.json.',
     );
 
-    const activityRow = new RegExp(`^\\|\\s*\\`${escapeRegExp(worker)}\\`\\s*\\|`, 'm').test(observabilitySummary);
+    const activityRow = new RegExp(`^\\|\\s*\`${escapeRegExp(worker)}\`\\s*\\|`, 'm').test(observabilitySummary);
     add(
       `Metrics row: ${worker}`,
       activityRow,
