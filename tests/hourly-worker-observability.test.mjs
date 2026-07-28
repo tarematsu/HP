@@ -7,8 +7,8 @@ const video = JSON.parse(readFileSync(
   'utf8',
 ));
 
-test('hourly video Cron persists every invocation for CPU coverage', () => {
-  assert.deepEqual(video.triggers?.crons, ['0 * * * *']);
+test('video Worker persists invocation telemetry without a Cloudflare Cron', () => {
+  assert.equal(video.triggers, undefined);
   assert.equal(video.observability?.enabled, true);
   assert.equal(video.observability?.head_sampling_rate, 1);
   assert.equal(video.observability?.logs?.enabled, true);
