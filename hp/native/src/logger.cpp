@@ -22,8 +22,8 @@ size_t FindHttpUrlStartCaseInsensitive(
   return std::wstring::npos;
 }
 
-std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
-  std::wstring sanitized = message;
+std::wstring RedactUrlQueryAndFragment(std::wstring_view message) {
+  std::wstring sanitized(message);
   size_t searchAt = 0;
   while (searchAt < sanitized.size()) {
     // Preserve the common lowercase fast path while also accepting mixed-case
@@ -46,7 +46,7 @@ std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
     // values can legally contain commas or bracket-like characters, so treating
     // them as URL terminators could expose the remainder of a query value.
     const size_t delimiterAt = sanitized.find_first_of(
-        L" \t\r\n\"' <>", urlAt);
+        L" \t\r\n\"'<>", urlAt);
     const size_t urlEnd = delimiterAt == std::wstring::npos
         ? sanitized.size()
         : delimiterAt;
@@ -132,7 +132,7 @@ void Logger::Rotate() {
   OpenOutput();
 }
 
-void Logger::Write(const wchar_t* level, const std::wstring& message) noexcept {
+void Logger::Write(const wchar_t* level, std::wstring_view message) noexcept {
   try {
     SYSTEMTIME time{};
     GetLocalTime(&time);
