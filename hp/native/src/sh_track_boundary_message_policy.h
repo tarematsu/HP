@@ -159,6 +159,37 @@ inline bool operator<(
   return deadline.Active() && !deadline.Reached();
 }
 
+// StartupAwareWakeDeadline exposes a freshly projected UTC deadline through its
+// legacy int64_t interface. Read the same Win32 system clock immediately after
+// projection so an expired value cannot stay a few milliseconds ahead of the
+// stale nowMs captured at Tick entry. This helper is isolated from the A/B
+// boundary ownership lease below, which remains purely uptime-based.
+inline int64_t StationheadPolicyWallMillis() noexcept {
+  FILETIME fileTime{};
+  GetSystemTimeAsFileTime(&fileTime);
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart = fileTime.dwLowDateTime;
+  ticks.HighPart = fileTime.dwHighDateTime;
+  constexpr ULONGLONG kUnixEpochFileTimeTicks = 116'444'736'000'000'000ULL;
+  if (ticks.QuadPart <= kUnixEpochFileTimeTicks) return 0;
+  const ULONGLONG milliseconds =
+      (ticks.QuadPart - kUnixEpochFileTimeTicks) / 10'000ULL;
+  return milliseconds > static_cast<ULONGLONG>(INT64_MAX)
+      ? INT64_MAX
+      : static_cast<int64_t>(milliseconds);
+}
+
+inline bool StationheadStartupAwareWakePending(
+    const StartupAwareWakeDeadline& deadline) noexcept {
+  const int64_t projected = static_cast<int64_t>(deadline);
+  return projected > 0 && projected > StationheadPolicyWallMillis();
+}
+
+inline bool operator<(
+    int64_t, const StartupAwareWakeDeadline& deadline) noexcept {
+  return StationheadStartupAwareWakePending(deadline);
+}
+
 inline bool operator>(
     const MonotonicProjectedDeadline& deadline, int candidate) noexcept {
   if (candidate == 0) return deadline.Active();
@@ -355,6 +386,49 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
   return result;
 }
 
+inline constexpr bool StationheadFocusSurfaceIsInteractive(
+    LONG width, LONG height) noexcept {
+  return width > 1 && height > 1;
+}
+
+static_assert(!StationheadFocusSurfaceIsInteractive(1, 1));
+static_assert(!StationheadFocusSurfaceIsInteractive(1, 720));
+static_assert(!StationheadFocusSurfaceIsInteractive(1280, 1));
+static_assert(StationheadFocusSurfaceIsInteractive(2, 2));
+
+// A hide request can be rejected while login or Spotify authorization remains
+// interactive. In that case KeepPlaybackBehindDashboard() leaves the selected
+// Stationhead host visible and focused. Ordinary playback hides differently: its
+// host remains WS_VISIBLE for audio continuity but is collapsed to a 1x1 surface.
+// Preserve focus only when the focused descendant belongs to a direct child of
+// the target that is still visible and has interactive geometry.
+inline bool StationheadFocusRemainsInteractive(
+    HWND target, HWND focused) noexcept {
+  if (!target || !focused || focused == target ||
+      !IsWindow(target) || !IsWindow(focused)) {
+    return false;
+  }
+
+  HWND surface = focused;
+  HWND parent = GetParent(surface);
+  while (parent && parent != target) {
+    surface = parent;
+    parent = GetParent(surface);
+  }
+  if (parent != target || !IsWindowVisible(surface)) return false;
+
+  RECT client{};
+  if (!GetClientRect(surface, &client)) return false;
+  return StationheadFocusSurfaceIsInteractive(
+      client.right - client.left, client.bottom - client.top);
+}
+
+inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
+  const HWND focused = GetFocus();
+  if (StationheadFocusRemainsInteractive(target, focused)) return focused;
+  return ::SetFocus(target);
+}
+
 }  // namespace hp
 
 #define SendMessageW SendMessageWWithStationheadBoundaryLease
@@ -368,3 +442,4 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
   (::hp::StationheadNavigationInFlightStorage(                              \
       (navigationInFlight_), periodicRefreshStartedAt_,                     \
       periodicRefreshNavigationObserved_))
+#define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
