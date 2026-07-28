@@ -68,6 +68,12 @@ jobs:
           npm run check --workspace video
           npm run check:unified-bundle --workspace cloud
 
+      # Cloudflare Queues permits only one active push consumer per Queue. The
+      # retired standalone Worker must release its consumer before the unified
+      # Worker can attach to videoscraper-manual-imports.
+      - name: Release manual import Queue consumer — Delete retired homepanel-video Worker
+        run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video
+
       - name: Deploy HomePanel Cloud
         working-directory: hp
         shell: bash
@@ -121,9 +127,6 @@ jobs:
           path: ${{ runner.temp }}/homepanel-deploy.log
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Deploy private video service deletion — Delete retired homepanel-video Worker
-        run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video
 
       - name: Verify deployed readiness
         if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}
