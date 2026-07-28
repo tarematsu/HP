@@ -42,17 +42,11 @@ function sixHourVariants() {
   ];
 }
 
-test('pages read models keep operational opportunities without duplicate push chaining', () => {
-  assert.match(workflow, /workflows: \["Run runtime offline maintenance"\]/);
+test('pages read models run independently before chaining runtime maintenance', () => {
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
-  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /github\.event\.workflow_run\.event == 'schedule'/);
-  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.event == 'push'/);
-  assert.match(workflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
-  assert.match(workflow, /Pushes that affect Pages already trigger this workflow directly/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.sha \}\}/);
-  assert.match(workflow, /group: pages-read-model-rebuild-\$\{\{[\s\S]*?'ignored-chain' \|\| 'operational' \}\}/);
-  assert.match(workflow, /isolate them from operational runs before concurrency cancellation/);
+  assert.doesNotMatch(workflow, /workflow_run:/);
+  assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /group: pages-read-model-rebuild/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
