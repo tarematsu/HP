@@ -12,6 +12,7 @@ import {
 } from '../src/pages-track-history-support.js';
 
 const DAY_MS = 86_400_000;
+const MINUTE_MS = 60_000;
 const EPOCH = Date.UTC(2024, 4, 1);
 
 test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
@@ -114,6 +115,9 @@ test('canonical materialized variants keep the intended maximum-age cadence', ()
   ]);
   assert.equal(materialized.get('track-history').cadence_minutes, 1440);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
+  assert.equal(materialized.get('history:daily').cadence_minutes, 360);
+  assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
+  assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
   assert.equal(materialized.get('dashboard').cadence_minutes, 15);
 });
 
@@ -124,23 +128,25 @@ test('track history maximum age covers daily source refresh plus edge grace', ()
   );
 });
 
-test('Actions cadence regenerates only the bounded due variants', () => {
+test('Actions cadence follows the materialized API contract', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.deepEqual([...dueVariantKeys(cycle + 4 * 60_000)], [
+  assert.deepEqual([...dueVariantKeys(cycle + 4 * MINUTE_MS)], [
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:broadcasts',
     'history:monthly',
-    'host-history:summary',
+    'history:broadcasts',
     'track-history',
+    'host-history:summary',
   ]);
-  assert.deepEqual([...dueVariantKeys(cycle + 19 * 60_000)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 64 * 60_000)], ['dashboard', 'history:daily']);
-  assert.deepEqual([...dueVariantKeys(cycle + 184 * 60_000)], [
+  assert.deepEqual([...dueVariantKeys(cycle + 19 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 64 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 184 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 364 * MINUTE_MS)], [
     'dashboard',
     'history:daily',
     'history:weekly',
+    'history:monthly',
     'history:broadcasts',
   ]);
 });
