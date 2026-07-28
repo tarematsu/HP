@@ -107,6 +107,7 @@ endfunction()
 set(HOMEPANEL_CORE_SOURCES
   src/main.cpp
   src/app.cpp
+  src/app_startup_tick_fallback.cpp
   src/app_air_history.cpp
   src/app_stationhead_history.cpp
   src/app_stationhead_handles.cpp

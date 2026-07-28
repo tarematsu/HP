@@ -1,4 +1,5 @@
 #include "app.h"
+#include "app_startup_tick_fallback.h"
 #include "web_renderer.h"
 
 namespace hp {
@@ -78,9 +79,17 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
     app = static_cast<App*>(reinterpret_cast<CREATESTRUCTW*>(lParam)->lpCreateParams);
     if (app) app->window_ = window;
     SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+    if (app) StartStartupUpdateFallback(window, app);
   }
-  return app ? app->HandleMessage(message, wParam, lParam)
-             : DefWindowProcW(window, message, wParam, lParam);
+
+  const LRESULT result = app ? app->HandleMessage(message, wParam, lParam)
+                             : DefWindowProcW(window, message, wParam, lParam);
+  if (message == WM_NCDESTROY) {
+    StopStartupUpdateFallback();
+    SetWindowLongPtrW(window, GWLP_USERDATA, 0);
+    if (app) app->window_ = nullptr;
+  }
+  return result;
 }
 
 void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
@@ -160,6 +169,9 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
           PublishRenderStateNow();
         }
       }
+      return 0;
+    case kStartupUpdateWakeMessage:
+      HandleStartupUpdateWake();
       return 0;
     case WM_PAINT:
       Draw();
