@@ -168,9 +168,11 @@ void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair) {
             message.append(manifest.version);
             message.append(L" が利用できます");
           } else {
-            if (replacementBuild && logger_) {
-              logger_->Info(
-                  L"Applying an explicitly requested repair for the same version and different release files");
+            if (replacementBuild) {
+              if (logger_) {
+                logger_->Info(
+                    L"Applying an explicitly requested repair for the same version and different release files");
+              }
             }
             if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
               if (logger_) {
