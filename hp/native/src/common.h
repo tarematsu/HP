@@ -142,19 +142,24 @@ inline void ThrowIfFailed(HRESULT hr, const char* where) {
 
 inline const wchar_t* SafeWideGetEnv(const wchar_t* name) noexcept {
   thread_local std::wstring value;
-  value.clear();
-  if (!name || !*name) return nullptr;
+  try {
+    value.clear();
+    if (!name || !*name) return nullptr;
 
-  const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
-  if (required == 0) return nullptr;
-  value.resize(required);
-  const DWORD written = GetEnvironmentVariableW(name, value.data(), required);
-  if (written == 0 || written >= required) {
+    const DWORD required = GetEnvironmentVariableW(name, nullptr, 0);
+    if (required == 0) return nullptr;
+    value.resize(required);
+    const DWORD written = GetEnvironmentVariableW(name, value.data(), required);
+    if (written == 0 || written >= required) {
+      value.clear();
+      return nullptr;
+    }
+    value.resize(written);
+    return value.c_str();
+  } catch (...) {
     value.clear();
     return nullptr;
   }
-  value.resize(written);
-  return value.c_str();
 }
 
 inline bool EndsWithInsensitive(const std::wstring& value, const wchar_t* suffix) noexcept {
@@ -166,25 +171,28 @@ inline bool EndsWithInsensitive(const std::wstring& value, const wchar_t* suffix
 
 inline BOOL CopyFileWithActiveUpdaterAwareness(
     LPCWSTR existingFileName, LPCWSTR newFileName, BOOL failIfExists) noexcept {
-  if (existingFileName && newFileName) {
-    std::wstring destination(newFileName);
-    std::replace(destination.begin(), destination.end(), L'/', L'\\');
-    if (EndsWithInsensitive(destination, L"\\data\\update-runner\\HomePanelUpdater.exe")) {
-      wchar_t currentExecutable[32768]{};
-      const DWORD length = GetModuleFileNameW(
-          nullptr, currentExecutable, static_cast<DWORD>(std::size(currentExecutable)));
-      if (length > 0 && length < std::size(currentExecutable)) {
-        const wchar_t* currentName = wcsrchr(currentExecutable, L'\\');
-        currentName = currentName ? currentName + 1 : currentExecutable;
-        if (_wcsicmp(currentName, L"HomePanel.exe") != 0 &&
-            _wcsicmp(currentExecutable, newFileName) != 0) {
-
-
-
-          return ::CopyFileW(currentExecutable, newFileName, failIfExists);
+  try {
+    if (existingFileName && newFileName) {
+      std::wstring destination(newFileName);
+      std::replace(destination.begin(), destination.end(), L'/', L'\\');
+      if (EndsWithInsensitive(destination, L"\\data\\update-runner\\HomePanelUpdater.exe")) {
+        wchar_t currentExecutable[32768]{};
+        const DWORD length = GetModuleFileNameW(
+            nullptr, currentExecutable, static_cast<DWORD>(std::size(currentExecutable)));
+        if (length > 0 && length < std::size(currentExecutable)) {
+          const wchar_t* currentName = wcsrchr(currentExecutable, L'\\');
+          currentName = currentName ? currentName + 1 : currentExecutable;
+          if (_wcsicmp(currentName, L"HomePanel.exe") != 0 &&
+              _wcsicmp(currentExecutable, newFileName) != 0) {
+            return ::CopyFileW(currentExecutable, newFileName, failIfExists);
+          }
         }
       }
     }
+  } catch (...) {
+    // This wrapper is used from updater and startup recovery paths. If memory is
+    // exhausted while normalizing the destination, fall back to the requested
+    // source copy instead of terminating at the noexcept boundary.
   }
   return ::CopyFileW(existingFileName, newFileName, failIfExists);
 }
