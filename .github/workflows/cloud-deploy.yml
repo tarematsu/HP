@@ -10,6 +10,7 @@ on:
       - "hp/video/**"
       - ".github/actions/cloudflare-context/action.yml"
       - ".github/scripts/resolve-cloudflare-account.mjs"
+      - ".github/scripts/cloudflare-worker-public-url.mjs"
       - ".github/scripts/delete-cloudflare-worker.mjs"
       - ".github/scripts/summarize-homepanel-deploy-failure.mjs"
       - ".github/workflows/cloud-deploy.yml"
@@ -30,7 +31,6 @@ jobs:
     environment: production
     env:
       HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
-      HOMEPANEL_BASE_URL: ${{ vars.HOMEPANEL_BASE_URL }}
       HOMEPANEL_READY_TOKEN: ${{ secrets.HOMEPANEL_READY_TOKEN }}
       RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}
 
@@ -129,9 +129,36 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Resolve deployed HomePanel public URL
+        id: homepanel-public-url
+        run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
+
       - name: Verify deployed readiness
-        if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}
         shell: bash
+        env:
+          HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/homepanel-public-health.json"
+          curl --fail --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            -H "Accept: application/json" \
+            "$HOMEPANEL_HEALTH_URL" \
+            > "$output"
+          cat "$output"
+          node -e '
+            const fs = require("node:fs");
+            const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (payload?.ok !== true || payload?.service !== "homepanel-video") {
+              throw new Error(`Unexpected HomePanel public health response: ${JSON.stringify(payload)}`);
+            }
+          ' "$output"
+
+      - name: Verify authenticated deployed readiness
+        if: ${{ env.HOMEPANEL_READY_TOKEN != '' }}
+        shell: bash
+        env:
+          HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
         run: |
           set -euo pipefail
           curl --fail --silent --show-error \
@@ -141,9 +168,9 @@ jobs:
             > "$RUNNER_TEMP/homepanel-readiness.json"
           cat "$RUNNER_TEMP/homepanel-readiness.json"
 
-      - name: Report disabled readiness verification
-        if: ${{ env.HOMEPANEL_BASE_URL == '' || env.HOMEPANEL_READY_TOKEN == '' }}
-        run: echo "::warning::Set HOMEPANEL_BASE_URL variable and HOMEPANEL_READY_TOKEN secret to enable post-deploy readiness verification."
+      - name: Report disabled authenticated readiness verification
+        if: ${{ env.HOMEPANEL_READY_TOKEN == '' }}
+        run: echo "::notice::Public HomePanel D1 health passed; set HOMEPANEL_READY_TOKEN to add the authenticated /v1/ready check."
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}

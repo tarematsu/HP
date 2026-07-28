@@ -15,6 +15,7 @@ on:
       - '.github/scripts/audit-cloudflare-*.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
       - '.github/scripts/audit-observability-collection.mjs'
+      - '.github/scripts/cloudflare-worker-public-url.mjs'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/query-cloudflare-observability.py'
@@ -97,6 +98,7 @@ jobs:
       cancel-in-progress: false
     env:
       CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud
+      CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"
       D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       D1_QUERY_OUTPUT_DIR: d1-insights
       D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}

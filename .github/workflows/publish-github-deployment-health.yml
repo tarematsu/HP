@@ -2,7 +2,7 @@ name: Publish GitHub deployment health
 
 on:
   workflow_run:
-    workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability"]
+    workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Repair track metadata", "Run local minute facts rebuild", "Refresh Cloudflare observability"]
     types: [completed]
   push:
     branches: [main]

@@ -9,17 +9,24 @@ const action = read('.github/actions/cloudflare-observability-diagnostics/action
 const workflow = read('.github/workflows/sh-observability.yml');
 const resolver = read('.github/scripts/observability-workflow-outcome.mjs');
 const collectionAudit = read('.github/scripts/audit-observability-collection.mjs');
+const publicHealth = read('.github/scripts/capture-public-health-endpoints.mjs');
+const workerPublicUrl = read('.github/scripts/cloudflare-worker-public-url.mjs');
 
 const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud';
 
-test('shared diagnostics action owns persisted-query, public health, and fail-closed multi-Worker Live Tail orchestration', () => {
+test('shared diagnostics action owns persisted-query, required public health, and fail-closed multi-Worker Live Tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
   assert.match(action, /node \.github\/scripts\/capture-cloudflare-live-tail\.mjs/);
+  assert.match(action, /node \.github\/scripts\/capture-public-health-endpoints\.mjs/);
   assert.match(action, /live-tail-workers:/);
   assert.match(action, /IFS=',' read -ra requested_workers/);
   assert.match(action, /tail_pids\+=/);
   assert.match(action, /wait "\$\{tail_pids\[\$index\]\}" \|\| worker_status=\$\?/);
   assert.match(collectionAudit, /LIVE_TAIL_SUMMARY worker=/);
+  assert.match(collectionAudit, /HomePanel Cloud health/);
+  assert.match(publicHealth, /DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS/);
+  assert.match(publicHealth, /resolveCloudflareWorkerPublicUrl/);
+  assert.match(workerPublicUrl, /workers\/scripts\/\$\{encodedWorker\}\/subdomain/);
   assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
   assert.match(action, /^outputs:\n[\s\S]*live-tail-outcome:/m);
   assert.match(action, /echo "live-tail-outcome=\$live_tail_outcome" >> "\$GITHUB_OUTPUT"/);
@@ -38,6 +45,7 @@ test('the unified workflow covers all active HP and Stationhead Workers and fold
     /^\s{8}uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics$/m,
   );
   assert.match(workflow, new RegExp(`CLOUDFLARE_WORKERS: ${workerList}`));
+  assert.match(workflow, /CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health\|homepanel-cloud\|\/api\/health"/);
   assert.match(workflow, /live-tail-workers: \$\{\{ env\.CLOUDFLARE_WORKERS \}\}/);
   assert.match(workflow, /audit-observability-collection\.mjs/);
   assert.match(workflow, /LIVE_TAIL_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.live-tail-outcome \}\}/);
