@@ -18,6 +18,13 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
+struct ScopedPlaybackComApartment {
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ~ScopedPlaybackComApartment() {
+    if (SUCCEEDED(result)) CoUninitialize();
+  }
+};
+
 void AppendSignatureBytes(uint64_t& hash, const void* value, size_t size) noexcept {
   const auto* bytes = static_cast<const unsigned char*>(value);
   for (size_t index = 0; index < size; ++index) {
@@ -217,7 +224,6 @@ bool ParseDashboardPayload(const fs::path& dataDir,
         currentIndex >= static_cast<int>(projection.queue.size())) {
       currentIndex = -1;
     }
-
     const bool paused = BooleanOrNumber(status, L"is_paused");
     const bool playingSignal = BooleanOrNumber(
         status, L"playing", BooleanOrNumber(root, L"playing"));
@@ -462,7 +468,18 @@ void Renderer::StartNativePlaybackBridge() {
     }
   }
 
-  nativePlaybackThread_ = std::thread([this] { NativePlaybackLoop(); });
+  nativePlaybackThread_ = std::thread([this] {
+    for (;;) {
+      try {
+        NativePlaybackLoop();
+        return;
+      } catch (...) {
+        OutputDebugStringW(L"HomePanel native playback thread recovered from an exception\n");
+        if (nativePlaybackStopping_.load(std::memory_order_acquire)) return;
+        Sleep(1'000);
+      }
+    }
+  });
 }
 
 void Renderer::StopNativePlaybackBridge() noexcept {
@@ -473,7 +490,7 @@ void Renderer::StopNativePlaybackBridge() noexcept {
 }
 
 void Renderer::NativePlaybackLoop() {
-  const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ScopedPlaybackComApartment apartment;
   int64_t lastSnapshotSavedAt = 0;
   uint64_t lastPersistenceSignature = 0;
   {
@@ -554,7 +571,6 @@ void Renderer::NativePlaybackLoop() {
           return nativePlaybackStopping_.load(std::memory_order_acquire);
         });
   }
-  if (SUCCEEDED(apartment)) CoUninitialize();
 }
 
 }  // namespace hp

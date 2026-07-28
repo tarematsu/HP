@@ -173,49 +173,88 @@ CloudClient::~CloudClient() {
 }
 
 void CloudClient::Start() {
+  if (started_.exchange(true, std::memory_order_acq_rel)) return;
   stopping_ = false;
-  thread_ = std::thread([this] { Loop(); });
-  StartNetworkChangeWatcher();
+  try {
+    thread_ = std::thread([this] {
+      for (;;) {
+        try {
+          Loop();
+          return;
+        } catch (const std::exception& error) {
+          try {
+            log_.Warn(L"Cloud synchronization thread recovered from exception: " +
+                      Utf8ToWide(error.what()));
+          } catch (...) {
+          }
+        } catch (...) {
+          try {
+            log_.Warn(L"Cloud synchronization thread recovered from an unknown exception");
+          } catch (...) {
+          }
+        }
+        if (stopping_.load(std::memory_order_acquire)) return;
+        Sleep(1'000);
+      }
+    });
+    StartNetworkChangeWatcher();
+  } catch (...) {
+    stopping_ = true;
+    wake_.notify_all();
+    StopNetworkChangeWatcher();
+    if (thread_.joinable()) thread_.join();
+    started_ = false;
+    throw;
+  }
 }
 
 void CloudClient::Stop() {
+  if (!started_.exchange(false, std::memory_order_acq_rel)) return;
   stopping_ = true;
   wake_.notify_all();
-  if (thread_.joinable()) thread_.join();
   StopNetworkChangeWatcher();
+  if (thread_.joinable()) thread_.join();
 }
 
 void CloudClient::StartNetworkChangeWatcher() {
+  if (networkChangeStopEvent_ || networkChangeThread_.joinable()) return;
   networkChangeStopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
   if (!networkChangeStopEvent_) return;
   networkChangeThread_ = std::thread([this] {
-    for (;;) {
-      OVERLAPPED overlapped{};
-      overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-      if (!overlapped.hEvent) return;
-      HANDLE notifyHandle = nullptr;
-      const DWORD requested = NotifyAddrChange(&notifyHandle, &overlapped);
-      if (requested != ERROR_IO_PENDING) {
-        CloseHandle(overlapped.hEvent);
-        return;
-      }
+    try {
+      for (;;) {
+        OVERLAPPED overlapped{};
+        overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!overlapped.hEvent) return;
+        HANDLE notifyHandle = nullptr;
+        const DWORD requested = NotifyAddrChange(&notifyHandle, &overlapped);
+        if (requested != ERROR_IO_PENDING) {
+          CloseHandle(overlapped.hEvent);
+          return;
+        }
 
-      HANDLE waitHandles[2] = {networkChangeStopEvent_, overlapped.hEvent};
-      const DWORD wait = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
-      if (wait == WAIT_OBJECT_0) {
-        CancelIPChangeNotify(&overlapped);
-        WaitForSingleObject(overlapped.hEvent, INFINITE);
+        HANDLE waitHandles[2] = {networkChangeStopEvent_, overlapped.hEvent};
+        const DWORD wait = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+        if (wait == WAIT_OBJECT_0) {
+          CancelIPChangeNotify(&overlapped);
+          WaitForSingleObject(overlapped.hEvent, INFINITE);
+          CloseHandle(overlapped.hEvent);
+          return;
+        }
+        if (wait != WAIT_OBJECT_0 + 1) {
+          CancelIPChangeNotify(&overlapped);
+          WaitForSingleObject(overlapped.hEvent, INFINITE);
+          CloseHandle(overlapped.hEvent);
+          return;
+        }
         CloseHandle(overlapped.hEvent);
-        return;
+        RefreshNow();
       }
-      if (wait != WAIT_OBJECT_0 + 1) {
-        CancelIPChangeNotify(&overlapped);
-        WaitForSingleObject(overlapped.hEvent, INFINITE);
-        CloseHandle(overlapped.hEvent);
-        return;
+    } catch (...) {
+      try {
+        log_.Warn(L"Network change watcher stopped after an exception");
+      } catch (...) {
       }
-      CloseHandle(overlapped.hEvent);
-      RefreshNow();
     }
   });
 }

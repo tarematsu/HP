@@ -70,6 +70,7 @@ class CloudClient {
   std::thread thread_;
   std::thread networkChangeThread_;
   HANDLE networkChangeStopEvent_{};
+  std::atomic<bool> started_{false};
   std::atomic<bool> stopping_{false};
   std::atomic<bool> immediate_{false};
   std::condition_variable wake_;
