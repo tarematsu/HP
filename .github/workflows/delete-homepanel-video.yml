@@ -1,0 +1,56 @@
+name: Delete retired HomePanel Video Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/delete-homepanel-video.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: homepanel-cloud-production
+  cancel-in-progress: false
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
+
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Delete homepanel-video
+        working-directory: hp
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(npm exec --workspace cloud -- wrangler delete --name homepanel-video --force 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "homepanel-video deleted."
+          elif grep -Eqi '(not found|does not exist|404|10090)' <<<"$output"; then
+            echo "homepanel-video is already absent."
+          else
+            exit "$status"
+          fi
