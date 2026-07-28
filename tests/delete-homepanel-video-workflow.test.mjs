@@ -18,3 +18,11 @@ test('retired HomePanel video deletion is production-only and idempotent', () =>
   assert.match(workflow, /not found\|does not exist\|404\|10090/);
   assert.match(workflow, /exit "\$status"/);
 });
+
+test('successful deletion publishes a queryable commit status', () => {
+  assert.match(workflow, /^  statuses: write$/m);
+  assert.match(workflow, /name: Publish deletion status/);
+  assert.match(workflow, /context: 'homepanel-video\/deleted'/);
+  assert.match(workflow, /state: 'success'/);
+  assert.match(workflow, /The retired homepanel-video Worker is absent\./);
+});
