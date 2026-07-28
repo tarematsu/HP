@@ -12,6 +12,9 @@ import {
   replaceActionsRunnerHealthSection,
 } from '../.github/scripts/github-actions-runner-health.mjs';
 import {
+  ACTIONS_RUNNER_TARGETS,
+} from '../.github/scripts/github-actions-runner-health-current.mjs';
+import {
   buildActionsRunnerHealthIssueBody,
 } from '../.github/scripts/publish-github-actions-runner-health.mjs';
 
@@ -21,10 +24,9 @@ const NOW = Date.parse('2026-07-26T15:00:00.000Z');
 const target = {
   name: 'Pages read models',
   workflow: 'run-pages-read-model-rebuild.yml',
-  cadenceMinutes: 15,
-  staleAfterMinutes: 40,
+  cadenceMinutes: 30,
+  staleAfterMinutes: 75,
   stalledAfterMinutes: 25,
-  ignoreExpectedWorkflowRunSkips: true,
 };
 
 function run(overrides = {}) {
@@ -74,12 +76,13 @@ test('runner health classifies fresh, running, failed, stalled, and stale operat
   assert.match(stalled.reason, /remained in_progress/);
 
   const stale = evaluateActionsRunnerHealth(target, [
-    run({ created_at: '2026-07-26T13:00:00.000Z', updated_at: '2026-07-26T13:03:00.000Z' }),
+    run({ created_at: '2026-07-26T12:00:00.000Z', updated_at: '2026-07-26T12:03:00.000Z' }),
   ], { now: NOW });
   assert.equal(stale.health, 'stale');
 });
 
-test('Pages health ignores expected workflow-run skips but retains real skipped runs', () => {
+test('expected workflow-run skips can be ignored without hiding scheduled skips', () => {
+  const skipTarget = { ...target, ignoreExpectedWorkflowRunSkips: true };
   const expectedSkip = run({
     id: 101,
     run_number: 21,
@@ -89,11 +92,11 @@ test('Pages health ignores expected workflow-run skips but retains real skipped 
     run_started_at: '2026-07-26T14:59:00.000Z',
     updated_at: '2026-07-26T14:59:01.000Z',
   });
-  const ignored = evaluateActionsRunnerHealth(target, [expectedSkip, run()], { now: NOW });
+  const ignored = evaluateActionsRunnerHealth(skipTarget, [expectedSkip, run()], { now: NOW });
   assert.equal(ignored.health, 'healthy');
   assert.equal(ignored.latest.id, 100);
 
-  const scheduledSkip = evaluateActionsRunnerHealth(target, [
+  const scheduledSkip = evaluateActionsRunnerHealth(skipTarget, [
     { ...expectedSkip, event: 'schedule' },
     run(),
   ], { now: NOW });
@@ -101,7 +104,7 @@ test('Pages health ignores expected workflow-run skips but retains real skipped 
   assert.equal(scheduledSkip.latest.id, 101);
 });
 
-test('runner health queries all main workflow runs and renders actionable links', async () => {
+test('runner health queries main workflow runs and renders actionable links', async () => {
   const calls = [];
   const results = await collectActionsRunnerHealth(async (method, path) => {
     calls.push([method, path]);
@@ -115,6 +118,23 @@ test('runner health queries all main workflow runs and renders actionable links'
   assert.match(summary, /Overall:\*\* healthy/);
   assert.match(summary, /operational workflow runs/);
   assert.match(summary, /\[#20\]\(https:\/\/github\.com\/tarematsu\/HP\/actions\/runs\/100\) success/);
+});
+
+test('current runner target set covers every operational scheduled workflow and its publishers', () => {
+  const byWorkflow = new Map(ACTIONS_RUNNER_TARGETS.map((entry) => [entry.workflow, entry]));
+  for (const workflow of [
+    'run-pages-read-model-rebuild.yml',
+    'run-runtime-offline-maintenance.yml',
+    'run-track-metadata-repair.yml',
+    'run-local-minute-facts-rebuild.yml',
+    'refresh-cloudflare-observability.yml',
+    'sh-observability.yml',
+    'publish-github-deployment-health.yml',
+    'publish-github-actions-runner-health.yml',
+  ]) assert.ok(byWorkflow.has(workflow), workflow);
+  assert.equal(byWorkflow.get('run-pages-read-model-rebuild.yml').cadenceMinutes, 30);
+  assert.ok(byWorkflow.get('run-pages-read-model-rebuild.yml').staleAfterMinutes >= 60);
+  assert.equal(new Set(ACTIONS_RUNNER_TARGETS.map((entry) => entry.workflow)).size, ACTIONS_RUNNER_TARGETS.length);
 });
 
 test('runner health marker is inserted once and replaced without erasing diagnostics', () => {
@@ -157,24 +177,31 @@ test('runner health publisher fits a replacement into a near-limit issue body', 
   assert.ok(body.length <= 65_000);
 });
 
-test('status writers share a non-cancelling issue lock', () => {
-  const healthWorkflow = read('.github/workflows/publish-github-actions-runner-health.yml');
-  const observabilityWorkflow = read('.github/workflows/sh-observability.yml');
-  for (const workflow of [healthWorkflow, observabilityWorkflow]) {
+test('all status writers share a non-cancelling issue lock', () => {
+  const workflows = [
+    read('.github/workflows/publish-github-actions-runner-health.yml'),
+    read('.github/workflows/publish-github-deployment-health.yml'),
+    read('.github/workflows/sh-observability.yml'),
+  ];
+  for (const workflow of workflows) {
     assert.match(workflow, /group: cloudflare-observability-status-issue/);
     assert.match(workflow, /cancel-in-progress: false/);
   }
 });
 
-test('lightweight workflow refreshes after observability, Pages completion, and workflow changes', () => {
+test('lightweight workflow refreshes after all operational workflows and synchronizes system status', () => {
   const workflow = read('.github/workflows/publish-github-actions-runner-health.yml');
-  assert.match(
-    workflow,
-    /workflows: \["Unified Cloudflare Observability", "Rebuild pages read models"\]/,
-  );
-  assert.match(workflow, /Unified observability can finish while the chained Pages run is still active/);
-  assert.match(workflow, /\.github\/workflows\/run-runtime-offline-maintenance\.yml/);
-  assert.match(workflow, /\.github\/workflows\/run-pages-read-model-rebuild\.yml/);
+  for (const name of [
+    'Unified Cloudflare Observability',
+    'Rebuild pages read models',
+    'Run runtime offline maintenance',
+    'Repair track metadata',
+    'Run local minute facts rebuild',
+    'Refresh Cloudflare observability',
+    'Publish GitHub deployment health',
+  ]) assert.match(workflow, new RegExp(name));
+  assert.match(workflow, /github-actions-runner-health-current\.mjs/);
+  assert.match(workflow, /observability-system-status\.mjs/);
   assert.match(workflow, /cron: '2,17,32,47 \* \* \* \*'/);
   assert.match(workflow, /actions: read/);
   assert.match(workflow, /issues: write/);

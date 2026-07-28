@@ -164,9 +164,9 @@ test('D1 query insights are manual-only and avoid installing Wrangler', () => {
   assert.doesNotMatch(d1Usage, /sleep ["']?\$|Waiting for the current PR deployment/);
 });
 
-test('unified Cloudflare observability runs after either deploy and daily at 01:00 UTC', () => {
+test('unified Cloudflare observability runs after production activity and daily at 01:00 UTC', () => {
   assert.match(observability, /^  workflow_run:\n/m);
-  assert.match(observability, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
+  assert.match(observability, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"\]/);
   assert.match(observability, /^  push:\n/m);
   assert.match(observability, /branches: \[main\]/);
   assert.match(observability, /\.github\/workflows\/sh-observability\.yml/);
@@ -193,10 +193,11 @@ test('unified Cloudflare observability runs after either deploy and daily at 01:
   assert.match(observability, /query-cloudflare-observability\.py/);
   assert.match(observability, /query-cloudflare-d1-costs\.py/);
   assert.match(observability, /audit-deployed-cloudflare-telemetry\.py/);
+  assert.match(observability, /audit-observability-collection\.mjs/);
   assert.match(observability, /LIVE_TAIL_LOG: live-tail\.log/);
   assert.doesNotMatch(observability, /audit-cloudflare-live-tail\.py/);
   assert.match(observability, /uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics/);
-  assert.match(observability, /live-tail-worker: sh-runtime-orchestrator/);
+  assert.match(observability, /live-tail-workers: \$\{\{ env\.CLOUDFLARE_WORKERS \}\}/);
   assert.match(observability, /live-tail-seconds: "90"/);
   assert.match(observability, /id: daily-budget/);
   assert.match(observability, /id: free-tier-budget/);

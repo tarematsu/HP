@@ -8,20 +8,27 @@ const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const action = read('.github/actions/cloudflare-observability-diagnostics/action.yml');
 const workflow = read('.github/workflows/sh-observability.yml');
 const resolver = read('.github/scripts/observability-workflow-outcome.mjs');
+const collectionAudit = read('.github/scripts/audit-observability-collection.mjs');
 
-test('shared diagnostics action owns persisted-query and live-tail orchestration', () => {
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud';
+
+test('shared diagnostics action owns persisted-query, public health, and fail-closed multi-Worker Live Tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
   assert.match(action, /node \.github\/scripts\/capture-cloudflare-live-tail\.mjs/);
-  assert.match(action, /wait "\$query_pid" \|\| query_status=\$\?/);
-  assert.match(action, /wait "\$tail_pid" \|\| true/);
+  assert.match(action, /live-tail-workers:/);
+  assert.match(action, /IFS=',' read -ra requested_workers/);
+  assert.match(action, /tail_pids\+=/);
+  assert.match(action, /wait "\$\{tail_pids\[\$index\]\}" \|\| worker_status=\$\?/);
+  assert.match(collectionAudit, /LIVE_TAIL_SUMMARY worker=/);
   assert.match(action, /^outputs:\n[\s\S]*query-outcome:/m);
-  assert.match(action, /id: collect/);
-  assert.match(action, /echo "query-outcome=\$query_outcome" >> "\$GITHUB_OUTPUT"/);
-  assert.match(action, /echo "public-health-outcome=\$public_health_outcome" >> "\$GITHUB_OUTPUT"/);
-  assert.doesNotMatch(action, /exit "\$health_status"/);
+  assert.match(action, /^outputs:\n[\s\S]*live-tail-outcome:/m);
+  assert.match(action, /echo "live-tail-outcome=\$live_tail_outcome" >> "\$GITHUB_OUTPUT"/);
+  assert.match(action, /Unsafe account-wide fallback was required/);
+  assert.doesNotMatch(action, /wait "\$tail_pid" \|\| true/);
+  assert.doesNotMatch(action, /set \+e[\s\S]*capture-cloudflare-live-tail/);
 });
 
-test('the unified workflow uses and retriggers the diagnostics action for HP and Stationhead', () => {
+test('the unified workflow covers all active HP and Stationhead Workers and folds collection gaps into the telemetry gate', () => {
   assert.match(
     workflow,
     /^\s{6}- '\.github\/actions\/cloudflare-observability-diagnostics\/action\.yml'$/m,
@@ -30,14 +37,11 @@ test('the unified workflow uses and retriggers the diagnostics action for HP and
     workflow,
     /^\s{8}uses: \.\/\.github\/actions\/cloudflare-observability-diagnostics$/m,
   );
-  assert.doesNotMatch(workflow, /query_pid=\$!/);
-  assert.match(workflow, /^\s{10}live-tail-worker: sh-runtime-orchestrator$/m);
-  assert.match(
-    workflow,
-    /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/,
-  );
-  assert.doesNotMatch(workflow, /homepanel-cloud,homepanel-video/);
-  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
+  assert.match(workflow, new RegExp(`CLOUDFLARE_WORKERS: ${workerList}`));
+  assert.match(workflow, /live-tail-workers: \$\{\{ env\.CLOUDFLARE_WORKERS \}\}/);
+  assert.match(workflow, /audit-observability-collection\.mjs/);
+  assert.match(workflow, /LIVE_TAIL_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.live-tail-outcome \}\}/);
+  assert.match(workflow, /PUBLIC_HEALTH_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.public-health-outcome \}\}/);
   assert.match(
     workflow,
     /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.query-outcome \}\}/,
@@ -45,7 +49,9 @@ test('the unified workflow uses and retriggers the diagnostics action for HP and
   assert.match(workflow, /name: Resolve semantic observability outcome/);
   assert.match(resolver, /readOptionalText\('public-health-endpoints\.md'\)/);
   assert.match(resolver, /observabilityIssueOverall/);
+  assert.match(resolver, /publishObservabilitySystemStatusFromEnvironment/);
   assert.match(workflow, /steps\.resolve-outcome\.outputs\.overall == 'failure'/);
+  assert.doesNotMatch(workflow, /homepanel-cloud,homepanel-video/);
   assert.doesNotMatch(
     workflow,
     /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outcome \}\}/,

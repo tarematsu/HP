@@ -37,3 +37,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOYMENT_HEALTH_ISSUE_NUMBER: '259'
         run: node .github/scripts/publish-github-deployment-health.mjs
+      - name: Synchronize unified system status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_STATUS_ISSUE_NUMBER: '259'
+        run: node .github/scripts/observability-system-status.mjs

@@ -226,11 +226,15 @@ test('Worker package scripts contain only the four active deployment and bundle 
   }
 });
 
-test('observability covers continuously invoked Workers while account budgets include recovery resources', () => {
-  for (const worker of ['sh-sakurazaka46jp', 'sh-buddies-collector', 'sh-runtime-orchestrator']) {
-    assert.match(observabilityWorkflow, new RegExp(worker));
+test('observability covers every active Stationhead Worker while account budgets include recovery resources', () => {
+  for (const worker of [
+    'sh-sakurazaka46jp',
+    'sh-buddies-recovery',
+    'sh-buddies-collector',
+    'sh-runtime-orchestrator',
+  ]) {
+    assert.match(observabilityWorkflow, new RegExp(`CLOUDFLARE_WORKERS:[^\\n]*${worker}`));
   }
-  assert.doesNotMatch(observabilityWorkflow, /CLOUDFLARE_WORKERS:[^\n]*sh-buddies-recovery/);
   assert.match(observabilityWorkflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc/);
   for (const retired of [
     'sh-buddies-ingest',

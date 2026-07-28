@@ -6,10 +6,13 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 const root = new URL('../', import.meta.url);
 
+const workerList = 'sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud';
+
 test('HomePanel observability is covered by the canonical unified workflow and issue', async () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const publisher = readSource('.github/scripts/publish-cloudflare-observability-status.mjs');
   const deployedTelemetry = readSource('.github/scripts/audit-deployed-cloudflare-telemetry.py');
+  const collectionAudit = readSource('.github/scripts/audit-observability-collection.mjs');
   const unifiedCi = readSource('.github/workflows/homepanel-unified-ci.yml');
   const usageDocumentation = readSource('hp/cloud/D1_USAGE_MEASUREMENT.md');
 
@@ -17,7 +20,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'name: Unified Cloudflare Observability',
     'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
     ".github/workflows/publish-github-actions-runner-health.yml",
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    `CLOUDFLARE_WORKERS: ${workerList}`,
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
@@ -25,6 +28,8 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'D1_INSIGHTS_OUTCOME',
     'Collect top D1 queries by rows read',
     'query-cloudflare-d1-costs.py',
+    'audit-observability-collection.mjs',
+    'live-tail-workers: ${{ env.CLOUDFLARE_WORKERS }}',
     'publish-cloudflare-observability-status.mjs',
     'cloudflare-observability-report-unified-',
     'Deferring unified Cloudflare diagnostics until production deployment completes.',
@@ -40,6 +45,17 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     "readOptionalJson('active-worker-deployments.json')",
     'publishCommitStatuses',
     'upsertStatusIssue',
+  ]);
+  expectAll(collectionAudit, [
+    "'sh-buddies-recovery'",
+    "'homepanel-cloud'",
+    'Configured Worker contract',
+    'Active deployment:',
+    'Metrics row:',
+    'Telemetry audit:',
+    'Live tail:',
+    'Public health snapshot',
+    'Persisted diagnostic filter integrity',
   ]);
   expectAll(deployedTelemetry, [
     'CRON_COVERAGE_INGESTION_GRACE_SECONDS',
@@ -61,6 +77,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'python3 .github/scripts/audit-deployed-cloudflare-telemetry.py --self-test',
     'python3 .github/scripts/query-cloudflare-d1-costs.py --self-test',
     'tests/homepanel-*.test.mjs',
+    'tests/observability-*.test.mjs',
   ]);
   expectAll(usageDocumentation, [
     '.github/workflows/sh-observability.yml',

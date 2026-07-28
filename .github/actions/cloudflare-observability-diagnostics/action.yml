@@ -1,11 +1,16 @@
 name: Run Cloudflare observability diagnostics
 description: Collect persisted telemetry, live-tail diagnostics, and public health snapshots in parallel
 inputs:
+  live-tail-workers:
+    description: Comma-separated Cloudflare Worker scripts to observe with Live Tail
+    required: false
+    default: ''
   live-tail-worker:
-    description: Cloudflare Worker script to observe with Live Tail
-    required: true
+    description: Deprecated single Worker fallback for callers not yet using live-tail-workers
+    required: false
+    default: ''
   live-tail-seconds:
-    description: Number of seconds to keep Live Tail open
+    description: Number of seconds to keep each Live Tail open
     required: false
     default: '90'
   live-tail-probes:
@@ -19,6 +24,9 @@ outputs:
   public-health-outcome:
     description: Result of public health endpoint capture
     value: ${{ steps.collect.outputs.public-health-outcome }}
+  live-tail-outcome:
+    description: Result of Live Tail collection across every requested Worker
+    value: ${{ steps.collect.outputs.live-tail-outcome }}
 runs:
   using: composite
   steps:
@@ -26,6 +34,7 @@ runs:
       id: collect
       shell: bash
       env:
+        LIVE_TAIL_WORKERS: ${{ inputs.live-tail-workers }}
         LIVE_TAIL_WORKER: ${{ inputs.live-tail-worker }}
         LIVE_TAIL_SECONDS: ${{ inputs.live-tail-seconds }}
         LIVE_TAIL_PROBES: ${{ inputs.live-tail-probes }}
@@ -39,23 +48,57 @@ runs:
         ) &
         query_pid=$!
         (
-          set +e
-          node .github/scripts/capture-cloudflare-live-tail.mjs 2>&1 | tee live-tail.log
-          exit 0
-        ) &
-        tail_pid=$!
-        (
           PUBLIC_HEALTH_OUTPUT=public-health-endpoints.md \
             node .github/scripts/capture-public-health-endpoints.mjs \
             > public-health-endpoints.log 2>&1
         ) &
         health_pid=$!
 
+        mkdir -p live-tail
+        tail_worker_list="${LIVE_TAIL_WORKERS:-${LIVE_TAIL_WORKER:-}}"
+        declare -a tail_pids=()
+        declare -a tail_workers=()
+        declare -a tail_logs=()
+        IFS=',' read -ra requested_workers <<< "$tail_worker_list"
+        for raw_worker in "${requested_workers[@]}"; do
+          worker="$(printf '%s' "$raw_worker" | xargs)"
+          [[ -n "$worker" ]] || continue
+          safe_worker="${worker//[^A-Za-z0-9._-]/_}"
+          log="live-tail/${safe_worker}.log"
+          (
+            LIVE_TAIL_WORKER="$worker" \
+              node .github/scripts/capture-cloudflare-live-tail.mjs \
+              > "$log" 2>&1
+          ) &
+          tail_pids+=("$!")
+          tail_workers+=("$worker")
+          tail_logs+=("$log")
+        done
+
         query_status=0
         health_status=0
+        tail_status=0
         wait "$query_pid" || query_status=$?
-        wait "$tail_pid" || true
         wait "$health_pid" || health_status=$?
+
+        : > live-tail.log
+        if (( ${#tail_pids[@]} == 0 )); then
+          echo "::error title=Cloudflare Live Tail unavailable::No Worker list was supplied"
+          tail_status=1
+        fi
+        for index in "${!tail_pids[@]}"; do
+          worker="${tail_workers[$index]}"
+          log="${tail_logs[$index]}"
+          worker_status=0
+          wait "${tail_pids[$index]}" || worker_status=$?
+          if [[ -f "$log" ]]; then
+            cat "$log" | tee -a live-tail.log
+          fi
+          if (( worker_status != 0 )); then
+            echo "::error title=Cloudflare Live Tail unavailable::worker=$worker exit_code=$worker_status"
+            tail_status=1
+          fi
+        done
 
         aggregate_error_only=0
         if (( query_status != 0 )) && \
@@ -78,10 +121,19 @@ runs:
         if (( query_status != 0 && aggregate_error_only == 0 )); then
           query_outcome=failure
         fi
+        if grep -q '^::warning title=Telemetry filter fallback::' observability-query.log; then
+          echo "::error title=Persisted telemetry filter integrity::Unsafe account-wide fallback was required; monitored Worker errors may have been truncated"
+          query_outcome=failure
+        fi
         public_health_outcome=success
         if (( health_status != 0 )); then
           public_health_outcome=failure
         fi
+        live_tail_outcome=success
+        if (( tail_status != 0 )); then
+          live_tail_outcome=failure
+        fi
         echo "query-outcome=$query_outcome" >> "$GITHUB_OUTPUT"
         echo "public-health-outcome=$public_health_outcome" >> "$GITHUB_OUTPUT"
+        echo "live-tail-outcome=$live_tail_outcome" >> "$GITHUB_OUTPUT"
         exit 0

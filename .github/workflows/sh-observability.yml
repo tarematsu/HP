@@ -14,6 +14,7 @@ on:
       - '.github/actions/cloudflare-observability-diagnostics/action.yml'
       - '.github/scripts/audit-cloudflare-*.py'
       - '.github/scripts/audit-deployed-cloudflare-telemetry.py'
+      - '.github/scripts/audit-observability-collection.mjs'
       - '.github/scripts/cloudflare_free_tier_audit.py'
       - '.github/scripts/audit-observability-budget-gates.py'
       - '.github/scripts/query-cloudflare-observability.py'
@@ -95,7 +96,7 @@ jobs:
       group: cloudflare-observability-status-issue
       cancel-in-progress: false
     env:
-      CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud
+      CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud
       D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       D1_QUERY_OUTPUT_DIR: d1-insights
       D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
@@ -172,26 +173,51 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/cloudflare-observability-diagnostics
         with:
-          live-tail-worker: sh-runtime-orchestrator
+          live-tail-workers: ${{ env.CLOUDFLARE_WORKERS }}
           live-tail-seconds: "90"
 
-      - name: Enforce current-deployment persisted and live CPU policy
+      - name: Enforce current-deployment telemetry and collection integrity
         id: telemetry-policy
         continue-on-error: true
         env:
           LIVE_TAIL_LOG: live-tail.log
           ACTIVE_WORKER_DEPLOYMENTS_OUTPUT: active-worker-deployments.json
+          PUBLIC_HEALTH_OUTCOME: ${{ steps.observability-query.outputs.public-health-outcome }}
+          LIVE_TAIL_OUTCOME: ${{ steps.observability-query.outputs.live-tail-outcome }}
         shell: bash
         run: |
           set -o pipefail
           actual_summary="$GITHUB_STEP_SUMMARY"
+          telemetry_status=0
+          collection_status=0
+
           GITHUB_STEP_SUMMARY=telemetry-summary.md \
             python3 .github/scripts/audit-deployed-cloudflare-telemetry.py 2>&1 | tee telemetry-audit.log
-          status=${PIPESTATUS[0]}
+          telemetry_status=${PIPESTATUS[0]}
+
+          GITHUB_STEP_SUMMARY=collection-summary.md \
+            node .github/scripts/audit-observability-collection.mjs 2>&1 | tee collection-audit.log
+          collection_status=${PIPESTATUS[0]}
+
+          if [[ "$PUBLIC_HEALTH_OUTCOME" != 'success' ]]; then
+            echo "::error title=Public health collection failed::outcome=$PUBLIC_HEALTH_OUTCOME"
+            collection_status=1
+          fi
+          if [[ "$LIVE_TAIL_OUTCOME" != 'success' ]]; then
+            echo "::error title=Live Tail collection failed::outcome=$LIVE_TAIL_OUTCOME"
+            collection_status=1
+          fi
+
           if [[ -f telemetry-summary.md ]]; then
             cat telemetry-summary.md >> "$actual_summary"
           fi
-          exit "$status"
+          if [[ -f collection-summary.md ]]; then
+            cat collection-summary.md >> "$actual_summary"
+            cat collection-summary.md >> telemetry-summary.md
+          fi
+          if (( telemetry_status != 0 || collection_status != 0 )); then
+            exit 1
+          fi
 
       - name: Resolve semantic observability outcome
         id: resolve-outcome
@@ -258,8 +284,11 @@ jobs:
             public-health-endpoints.log
             telemetry-summary.md
             telemetry-audit.log
+            collection-summary.md
+            collection-audit.log
             active-worker-deployments.json
             live-tail.log
+            live-tail/
           if-no-files-found: warn
           retention-days: 1
 

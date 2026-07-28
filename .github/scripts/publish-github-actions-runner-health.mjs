@@ -19,7 +19,7 @@ import {
   extractActionsRunnerHealthBlock,
   renderActionsRunnerHealthSummary,
   replaceActionsRunnerHealthSection,
-} from './github-actions-runner-health.mjs';
+} from './github-actions-runner-health-current.mjs';
 
 const STATUS_MARKER = '<!-- cloudflare-observability-status -->';
 const MAX_RUNNER_HEALTH_ISSUE_BODY_CHARS = Math.max(MAX_ISSUE_BODY_CHARS, 65_000);
@@ -30,7 +30,7 @@ const RUNNER_HEALTH_BLOCK_OVERHEAD = ACTIONS_RUNNER_HEALTH_START.length
 
 export function publisherActionsRunnerTargets(targets = ACTIONS_RUNNER_TARGETS) {
   return (Array.isArray(targets) ? targets : []).map((target) => (
-    target?.workflow === 'run-pages-read-model-rebuild.yml'
+    target.workflow === 'run-pages-read-model-rebuild.yml'
       ? { ...target, staleAfterMinutes: Math.max(Number(target.staleAfterMinutes) || 0, 60) }
       : { ...target }
   ));

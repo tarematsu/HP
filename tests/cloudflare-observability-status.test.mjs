@@ -39,6 +39,12 @@ test('unified observability issue body includes HP and Stationhead deployment co
       telemetry: 'Authorization: Bearer secret-value',
     },
     activeDeployments: {
+      'sh-buddies-recovery': {
+        status: 'active',
+        deployment_id: 'deployment-recovery',
+        version_ids: ['version-recovery'],
+        created_on: '2026-07-25T00:54:00Z',
+      },
       'sh-runtime-orchestrator': {
         status: 'active',
         deployment_id: 'deployment-sh',
@@ -67,6 +73,8 @@ test('unified observability issue body includes HP and Stationhead deployment co
   assert.match(body, /\| d1Insights \| success \|/);
   assert.match(body, /Workflow source commit:\*\* `abcdef123456`/);
   assert.match(body, /Current main SHA:\*\* `fedcba654321`/);
+  assert.match(body, /deployment-recovery/);
+  assert.match(body, /version-recovery/);
   assert.match(body, /deployment-sh/);
   assert.match(body, /deployment-hp/);
   assert.match(body, /version-sh/);
@@ -86,8 +94,8 @@ test('unified workflow publishes one retrievable account-wide status', async () 
   const deployWorkflow = await readFile(new URL('.github/workflows/deploy-split-pipeline.yml', root), 'utf8');
   const publisher = await readFile(new URL('.github/scripts/publish-cloudflare-observability-status.mjs', root), 'utf8');
 
-  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services"\]/);
-  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/);
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"\]/);
+  assert.match(workflow, /CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud/);
   assert.doesNotMatch(workflow, /homepanel-cloud,homepanel-video/);
   assert.match(workflow, /D1_CONFIG_GLOBS: worker\/wrangler\*\.jsonc,site\/wrangler\.jsonc,hp\/cloud\/wrangler\.jsonc/);
   assert.doesNotMatch(workflow, /hp\/video\/wrangler\.jsonc/);
