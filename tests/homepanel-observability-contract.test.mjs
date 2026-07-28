@@ -13,6 +13,8 @@ test('HomePanel observability is covered by the canonical unified workflow and i
   const publisher = readSource('.github/scripts/publish-cloudflare-observability-status.mjs');
   const deployedTelemetry = readSource('.github/scripts/audit-deployed-cloudflare-telemetry.py');
   const collectionAudit = readSource('.github/scripts/audit-observability-collection.mjs');
+  const publicHealth = readSource('.github/scripts/capture-public-health-endpoints.mjs');
+  const publicUrlResolver = readSource('.github/scripts/cloudflare-worker-public-url.mjs');
   const unifiedCi = readSource('.github/workflows/homepanel-unified-ci.yml');
   const usageDocumentation = readSource('hp/cloud/D1_USAGE_MEASUREMENT.md');
 
@@ -21,6 +23,8 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'workflows: ["Deploy production", "Deploy HomePanel Cloud services", "Run runtime offline maintenance"]',
     ".github/workflows/publish-github-actions-runner-health.yml",
     `CLOUDFLARE_WORKERS: ${workerList}`,
+    'CLOUDFLARE_PUBLIC_HEALTH_WORKERS: "HomePanel Cloud health|homepanel-cloud|/api/health"',
+    '.github/scripts/cloudflare-worker-public-url.mjs',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
@@ -33,6 +37,7 @@ test('HomePanel observability is covered by the canonical unified workflow and i
     'publish-cloudflare-observability-status.mjs',
     'cloudflare-observability-report-unified-',
     'Deferring unified Cloudflare diagnostics until production deployment completes.',
+    'Fail when current-main observability remains unhealthy',
   ]);
   expectNone(workflow, ['homepanel-video', 'hp/video/wrangler.jsonc']);
   expectAll(publisher, [
@@ -49,13 +54,29 @@ test('HomePanel observability is covered by the canonical unified workflow and i
   expectAll(collectionAudit, [
     "'sh-buddies-recovery'",
     "'homepanel-cloud'",
+    "'Unified health'",
+    "'HomePanel Cloud health'",
     'Configured Worker contract',
     'Active deployment:',
     'Metrics row:',
     'Telemetry audit:',
     'Live tail:',
-    'Public health snapshot',
+    'Public health:',
     'Persisted diagnostic filter integrity',
+  ]);
+  expectAll(publicHealth, [
+    'DEFAULT_PUBLIC_HEALTH_ENDPOINTS',
+    'DEFAULT_CLOUDFLARE_PUBLIC_HEALTH_WORKERS',
+    "scriptName: 'homepanel-cloud'",
+    "path: '/api/health'",
+    'resolveCloudflareWorkerPublicUrl',
+    'results.some((result) => !result.ok)',
+  ]);
+  expectAll(publicUrlResolver, [
+    '/workers/subdomain',
+    '/workers/scripts/${encodedWorker}/subdomain',
+    'result?.enabled !== true',
+    '.workers.dev',
   ]);
   expectAll(deployedTelemetry, [
     'CRON_COVERAGE_INGESTION_GRACE_SECONDS',
