@@ -181,27 +181,36 @@ SensorHub::~SensorHub() { Stop(); }
 void SensorHub::Start() {
   stopping_ = false;
   ApplyCloudSwitchBot(switchbotPath_);
-  serialThread_ = std::thread([this] {
-    try {
-      SerialLoop();
-    } catch (const std::exception& error) {
-      log_.Warn(L"Sensor thread stopped after exception: " + Utf8ToWide(error.what()));
-      {
-        std::lock_guard lock(mutex_);
-        state_.co2Connected = false;
-        state_.lastError = L"UD-CO2S sensor thread failed";
+  try {
+    serialThread_ = std::thread([this] {
+      const auto publishFailure = [this]() noexcept {
+        try {
+          std::lock_guard lock(mutex_);
+          state_.co2Connected = false;
+          state_.lastError = L"UD-CO2S sensor thread failed";
+        } catch (...) {
+        }
+        if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+      };
+
+      try {
+        SerialLoop();
+      } catch (const std::exception& error) {
+        try {
+          log_.Warn(L"Sensor thread stopped after exception: " + Utf8ToWide(error.what()));
+        } catch (...) {
+          log_.Warn(L"Sensor thread stopped while formatting exception diagnostics");
+        }
+        publishFailure();
+      } catch (...) {
+        log_.Warn(L"Sensor thread stopped after an unknown exception");
+        publishFailure();
       }
-      if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
-    } catch (...) {
-      log_.Warn(L"Sensor thread stopped after an unknown exception");
-      {
-        std::lock_guard lock(mutex_);
-        state_.co2Connected = false;
-        state_.lastError = L"UD-CO2S sensor thread failed";
-      }
-      if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
-    }
-  });
+    });
+  } catch (...) {
+    stopping_ = true;
+    throw;
+  }
   log_.Info(L"SwitchBot input uses Cloudflare/OpenAPI; native BLE watcher is disabled");
 }
 
