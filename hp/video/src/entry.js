@@ -1,9 +1,12 @@
 import core from './entry-core.js';
+import { LIVENESS_CRON } from './liveness-schedule.js';
 
 export { VideoFeedCoordinator } from './video-feed-coordinator.js';
 
 const INTERNAL_HEADER = 'X-HomePanel-Internal-Service';
 const INTERNAL_VALUE = 'homepanel-cloud';
+const LIVENESS_COORDINATOR_NAME = 'video-liveness';
+const LIVENESS_COORDINATOR_URL = 'https://homepanel.internal/video-liveness-run';
 
 async function healthResponse(env) {
   try {
@@ -30,6 +33,16 @@ async function healthResponse(env) {
   }
 }
 
+async function dispatchLiveness(env) {
+  const response = await env.SCHEDULER_COORDINATOR
+    .getByName(LIVENESS_COORDINATOR_NAME)
+    .fetch(LIVENESS_COORDINATOR_URL, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`video liveness coordinator returned ${response.status}`);
+  }
+  return response.json();
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
@@ -52,6 +65,15 @@ export default {
   },
 
   scheduled(controller, env, ctx) {
-    return core.scheduled(controller, env, ctx);
+    if (controller.cron !== LIVENESS_CRON) return core.scheduled(controller, env, ctx);
+    ctx.waitUntil(
+      dispatchLiveness(env).catch((error) => {
+        console.error('scheduled-video-liveness-dispatch-failed', {
+          cron: controller.cron,
+          error: String(error?.message || error)
+        });
+        throw error;
+      })
+    );
   }
 };
