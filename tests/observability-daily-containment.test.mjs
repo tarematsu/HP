@@ -243,7 +243,7 @@ test('trend classification fails closed across UTC dates or short samples', () =
   assert.equal(shortPaces.rowsWritten, null);
 });
 
-test('issue builder publishes read and write snapshot pace in daily diagnostics', () => {
+test('contained historical daily breach publishes a successful Cloudflare status', () => {
   const body = buildIssueBody({
     generatedAt,
     targetSha: 'abc',
@@ -258,5 +258,5 @@ test('issue builder publishes read and write snapshot pace in daily diagnostics'
   assert.match(body, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
   assert.match(body, /### D1 snapshot delta pace/);
   assert.match(body, /D1 rows written \| \+759 \| 41m \| 26,486\/day \| 100,000\/day \| 26\.5%/);
-  assert.match(body, /\*\*Cloudflare status:\*\* failure/);
+  assert.match(body, /\*\*Cloudflare status:\*\* success/);
 });

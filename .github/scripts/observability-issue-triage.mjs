@@ -173,8 +173,16 @@ export function observabilityIssueOverall({
   previousIssueBody = '',
   generatedAt = '',
 }) {
+  const dailyTrend = classifyDailyRowsReadTrend({
+    currentSummary: summaries.daily,
+    previousIssueBody,
+    generatedAt,
+  });
   const gatesHealthy = Object.keys(OBSERVABILITY_GATE_INFO)
-    .every((key) => normalizeOutcome(outcomes[key]) === 'success');
+    .every((key) => (
+      normalizeOutcome(outcomes[key]) === 'success'
+      || (key === 'daily' && dailyTrend?.contained)
+    ));
   const d1Paces = classifyDailyD1SnapshotPaces({
     currentSummary: summaries.daily,
     previousIssueBody,
