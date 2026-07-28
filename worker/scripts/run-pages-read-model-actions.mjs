@@ -19,6 +19,7 @@ const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const DEFAULT_TRACK_HISTORY_STEPS = 4;
 const MAX_TRACK_HISTORY_STEPS = 16;
+const HISTORY_REFRESH_PHASE_MINUTES = 4;
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
@@ -38,22 +39,20 @@ function wrangler(args, options = {}) {
 export function dueVariantKeys(now) {
   const minute = Math.floor(Number(now) / 60_000);
   const due = new Set(['dashboard']);
-  if (minute % 60 === 4) due.add('history:daily');
-  if (minute % 180 === 4) {
-    due.add('history:weekly');
-    due.add('history:broadcasts');
-  }
-  if (minute % 360 === 4) due.add('history:monthly');
-  if (minute % 1440 === 4) {
-    due.add('host-history:summary');
-    due.add('track-history');
+  for (const variant of MATERIALIZED_API_VARIANTS) {
+    if (variant.key === 'dashboard') continue;
+    const cadence = Math.trunc(Number(variant.cadence_minutes));
+    if (!Number.isFinite(cadence) || cadence <= 0) continue;
+    if (minute % cadence === Math.min(HISTORY_REFRESH_PHASE_MINUTES, cadence - 1)) {
+      due.add(variant.key);
+    }
   }
   return due;
 }
 
 async function responseHandler(modelKey) {
   if (modelKey === 'dashboard') return (await import('../../site/functions/api/dashboard.js')).onRequestGet;
-  if (modelKey.startsWith('history:')) return (await import('../../site/functions/api/history.js')).onRequestGet;
+  if (modelKey.startsWith('history:')) return (await import('../../site/functions/lib/materialized-history.js')).onRequestGet;
   if (modelKey === 'host-history:summary') return (await import('../../site/functions/api/host-history.js')).onRequestGet;
   if (modelKey === 'track-history') return (await import('../../site/functions/api/track-history.js')).onRequestGet;
   throw new Error(`unsupported Actions read model: ${modelKey}`);
