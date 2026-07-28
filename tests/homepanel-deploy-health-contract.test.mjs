@@ -21,8 +21,11 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
     'wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud',
     'name: Verify deployed readiness',
     'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
+    '--output "$output" --write-out "%{http_code}"',
+    'cat "$output" || true',
     'payload?.ok !== true',
     'payload?.service !== "homepanel-video"',
+    'Unexpected HomePanel public health response (HTTP ${status})',
     'name: Verify authenticated deployed readiness',
     'HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}',
     'Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification',
@@ -30,8 +33,10 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
     '$HOMEPANEL_BASE_URL/v1/ready',
     'payload?.service !== "homepanel-cloud"',
     'checks.some(check => check?.ok !== true)',
+    'Unexpected HomePanel readiness response (HTTP ${status})',
   ]) assert.match(workflow, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
+  assert.doesNotMatch(workflow, /curl --fail/);
   assert.doesNotMatch(workflow, /HOMEPANEL_READY_TOKEN/);
   assert.doesNotMatch(workflow, /HOMEPANEL_API_TOKEN/);
   assert.doesNotMatch(workflow, /secrets\.API_TOKEN/);
