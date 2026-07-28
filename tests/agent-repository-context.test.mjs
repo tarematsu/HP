@@ -10,7 +10,6 @@ const SH_CONFIGS = [
 ];
 const HP_CONFIGS = [
   'hp/cloud/wrangler.jsonc',
-  'hp/video/wrangler.jsonc',
 ];
 
 async function source(path) {
@@ -27,12 +26,14 @@ test('agent instructions pin the HP monorepo and active Cloudflare topology', as
   assert.match(instructions, /browser tab/);
   assert.match(instructions, /Stationhead: `worker\/`, `site\/`, `database\/`/);
   assert.match(instructions, /HomePanel Cloud: `hp\/cloud\/`/);
-  assert.match(instructions, /HomePanel Video: `hp\/video\/`/);
+  assert.match(instructions, /HomePanel Video runtime and assets: `hp\/video\/`/);
+  assert.match(instructions, /integrated into `homepanel-cloud`/);
   assert.match(instructions, /HomePanel Native: `hp\/native\/`/);
 
   for (const path of [...SH_CONFIGS, ...HP_CONFIGS]) {
     assert.match(instructions, new RegExp(path.replaceAll('.', '\\.')));
   }
+  assert.doesNotMatch(instructions, /hp\/video\/wrangler\.jsonc/);
   assert.doesNotMatch(instructions, /worker\/wrangler\.ingest\.jsonc/);
   assert.doesNotMatch(instructions, /worker\/wrangler\.minute-enrichment\.jsonc/);
 
