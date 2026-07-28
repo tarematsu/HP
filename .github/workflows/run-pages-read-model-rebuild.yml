@@ -12,6 +12,7 @@ on:
       - '.github/workflows/run-pages-read-model-rebuild.yml'
       - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'worker/scripts/run-pages-read-model-actions.mjs'
+      - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
       - 'worker/src/pages-**'
       - 'site/functions/api/dashboard.js'
@@ -84,18 +85,23 @@ jobs:
             echo "- Projected UTC-day reads: ${{ steps.d1-write-budget.outputs.projected_rows_read }} / ${{ steps.d1-write-budget.outputs.read_limit }}"
             echo "- Hourly writes: ${{ steps.d1-write-budget.outputs.rows_written }} / ${{ steps.d1-write-budget.outputs.limit }}"
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Record D1 budget skip
+      - name: Record D1 budget deferral
         if: steps.d1-write-budget.outputs.allowed != 'true'
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Skipping Actions read-model/history generation: D1 telemetry is unavailable, so the guard failed closed. Existing KV/R2 responses remain active." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model and history generation because usage telemetry is unavailable. Existing KV/R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           else
-            echo "Skipping Actions read-model/history generation: D1 usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model and history generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
-        if: steps.d1-write-budget.outputs.allowed == 'true'
         run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Refresh critical dashboard during D1 budget deferral
+        if: steps.d1-write-budget.outputs.allowed != 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Rebuild track history and publish due variants
         if: steps.d1-write-budget.outputs.allowed == 'true'
         shell: bash
