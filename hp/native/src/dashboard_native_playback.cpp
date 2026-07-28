@@ -217,7 +217,6 @@ bool ParseDashboardPayload(const fs::path& dataDir,
         currentIndex >= static_cast<int>(projection.queue.size())) {
       currentIndex = -1;
     }
-
     const bool paused = BooleanOrNumber(status, L"is_paused");
     const bool playingSignal = BooleanOrNumber(
         status, L"playing", BooleanOrNumber(root, L"playing"));
@@ -462,7 +461,18 @@ void Renderer::StartNativePlaybackBridge() {
     }
   }
 
-  nativePlaybackThread_ = std::thread([this] { NativePlaybackLoop(); });
+  nativePlaybackThread_ = std::thread([this] {
+    for (;;) {
+      try {
+        NativePlaybackLoop();
+        return;
+      } catch (...) {
+        OutputDebugStringW(L"HomePanel native playback thread recovered from an exception\n");
+        if (nativePlaybackStopping_.load(std::memory_order_acquire)) return;
+        Sleep(1'000);
+      }
+    }
+  });
 }
 
 void Renderer::StopNativePlaybackBridge() noexcept {
