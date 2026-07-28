@@ -264,8 +264,17 @@ export function normalizedTrackSpotifyId(track) {
   return spotifyId || null;
 }
 
+function canonicalizeStructuralTracks(payload) {
+  for (const track of Array.isArray(payload?.tracks) ? payload.tracks : []) {
+    track.spotify_id = normalizedTrackSpotifyId(track);
+    track.isrc = normalizedTrackIsrc(track);
+  }
+  return payload;
+}
+
 export function queueStructuralPayload(data) {
-  if (data?.[QUEUE_STRUCTURAL_PAYLOAD]) return data[QUEUE_STRUCTURAL_PAYLOAD];
+  const cached = data?.[QUEUE_STRUCTURAL_PAYLOAD];
+  if (cached) return canonicalizeStructuralTracks(cached);
   return {
     station_id: num(data?.station_id),
     queue_id: num(data?.queue_id),
