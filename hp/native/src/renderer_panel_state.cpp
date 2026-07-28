@@ -76,7 +76,13 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   if (historyChanged) {
     nativeAirHistory_ = state.airHistory;
     historyRevisions.air = state.airHistoryRevision;
-    RebuildNativeAirGraph(UnixMillis());
+    if (nativeDashboardVisible_) {
+      RebuildNativeAirGraph(UnixMillis());
+    } else {
+      // Keep the compact source history current but defer the filtered graph
+      // allocation and projection pass until Main becomes visible again.
+      nativeAirGraph_ = {};
+    }
   }
   if (sensorsChanged || historyChanged) ++nativeAirRenderRevision_;
   if (stationheadHistoryChanged) {
@@ -91,6 +97,10 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     renderedDashboardRevisions_.energy = dashboardRevisions_.energy;
   }
 
+  // Hidden child windows cannot display invalidations. Avoid window traversal,
+  // region allocation and paint-message traffic while Stationhead/Auth owns the
+  // screen; SetVisible(true) rebuilds projections and invalidates every panel.
+  if (!nativeDashboardVisible_) return;
   if (!EnsureNativeStaticWindows()) return;
   if (sensorsChanged || historyChanged) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
