@@ -90,9 +90,9 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Deferring D1-heavy read-model and history generation because usage telemetry is unavailable. The bounded dashboard refresh will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model and history generation because usage telemetry is unavailable. Existing KV/R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           else
-            echo "Deferring D1-heavy read-model and history generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). The bounded dashboard refresh will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model and history generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
