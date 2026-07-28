@@ -7,12 +7,12 @@ type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migratio
 
 const MANIFEST_KEY = "updates/latest/update-manifest.json";
 
-function manifest(version: string): string {
+function manifest(version: string, homePanelHash = "a".repeat(64)): string {
   return JSON.stringify({
     version,
     signed: false,
     files: [
-      { name: "HomePanel.exe", sha256: "a".repeat(64), size: 1 },
+      { name: "HomePanel.exe", sha256: homePanelHash, size: 1 },
       { name: "HomePanelUpdater.exe", sha256: "b".repeat(64), size: 1 },
       { name: "WebView2Loader.dll", sha256: "c".repeat(64), size: 1 },
     ],
@@ -79,6 +79,25 @@ describe("cloud-driven update check", () => {
     await runUpdateCheck(scoped);
     commands = await pendingCommands();
     expect(commands).toHaveLength(4);
+  });
+
+  it("records a same-version manifest hash change without auto-installing it", async () => {
+    const scoped = updateEnv();
+    await env.UPDATE_BUCKET!.put(MANIFEST_KEY, manifest("2607100001"));
+    await runUpdateCheck(scoped);
+
+    await env.UPDATE_BUCKET!.put(
+      MANIFEST_KEY,
+      manifest("2607100001", "d".repeat(64)),
+    );
+    await runUpdateCheck(scoped);
+    expect(await pendingCommands()).toHaveLength(0);
+
+    await env.UPDATE_BUCKET!.put(MANIFEST_KEY, manifest("2607100002"));
+    await runUpdateCheck(scoped);
+    const commands = await pendingCommands();
+    expect(commands).toHaveLength(1);
+    expect(commands[0]?.payload).toContain("2607100002");
   });
 
   it("accepts unauthenticated pings and throttles repeats", async () => {
