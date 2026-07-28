@@ -70,6 +70,13 @@ async function fetchJobLog(repository, token, jobId) {
   return response.ok ? response.text() : '';
 }
 
+export function extractCurrentDeploymentError(logText, options = {}) {
+  const explicit = String(logText || '')
+    .split(/\r?\n/)
+    .filter((line) => /HomePanel deploy failed/i.test(line));
+  return extractDeploymentError(explicit.length ? explicit.join('\n') : logText, options);
+}
+
 function component({ workflow, target, step, error, run }) {
   const result = step ? normalized(step.conclusion || step.status) : 'unknown';
   return {
@@ -164,7 +171,7 @@ async function collectCurrentHomePanelDeployment(request, {
     const jobs = Array.isArray(jobsResponse?.jobs) ? jobsResponse.jobs : [];
     const failedJob = jobs.find((job) => FAILURE_CONCLUSIONS.has(normalized(job?.conclusion))) || null;
     const log = await fetchJobLog(repository, token, failedJob?.id);
-    const jobError = failedJob ? extractDeploymentError(log) : '';
+    const jobError = failedJob ? extractCurrentDeploymentError(log) : '';
     return summarizeCurrentHomePanelDeployment({ run, jobs, jobError });
   } catch (error) {
     return {
