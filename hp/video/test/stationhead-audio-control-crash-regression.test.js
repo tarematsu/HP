@@ -19,15 +19,17 @@ test('A/B and MUTE actions only update the persistent playback WebView', () => {
   const audioApplication = section(
     audioSource,
     'void StationheadPlayer::ApplyMute() const noexcept',
-    '// Window B\'s isolated WebView2 environment',
+    'void StationheadPlayer::ApplyVolume() const noexcept',
   );
 
-  assert.match(audioApplication, /webview_\.As\(&audio\)/);
+  assert.match(audioApplication, /ComPtr<ICoreWebView2> webview = webview_/);
+  assert.match(audioApplication, /webview\.As\(&audio\)/);
   assert.match(audioApplication, /audio->put_IsMuted/);
   assert.doesNotMatch(audioApplication, /authWebview_/);
+  assert.doesNotMatch(audioApplication, /ApplyVolume|ExecuteScript|StationheadVolumeScript/);
 });
 
-test('volume-script failures remain inside the noexcept audio action boundary', () => {
+test('explicit volume-script failures remain inside their noexcept boundary', () => {
   const applyVolume = section(
     audioSource,
     'void StationheadPlayer::ApplyVolume() const noexcept',
