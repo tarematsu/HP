@@ -254,8 +254,27 @@ export async function saveLeanSnapshot(db, observedAt, data) {
   };
 }
 
+export function normalizedTrackIsrc(track) {
+  const isrc = text(track?.isrc)?.trim().toUpperCase();
+  return isrc || null;
+}
+
+export function normalizedTrackSpotifyId(track) {
+  const spotifyId = text(track?.spotify_id)?.trim();
+  return spotifyId || null;
+}
+
+function canonicalizeStructuralTracks(payload) {
+  for (const track of Array.isArray(payload?.tracks) ? payload.tracks : []) {
+    track.spotify_id = normalizedTrackSpotifyId(track);
+    track.isrc = normalizedTrackIsrc(track);
+  }
+  return payload;
+}
+
 export function queueStructuralPayload(data) {
-  if (data?.[QUEUE_STRUCTURAL_PAYLOAD]) return data[QUEUE_STRUCTURAL_PAYLOAD];
+  const cached = data?.[QUEUE_STRUCTURAL_PAYLOAD];
+  if (cached) return canonicalizeStructuralTracks(cached);
   return {
     station_id: num(data?.station_id),
     queue_id: num(data?.queue_id),
@@ -265,23 +284,13 @@ export function queueStructuralPayload(data) {
       position: num(track?.position),
       queue_track_id: num(track?.queue_track_id),
       stationhead_track_id: num(track?.stationhead_track_id),
-      spotify_id: text(track?.spotify_id),
+      spotify_id: normalizedTrackSpotifyId(track),
       deezer_id: text(track?.deezer_id),
-      isrc: text(track?.isrc),
+      isrc: normalizedTrackIsrc(track),
       duration_ms: num(track?.duration_ms),
       preview_url: text(track?.preview_url),
     })),
   };
-}
-
-export function normalizedTrackIsrc(track) {
-  const isrc = text(track?.isrc)?.trim().toUpperCase();
-  return isrc || null;
-}
-
-export function normalizedTrackSpotifyId(track) {
-  const spotifyId = text(track?.spotify_id)?.trim();
-  return spotifyId || null;
 }
 
 export function legacyObservationTrackKey(track) {
@@ -318,9 +327,9 @@ function structuralItemState(track, queueId = null) {
     queue_id: num(queueId ?? track?.queue_id),
     queue_track_id: num(track?.queue_track_id),
     stationhead_track_id: num(track?.stationhead_track_id),
-    spotify_id: text(track?.spotify_id),
+    spotify_id: normalizedTrackSpotifyId(track),
     deezer_id: text(track?.deezer_id),
-    isrc: text(track?.isrc),
+    isrc: normalizedTrackIsrc(track),
     duration_ms: num(track?.duration_ms),
     preview_url: text(track?.preview_url),
   };
