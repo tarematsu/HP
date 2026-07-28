@@ -6,12 +6,6 @@ on:
     types: [completed]
   push:
     branches: [main]
-    paths:
-      - '.github/workflows/publish-github-deployment-health.yml'
-      - '.github/scripts/github-deployment-health.mjs'
-      - '.github/scripts/github-deployment-health-current.mjs'
-      - '.github/scripts/publish-github-deployment-health.mjs'
-      - '.github/scripts/observability-system-status.mjs'
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
