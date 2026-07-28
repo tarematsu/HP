@@ -94,6 +94,30 @@ test('Lottie is replaced by a contract-compatible ES module stub', () => {
   assert.match(stub, /uri\.path\.ends_with\(L"\.js"\)/);
 });
 
+test('the live Tooltip hash is replaced by a child-preserving exact-path stub', () => {
+  const stub = section(
+    policySource,
+    'inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(',
+    'static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(',
+  );
+  assert.match(policySource, /kKnownExactTooltipModulePaths/);
+  assert.match(policySource, /L"\/assets\/tooltip-cxafiwy6\.js"/);
+  assert.match(stub, /uri\.path == path/);
+  assert.match(stub, /export const T=\(\{children\}\)=>children\?\?null;/);
+  assert.doesNotMatch(stub, /uri\.path\.find\([^)]*tooltip/i);
+  assert.match(policySource, /tooltip-different\.js"\)\.empty\(\)/);
+});
+
+test('script replacement lowercases the URI before exact-path classification', () => {
+  const policy = section(
+    policySource,
+    'inline void ApplyStationheadResourceBlockingScriptFixed(',
+    '}  // namespace hp',
+  );
+  assert.match(policy, /lower = StationheadLowerAscii\(uriRaw\)/);
+  assert.match(policy, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
+});
+
 test('script replacement happens before download with a real stub stream and one handler', () => {
   const policy = section(
     policySource,
