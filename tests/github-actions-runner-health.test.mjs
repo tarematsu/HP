@@ -76,9 +76,26 @@ test('runner health classifies fresh, running, failed, stalled, and stale operat
   assert.match(stalled.reason, /remained in_progress/);
 
   const stale = evaluateActionsRunnerHealth(target, [
-    run({ created_at: '2026-07-26T12:00:00.000Z', updated_at: '2026-07-26T12:03:00.000Z' }),
+    run({
+      created_at: '2026-07-26T12:00:00.000Z',
+      run_started_at: '2026-07-26T12:01:00.000Z',
+      updated_at: '2026-07-26T12:03:00.000Z',
+    }),
   ], { now: NOW });
   assert.equal(stale.health, 'stale');
+});
+
+test('a fresh rerun attempt is not stale because the original run was created earlier', () => {
+  const rerun = run({
+    created_at: '2026-07-26T12:00:00.000Z',
+    run_started_at: '2026-07-26T14:57:00.000Z',
+    updated_at: '2026-07-26T14:59:00.000Z',
+  });
+  const result = evaluateActionsRunnerHealth(target, [rerun], { now: NOW });
+  assert.equal(result.health, 'healthy');
+  assert.equal(result.latestAge, 3 * 60_000);
+  const summary = renderActionsRunnerHealthSummary([result], { now: NOW });
+  assert.match(summary, /3m ago/);
 });
 
 test('expected workflow-run skips can be ignored without hiding scheduled skips', () => {
