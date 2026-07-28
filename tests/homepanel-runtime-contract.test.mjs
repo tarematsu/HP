@@ -113,8 +113,8 @@ test('HomePanel deployment is direct and rollback-capable', () => {
   ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
-    'Deploy HomePanel Cloud',
-    'Retire standalone video service',
+    'Deploy HomePanel gateway (integrated runtime)',
+    'Deploy private video service (retired stub)',
     'Verify deployed readiness',
   ]);
   expectAll(rollbackWorkflow, [
@@ -122,5 +122,5 @@ test('HomePanel deployment is direct and rollback-capable', () => {
     'homepanel-video',
     'homepanel-cloud',
   ]);
-  assert.ok(deployWorkflow.indexOf('Deploy HomePanel Cloud') < deployWorkflow.indexOf('Retire standalone video service'));
+  assert.ok(deployWorkflow.indexOf('Deploy HomePanel gateway (integrated runtime)') < deployWorkflow.indexOf('Deploy private video service (retired stub)'));
 });
