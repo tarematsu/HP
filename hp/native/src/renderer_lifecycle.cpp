@@ -45,10 +45,25 @@ void Renderer::Initialize() {
   if (!InstallRuntimeAssets()) {
     throw std::runtime_error("runtime dashboard asset installation failed");
   }
-  PrepareParentWindow(window_);
-  EnsureNativeStaticWindows();
-  StartNativePlaybackBridge();
-  StartRadarCompose();
+
+  // Dashboard startup is transactional. Previously a partially-created panel
+  // set or a thread-construction failure could leave callbacks targeting an
+  // incomplete renderer while App retried initialization on the next tick.
+  // Roll every stage back before propagating the failure so Stationhead can
+  // remain alive and the parent callback boundary can retry safely.
+  try {
+    PrepareParentWindow(window_);
+    if (!EnsureNativeStaticWindows()) {
+      throw std::runtime_error("native dashboard window initialization failed");
+    }
+    StartNativePlaybackBridge();
+    StartRadarCompose();
+  } catch (...) {
+    StopRadarCompose();
+    StopNativePlaybackBridge();
+    DestroyNativeStaticWindows();
+    throw;
+  }
 }
 
 void Renderer::Resize(int width, int height) {
