@@ -5,12 +5,12 @@ class Logger {
  public:
   explicit Logger(fs::path path, size_t maxBytes = 2 * 1024 * 1024, int rotations = 3);
   ~Logger();
-  void Info(const std::wstring& message) { Write(L"INFO", message); }
-  void Warn(const std::wstring& message) { Write(L"WARN", message); }
-  void Error(const std::wstring& message) { Write(L"ERROR", message); }
+  void Info(const std::wstring& message) noexcept { Write(L"INFO", message); }
+  void Warn(const std::wstring& message) noexcept { Write(L"WARN", message); }
+  void Error(const std::wstring& message) noexcept { Write(L"ERROR", message); }
   fs::path Path() const { return path_; }
  private:
-  void Write(const wchar_t* level, const std::wstring& message);
+  void Write(const wchar_t* level, const std::wstring& message) noexcept;
   void OpenOutput();
   void Rotate();
   fs::path path_;
