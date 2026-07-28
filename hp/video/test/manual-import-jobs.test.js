@@ -176,7 +176,7 @@ test('large imports use private Queue chaining while preserving D1 finalization 
   assert.match(queue, /publishManualImportJob/);
   assert.match(queue, /publish\(env, jobId/);
   assert.match(entryCore, /ADMIN_IMPORT_JOB_PATH_PREFIX/);
-  assert.deepEqual(videoWrangler.triggers?.crons, ['0 * * * *']);
+  assert.equal(videoWrangler.triggers, undefined);
   assert.equal(videoWrangler.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
   assert.equal(videoWrangler.queues.consumers[0].max_batch_size, 1);
   assert.equal(videoWrangler.queues.consumers[0].max_concurrency, 1);
