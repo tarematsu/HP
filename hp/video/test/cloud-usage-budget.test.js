@@ -46,7 +46,7 @@ function modeledSchedulerAlarms() {
 }
 
 test('static video assets, Browser Rendering, and Queue bindings belong to the unified Worker', () => {
-  assert.deepEqual(cloudConfig.assets.run_worker_first, ['/api/*']);
+  assert.deepEqual(cloudConfig.assets.run_worker_first, ['/api/*', '/v1', '/v1/*', '/admin']);
   assert.equal(cloudConfig.assets.directory, '../video/public');
   assert.equal(cloudConfig.browser.binding, 'BROWSER');
   assert.equal(cloudConfig.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');

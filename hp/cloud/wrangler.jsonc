@@ -19,7 +19,10 @@
     "directory": "../video/public",
     "binding": "ASSETS",
     "run_worker_first": [
-      "/api/*"
+      "/api/*",
+      "/v1",
+      "/v1/*",
+      "/admin"
     ],
     "not_found_handling": "single-page-application"
   },
