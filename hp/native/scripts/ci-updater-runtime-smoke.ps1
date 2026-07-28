@@ -23,10 +23,10 @@ $ErrorActionPreference = "Stop"
 $homePanelSource = (Resolve-Path -LiteralPath $HomePanelExecutable).Path
 $updaterSource = (Resolve-Path -LiteralPath $UpdaterExecutable).Path
 $loaderSource = (Resolve-Path -LiteralPath $WebView2Loader).Path
-if ($ConfigExample) {
-  $configSource = (Resolve-Path -LiteralPath $ConfigExample).Path
+$configSource = if ($ConfigExample) {
+  (Resolve-Path -LiteralPath $ConfigExample).Path
 } else {
-  $configSource = $null
+  $null
 }
 
 if (-not $OutputDirectory) {
@@ -36,7 +36,6 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $installRoot = Join-Path $OutputDirectory "install-root"
 $dataDirectory = Join-Path $installRoot "data"
 $manifestPath = Join-Path $dataDirectory "pending-update.json"
-$resultPath = Join-Path $OutputDirectory "result.json"
 $eventPath = Join-Path $OutputDirectory "application-errors.txt"
 
 Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
@@ -93,9 +92,8 @@ public static class HomePanelUpdaterSmokeNativeMethods
         return result;
     }
 
-    public static int CloseOwnedWindows(int processId)
+    public static void CloseOwnedWindows(int processId)
     {
-        int count = 0;
         EnumWindows((window, parameter) =>
         {
             uint owner;
@@ -103,20 +101,18 @@ public static class HomePanelUpdaterSmokeNativeMethods
             if (owner == (uint)processId)
             {
                 PostMessage(window, 0x0010, UIntPtr.Zero, IntPtr.Zero);
-                count++;
             }
             return true;
         }, IntPtr.Zero);
-        return count;
     }
 }
 '@
 
-function Get-InstalledFileState {
+function Get-FileState {
   param([Parameter(Mandatory = $true)][string]$Path)
 
   $item = Get-Item -LiteralPath $Path
-  return [ordered]@{
+  [ordered]@{
     name = $item.Name
     path = $item.FullName
     size = [int64]$item.Length
@@ -124,24 +120,24 @@ function Get-InstalledFileState {
   }
 }
 
-function Find-HomePanelProcess {
+function Find-InstalledHomePanel {
   param([Parameter(Mandatory = $true)][string]$ExecutablePath)
 
-  $normalized = [System.IO.Path]::GetFullPath($ExecutablePath)
-  $candidate = Get-CimInstance Win32_Process -Filter "Name = 'HomePanel.exe'" -ErrorAction SilentlyContinue |
+  $expected = [System.IO.Path]::GetFullPath($ExecutablePath)
+  $found = Get-CimInstance Win32_Process -Filter "Name = 'HomePanel.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
       $_.ExecutablePath -and
       [String]::Equals(
         [System.IO.Path]::GetFullPath($_.ExecutablePath),
-        $normalized,
+        $expected,
         [StringComparison]::OrdinalIgnoreCase)
     } |
     Select-Object -First 1
-  if (-not $candidate) { return $null }
-  return Get-Process -Id ([int]$candidate.ProcessId) -ErrorAction SilentlyContinue
+  if (-not $found) { return $null }
+  Get-Process -Id ([int]$found.ProcessId) -ErrorAction SilentlyContinue
 }
 
-function Save-ApplicationEvents {
+function Save-ApplicationErrors {
   param([Parameter(Mandatory = $true)][datetime]$StartedAt)
 
   $events = @(
@@ -161,7 +157,7 @@ function Save-ApplicationEvents {
       Out-String -Width 240 |
       Set-Content -LiteralPath $eventPath -Encoding utf8
   }
-  return $events
+  $events
 }
 
 $installedPaths = @(
@@ -169,8 +165,8 @@ $installedPaths = @(
   (Join-Path $installRoot "HomePanelUpdater.exe"),
   (Join-Path $installRoot "WebView2Loader.dll")
 )
-$before = @($installedPaths | ForEach-Object { Get-InstalledFileState -Path $_ })
-$manifest = [ordered]@{
+$before = @($installedPaths | ForEach-Object { Get-FileState -Path $_ })
+[ordered]@{
   version = $Version
   signed = $false
   files = @($before | ForEach-Object {
@@ -182,8 +178,7 @@ $manifest = [ordered]@{
       requireAuthenticode = $false
     }
   })
-}
-$manifest | ConvertTo-Json -Depth 5 |
+} | ConvertTo-Json -Depth 5 |
   Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
 
 $updaterPath = Join-Path $installRoot "HomePanelUpdater.exe"
@@ -196,28 +191,32 @@ $startedAt = Get-Date
 
 try {
   Write-Host "Starting HomePanelUpdater runner-mode smoke test."
-  Write-Host "The manifest matches the installed binaries, so no network access or audio playback is required."
+  Write-Host "Same-version verification uses local hashes; network and Stationhead playback are not required."
 
-  $arguments = @(
+  $processArguments = @(
     "--pid", [string]$PID,
     "--app-pid", [string]$PID,
     "--root", $installRoot,
     "--manifest", $manifestPath,
     "--version", $Version
   )
-  $updaterProcess = Start-Process \
-    -FilePath $updaterPath \
-    -ArgumentList $arguments \
-    -WorkingDirectory $installRoot \
-    -PassThru
-
-  $deadline = [DateTime]::UtcNow.AddSeconds(60)
-  while (-not $updaterProcess.HasExited -and [DateTime]::UtcNow -lt $deadline) {
-    Start-Sleep -Milliseconds 250
-    $updaterProcess.Refresh()
+  $startParameters = @{
+    FilePath = $updaterPath
+    ArgumentList = $processArguments
+    WorkingDirectory = $installRoot
+    PassThru = $true
   }
+  $updaterProcess = Start-Process @startParameters
+
+  $updaterDeadline = [DateTime]::UtcNow.AddSeconds(60)
+  while ([DateTime]::UtcNow -lt $updaterDeadline) {
+    $updaterProcess.Refresh()
+    if ($updaterProcess.HasExited) { break }
+    Start-Sleep -Milliseconds 250
+  }
+  $updaterProcess.Refresh()
   if (-not $updaterProcess.HasExited) {
-    [HomePanelUpdaterSmokeNativeMethods]::CloseOwnedWindows($updaterProcess.Id) | Out-Null
+    [HomePanelUpdaterSmokeNativeMethods]::CloseOwnedWindows($updaterProcess.Id)
     if (-not $updaterProcess.WaitForExit(5000)) {
       Stop-Process -Id $updaterProcess.Id -Force -ErrorAction SilentlyContinue
     }
@@ -233,16 +232,15 @@ try {
   if (-not (Test-Path -LiteralPath $updaterLogPath)) {
     throw "HomePanelUpdater did not create data/homepanel-updater.log."
   }
-
   $updaterLog = Get-Content -LiteralPath $updaterLogPath -Raw
   if (-not $updaterLog.Contains("Same-version verification succeeded; no repair was required")) {
-    throw "Updater log does not contain the same-version verification success marker."
+    throw "Updater log does not contain the verification success marker."
   }
   if ($updaterLog -match "(?im)Update failed|backup restoration also failed|manual package recovery") {
     throw "Updater log contains a failure marker."
   }
 
-  $after = @($installedPaths | ForEach-Object { Get-InstalledFileState -Path $_ })
+  $after = @($installedPaths | ForEach-Object { Get-FileState -Path $_ })
   for ($index = 0; $index -lt $before.Count; $index++) {
     if ($before[$index].size -ne $after[$index].size -or
         $before[$index].sha256 -ne $after[$index].sha256) {
@@ -252,7 +250,7 @@ try {
 
   $restartDeadline = [DateTime]::UtcNow.AddSeconds(20)
   while ([DateTime]::UtcNow -lt $restartDeadline) {
-    $homePanelProcess = Find-HomePanelProcess -ExecutablePath $homePanelPath
+    $homePanelProcess = Find-InstalledHomePanel -ExecutablePath $homePanelPath
     if ($homePanelProcess) { break }
     Start-Sleep -Milliseconds 250
   }
@@ -276,10 +274,8 @@ try {
     throw "Restarted HomePanel did not create HomePanelNativeWindow."
   }
 
-  $wmSysCommand = [uint32]0x0112
-  $scClose = [uint64]0xF060
   if (-not [HomePanelUpdaterSmokeNativeMethods]::PostMessage(
-      $mainWindow, $wmSysCommand, [UIntPtr]$scClose, [IntPtr]::Zero)) {
+      $mainWindow, [uint32]0x0112, [UIntPtr]([uint64]0xF060), [IntPtr]::Zero)) {
     throw "Failed to close the HomePanel instance restarted by the updater."
   }
   if (-not $homePanelProcess.WaitForExit(15000)) {
@@ -300,14 +296,13 @@ try {
     throw "Restarted HomePanel log contains a fatal marker."
   }
 
-  $applicationErrors = @(Save-ApplicationEvents -StartedAt $startedAt)
+  $applicationErrors = @(Save-ApplicationErrors -StartedAt $startedAt)
   if ($applicationErrors.Count -ne 0) {
     throw "Windows Application log contains HomePanel or updater error events."
   }
 
   Copy-Item -LiteralPath $updaterLogPath -Destination (Join-Path $OutputDirectory "homepanel-updater.log") -Force
   Copy-Item -LiteralPath $homePanelLogPath -Destination (Join-Path $OutputDirectory "homepanel.log") -Force
-
   [ordered]@{
     updater = $updaterPath
     updaterExitCode = $updaterProcess.ExitCode
@@ -322,14 +317,14 @@ try {
     files = $after
     completedAtUtc = [DateTime]::UtcNow.ToString("o")
   } | ConvertTo-Json -Depth 6 |
-    Set-Content -LiteralPath $resultPath -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $OutputDirectory "result.json") -Encoding utf8
 
   Write-Host "HomePanelUpdater runtime smoke test passed."
 } catch {
   if ($updaterProcess) {
     $updaterProcess.Refresh()
     if (-not $updaterProcess.HasExited) {
-      [HomePanelUpdaterSmokeNativeMethods]::CloseOwnedWindows($updaterProcess.Id) | Out-Null
+      [HomePanelUpdaterSmokeNativeMethods]::CloseOwnedWindows($updaterProcess.Id)
       Stop-Process -Id $updaterProcess.Id -Force -ErrorAction SilentlyContinue
     }
   }
@@ -339,7 +334,6 @@ try {
       Stop-Process -Id $homePanelProcess.Id -Force -ErrorAction SilentlyContinue
     }
   }
-
   if (Test-Path -LiteralPath $updaterLogPath) {
     Copy-Item -LiteralPath $updaterLogPath -Destination (Join-Path $OutputDirectory "homepanel-updater.log") -Force -ErrorAction SilentlyContinue
     Write-Host "----- HomePanelUpdater log -----"
@@ -348,7 +342,7 @@ try {
   if (Test-Path -LiteralPath $homePanelLogPath) {
     Copy-Item -LiteralPath $homePanelLogPath -Destination (Join-Path $OutputDirectory "homepanel.log") -Force -ErrorAction SilentlyContinue
   }
-  Save-ApplicationEvents -StartedAt $startedAt | Out-Null
+  Save-ApplicationErrors -StartedAt $startedAt | Out-Null
   $_ | Out-String | Set-Content -LiteralPath (Join-Path $OutputDirectory "failure.txt") -Encoding utf8
   throw
 }
