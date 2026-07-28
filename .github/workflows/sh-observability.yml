@@ -114,7 +114,7 @@ jobs:
       CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc
       CLOUDFLARE_STORAGE_BUCKETS: sh-runtime-analytics
       CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV
-      CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR
+      CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR
       FREE_TIER_USAGE_OUTPUT_DIR: free-tier-usage
       OBSERVABILITY_GATE_OUTPUT_DIR: observability-gate
 
@@ -193,6 +193,21 @@ jobs:
           fi
           exit "$status"
 
+      - name: Resolve semantic observability outcome
+        id: resolve-outcome
+        if: always() && !cancelled()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          OBSERVABILITY_MAIN_REF: main
+          DAILY_BUDGET_OUTCOME: ${{ steps.daily-budget.outcome }}
+          FREE_TIER_BUDGET_OUTCOME: ${{ steps.free-tier-budget.outcome }}
+          BUDGET_CONTRACT_OUTCOME: ${{ steps.budget-contract.outcome }}
+          D1_INSIGHTS_OUTCOME: ${{ steps.d1-insights.outcome }}
+          OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
+          TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
+        run: node .github/scripts/observability-workflow-outcome.mjs
+
       - name: Publish persistent observability status
         id: publish-status
         if: always() && !cancelled()
@@ -210,6 +225,18 @@ jobs:
           OBSERVABILITY_QUERY_OUTCOME: ${{ steps.observability-query.outputs.query-outcome }}
           TELEMETRY_POLICY_OUTCOME: ${{ steps.telemetry-policy.outcome }}
         run: node .github/scripts/publish-cloudflare-observability-status.mjs
+
+      - name: Publish semantic observability overall status
+        id: publish-overall
+        if: >-
+          always() && !cancelled() &&
+          steps.resolve-outcome.outputs.current_main_target == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          OBSERVABILITY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OBSERVABILITY_OVERALL: ${{ steps.resolve-outcome.outputs.overall }}
+        run: node .github/scripts/observability-workflow-outcome.mjs --publish-status
 
       - name: Upload sanitized observability report
         if: always()
@@ -236,14 +263,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 1
 
-      - name: Fail after collecting diagnostics when any observability gate fails
+      - name: Fail when current-main observability remains unhealthy
         if: >-
-          steps.daily-budget.outcome == 'failure' ||
-          steps.free-tier-budget.outcome == 'failure' ||
-          steps.budget-contract.outcome == 'failure' ||
-          steps.d1-insights.outcome == 'failure' ||
-          steps.observability-query.outputs.query-outcome == 'failure' ||
-          steps.observability-query.outputs.public-health-outcome == 'failure' ||
-          steps.telemetry-policy.outcome == 'failure' ||
-          steps.publish-status.outcome == 'failure'
+          steps.publish-status.outcome == 'failure' ||
+          steps.publish-overall.outcome == 'failure' ||
+          (steps.resolve-outcome.outputs.current_main_target == 'true' &&
+            steps.resolve-outcome.outputs.overall == 'failure')
         run: exit 1
