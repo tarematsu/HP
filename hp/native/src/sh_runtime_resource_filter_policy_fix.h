@@ -3,30 +3,6 @@
 
 namespace hp {
 
-// A and B share one CoreWebView2Environment, but use different profiles. WebView2
-// raises service-worker and shared-worker WebResourceRequested events to every
-// CoreWebView in that environment with a matching worker-source filter. Keep
-// those environment-wide filters on the primary Default profile only; both
-// playback WebViews still receive their own document, iframe, and dedicated
-// worker requests.
-inline bool StationheadOwnsEnvironmentWorkerFilters(ICoreWebView2* webview) {
-  if (!webview) return false;
-  ComPtr<ICoreWebView2> base = webview;
-  ComPtr<ICoreWebView2_13> profileView;
-  if (FAILED(base.As(&profileView)) || !profileView) return true;
-
-  ComPtr<ICoreWebView2Profile> profile;
-  if (FAILED(profileView->get_Profile(&profile)) || !profile) return true;
-
-  LPWSTR profileNameRaw = nullptr;
-  if (FAILED(profile->get_ProfileName(&profileNameRaw)) || !profileNameRaw) {
-    return true;
-  }
-  const bool ownsWorkerFilters = _wcsicmp(profileNameRaw, L"Default") == 0;
-  CoTaskMemFree(profileNameRaw);
-  return ownsWorkerFilters;
-}
-
 inline void AddStationheadResourceFilter(
     ICoreWebView2* webview,
     ICoreWebView2_22* sourceAwareWebView,
@@ -53,6 +29,11 @@ inline void AddStationheadResourceFilter(
 // The legacy two-argument filter does not reliably cover cross-origin iframes
 // and cannot subscribe to service/shared-worker requests. Use the source-kind
 // API so Stationhead cannot bypass the blocker by moving fetches into a worker.
+// Register the complete current source mask on both playback WebViews. WebView2
+// can deliver a service/shared-worker request to both handlers, but their policy
+// and replacement response are identical, so the decision is idempotent. This
+// deliberately avoids a gap while Primary is still creating or being rebuilt:
+// Secondary keeps worker blocking active instead of depending on a fixed owner.
 inline void ApplyStationheadResourceBlockingFilterFixed(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -65,10 +46,11 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_22> sourceAwareWebView;
   base.As(&sourceAwareWebView);
-  const COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKinds =
-      StationheadOwnsEnvironmentWorkerFilters(webview)
-          ? COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL
-          : COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT;
+  const auto sourceKinds =
+      static_cast<COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS>(
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER);
   const auto addFilter = [&](COREWEBVIEW2_WEB_RESOURCE_CONTEXT context) {
     AddStationheadResourceFilter(
         webview, sourceAwareWebView.Get(), context, sourceKinds);
