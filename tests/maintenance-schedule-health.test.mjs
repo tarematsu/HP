@@ -16,6 +16,7 @@ test('runtime and Pages schedules remain staggered after re-registration', () =>
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(pages), '26,56 * * * *');
   assert.match(pages, /workflows: \["Run runtime offline maintenance"\]/);
+  assert.match(runtime, /workflows: \["Deploy production", "Rebuild pages read models"\]/);
   assert.match(runtime, /cancel-in-progress: false/);
 });
 
