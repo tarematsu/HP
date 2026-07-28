@@ -31,7 +31,6 @@ jobs:
     environment: production
     env:
       HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
-      HOMEPANEL_API_TOKEN: ${{ secrets.API_TOKEN }}
       RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}
 
     steps:
@@ -129,6 +128,15 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Sync radar dispatcher token
+        if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
+        working-directory: hp
+        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npm exec --workspace cloud -- wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
+
+      - name: Report missing radar dispatcher token
+        if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
+        run: echo "::error::RADAR_DISPATCH_TOKEN is required for automatic radar dispatch and authenticated /v1/ready verification"
+
       - name: Resolve deployed HomePanel public URL
         id: homepanel-public-url
         run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
@@ -160,12 +168,12 @@ jobs:
           HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
         run: |
           set -euo pipefail
-          : "${HOMEPANEL_API_TOKEN:?GitHub Actions secret API_TOKEN is required for /v1/ready verification}"
+          : "${RADAR_DISPATCH_TOKEN:?Existing RADAR_DISPATCH_TOKEN is required for /v1/ready verification}"
           output="$RUNNER_TEMP/homepanel-readiness.json"
           curl --fail --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
             -H "Accept: application/json" \
-            -H "Authorization: Bearer $HOMEPANEL_API_TOKEN" \
+            -H "Authorization: Bearer $RADAR_DISPATCH_TOKEN" \
             "$HOMEPANEL_BASE_URL/v1/ready" \
             > "$output"
           cat "$output"
@@ -184,12 +192,3 @@ jobs:
               throw new Error(`Unexpected HomePanel readiness response: ${JSON.stringify(payload)}`);
             }
           ' "$output"
-
-      - name: Sync radar dispatcher token
-        if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
-        working-directory: hp
-        run: printf '%s' "$RADAR_DISPATCH_TOKEN" | npm exec --workspace cloud -- wrangler secret put GITHUB_RADAR_DISPATCH_TOKEN --name homepanel-cloud
-
-      - name: Report missing radar dispatcher token
-        if: ${{ env.RADAR_DISPATCH_TOKEN == '' }}
-        run: echo "::warning::RADAR_DISPATCH_TOKEN is not configured; automatic radar workflow dispatch remains disabled"
