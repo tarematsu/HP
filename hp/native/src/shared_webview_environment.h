@@ -7,6 +7,12 @@ class SharedWebViewEnvironment {
   using Completion = std::function<void(HRESULT, ICoreWebView2Environment*)>;
 
   static SharedWebViewEnvironment& Instance();
+  // Stationhead is an audio-only surface in this application. Keep the legacy
+  // call site strict by default so a stale cloud flag cannot silently re-enable
+  // image decoding or downloadable fonts in either A or B.
+  void Acquire(const fs::path& userDataFolder, Completion completion) {
+    Acquire(userDataFolder, true, true, std::move(completion));
+  }
   void Acquire(const fs::path& userDataFolder, bool blockImages,
                bool blockFonts, Completion completion);
   void Invalidate(const fs::path& userDataFolder);
