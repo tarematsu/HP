@@ -103,8 +103,8 @@ test('device exchange isolates telemetry and uses a dedicated sync coordinator',
   assert.match(deviceSyncCoordinator, /DEVICE_SYNC_MANIFEST_KEY/);
 });
 
-test('video liveness is hourly, bounded, and isolated in the private Worker', () => {
-  assert.deepEqual(videoConfig.triggers.crons, ['0 * * * *']);
+test('video liveness is hourly, bounded, and isolated from Cloudflare Cron', () => {
+  assert.equal(videoConfig.triggers, undefined);
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(livenessMonitor, /LIVENESS_BATCH_SIZE = 5/);
   assert.match(livenessMonitor, /PROBE_CONCURRENCY = 5/);
