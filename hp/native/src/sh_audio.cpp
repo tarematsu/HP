@@ -23,21 +23,24 @@ double StationheadPlayer::Volume() const noexcept {
 
 void StationheadPlayer::ApplyMute() const noexcept {
   const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
-  if (appliedMuted_.load(std::memory_order_relaxed) != muted) {
-    bool applied = true;
-    if (webview_) {
-      ComPtr<ICoreWebView2_8> audio;
-      applied = SUCCEEDED(webview_.As(&audio)) && audio &&
-          SUCCEEDED(audio->put_IsMuted(muted ? TRUE : FALSE));
-    }
-    appliedMuted_.store(applied ? muted : -1, std::memory_order_relaxed);
-  }
+  if (appliedMuted_.load(std::memory_order_relaxed) == muted) return;
 
-  // Volume is a playback-document policy. Applying it to the transient Spotify
-  // authorization WebView is unnecessary and used to make every A/B or MUTE
-  // action touch a controller that may be closing. Keep the two concerns scoped
-  // to the persistent playback WebView only.
-  ApplyVolume();
+  bool applied = true;
+  // Hold a local COM reference for the complete call. Audio buttons can be
+  // pressed while a navigation or recovery path is replacing the member
+  // WebView; the local reference prevents the target from disappearing during
+  // QueryInterface/put_IsMuted re-entrancy.
+  ComPtr<ICoreWebView2> webview = webview_;
+  if (webview) {
+    ComPtr<ICoreWebView2_8> audio;
+    applied = SUCCEEDED(webview.As(&audio)) && audio &&
+        SUCCEEDED(audio->put_IsMuted(muted ? TRUE : FALSE));
+  }
+  appliedMuted_.store(applied ? muted : -1, std::memory_order_relaxed);
+
+  // A/B and MUTE are native WebView2 audio-routing operations. Do not execute
+  // page JavaScript here. Per-element volume injection is retained only for an
+  // explicit SetVolume request and is not part of the dashboard button path.
 }
 
 void StationheadPlayer::ApplyVolume() const noexcept {
@@ -55,8 +58,8 @@ void StationheadPlayer::ApplyVolume() const noexcept {
     appliedVolumePercent_.store(
         SUCCEEDED(result) ? percent : -1, std::memory_order_relaxed);
   } catch (...) {
-    // SetMuted/SetVolume are noexcept UI actions. An allocation failure while
-    // preparing the optional volume script must not terminate HomePanel.
+    // SetVolume is noexcept. An allocation failure while preparing the optional
+    // per-element volume script must not terminate HomePanel.
     appliedVolumePercent_.store(-1, std::memory_order_relaxed);
   }
 }
