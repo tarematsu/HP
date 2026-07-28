@@ -6,6 +6,7 @@ bool InstallRuntimeAssets() noexcept;
 namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
+constexpr ULONG kNativePanelTimerToleranceMs = 100;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -95,8 +96,15 @@ void Renderer::SetVisible(bool visible) {
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     if (visible) {
       if (!nativePanelTimerActive_) {
-        nativePanelTimerActive_ =
-            SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+        // The clock still updates once per second, but Windows may align this
+        // timer with nearby App/WebView wakeups instead of waking the CPU for a
+        // separate exact deadline. Fall back for older timer implementations.
+        const UINT_PTR coalesced = SetCoalescableTimer(
+            nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs,
+            nullptr, kNativePanelTimerToleranceMs);
+        nativePanelTimerActive_ = coalesced != 0 ||
+            SetTimer(nativeMainWindow_, kNativePanelTickTimer,
+                     kNativePanelTickMs, nullptr) != 0;
       }
     } else if (nativePanelTimerActive_) {
       KillTimer(nativeMainWindow_, kNativePanelTickTimer);
