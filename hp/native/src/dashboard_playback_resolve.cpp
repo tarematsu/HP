@@ -4,6 +4,7 @@ namespace hp {
 namespace {
 constexpr int64_t kPlaybackRenderTransitionHoldMs = 500;
 constexpr int64_t kPlaybackFallbackMaximumAgeMs = 30'000;
+const int64_t gPlaybackFallbackProcessStartedAtMs = UnixMillis();
 
 int64_t ProjectedElapsedMs(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.playing) return projection.progressMs;
@@ -130,7 +131,12 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
 
 bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
                                 int64_t nowMs) noexcept {
-  if (projection.stale || projection.fetchedAt <= 0 || nowMs < projection.fetchedAt) {
+  // A snapshot was fetched by an earlier process even when it is only a few
+  // seconds old. Require this process to have observed the payload timestamp
+  // before allowing it to navigate the live Stationhead WebViews.
+  if (projection.stale || projection.fetchedAt <= 0 ||
+      projection.fetchedAt < gPlaybackFallbackProcessStartedAtMs ||
+      nowMs < projection.fetchedAt) {
     return false;
   }
   return nowMs - projection.fetchedAt <= kPlaybackFallbackMaximumAgeMs;
@@ -140,7 +146,8 @@ bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, i
   // A persisted snapshot is loaded synchronously during dashboard startup. It
   // may describe a queue that ended hours earlier and must not navigate both
   // live Stationhead WebViews away in the same tick that the dashboard appears.
-  // Only a recent, non-stale network observation may drive the fallback route.
+  // Only a recent, non-stale observation made by this process may drive the
+  // fallback route.
   if (!projection.available || projection.setupRequired ||
       !ProjectionFreshForFallback(projection, nowMs)) {
     return false;
