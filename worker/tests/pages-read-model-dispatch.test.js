@@ -17,22 +17,26 @@ const runtime = JSON.parse(readFileSync(
   'utf8',
 ));
 const cycleStart = Date.UTC(2026, 6, 18);
+const MINUTE = 60_000;
 
-test('Actions applies tiered read-model cadences instead of a 24-hour minute-slot dispatcher', () => {
-  assert.deepEqual([...dueVariantKeys(cycleStart + 4 * 60_000)], [
+test('Actions applies contract-driven six-hour and daily read-model cadences', () => {
+  assert.deepEqual([...dueVariantKeys(cycleStart + 4 * MINUTE)], [
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:broadcasts',
     'history:monthly',
-    'host-history:summary',
+    'history:broadcasts',
     'track-history',
+    'host-history:summary',
   ]);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 19 * 60_000)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 184 * 60_000)], [
+  assert.deepEqual([...dueVariantKeys(cycleStart + 19 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 64 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 184 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 364 * MINUTE)], [
     'dashboard',
     'history:daily',
     'history:weekly',
+    'history:monthly',
     'history:broadcasts',
   ]);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
