@@ -132,7 +132,7 @@ void Logger::Rotate() {
   OpenOutput();
 }
 
-void Logger::Write(const wchar_t* level, std::wstring_view message) noexcept {
+void Logger::Write(const wchar_t* level, std::wstring_view messageView) noexcept {
   try {
     SYSTEMTIME time{};
     GetLocalTime(&time);
@@ -141,11 +141,11 @@ void Logger::Write(const wchar_t* level, std::wstring_view message) noexcept {
               time.wYear, time.wMonth, time.wDay,
               time.wHour, time.wMinute, time.wSecond);
 
-    const std::wstring ownedMessage(message);
+    const std::wstring message(messageView);
     std::string line = header;
     line += WideToUtf8(level);
     line.push_back(' ');
-    line += WideToUtf8(RedactUrlQueryAndFragment(ownedMessage));
+    line += WideToUtf8(RedactUrlQueryAndFragment(message));
     line.push_back('\n');
 
     std::lock_guard lock(mutex_);
