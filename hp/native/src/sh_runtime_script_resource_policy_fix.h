@@ -80,6 +80,12 @@ inline constexpr std::wstring_view kKnownOptionalModuleNeedles[] = {
     L"lottieanimationviewnonlazy",
 };
 
+// Minified export names can change between Stationhead deployments. Match the
+// exact live-observed hashed path so a future bundle automatically fails open.
+inline constexpr std::wstring_view kKnownExactTooltipModulePaths[] = {
+    L"/assets/tooltip-cxafiwy6.js",
+};
+
 // Empty-success responses are safe only for standalone third-party/classic SDKs.
 // Same-origin Vite modules are never emptied here because importers can require
 // named exports and fail before the Stationhead player is initialized.
@@ -93,9 +99,9 @@ inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(
   return false;
 }
 
-// This exact live-observed module is loaded through React.lazy and exports one
-// component. Return a contract-compatible no-op module so the request bytes,
-// animation decoder and render work are removed without breaking ESM linking.
+// Return contract-compatible modules for live-audited optional surfaces. The
+// Tooltip replacement preserves its child control while removing positioning,
+// portal, style and hover work. Exact-path matching protects future export drift.
 inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(
     std::wstring_view uriLower) {
   const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
@@ -103,6 +109,11 @@ inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixe
       !StationheadRuntimeHostMatches(uri.host, L"stationhead.com") ||
       (!uri.path.ends_with(L".js") && !uri.path.ends_with(L".mjs"))) {
     return {};
+  }
+  for (const std::wstring_view path : kKnownExactTooltipModulePaths) {
+    if (uri.path == path) {
+      return "export const T=({children})=>children??null;";
+    }
   }
   for (const std::wstring_view needle : kKnownOptionalModuleNeedles) {
     if (uri.path.find(needle) != std::wstring_view::npos) {
@@ -130,6 +141,11 @@ static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/assets/AppleMusicFreeTrialButton-BzMIl5Mx.js"));
 static_assert(!StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/lottieanimationviewnonlazy-ve60c2no.js").empty());
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+    L"https://www.stationhead.com/assets/Tooltip-CXAFiWY6.js") ==
+    "export const T=({children})=>children??null;");
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+    L"https://www.stationhead.com/assets/Tooltip-DIFFERENT.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/player-runtime.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
