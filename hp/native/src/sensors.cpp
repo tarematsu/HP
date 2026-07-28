@@ -181,7 +181,27 @@ SensorHub::~SensorHub() { Stop(); }
 void SensorHub::Start() {
   stopping_ = false;
   ApplyCloudSwitchBot(switchbotPath_);
-  serialThread_ = std::thread([this] { SerialLoop(); });
+  serialThread_ = std::thread([this] {
+    try {
+      SerialLoop();
+    } catch (const std::exception& error) {
+      log_.Warn(L"Sensor thread stopped after exception: " + Utf8ToWide(error.what()));
+      {
+        std::lock_guard lock(mutex_);
+        state_.co2Connected = false;
+        state_.lastError = L"UD-CO2S sensor thread failed";
+      }
+      if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    } catch (...) {
+      log_.Warn(L"Sensor thread stopped after an unknown exception");
+      {
+        std::lock_guard lock(mutex_);
+        state_.co2Connected = false;
+        state_.lastError = L"UD-CO2S sensor thread failed";
+      }
+      if (window_) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
+    }
+  });
   log_.Info(L"SwitchBot input uses Cloudflare/OpenAPI; native BLE watcher is disabled");
 }
 
