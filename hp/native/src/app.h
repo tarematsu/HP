@@ -40,6 +40,7 @@ class App {
   void CreateMainWindow(int showCommand);
   void StartServices();
   void StartDeferredServices(int64_t now, const StationheadStatus& stationheadStatus);
+  void HandleStartupUpdateWake();
   void ApplyStartupStationheadPreview();
   void ClearStartupStationheadPreview();
   void StopServices();
