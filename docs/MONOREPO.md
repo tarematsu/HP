@@ -4,7 +4,7 @@
 
 - `worker/`, `site/`, `database/`, `packages/`: Stationhead platform
 - `hp/cloud/`: HomePanel Cloud Worker and D1 schema
-- `hp/video/`: HomePanel Video Worker and site
+- `hp/video/`: video runtime modules and site assets bundled into HomePanel Cloud
 - `hp/native/`: HomePanel Windows application
 - `.github/actions/`: reusable GitHub Actions shared across products
 - `.github/scripts/`: shared Cloudflare diagnostics and budget tooling
@@ -14,9 +14,8 @@
 The repository is unified, but production ownership is not.
 
 - Stationhead production: `.github/workflows/deploy-split-pipeline.yml`
-- HomePanel Cloud production: `.github/workflows/cloud-deploy.yml`
-- Stationhead observability: `.github/workflows/sh-observability.yml`
-- HomePanel observability: `.github/workflows/hp-observability.yml`
+- HomePanel Cloud production, including video: `.github/workflows/cloud-deploy.yml`
+- Unified Cloudflare observability: `.github/workflows/sh-observability.yml`
 - Database migrations, releases, rollbacks, and credentials remain product-specific.
 
 ## Shared operational components
@@ -35,5 +34,5 @@ Shared components contain common mechanics only. Product-specific budgets, Worke
 - `npm run check`: repository-level validation
 - `npm run check:sh`: Stationhead validation
 - `npm run check:hp-cloud`: HomePanel Cloud validation
-- `npm run check:hp-video`: HomePanel Video validation
+- `npm run check:hp-video`: integrated video source validation
 - `.github/workflows/native-windows-build.yml`: HomePanel Native build and static analysis
