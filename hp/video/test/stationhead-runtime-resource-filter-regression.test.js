@@ -49,7 +49,7 @@ test('unused stylesheet callbacks are not registered', () => {
   );
   assert.doesNotMatch(
     policy,
-    /AddWebResourceRequestedFilter\([\s\S]{0,80}COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/,
+    /addFilter\([\s\S]{0,80}COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET/,
   );
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
@@ -60,13 +60,62 @@ test('unused stylesheet callbacks are not registered', () => {
 test('optional image and font filters follow their configuration', () => {
   assert.match(
     policySource,
-    /if \(blockImages\) \{[\s\S]*COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE[\s\S]*\}/,
+    /if \(blockImages\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\);[\s\S]*\}/,
   );
   assert.match(
     policySource,
-    /if \(blockFonts\) \{[\s\S]*COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT[\s\S]*\}/,
+    /if \(blockFonts\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\);[\s\S]*\}/,
   );
   assert.match(policySource, /\[env, blockImages, blockFonts\]/);
+});
+
+test('source-aware filters cover every current request source on both players', () => {
+  const filterHelper = section(
+    policySource,
+    'inline void AddStationheadResourceFilter(',
+    '// The strict resource boundary',
+  );
+  assert.match(filterHelper, /ICoreWebView2_22\* sourceAwareWebView/);
+  assert.match(
+    filterHelper,
+    /AddWebResourceRequestedFilterWithRequestSourceKinds\([\s\S]*sourceKinds/,
+  );
+  assert.match(
+    filterHelper,
+    /if \(FAILED\(result\) && webview\) \{[\s\S]*AddWebResourceRequestedFilter\(L"\*", context\);/,
+  );
+
+  const policy = section(
+    policySource,
+    'inline void ApplyStationheadResourceBlockingFilterFixed(',
+    'ComPtr<ICoreWebView2Environment> env = environment;',
+  );
+  assert.match(policy, /ComPtr<ICoreWebView2_22> sourceAwareWebView/);
+  assert.match(
+    policy,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
+  );
+  assert.doesNotMatch(
+    policy,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL/,
+  );
+  assert.doesNotMatch(policy, /get_Profile|get_ProfileName|stationhead-secondary/);
+  assert.match(policy, /AddStationheadResourceFilter\([\s\S]*sourceKinds/);
+});
+
+test('worker coverage does not depend on a fixed primary owner', () => {
+  assert.doesNotMatch(
+    policySource,
+    /StationheadOwnsEnvironmentWorkerFilters|ownsWorkerFilters|L"Default"/,
+  );
+  assert.match(
+    policySource,
+    /Register the complete current source mask on both playback WebViews/,
+  );
+  assert.match(
+    policySource,
+    /Secondary keeps worker blocking active instead of depending on a fixed owner/,
+  );
 });
 
 test('ping requests are rejected without URI allocation', () => {

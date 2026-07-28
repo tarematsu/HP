@@ -3,11 +3,37 @@
 
 namespace hp {
 
+inline void AddStationheadResourceFilter(
+    ICoreWebView2* webview,
+    ICoreWebView2_22* sourceAwareWebView,
+    COREWEBVIEW2_WEB_RESOURCE_CONTEXT context,
+    COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKinds) {
+  HRESULT result = E_NOINTERFACE;
+  if (sourceAwareWebView) {
+    result = sourceAwareWebView->AddWebResourceRequestedFilterWithRequestSourceKinds(
+        L"*", context, sourceKinds);
+  }
+  // Compatibility fallback for an older installed WebView2 Runtime. The
+  // project SDK exposes ICoreWebView2_22, but the evergreen runtime can lag.
+  if (FAILED(result) && webview) {
+    webview->AddWebResourceRequestedFilter(L"*", context);
+  }
+}
+
 // The strict resource boundary no longer applies an armed stylesheet rule, so
 // routing every CSS response through WebResourceRequested only performs COM URI
 // extraction and lowercasing without changing the response. Register optional
 // image/font contexts only when their configured policy is active, and reject
 // hyperlink-audit pings directly because they cannot carry playback or auth.
+//
+// The legacy two-argument filter does not reliably cover cross-origin iframes
+// and cannot subscribe to service/shared-worker requests. Use the source-kind
+// API so Stationhead cannot bypass the blocker by moving fetches into a worker.
+// Register the complete current source mask on both playback WebViews. WebView2
+// can deliver a service/shared-worker request to both handlers, but their policy
+// and replacement response are identical, so the decision is idempotent. This
+// deliberately avoids a gap while Primary is still creating or being rebuilt:
+// Secondary keeps worker blocking active instead of depending on a fixed owner.
 inline void ApplyStationheadResourceBlockingFilterFixed(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -17,32 +43,37 @@ inline void ApplyStationheadResourceBlockingFilterFixed(
   (void)armed;
   if (!environment || !webview) return;
 
+  ComPtr<ICoreWebView2> base = webview;
+  ComPtr<ICoreWebView2_22> sourceAwareWebView;
+  base.As(&sourceAwareWebView);
+  const auto sourceKinds =
+      static_cast<COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS>(
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER);
+  const auto addFilter = [&](COREWEBVIEW2_WEB_RESOURCE_CONTEXT context) {
+    AddStationheadResourceFilter(
+        webview, sourceAwareWebView.Get(), context, sourceKinds);
+  };
+
   const bool blockImages = config.blockImages;
   const bool blockFonts = config.blockFonts;
   if (blockImages) {
-    webview->AddWebResourceRequestedFilter(
-        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
+    addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
   }
   if (blockFonts) {
-    webview->AddWebResourceRequestedFilter(
-        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+    addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
   }
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST);
-  webview->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING);
-  webview->AddWebResourceRequestedFilter(
-      L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING);
+  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT);
 
   ComPtr<ICoreWebView2Environment> env = environment;
   webview->add_WebResourceRequested(
