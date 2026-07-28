@@ -29,6 +29,14 @@ const FAILURE_CONCLUSIONS = new Set([
   'timed_out',
 ]);
 
+const ACTIVE_RUN_STATUSES = new Set([
+  'queued',
+  'in_progress',
+  'requested',
+  'waiting',
+  'pending',
+]);
+
 function timestamp(value) {
   const milliseconds = Date.parse(String(value || ''));
   return Number.isFinite(milliseconds) ? milliseconds : null;
@@ -114,7 +122,7 @@ export function evaluateActionsRunnerHealth(target, runs, { now = Date.now() } =
   let reason = 'No workflow runs were returned by the Actions API.';
 
   if (latest) {
-    if (latest.status === 'queued' || latest.status === 'in_progress') {
+    if (ACTIVE_RUN_STATUSES.has(String(latest.status || ''))) {
       const runningFor = durationMilliseconds(latest, now);
       if (runningFor != null && runningFor > stalledAfter) {
         health = 'failure';
