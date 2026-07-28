@@ -113,7 +113,7 @@ test('manual Video Queue provisioning shares the fail-closed Cloudflare context'
   ]);
 });
 
-test('unified observability targets the active HomePanel Worker', async () => {
+test('unified observability includes the active Worker and rollback stub', async () => {
   for (const path of [
     '../.github/workflows/video-worker-cpu-report.yml',
     '../hp/video/scripts/report-worker-cpu.mjs',
@@ -126,15 +126,13 @@ test('unified observability targets the active HomePanel Worker', async () => {
   }
   const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
     'hp/cloud/wrangler.jsonc',
-    'VIDEO_FEED_COORDINATOR',
     'query-cloudflare-observability.py',
     'audit-deployed-cloudflare-telemetry.py',
     'workflow_dispatch:',
     'lookback_minutes:',
   ]);
-  expectNone(observability, ['CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video']);
 });
 
 test('retired standalone video build diagnostics stay removed', async () => {
