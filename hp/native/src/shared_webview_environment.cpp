@@ -38,7 +38,7 @@ std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
   return arguments;
 }
 
-void ApplyWebView2ProcessHints() noexcept {
+void ApplyWebView2ProcessHints() {
   static std::once_flag once;
   std::call_once(once, [] {
     // Keep only process-wide, configuration-independent switches here. The

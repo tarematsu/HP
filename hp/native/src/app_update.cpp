@@ -16,6 +16,32 @@ enum class InstalledFileComparison {
   Unavailable,
 };
 
+class UpdateBusyGuard final {
+ public:
+  explicit UpdateBusyGuard(std::atomic<bool>& busy) noexcept : busy_(busy) {}
+  ~UpdateBusyGuard() { busy_.store(false, std::memory_order_release); }
+  UpdateBusyGuard(const UpdateBusyGuard&) = delete;
+  UpdateBusyGuard& operator=(const UpdateBusyGuard&) = delete;
+
+ private:
+  std::atomic<bool>& busy_;
+};
+
+void PostUpdateResultNoexcept(
+    HWND window, UINT messageId, const std::wstring& message) noexcept {
+  if (!window || message.empty()) return;
+  try {
+    auto copy = std::make_unique<wchar_t[]>(message.size() + 1);
+    std::copy(message.begin(), message.end(), copy.get());
+    copy[message.size()] = L'\0';
+    if (PostMessageW(
+            window, messageId, 0, reinterpret_cast<LPARAM>(copy.get()))) {
+      copy.release();
+    }
+  } catch (...) {
+  }
+}
+
 void AppendUnsigned(std::wstring& output, unsigned long value) {
   wchar_t buffer[16]{};
   wchar_t* cursor = std::end(buffer);
@@ -112,66 +138,96 @@ void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair) {
     ShowToast(L"署名・ハッシュを確認して更新を準備しています", 15'000);
   }
 
-  updateThread_ = std::thread([this, install, allowSameVersionRepair] {
-    std::wstring message;
-    try {
-      const std::string manifestJson = cloud_->FetchUpdateManifest();
-      const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
-      const fs::path executable = rootDir_ / L"HomePanel.exe";
-      std::wstring currentVersion = InstalledHomePanelVersion(executable);
-      if (currentVersion.empty()) currentVersion = kVersion;
-      const bool newerVersion = IsVersionNewer(manifest.version, currentVersion);
-      const bool sameVersion =
-          !newerVersion && !IsVersionNewer(currentVersion, manifest.version);
-      const bool replacementBuild =
-          sameVersion && allowSameVersionRepair &&
-          ManifestFilesDiffer(manifest, rootDir_);
-      if (!newerVersion && !replacementBuild) {
-        if (install) {
-          message.reserve(currentVersion.size() + 20);
-          message.append(L"すでに最新バージョンです (v");
-          message.append(currentVersion);
-          message.push_back(L')');
+  try {
+    updateThread_ = std::thread([this, install, allowSameVersionRepair] {
+      UpdateBusyGuard busyGuard(updateBusy_);
+      try {
+        std::wstring message;
+        try {
+          const std::string manifestJson = cloud_->FetchUpdateManifest();
+          const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
+          const fs::path executable = rootDir_ / L"HomePanel.exe";
+          std::wstring currentVersion = InstalledHomePanelVersion(executable);
+          if (currentVersion.empty()) currentVersion = kVersion;
+          const bool newerVersion = IsVersionNewer(manifest.version, currentVersion);
+          const bool sameVersion =
+              !newerVersion && !IsVersionNewer(currentVersion, manifest.version);
+          const bool replacementBuild =
+              sameVersion && allowSameVersionRepair &&
+              ManifestFilesDiffer(manifest, rootDir_);
+          if (!newerVersion && !replacementBuild) {
+            if (install) {
+              message.reserve(currentVersion.size() + 20);
+              message.append(L"すでに最新バージョンです (v");
+              message.append(currentVersion);
+              message.push_back(L')');
+            }
+          } else if (!install) {
+            message.reserve(manifest.version.size() + 24);
+            message.append(L"HomePanel ");
+            message.append(manifest.version);
+            message.append(L" が利用できます");
+          } else {
+            if (replacementBuild) {
+              if (logger_) {
+                logger_->Info(
+                    L"Applying an explicitly requested repair for the same version and different release files");
+              }
+            }
+            if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
+              if (logger_) {
+                try {
+                  logger_->Info(
+                      L"Verified updater launched for version " + manifest.version +
+                      L"; HomePanel remains active until installation is ready");
+                } catch (...) {
+                  logger_->Info(L"Verified updater launched; HomePanel remains active until installation is ready");
+                }
+              }
+              return;
+            }
+            message = L"検証済み更新プログラムを起動できませんでした";
+          }
+        } catch (const std::exception& error) {
+          if (logger_) {
+            try {
+              logger_->Warn(L"Update check failed: " + Utf8ToWide(error.what()));
+            } catch (...) {
+              logger_->Warn(L"Update check failed while formatting diagnostics");
+            }
+          }
+          if (install) {
+            try {
+              const std::wstring detail = Utf8ToWide(error.what());
+              message.reserve(detail.size() + 10);
+              message.append(L"更新確認に失敗: ");
+              message.append(detail);
+            } catch (...) {
+              message.clear();
+            }
+          }
+        } catch (...) {
+          if (logger_) logger_->Warn(L"Update check failed with an unknown exception");
+          if (install) {
+            try {
+              message = L"更新確認に失敗しました";
+            } catch (...) {
+              message.clear();
+            }
+          }
         }
-      } else if (!install) {
-        message.reserve(manifest.version.size() + 24);
-        message.append(L"HomePanel ");
-        message.append(manifest.version);
-        message.append(L" が利用できます");
-      } else {
-        if (replacementBuild) {
-          logger_->Info(
-              L"Applying an explicitly requested repair for the same version and different release files");
-        }
-        if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
-          logger_->Info(
-              L"Verified updater launched for version " + manifest.version +
-              L"; HomePanel remains active until installation is ready");
-          updateBusy_ = false;
-          return;
-        }
-        message = L"検証済み更新プログラムを起動できませんでした";
-      }
-    } catch (const std::exception& error) {
-      const std::wstring detail = Utf8ToWide(error.what());
-      logger_->Warn(L"Update check failed: " + detail);
-      if (install) {
-        message.reserve(detail.size() + 10);
-        message.append(L"更新確認に失敗: ");
-        message.append(detail);
-      }
-    }
 
-    if (!message.empty()) {
-      auto copy = std::make_unique<wchar_t[]>(message.size() + 1);
-      std::copy(message.begin(), message.end(), copy.get());
-      copy[message.size()] = L'\0';
-      if (PostMessageW(window_, kUpdateResultMessage, 0, reinterpret_cast<LPARAM>(copy.get()))) {
-        copy.release();
+        PostUpdateResultNoexcept(window_, kUpdateResultMessage, message);
+      } catch (...) {
+        // std::thread invokes std::terminate when its entry function unwinds.
+        // Keep a final boundary outside diagnostics, allocation and PostMessage.
+        if (logger_) logger_->Warn(L"Update worker stopped after an internal failure");
       }
-    }
-    updateBusy_ = false;
-  });
+    });
+  } catch (...) {
+    updateBusy_.store(false, std::memory_order_release);
+    throw;
+  }
 }
 
 bool App::LaunchVerifiedUpdater(const std::wstring& version, const std::string& manifestJson) {

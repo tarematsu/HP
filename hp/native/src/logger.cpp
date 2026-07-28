@@ -132,40 +132,47 @@ void Logger::Rotate() {
   OpenOutput();
 }
 
-void Logger::Write(const wchar_t* level, const std::wstring& message) {
-  SYSTEMTIME time{};
-  GetLocalTime(&time);
-  char header[32]{};
-  sprintf_s(header, "[%04u-%02u-%02u %02u:%02u:%02u] ",
-            time.wYear, time.wMonth, time.wDay,
-            time.wHour, time.wMinute, time.wSecond);
+void Logger::Write(const wchar_t* level, std::wstring_view messageView) noexcept {
+  try {
+    SYSTEMTIME time{};
+    GetLocalTime(&time);
+    char header[32]{};
+    sprintf_s(header, "[%04u-%02u-%02u %02u:%02u:%02u] ",
+              time.wYear, time.wMonth, time.wDay,
+              time.wHour, time.wMinute, time.wSecond);
 
-  std::string line = header;
-  line += WideToUtf8(level);
-  line.push_back(' ');
-  line += WideToUtf8(RedactUrlQueryAndFragment(message));
-  line.push_back('\n');
+    const std::wstring message(messageView);
+    std::string line = header;
+    line += WideToUtf8(level);
+    line.push_back(' ');
+    line += WideToUtf8(RedactUrlQueryAndFragment(message));
+    line.push_back('\n');
 
-  std::lock_guard lock(mutex_);
-  if (maxBytes_ > 0 && currentBytes_ > 0 &&
-      line.size() > maxBytes_ - std::min(currentBytes_, maxBytes_)) {
-    Rotate();
-  }
-  OpenOutput();
-  if (!output_.is_open()) return;
+    std::lock_guard lock(mutex_);
+    if (maxBytes_ > 0 && currentBytes_ > 0 &&
+        line.size() > maxBytes_ - std::min(currentBytes_, maxBytes_)) {
+      Rotate();
+    }
+    OpenOutput();
+    if (!output_.is_open()) return;
 
-  output_.write(line.data(), static_cast<std::streamsize>(line.size()));
-  if (!output_) {
-    output_.close();
-    return;
-  }
-  currentBytes_ += line.size();
-  pendingBytes_ += line.size();
+    output_.write(line.data(), static_cast<std::streamsize>(line.size()));
+    if (!output_) {
+      output_.close();
+      return;
+    }
+    currentBytes_ += line.size();
+    pendingBytes_ += line.size();
 
-  const bool important = _wcsicmp(level, L"INFO") != 0;
-  if (important || pendingBytes_ >= kLogFlushThresholdBytes) {
-    output_.flush();
-    pendingBytes_ = 0;
+    const bool important = _wcsicmp(level, L"INFO") != 0;
+    if (important || pendingBytes_ >= kLogFlushThresholdBytes) {
+      output_.flush();
+      pendingBytes_ = 0;
+    }
+  } catch (...) {
+    // Logging is called from WndProc, COM callbacks, terminate handlers and
+    // worker exception paths. Diagnostics must never become a second failure
+    // that terminates the process while handling the original problem.
   }
 }
 
