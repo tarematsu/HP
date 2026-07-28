@@ -1,9 +1,11 @@
 import homePanelWorker from './worker_core.ts';
 import { requestFamily } from './unified_routes.js';
+import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
 export { DeviceSyncCoordinator } from './device_sync_coordinator.ts';
 export { RadarBundleCoordinator } from './radar_bundle_coordinator.ts';
+export { VideoFeedCoordinator } from '../../video/src/entry.js';
 export { requestFamily } from './unified_routes.js';
 
 const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
@@ -46,7 +48,7 @@ function unauthorizedVideoResponse() {
 function unavailableVideoResponse() {
   return Response.json({
     ok: false,
-    error: 'Video service unavailable',
+    error: 'Video runtime unavailable',
     retryable: true
   }, {
     status: 503,
@@ -64,28 +66,62 @@ function internalVideoRequest(request) {
   return new Request(request, { headers });
 }
 
+function videoRuntimeEnv(env) {
+  return {
+    ...env,
+    SCHEDULER_COORDINATOR: env?.VIDEO_FEED_COORDINATOR
+  };
+}
+
+function integratedVideoFetch(input, init, env, ctx) {
+  const request = input instanceof Request && init === undefined
+    ? input
+    : new Request(input, init);
+  return videoWorker.fetch(
+    internalVideoRequest(request),
+    videoRuntimeEnv(env),
+    ctx
+  );
+}
+
+function homePanelRuntimeEnv(env, ctx) {
+  return {
+    ...env,
+    VIDEO_SERVICE: {
+      fetch(input, init) {
+        return integratedVideoFetch(input, init, env, ctx);
+      }
+    }
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
     if (requestFamily(pathname) === 'homepanel') {
-      return homePanelWorker.fetch(request, env, ctx);
+      return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
 
     if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
       return unauthorizedVideoResponse();
     }
 
-    const videoService = env?.VIDEO_SERVICE;
-    if (!videoService || typeof videoService.fetch !== 'function') return unavailableVideoResponse();
-
     try {
-      return await videoService.fetch(internalVideoRequest(request));
+      return await integratedVideoFetch(request, undefined, env, ctx);
     } catch (error) {
-      console.error('video-service-request-failed', {
+      console.error('video-runtime-request-failed', {
         pathname,
         error: error instanceof Error ? error.message : String(error)
       });
       return unavailableVideoResponse();
     }
+  },
+
+  queue(batch, env, ctx) {
+    return videoWorker.queue(batch, videoRuntimeEnv(env), ctx);
+  },
+
+  scheduled(controller, env, ctx) {
+    return videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
   }
 };

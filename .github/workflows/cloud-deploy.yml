@@ -57,35 +57,16 @@ jobs:
       - name: Enforce GitHub Actions-only Cloudflare deployment
         run: node .github/scripts/assert-actions-only-cloudflare.mjs
 
-      - name: Validate HomePanel gateway
+      - name: Validate integrated HomePanel runtime
         working-directory: hp
         run: |
           npm run check --workspace cloud
           npm test --workspace cloud
-          npm run check:unified-bundle --workspace cloud
-
-      - name: Validate video service
-        working-directory: hp
-        run: |
           npm test --workspace video
           npm run check --workspace video
+          npm run check:unified-bundle --workspace cloud
 
-      - name: Detach legacy gateway Queue consumer
-        working-directory: hp
-        shell: bash
-        run: |
-          set -euo pipefail
-          if npm exec --workspace video -- wrangler queues consumer worker remove videoscraper-manual-imports homepanel-cloud; then
-            echo "Detached the manual-import Queue from homepanel-cloud."
-          else
-            echo "No legacy homepanel-cloud Queue consumer remained."
-          fi
-
-      - name: Deploy private video service
-        working-directory: hp
-        run: npm run deploy --workspace video
-
-      - name: Deploy HomePanel gateway
+      - name: Deploy HomePanel gateway (integrated runtime)
         working-directory: hp
         shell: bash
         env:
@@ -117,6 +98,10 @@ jobs:
             echo "Migration-sensitive files changed; applying pending migrations before deployment."
             npm run deploy --workspace cloud
           fi
+
+      - name: Deploy private video service (retired stub)
+        working-directory: hp
+        run: npm run deploy --workspace video
 
       - name: Verify deployed readiness
         if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}

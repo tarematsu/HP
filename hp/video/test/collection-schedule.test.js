@@ -9,27 +9,27 @@ import {
 } from '../src/liveness-schedule.js';
 import { MANUAL_IMPORT_QUEUE_NAME } from '../src/manual-import-queue.js';
 
-const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
-const gatewayWrangler = JSON.parse(await readFile(
+const retiredWrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+const cloudWrangler = JSON.parse(await readFile(
   new URL('../../cloud/wrangler.jsonc', import.meta.url),
   'utf8'
 ));
 const entryCore = await readFile(new URL('../src/entry-core.js', import.meta.url), 'utf8');
 
-test('private video deployment owns hourly liveness and manual import queues', () => {
-  assert.deepEqual(wrangler.triggers?.crons, [LIVENESS_CRON]);
-  assert.deepEqual(gatewayWrangler.triggers?.crons, []);
+test('unified cloud deployment owns hourly liveness and manual import queues', () => {
+  assert.deepEqual(cloudWrangler.triggers?.crons, [LIVENESS_CRON]);
+  assert.deepEqual(retiredWrangler.triggers?.crons, []);
   assert.equal(LIVENESS_JOB_NAME, 'video_liveness');
   assert.equal(LIVENESS_INTERVAL_SECONDS, 60 * 60);
   assert.equal(LIVENESS_CRON, '0 * * * *');
-  assert.deepEqual(wrangler.queues?.producers, [{
+  assert.deepEqual(cloudWrangler.queues?.producers, [{
     binding: 'MANUAL_IMPORT_QUEUE',
     queue: MANUAL_IMPORT_QUEUE_NAME
   }]);
-  assert.equal(wrangler.queues?.consumers?.[0]?.queue, MANUAL_IMPORT_QUEUE_NAME);
-  assert.equal(wrangler.queues?.consumers?.[0]?.max_batch_size, 1);
-  assert.equal(wrangler.queues?.consumers?.[0]?.max_concurrency, 1);
-  assert.equal(gatewayWrangler.queues, undefined);
+  assert.equal(cloudWrangler.queues?.consumers?.[0]?.queue, MANUAL_IMPORT_QUEUE_NAME);
+  assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_batch_size, 1);
+  assert.equal(cloudWrangler.queues?.consumers?.[0]?.max_concurrency, 1);
+  assert.equal(retiredWrangler.queues, undefined);
 });
 
 test('automatic source collection remains explicitly disabled', () => {

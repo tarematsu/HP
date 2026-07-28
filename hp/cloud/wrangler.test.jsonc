@@ -17,6 +17,10 @@
       {
         "name": "RADAR_BUNDLE_COORDINATOR",
         "class_name": "RadarBundleCoordinator"
+      },
+      {
+        "name": "VIDEO_FEED_COORDINATOR",
+        "class_name": "VideoFeedCoordinator"
       }
     ]
   },
@@ -32,6 +36,12 @@
       "new_sqlite_classes": [
         "DeviceSyncCoordinator",
         "RadarBundleCoordinator"
+      ]
+    },
+    {
+      "tag": "integrated-video-feed-coordinator-v1",
+      "new_sqlite_classes": [
+        "VideoFeedCoordinator"
       ]
     }
   ],

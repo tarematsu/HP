@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
+test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', () => {
   const unifiedWorker = readSource('hp/cloud/src/unified_worker.js');
   const workerCore = readSource('hp/cloud/src/worker_core.ts');
   const scheduler = readSource('hp/cloud/src/scheduler.ts');
@@ -15,18 +15,22 @@ test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
   const videoConfig = readSource('hp/video/wrangler.jsonc');
   const videoEntry = readSource('hp/video/src/entry.js');
+  const retiredVideoEntry = readSource('hp/video/src/retired-entry.js');
 
   expectAll(unifiedWorker, [
-    'env?.VIDEO_SERVICE',
-    'videoService.fetch(internalVideoRequest(request))',
+    "import videoWorker from '../../video/src/entry.js'",
+    'videoWorker.fetch(',
+    "export { VideoFeedCoordinator }",
+    'VIDEO_FEED_COORDINATOR',
     "export { DeviceSyncCoordinator }",
     "export { RadarBundleCoordinator }",
+    'queue(batch, env, ctx)',
+    'scheduled(controller, env, ctx)',
   ]);
   expectNone(unifiedWorker, [
-    "../../video/src/entry.js",
+    'env?.VIDEO_SERVICE',
+    'videoService.fetch',
     'videoRuntimeActive',
-    'async queue(',
-    'async scheduled(',
   ]);
 
   expectAll(workerCore, [
@@ -70,21 +74,25 @@ test('HomePanel Cloud keeps a small gateway and isolated coordinators', () => {
   expectAll(radarCoordinator, ['export class RadarBundleCoordinator', 'radarBundleShardResponse']);
 
   expectAll(cloudConfig, [
-    '"binding": "VIDEO_SERVICE"',
-    '"service": "homepanel-video"',
-    '"class_name": "DeviceSyncCoordinator"',
-    '"class_name": "RadarBundleCoordinator"',
-    '"triggers": {',
-    '"crons": []',
-  ]);
-  expectNone(cloudConfig, ['"browser"', '"queues"', '"assets"']);
-  expectAll(videoConfig, [
-    '"name": "homepanel-video"',
+    '"directory": "../video/public"',
     '"binding": "BROWSER"',
     '"queue": "videoscraper-manual-imports"',
+    '"name": "VIDEO_FEED_COORDINATOR"',
     '"class_name": "VideoFeedCoordinator"',
+    '"class_name": "DeviceSyncCoordinator"',
+    '"class_name": "RadarBundleCoordinator"',
+    '"0 * * * *"',
   ]);
+  expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
+  expectAll(videoConfig, [
+    '"name": "homepanel-video"',
+    '"main": "src/retired-entry.js"',
+    '"workers_dev": false',
+    '"crons": []',
+  ]);
+  expectNone(videoConfig, ['"browser"', '"queues"', '"assets"', '"d1_databases"', '"durable_objects"']);
   expectAll(videoEntry, ['X-HomePanel-Internal-Service', "pathname === '/api/health'"]);
+  expectAll(retiredVideoEntry, ['status: 410', 'integrated into homepanel-cloud']);
 });
 
 test('HomePanel deployment is direct and rollback-capable', () => {
@@ -104,8 +112,9 @@ test('HomePanel deployment is direct and rollback-capable', () => {
     'env: { ...process.env, CI: "true" }',
   ]);
   expectAll(deployWorkflow, [
-    'Deploy private video service',
-    'Deploy HomePanel gateway',
+    'Validate integrated HomePanel runtime',
+    'Deploy HomePanel gateway (integrated runtime)',
+    'Deploy private video service (retired stub)',
     'Verify deployed readiness',
   ]);
   expectAll(rollbackWorkflow, [
@@ -113,5 +122,5 @@ test('HomePanel deployment is direct and rollback-capable', () => {
     'homepanel-video',
     'homepanel-cloud',
   ]);
-  assert.ok(deployWorkflow.indexOf('Deploy private video service') < deployWorkflow.indexOf('Deploy HomePanel gateway'));
+  assert.ok(deployWorkflow.indexOf('Deploy HomePanel gateway (integrated runtime)') < deployWorkflow.indexOf('Deploy private video service (retired stub)'));
 });

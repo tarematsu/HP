@@ -4,23 +4,29 @@ import test from 'node:test';
 
 const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const wrangler = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
+const retiredEntry = await readFile(new URL('../src/retired-entry.js', import.meta.url), 'utf8');
 
-test('video deployment is explicit and remote database ownership stays in cloud migrations', () => {
+test('video workspace deploys a rollback-safe retired stub', () => {
   assert.equal(pkg.scripts.deploy, 'wrangler deploy --config wrangler.jsonc --keep-vars');
   assert.equal(pkg.scripts['db:migrate:remote'], undefined);
   assert.equal(pkg.scripts['db:migrate:production'], undefined);
   assert.equal(pkg.scripts.postinstall, undefined);
   assert.equal(pkg.scripts.dev, 'wrangler dev --local');
+  assert.match(retiredEntry, /status: 410/);
+  assert.match(retiredEntry, /integrated into homepanel-cloud/);
 });
 
-test('private Wrangler config targets only the HomePanel video service', () => {
+test('retired Wrangler config has no production resource bindings', () => {
   assert.equal(wrangler.name, 'homepanel-video');
+  assert.equal(wrangler.main, 'src/retired-entry.js');
   assert.equal(wrangler.workers_dev, false);
   assert.equal(wrangler.preview_urls, false);
-  assert.equal(wrangler.queues?.consumers?.[0]?.max_concurrency, 1);
-  const database = wrangler.d1_databases?.find((entry) => entry.binding === 'DB');
-  assert.equal(database?.database_name, 'homepanel-data');
-  assert.match(database?.database_id, /^[0-9a-f-]{36}$/i);
+  assert.deepEqual(wrangler.triggers?.crons, []);
+  assert.equal(wrangler.assets, undefined);
+  assert.equal(wrangler.browser, undefined);
+  assert.equal(wrangler.queues, undefined);
+  assert.equal(wrangler.d1_databases, undefined);
+  assert.equal(wrangler.durable_objects, undefined);
 });
 
 test('retired standalone configuration tools stay removed', async () => {

@@ -9,15 +9,23 @@
   "workers_dev": true,
   "preview_urls": false,
   "keep_vars": true,
+  "placement": {
+    "mode": "smart"
+  },
   "vars": {
     "WEATHERNEWS_URL": "https://weathernews.jp/onebox/35.8524/139.4852/"
   },
-  "services": [
-    {
-      "binding": "VIDEO_SERVICE",
-      "service": "homepanel-video"
-    }
-  ],
+  "assets": {
+    "directory": "../video/public",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*"
+    ],
+    "not_found_handling": "single-page-application"
+  },
+  "browser": {
+    "binding": "BROWSER"
+  },
   "durable_objects": {
     "bindings": [
       {
@@ -31,6 +39,10 @@
       {
         "name": "RADAR_BUNDLE_COORDINATOR",
         "class_name": "RadarBundleCoordinator"
+      },
+      {
+        "name": "VIDEO_FEED_COORDINATOR",
+        "class_name": "VideoFeedCoordinator"
       }
     ]
   },
@@ -46,6 +58,12 @@
       "new_sqlite_classes": [
         "DeviceSyncCoordinator",
         "RadarBundleCoordinator"
+      ]
+    },
+    {
+      "tag": "integrated-video-feed-coordinator-v1",
+      "new_sqlite_classes": [
+        "VideoFeedCoordinator"
       ]
     }
   ],
@@ -66,8 +84,29 @@
       "binding": "DATA_BUCKET"
     }
   ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "MANUAL_IMPORT_QUEUE",
+        "queue": "videoscraper-manual-imports"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "videoscraper-manual-imports",
+        "max_batch_size": 1,
+        "max_batch_timeout": 0,
+        "max_retries": 5,
+        "retry_delay": 300,
+        "max_concurrency": 1,
+        "dead_letter_queue": "videoscraper-manual-imports-dlq"
+      }
+    ]
+  },
   "triggers": {
-    "crons": []
+    "crons": [
+      "0 * * * *"
+    ]
   },
   "observability": {
     "enabled": true,
