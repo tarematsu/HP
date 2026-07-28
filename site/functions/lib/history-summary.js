@@ -262,7 +262,10 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
 
   const rows = [...merged.values()].slice(-limit);
   const evidenceTargets = rowsRequiringBoundaryEvidence(rows, mode, now);
-  const evidence = await loadPeriodBoundaryEvidence(loaded.sourceDb || env.DB, evidenceTargets, mode);
+  // Boundary evidence is compacted during collector ingest in the buddies DB.
+  // Reading it from MINUTE_DB falls through to the large compatibility view and
+  // can consume millions of D1 rows per dashboard request.
+  const evidence = await loadPeriodBoundaryEvidence(env.DB || loaded.sourceDb, evidenceTargets, mode);
   const boundedRows = applyPeriodBoundaryEvidence(rows, evidence);
   const completed = applySummaryCompleteness(boundedRows, mode, now);
   return {
