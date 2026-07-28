@@ -71,6 +71,15 @@ test('period boundary reads use the preaggregated table without scanning snapsho
   assert.match(preaggregatedPeriodBoundaryEvidenceSql(), /GROUP BY periods\.period_key/);
 });
 
+test('history summaries read compact boundary evidence from the buddies DB', () => {
+  const summary = readFileSync(
+    new URL('../functions/lib/history-summary.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(summary, /loadPeriodBoundaryEvidence\(env\.DB \|\| loaded\.sourceDb/);
+  assert.doesNotMatch(summary, /loadPeriodBoundaryEvidence\(loaded\.sourceDb \|\| env\.DB/);
+});
+
 test('migration and metadata ingest enforce compact change-only writes', () => {
   const migration = readFileSync(
     new URL('../../database/buddies-migrations/011_period_boundary_evidence.sql', import.meta.url),
