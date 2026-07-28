@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  extractCurrentDeploymentError,
   summarizeCurrentHomePanelDeployment,
 } from '../.github/scripts/github-deployment-health-current.mjs';
 
@@ -21,12 +22,12 @@ function job(conclusion = 'success', steps = []) {
   return { id: 20, name: 'deploy', status: 'completed', conclusion, steps };
 }
 
-test('HomePanel deployment diagnostics use current cloud deployment and retired Worker deletion step names', () => {
+test('HomePanel deployment diagnostics use current cloud deployment and Queue cutover step names', () => {
   const summary = summarizeCurrentHomePanelDeployment({
     run: run(),
     jobs: [job('success', [
+      { name: 'Release manual import Queue consumer — Delete retired homepanel-video Worker', conclusion: 'success' },
       { name: 'Deploy HomePanel Cloud', conclusion: 'success' },
-      { name: 'Deploy private video service deletion — Delete retired homepanel-video Worker', conclusion: 'success' },
     ])],
   });
   assert.equal(summary.overall, 'success');
@@ -54,8 +55,8 @@ test('failure after deployment steps is exposed as post-deploy verification fail
   const summary = summarizeCurrentHomePanelDeployment({
     run: run('failure'),
     jobs: [job('failure', [
+      { name: 'Release manual import Queue consumer — Delete retired homepanel-video Worker', conclusion: 'success' },
       { name: 'Deploy HomePanel Cloud', conclusion: 'success' },
-      { name: 'Deploy private video service deletion — Delete retired homepanel-video Worker', conclusion: 'success' },
       { name: 'Verify deployed readiness', conclusion: 'failure' },
     ])],
     jobError: 'readiness verification failed',
@@ -66,17 +67,29 @@ test('failure after deployment steps is exposed as post-deploy verification fail
   assert.match(verification.error, /readiness verification failed/);
 });
 
-test('retired Worker deletion failure is not misreported as an active service deployment', () => {
+test('retired Worker deletion failure blocks rather than misreports the unified deployment', () => {
   const summary = summarizeCurrentHomePanelDeployment({
     run: run('failure'),
     jobs: [job('failure', [
-      { name: 'Deploy HomePanel Cloud', conclusion: 'success' },
-      { name: 'Deploy private video service deletion — Delete retired homepanel-video Worker', conclusion: 'failure' },
+      { name: 'Release manual import Queue consumer — Delete retired homepanel-video Worker', conclusion: 'failure' },
+      { name: 'Deploy HomePanel Cloud', conclusion: 'skipped' },
     ])],
     jobError: 'delete API rejected the request',
   });
   assert.equal(summary.overall, 'failure');
-  assert.equal(summary.components[0].result, 'success');
+  assert.equal(summary.components[0].target, 'homepanel-cloud');
+  assert.equal(summary.components[0].result, 'skipped');
   assert.equal(summary.components[1].target, 'retired homepanel-video deletion');
   assert.equal(summary.components[1].result, 'failure');
+});
+
+test('explicit HomePanel root cause wins over later artifact upload chatter', () => {
+  const error = extractCurrentDeploymentError(`
+2026-07-28T14:13:18Z ##[error]HomePanel deploy failed::Some triggers failed to deploy: Queue consumer already exists
+2026-07-28T14:13:19Z name: homepanel-deploy-failure-123
+2026-07-28T14:13:19Z Artifact homepanel-deploy-failure-123.zip successfully finalized.
+2026-07-28T14:13:19Z Process completed with exit code 1.
+  `);
+  assert.match(error, /Queue consumer already exists/);
+  assert.doesNotMatch(error, /Artifact|successfully finalized/);
 });
