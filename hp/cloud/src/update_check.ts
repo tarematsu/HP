@@ -50,7 +50,10 @@ async function performUpdateCheck(env: Env): Promise<void> {
   }
   if (identity.version === previousVersion && identity.manifestHash === previousManifestHash) return;
 
-  if (previousVersion) {
+  // A hash-only mutation under the same version is not a new release. Automatically
+  // installing it would reinterpret a packaging collision as a repair and can stop
+  // an already-current native app. Explicit local repair remains available.
+  if (previousVersion && identity.version !== previousVersion) {
     const payload = JSON.stringify({
       reason: "release",
       version: identity.version,
