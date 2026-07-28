@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc', import.meta.url), 'utf8'));
-const videoConfig = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
@@ -53,10 +52,6 @@ test('static video assets, Browser Rendering, and Queue bindings belong to the u
   assert.equal(cloudConfig.queues.producers[0].binding, 'MANUAL_IMPORT_QUEUE');
   assert.equal(cloudConfig.queues.consumers[0].max_concurrency, 1);
   assert.equal(cloudConfig.services, undefined);
-  assert.equal(videoConfig.assets, undefined);
-  assert.equal(videoConfig.browser, undefined);
-  assert.equal(videoConfig.queues, undefined);
-  assert.equal(videoConfig.workers_dev, false);
 });
 
 test('each hot coordination workload has an independent Durable Object', () => {
@@ -64,7 +59,6 @@ test('each hot coordination workload has an independent Durable Object', () => {
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'DEVICE_SYNC_COORDINATOR'));
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'RADAR_BUNDLE_COORDINATOR'));
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'VIDEO_FEED_COORDINATOR' && entry.class_name === 'VideoFeedCoordinator'));
-  assert.equal(videoConfig.durable_objects, undefined);
   assert.match(feedCoordinator, /CANDIDATE_CHUNK_SIZE = 500/);
   assert.match(feedCoordinator, /EXPECTED_SCHEDULED_FEED_GROUPS = 2/);
   assert.match(feedCoordinator, /video-feed-stage/);
@@ -110,7 +104,6 @@ test('device exchange isolates telemetry and uses a dedicated sync coordinator',
 
 test('video liveness is hourly, bounded, and owned by the unified Worker', () => {
   assert.deepEqual(cloudConfig.triggers.crons, ['0 * * * *']);
-  assert.deepEqual(videoConfig.triggers.crons, []);
   assert.match(livenessSchedule, /LIVENESS_INTERVAL_SECONDS = 60 \* 60/);
   assert.match(livenessMonitor, /LIVENESS_BATCH_SIZE = 5/);
   assert.match(livenessMonitor, /PROBE_CONCURRENCY = 5/);
