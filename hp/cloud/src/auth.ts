@@ -68,6 +68,10 @@ export function actionSecrets(env: Env): Array<string | undefined> {
   return [env.API_TOKEN, env.HOMEPANEL_INGEST_SECRET, env.DEVICE_TOKEN];
 }
 
+export function readinessSecrets(env: Env): Array<string | undefined> {
+  return [env.API_TOKEN, env.GITHUB_RADAR_DISPATCH_TOKEN];
+}
+
 export function authorizedAnyDevice(request: Request, env: Env): boolean {
   const supplied = bearerToken(request);
   const configured = configuredDeviceTokens(env);
@@ -93,8 +97,9 @@ export function authorizedDevice(request: Request, env: Env, deviceId: string): 
 }
 
 export function authorizedAction(request: Request, env: Env): boolean {
-  const supplied = bearerToken(request);
-  return matchesExpectedToken(supplied, env.API_TOKEN)
-    || matchesExpectedToken(supplied, env.HOMEPANEL_INGEST_SECRET)
-    || matchesExpectedToken(supplied, env.DEVICE_TOKEN);
+  return matchesAnyToken(bearerToken(request), actionSecrets(env));
+}
+
+export function authorizedReadiness(request: Request, env: Env): boolean {
+  return matchesAnyToken(bearerToken(request), readinessSecrets(env));
 }
