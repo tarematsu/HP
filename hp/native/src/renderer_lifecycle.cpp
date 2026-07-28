@@ -116,6 +116,9 @@ void Renderer::SetVisible(bool visible) {
 
   if (!visibilityChanged) return;
   if (visible) {
+    // Hidden sensor updates retain the compact source samples but intentionally
+    // skip graph projection. Rebuild once before repainting the restored panel.
+    RebuildNativeAirGraph(UnixMillis());
     // Radar animation and its large composition surfaces are needed only while
     // the native Dashboard is visible. Recreate them on demand after a tab or
     // authorization surface returns to Main.
@@ -140,6 +143,9 @@ void Renderer::SetVisible(bool visible) {
   }
   radarFailedTiles_.clear();
   ResetNativeBitmapCaches();
+  // The source history remains available in nativeAirHistory_; discard only the
+  // filtered render projection so its capacity does not stay resident off-screen.
+  nativeAirGraph_ = {};
 }
 
 void Renderer::QueueAction(UiAction action) {
