@@ -34,6 +34,52 @@ struct CachedRadarSourceDc {
   }
 };
 
+struct RadarCompositionSurface {
+  HBITMAP bitmap = nullptr;
+  HDC dc = nullptr;
+  HGDIOBJ previous = nullptr;
+
+  RadarCompositionSurface() = default;
+  RadarCompositionSurface(const RadarCompositionSurface&) = delete;
+  RadarCompositionSurface& operator=(const RadarCompositionSurface&) = delete;
+
+  ~RadarCompositionSurface() {
+    Reset();
+  }
+
+  bool Initialize(const BITMAPINFO& info, void** pixels) noexcept {
+    bitmap = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, pixels, nullptr, 0);
+    if (!bitmap) return false;
+    dc = CreateCompatibleDC(nullptr);
+    if (!dc) return false;
+    previous = SelectObject(dc, bitmap);
+    return previous && previous != HGDI_ERROR;
+  }
+
+  void Reset() noexcept {
+    if (dc) {
+      if (previous && previous != HGDI_ERROR) SelectObject(dc, previous);
+      DeleteDC(dc);
+    }
+    if (bitmap) DeleteObject(bitmap);
+    bitmap = nullptr;
+    dc = nullptr;
+    previous = nullptr;
+  }
+
+  HBITMAP Release() noexcept {
+    if (dc) {
+      if (previous && previous != HGDI_ERROR) SelectObject(dc, previous);
+      DeleteDC(dc);
+    }
+    HBITMAP released = bitmap;
+    bitmap = nullptr;
+    dc = nullptr;
+    previous = nullptr;
+    return released;
+  }
+};
+
 HDC RadarSourceDc(HDC compatibleDc) {
   thread_local CachedRadarSourceDc cached;
   if (!cached.value) cached.value = CreateCompatibleDC(compatibleDc);
@@ -253,6 +299,7 @@ void BlendBitmap(HDC dc, HBITMAP bitmap, int left, int top, int width, int heigh
   HDC sourceDc = RadarSourceDc(dc);
   if (!sourceDc) return;
   HGDIOBJ previous = SelectObject(sourceDc, bitmap);
+  if (!previous || previous == HGDI_ERROR) return;
   const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
   AlphaBlend(dc, left, top, width, height, sourceDc, 0, 0, width, height, blend);
   SelectObject(sourceDc, previous);
@@ -275,7 +322,18 @@ void Renderer::StartRadarCompose() {
     std::lock_guard lock(radarComposeWakeMutex_);
     radarComposePending_ = true;
   }
-  radarComposeThread_ = std::thread([this] { RadarComposeLoop(); });
+  radarComposeThread_ = std::thread([this] {
+    for (;;) {
+      try {
+        RadarComposeLoop();
+        return;
+      } catch (...) {
+        OutputDebugStringW(L"HomePanel radar compose thread recovered from an exception\n");
+        if (radarComposeStopping_.load(std::memory_order_acquire)) return;
+        Sleep(1'000);
+      }
+    }
+  });
 }
 
 void Renderer::StopRadarCompose() noexcept {
@@ -487,15 +545,9 @@ void Renderer::ComposeRadarFrame() {
   info.bmiHeader.biBitCount = 32;
   info.bmiHeader.biCompression = BI_RGB;
   void* pixels = nullptr;
-  HBITMAP composed = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
-  if (!composed) return;
-
-  HDC composeDc = CreateCompatibleDC(nullptr);
-  if (!composeDc) {
-    DeleteObject(composed);
-    return;
-  }
-  HGDIOBJ previousComposed = SelectObject(composeDc, composed);
+  RadarCompositionSurface surface;
+  if (!surface.Initialize(info, &pixels)) return;
+  HDC composeDc = surface.dc;
   if (precomposed) {
     PatBlt(composeDc, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight, BLACKNESS);
   } else {
@@ -530,13 +582,8 @@ void Renderer::ComposeRadarFrame() {
   if (!precomposed) {
     BlendBitmap(composeDc, radarMapBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
   }
-  SelectObject(composeDc, previousComposed);
-  DeleteDC(composeDc);
 
-  if (!tiles.empty() && loadedTiles == 0) {
-    DeleteObject(composed);
-    return;
-  }
+  if (!tiles.empty() && loadedTiles == 0) return;
 
   std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
   if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
@@ -545,10 +592,11 @@ void Renderer::ComposeRadarFrame() {
   // animation step allocates and writes roughly 10 MB without improving restart
   // recovery because the selected frame changes again on the next interval.
   if (animationIntervalMs == 0 && !signature.empty() &&
-      SaveBitmapAsBmp(composed, cachedFrame, kRadarCanvasWidth, kRadarCanvasHeight)) {
+      SaveBitmapAsBmp(surface.bitmap, cachedFrame, kRadarCanvasWidth, kRadarCanvasHeight)) {
     AtomicWriteText(cachedSignature, signatureUtf8);
   }
 
+  HBITMAP composed = surface.Release();
   HBITMAP previousFrame = nullptr;
   {
     std::lock_guard lock(radarFrameMutex_);
