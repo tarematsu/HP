@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { access } from 'node:fs/promises';
 import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', () => {
+test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', async () => {
   const unifiedWorker = readSource('hp/cloud/src/unified_worker.js');
   const workerCore = readSource('hp/cloud/src/worker_core.ts');
   const scheduler = readSource('hp/cloud/src/scheduler.ts');
@@ -13,9 +14,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', (
   const deviceSyncClient = readSource('hp/cloud/src/device_sync_coordinator_client.ts');
   const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
-  const videoConfig = readSource('hp/video/wrangler.jsonc');
   const videoEntry = readSource('hp/video/src/entry.js');
-  const retiredVideoEntry = readSource('hp/video/src/retired-entry.js');
 
   expectAll(unifiedWorker, [
     "import videoWorker from '../../video/src/entry.js'",
@@ -84,18 +83,12 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', (
     '"0 * * * *"',
   ]);
   expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
-  expectAll(videoConfig, [
-    '"name": "homepanel-video"',
-    '"main": "src/retired-entry.js"',
-    '"workers_dev": false',
-    '"crons": []',
-  ]);
-  expectNone(videoConfig, ['"browser"', '"queues"', '"assets"', '"d1_databases"', '"durable_objects"']);
   expectAll(videoEntry, ['X-HomePanel-Internal-Service', "pathname === '/api/health'"]);
-  expectAll(retiredVideoEntry, ['status: 410', 'integrated into homepanel-cloud']);
+  await assert.rejects(access(new URL('../hp/video/wrangler.jsonc', import.meta.url)));
+  await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));
 });
 
-test('HomePanel deployment is direct and rollback-capable', () => {
+test('HomePanel deployment deletes the standalone Worker and rolls back only Cloud', () => {
   const packageJson = readSource('hp/cloud/package.json');
   const deployExisting = readSource('hp/cloud/scripts/deploy-existing.mjs');
   const deployWorkflow = readSource('.github/workflows/cloud-deploy.yml');
@@ -113,14 +106,15 @@ test('HomePanel deployment is direct and rollback-capable', () => {
   ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
-    'Deploy HomePanel gateway (integrated runtime)',
-    'Deploy private video service (retired stub)',
+    'Deploy HomePanel Cloud',
+    'Delete retired homepanel-video Worker',
+    'wrangler delete --name homepanel-video --force',
     'Verify deployed readiness',
   ]);
   expectAll(rollbackWorkflow, [
     'wrangler "${args[@]}"',
-    'homepanel-video',
     'homepanel-cloud',
   ]);
-  assert.ok(deployWorkflow.indexOf('Deploy HomePanel gateway (integrated runtime)') < deployWorkflow.indexOf('Deploy private video service (retired stub)'));
+  expectNone(rollbackWorkflow, ['homepanel-video', 'video_version', 'Roll back video service']);
+  assert.ok(deployWorkflow.indexOf('Deploy HomePanel Cloud') < deployWorkflow.indexOf('Delete retired homepanel-video Worker'));
 });
