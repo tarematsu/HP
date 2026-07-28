@@ -109,11 +109,13 @@ test('HomePanel deployment releases the retired Queue consumer before unified de
     "method: 'DELETE'",
     '/workers/scripts/${encodeURIComponent(worker)}?force=true',
     'codes.includes(10090)',
+    'allowExplicitQueueConsumer',
   ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
     'Release manual import Queue consumer — Delete retired homepanel-video Worker',
-    'node .github/scripts/delete-cloudflare-worker.mjs homepanel-video',
+    'node .github/scripts/delete-cloudflare-worker.mjs homepanel-video videoscraper-manual-imports',
+    'legacy consumer records may omit script_name',
     'Deploy HomePanel Cloud',
     'Cloudflare Queues permits only one active push consumer per Queue',
     'Verify deployed readiness',
