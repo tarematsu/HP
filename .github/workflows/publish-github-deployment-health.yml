@@ -6,6 +6,12 @@ on:
     types: [completed]
   push:
     branches: [main]
+    paths:
+      - '.github/workflows/publish-github-deployment-health.yml'
+      - '.github/scripts/github-deployment-health.mjs'
+      - '.github/scripts/github-deployment-health-current.mjs'
+      - '.github/scripts/publish-github-deployment-health.mjs'
+      - '.github/scripts/observability-system-status.mjs'
   schedule:
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
@@ -37,3 +43,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           DEPLOYMENT_HEALTH_ISSUE_NUMBER: '259'
         run: node .github/scripts/publish-github-deployment-health.mjs
+      - name: Synchronize unified system status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_STATUS_ISSUE_NUMBER: '259'
+        run: node .github/scripts/observability-system-status.mjs
