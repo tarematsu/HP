@@ -34,6 +34,13 @@ struct CachedRadarSourceDc {
   }
 };
 
+struct ScopedRadarComApartment {
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ~ScopedRadarComApartment() {
+    if (SUCCEEDED(result)) CoUninitialize();
+  }
+};
+
 struct RadarCompositionSurface {
   HBITMAP bitmap = nullptr;
   HDC dc = nullptr;
@@ -56,26 +63,24 @@ struct RadarCompositionSurface {
     return previous && previous != HGDI_ERROR;
   }
 
-  void Reset() noexcept {
-    if (dc) {
-      if (previous && previous != HGDI_ERROR) SelectObject(dc, previous);
-      DeleteDC(dc);
-    }
-    if (bitmap) DeleteObject(bitmap);
-    bitmap = nullptr;
+  void FinishDrawing() noexcept {
+    if (!dc) return;
+    if (previous && previous != HGDI_ERROR) SelectObject(dc, previous);
+    DeleteDC(dc);
     dc = nullptr;
     previous = nullptr;
   }
 
+  void Reset() noexcept {
+    FinishDrawing();
+    if (bitmap) DeleteObject(bitmap);
+    bitmap = nullptr;
+  }
+
   HBITMAP Release() noexcept {
-    if (dc) {
-      if (previous && previous != HGDI_ERROR) SelectObject(dc, previous);
-      DeleteDC(dc);
-    }
+    FinishDrawing();
     HBITMAP released = bitmap;
     bitmap = nullptr;
-    dc = nullptr;
-    previous = nullptr;
     return released;
   }
 };
@@ -344,7 +349,7 @@ void Renderer::StopRadarCompose() noexcept {
 }
 
 void Renderer::RadarComposeLoop() {
-  const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ScopedRadarComApartment apartment;
   while (!radarComposeStopping_.load(std::memory_order_acquire)) {
     int64_t animationIntervalMs = 0;
     {
@@ -371,7 +376,6 @@ void Renderer::RadarComposeLoop() {
     } catch (...) {
     }
   }
-  if (SUCCEEDED(apartment)) CoUninitialize();
 }
 
 void Renderer::ComposeRadarFrame() {
@@ -587,6 +591,9 @@ void Renderer::ComposeRadarFrame() {
 
   std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
   if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
+
+  // A bitmap passed to GetDIBits must not remain selected into a memory DC.
+  surface.FinishDrawing();
 
   // Persist only static radar frames. Serializing the 1920x1280 bitmap for every
   // animation step allocates and writes roughly 10 MB without improving restart
