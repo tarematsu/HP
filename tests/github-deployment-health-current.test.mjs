@@ -37,6 +37,19 @@ test('HomePanel deployment diagnostics use current cloud deployment and retired 
   assert.ok(!summary.components.some((entry) => entry.target === 'homepanel-video'));
 });
 
+test('missing expected deployment step is degraded even when the job itself succeeds', () => {
+  const summary = summarizeCurrentHomePanelDeployment({
+    run: run(),
+    jobs: [job('success', [
+      { name: 'Deploy HomePanel Cloud', conclusion: 'success' },
+    ])],
+  });
+  assert.equal(summary.overall, 'degraded');
+  const deletion = summary.components.find((entry) => entry.target === 'retired homepanel-video deletion');
+  assert.equal(deletion.result, 'unknown');
+  assert.match(deletion.error, /Expected deployment step/);
+});
+
 test('failure after deployment steps is exposed as post-deploy verification failure', () => {
   const summary = summarizeCurrentHomePanelDeployment({
     run: run('failure'),
