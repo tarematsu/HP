@@ -6,6 +6,7 @@ import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs
 
 test('HomePanel video runtime is a private bounded service', () => {
   const entry = readSource('hp/video/src/entry.js');
+  const coordinator = readSource('hp/video/src/video-feed-coordinator.js');
   const config = readSource('hp/video/wrangler.jsonc');
   const statusReport = readSource('hp/video/src/status-report.js');
   const statusLists = readSource('hp/video/src/status-lists.js');
@@ -18,6 +19,14 @@ test('HomePanel video runtime is a private bounded service', () => {
     "pathname === '/api/health'",
     "return Response.json({ ok: false, error: 'Not found' }, { status: 404 })",
     'export { VideoFeedCoordinator }',
+    "getByName(LIVENESS_COORDINATOR_NAME)",
+    "video-liveness-run",
+    "scheduled-video-liveness-dispatch-failed",
+  ]);
+  expectAll(coordinator, [
+    "import { runLivenessMonitor } from './liveness-monitor.js'",
+    "path === '/video-liveness-run'",
+    'runLivenessMonitor(this.env)',
   ]);
   expectAll(config, [
     '"name": "homepanel-video"',
@@ -40,7 +49,11 @@ test('HomePanel video runtime is a private bounded service', () => {
     "video.status = 'active'",
   ]);
   assert.ok(!liveness.includes('MAX(video.id)'));
-  expectAll(schedule, ['LIVENESS_INTERVAL_SECONDS = 60 * 60']);
+  expectAll(schedule, [
+    'LIVENESS_INTERVAL_SECONDS = 60 * 60',
+    'low-CPU dispatcher',
+    'VideoFeedCoordinator',
+  ]);
 
   expectAll(migration, [
     'Imported into HP as: `hp/video/`',

@@ -9,14 +9,16 @@ function cron(workflow) {
   return workflow.match(/cron:\s*['"]([^'"]+)['"]/)?.[1] || '';
 }
 
-test('runtime and Pages schedules remain staggered after re-registration', () => {
+test('runtime follows Pages without a reciprocal workflow cycle', () => {
   const runtime = read('.github/workflows/run-runtime-offline-maintenance.yml');
   const pages = read('.github/workflows/run-pages-read-model-rebuild.yml');
 
   assert.equal(cron(runtime), '11,41 * * * *');
   assert.equal(cron(pages), '26,56 * * * *');
-  assert.match(pages, /workflows: \["Run runtime offline maintenance"\]/);
+  assert.match(runtime, /workflows: \["Deploy production", "Rebuild pages read models"\]/);
+  assert.doesNotMatch(pages, /workflow_run:/);
   assert.match(runtime, /cancel-in-progress: false/);
+  assert.match(pages, /group: pages-read-model-rebuild/);
 });
 
 test('public runtime health uses the runner-health stale threshold', () => {

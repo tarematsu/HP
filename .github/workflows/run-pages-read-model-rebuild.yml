@@ -1,9 +1,6 @@
 name: Rebuild pages read models
 
 on:
-  workflow_run:
-    workflows: ["Run runtime offline maintenance"]
-    types: [completed]
   schedule:
     - cron: '26,56 * * * *'
   push:
@@ -25,24 +22,13 @@ on:
 permissions:
   contents: read
 
-# A workflow_run event is still created when the Runtime job itself was started
-# by push or deploy chaining. Those runs are intentionally skipped below, so
-# isolate them from operational runs before concurrency cancellation is applied.
 concurrency:
-  group: pages-read-model-rebuild-${{ github.event_name == 'workflow_run' && github.event.workflow_run.event != 'schedule' && github.event.workflow_run.event != 'workflow_dispatch' && 'ignored-chain' || 'operational' }}
+  group: pages-read-model-rebuild
   cancel-in-progress: true
 
 jobs:
   rebuild:
     name: Rebuild and publish due pages read models
-    # Pushes that affect Pages already trigger this workflow directly. Chaining a
-    # Runtime push completion would start the same SHA twice and cancel one run.
-    # Runtime schedules and manual runs remain independent operational inputs.
-    if: >-
-      github.event_name != 'workflow_run'
-      || (github.event.workflow_run.conclusion == 'success'
-        && (github.event.workflow_run.event == 'schedule'
-          || github.event.workflow_run.event == 'workflow_dispatch'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -62,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:

@@ -1,4 +1,5 @@
 import { refreshFeedSnapshot } from './feed-snapshot.js';
+import { runLivenessMonitor } from './liveness-monitor.js';
 import { finalizeCompactedFeedLocally } from './source-feed-compacted.js';
 
 const VIDEO_FEED_GROUP_DAYS_KEY = 'video-feed-group-days-v1';
@@ -199,6 +200,9 @@ export class VideoFeedCoordinator {
       body = {};
     }
 
+    if (path === '/video-liveness-run') {
+      return Response.json(await runLivenessMonitor(this.env));
+    }
     if (path === '/video-feed-stage') {
       const candidates = await this.mergeIntoCanonical(body.mergeItems);
       return Response.json({ candidateCount: candidates.length }, { status: 202 });
