@@ -31,7 +31,7 @@ jobs:
     environment: production
     env:
       HOMEPANEL_D1_DATABASE_ID: ${{ secrets.HOMEPANEL_D1_DATABASE_ID }}
-      HOMEPANEL_READY_TOKEN: ${{ secrets.HOMEPANEL_READY_TOKEN }}
+      HOMEPANEL_API_TOKEN: ${{ secrets.API_TOKEN }}
       RADAR_DISPATCH_TOKEN: ${{ secrets.RADAR_DISPATCH_TOKEN || secrets.GITHUB_RADAR_DISPATCH_TOKEN }}
 
     steps:
@@ -155,22 +155,35 @@ jobs:
           ' "$output"
 
       - name: Verify authenticated deployed readiness
-        if: ${{ env.HOMEPANEL_READY_TOKEN != '' }}
         shell: bash
         env:
           HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
         run: |
           set -euo pipefail
+          : "${HOMEPANEL_API_TOKEN:?GitHub Actions secret API_TOKEN is required for /v1/ready verification}"
+          output="$RUNNER_TEMP/homepanel-readiness.json"
           curl --fail --silent --show-error \
             --retry 4 --retry-delay 5 --retry-all-errors \
-            -H "Authorization: Bearer $HOMEPANEL_READY_TOKEN" \
+            -H "Accept: application/json" \
+            -H "Authorization: Bearer $HOMEPANEL_API_TOKEN" \
             "$HOMEPANEL_BASE_URL/v1/ready" \
-            > "$RUNNER_TEMP/homepanel-readiness.json"
-          cat "$RUNNER_TEMP/homepanel-readiness.json"
-
-      - name: Report disabled authenticated readiness verification
-        if: ${{ env.HOMEPANEL_READY_TOKEN == '' }}
-        run: echo "::notice::Public HomePanel D1 health passed; set HOMEPANEL_READY_TOKEN to add the authenticated /v1/ready check."
+            > "$output"
+          cat "$output"
+          node -e '
+            const fs = require("node:fs");
+            const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const checks = payload?.checks && typeof payload.checks === "object"
+              ? Object.values(payload.checks)
+              : [];
+            if (
+              payload?.ok !== true
+              || payload?.service !== "homepanel-cloud"
+              || checks.length === 0
+              || checks.some(check => check?.ok !== true)
+            ) {
+              throw new Error(`Unexpected HomePanel readiness response: ${JSON.stringify(payload)}`);
+            }
+          ' "$output"
 
       - name: Sync radar dispatcher token
         if: ${{ env.RADAR_DISPATCH_TOKEN != '' }}
