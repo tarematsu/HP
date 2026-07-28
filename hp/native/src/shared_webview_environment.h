@@ -7,7 +7,8 @@ class SharedWebViewEnvironment {
   using Completion = std::function<void(HRESULT, ICoreWebView2Environment*)>;
 
   static SharedWebViewEnvironment& Instance();
-  void Acquire(const fs::path& userDataFolder, Completion completion);
+  void Acquire(const fs::path& userDataFolder, bool blockImages,
+               bool blockFonts, Completion completion);
   void Invalidate(const fs::path& userDataFolder);
 
  private:
@@ -18,6 +19,8 @@ class SharedWebViewEnvironment {
     uint32_t acquireCount = 0;
     uint64_t generation = 0;
     bool creating = false;
+    bool blockImages = false;
+    bool blockFonts = false;
   };
 
   SharedWebViewEnvironment() = default;
@@ -28,4 +31,4 @@ class SharedWebViewEnvironment {
   std::mutex mutex_;
   std::map<std::wstring, Entry> entries_;
 };
-}
+}  // namespace hp
