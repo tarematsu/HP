@@ -91,6 +91,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
 test('HomePanel deployment deletes the standalone Worker and rolls back only Cloud', () => {
   const packageJson = readSource('hp/cloud/package.json');
   const deployExisting = readSource('hp/cloud/scripts/deploy-existing.mjs');
+  const deleteWorker = readSource('.github/scripts/delete-cloudflare-worker.mjs');
   const deployWorkflow = readSource('.github/workflows/cloud-deploy.yml');
   const rollbackWorkflow = readSource('.github/workflows/homepanel-cloud-rollback.yml');
 
@@ -104,13 +105,19 @@ test('HomePanel deployment deletes the standalone Worker and rolls back only Clo
     'Routine Worker deploy: skipping remote D1 migration discovery',
     'env: { ...process.env, CI: "true" }',
   ]);
+  expectAll(deleteWorker, [
+    "method: 'DELETE'",
+    '/workers/scripts/${encodeURIComponent(worker)}?force=true',
+    'codes.includes(10090)',
+  ]);
   expectAll(deployWorkflow, [
     'Validate integrated HomePanel runtime',
     'Deploy HomePanel Cloud',
     'Delete retired homepanel-video Worker',
-    'wrangler delete --name homepanel-video --force',
+    'node .github/scripts/delete-cloudflare-worker.mjs homepanel-video',
     'Verify deployed readiness',
   ]);
+  expectNone(deployWorkflow, ['wrangler delete', '--force']);
   expectAll(rollbackWorkflow, [
     'wrangler "${args[@]}"',
     'homepanel-cloud',
