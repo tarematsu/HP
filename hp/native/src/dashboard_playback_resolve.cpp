@@ -3,6 +3,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kPlaybackRenderTransitionHoldMs = 500;
+constexpr int64_t kPlaybackFallbackMaximumAgeMs = 30'000;
 
 int64_t ProjectedElapsedMs(const NativePlaybackProjection& projection, int64_t nowMs) {
   if (!projection.playing) return projection.progressMs;
@@ -127,8 +128,23 @@ ProjectedTrackPosition ResolveProjectedTrackPosition(const NativePlaybackProject
   return {cursor.index, remaining};
 }
 
+bool ProjectionFreshForFallback(const NativePlaybackProjection& projection,
+                                int64_t nowMs) noexcept {
+  if (projection.stale || projection.fetchedAt <= 0 || nowMs < projection.fetchedAt) {
+    return false;
+  }
+  return nowMs - projection.fetchedAt <= kPlaybackFallbackMaximumAgeMs;
+}
+
 bool PlaybackEndedWithoutNextTrack(const NativePlaybackProjection& projection, int64_t nowMs) {
-  if (!projection.available || projection.setupRequired) return false;
+  // A persisted snapshot is loaded synchronously during dashboard startup. It
+  // may describe a queue that ended hours earlier and must not navigate both
+  // live Stationhead WebViews away in the same tick that the dashboard appears.
+  // Only a recent, non-stale network observation may drive the fallback route.
+  if (!projection.available || projection.setupRequired ||
+      !ProjectionFreshForFallback(projection, nowMs)) {
+    return false;
+  }
   if (projection.ended) return true;
   // The dashboard endpoint represents a completed queue with current_index=-1,
   // playing=false and a past queue_end_at; it does not always emit `ended`.
