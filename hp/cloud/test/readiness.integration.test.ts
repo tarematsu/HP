@@ -15,13 +15,13 @@ describe("HomePanel readiness", () => {
     expect(response.status).toBe(401);
   });
 
-  it("reports missing production-only bindings without hiding healthy D1", async () => {
+  it("reports the integrated video runtime and healthy production bindings", async () => {
     const response = await SELF.fetch("https://homepanel.test/v1/ready", {
       headers: { Authorization: "Bearer test-action" },
     });
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      ok: false,
+      ok: true,
       service: "homepanel-cloud",
       checks: {
         d1: { ok: true },
@@ -29,7 +29,7 @@ describe("HomePanel readiness", () => {
         deviceSync: { ok: true },
         radarCoordinator: { ok: true },
         dataBucket: { ok: true },
-        videoService: { ok: false },
+        videoService: { ok: true },
       },
     });
   });

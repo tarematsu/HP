@@ -7,6 +7,7 @@ const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 const action = read('.github/actions/cloudflare-observability-diagnostics/action.yml');
 const workflow = read('.github/workflows/sh-observability.yml');
+const resolver = read('.github/scripts/observability-workflow-outcome.mjs');
 
 test('shared diagnostics action owns persisted-query and live-tail orchestration', () => {
   assert.match(action, /python3 \.github\/scripts\/query-cloudflare-observability\.py/);
@@ -40,10 +41,10 @@ test('the unified workflow uses and retriggers the diagnostics action for HP and
     workflow,
     /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outputs\.query-outcome \}\}/,
   );
-  assert.match(
-    workflow,
-    /steps\.observability-query\.outputs\.public-health-outcome == 'failure'/,
-  );
+  assert.match(workflow, /name: Resolve semantic observability outcome/);
+  assert.match(resolver, /readOptionalText\('public-health-endpoints\.md'\)/);
+  assert.match(resolver, /observabilityIssueOverall/);
+  assert.match(workflow, /steps\.resolve-outcome\.outputs\.overall == 'failure'/);
   assert.doesNotMatch(
     workflow,
     /OBSERVABILITY_QUERY_OUTCOME: \$\{\{ steps\.observability-query\.outcome \}\}/,
