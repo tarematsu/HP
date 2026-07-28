@@ -48,10 +48,21 @@ void Renderer::DrawCachedPanelSection(
       return;
     }
     HGDIOBJ previous = SelectObject(memoryDc, bitmap);
-    const RECT local{0, 0, width, height};
-    FillRect(memoryDc, &local, BitmapCacheBackgroundBrush());
-    SetBkMode(memoryDc, TRANSPARENT);
-    (this->*draw)(memoryDc, local);
+    if (!previous || previous == HGDI_ERROR) {
+      DeleteObject(bitmap);
+      (this->*draw)(dc, card);
+      return;
+    }
+    try {
+      const RECT local{0, 0, width, height};
+      FillRect(memoryDc, &local, BitmapCacheBackgroundBrush());
+      SetBkMode(memoryDc, TRANSPARENT);
+      (this->*draw)(memoryDc, local);
+    } catch (...) {
+      SelectObject(memoryDc, previous);
+      DeleteObject(bitmap);
+      throw;
+    }
     SelectObject(memoryDc, previous);
     if (cache.bitmap) DeleteObject(cache.bitmap);
     cache = PanelBitmapCache{bitmap, width, height, revision, nativeLayoutRevision_};
@@ -61,6 +72,10 @@ void Renderer::DrawCachedPanelSection(
     return;
   }
   HGDIOBJ previous = SelectObject(memoryDc, cache.bitmap);
+  if (!previous || previous == HGDI_ERROR) {
+    (this->*draw)(dc, card);
+    return;
+  }
   BitBlt(dc, card.left, card.top, width, height, memoryDc, 0, 0, SRCCOPY);
   SelectObject(memoryDc, previous);
 }
