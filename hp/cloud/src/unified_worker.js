@@ -73,11 +73,33 @@ function videoRuntimeEnv(env) {
   };
 }
 
+function integratedVideoFetch(input, init, env, ctx) {
+  const request = input instanceof Request && init === undefined
+    ? input
+    : new Request(input, init);
+  return videoWorker.fetch(
+    internalVideoRequest(request),
+    videoRuntimeEnv(env),
+    ctx
+  );
+}
+
+function homePanelRuntimeEnv(env, ctx) {
+  return {
+    ...env,
+    VIDEO_SERVICE: {
+      fetch(input, init) {
+        return integratedVideoFetch(input, init, env, ctx);
+      }
+    }
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
     if (requestFamily(pathname) === 'homepanel') {
-      return homePanelWorker.fetch(request, env, ctx);
+      return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
 
     if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
@@ -85,11 +107,7 @@ export default {
     }
 
     try {
-      return await videoWorker.fetch(
-        internalVideoRequest(request),
-        videoRuntimeEnv(env),
-        ctx
-      );
+      return await integratedVideoFetch(request, undefined, env, ctx);
     } catch (error) {
       console.error('video-runtime-request-failed', {
         pathname,
