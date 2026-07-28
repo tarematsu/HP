@@ -3,17 +3,14 @@
   "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Private video service for the HomePanel Cloud gateway.",
+  "description": "Video runtime modules integrated into homepanel-cloud.",
   "scripts": {
-    "dev": "wrangler dev --local",
-    "deploy": "wrangler deploy --config wrangler.jsonc --keep-vars",
     "test": "node --test",
     "test:integration": "node --test test/worker.integration.test.js",
     "benchmark:hot-path": "node scripts/benchmark-hot-path.mjs",
     "check:audit": "node scripts/audit-generalization.mjs",
-    "check:bundle": "wrangler deploy --dry-run --outdir=dist-dry-run",
     "check:syntax": "node scripts/check-syntax.mjs",
-    "check": "npm run check:syntax && npm run check:audit && npm run check:bundle"
+    "check": "npm run check:syntax && npm run check:audit"
   },
   "devDependencies": {
     "@cloudflare/puppeteer": "^1.1.0",
