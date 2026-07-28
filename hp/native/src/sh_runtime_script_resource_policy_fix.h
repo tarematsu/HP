@@ -66,7 +66,8 @@ inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(
   // These chunks implement social, growth, commerce, support, moderation and
   // profile-management surfaces that are not needed by the audio-only player.
   // Blocking occurs in WebResourceRequested before response bytes are received,
-  // parsed, compiled, or retained by V8.
+  // parsed, compiled, or retained by V8. The compact-name entries at the end are
+  // taken from the current live Vite asset graph rather than guessed URL shapes.
   constexpr std::wstring_view kNonPlaybackScriptNeedles[] = {
       L"chat", L"comment", L"gift", L"tipping", L"trending", L"thread",
       L"reaction", L"emoji", L"listeners", L"audience", L"leaderboard",
@@ -94,6 +95,8 @@ inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(
       L"settings-modal", L"profile-edit", L"avatar-picker",
       L"apple-music", L"musickit", L"connect-apple", L"music-service",
       L"service-picker",
+      L"selectedgif", L"lottieanimationviewnonlazy",
+      L"applemusicfreetrialbutton", L"premium-20", L"paginationhooks",
   };
   for (const std::wstring_view needle : kNonPlaybackScriptNeedles) {
     if (uri.path.find(needle) != std::wstring_view::npos) return true;
@@ -109,6 +112,16 @@ static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://cdn.posthog.com/static/array.js"));
 static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://static.zdassets.com/ekr/snippet.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://www.stationhead.com/assets/SelectedGIF-BaAx9j6X.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://www.stationhead.com/assets/LottieAnimationViewNonLazy-VE60c2nO.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://www.stationhead.com/assets/AppleMusicFreeTrialButton-BzMIl5Mx.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://www.stationhead.com/assets/premium-20-IQ2C1WIZ.js"));
+static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(
+    L"https://www.stationhead.com/assets/paginationHooks-DAuPuAck.js"));
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/_next/static/chunks/player-runtime.123.js"));
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
