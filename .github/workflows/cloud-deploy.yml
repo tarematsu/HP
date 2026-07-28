@@ -66,7 +66,7 @@ jobs:
           npm run check --workspace video
           npm run check:unified-bundle --workspace cloud
 
-      - name: Deploy HomePanel gateway (integrated runtime)
+      - name: Deploy HomePanel Cloud
         working-directory: hp
         shell: bash
         env:
@@ -99,9 +99,23 @@ jobs:
             npm run deploy --workspace cloud
           fi
 
-      - name: Deploy private video service (retired stub)
+      - name: Deploy private video service deletion — Delete retired homepanel-video Worker
         working-directory: hp
-        run: npm run deploy --workspace video
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          output="$(npm exec --workspace cloud -- wrangler delete --name homepanel-video --force 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "Deleted homepanel-video."
+          elif grep -Eqi '(not found|does not exist|404|10090)' <<<"$output"; then
+            echo "homepanel-video is already absent."
+          else
+            exit "$status"
+          fi
 
       - name: Verify deployed readiness
         if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}
