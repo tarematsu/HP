@@ -1,5 +1,6 @@
 #include "app.h"
 #include "app_startup_tick_fallback.h"
+#include "update_shutdown_protocol.h"
 
 namespace hp {
 namespace {
@@ -7,6 +8,74 @@ namespace {
 constexpr int64_t kStartupFallbackFirstDelayMs = 60'000;
 constexpr int64_t kStartupFallbackRetryMs = 5'000;
 constexpr int kStartupFallbackAttempts = 7;
+constexpr DWORD kWindowCallbackExceptionCode = 0xe0000002u;
+
+HWND gProtectedWindow = nullptr;
+WNDPROC gOriginalWindowProc = nullptr;
+App* gProtectedOwner = nullptr;
+bool gUserCloseRequested = false;
+
+void LogWindowCallbackFailure() noexcept {
+  try {
+    if (gProtectedOwner) {
+      gProtectedOwner->LogUnhandled(kWindowCallbackExceptionCode, nullptr);
+    }
+  } catch (...) {
+  }
+}
+
+LRESULT CALLBACK ProtectedWindowProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept {
+  const WNDPROC original = gOriginalWindowProc;
+  if (!original) return DefWindowProcW(window, message, wParam, lParam);
+
+  if (message == WM_SYSCOMMAND && (wParam & 0xfff0u) == SC_CLOSE) {
+    gUserCloseRequested = true;
+  }
+  if (message == kUpdateShutdownMessage) {
+    return CallWindowProcW(original, window, WM_CLOSE, 0, 0);
+  }
+  if (message == WM_CLOSE) {
+    if (!gUserCloseRequested) return 0;
+    gUserCloseRequested = false;
+  }
+
+  try {
+    return CallWindowProcW(original, window, message, wParam, lParam);
+  } catch (...) {
+    LogWindowCallbackFailure();
+    if (message == WM_PAINT) ValidateRect(window, nullptr);
+    return message == WM_NCCREATE ? FALSE : 0;
+  }
+}
+
+void InstallWindowProtection(HWND window, App* owner) noexcept {
+  if (!window || !owner || gProtectedWindow) return;
+  SetLastError(ERROR_SUCCESS);
+  const LONG_PTR previous = SetWindowLongPtrW(
+      window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(ProtectedWindowProc));
+  if (!previous && GetLastError() != ERROR_SUCCESS) return;
+  gProtectedWindow = window;
+  gOriginalWindowProc = reinterpret_cast<WNDPROC>(previous);
+  gProtectedOwner = owner;
+  gUserCloseRequested = false;
+}
+
+void RemoveWindowProtection() noexcept {
+  const HWND window = gProtectedWindow;
+  const WNDPROC original = gOriginalWindowProc;
+  if (window && original && IsWindow(window)) {
+    const auto current = reinterpret_cast<WNDPROC>(
+        GetWindowLongPtrW(window, GWLP_WNDPROC));
+    if (current == ProtectedWindowProc) {
+      SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(original));
+    }
+  }
+  gProtectedWindow = nullptr;
+  gOriginalWindowProc = nullptr;
+  gProtectedOwner = nullptr;
+  gUserCloseRequested = false;
+}
 
 class StartupUpdateFallback final {
  public:
@@ -15,6 +84,7 @@ class StartupUpdateFallback final {
   void Start(HWND window, App* owner) noexcept {
     Stop();
     if (!window || !owner) return;
+    InstallWindowProtection(window, owner);
 
     {
       std::lock_guard lock(mutex_);
@@ -45,6 +115,7 @@ class StartupUpdateFallback final {
     }
     wake_.notify_all();
     if (worker_.joinable()) worker_.join();
+    RemoveWindowProtection();
   }
 
  private:
