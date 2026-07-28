@@ -77,7 +77,7 @@ jobs:
           fi
           printf '%s\n' "$changed_files"
 
-          if grep -Eq '^(database/facts-db\.json$|database/facts-migrations/|worker/src/|worker/scripts/|worker/wrangler.*\.jsonc$|worker/package(-lock)?\.json$|site/functions/|site/public/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/|hp/cloud/|hp/video/src/|hp/video/public/|hp/video/package\.json$|hp/video/wrangler\.jsonc$|\.github/actions/cloudflare-context/action\.yml$|\.github/scripts/resolve-cloudflare-account\.mjs$|\.github/workflows/database\.yml$|\.github/workflows/deploy-split-pipeline\.yml$|\.github/workflows/cloud-deploy\.yml$|\.github/scripts/assert-actions-only-cloudflare\.mjs$)' <<<"$changed_files"; then
+          if grep -Eq '^(database/facts-db\.json$|database/facts-migrations/|worker/src/|worker/scripts/|worker/wrangler.*\.jsonc$|worker/package(-lock)?\.json$|site/functions/|site/public/|site/wrangler\.jsonc$|site/package(-lock)?\.json$|packages/sh-shared/|hp/cloud/|hp/video/src/|hp/video/public/|hp/video/package\.json$|\.github/actions/cloudflare-context/action\.yml$|\.github/scripts/resolve-cloudflare-account\.mjs$|\.github/workflows/database\.yml$|\.github/workflows/deploy-split-pipeline\.yml$|\.github/workflows/cloud-deploy\.yml$|\.github/scripts/assert-actions-only-cloudflare\.mjs$)' <<<"$changed_files"; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "Deferring unified Cloudflare diagnostics until production deployment completes."
           else
@@ -95,8 +95,8 @@ jobs:
       group: cloudflare-observability-status-issue
       cancel-in-progress: false
     env:
-      CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video
-      D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc
+      CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud
+      D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       D1_QUERY_OUTPUT_DIR: d1-insights
       D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       D1_QUERY_LIMIT: "20"
@@ -111,7 +111,7 @@ jobs:
       DAILY_QUEUE_BUDGET: "10000"
       DAILY_USAGE_OUTPUT_DIR: daily-usage
       CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator
-      CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc,hp/video/wrangler.jsonc
+      CLOUDFLARE_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc
       CLOUDFLARE_STORAGE_BUCKETS: sh-runtime-analytics
       CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV
       CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR
