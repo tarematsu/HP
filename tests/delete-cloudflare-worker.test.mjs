@@ -102,10 +102,11 @@ test('detaches the matching Queue consumer and retries Worker deletion', async (
   assert.equal(calls[2].url, 'https://api.cloudflare.com/client/v4/accounts/account-123/queues/queue-1/consumers/consumer-1');
 });
 
-test('lists Queue consumers separately when embedded consumers are empty but the count is non-zero', async () => {
+test('explicit Queue cutover detaches a legacy worker consumer without script_name', async () => {
   const calls = [];
   const detached = await detachQueueConsumersForWorker({
     ...options,
+    queueNames: ['manual-imports'],
     fetchImpl: async (url, init = {}) => {
       calls.push({ url, method: init.method || 'GET' });
       if (/\/queues\?/.test(url)) {
@@ -126,7 +127,6 @@ test('lists Queue consumers separately when embedded consumers are empty but the
           result: [{
             consumer_id: 'consumer-2',
             type: 'worker',
-            script_name: 'homepanel-video',
           }],
         });
       }
@@ -137,8 +137,56 @@ test('lists Queue consumers separately when embedded consumers are empty but the
     },
   });
 
-  assert.equal(detached.length, 1);
+  assert.deepEqual(detached, [{
+    queueId: 'queue-2',
+    queueName: 'manual-imports',
+    consumerId: 'consumer-2',
+  }]);
   assert.deepEqual(calls.map(({ method }) => method), ['GET', 'GET', 'DELETE']);
+});
+
+test('explicit Queue cutover does not detach consumers from unrelated Queues or HTTP pull consumers', async () => {
+  const deleted = [];
+  const detached = await detachQueueConsumersForWorker({
+    ...options,
+    queueNames: ['manual-imports'],
+    fetchImpl: async (url, init = {}) => {
+      if (/\/queues\?/.test(url)) {
+        return json({
+          success: true,
+          result: [
+            {
+              queue_id: 'queue-target',
+              queue_name: 'manual-imports',
+              consumers: [
+                { consumer_id: 'http-consumer', type: 'http_pull' },
+                { consumer_id: 'worker-consumer', type: 'worker' },
+              ],
+            },
+            {
+              queue_id: 'queue-other',
+              queue_name: 'other-queue',
+              consumers: [{
+                consumer_id: 'other-worker',
+                type: 'worker',
+                script_name: 'other-service',
+              }],
+            },
+          ],
+          result_info: { total_pages: 1 },
+        });
+      }
+      if (init.method === 'DELETE') {
+        deleted.push(url);
+        return json({ success: true });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    },
+  });
+
+  assert.equal(detached.length, 1);
+  assert.equal(deleted.length, 1);
+  assert.match(deleted[0], /queue-target\/consumers\/worker-consumer$/);
 });
 
 test('does not query consumer details when the Queue reports zero consumers', async () => {
