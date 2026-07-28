@@ -10,6 +10,7 @@ on:
       - "hp/video/**"
       - ".github/actions/cloudflare-context/action.yml"
       - ".github/scripts/resolve-cloudflare-account.mjs"
+      - ".github/scripts/delete-cloudflare-worker.mjs"
       - ".github/workflows/cloud-deploy.yml"
       - ".github/scripts/assert-actions-only-cloudflare.mjs"
   workflow_dispatch:
@@ -100,22 +101,7 @@ jobs:
           fi
 
       - name: Deploy private video service deletion — Delete retired homepanel-video Worker
-        working-directory: hp
-        shell: bash
-        run: |
-          set -euo pipefail
-          set +e
-          output="$(npm exec --workspace cloud -- wrangler delete --name homepanel-video --force 2>&1)"
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          if [ "$status" -eq 0 ]; then
-            echo "Deleted homepanel-video."
-          elif grep -Eqi '(not found|does not exist|404|10090)' <<<"$output"; then
-            echo "homepanel-video is already absent."
-          else
-            exit "$status"
-          fi
+        run: node .github/scripts/delete-cloudflare-worker.mjs homepanel-video
 
       - name: Verify deployed readiness
         if: ${{ env.HOMEPANEL_BASE_URL != '' && env.HOMEPANEL_READY_TOKEN != '' }}

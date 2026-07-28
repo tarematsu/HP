@@ -11,12 +11,12 @@ test('retired HomePanel video deletion is production-only and idempotent', () =>
   assert.match(workflow, /^name: Delete retired HomePanel Video Worker$/m);
   assert.match(workflow, /^  push:\n/m);
   assert.match(workflow, /branches: \[main\]/);
+  assert.match(workflow, /\.github\/scripts\/delete-cloudflare-worker\.mjs/);
   assert.match(workflow, /^  workflow_dispatch:\n/m);
   assert.doesNotMatch(workflow, /^  pull_request:\n/m);
   assert.match(workflow, /environment: production/);
-  assert.match(workflow, /wrangler delete --name homepanel-video --force/);
-  assert.match(workflow, /not found\|does not exist\|404\|10090/);
-  assert.match(workflow, /exit "\$status"/);
+  assert.match(workflow, /node \.github\/scripts\/delete-cloudflare-worker\.mjs homepanel-video/);
+  assert.doesNotMatch(workflow, /wrangler delete|--force/);
 });
 
 test('successful deletion publishes a queryable commit status', () => {
