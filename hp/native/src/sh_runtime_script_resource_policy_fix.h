@@ -126,11 +126,11 @@ static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/assets/AppleMusicFreeTrialButton-BzMIl5Mx.js"));
 static_assert(!StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/LottieAnimationViewNonLazy-VE60c2nO.js").empty());
+    L"https://www.stationhead.com/assets/lottieanimationviewnonlazy-ve60c2no.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/player-runtime.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://stationhead.com.evil.example/assets/LottieAnimationViewNonLazy.js").empty());
+    L"https://stationhead.com.evil.example/assets/lottieanimationviewnonlazy.js").empty());
 
 inline void ApplyStationheadResourceBlockingScriptFixed(
     ICoreWebView2Environment* environment,
