@@ -40,52 +40,61 @@ test('expanded script policy is the final Stationhead resource layer', () => {
   );
 });
 
-test('optional JavaScript is classified by exact host and request path', () => {
+test('generic empty-script replacement is restricted to exact third-party hosts', () => {
   const classifier = section(
     policySource,
     'inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(',
-    'static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(',
+    'inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(',
   );
   assert.match(classifier, /StationheadParseRuntimeUri\(uriLower\)/);
   assert.match(classifier, /StationheadRuntimeHostMatches\(uri\.host, domain\)/);
-  assert.match(classifier, /StationheadRuntimeHostMatches\(uri\.host, L"stationhead\.com"\)/);
-  assert.match(classifier, /uri\.path\.ends_with\(L"\.js"\)/);
-  assert.match(classifier, /uri\.path\.ends_with\(L"\.mjs"\)/);
-  assert.doesNotMatch(classifier, /uriLower\.find\(needle\)/);
-});
-
-test('playback, authentication and framework bundles win over optional tokens', () => {
-  assert.match(policySource, /kProtectedScriptNeedles/);
-  for (const token of [
-    'player', 'playback', 'audio', 'queue', 'realtime', 'pusher',
-    'auth', 'login', 'session', 'spotify', 'station', 'channel',
-    'runtime', 'framework', 'webpack', 'polyfill',
-  ]) {
-    assert.match(policySource, new RegExp(`L"${token}"`));
-  }
-  const protectedAt = policySource.indexOf('kProtectedScriptNeedles');
-  const optionalAt = policySource.indexOf('kNonPlaybackScriptNeedles');
-  assert.ok(protectedAt >= 0 && protectedAt < optionalAt);
-});
-
-test('more social, commerce, support and third-party SDK scripts are rejected', () => {
-  for (const token of [
-    'creator-tools', 'moderator-tools', 'subscription-modal', 'billing-modal',
-    'checkout-modal', 'merch-store', 'help-center', 'support-widget',
-    'privacy-policy', 'terms-of-service', 'download-app', 'streak-modal',
-  ]) {
-    assert.match(policySource, new RegExp(`L"${token}"`));
-  }
+  assert.doesNotMatch(classifier, /uri\.path\.find\(needle\)/);
   for (const domain of [
     'posthog.com', 'heapanalytics.com', 'logrocket.com', 'smartlook.com',
     'pendo.io', 'appcues.com', 'onetrust.com', 'cookielaw.org',
     'zdassets.com', 'zendesk.com', 'hs-scripts.com', 'mouseflow.com',
+    'appleid.cdn-apple.com',
   ]) {
     assert.match(policySource, new RegExp(`L"${domain.replaceAll('.', '\\.') }"`));
   }
 });
 
-test('script blocking happens before download without DOM or duplicate handlers', () => {
+test('live-observed same-origin ESM modules are never replaced with an empty module', () => {
+  for (const filename of [
+    'SelectedGIF-BaAx9j6X.js',
+    'premium-20-IQ2C1WIZ.js',
+    'paginationHooks-DAuPuAck.js',
+    'AppleMusicFreeTrialButton-BzMIl5Mx.js',
+  ]) {
+    assert.match(
+      policySource,
+      new RegExp(`!StationheadExpandedNonPlaybackScriptBoundaryFixed\\([\\s\\S]*${filename.replaceAll('.', '\\.')}`),
+    );
+  }
+  assert.doesNotMatch(
+    section(
+      policySource,
+      'inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(',
+      'inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(',
+    ),
+    /kNonPlaybackScriptNeedles|kProtectedScriptNeedles/,
+  );
+});
+
+test('Lottie is replaced by a contract-compatible ES module stub', () => {
+  const stub = section(
+    policySource,
+    'inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(',
+    'static_assert(StationheadExpandedNonPlaybackScriptBoundaryFixed(',
+  );
+  assert.match(stub, /kKnownOptionalModuleNeedles/);
+  assert.match(policySource, /L"lottieanimationviewnonlazy"/);
+  assert.match(stub, /export const LottieAnimationViewNonLazy=\(\)=>null;/);
+  assert.match(stub, /StationheadRuntimeHostMatches\(uri\.host, L"stationhead\.com"\)/);
+  assert.match(stub, /uri\.path\.ends_with\(L"\.js"\)/);
+});
+
+test('script replacement happens before download with a real stub stream and one handler', () => {
   const policy = section(
     policySource,
     'inline void ApplyStationheadResourceBlockingScriptFixed(',
@@ -93,8 +102,11 @@ test('script blocking happens before download without DOM or duplicate handlers'
   );
   assert.equal((policy.match(/add_WebResourceRequested\(/g) || []).length, 1);
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+  assert.match(policy, /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/);
   assert.match(policy, /StationheadExpandedNonPlaybackScriptBoundaryFixed\(lower\)/);
-  assert.match(policy, /emptyScript \? 200 : 403/);
+  assert.match(policy, /SHCreateMemStream\(/);
+  assert.match(policy, /responseBody\.Get\(\)/);
+  assert.match(policy, /replacementScript \? 200 : 403/);
   assert.match(policy, /Content-Type: application\/javascript/);
   assert.match(policy, /Cache-Control: no-store/);
   assert.doesNotMatch(policy, /MutationObserver|querySelector|createElement|display:none|ExecuteScript/);
