@@ -22,6 +22,9 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
     'name: Verify deployed readiness',
     'HOMEPANEL_HEALTH_URL: ${{ steps.homepanel-public-url.outputs.health-url }}',
     '--output "$output" --write-out "%{http_code}"',
+    'homepanel-public-health.status',
+    'homepanel-readiness.status',
+    "printf 'curl_status=%s\\nhttp_status=%s\\n'",
     'cat "$output" || true',
     'payload?.ok !== true',
     'payload?.service !== "homepanel-video"',
@@ -34,6 +37,11 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
     'payload?.service !== "homepanel-cloud"',
     'checks.some(check => check?.ok !== true)',
     'Unexpected HomePanel readiness response (HTTP ${status})',
+    'name: Upload HomePanel readiness diagnostics',
+    'if: failure()',
+    'homepanel-readiness-diagnostics-${{ github.run_id }}',
+    '${{ runner.temp }}/homepanel-public-health.json',
+    '${{ runner.temp }}/homepanel-readiness.json',
   ]) assert.match(workflow, new RegExp(fragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   assert.doesNotMatch(workflow, /curl --fail/);
@@ -65,6 +73,10 @@ test('HomePanel deployment resolves workers.dev and requires public and authenti
   assert.ok(
     workflow.indexOf('- name: Verify deployed readiness')
       < workflow.indexOf('- name: Verify authenticated deployed readiness'),
+  );
+  assert.ok(
+    workflow.indexOf('- name: Verify authenticated deployed readiness')
+      < workflow.indexOf('- name: Upload HomePanel readiness diagnostics'),
   );
 
   assert.match(auth, /readinessSecrets\(env: Env\)/);
