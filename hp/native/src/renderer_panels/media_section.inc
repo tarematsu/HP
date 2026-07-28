@@ -18,50 +18,105 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       ? nativeStationhead_.audioPlaying
       : nativeStationhead_.secondaryPlaying;
   const int64_t nowMs = UnixMillis();
-  const NativePlaybackRender sharedPlayback = allStationheadsOnFallback
-      ? NativePlaybackRender{}
-      : ResolveNativePlayback(0, nowMs);
-  const bool withProgress = !allStationheadsOnFallback &&
-      sharedPlayback.hasTrack && sharedPlayback.track.durationMs > 0;
 
-  const auto drawProgress = [&] {
+  RECT clip{};
+  GetClipBox(dc, &clip);
+  const RECT progressRect = MusicProgressRectFromBody(body);
+  const bool progressClipOnly =
+      clip.left >= progressRect.left && clip.top >= progressRect.top &&
+      clip.right <= progressRect.right && clip.bottom <= progressRect.bottom;
+
+  const auto drawProgress = [&](int64_t progressMs, int64_t durationMs, bool playing) {
     RECT barRect{textLeft, rowRect.top + rowHeight * 66 / 100,
                  textRight, rowRect.top + rowHeight * 72 / 100};
     DrawWidgetPill(dc, barRect, kWidgetTrack);
     const double ratio = std::clamp(
-        static_cast<double>(sharedPlayback.progressMs) /
-            static_cast<double>(sharedPlayback.track.durationMs),
+        static_cast<double>(progressMs) / static_cast<double>(durationMs),
         0.0, 1.0);
     RECT fillRect = barRect;
     fillRect.right = barRect.left +
         static_cast<int>((barRect.right - barRect.left) * ratio);
     if (fillRect.right > fillRect.left) {
-      DrawWidgetPill(
-          dc, fillRect, sharedPlayback.playing ? kWidgetGreen : kWidgetMuted);
+      DrawWidgetPill(dc, fillRect, playing ? kWidgetGreen : kWidgetMuted);
     }
 
     SetTextColor(dc, kWidgetSubtle);
     RECT timeRect{textLeft, barRect.bottom + rowHeight * 3 / 100,
                   textRight, rowRect.bottom - rowHeight * 3 / 100};
-    DrawTextInRect(dc, TrackTimeText(sharedPlayback.progressMs), timeRect,
+    DrawTextInRect(dc, TrackTimeText(progressMs), timeRect,
                    DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-    DrawTextInRect(dc, TrackTimeText(sharedPlayback.track.durationMs), timeRect,
+    DrawTextInRect(dc, TrackTimeText(durationMs), timeRect,
                    DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
   };
 
-  RECT clip{};
-  GetClipBox(dc, &clip);
-  const RECT progressRect = MusicProgressRectFromBody(body);
-  const bool progressOnly = withProgress &&
-      clip.left >= progressRect.left && clip.top >= progressRect.top &&
-      clip.right <= progressRect.right && clip.bottom <= progressRect.bottom;
-  if (progressOnly) {
-    FillRect(dc, &progressRect, CachedSolidBrush(kWidgetSurface));
-    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-    drawProgress();
-    SelectObject(dc, previousFont);
-    return;
+  if (progressClipOnly && !allStationheadsOnFallback) {
+    // The one-second timer invalidates only the progress strip. Avoid the normal
+    // NativePlaybackRender construction here because it copies title, artist and
+    // artwork strings even though none of them are visible inside this clip.
+    int64_t progressMs = 0;
+    int64_t progressDurationMs = 0;
+    bool progressPlaying = false;
+    bool progressAvailable = false;
+    {
+      std::lock_guard lock(nativePlaybackMutex_);
+      const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
+      const bool currentValid = projection.available && !projection.queue.empty() &&
+          projection.currentIndex >= 0 &&
+          projection.currentIndex < static_cast<int>(projection.queue.size());
+      const bool queueEnded = projection.playing && projection.queueEndAt > 0 &&
+          nowMs >= projection.queueEndAt;
+      if (currentValid && !queueEnded) {
+        int64_t elapsed = projection.progressMs;
+        if (projection.playing) {
+          if (projection.anchorAt > 0) {
+            elapsed = std::max<int64_t>(0, nowMs - projection.anchorAt);
+          } else if (projection.sampledAt > 0) {
+            elapsed = projection.progressMs +
+                std::max<int64_t>(0, nowMs - projection.sampledAt);
+          }
+        }
+
+        size_t index = static_cast<size_t>(projection.currentIndex);
+        int64_t remaining = std::max<int64_t>(0, elapsed);
+        constexpr int64_t kProgressTransitionHoldMs = 500;
+        while (index < projection.queue.size()) {
+          const int64_t duration = projection.queue[index].durationMs;
+          if (duration <= 0 ||
+              duration > std::numeric_limits<int64_t>::max() -
+                  kProgressTransitionHoldMs ||
+              remaining < duration + kProgressTransitionHoldMs) {
+            break;
+          }
+          remaining -= duration;
+          ++index;
+        }
+        if (index < projection.queue.size()) {
+          const auto& track = projection.queue[index];
+          const bool hasIdentity = !track.title.empty() || !track.artist.empty() ||
+              !track.artwork.empty();
+          if (hasIdentity && track.durationMs > 0) {
+            progressMs = std::min(remaining, track.durationMs);
+            progressDurationMs = track.durationMs;
+            progressPlaying = projection.playing;
+            progressAvailable = true;
+          }
+        }
+      }
+    }
+    if (progressAvailable) {
+      FillRect(dc, &progressRect, CachedSolidBrush(kWidgetSurface));
+      HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+      drawProgress(progressMs, progressDurationMs, progressPlaying);
+      SelectObject(dc, previousFont);
+      return;
+    }
   }
+
+  const NativePlaybackRender sharedPlayback = allStationheadsOnFallback
+      ? NativePlaybackRender{}
+      : ResolveNativePlayback(0, nowMs);
+  const bool withProgress = !allStationheadsOnFallback &&
+      sharedPlayback.hasTrack && sharedPlayback.track.durationMs > 0;
 
   DrawSectionCard(dc, card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
@@ -164,7 +219,10 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   }
 
-  if (withProgress) drawProgress();
+  if (withProgress) {
+    drawProgress(sharedPlayback.progressMs, sharedPlayback.track.durationMs,
+                 sharedPlayback.playing);
+  }
 
   DrawWidgetCard(dc, rects.button, kWidgetSuccessSurface, CardRadius(rects.button));
   SetTextColor(dc, kWidgetGreen);
