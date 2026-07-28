@@ -10,7 +10,7 @@ beforeEach(async () => {
 });
 
 describe("HomePanel readiness", () => {
-  it("requires an action token", async () => {
+  it("requires an operations token", async () => {
     const response = await SELF.fetch("https://homepanel.test/v1/ready");
     expect(response.status).toBe(401);
   });
@@ -32,5 +32,19 @@ describe("HomePanel readiness", () => {
         videoService: { ok: true },
       },
     });
+  });
+
+  it("accepts the existing radar dispatch token for deployment verification", async () => {
+    const response = await SELF.fetch("https://homepanel.test/v1/ready", {
+      headers: { Authorization: "Bearer test-radar-dispatch" },
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("does not grant readiness access to device credentials", async () => {
+    const response = await SELF.fetch("https://homepanel.test/v1/ready", {
+      headers: { Authorization: "Bearer test-device" },
+    });
+    expect(response.status).toBe(401);
   });
 });
