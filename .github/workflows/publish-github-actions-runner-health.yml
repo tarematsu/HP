@@ -2,18 +2,24 @@ name: Publish GitHub Actions runner health
 
 on:
   workflow_run:
-    # Unified observability can finish while the chained Pages run is still active.
-    # Refresh again when Pages completes so issue #259 does not remain stuck on running.
-    workflows: ["Unified Cloudflare Observability", "Rebuild pages read models"]
+    # Refresh after every monitored operational workflow that can complete independently.
+    workflows: ["Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Repair track metadata", "Run local minute facts rebuild", "Refresh Cloudflare observability", "Publish GitHub deployment health"]
     types: [completed]
   push:
     branches: [main]
     paths:
       - '.github/workflows/publish-github-actions-runner-health.yml'
+      - '.github/workflows/publish-github-deployment-health.yml'
+      - '.github/workflows/refresh-cloudflare-observability.yml'
       - '.github/workflows/run-runtime-offline-maintenance.yml'
       - '.github/workflows/run-pages-read-model-rebuild.yml'
+      - '.github/workflows/run-track-metadata-repair.yml'
+      - '.github/workflows/run-local-minute-facts-rebuild.yml'
+      - '.github/workflows/sh-observability.yml'
       - '.github/scripts/github-actions-runner-health.mjs'
+      - '.github/scripts/github-actions-runner-health-current.mjs'
       - '.github/scripts/publish-github-actions-runner-health.mjs'
+      - '.github/scripts/observability-system-status.mjs'
   schedule:
     - cron: '2,17,32,47 * * * *'
   workflow_dispatch:
@@ -45,3 +51,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           ACTIONS_HEALTH_ISSUE_NUMBER: '259'
         run: node .github/scripts/publish-github-actions-runner-health.mjs
+      - name: Synchronize unified system status
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVABILITY_STATUS_ISSUE_NUMBER: '259'
+        run: node .github/scripts/observability-system-status.mjs
