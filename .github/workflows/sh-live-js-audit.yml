@@ -1,0 +1,93 @@
+name: Stationhead live JavaScript audit
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/inspect-stationhead-module-graph.mjs'
+      - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
+      - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
+      - '.github/workflows/sh-live-js-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: sh-live-js-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout audit revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      - name: Audit primary Stationhead page
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-js-live.mjs
+          --url=https://www.stationhead.com/sakuramankai
+          --duration-ms=20000
+          --auto-click
+          --out=.sh-js-audit/primary
+
+      - name: Inspect primary blocked module contracts
+        if: always()
+        run: >-
+          node scripts/inspect-stationhead-module-graph.mjs
+          --report=.sh-js-audit/primary/report.json
+          --out=.sh-js-audit/primary/module-graph.json
+
+      - name: Audit fallback Stationhead page
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-js-live.mjs
+          --url=https://www.stationhead.com/buddy46
+          --duration-ms=20000
+          --auto-click
+          --out=.sh-js-audit/fallback
+
+      - name: Inspect fallback blocked module contracts
+        if: always()
+        run: >-
+          node scripts/inspect-stationhead-module-graph.mjs
+          --report=.sh-js-audit/fallback/report.json
+          --out=.sh-js-audit/fallback/module-graph.json
+
+      - name: Publish audit summary
+        if: always()
+        shell: bash
+        run: |
+          for summary in .sh-js-audit/*/summary.md .sh-js-audit/*/module-graph.md; do
+            if [ -f "$summary" ]; then
+              cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+              printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - name: Upload sanitized audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-live-js-audit-${{ github.run_id }}
+          path: .sh-js-audit/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
