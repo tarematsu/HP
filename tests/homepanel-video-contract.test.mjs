@@ -4,13 +4,11 @@ import test from 'node:test';
 
 import { expectAll, expectNone, readSource } from './helpers/source-contract.mjs';
 
-test('HomePanel video runtime is integrated and bounded', () => {
+test('HomePanel video runtime is integrated and bounded', async () => {
   const unifiedEntry = readSource('hp/cloud/src/unified_worker.js');
   const videoEntry = readSource('hp/video/src/entry.js');
-  const retiredEntry = readSource('hp/video/src/retired-entry.js');
   const coordinator = readSource('hp/video/src/video-feed-coordinator.js');
   const cloudConfig = readSource('hp/cloud/wrangler.jsonc');
-  const retiredConfig = readSource('hp/video/wrangler.jsonc');
   const statusReport = readSource('hp/video/src/status-report.js');
   const statusLists = readSource('hp/video/src/status-lists.js');
   const liveness = readSource('hp/video/src/liveness-monitor.js');
@@ -47,14 +45,8 @@ test('HomePanel video runtime is integrated and bounded', () => {
     '"0 * * * *"',
   ]);
   expectNone(cloudConfig, ['"binding": "VIDEO_SERVICE"', '"service": "homepanel-video"']);
-  expectAll(retiredConfig, [
-    '"name": "homepanel-video"',
-    '"main": "src/retired-entry.js"',
-    '"workers_dev": false',
-    '"crons": []',
-  ]);
-  expectNone(retiredConfig, ['"binding": "BROWSER"', '"queue": "videoscraper-manual-imports"', '"class_name": "VideoFeedCoordinator"']);
-  expectAll(retiredEntry, ['status: 410', 'integrated into homepanel-cloud']);
+  await assert.rejects(access(new URL('../hp/video/wrangler.jsonc', import.meta.url)));
+  await assert.rejects(access(new URL('../hp/video/src/retired-entry.js', import.meta.url)));
 
   expectAll(statusReport, ['status-counts-stale-deferred-to-cleanup']);
   assert.ok(!statusReport.includes('refreshStatusCounts'));
@@ -76,17 +68,18 @@ test('HomePanel video runtime is integrated and bounded', () => {
   expectAll(migration, [
     'Imported into HP as: `hp/video/`',
     'Production Worker: `homepanel-cloud`',
-    'Retired standalone Worker: `homepanel-video`',
-    'The `VIDEO_SERVICE` Service Binding is removed',
+    'Deleted standalone Worker: `homepanel-video`',
+    'standalone `homepanel-video` Worker are removed',
     'interval: one hour',
     'batch size: five URLs',
     'at most 120 normal liveness probes per day',
-    'deploys the integrated `homepanel-cloud` Worker',
+    'rolls back only `homepanel-cloud`',
   ]);
   expectNone(migration, [
     'after migration activation',
     'A D1 activation flag',
-    'Private video Worker: `homepanel-video`',
+    'Retired standalone Worker: `homepanel-video`',
+    '410 response stub',
   ]);
 });
 
@@ -113,7 +106,7 @@ test('manual Video Queue provisioning shares the fail-closed Cloudflare context'
   ]);
 });
 
-test('unified observability includes the active Worker and rollback stub', async () => {
+test('unified observability includes only active Workers', async () => {
   for (const path of [
     '../.github/workflows/video-worker-cpu-report.yml',
     '../hp/video/scripts/report-worker-cpu.mjs',
@@ -126,13 +119,14 @@ test('unified observability includes the active Worker and rollback stub', async
   }
   const observability = readSource('.github/workflows/sh-observability.yml');
   expectAll(observability, [
-    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud,homepanel-video',
-    'hp/cloud/wrangler.jsonc',
+    'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
+    'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
     'query-cloudflare-observability.py',
     'audit-deployed-cloudflare-telemetry.py',
     'workflow_dispatch:',
     'lookback_minutes:',
   ]);
+  expectNone(observability, ['homepanel-cloud,homepanel-video', 'hp/video/wrangler.jsonc']);
 });
 
 test('retired standalone video build diagnostics stay removed', async () => {
