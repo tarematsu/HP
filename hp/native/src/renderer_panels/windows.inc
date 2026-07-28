@@ -167,52 +167,67 @@ void Renderer::DestroyNativeStaticWindows() {
 }
 
 LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
-  switch (message) {
-    case WM_ERASEBKGND:
-      return 1;
-    case WM_TIMER:
-      if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
-        TickNativePanels(UnixMillis(), true);
-        return 0;
-      }
-      break;
-    case WM_LBUTTONUP: {
-      const int id = GetDlgCtrlID(hwnd);
-      if (id == kNativeSideId) return 0;
-      if (id == kNativeMainId) {
-        RECT client{};
-        GetClientRect(hwnd, &client);
-        const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-        const MainSections sections = SplitMainSections(client);
-        const RECT musicBody = CardBodyRect(CardContentRect(sections.music));
-        const MusicRowRects musicRects = MusicRowFromBody(musicBody);
-        if (PtInRect(&musicRects.button, point)) {
-          QueueAction(UiAction::StationheadAudioToggle);
+  // These are independent child HWND callbacks. The parent HomePanel WndProc
+  // protection does not wrap them, so an allocation/JSON/GDI helper exception
+  // used to escape through user32 and terminate the process without the normal
+  // "HomePanel exiting" log. Keep the process alive and finish WM_PAINT even
+  // when one native panel frame cannot be produced.
+  try {
+    switch (message) {
+      case WM_ERASEBKGND:
+        return 1;
+      case WM_TIMER:
+        if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
+          TickNativePanels(UnixMillis(), true);
           return 0;
         }
-        if (PtInRect(&musicRects.muteButton, point)) {
-          QueueAction(UiAction::StationheadAudioMute);
+        break;
+      case WM_LBUTTONUP: {
+        const int id = GetDlgCtrlID(hwnd);
+        if (id == kNativeSideId) return 0;
+        if (id == kNativeMainId) {
+          RECT client{};
+          GetClientRect(hwnd, &client);
+          const POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+          const MainSections sections = SplitMainSections(client);
+          const RECT musicBody = CardBodyRect(CardContentRect(sections.music));
+          const MusicRowRects musicRects = MusicRowFromBody(musicBody);
+          if (PtInRect(&musicRects.button, point)) {
+            QueueAction(UiAction::StationheadAudioToggle);
+            return 0;
+          }
+          if (PtInRect(&musicRects.muteButton, point)) {
+            QueueAction(UiAction::StationheadAudioMute);
+            return 0;
+          }
           return 0;
         }
-        return 0;
+        break;
       }
-      break;
+      case WM_PAINT:
+        if (GetDlgCtrlID(hwnd) == kNativeSideId) PaintNativeSide(hwnd);
+        else if (GetDlgCtrlID(hwnd) == kNativeMainId) PaintNativeMain(hwnd);
+        else PaintNativeRadar(hwnd);
+        return 0;
+      case WM_NCDESTROY:
+        if (hwnd == nativeMainWindow_) nativePanelTimerActive_ = false;
+        ReleaseNativePanelBackBuffer(hwnd);
+        for (const NativePanelSlot& slot : NativePanelSlots()) {
+          if (this->*slot.window == hwnd) this->*slot.window = nullptr;
+        }
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        break;
     }
-    case WM_PAINT:
-      if (GetDlgCtrlID(hwnd) == kNativeSideId) PaintNativeSide(hwnd);
-      else if (GetDlgCtrlID(hwnd) == kNativeMainId) PaintNativeMain(hwnd);
-      else PaintNativeRadar(hwnd);
-      return 0;
-    case WM_NCDESTROY:
-      if (hwnd == nativeMainWindow_) nativePanelTimerActive_ = false;
-      ReleaseNativePanelBackBuffer(hwnd);
-      for (const NativePanelSlot& slot : NativePanelSlots()) {
-        if (this->*slot.window == hwnd) this->*slot.window = nullptr;
-      }
-      SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-      break;
+    return DefWindowProcW(hwnd, message, wparam, lparam);
+  } catch (...) {
+    OutputDebugStringW(L"HomePanel native dashboard callback failed\n");
+    if (message == WM_PAINT) ValidateRect(hwnd, nullptr);
+    if (message == WM_TIMER && hwnd == nativeMainWindow_) {
+      KillTimer(hwnd, kNativePanelTickTimer);
+      nativePanelTimerActive_ = false;
+    }
+    return 0;
   }
-  return DefWindowProcW(hwnd, message, wparam, lparam);
 }
 
 void Renderer::PaintNativeSide(HWND hwnd) {
