@@ -13,22 +13,24 @@ import {
 const MINUTE_MS = 60_000;
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-test('Actions cadence replaces the former six-hour minute-slot dispatcher', () => {
+test('Actions cadence uses six-hour summaries and daily archive variants', () => {
   assert.deepEqual([...dueVariantKeys(BASE + 4 * MINUTE_MS)], [
     'dashboard',
     'history:daily',
     'history:weekly',
-    'history:broadcasts',
     'history:monthly',
-    'host-history:summary',
+    'history:broadcasts',
     'track-history',
+    'host-history:summary',
   ]);
   assert.deepEqual([...dueVariantKeys(BASE + 19 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(BASE + 64 * MINUTE_MS)], ['dashboard', 'history:daily']);
-  assert.deepEqual([...dueVariantKeys(BASE + 184 * MINUTE_MS)], [
+  assert.deepEqual([...dueVariantKeys(BASE + 64 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(BASE + 184 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(BASE + 364 * MINUTE_MS)], [
     'dashboard',
     'history:daily',
     'history:weekly',
+    'history:monthly',
     'history:broadcasts',
   ]);
 });
