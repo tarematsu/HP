@@ -2,6 +2,9 @@
 
 namespace {
 
+constexpr ULONGLONG kCrashRestartStabilityMs = 60'000;
+const ULONGLONG gProcessStartedAt = GetTickCount64();
+
 bool HasCommandArgument(const wchar_t* expected) noexcept {
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
@@ -45,11 +48,12 @@ bool RelaunchSelf(bool crashRestart = false) {
 }
 
 void RelaunchAfterCrashOnce() noexcept {
-  if (!HasCommandArgument(L"--crash-restart")) {
-    try {
-      RelaunchSelf(true);
-    } catch (...) {
-    }
+  const bool isRecoveryProcess = HasCommandArgument(L"--crash-restart");
+  const ULONGLONG uptime = GetTickCount64() - gProcessStartedAt;
+  if (isRecoveryProcess && uptime < kCrashRestartStabilityMs) return;
+  try {
+    RelaunchSelf(true);
+  } catch (...) {
   }
 }
 
