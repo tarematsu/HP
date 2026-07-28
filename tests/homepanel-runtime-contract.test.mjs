@@ -125,7 +125,7 @@ test('HomePanel deployment releases the retired Queue consumer before unified de
   ]);
   expectNone(rollbackWorkflow, ['homepanel-video', 'video_version', 'Roll back video service']);
   assert.ok(
-    deployWorkflow.indexOf('Delete retired homepanel-video Worker')
-      < deployWorkflow.indexOf('Deploy HomePanel Cloud'),
+    deployWorkflow.indexOf('- name: Release manual import Queue consumer — Delete retired homepanel-video Worker')
+      < deployWorkflow.indexOf('- name: Deploy HomePanel Cloud'),
   );
 });
