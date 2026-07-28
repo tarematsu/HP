@@ -137,8 +137,9 @@ void App::CheckForUpdateAsync(bool install) {
           logger_->Info(L"Applying replacement update with the same version and different release files");
         }
         if (LaunchVerifiedUpdater(manifest.version, manifestJson)) {
-          logger_->Info(L"Verified updater launched for version " + manifest.version);
-          PostMessageW(window_, WM_CLOSE, 0, 0);
+          logger_->Info(
+              L"Verified updater launched for version " + manifest.version +
+              L"; HomePanel remains active until installation is ready");
           updateBusy_ = false;
           return;
         }
@@ -191,9 +192,11 @@ bool App::LaunchVerifiedUpdater(const std::wstring& version, const std::string& 
   std::wstring command;
   command.reserve(
       runnerArgument.size() + rootArgument.size() + manifestArgument.size() +
-      version.size() + 64);
+      version.size() + 96);
   command.append(runnerArgument);
   command.append(L" --pid ");
+  AppendUnsigned(command, GetCurrentProcessId());
+  command.append(L" --app-pid ");
   AppendUnsigned(command, GetCurrentProcessId());
   command.append(L" --root ");
   command.append(rootArgument);
