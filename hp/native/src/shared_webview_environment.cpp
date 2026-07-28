@@ -4,7 +4,7 @@
 namespace hp {
 namespace {
 
-constexpr wchar_t kWebView2Arguments[] =
+constexpr wchar_t kBaseWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
@@ -19,11 +19,32 @@ constexpr wchar_t kWebView2Arguments[] =
     L"--disable-backgrounding-occluded-windows "
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
+std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
+  std::wstring arguments = kBaseWebView2Arguments;
+  if (!blockImages && !blockFonts) return arguments;
+
+  arguments += L" --blink-settings=";
+  bool needsSeparator = false;
+  if (blockImages) {
+    // imagesEnabled=false prevents cached images from being decoded/rendered;
+    // loadsImagesAutomatically=false prevents URL-backed image downloads.
+    arguments += L"imagesEnabled=false,loadsImagesAutomatically=false";
+    needsSeparator = true;
+  }
+  if (blockFonts) {
+    if (needsSeparator) arguments += L',';
+    arguments += L"downloadableBinaryFontsEnabled=false";
+  }
+  return arguments;
+}
+
 void ApplyWebView2ProcessHints() noexcept {
   static std::once_flag once;
   std::call_once(once, [] {
+    // Keep only process-wide, configuration-independent switches here. The
+    // image/font Blink policy is supplied through environment options below.
     SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                            kWebView2Arguments);
+                            kBaseWebView2Arguments);
   });
 }
 
@@ -59,12 +80,17 @@ std::wstring SharedWebViewEnvironment::NormalizePath(const fs::path& path) {
 }
 
 void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
+                                       bool blockImages,
+                                       bool blockFonts,
                                        Completion completion) {
   if (!completion) return;
 
   std::wstring requestedKey;
   ComPtr<ICoreWebView2Environment> readyEnvironment;
   bool startCreation = false;
+  bool policyMismatch = false;
+  bool blockImagesForCreation = false;
+  bool blockFontsForCreation = false;
   uint64_t creationGeneration = 0;
   fs::path folderForCreation;
 
@@ -73,23 +99,37 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     {
       std::lock_guard lock(mutex_);
       Entry& entry = entries_[requestedKey];
-      if (entry.userDataFolder.empty()) entry.userDataFolder = userDataFolder;
-      ++entry.acquireCount;
-      if (entry.environment) {
-        readyEnvironment = entry.environment;
-      } else {
-        const bool beginCreation = !entry.creating;
-        // Copy every potentially allocating value before publishing the pending
-        // callback or the creating flag. An allocation failure cannot leave a
-        // queued callback behind an environment generation that never starts.
-        fs::path preparedFolder;
-        if (beginCreation) preparedFolder = entry.userDataFolder;
-        entry.pending.push_back(std::move(completion));
-        if (beginCreation) {
-          entry.creating = true;
-          creationGeneration = ++entry.generation;
-          startCreation = true;
-          folderForCreation = std::move(preparedFolder);
+      if (entry.acquireCount == 0) {
+        entry.userDataFolder = userDataFolder;
+        entry.blockImages = blockImages;
+        entry.blockFonts = blockFonts;
+      } else if (entry.blockImages != blockImages ||
+                 entry.blockFonts != blockFonts) {
+        // One user-data folder maps to one browser environment. Mixing resource
+        // policies would silently make A and B behave differently depending on
+        // which asynchronous Acquire won the race.
+        policyMismatch = true;
+      }
+      if (!policyMismatch) {
+        ++entry.acquireCount;
+        if (entry.environment) {
+          readyEnvironment = entry.environment;
+        } else {
+          const bool beginCreation = !entry.creating;
+          // Copy every potentially allocating value before publishing the pending
+          // callback or the creating flag. An allocation failure cannot leave a
+          // queued callback behind an environment generation that never starts.
+          fs::path preparedFolder;
+          if (beginCreation) preparedFolder = entry.userDataFolder;
+          entry.pending.push_back(std::move(completion));
+          if (beginCreation) {
+            entry.creating = true;
+            creationGeneration = ++entry.generation;
+            startCreation = true;
+            folderForCreation = std::move(preparedFolder);
+            blockImagesForCreation = entry.blockImages;
+            blockFontsForCreation = entry.blockFonts;
+          }
         }
       }
     }
@@ -101,6 +141,10 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     return;
   }
 
+  if (policyMismatch) {
+    InvokeEnvironmentCompletionNoexcept(completion, E_INVALIDARG, nullptr);
+    return;
+  }
   if (readyEnvironment) {
     InvokeEnvironmentCompletionNoexcept(
         completion, S_OK, readyEnvironment.Get());
@@ -118,9 +162,13 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
     }
 
     ApplyWebView2ProcessHints();
+    const std::wstring webView2Arguments = BuildWebView2Arguments(
+        blockImagesForCreation, blockFontsForCreation);
     ComPtr<CoreWebView2EnvironmentOptions> options =
         Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
-    if (options) options->put_AdditionalBrowserArguments(kWebView2Arguments);
+    if (options) {
+      options->put_AdditionalBrowserArguments(webView2Arguments.c_str());
+    }
     const auto key = std::make_shared<std::wstring>(requestedKey);
     const HRESULT started = CreateCoreWebView2EnvironmentWithOptions(
         nullptr, folderForCreation.c_str(), options.Get(),

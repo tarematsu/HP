@@ -10,6 +10,14 @@ const policySource = readFileSync(
   new URL('../../native/src/sh_runtime_resource_filter_policy_fix.h', import.meta.url),
   'utf8',
 );
+const environmentHeader = readFileSync(
+  new URL('../../native/src/shared_webview_environment.h', import.meta.url),
+  'utf8',
+);
+const environmentSource = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -41,6 +49,24 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
+test('Blink rejects image loading and cached image decoding before navigation', () => {
+  const argumentsBuilder = section(
+    environmentSource,
+    'std::wstring BuildWebView2Arguments(',
+    'void ApplyWebView2ProcessHints()',
+  );
+  assert.match(argumentsBuilder, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);
+  assert.match(
+    environmentSource,
+    /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
+  );
+  assert.match(
+    environmentHeader,
+    /Acquire\(userDataFolder, true, true, std::move\(completion\)\)/,
+  );
+});
+
 test('unused stylesheet callbacks are not registered', () => {
   const policy = section(
     policySource,
@@ -57,23 +83,23 @@ test('unused stylesheet callbacks are not registered', () => {
   assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
 });
 
-test('optional image and font filters follow their configuration', () => {
+test('optional image and font request filters follow their configuration', () => {
   assert.match(
     policySource,
-    /if \(blockImages\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\);[\s\S]*\}/,
+    /if \(blockImages\) addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE\);/,
   );
   assert.match(
     policySource,
-    /if \(blockFonts\) \{[\s\S]*addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\);[\s\S]*\}/,
+    /if \(blockFonts\) addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT\);/,
   );
   assert.match(policySource, /\[env, blockImages, blockFonts\]/);
 });
 
-test('source-aware filters cover every current request source on both players', () => {
+test('source-aware filters cover all current request sources without duplicate worker callbacks', () => {
   const filterHelper = section(
     policySource,
     'inline void AddStationheadResourceFilter(',
-    '// The strict resource boundary',
+    '// Blink disables image loading',
   );
   assert.match(filterHelper, /ICoreWebView2_22\* sourceAwareWebView/);
   assert.match(
@@ -90,32 +116,33 @@ test('source-aware filters cover every current request source on both players', 
     'inline void ApplyStationheadResourceBlockingFilterFixed(',
     'ComPtr<ICoreWebView2Environment> env = environment;',
   );
-  assert.match(policy, /ComPtr<ICoreWebView2_22> sourceAwareWebView/);
-  assert.match(
-    policy,
-    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER[\s\S]*COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
-  );
-  assert.doesNotMatch(
-    policy,
-    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL/,
-  );
-  assert.doesNotMatch(policy, /get_Profile|get_ProfileName|stationhead-secondary/);
+  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT/);
+  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER/);
+  assert.match(policy, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/);
+  assert.match(policy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+  assert.doesNotMatch(policy, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_ALL/);
   assert.match(policy, /AddStationheadResourceFilter\([\s\S]*sourceKinds/);
 });
 
-test('worker coverage does not depend on a fixed primary owner', () => {
+test('only Primary owns environment-wide worker filters', () => {
+  const owner = section(
+    policySource,
+    'inline bool StationheadOwnsWorkerRequestFilters(',
+    'inline void AddStationheadResourceFilter(',
+  );
+  assert.match(owner, /ICoreWebView2_13/);
+  assert.match(owner, /get_Profile\(&profile\)/);
+  assert.match(owner, /get_ProfileName\(&profileNameRaw\)/);
+  assert.match(owner, /_wcsicmp\(profileNameRaw, L"Default"\) == 0/);
+  assert.match(policySource, /requires those source filters on one CoreWebView per environment/);
+});
+
+test('resource reduction never relies on DOM scans or post-load hiding', () => {
   assert.doesNotMatch(
     policySource,
-    /StationheadOwnsEnvironmentWorkerFilters|ownsWorkerFilters|L"Default"/,
+    /MutationObserver|querySelectorAll|createElement\(['"]style|display\s*:\s*none/,
   );
-  assert.match(
-    policySource,
-    /Register the complete current source mask on both playback WebViews/,
-  );
-  assert.match(
-    policySource,
-    /Secondary keeps worker blocking active instead of depending on a fixed owner/,
-  );
+  assert.match(policySource, /No DOM scan[\s\S]*pays the resource cost first/);
 });
 
 test('ping requests are rejected without URI allocation', () => {
