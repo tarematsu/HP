@@ -18,6 +18,13 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
+struct ScopedPlaybackComApartment {
+  HRESULT result = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ~ScopedPlaybackComApartment() {
+    if (SUCCEEDED(result)) CoUninitialize();
+  }
+};
+
 void AppendSignatureBytes(uint64_t& hash, const void* value, size_t size) noexcept {
   const auto* bytes = static_cast<const unsigned char*>(value);
   for (size_t index = 0; index < size; ++index) {
@@ -483,7 +490,7 @@ void Renderer::StopNativePlaybackBridge() noexcept {
 }
 
 void Renderer::NativePlaybackLoop() {
-  const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+  ScopedPlaybackComApartment apartment;
   int64_t lastSnapshotSavedAt = 0;
   uint64_t lastPersistenceSignature = 0;
   {
@@ -564,7 +571,6 @@ void Renderer::NativePlaybackLoop() {
           return nativePlaybackStopping_.load(std::memory_order_acquire);
         });
   }
-  if (SUCCEEDED(apartment)) CoUninitialize();
 }
 
 }  // namespace hp
