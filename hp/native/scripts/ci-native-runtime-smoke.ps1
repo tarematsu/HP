@@ -162,9 +162,9 @@ try {
   Write-Host "Starting native runtime smoke test: $executablePath"
   Write-Host "Stationhead playback is intentionally excluded from pass/fail criteria."
 
-  $process = Start-Process \
-    -FilePath $executablePath \
-    -WorkingDirectory $workingDirectory \
+  $process = Start-Process `
+    -FilePath $executablePath `
+    -WorkingDirectory $workingDirectory `
     -PassThru
 
   $mainWindow = [IntPtr]::Zero
@@ -219,7 +219,7 @@ try {
     $posted = [HomePanelSmokeNativeMethods]::PostMessage(
       $mainWindow,
       $rendererActionMessage,
-      [UIntPtr]::new([uint64]$action.Value),
+      [UIntPtr]([uint64]$action.Value),
       [IntPtr]::Zero)
     if (-not $posted) {
       throw "PostMessage failed for '$($action.Name)' (Win32 $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))."
@@ -273,7 +273,7 @@ try {
     exitCode = $process.ExitCode
     playbackRequired = $false
     nativePanels = $panelTexts
-    actions = @($actions.Name)
+    actions = @($actions | ForEach-Object { $_.Name })
     completedAtUtc = [DateTime]::UtcNow.ToString("o")
   } | ConvertTo-Json -Depth 4 |
     Set-Content -LiteralPath (Join-Path $OutputDirectory "result.json") -Encoding utf8
