@@ -22,8 +22,8 @@ size_t FindHttpUrlStartCaseInsensitive(
   return std::wstring::npos;
 }
 
-std::wstring RedactUrlQueryAndFragment(std::wstring_view message) {
-  std::wstring sanitized(message);
+std::wstring RedactUrlQueryAndFragment(const std::wstring& message) {
+  std::wstring sanitized = message;
   size_t searchAt = 0;
   while (searchAt < sanitized.size()) {
     // Preserve the common lowercase fast path while also accepting mixed-case
@@ -141,10 +141,11 @@ void Logger::Write(const wchar_t* level, std::wstring_view message) noexcept {
               time.wYear, time.wMonth, time.wDay,
               time.wHour, time.wMinute, time.wSecond);
 
+    const std::wstring ownedMessage(message);
     std::string line = header;
     line += WideToUtf8(level);
     line.push_back(' ');
-    line += WideToUtf8(RedactUrlQueryAndFragment(message));
+    line += WideToUtf8(RedactUrlQueryAndFragment(ownedMessage));
     line.push_back('\n');
 
     std::lock_guard lock(mutex_);
