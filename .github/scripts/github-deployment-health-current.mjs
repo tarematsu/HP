@@ -70,13 +70,17 @@ async function fetchJobLog(repository, token, jobId) {
   return response.ok ? response.text() : '';
 }
 
-function component({ workflow, target, step, job, error, run }) {
-  const result = normalized(step?.conclusion || step?.status || (job ? job.conclusion || job.status : 'unknown'));
+function component({ workflow, target, step, error, run }) {
+  const result = step ? normalized(step.conclusion || step.status) : 'unknown';
   return {
     workflow,
     target,
     result,
-    error: result === 'success' ? '' : error || `result=${result}`,
+    error: result === 'success'
+      ? ''
+      : !step
+        ? `Expected deployment step for ${target} was not found in the deploy job.`
+        : error || `result=${result}`,
     run,
   };
 }
@@ -110,7 +114,6 @@ export function summarizeCurrentHomePanelDeployment({ run, jobs = [], jobError =
       workflow: target.name,
       target: 'homepanel-cloud',
       step: cloudStep,
-      job,
       error: jobError,
       run,
     }),
@@ -118,7 +121,6 @@ export function summarizeCurrentHomePanelDeployment({ run, jobs = [], jobError =
       workflow: target.name,
       target: 'retired homepanel-video deletion',
       step: retiredDeletionStep,
-      job,
       error: jobError,
       run,
     }),
