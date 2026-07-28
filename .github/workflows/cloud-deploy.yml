@@ -1,4 +1,4 @@
-name: Deploy HomePanel Cloud
+name: Deploy HomePanel Cloud services
 
 on:
   push:
@@ -66,7 +66,7 @@ jobs:
           npm run check --workspace video
           npm run check:unified-bundle --workspace cloud
 
-      - name: Deploy HomePanel Cloud
+      - name: Deploy HomePanel gateway (integrated runtime)
         working-directory: hp
         shell: bash
         env:
@@ -99,7 +99,7 @@ jobs:
             npm run deploy --workspace cloud
           fi
 
-      - name: Retire standalone video service
+      - name: Deploy private video service (retired stub)
         working-directory: hp
         run: npm run deploy --workspace video
 
