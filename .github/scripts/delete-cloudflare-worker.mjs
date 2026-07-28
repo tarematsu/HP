@@ -85,9 +85,12 @@ async function listQueues({ account, token, fetchImpl }) {
 }
 
 async function queueConsumers({ account, token, fetchImpl, queue }) {
-  if (Array.isArray(queue?.consumers)) return queue.consumers;
+  const embedded = Array.isArray(queue?.consumers) ? queue.consumers : null;
+  const total = Number(queue?.consumers_total_count);
+  if (embedded && (embedded.length > 0 || total === 0)) return embedded;
+
   const id = queueId(queue);
-  if (!id) return [];
+  if (!id) return embedded || [];
   const url = `${API_BASE}/accounts/${encodeURIComponent(account)}/queues/${encodeURIComponent(id)}/consumers`;
   const payload = await apiRequest({
     fetchImpl,
