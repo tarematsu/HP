@@ -2,7 +2,7 @@ name: Run runtime offline maintenance
 
 on:
   workflow_run:
-    workflows: ["Deploy production"]
+    workflows: ["Deploy production", "Rebuild pages read models"]
     types: [completed]
   schedule:
     - cron: '11,41 * * * *'
