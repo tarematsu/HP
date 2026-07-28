@@ -53,7 +53,7 @@ test('generic empty-script replacement is restricted to exact third-party hosts'
     'posthog.com', 'heapanalytics.com', 'logrocket.com', 'smartlook.com',
     'pendo.io', 'appcues.com', 'onetrust.com', 'cookielaw.org',
     'zdassets.com', 'zendesk.com', 'hs-scripts.com', 'mouseflow.com',
-    'appleid.cdn-apple.com',
+    'appleid.cdn-apple.com', 'accounts.google.com',
   ]) {
     assert.match(policySource, new RegExp(`L"${domain.replaceAll('.', '\\.') }"`));
   }
