@@ -9,6 +9,76 @@ int ShowUpdaterMessage(const wchar_t* text, const wchar_t* title, UINT type) {
   return MessageBoxW(
       nullptr, text, title, type | MB_TOPMOST | MB_SETFOREGROUND);
 }
+
+class UpdaterProgressWindow final {
+ public:
+  explicit UpdaterProgressWindow(const wchar_t* text) {
+    static constexpr wchar_t kClassName[] = L"HomePanelUpdaterProgressWindow";
+    static std::once_flag registered;
+    std::call_once(registered, [] {
+      WNDCLASSW windowClass{};
+      windowClass.lpfnWndProc = DefWindowProcW;
+      windowClass.hInstance = GetModuleHandleW(nullptr);
+      windowClass.hCursor = LoadCursorW(nullptr, IDC_WAIT);
+      windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+      windowClass.lpszClassName = kClassName;
+      RegisterClassW(&windowClass);
+    });
+
+    constexpr int width = 520;
+    constexpr int height = 128;
+    const int left = std::max(0, (GetSystemMetrics(SM_CXSCREEN) - width) / 2);
+    const int top = std::max(0, (GetSystemMetrics(SM_CYSCREEN) - height) / 2);
+    window_ = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        kClassName,
+        L"HomePanel Updater",
+        WS_POPUP | WS_CAPTION,
+        left,
+        top,
+        width,
+        height,
+        nullptr,
+        nullptr,
+        GetModuleHandleW(nullptr),
+        nullptr);
+    if (!window_) return;
+    label_ = CreateWindowExW(
+        0,
+        L"STATIC",
+        text,
+        WS_CHILD | WS_VISIBLE | SS_CENTER,
+        20,
+        28,
+        width - 40,
+        48,
+        window_,
+        nullptr,
+        GetModuleHandleW(nullptr),
+        nullptr);
+    ShowWindow(window_, SW_SHOWNORMAL);
+    SetForegroundWindow(window_);
+    UpdateWindow(window_);
+    if (label_) UpdateWindow(label_);
+  }
+
+  ~UpdaterProgressWindow() {
+    if (window_ && IsWindow(window_)) DestroyWindow(window_);
+  }
+
+  void SetText(const wchar_t* text) noexcept {
+    if (!label_ || !IsWindow(label_)) return;
+    SetWindowTextW(label_, text);
+    RedrawWindow(label_, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW);
+  }
+
+  UpdaterProgressWindow(const UpdaterProgressWindow&) = delete;
+  UpdaterProgressWindow& operator=(const UpdaterProgressWindow&) = delete;
+
+ private:
+  HWND window_ = nullptr;
+  HWND label_ = nullptr;
+};
 }  // namespace hp
 
 #undef WM_CLOSE
@@ -160,7 +230,11 @@ int HardenedRunStandalone(const fs::path& root) {
     return 0;
   }
 
-  const std::string initialManifestJson = FetchAuthorizedManifest(root);
+  std::string initialManifestJson;
+  {
+    UpdaterProgressWindow progress(L"更新情報を取得しています...");
+    initialManifestJson = FetchAuthorizedManifest(root);
+  }
   const UpdateManifest initialManifest = ParseUpdateManifest(initialManifestJson);
   if (IsVersionNewer(installedVersion, initialManifest.version)) {
     throw std::runtime_error("server update version is older than installed HomePanel");
@@ -177,7 +251,11 @@ int HardenedRunStandalone(const fs::path& root) {
     return 0;
   }
 
-  const std::string manifestJson = FetchAuthorizedManifest(root);
+  std::string manifestJson;
+  {
+    UpdaterProgressWindow progress(L"更新用ファイルの情報を準備しています...");
+    manifestJson = FetchAuthorizedManifest(root);
+  }
   const UpdateManifest manifest = ParseUpdateManifest(manifestJson);
   if (IsVersionNewer(installedVersion, manifest.version)) {
     throw std::runtime_error("server update version became older than installed HomePanel");
@@ -199,6 +277,7 @@ int HardenedRunStandalone(const fs::path& root) {
 }
 
 void HardenedInstallPendingUpdate(const Arguments& arguments) {
+  UpdaterProgressWindow progress(L"更新ファイルをダウンロードして検証しています...");
   Log(arguments.root, L"Verified update " + arguments.expectedVersion + L" started");
   const UpdateManifest manifest = ParseUpdateManifest(ReadManifest(arguments.manifest));
   if (manifest.version != arguments.expectedVersion) {
@@ -261,7 +340,13 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
     }
   }
 
-  WaitForExit(arguments.parentPid);
+  progress.SetText(L"HomePanelを終了して更新ファイルを適用しています...");
+  // The in-app updater uses the HomePanel PID for both arguments. Waiting for
+  // it as a generic parent first bypassed the verified force-stop path and could
+  // leave a headless process blocking restart for 90 seconds.
+  if (arguments.parentPid != arguments.appPid) {
+    WaitForExit(arguments.parentPid);
+  }
   EnsureHomePanelStopped(arguments.appPid, arguments.root);
   fs::remove_all(backup);
   fs::create_directories(backup);
@@ -304,6 +389,7 @@ void HardenedInstallPendingUpdate(const Arguments& arguments) {
   std::error_code ignored;
   fs::remove(arguments.manifest, ignored);
   fs::remove_all(staging, ignored);
+  progress.SetText(L"更新が完了しました。HomePanelを再起動しています...");
   Log(arguments.root,
       L"Verified authenticated update installed and re-verified; restarting HomePanel");
   RestartHomePanel(arguments.root);
@@ -468,12 +554,31 @@ int WINAPI wWinMain(
       if (runnerMode) {
         try {
           hp::RestartHomePanel(root);
+        } catch (const std::exception& restartError) {
+          hp::Log(root, L"HomePanel restart after update failure also failed: " +
+                        hp::Utf8ToWide(restartError.what()));
         } catch (...) {
+          hp::Log(root, L"HomePanel restart after update failure also failed");
         }
       }
     }
     hp::ShowUpdaterMessage(
         message.c_str(), L"HomePanel update failed", MB_ICONERROR | MB_OK);
+    return 1;
+  } catch (...) {
+    if (!root.empty()) {
+      hp::Log(root, L"Update failed with an unknown exception");
+      if (runnerMode) {
+        try {
+          hp::RestartHomePanel(root);
+        } catch (...) {
+          hp::Log(root, L"HomePanel restart after unknown updater failure also failed");
+        }
+      }
+    }
+    hp::ShowUpdaterMessage(
+        L"不明な例外により更新に失敗しました。",
+        L"HomePanel update failed", MB_ICONERROR | MB_OK);
     return 1;
   }
 }
