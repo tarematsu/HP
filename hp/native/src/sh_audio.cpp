@@ -23,30 +23,42 @@ double StationheadPlayer::Volume() const noexcept {
 
 void StationheadPlayer::ApplyMute() const noexcept {
   const int muted = audioMuted_.load(std::memory_order_relaxed) ? 1 : 0;
-  if (appliedMuted_.exchange(muted, std::memory_order_relaxed) != muted) {
-    const BOOL value = muted ? TRUE : FALSE;
-    const auto apply = [value](const ComPtr<ICoreWebView2>& view) noexcept {
-      if (!view) return;
+  if (appliedMuted_.load(std::memory_order_relaxed) != muted) {
+    bool applied = true;
+    if (webview_) {
       ComPtr<ICoreWebView2_8> audio;
-      if (SUCCEEDED(view.As(&audio)) && audio) audio->put_IsMuted(value);
-    };
-    apply(webview_);
-    apply(authWebview_);
+      applied = SUCCEEDED(webview_.As(&audio)) && audio &&
+          SUCCEEDED(audio->put_IsMuted(muted ? TRUE : FALSE));
+    }
+    appliedMuted_.store(applied ? muted : -1, std::memory_order_relaxed);
   }
+
+  // Volume is a playback-document policy. Applying it to the transient Spotify
+  // authorization WebView is unnecessary and used to make every A/B or MUTE
+  // action touch a controller that may be closing. Keep the two concerns scoped
+  // to the persistent playback WebView only.
   ApplyVolume();
 }
 
 void StationheadPlayer::ApplyVolume() const noexcept {
   const int percent = std::clamp(
       static_cast<int>(audioVolume_.load(std::memory_order_relaxed) * 100.0 + 0.5), 0, 100);
-  if (appliedVolumePercent_.exchange(percent, std::memory_order_relaxed) == percent) return;
-  const auto apply = [percent](const ComPtr<ICoreWebView2>& view) noexcept {
-    if (!view) return;
+  if (appliedVolumePercent_.load(std::memory_order_relaxed) == percent) return;
+  if (!webview_) {
+    appliedVolumePercent_.store(percent, std::memory_order_relaxed);
+    return;
+  }
+
+  try {
     const std::wstring script = StationheadVolumeScript(percent);
-    view->ExecuteScript(script.c_str(), nullptr);
-  };
-  apply(webview_);
-  apply(authWebview_);
+    const HRESULT result = webview_->ExecuteScript(script.c_str(), nullptr);
+    appliedVolumePercent_.store(
+        SUCCEEDED(result) ? percent : -1, std::memory_order_relaxed);
+  } catch (...) {
+    // SetMuted/SetVolume are noexcept UI actions. An allocation failure while
+    // preparing the optional volume script must not terminate HomePanel.
+    appliedVolumePercent_.store(-1, std::memory_order_relaxed);
+  }
 }
 
 // Window B's isolated WebView2 environment still ships the platform's default
