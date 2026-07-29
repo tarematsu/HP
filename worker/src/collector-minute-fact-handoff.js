@@ -91,10 +91,10 @@ async function cleanupSentOutbox(env, force = false, now = Date.now()) {
   if (dailyDue) lastDailyCleanupMinute = cleanupMinute;
   const limit = force ? RECOVERY_CLEANUP_LIMIT : DAILY_CLEANUP_LIMIT;
   const result = await env.DB.prepare(`DELETE FROM sh_minute_fact_outbox WHERE job_id IN (
-      SELECT job_id FROM sh_minute_fact_outbox
+      SELECT job_id FROM sh_minute_fact_outbox INDEXED BY idx_sh_minute_fact_outbox_cleanup
       WHERE status='sent'
-        AND (payload_json='{}' OR payload_json LIKE '%"consumed":true%')
-      ORDER BY COALESCE(sent_at,created_at) ASC LIMIT ?
+        AND (payload_json='{}' OR instr(payload_json,'"consumed":true')>0)
+      ORDER BY sent_at ASC,job_id ASC LIMIT ?
     )`).bind(limit).run();
   return count(result?.meta?.changes);
 }
