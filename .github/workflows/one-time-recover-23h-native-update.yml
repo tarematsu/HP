@@ -1,4 +1,4 @@
-name: One-time recover 23h native update
+name: One-time apply missed update migration
 
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  diagnose-and-recover:
+  apply-and-retrigger:
     if: github.event.head_commit.message != 'Remove one-time 23h native update recovery'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -39,69 +39,45 @@ jobs:
         working-directory: hp
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Force current update manifest refresh
+      - name: Apply pending HomePanel D1 migrations
+        working-directory: hp/cloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm exec -- wrangler d1 migrations apply homepanel-data \
+            --remote --config wrangler.jsonc \
+            2>&1 | tee "$RUNNER_TEMP/d1-migrations.log"
+
+      - name: Resolve deployed HomePanel public URL
+        id: homepanel-public-url
+        run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
+
+      - name: Trigger immediate update detection
         shell: bash
         env:
-          HOMEPANEL_WORKER_URL: ${{ vars.HOMEPANEL_WORKER_URL }}
-          HOMEPANEL_REFRESH_TOKEN: ${{ secrets.HOMEPANEL_REFRESH_TOKEN }}
+          HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
         run: |
           set -euo pipefail
-          if [[ -z "${HOMEPANEL_WORKER_URL:-}" ]]; then
-            echo '{"refresh":"skipped","reason":"HOMEPANEL_WORKER_URL unavailable"}' > "$RUNNER_TEMP/update-refresh.json"
-            exit 0
-          fi
-          url="${HOMEPANEL_WORKER_URL%/}"
-          if [[ -n "${HOMEPANEL_REFRESH_TOKEN:-}" ]]; then
-            curl --fail --silent --show-error --retry 2 \
-              -X POST "$url/v1/refresh" \
-              -H "Authorization: Bearer $HOMEPANEL_REFRESH_TOKEN" \
-              -H "Content-Type: application/json" \
-              --data '{"sources":["update_check"]}' \
-              > "$RUNNER_TEMP/update-refresh.json"
-          else
-            curl --fail --silent --show-error --retry 2 \
-              -X POST "$url/v1/update/ping" \
-              > "$RUNNER_TEMP/update-refresh.json"
-          fi
-          sleep 20
+          curl --fail --silent --show-error --retry 3 \
+            -X POST "${HOMEPANEL_BASE_URL%/}/v1/update/ping" \
+            > "$RUNNER_TEMP/update-ping.json"
+          sleep 25
 
-      - name: Inspect latest R2 manifest
+      - name: Verify migration and rollout state
         working-directory: hp/cloud
         shell: bash
         run: |
           set -euo pipefail
-          manifest="$RUNNER_TEMP/update-manifest.json"
-          report="$RUNNER_TEMP/r2-manifest-report.json"
-          if npm exec -- wrangler r2 object get \
-              homepanel-updates/updates/latest/update-manifest.json \
-              --remote --config wrangler.jsonc --file "$manifest"; then
-            node - "$manifest" "$report" <<'NODE'
-          const fs = require('fs');
-          const [manifestPath, reportPath] = process.argv.slice(2);
-          const value = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          fs.writeFileSync(reportPath, JSON.stringify({
-            available: true,
-            version: String(value.version ?? ''),
-            signed: Boolean(value.signed),
-            files: Array.isArray(value.files) ? value.files.map(file => ({
-              name: String(file?.name ?? ''),
-              size: Number(file?.size ?? 0),
-            })) : [],
-          }, null, 2));
-          NODE
-          else
-            echo '{"available":false,"error":"latest manifest could not be read from R2"}' > "$report"
-          fi
-
-      - name: Inspect delivery state and requeue outdated devices
-        working-directory: hp/cloud
-        shell: bash
-        run: |
-          set -euo pipefail
-          now_ms="$(date +%s%3N)"
-          cutoff_ms="$((now_ms - 30 * 24 * 60 * 60 * 1000))"
-          expires_ms="$((now_ms + 24 * 60 * 60 * 1000))"
           sql="SELECT
+              'update_job' AS section,
+              interval_seconds,
+              next_run_at,
+              last_success_at,
+              last_error,
+              consecutive_failures
+            FROM jobs WHERE name='update_check';
+
+            SELECT
               'update_state' AS section,
               status,
               error,
@@ -109,42 +85,18 @@ jobs:
               substr(json_extract(payload, '$.manifestHash'), 1, 16) AS manifest_hash_prefix,
               datetime(observed_at / 1000, 'unixepoch', '+9 hours') AS observed_jst,
               datetime(fetched_at / 1000, 'unixepoch', '+9 hours') AS fetched_jst
-            FROM current_state
-            WHERE source='update';
-
-            SELECT
-              'update_job' AS section,
-              interval_seconds,
-              datetime(next_run_at, 'unixepoch', '+9 hours') AS next_run_jst,
-              datetime(last_success_at, 'unixepoch', '+9 hours') AS last_success_jst,
-              last_error,
-              consecutive_failures
-            FROM jobs
-            WHERE name='update_check';
-
-            SELECT
-              'job_run' AS section,
-              id,
-              datetime(started_at / 1000, 'unixepoch', '+9 hours') AS started_jst,
-              success,
-              substr(coalesce(detail, ''), 1, 240) AS detail
-            FROM job_runs
-            WHERE job_name='update_check'
-            ORDER BY id DESC
-            LIMIT 8;
+            FROM current_state WHERE source='update';
 
             SELECT
               'heartbeat' AS section,
               substr(device_id, 1, 4) || '…' AS device,
               app_version,
-              datetime(last_seen_at / 1000, 'unixepoch', '+9 hours') AS last_seen_jst,
-              outbox_count
+              datetime(last_seen_at / 1000, 'unixepoch', '+9 hours') AS last_seen_jst
             FROM device_heartbeats
-            WHERE last_seen_at >= ${cutoff_ms}
-            ORDER BY last_seen_at DESC;
+            ORDER BY last_seen_at DESC LIMIT 5;
 
             SELECT
-              'command_before' AS section,
+              'command' AS section,
               id,
               substr(device_id, 1, 4) || '…' AS device,
               datetime(created_at / 1000, 'unixepoch', '+9 hours') AS created_jst,
@@ -156,92 +108,39 @@ jobs:
               payload
             FROM device_commands
             WHERE command='check_update'
-            ORDER BY id DESC
-            LIMIT 12;
-
-            WITH latest AS (
-              SELECT
-                json_extract(payload, '$.version') AS release_version,
-                json_extract(payload, '$.manifestHash') AS manifest_hash
-              FROM current_state
-              WHERE source='update'
-            )
-            INSERT INTO device_commands(device_id, command, payload, created_at, expires_at)
-            SELECT
-              heartbeat.device_id,
-              'check_update',
-              json_object(
-                'reason', 'manual-retry-after-missed-23h-rollout',
-                'version', latest.release_version,
-                'manifestHash', latest.manifest_hash
-              ),
-              ${now_ms},
-              ${expires_ms}
-            FROM device_heartbeats AS heartbeat
-            CROSS JOIN latest
-            WHERE heartbeat.last_seen_at >= ${cutoff_ms}
-              AND latest.release_version IS NOT NULL
-              AND latest.release_version <> ''
-              AND (heartbeat.app_version IS NULL OR heartbeat.app_version <> latest.release_version)
-              AND NOT EXISTS (
-                SELECT 1
-                FROM device_commands AS existing
-                WHERE existing.device_id=heartbeat.device_id
-                  AND existing.command='check_update'
-                  AND existing.completed_at IS NULL
-                  AND (existing.expires_at IS NULL OR existing.expires_at>${now_ms})
-              );
-
-            SELECT 'recovery' AS section, changes() AS queued_commands;
-
-            SELECT
-              'command_after' AS section,
-              id,
-              substr(device_id, 1, 4) || '…' AS device,
-              datetime(created_at / 1000, 'unixepoch', '+9 hours') AS created_jst,
-              datetime(expires_at / 1000, 'unixepoch', '+9 hours') AS expires_jst,
-              datetime(delivered_at / 1000, 'unixepoch', '+9 hours') AS delivered_jst,
-              datetime(completed_at / 1000, 'unixepoch', '+9 hours') AS completed_jst,
-              success,
-              result,
-              payload
-            FROM device_commands
-            WHERE command='check_update'
-            ORDER BY id DESC
-            LIMIT 12;"
-
+            ORDER BY id DESC LIMIT 8;"
           npm exec -- wrangler d1 execute homepanel-data \
             --remote --config wrangler.jsonc \
             --command "$sql" --json \
-            > "$RUNNER_TEMP/update-recovery-d1.json"
+            > "$RUNNER_TEMP/update-rollout-verify.json"
 
-      - name: Record diagnosis and recovery result
+      - name: Record migration and rollout result
         if: success()
         uses: actions/github-script@v7
         env:
-          REFRESH_PATH: ${{ runner.temp }}/update-refresh.json
-          MANIFEST_PATH: ${{ runner.temp }}/r2-manifest-report.json
-          D1_PATH: ${{ runner.temp }}/update-recovery-d1.json
+          MIGRATIONS_PATH: ${{ runner.temp }}/d1-migrations.log
+          PING_PATH: ${{ runner.temp }}/update-ping.json
+          VERIFY_PATH: ${{ runner.temp }}/update-rollout-verify.json
         with:
           script: |
             const fs = require('fs');
             const read = path => fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '(missing)';
             const body = [
-              '✅ 23時台ネイティブ更新の診断・復旧処理が完了しました。',
+              '✅ 未適用だった更新マイグレーションを適用し、即時更新検出を再実行しました。',
               '',
-              '### 更新再検出',
-              '```json',
-              read(process.env.REFRESH_PATH).slice(-3000),
+              '### D1 migrations',
+              '```text',
+              read(process.env.MIGRATIONS_PATH).slice(-6000),
               '```',
               '',
-              '### R2最新マニフェスト',
+              '### update ping',
               '```json',
-              read(process.env.MANIFEST_PATH).slice(-5000),
+              read(process.env.PING_PATH).slice(-2000),
               '```',
               '',
-              '### D1状態・コマンド履歴・再投入結果',
+              '### rollout verification',
               '```json',
-              read(process.env.D1_PATH).slice(-18000),
+              read(process.env.VERIFY_PATH).slice(-18000),
               '```',
             ].join('\n');
             await github.rest.issues.createComment({
@@ -251,7 +150,7 @@ jobs:
               body,
             });
 
-      - name: Record workflow failure
+      - name: Record failure
         if: failure()
         uses: actions/github-script@v7
         with:
@@ -260,5 +159,5 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: 480,
-              body: `❌ 診断・復旧ワークフローが失敗しました。Actions run: ${context.runId}`,
+              body: `❌ D1 migration / update rollout retry failed. Actions run: ${context.runId}`,
             });
