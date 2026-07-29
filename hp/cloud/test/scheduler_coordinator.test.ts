@@ -78,7 +78,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stub = coordinatorStub();
     await runInDurableObject(stub, async (_instance, state) => {
       await state.storage.put<RuntimeEnvelope>(RUNTIME_STORAGE_KEY, {
-        version: 4,
+        version: 5,
         jobs: [
           {
             name: "octopus",
@@ -110,7 +110,7 @@ describe("SchedulerCoordinator Durable Object", () => {
 
     expect((await stub.fetch("https://scheduler.internal/ensure", { method: "POST" })).status).toBe(202);
     const stored = await runtime(stub);
-    expect(stored?.version).toBe(5);
+    expect(stored?.version).toBe(6);
     expect(stored?.jobs.some(job => job.name === "video_liveness")).toBe(false);
     expect(stored?.jobs.find(job => job.name === "octopus")).toMatchObject({
       intervalSeconds: 43_200,
