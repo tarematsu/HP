@@ -218,11 +218,15 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
                    DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   } else {
     const int plugColumnGap = std::max(8, SpanX(body, 24));
-    const int plugColumnWidth =
-        (static_cast<int>(plugRect.right - plugRect.left) - plugColumnGap) / 2;
+    const int plugRectWidth = static_cast<int>(plugRect.right - plugRect.left);
     for (size_t i = 0; i < plugDeviceCount; ++i) {
       const int plugRow = static_cast<int>(i / 2);
       const int plugColumn = static_cast<int>(i % 2);
+      const int rowStartIndex = plugRow * 2;
+      const int devicesInRow =
+          std::min(2, static_cast<int>(plugDeviceCount) - rowStartIndex);
+      const int plugColumnWidth =
+          (plugRectWidth - plugColumnGap * (devicesInRow - 1)) / devicesInRow;
       const int left = plugRect.left + plugColumn * (plugColumnWidth + plugColumnGap);
       const int top = plugRect.top + plugRow * (plugLineHeight + plugRowGap);
       RECT deviceRect{left, top, left + plugColumnWidth, top + plugLineHeight};
