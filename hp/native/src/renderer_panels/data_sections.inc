@@ -211,7 +211,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   std::wstring plugs = L"Plug Mini情報なし";
   if (!nativeDashboard_.switchBotDevices.empty()) {
     plugs.clear();
-    const size_t deviceCount = std::min<size_t>(2, nativeDashboard_.switchBotDevices.size());
+    const size_t deviceCount = std::min<size_t>(3, nativeDashboard_.switchBotDevices.size());
     for (size_t i = 0; i < deviceCount; ++i) {
       if (i) plugs += L"  ";
       plugs += nativeDashboard_.switchBotDevices[i].name + L": " +
