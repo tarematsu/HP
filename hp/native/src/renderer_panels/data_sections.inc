@@ -40,7 +40,12 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  const int plugHeight = std::clamp(SpanY(body, 110), 12, 22);
+  const size_t plugDeviceCount = std::min<size_t>(4, nativeDashboard_.switchBotDevices.size());
+  const int plugLineHeight = std::clamp(SpanY(body, 110), 12, 22);
+  const int plugRowGap = std::max(1, SpanY(body, 10));
+  const int plugRowCount = plugDeviceCount > 2 ? 2 : 1;
+  const int plugHeight =
+      plugLineHeight * plugRowCount + plugRowGap * (plugRowCount - 1);
   RECT chart{body.left, body.top + summaryHeight + SpanY(body, 40),
              body.right, body.bottom - plugHeight - SpanY(body, 25)};
   if (chart.bottom > chart.top + 30 && !nativeDashboard_.octopusProfile.empty()) {
@@ -208,17 +213,29 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   SelectObject(dc, TierFont(FontTier::Small));
   SetTextColor(dc, kWidgetSubtle);
   RECT plugRect{body.left, body.bottom - plugHeight, body.right, body.bottom};
-  std::wstring plugs = L"Plug Mini情報なし";
-  if (!nativeDashboard_.switchBotDevices.empty()) {
-    plugs.clear();
-    const size_t deviceCount = std::min<size_t>(4, nativeDashboard_.switchBotDevices.size());
-    for (size_t i = 0; i < deviceCount; ++i) {
-      if (i) plugs += L"  ";
-      plugs += nativeDashboard_.switchBotDevices[i].name + L": " +
-               nativeDashboard_.switchBotDevices[i].state;
+  if (plugDeviceCount == 0) {
+    DrawTextInRect(dc, L"Plug Mini情報なし", plugRect,
+                   DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+  } else {
+    const int plugColumnGap = std::max(8, SpanX(body, 24));
+    const int plugRectWidth = static_cast<int>(plugRect.right - plugRect.left);
+    for (size_t i = 0; i < plugDeviceCount; ++i) {
+      const int plugRow = static_cast<int>(i / 2);
+      const int plugColumn = static_cast<int>(i % 2);
+      const int rowStartIndex = plugRow * 2;
+      const int devicesInRow =
+          std::min(2, static_cast<int>(plugDeviceCount) - rowStartIndex);
+      const int plugColumnWidth =
+          (plugRectWidth - plugColumnGap * (devicesInRow - 1)) / devicesInRow;
+      const int left = plugRect.left + plugColumn * (plugColumnWidth + plugColumnGap);
+      const int top = plugRect.top + plugRow * (plugLineHeight + plugRowGap);
+      RECT deviceRect{left, top, left + plugColumnWidth, top + plugLineHeight};
+      const std::wstring deviceText = nativeDashboard_.switchBotDevices[i].name + L": " +
+                                      nativeDashboard_.switchBotDevices[i].state;
+      DrawTextInRect(dc, deviceText, deviceRect,
+                     DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
     }
   }
-  DrawTextInRect(dc, plugs, plugRect, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   SelectObject(dc, previousFont);
 }
 

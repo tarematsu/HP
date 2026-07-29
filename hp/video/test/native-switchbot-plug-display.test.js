@@ -37,7 +37,7 @@ test('Plug Mini footer shows rounded integer watts without ON/OFF state', () => 
   assert.doesNotMatch(deviceState, /L"ON"|L"OFF"/);
 });
 
-test('Plug Mini footer filters non-plug devices and renders up to four plugs', () => {
+test('Plug Mini footer filters non-plug devices and renders four plugs as a two-by-two grid', () => {
   assert.match(
     dashboardParser,
     /if \(type\.find\(L"Plug"\) == std::wstring::npos\) continue;/,
@@ -48,6 +48,25 @@ test('Plug Mini footer filters non-plug devices and renders up to four plugs', (
   );
   assert.match(
     dataSections,
-    /std::min<size_t>\(4, nativeDashboard_\.switchBotDevices\.size\(\)\)/,
+    /const size_t plugDeviceCount = std::min<size_t>\(4, nativeDashboard_\.switchBotDevices\.size\(\)\);/,
+  );
+  assert.match(dataSections, /const int plugRowCount = plugDeviceCount > 2 \? 2 : 1;/);
+  assert.match(dataSections, /const int plugRow = static_cast<int>\(i \/ 2\);/);
+  assert.match(dataSections, /const int plugColumn = static_cast<int>\(i % 2\);/);
+  assert.match(
+    dataSections,
+    /plugLineHeight \* plugRowCount \+ plugRowGap \* \(plugRowCount - 1\)/,
+  );
+});
+
+test('single-device rows use the full footer width', () => {
+  assert.match(dataSections, /const int rowStartIndex = plugRow \* 2;/);
+  assert.match(
+    dataSections,
+    /const int devicesInRow =\s*std::min\(2, static_cast<int>\(plugDeviceCount\) - rowStartIndex\);/s,
+  );
+  assert.match(
+    dataSections,
+    /\(plugRectWidth - plugColumnGap \* \(devicesInRow - 1\)\) \/ devicesInRow/,
   );
 });

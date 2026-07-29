@@ -16,6 +16,11 @@ static_assert(StationheadPlaybackNavigationActive(false, true, false));
 static_assert(!StationheadPlaybackNavigationActive(false, true, true));
 static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 
+inline bool StationheadBoundaryLeaseOwnedBy(UINT message) noexcept;
+inline void ReleaseStationheadBoundaryLease(UINT message) noexcept;
+inline LRESULT SendMessageWWithStationheadBoundaryLease(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam) noexcept;
+
 }  // namespace hp
 
 // Extend StationheadPlayer while sh.h is parsed, then remove the temporary
@@ -25,7 +30,9 @@ static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
-    if (periodicRefreshStartedAt_.Active()) {                                 \
+    if (!periodicRefreshHandoffPending_ &&                                    \
+        !periodicRefreshNavigationPending_ &&                                 \
+        periodicRefreshStartedAt_.Active()) {                                 \
       const int64_t due =                                                     \
           periodicRefreshStartedAt_ + kPeriodicRefreshIntervalMs;             \
       if (next <= 0 || due < next) next = due;                                \
@@ -52,13 +59,27 @@ static_assert(!StationheadPlaybackNavigationActive(false, false, false));
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
   static constexpr int64_t kPeriodicRefreshIntervalMs = 55 * 60'000;          \
+  static constexpr int64_t kPeriodicRefreshHandoffRetryMs = 1'500;            \
+  static constexpr int64_t kPeriodicRefreshSecondaryPriorityMs = 1'000;       \
   void RefreshPeriodicNavigation(int64_t nowMs) {                             \
+    const UINT readyMessage = IsSecondary()                                   \
+        ? WM_HP_SECONDARY_RELOAD_READY                                        \
+        : WM_HP_PRIMARY_RELOAD_READY;                                         \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
     if (!webview_ || previousLifecycle != lifecycle) {                        \
+      if (periodicRefreshHandoffPending_ ||                                   \
+          periodicRefreshNavigationPending_) {                               \
+        ::hp::ReleaseStationheadBoundaryLease(readyMessage);                  \
+      }                                                                       \
       periodicRefreshLifecycle_ = lifecycle;                                  \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 0;                                 \
+      periodicRefreshHandoffPending_ = false;                                 \
+      periodicRefreshProjectedStopped_ = false;                               \
+      periodicRefreshNavigationPending_ = false;                              \
+      periodicRefreshAttemptStartedAt_ = 0;                                   \
+      periodicRefreshSecondaryPriorityAt_ = 0;                                \
       if (!webview_) return;                                                   \
     }                                                                         \
                                                                                 \
@@ -71,17 +92,34 @@ static_assert(!StationheadPlaybackNavigationActive(false, false, false));
         ::hp::StationheadPlaybackNavigationActive(                            \
             navigationInFlight_.load(std::memory_order_acquire),              \
             statusNavigating, spotifyAuthorization_);                         \
+    if (periodicRefreshNavigationPending_ && !navigationActive &&             \
+        audioPlaying_.load(std::memory_order_acquire)) {                      \
+      const int64_t elapsed = periodicRefreshAttemptStartedAt_.Active()       \
+          ? nowMs - periodicRefreshAttemptStartedAt_                          \
+          : 0;                                                                \
+      ::hp::ReleaseStationheadBoundaryLease(readyMessage);                    \
+      periodicRefreshNavigationPending_ = false;                              \
+      periodicRefreshAttemptStartedAt_ = 0;                                   \
+      log_.Info(L"Stationhead " + std::wstring(RoleTag()) +                  \
+                L" periodic refresh audio recovered after " +               \
+                std::to_wstring(elapsed) + L" ms; released A/B handoff");   \
+    }                                                                         \
     if (navigationActive) {                                                   \
       periodicRefreshStartedAt_ = 0;                                          \
       periodicRefreshNavigationObserved_ = 1;                                 \
       return;                                                                 \
     }                                                                         \
                                                                                 \
-    if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
+    const bool interactiveOrRecreating =                                     \
+        !webViewConfigured_ || !startupNavigationStarted_ ||                  \
         spotifyAuthorization_ || loginRequired_ ||                            \
-        recreating_.load(std::memory_order_relaxed)) {                        \
-      return;                                                                 \
+        recreating_.load(std::memory_order_relaxed);                          \
+    if (periodicRefreshNavigationPending_ && interactiveOrRecreating) {       \
+      ::hp::ReleaseStationheadBoundaryLease(readyMessage);                    \
+      periodicRefreshNavigationPending_ = false;                              \
+      periodicRefreshAttemptStartedAt_ = 0;                                   \
     }                                                                         \
+    if (interactiveOrRecreating) return;                                      \
                                                                                 \
     if (periodicRefreshNavigationObserved_ != 0 ||                            \
         !periodicRefreshStartedAt_.Active()) {                                \
@@ -93,12 +131,66 @@ static_assert(!StationheadPlaybackNavigationActive(false, false, false));
       return;                                                                 \
     }                                                                         \
                                                                                 \
+    if (!periodicRefreshHandoffPending_) {                                    \
+      if (IsSecondary() && audioMuted_.load(std::memory_order_acquire)) {     \
+        if (!periodicRefreshSecondaryPriorityAt_.Active()) {                  \
+          periodicRefreshSecondaryPriorityAt_ =                              \
+              nowMs + kPeriodicRefreshSecondaryPriorityMs;                    \
+          nextTickAt_ = nowMs + kPeriodicRefreshSecondaryPriorityMs;          \
+          return;                                                             \
+        }                                                                     \
+        if (!periodicRefreshSecondaryPriorityAt_.Reached()) return;            \
+      } else {                                                                \
+        periodicRefreshSecondaryPriorityAt_ = 0;                              \
+      }                                                                       \
+      const LRESULT ready =                                                   \
+          ::hp::SendMessageWWithStationheadBoundaryLease(                     \
+              window_, readyMessage, 0, 0);                                   \
+      if (ready == 0) {                                                       \
+        if (::hp::StationheadBoundaryLeaseOwnedBy(readyMessage)) {            \
+          periodicRefreshHandoffPending_ = true;                              \
+          periodicRefreshAttemptStartedAt_ = nowMs;                           \
+          log_.Info(L"Stationhead " + std::wstring(RoleTag()) +              \
+                    L" periodic refresh waiting for stable peer audio handoff"); \
+        }                                                                     \
+        nextTickAt_ = nowMs + kPeriodicRefreshHandoffRetryMs;                 \
+        return;                                                               \
+      }                                                                       \
+    } else {                                                                  \
+      if (!periodicRefreshProjectedStopped_) {                                \
+        ApplyAudioPlaybackState(                                              \
+            false, L"periodic refresh A/B handoff projection");             \
+        periodicRefreshProjectedStopped_ = true;                              \
+      }                                                                       \
+      if (::hp::SendMessageWWithStationheadBoundaryLease(                     \
+              window_, readyMessage, 0, 0) == 0) {                            \
+        nextTickAt_ = nowMs + kPeriodicRefreshHandoffRetryMs;                 \
+        return;                                                               \
+      }                                                                       \
+    }                                                                         \
+                                                                                \
+    const int64_t handoffElapsed = periodicRefreshAttemptStartedAt_.Active()  \
+        ? nowMs - periodicRefreshAttemptStartedAt_                            \
+        : 0;                                                                  \
+    periodicRefreshHandoffPending_ = false;                                   \
+    periodicRefreshProjectedStopped_ = false;                                 \
+    periodicRefreshNavigationPending_ = true;                                 \
+    periodicRefreshSecondaryPriorityAt_ = 0;                                  \
     periodicRefreshStartedAt_ = nowMs;                                        \
+    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +                    \
+              L" periodic refresh handoff committed after " +               \
+              std::to_wstring(handoffElapsed) + L" ms");                    \
     NavigateCurrentUrl(nowMs, L"55-minute periodic refresh");                \
   }                                                                           \
   MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
   std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
-  int64_t periodicRefreshNavigationObserved_
+  int64_t periodicRefreshNavigationObserved_ = 0;                             \
+  bool periodicRefreshHandoffPending_ = false;                                \
+  bool periodicRefreshProjectedStopped_ = false;                              \
+  bool periodicRefreshNavigationPending_ = false;                             \
+  MonotonicElapsedTimestamp periodicRefreshAttemptStartedAt_;                 \
+  MonotonicProjectedDeadline periodicRefreshSecondaryPriorityAt_;             \
+  int64_t periodicRefreshPolicyTail_
 
 #include "sh.h"
 
@@ -242,6 +334,23 @@ inline MonotonicProjectedDeadline secondaryAutoClickDeadline;
 inline int64_t primaryAutoClickExposed = 0;
 inline int64_t secondaryAutoClickExposed = 0;
 }  // namespace stationhead_boundary_message_policy
+
+inline bool StationheadBoundaryLeaseOwnedBy(UINT message) noexcept {
+  bool owned = false;
+  AcquireSRWLockShared(&stationhead_boundary_message_policy::leaseLock);
+  owned = stationhead_boundary_message_policy::ownerMessage == message;
+  ReleaseSRWLockShared(&stationhead_boundary_message_policy::leaseLock);
+  return owned;
+}
+
+inline void ReleaseStationheadBoundaryLease(UINT message) noexcept {
+  AcquireSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
+  if (stationhead_boundary_message_policy::ownerMessage == message) {
+    stationhead_boundary_message_policy::ownerMessage = 0;
+    stationhead_boundary_message_policy::expiresAt = 0;
+  }
+  ReleaseSRWLockExclusive(&stationhead_boundary_message_policy::leaseLock);
+}
 
 inline int64_t& StationheadAutoClickDeadlineStorage(
     int64_t& storage, bool secondary) noexcept {
@@ -443,3 +552,14 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
       (navigationInFlight_), periodicRefreshStartedAt_,                     \
       periodicRefreshNavigationObserved_))
 #define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
+
+#include "sh_shared.h"
+
+namespace hp {
+inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs =
+    3'500;
+static_assert(kStationheadMeasuredPostPlaybackStopClickDelayMs < 12'000);
+}  // namespace hp
+
+#define kStationheadPostPlaybackStopClickDelayMs                             \
+  (::hp::kStationheadMeasuredPostPlaybackStopClickDelayMs)
