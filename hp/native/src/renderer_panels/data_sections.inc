@@ -58,7 +58,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
     const int chartHeight = static_cast<int>(chart.bottom - chart.top);
     const int legendHeight = std::clamp(chartHeight * 20 / 100, 12, 22);
     const int axisHeight = std::clamp(chartHeight * 15 / 100, 10, 18);
-    const int yLabelWidth = std::max(24, SpanX(body, 70));
+    const int yLabelWidth = std::max(44, SpanX(body, 120));
     RECT legend{chart.left, chart.top, chart.right, chart.top + legendHeight};
     SelectObject(dc, TierFont(FontTier::Small));
 
@@ -153,12 +153,19 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
       }
 
       SetTextColor(dc, kWidgetSubtle);
+      const int axisPrecision = maximum >= 1.0 ? 1 : 2;
+      const int labelRight = plot.left - SpanX(body, 6);
       RECT maxLabel{chart.left, plot.top - SpanY(body, 20),
-                    plot.left - SpanX(body, 10), plot.top + SpanY(body, 50)};
-      DrawTextInRect(dc, Fixed(maximum, maximum >= 1.0 ? 1 : 2), maxLabel,
+                    labelRight, plot.top + SpanY(body, 50)};
+      DrawTextInRect(dc, Fixed(maximum, axisPrecision), maxLabel,
+                     DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+      const int middleY = plot.top + (plot.bottom - plot.top) / 2;
+      RECT middleLabel{chart.left, middleY - SpanY(body, 35),
+                       labelRight, middleY + SpanY(body, 35)};
+      DrawTextInRect(dc, Fixed(maximum / 2.0, axisPrecision), middleLabel,
                      DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
       RECT zeroLabel{chart.left, plot.bottom - SpanY(body, 35),
-                     plot.left - SpanX(body, 10), plot.bottom + SpanY(body, 35)};
+                     labelRight, plot.bottom + SpanY(body, 35)};
       DrawTextInRect(dc, L"0", zeroLabel, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
 
       const int count = static_cast<int>(nativeDashboard_.octopusProfile.size());
