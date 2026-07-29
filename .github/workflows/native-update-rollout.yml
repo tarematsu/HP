@@ -1,0 +1,58 @@
+name: Trigger native update rollout
+
+on:
+  workflow_run:
+    workflows:
+      - Native Windows Build
+    types:
+      - completed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-update-rollout-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out released commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Resolve deployed HomePanel public URL
+        id: homepanel-public-url
+        run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
+
+      - name: Trigger immediate update detection
+        shell: bash
+        env:
+          HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
+        run: |
+          set -euo pipefail
+          response="$RUNNER_TEMP/update-ping.json"
+          status="$(curl --silent --show-error \
+            --retry 4 --retry-delay 5 --retry-all-errors \
+            --output "$response" --write-out '%{http_code}' \
+            -X POST "${HOMEPANEL_BASE_URL%/}/v1/update/ping")"
+          cat "$response"
+          node -e '
+            const fs = require("node:fs");
+            const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            const status = Number(process.argv[2]);
+            if (status !== 202 || payload?.queued !== true) {
+              throw new Error(`Unexpected update ping response (HTTP ${status}): ${JSON.stringify(payload)}`);
+            }
+          ' "$response" "$status"
