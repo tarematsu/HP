@@ -12,6 +12,7 @@ async function load(mode, from, to) {
 }
 
 function select(row) {
+  if (!row) return null;
   return {
     period_key: row.period_key,
     period_start: row.period_start,
@@ -35,29 +36,29 @@ function select(row) {
   };
 }
 
-const historical = await load('daily', '2024-09-01', '2024-10-11');
-const memberDates = await load('daily', '2025-03-11', '2025-04-16');
-const recentDaily = await load('daily', '2026-07-13', '2026-07-26');
-const recentWeekly = await load('weekly', '2026-07-13', '2026-07-26');
-
-console.log('# History mismatch details');
-console.log('## Historical arithmetic mismatches');
-for (const row of historical) {
-  const streamExpected = row.stream_start != null && row.stream_end != null ? Number(row.stream_end) - Number(row.stream_start) : null;
-  const memberExpected = row.member_start != null && row.member_end != null ? Number(row.member_end) - Number(row.member_start) : null;
-  if ((streamExpected != null && Number(row.stream_growth) !== streamExpected)
-      || (memberExpected != null && Number(row.member_growth) !== memberExpected)) {
-    console.log(JSON.stringify({ ...select(row), stream_expected: streamExpected, member_expected: memberExpected }));
-  }
-}
-for (const row of memberDates) {
-  const memberExpected = row.member_start != null && row.member_end != null ? Number(row.member_end) - Number(row.member_start) : null;
-  if (memberExpected != null && Number(row.member_growth) !== memberExpected) {
-    console.log(JSON.stringify({ ...select(row), member_expected: memberExpected }));
-  }
+function byKey(rows, key) {
+  return rows.find((row) => row.period_key === key) || null;
 }
 
-console.log('## Recent daily rows');
-for (const row of recentDaily) console.log(JSON.stringify(select(row)));
-console.log('## Recent weekly rows');
-for (const row of recentWeekly) console.log(JSON.stringify(select(row)));
+const broadDaily = await load('daily', '2024-05-01', '2026-07-29');
+const narrowHistorical = await load('daily', '2024-09-01', '2024-10-11');
+const narrowMembers = await load('daily', '2025-03-11', '2025-04-16');
+const broadWeekly = await load('weekly', '2024-05-01', '2026-07-29');
+const narrowWeekly = await load('weekly', '2026-07-13', '2026-07-26');
+const narrowRecentDaily = await load('daily', '2026-07-13', '2026-07-26');
+
+console.log('# History broad-vs-narrow comparison');
+for (const key of ['2024-09-02', '2024-10-09', '2025-03-11', '2025-04-03', '2025-04-16']) {
+  const narrowRows = key < '2025-01-01' ? narrowHistorical : narrowMembers;
+  console.log(JSON.stringify({
+    key,
+    broad: select(byKey(broadDaily, key)),
+    narrow: select(byKey(narrowRows, key)),
+  }));
+}
+console.log(JSON.stringify({
+  key: '2026-07-20',
+  broad_weekly: select(byKey(broadWeekly, '2026-07-20')),
+  narrow_weekly: select(byKey(narrowWeekly, '2026-07-20')),
+  daily_rows: narrowRecentDaily.map(select),
+}));
