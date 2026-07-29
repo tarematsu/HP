@@ -96,6 +96,68 @@ def validate_metrics(
         )
 
 
+def validate_daily_violations(report: dict[str, Any], errors: list[str]) -> None:
+    actual_usage = mapping(report.get("actualUsage"), "daily.actualUsage", errors)
+    projected_usage = mapping(report.get("usage"), "daily.usage", errors)
+    limits = mapping(report.get("limits"), "daily.limits", errors)
+    projection = mapping(report.get("projection"), "daily.projection", errors)
+    actual_sources = mapping(report.get("violationSources"), "daily.violationSources", errors)
+    actual_violations = violation_set(report, "daily", errors)
+
+    enforce_projected = projection.get("enforceProjected")
+    if not isinstance(enforce_projected, bool):
+        errors.append("daily.projection.enforceProjected must be a boolean")
+        enforce_projected = False
+
+    expected_violations: set[str] = set()
+    expected_sources: dict[str, str] = {}
+    for metric in DAILY_METRICS:
+        actual_key = "measuredRequests" if metric == "requests" else metric
+        actual = number(actual_usage.get(actual_key))
+        projected = number(projected_usage.get(metric))
+        limit = number(limits.get(metric))
+        if actual is None or actual < 0:
+            errors.append(f"daily.actualUsage.{actual_key} must be a non-negative finite number")
+            continue
+        if projected is None or projected < 0:
+            errors.append(f"daily.usage.{metric} must be a non-negative finite number")
+            continue
+        if limit is None or limit <= 0:
+            errors.append(f"daily.limits.{metric} must be a positive finite number")
+            continue
+        if actual >= limit:
+            expected_violations.add(metric)
+            expected_sources[metric] = "actual"
+        elif enforce_projected and projected >= limit:
+            expected_violations.add(metric)
+            expected_sources[metric] = "projected"
+
+    unknown = actual_violations - set(DAILY_METRICS)
+    if unknown:
+        errors.append(f"daily.violations contains unknown metrics: {','.join(sorted(unknown))}")
+    if actual_violations != expected_violations:
+        errors.append(
+            f"daily.violations is inconsistent: expected={','.join(sorted(expected_violations)) or '-'} "
+            f"actual={','.join(sorted(actual_violations)) or '-'}"
+        )
+
+    unknown_sources = set(actual_sources) - set(DAILY_METRICS)
+    if unknown_sources:
+        errors.append(
+            "daily.violationSources contains unknown metrics: "
+            + ",".join(sorted(unknown_sources))
+        )
+    for metric, source in actual_sources.items():
+        if source not in {"actual", "projected"}:
+            errors.append(f"daily.violationSources.{metric} must be actual or projected")
+    if actual_sources != expected_sources:
+        errors.append(
+            "daily.violationSources is inconsistent: "
+            f"expected={json.dumps(expected_sources, sort_keys=True, separators=(',', ':'))} "
+            f"actual={json.dumps(actual_sources, sort_keys=True, separators=(',', ':'))}"
+        )
+
+
 def positive_integer(value: Any, label: str, errors: list[str]) -> None:
     parsed = number(value)
     if parsed is None or parsed < 1 or not parsed.is_integer():
@@ -104,7 +166,7 @@ def positive_integer(value: Any, label: str, errors: list[str]) -> None:
 
 def validate_daily(report: dict[str, Any], workers: tuple[str, ...] = WORKERS) -> list[str]:
     errors: list[str] = []
-    validate_metrics(report, DAILY_METRICS, "daily", errors)
+    validate_daily_violations(report, errors)
     usage = mapping(report.get("usage"), "daily.usage", errors)
     positive_integer(usage.get("databaseCount"), "daily.usage.databaseCount", errors)
     positive_integer(usage.get("queueCount"), "daily.usage.queueCount", errors)
@@ -157,19 +219,27 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def self_test() -> int:
+    actual_usage = {
+        "requests": 30,
+        "measuredRequests": 30,
+        "requestReserve": 0,
+        "rowsRead": 50,
+        "rowsWritten": 2,
+        "queueOperations": 4,
+        "perWorkerRequests": {"a": 30},
+        "perWorkerErrors": {"a": 0},
+        "databaseCount": 3,
+        "queueCount": 4,
+    }
     daily = {
+        "actualUsage": actual_usage,
         "usage": {
+            **actual_usage,
             "requests": 31,
             "measuredRequests": 30,
             "requestReserve": 1,
-            "rowsRead": 50,
-            "rowsWritten": 2,
-            "queueOperations": 4,
-            "perWorkerRequests": {"a": 30},
-            "perWorkerErrors": {"a": 0},
-            "databaseCount": 3,
-            "queueCount": 4,
         },
+        "projection": {"enforceProjected": True},
         "limits": {
             "requests": 70,
             "rowsRead": 100,
@@ -177,6 +247,7 @@ def self_test() -> int:
             "queueOperations": 20,
         },
         "violations": [],
+        "violationSources": {},
     }
     free = {
         "resourceCounts": {
@@ -195,6 +266,23 @@ def self_test() -> int:
     assert validate_daily(daily, ("a",)) == []
     assert validate_free_tier(free) == []
 
+    warmup = json.loads(json.dumps(daily))
+    warmup["projection"]["enforceProjected"] = False
+    warmup["usage"]["rowsRead"] = 200
+    assert validate_daily(warmup, ("a",)) == []
+
+    projected_breach = json.loads(json.dumps(warmup))
+    projected_breach["projection"]["enforceProjected"] = True
+    projected_breach["violations"] = ["rowsRead"]
+    projected_breach["violationSources"] = {"rowsRead": "projected"}
+    assert validate_daily(projected_breach, ("a",)) == []
+
+    actual_breach = json.loads(json.dumps(warmup))
+    actual_breach["actualUsage"]["rowsRead"] = 100
+    actual_breach["violations"] = ["rowsRead"]
+    actual_breach["violationSources"] = {"rowsRead": "actual"}
+    assert validate_daily(actual_breach, ("a",)) == []
+
     broken_daily = json.loads(json.dumps(daily))
     broken_daily["usage"].pop("queueOperations")
     assert any("queueOperations" in item for item in validate_daily(broken_daily, ("a",)))
@@ -202,6 +290,10 @@ def self_test() -> int:
     broken_count = json.loads(json.dumps(daily))
     broken_count["usage"]["queueCount"] = 0
     assert any("queueCount" in item for item in validate_daily(broken_count, ("a",)))
+
+    broken_sources = json.loads(json.dumps(projected_breach))
+    broken_sources["violationSources"] = {"rowsRead": "actual"}
+    assert any("violationSources is inconsistent" in item for item in validate_daily(broken_sources, ("a",)))
 
     broken_free = json.loads(json.dumps(free))
     broken_free["resourceCounts"]["kvNamespaces"] = 0
