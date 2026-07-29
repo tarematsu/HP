@@ -103,7 +103,7 @@ test('non-native main merges retain the active native release evidence', () => {
   assert.match(summary, /R2 update assets/);
 });
 
-test('deployment diagnostics refresh on every main merge and native release completion', async () => {
+test('deployment diagnostics refresh on every main merge and operational workflow completion', async () => {
   const workflow = await readFile(
     new URL('../.github/workflows/publish-github-deployment-health.yml', import.meta.url),
     'utf8',
@@ -113,7 +113,7 @@ test('deployment diagnostics refresh on every main merge and native release comp
     'utf8',
   );
 
-  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability"\]/);
+  assert.match(workflow, /workflows: \["Deploy production", "Deploy HomePanel Cloud services", "Native Windows Build", "Unified Cloudflare Observability", "Rebuild pages read models", "Run runtime offline maintenance", "Repair track metadata", "Run local minute facts rebuild", "Refresh Cloudflare observability"\]/);
   assert.match(workflow, /push:\s*\n\s*branches: \[main\]\s*\n\s*schedule:/);
   assert.match(publisher, /collectNativeReleaseStatus/);
   assert.match(publisher, /renderNativeReleaseSummary/);
