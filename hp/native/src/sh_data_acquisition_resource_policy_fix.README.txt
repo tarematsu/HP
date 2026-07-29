@@ -1,0 +1,1 @@
+This policy intentionally preserves the existing Stationhead resource reductions while allowing authenticated account/statistics data and the mixed SelectedGIF/account module to load normally.
