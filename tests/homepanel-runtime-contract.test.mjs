@@ -10,6 +10,8 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
   const scheduler = readSource('hp/cloud/src/scheduler.ts');
   const schedulerRuntime = readSource('hp/cloud/src/scheduler_runtime.ts');
   const schedulerCoordinator = readSource('hp/cloud/src/scheduler_coordinator.ts');
+  const deviceExchange = readSource('hp/cloud/src/device_exchange.ts');
+  const deviceExchangeCoordinator = readSource('hp/cloud/src/device_exchange_coordinator.ts');
   const deviceSyncCoordinator = readSource('hp/cloud/src/device_sync_coordinator.ts');
   const deviceSyncClient = readSource('hp/cloud/src/device_sync_coordinator_client.ts');
   const radarCoordinator = readSource('hp/cloud/src/radar_bundle_coordinator.ts');
@@ -22,6 +24,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     "export { VideoFeedCoordinator }",
     'VIDEO_FEED_COORDINATOR',
     "export { DeviceSyncCoordinator }",
+    "export { DeviceExchangeCoordinator }",
     "export { RadarBundleCoordinator }",
     'queue(batch, env, ctx)',
     'scheduled(controller, env, ctx)',
@@ -63,10 +66,22 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
 
   expectAll(schedulerCoordinator, ['/ensure', '/wake', 'async alarm()']);
   expectNone(schedulerCoordinator, ['video-feed-', 'radar-bundle-shard', 'device-sync-invalidate']);
+  expectAll(deviceExchange, [
+    'requestCoordinatedDeviceExchange',
+    'buildDeviceExchangeResponse',
+    'requestCoordinatedDeviceSync',
+  ]);
+  expectAll(deviceExchangeCoordinator, [
+    'export class DeviceExchangeCoordinator',
+    'buildDeviceExchangeResponse',
+    'requestCoordinatedDeviceSync',
+  ]);
   expectAll(deviceSyncCoordinator, ['export class DeviceSyncCoordinator', 'readDeviceSyncManifest']);
   expectNone(deviceSyncCoordinator, ['function coordinatorStub', 'DEVICE_SYNC_COORDINATOR?:']);
   expectAll(deviceSyncClient, [
     'DEVICE_SYNC_COORDINATOR?: DurableObjectNamespace',
+    'DEVICE_EXCHANGE_COORDINATOR?: DurableObjectNamespace',
+    'requestCoordinatedDeviceExchange',
     'requestCoordinatedDeviceSync',
     'invalidateCoordinatedDeviceSyncManifest',
   ]);
@@ -85,6 +100,7 @@ test('HomePanel Cloud owns the video runtime and keeps isolated coordinators', a
     '"name": "VIDEO_FEED_COORDINATOR"',
     '"class_name": "VideoFeedCoordinator"',
     '"class_name": "DeviceSyncCoordinator"',
+    '"class_name": "DeviceExchangeCoordinator"',
     '"class_name": "RadarBundleCoordinator"',
     '"0 * * * *"',
   ]);
