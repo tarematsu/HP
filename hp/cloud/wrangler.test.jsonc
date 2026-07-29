@@ -43,15 +43,15 @@
       ]
     },
     {
-      "tag": "device-exchange-coordinator-v1",
-      "new_sqlite_classes": [
-        "DeviceExchangeCoordinator"
-      ]
-    },
-    {
       "tag": "integrated-video-feed-coordinator-v1",
       "new_sqlite_classes": [
         "VideoFeedCoordinator"
+      ]
+    },
+    {
+      "tag": "device-exchange-coordinator-v1",
+      "new_sqlite_classes": [
+        "DeviceExchangeCoordinator"
       ]
     }
   ],
