@@ -41,10 +41,10 @@ describe("Octopus complete-day profile", () => {
     const now = Date.parse("2026-07-10T18:17:00Z");
     const ranges = completeDayProfileRanges(now);
 
-    expect(ranges.currentStart.toISOString()).toBe("2026-07-01T15:00:00.000Z");
-    expect(ranges.currentEnd.toISOString()).toBe("2026-07-08T15:00:00.000Z");
-    expect(ranges.previousStart.toISOString()).toBe("2026-06-24T15:00:00.000Z");
-    expect(ranges.previousEnd.toISOString()).toBe("2026-07-01T15:00:00.000Z");
+    expect(ranges.currentStart.toISOString()).toBe("2026-07-02T15:00:00.000Z");
+    expect(ranges.currentEnd.toISOString()).toBe("2026-07-09T15:00:00.000Z");
+    expect(ranges.previousStart.toISOString()).toBe("2026-06-25T15:00:00.000Z");
+    expect(ranges.previousEnd.toISOString()).toBe("2026-07-02T15:00:00.000Z");
 
     const totals = [
       ...dailyTotals(ranges.previousStart.getTime(), 7, 9.6),
@@ -55,14 +55,14 @@ describe("Octopus complete-day profile", () => {
 
     expect(profile).toHaveLength(7);
     expect(profile[0]).toEqual({
-      day: "木",
+      day: "金",
       currentTotal: 19.2,
       previousTotal: 9.6,
       currentComplete: true,
       previousComplete: true,
     });
     expect(profile[6]).toEqual({
-      day: "水",
+      day: "木",
       currentTotal: 19.2,
       previousTotal: 9.6,
       currentComplete: true,

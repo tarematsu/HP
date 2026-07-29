@@ -4,6 +4,7 @@ import {
   OCTOPUS_COLLECTION_DAYS,
   OCTOPUS_CORRECTION_OVERLAP_DAYS,
   OCTOPUS_HISTORY_FLOOR_MS,
+  OCTOPUS_STABILITY_LAG_DAYS,
   octopusCollectionStart,
   octopusCompleteStableThroughJst,
   octopusStableCutoffJst,
@@ -48,6 +49,7 @@ describe("Octopus daily D1 history", () => {
     });
 
     expect(OCTOPUS_COLLECTION_DAYS).toBe(7);
+    expect(OCTOPUS_STABILITY_LAG_DAYS).toBe(1);
     expect(requested).toHaveLength(4);
     expect(requested[0]?.from.getTime()).toBe(collectionStart);
     expect(requested.at(-1)?.to.getTime()).toBe(stableThrough);
@@ -69,8 +71,8 @@ describe("Octopus daily D1 history", () => {
       count: number; oldest: string; latest: string; slots: number; energy: number;
     }>();
     expect(Number(stored?.count)).toBe(7);
-    expect(stored?.oldest).toBe("2026-07-02");
-    expect(stored?.latest).toBe("2026-07-08");
+    expect(stored?.oldest).toBe("2026-07-03");
+    expect(stored?.latest).toBe("2026-07-09");
     expect(Number(stored?.slots)).toBe(7 * 48);
     expect(Number(stored?.energy)).toBe(7 * 48 * 0.25);
 
@@ -168,8 +170,8 @@ describe("Octopus daily D1 history", () => {
 
   it("aligns the storage boundary to a fully stable JST day", () => {
     const now = Date.parse("2026-07-10T18:17:42Z");
-    expect(new Date(octopusStableCutoffJst(now)).toISOString()).toBe("2026-07-08T18:00:00.000Z");
-    expect(new Date(octopusCompleteStableThroughJst(now)).toISOString()).toBe("2026-07-08T15:00:00.000Z");
-    expect(new Date(octopusCollectionStart(now)).toISOString()).toBe("2026-07-01T15:00:00.000Z");
+    expect(new Date(octopusStableCutoffJst(now)).toISOString()).toBe("2026-07-09T18:00:00.000Z");
+    expect(new Date(octopusCompleteStableThroughJst(now)).toISOString()).toBe("2026-07-09T15:00:00.000Z");
+    expect(new Date(octopusCollectionStart(now)).toISOString()).toBe("2026-07-02T15:00:00.000Z");
   });
 });
