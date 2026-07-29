@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      STATIONHEAD_EMAIL: ${{ secrets.STATIONHEAD_EMAIL || secrets.STATIONHEAD_TEST_EMAIL || secrets.SH_EMAIL }}
-      STATIONHEAD_PASSWORD: ${{ secrets.STATIONHEAD_PASSWORD || secrets.STATIONHEAD_TEST_PASSWORD || secrets.SH_PASSWORD }}
+      STATIONHEAD_EMAIL: ${{ secrets.STATIONHEAD_AUDIT_EMAIL || secrets.STATIONHEAD_EMAIL || secrets.STATIONHEAD_TEST_EMAIL || secrets.SH_EMAIL }}
+      STATIONHEAD_PASSWORD: ${{ secrets.STATIONHEAD_AUDIT_PASSWORD || secrets.STATIONHEAD_PASSWORD || secrets.STATIONHEAD_TEST_PASSWORD || secrets.SH_PASSWORD }}
     steps:
       - name: Checkout audit revision
         uses: actions/checkout@v4
