@@ -2,16 +2,13 @@
 #include "common.h"
 #include "sh_data_acquisition_resource_policy_fix.h"
 #include "sh_stats_july23_baseline_policy_fix.h"
-#include "sh_startup_resource_reduction_policy_fix.h"
-#include "sh_playback_resource_policy_fix.h"
-#include "sh_startup_dom_batch_policy_fix.h"
 
 namespace hp {
 
-// Periodic Stationhead refresh is owned entirely by the native role-specific
-// clock: Window A uses 55 minutes and Window B uses 56 minutes. Keep the
-// historical composition point as an empty script without observing media-ended
-// or track-transition events in the page.
+// Periodic Stationhead refresh is owned entirely by the native 55-minute clock.
+// Keep the historical composition point as an empty script so existing startup
+// assembly remains stable without observing media-ended or track-transition
+// events in the page.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
   return {};
 }
