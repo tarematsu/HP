@@ -1,6 +1,5 @@
 
 
-
 #pragma comment(lib, "version.lib")
 
 #include "app.h"
@@ -81,7 +80,7 @@ std::wstring InstalledHomePanelVersion(const fs::path& executable) {
 }
 
 InstalledFileComparison CompareInstalledFile(const fs::path& path,
-                                              const UpdateFileSpec& file) noexcept {
+                                               const UpdateFileSpec& file) noexcept {
   try {
     std::error_code error;
     const bool exists = fs::exists(path, error);
@@ -111,7 +110,7 @@ InstalledFileComparison CompareInstalledFile(const fs::path& path,
 }
 
 bool ManifestFilesDiffer(const UpdateManifest& manifest,
-                         const fs::path& root) noexcept {
+                          const fs::path& root) noexcept {
   for (const auto& file : manifest.files) {
     if (CompareInstalledFile(root / file.name, file) == InstalledFileComparison::Differs) {
       return true;
@@ -122,24 +121,28 @@ bool ManifestFilesDiffer(const UpdateManifest& manifest,
 
 }  // namespace
 
-void App::CheckForUpdateAsync(bool install) {
-  CheckForUpdateAsync(install, install);
+void App::CheckForUpdateAsync(bool explicitLocalRequest) {
+  // One-argument calls describe the request origin. Startup passes false to
+  // silently install only genuinely newer releases; the local update action
+  // passes true to preserve status UI and explicit same-version repair.
+  CheckForUpdateAsync(true, explicitLocalRequest);
 }
 
 void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair) {
+  const bool notify = install && allowSameVersionRepair;
   if (updateBusy_.exchange(true)) {
-    if (install) {
+    if (notify) {
       ShowToast(L"更新確認はすでに実行中です", 4000);
     }
     return;
   }
   if (updateThread_.joinable()) updateThread_.join();
-  if (install) {
+  if (notify) {
     ShowToast(L"署名・ハッシュを確認して更新を準備しています", 15'000);
   }
 
   try {
-    updateThread_ = std::thread([this, install, allowSameVersionRepair] {
+    updateThread_ = std::thread([this, install, allowSameVersionRepair, notify] {
       UpdateBusyGuard busyGuard(updateBusy_);
       try {
         std::wstring message;
@@ -156,7 +159,7 @@ void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair) {
               sameVersion && allowSameVersionRepair &&
               ManifestFilesDiffer(manifest, rootDir_);
           if (!newerVersion && !replacementBuild) {
-            if (install) {
+            if (notify) {
               message.reserve(currentVersion.size() + 20);
               message.append(L"すでに最新バージョンです (v");
               message.append(currentVersion);
