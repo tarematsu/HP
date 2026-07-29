@@ -5,6 +5,12 @@ const pages = [
   'https://www.stationhead.com/sakuramankai',
   'https://www.stationhead.com/buddy46',
 ];
+const knownAssets = [
+  'https://www.stationhead.com/assets/launch-Cnzf9rN1.js',
+  'https://www.stationhead.com/assets/SelectedGIF-BaAx9j6X.js',
+  'https://www.stationhead.com/assets/Tooltip-CXAFiWY6.js',
+  'https://www.stationhead.com/assets/LottieAnimationViewNonLazy-VE60c2nO.js',
+];
 const targetPattern = /^(selectedgif|tooltip|lottieanimationviewnonlazy)-/i;
 const assetPattern = /(?:https:\/\/www\.stationhead\.com)?\/?assets\/[A-Za-z0-9_.$-]+\.m?js/g;
 
@@ -70,7 +76,7 @@ function compactSnippet(source, at, length) {
 
 async function main() {
   const sources = new Map();
-  const queue = [];
+  const queue = [...knownAssets];
   for (const page of pages) {
     const html = await fetchText(page);
     for (const asset of assetsIn(html, page)) queue.push(asset);
@@ -134,11 +140,11 @@ async function main() {
   ];
   await writeFile(path.join(outDir, 'contracts.md'), `${lines.join('\n')}\n`);
   console.log(lines.join('\n'));
-  if (!modules.some((module) => /^SelectedGIF-/i.test(module.basename))) {
-    throw new Error('SelectedGIF module not discovered');
+  if (!modules.some((module) => /^SelectedGIF-/i.test(module.basename) && module.exports.length)) {
+    throw new Error('SelectedGIF export contract not discovered');
   }
-  if (!modules.some((module) => /^Tooltip-/i.test(module.basename))) {
-    throw new Error('Tooltip module not discovered');
+  if (!modules.some((module) => /^Tooltip-/i.test(module.basename) && module.exports.length)) {
+    throw new Error('Tooltip export contract not discovered');
   }
 }
 
