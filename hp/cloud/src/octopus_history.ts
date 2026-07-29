@@ -51,9 +51,10 @@ const PROFILE_SLOTS = 48;
 export const OCTOPUS_HISTORY_FLOOR_MS = Date.UTC(2025, 10, 1) - JST_MS;
 export const OCTOPUS_COLLECTION_DAYS = 7;
 export const OCTOPUS_CORRECTION_OVERLAP_DAYS = 1;
-// Fetch through the current JST day boundary. Partial days are rejected unless
-// all 48 half-hour slots are present, so an additional full-day lag is unnecessary.
-export const OCTOPUS_STABILITY_LAG_DAYS = 0;
+export const OCTOPUS_STABILITY_LAG_DAYS = 1;
+// Keep one completed JST day out of the graph, while querying one day beyond
+// that display boundary so delayed readings for the latest visible day can arrive.
+const OCTOPUS_QUERY_LOOKAHEAD_DAYS = 1;
 
 function jstDayKey(timestampMs: number): string {
   return new Date(timestampMs + JST_MS).toISOString().slice(0, 10);
@@ -207,6 +208,8 @@ export async function synchronizeOctopusHistory(
   if (!Number.isFinite(nowMs)) throw new Error("Octopus synchronization time must be finite");
   const stableCutoff = octopusStableCutoffJst(nowMs);
   const stableThrough = octopusCompleteStableThroughJst(nowMs);
+  const queryThrough = stableThrough + OCTOPUS_QUERY_LOOKAHEAD_DAYS * DAY_MS;
+  const stableThroughDay = jstDayKey(stableThrough);
   const cursorBefore = await readSyncCursor(env, accountNumber);
   const initialFrom = cursorBefore === null
     ? octopusCollectionStart(nowMs)
@@ -215,11 +218,13 @@ export async function synchronizeOctopusHistory(
   const totalsByDay = new Map<string, OctopusDailyTotal>();
   let supplyPoint: string | null = null;
 
-  for (const range of safeRanges(fetchFrom, stableThrough)) {
+  for (const range of safeRanges(fetchFrom, queryThrough)) {
     const readings = await fetchRange(range);
     const aggregated = aggregateCompleteDays(readings, range, supplyPoint);
     supplyPoint = aggregated.supplyPoint;
-    for (const total of aggregated.totals) totalsByDay.set(total.day, total);
+    for (const total of aggregated.totals) {
+      if (total.day < stableThroughDay) totalsByDay.set(total.day, total);
+    }
   }
 
   await persistDailyTotals(
