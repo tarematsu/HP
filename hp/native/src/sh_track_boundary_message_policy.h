@@ -189,7 +189,8 @@ inline LRESULT SendMessageWWithStationheadBoundaryLease(
   bool periodicRefreshProjectedStopped_ = false;                              \
   bool periodicRefreshNavigationPending_ = false;                             \
   MonotonicElapsedTimestamp periodicRefreshAttemptStartedAt_;                 \
-  MonotonicProjectedDeadline periodicRefreshSecondaryPriorityAt_
+  MonotonicProjectedDeadline periodicRefreshSecondaryPriorityAt_;             \
+  int64_t periodicRefreshPolicyTail_
 
 #include "sh.h"
 
