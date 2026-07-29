@@ -4,6 +4,7 @@ import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
 export { DeviceSyncCoordinator } from './device_sync_coordinator.ts';
+export { DeviceExchangeCoordinator } from './device_exchange_coordinator.ts';
 export { RadarBundleCoordinator } from './radar_bundle_coordinator.ts';
 export { VideoFeedCoordinator } from '../../video/src/entry.js';
 export { requestFamily } from './unified_routes.js';
