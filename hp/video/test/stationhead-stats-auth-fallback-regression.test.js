@@ -27,6 +27,14 @@ function occurrences(source, fragment) {
   return count;
 }
 
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
+  assert.notEqual(startAt, -1, `missing section: ${start}`);
+  const endAt = source.indexOf(end, startAt + start.length);
+  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
+  return source.slice(startAt, endAt);
+}
+
 test('play stats fallback is compiled after response-validated auth capture', () => {
   const validationAt = navigationPolicy.indexOf(
     '#include "sh_auth_capture_validation_policy_fix.h"',
@@ -57,9 +65,14 @@ test('play stats prefer current headers and fall back only to accepted headers',
   assert.doesNotMatch(fallbackPolicy, /RejectedAuthorization/);
 });
 
-test('the wrapper replaces the one current-header-only stats marker', () => {
+test('the wrapper replaces the current-header-only marker in the stats generator', () => {
+  const statsGenerator = section(
+    runtimePolicy,
+    'inline std::wstring StationheadApiPlayStatsScriptRuntimeFixed',
+    '}  // namespace hp',
+  );
   const marker = 'const headers = window.__homepanelStationheadAuthHeaders;';
-  assert.equal(occurrences(runtimePolicy, marker), 1);
+  assert.equal(occurrences(statsGenerator, marker), 1);
   assert.match(
     fallbackPolicy,
     /ReplaceStationheadRuntimeFragment\([\s\S]*kCurrentHeadersOnly,[\s\S]*kAcceptedHeadersFallback\)/,
