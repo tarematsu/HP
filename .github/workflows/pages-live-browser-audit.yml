@@ -5,6 +5,7 @@ on:
     paths:
       - 'site/**'
       - 'scripts/audit-pages-live.mjs'
+      - 'scripts/audit-pages-materialized.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/deploy-split-pipeline.yml'
@@ -97,6 +98,15 @@ jobs:
           --attempts=3
           --retry-delay-ms=5000
           --out=.pages-production-audit
+
+      - name: Require production dashboard materialization
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: >-
+          node scripts/audit-pages-materialized.mjs
+          --url=https://skrzk.pages.dev
+          --attempts=3
+          --retry-delay-ms=5000
+          --out=.pages-production-audit/materialized.json
 
       - name: Upload browser audit evidence
         if: always()

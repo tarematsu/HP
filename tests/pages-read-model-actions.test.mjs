@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  materializedResponseCadenceSeconds,
+  materializedResponseMaximumAge,
+} from '../site/functions/lib/api-contract.js';
+import {
   dueVariantKeys,
   runPagesReadModelActions,
 } from '../worker/scripts/run-pages-read-model-actions.mjs';
@@ -66,6 +70,11 @@ test('pages read models run independently before chaining runtime maintenance', 
   assert.match(runner, /r2', 'object', 'put'/);
   assert.match(r2Store, /pages-response\/actions-v1/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
+});
+
+test('dashboard materialized lifetime covers the 30-minute Actions publication interval', () => {
+  assert.equal(materializedResponseCadenceSeconds('dashboard'), 30 * 60);
+  assert.equal(materializedResponseMaximumAge('dashboard'), 35 * MINUTE);
 });
 
 test('contract cadence regenerates histories every six hours and archives daily', () => {
