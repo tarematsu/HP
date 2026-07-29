@@ -221,6 +221,7 @@ inline std::wstring StationheadStartupDomReductionScript() {
     'img[src*="/gif" i]'
   ];
   const selector = optionalSelectors.join(',');
+  const hardOptionalImageSelector = 'img[src*="giphy" i],img[src*="/gif" i]';
   const protectedPattern = /start\s+listening|listen\s+(?:now|live)|join\s+(?:station|room)|spotify|log\s*in|sign\s*in|login|play|pause|resume|continue|audio|volume|ログイン|再生|一時停止|続ける|接続/i;
   const optionalLabelPattern = /^(?:gif|open gif|chat|open chat|threads?|tipping|send (?:a )?gift|gifts?|reactions?|emoji|leaderboard|connect apple music|start free trial|download (?:the )?app|get the app)$/i;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
@@ -238,8 +239,9 @@ inline std::wstring StationheadStartupDomReductionScript() {
       (shell && protectedPattern.test(labelOf(shell)));
   };
   const remove = element => {
-    if (!(element instanceof Element) || !element.isConnected ||
-        protectedSurface(element)) return;
+    if (!(element instanceof Element) || !element.isConnected) return;
+    const hardOptionalImage = element.matches(hardOptionalImageSelector);
+    if (!hardOptionalImage && protectedSurface(element)) return;
     element.remove();
   };
   const scan = root => {
@@ -258,7 +260,11 @@ inline std::wstring StationheadStartupDomReductionScript() {
   const style = document.createElement('style');
   style.id = 'homepanel-stationhead-startup-reduction';
   style.textContent = `${selector}{display:none!important;visibility:hidden!important}`;
-  (document.head || document.documentElement)?.appendChild(style);
+  const ensureStyle = () => {
+    const parent = document.head || document.documentElement;
+    if (parent && !style.isConnected) parent.appendChild(style);
+  };
+  ensureStyle();
 
   let active = true;
   let frame = 0;
@@ -266,7 +272,9 @@ inline std::wstring StationheadStartupDomReductionScript() {
     if (!active || frame) return;
     frame = requestAnimationFrame(() => {
       frame = 0;
-      if (active) scan(root?.isConnected ? root : document);
+      if (!active) return;
+      ensureStyle();
+      scan(root?.isConnected ? root : document);
     });
   };
   const observer = new MutationObserver(records => {
@@ -292,8 +300,12 @@ inline std::wstring StationheadStartupDomReductionScript() {
   window.addEventListener('pagehide', stop, { once: true, capture: true });
   window.setTimeout(stop, 15000);
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => scan(document), { once: true });
+    document.addEventListener('DOMContentLoaded', () => {
+      ensureStyle();
+      scan(document);
+    }, { once: true });
   } else {
+    ensureStyle();
     scan(document);
   }
 })()
