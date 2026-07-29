@@ -98,12 +98,8 @@ jobs:
             fi
           done
           if [ -f .sh-js-audit/login-report.json ]; then
-            node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
-            import { readFile } from 'node:fs/promises';
-            const report = JSON.parse(await readFile('.sh-js-audit/login-report.json', 'utf8'));
-            console.log('## Stationhead credential login attempt');
-            for (const [name, value] of Object.entries(report)) console.log(`- ${name}: ${value}`);
-            NODE
+            printf '## Stationhead credential login attempt\n' >> "$GITHUB_STEP_SUMMARY"
+            node -e "const r=require('./.sh-js-audit/login-report.json'); for (const [k,v] of Object.entries(r)) console.log('- '+k+': '+v)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload sanitized audit artifact
