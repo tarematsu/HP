@@ -10,6 +10,10 @@ import {
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 30 * 60;
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
+// The dashboard's live Pages handler reads the compact MINUTE_DB facts model and
+// explicitly masks the legacy buddies DB. It is therefore safe to use as a
+// narrow availability fallback when the runtime materialization service is down.
+const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set(['dashboard']);
 // The Pages service owns the storage choice. Compact payloads are read from
 // KV and large payloads such as track-history are read from R2 there, so the
 // gateway must not make a storage-specific decision before invoking it.
@@ -24,6 +28,16 @@ function tagged(response, cacheState) {
   return new Response(clone.body, {
     status: clone.status,
     statusText: clone.statusText,
+    headers,
+  });
+}
+
+function withResponseHeader(response, name, value) {
+  const headers = new Headers(response.headers);
+  headers.set(name, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
     headers,
   });
 }
@@ -99,6 +113,21 @@ function sharedResponse(origin, ttlSeconds) {
   }), cacheable };
 }
 
+function materializedUnavailable(modelKey) {
+  return new Response(JSON.stringify({
+    ok: false,
+    error: 'materialized response unavailable',
+    model_key: modelKey,
+  }), {
+    status: 503,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-materialized-required': '1',
+    },
+  });
+}
+
 export async function onRequest(context) {
   const { request } = context;
   if (!edgeCacheableApiRequest(request)) return context.next();
@@ -111,27 +140,29 @@ export async function onRequest(context) {
   const now = Date.now();
   const modelKey = materializedApiKey(new URL(request.url));
   let origin;
+  let usedMaterialized = false;
   if (SERVICE_MATERIALIZED_MODEL_KEYS.has(modelKey)) {
     try {
       origin = await serviceMaterializedResponse(context, modelKey);
+      usedMaterialized = true;
     } catch (error) {
       console.error(JSON.stringify({
         event: 'pages_materialized_response_unavailable',
         model_key: modelKey,
         error: String(error?.message || error).slice(0, 500),
       }));
-      return new Response(JSON.stringify({
-        ok: false,
-        error: 'materialized response unavailable',
-        model_key: modelKey,
-      }), {
-        status: 503,
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'no-store',
-          'x-materialized-required': '1',
-        },
-      });
+      if (!LIVE_PAGES_FALLBACK_MODEL_KEYS.has(modelKey)) return materializedUnavailable(modelKey);
+
+      try {
+        origin = withResponseHeader(await context.next(), 'x-materialized-fallback', 'live-pages');
+      } catch (fallbackError) {
+        console.error(JSON.stringify({
+          event: 'pages_live_fallback_unavailable',
+          model_key: modelKey,
+          error: String(fallbackError?.message || fallbackError).slice(0, 500),
+        }));
+        return materializedUnavailable(modelKey);
+      }
     }
   } else {
     origin = await context.next();
@@ -140,7 +171,7 @@ export async function onRequest(context) {
     origin,
     apiCacheTtlSeconds(request),
     modelKey,
-    SERVICE_MATERIALIZED_MODEL_KEYS.has(modelKey),
+    usedMaterialized,
     now,
   );
   const shared = sharedResponse(origin, ttlSeconds);
