@@ -8,7 +8,11 @@ on:
       - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
+      - 'hp/native/src/sh_data_acquisition_resource_policy_fix.h'
+      - 'hp/native/src/sh_startup_resource_reduction_policy_fix.h'
+      - 'hp/native/src/sh_track_boundary_script.h'
       - 'hp/video/test/stationhead-live-ui-audit-regression.test.js'
+      - 'hp/video/test/stationhead-startup-resource-reduction-regression.test.js'
       - '.github/workflows/sh-live-js-audit.yml'
   workflow_dispatch:
 
