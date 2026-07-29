@@ -58,3 +58,15 @@ test('Plug Mini footer filters non-plug devices and renders four plugs as a two-
     /plugLineHeight \* plugRowCount \+ plugRowGap \* \(plugRowCount - 1\)/,
   );
 });
+
+test('single-device rows use the full footer width', () => {
+  assert.match(dataSections, /const int rowStartIndex = plugRow \* 2;/);
+  assert.match(
+    dataSections,
+    /const int devicesInRow =\s*std::min\(2, static_cast<int>\(plugDeviceCount\) - rowStartIndex\);/s,
+  );
+  assert.match(
+    dataSections,
+    /\(plugRectWidth - plugColumnGap \* \(devicesInRow - 1\)\) \/ devicesInRow/,
+  );
+});
