@@ -1,6 +1,5 @@
 import {
   refreshRuntimeJobs,
-  resetRuntimeFromD1,
   runRuntimeSchedulerTick,
   runtimeNextWakeAt,
 } from "./scheduler_runtime";
@@ -10,8 +9,6 @@ const COORDINATOR_NAME = "global";
 const WATCHDOG_THROTTLE_MS = 24 * 60 * 60_000;
 const MIN_ALARM_DELAY_MS = 1_000;
 const RECOVERY_ALARM_DELAY_MS = 60_000;
-const RUNTIME_CONFIG_VERSION_KEY = "scheduler-runtime-config-version";
-const RUNTIME_CONFIG_VERSION = 1;
 
 interface SchedulerEnv extends Env {
   SCHEDULER_COORDINATOR?: DurableObjectNamespace;
@@ -82,15 +79,7 @@ export class SchedulerCoordinator {
     private readonly env: Env,
   ) {}
 
-  private async ensureRuntimeConfig(): Promise<void> {
-    const current = await this.state.storage.get<number>(RUNTIME_CONFIG_VERSION_KEY);
-    if (current === RUNTIME_CONFIG_VERSION) return;
-    await resetRuntimeFromD1(this.state, this.env);
-    await this.state.storage.put(RUNTIME_CONFIG_VERSION_KEY, RUNTIME_CONFIG_VERSION);
-  }
-
   private async nextWakeAt(nowMs = Date.now()): Promise<number> {
-    await this.ensureRuntimeConfig();
     const desired = await runtimeNextWakeAt(this.state, this.env, nowMs);
     return Math.max(nowMs + MIN_ALARM_DELAY_MS, desired);
   }
@@ -131,7 +120,6 @@ export class SchedulerCoordinator {
     const names = Array.isArray(body.names)
       ? body.names.filter((name): name is string => typeof name === "string")
       : undefined;
-    await this.ensureRuntimeConfig();
     const changed = await refreshRuntimeJobs(this.state, this.env, names);
     const alarmAt = await this.setEarlierAlarm(Date.now() + MIN_ALARM_DELAY_MS);
     return Response.json({ scheduled: true, changed, alarmAt }, { status: 202 });
@@ -139,7 +127,6 @@ export class SchedulerCoordinator {
 
   async alarm(): Promise<void> {
     try {
-      await this.ensureRuntimeConfig();
       await runRuntimeSchedulerTick(this.state, this.env);
     } catch (error) {
       console.error("Scheduler alarm job failed", error instanceof Error ? error.message : String(error));
