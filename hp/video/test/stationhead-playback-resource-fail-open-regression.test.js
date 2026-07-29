@@ -19,7 +19,10 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('playback-safe policy is compiled after startup reductions', () => {
+test('playback-safe policy is compiled after July 23 stats and startup reductions', () => {
+  const baselineAt = composition.indexOf(
+    '#include "sh_stats_july23_baseline_policy_fix.h"',
+  );
   const startupAt = composition.indexOf(
     '#include "sh_startup_resource_reduction_policy_fix.h"',
   );
@@ -29,12 +32,25 @@ test('playback-safe policy is compiled after startup reductions', () => {
   const domAt = composition.indexOf(
     '#include "sh_startup_dom_batch_policy_fix.h"',
   );
-  assert.ok(startupAt >= 0);
+  assert.ok(baselineAt >= 0);
+  assert.ok(startupAt > baselineAt);
   assert.ok(playbackAt > startupAt);
   assert.ok(domAt > playbackAt);
   assert.match(
     policy,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
+  );
+});
+
+test('final resource boundary preserves controller cache reset without login deletion', () => {
+  assert.match(
+    policy,
+    /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
+  );
+  assert.match(policy, /Cookies and DOM storage remain intact/);
+  assert.doesNotMatch(
+    policy,
+    /ClearBrowsingDataAll|BROWSING_DATA_KINDS_COOKIES|ALL_DOM_STORAGE|DeleteAllCookies/,
   );
 });
 
