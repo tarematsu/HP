@@ -91,5 +91,6 @@ static_assert(kAuthControllerStableTimeoutMs <=
   ::hp::stationhead_auth_navigation_policy::kAuthControllerStableTimeoutMs
 
 #include "sh_auth_capture_validation_policy_fix.h"
+#include "sh_auth_candidate_rotation_policy_fix.h"
 #include "sh_stats_auth_fallback_policy_fix.h"
 #include "sh_auth_interactive_memory_policy_fix.h"
