@@ -27,70 +27,64 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('Stationhead reload is driven by one 55-minute elapsed-time interval', () => {
-  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  assert.match(injected, /kPeriodicRefreshIntervalMs\s*=\s*55 \* 60'000/);
-  assert.match(injected, /nowMs - periodicRefreshStartedAt_ < kPeriodicRefreshIntervalMs/);
-  assert.match(injected, /NavigateCurrentUrl\(nowMs, L"55-minute periodic refresh"\)/);
-  assert.doesNotMatch(injected, /52 \* 60'000|track-boundary authentication refresh/);
+test('Window A refreshes at 55 minutes and Window B at 56 minutes', () => {
+  const interval = section(
+    policy,
+    'inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(',
+    'static_assert(StationheadPlaybackNavigationActive',
+  );
+  assert.match(interval, /secondary \? 56 : 55/);
+  assert.match(
+    policy,
+    /static_assert\(StationheadPeriodicRefreshIntervalMs\(false\) == 55 \* 60'000\);/,
+  );
+  assert.match(
+    policy,
+    /static_assert\(StationheadPeriodicRefreshIntervalMs\(true\) == 56 \* 60'000\);/,
+  );
 });
 
-test('the central scheduler wakes at the next 55-minute or handoff deadline', () => {
-  const wake = section(policy, '#define NextWakeAt()', '#define RecoverUnavailableAuthorization()');
+test('the central scheduler uses the role-specific elapsed-time deadline', () => {
+  const wake = section(
+    policy,
+    '#define NextWakeAt()',
+    '#define RecoverUnavailableAuthorization()',
+  );
   assert.match(wake, /NextWakeAtBase\(\)/);
-  assert.match(wake, /periodicRefreshStartedAt_ \+ kPeriodicRefreshIntervalMs/);
-  assert.match(wake, /!periodicRefreshHandoffPending_/);
-  assert.match(wake, /!periodicRefreshNavigationPending_/);
-});
-
-test('periodic reload first acquires the existing A/B readiness lease', () => {
-  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  assert.match(injected, /WM_HP_SECONDARY_RELOAD_READY[\s\S]*WM_HP_PRIMARY_RELOAD_READY/);
-  assert.match(injected, /SendMessageWWithStationheadBoundaryLease/);
-  assert.match(injected, /StationheadBoundaryLeaseOwnedBy/);
-  assert.ok(
-    injected.indexOf('SendMessageWWithStationheadBoundaryLease') <
-      injected.indexOf('NavigateCurrentUrl(nowMs, L"55-minute periodic refresh")'),
-    'audio handoff must commit before navigation starts',
+  assert.match(
+    wake,
+    /periodicRefreshStartedAt_ \+[\s\S]*StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/,
   );
+  assert.doesNotMatch(wake, /Handoff|handoff|NavigationPending/);
 });
 
-test('the target is projected stopped only for the second readiness check', () => {
+test('periodic refresh does not alter audio state or acquire an A-B lease', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  const firstReady = injected.indexOf('const LRESULT ready =');
-  const projectedStop = injected.indexOf('ApplyAudioPlaybackState(');
-  const navigation = injected.indexOf('NavigateCurrentUrl(nowMs, L"55-minute periodic refresh")');
-  assert.ok(firstReady >= 0 && projectedStop > firstReady && navigation > projectedStop);
-  assert.match(injected, /periodic refresh A\/B handoff projection/);
-  assert.match(injected, /kPeriodicRefreshHandoffRetryMs\s*=\s*1'500/);
+  assert.doesNotMatch(injected, /ApplyAudioPlaybackState/);
+  assert.doesNotMatch(injected, /SendMessageWWithStationheadBoundaryLease/);
+  assert.doesNotMatch(injected, /WM_HP_PRIMARY_RELOAD_READY|WM_HP_SECONDARY_RELOAD_READY/);
+  assert.doesNotMatch(injected, /periodicRefreshHandoffPending_|periodicRefreshProjectedStopped_/);
 });
 
-test('a muted secondary yields briefly so the audible player refreshes first', () => {
+test('each role navigates with its own refresh reason', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
   assert.match(
     injected,
-    /IsSecondary\(\) && audioMuted_\.load\(std::memory_order_acquire\)/,
+    /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/,
   );
-  assert.match(injected, /kPeriodicRefreshSecondaryPriorityMs\s*=\s*1'000/);
-  assert.match(injected, /periodicRefreshSecondaryPriorityAt_\.Reached\(\)/);
-});
-
-test('the A/B lease is released only after refreshed audio recovers', () => {
-  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
+  assert.match(injected, /L"56-minute periodic refresh"/);
+  assert.match(injected, /L"55-minute periodic refresh"/);
   assert.match(
     injected,
-    /periodicRefreshNavigationPending_ && !navigationActive[\s\S]*audioPlaying_\.load[\s\S]*ReleaseStationheadBoundaryLease/,
+    /nowMs - periodicRefreshStartedAt_ < intervalMs/,
   );
-  assert.match(injected, /periodic refresh audio recovered after/);
-  assert.match(policy, /inline void ReleaseStationheadBoundaryLease\(UINT message\) noexcept/);
-  assert.match(policy, /ownerMessage = 0;[\s\S]*expiresAt = 0;/);
 });
 
 test('Spotify auth does not masquerade as playback navigation', () => {
   const decision = section(
     policy,
     'inline constexpr bool StationheadPlaybackNavigationActive(',
-    'inline bool StationheadBoundaryLeaseOwnedBy',
+    'inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(',
   );
   assert.match(
     decision,
@@ -102,7 +96,7 @@ test('Spotify auth does not masquerade as playback navigation', () => {
   );
 });
 
-test('playback navigation starts are recorded even when they finish between App ticks', () => {
+test('playback navigation starts restart the role-specific periodic clock', () => {
   const proxy = section(
     policy,
     'class StationheadNavigationInFlightProxy',
@@ -113,29 +107,44 @@ test('playback navigation starts are recorded even when they finish between App 
     proxy,
     /if \(value\) \{[\s\S]*refreshStartedAt_ = 0;[\s\S]*navigationObserved_ = 1;[\s\S]*storage_\.store\(value, order\);/,
   );
-});
-
-test('every completed playback navigation restarts the simple 55-minute clock', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  assert.match(injected, /if \(navigationActive\) \{[\s\S]*periodicRefreshStartedAt_ = 0;[\s\S]*periodicRefreshNavigationObserved_ = 1;/);
-  assert.match(injected, /periodicRefreshNavigationObserved_ != 0 \|\|[\s\S]*!periodicRefreshStartedAt_\.Active\(\)[\s\S]*periodicRefreshStartedAt_ = nowMs;/);
+  assert.match(
+    injected,
+    /if \(navigationActive\) \{[\s\S]*periodicRefreshStartedAt_ = 0;[\s\S]*periodicRefreshNavigationObserved_ = 1;/,
+  );
+  assert.match(
+    injected,
+    /periodicRefreshNavigationObserved_ != 0 \|\|[\s\S]*!periodicRefreshStartedAt_\.Active\(\)[\s\S]*periodicRefreshStartedAt_ = nowMs;/,
+  );
 });
 
 test('the existing handle tick invokes the elapsed-time policy', () => {
-  const wrapper = section(policy, '#define RecoverUnavailableAuthorization()', '#define RetryPendingTrackBoundaryRefresh');
+  const wrapper = section(
+    policy,
+    '#define RecoverUnavailableAuthorization()',
+    '#define RetryPendingTrackBoundaryRefresh',
+  );
   assert.match(wrapper, /RecoverUnavailableAuthorizationBase\(\);/);
   assert.match(wrapper, /RefreshPeriodicNavigation\(UnixMillis\(\)\);/);
 });
 
 test('native audio-stop fallback can no longer request a boundary reload', () => {
-  const disabled = section(policy, '#define RetryPendingTrackBoundaryRefresh', '#define nextAutoClickAt_');
+  const disabled = section(
+    policy,
+    '#define RetryPendingTrackBoundaryRefresh',
+    '#define nextAutoClickAt_',
+  );
   assert.match(disabled, /trackBoundaryRefreshPending_ = false;/);
   assert.match(disabled, /return false;/);
   assert.match(disabled, /RetryPendingTrackBoundaryRefreshDisabled/);
 });
 
 test('page media events and legacy strings cannot initiate reload', () => {
-  assert.match(trackScript, /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/);
+  assert.match(
+    trackScript,
+    /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
+  );
+  assert.match(trackScript, /Window A uses 55 minutes and Window B uses 56 minutes/);
   assert.doesNotMatch(trackScript, /addEventListener\(['"]ended|track-ended|postMessage/);
   assert.match(trackScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
   assert.match(webviewSource, /HandleTrackEnded\(UnixMillis\(\), false\)/);
@@ -145,5 +154,5 @@ test('page media events and legacy strings cannot initiate reload', () => {
 test('legacy 52-minute implementation is not called by the active policy', () => {
   assert.match(playerSource, /void StationheadPlayer::HandleTrackEnded/);
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
-  assert.doesNotMatch(injected, /HandleTrackEnded/);
+  assert.doesNotMatch(injected, /HandleTrackEnded|52 \* 60'000/);
 });

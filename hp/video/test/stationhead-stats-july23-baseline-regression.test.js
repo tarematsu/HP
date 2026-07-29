@@ -10,34 +10,41 @@ const baselinePolicy = readFileSync(
   new URL('../../native/src/sh_stats_july23_baseline_policy_fix.h', import.meta.url),
   'utf8',
 );
+const playbackPolicy = readFileSync(
+  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const sharedEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
 
-const restoredNames = [
+const restoredScriptNames = [
   'StationheadAuthCaptureScript',
   'StationheadApiPlayStatsScript',
   'StationheadAuthProbeScript',
-  'ApplyStationheadResourceBlocking',
 ];
 
-test('July 23 policy is compiled after the later data and auth wrappers', () => {
+test('July 23 statistics scripts are selected before final resource reductions', () => {
   const dataPolicyAt = trackBoundary.indexOf(
     '#include "sh_data_acquisition_resource_policy_fix.h"',
   );
   const baselineAt = trackBoundary.indexOf(
     '#include "sh_stats_july23_baseline_policy_fix.h"',
   );
+  const startupAt = trackBoundary.indexOf(
+    '#include "sh_startup_resource_reduction_policy_fix.h"',
+  );
+  const playbackAt = trackBoundary.indexOf(
+    '#include "sh_playback_resource_policy_fix.h"',
+  );
   assert.ok(dataPolicyAt >= 0 && dataPolicyAt < baselineAt);
+  assert.ok(baselineAt < startupAt && startupAt < playbackAt);
 
-  for (const name of restoredNames) {
+  for (const name of restoredScriptNames) {
     assert.match(baselinePolicy, new RegExp(`#undef ${name}`));
   }
-  assert.match(
-    baselinePolicy,
-    /return StationheadAuthCaptureScript\(\);/,
-  );
+  assert.match(baselinePolicy, /return StationheadAuthCaptureScript\(\);/);
   assert.match(
     baselinePolicy,
     /return StationheadApiPlayStatsScript\(channelId\);/,
@@ -47,21 +54,21 @@ test('July 23 policy is compiled after the later data and auth wrappers', () => 
     /return StationheadAuthProbeScript\(channelId\);/,
   );
   assert.match(
-    baselinePolicy,
-    /ApplyStationheadResourceBlocking\(\s*environment, webview, config, armed, token\);/,
+    playbackPolicy,
+    /#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
   );
 });
 
-test('each playback controller reset clears cache without clearing login state', () => {
+test('final playback controller reset clears cache without clearing login state', () => {
   assert.match(
-    baselinePolicy,
+    playbackPolicy,
     /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
   );
   assert.doesNotMatch(
-    baselinePolicy,
+    playbackPolicy,
     /ClearBrowsingDataAll|BROWSING_DATA_KINDS_COOKIES|ALL_DOM_STORAGE|DeleteAllCookies/,
   );
-  assert.match(baselinePolicy, /Cookies and DOM storage are intentionally untouched/);
+  assert.match(playbackPolicy, /Cookies and DOM storage remain intact/);
 });
 
 test('HTTP cache is session-local instead of permanently disabled', () => {
@@ -73,9 +80,9 @@ test('HTTP cache is session-local instead of permanently disabled', () => {
   );
 });
 
-test('rollback adds no native stats diagnostic channel', () => {
+test('rollback and final resource policy add no stats diagnostic channel', () => {
   assert.doesNotMatch(
-    baselinePolicy,
+    baselinePolicy + playbackPolicy,
     /stationhead-play-stats-diagnostic|response body|authorization fingerprint/i,
   );
 });

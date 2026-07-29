@@ -23,7 +23,7 @@ concurrency:
 jobs:
   smoke:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
@@ -89,6 +89,14 @@ jobs:
             -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
             -OutputDirectory hp/native/ci-runtime-smoke
 
+      - name: Run native Stationhead WebView startup smoke test
+        shell: pwsh
+        run: |
+          & hp/native/scripts/ci-native-stationhead-startup-smoke.ps1 `
+            -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
+            -TimeoutSeconds 150 `
+            -OutputDirectory hp/native/ci-stationhead-startup-smoke
+
       - name: Run updater verification and restart smoke test
         shell: pwsh
         run: |
@@ -107,6 +115,7 @@ jobs:
           name: native-runtime-smoke-${{ github.run_id }}
           path: |
             hp/native/ci-runtime-smoke
+            hp/native/ci-stationhead-startup-smoke
             hp/native/ci-updater-runtime-smoke
             hp/native/ci-logs/runtime-smoke-*.log
           if-no-files-found: warn

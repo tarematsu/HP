@@ -9,7 +9,15 @@ on:
       - 'scripts/measure-stationhead-start-listening.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
+      - 'hp/native/src/sh_data_acquisition_resource_policy_fix.h'
+      - 'hp/native/src/sh_stats_july23_baseline_policy_fix.h'
+      - 'hp/native/src/sh_startup_resource_reduction_policy_fix.h'
+      - 'hp/native/src/sh_playback_resource_policy_fix.h'
+      - 'hp/native/src/sh_track_boundary_message_policy.h'
+      - 'hp/native/src/sh_track_boundary_script.h'
       - 'hp/video/test/stationhead-live-ui-audit-regression.test.js'
+      - 'hp/video/test/stationhead-startup-resource-reduction-regression.test.js'
+      - 'hp/video/test/stationhead-playback-resource-fail-open-regression.test.js'
       - '.github/workflows/sh-live-js-audit.yml'
   workflow_dispatch:
 
