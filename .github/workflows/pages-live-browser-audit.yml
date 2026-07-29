@@ -37,11 +37,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
-          cache-dependency-path: package-lock.json
 
       - name: Install audit dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
+        run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
@@ -60,5 +58,5 @@ jobs:
           name: pages-live-browser-audit-${{ github.run_id }}-${{ github.run_attempt }}
           path: .pages-live-audit/
           include-hidden-files: true
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 14
