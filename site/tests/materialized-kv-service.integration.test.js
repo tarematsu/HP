@@ -94,6 +94,48 @@ test('track-history reaches the read-model service so it can use R2 before D1', 
   }
 });
 
+test('dashboard uses the facts-only Pages route when materialized service is unavailable', async () => {
+  const originalCaches = globalThis.caches;
+  let writes = 0;
+  let serviceCalls = 0;
+  let liveCalls = 0;
+  globalThis.caches = {
+    default: {
+      async match() { return undefined; },
+      async put() { writes += 1; },
+    },
+  };
+  try {
+    const response = await onRequest({
+      request: new Request('https://skrzk.test/api/dashboard'),
+      env: {
+        PAGES_READ_MODEL_SERVICE: {
+          async fetch() {
+            serviceCalls += 1;
+            return Response.json({ ok: false }, { status: 503 });
+          },
+        },
+      },
+      async next() {
+        liveCalls += 1;
+        return Response.json({ ok: true, storage_source: 'facts-db' }, {
+          headers: { 'cache-control': 'no-store' },
+        });
+      },
+      waitUntil() {},
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-materialized-fallback'), 'live-pages');
+    assert.equal(response.headers.get('x-edge-cache'), 'BYPASS');
+    assert.deepEqual(await response.json(), { ok: true, storage_source: 'facts-db' });
+    assert.equal(serviceCalls, 1);
+    assert.equal(liveCalls, 1);
+    assert.equal(writes, 0);
+  } finally {
+    globalThis.caches = originalCaches;
+  }
+});
+
 test('missing materialized service fails closed without invoking the D1 route', async () => {
   const originalCaches = globalThis.caches;
   let writes = 0;
