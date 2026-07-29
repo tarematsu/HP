@@ -1,0 +1,33 @@
+name: Stationhead stats live diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/diagnose-stationhead-stats-live.mjs'
+      - '.github/workflows/stationhead-stats-live-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Query live Stationhead guest statistics
+        run: node scripts/diagnose-stationhead-stats-live.mjs
+      - name: Upload sanitized diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stationhead-stats-live-diagnostic-${{ github.run_id }}
+          path: .sh-stats-diagnostic/report.json
+          if-no-files-found: warn
+          retention-days: 3
