@@ -7,6 +7,7 @@ on:
       - 'scripts/audit-stationhead-dom-reduction-live.mjs'
       - 'scripts/audit-stationhead-login.mjs'
       - 'scripts/inspect-stationhead-module-graph.mjs'
+      - 'scripts/measure-stationhead-start-listening.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
       - 'hp/native/src/sh_data_acquisition_resource_policy_fix.h'
@@ -28,7 +29,7 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       STATIONHEAD_EMAIL: ${{ secrets.STATIONHEAD_AUDIT_EMAIL || secrets.STATIONHEAD_EMAIL || secrets.STATIONHEAD_TEST_EMAIL || secrets.SH_EMAIL }}
       STATIONHEAD_PASSWORD: ${{ secrets.STATIONHEAD_AUDIT_PASSWORD || secrets.STATIONHEAD_PASSWORD || secrets.STATIONHEAD_TEST_PASSWORD || secrets.SH_PASSWORD }}
@@ -48,6 +49,13 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install chromium
+
+      - name: Measure Start Listening visibility
+        continue-on-error: true
+        run: >-
+          node scripts/measure-stationhead-start-listening.mjs
+          --attempts=3
+          --out=.sh-start-listening-timing/report.json
 
       - name: Audit primary Stationhead page
         continue-on-error: true
@@ -128,13 +136,19 @@ jobs:
             printf '## Stationhead credential login attempt\n' >> "$GITHUB_STEP_SUMMARY"
             node -e "const r=require('./.sh-js-audit/login-report.json'); for (const [k,v] of Object.entries(r)) console.log('- '+k+': '+v)" >> "$GITHUB_STEP_SUMMARY"
           fi
+          if [ -f .sh-start-listening-timing/report.json ]; then
+            printf '\n## Start Listening visibility timing\n' >> "$GITHUB_STEP_SUMMARY"
+            node -e "const r=require('./.sh-start-listening-timing/report.json'); for (const k of ['sampleCount','visibleCount','minVisibleAfterMs','medianVisibleAfterMs','p95VisibleAfterMs','maxVisibleAfterMs']) console.log('- '+k+': '+r[k])" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload sanitized audit artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: stationhead-live-js-audit-${{ github.run_id }}
-          path: .sh-js-audit/
+          path: |
+            .sh-js-audit/
+            .sh-start-listening-timing/
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
@@ -175,9 +189,15 @@ jobs:
               failures.push(`${name}: report missing or invalid`);
             }
           }
+          try {
+            const timing = JSON.parse(await readFile('.sh-start-listening-timing/report.json', 'utf8'));
+            if (timing.visibleCount !== timing.sampleCount) failures.push('timing: Start Listening was not visible in every sample');
+          } catch {
+            failures.push('timing: report missing or invalid');
+          }
           if (failures.length) {
             console.error(failures.join('\n'));
             process.exit(1);
           }
-          console.log('Stationhead resource and DOM audits passed. Audio playback was not evaluated.');
+          console.log('Stationhead resource, timing and DOM audits passed. Audio playback was not evaluated.');
           NODE
