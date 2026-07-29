@@ -51,6 +51,7 @@ const PROFILE_SLOTS = 48;
 export const OCTOPUS_HISTORY_FLOOR_MS = Date.UTC(2025, 10, 1) - JST_MS;
 export const OCTOPUS_COLLECTION_DAYS = 7;
 export const OCTOPUS_CORRECTION_OVERLAP_DAYS = 1;
+export const OCTOPUS_STABILITY_LAG_DAYS = 1;
 
 function jstDayKey(timestampMs: number): string {
   return new Date(timestampMs + JST_MS).toISOString().slice(0, 10);
@@ -63,7 +64,7 @@ function jstDayStart(timestampMs: number): number {
 
 export function octopusStableCutoffJst(nowMs: number): number {
   if (!Number.isFinite(nowMs)) throw new Error("Octopus synchronization time must be finite");
-  return Math.floor((nowMs - 2 * DAY_MS) / HALF_HOUR_MS) * HALF_HOUR_MS;
+  return Math.floor((nowMs - OCTOPUS_STABILITY_LAG_DAYS * DAY_MS) / HALF_HOUR_MS) * HALF_HOUR_MS;
 }
 
 export function octopusCompleteStableThroughJst(nowMs: number): number {
