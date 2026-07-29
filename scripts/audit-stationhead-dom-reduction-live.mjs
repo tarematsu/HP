@@ -80,10 +80,22 @@ async function snapshot(page) {
       'img[src*="giphy" i]',
       'img[src*="/gif" i]',
     ].join(',');
+    const optionalVisibleElements = [...document.querySelectorAll(optionalSelector)]
+      .filter(visible)
+      .slice(0, 20)
+      .map((element) => ({
+        tag: element.tagName.toLowerCase(),
+        testId: String(element.getAttribute('data-testid') || '').slice(0, 160),
+        ariaLabel: String(element.getAttribute('aria-label') || '').slice(0, 160),
+        title: String(element.getAttribute('title') || '').slice(0, 160),
+        src: String(element.getAttribute('src') || '').slice(0, 240),
+        text: normalizeForReport(element.textContent || '').slice(0, 240),
+      }));
     return {
       url: location.href,
       bodyText: normalizeForReport(document.body?.innerText || ''),
-      optionalVisible: [...document.querySelectorAll(optionalSelector)].filter(visible).length,
+      optionalVisible: optionalVisibleElements.length,
+      optionalVisibleElements,
       reductionInstalled: window.__homepanelStationheadStartupDomReduction === true,
     };
 
@@ -144,7 +156,9 @@ async function main() {
       clicked,
       afterClickScreenVisible,
       optionalVisibleBeforeClick: before.optionalVisible,
+      optionalVisibleBeforeClickElements: before.optionalVisibleElements,
       optionalVisibleAfterClick: after.optionalVisible,
+      optionalVisibleAfterClickElements: after.optionalVisibleElements,
       reductionInstalled: before.reductionInstalled,
       pageErrors,
     };
