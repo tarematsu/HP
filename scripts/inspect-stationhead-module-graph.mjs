@@ -42,9 +42,9 @@ function exportNames(source) {
 }
 
 function compactSnippet(source, at, length) {
-  const start = Math.max(0, at - 140);
-  const end = Math.min(source.length, at + length + 180);
-  return source.slice(start, end).replace(/\s+/g, ' ').slice(0, 500);
+  const start = Math.max(0, at - 180);
+  const end = Math.min(source.length, at + length + 260);
+  return source.slice(start, end).replace(/\s+/g, ' ').slice(0, 700);
 }
 
 async function fetchText(url) {
@@ -53,6 +53,16 @@ async function fetchText(url) {
   });
   if (!response.ok) throw new Error(`${response.status} ${url}`);
   return response.text();
+}
+
+function candidateUrls(report) {
+  const items = [
+    ...(report.classifiedBlocked || []),
+    ...(report.likelyOptionalOpaque || []),
+    ...(report.mixedOpaque || []).filter((item) =>
+      /AppleMusicFreeTrialButton-/i.test(basename(item.url))),
+  ];
+  return [...new Set(items.map((item) => item.url).filter(stationheadAsset))];
 }
 
 async function main() {
@@ -71,18 +81,15 @@ async function main() {
     }
   }
 
-  const targets = report.classifiedBlocked
-    .map((item) => item.url)
-    .filter(stationheadAsset);
   const modules = [];
-  for (const url of targets) {
+  for (const url of candidateUrls(report)) {
     const name = basename(url);
     const source = sources.get(url) || '';
     const importers = [];
     for (const [importerUrl, importerSource] of sources) {
       if (importerUrl === url || !importerSource) continue;
       let at = importerSource.indexOf(name);
-      while (at >= 0 && importers.length < 12) {
+      while (at >= 0 && importers.length < 16) {
         importers.push({
           url: importerUrl,
           snippet: compactSnippet(importerSource, at, name.length),
@@ -102,10 +109,11 @@ async function main() {
   await mkdir(path.dirname(path.resolve(outPath)), { recursive: true });
   await writeFile(outPath, `${JSON.stringify({ reportPath, modules }, null, 2)}\n`);
   const lines = [
-    '# Stationhead blocked-module contracts',
+    '# Stationhead module contracts',
     '',
     ...modules.flatMap((module) => [
       `## ${module.basename}`,
+      `- Bytes: ${module.bytes}`,
       `- Exports: ${module.exports.length ? module.exports.join(', ') : '(none detected)'}`,
       `- Importers: ${module.importers.length}`,
       ...module.importers.map((importer) => `  - ${basename(importer.url)}: ${importer.snippet}`),
