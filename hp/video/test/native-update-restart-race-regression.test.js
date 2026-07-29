@@ -26,7 +26,7 @@ function section(source, start, end) {
 test('native app remains active while the updater validates release files', () => {
   const check = section(
     appUpdateSource,
-    'void App::CheckForUpdateAsync(bool install)',
+    'void App::CheckForUpdateAsync(bool explicitLocalRequest)',
     'bool App::LaunchVerifiedUpdater(',
   );
   const launched = section(

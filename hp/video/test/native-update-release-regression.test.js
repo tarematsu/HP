@@ -39,7 +39,7 @@ test('same-version native releases compare every installed release file', () => 
 
   const updateCheck = section(
     updateSource,
-    'void App::CheckForUpdateAsync(bool install)',
+    'void App::CheckForUpdateAsync(bool explicitLocalRequest)',
     'bool App::LaunchVerifiedUpdater(',
   );
   assert.match(

@@ -78,7 +78,7 @@ describe("SchedulerCoordinator Durable Object", () => {
     const stub = coordinatorStub();
     await runInDurableObject(stub, async (_instance, state) => {
       await state.storage.put<RuntimeEnvelope>(RUNTIME_STORAGE_KEY, {
-        version: 3,
+        version: 4,
         jobs: [
           {
             name: "octopus",
@@ -87,6 +87,14 @@ describe("SchedulerCoordinator Durable Object", () => {
             lastSuccessAt: now - 3600,
             consecutiveFailures: 2,
             lastError: "rate limited",
+          },
+          {
+            name: "update_check",
+            intervalSeconds: 21_600,
+            nextRunAt: now + 21_600,
+            lastSuccessAt: now - 900,
+            consecutiveFailures: 1,
+            lastError: "manifest unavailable",
           },
           {
             name: "video_liveness",
@@ -102,13 +110,20 @@ describe("SchedulerCoordinator Durable Object", () => {
 
     expect((await stub.fetch("https://scheduler.internal/ensure", { method: "POST" })).status).toBe(202);
     const stored = await runtime(stub);
-    expect(stored?.version).toBe(4);
+    expect(stored?.version).toBe(5);
     expect(stored?.jobs.some(job => job.name === "video_liveness")).toBe(false);
     expect(stored?.jobs.find(job => job.name === "octopus")).toMatchObject({
       intervalSeconds: 43_200,
       consecutiveFailures: 2,
       lastError: "rate limited",
     });
+    expect(stored?.jobs.find(job => job.name === "update_check")).toMatchObject({
+      intervalSeconds: 1_800,
+      consecutiveFailures: 1,
+      lastError: "manifest unavailable",
+    });
+    expect(Number(stored?.jobs.find(job => job.name === "update_check")?.nextRunAt))
+      .toBeLessThanOrEqual(now + 1_800);
   });
 
   it("schedules an alarm for the earliest runtime job", async () => {

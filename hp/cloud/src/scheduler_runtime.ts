@@ -10,7 +10,7 @@ import type { SwitchBotEnv } from "./switchbot_types";
 import { runUpdateCheck } from "./update_check";
 
 const RUNTIME_STORAGE_KEY = "scheduler-runtime-v2";
-const RUNTIME_VERSION = 4;
+const RUNTIME_VERSION = 5;
 const MIN_RETRY_SECONDS = 60;
 const MAX_FAILURE_EXPONENT = 4;
 const EMPTY_RECHECK_SECONDS = 24 * 60 * 60;
