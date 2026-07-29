@@ -78,15 +78,25 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Access deployed Pages in Chromium
+      - name: Access pull request Pages preview in Chromium
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
         env:
-          PAGES_AUDIT_URL: ${{ steps.preview.outputs.url || 'https://skrzk.pages.dev' }}
+          PAGES_AUDIT_URL: ${{ steps.preview.outputs.url }}
         run: >-
           node scripts/audit-pages-live.mjs
           --url="$PAGES_AUDIT_URL"
+          --attempts=1
+          --out=.pages-preview-audit
+
+      - name: Access production Pages in Chromium
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        run: >-
+          node scripts/audit-pages-live.mjs
+          --url=https://skrzk.pages.dev
           --attempts=3
           --retry-delay-ms=5000
-          --out=.pages-live-audit
+          --out=.pages-production-audit
 
       - name: Upload browser audit evidence
         if: always()
@@ -94,7 +104,8 @@ jobs:
         with:
           name: pages-live-browser-audit-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            .pages-live-audit/
+            .pages-preview-audit/
+            .pages-production-audit/
             site/pages-preview-deploy.log
           include-hidden-files: true
           if-no-files-found: warn
