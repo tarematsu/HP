@@ -5,6 +5,10 @@ import test from 'node:test';
 const cloudConfig = JSON.parse(readFileSync(new URL('../../cloud/wrangler.jsonc', import.meta.url), 'utf8'));
 const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.meta.url), 'utf8');
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
+const updateCadenceMigration = readFileSync(
+  new URL('../../cloud/migrations/202607291600_update_check_30m.sql', import.meta.url),
+  'utf8',
+);
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const deviceExchange = readFileSync(new URL('../../cloud/src/device_exchange.ts', import.meta.url), 'utf8');
 const deviceExchangePayload = readFileSync(new URL('../../cloud/src/device_exchange_payload.ts', import.meta.url), 'utf8');
@@ -31,7 +35,7 @@ const scheduledIntervals = {
   news: 1_800,
   weather: 3_600,
   octopus: 43_200,
-  update_check: 21_600,
+  update_check: 1_800,
   cleanup: 86_400,
 };
 
@@ -79,12 +83,16 @@ test('Durable Object migrations remain append-only', () => {
   );
 });
 
-test('native polling is fixed at thirty-minute sync and four-hour telemetry', () => {
+test('native sync and automatic update fallback are fixed at thirty minutes', () => {
   assert.match(nativeConfig, /cloudPollSeconds = 1800;/);
   assert.match(nativeConfig, /telemetryMinutes = 240;/);
   assert.match(nativeCloudConfig, /config\.cloudPollSeconds = 1800;/);
   assert.match(nativeCloudConfig, /config\.telemetryMinutes = 240;/);
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
+  assert.match(updateCadenceMigration, /interval_seconds = 1800/);
+  assert.match(updateCadenceMigration, /unixepoch\(\) \+ 1800/);
+  assert.match(schedulerCoordinator, /RUNTIME_CONFIG_VERSION = 1/);
+  assert.match(schedulerCoordinator, /resetRuntimeFromD1/);
 });
 
 test('HomePanel scheduler drains due work with bounded concurrency and aligned cadence', () => {
