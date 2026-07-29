@@ -5,6 +5,8 @@ namespace hp {
 
 inline constexpr std::string_view kStationheadSvgIconNonLazyModuleStub =
     "export const SVGIconNonLazy=()=>null;";
+inline constexpr std::string_view kStationheadPremiumIconModuleStub =
+    "export{};";
 
 inline constexpr std::string_view
 StationheadStartupOptionalModuleStubBoundaryFixed(std::wstring_view uriLower) {
@@ -13,13 +15,17 @@ StationheadStartupOptionalModuleStubBoundaryFixed(std::wstring_view uriLower) {
       !StationheadRuntimeHostMatches(uri.host, L"stationhead.com")) {
     return {};
   }
-  // SVGIconNonLazy is only a switch over decorative React SVG components. Its
-  // sole static dependency is the large premium-20 icon pack, so replacing this
-  // one wrapper prevents both modules from being downloaded and parsed while
-  // preserving all text controls used for playback and authentication.
+  // SVGIconNonLazy is a switch over decorative React SVG components. Vite's
+  // preload map requests premium-20 before evaluating that wrapper, so replace
+  // both assets locally: the wrapper becomes a null component and its icon pack
+  // becomes an empty ES module. The audited module graph has no executable
+  // premium-20 importer other than the wrapper being replaced here.
   if (StationheadHashedAssetModulePathMatches(
           uri.path, L"svgiconnonlazy")) {
     return kStationheadSvgIconNonLazyModuleStub;
+  }
+  if (StationheadHashedAssetModulePathMatches(uri.path, L"premium-20")) {
+    return kStationheadPremiumIconModuleStub;
   }
   return StationheadKnownOptionalModuleStubBoundaryFixed(uriLower);
 }
@@ -31,10 +37,15 @@ static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
                   L"https://www.stationhead.com/assets/svgiconnonlazy-next1234.mjs") ==
               kStationheadSvgIconNonLazyModuleStub);
 static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/premium-20-iq2c1wiz.js") ==
+              kStationheadPremiumIconModuleStub);
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
                   L"https://www.stationhead.com/assets/selectedgif-baax9j6x.js") ==
               kSelectedGifModuleStub);
 static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
     L"https://stationhead.com.evil.example/assets/svgiconnonlazy-ui-053mu.js").empty());
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+    L"https://www.stationhead.com/nested/assets/premium-20-iq2c1wiz.js").empty());
 
 inline constexpr bool StationheadOptionalStylesheetBoundaryFixed(
     std::wstring_view uriLower) {
