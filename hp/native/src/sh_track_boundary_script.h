@@ -2,6 +2,7 @@
 #include "common.h"
 #include "sh_data_acquisition_resource_policy_fix.h"
 #include "sh_startup_resource_reduction_policy_fix.h"
+#include "sh_playback_resource_policy_fix.h"
 #include "sh_startup_dom_batch_policy_fix.h"
 
 namespace hp {
