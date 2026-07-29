@@ -133,7 +133,7 @@ jobs:
           for report in .sh-js-audit/svg-primary.json .sh-js-audit/svg-fallback.json; do
             if [ -f "$report" ]; then
               printf '## %s\n' "$(basename "$report" .json)" >> "$GITHUB_STEP_SUMMARY"
-              node -e "const r=require('./$report'); for (const k of ['passed','svgIconIntercepted','premiumIconRequested','startListeningVisible','startListeningVisibleAfterMs','clicked','afterClickScreenVisible']) console.log('- '+k+': '+r[k])" >> "$GITHUB_STEP_SUMMARY"
+              node -e "const r=require('./$report'); for (const k of ['passed','svgIconIntercepted','premiumIconRequested','premiumIconIntercepted','locallyReplacedModuleCount','startListeningVisible','startListeningVisibleAfterMs','clicked','afterClickScreenVisible']) console.log('- '+k+': '+r[k])" >> "$GITHUB_STEP_SUMMARY"
               printf '\n' >> "$GITHUB_STEP_SUMMARY"
             fi
           done
@@ -192,8 +192,11 @@ jobs:
               failures.push(`${name}: report missing or invalid`);
               continue;
             }
-            if (report.svgIconIntercepted < 1) failures.push(`${name}: SVGIconNonLazy was not intercepted`);
-            if (report.premiumIconRequested !== 0) failures.push(`${name}: premium-20 was still requested`);
+            if (report.svgIconIntercepted < 1) failures.push(`${name}: SVGIconNonLazy was not replaced`);
+            if (report.premiumIconRequested < 1) failures.push(`${name}: premium-20 preload was not exercised`);
+            if (report.premiumIconIntercepted !== report.premiumIconRequested) {
+              failures.push(`${name}: premium-20 escaped local replacement`);
+            }
             if (!report.startListeningVisible) failures.push(`${name}: Start Listening was not visible`);
             if (!report.clicked) failures.push(`${name}: Start Listening click failed`);
             if (!report.afterClickScreenVisible) failures.push(`${name}: post-click screen was not visible`);
