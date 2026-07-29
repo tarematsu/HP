@@ -113,6 +113,21 @@ test('D1 budget indexes stay selective and refresh planner statistics', () => {
   assert.match(facts, /WHERE status='complete' AND source='live_collector'/);
 });
 
+test('minute fact outbox cleanup uses the matching partial index predicate', () => {
+  const migration = source('../database/buddies-migrations/013_minute_fact_outbox_cleanup_index.sql');
+  const handoff = source('../worker/src/collector-minute-fact-handoff.js');
+  const readiness = /status='sent'\s+AND \(payload_json='\{\}' OR instr\(payload_json,'"consumed":true'\)>0\)/;
+
+  assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_sh_minute_fact_outbox_cleanup/);
+  assert.match(migration, /ON sh_minute_fact_outbox\(sent_at ASC, job_id ASC\)/);
+  assert.match(migration, readiness);
+  assert.match(handoff, /INDEXED BY idx_sh_minute_fact_outbox_cleanup/);
+  assert.match(handoff, readiness);
+  assert.match(handoff, /ORDER BY sent_at ASC,job_id ASC LIMIT \?/);
+  assert.doesNotMatch(handoff, /payload_json LIKE/);
+  assert.doesNotMatch(handoff, /COALESCE\(sent_at,created_at\)/);
+});
+
 test('measured daily budgets use the full Cloudflare free-tier ceilings', () => {
   const workflow = source('../.github/workflows/sh-observability.yml');
   const auditor = source('../.github/scripts/audit-cloudflare-daily-usage.py');
