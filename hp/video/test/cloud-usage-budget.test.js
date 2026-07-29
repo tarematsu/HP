@@ -91,7 +91,7 @@ test('native sync and automatic update fallback are fixed at thirty minutes', ()
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
   assert.match(updateCadenceMigration, /interval_seconds = 1800/);
   assert.match(updateCadenceMigration, /unixepoch\(\) \+ 1800/);
-  assert.match(schedulerRuntime, /RUNTIME_VERSION = 5/);
+  assert.match(schedulerRuntime, /RUNTIME_VERSION = 6/);
   assert.match(schedulerRuntime, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
 });
 
