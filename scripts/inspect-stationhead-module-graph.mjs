@@ -85,6 +85,7 @@ async function main() {
   for (const url of candidateUrls(report)) {
     const name = basename(url);
     const source = sources.get(url) || '';
+    const bytes = Buffer.byteLength(source);
     const importers = [];
     for (const [importerUrl, importerSource] of sources) {
       if (importerUrl === url || !importerSource) continue;
@@ -100,8 +101,9 @@ async function main() {
     modules.push({
       url,
       basename: name,
-      bytes: Buffer.byteLength(source),
+      bytes,
       exports: exportNames(source),
+      source: bytes > 0 && bytes <= 4096 ? source : '',
       importers,
     });
   }
@@ -117,6 +119,7 @@ async function main() {
       `- Exports: ${module.exports.length ? module.exports.join(', ') : '(none detected)'}`,
       `- Importers: ${module.importers.length}`,
       ...module.importers.map((importer) => `  - ${basename(importer.url)}: ${importer.snippet}`),
+      ...(module.source ? ['- Source:', '```js', module.source, '```'] : []),
       '',
     ]),
   ];
