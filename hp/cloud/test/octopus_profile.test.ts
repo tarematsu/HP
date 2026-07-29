@@ -70,6 +70,26 @@ describe("Octopus complete-day profile", () => {
     });
   });
 
+  it("ends on Tuesday during early Thursday in JST", () => {
+    const now = Date.parse("2026-07-29T17:45:00Z");
+    const ranges = completeDayProfileRanges(now);
+    expect(ranges.currentEnd.toISOString()).toBe("2026-07-28T15:00:00.000Z");
+
+    const totals = [
+      ...dailyTotals(ranges.previousStart.getTime(), 7, 9.6),
+      ...dailyTotals(ranges.currentStart.getTime(), 7, 19.2),
+    ];
+    const profile = buildOctopusDailyProfile(totals, ranges);
+
+    expect(profile[6]).toEqual({
+      day: "火",
+      currentTotal: 19.2,
+      previousTotal: 9.6,
+      currentComplete: true,
+      previousComplete: true,
+    });
+  });
+
   it("hides only an incomplete daily aggregate", () => {
     const ranges = profileRanges();
     const totals = [
