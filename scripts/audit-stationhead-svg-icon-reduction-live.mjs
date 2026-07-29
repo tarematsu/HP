@@ -27,7 +27,7 @@ async function labelOf(locator) {
   ].join(' ').replace(/\s+/g, ' ').trim()).catch(() => '');
 }
 
-async function findStartListening(page, timeoutMs = 20_000) {
+async function findStartListening(page, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   do {
     const controls = page.locator('button,[role="button"],a,input[type="button"],input[type="submit"]');
@@ -64,6 +64,10 @@ async function visiblePageState(page) {
 async function main() {
   const targetUrl = option('--url', 'https://www.stationhead.com/sakuramankai');
   const outPath = option('--out', '.sh-js-audit/svg-icon-reduction.json');
+  const maxVisibleAfterMs = Number(option('--max-visible-ms', '5000'));
+  if (!Number.isFinite(maxVisibleAfterMs) || maxVisibleAfterMs <= 0) {
+    throw new Error('--max-visible-ms must be a positive number');
+  }
   const outputDirectory = path.dirname(path.resolve(outPath));
   await mkdir(outputDirectory, { recursive: true });
 
@@ -122,7 +126,7 @@ async function main() {
     navigationError = String(error?.message || error);
   }
 
-  const candidate = await findStartListening(page);
+  const candidate = await findStartListening(page, maxVisibleAfterMs);
   const visibleAfterMs = candidate ? Date.now() - navigationStartedAt : null;
   const before = await visiblePageState(page);
   const clicked = candidate
@@ -134,6 +138,7 @@ async function main() {
   const result = {
     targetUrl,
     navigationError,
+    maxVisibleAfterMs,
     svgIconIntercepted,
     premiumIconRequested,
     premiumIconIntercepted,
@@ -141,6 +146,7 @@ async function main() {
     startListeningVisible: Boolean(candidate),
     startListeningLabel: candidate?.label || '',
     startListeningVisibleAfterMs: visibleAfterMs,
+    startupBudgetPassed: visibleAfterMs !== null && visibleAfterMs <= maxVisibleAfterMs,
     clicked,
     afterClickScreenVisible: after.bodyVisible && after.bodyTextLength > 0,
     before,
@@ -154,6 +160,7 @@ async function main() {
     result.premiumIconRequested > 0 &&
     result.premiumIconIntercepted === result.premiumIconRequested &&
     result.startListeningVisible &&
+    result.startupBudgetPassed &&
     result.clicked &&
     result.afterClickScreenVisible &&
     result.pageErrors.length === 0;
