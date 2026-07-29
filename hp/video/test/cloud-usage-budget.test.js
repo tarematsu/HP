@@ -91,8 +91,8 @@ test('native sync and automatic update fallback are fixed at thirty minutes', ()
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
   assert.match(updateCadenceMigration, /interval_seconds = 1800/);
   assert.match(updateCadenceMigration, /unixepoch\(\) \+ 1800/);
-  assert.match(schedulerCoordinator, /RUNTIME_CONFIG_VERSION = 1/);
-  assert.match(schedulerCoordinator, /resetRuntimeFromD1/);
+  assert.match(schedulerRuntime, /RUNTIME_VERSION = 5/);
+  assert.match(schedulerRuntime, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
 });
 
 test('HomePanel scheduler drains due work with bounded concurrency and aligned cadence', () => {
