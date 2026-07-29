@@ -5,6 +5,7 @@ on:
     paths:
       - 'site/**'
       - 'scripts/audit-pages-live.mjs'
+      - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/deploy-split-pipeline.yml'
   workflow_dispatch:
@@ -26,29 +27,63 @@ jobs:
   audit:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets['CLOUDFLARE_API_TOKEN'] || secrets['CF_API_TOKEN'] || secrets['CLOUDFLARE_BUILDS_API_TOKEN'] }}
     steps:
       - name: Checkout audit revision
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Install audit dependencies
+      - name: Resolve Cloudflare account context
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - name: Install Pages deployment dependencies
+        if: github.event_name == 'pull_request'
+        run: npm ci --prefer-offline --no-audit --no-fund
+        working-directory: site
+
+      - name: Deploy pull request Pages preview
+        if: github.event_name == 'pull_request'
+        id: preview
+        shell: bash
+        working-directory: site
+        env:
+          PREVIEW_BRANCH: pr-${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          npx wrangler pages deploy public \
+            --project-name skrzk \
+            --branch "$PREVIEW_BRANCH" \
+            2>&1 | tee pages-preview-deploy.log
+          preview_url="$(grep -Eo 'https://[[:alnum:]-]+\.skrzk\.pages\.dev' pages-preview-deploy.log | tail -n 1 || true)"
+          if [[ -z "$preview_url" ]]; then
+            echo 'Could not find the deployed Pages preview URL in Wrangler output.' >&2
+            exit 1
+          fi
+          echo "url=$preview_url" >> "$GITHUB_OUTPUT"
+
+      - name: Install browser audit dependencies
         run: npm install --no-save --no-package-lock --no-audit --no-fund playwright@1.54.0
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Access production Pages in Chromium
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
+      - name: Access deployed Pages in Chromium
+        env:
+          PAGES_AUDIT_URL: ${{ steps.preview.outputs.url || 'https://skrzk.pages.dev' }}
         run: >-
           node scripts/audit-pages-live.mjs
-          --url=https://skrzk.pages.dev
+          --url="$PAGES_AUDIT_URL"
           --attempts=3
           --retry-delay-ms=5000
           --out=.pages-live-audit
@@ -58,7 +93,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pages-live-browser-audit-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .pages-live-audit/
+          path: |
+            .pages-live-audit/
+            site/pages-preview-deploy.log
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
