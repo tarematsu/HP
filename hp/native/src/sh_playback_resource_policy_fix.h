@@ -39,6 +39,14 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   (void)armed;
   if (!environment || !webview) return;
 
+  // Preserve the July 23 controller-lifecycle cache policy after replacing its
+  // resource handler: clear only Chromium's browser cache once per newly created
+  // playback controller. Cookies and DOM storage remain intact, so Stationhead
+  // login and Spotify authorization survive the reset.
+  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
+  webview->CallDevToolsProtocolMethod(
+      L"Network.clearBrowserCache", L"{}", nullptr);
+
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_22> sourceAwareWebView;
   base.As(&sourceAwareWebView);
