@@ -40,7 +40,11 @@ $required = [ordered]@{
   startListeningDetected = "auto-clicking Start Listening at"
 }
 $observed = [ordered]@{}
-foreach ($name in $required.Keys) { $observed[$name] = $false }
+$observedAtMs = [ordered]@{}
+foreach ($name in $required.Keys) {
+  $observed[$name] = $false
+  $observedAtMs[$name] = $null
+}
 
 function Save-DesktopScreenshot {
   try {
@@ -64,7 +68,7 @@ function Save-DesktopScreenshot {
 }
 
 $process = $null
-$startedAt = Get-Date
+$startedAtUtc = [DateTime]::UtcNow
 try {
   Write-Host "Starting native Stationhead startup smoke: $executablePath"
   $process = Start-Process `
@@ -84,8 +88,10 @@ try {
       if ($null -ne $log) {
         foreach ($name in $required.Keys) {
           if (-not $observed[$name] -and $log.Contains($required[$name])) {
+            $elapsedMs = [int][Math]::Round(([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
             $observed[$name] = $true
-            Write-Host "Observed native startup marker: $name"
+            $observedAtMs[$name] = $elapsedMs
+            Write-Host "Observed native startup marker: $name at ${elapsedMs}ms"
           }
         }
       }
@@ -93,7 +99,7 @@ try {
 
     $missing = @($required.Keys | Where-Object { -not $observed[$_] })
     if ($missing.Count -eq 0) { break }
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 250
   }
 
   if (Test-Path -LiteralPath $logPath) {
@@ -106,9 +112,11 @@ try {
     executable = $executablePath
     processId = $process.Id
     timeoutSeconds = $TimeoutSeconds
-    startedAtUtc = $startedAt.ToUniversalTime().ToString("o")
+    startedAtUtc = $startedAtUtc.ToString("o")
     completedAtUtc = [DateTime]::UtcNow.ToString("o")
     observed = $observed
+    observedAtMs = $observedAtMs
+    startListeningElapsedMs = $observedAtMs.startListeningDetected
     missing = $missing
     passed = $missing.Count -eq 0
   } | ConvertTo-Json -Depth 5 |
@@ -118,7 +126,7 @@ try {
     throw "Native Stationhead startup did not reach: $($missing -join ', ')."
   }
 
-  Write-Host "Native Stationhead WebView startup smoke passed."
+  Write-Host "Native Stationhead WebView startup smoke passed in $($observedAtMs.startListeningDetected)ms."
 } finally {
   if ($process) {
     $process.Refresh()
