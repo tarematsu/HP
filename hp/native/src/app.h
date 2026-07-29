@@ -74,7 +74,7 @@ class App {
   void ProcessRemoteCommands();
   void SendTelemetryAsync();
   void ClearDisplayCache();
-  void CheckForUpdateAsync(bool install);
+  void CheckForUpdateAsync(bool explicitLocalRequest);
   void CheckForUpdateAsync(bool install, bool allowSameVersionRepair);
   bool LaunchVerifiedUpdater(
       const std::wstring& version, const std::string& manifestJson);
