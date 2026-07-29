@@ -85,20 +85,20 @@ describe("cloud sources", () => {
     expect(requests.filter(request => request.headers.get("Authorization") === "octopus-token")).toHaveLength(4);
     expect(readingRanges).toEqual([
       expect.objectContaining({
-        fromDatetime: "2026-07-02T15:00:00.000Z",
-        toDatetime: "2026-07-04T15:00:00.000Z",
+        fromDatetime: "2026-07-03T15:00:00.000Z",
+        toDatetime: "2026-07-05T15:00:00.000Z",
       }),
       expect.objectContaining({
-        fromDatetime: "2026-07-04T15:00:00.000Z",
-        toDatetime: "2026-07-06T15:00:00.000Z",
+        fromDatetime: "2026-07-05T15:00:00.000Z",
+        toDatetime: "2026-07-07T15:00:00.000Z",
       }),
       expect.objectContaining({
-        fromDatetime: "2026-07-06T15:00:00.000Z",
-        toDatetime: "2026-07-08T15:00:00.000Z",
-      }),
-      expect.objectContaining({
-        fromDatetime: "2026-07-08T15:00:00.000Z",
+        fromDatetime: "2026-07-07T15:00:00.000Z",
         toDatetime: "2026-07-09T15:00:00.000Z",
+      }),
+      expect.objectContaining({
+        fromDatetime: "2026-07-09T15:00:00.000Z",
+        toDatetime: "2026-07-10T15:00:00.000Z",
       }),
     ]);
 
@@ -126,28 +126,28 @@ describe("cloud sources", () => {
     expect(payload.comparison).toEqual({
       currentLabel: "今週",
       previousLabel: "先週",
-      currentStartDate: "2026-07-03",
-      currentEndDate: "2026-07-09",
-      previousStartDate: "2026-06-26",
-      previousEndDate: "2026-07-02",
-      excludedRecentDays: 1,
+      currentStartDate: "2026-07-04",
+      currentEndDate: "2026-07-10",
+      previousStartDate: "2026-06-27",
+      previousEndDate: "2026-07-03",
+      excludedRecentDays: 0,
     });
     expect(payload.profile).toHaveLength(7);
-    expect(payload.profile.map(point => point.day)).toEqual(["金", "土", "日", "月", "火", "水", "木"]);
-    expect(payload.archive.excludedRecentDays).toBe(1);
+    expect(payload.profile.map(point => point.day)).toEqual(["土", "日", "月", "火", "水", "木", "金"]);
+    expect(payload.archive.excludedRecentDays).toBe(0);
     expect(payload.archive.completed).toBe(true);
     expect(payload.archive.cursorBefore).toBeNull();
-    expect(new Date(payload.archive.stableThrough).toISOString()).toBe("2026-07-09T15:00:00.000Z");
-    expect(new Date(payload.archive.rawStableCutoff).toISOString()).toBe("2026-07-09T18:00:00.000Z");
-    expect(new Date(payload.archive.fetchFrom).toISOString()).toBe("2026-07-02T15:00:00.000Z");
+    expect(new Date(payload.archive.stableThrough).toISOString()).toBe("2026-07-10T15:00:00.000Z");
+    expect(new Date(payload.archive.rawStableCutoff).toISOString()).toBe("2026-07-10T18:00:00.000Z");
+    expect(new Date(payload.archive.fetchFrom).toISOString()).toBe("2026-07-03T15:00:00.000Z");
     expect(new Date(payload.archive.historyFloor).toISOString()).toBe("2025-10-31T15:00:00.000Z");
 
     const stored = await env.DB.prepare(
       "SELECT COUNT(*) AS count,MIN(day) AS oldest,MAX(day) AS latest FROM octopus_daily_totals WHERE account_number=?1",
     ).bind("A-123").first<{ count: number; oldest: string; latest: string }>();
     expect(Number(stored?.count)).toBe(7);
-    expect(stored?.oldest).toBe("2026-07-03");
-    expect(stored?.latest).toBe("2026-07-09");
+    expect(stored?.oldest).toBe("2026-07-04");
+    expect(stored?.latest).toBe("2026-07-10");
   });
 
   it("preserves Stationhead monitor thumbnails as Spotify artwork", async () => {
