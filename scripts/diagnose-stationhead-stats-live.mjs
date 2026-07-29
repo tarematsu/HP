@@ -109,6 +109,9 @@ for (const channelId of channelIds) {
 }
 
 const claims = tokenPayload(bearer) || {};
+const tokenClass = ['string', 'number', 'boolean'].includes(typeof claims.class)
+  ? claims.class
+  : null;
 const report = {
   handle: HANDLE,
   stationStatus: stationResult.response.status,
@@ -117,6 +120,7 @@ const report = {
   configuredChannelId: FALLBACK_CHANNEL_ID,
   channelMatchesConfigured: resolvedChannelId === FALLBACK_CHANNEL_ID,
   guestTokenClaimKeys: Object.keys(claims).sort(),
+  guestTokenClass: tokenClass,
   guestIndicators: {
     guest: Boolean(claims.guest ?? claims.is_guest ?? claims.isGuest),
     hasAccountId: Boolean(claims.account_id ?? claims.accountId ?? claims.user_id ?? claims.userId ?? claims.sub),
