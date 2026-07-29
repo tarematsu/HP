@@ -49,6 +49,27 @@ test('startup DOM mutation is absent from the compiled policy', () => {
   assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
 });
 
+test('SVGIconNonLazy is replaced before its premium icon dependency loads', () => {
+  const matcher = section(
+    policy,
+    'inline constexpr std::string_view\nStationheadStartupOptionalModuleStubBoundaryFixed',
+    'static_assert(StationheadStartupOptionalModuleStubBoundaryFixed',
+  );
+  assert.match(
+    policy,
+    /kStationheadSvgIconNonLazyModuleStub =[\s\S]*export const SVGIconNonLazy=\(\)=>null;/,
+  );
+  assert.match(matcher, /StationheadHashedAssetModulePathMatches\([\s\S]*L"svgiconnonlazy"/);
+  assert.match(matcher, /return kStationheadSvgIconNonLazyModuleStub/);
+  assert.match(matcher, /return StationheadKnownOptionalModuleStubBoundaryFixed\(uriLower\)/);
+  assert.match(policy, /svgiconnonlazy-next1234\.mjs/);
+  assert.match(
+    policy,
+    /#define StationheadKnownOptionalModuleStubBoundaryFixed \\\n  StationheadStartupOptionalModuleStubBoundaryFixed/,
+  );
+  assert.doesNotMatch(matcher, /premium-20/);
+});
+
 test('SelectedGIF remains the audited hash-independent module stub', () => {
   const handler = section(
     policy,
@@ -57,7 +78,7 @@ test('SelectedGIF remains the audited hash-independent module stub', () => {
   );
   assert.match(
     handler,
-    /moduleStub\s*=\s*StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/,
+    /moduleStub\s*=\s*StationheadStartupOptionalModuleStubBoundaryFixed\(lower\)/,
   );
   assert.doesNotMatch(
     handler,
@@ -67,10 +88,14 @@ test('SelectedGIF remains the audited hash-independent module stub', () => {
     'StationheadDataAcquisitionRequestBoundaryFixed(lower)',
   );
   const moduleAt = handler.indexOf(
-    'StationheadKnownOptionalModuleStubBoundaryFixed(lower)',
+    'StationheadStartupOptionalModuleStubBoundaryFixed(lower)',
   );
   assert.ok(protectedAt >= 0);
   assert.ok(moduleAt > protectedAt);
+  assert.match(
+    policy,
+    /selectedgif-baax9j6x\.js"\) ==[\s\S]*kSelectedGifModuleStub/,
+  );
 });
 
 test('only the exact optional Tooltip stylesheet is replaced with local 204', () => {
