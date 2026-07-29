@@ -6,6 +6,10 @@ const appHeader = readFileSync(
   new URL('../../native/src/app.h', import.meta.url),
   'utf8',
 );
+const appSource = readFileSync(
+  new URL('../../native/src/app.cpp', import.meta.url),
+  'utf8',
+);
 const updateSource = readFileSync(
   new URL('../../native/src/app_update.cpp', import.meta.url),
   'utf8',
@@ -38,13 +42,32 @@ test('automatic cloud updates do not treat same-version hash drift as a release'
   assert.doesNotMatch(remoteCommand, /CheckForUpdateAsync\(true\);/);
 });
 
-test('same-version file repair remains available only for explicit local requests', () => {
+test('startup update checks install newer releases silently without same-version repair', () => {
+  const startupCheck = section(
+    appSource,
+    'const bool updateDelayElapsed',
+    'void App::StopServices()',
+  );
+  assert.match(startupCheck, /CheckForUpdateAsync\(false\)/);
+
   const wrapper = section(
     updateSource,
-    'void App::CheckForUpdateAsync(bool install)',
+    'void App::CheckForUpdateAsync(bool explicitLocalRequest)',
     'void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair)',
   );
-  assert.match(wrapper, /CheckForUpdateAsync\(install, install\)/);
+  assert.match(wrapper, /CheckForUpdateAsync\(true, explicitLocalRequest\)/);
+  assert.match(updateSource, /const bool notify = install && allowSameVersionRepair/);
+});
+
+test('same-version file repair remains available only for explicit local requests', () => {
+  assert.match(appHeader, /CheckForUpdateAsync\(bool explicitLocalRequest\)/);
+
+  const wrapper = section(
+    updateSource,
+    'void App::CheckForUpdateAsync(bool explicitLocalRequest)',
+    'void App::CheckForUpdateAsync(bool install, bool allowSameVersionRepair)',
+  );
+  assert.match(wrapper, /CheckForUpdateAsync\(true, explicitLocalRequest\)/);
 
   const implementation = section(
     updateSource,
