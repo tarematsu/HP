@@ -48,7 +48,7 @@ describe("SchedulerCoordinator alarm races", () => {
     vi.mocked(resetRuntimeFromD1).mockReset();
     vi.mocked(runRuntimeSchedulerTick).mockReset();
     vi.mocked(runtimeNextWakeAt).mockReset();
-    vi.mocked(resetRuntimeFromD1).mockResolvedValue();
+    vi.mocked(resetRuntimeFromD1).mockResolvedValue(undefined);
   });
 
   it("keeps an earlier wake scheduled while an alarm is still running", async () => {
