@@ -154,7 +154,7 @@ test('current minute waits behind an older pending outbox backlog', async () => 
   assert.equal(result.outbox_rows_deleted, 2);
 });
 
-test('cleanup keeps unconsumed pointer ledgers', async () => {
+test('cleanup uses the partial index and keeps unconsumed pointer ledgers', async () => {
   const db = fakeDb();
   await handoffMinuteFactJob({
     DB: db,
@@ -168,6 +168,10 @@ test('cleanup keeps unconsumed pointer ledgers', async () => {
     },
   });
   const cleanup = db.calls.find(({ sql }) => /DELETE FROM sh_minute_fact_outbox/.test(sql));
+  assert.match(cleanup.sql, /INDEXED BY idx_sh_minute_fact_outbox_cleanup/);
   assert.match(cleanup.sql, /payload_json='\{\}'/);
-  assert.match(cleanup.sql, /consumed/);
+  assert.match(cleanup.sql, /instr\(payload_json,'"consumed":true'\)>0/);
+  assert.match(cleanup.sql, /ORDER BY sent_at ASC,job_id ASC/);
+  assert.doesNotMatch(cleanup.sql, /COALESCE\(/);
+  assert.doesNotMatch(cleanup.sql, /LIKE/);
 });
