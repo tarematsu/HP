@@ -70,6 +70,15 @@ test('each hot coordination workload has an independent Durable Object', () => {
   assert.match(feedSnapshot, /SNAPSHOT_KEY = 'video\/playback-feed\/v1\.json'/);
 });
 
+test('Durable Object migrations remain append-only', () => {
+  const tags = cloudConfig.migrations.map((entry) => entry.tag);
+  assert.equal(tags.at(-1), 'device-exchange-coordinator-v1');
+  assert.ok(
+    tags.indexOf('device-exchange-coordinator-v1')
+      > tags.indexOf('integrated-video-feed-coordinator-v1'),
+  );
+});
+
 test('native polling is fixed at thirty-minute sync and four-hour telemetry', () => {
   assert.match(nativeConfig, /cloudPollSeconds = 1800;/);
   assert.match(nativeConfig, /telemetryMinutes = 240;/);
