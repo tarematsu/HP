@@ -26,8 +26,13 @@ test('Stationhead WebView disables HTTP and page-state caches before first navig
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('55-minute periodic navigation uses the same cache-disabled environment', () => {
-  assert.match(refreshPolicy, /NavigateCurrentUrl\(nowMs, L"55-minute periodic refresh"\)/);
+test('55-minute A and 56-minute B navigation use the same cache-disabled environment', () => {
+  assert.match(refreshPolicy, /L"55-minute periodic refresh"/);
+  assert.match(refreshPolicy, /L"56-minute periodic refresh"/);
+  assert.match(
+    refreshPolicy,
+    /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/,
+  );
   assert.equal(environment.match(/--disable-http-cache/g)?.length, 1,
     'the shared Stationhead environment should have one HTTP cache policy');
   assert.equal(environment.match(/BackForwardCache/g)?.length, 1,
