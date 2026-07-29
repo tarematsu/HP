@@ -1,5 +1,6 @@
 import { fetchJson } from "./http";
 import {
+  OCTOPUS_STABILITY_LAG_DAYS,
   octopusCompleteStableThroughJst,
   readOctopusDailyTotals,
   synchronizeOctopusHistory,
@@ -365,7 +366,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
         currentEndDate: jstDayKeyMs(profileRanges.currentEnd.getTime() - DAY_MS),
         previousStartDate: jstDayKeyMs(profileRanges.previousStart.getTime()),
         previousEndDate: jstDayKeyMs(profileRanges.previousEnd.getTime() - DAY_MS),
-        excludedRecentDays: 2,
+        excludedRecentDays: OCTOPUS_STABILITY_LAG_DAYS,
       },
       archive: {
         stableThrough: synchronized.stableThrough,
@@ -375,7 +376,7 @@ export async function fetchOctopus(env: Env): Promise<SourceResult> {
         cursorAfter: synchronized.cursorAfter,
         fetchFrom: synchronized.fetchFrom,
         completed: synchronized.completed,
-        excludedRecentDays: 2,
+        excludedRecentDays: OCTOPUS_STABILITY_LAG_DAYS,
       },
       lastMonth: {
         usage: Number(previousUsage.toFixed(3)),
