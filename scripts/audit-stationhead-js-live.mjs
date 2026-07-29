@@ -196,21 +196,60 @@ async function attemptCredentialLogin(page, credentials) {
   };
   if (!result.credentialsAvailable) return result;
 
-  const email = page.locator('input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]').first();
-  const password = page.locator('input[type="password"], input[autocomplete="current-password"]').first();
-  const emailVisible = await email.isVisible().catch(() => false);
-  const passwordVisible = await password.isVisible().catch(() => false);
-  if (!emailVisible || !passwordVisible) return result;
+  const visibleFirst = async (selector) => {
+    const candidates = page.locator(selector);
+    const count = Math.min(await candidates.count(), 40);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = candidates.nth(index);
+      if (await candidate.isVisible().catch(() => false)) return candidate;
+    }
+    return null;
+  };
+
+  let email = await visibleFirst('input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]');
+  let password = await visibleFirst('input[type="password"], input[autocomplete="current-password"]');
+  if (!email || !password) {
+    const loginCandidates = page.locator('button, [role="button"], a');
+    const count = Math.min(await loginCandidates.count(), 100);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = loginCandidates.nth(index);
+      if (!await candidate.isVisible().catch(() => false)) continue;
+      if (!/^(log\s*in|sign\s*in|login|ログイン)$/i.test(await candidateLabel(candidate))) continue;
+      result.loginAttempted = await candidate.click({ timeout: 3000 }).then(() => true).catch(() => false);
+      if (result.loginAttempted) {
+        await page.waitForTimeout(2500);
+        break;
+      }
+    }
+    email = await visibleFirst('input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]');
+    password = await visibleFirst('input[type="password"], input[autocomplete="current-password"]');
+  }
+  if (!email) return result;
 
   result.loginAttempted = true;
   await email.fill(credentials.email).catch(() => null);
+  if (!password) {
+    const continueControl = await visibleFirst('button[type="submit"], input[type="submit"], button, [role="button"]');
+    if (continueControl) await continueControl.click({ timeout: 3000 }).catch(() => null);
+    await page.waitForTimeout(2000);
+    password = await visibleFirst('input[type="password"], input[autocomplete="current-password"]');
+  }
+  if (!password) return result;
+
   await password.fill(credentials.password).catch(() => null);
-  const submit = page.locator('button[type="submit"], input[type="submit"], button').filter({
-    hasText: /log\s*in|sign\s*in|login|continue|ログイン|続ける/i,
-  }).first();
-  result.loginSubmitted = await submit.click({ timeout: 3000 }).then(() => true).catch(async () => {
-    return password.press('Enter').then(() => true).catch(() => false);
-  });
+  const submitCandidates = page.locator('button[type="submit"], input[type="submit"], button, [role="button"]');
+  const count = Math.min(await submitCandidates.count(), 80);
+  for (let index = 0; index < count; index += 1) {
+    const candidate = submitCandidates.nth(index);
+    if (!await candidate.isVisible().catch(() => false)) continue;
+    const label = await candidateLabel(candidate);
+    if (!/log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ/i.test(label)) continue;
+    result.loginSubmitted = await candidate.click({ timeout: 3000 }).then(() => true).catch(() => false);
+    if (result.loginSubmitted) break;
+  }
+  if (!result.loginSubmitted) {
+    result.loginSubmitted = await password.press('Enter').then(() => true).catch(() => false);
+  }
   if (result.loginSubmitted) await page.waitForTimeout(4000);
   result.loginFormStillVisible = await password.isVisible().catch(() => false);
   return result;
