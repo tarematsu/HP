@@ -7,6 +7,7 @@ on:
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
       - 'scripts/audit-history-production.mjs'
+      - 'scripts/inspect-history-production.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/deploy-split-pipeline.yml'
@@ -116,6 +117,10 @@ jobs:
           node scripts/audit-history-production.mjs
           --url=https://skrzk.pages.dev
           --out=.history-production-audit
+
+      - name: Inspect production history mismatch rows
+        if: github.event_name == 'pull_request'
+        run: node scripts/inspect-history-production.mjs
 
       - name: Upload browser audit evidence
         if: always()
