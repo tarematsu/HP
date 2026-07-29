@@ -16,6 +16,7 @@ const startPattern = /start\s+listening|listen\s+(?:now|live)|join\s+(?:station|
 const svgIconPattern = /\/assets\/svgiconnonlazy-[a-z0-9_-]{6,}\.m?js(?:[?#]|$)/i;
 const premiumIconPattern = /\/assets\/premium-20-[a-z0-9_-]{6,}\.m?js(?:[?#]|$)/i;
 const svgIconStub = 'export const SVGIconNonLazy=()=>null;';
+const premiumIconStub = 'export{};';
 
 async function labelOf(locator) {
   return locator.evaluate((node) => [
@@ -79,6 +80,7 @@ async function main() {
   const pageErrors = [];
   let svgIconIntercepted = 0;
   let premiumIconRequested = 0;
+  let premiumIconIntercepted = 0;
 
   page.on('request', (request) => {
     const url = request.url();
@@ -96,6 +98,16 @@ async function main() {
         contentType: 'application/javascript; charset=utf-8',
         headers: { 'cache-control': 'public, max-age=31536000, immutable' },
         body: svgIconStub,
+      });
+      return;
+    }
+    if (premiumIconPattern.test(url)) {
+      premiumIconIntercepted += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/javascript; charset=utf-8',
+        headers: { 'cache-control': 'public, max-age=31536000, immutable' },
+        body: premiumIconStub,
       });
       return;
     }
@@ -124,6 +136,8 @@ async function main() {
     navigationError,
     svgIconIntercepted,
     premiumIconRequested,
+    premiumIconIntercepted,
+    locallyReplacedModuleCount: svgIconIntercepted + premiumIconIntercepted,
     startListeningVisible: Boolean(candidate),
     startListeningLabel: candidate?.label || '',
     startListeningVisibleAfterMs: visibleAfterMs,
@@ -137,7 +151,8 @@ async function main() {
   };
   result.passed = !navigationError &&
     result.svgIconIntercepted > 0 &&
-    result.premiumIconRequested === 0 &&
+    result.premiumIconRequested > 0 &&
+    result.premiumIconIntercepted === result.premiumIconRequested &&
     result.startListeningVisible &&
     result.clicked &&
     result.afterClickScreenVisible &&
