@@ -1,0 +1,64 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const workflow = readFileSync(
+  new URL('../../../.github/workflows/sh-live-js-audit.yml', import.meta.url),
+  'utf8',
+);
+const audit = readFileSync(
+  new URL('../../../scripts/audit-stationhead-js-live.mjs', import.meta.url),
+  'utf8',
+);
+
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
+  assert.notEqual(startAt, -1, `missing section: ${start}`);
+  const endAt = source.indexOf(end, startAt + start.length);
+  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
+  return source.slice(startAt, endAt);
+}
+
+test('replaced Stationhead page requires a visible Start Listening control and post-click screen', () => {
+  const summary = section(audit, 'function summarize(', 'function markdown(');
+  assert.match(summary, /blocked\.ui\.startListeningVisible/);
+  assert.match(summary, /blocked\.ui\.clicked/);
+  assert.match(summary, /blocked\.ui\.afterClickScreenVisible/);
+  assert.match(summary, /const passed = Boolean/);
+  assert.doesNotMatch(summary, /audio|media|playbackState|HTMLMediaElement/);
+});
+
+test('UI audit captures evidence before credentials can be entered', () => {
+  const capture = section(audit, 'async function runCapture(', 'function summarize(');
+  assert.match(capture, /\$\{captureName\}-before-click\.png/);
+  assert.match(capture, /\$\{captureName\}-after-click\.png/);
+  const screenshotAt = capture.indexOf('`${captureName}-after-click.png`');
+  const loginAt = capture.indexOf('attemptCredentialLogin(page, credentials)');
+  assert.ok(screenshotAt >= 0 && screenshotAt < loginAt);
+  assert.match(capture, /const finalState = ui\.after \|\| ui\.before/);
+});
+
+test('credentials are optional, aliased secrets and never copied into reports', () => {
+  assert.match(workflow, /secrets\.STATIONHEAD_EMAIL/);
+  assert.match(workflow, /secrets\.STATIONHEAD_TEST_EMAIL/);
+  assert.match(workflow, /secrets\.SH_EMAIL/);
+  assert.match(workflow, /secrets\.STATIONHEAD_PASSWORD/);
+  assert.match(workflow, /secrets\.STATIONHEAD_TEST_PASSWORD/);
+  assert.match(workflow, /secrets\.SH_PASSWORD/);
+  assert.match(audit, /credentialsAvailable/);
+  assert.match(audit, /loginAttempted/);
+  assert.match(audit, /loginSubmitted/);
+  assert.doesNotMatch(audit, /console\.(?:log|error)\([^\n]*(?:credentials\.email|credentials\.password|STATIONHEAD_PASSWORD)/);
+  assert.doesNotMatch(audit, /JSON\.stringify\([^\n]*(?:credentials|STATIONHEAD_PASSWORD)/);
+});
+
+test('workflow always runs both pages and has an authoritative UI gate', () => {
+  assert.match(workflow, /Audit primary Stationhead page[\s\S]*continue-on-error: true/);
+  assert.match(workflow, /Audit fallback Stationhead page[\s\S]*if: always\(\)[\s\S]*continue-on-error: true/);
+  const gate = section(workflow, '- name: Enforce Stationhead UI audit', 'NODE\n');
+  assert.match(gate, /ui\.startListeningVisible/);
+  assert.match(gate, /ui\.clicked/);
+  assert.match(gate, /ui\.afterClickScreenVisible/);
+  assert.match(gate, /report\.passed !== true/);
+  assert.doesNotMatch(gate, /audio\.paused|playbackState|mediaSession|HTMLMediaElement/);
+});
