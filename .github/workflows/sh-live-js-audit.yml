@@ -184,6 +184,8 @@ jobs:
               const report = JSON.parse(await readFile(`.sh-js-audit/${name}.json`, 'utf8'));
               if (report.passed !== true) failures.push(`${name}: DOM reduction did not pass`);
               if (report.reductionInstalled !== true) failures.push(`${name}: DOM reduction was not installed`);
+              if (report.optionalVisibleBeforeClick !== 0) failures.push(`${name}: optional DOM remained before click`);
+              if (report.optionalVisibleAfterClick !== 0) failures.push(`${name}: optional DOM remained after click`);
               if (report.pageErrors?.length) failures.push(`${name}: DOM reduction added a page error`);
             } catch (error) {
               failures.push(`${name}: report missing or invalid`);
