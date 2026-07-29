@@ -1,0 +1,64 @@
+name: Pages live browser audit
+
+on:
+  pull_request:
+    paths:
+      - 'site/**'
+      - 'scripts/audit-pages-live.mjs'
+      - '.github/workflows/pages-live-browser-audit.yml'
+      - '.github/workflows/deploy-split-pipeline.yml'
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_run:
+    workflows: ['Deploy production']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pages-live-browser-audit-${{ github.event.pull_request.number || github.event.workflow_run.id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout audit revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install audit dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Access production Pages in Chromium
+        run: >-
+          node scripts/audit-pages-live.mjs
+          --attempts=3
+          --retry-delay-ms=5000
+          --out=.pages-live-audit
+
+      - name: Upload browser audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-live-browser-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .pages-live-audit/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
