@@ -102,6 +102,11 @@ test('DOM reduction is bounded, batched and protects playback and login controls
   ]) {
     assert.ok(dom.toLowerCase().includes(optionalSurface));
   }
+  assert.match(dom, /hardOptionalImageSelector/);
+  assert.match(dom, /element\.matches\(hardOptionalImageSelector\)/);
+  assert.match(dom, /!hardOptionalImage && protectedSurface\(element\)/);
+  assert.match(dom, /const ensureStyle = \(\) =>/);
+  assert.match(dom, /!style\.isConnected/);
   assert.match(dom, /new MutationObserver/);
   assert.match(dom, /requestAnimationFrame/);
   assert.match(dom, /observer\.disconnect\(\)/);
