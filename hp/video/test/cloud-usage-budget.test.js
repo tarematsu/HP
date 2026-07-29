@@ -7,6 +7,8 @@ const nativeConfig = readFileSync(new URL('../../native/src/config.h', import.me
 const nativeCloudConfig = readFileSync(new URL('../../native/src/cloud_config.cpp', import.meta.url), 'utf8');
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const deviceExchange = readFileSync(new URL('../../cloud/src/device_exchange.ts', import.meta.url), 'utf8');
+const deviceExchangePayload = readFileSync(new URL('../../cloud/src/device_exchange_payload.ts', import.meta.url), 'utf8');
+const deviceExchangeCoordinator = readFileSync(new URL('../../cloud/src/device_exchange_coordinator.ts', import.meta.url), 'utf8');
 const deviceSync = readFileSync(new URL('../../cloud/src/device_sync.ts', import.meta.url), 'utf8');
 const deviceSyncCoordinator = readFileSync(new URL('../../cloud/src/device_sync_coordinator.ts', import.meta.url), 'utf8');
 const schedulerCoordinator = readFileSync(new URL('../../cloud/src/scheduler_coordinator.ts', import.meta.url), 'utf8');
@@ -57,6 +59,7 @@ test('static video assets, Browser Rendering, and Queue bindings belong to the u
 test('each hot coordination workload has an independent Durable Object', () => {
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'SCHEDULER_COORDINATOR'));
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'DEVICE_SYNC_COORDINATOR'));
+  assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'DEVICE_EXCHANGE_COORDINATOR'));
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'RADAR_BUNDLE_COORDINATOR'));
   assert.ok(cloudConfig.durable_objects.bindings.some((entry) => entry.name === 'VIDEO_FEED_COORDINATOR' && entry.class_name === 'VideoFeedCoordinator'));
   assert.match(feedCoordinator, /CANDIDATE_CHUNK_SIZE = 500/);
@@ -88,16 +91,21 @@ test('HomePanel scheduler drains due work with bounded concurrency and aligned c
   assert.doesNotMatch(schedulerCoordinator, /video-feed-/);
 });
 
-test('device exchange isolates telemetry and uses a dedicated sync coordinator', () => {
-  const telemetryAt = deviceExchange.indexOf('if (input.telemetry !== undefined)');
-  const mergeAt = deviceExchange.indexOf('await applyTelemetry');
-  const coordinatedAt = deviceExchange.indexOf('requestCoordinatedDeviceSync');
-  const fallbackAt = deviceExchange.indexOf('buildDeviceSyncPayloadForDevice');
+test('device exchange isolates HTTP CPU while preserving telemetry-before-sync ordering', () => {
+  const forwardingAt = deviceExchange.indexOf('requestCoordinatedDeviceExchange');
+  const fallbackAt = deviceExchange.indexOf('buildDeviceExchangeResponse');
+  assert.ok(forwardingAt >= 0);
+  assert.ok(fallbackAt > forwardingAt);
+
+  const telemetryAt = deviceExchangePayload.indexOf('if (input.telemetry !== undefined)');
+  const mergeAt = deviceExchangePayload.indexOf('await applyTelemetry');
+  const payloadAt = deviceExchangePayload.indexOf('const payload = await buildPayload');
   assert.ok(telemetryAt >= 0);
   assert.ok(mergeAt > telemetryAt);
-  assert.ok(coordinatedAt > mergeAt);
-  assert.ok(fallbackAt > coordinatedAt);
-  assert.match(deviceExchange, /device-exchange-telemetry-failed/);
+  assert.ok(payloadAt > mergeAt);
+  assert.match(deviceExchangePayload, /device-exchange-telemetry-failed/);
+  assert.match(deviceExchangeCoordinator, /requestCoordinatedDeviceSync/);
+  assert.match(deviceExchangeCoordinator, /buildDeviceSyncPayloadForDevice/);
   assert.match(deviceSync, /manifestOverride/);
   assert.match(deviceSyncCoordinator, /DEVICE_SYNC_MANIFEST_KEY/);
 });
@@ -140,6 +148,7 @@ test('modeled background D1 reads remain below ten thousand rows per day', () =>
 
 test('modeled daily Worker and internal DO invocations stay below target', () => {
   const nativeExchangeRequests = runsPerDay(1800);
+  const deviceExchangeDoRequests = nativeExchangeRequests;
   const deviceSyncDoRequests = nativeExchangeRequests;
   const telemetryUploadRequests = runsPerDay(240 * 60);
   const schedulerAlarmInvocations = modeledSchedulerAlarms();
@@ -149,6 +158,7 @@ test('modeled daily Worker and internal DO invocations stay below target', () =>
   const radarGenerationReserve = 50;
   const apiWebhookVideoReserve = 1_900;
   const modeledRequests = nativeExchangeRequests
+    + deviceExchangeDoRequests
     + deviceSyncDoRequests
     + telemetryUploadRequests
     + schedulerAlarmInvocations
