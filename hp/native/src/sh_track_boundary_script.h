@@ -1,6 +1,7 @@
 #pragma once
 #include "common.h"
 #include "sh_data_acquisition_resource_policy_fix.h"
+#include "sh_startup_resource_reduction_policy_fix.h"
 
 namespace hp {
 
