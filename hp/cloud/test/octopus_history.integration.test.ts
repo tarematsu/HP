@@ -37,10 +37,11 @@ function completeReadings(range: OctopusRange, value = 0.25): OctopusReading[] {
 }
 
 describe("Octopus daily D1 history", () => {
-  it("bootstraps seven complete days without storing half-hour rows", async () => {
+  it("queries one day ahead while storing only seven stable complete days", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const collectionStart = octopusCollectionStart(now);
     const stableThrough = octopusCompleteStableThroughJst(now);
+    const queryThrough = stableThrough + DAY_MS;
     const requested: OctopusRange[] = [];
 
     const result = await synchronizeOctopusHistory(env, "A-123", now, async range => {
@@ -52,9 +53,9 @@ describe("Octopus daily D1 history", () => {
     expect(OCTOPUS_STABILITY_LAG_DAYS).toBe(1);
     expect(requested).toHaveLength(4);
     expect(requested[0]?.from.getTime()).toBe(collectionStart);
-    expect(requested.at(-1)?.to.getTime()).toBe(stableThrough);
+    expect(requested.at(-1)?.to.getTime()).toBe(queryThrough);
     expect(requested.every(range => range.from.getTime() >= collectionStart)).toBe(true);
-    expect(requested.every(range => range.to.getTime() <= stableThrough)).toBe(true);
+    expect(requested.every(range => range.to.getTime() <= queryThrough)).toBe(true);
 
     expect(result.completed).toBe(true);
     expect(result.cursorBefore).toBeNull();
@@ -82,7 +83,7 @@ describe("Octopus daily D1 history", () => {
     expect(Number(cursor?.stable_through)).toBe(stableThrough);
   });
 
-  it("fetches only one correction day plus newly stable days after bootstrap", async () => {
+  it("fetches one correction day, a newly stable day, and one query lookahead day", async () => {
     const firstNow = Date.parse("2026-07-10T18:00:00Z");
     await synchronizeOctopusHistory(env, "A-incremental", firstNow, async range => completeReadings(range));
     const firstStableThrough = octopusCompleteStableThroughJst(firstNow);
@@ -95,9 +96,9 @@ describe("Octopus daily D1 history", () => {
     });
 
     expect(OCTOPUS_CORRECTION_OVERLAP_DAYS).toBe(1);
-    expect(requested).toHaveLength(1);
+    expect(requested).toHaveLength(2);
     expect(requested[0]?.from.getTime()).toBe(firstStableThrough - DAY_MS);
-    expect(requested[0]?.to.getTime()).toBe(firstStableThrough + DAY_MS);
+    expect(requested.at(-1)?.to.getTime()).toBe(firstStableThrough + 2 * DAY_MS);
     expect(result.cursorBefore).toBe(firstStableThrough);
     expect(result.cursorAfter).toBe(firstStableThrough + DAY_MS);
     expect(result.fetchFrom).toBe(firstStableThrough - DAY_MS);

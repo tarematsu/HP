@@ -98,7 +98,7 @@ describe("cloud sources", () => {
       }),
       expect.objectContaining({
         fromDatetime: "2026-07-08T15:00:00.000Z",
-        toDatetime: "2026-07-09T15:00:00.000Z",
+        toDatetime: "2026-07-10T15:00:00.000Z",
       }),
     ]);
 
