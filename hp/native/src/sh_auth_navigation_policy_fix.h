@@ -92,4 +92,5 @@ static_assert(kAuthControllerStableTimeoutMs <=
 
 #include "sh_auth_capture_validation_policy_fix.h"
 #include "sh_stats_auth_fallback_policy_fix.h"
+#include "sh_stats_payload_policy_fix.h"
 #include "sh_auth_interactive_memory_policy_fix.h"
