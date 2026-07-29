@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/audit-stationhead-svg-icon-reduction-live.mjs'
       - 'scripts/audit-stationhead-login.mjs'
       - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'scripts/measure-stationhead-start-listening.mjs'
@@ -95,6 +96,22 @@ jobs:
           --report=.sh-js-audit/fallback/report.json
           --out=.sh-js-audit/fallback/module-graph.json
 
+      - name: Audit primary SVG icon reduction
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-svg-icon-reduction-live.mjs
+          --url=https://www.stationhead.com/sakuramankai
+          --out=.sh-js-audit/svg-primary.json
+
+      - name: Audit fallback SVG icon reduction
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-svg-icon-reduction-live.mjs
+          --url=https://www.stationhead.com/buddy46
+          --out=.sh-js-audit/svg-fallback.json
+
       - name: Attempt Stationhead credential login
         if: always()
         continue-on-error: true
@@ -111,6 +128,13 @@ jobs:
             if [ -f "$summary" ]; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
               printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          for report in .sh-js-audit/svg-primary.json .sh-js-audit/svg-fallback.json; do
+            if [ -f "$report" ]; then
+              printf '## %s\n' "$(basename "$report" .json)" >> "$GITHUB_STEP_SUMMARY"
+              node -e "const r=require('./$report'); for (const k of ['passed','svgIconIntercepted','premiumIconRequested','startListeningVisible','startListeningVisibleAfterMs','clicked','afterClickScreenVisible']) console.log('- '+k+': '+r[k])" >> "$GITHUB_STEP_SUMMARY"
+              printf '\n' >> "$GITHUB_STEP_SUMMARY"
             fi
           done
           if [ -f .sh-js-audit/login-report.json ]; then
@@ -160,6 +184,22 @@ jobs:
             }
             if (report.passed !== true) failures.push(`${name}: report did not pass`);
           }
+          for (const name of ['svg-primary', 'svg-fallback']) {
+            let report;
+            try {
+              report = JSON.parse(await readFile(`.sh-js-audit/${name}.json`, 'utf8'));
+            } catch {
+              failures.push(`${name}: report missing or invalid`);
+              continue;
+            }
+            if (report.svgIconIntercepted < 1) failures.push(`${name}: SVGIconNonLazy was not intercepted`);
+            if (report.premiumIconRequested !== 0) failures.push(`${name}: premium-20 was still requested`);
+            if (!report.startListeningVisible) failures.push(`${name}: Start Listening was not visible`);
+            if (!report.clicked) failures.push(`${name}: Start Listening click failed`);
+            if (!report.afterClickScreenVisible) failures.push(`${name}: post-click screen was not visible`);
+            if (report.pageErrors?.length) failures.push(`${name}: SVG replacement added a page error`);
+            if (report.passed !== true) failures.push(`${name}: SVG icon reduction did not pass`);
+          }
           try {
             const timing = JSON.parse(await readFile('.sh-start-listening-timing/report.json', 'utf8'));
             if (timing.visibleCount !== timing.sampleCount) failures.push('timing: Start Listening was not visible in every sample');
@@ -170,5 +210,5 @@ jobs:
             console.error(failures.join('\n'));
             process.exit(1);
           }
-          console.log('Stationhead UI audit passed. Audio playback was not evaluated.');
+          console.log('Stationhead resource and UI audits passed. Audio playback was not evaluated.');
           NODE
