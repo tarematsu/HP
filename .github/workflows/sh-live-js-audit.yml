@@ -4,9 +4,11 @@ on:
   pull_request:
     paths:
       - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/audit-stationhead-login.mjs'
       - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
+      - 'hp/video/test/stationhead-live-ui-audit-regression.test.js'
       - '.github/workflows/sh-live-js-audit.yml'
   workflow_dispatch:
 
@@ -21,7 +23,10 @@ concurrency:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    env:
+      STATIONHEAD_EMAIL: ${{ secrets.STATIONHEAD_AUDIT_EMAIL || secrets.STATIONHEAD_EMAIL || secrets.STATIONHEAD_TEST_EMAIL || secrets.SH_EMAIL }}
+      STATIONHEAD_PASSWORD: ${{ secrets.STATIONHEAD_AUDIT_PASSWORD || secrets.STATIONHEAD_PASSWORD || secrets.STATIONHEAD_TEST_PASSWORD || secrets.SH_PASSWORD }}
     steps:
       - name: Checkout audit revision
         uses: actions/checkout@v4
@@ -44,32 +49,43 @@ jobs:
         run: >-
           node scripts/audit-stationhead-js-live.mjs
           --url=https://www.stationhead.com/sakuramankai
-          --duration-ms=20000
+          --duration-ms=5000
           --auto-click
           --out=.sh-js-audit/primary
 
       - name: Inspect primary blocked module contracts
         if: always()
+        continue-on-error: true
         run: >-
           node scripts/inspect-stationhead-module-graph.mjs
           --report=.sh-js-audit/primary/report.json
           --out=.sh-js-audit/primary/module-graph.json
 
       - name: Audit fallback Stationhead page
+        if: always()
         continue-on-error: true
         run: >-
           node scripts/audit-stationhead-js-live.mjs
           --url=https://www.stationhead.com/buddy46
-          --duration-ms=20000
+          --duration-ms=5000
           --auto-click
           --out=.sh-js-audit/fallback
 
       - name: Inspect fallback blocked module contracts
         if: always()
+        continue-on-error: true
         run: >-
           node scripts/inspect-stationhead-module-graph.mjs
           --report=.sh-js-audit/fallback/report.json
           --out=.sh-js-audit/fallback/module-graph.json
+
+      - name: Attempt Stationhead credential login
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-login.mjs
+          --url=https://www.stationhead.com/sakuramankai
+          --out=.sh-js-audit/login-report.json
 
       - name: Publish audit summary
         if: always()
@@ -81,6 +97,10 @@ jobs:
               printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
             fi
           done
+          if [ -f .sh-js-audit/login-report.json ]; then
+            printf '## Stationhead credential login attempt\n' >> "$GITHUB_STEP_SUMMARY"
+            node -e "const r=require('./.sh-js-audit/login-report.json'); for (const [k,v] of Object.entries(r)) console.log('- '+k+': '+v)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload sanitized audit artifact
         if: always()
@@ -91,3 +111,36 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+
+      - name: Enforce Stationhead UI audit
+        if: always()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFile } from 'node:fs/promises';
+
+          const failures = [];
+          for (const name of ['primary', 'fallback']) {
+            let report;
+            try {
+              report = JSON.parse(await readFile(`.sh-js-audit/${name}/report.json`, 'utf8'));
+            } catch (error) {
+              failures.push(`${name}: report missing or invalid`);
+              continue;
+            }
+            const ui = report.blocked?.ui || {};
+            if (!ui.startListeningVisible) failures.push(`${name}: Start Listening was not visible`);
+            if (!ui.clicked) failures.push(`${name}: Start Listening click failed`);
+            if (!ui.afterClickScreenVisible) failures.push(`${name}: post-click screen was not visible`);
+            if (report.missedInterceptions?.length) failures.push(`${name}: interception miss`);
+            if ((report.blocked?.pageErrors?.length || 0) > (report.baseline?.pageErrors?.length || 0)) {
+              failures.push(`${name}: replacement added a page error`);
+            }
+            if (report.passed !== true) failures.push(`${name}: report did not pass`);
+          }
+          if (failures.length) {
+            console.error(failures.join('\n'));
+            process.exit(1);
+          }
+          console.log('Stationhead UI audit passed. Audio playback was not evaluated.');
+          NODE

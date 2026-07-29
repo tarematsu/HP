@@ -76,19 +76,47 @@ inline constexpr std::wstring_view kNonPlaybackScriptNeedles[] = {
     L"service-picker",
 };
 
-inline constexpr std::wstring_view kKnownOptionalModuleNeedles[] = {
-    L"lottieanimationviewnonlazy",
-};
+inline constexpr std::string_view kLottieModuleStub =
+    "export const LottieAnimationViewNonLazy=()=>null;";
+inline constexpr std::string_view kTooltipModuleStub =
+    "export const T=({children})=>children??null;";
+inline constexpr std::string_view kSelectedGifModuleStub =
+    "const n=()=>null,c=24,v={$$typeof:Symbol.for('react.forward_ref'),"
+    "render:n,modalOptions:{}};"
+    "export{v as A,c as C,v as E,v as G,v as P,v as S,v as T,v as a,"
+    "v as b,n as c,v as d,v as e,n as f,v as g,n as h,n as u};";
 
-// Minified export names can change between Stationhead deployments. Match the
-// exact live-observed hashed path so a future bundle automatically fails open.
-inline constexpr std::wstring_view kKnownExactTooltipModulePaths[] = {
-    L"/assets/tooltip-cxafiwy6.js",
-};
+// Match only a top-level Vite asset named <stem>-<hash>.js/.mjs. The hash is
+// intentionally ignored so Stationhead deployments keep receiving the audited
+// contract-compatible stub without broad substring matching.
+inline constexpr bool StationheadHashedAssetModulePathMatches(
+    std::wstring_view path,
+    std::wstring_view stem) {
+  constexpr std::wstring_view kAssetsPrefix = L"/assets/";
+  if (!path.starts_with(kAssetsPrefix)) return false;
+  const std::wstring_view filename = path.substr(kAssetsPrefix.size());
+  if (!filename.starts_with(stem)) return false;
+  const std::wstring_view suffix = filename.substr(stem.size());
+  if (suffix.size() < 11 || suffix.front() != L'-') return false;
+
+  size_t extensionAt = std::wstring_view::npos;
+  if (suffix.ends_with(L".mjs")) {
+    extensionAt = suffix.size() - 4;
+  } else if (suffix.ends_with(L".js")) {
+    extensionAt = suffix.size() - 3;
+  }
+  if (extensionAt == std::wstring_view::npos || extensionAt <= 6) return false;
+  for (const wchar_t character : suffix.substr(1, extensionAt - 1)) {
+    const bool allowed = (character >= L'a' && character <= L'z') ||
+                         (character >= L'0' && character <= L'9') ||
+                         character == L'-' || character == L'_';
+    if (!allowed) return false;
+  }
+  return true;
+}
 
 // Empty-success responses are safe only for standalone third-party/classic SDKs.
-// Same-origin Vite modules are never emptied here because importers can require
-// named exports and fail before the Stationhead player is initialized.
+// Same-origin Vite modules require an explicit import/export-compatible stub.
 inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(
     std::wstring_view uriLower) {
   const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
@@ -99,26 +127,25 @@ inline constexpr bool StationheadExpandedNonPlaybackScriptBoundaryFixed(
   return false;
 }
 
-// Return contract-compatible modules for live-audited optional surfaces. The
-// Tooltip replacement preserves its child control while removing positioning,
-// portal, style and hover work. Exact-path matching protects future export drift.
+// Return tiny local modules before download. SelectedGIF intentionally removes
+// its mixed account/chat/thread/GIF UI exports while preserving their runtime
+// shapes: forward-ref-compatible component types, C=24, and no-op hook values.
 inline constexpr std::string_view StationheadKnownOptionalModuleStubBoundaryFixed(
     std::wstring_view uriLower) {
   const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
   if (!uri.valid || uri.scheme != L"https" ||
-      !StationheadRuntimeHostMatches(uri.host, L"stationhead.com") ||
-      (!uri.path.ends_with(L".js") && !uri.path.ends_with(L".mjs"))) {
+      !StationheadRuntimeHostMatches(uri.host, L"stationhead.com")) {
     return {};
   }
-  for (const std::wstring_view path : kKnownExactTooltipModulePaths) {
-    if (uri.path == path) {
-      return "export const T=({children})=>children??null;";
-    }
+  if (StationheadHashedAssetModulePathMatches(
+          uri.path, L"lottieanimationviewnonlazy")) {
+    return kLottieModuleStub;
   }
-  for (const std::wstring_view needle : kKnownOptionalModuleNeedles) {
-    if (uri.path.find(needle) != std::wstring_view::npos) {
-      return "export const LottieAnimationViewNonLazy=()=>null;";
-    }
+  if (StationheadHashedAssetModulePathMatches(uri.path, L"tooltip")) {
+    return kTooltipModuleStub;
+  }
+  if (StationheadHashedAssetModulePathMatches(uri.path, L"selectedgif")) {
+    return kSelectedGifModuleStub;
   }
   return {};
 }
@@ -139,17 +166,29 @@ static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/assets/paginationHooks-DAuPuAck.js"));
 static_assert(!StationheadExpandedNonPlaybackScriptBoundaryFixed(
     L"https://www.stationhead.com/assets/AppleMusicFreeTrialButton-BzMIl5Mx.js"));
-static_assert(!StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/lottieanimationviewnonlazy-ve60c2no.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/tooltip-cxafiwy6.js") ==
-    "export const T=({children})=>children??null;");
+                  L"https://www.stationhead.com/assets/lottieanimationviewnonlazy-ve60c2no.js") ==
+              kLottieModuleStub);
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://www.stationhead.com/assets/tooltip-different.js").empty());
+                  L"https://www.stationhead.com/assets/tooltip-cxafiwy6.js") ==
+              kTooltipModuleStub);
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/tooltip-different9.js") ==
+              kTooltipModuleStub);
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/selectedgif-baax9j6x.js") ==
+              kSelectedGifModuleStub);
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/selectedgif-next1234.mjs") ==
+              kSelectedGifModuleStub);
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+    L"https://www.stationhead.com/assets/tooltip.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
     L"https://www.stationhead.com/assets/player-runtime.js").empty());
 static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
-    L"https://stationhead.com.evil.example/assets/lottieanimationviewnonlazy.js").empty());
+    L"https://stationhead.com.evil.example/assets/selectedgif-baax9j6x.js").empty());
+static_assert(StationheadKnownOptionalModuleStubBoundaryFixed(
+    L"https://www.stationhead.com/nested/assets/tooltip-cxafiwy6.js").empty());
 
 inline void ApplyStationheadResourceBlockingScriptFixed(
     ICoreWebView2Environment* environment,
@@ -203,6 +242,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
                 SUCCEEDED(args->get_ResourceContext(&context));
             bool block = false;
             bool emptyScript = false;
+            bool emptyResource = false;
             std::string_view moduleStub;
             bool needsUri = true;
             if (hasContext) {
@@ -213,6 +253,7 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING ||
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
                 block = true;
+                emptyResource = true;
                 needsUri = false;
               }
             }
@@ -230,20 +271,26 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
                 moduleStub =
                     StationheadKnownOptionalModuleStubBoundaryFixed(lower);
-                emptyScript =
-                    StationheadRequestIsBlockableBoundaryFixed(lower) ||
-                    StationheadExpandedNonPlaybackScriptBoundaryFixed(lower);
-                block = emptyScript || !moduleStub.empty();
+                if (!moduleStub.empty()) {
+                  block = true;
+                } else {
+                  emptyScript =
+                      StationheadRequestIsBlockableBoundaryFixed(lower) ||
+                      StationheadExpandedNonPlaybackScriptBoundaryFixed(lower);
+                  block = emptyScript;
+                }
               } else {
                 block = StationheadRequestIsBlockableBoundaryFixed(lower);
               }
               if (!block && blockImages && StationheadRequestLooksLikeImage(lower)) {
                 block = true;
+                emptyResource = true;
               }
               if (!block && hasContext &&
                   context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA) {
                 block = !lower.empty() &&
                         !StationheadCorePlaybackRequestBoundaryFixed(lower);
+                emptyResource = block;
               }
             }
             if (block) {
@@ -256,12 +303,17 @@ inline void ApplyStationheadResourceBlockingScriptFixed(
                 if (!responseBody) return S_OK;
               }
               ComPtr<ICoreWebView2WebResourceResponse> response;
-              const int status = replacementScript ? 200 : 403;
-              const wchar_t* reason = replacementScript ? L"OK" : L"Blocked";
+              const int status = replacementScript ? 200 : (emptyResource ? 204 : 403);
+              const wchar_t* reason = replacementScript
+                                          ? L"OK"
+                                          : (emptyResource ? L"No Content" : L"Blocked");
               const wchar_t* headers = replacementScript
                   ? L"Content-Type: application/javascript; charset=utf-8\r\n"
-                    L"Cache-Control: no-store"
-                  : L"";
+                    L"Cache-Control: public, max-age=31536000, immutable"
+                  : (emptyResource
+                         ? L"Content-Length: 0\r\n"
+                           L"Cache-Control: public, max-age=31536000, immutable"
+                         : L"");
               if (SUCCEEDED(env->CreateWebResourceResponse(
                       responseBody.Get(), status, reason, headers, &response))) {
                 args->put_Response(response.Get());
