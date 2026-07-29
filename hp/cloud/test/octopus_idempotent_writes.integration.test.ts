@@ -19,7 +19,7 @@ beforeEach(async () => {
 describe("Octopus idempotent daily writes", () => {
   it("keeps updated_at stable for unchanged totals and updates a corrected overlap day", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
-    const correctedDayStart = Date.parse("2026-07-08T15:00:00Z");
+    const correctedDayStart = Date.parse("2026-07-09T15:00:00Z");
     let correctedDaySlotValue = 0.25;
     const fetchRange = async (range: OctopusRange): Promise<OctopusReading[]> => {
       const readings: OctopusReading[] = [];
@@ -39,7 +39,7 @@ describe("Octopus idempotent daily writes", () => {
     const initial = await env.DB.prepare(
       `SELECT energy_kwh,updated_at FROM octopus_daily_totals
         WHERE account_number=?1 AND day=?2`,
-    ).bind("A-idempotent", "2026-07-09")
+    ).bind("A-idempotent", "2026-07-10")
       .first<{ energy_kwh: number; updated_at: number }>();
     expect(initial).toEqual({ energy_kwh: 12, updated_at: now });
 
@@ -48,7 +48,7 @@ describe("Octopus idempotent daily writes", () => {
     const unchanged = await env.DB.prepare(
       `SELECT energy_kwh,updated_at FROM octopus_daily_totals
         WHERE account_number=?1 AND day=?2`,
-    ).bind("A-idempotent", "2026-07-09")
+    ).bind("A-idempotent", "2026-07-10")
       .first<{ energy_kwh: number; updated_at: number }>();
     expect(unchanged).toEqual({ energy_kwh: 12, updated_at: now });
 
@@ -58,7 +58,7 @@ describe("Octopus idempotent daily writes", () => {
     const corrected = await env.DB.prepare(
       `SELECT energy_kwh,updated_at FROM octopus_daily_totals
         WHERE account_number=?1 AND day=?2`,
-    ).bind("A-idempotent", "2026-07-09")
+    ).bind("A-idempotent", "2026-07-10")
       .first<{ energy_kwh: number; updated_at: number }>();
     expect(corrected).toEqual({ energy_kwh: 24, updated_at: correctedNow });
   });
