@@ -11,8 +11,8 @@ namespace hp {
 // Preserve response validation and explicit-401 rejection, but restore the
 // pre-regression latest-candidate behavior. A monotonically increasing dispatch
 // order prevents a late response from an older request from overwriting a newer
-// validated candidate. The order marker is non-enumerable, so it is never sent
-// back to Stationhead as a request header.
+// validated candidate. WeakMap metadata never becomes part of the copied
+// request-header object.
 inline std::wstring StationheadAuthCaptureScriptValidatedRotation() {
   std::wstring script = StationheadAuthCaptureScript();
 
@@ -59,6 +59,7 @@ inline std::wstring StationheadAuthCaptureScriptValidatedRotation() {
 
   static constexpr std::wstring_view kRotatingCandidatePolicy = LR"JS(  let nextCandidateOrder = 0;
   let acceptedCandidateOrder = 0;
+  const candidateOrders = new WeakMap();
   const candidateFromHeaders = headers => {
     const authorization = headers?.get?.('authorization') || '';
     if (!authorization) return null;
@@ -68,13 +69,7 @@ inline std::wstring StationheadAuthCaptureScriptValidatedRotation() {
       'app-platform': headers.get('app-platform') || 'web',
       'app-version': headers.get('app-version') || '1.0.0',
     };
-    try {
-      Object.defineProperty(candidate, '__homepanelCaptureOrder', {
-        value: ++nextCandidateOrder,
-      });
-    } catch (_) {
-      candidate.__homepanelCaptureOrder = ++nextCandidateOrder;
-    }
+    candidateOrders.set(candidate, ++nextCandidateOrder);
     return candidate;
   };
   const acceptAuthorizationCandidate = candidate => {
@@ -84,7 +79,7 @@ inline std::wstring StationheadAuthCaptureScriptValidatedRotation() {
         window.__homepanelStationheadBlockingLoginVisible !== false) {
       return;
     }
-    const candidateOrder = Number(candidate.__homepanelCaptureOrder || 0);
+    const candidateOrder = Number(candidateOrders.get(candidate) || 0);
     if (candidateOrder > 0 && candidateOrder < acceptedCandidateOrder) return;
     const current = window.__homepanelStationheadAuthHeaders;
     const changed = current?.authorization !== candidate.authorization;
