@@ -5,8 +5,9 @@ namespace hp {
 
 // The first DOM reducer kept only the first mutation root scheduled before each
 // animation frame. Later roots could stay mounted and were merely hidden by the
-// fallback stylesheet. Queue every added subtree and remove optional surfaces
-// from the DOM while preserving playback, Spotify and login controls.
+// fallback stylesheet. Queue every added subtree, deduplicate disconnected roots
+// back to document, and remove optional surfaces while preserving playback,
+// Spotify and login controls.
 inline std::wstring StationheadStartupDomBatchFixedScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -72,6 +73,15 @@ inline std::wstring StationheadStartupDomBatchFixedScript() {
     }
   };
 
+  const style = document.createElement('style');
+  style.id = 'homepanel-stationhead-startup-reduction';
+  style.textContent = `${selector}{display:none!important;visibility:hidden!important}`;
+  const ensureStyle = () => {
+    const parent = document.head || document.documentElement;
+    if (parent && !style.isConnected) parent.appendChild(style);
+  };
+  ensureStyle();
+
   let active = true;
   let frame = 0;
   const pendingRoots = new Set();
@@ -83,10 +93,12 @@ inline std::wstring StationheadStartupDomBatchFixedScript() {
       pendingRoots.clear();
       return;
     }
-    const roots = Array.from(pendingRoots);
+    ensureStyle();
+    const roots = new Set();
+    for (const root of pendingRoots) roots.add(normalizeRoot(root));
     pendingRoots.clear();
-    if (!roots.length) roots.push(document);
-    for (const root of roots) scan(normalizeRoot(root));
+    if (!roots.size) roots.add(document);
+    for (const root of roots) scan(root);
   };
   const schedule = root => {
     if (!active) return;
