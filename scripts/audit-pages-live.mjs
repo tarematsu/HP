@@ -1,0 +1,256 @@
+import { createHash } from 'node:crypto';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { chromium } from 'playwright';
+
+const DEFAULT_TARGETS = [
+  { name: 'pages', baseUrl: 'https://skrzk.pages.dev' },
+  { name: 'custom-domain', baseUrl: 'https://skrzk.com' },
+];
+
+const ROUTES = [
+  { path: '/', requiredText: 'STATIONHEAD LIVE MONITOR' },
+  { path: '/history/' },
+];
+
+function parseArgs(argv) {
+  const options = {
+    outDir: '.pages-live-audit',
+    attempts: 2,
+    retryDelayMs: 5_000,
+    targets: [],
+  };
+
+  for (const arg of argv) {
+    if (arg.startsWith('--out=')) options.outDir = arg.slice('--out='.length);
+    else if (arg.startsWith('--attempts=')) options.attempts = Number(arg.slice('--attempts='.length));
+    else if (arg.startsWith('--retry-delay-ms=')) options.retryDelayMs = Number(arg.slice('--retry-delay-ms='.length));
+    else if (arg.startsWith('--url=')) {
+      const baseUrl = normalizeBaseUrl(arg.slice('--url='.length));
+      options.targets.push({ name: new URL(baseUrl).hostname, baseUrl });
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+
+  if (!Number.isInteger(options.attempts) || options.attempts < 1 || options.attempts > 10) {
+    throw new Error('--attempts must be an integer between 1 and 10');
+  }
+  if (!Number.isFinite(options.retryDelayMs) || options.retryDelayMs < 0 || options.retryDelayMs > 60_000) {
+    throw new Error('--retry-delay-ms must be between 0 and 60000');
+  }
+  if (!options.targets.length) options.targets = DEFAULT_TARGETS;
+  return options;
+}
+
+export function normalizeBaseUrl(value) {
+  const url = new URL(String(value || '').trim());
+  if (url.protocol !== 'https:') throw new Error(`Live audit URL must use HTTPS: ${value}`);
+  url.pathname = '/';
+  url.search = '';
+  url.hash = '';
+  return url.toString().replace(/\/$/, '');
+}
+
+function compactText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function digest(value) {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16);
+}
+
+function fileSafe(value) {
+  return value.replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '') || 'page';
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isCriticalResource(response) {
+  return ['document', 'script', 'stylesheet'].includes(response.request().resourceType());
+}
+
+async function auditRoute(browser, target, route, outDir) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    colorScheme: 'light',
+    locale: 'ja-JP',
+    serviceWorkers: 'block',
+  });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  const pageErrors = [];
+  const requestFailures = [];
+  const httpErrors = [];
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('requestfailed', (request) => {
+    const resourceType = request.resourceType();
+    if (['document', 'script', 'stylesheet'].includes(resourceType)) {
+      requestFailures.push(`${resourceType} ${request.url()}: ${request.failure()?.errorText || 'failed'}`);
+    }
+  });
+  page.on('response', (response) => {
+    if (response.status() >= 400 && isCriticalResource(response)) {
+      httpErrors.push(`${response.status()} ${response.request().resourceType()} ${response.url()}`);
+    }
+  });
+
+  const url = new URL(route.path, `${target.baseUrl}/`).toString();
+  const failures = [];
+  let response = null;
+  let navigationError = null;
+
+  try {
+    response = await page.goto(url, { waitUntil: 'networkidle', timeout: 35_000 });
+  } catch (error) {
+    navigationError = error instanceof Error ? error.message : String(error);
+  }
+
+  await page.waitForTimeout(750).catch(() => {});
+  const title = await page.title().catch(() => '');
+  const bodyText = compactText(await page.locator('body').innerText({ timeout: 5_000 }).catch(() => ''));
+  const mainVisible = await page.locator('main').first().isVisible().catch(() => false);
+  const finalUrl = page.url();
+  const screenshotPath = join(outDir, `${fileSafe(target.name)}-${fileSafe(route.path)}.png`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+
+  if (navigationError) failures.push(`navigation failed: ${navigationError}`);
+  if (!response) failures.push('navigation returned no response');
+  else if (response.status() >= 400) failures.push(`document returned HTTP ${response.status()}`);
+  if (!finalUrl.startsWith('https://')) failures.push(`final URL is not HTTPS: ${finalUrl}`);
+  if (!mainVisible) failures.push('visible <main> element was not found');
+  if (bodyText.length < 20) failures.push(`page body is unexpectedly short (${bodyText.length} characters)`);
+  if (route.requiredText && !bodyText.includes(route.requiredText)) {
+    failures.push(`required text was not rendered: ${route.requiredText}`);
+  }
+  failures.push(...consoleErrors.map((value) => `console error: ${value}`));
+  failures.push(...pageErrors.map((value) => `page error: ${value}`));
+  failures.push(...requestFailures.map((value) => `request failure: ${value}`));
+  failures.push(...httpErrors.map((value) => `HTTP error: ${value}`));
+
+  await context.close();
+  return {
+    path: route.path,
+    requestedUrl: url,
+    finalUrl,
+    status: response?.status() ?? null,
+    title,
+    mainVisible,
+    bodyLength: bodyText.length,
+    bodyDigest: digest(bodyText),
+    bodyPreview: bodyText.slice(0, 240),
+    screenshotPath,
+    consoleErrors,
+    pageErrors,
+    requestFailures,
+    httpErrors,
+    failures,
+    ok: failures.length === 0,
+  };
+}
+
+async function auditHealth(target) {
+  const url = new URL('/api/health', `${target.baseUrl}/`).toString();
+  const failures = [];
+  let status = null;
+  let payload = null;
+  let error = null;
+
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'application/json', 'cache-control': 'no-cache' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20_000),
+    });
+    status = response.status;
+    payload = await response.json().catch(() => null);
+    if (!response.ok) failures.push(`health endpoint returned HTTP ${response.status}`);
+    if (payload?.ok !== true) failures.push('health endpoint did not return { ok: true }');
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : String(caught);
+    failures.push(`health request failed: ${error}`);
+  }
+
+  return { url, status, payload, error, failures, ok: failures.length === 0 };
+}
+
+async function auditTarget(browser, target, outDir) {
+  const routes = [];
+  for (const route of ROUTES) routes.push(await auditRoute(browser, target, route, outDir));
+  const health = await auditHealth(target);
+  const failures = [
+    ...routes.flatMap((route) => route.failures.map((failure) => `${route.path}: ${failure}`)),
+    ...health.failures.map((failure) => `/api/health: ${failure}`),
+  ];
+  return { ...target, routes, health, failures, ok: failures.length === 0 };
+}
+
+function markdownSummary(report) {
+  const lines = [
+    '# Pages live browser audit',
+    '',
+    `- Generated: ${report.generatedAt}`,
+    `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
+    '',
+    '| Target | Route | HTTP | Main | Body | Result |',
+    '| --- | --- | ---: | :---: | ---: | :---: |',
+  ];
+
+  for (const target of report.targets) {
+    for (const route of target.routes) {
+      lines.push(`| ${target.baseUrl} | ${route.path} | ${route.status ?? '-'} | ${route.mainVisible ? 'yes' : 'no'} | ${route.bodyLength} | ${route.ok ? 'PASS' : 'FAIL'} |`);
+    }
+    lines.push(`| ${target.baseUrl} | /api/health | ${target.health.status ?? '-'} | - | - | ${target.health.ok ? 'PASS' : 'FAIL'} |`);
+  }
+
+  const failures = report.targets.flatMap((target) => target.failures.map((failure) => `- **${target.name}** ${failure}`));
+  if (failures.length) lines.push('', '## Failures', '', ...failures);
+  return `${lines.join('\n')}\n`;
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  await mkdir(options.outDir, { recursive: true });
+  const browser = await chromium.launch({ headless: true });
+  let report;
+
+  try {
+    for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
+      const targets = [];
+      for (const target of options.targets) targets.push(await auditTarget(browser, target, options.outDir));
+      report = {
+        generatedAt: new Date().toISOString(),
+        attempt,
+        attempts: options.attempts,
+        targets,
+        ok: targets.every((target) => target.ok),
+      };
+      if (report.ok || attempt === options.attempts) break;
+      await sleep(options.retryDelayMs);
+    }
+  } finally {
+    await browser.close();
+  }
+
+  const jsonPath = join(options.outDir, 'report.json');
+  const summaryPath = join(options.outDir, 'summary.md');
+  const summary = markdownSummary(report);
+  await writeFile(jsonPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  await writeFile(summaryPath, summary, 'utf8');
+  if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary, 'utf8');
+  process.stdout.write(summary);
+  if (!report.ok) process.exitCode = 1;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
