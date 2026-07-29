@@ -93,7 +93,7 @@ test('HomePanel scheduler drains due work with bounded concurrency and aligned c
 
 test('device exchange isolates HTTP CPU while preserving telemetry-before-sync ordering', () => {
   const forwardingAt = deviceExchange.indexOf('requestCoordinatedDeviceExchange');
-  const fallbackAt = deviceExchange.indexOf('buildDeviceExchangeResponse');
+  const fallbackAt = deviceExchange.indexOf('return buildDeviceExchangeResponse');
   assert.ok(forwardingAt >= 0);
   assert.ok(fallbackAt > forwardingAt);
 
