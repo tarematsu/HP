@@ -12,11 +12,13 @@ const option = (name, fallback = '') => {
     : fallback;
 };
 const flag = (name) => process.argv.includes(name);
+const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 const safeName = (value) => String(value || '')
   .replace(/^https?:\/\//i, '')
   .replace(/[^A-Za-z0-9._-]+/g, '_')
   .replace(/^_+|_+$/g, '')
   .slice(0, 100) || 'stationhead';
+const startPattern = /start\s+listening|listen\s+(?:now|live)|join\s+(?:station|room)|resume|continue|再生|聴く|参加/i;
 
 function extractWideArray(source, name, required = true) {
   const match = source.match(new RegExp(
@@ -44,10 +46,7 @@ function extractModuleStubs(source) {
   const result = [];
   const matcher = /if\s*\(\s*StationheadHashedAssetModulePathMatches\(\s*uri\.path\s*,\s*L"([^"]+)"\s*\)\s*\)\s*\{\s*return\s+([A-Za-z_$][\w$]*);/g;
   for (const match of source.matchAll(matcher)) {
-    result.push({
-      stem: match[1].toLowerCase(),
-      body: extractNarrowString(source, match[2]),
-    });
+    result.push({ stem: match[1].toLowerCase(), body: extractNarrowString(source, match[2]) });
   }
   if (!result.length) throw new Error('Could not find module stub mappings in native policy');
   return result;
@@ -122,12 +121,7 @@ function classifyScript(url, policy) {
   if (!hostMatches(uri.host, 'stationhead.com')) return pass;
   for (const stub of policy.moduleStubs) {
     if (hashedAssetMatches(uri.path, stub.stem)) {
-      return {
-        block: true,
-        mode: 'module-stub',
-        reason: `known-module-stub:${stub.stem}`,
-        body: stub.body,
-      };
+      return { block: true, mode: 'module-stub', reason: `known-module-stub:${stub.stem}`, body: stub.body };
     }
   }
   if (!uri.path.endsWith('.js') && !uri.path.endsWith('.mjs')) return pass;
@@ -140,25 +134,89 @@ function classifyScript(url, policy) {
   };
 }
 
-async function clickPlaybackCandidate(page) {
-  const candidates = page.locator('button, [role="button"], a');
-  const count = Math.min(await candidates.count(), 250);
-  for (let index = 0; index < count; index += 1) {
-    const candidate = candidates.nth(index);
-    const label = await candidate.evaluate((node) => [
-      node.textContent || '',
-      node.getAttribute('aria-label') || '',
-      node.getAttribute('title') || '',
-    ].join(' ').replace(/\s+/g, ' ').trim()).catch(() => '');
-    if (!/start listening|listen now|listen live|join station|join room|resume|continue|再生|聴く|参加/i.test(label)) continue;
-    if (await candidate.click({ timeout: 3000 }).then(() => true).catch(() => false)) {
-      return label.slice(0, 160);
-    }
-  }
-  return '';
+async function candidateLabel(locator) {
+  return locator.evaluate((node) => [
+    node.textContent || '',
+    node.getAttribute('aria-label') || '',
+    node.getAttribute('title') || '',
+    node.getAttribute('value') || '',
+  ].join(' ').replace(/\s+/g, ' ').trim()).catch(() => '');
 }
 
-async function runCapture({ browser, targetUrl, durationMs, policy, intercept }) {
+async function findPlaybackCandidate(page, timeoutMs = 15_000) {
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  do {
+    const candidates = page.locator('button, [role="button"], a, input[type="button"], input[type="submit"]');
+    const count = Math.min(await candidates.count(), 300);
+    for (let index = 0; index < count; index += 1) {
+      const candidate = candidates.nth(index);
+      if (!await candidate.isVisible().catch(() => false)) continue;
+      const label = await candidateLabel(candidate);
+      if (startPattern.test(label)) return { candidate, label: label.slice(0, 160) };
+    }
+    if (Date.now() >= deadline) break;
+    await page.waitForTimeout(400);
+  } while (true);
+  return null;
+}
+
+async function uiSnapshot(page) {
+  return page.evaluate(() => {
+    const visible = (element) => {
+      if (!element || element.disabled || element.getAttribute?.('aria-hidden') === 'true') return false;
+      const rect = element.getBoundingClientRect?.();
+      if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+      const style = getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity || 1) > 0;
+    };
+    const controls = [...document.querySelectorAll('button,[role="button"],a,input,select,textarea')]
+      .filter(visible);
+    const loginInputs = [...document.querySelectorAll('input')].filter((element) => {
+      if (!visible(element)) return false;
+      const type = String(element.type || '').toLowerCase();
+      const name = `${element.name || ''} ${element.id || ''} ${element.placeholder || ''}`.toLowerCase();
+      return type === 'password' || type === 'email' || /email|user|login|password/.test(name);
+    });
+    return {
+      url: location.href,
+      title: document.title,
+      bodyText: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1600),
+      interactiveCount: controls.length,
+      loginSurfaceVisible: loginInputs.length > 0 || /log\s*in|sign\s*in|login|メール|パスワード/i.test(document.body?.innerText || ''),
+    };
+  }).catch(() => ({ url: '', title: '', bodyText: '', interactiveCount: 0, loginSurfaceVisible: false }));
+}
+
+async function attemptCredentialLogin(page, credentials) {
+  const result = {
+    credentialsAvailable: Boolean(credentials.email && credentials.password),
+    loginAttempted: false,
+    loginSubmitted: false,
+    loginFormStillVisible: false,
+  };
+  if (!result.credentialsAvailable) return result;
+
+  const email = page.locator('input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]').first();
+  const password = page.locator('input[type="password"], input[autocomplete="current-password"]').first();
+  const emailVisible = await email.isVisible().catch(() => false);
+  const passwordVisible = await password.isVisible().catch(() => false);
+  if (!emailVisible || !passwordVisible) return result;
+
+  result.loginAttempted = true;
+  await email.fill(credentials.email).catch(() => null);
+  await password.fill(credentials.password).catch(() => null);
+  const submit = page.locator('button[type="submit"], input[type="submit"], button').filter({
+    hasText: /log\s*in|sign\s*in|login|continue|ログイン|続ける/i,
+  }).first();
+  result.loginSubmitted = await submit.click({ timeout: 3000 }).then(() => true).catch(async () => {
+    return password.press('Enter').then(() => true).catch(() => false);
+  });
+  if (result.loginSubmitted) await page.waitForTimeout(4000);
+  result.loginFormStillVisible = await password.isVisible().catch(() => false);
+  return result;
+}
+
+async function runCapture({ browser, targetUrl, durationMs, policy, intercept, outDir, captureName, credentials }) {
   const context = await browser.newContext({
     viewport: { width: 1365, height: 900 },
     locale: 'ja-JP',
@@ -241,18 +299,66 @@ async function runCapture({ browser, targetUrl, durationMs, policy, intercept })
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 })
     .catch((error) => { navigationError = String(error.message || error); });
   await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
-  const clicked = flag('--auto-click') ? await clickPlaybackCandidate(page) : '';
-  if (clicked) await page.waitForTimeout(5000);
+
+  const ui = {
+    startListeningVisible: false,
+    startListeningLabel: '',
+    clicked: false,
+    afterClickScreenVisible: false,
+    transitionSignals: [],
+    before: await uiSnapshot(page),
+    after: null,
+    credentialsAvailable: Boolean(credentials.email && credentials.password),
+    loginAttempted: false,
+    loginSubmitted: false,
+    loginFormStillVisible: false,
+  };
+
+  if (flag('--auto-click')) {
+    const playback = await findPlaybackCandidate(page);
+    ui.startListeningVisible = Boolean(playback);
+    ui.startListeningLabel = playback?.label || '';
+    await page.screenshot({ path: path.join(outDir, `${captureName}-before-click.png`), fullPage: true }).catch(() => null);
+    if (playback) {
+      ui.clicked = await playback.candidate.click({ timeout: 5000 }).then(() => true).catch(() => false);
+      if (ui.clicked) await page.waitForTimeout(5000);
+    }
+    ui.after = await uiSnapshot(page);
+    const stillVisible = Boolean(await findPlaybackCandidate(page, 0));
+    if (!stillVisible) ui.transitionSignals.push('start-control-disappeared');
+    if (ui.before.url !== ui.after.url) ui.transitionSignals.push('url-changed');
+    if (normalizeText(ui.before.bodyText) !== normalizeText(ui.after.bodyText)) ui.transitionSignals.push('body-changed');
+    if (ui.after.loginSurfaceVisible) ui.transitionSignals.push('login-surface-visible');
+    if (ui.after.interactiveCount > 0) ui.transitionSignals.push('interactive-screen-visible');
+    ui.afterClickScreenVisible = Boolean(
+      ui.clicked &&
+      ui.after.bodyText &&
+      ui.transitionSignals.length > 0,
+    );
+    await page.screenshot({ path: path.join(outDir, `${captureName}-after-click.png`), fullPage: true }).catch(() => null);
+
+    if (intercept) Object.assign(ui, await attemptCredentialLogin(page, credentials));
+  } else {
+    ui.after = ui.before;
+  }
+
   await page.waitForTimeout(durationMs);
   await Promise.allSettled(bodyTasks);
-  const finalState = await page.evaluate(() => ({
-    url: location.href,
-    title: document.title,
-    bodyText: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 1000),
-  })).catch(() => ({ url: '', title: '', bodyText: '' }));
+  // Keep stored UI text from the pre-credential post-click snapshot so secrets
+  // can never be copied into reports or artifacts.
+  const finalState = ui.after || ui.before;
   for (const script of scripts) Object.assign(script, bodyByUrl.get(script.url) || {});
   await context.close();
-  return { finalState, navigationError, clicked, scripts, intercepted, consoleErrors, pageErrors };
+  return {
+    finalState,
+    navigationError,
+    clicked: ui.clicked ? ui.startListeningLabel : '',
+    ui,
+    scripts,
+    intercepted,
+    consoleErrors,
+    pageErrors,
+  };
 }
 
 function summarize(targetUrl, baseline, blocked) {
@@ -263,7 +369,17 @@ function summarize(targetUrl, baseline, blocked) {
   const mixedOpaque = unclassified.filter((item) => item.optionalSignals?.length && item.protectedSignals?.length);
   const expected = new Set(classifiedBlocked.map((item) => item.url));
   const intercepted = new Set(blocked.intercepted.map((item) => item.url));
+  const missedInterceptions = [...expected].filter((url) => !intercepted.has(url));
+  const passed = Boolean(
+    !missedInterceptions.length &&
+    blocked.pageErrors.length <= baseline.pageErrors.length &&
+    blocked.finalState.bodyText &&
+    blocked.ui.startListeningVisible &&
+    blocked.ui.clicked &&
+    blocked.ui.afterClickScreenVisible,
+  );
   return {
+    passed,
     targetUrl,
     baselineFinalUrl: baseline.finalState.url,
     blockedFinalUrl: blocked.finalState.url,
@@ -272,7 +388,7 @@ function summarize(targetUrl, baseline, blocked) {
     classifiedBlockedScripts: classifiedBlocked.length,
     classifiedBlockedEncodedBytes: classifiedBlocked.reduce((sum, item) => sum + (item.encodedBytes || 0), 0),
     interceptedRequests: blocked.intercepted.length,
-    missedInterceptions: [...expected].filter((url) => !intercepted.has(url)),
+    missedInterceptions,
     unclassifiedStationheadScripts: unclassified.length,
     likelyOptionalOpaque,
     mixedOpaque,
@@ -287,18 +403,25 @@ function markdown(report) {
     ? (report.classifiedBlockedEncodedBytes / report.baselineEncodedBytes * 100).toFixed(1)
     : '0.0';
   return `${[
-    '# Stationhead live JavaScript audit',
+    '# Stationhead live JavaScript and UI audit',
     '',
     `- Target: ${report.targetUrl}`,
+    `- Result: ${report.passed ? 'PASS' : 'FAIL'}`,
     `- Baseline unique scripts: ${report.baselineUniqueScripts}`,
     `- Baseline encoded script bytes: ${formatBytes(report.baselineEncodedBytes)}`,
     `- Pre-load replacements: ${report.classifiedBlockedScripts} scripts / ${formatBytes(report.classifiedBlockedEncodedBytes)} (${percent}%)`,
     `- Requests intercepted: ${report.interceptedRequests}`,
     `- Interception misses: ${report.missedInterceptions.length}`,
+    `- Replaced-run Start Listening visible: ${report.blocked.ui.startListeningVisible}`,
+    `- Replaced-run Start Listening clicked: ${report.blocked.ui.clicked}`,
+    `- Replaced-run post-click screen visible: ${report.blocked.ui.afterClickScreenVisible}`,
+    `- Transition signals: ${report.blocked.ui.transitionSignals.join(', ') || 'none'}`,
+    `- Credentials available: ${report.blocked.ui.credentialsAvailable}`,
+    `- Login attempted: ${report.blocked.ui.loginAttempted}`,
+    `- Login submitted: ${report.blocked.ui.loginSubmitted}`,
     `- Baseline page errors: ${report.baseline.pageErrors.length}`,
     `- Replaced-run page errors: ${report.blocked.pageErrors.length}`,
-    `- Baseline auto-click: ${report.baseline.clicked || 'none'}`,
-    `- Replaced-run auto-click: ${report.blocked.clicked || 'none'}`,
+    '- Audio playback: not evaluated',
     '',
     '## Replaced scripts',
     ...report.classifiedBlocked.map((item) =>
@@ -315,21 +438,25 @@ async function main() {
   const outDir = path.resolve(option('--out', path.join('.sh-js-audit', safeName(targetUrl))));
   await mkdir(outDir, { recursive: true });
   const policy = await loadPolicy();
+  const credentials = {
+    email: process.env.STATIONHEAD_EMAIL || '',
+    password: process.env.STATIONHEAD_PASSWORD || '',
+  };
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   try {
-    const baseline = await runCapture({ browser, targetUrl, durationMs, policy, intercept: false });
-    const blocked = await runCapture({ browser, targetUrl, durationMs, policy, intercept: true });
+    const baseline = await runCapture({
+      browser, targetUrl, durationMs, policy, intercept: false, outDir, captureName: 'baseline', credentials: { email: '', password: '' },
+    });
+    const blocked = await runCapture({
+      browser, targetUrl, durationMs, policy, intercept: true, outDir, captureName: 'replaced', credentials,
+    });
     const report = summarize(targetUrl, baseline, blocked);
     await writeFile(path.join(outDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`);
     const summary = markdown(report);
     await writeFile(path.join(outDir, 'summary.md'), summary);
     console.log(summary);
-    if (report.missedInterceptions.length ||
-        report.blocked.pageErrors.length > report.baseline.pageErrors.length ||
-        !report.blocked.finalState.bodyText) {
-      process.exitCode = 2;
-    }
+    if (!report.passed) process.exitCode = 2;
   } finally {
     await browser.close();
   }
