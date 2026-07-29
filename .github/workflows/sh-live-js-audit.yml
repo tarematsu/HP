@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/audit-stationhead-login.mjs'
       - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
@@ -78,6 +79,14 @@ jobs:
           --report=.sh-js-audit/fallback/report.json
           --out=.sh-js-audit/fallback/module-graph.json
 
+      - name: Attempt Stationhead credential login
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-login.mjs
+          --url=https://www.stationhead.com/sakuramankai
+          --out=.sh-js-audit/login-report.json
+
       - name: Publish audit summary
         if: always()
         shell: bash
@@ -88,6 +97,14 @@ jobs:
               printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
             fi
           done
+          if [ -f .sh-js-audit/login-report.json ]; then
+            node --input-type=module <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+            import { readFile } from 'node:fs/promises';
+            const report = JSON.parse(await readFile('.sh-js-audit/login-report.json', 'utf8'));
+            console.log('## Stationhead credential login attempt');
+            for (const [name, value] of Object.entries(report)) console.log(`- ${name}: ${value}`);
+            NODE
+          fi
 
       - name: Upload sanitized audit artifact
         if: always()
