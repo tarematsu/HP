@@ -45,8 +45,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Access production Pages in Chromium
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: >-
           node scripts/audit-pages-live.mjs
+          --url=https://skrzk.pages.dev
           --attempts=3
           --retry-delay-ms=5000
           --out=.pages-live-audit
