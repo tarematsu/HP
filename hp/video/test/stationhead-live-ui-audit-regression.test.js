@@ -10,6 +10,10 @@ const audit = readFileSync(
   new URL('../../../scripts/audit-stationhead-js-live.mjs', import.meta.url),
   'utf8',
 );
+const loginAudit = readFileSync(
+  new URL('../../../scripts/audit-stationhead-login.mjs', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -41,11 +45,13 @@ test('UI audit captures evidence before credentials can be entered', () => {
 test('credentials use the existing audit secrets and never enter reports', () => {
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_EMAIL/);
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_PASSWORD/);
-  assert.match(audit, /credentialsAvailable/);
-  assert.match(audit, /loginAttempted/);
-  assert.match(audit, /loginSubmitted/);
-  assert.doesNotMatch(audit, /console\.(?:log|error)\([^\n]*(?:credentials\.email|credentials\.password|STATIONHEAD_PASSWORD)/);
-  assert.doesNotMatch(audit, /JSON\.stringify\([^\n]*(?:credentials|STATIONHEAD_PASSWORD)/);
+  assert.match(workflow, /Attempt Stationhead credential login/);
+  assert.match(loginAudit, /page\.keyboard\.press\('Escape'\)/);
+  assert.match(loginAudit, /loginControlClicked/);
+  assert.match(loginAudit, /emailInputVisible/);
+  assert.match(loginAudit, /passwordInputVisible/);
+  assert.doesNotMatch(loginAudit, /console\.(?:log|error)\([^\n]*(?:emailValue|passwordValue|STATIONHEAD_PASSWORD)/);
+  assert.doesNotMatch(loginAudit, /JSON\.stringify\([^\n]*(?:emailValue|passwordValue)/);
 });
 
 test('workflow always runs both pages and has an authoritative UI gate', () => {
