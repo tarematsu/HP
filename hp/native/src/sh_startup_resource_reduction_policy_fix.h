@@ -3,6 +3,39 @@
 
 namespace hp {
 
+inline constexpr std::string_view kStationheadSvgIconNonLazyModuleStub =
+    "export const SVGIconNonLazy=()=>null;";
+
+inline constexpr std::string_view
+StationheadStartupOptionalModuleStubBoundaryFixed(std::wstring_view uriLower) {
+  const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
+  if (!uri.valid || uri.scheme != L"https" ||
+      !StationheadRuntimeHostMatches(uri.host, L"stationhead.com")) {
+    return {};
+  }
+  // SVGIconNonLazy is only a switch over decorative React SVG components. Its
+  // sole static dependency is the large premium-20 icon pack, so replacing this
+  // one wrapper prevents both modules from being downloaded and parsed while
+  // preserving all text controls used for playback and authentication.
+  if (StationheadHashedAssetModulePathMatches(
+          uri.path, L"svgiconnonlazy")) {
+    return kStationheadSvgIconNonLazyModuleStub;
+  }
+  return StationheadKnownOptionalModuleStubBoundaryFixed(uriLower);
+}
+
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/svgiconnonlazy-ui-053mu.js") ==
+              kStationheadSvgIconNonLazyModuleStub);
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/svgiconnonlazy-next1234.mjs") ==
+              kStationheadSvgIconNonLazyModuleStub);
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+                  L"https://www.stationhead.com/assets/selectedgif-baax9j6x.js") ==
+              kSelectedGifModuleStub);
+static_assert(StationheadStartupOptionalModuleStubBoundaryFixed(
+    L"https://stationhead.com.evil.example/assets/svgiconnonlazy-ui-053mu.js").empty());
+
 inline constexpr bool StationheadOptionalStylesheetBoundaryFixed(
     std::wstring_view uriLower) {
   const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
@@ -128,7 +161,7 @@ inline void ApplyStationheadResourceBlockingStartupReduced(
                 if (hasContext &&
                     context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
                   moduleStub =
-                      StationheadKnownOptionalModuleStubBoundaryFixed(lower);
+                      StationheadStartupOptionalModuleStubBoundaryFixed(lower);
                   if (!moduleStub.empty()) {
                     block = true;
                   } else {
@@ -196,3 +229,6 @@ inline void ApplyStationheadResourceBlockingStartupReduced(
 
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingStartupReduced
+#undef StationheadKnownOptionalModuleStubBoundaryFixed
+#define StationheadKnownOptionalModuleStubBoundaryFixed \
+  StationheadStartupOptionalModuleStubBoundaryFixed
