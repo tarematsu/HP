@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('playback-safe policy is compiled after July 23 stats and startup reductions', () => {
+test('playback-safe policy is final after July 23 stats and resource reduction', () => {
   const baselineAt = composition.indexOf(
     '#include "sh_stats_july23_baseline_policy_fix.h"',
   );
@@ -29,13 +29,10 @@ test('playback-safe policy is compiled after July 23 stats and startup reduction
   const playbackAt = composition.indexOf(
     '#include "sh_playback_resource_policy_fix.h"',
   );
-  const domAt = composition.indexOf(
-    '#include "sh_startup_dom_batch_policy_fix.h"',
-  );
   assert.ok(baselineAt >= 0);
   assert.ok(startupAt > baselineAt);
   assert.ok(playbackAt > startupAt);
-  assert.ok(domAt > playbackAt);
+  assert.doesNotMatch(composition, /sh_startup_dom_batch_policy_fix\.h/);
   assert.match(
     policy,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
