@@ -65,7 +65,7 @@ jobs:
             --project-name skrzk \
             --branch "$PREVIEW_BRANCH" \
             2>&1 | tee pages-preview-deploy.log
-          preview_url="$(grep -Eo 'https://[[:alnum:]-]+\.skrzk\.pages\.dev' pages-preview-deploy.log | tail -n 1 || true)"
+          preview_url="$(grep -Eo 'https://[[:alnum:]-]+\.skrzk\.pages\.dev' pages-preview-deploy.log | head -n 1 || true)"
           if [[ -z "$preview_url" ]]; then
             echo 'Could not find the deployed Pages preview URL in Wrangler output.' >&2
             exit 1
