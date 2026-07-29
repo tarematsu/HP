@@ -6,6 +6,10 @@ const policy = readFileSync(
   new URL('../../native/src/sh_startup_resource_reduction_policy_fix.h', import.meta.url),
   'utf8',
 );
+const batchPolicy = readFileSync(
+  new URL('../../native/src/sh_startup_dom_batch_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const trackBoundary = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
@@ -19,22 +23,26 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('startup reduction is compiled after the data-safe policy', () => {
+test('startup reduction and the final DOM batch policy are compiled in order', () => {
   const dataAt = trackBoundary.indexOf(
     '#include "sh_data_acquisition_resource_policy_fix.h"',
   );
   const startupAt = trackBoundary.indexOf(
     '#include "sh_startup_resource_reduction_policy_fix.h"',
   );
+  const batchAt = trackBoundary.indexOf(
+    '#include "sh_startup_dom_batch_policy_fix.h"',
+  );
   assert.ok(dataAt >= 0);
   assert.ok(startupAt > dataAt);
+  assert.ok(batchAt > startupAt);
   assert.match(
     policy,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingStartupReduced/,
   );
   assert.match(
-    policy,
-    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptStartupReduced/,
+    batchPolicy,
+    /#undef StationheadAutoplayScript[\s\S]*#define StationheadAutoplayScript StationheadAutoplayScriptStartupDomBatchFixed/,
   );
 });
 
@@ -82,11 +90,11 @@ test('only the exact optional Tooltip stylesheet is replaced with local 204', ()
   assert.match(policy, /stationhead\.com\.evil\.example\/assets\/tooltip-u7w9wxcq\.css/);
 });
 
-test('DOM reduction is bounded, batched and protects playback and login controls', () => {
+test('DOM reduction retains every mutation root and protects playback controls', () => {
   const dom = section(
-    policy,
-    'inline std::wstring StationheadStartupDomReductionScript',
-    'inline std::wstring StationheadAutoplayScriptStartupReduced',
+    batchPolicy,
+    'inline std::wstring StationheadStartupDomBatchFixedScript',
+    'inline std::wstring StationheadAutoplayScriptStartupDomBatchFixed',
   );
   for (const optionalSurface of [
     'data-testid*="gif"',
@@ -107,6 +115,12 @@ test('DOM reduction is bounded, batched and protects playback and login controls
   assert.match(dom, /!hardOptionalImage && protectedSurface\(element\)/);
   assert.match(dom, /const ensureStyle = \(\) =>/);
   assert.match(dom, /!style\.isConnected/);
+  assert.match(dom, /const pendingRoots = new Set\(\)/);
+  assert.match(dom, /for \(const node of record\.addedNodes\)/);
+  assert.match(dom, /pendingRoots\.add\(node\)/);
+  assert.match(dom, /const roots = new Set\(\)/);
+  assert.match(dom, /roots\.add\(normalizeRoot\(root\)\)/);
+  assert.match(dom, /for \(const root of roots\) scan\(root\)/);
   assert.match(dom, /new MutationObserver/);
   assert.match(dom, /requestAnimationFrame/);
   assert.match(dom, /observer\.disconnect\(\)/);
@@ -116,18 +130,19 @@ test('DOM reduction is bounded, batched and protects playback and login controls
   assert.match(dom, /spotify/);
   assert.match(dom, /log\\s\*in/);
   assert.match(dom, /play\|pause\|resume\|continue\|audio\|volume/);
+  assert.doesNotMatch(dom, /Array\.from\(record\.addedNodes\)\.find/);
   assert.doesNotMatch(dom, /setInterval/);
 });
 
-test('autoplay wrapper retains all existing runtime safety policy before DOM cleanup', () => {
+test('final autoplay wrapper retains runtime safety before DOM cleanup', () => {
   const wrapper = section(
-    policy,
-    'inline std::wstring StationheadAutoplayScriptStartupReduced',
+    batchPolicy,
+    'inline std::wstring StationheadAutoplayScriptStartupDomBatchFixed',
     '}  // namespace hp',
   );
   assert.match(
     wrapper,
     /StationheadAutoplayScriptRuntimeFixed\(globalName, messagePrefix\)/,
   );
-  assert.match(wrapper, /StationheadStartupDomReductionScript\(\)/);
+  assert.match(wrapper, /StationheadStartupDomBatchFixedScript\(\)/);
 });
