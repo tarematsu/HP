@@ -49,7 +49,7 @@ test('startup DOM mutation is absent from the compiled policy', () => {
   assert.doesNotMatch(policy, /#define StationheadAutoplayScript/);
 });
 
-test('SVGIconNonLazy is replaced before its premium icon dependency loads', () => {
+test('SVGIconNonLazy and its preloaded premium icon pack are replaced locally', () => {
   const matcher = section(
     policy,
     'inline constexpr std::string_view\nStationheadStartupOptionalModuleStubBoundaryFixed',
@@ -59,15 +59,21 @@ test('SVGIconNonLazy is replaced before its premium icon dependency loads', () =
     policy,
     /kStationheadSvgIconNonLazyModuleStub =[\s\S]*export const SVGIconNonLazy=\(\)=>null;/,
   );
+  assert.match(
+    policy,
+    /kStationheadPremiumIconModuleStub =[\s\S]*export\{\};/,
+  );
   assert.match(matcher, /StationheadHashedAssetModulePathMatches\([\s\S]*L"svgiconnonlazy"/);
   assert.match(matcher, /return kStationheadSvgIconNonLazyModuleStub/);
+  assert.match(matcher, /StationheadHashedAssetModulePathMatches\(uri\.path, L"premium-20"\)/);
+  assert.match(matcher, /return kStationheadPremiumIconModuleStub/);
   assert.match(matcher, /return StationheadKnownOptionalModuleStubBoundaryFixed\(uriLower\)/);
   assert.match(policy, /svgiconnonlazy-next1234\.mjs/);
+  assert.match(policy, /premium-20-iq2c1wiz\.js"\) ==[\s\S]*kStationheadPremiumIconModuleStub/);
   assert.match(
     policy,
     /#define StationheadKnownOptionalModuleStubBoundaryFixed \\\n  StationheadStartupOptionalModuleStubBoundaryFixed/,
   );
-  assert.doesNotMatch(matcher, /uri\.path, L"premium-20"/);
 });
 
 test('SelectedGIF remains the audited hash-independent module stub', () => {
