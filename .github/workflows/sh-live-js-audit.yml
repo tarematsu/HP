@@ -4,12 +4,22 @@ on:
   pull_request:
     paths:
       - 'scripts/audit-stationhead-js-live.mjs'
+      - 'scripts/audit-stationhead-dom-reduction-live.mjs'
       - 'scripts/audit-stationhead-login.mjs'
       - 'scripts/inspect-stationhead-module-graph.mjs'
       - 'scripts/measure-stationhead-start-listening.mjs'
       - 'hp/native/src/sh_runtime_script_resource_policy_fix.h'
       - 'hp/native/src/sh_runtime_resource_boundary_policy_fix.h'
+      - 'hp/native/src/sh_data_acquisition_resource_policy_fix.h'
+      - 'hp/native/src/sh_stats_july23_baseline_policy_fix.h'
+      - 'hp/native/src/sh_startup_resource_reduction_policy_fix.h'
+      - 'hp/native/src/sh_playback_resource_policy_fix.h'
+      - 'hp/native/src/sh_startup_dom_batch_policy_fix.h'
+      - 'hp/native/src/sh_track_boundary_message_policy.h'
+      - 'hp/native/src/sh_track_boundary_script.h'
       - 'hp/video/test/stationhead-live-ui-audit-regression.test.js'
+      - 'hp/video/test/stationhead-startup-resource-reduction-regression.test.js'
+      - 'hp/video/test/stationhead-playback-resource-fail-open-regression.test.js'
       - '.github/workflows/sh-live-js-audit.yml'
   workflow_dispatch:
 
@@ -87,6 +97,22 @@ jobs:
           --report=.sh-js-audit/fallback/report.json
           --out=.sh-js-audit/fallback/module-graph.json
 
+      - name: Audit primary DOM reduction
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-dom-reduction-live.mjs
+          --url=https://www.stationhead.com/sakuramankai
+          --out=.sh-js-audit/dom-primary.json
+
+      - name: Audit fallback DOM reduction
+        if: always()
+        continue-on-error: true
+        run: >-
+          node scripts/audit-stationhead-dom-reduction-live.mjs
+          --url=https://www.stationhead.com/buddy46
+          --out=.sh-js-audit/dom-fallback.json
+
       - name: Attempt Stationhead credential login
         if: always()
         continue-on-error: true
@@ -103,6 +129,12 @@ jobs:
             if [ -f "$summary" ]; then
               cat "$summary" >> "$GITHUB_STEP_SUMMARY"
               printf '\n---\n\n' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          for report in .sh-js-audit/dom-primary.json .sh-js-audit/dom-fallback.json; do
+            if [ -f "$report" ]; then
+              printf '## %s\n' "$(basename "$report" .json)" >> "$GITHUB_STEP_SUMMARY"
+              node -e "const r=require('./$report'); for (const [k,v] of Object.entries(r)) console.log('- '+k+': '+(Array.isArray(v)?v.join(', '):v))" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
           if [ -f .sh-js-audit/login-report.json ]; then
@@ -152,6 +184,20 @@ jobs:
             }
             if (report.passed !== true) failures.push(`${name}: report did not pass`);
           }
+          for (const name of ['dom-primary', 'dom-fallback']) {
+            try {
+              const report = JSON.parse(await readFile(`.sh-js-audit/${name}.json`, 'utf8'));
+              if (report.passed !== true) failures.push(`${name}: DOM reduction did not pass`);
+              if (report.reductionInstalled !== true) failures.push(`${name}: DOM reduction was not installed`);
+              if (report.optionalTotalBeforeClick !== 0) failures.push(`${name}: optional DOM node remained before click`);
+              if (report.optionalTotalAfterClick !== 0) failures.push(`${name}: optional DOM node remained after click`);
+              if (report.optionalVisibleBeforeClick !== 0) failures.push(`${name}: optional DOM remained visible before click`);
+              if (report.optionalVisibleAfterClick !== 0) failures.push(`${name}: optional DOM remained visible after click`);
+              if (report.pageErrors?.length) failures.push(`${name}: DOM reduction added a page error`);
+            } catch (error) {
+              failures.push(`${name}: report missing or invalid`);
+            }
+          }
           try {
             const timing = JSON.parse(await readFile('.sh-start-listening-timing/report.json', 'utf8'));
             if (timing.visibleCount !== timing.sampleCount) failures.push('timing: Start Listening was not visible in every sample');
@@ -162,5 +208,5 @@ jobs:
             console.error(failures.join('\n'));
             process.exit(1);
           }
-          console.log('Stationhead UI audit passed. Audio playback was not evaluated.');
+          console.log('Stationhead resource, timing and DOM audits passed. Audio playback was not evaluated.');
           NODE
