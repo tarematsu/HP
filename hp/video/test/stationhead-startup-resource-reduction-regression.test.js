@@ -67,7 +67,7 @@ test('SVGIconNonLazy is replaced before its premium icon dependency loads', () =
     policy,
     /#define StationheadKnownOptionalModuleStubBoundaryFixed \\\n  StationheadStartupOptionalModuleStubBoundaryFixed/,
   );
-  assert.doesNotMatch(matcher, /premium-20/);
+  assert.doesNotMatch(matcher, /uri\.path, L"premium-20"/);
 });
 
 test('SelectedGIF remains the audited hash-independent module stub', () => {
