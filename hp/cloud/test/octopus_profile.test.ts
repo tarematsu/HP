@@ -37,14 +37,14 @@ function profileRanges(): OctopusProfileRanges {
 }
 
 describe("Octopus complete-day profile", () => {
-  it("aligns comparison blocks to the current JST day boundary", () => {
+  it("aligns comparison blocks to the last fully stable JST day", () => {
     const now = Date.parse("2026-07-10T18:17:00Z");
     const ranges = completeDayProfileRanges(now);
 
-    expect(ranges.currentStart.toISOString()).toBe("2026-07-03T15:00:00.000Z");
-    expect(ranges.currentEnd.toISOString()).toBe("2026-07-10T15:00:00.000Z");
-    expect(ranges.previousStart.toISOString()).toBe("2026-06-26T15:00:00.000Z");
-    expect(ranges.previousEnd.toISOString()).toBe("2026-07-03T15:00:00.000Z");
+    expect(ranges.currentStart.toISOString()).toBe("2026-07-02T15:00:00.000Z");
+    expect(ranges.currentEnd.toISOString()).toBe("2026-07-09T15:00:00.000Z");
+    expect(ranges.previousStart.toISOString()).toBe("2026-06-25T15:00:00.000Z");
+    expect(ranges.previousEnd.toISOString()).toBe("2026-07-02T15:00:00.000Z");
 
     const totals = [
       ...dailyTotals(ranges.previousStart.getTime(), 7, 9.6),
@@ -55,14 +55,14 @@ describe("Octopus complete-day profile", () => {
 
     expect(profile).toHaveLength(7);
     expect(profile[0]).toEqual({
-      day: "土",
+      day: "金",
       currentTotal: 19.2,
       previousTotal: 9.6,
       currentComplete: true,
       previousComplete: true,
     });
     expect(profile[6]).toEqual({
-      day: "金",
+      day: "木",
       currentTotal: 19.2,
       previousTotal: 9.6,
       currentComplete: true,
@@ -70,29 +70,22 @@ describe("Octopus complete-day profile", () => {
     });
   });
 
-  it("includes Tuesday on early Thursday while leaving Wednesday incomplete", () => {
+  it("ends on Tuesday during early Thursday in JST", () => {
     const now = Date.parse("2026-07-29T17:45:00Z");
     const ranges = completeDayProfileRanges(now);
-    expect(ranges.currentEnd.toISOString()).toBe("2026-07-29T15:00:00.000Z");
+    expect(ranges.currentEnd.toISOString()).toBe("2026-07-28T15:00:00.000Z");
 
     const totals = [
       ...dailyTotals(ranges.previousStart.getTime(), 7, 9.6),
-      ...dailyTotals(ranges.currentStart.getTime(), 6, 19.2),
+      ...dailyTotals(ranges.currentStart.getTime(), 7, 19.2),
     ];
     const profile = buildOctopusDailyProfile(totals, ranges);
 
-    expect(profile[5]).toEqual({
+    expect(profile[6]).toEqual({
       day: "火",
       currentTotal: 19.2,
       previousTotal: 9.6,
       currentComplete: true,
-      previousComplete: true,
-    });
-    expect(profile[6]).toEqual({
-      day: "水",
-      currentTotal: null,
-      previousTotal: 9.6,
-      currentComplete: false,
       previousComplete: true,
     });
   });
