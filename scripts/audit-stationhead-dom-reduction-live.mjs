@@ -16,12 +16,18 @@ const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
 const startPattern = /start\s+listening|listen\s+(?:now|live)|join\s+(?:station|room)|resume|continue|再生|聴く|参加/i;
 
 function extractDomScript(source) {
-  const start = source.indexOf('inline std::wstring StationheadStartupDomReductionScript');
-  if (start < 0) throw new Error('StationheadStartupDomReductionScript was not found');
-  const section = source.slice(start);
-  const match = section.match(/LR"JS\(([\s\S]*?)\)JS"/);
-  if (!match) throw new Error('Stationhead DOM reduction raw script was not found');
-  return match[1];
+  const names = [
+    'StationheadStartupDomBatchFixedScript',
+    'StationheadStartupDomReductionScript',
+  ];
+  for (const name of names) {
+    const start = source.indexOf(`inline std::wstring ${name}`);
+    if (start < 0) continue;
+    const section = source.slice(start);
+    const match = section.match(/LR"JS\(([\s\S]*?)\)JS"/);
+    if (match) return match[1];
+  }
+  throw new Error('Final Stationhead DOM reduction raw script was not found');
 }
 
 async function candidateLabel(locator) {
@@ -80,24 +86,34 @@ async function snapshot(page) {
       'img[src*="giphy" i]',
       'img[src*="/gif" i]',
     ].join(',');
-    const optionalVisibleElements = [...document.querySelectorAll(optionalSelector)]
+    const optionalElements = [...document.querySelectorAll(optionalSelector)];
+    const optionalVisibleElements = optionalElements
       .filter(visible)
       .slice(0, 20)
-      .map((element) => ({
+      .map((element) => describe(element));
+    const optionalRemainingElements = optionalElements
+      .slice(0, 20)
+      .map((element) => describe(element));
+    return {
+      url: location.href,
+      bodyText: normalizeForReport(document.body?.innerText || ''),
+      optionalTotal: optionalElements.length,
+      optionalVisible: optionalVisibleElements.length,
+      optionalVisibleElements,
+      optionalRemainingElements,
+      reductionInstalled: window.__homepanelStationheadStartupDomReduction === true,
+    };
+
+    function describe(element) {
+      return {
         tag: element.tagName.toLowerCase(),
         testId: String(element.getAttribute('data-testid') || '').slice(0, 160),
         ariaLabel: String(element.getAttribute('aria-label') || '').slice(0, 160),
         title: String(element.getAttribute('title') || '').slice(0, 160),
         src: String(element.getAttribute('src') || '').slice(0, 240),
         text: normalizeForReport(element.textContent || '').slice(0, 240),
-      }));
-    return {
-      url: location.href,
-      bodyText: normalizeForReport(document.body?.innerText || ''),
-      optionalVisible: optionalVisibleElements.length,
-      optionalVisibleElements,
-      reductionInstalled: window.__homepanelStationheadStartupDomReduction === true,
-    };
+      };
+    }
 
     function normalizeForReport(value) {
       return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 1600);
@@ -109,7 +125,7 @@ async function main() {
   const targetUrl = option('--url', 'https://www.stationhead.com/sakuramankai');
   const outPath = path.resolve(option('--out', '.sh-js-audit/dom-reduction.json'));
   const header = await readFile(
-    'hp/native/src/sh_startup_resource_reduction_policy_fix.h',
+    'hp/native/src/sh_startup_dom_batch_policy_fix.h',
     'utf8',
   );
   const domScript = extractDomScript(header);
@@ -147,7 +163,8 @@ async function main() {
     );
     const passed = Boolean(
       before.reductionInstalled && startListeningVisible && clicked &&
-      afterClickScreenVisible && pageErrors.length === 0,
+      afterClickScreenVisible && before.optionalTotal === 0 &&
+      after.optionalTotal === 0 && pageErrors.length === 0,
     );
     const report = {
       passed,
@@ -155,10 +172,14 @@ async function main() {
       startListeningVisible,
       clicked,
       afterClickScreenVisible,
+      optionalTotalBeforeClick: before.optionalTotal,
       optionalVisibleBeforeClick: before.optionalVisible,
       optionalVisibleBeforeClickElements: before.optionalVisibleElements,
+      optionalRemainingBeforeClickElements: before.optionalRemainingElements,
+      optionalTotalAfterClick: after.optionalTotal,
       optionalVisibleAfterClick: after.optionalVisible,
       optionalVisibleAfterClickElements: after.optionalVisibleElements,
+      optionalRemainingAfterClickElements: after.optionalRemainingElements,
       reductionInstalled: before.reductionInstalled,
       pageErrors,
     };
