@@ -51,7 +51,9 @@ const PROFILE_SLOTS = 48;
 export const OCTOPUS_HISTORY_FLOOR_MS = Date.UTC(2025, 10, 1) - JST_MS;
 export const OCTOPUS_COLLECTION_DAYS = 7;
 export const OCTOPUS_CORRECTION_OVERLAP_DAYS = 1;
-export const OCTOPUS_STABILITY_LAG_DAYS = 1;
+// Fetch through the current JST day boundary. Partial days are rejected unless
+// all 48 half-hour slots are present, so an additional full-day lag is unnecessary.
+export const OCTOPUS_STABILITY_LAG_DAYS = 0;
 
 function jstDayKey(timestampMs: number): string {
   return new Date(timestampMs + JST_MS).toISOString().slice(0, 10);
