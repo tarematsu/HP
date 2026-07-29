@@ -100,6 +100,7 @@ test('the visible 1x1 playback host is not treated as interactive', () => {
   assert.match(sizePolicy, /static_assert\(!StationheadFocusSurfaceIsInteractive\(1, 720\)\);/);
   assert.match(sizePolicy, /static_assert\(!StationheadFocusSurfaceIsInteractive\(1280, 1\)\);/);
   assert.match(sizePolicy, /static_assert\(StationheadFocusSurfaceIsInteractive\(2, 2\)\);/);
+  assert.match(finalPolicySource, /host remains WS_VISIBLE[\s\S]*collapsed to a 1x1 surface/);
 });
 
 test('collapsed, hidden or invalid Stationhead focus is restored to the parent', () => {
