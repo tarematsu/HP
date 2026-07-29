@@ -51,11 +51,6 @@ double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
   return json::Number(object, name, std::numeric_limits<double>::quiet_NaN());
 }
 
-std::wstring Upper(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(), towupper);
-  return value;
-}
-
 std::wstring DeviceState(const JsonObject& item) {
   const std::wstring type = json::Text(item, L"deviceType");
   std::wstring state = L"接続";
@@ -65,12 +60,12 @@ std::wstring DeviceState(const JsonObject& item) {
              type.find(L"Presence") != std::wstring::npos) {
     state = json::Boolean(item, L"motion") ? L"検知" : L"静止";
   } else if (type.find(L"Plug") != std::wstring::npos) {
-    state = Upper(json::Text(item, L"power", L"-"));
+    state = L"--W";
     const double watts = NumberOrNaN(item, L"watts");
     if (std::isfinite(watts)) {
       wchar_t buffer[40]{};
-      swprintf_s(buffer, L" %.1fW", watts);
-      state += buffer;
+      swprintf_s(buffer, L"%dW", static_cast<int>(std::round(watts)));
+      state = buffer;
     }
   }
   const double battery = NumberOrNaN(item, L"battery");
@@ -162,11 +157,14 @@ bool ParseDashboardSnapshot(
     next.revisions.energy = SectionRevision(octopus, switchbot);
     const JsonArray devices = json::Array(switchbot, L"devices");
     next.switchBotDevices.reserve(8);
-    for (uint32_t index = 0; index < devices.Size() && index < 8; ++index) {
+    for (uint32_t index = 0;
+         index < devices.Size() && next.switchBotDevices.size() < 8; ++index) {
       try {
         const auto value = devices.GetAt(index);
         if (value.ValueType() != JsonValueType::Object) continue;
         const JsonObject item = value.GetObject();
+        const std::wstring type = json::Text(item, L"deviceType");
+        if (type.find(L"Plug") == std::wstring::npos) continue;
         next.switchBotDevices.push_back({
             json::Text(item, L"deviceName",
                        json::Text(item, L"deviceId", L"SwitchBot")),
