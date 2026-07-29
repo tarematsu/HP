@@ -112,6 +112,10 @@ test('unified observability runs account-wide post-deploy, collection, and daily
   ]);
   expectAll(budgetContract, [
     'DAILY_METRICS = ("requests", "rowsRead", "rowsWritten", "queueOperations")',
+    'daily.actualUsage',
+    'daily.projection.enforceProjected must be a boolean',
+    'daily.violationSources is inconsistent',
+    'elif enforce_projected and projected >= limit',
     'daily.usage.queueCount',
     'Daily metrics checked: `{len(DAILY_METRICS)}`',
   ]);
