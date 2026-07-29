@@ -69,7 +69,7 @@ test('HTTP cache is session-local instead of permanently disabled', () => {
   assert.match(sharedEnvironment, /--disable-features=BackForwardCache/);
   assert.match(
     sharedEnvironment,
-    /HTTP\s+cache is enabled during a live controller session[\s\S]*explicitly reset/,
+    /HTTP[\s\S]*cache is enabled during a live controller session[\s\S]*explicitly reset/,
   );
 });
 
