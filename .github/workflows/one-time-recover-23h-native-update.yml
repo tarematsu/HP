@@ -1,4 +1,4 @@
-name: One-time apply missed update migration
+name: One-time prepare permanent native update fix
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - ".github/workflows/one-time-recover-23h-native-update.yml"
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -15,149 +15,178 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  apply-and-retrigger:
-    if: github.event.head_commit.message != 'Remove one-time 23h native update recovery'
+  prepare-fix-branch:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Check out repository
+      - name: Check out permanent fix branch
         uses: actions/checkout@v4
-
-      - name: Resolve Cloudflare account context
-        uses: ./.github/actions/cloudflare-context
         with:
-          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+          ref: agent/fix-native-update-rollout
+          fetch-depth: 0
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: hp/package-lock.json
-
-      - name: Install HomePanel workspace dependencies
-        working-directory: hp
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Apply pending HomePanel D1 migrations
-        working-directory: hp/cloud
+      - name: Apply permanent changes
         shell: bash
         run: |
           set -euo pipefail
-          npm exec -- wrangler d1 migrations apply homepanel-data \
-            --remote --config wrangler.jsonc \
-            2>&1 | tee "$RUNNER_TEMP/d1-migrations.log"
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Resolve deployed HomePanel public URL
-        id: homepanel-public-url
-        run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
+          replacements = {
+              Path('hp/cloud/src/scheduler_runtime.ts'): (
+                  'const RUNTIME_VERSION = 5;',
+                  'const RUNTIME_VERSION = 6;',
+              ),
+              Path('hp/video/test/cloud-usage-budget.test.js'): (
+                  'RUNTIME_VERSION = 5',
+                  'RUNTIME_VERSION = 6',
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'{path}: missing expected token {old!r}')
+              path.write_text(text.replace(old, new, 1))
 
-      - name: Trigger immediate update detection
+          native = Path('.github/workflows/native-windows-build.yml')
+          text = native.read_text()
+          old_messages = (
+              'devices will pick the release up via the 5-minute update_check poll.',
+              'the 5-minute update_check poll will still roll the release out.',
+          )
+          new_messages = (
+              'the dedicated post-build rollout workflow will resolve the Worker URL and retry; the 30-minute update_check poll remains the fallback.',
+              'the dedicated post-build rollout workflow will retry; the 30-minute update_check poll remains the fallback.',
+          )
+          for old, new in zip(old_messages, new_messages):
+              if old not in text:
+                  raise SystemExit(f'{native}: missing expected message {old!r}')
+              text = text.replace(old, new, 1)
+          native.write_text(text)
+          PY
+
+          cat > .github/workflows/native-update-rollout.yml <<'YAML'
+          name: Trigger native update rollout
+
+          on:
+            workflow_run:
+              workflows:
+                - Native Windows Build
+              types:
+                - completed
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: native-update-rollout-${{ github.event.workflow_run.id }}
+            cancel-in-progress: false
+
+          jobs:
+            rollout:
+              if: >-
+                github.event.workflow_run.conclusion == 'success' &&
+                github.event.workflow_run.head_branch == 'main'
+              runs-on: ubuntu-latest
+              timeout-minutes: 10
+              steps:
+                - name: Check out released commit
+                  uses: actions/checkout@v4
+                  with:
+                    ref: ${{ github.event.workflow_run.head_sha }}
+
+                - name: Resolve Cloudflare account context
+                  uses: ./.github/actions/cloudflare-context
+                  with:
+                    api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+                - name: Resolve deployed HomePanel public URL
+                  id: homepanel-public-url
+                  run: node .github/scripts/cloudflare-worker-public-url.mjs homepanel-cloud /api/health
+
+                - name: Trigger immediate update detection
+                  shell: bash
+                  env:
+                    HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
+                  run: |
+                    set -euo pipefail
+                    response="$RUNNER_TEMP/update-ping.json"
+                    status="$(curl --silent --show-error \
+                      --retry 4 --retry-delay 5 --retry-all-errors \
+                      --output "$response" --write-out '%{http_code}' \
+                      -X POST "${HOMEPANEL_BASE_URL%/}/v1/update/ping")"
+                    cat "$response"
+                    node -e '
+                      const fs = require("node:fs");
+                      const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                      const status = Number(process.argv[2]);
+                      if (status !== 202 || payload?.queued !== true) {
+                        throw new Error(`Unexpected update ping response (HTTP ${status}): ${JSON.stringify(payload)}`);
+                      }
+                    ' "$response" "$status"
+          YAML
+
+          cat > tests/native-update-rollout-contract.test.mjs <<'TEST'
+          import assert from 'node:assert/strict';
+          import { existsSync, readFileSync } from 'node:fs';
+          import test from 'node:test';
+
+          const rollout = readFileSync(new URL('../.github/workflows/native-update-rollout.yml', import.meta.url), 'utf8');
+          const nativeBuild = readFileSync(new URL('../.github/workflows/native-windows-build.yml', import.meta.url), 'utf8');
+          const scheduler = readFileSync(new URL('../hp/cloud/src/scheduler_runtime.ts', import.meta.url), 'utf8');
+          const migration = readFileSync(new URL('../hp/cloud/migrations/202607291600_update_check_30m.sql', import.meta.url), 'utf8');
+
+          test('successful main native builds trigger update detection without a configured Worker URL', () => {
+            assert.match(rollout, /workflow_run:/);
+            assert.match(rollout, /Native Windows Build/);
+            assert.match(rollout, /workflow_run\.conclusion == 'success'/);
+            assert.match(rollout, /workflow_run\.head_branch == 'main'/);
+            assert.match(rollout, /cloudflare-worker-public-url\.mjs homepanel-cloud/);
+            assert.match(rollout, /\/v1\/update\/ping/);
+            assert.match(rollout, /status !== 202/);
+            assert.match(rollout, /payload\?\.queued !== true/);
+            assert.doesNotMatch(rollout, /HOMEPANEL_WORKER_URL/);
+          });
+
+          test('thirty-minute update cadence is applied to D1 and reloaded by the scheduler runtime', () => {
+            assert.match(migration, /interval_seconds = 1800/);
+            assert.match(migration, /unixepoch\(\) \+ 1800/);
+            assert.match(scheduler, /RUNTIME_VERSION = 6/);
+            assert.match(scheduler, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
+          });
+
+          test('native fallback text reflects the actual cadence', () => {
+            assert.match(nativeBuild, /30-minute update_check poll remains the fallback/);
+            assert.doesNotMatch(nativeBuild, /5-minute update_check poll/);
+          });
+
+          test('one-time recovery workflows are absent from the permanent change', () => {
+            assert.equal(existsSync(new URL('../.github/workflows/one-time-recover-23h-native-update.yml', import.meta.url)), false);
+            assert.equal(existsSync(new URL('../.github/workflows/one-time-prepare-native-update-fix.yml', import.meta.url)), false);
+          });
+          TEST
+
+          rm -f .github/workflows/one-time-recover-23h-native-update.yml
+          rm -f .github/workflows/one-time-prepare-native-update-fix.yml
+
+      - name: Commit and push permanent fix
         shell: bash
-        env:
-          HOMEPANEL_BASE_URL: ${{ steps.homepanel-public-url.outputs.base-url }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --retry 3 \
-            -X POST "${HOMEPANEL_BASE_URL%/}/v1/update/ping" \
-            > "$RUNNER_TEMP/update-ping.json"
-          sleep 25
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix native update rollout recovery"
+          git push origin HEAD:agent/fix-native-update-rollout
 
-      - name: Verify migration and rollout state
-        working-directory: hp/cloud
-        shell: bash
-        run: |
-          set -euo pipefail
-          sql="SELECT
-              'update_job' AS section,
-              interval_seconds,
-              next_run_at,
-              last_success_at,
-              last_error,
-              consecutive_failures
-            FROM jobs WHERE name='update_check';
-
-            SELECT
-              'update_state' AS section,
-              status,
-              error,
-              json_extract(payload, '$.version') AS release_version,
-              substr(json_extract(payload, '$.manifestHash'), 1, 16) AS manifest_hash_prefix,
-              datetime(observed_at / 1000, 'unixepoch', '+9 hours') AS observed_jst,
-              datetime(fetched_at / 1000, 'unixepoch', '+9 hours') AS fetched_jst
-            FROM current_state WHERE source='update';
-
-            SELECT
-              'heartbeat' AS section,
-              substr(device_id, 1, 4) || '…' AS device,
-              app_version,
-              datetime(last_seen_at / 1000, 'unixepoch', '+9 hours') AS last_seen_jst
-            FROM device_heartbeats
-            ORDER BY last_seen_at DESC LIMIT 5;
-
-            SELECT
-              'command' AS section,
-              id,
-              substr(device_id, 1, 4) || '…' AS device,
-              datetime(created_at / 1000, 'unixepoch', '+9 hours') AS created_jst,
-              datetime(expires_at / 1000, 'unixepoch', '+9 hours') AS expires_jst,
-              datetime(delivered_at / 1000, 'unixepoch', '+9 hours') AS delivered_jst,
-              datetime(completed_at / 1000, 'unixepoch', '+9 hours') AS completed_jst,
-              success,
-              result,
-              payload
-            FROM device_commands
-            WHERE command='check_update'
-            ORDER BY id DESC LIMIT 8;"
-          npm exec -- wrangler d1 execute homepanel-data \
-            --remote --config wrangler.jsonc \
-            --command "$sql" --json \
-            > "$RUNNER_TEMP/update-rollout-verify.json"
-
-      - name: Record migration and rollout result
-        if: success()
+      - name: Record branch preparation
         uses: actions/github-script@v7
-        env:
-          MIGRATIONS_PATH: ${{ runner.temp }}/d1-migrations.log
-          PING_PATH: ${{ runner.temp }}/update-ping.json
-          VERIFY_PATH: ${{ runner.temp }}/update-rollout-verify.json
         with:
           script: |
-            const fs = require('fs');
-            const read = path => fs.existsSync(path) ? fs.readFileSync(path, 'utf8') : '(missing)';
-            const body = [
-              '✅ 未適用だった更新マイグレーションを適用し、即時更新検出を再実行しました。',
-              '',
-              '### D1 migrations',
-              '```text',
-              read(process.env.MIGRATIONS_PATH).slice(-6000),
-              '```',
-              '',
-              '### update ping',
-              '```json',
-              read(process.env.PING_PATH).slice(-2000),
-              '```',
-              '',
-              '### rollout verification',
-              '```json',
-              read(process.env.VERIFY_PATH).slice(-18000),
-              '```',
-            ].join('\n');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: 480,
-              body,
-            });
-
-      - name: Record failure
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: 480,
-              body: `❌ D1 migration / update rollout retry failed. Actions run: ${context.runId}`,
+              body: '✅ 恒久修正ブランチ `agent/fix-native-update-rollout` を準備しました。',
             });
