@@ -36,6 +36,31 @@ function extractWideArray(source, name, required = true) {
   return [...match[1].matchAll(/L"([^"]+)"/g)].map((entry) => entry[1].toLowerCase());
 }
 
+function extractNarrowString(source, name) {
+  const match = source.match(new RegExp(
+    `inline\\s+constexpr\\s+std::string_view\\s+${name}\\s*=([\\s\\S]*?);`,
+  ));
+  if (!match) throw new Error(`Could not find ${name} in native policy`);
+  const parts = [...match[1].matchAll(/"((?:\\.|[^"\\])*)"/g)]
+    .map((entry) => JSON.parse(`"${entry[1]}"`));
+  if (!parts.length) throw new Error(`Could not decode ${name} in native policy`);
+  return parts.join('');
+}
+
+function extractModuleStubs(source) {
+  const stubs = [];
+  const pattern = /if\s*\(\s*StationheadHashedAssetModulePathMatches\(\s*uri\.path\s*,\s*L"([^"]+)"\s*\)\s*\)\s*\{\s*return\s+([A-Za-z_$][\w$]*);/g;
+  for (const match of source.matchAll(pattern)) {
+    stubs.push({
+      stem: match[1].toLowerCase(),
+      constant: match[2],
+      body: extractNarrowString(source, match[2]),
+    });
+  }
+  if (!stubs.length) throw new Error('Could not find hash-independent module stubs in native policy');
+  return stubs;
+}
+
 function hostMatches(host, domain) {
   return host === domain || host.endsWith(`.${domain}`);
 }
@@ -52,6 +77,19 @@ function parseUrl(value) {
   } catch {
     return { valid: false, scheme: '', host: '', path: '' };
   }
+}
+
+function hashedAssetMatches(assetPath, stem) {
+  const prefix = '/assets/';
+  if (!assetPath.startsWith(prefix)) return false;
+  const filename = assetPath.slice(prefix.length);
+  if (!filename.startsWith(stem)) return false;
+  const suffix = filename.slice(stem.length);
+  if (!suffix.startsWith('-')) return false;
+  const extension = suffix.endsWith('.mjs') ? '.mjs' : suffix.endsWith('.js') ? '.js' : '';
+  if (!extension) return false;
+  const hash = suffix.slice(1, -extension.length);
+  return hash.length >= 6 && /^[a-z0-9_-]+$/.test(hash);
 }
 
 function sha256(value) {
@@ -83,7 +121,7 @@ async function loadPolicy() {
     scriptDomains: extractWideArray(scriptHeader, 'kNonPlaybackScriptDomains'),
     protectedTokens: extractWideArray(scriptHeader, 'kProtectedScriptNeedles', false),
     optionalTokens: extractWideArray(scriptHeader, 'kNonPlaybackScriptNeedles', false),
-    knownModuleTokens: extractWideArray(scriptHeader, 'kKnownOptionalModuleNeedles'),
+    moduleStubs: extractModuleStubs(scriptHeader),
     telemetryDomains: extractWideArray(boundaryHeader, 'kTelemetryDomains'),
   };
 }
@@ -115,22 +153,19 @@ function classifyScript(url, policy) {
     }
   }
 
-  if (!hostMatches(uri.host, 'stationhead.com') ||
-      (!uri.path.endsWith('.js') && !uri.path.endsWith('.mjs'))) {
-    return allowed;
-  }
-
-  for (const token of policy.knownModuleTokens) {
-    if (uri.path.includes(token)) {
+  if (!hostMatches(uri.host, 'stationhead.com')) return allowed;
+  for (const moduleStub of policy.moduleStubs) {
+    if (hashedAssetMatches(uri.path, moduleStub.stem)) {
       return {
         block: true,
         mode: 'module-stub',
-        reason: `known-module-stub:${token}`,
-        body: 'export const LottieAnimationViewNonLazy=()=>null;',
+        reason: `known-module-stub:${moduleStub.stem}`,
+        body: moduleStub.body,
       };
     }
   }
 
+  if (!uri.path.endsWith('.js') && !uri.path.endsWith('.mjs')) return allowed;
   const protectedBy = policy.protectedTokens.filter((token) => uri.path.includes(token));
   return {
     block: false,
@@ -199,7 +234,7 @@ async function runCapture({ browser, targetUrl, durationMs, policy, intercept })
       await route.fulfill({
         status: 200,
         contentType: 'application/javascript; charset=utf-8',
-        headers: { 'cache-control': 'no-store' },
+        headers: { 'cache-control': 'public, max-age=31536000, immutable' },
         body: classification.body || '',
       });
     });
