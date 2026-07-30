@@ -59,7 +59,7 @@ test('Plug Mini footer filters non-plug devices and renders four plugs as a two-
   );
 });
 
-test('single-device rows use the full footer width', () => {
+test('two-device rows are compact while single-device rows use the full footer width', () => {
   assert.match(dataSections, /const int rowStartIndex = plugRow \* 2;/);
   assert.match(
     dataSections,
@@ -67,6 +67,14 @@ test('single-device rows use the full footer width', () => {
   );
   assert.match(
     dataSections,
-    /\(plugRectWidth - plugColumnGap \* \(devicesInRow - 1\)\) \/ devicesInRow/,
+    /const int plugRowWidth =\s*devicesInRow == 2 \? plugRectWidth \* 80 \/ 100 : plugRectWidth;/s,
+  );
+  assert.match(
+    dataSections,
+    /const int plugRowLeft = plugRect\.left \+ \(plugRectWidth - plugRowWidth\) \/ 2;/,
+  );
+  assert.match(
+    dataSections,
+    /\(plugRowWidth - plugColumnGap \* \(devicesInRow - 1\)\) \/ devicesInRow/,
   );
 });
