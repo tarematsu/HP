@@ -1,1 +1,0 @@
-history-current-minute-overlay
