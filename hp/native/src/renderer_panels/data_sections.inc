@@ -225,9 +225,12 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
       const int rowStartIndex = plugRow * 2;
       const int devicesInRow =
           std::min(2, static_cast<int>(plugDeviceCount) - rowStartIndex);
+      const int plugRowWidth =
+          devicesInRow == 2 ? plugRectWidth * 80 / 100 : plugRectWidth;
+      const int plugRowLeft = plugRect.left + (plugRectWidth - plugRowWidth) / 2;
       const int plugColumnWidth =
-          (plugRectWidth - plugColumnGap * (devicesInRow - 1)) / devicesInRow;
-      const int left = plugRect.left + plugColumn * (plugColumnWidth + plugColumnGap);
+          (plugRowWidth - plugColumnGap * (devicesInRow - 1)) / devicesInRow;
+      const int left = plugRowLeft + plugColumn * (plugColumnWidth + plugColumnGap);
       const int top = plugRect.top + plugRow * (plugLineHeight + plugRowGap);
       RECT deviceRect{left, top, left + plugColumnWidth, top + plugLineHeight};
       const std::wstring deviceText = nativeDashboard_.switchBotDevices[i].name + L" " +
