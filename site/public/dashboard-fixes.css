@@ -1,6 +1,6 @@
 .top-card.dashboard-header {
   display: grid;
-  grid-template-columns: minmax(280px, .85fr) minmax(560px, 1.15fr);
+  grid-template-columns: minmax(260px, .82fr) minmax(0, 1.18fr);
   align-items: center;
   gap: 18px;
 }
@@ -27,6 +27,10 @@
   display: contents;
 }
 
+.dashboard-view {
+  min-width: 0;
+}
+
 .mode-tabs.dashboard-tabs {
   flex: 0 1 auto;
   width: 100%;
@@ -39,11 +43,27 @@
 .mode-tabs.dashboard-tabs button {
   min-height: 44px;
   padding-inline: 6px;
+  font-size: clamp(.68rem, .75vw, .76rem);
+  line-height: 1.2;
 }
 
 .history-view,
 .likes-view {
   margin-top: 10px;
+}
+
+.history-view > .controls,
+.likes-view > .like-actions {
+  margin-top: 0;
+}
+
+.summary-cards.likes-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.summary-cards.likes-summary .summary-date {
+  font-size: clamp(1.1rem, 2.8vw, 1.65rem);
+  line-height: 1.1;
 }
 
 @media (max-width: 960px) {
@@ -95,7 +115,8 @@
 
   .metric strong,
   .metric.featured strong {
-    font-size: clamp(1rem, 4.8vw, 1.5rem);
+    font-size: clamp(.94rem, 4.3vw, 1.42rem);
+    letter-spacing: -.055em;
   }
 
   .metric small {
@@ -105,10 +126,33 @@
   .delta {
     font-size: .58rem;
   }
+
+  .summary-cards.likes-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .summary-cards.likes-summary article:last-child {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 430px) {
   .mode-tabs.dashboard-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .mode-tabs.dashboard-tabs button {
+    grid-column: span 2;
+    min-height: 46px;
+    padding-inline: 4px;
+    font-size: .68rem;
+  }
+
+  .mode-tabs.dashboard-tabs button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-header .channel-copy > .subtle {
+    max-width: 210px;
   }
 }

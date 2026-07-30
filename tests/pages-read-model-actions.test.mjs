@@ -54,12 +54,15 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
+  assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
   assert.match(runner, /export async function runPagesReadModelActions/);
   assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|MAX_TRACK_HISTORY_STEPS|while \(steps < maxSteps/);
   assert.match(runner, /variant\.cadence_minutes/);
+  assert.match(runner, /HISTORY_REFRESH_PHASE_MINUTES = 26/);
+  assert.match(runner, /scheduledSlotMinute/);
   assert.match(runner, /materialized-history\.js/);
   assert.match(runner, /track-history-read-model-disabled/);
   assert.doesNotMatch(materializedHistory, /sh_channel_snapshots/);
@@ -75,13 +78,21 @@ test('dashboard materialized lifetime covers the 30-minute Actions publication i
   assert.equal(materializedResponseMaximumAge('dashboard'), 35 * MINUTE);
 });
 
-test('contract cadence regenerates summaries every six hours and host archive daily', () => {
-  assert.deepEqual([...dueVariantKeys(DAY + 4 * MINUTE)], allMaterializedVariants());
-  assert.deepEqual([...dueVariantKeys(DAY + 19 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(DAY + 64 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(DAY + 364 * MINUTE)], sixHourVariants());
-  assert.deepEqual([...dueVariantKeys(DAY + 1444 * MINUTE)], allMaterializedVariants());
+test('contract cadence follows the actual :26/:56 workflow slots', () => {
+  assert.deepEqual([...dueVariantKeys(DAY + 26 * MINUTE)], allMaterializedVariants());
+  assert.deepEqual([...dueVariantKeys(DAY + 55 * MINUTE)], allMaterializedVariants());
+  assert.deepEqual([...dueVariantKeys(DAY + 56 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(DAY + 86 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(DAY + 386 * MINUTE)], sixHourVariants());
+  assert.deepEqual([...dueVariantKeys(DAY + 1466 * MINUTE)], allMaterializedVariants());
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
+});
+
+test('manual and main-push rebuilds can force every bounded model immediately', () => {
+  assert.deepEqual(
+    [...dueVariantKeys(DAY + 19 * MINUTE, { forceAll: true })],
+    allMaterializedVariants(),
+  );
 });
 
 test('runner materializes only due variants and never advances track history', async () => {
@@ -109,9 +120,9 @@ test('runner materializes only due variants and never advances track history', a
 test('runner publishes all due non-track variants', async () => {
   const published = [];
   const result = await runPagesReadModelActions({
-    startedAt: DAY + 4 * MINUTE,
-    deadlineMs: DAY + 30 * MINUTE,
-    now: () => DAY + 4 * MINUTE,
+    startedAt: DAY + 26 * MINUTE,
+    deadlineMs: DAY + 40 * MINUTE,
+    now: () => DAY + 26 * MINUTE,
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
     materializeVariant: async (variant) => {
       published.push(variant.key);
@@ -121,6 +132,23 @@ test('runner publishes all due non-track variants', async () => {
   assert.deepEqual(published, allMaterializedVariants());
   assert.equal(result.event, 'pages_read_model_actions_complete');
   assert.equal(result.track_history_steps, 0);
+});
+
+test('runner force-all mode republishes every bounded model outside a scheduled slot', async () => {
+  const published = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 19 * MINUTE,
+    deadlineMs: DAY + 40 * MINUTE,
+    now: () => DAY + 19 * MINUTE,
+    forceAll: true,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    materializeVariant: async (variant) => {
+      published.push(variant.key);
+      return { key: variant.key };
+    },
+  });
+  assert.equal(result.force_all, true);
+  assert.deepEqual(published, allMaterializedVariants());
 });
 
 test('runtime serves materialized responses through a serving-only module', () => {

@@ -1,6 +1,11 @@
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+import {
+  MATERIALIZED_API_VARIANTS,
+  materializedResponseMaximumAge,
+} from '../site/functions/lib/api-contract.js';
+
 const MATERIALIZED_SOURCES = new Set(['actions-r2', 'worker-r2', 'worker-kv', 'edge-cache']);
 
 function sleep(ms) {
@@ -41,10 +46,18 @@ function parseArgs(argv) {
   return options;
 }
 
-export async function auditMaterializedDashboard(baseUrl, options = {}) {
+function timestampHeader(headers, name) {
+  const value = headers.get(name);
+  if (value == null || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function auditMaterializedVariant(baseUrl, variant, options = {}) {
   const now = Number(options.now ?? Date.now());
-  const url = new URL('/api/dashboard', `${normalizeBaseUrl(baseUrl)}/`);
+  const url = new URL(variant.url, `${normalizeBaseUrl(baseUrl)}/`);
   url.searchParams.set('v', String(now));
+  const maximumAgeMs = materializedResponseMaximumAge(variant.key, options.env || {});
   const failures = [];
   let status = null;
   let payload = null;
@@ -65,61 +78,89 @@ export async function auditMaterializedDashboard(baseUrl, options = {}) {
     source = response.headers.get('x-api-source');
     fallback = response.headers.get('x-materialized-fallback');
     edgeCache = response.headers.get('x-edge-cache');
-    materializedAt = Number(response.headers.get('x-materialized-at'));
+    materializedAt = timestampHeader(response.headers, 'x-materialized-at');
     payload = await response.json().catch(() => null);
 
-    if (!response.ok) failures.push(`dashboard endpoint returned HTTP ${response.status}`);
+    if (!response.ok) failures.push(`${variant.key} returned HTTP ${response.status}`);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      failures.push('dashboard endpoint did not return a JSON object');
+      failures.push(`${variant.key} did not return a JSON object`);
+    } else if (payload.ok !== true) {
+      failures.push(`${variant.key} payload did not return { ok: true }`);
     }
-    if (fallback) failures.push(`dashboard used fallback path: ${fallback}`);
+    if (fallback) failures.push(`${variant.key} used fallback path: ${fallback}`);
     if (!MATERIALIZED_SOURCES.has(String(source || ''))) {
-      failures.push(`dashboard did not identify a materialized source: ${source || 'missing'}`);
+      failures.push(`${variant.key} did not identify a materialized source: ${source || 'missing'}`);
     }
-    if (!Number.isFinite(materializedAt) || materializedAt <= 0) {
-      failures.push('dashboard did not include a valid x-materialized-at header');
+    if (materializedAt == null) {
+      failures.push(`${variant.key} did not include a valid x-materialized-at header`);
+    } else if (now - materializedAt > maximumAgeMs) {
+      failures.push(`${variant.key} is stale by ${now - materializedAt - maximumAgeMs} ms`);
     }
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
-    failures.push(`dashboard request failed: ${error}`);
+    failures.push(`${variant.key} request failed: ${error}`);
   }
 
   return {
-    generatedAt: new Date(now).toISOString(),
+    key: variant.key,
     url: url.toString(),
     status,
     source,
-    materializedAt: Number.isFinite(materializedAt) ? materializedAt : null,
-    materializedAgeMs: Number.isFinite(materializedAt) ? Math.max(0, now - materializedAt) : null,
+    materializedAt,
+    materializedAgeMs: materializedAt == null ? null : Math.max(0, now - materializedAt),
+    maximumAgeMs,
     fallback,
     edgeCache,
-    payloadOk: Boolean(payload && typeof payload === 'object' && !Array.isArray(payload)),
+    payloadOk: Boolean(payload && typeof payload === 'object' && !Array.isArray(payload) && payload.ok === true),
     error,
     failures,
     ok: failures.length === 0,
   };
 }
 
+export async function auditMaterializedDashboard(baseUrl, options = {}) {
+  const dashboard = MATERIALIZED_API_VARIANTS.find(({ key }) => key === 'dashboard');
+  return auditMaterializedVariant(baseUrl, dashboard, options);
+}
+
+export async function auditMaterializedPages(baseUrl, options = {}) {
+  const now = Number(options.now ?? Date.now());
+  const variants = [];
+  for (const variant of MATERIALIZED_API_VARIANTS) {
+    variants.push(await auditMaterializedVariant(baseUrl, variant, { ...options, now }));
+  }
+  return {
+    generatedAt: new Date(now).toISOString(),
+    baseUrl: normalizeBaseUrl(baseUrl),
+    variants,
+    failures: variants.flatMap((variant) => variant.failures),
+    ok: variants.every((variant) => variant.ok),
+  };
+}
+
 function markdownSummary(report) {
-  return [
-    '## Pages materialized dashboard audit',
+  const lines = [
+    '## Pages materialized API audit',
     '',
     `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
-    `- HTTP: ${report.status ?? '-'}`,
-    `- Source: ${report.source || '-'}`,
-    `- Materialized age: ${report.materializedAgeMs == null ? '-' : `${report.materializedAgeMs} ms`}`,
-    `- Edge cache: ${report.edgeCache || '-'}`,
-    `- Fallback: ${report.fallback || 'none'}`,
-    ...(report.failures.length ? ['', ...report.failures.map((failure) => `- ${failure}`)] : []),
     '',
-  ].join('\n');
+    '| Model | HTTP | Source | Age | Max age | Fallback | Result |',
+    '| --- | ---: | --- | ---: | ---: | --- | :---: |',
+  ];
+  for (const variant of report.variants) {
+    const age = variant.materializedAgeMs == null ? '-' : `${variant.materializedAgeMs} ms`;
+    lines.push(`| ${variant.key} | ${variant.status ?? '-'} | ${variant.source || '-'} | ${age} | ${variant.maximumAgeMs} ms | ${variant.fallback || 'none'} | ${variant.ok ? 'PASS' : 'FAIL'} |`);
+  }
+  if (report.failures.length) lines.push('', '### Failures', '', ...report.failures.map((failure) => `- ${failure}`));
+  lines.push('');
+  return lines.join('\n');
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   let report;
   for (let attempt = 1; attempt <= options.attempts; attempt += 1) {
-    report = await auditMaterializedDashboard(options.baseUrl);
+    report = await auditMaterializedPages(options.baseUrl);
     report.attempt = attempt;
     report.attempts = options.attempts;
     if (report.ok || attempt === options.attempts) break;
