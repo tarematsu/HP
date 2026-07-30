@@ -1,3 +1,4 @@
+import './dashboard-header.js';
 import './dashboard-tabs.js';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js';
 
