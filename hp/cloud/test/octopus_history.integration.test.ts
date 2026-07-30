@@ -37,11 +37,11 @@ function completeReadings(range: OctopusRange, value = 0.25): OctopusReading[] {
 }
 
 describe("Octopus daily D1 history", () => {
-  it("queries one day ahead while storing only seven stable complete days", async () => {
+  it("queries through the latest completed half-hour while storing only seven complete days", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const collectionStart = octopusCollectionStart(now);
     const stableThrough = octopusCompleteStableThroughJst(now);
-    const queryThrough = stableThrough + DAY_MS;
+    const queryThrough = octopusStableCutoffJst(now);
     const requested: OctopusRange[] = [];
 
     const result = await synchronizeOctopusHistory(env, "A-123", now, async range => {
@@ -50,18 +50,20 @@ describe("Octopus daily D1 history", () => {
     });
 
     expect(OCTOPUS_COLLECTION_DAYS).toBe(7);
-    expect(OCTOPUS_STABILITY_LAG_DAYS).toBe(1);
+    expect(OCTOPUS_STABILITY_LAG_DAYS).toBe(0);
     expect(requested).toHaveLength(4);
     expect(requested[0]?.from.getTime()).toBe(collectionStart);
     expect(requested.at(-1)?.to.getTime()).toBe(queryThrough);
     expect(requested.every(range => range.from.getTime() >= collectionStart)).toBe(true);
     expect(requested.every(range => range.to.getTime() <= queryThrough)).toBe(true);
+    expect(queryThrough).toBeLessThanOrEqual(now);
 
     expect(result.completed).toBe(true);
     expect(result.cursorBefore).toBeNull();
     expect(result.cursorAfter).toBe(stableThrough);
     expect(result.fetchFrom).toBe(collectionStart);
     expect(result.stableThrough).toBe(stableThrough);
+    expect(result.stableCutoff).toBe(queryThrough);
     expect(result.historyFloor).toBe(OCTOPUS_HISTORY_FLOOR_MS);
 
     const stored = await env.DB.prepare(
@@ -72,8 +74,8 @@ describe("Octopus daily D1 history", () => {
       count: number; oldest: string; latest: string; slots: number; energy: number;
     }>();
     expect(Number(stored?.count)).toBe(7);
-    expect(stored?.oldest).toBe("2026-07-03");
-    expect(stored?.latest).toBe("2026-07-09");
+    expect(stored?.oldest).toBe("2026-07-04");
+    expect(stored?.latest).toBe("2026-07-10");
     expect(Number(stored?.slots)).toBe(7 * 48);
     expect(Number(stored?.energy)).toBe(7 * 48 * 0.25);
 
@@ -83,7 +85,7 @@ describe("Octopus daily D1 history", () => {
     expect(Number(cursor?.stable_through)).toBe(stableThrough);
   });
 
-  it("fetches one correction day, a newly stable day, and one query lookahead day", async () => {
+  it("fetches one correction day, a newly complete day, and the current partial day", async () => {
     const firstNow = Date.parse("2026-07-10T18:00:00Z");
     await synchronizeOctopusHistory(env, "A-incremental", firstNow, async range => completeReadings(range));
     const firstStableThrough = octopusCompleteStableThroughJst(firstNow);
@@ -98,7 +100,8 @@ describe("Octopus daily D1 history", () => {
     expect(OCTOPUS_CORRECTION_OVERLAP_DAYS).toBe(1);
     expect(requested).toHaveLength(2);
     expect(requested[0]?.from.getTime()).toBe(firstStableThrough - DAY_MS);
-    expect(requested.at(-1)?.to.getTime()).toBe(firstStableThrough + 2 * DAY_MS);
+    expect(requested.at(-1)?.to.getTime()).toBe(octopusStableCutoffJst(secondNow));
+    expect(requested.at(-1)?.to.getTime()).toBeLessThanOrEqual(secondNow);
     expect(result.cursorBefore).toBe(firstStableThrough);
     expect(result.cursorAfter).toBe(firstStableThrough + DAY_MS);
     expect(result.fetchFrom).toBe(firstStableThrough - DAY_MS);
@@ -169,10 +172,10 @@ describe("Octopus daily D1 history", () => {
     expect(namedIndexes.results).toEqual([]);
   });
 
-  it("aligns the storage boundary to a fully stable JST day", () => {
+  it("aligns the storage boundary to the current JST day", () => {
     const now = Date.parse("2026-07-10T18:17:42Z");
-    expect(new Date(octopusStableCutoffJst(now)).toISOString()).toBe("2026-07-09T18:00:00.000Z");
-    expect(new Date(octopusCompleteStableThroughJst(now)).toISOString()).toBe("2026-07-09T15:00:00.000Z");
-    expect(new Date(octopusCollectionStart(now)).toISOString()).toBe("2026-07-02T15:00:00.000Z");
+    expect(new Date(octopusStableCutoffJst(now)).toISOString()).toBe("2026-07-10T18:00:00.000Z");
+    expect(new Date(octopusCompleteStableThroughJst(now)).toISOString()).toBe("2026-07-10T15:00:00.000Z");
+    expect(new Date(octopusCollectionStart(now)).toISOString()).toBe("2026-07-03T15:00:00.000Z");
   });
 });
