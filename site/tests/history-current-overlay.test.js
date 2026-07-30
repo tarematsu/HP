@@ -34,7 +34,7 @@ async function withOverlay(fetchImpl, callback, suffix, entries = []) {
 }
 
 function urlOf(input) {
-  return new URL(typeof input === 'string' ? input : input.url);
+  return new URL(typeof input === 'string' ? input : input.url, 'https://skrzk.test/');
 }
 
 test('current weekly row is replaced with the complete MINUTE_DB period while past R2 rows stay unchanged', async () => {
