@@ -1,9 +1,16 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
-const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v1/';
+const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
+const LEGACY_ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v1/';
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
   return key && key.length <= 256 ? key : null;
+}
+
+function hexModelKey(value) {
+  return [...new TextEncoder().encode(value)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export function pagesR2ResponseKey(modelKey) {
@@ -13,7 +20,16 @@ export function pagesR2ResponseKey(modelKey) {
 
 export function pagesActionsR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
-  return key ? `${ACTIONS_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json` : null;
+  return key ? `${ACTIONS_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
+}
+
+export function legacyPagesActionsR2ResponseKeys(modelKey) {
+  const key = normalizedModelKey(modelKey);
+  if (!key) return [];
+  return [...new Set([
+    `${LEGACY_ACTIONS_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json`,
+    `${LEGACY_ACTIONS_RESPONSE_KEY_PREFIX}${key}.json`,
+  ])];
 }
 
 function objectOrNull(value) {
@@ -93,10 +109,7 @@ export async function promoteMaterializedD1ResponseToR2(
   );
 }
 
-async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
-  const key = pagesActionsR2ResponseKey(modelKey);
-  if (!key || typeof r2?.get !== 'function') return null;
-  const object = await r2.get(key);
+async function responseFromActionsObject(object, now, maximumAgeMs) {
   if (!object?.body) return null;
   let envelope;
   try {
@@ -118,6 +131,21 @@ async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
     status: Number(envelope?.status) || 200,
     headers,
   });
+}
+
+async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
+  const key = pagesActionsR2ResponseKey(modelKey);
+  if (!key || typeof r2?.get !== 'function') return null;
+  const keys = [key, ...legacyPagesActionsR2ResponseKeys(modelKey)];
+  for (const candidate of keys) {
+    const response = await responseFromActionsObject(
+      await r2.get(candidate),
+      now,
+      maximumAgeMs,
+    );
+    if (response) return response;
+  }
+  return null;
 }
 
 export async function loadMaterializedR2Response(
