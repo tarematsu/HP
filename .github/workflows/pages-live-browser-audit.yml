@@ -6,7 +6,6 @@ on:
       - 'site/**'
       - 'scripts/audit-pages-live.mjs'
       - 'scripts/audit-pages-materialized.mjs'
-      - 'worker/scripts/audit-minute-facts-range-actions.mjs'
       - '.github/actions/cloudflare-context/**'
       - '.github/workflows/pages-live-browser-audit.yml'
       - '.github/workflows/deploy-split-pipeline.yml'
@@ -53,11 +52,6 @@ jobs:
         if: github.event_name == 'pull_request'
         run: npm ci --prefer-offline --no-audit --no-fund
         working-directory: site
-
-      - name: Install Worker audit dependencies
-        if: github.event_name == 'pull_request'
-        run: npm ci --prefer-offline --no-audit --no-fund
-        working-directory: worker
 
       - name: Deploy pull request Pages preview
         if: github.event_name == 'pull_request'
@@ -114,19 +108,6 @@ jobs:
           --retry-delay-ms=5000
           --out=.pages-production-audit/materialized.json
 
-      - name: Audit minute facts from 2026-06-23
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        working-directory: worker
-        env:
-          BUDDIES_DATABASE_NAME: stationhead-buddies
-          FACTS_DATABASE_NAME: stationhead-minute
-          OTHER_DATABASE_NAME: stationhead-other
-          MINUTE_FACT_BACKFILL_FROM: '2026-06-23T00:00:00Z'
-        run: |
-          set -o pipefail
-          node scripts/audit-minute-facts-range-actions.mjs 2>&1 | tee minute-facts-range-audit.log
-
       - name: Upload browser audit evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -136,7 +117,6 @@ jobs:
             .pages-preview-audit/
             .pages-production-audit/
             site/pages-preview-deploy.log
-            worker/minute-facts-range-audit.log
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 14
