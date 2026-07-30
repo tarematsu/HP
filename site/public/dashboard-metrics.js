@@ -1,3 +1,4 @@
+import './dashboard-tabs.js';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
