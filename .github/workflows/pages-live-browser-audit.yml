@@ -81,16 +81,53 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Access pull request Pages preview in Chromium
+      - name: Capture pull request preview entry
         if: github.event_name == 'pull_request'
-        continue-on-error: true
+        shell: bash
         env:
           PAGES_AUDIT_URL: ${{ steps.preview.outputs.url }}
-        run: >-
-          node scripts/audit-pages-live.mjs
-          --url="$PAGES_AUDIT_URL"
-          --attempts=1
-          --out=.pages-preview-audit
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdir, writeFile } from 'node:fs/promises';
+          import { chromium } from 'playwright';
+          await mkdir('.pages-preview-audit', { recursive: true });
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({
+            viewport: { width: 1440, height: 1000 },
+            colorScheme: 'light',
+            locale: 'ja-JP',
+            serviceWorkers: 'block',
+          });
+          const page = await context.newPage();
+          let status = null;
+          let error = null;
+          try {
+            const response = await page.goto(process.env.PAGES_AUDIT_URL, {
+              waitUntil: 'domcontentloaded',
+              timeout: 35000,
+            });
+            status = response?.status() ?? null;
+            await page.waitForTimeout(750);
+          } catch (caught) {
+            error = caught instanceof Error ? caught.message : String(caught);
+          }
+          await page.screenshot({ path: '.pages-preview-audit/preview-entry.png', fullPage: true });
+          const title = await page.title().catch(() => '');
+          const finalUrl = page.url();
+          const body = await page.locator('body').innerText().catch(() => '');
+          const report = {
+            requestedUrl: process.env.PAGES_AUDIT_URL,
+            finalUrl,
+            status,
+            title,
+            accessProtected: /cloudflare|access|sign in/i.test(`${title} ${body} ${finalUrl}`),
+            error,
+          };
+          await writeFile('.pages-preview-audit/report.json', `${JSON.stringify(report, null, 2)}\n`);
+          await context.close();
+          await browser.close();
+          console.log(JSON.stringify(report));
+          NODE
 
       - name: Access production Pages in Chromium
         continue-on-error: ${{ github.event_name == 'pull_request' }}
