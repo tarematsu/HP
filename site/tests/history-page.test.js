@@ -6,7 +6,7 @@ const historyPage = readFileSync(new URL('../public/history/index.html', import.
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
-const historyTrackView = readFileSync(new URL('../public/history/history-track-view.js', import.meta.url), 'utf8');
+const historyGuard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
 const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
@@ -17,12 +17,13 @@ const rankingLibrary = readFileSync(new URL('../functions/lib/track-ranking.js',
 const sakurazakaApi = readFileSync(new URL('../functions/api/sakurazaka46jp.js', import.meta.url), 'utf8');
 const middleware = readFileSync(new URL('../functions/_middleware.js', import.meta.url), 'utf8');
 
-const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'tracks', 'broadcasts'];
+const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
-test('history exposes the six canonical archive modes', () => {
+test('history exposes archive modes without a track playback tab', () => {
   for (const mode of ARCHIVE_MODES) {
     assert.match(historyPage, new RegExp(`data-mode="${mode}"`));
   }
+  assert.doesNotMatch(historyPage, /data-mode="tracks"|>再生曲</);
   assert.match(historyPage, /href="\/history\/likes\/">いいね<\/a>/);
   assert.equal((historyPage.match(/<link rel="stylesheet"/g) || []).length, 1);
   assert.equal((historyPage.match(/<script /g) || []).length, 1);
@@ -33,16 +34,17 @@ test('monthly tab appears before leaderboard on both history pages', () => {
   assert.ok(likesPage.indexOf('/history/#monthly') < likesPage.indexOf('/history/#ranking'));
 });
 
-test('history defaults invalid hashes to weekly and loads one canonical client', () => {
+test('history defaults invalid and removed track hashes to weekly', () => {
   assert.match(historyPage, /data-mode="weekly" class="active"/);
-  assert.match(historyEntry, /const VALID_MODES = new Set\(\['daily', 'weekly', 'ranking', 'monthly', 'tracks', 'broadcasts'\]\)/);
+  assert.match(historyEntry, /const VALID_MODES = new Set\(\['daily', 'weekly', 'ranking', 'monthly', 'broadcasts'\]\)/);
+  assert.doesNotMatch(historyEntry, /'tracks'/);
   assert.match(historyEntry, /history\.replaceState\(null, '', '#weekly'\)/);
   assert.match(historyEntry, /import\('\/history\/history-lite\.js'\)/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
 
-test('history tabs use a fixed two-row grid without horizontal scrolling', () => {
+test('history tabs use a fixed grid without horizontal scrolling', () => {
   assert.match(historyStyles, /\.mode-tabs \{[^}]*display:\s*grid/);
   assert.match(historyStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(historyStyles, /\.mode-tabs \{[^}]*overflow:\s*hidden/);
@@ -64,35 +66,19 @@ test('history keeps one visible chart and delegates official series rendering', 
   assert.match(broadcastClient, /function draw\(\)/);
 });
 
-test('track history defaults to yesterday in UTC as a single day', () => {
-  assert.match(historyPage, /id="trackWeekMode" type="checkbox" checked/);
-  assert.match(historyEntry, /import \{ utcDate \} from '\.\/history-date-utils\.js'/);
-  assert.match(historyEntry, /trackDate\.value = utcDate\(-1\)/);
-  assert.match(historyEntry, /trackWeekMode\.checked = false/);
-  assert.doesNotMatch(historyEntry, /JST|Asia\/Tokyo|jstDate/);
-  assert.match(historyClient, /if \(el\('trackWeekMode'\)\.checked\)/);
-  assert.match(historyClient, /el\('from'\)\.value = mondayOf/);
-  assert.match(historyClient, /el\('to'\)\.value = sundayOf/);
-});
-
 test('active history timestamps and range defaults are explicitly UTC', () => {
   assert.match(historyClient, /timeZone: 'UTC'/);
   assert.match(historyClient, /const todayUtc = \(\) => new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
   assert.match(historyClient, /\['started_at', '開始日時（UTC）'\]/);
   assert.match(historyFixes, /applyUtcPreset/);
-  assert.match(likesClient, /currentUtcWeekRange/);
   assert.match(likesClient, /timeZone: 'UTC'/);
   assert.doesNotMatch([historyEntry, historyClient, historyFixes, likesClient].join('\n'), /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 
-test('track ranking consumes complete full-response rows instead of generated table pages', () => {
-  assert.match(historyFixes, /aggregateCompleteTrackRows/);
-  assert.match(historyFixes, /history:track-rows/);
-  assert.match(historyTrackView, /play_dates: new Set\(\)/);
-  assert.match(historyTrackView, /right\.play_count - left\.play_count/);
-  assert.match(historyFixes, /let trackRankingRenderQueued = false/);
-  assert.match(historyFixes, /if \(trackRankingRenderQueued\) return/);
-  assert.match(historyFixes, /window\.addEventListener\('hashchange', scheduleTrackRanking\)/);
+test('track-specific archive aggregation and request hooks are removed', () => {
+  assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|history:track-rows|再生数ランキング/);
+  assert.doesNotMatch(historyGuard, /normalizeTrackRows|summarizeCompleteTrackRows|\/api\/track-history/);
+  assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode/);
 });
 
 test('history visual tokens and panel sizing match the main dashboard', () => {
@@ -117,12 +103,10 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
   assert.match(historyStyles, /\.data-panel \{[^}]*padding:\s*18px/);
 });
 
-test('history client uses the canonical history and track-history endpoints', () => {
+test('history client uses only the canonical summary endpoints', () => {
   assert.match(historyClient, /\/api\/history\?/);
-  assert.match(historyClient, /\/api\/track-history\?latest=1/);
-  assert.match(historyClient, /\/api\/track-history\?\$\{/);
+  assert.doesNotMatch(historyPage, /\/api\/track-history/);
   assert.match(historyClient, /weekly_metrics/);
-  assert.match(historyClient, /like_count/);
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
 
@@ -130,7 +114,6 @@ test('history client reduces repeated reads with browser session caching', () =>
   assert.match(historyClient, /sessionStorage\.getItem/);
   assert.match(historyClient, /sessionStorage\.setItem/);
   assert.match(historyClient, /5 \* 60_000/);
-  assert.match(historyClient, /10 \* 60_000/);
 });
 
 test('history tables render newest rows first and paginate only in the browser', () => {
@@ -140,15 +123,16 @@ test('history tables render newest rows first and paginate only in the browser',
   assert.match(historyClient, /function exportCsv/);
 });
 
-test('likes page reads integrated ranking and weekly plays from one track-history response', () => {
+test('likes page reads current ranking directly without playback counts', () => {
   assert.match(likesPage, /aria-current="page" href="\/history\/likes\/">いいね<\/a>/);
   assert.match(likesPage, /最新いいね/);
-  assert.match(likesPage, /今週再生/);
-  assert.match(likesClient, /\/api\/track-history\?/);
+  assert.doesNotMatch(likesPage, /今週再生|再生曲/);
+  assert.match(likesClient, /\/api\/track-history\?ranking_only=1&ranking_limit=500/);
   assert.match(likesClient, /result\.data\.ranking/);
   assert.match(likesClient, /result\.data\.ranking_summary/);
-  assert.match(trackHistoryApi, /ranking_summary/);
-  assert.match(trackHistoryApi, /ranking_scope/);
+  assert.doesNotMatch(likesClient, /week_play_count|play_count_excluded|currentUtcWeekRange/);
+  assert.match(trackHistoryApi, /ranking_only/);
+  assert.match(trackHistoryApi, /loadTrackRanking/);
   assert.match(rankingLibrary, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(rankingLibrary, /FROM sh_track_counter_current/);
 });
@@ -160,7 +144,7 @@ test('Sakurazaka endpoint and comparison client share one canonical name', () =>
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
 
-test('edge middleware shares canonical materialized track-history reads', () => {
+test('edge middleware materializes summaries but not track history', () => {
   assert.match(middleware, /MATERIALIZED_API_VARIANTS/);
   assert.match(middleware, /SERVICE_MATERIALIZED_MODEL_KEYS/);
   assert.match(middleware, /cache\.put/);
