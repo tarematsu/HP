@@ -31,7 +31,7 @@ test('history exposes archive modes without a track playback tab', () => {
 
 test('monthly tab appears before leaderboard on both history pages', () => {
   assert.ok(historyPage.indexOf('data-mode="monthly"') < historyPage.indexOf('data-mode="ranking"'));
-  assert.ok(likesPage.indexOf('/history/#monthly') < likesPage.indexOf('/history/#ranking'));
+  assert.ok(likesPage.indexOf('/#monthly') < likesPage.indexOf('/#ranking'));
 });
 
 test('history defaults invalid and removed track hashes to weekly', () => {
