@@ -78,7 +78,7 @@ test('contained read and write actual breaches do not keep observability unhealt
 
   assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
   assert.match(triage, /D1 rows read remain above the UTC-day limit/);
-  assert.match(triage, /D1 rows written remain above the UTC-day limit/);
+  assert.match(triage, /\| Recent D1 rows written pace \| \*\*OK\*\* \| D1 rows written increased by 1,634/);
   assert.match(triage, /\| Projected daily usage \| \*\*CONTAINED\*\*/);
   assert.doesNotMatch(triage, /ACTION REQUIRED/);
   assert.equal(observabilityIssueOverall({
