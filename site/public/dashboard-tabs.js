@@ -98,7 +98,7 @@ tabs?.addEventListener('click', (event) => {
     if (historyRuntimePromise) historyRuntimeMode = button.dataset.mode;
     void showHistory(button.dataset.mode, { syncRuntime: false });
   }
-});
+}, { capture: true });
 
 window.addEventListener('popstate', syncFromLocation);
 window.addEventListener('hashchange', syncFromLocation);
