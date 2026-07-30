@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('playback-safe policy is final after July 23 stats and resource reduction', () => {
+test('playback-safe policy remains the final Stationhead resource boundary', () => {
   const baselineAt = composition.indexOf(
     '#include "sh_stats_july23_baseline_policy_fix.h"',
   );
@@ -51,56 +51,72 @@ test('final resource boundary preserves controller cache reset without login del
   );
 });
 
-test('all WebView2 MEDIA requests remain fail-open', () => {
+test('media and presentation resources remain outside the native request handler', () => {
   const filters = section(
     policy,
-    'const bool blockImages = config.blockImages;',
+    'const auto addFilter =',
     'ComPtr<ICoreWebView2Environment> env = environment;',
   );
   const handler = section(
     policy,
     'webview->add_WebResourceRequested(',
-    'BlockStationheadTelemetrySocketsBoundaryFixed(webview);',
+    '}  // namespace hp',
   );
-  assert.doesNotMatch(filters, /addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA\)/);
-  assert.doesNotMatch(handler, /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
+  assert.doesNotMatch(
+    filters,
+    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_(?:IMAGE|FONT|STYLESHEET|MEDIA|TEXT_TRACK|MANIFEST)/,
+  );
   assert.doesNotMatch(handler, /StationheadCorePlaybackRequestBoundaryFixed/);
 });
 
-test('station listener and playback controls bypass optional social blocking', () => {
+test('blocking stays disarmed until native audio is stable', () => {
+  const handler = section(
+    policy,
+    'webview->add_WebResourceRequested(',
+    '}  // namespace hp',
+  );
+  const armedAt = handler.indexOf(
+    'armedState->load(std::memory_order_acquire)',
+  );
+  const telemetryAt = handler.indexOf(
+    'StationheadTelemetryRequestBoundaryFixed(lower)',
+  );
+  assert.ok(armedAt >= 0);
+  assert.ok(telemetryAt > armedAt);
+  assert.match(handler, /if \(!args \|\|[\s\S]*!armedState->load\(std::memory_order_acquire\)\)[\s\S]*return S_OK;/);
+  assert.doesNotMatch(policy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
+});
+
+test('all Stationhead-owned scripts, styles and APIs fail open', () => {
   const matcher = section(
     policy,
-    'inline constexpr bool StationheadPlaybackControlRequestBoundaryFixed(',
-    'static_assert(StationheadPlaybackControlRequestBoundaryFixed',
-  );
-  assert.match(matcher, /uri\.host != L"production1\.stationhead\.com"/);
-  assert.match(matcher, /uri\.path == L"\/station" \|\| uri\.path\.starts_with\(L"\/station\/"\)/);
-  assert.match(matcher, /uri\.path == L"\/playback"/);
-  assert.match(matcher, /uri\.path == L"\/stream"/);
-  assert.match(
-    policy,
-    /StationheadDataAcquisitionRequestBoundaryFixed\(lower\) \|\|[\s\S]*StationheadPlaybackControlRequestBoundaryFixed\(lower\)/,
+    'inline constexpr bool StationheadOwnedRequestBoundaryFixed(',
+    'static_assert(StationheadOwnedRequestBoundaryFixed',
   );
   const handler = section(
     policy,
-    'const bool protectedRequest =',
-    'if (block) {',
+    'webview->add_WebResourceRequested(',
+    '}  // namespace hp',
   );
-  assert.ok(
-    handler.indexOf('StationheadPlaybackControlRequestBoundaryFixed(lower)') <
-      handler.indexOf('StationheadRequestIsBlockableBoundaryFixed(lower)'),
+  assert.match(matcher, /uri\.scheme == L"https"/);
+  assert.match(matcher, /StationheadRuntimeHostMatches\(uri\.host, L"stationhead\.com"\)/);
+  assert.match(handler, /StationheadOwnedRequestBoundaryFixed\(lower\)/);
+  assert.doesNotMatch(
+    handler,
+    /StationheadKnownOptionalModuleStubBoundaryFixed|StationheadStartupOptionalModuleStubBoundaryFixed|StationheadOptionalStylesheetBoundaryFixed|StationheadRequestIsBlockableBoundaryFixed|StationheadExpandedNonPlaybackScriptBoundaryFixed/,
   );
+  assert.match(policy, /production1\.stationhead\.com\/chathistory/);
+  assert.match(policy, /realtime-production\.stationhead\.com\/app\/key/);
 });
 
-test('script stubs and Tooltip CSS reduction are retained', () => {
-  assert.match(
+test('only explicit third-party telemetry is replaced after arming', () => {
+  const handler = section(
     policy,
-    /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/,
+    'webview->add_WebResourceRequested(',
+    '}  // namespace hp',
   );
-  assert.match(
-    policy,
-    /StationheadOptionalStylesheetBoundaryFixed\(lower\)/,
-  );
-  assert.match(policy, /replacementScript \? 200 : \(emptyResource \? 204 : 403\)/);
-  assert.match(policy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
+  assert.match(handler, /StationheadTelemetryRequestBoundaryFixed\(lower\)/);
+  assert.match(handler, /const int status = script \? 200 : 204;/);
+  assert.match(handler, /Content-Type: application\/javascript; charset=utf-8/);
+  assert.doesNotMatch(handler, /SHCreateMemStream|moduleStub|emptyScript|emptyResource/);
 });
