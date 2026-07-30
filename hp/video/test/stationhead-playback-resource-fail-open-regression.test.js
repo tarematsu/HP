@@ -81,8 +81,8 @@ test('all dynamic Stationhead and third-party requests remain fail-open', () => 
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
     '}  // namespace hp',
   );
-  assert.match(handler, /Keep the final playback WebView boundary completely fail-open/);
   assert.match(handler, /Do not install WebResourceRequested or CDP/);
+  assert.match(handler, /synthetic response after the route shell has mounted/);
   assert.doesNotMatch(
     handler,
     /StationheadRequestIsBlockable|StationheadTelemetryRequest|StationheadExpandedNonPlaybackScript|StationheadKnownOptionalModuleStub|StationheadOptionalStylesheet/,
