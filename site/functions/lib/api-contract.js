@@ -10,7 +10,7 @@ export const API_GROUPS = Object.freeze({
   history: Object.freeze([
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
     { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from minute facts' },
-    { path: '/api/track-history', methods: ['GET'], description: 'Track play history with like ranking' },
+    { path: '/api/track-history', methods: ['GET'], description: 'Stored track history and current like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },
   ]),
@@ -26,7 +26,6 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'history:weekly', url: '/api/history?mode=weekly', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:monthly', url: '/api/history?mode=monthly', cadence_minutes: 360 }),
   Object.freeze({ key: 'history:broadcasts', url: '/api/history?mode=broadcasts', cadence_minutes: 360 }),
-  Object.freeze({ key: 'track-history', url: '/api/track-history', cadence_minutes: 1440 }),
   Object.freeze({ key: 'host-history:summary', url: '/api/host-history?mode=summary', cadence_minutes: 1440 }),
 ]);
 
@@ -53,7 +52,6 @@ export function materializedApiKey(input) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
     return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
   }
-  if (pathname === '/api/track-history' && onlyParameters(url)) return 'track-history';
   if (pathname === '/api/host-history' && onlyParameters(url, ['mode'])) {
     const mode = String(url.searchParams.get('mode') || 'summary').trim().toLowerCase();
     return mode === 'summary' ? 'host-history:summary' : null;
