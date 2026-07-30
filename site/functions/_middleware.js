@@ -10,10 +10,17 @@ import {
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 30 * 60;
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
-// The dashboard's live Pages handler reads the compact MINUTE_DB facts model and
-// explicitly masks the legacy buddies DB. It is therefore safe to use as a
-// narrow availability fallback when the runtime materialization service is down.
-const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set(['dashboard']);
+// These Pages handlers read compact facts or persisted summary tables with bounded
+// evidence lookups. They are safe availability fallbacks when the configured
+// read-model service responds but a materialized object is temporarily unavailable.
+const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set([
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
+]);
 // The Pages service owns the storage choice. Compact payloads are read from
 // KV and large payloads such as track-history are read from R2 there, so the
 // gateway must not make a storage-specific decision before invoking it.
@@ -151,7 +158,10 @@ export async function onRequest(context) {
         model_key: modelKey,
         error: String(error?.message || error).slice(0, 500),
       }));
-      if (!LIVE_PAGES_FALLBACK_MODEL_KEYS.has(modelKey)) return materializedUnavailable(modelKey);
+      const serviceConfigured = typeof context.env?.PAGES_READ_MODEL_SERVICE?.fetch === 'function';
+      const fallbackAllowed = LIVE_PAGES_FALLBACK_MODEL_KEYS.has(modelKey)
+        && (serviceConfigured || modelKey === 'dashboard');
+      if (!fallbackAllowed) return materializedUnavailable(modelKey);
 
       try {
         origin = withResponseHeader(await context.next(), 'x-materialized-fallback', 'live-pages');
