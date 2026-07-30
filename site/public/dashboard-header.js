@@ -6,6 +6,14 @@ if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   document.head.append(stylesheet);
 }
 
+const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') document.documentElement.classList.add(KEYBOARD_NAVIGATION_CLASS);
+}, { capture: true });
+document.addEventListener('pointerdown', () => {
+  document.documentElement.classList.remove(KEYBOARD_NAVIGATION_CLASS);
+}, { capture: true });
+
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
 if (updated) {
