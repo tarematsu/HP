@@ -95,6 +95,8 @@ jobs:
           & hp/native/scripts/ci-native-stationhead-startup-smoke.ps1 `
             -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
             -TimeoutSeconds 150 `
+            -StartupBudgetSeconds 60 `
+            -PostClickSettleSeconds 3 `
             -OutputDirectory hp/native/ci-stationhead-startup-smoke
 
       - name: Run updater verification and restart smoke test
