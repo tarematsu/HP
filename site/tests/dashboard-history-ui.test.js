@@ -6,12 +6,13 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
+const historyPage = readFileSync(new URL('../public/history/index.html', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
-const historyTrackView = readFileSync(new URL('../public/history/history-track-view.js', import.meta.url), 'utf8');
+const historyLikes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const trackEndpoint = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
 
-test('main page renders current track likes from the dashboard response', () => {
+ test('main page renders current track likes from the dashboard response', () => {
   assert.match(mainPage, /id="trackBites" hidden/);
   assert.equal((mainPage.match(/<script /g) || []).length, 1);
   assert.match(mainPage, /src="\/dashboard-metrics\.js"/);
@@ -32,32 +33,18 @@ test('main page labels member and stream deltas with their actual dates', () => 
   assert.match(dashboardDaily, /streamsDayBeforeDelta', dayBeforeLabel/);
 });
 
-test('track history reads materialized rows and integrated ranking status', () => {
-  assert.match(trackEndpoint, /FROM sh_pages_track_history_read_model/);
-  assert.match(trackEndpoint, /FROM sh_pages_payload_read_model/);
-  assert.match(trackEndpoint, /ranking_summary/);
-  assert.match(trackEndpoint, /ranking_scope/);
-  assert.match(trackEndpoint, /worker_materialized_read_model/);
+test('like ranking reads the current ranking projection directly', () => {
+  assert.match(trackEndpoint, /ranking_only/);
+  assert.match(trackEndpoint, /loadTrackRanking/);
+  assert.match(trackEndpoint, /current_track_like_ranking/);
+  assert.match(historyLikes, /ranking_only=1/);
+  assert.doesNotMatch(historyLikes, /week_play_count|今週再生/);
 });
 
-test('track history defaults to yesterday in UTC as a single day', () => {
-  assert.match(historyEntry, /import \{ utcDate \} from '\.\/history-date-utils\.js'/);
-  assert.match(historyEntry, /trackDate\.value = utcDate\(-1\)/);
-  assert.doesNotMatch(historyEntry, /JST|Asia\/Tokyo|jstDate/);
-  assert.match(historyEntry, /trackWeekMode\.checked = false/);
-});
-
-test('track history is presented as a full-period play-count ranking card view', () => {
-  assert.match(historyEntry, /import\('\/history\/history-page-fixes\.js'\)/);
-  assert.match(historyFixes, /aggregateCompleteTrackRows/);
-  assert.match(historyFixes, /history:track-rows/);
-  assert.match(historyTrackView, /right\.play_count - left\.play_count/);
-  assert.match(historyFixes, /1日の再生数ランキング/);
-  assert.match(historyFixes, /週間再生数ランキング/);
-  assert.match(historyFixes, /className = 'like-rank-item'/);
-  assert.match(historyFixes, /metric\('再生回数'/);
-  assert.match(historyFixes, /metric\('最大いいね'/);
-  assert.match(historyFixes, /tableWrap\.hidden = true/);
+test('archive removes the track playback tab and its aggregation runtime', () => {
+  assert.doesNotMatch(historyPage, /data-mode="tracks"|>再生曲</);
+  assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
+  assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
 
 test('sparse daily summaries draw visible point markers instead of an empty canvas', () => {
