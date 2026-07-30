@@ -36,6 +36,10 @@ test('dashboard navigation and likes summary remain balanced across breakpoints'
   assert.match(headerCss, /\.summary-cards\.likes-summary article:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
 });
 
+test('hash navigation does not expose the skip link without keyboard focus visibility', () => {
+  assert.match(headerCss, /\.skip-link:focus:not\(:focus-visible\)\s*\{[\s\S]*translateY\(-150%\)/);
+});
+
 test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
   assert.match(historyEntry, /installRemovedControlCompatibility\(\)/);
   assert.ok(historyEntry.indexOf('installRemovedControlCompatibility();') < historyEntry.indexOf("await import('/history/history-lite.js')"));
