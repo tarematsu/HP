@@ -1,0 +1,155 @@
+name: Backfill minute facts from 2026-06-23
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/backfill-minute-facts-20260623.yml'
+      - 'worker/scripts/backfill-minute-facts-range-actions.mjs'
+      - 'worker/scripts/rebuild-history-summaries-range-actions.mjs'
+      - 'scripts/rebuild-minute-facts-from-buddies.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# This production repair is intentionally serialized and never cancelled after uploads start.
+concurrency:
+  group: minute-facts-range-backfill-20260623
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'agent/backfill-minute-facts-20260623'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      BUDDIES_DATABASE_NAME: stationhead-buddies
+      FACTS_DATABASE_NAME: stationhead-minute
+      OTHER_DATABASE_NAME: stationhead-other
+      MINUTE_FACT_BACKFILL_FROM: '2026-06-23T00:00:00Z'
+      MINUTE_FACT_RECENT_GUARD_MS: '300000'
+    steps:
+      - name: Checkout repair revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Worker dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Export complete Buddies range to the runner
+        id: range
+        run: node scripts/backfill-minute-facts-range-actions.mjs export
+
+      - name: Generate minute facts locally
+        run: >-
+          python ../scripts/rebuild-minute-facts-from-buddies.py
+          --snapshots-json ../.local-minute-facts/snapshots.json
+          --comments-json ../.local-minute-facts/comments.json
+          --out-dir ../.local-minute-facts/generated
+          --now-ms ${{ steps.range.outputs.cutoff_ms }}
+          --recent-guard-ms 0
+
+      - name: Upload all generated facts to MINUTE_DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          chunks=(../.local-minute-facts/generated/minute-facts-*.sql)
+          if (( ${#chunks[@]} == 0 )); then
+            echo 'No minute fact SQL chunks were generated.' >&2
+            exit 1
+          fi
+          for chunk in "${chunks[@]}"; do
+            echo "Uploading $(basename "$chunk")"
+            uploaded=false
+            for attempt in 1 2 3 4 5 6; do
+              if npx wrangler d1 execute "$FACTS_DATABASE_NAME" \
+                --remote --yes --file "$chunk"; then
+                uploaded=true
+                break
+              fi
+              delay=$((attempt * 10))
+              echo "D1 import still busy; retrying in ${delay}s (attempt ${attempt}/6)"
+              sleep "$delay"
+            done
+            if [[ "$uploaded" != true ]]; then
+              echo "Failed to upload $(basename "$chunk") after 6 attempts" >&2
+              exit 1
+            fi
+          done
+
+      - name: Checkpoint bulk fact generation
+        run: node scripts/minute-facts-actions-window.mjs complete
+
+      - name: Verify fact coverage and settle rebuild jobs
+        run: node scripts/backfill-minute-facts-range-actions.mjs verify
+
+      - name: Generate replacement summaries locally
+        run: node scripts/rebuild-history-summaries-range-actions.mjs generate
+
+      - name: Upload regenerated summaries to OTHER_DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary=../.local-minute-facts/generated/history-summaries.sql
+          test -s "$summary"
+          uploaded=false
+          for attempt in 1 2 3 4 5 6; do
+            if npx wrangler d1 execute "$OTHER_DATABASE_NAME" \
+              --remote --yes --file "$summary"; then
+              uploaded=true
+              break
+            fi
+            delay=$((attempt * 10))
+            echo "D1 summary import still busy; retrying in ${delay}s (attempt ${attempt}/6)"
+            sleep "$delay"
+          done
+          if [[ "$uploaded" != true ]]; then
+            echo 'Failed to upload regenerated summaries after 6 attempts' >&2
+            exit 1
+          fi
+
+      - name: Verify daily, weekly, and monthly summaries
+        run: node scripts/rebuild-history-summaries-range-actions.mjs verify
+
+      - name: Verify MINUTE_DB deployment-critical schema
+        run: node scripts/verify-facts-live.mjs
+
+      - name: Upload repair evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minute-facts-range-backfill-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .local-minute-facts/range.json
+            .local-minute-facts/fact-verification.json
+            .local-minute-facts/generated/manifest.json
+            .local-minute-facts/generated/summary-manifest.json
+            .local-minute-facts/generated/summary-verification.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Remove local exported data
+        if: always()
+        run: rm -rf ../.local-minute-facts
