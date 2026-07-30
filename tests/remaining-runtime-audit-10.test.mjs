@@ -35,11 +35,13 @@ test('host summary returns active and recent Sakurazaka sessions from one SQL st
   assert.deepEqual(summary.recentSessions.map((row) => row.id), [2, 1]);
 });
 
-test('history runtime consolidates enhancements and reuses prepared chart state', () => {
-  const html = readFileSync(new URL('../site/public/history/index.html', import.meta.url), 'utf8');
+test('history runtime is embedded in the main dashboard and reuses prepared chart state', () => {
+  const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
   assert.equal((html.match(/<script /g) || []).length, 1);
-  assert.match(html, /src="\/history\/history-lite\.js"/);
-  assert.doesNotMatch(html, /history-copy-fixes\.js|history-track-performance\.js|history-track-likes\.js/);
+  assert.match(html, /id="historyView"/);
+  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
+  assert.doesNotMatch(html, /href="\/history/);
 
   const runtime = readFileSync(
     new URL('../site/public/history/history-lite.js', import.meta.url),
