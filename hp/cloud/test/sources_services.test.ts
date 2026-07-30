@@ -98,9 +98,10 @@ describe("cloud sources", () => {
       }),
       expect.objectContaining({
         fromDatetime: "2026-07-09T15:00:00.000Z",
-        toDatetime: "2026-07-11T15:00:00.000Z",
+        toDatetime: "2026-07-10T18:00:00.000Z",
       }),
     ]);
+    expect(readingRanges.every(range => Date.parse(range.toDatetime ?? "") <= Date.now())).toBe(true);
 
     const payload = result.payload as {
       comparison: {
