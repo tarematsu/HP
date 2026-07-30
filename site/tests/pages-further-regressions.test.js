@@ -93,7 +93,7 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('active Pages runtimes are UTC-only and contain no playback-history UI path', () => {
+test('active Pages runtimes are UTC-only and contain no playback-history page path', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
@@ -101,11 +101,12 @@ test('active Pages runtimes are UTC-only and contain no playback-history UI path
   const likes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-  const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
+  const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../public/dashboard-tabs.js', import.meta.url), 'utf8');
   const activeSources = [entry, guard, fixes, history, likes, broadcasts, dashboard].join('\n');
 
   assert.match(entry, /history:runtime-ready/);
-  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'/);
+  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'|legacyHistoryRoute/);
   assert.doesNotMatch(guard, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
   assert.doesNotMatch(fixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
   assert.match(fixes, /applyUtcPreset/);
@@ -115,12 +116,14 @@ test('active Pages runtimes are UTC-only and contain no playback-history UI path
   assert.match(likes, /timeZone: 'UTC'/);
   assert.match(likes, /ranking_only=1/);
   assert.doesNotMatch(likes, /currentUtcWeekRange|completeTrackRows|week_play_count/);
-  assert.match(likes, /else load\(\)/);
+  assert.match(likes, /else if \(!el\('likesView'\)\.hidden\) load\(\)/);
   assert.match(broadcasts, /timeZone: 'UTC'/);
   assert.match(dashboard, /timeZone: 'UTC'/);
   assert.match(dashboard, /toLocaleTimeString\('ja-JP', \{[\s\S]*timeZone: 'UTC'/);
   assert.match(dashboard, /最終取得 \$\{safeDate\(latest\.observed_at\)\} UTC/);
-  assert.match(likesPage, /<script type="module" src="\/history\/history-likes\.js"><\/script>/);
+  assert.match(mainPage, /id="likesView"/);
+  assert.match(tabs, /import\('\/history\/history-likes\.js'\)/);
+  assert.doesNotMatch(mainPage, /href="\/history/);
   assert.doesNotMatch(activeSources, /Asia\/Tokyo|JST_OFFSET_MS|jstDate|todayJst|currentJstWeekRange|applyJstPreset/);
 });
 

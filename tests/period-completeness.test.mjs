@@ -192,9 +192,11 @@ test('track rows retain details but incomplete dates are marked for total exclus
   assert.deepEqual(result.excludedDates, ['2026-07-02']);
 });
 
-test('history lite client consumes server completeness without legacy boundary modules', () => {
-  const html = readFileSync(new URL('../site/public/history/index.html', import.meta.url), 'utf8');
-  assert.match(html, /src="\/history\/history-lite\.js"/);
+test('history lite client is loaded lazily into the integrated dashboard', () => {
+  const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
+  assert.match(html, /id="historyView"/);
+  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-copy-fixes\.js|history-track-likes\.js/);
 
   const runtimeSource = readFileSync(

@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const historyPage = readFileSync(new URL('../public/history/index.html', import.meta.url), 'utf8');
+const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyClient = readFileSync(new URL('../public/history/history-lite.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const historyGuard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
 const historyStyles = readFileSync(new URL('../public/history/history-lite.css', import.meta.url), 'utf8');
 const mainStyles = readFileSync(new URL('../public/app-lite.css', import.meta.url), 'utf8');
-const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
 const likesClient = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
 const broadcastClient = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
 const trackHistoryApi = readFileSync(new URL('../functions/api/track-history.js', import.meta.url), 'utf8');
@@ -19,32 +18,30 @@ const middleware = readFileSync(new URL('../functions/_middleware.js', import.me
 
 const ARCHIVE_MODES = ['daily', 'weekly', 'monthly', 'ranking', 'broadcasts'];
 
-test('history exposes archive modes without a track playback tab', () => {
+ test('main dashboard exposes archive modes and likes without separate pages', () => {
   for (const mode of ARCHIVE_MODES) {
-    assert.match(historyPage, new RegExp(`data-mode="${mode}"`));
+    assert.match(mainPage, new RegExp(`data-view="history" data-mode="${mode}"`));
   }
-  assert.doesNotMatch(historyPage, /data-mode="tracks"|>再生曲</);
-  assert.match(historyPage, /href="\/history\/likes\/">いいね<\/a>/);
-  assert.equal((historyPage.match(/<link rel="stylesheet"/g) || []).length, 1);
-  assert.equal((historyPage.match(/<script /g) || []).length, 1);
+  assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
+  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲</);
+  assert.equal(existsSync(new URL('../public/history/index.html', import.meta.url)), false);
+  assert.equal(existsSync(new URL('../public/history/likes/index.html', import.meta.url)), false);
 });
 
-test('monthly tab appears before leaderboard on both history pages', () => {
-  assert.ok(historyPage.indexOf('data-mode="monthly"') < historyPage.indexOf('data-mode="ranking"'));
-  assert.ok(likesPage.indexOf('/#monthly') < likesPage.indexOf('/#ranking'));
+test('monthly tab appears before leaderboard in the shared panel', () => {
+  assert.ok(mainPage.indexOf('data-mode="monthly"') < mainPage.indexOf('data-mode="ranking"'));
 });
 
-test('history defaults invalid and removed track hashes to weekly', () => {
-  assert.match(historyPage, /data-mode="weekly" class="active"/);
+test('embedded history defaults invalid hashes to weekly', () => {
   assert.match(historyEntry, /const VALID_MODES = new Set\(\['daily', 'weekly', 'ranking', 'monthly', 'broadcasts'\]\)/);
   assert.doesNotMatch(historyEntry, /'tracks'/);
-  assert.match(historyEntry, /history\.replaceState\(null, '', '#weekly'\)/);
+  assert.match(historyEntry, /history\.replaceState\(null, '', '\/#weekly'\)/);
   assert.match(historyEntry, /import\('\/history\/history-lite\.js'\)/);
   assert.match(historyClient, /const MODES = Object\.freeze/);
   for (const mode of ARCHIVE_MODES) assert.match(historyClient, new RegExp(`${mode}: \\{`));
 });
 
-test('history tabs use a fixed grid without horizontal scrolling', () => {
+test('shared tabs use a fixed grid without horizontal scrolling', () => {
   assert.match(historyStyles, /\.mode-tabs \{[^}]*display:\s*grid/);
   assert.match(historyStyles, /grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(historyStyles, /\.mode-tabs \{[^}]*overflow:\s*hidden/);
@@ -52,13 +49,13 @@ test('history tabs use a fixed grid without horizontal scrolling', () => {
 });
 
 test('history keeps the guide as an accessible hidden label source', () => {
-  assert.match(historyPage, /<div id="guide" hidden aria-hidden="true">/);
+  assert.match(mainPage, /<div id="guide" hidden aria-hidden="true">/);
   assert.match(historyClient, /setText\('guideTitle', config\.title\)/);
   assert.match(historyClient, /setText\('tableTitle', config\.table\)/);
 });
 
 test('history keeps one visible chart and delegates official series rendering', () => {
-  assert.match(historyPage, /<canvas id="chart"[^>]*><\/canvas>/);
+  assert.match(mainPage, /<canvas id="chart"[^>]*><\/canvas>/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*margin-top/);
   assert.match(historyStyles, /\.data-panel \{[^}]*content-visibility:\s*auto/);
   assert.match(historyClient, /function drawSummaryChart/);
@@ -97,7 +94,6 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
     assert.match(mainStyles, pattern);
     assert.match(historyStyles, pattern);
   }
-  assert.match(historyStyles, /\.top-card \{[^}]*padding:\s*20px/);
   assert.match(historyStyles, /\.button \{[^}]*min-height:\s*44px/);
   assert.match(historyStyles, /\.chart-panel \{[^}]*padding:\s*18px/);
   assert.match(historyStyles, /\.data-panel \{[^}]*padding:\s*18px/);
@@ -105,7 +101,7 @@ test('history visual tokens and panel sizing match the main dashboard', () => {
 
 test('history client uses only the canonical summary endpoints', () => {
   assert.match(historyClient, /\/api\/history\?/);
-  assert.doesNotMatch(historyPage, /\/api\/track-history/);
+  assert.doesNotMatch(mainPage, /\/api\/track-history/);
   assert.match(historyClient, /weekly_metrics/);
   assert.match(broadcastClient, /\/api\/sakurazaka46jp\?/);
 });
@@ -123,13 +119,15 @@ test('history tables render newest rows first and paginate only in the browser',
   assert.match(historyClient, /function exportCsv/);
 });
 
-test('likes page reads current ranking directly without playback counts', () => {
-  assert.match(likesPage, /aria-current="page" href="\/history\/likes\/">いいね<\/a>/);
-  assert.match(likesPage, /最新いいね/);
-  assert.doesNotMatch(likesPage, /今週再生|再生曲/);
+test('integrated likes view reads current ranking directly without playback counts', () => {
+  assert.match(mainPage, /id="likesView"/);
+  assert.match(mainPage, /id="likesRankingList"/);
+  assert.match(mainPage, /最新いいね/);
+  assert.doesNotMatch(mainPage, /今週再生|再生曲/);
   assert.match(likesClient, /\/api\/track-history\?ranking_only=1&ranking_limit=500/);
   assert.match(likesClient, /result\.data\.ranking/);
   assert.match(likesClient, /result\.data\.ranking_summary/);
+  assert.match(likesClient, /el\('likesLoad'\)/);
   assert.doesNotMatch(likesClient, /week_play_count|play_count_excluded|currentUtcWeekRange/);
   assert.match(trackHistoryApi, /ranking_only/);
   assert.match(trackHistoryApi, /loadTrackRanking/);

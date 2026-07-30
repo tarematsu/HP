@@ -1,16 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const historyHtml = readFileSync(new URL('../site/public/history/index.html', import.meta.url), 'utf8');
+const dashboardHtml = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
 
-test('history page remains valid UTF-8 HTML instead of byte-pair mojibake', () => {
-  assert.match(historyHtml, /^<!doctype html>\s*<html lang="ja">/i);
-  assert.match(historyHtml, /<meta charset="utf-8">/i);
-  assert.match(historyHtml, /<h1>過去データ<\/h1>/);
-  assert.doesNotMatch(historyHtml, /data-mode="tracks"|>再生曲</);
-  assert.match(historyHtml, /src="\/history\/history-main\.js"/);
-  assert.doesNotMatch(historyHtml, /history-copy-fixes\.js/);
-  assert.doesNotMatch(historyHtml, /[㰀-㿿]{3,}/u);
-  assert.doesNotMatch(historyHtml, /\uFFFD/u);
+test('integrated archive views remain valid UTF-8 HTML instead of byte-pair mojibake', () => {
+  assert.match(dashboardHtml, /^<!doctype html>\s*<html lang="ja">/i);
+  assert.match(dashboardHtml, /<meta charset="utf-8">/i);
+  assert.match(dashboardHtml, /id="historyView"/);
+  assert.match(dashboardHtml, /id="likesView"/);
+  assert.match(dashboardHtml, /data-mode="daily">日次/);
+  assert.doesNotMatch(dashboardHtml, /data-mode="tracks"|>再生曲|href="\/history/);
+  assert.equal(existsSync(new URL('../site/public/history/index.html', import.meta.url)), false);
+  assert.doesNotMatch(dashboardHtml, /[㰀-㿿]{3,}/u);
+  assert.doesNotMatch(dashboardHtml, /\uFFFD/u);
 });

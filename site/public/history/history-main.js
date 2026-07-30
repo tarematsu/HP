@@ -1,7 +1,5 @@
 const VALID_MODES = new Set(['daily', 'weekly', 'ranking', 'monthly', 'broadcasts']);
-const DASHBOARD_MODES = new Set(['daily', 'weekly', 'ranking', 'monthly', 'broadcasts']);
 const requestedMode = location.hash.slice(1);
-const legacyHistoryRoute = /^\/history(?:\/index\.html)?\/?$/.test(location.pathname);
 
 function installRemovedControlCompatibility() {
   const root = document.getElementById('historyView') || document.body;
@@ -21,20 +19,15 @@ function installRemovedControlCompatibility() {
   }
 }
 
-if (legacyHistoryRoute) {
-  const dashboardMode = DASHBOARD_MODES.has(requestedMode) ? requestedMode : 'weekly';
-  location.replace(`/#${dashboardMode}`);
-} else {
-  if (!VALID_MODES.has(requestedMode)) {
-    history.replaceState(null, '', '#weekly');
-  }
-
-  // The compact runtime still dereferences removed controls while booting.
-  // Keep inert compatibility nodes until that legacy code is retired.
-  installRemovedControlCompatibility();
-  await import('/history/history-request-guard.js');
-  await import('/history/history-current-overlay.js');
-  await import('/history/history-page-fixes.js');
-  await import('/history/history-lite.js');
-  window.dispatchEvent(new Event('history:runtime-ready'));
+if (!VALID_MODES.has(requestedMode)) {
+  history.replaceState(null, '', '/#weekly');
 }
+
+// The compact runtime still dereferences removed controls while booting.
+// Keep inert compatibility nodes until that legacy code is retired.
+installRemovedControlCompatibility();
+await import('/history/history-request-guard.js');
+await import('/history/history-current-overlay.js');
+await import('/history/history-page-fixes.js');
+await import('/history/history-lite.js');
+window.dispatchEvent(new Event('history:runtime-ready'));

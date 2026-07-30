@@ -34,7 +34,7 @@
           <button type="button" data-view="history" data-mode="weekly">週次</button>
           <button type="button" data-view="history" data-mode="monthly">月次</button>
           <button type="button" data-view="history" data-mode="ranking">リーダーボード</button>
-          <a href="/history/likes/">いいね</a>
+          <button type="button" data-view="likes" data-mode="likes">いいね</button>
           <button type="button" data-view="history" data-mode="broadcasts">公式ストリーム</button>
         </nav>
       </div>
@@ -173,6 +173,36 @@
       <section id="rankingWeeklyPanel" class="card data-panel" hidden>
         <div class="section-head"><div><p class="kicker">BUDDIES WEEKLY METRICS</p><h2>Buddies週間実績</h2></div></div>
         <div class="table-wrap"><table><thead id="rankingWeeklyThead"></thead><tbody id="rankingWeeklyTbody"></tbody></table></div>
+      </section>
+    </section>
+
+    <section id="likesView" class="dashboard-view likes-view" hidden>
+      <div class="like-actions">
+        <button id="likesLoad" class="button primary" type="button">更新</button>
+        <button id="likesCsv" class="button" type="button">CSV</button>
+      </div>
+
+      <p id="likesNotice" class="notice" role="status">読み込み中…</p>
+
+      <section class="summary-cards likes-summary" aria-label="いいね集計概要">
+        <article><span>対象曲数</span><strong id="likesTrackCount">-</strong></article>
+        <article><span>最高いいね</span><strong id="likesMaxLikes">-</strong></article>
+        <article><span>最終更新</span><strong id="likesLatestAt" class="summary-date">-</strong></article>
+      </section>
+
+      <section class="card data-panel">
+        <div class="section-head"><div><p class="kicker">TOP TRACKS</p><h2>最新いいねランキング</h2></div></div>
+        <ol id="likesRankingList" class="like-ranking"></ol>
+      </section>
+
+      <section class="card data-panel">
+        <div class="section-head"><div><p class="kicker">DATA</p><h2>曲別一覧</h2></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>順位</th><th>曲名</th><th>アーティスト</th><th>最新いいね</th><th>最終観測</th></tr></thead>
+            <tbody id="likesTbody"></tbody>
+          </table>
+        </div>
       </section>
     </section>
   </main>

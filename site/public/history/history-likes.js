@@ -19,6 +19,8 @@ import {
 
   const state = { rows: [], summary: {}, controller: null };
   const el = (id) => document.getElementById(id);
+  if (!el('likesView')) return;
+
   const finite = (value) => {
     if (value === null || value === undefined || value === '') return null;
     const parsed = Number(value);
@@ -29,8 +31,8 @@ import {
   const artistName = (row) => displayTrackArtist(row);
 
   function setNotice(text, error = false) {
-    el('notice').textContent = text;
-    el('notice').classList.toggle('error', error);
+    el('likesNotice').textContent = text;
+    el('likesNotice').classList.toggle('error', error);
   }
 
   function readCache(url) {
@@ -60,9 +62,9 @@ import {
   }
 
   function renderSummary() {
-    el('trackCount').textContent = fmt(state.summary.track_count || 0);
-    el('maxLikes').textContent = fmt(state.summary.max_like_count || 0);
-    el('latestAt').textContent = state.summary.latest_observed_at
+    el('likesTrackCount').textContent = fmt(state.summary.track_count || 0);
+    el('likesMaxLikes').textContent = fmt(state.summary.max_like_count || 0);
+    el('likesLatestAt').textContent = state.summary.latest_observed_at
       ? shortDate.format(new Date(Number(state.summary.latest_observed_at)))
       : '—';
   }
@@ -77,7 +79,7 @@ import {
   }
 
   function renderRanking() {
-    const list = el('rankingList');
+    const list = el('likesRankingList');
     list.replaceChildren();
     const rows = state.rows.slice(0, 50);
     if (!rows.length) {
@@ -114,7 +116,7 @@ import {
   }
 
   function renderTable() {
-    const body = el('tbody');
+    const body = el('likesTbody');
     body.replaceChildren();
     if (!state.rows.length) {
       const row = document.createElement('tr');
@@ -154,7 +156,7 @@ import {
     state.controller?.abort();
     const controller = new AbortController();
     state.controller = controller;
-    el('load').disabled = true;
+    el('likesLoad').disabled = true;
     setNotice('読み込み中…');
     const url = '/api/track-history?ranking_only=1&ranking_limit=500';
     try {
@@ -173,7 +175,7 @@ import {
     } finally {
       if (state.controller === controller) {
         state.controller = null;
-        el('load').disabled = false;
+        el('likesLoad').disabled = false;
       }
     }
   }
@@ -195,11 +197,11 @@ import {
     URL.revokeObjectURL(link.href);
   }
 
-  el('load').addEventListener('click', () => load({ force: true }));
-  el('csv').addEventListener('click', exportCsv);
+  el('likesLoad').addEventListener('click', () => load({ force: true }));
+  el('likesCsv').addEventListener('click', exportCsv);
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) state.controller?.abort();
-    else load();
+    else if (!el('likesView').hidden) load();
   });
   load();
 })();
