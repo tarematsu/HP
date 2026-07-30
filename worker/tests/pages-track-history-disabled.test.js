@@ -9,16 +9,16 @@ import {
 
 const NOW = Date.UTC(2026, 6, 24, 0, 30, 0);
 
-test('production runtime omits track-history scheduling while Actions enables it explicitly', () => {
+test('production runtime and scheduled Actions omit track-history generation', () => {
   const config = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   const runner = readFileSync(new URL('../scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
   assert.equal(Object.hasOwn(config.vars, 'PAGES_TRACK_HISTORY_CYCLE_ENABLED'), false);
   assert.equal(config.triggers, undefined);
-  assert.match(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true/);
-  assert.match(runner, /runSplitTrackHistoryCycleStep/);
+  assert.match(runner, /track-history-read-model-disabled/);
+  assert.doesNotMatch(runner, /PAGES_TRACK_HISTORY_CYCLE_ENABLED: true|runSplitTrackHistoryCycleStep/);
 });
 
-test('track-history remains enabled when the flag is absent and accepts explicit true values', () => {
+test('explicit maintenance primitive remains enabled when the flag is absent and accepts true values', () => {
   assert.equal(trackHistoryCycleEnabled({}), true);
   assert.equal(trackHistoryCycleEnabled({ PAGES_TRACK_HISTORY_CYCLE_ENABLED: true }), true);
   assert.equal(trackHistoryCycleEnabled({ PAGES_TRACK_HISTORY_CYCLE_ENABLED: 'on' }), true);
@@ -46,7 +46,7 @@ test('disabled track-history returns before touching D1 or publication Queue bin
   assert.equal(result.failed, 0);
 });
 
-test('false-like configured values disable the cycle', () => {
+test('false-like configured values disable the explicit maintenance cycle', () => {
   for (const value of [false, 0, '0', 'false', 'no', 'off']) {
     assert.equal(trackHistoryCycleEnabled({ PAGES_TRACK_HISTORY_CYCLE_ENABLED: value }), false);
   }
