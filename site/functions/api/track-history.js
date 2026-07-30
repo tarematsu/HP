@@ -1,3 +1,5 @@
+import { loadTrackRanking } from '../lib/track-ranking.js';
+
 const HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=3600',
@@ -19,11 +21,36 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function rankingLimit(url) {
+  const requested = Number(url.searchParams.get('ranking_limit'));
+  return Number.isFinite(requested) && requested > 0
+    ? Math.min(Math.max(Math.trunc(requested), 20), 500)
+    : 200;
+}
+
 export async function onRequestGet({ request, env }) {
   if (!env?.MINUTE_DB) return json({ ok: false, error: 'MINUTE_DB binding missing' }, 500);
   const url = new URL(request.url);
 
   try {
+    if (url.searchParams.get('ranking_only') === '1') {
+      const ranking = await loadTrackRanking(env.MINUTE_DB, { limit: rankingLimit(url) });
+      return json({
+        ok: true,
+        mode: 'likes',
+        timezone: 'UTC',
+        rows: [],
+        ranking_included: true,
+        ranking: ranking.rows,
+        ranking_limit: ranking.rows.length,
+        ranking_truncated: ranking.rows.length >= rankingLimit(url),
+        ranking_summary: ranking.summary,
+        ranking_scope: 'all-time-latest-counter',
+        generated_at: ranking.summary.latest_observed_at,
+        method: 'current_track_like_ranking',
+      });
+    }
+
     if (url.searchParams.get('latest') === '1') {
       const latest = await env.MINUTE_DB.prepare(`SELECT MAX(play_date) AS play_date
         FROM sh_pages_track_history_read_model`).first();
@@ -40,10 +67,7 @@ export async function onRequestGet({ request, env }) {
       ? Math.min(Math.max(Math.trunc(requestedLimit), 100), 20_000)
       : 10_000;
     const includeRanking = url.searchParams.get('ranking') !== '0';
-    const requestedRankingLimit = Number(url.searchParams.get('ranking_limit'));
-    const rankingLimit = Number.isFinite(requestedRankingLimit) && requestedRankingLimit > 0
-      ? Math.min(Math.max(Math.trunc(requestedRankingLimit), 20), 500)
-      : 200;
+    const boundedRankingLimit = rankingLimit(url);
 
     const rowsPromise = env.MINUTE_DB.prepare(`SELECT row_json
       FROM sh_pages_track_history_read_model
@@ -63,7 +87,7 @@ export async function onRequestGet({ request, env }) {
     const rows = rawRows.slice(0, limit).map((row) => JSON.parse(row.row_json));
     const metadata = status?.payload_json ? JSON.parse(status.payload_json) : {};
     const fullRanking = includeRanking && Array.isArray(metadata.ranking) ? metadata.ranking : [];
-    const ranking = fullRanking.slice(0, rankingLimit);
+    const ranking = fullRanking.slice(0, boundedRankingLimit);
     const rankingSummary = includeRanking
       && metadata.ranking_summary && typeof metadata.ranking_summary === 'object'
       ? metadata.ranking_summary
@@ -80,7 +104,7 @@ export async function onRequestGet({ request, env }) {
       likes_included: true,
       ranking_included: includeRanking,
       ranking,
-      ranking_limit: includeRanking ? rankingLimit : 0,
+      ranking_limit: includeRanking ? boundedRankingLimit : 0,
       ranking_truncated: includeRanking && fullRanking.length > ranking.length,
       ranking_summary: rankingSummary,
       ranking_scope: includeRanking ? 'all-time-latest-counter' : null,
@@ -97,7 +121,7 @@ export async function onRequestGet({ request, env }) {
     if (/no such table/i.test(String(error?.message || ''))) {
       return json({
         ok: true,
-        mode: 'tracks',
+        mode: url.searchParams.get('ranking_only') === '1' ? 'likes' : 'tracks',
         rows: [],
         ranking: [],
         ranking_summary: {},
