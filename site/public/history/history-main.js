@@ -13,6 +13,7 @@ if (trackDate && !trackDate.value) trackDate.value = utcDate(-1);
 if (trackWeekMode) trackWeekMode.checked = false;
 
 await import('/history/history-request-guard.js');
+await import('/history/history-current-overlay.js');
 await import('/history/history-page-fixes.js');
 await import('/history/history-lite.js');
 window.dispatchEvent(new Event('history:runtime-ready'));
