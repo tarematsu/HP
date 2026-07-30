@@ -6,7 +6,6 @@ const mainPage = readFileSync(new URL('../public/index.html', import.meta.url), 
 const dashboardEntry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const dashboardDaily = readFileSync(new URL('../public/dashboard-daily-summaries.js', import.meta.url), 'utf8');
 const dashboardClient = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
-const historyPage = readFileSync(new URL('../public/history/index.html', import.meta.url), 'utf8');
 const historyEntry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
 const historyFixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
 const historyLikes = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
@@ -33,16 +32,19 @@ test('main page labels member and stream deltas with their actual dates', () => 
   assert.match(dashboardDaily, /streamsDayBeforeDelta', dayBeforeLabel/);
 });
 
-test('like ranking reads the current ranking projection directly', () => {
+test('like ranking is an integrated view backed by the current ranking projection', () => {
+  assert.match(mainPage, /id="likesView" class="dashboard-view likes-view" hidden/);
+  assert.match(mainPage, /data-view="likes" data-mode="likes">いいね/);
   assert.match(trackEndpoint, /ranking_only/);
   assert.match(trackEndpoint, /loadTrackRanking/);
   assert.match(trackEndpoint, /current_track_like_ranking/);
   assert.match(historyLikes, /ranking_only=1/);
+  assert.match(historyLikes, /likesRankingList/);
   assert.doesNotMatch(historyLikes, /week_play_count|今週再生/);
 });
 
 test('archive removes the track playback tab and its aggregation runtime', () => {
-  assert.doesNotMatch(historyPage, /data-mode="tracks"|>再生曲</);
+  assert.doesNotMatch(mainPage, /data-mode="tracks"|>再生曲</);
   assert.doesNotMatch(historyEntry, /trackDate|trackWeekMode|'tracks'/);
   assert.doesNotMatch(historyFixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
 });
