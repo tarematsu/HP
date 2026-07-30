@@ -6,6 +6,10 @@ import { normalizeOutcome } from './observability-status-publisher.mjs';
 
 const PRIORITY_ORDER = Object.freeze({ P0: 0, P1: 1, P2: 2, P3: 3 });
 const FAILURE_CELL = /^(?:violation(?:\s*\((?:actual|projected)\))?|failure|failed|error|unhealthy|stale)$/i;
+const D1_VIOLATION_KEYS = Object.freeze({
+  'd1 rows read': 'rowsRead',
+  'd1 rows written': 'rowsWritten',
+});
 
 export const OBSERVABILITY_GATE_INFO = Object.freeze({
   daily: Object.freeze({
@@ -156,15 +160,37 @@ function containedHistoricalDailyTrend({
   generatedAt,
 }) {
   if (normalizeOutcome(outcome) === 'success') return null;
-  const trend = classifyDailyRowsReadTrend({
+  const violations = violationRows(summary);
+  if (!violations.length) return null;
+
+  const readTrend = classifyDailyRowsReadTrend({
     currentSummary: summary,
     previousIssueBody,
     generatedAt,
   });
-  if (!trend?.contained) return null;
-  const violations = violationRows(summary);
-  if (violations.length !== 1 || !/^D1 rows read$/i.test(violations[0][0])) return null;
-  return trend;
+  if (violations.length === 1 && /^D1 rows read$/i.test(violations[0][0])) {
+    return readTrend?.contained ? readTrend : null;
+  }
+
+  const paces = classifyDailyD1SnapshotPaces({
+    currentSummary: summary,
+    previousIssueBody,
+    generatedAt,
+  });
+  const containedPaces = violations.map((row) => {
+    const key = D1_VIOLATION_KEYS[String(row[0] || '').trim().toLowerCase()];
+    const pace = key ? paces[key] : null;
+    if (!pace || pace.current.violationSource !== 'actual' || pace.state === 'failure') return null;
+    return pace;
+  });
+  if (containedPaces.some((pace) => !pace)) return null;
+
+  return {
+    contained: true,
+    evidence: containedPaces.map((pace) => (
+      `${pace.current.metric} remain above the UTC-day limit, but ${pace.evidence.replace(`${pace.current.metric} increased`, 'increased')}`
+    )).join('; '),
+  };
 }
 
 function stateLabel(state) {
