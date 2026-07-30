@@ -1,4 +1,4 @@
-import { applySummaryCompleteness, parseRangeStart } from './period-completeness.js';
+import { applySummaryCompleteness } from './period-completeness.js';
 import {
   applyPeriodBoundaryEvidence,
   loadPeriodBoundaryEvidence,
@@ -14,18 +14,14 @@ export const SUMMARY_TABLES = {
 };
 
 const SUMMARY_COLUMNS = `period_key,period_start,period_end,sample_count,reliable_sample_count,
-listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
-member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
-quality_score,quality_flags`;
+ listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
+ member_start,member_end,member_growth,likes_max,distinct_tracks,primary_host,
+ quality_score,quality_flags`;
 
 function finiteNumber(value) {
   if (value == null || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
-}
-
-function todayUtcString(now) {
-  return new Date(now).toISOString().slice(0, 10);
 }
 
 export function currentSummaryPeriodStart(mode, now = Date.now()) {
@@ -137,25 +133,6 @@ export function minuteSummarySql(mode) {
   return summarySql(mode, 'current_stream_count');
 }
 
-function normalizeLiveRow(row) {
-  const streamStart = finiteNumber(row.stream_start);
-  const streamEnd = finiteNumber(row.stream_end);
-  const memberStart = finiteNumber(row.member_start);
-  const memberEnd = finiteNumber(row.member_end);
-  return {
-    ...row,
-    stream_growth: streamStart != null && streamEnd != null && streamEnd >= streamStart
-      ? streamEnd - streamStart
-      : null,
-    member_growth: memberStart != null && memberEnd != null ? memberEnd - memberStart : null,
-    likes_max: null,
-    distinct_tracks: null,
-    quality_score: 1,
-    quality_flags: '["live_collector"]',
-    live_collector: true,
-  };
-}
-
 export function combineSummaryRows(base, live) {
   if (!base) return live;
   if (!live) return base;
@@ -205,35 +182,6 @@ export function combineSummaryRows(base, live) {
   };
 }
 
-function replaceSummaryWithMinuteFacts(base, minute) {
-  if (!base) return { ...minute, quality_flags: '["minute_facts"]' };
-  return {
-    ...base,
-    ...minute,
-    likes_max: finiteNumber(base.likes_max),
-    distinct_tracks: finiteNumber(base.distinct_tracks),
-    quality_flags: '["historical_import","minute_facts"]',
-  };
-}
-
-async function loadLiveSummary(env, mode, liveStart, toTs, limit) {
-  if (liveStart >= toTs) {
-    return { result: { results: [] }, sourceDb: env.MINUTE_DB || env.DB, minuteFacts: Boolean(env.MINUTE_DB) };
-  }
-  if (env.MINUTE_DB) {
-    try {
-      const result = await env.MINUTE_DB.prepare(minuteSummarySql(mode))
-        .bind(liveStart, toTs, limit)
-        .all();
-      return { result, sourceDb: env.MINUTE_DB, minuteFacts: true };
-    } catch (error) {
-      if (!/no such table|no such view|no such column/i.test(String(error?.message || ''))) throw error;
-    }
-  }
-  const result = await env.DB.prepare(liveSummarySql(mode)).bind(liveStart, toTs, limit).all();
-  return { result, sourceDb: env.DB, minuteFacts: false };
-}
-
 export async function loadSummaryWithLive(env, mode, from, to, now = Date.now()) {
   const table = SUMMARY_TABLES[mode] || SUMMARY_TABLES.weekly;
   const limit = mode === 'daily' ? 800 : mode === 'weekly' ? 160 : 60;
@@ -241,40 +189,22 @@ export async function loadSummaryWithLive(env, mode, from, to, now = Date.now())
     `SELECT ${SUMMARY_COLUMNS} FROM ${table} WHERE period_key>=? AND period_key<=? ORDER BY period_key ASC LIMIT ?`,
   ).bind(from, to, limit).all();
   const baseRows = baseResult.results || [];
-  const fallbackTo = todayUtcString(now);
-  const fromTs = parseRangeStart(mode, from, '2024-06-01');
-  const toTs = parseRangeStart(mode, to, fallbackTo) + DAY_MS;
-  const lastBaseEnd = finiteNumber(baseRows.at(-1)?.period_end);
-  const expectedLiveStart = lastBaseEnd == null ? fromTs : Math.max(fromTs, lastBaseEnd + 1);
-  const liveStart = env.MINUTE_DB
-    ? Math.max(fromTs, expectedLiveStart, minuteSummaryFallbackStart(mode, now))
-    : boundedLiveSummaryStart(mode, fromTs, lastBaseEnd, now);
-  const loaded = await loadLiveSummary(env, mode, liveStart, toTs, limit);
-  const liveRows = (loaded.result.results || []).map(normalizeLiveRow);
-  const merged = new Map(baseRows.map((row) => [row.period_key, row]));
-  for (const row of liveRows) {
-    const current = merged.get(row.period_key);
-    merged.set(
-      row.period_key,
-      loaded.minuteFacts ? replaceSummaryWithMinuteFacts(current, row) : combineSummaryRows(current, row),
-    );
-  }
 
-  const rows = [...merged.values()].slice(-limit);
-  const evidenceTargets = rowsRequiringBoundaryEvidence(rows, mode, now);
-  // Boundary evidence is compacted during collector ingest in the buddies DB.
-  // Reading it from MINUTE_DB falls through to the large compatibility view and
-  // can consume millions of D1 rows per dashboard request.
-  const evidence = await loadPeriodBoundaryEvidence(env.DB || loaded.sourceDb, evidenceTargets, mode);
-  const boundedRows = applyPeriodBoundaryEvidence(rows, evidence);
+  // Public /api/history reads persisted summary rows only. The current UTC daily
+  // row is overlaid separately by /api/history-current. Running the generic
+  // snapshot aggregation here lets a single weekly or monthly range request scan
+  // millions of rows through MINUTE_DB's sh_channel_snapshots compatibility view.
+  const evidenceTargets = rowsRequiringBoundaryEvidence(baseRows, mode, now);
+  const evidence = await loadPeriodBoundaryEvidence(env.DB || env.MINUTE_DB, evidenceTargets, mode);
+  const boundedRows = applyPeriodBoundaryEvidence(baseRows, evidence);
   const completed = applySummaryCompleteness(boundedRows, mode, now);
   return {
     rows: completed.rows,
     excluded_stream_growth_count: completed.excludedCount,
     boundary_evidence_count: evidence.size,
-    live_overlay_count: liveRows.length,
-    latest_live_observed_at: liveRows.at(-1)?.period_end || null,
-    live_truncated: liveStart > expectedLiveStart,
-    live_source: loaded.minuteFacts ? 'minute_facts' : 'collector_snapshots',
+    live_overlay_count: 0,
+    latest_live_observed_at: null,
+    live_truncated: false,
+    live_source: 'summary-only',
   };
 }
