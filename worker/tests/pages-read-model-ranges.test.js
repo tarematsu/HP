@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import {
   MATERIALIZED_API_VARIANTS,
-  materializedResponseMaximumAge,
+  materializedApiKey,
 } from '../../site/functions/lib/api-contract.js';
 import { dueVariantKeys } from '../scripts/run-pages-read-model-actions.mjs';
 import {
@@ -102,7 +102,7 @@ test('incremental excluded-date updates replace only dates inside the refreshed 
   );
 });
 
-test('canonical materialized variants keep the intended maximum-age cadence', () => {
+test('canonical materialized variants exclude playback history', () => {
   const materialized = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
   assert.deepEqual([...materialized.keys()], [
     'dashboard',
@@ -110,22 +110,15 @@ test('canonical materialized variants keep the intended maximum-age cadence', ()
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
-    'track-history',
     'host-history:summary',
   ]);
-  assert.equal(materialized.get('track-history').cadence_minutes, 1440);
+  assert.equal(materialized.has('track-history'), false);
+  assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
   assert.equal(materialized.get('history:daily').cadence_minutes, 360);
   assert.equal(materialized.get('history:weekly').cadence_minutes, 360);
   assert.equal(materialized.get('history:monthly').cadence_minutes, 360);
-  assert.equal(materialized.get('dashboard').cadence_minutes, 15);
-});
-
-test('track history maximum age covers daily source refresh plus edge grace', () => {
-  assert.equal(
-    materializedResponseMaximumAge('track-history', { PAGES_RESPONSE_MAX_AGE_MS: 15 * 60_000 }),
-    1445 * 60_000,
-  );
+  assert.equal(materialized.get('dashboard').cadence_minutes, 30);
 });
 
 test('Actions cadence follows the materialized API contract', () => {
@@ -136,7 +129,6 @@ test('Actions cadence follows the materialized API contract', () => {
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
-    'track-history',
     'host-history:summary',
   ]);
   assert.deepEqual([...dueVariantKeys(cycle + 19 * MINUTE_MS)], ['dashboard']);
