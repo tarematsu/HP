@@ -19,7 +19,7 @@ test('main page references only existing local static assets', async () => {
     .map((value) => value.split(/[?#]/, 1)[0])
     .filter(Boolean);
 
-  assert.ok(references.length >= 3, 'the dashboard should reference its CSS, JavaScript and history page');
+  assert.ok(references.length >= 3, 'the dashboard should reference its CSS, JavaScript and likes page');
   for (const reference of new Set(references)) {
     await assert.doesNotReject(
       access(path.join(publicRoot, reference.replace(/^\//, ''))),
@@ -39,7 +39,8 @@ test('dashboard HTML keeps accessibility, privacy and all public sections', asyn
     'streamsYesterdayDelta', 'streamsDayBeforeDelta', 'nowPlayingLink', 'queue',
     'streamCount', 'goalMilestones', 'audienceChart',
   ]) assert.match(html, new RegExp(`id="${id}"`));
-  assert.match(html, /href="\/history\/"/);
+  assert.match(html, /data-view="current" class="active" aria-current="page">現在/);
+  assert.match(html, /data-view="history" data-mode="daily">日次/);
   assert.match(html, /rel="noopener noreferrer"/);
 });
 
