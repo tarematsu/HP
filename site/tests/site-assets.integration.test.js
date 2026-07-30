@@ -87,11 +87,11 @@ test('dashboard declares and implements a light white-base theme', async () => {
 test('mobile dashboard keeps one stylesheet and one entry script', async () => {
   const html = await text('public/index.html');
   const entry = await text('public/dashboard-metrics.js');
-  assert.match(html, /\/app-lite\.css/);
-  assert.match(html, /type="module" src="\/dashboard-metrics\.js"/);
+  assert.match(html, /\/app-lite\.css\?v=20260731\.1/);
+  assert.match(html, /type="module" src="\/dashboard-metrics\.js\?v=20260731\.1"/);
   assert.equal((html.match(/<link rel="stylesheet"/g) || []).length, 1);
   assert.equal((html.match(/<script /g) || []).length, 1);
-  assert.match(entry, /import\('\/dashboard-client\.js'\)/);
+  assert.match(entry, /import\('\/dashboard-client\.js\?v=20260731\.1'\)/);
 });
 
 test('dashboard mobile layout prevents metric and goal number clipping', async () => {

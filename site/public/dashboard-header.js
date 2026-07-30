@@ -1,4 +1,4 @@
-const stylesheetHref = '/dashboard-fixes.css';
+const stylesheetHref = '/dashboard-fixes.css?v=20260731.1';
 if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
   const stylesheet = document.createElement('link');
   stylesheet.rel = 'stylesheet';
