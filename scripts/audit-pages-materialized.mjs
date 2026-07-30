@@ -46,6 +46,13 @@ function parseArgs(argv) {
   return options;
 }
 
+function timestampHeader(headers, name) {
+  const value = headers.get(name);
+  if (value == null || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function auditMaterializedVariant(baseUrl, variant, options = {}) {
   const now = Number(options.now ?? Date.now());
   const url = new URL(variant.url, `${normalizeBaseUrl(baseUrl)}/`);
@@ -71,7 +78,7 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
     source = response.headers.get('x-api-source');
     fallback = response.headers.get('x-materialized-fallback');
     edgeCache = response.headers.get('x-edge-cache');
-    materializedAt = Number(response.headers.get('x-materialized-at'));
+    materializedAt = timestampHeader(response.headers, 'x-materialized-at');
     payload = await response.json().catch(() => null);
 
     if (!response.ok) failures.push(`${variant.key} returned HTTP ${response.status}`);
@@ -84,7 +91,7 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
     if (!MATERIALIZED_SOURCES.has(String(source || ''))) {
       failures.push(`${variant.key} did not identify a materialized source: ${source || 'missing'}`);
     }
-    if (!Number.isFinite(materializedAt) || materializedAt <= 0) {
+    if (materializedAt == null) {
       failures.push(`${variant.key} did not include a valid x-materialized-at header`);
     } else if (now - materializedAt > maximumAgeMs) {
       failures.push(`${variant.key} is stale by ${now - materializedAt - maximumAgeMs} ms`);
@@ -99,8 +106,8 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
     url: url.toString(),
     status,
     source,
-    materializedAt: Number.isFinite(materializedAt) ? materializedAt : null,
-    materializedAgeMs: Number.isFinite(materializedAt) ? Math.max(0, now - materializedAt) : null,
+    materializedAt,
+    materializedAgeMs: materializedAt == null ? null : Math.max(0, now - materializedAt),
     maximumAgeMs,
     fallback,
     edgeCache,
@@ -141,7 +148,8 @@ function markdownSummary(report) {
     '| --- | ---: | --- | ---: | ---: | --- | :---: |',
   ];
   for (const variant of report.variants) {
-    lines.push(`| ${variant.key} | ${variant.status ?? '-'} | ${variant.source || '-'} | ${variant.materializedAgeMs ?? '-'} ms | ${variant.maximumAgeMs} ms | ${variant.fallback || 'none'} | ${variant.ok ? 'PASS' : 'FAIL'} |`);
+    const age = variant.materializedAgeMs == null ? '-' : `${variant.materializedAgeMs} ms`;
+    lines.push(`| ${variant.key} | ${variant.status ?? '-'} | ${variant.source || '-'} | ${age} | ${variant.maximumAgeMs} ms | ${variant.fallback || 'none'} | ${variant.ok ? 'PASS' : 'FAIL'} |`);
   }
   if (report.failures.length) lines.push('', '### Failures', '', ...report.failures.map((failure) => `- ${failure}`));
   lines.push('');
