@@ -61,6 +61,16 @@ function normalizeTrackPayload(data) {
   return { ...data, rows };
 }
 
+function responseWithHeaders(response, additionalHeaders = {}) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(additionalHeaders)) headers.set(name, value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function jsonResponse(response, data, additionalHeaders = {}) {
   const headers = new Headers(response.headers);
   headers.delete('content-length');
@@ -70,6 +80,20 @@ function jsonResponse(response, data, additionalHeaders = {}) {
     status: response.status,
     statusText: response.statusText,
     headers,
+  });
+}
+
+function materializedUnavailable(error) {
+  return Response.json({
+    ok: false,
+    error: 'materialized history unavailable',
+    detail: String(error?.message || error || '').slice(0, 300) || undefined,
+  }, {
+    status: 503,
+    headers: {
+      'cache-control': 'no-store',
+      'x-history-read-path': 'r2-materialized-unavailable',
+    },
   });
 }
 
@@ -111,9 +135,13 @@ async function fetchMaterializedHistory(input, init, requestedUrl) {
 
   try {
     const response = await nativeFetch(requestWithUrl(input, materializedUrl), init);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      return responseWithHeaders(response, { 'x-history-read-path': 'r2-materialized-unavailable' });
+    }
     const data = await response.clone().json();
-    if (!data?.ok) return null;
+    if (!data?.ok) {
+      return jsonResponse(response, data, { 'x-history-read-path': 'r2-materialized-unavailable' });
+    }
     const filtered = filterMaterializedHistory(
       data,
       mode,
@@ -123,7 +151,7 @@ async function fetchMaterializedHistory(input, init, requestedUrl) {
     return jsonResponse(response, filtered, { 'x-history-read-path': 'r2-materialized' });
   } catch (error) {
     if (error?.name === 'AbortError') throw error;
-    return null;
+    return materializedUnavailable(error);
   }
 }
 
