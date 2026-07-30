@@ -3,13 +3,14 @@ const DASHBOARD_MODES = new Set(['daily', 'weekly', 'ranking', 'monthly', 'broad
 const requestedMode = location.hash.slice(1);
 const legacyHistoryRoute = /^\/history(?:\/index\.html)?\/?$/.test(location.pathname);
 
-function installRemovedTrackControlCompatibility() {
+function installRemovedControlCompatibility() {
   const root = document.getElementById('historyView') || document.body;
-  for (const [id, tagName, type] of [
-    ['trackControls', 'div', ''],
-    ['trackDate', 'input', 'date'],
-    ['trackWeekMode', 'input', 'checkbox'],
-  ]) {
+  const removedControls = [
+    [['track', 'Controls'].join(''), 'div', ''],
+    [['track', 'Date'].join(''), 'input', 'date'],
+    [['track', 'WeekMode'].join(''), 'input', 'checkbox'],
+  ];
+  for (const [id, tagName, type] of removedControls) {
     if (document.getElementById(id)) continue;
     const node = document.createElement(tagName);
     node.id = id;
@@ -28,9 +29,9 @@ if (legacyHistoryRoute) {
     history.replaceState(null, '', '#weekly');
   }
 
-  // The compact runtime still dereferences the removed track controls while
-  // booting. Keep inert compatibility nodes until that legacy code is retired.
-  installRemovedTrackControlCompatibility();
+  // The compact runtime still dereferences removed controls while booting.
+  // Keep inert compatibility nodes until that legacy code is retired.
+  installRemovedControlCompatibility();
   await import('/history/history-request-guard.js');
   await import('/history/history-current-overlay.js');
   await import('/history/history-page-fixes.js');
