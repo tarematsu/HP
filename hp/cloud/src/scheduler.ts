@@ -9,7 +9,7 @@ export interface JobRow {
   consecutive_failures: number;
 }
 
-const OCTOPUS_INTERVAL_SECONDS = 12 * 60 * 60;
+const OCTOPUS_INTERVAL_SECONDS = 3 * 60 * 60;
 const SYSTEM_JOBS_CACHE_MS = 60 * 60_000;
 const DAY_MS = 86_400_000;
 const DAY_SECONDS = 86_400;
