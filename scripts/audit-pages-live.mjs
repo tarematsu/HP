@@ -44,7 +44,7 @@ const MODES = [
     path: '/#ranking',
     panel: '#historyView',
     tab: '#modeTabs button[data-mode="ranking"]',
-    requiredText: '集計一覧',
+    requiredText: '週間リーダーボード',
     notice: '#notice',
   },
   {
@@ -60,7 +60,7 @@ const MODES = [
     path: '/#broadcasts',
     panel: '#historyView',
     tab: '#modeTabs button[data-mode="broadcasts"]',
-    requiredText: '集計一覧',
+    requiredText: '公式ストリーム一覧',
     notice: '#notice',
   },
 ];
@@ -147,6 +147,27 @@ async function waitForMode(page, route) {
   }
   await page.evaluate(() => document.fonts?.ready).catch(() => {});
   await page.waitForTimeout(500);
+}
+
+async function revealLazyContent(page) {
+  await page.evaluate(async () => {
+    const settle = () => new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+    const step = Math.max(420, Math.floor(window.innerHeight * 0.8));
+    let position = 0;
+    let iterations = 0;
+    while (position < document.documentElement.scrollHeight && iterations < 240) {
+      window.scrollTo(0, position);
+      await settle();
+      position += step;
+      iterations += 1;
+    }
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    await settle();
+    window.scrollTo(0, 0);
+    await settle();
+  }).catch(() => {});
 }
 
 async function auditRoute(browser, target, route, viewport, outDir) {
@@ -238,7 +259,8 @@ async function auditRoute(browser, target, route, viewport, outDir) {
     outDir,
     `${fileSafe(target.name)}-${fileSafe(viewport.name)}-${fileSafe(route.name)}.png`,
   );
-  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+  await revealLazyContent(page);
+  await page.screenshot({ path: screenshotPath, fullPage: true, animations: 'disabled' }).catch(() => {});
 
   if (navigationError) failures.push(`navigation failed: ${navigationError}`);
   if (!response) failures.push('navigation returned no response');
