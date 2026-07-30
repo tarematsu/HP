@@ -12,6 +12,7 @@ const channelId = Math.max(1, Math.trunc(Number(process.env.CHANNEL_ID || 318)))
 const MINUTE_MS = 60_000;
 const RECENT_GUARD_MS = Math.max(0, Math.trunc(Number(process.env.MINUTE_FACT_RECENT_GUARD_MS || 300_000)));
 const DEFAULT_FROM = '2026-06-23T00:00:00Z';
+const PAGE_SIZE = 5_000;
 
 function wrangler(database, command, options = {}) {
   const args = [
@@ -82,30 +83,57 @@ function exportRange() {
       WHERE channel_id=${channelId} AND observed_at<${start}
       ORDER BY observed_at DESC,id DESC
       LIMIT 1
-    ), active AS (
-      SELECT ${columns}
-      FROM sh_channel_snapshots
-      WHERE channel_id=${channelId}
-        AND observed_at>=${start} AND observed_at<${cutoff}
-    )
-    SELECT * FROM previous
-    UNION ALL
-    SELECT * FROM active
-    ORDER BY observed_at ASC,id ASC`;
-  const commentsSql = `SELECT station_id,bucket_start,comment_count
-    FROM sh_comment_minute_counts
-    WHERE bucket_start>=${start - 10 * MINUTE_MS} AND bucket_start<${cutoff}
-    ORDER BY bucket_start ASC,station_id ASC`;
-  const snapshots = wrangler(buddiesDatabase, snapshotSql);
-  const comments = wrangler(buddiesDatabase, commentsSql);
-  writeFileSync(resolve(outputDirectory, 'snapshots.json'), snapshots);
-  writeFileSync(resolve(outputDirectory, 'comments.json'), comments);
+    ) SELECT * FROM previous`;
+  const previous = parseWranglerRows(wrangler(buddiesDatabase, snapshotSql));
+  const snapshots = [...previous];
+  let cursorObservedAt = start;
+  let cursorId = -1;
+  for (;;) {
+    const rows = parseWranglerRows(wrangler(
+      buddiesDatabase,
+      `SELECT ${columns} FROM sh_channel_snapshots
+        WHERE channel_id=${channelId}
+          AND observed_at>=${start} AND observed_at<${cutoff}
+          AND (observed_at>${cursorObservedAt}
+            OR (observed_at=${cursorObservedAt} AND id>${cursorId}))
+        ORDER BY observed_at ASC,id ASC LIMIT ${PAGE_SIZE}`,
+    ));
+    if (!rows.length) break;
+    snapshots.push(...rows);
+    const last = rows.at(-1);
+    cursorObservedAt = Number(last.observed_at);
+    cursorId = Number(last.id);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  const comments = [];
+  let cursorBucket = start - 10 * MINUTE_MS;
+  let cursorStation = -1;
+  for (;;) {
+    const rows = parseWranglerRows(wrangler(
+      buddiesDatabase,
+      `SELECT station_id,bucket_start,comment_count FROM sh_comment_minute_counts
+        WHERE bucket_start>=${start - 10 * MINUTE_MS} AND bucket_start<${cutoff}
+          AND (bucket_start>${cursorBucket}
+            OR (bucket_start=${cursorBucket} AND station_id>${cursorStation}))
+        ORDER BY bucket_start ASC,station_id ASC LIMIT ${PAGE_SIZE}`,
+    ));
+    if (!rows.length) break;
+    comments.push(...rows);
+    const last = rows.at(-1);
+    cursorBucket = Number(last.bucket_start);
+    cursorStation = Number(last.station_id);
+    if (rows.length < PAGE_SIZE) break;
+  }
+  const snapshotsPayload = JSON.stringify([{ results: snapshots }]);
+  const commentsPayload = JSON.stringify([{ results: comments }]);
+  writeFileSync(resolve(outputDirectory, 'snapshots.json'), snapshotsPayload);
+  writeFileSync(resolve(outputDirectory, 'comments.json'), commentsPayload);
   const metadata = {
     from_ms: start,
     cutoff_ms: cutoff,
     channel_id: channelId,
-    snapshots: parseWranglerRows(snapshots).length,
-    comments: parseWranglerRows(comments).length,
+    snapshots: snapshots.length,
+    comments: comments.length,
   };
   writeFileSync(resolve(outputDirectory, 'range.json'), `${JSON.stringify(metadata, null, 2)}\n`);
   writeOutput('window_start_ms', start);
@@ -153,14 +181,21 @@ function verifyRange() {
   const snapshots = parseWranglerRows(readFileSync(resolve(outputDirectory, 'snapshots.json'), 'utf8'));
   const expected = latestExpectedMinutes(snapshots, metadata.from_ms, metadata.cutoff_ms);
   settleJobs(metadata.from_ms, metadata.cutoff_ms);
-  const facts = parseWranglerRows(wrangler(
-    factsDatabase,
-    `SELECT channel_id,minute_at,source_priority FROM sh_minute_facts
-      WHERE channel_id=${channelId}
-        AND minute_at>=${Math.floor(metadata.from_ms / MINUTE_MS) * MINUTE_MS}
-        AND minute_at<${metadata.cutoff_ms}
-      ORDER BY minute_at ASC`,
-  ));
+  const facts = [];
+  let factCursor = Math.floor(metadata.from_ms / MINUTE_MS) * MINUTE_MS - 1;
+  for (;;) {
+    const rows = parseWranglerRows(wrangler(
+      factsDatabase,
+      `SELECT channel_id,minute_at,source_priority FROM sh_minute_facts
+        WHERE channel_id=${channelId}
+          AND minute_at>${factCursor} AND minute_at<${metadata.cutoff_ms}
+        ORDER BY minute_at ASC LIMIT ${PAGE_SIZE}`,
+    ));
+    if (!rows.length) break;
+    facts.push(...rows);
+    factCursor = Number(rows.at(-1).minute_at);
+    if (rows.length < PAGE_SIZE) break;
+  }
   const factKeys = new Set(facts.map((row) => `${Number(row.channel_id)}:${Number(row.minute_at)}`));
   const missing = [...expected.keys()].filter((key) => !factKeys.has(key));
   const jobs = parseWranglerRows(wrangler(
