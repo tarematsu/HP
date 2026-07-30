@@ -76,8 +76,9 @@ test('history summaries read compact boundary evidence from the buddies DB', () 
     new URL('../functions/lib/history-summary.js', import.meta.url),
     'utf8',
   );
-  assert.match(summary, /loadPeriodBoundaryEvidence\(env\.DB \|\| loaded\.sourceDb/);
-  assert.doesNotMatch(summary, /loadPeriodBoundaryEvidence\(loaded\.sourceDb \|\| env\.DB/);
+  assert.match(summary, /loadPeriodBoundaryEvidence\(env\.DB \|\| env\.MINUTE_DB/);
+  assert.doesNotMatch(summary, /loadPeriodBoundaryEvidence\(env\.MINUTE_DB \|\| env\.DB/);
+  assert.doesNotMatch(summary, /MINUTE_DB\.prepare\(minuteSummarySql/);
 });
 
 test('migration and metadata ingest enforce compact change-only writes', () => {
