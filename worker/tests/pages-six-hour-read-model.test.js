@@ -13,25 +13,23 @@ import {
 const MINUTE_MS = 60_000;
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
 
+const ALL_VARIANTS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
+];
+
+const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
+
 test('Actions cadence uses six-hour summaries and daily host archive variants', () => {
-  assert.deepEqual([...dueVariantKeys(BASE + 4 * MINUTE_MS)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-    'host-history:summary',
-  ]);
-  assert.deepEqual([...dueVariantKeys(BASE + 19 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(BASE + 64 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(BASE + 184 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(BASE + 364 * MINUTE_MS)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-  ]);
+  assert.deepEqual([...dueVariantKeys(BASE + 26 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(BASE + 55 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(BASE + 56 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(BASE + 86 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(BASE + 386 * MINUTE_MS)], SIX_HOUR_VARIANTS);
 });
 
 test('one Actions process publishes due variants without advancing track-history', async () => {
