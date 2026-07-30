@@ -35,7 +35,8 @@ test('runtime emits no scheduled relay traffic while account-wide Queue usage re
   assert.match(runtimeQueue, /unsupported_runtime_message_retried/);
   assert.doesNotMatch(runtimeQueue, /unsupported_runtime_message_discarded/);
 
-  assert.match(pagesActions, /runSplitTrackHistoryCycleStep/);
+  assert.doesNotMatch(pagesActions, /runSplitTrackHistoryCycleStep/);
+  assert.match(pagesActions, /track-history-read-model-disabled/);
   assert.match(pagesActions, /dueVariantKeys/);
   assert.match(offlineActions, /runStreamGoalPrediction/);
   assert.match(offlineActions, /runRollupMaintenance/);
