@@ -30,7 +30,7 @@ test('successful main native builds trigger update detection without a configure
 test('thirty-minute cadence is applied to D1 and reloaded by the scheduler runtime', () => {
   assert.match(migration, /interval_seconds = 1800/);
   assert.match(migration, /unixepoch\(\) \+ 1800/);
-  assert.match(scheduler, /RUNTIME_VERSION = 6/);
+  assert.match(scheduler, /RUNTIME_VERSION = 7/);
   assert.match(scheduler, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
 });
 
