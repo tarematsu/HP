@@ -23,29 +23,25 @@ test('dashboard composes completed daily summaries through a focused loader', ()
   assert.doesNotMatch(dashboard, /FROM sh_daily_summary/);
 });
 
-test('Pages track history reads materialized rows and integrated ranking status', () => {
-  assert.match(tracks, /FROM sh_pages_track_history_read_model/);
-  assert.match(tracks, /model_key='track-history-status'/);
-  assert.match(tracks, /ranking_summary/);
-  assert.match(tracks, /ranking_scope/);
-  assert.match(tracks, /worker_materialized_read_model/);
-});
-
-test('track-history generation runs inline in Actions while runtime only serves materialized responses', () => {
+test('like ranking bypasses the playback-history read model', () => {
+  assert.match(tracks, /ranking_only/);
+  assert.match(tracks, /loadTrackRanking/);
+  assert.match(tracks, /current_track_like_ranking/);
   assert.match(ranking, /FROM sh_track_ranking_current/);
   assert.doesNotMatch(ranking, /FROM sh_track_counter_current/);
+});
+
+test('track-history builders remain available only for explicit maintenance', () => {
   assert.match(trackStage, /loadTrackRanking/);
-  assert.match(trackStage, /ranking_summary/);
   assert.match(trackStage, /sh_pages_track_history_read_model/);
   assert.match(splitCycle, /advanceTrackHistoryPublication/);
   assert.match(splitCycle, /advanceTrackHistoryR2Publication/);
   assert.match(splitCycle, /advancePublicationInline/);
   assert.doesNotMatch(splitCycle, /PAGES_READ_MODEL_QUEUE|enqueueTrackHistoryPublication/);
-  assert.match(actions, /runSplitTrackHistoryCycleStep/);
+  assert.doesNotMatch(actions, /runSplitTrackHistoryCycleStep|trackHistoryPublishedThisRun|dueKeys\.add\('track-history'\)/);
+  assert.match(actions, /track-history-read-model-disabled/);
   assert.match(actions, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(actions, /pagesActionsR2ResponseKey/);
-  assert.match(actions, /trackHistoryPublishedThisRun/);
-  assert.match(actions, /dueKeys\.add\('track-history'\)/);
   assert.match(entry, /pages-response-fetch-entry\.js/);
   assert.match(entry, /runPagesResponseFetch/);
   assert.doesNotMatch(entry, /pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
