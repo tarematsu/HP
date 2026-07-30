@@ -36,8 +36,11 @@ test('dashboard navigation and likes summary remain balanced across breakpoints'
   assert.match(headerCss, /\.summary-cards\.likes-summary article:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
 });
 
-test('hash navigation does not expose the skip link without keyboard focus visibility', () => {
-  assert.match(headerCss, /\.skip-link:focus:not\(:focus-visible\)\s*\{[\s\S]*translateY\(-150%\)/);
+test('hash navigation hides skip-link focus until keyboard navigation is detected', () => {
+  assert.match(headerCss, /\.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*translateY\(-150%\)/);
+  assert.match(headerCss, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*transform:\s*none/);
+  assert.match(headerRepair, /event\.key === 'Tab'/);
+  assert.match(headerRepair, /pointerdown/);
 });
 
 test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
