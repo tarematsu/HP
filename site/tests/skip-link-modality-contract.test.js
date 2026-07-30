@@ -6,6 +6,7 @@ const runtime = readFileSync(new URL('../public/dashboard-header.js', import.met
 const css = readFileSync(new URL('../public/dashboard-fixes.css', import.meta.url), 'utf8');
 
 test('keyboard modality is established before focus moves on Tab', () => {
+  assert.match(runtime, /KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation'/);
   assert.match(runtime, /document\.addEventListener\('keydown',[\s\S]*event\.key === 'Tab'[\s\S]*capture: true/);
   assert.match(runtime, /document\.documentElement\.classList\.add\(KEYBOARD_NAVIGATION_CLASS\)/);
 });
