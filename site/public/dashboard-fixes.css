@@ -1,21 +1,55 @@
 .top-card.dashboard-header {
+  display: grid;
+  grid-template-columns: minmax(280px, .85fr) minmax(560px, 1.15fr);
   align-items: center;
+  gap: 18px;
 }
 
 .dashboard-header .channel {
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
 }
 
+.dashboard-header #description,
+.dashboard-header .app-launch,
+.dashboard-header .live-dot,
+.dashboard-header #liveState,
+.dashboard-header .live-line > [aria-hidden="true"] {
+  display: none;
+}
+
+.dashboard-header .live-line {
+  margin-top: 0;
+}
+
+.dashboard-actions {
+  display: contents;
+}
+
 .mode-tabs.dashboard-tabs {
-  flex: 0 1 560px;
-  width: min(560px, 100%);
+  flex: 0 1 auto;
+  width: 100%;
   margin: 0;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(44px, auto);
+  gap: 4px;
+}
+
+.mode-tabs.dashboard-tabs button {
+  min-height: 44px;
+  padding-inline: 6px;
 }
 
 .history-view,
 .likes-view {
   margin-top: 10px;
+}
+
+@media (max-width: 960px) {
+  .top-card.dashboard-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 760px) {
@@ -27,6 +61,10 @@
   .mode-tabs.dashboard-tabs {
     flex: none;
     width: 100%;
+  }
+
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .metrics {
@@ -66,5 +104,11 @@
 
   .delta {
     font-size: .58rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .mode-tabs.dashboard-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
