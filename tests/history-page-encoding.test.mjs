@@ -8,7 +8,7 @@ test('history page remains valid UTF-8 HTML instead of byte-pair mojibake', () =
   assert.match(historyHtml, /^<!doctype html>\s*<html lang="ja">/i);
   assert.match(historyHtml, /<meta charset="utf-8">/i);
   assert.match(historyHtml, /<h1>過去データ<\/h1>/);
-  assert.match(historyHtml, /data-mode="tracks">再生曲<\/button>/);
+  assert.doesNotMatch(historyHtml, /data-mode="tracks"|>再生曲</);
   assert.match(historyHtml, /src="\/history\/history-main\.js"/);
   assert.doesNotMatch(historyHtml, /history-copy-fixes\.js/);
   assert.doesNotMatch(historyHtml, /[㰀-㿿]{3,}/u);
