@@ -1,0 +1,26 @@
+.top-card.dashboard-header {
+  align-items: center;
+}
+
+.dashboard-header .channel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.mode-tabs.dashboard-tabs {
+  flex: 0 1 560px;
+  width: min(560px, 100%);
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .top-card.dashboard-header {
+    gap: 12px;
+  }
+
+  .dashboard-header .channel,
+  .mode-tabs.dashboard-tabs {
+    flex: none;
+    width: 100%;
+  }
+}
