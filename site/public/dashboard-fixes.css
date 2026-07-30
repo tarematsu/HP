@@ -23,4 +23,17 @@
     flex: none;
     width: 100%;
   }
+
+  .metrics {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+  }
+
+  .metric.featured {
+    grid-column: auto;
+    display: block;
+  }
+
+  .metric.featured .metric-value {
+    margin-top: 7px;
+  }
 }
