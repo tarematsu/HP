@@ -134,7 +134,6 @@ async function queryD1Usage({ token, accountId, start, end }) {
         d1AnalyticsAdaptiveGroups(
           limit: 10000
           filter: { datetime_geq: $start, datetime_leq: $end }
-          orderBy: [datetimeFifteenMinutes_ASC]
         ) {
           sum { rowsRead rowsWritten }
           dimensions { databaseId }
