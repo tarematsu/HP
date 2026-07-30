@@ -96,10 +96,12 @@ test('official stream fallback does not duplicate an existing minute-fact series
   assert.equal(merged[1].event_name, 'Missing event');
 });
 
-test('likes UI contains no playback totals or weekly play merge', () => {
-  const page = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
+test('integrated likes UI contains no playback totals or weekly play merge', () => {
+  const page = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
-  assert.doesNotMatch(page, /今週再生|再生曲/);
+  assert.match(page, /id="likesView"/);
+  assert.match(page, /id="likesRankingList"/);
+  assert.doesNotMatch(page, /今週再生|再生曲|href="\/history/);
   assert.doesNotMatch(source, /week_play_count|completeWeekPlayCount|attachWeeklyPlays|play_count_excluded/);
   assert.match(source, /ranking_only=1/);
 });
@@ -183,7 +185,7 @@ test('normal track history skips the unused like-ranking status payload', async 
   assert.equal(prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
 });
 
-test('history guard is installed before the consolidated page runtime', () => {
+test('history guard is installed before the consolidated embedded runtime', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   assert.ok(entry.indexOf('history-request-guard.js') < entry.indexOf('history-lite.js'));
