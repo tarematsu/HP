@@ -42,9 +42,9 @@ function exportNames(source) {
 }
 
 function compactSnippet(source, at, length) {
-  const start = Math.max(0, at - 140);
-  const end = Math.min(source.length, at + length + 180);
-  return source.slice(start, end).replace(/\s+/g, ' ').slice(0, 500);
+  const start = Math.max(0, at - 180);
+  const end = Math.min(source.length, at + length + 260);
+  return source.slice(start, end).replace(/\s+/g, ' ').slice(0, 700);
 }
 
 async function fetchText(url) {
@@ -55,12 +55,41 @@ async function fetchText(url) {
   return response.text();
 }
 
+function reportScriptMap(report) {
+  return new Map((report.baseline?.scripts || []).map((item) => [item.url, item]));
+}
+
+function candidateUrls(report) {
+  const scriptMap = reportScriptMap(report);
+  const explicit = [
+    ...(report.classifiedBlocked || []),
+    ...(report.likelyOptionalOpaque || []),
+    ...(report.mixedOpaque || []),
+  ];
+  const boundedModules = [...scriptMap.values()].filter((item) => {
+    const name = basename(item.url);
+    if (!stationheadAsset(item.url)) return false;
+    if (/^(?:launch-|index-|StationView-)/i.test(name)) return false;
+    return Number(item.decodedBytes || 0) <= 180_000;
+  });
+  return [...new Set([...explicit, ...boundedModules]
+    .map((item) => item.url)
+    .filter(stationheadAsset))];
+}
+
+function safeFilename(value) {
+  return value.replace(/[^A-Za-z0-9._-]+/g, '_');
+}
+
 async function main() {
   const reportPath = option('--report');
   const outPath = option('--out', 'module-graph.json');
   if (!reportPath) throw new Error('--report is required');
   const report = JSON.parse(await readFile(reportPath, 'utf8'));
-  const scripts = [...new Set(report.baseline.scripts.map((item) => item.url).filter(stationheadAsset))];
+  const scriptMap = reportScriptMap(report);
+  const scripts = [...new Set((report.baseline?.scripts || [])
+    .map((item) => item.url)
+    .filter(stationheadAsset))];
   const sources = new Map();
   for (const url of scripts) {
     try {
@@ -71,18 +100,21 @@ async function main() {
     }
   }
 
-  const targets = report.classifiedBlocked
-    .map((item) => item.url)
-    .filter(stationheadAsset);
+  const outputDirectory = path.dirname(path.resolve(outPath));
+  const sourceDirectory = path.join(outputDirectory, 'module-sources');
+  await mkdir(sourceDirectory, { recursive: true });
+
   const modules = [];
-  for (const url of targets) {
+  for (const url of candidateUrls(report)) {
     const name = basename(url);
     const source = sources.get(url) || '';
+    const bytes = Buffer.byteLength(source);
+    const reportEntry = scriptMap.get(url) || {};
     const importers = [];
     for (const [importerUrl, importerSource] of sources) {
       if (importerUrl === url || !importerSource) continue;
       let at = importerSource.indexOf(name);
-      while (at >= 0 && importers.length < 12) {
+      while (at >= 0 && importers.length < 16) {
         importers.push({
           url: importerUrl,
           snippet: compactSnippet(importerSource, at, name.length),
@@ -90,25 +122,45 @@ async function main() {
         at = importerSource.indexOf(name, at + name.length);
       }
     }
+    const sourceFile = source ? `module-sources/${safeFilename(name)}` : '';
+    if (sourceFile) {
+      await writeFile(path.join(outputDirectory, sourceFile), source);
+    }
     modules.push({
       url,
       basename: name,
-      bytes: Buffer.byteLength(source),
+      bytes,
+      encodedBytes: Number(reportEntry.encodedBytes || 0),
+      decodedBytes: Number(reportEntry.decodedBytes || bytes),
+      classification: reportEntry.classification || null,
+      optionalSignals: reportEntry.optionalSignals || [],
+      protectedSignals: reportEntry.protectedSignals || [],
       exports: exportNames(source),
+      sourceFile,
+      source: bytes > 0 && bytes <= 4096 ? source : '',
       importers,
     });
   }
 
-  await mkdir(path.dirname(path.resolve(outPath)), { recursive: true });
+  await mkdir(outputDirectory, { recursive: true });
   await writeFile(outPath, `${JSON.stringify({ reportPath, modules }, null, 2)}\n`);
   const lines = [
-    '# Stationhead blocked-module contracts',
+    '# Stationhead module contracts',
+    '',
+    `- Candidate modules: ${modules.length}`,
+    `- Candidate decoded bytes: ${modules.reduce((total, module) => total + module.decodedBytes, 0)}`,
     '',
     ...modules.flatMap((module) => [
       `## ${module.basename}`,
+      `- Bytes: ${module.bytes}`,
+      `- Encoded bytes: ${module.encodedBytes}`,
       `- Exports: ${module.exports.length ? module.exports.join(', ') : '(none detected)'}`,
+      `- Optional signals: ${module.optionalSignals.length ? module.optionalSignals.join(', ') : '(none)'}`,
+      `- Protected signals: ${module.protectedSignals.length ? module.protectedSignals.join(', ') : '(none)'}`,
       `- Importers: ${module.importers.length}`,
+      `- Source artifact: ${module.sourceFile || '(fetch failed)'}`,
       ...module.importers.map((importer) => `  - ${basename(importer.url)}: ${importer.snippet}`),
+      ...(module.source ? ['- Source:', '```js', module.source, '```'] : []),
       '',
     ]),
   ];
