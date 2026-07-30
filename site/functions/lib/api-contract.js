@@ -9,7 +9,7 @@ export const API_GROUPS = Object.freeze({
   ]),
   history: Object.freeze([
     { path: '/api/history', methods: ['GET'], description: 'Daily, weekly, monthly, ranking, and broadcast history modes' },
-    { path: '/api/history-current', methods: ['GET'], description: 'Current daily, weekly, or monthly summary from minute facts' },
+    { path: '/api/history-current', methods: ['GET'], description: 'Current UTC daily summary from minute facts' },
     { path: '/api/track-history', methods: ['GET'], description: 'Track play history with like ranking' },
     { path: '/api/sakurazaka46jp', methods: ['GET'], description: 'Sakurazaka official broadcast listener series' },
     { path: '/api/host-history', methods: ['GET'], description: 'Sakurazaka broadcast sessions and session details' },

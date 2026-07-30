@@ -1,7 +1,6 @@
 import {
   currentSummaryPeriodStart,
   minuteSummarySql,
-  SUMMARY_TABLES,
 } from '../lib/history-summary.js';
 import {
   applySummaryCompleteness,
@@ -48,21 +47,19 @@ function normalizeMinuteRow(row) {
   };
 }
 
-export async function loadCurrentMinuteSummary(env, mode, now = Date.now()) {
+export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.now()) {
+  if (mode !== 'daily') throw new Error(`unsupported summary mode: ${mode}`);
   if (!env?.MINUTE_DB) throw new Error('MINUTE_DB binding missing');
-  if (!Object.hasOwn(SUMMARY_TABLES, mode)) {
-    throw new Error(`unsupported summary mode: ${mode}`);
-  }
 
-  const periodStart = currentSummaryPeriodStart(mode, now);
-  const periodKey = currentPeriodKey(mode, now);
-  const result = await env.MINUTE_DB.prepare(minuteSummarySql(mode))
+  const periodStart = currentSummaryPeriodStart('daily', now);
+  const periodKey = currentPeriodKey('daily', now);
+  const result = await env.MINUTE_DB.prepare(minuteSummarySql('daily'))
     .bind(periodStart, now + 1, 2)
     .all();
   const liveRows = (result.results || [])
     .map(normalizeMinuteRow)
     .filter((row) => String(row?.period_key || '') === periodKey);
-  const completed = applySummaryCompleteness(liveRows, mode, now);
+  const completed = applySummaryCompleteness(liveRows, 'daily', now);
 
   return {
     rows: completed.rows,
@@ -73,14 +70,14 @@ export async function loadCurrentMinuteSummary(env, mode, now = Date.now()) {
     live_truncated: false,
     live_source: 'minute_facts',
     storage_source: 'minute.sh_channel_snapshots',
-    read_path: 'minute-current',
+    read_path: 'minute-current-daily',
   };
 }
 
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const mode = String(url.searchParams.get('mode') || 'daily').trim().toLowerCase();
-  if (!Object.hasOwn(SUMMARY_TABLES, mode)) {
+  if (mode !== 'daily') {
     return json({ ok: false, error: `unsupported history mode: ${mode}` }, 400, {
       'cache-control': 'no-store',
     });
@@ -88,11 +85,11 @@ export async function onRequestGet({ request, env }) {
 
   try {
     const now = Date.now();
-    const summary = await loadCurrentMinuteSummary(env, mode, now);
+    const summary = await loadCurrentMinuteSummary(env, 'daily', now);
     return json({
       ok: true,
-      mode,
-      period_key: currentPeriodKey(mode, now),
+      mode: 'daily',
+      period_key: currentPeriodKey('daily', now),
       timezone: 'UTC',
       ...summary,
     });

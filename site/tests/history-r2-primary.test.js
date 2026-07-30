@@ -7,13 +7,9 @@ class MemoryStorage {
   }
 
   get length() { return this.values.size; }
-
   key(index) { return [...this.values.keys()][index] ?? null; }
-
   getItem(key) { return this.values.has(String(key)) ? this.values.get(String(key)) : null; }
-
   setItem(key, value) { this.values.set(String(key), String(value)); }
-
   removeItem(key) { this.values.delete(String(key)); }
 }
 
@@ -73,25 +69,40 @@ test('history summary requests use the mode-only R2 materialization and filter t
   ]);
 });
 
-test('history summary requests fall back to the original dynamic API only when materialization fails', async () => {
+test('history summaries never fall back to the dynamic OTHER_DB or MINUTE_DB API', async () => {
   const calls = [];
   await withGuard(async (input) => {
     const url = new URL(typeof input === 'string' ? input : input.url);
     calls.push(url.href);
-    if (!url.searchParams.has('from')) {
-      return Response.json({ ok: false, error: 'materialized unavailable' }, { status: 503 });
-    }
-    return Response.json({ ok: true, mode: 'weekly', rows: [{ period_key: 'dynamic' }] });
+    return Response.json({ ok: false, error: 'materialized unavailable' }, { status: 503 });
   }, async (browser) => {
     const response = await browser.fetch('/api/history?mode=weekly&from=2026-06-01&to=2026-06-30');
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-unavailable');
     assert.deepEqual(await response.json(), {
-      ok: true,
-      mode: 'weekly',
-      rows: [{ period_key: 'dynamic' }],
+      ok: false,
+      error: 'materialized unavailable',
     });
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1);
     assert.match(calls[0], /\/api\/history\?mode=weekly$/);
-    assert.match(calls[1], /from=2026-06-01/);
-    assert.match(calls[1], /to=2026-06-30/);
-  }, 'fallback');
+    assert.doesNotMatch(calls[0], /from=/);
+    assert.doesNotMatch(calls[0], /to=/);
+  }, 'strict-r2');
+});
+
+test('network failure returns an R2-unavailable response instead of dynamic history', async () => {
+  let calls = 0;
+  await withGuard(async () => {
+    calls += 1;
+    throw new Error('network unavailable');
+  }, async (browser) => {
+    const response = await browser.fetch('/api/history?mode=monthly&from=2026-01-01&to=2026-07-30');
+    const data = await response.json();
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('x-history-read-path'), 'r2-materialized-unavailable');
+    assert.equal(data.ok, false);
+    assert.equal(data.error, 'materialized history unavailable');
+    assert.match(data.detail, /network unavailable/);
+    assert.equal(calls, 1);
+  }, 'network-r2-only');
 });

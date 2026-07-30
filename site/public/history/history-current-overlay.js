@@ -1,8 +1,9 @@
 const browser = typeof window === 'undefined' ? null : window;
 const previousFetch = browser?.fetch?.bind(browser) || null;
-const SUMMARY_MODES = new Set(['daily', 'weekly', 'monthly']);
+const DAILY_MODE = 'daily';
 const HISTORY_CACHE_PREFIX = 'sh.history.v3:/api/history?';
 const HISTORY_CACHE_TTL_MS = 30_000;
+const DAILY_ONLY_MIGRATION_KEY = 'sh.history.daily-current-only.v1';
 
 function requestUrl(input) {
   try {
@@ -25,23 +26,15 @@ function jsonResponse(response, data, additionalHeaders = {}) {
   });
 }
 
-function currentPeriod(mode, now = Date.now()) {
-  const date = new Date(now);
-  const today = date.toISOString().slice(0, 10);
-  if (mode === 'daily') return { key: today, startDate: today, endDate: today };
-  if (mode === 'monthly') {
-    const key = today.slice(0, 7);
-    return { key, startDate: `${key}-01`, endDate: today };
-  }
-  const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
-  return { key: monday.toISOString().slice(0, 10), startDate: monday.toISOString().slice(0, 10), endDate: today };
+function currentUtcDay(now = Date.now()) {
+  const key = new Date(now).toISOString().slice(0, 10);
+  return { key, startDate: key, endDate: key };
 }
 
-function requestedRangeIncludesCurrent(url, period) {
+function requestedRangeIncludesToday(url, day) {
   const from = String(url.searchParams.get('from') || '');
   const to = String(url.searchParams.get('to') || '');
-  return (!from || from <= period.endDate) && (!to || to >= period.startDate);
+  return (!from || from <= day.endDate) && (!to || to >= day.startDate);
 }
 
 function mergeCurrentRow(baseRows, liveRow, periodKey) {
@@ -61,9 +54,9 @@ function mergeCurrentRow(baseRows, liveRow, periodKey) {
   ].sort((left, right) => String(left?.period_key || '').localeCompare(String(right?.period_key || '')));
 }
 
-async function fetchCurrentSummary(mode, input, init) {
+async function fetchCurrentDailySummary(input, init) {
   const url = new URL('/api/history-current', browser.location.href);
-  url.searchParams.set('mode', mode);
+  url.searchParams.set('mode', DAILY_MODE);
   const signal = init?.signal || (typeof Request !== 'undefined' && input instanceof Request ? input.signal : undefined);
   return previousFetch(url.href, {
     signal,
@@ -72,35 +65,35 @@ async function fetchCurrentSummary(mode, input, init) {
   });
 }
 
-async function overlayCurrentSummary(input, init, requestedUrl, baseResponse) {
+async function overlayCurrentDaily(input, init, requestedUrl, baseResponse) {
   const mode = String(requestedUrl.searchParams.get('mode') || 'weekly').trim().toLowerCase();
-  if (!SUMMARY_MODES.has(mode) || !baseResponse.ok) return baseResponse;
-  const period = currentPeriod(mode);
-  if (!requestedRangeIncludesCurrent(requestedUrl, period)) return baseResponse;
+  if (mode !== DAILY_MODE || !baseResponse.ok) return baseResponse;
+  const day = currentUtcDay();
+  if (!requestedRangeIncludesToday(requestedUrl, day)) return baseResponse;
 
   try {
     const [baseData, liveResponse] = await Promise.all([
       baseResponse.clone().json(),
-      fetchCurrentSummary(mode, input, init),
+      fetchCurrentDailySummary(input, init),
     ]);
     if (!baseData?.ok || !Array.isArray(baseData.rows) || !liveResponse.ok) return baseResponse;
     const liveData = await liveResponse.json();
     const liveRow = Array.isArray(liveData?.rows)
-      ? liveData.rows.find((row) => String(row?.period_key || '') === period.key)
+      ? liveData.rows.find((row) => String(row?.period_key || '') === day.key)
       : null;
     if (!liveData?.ok || !liveRow) return baseResponse;
 
-    const readPath = `${baseData.read_path || 'history'}+minute-current`;
+    const readPath = `${baseData.read_path || 'history'}+minute-current-daily`;
     const data = {
       ...baseData,
-      rows: mergeCurrentRow(baseData.rows, liveRow, period.key),
+      rows: mergeCurrentRow(baseData.rows, liveRow, day.key),
       live_overlay_count: 1,
       latest_live_observed_at: liveRow.period_end || null,
       live_source: 'minute_facts',
       read_path: readPath,
     };
     return jsonResponse(baseResponse, data, {
-      'x-history-live-overlay': 'minute-current',
+      'x-history-live-overlay': 'minute-current-daily',
       'x-history-read-path': readPath,
     });
   } catch (error) {
@@ -109,21 +102,34 @@ async function overlayCurrentSummary(input, init, requestedUrl, baseResponse) {
   }
 }
 
-function installHistoryCacheFreshness() {
+function migrateHistoryCache() {
+  const storage = browser?.sessionStorage;
+  if (!storage || storage.getItem(DAILY_ONLY_MIGRATION_KEY) === '1') return;
+  for (let index = storage.length - 1; index >= 0; index -= 1) {
+    const key = storage.key(index);
+    if (key?.startsWith(HISTORY_CACHE_PREFIX)) storage.removeItem(key);
+  }
+  storage.setItem(DAILY_ONLY_MIGRATION_KEY, '1');
+}
+
+function installDailyHistoryCacheFreshness() {
   const storage = browser?.sessionStorage;
   const prototype = storage && Object.getPrototypeOf(storage);
-  if (!prototype || prototype.__shHistoryCurrentCacheHook) return;
+  if (!prototype || prototype.__shDailyHistoryCurrentCacheHook) return;
   const nativeGetItem = prototype.getItem;
   if (typeof nativeGetItem !== 'function') return;
 
   try {
-    Object.defineProperty(prototype, '__shHistoryCurrentCacheHook', { value: true });
+    Object.defineProperty(prototype, '__shDailyHistoryCurrentCacheHook', { value: true });
     Object.defineProperty(prototype, 'getItem', {
       configurable: true,
       writable: true,
       value(key) {
         const raw = nativeGetItem.call(this, key);
-        if (this !== storage || !raw || !String(key).startsWith(HISTORY_CACHE_PREFIX)) return raw;
+        const textKey = String(key);
+        if (this !== storage || !raw || !textKey.startsWith(HISTORY_CACHE_PREFIX) || !textKey.includes('mode=daily')) {
+          return raw;
+        }
         try {
           const cached = JSON.parse(raw);
           if (Date.now() - Number(cached?.at || 0) >= HISTORY_CACHE_TTL_MS) return null;
@@ -140,12 +146,13 @@ async function guardedFetch(input, init) {
   const url = requestUrl(input);
   const response = await previousFetch(input, init);
   if (!url || url.origin !== browser.location.origin || url.pathname !== '/api/history') return response;
-  return overlayCurrentSummary(input, init, url, response);
+  return overlayCurrentDaily(input, init, url, response);
 }
 
 export function installHistoryCurrentOverlay() {
   if (!browser || !previousFetch) return;
-  installHistoryCacheFreshness();
+  migrateHistoryCache();
+  installDailyHistoryCacheFreshness();
   browser.fetch = guardedFetch;
 }
 
