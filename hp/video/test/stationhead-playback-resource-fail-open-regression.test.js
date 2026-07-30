@@ -10,6 +10,10 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
+const sharedEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -19,7 +23,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('playback-safe policy is final after July 23 stats and resource reduction', () => {
+test('playback-safe policy remains the final Stationhead resource boundary', () => {
   const baselineAt = composition.indexOf(
     '#include "sh_stats_july23_baseline_policy_fix.h"',
   );
@@ -51,56 +55,46 @@ test('final resource boundary preserves controller cache reset without login del
   );
 });
 
-test('all WebView2 MEDIA requests remain fail-open', () => {
-  const filters = section(
-    policy,
-    'const bool blockImages = config.blockImages;',
-    'ComPtr<ICoreWebView2Environment> env = environment;',
-  );
+test('final playback policy installs no native request or URL blocking', () => {
   const handler = section(
     policy,
-    'webview->add_WebResourceRequested(',
-    'BlockStationheadTelemetrySocketsBoundaryFixed(webview);',
+    'inline void ApplyStationheadResourceBlockingPlaybackSafe',
+    '}  // namespace hp',
   );
-  assert.doesNotMatch(filters, /addFilter\(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA\)/);
-  assert.doesNotMatch(handler, /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
-  assert.doesNotMatch(handler, /StationheadCorePlaybackRequestBoundaryFixed/);
-});
-
-test('station listener and playback controls bypass optional social blocking', () => {
-  const matcher = section(
-    policy,
-    'inline constexpr bool StationheadPlaybackControlRequestBoundaryFixed(',
-    'static_assert(StationheadPlaybackControlRequestBoundaryFixed',
+  assert.doesNotMatch(
+    handler,
+    /AddWebResourceRequestedFilter|AddStationheadResourceFilter|add_WebResourceRequested/,
   );
-  assert.match(matcher, /uri\.host != L"production1\.stationhead\.com"/);
-  assert.match(matcher, /uri\.path == L"\/station" \|\| uri\.path\.starts_with\(L"\/station\/"\)/);
-  assert.match(matcher, /uri\.path == L"\/playback"/);
-  assert.match(matcher, /uri\.path == L"\/stream"/);
-  assert.match(
-    policy,
-    /StationheadDataAcquisitionRequestBoundaryFixed\(lower\) \|\|[\s\S]*StationheadPlaybackControlRequestBoundaryFixed\(lower\)/,
+  assert.doesNotMatch(
+    handler,
+    /Network\.setBlockedURLs|BlockStationheadTelemetrySockets/,
   );
-  const handler = section(
-    policy,
-    'const bool protectedRequest =',
-    'if (block) {',
-  );
-  assert.ok(
-    handler.indexOf('StationheadPlaybackControlRequestBoundaryFixed(lower)') <
-      handler.indexOf('StationheadRequestIsBlockableBoundaryFixed(lower)'),
+  assert.doesNotMatch(
+    handler,
+    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_|CreateWebResourceResponse|put_Response/,
   );
 });
 
-test('script stubs and Tooltip CSS reduction are retained', () => {
-  assert.match(
+test('all dynamic Stationhead and third-party requests remain fail-open', () => {
+  const handler = section(
     policy,
-    /StationheadKnownOptionalModuleStubBoundaryFixed\(lower\)/,
+    'inline void ApplyStationheadResourceBlockingPlaybackSafe',
+    '}  // namespace hp',
   );
+  assert.match(handler, /Do not install WebResourceRequested or CDP/);
+  assert.match(handler, /synthetic response after the route shell has mounted/);
+  assert.doesNotMatch(
+    handler,
+    /StationheadRequestIsBlockable|StationheadTelemetryRequest|StationheadExpandedNonPlaybackScript|StationheadKnownOptionalModuleStub|StationheadOptionalStylesheet/,
+  );
+});
+
+test('safe image and font reduction remains environment-level', () => {
+  assert.match(sharedEnvironment, /std::wstring BuildWebView2Arguments\(bool blockImages, bool blockFonts\)/);
+  assert.match(sharedEnvironment, /imagesEnabled=false,loadsImagesAutomatically=false/);
+  assert.match(sharedEnvironment, /downloadableBinaryFontsEnabled=false/);
   assert.match(
-    policy,
-    /StationheadOptionalStylesheetBoundaryFixed\(lower\)/,
+    sharedEnvironment,
+    /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
   );
-  assert.match(policy, /replacementScript \? 200 : \(emptyResource \? 204 : 403\)/);
-  assert.match(policy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
 });
