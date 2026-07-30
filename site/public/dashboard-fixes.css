@@ -13,6 +13,11 @@
   margin: 0;
 }
 
+.history-view,
+.likes-view {
+  margin-top: 10px;
+}
+
 @media (max-width: 760px) {
   .top-card.dashboard-header {
     gap: 12px;
