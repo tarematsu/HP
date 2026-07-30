@@ -30,7 +30,7 @@ test('runtime keeps only immediate enrichment Queue boundaries', () => {
   assert.match(metadata, /from '\.\/committed-metadata-enrichment\.js'/);
 });
 
-test('Pages materialization is owned by the bounded independent Actions runner', () => {
+test('Pages summary materialization is owned by the bounded independent Actions runner', () => {
   const workflow = source('../../.github/workflows/run-pages-read-model-rebuild.yml');
   const runner = source('../scripts/run-pages-read-model-actions.mjs');
   const responseStore = source('../src/pages-response-r2.js');
@@ -38,10 +38,12 @@ test('Pages materialization is owned by the bounded independent Actions runner',
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /timeout-minutes: 15/);
-  assert.match(workflow, /PAGES_READ_MODEL_MAX_STEPS: '4'/);
+  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Refresh budget-safe read models during D1 budget deferral/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(runner, /pagesActionsR2ResponseKey/);
+  assert.match(runner, /track-history-read-model-disabled/);
+  assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(responseStore, /pages-response\/actions-v1/);
 });
