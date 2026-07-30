@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  materializedApiKey,
   materializedResponseCadenceSeconds,
   materializedResponseMaximumAge,
 } from '../site/functions/lib/api-contract.js';
@@ -24,14 +25,13 @@ const runtime = JSON.parse(readFileSync(new URL('../worker/wrangler.runtime.json
 const DAY = Date.UTC(2026, 6, 20);
 const MINUTE = 60_000;
 
-function allHistoryVariants() {
+function allMaterializedVariants() {
   return [
     'dashboard',
     'history:daily',
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
-    'track-history',
     'host-history:summary',
   ];
 }
@@ -46,7 +46,7 @@ function sixHourVariants() {
   ];
 }
 
-test('pages read models run independently before chaining runtime maintenance', () => {
+test('pages read models run independently before runtime maintenance', () => {
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
@@ -54,16 +54,14 @@ test('pages read models run independently before chaining runtime maintenance', 
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
-  assert.match(workflow, /PAGES_READ_MODEL_MAX_STEPS: '4'/);
+  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
+  assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
   assert.match(runner, /export async function runPagesReadModelActions/);
-  assert.match(runner, /runSplitTrackHistoryCycleStep/);
-  assert.match(runner, /MAX_TRACK_HISTORY_STEPS = 16/);
+  assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|MAX_TRACK_HISTORY_STEPS|while \(steps < maxSteps/);
   assert.match(runner, /variant\.cadence_minutes/);
   assert.match(runner, /materialized-history\.js/);
-  assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
-  assert.match(runner, /pages_read_model_actions_deferred/);
-  assert.match(runner, /variant\.key !== 'track-history'/);
+  assert.match(runner, /track-history-read-model-disabled/);
   assert.doesNotMatch(materializedHistory, /sh_channel_snapshots/);
   assert.match(d1Adapter, /'d1', 'execute', database/);
   assert.match(d1Adapter, /'--remote', '--yes', '--json'/);
@@ -77,82 +75,52 @@ test('dashboard materialized lifetime covers the 30-minute Actions publication i
   assert.equal(materializedResponseMaximumAge('dashboard'), 35 * MINUTE);
 });
 
-test('contract cadence regenerates histories every six hours and archives daily', () => {
-  assert.deepEqual([...dueVariantKeys(DAY + 4 * MINUTE)], allHistoryVariants());
+test('contract cadence regenerates summaries every six hours and host archive daily', () => {
+  assert.deepEqual([...dueVariantKeys(DAY + 4 * MINUTE)], allMaterializedVariants());
   assert.deepEqual([...dueVariantKeys(DAY + 19 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(DAY + 64 * MINUTE)], ['dashboard']);
   assert.deepEqual([...dueVariantKeys(DAY + 364 * MINUTE)], sixHourVariants());
-  assert.deepEqual([...dueVariantKeys(DAY + 1444 * MINUTE)], allHistoryVariants());
+  assert.deepEqual([...dueVariantKeys(DAY + 1444 * MINUTE)], allMaterializedVariants());
+  assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
 });
 
-test('runner completes a published track-history generation and materializes only due variants', async () => {
+test('runner materializes only due variants and never advances track history', async () => {
   const published = [];
+  let trackCalls = 0;
   const result = await runPagesReadModelActions({
     startedAt: DAY + 19 * MINUTE,
     deadlineMs: DAY + 30 * MINUTE,
     now: () => DAY + 19 * MINUTE,
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => ({ reason: 'track-history-cycle-already-published' }),
+    runTrackHistoryStep: async () => { trackCalls += 1; },
     materializeVariant: async (variant) => {
       published.push(variant.key);
       return { key: variant.key, object_key: `test/${variant.key}` };
     },
   });
-  assert.equal(result.track_history_steps, 1);
+  assert.equal(trackCalls, 0);
+  assert.equal(result.track_history_steps, 0);
   assert.equal(result.track_history_deferred, false);
+  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
   assert.deepEqual(published, ['dashboard']);
   assert.equal(result.published[0].key, 'dashboard');
 });
 
-test('runner publishes track-history immediately when the generation completes', async () => {
+test('runner publishes all due non-track variants', async () => {
   const published = [];
   const result = await runPagesReadModelActions({
-    startedAt: DAY + 19 * MINUTE,
+    startedAt: DAY + 4 * MINUTE,
     deadlineMs: DAY + 30 * MINUTE,
-    now: () => DAY + 19 * MINUTE,
+    now: () => DAY + 4 * MINUTE,
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => ({
-      task: { kind: 'track-history-published' },
-      stage: { published: true },
-      publication: { published: true, phase: 'published' },
-    }),
     materializeVariant: async (variant) => {
       published.push(variant.key);
       return { key: variant.key };
     },
   });
-  assert.deepEqual(published, ['dashboard', 'track-history']);
-  assert.equal(result.track_history_result.publication.published, true);
-  assert.equal(result.track_history_deferred, false);
-});
-
-test('runner refreshes dashboard and safely defers an incomplete track-history rebuild', async () => {
-  const events = [];
-  const result = await runPagesReadModelActions({
-    startedAt: DAY + 19 * MINUTE,
-    deadlineMs: DAY + 30 * MINUTE,
-    now: () => DAY + 19 * MINUTE,
-    maxSteps: 2,
-    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => {
-      events.push('track-history-step');
-      return { stage: { published: false } };
-    },
-    materializeVariant: async (variant) => {
-      events.push(`publish:${variant.key}`);
-      return { key: variant.key };
-    },
-  });
-  assert.equal(result.ok, true);
-  assert.equal(result.event, 'pages_read_model_actions_deferred');
-  assert.equal(result.track_history_steps, 2);
-  assert.equal(result.track_history_deferred, true);
-  assert.equal(result.track_history_defer_reason, 'step-budget');
-  assert.deepEqual(events, [
-    'publish:dashboard',
-    'track-history-step',
-    'track-history-step',
-  ]);
+  assert.deepEqual(published, allMaterializedVariants());
+  assert.equal(result.event, 'pages_read_model_actions_complete');
+  assert.equal(result.track_history_steps, 0);
 });
 
 test('runtime serves materialized responses through a serving-only module', () => {
