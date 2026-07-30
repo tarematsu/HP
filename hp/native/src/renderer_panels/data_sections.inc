@@ -215,7 +215,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   RECT plugRect{body.left, body.bottom - plugHeight, body.right, body.bottom};
   if (plugDeviceCount == 0) {
     DrawTextInRect(dc, L"Plug Mini情報なし", plugRect,
-                   DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+                   DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
   } else {
     const int plugColumnGap = std::max(8, SpanX(body, 24));
     const int plugRectWidth = static_cast<int>(plugRect.right - plugRect.left);
@@ -230,10 +230,10 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
       const int left = plugRect.left + plugColumn * (plugColumnWidth + plugColumnGap);
       const int top = plugRect.top + plugRow * (plugLineHeight + plugRowGap);
       RECT deviceRect{left, top, left + plugColumnWidth, top + plugLineHeight};
-      const std::wstring deviceText = nativeDashboard_.switchBotDevices[i].name + L": " +
+      const std::wstring deviceText = nativeDashboard_.switchBotDevices[i].name + L" " +
                                       nativeDashboard_.switchBotDevices[i].state;
       DrawTextInRect(dc, deviceText, deviceRect,
-                     DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
     }
   }
   SelectObject(dc, previousFont);
