@@ -52,9 +52,6 @@ export const OCTOPUS_HISTORY_FLOOR_MS = Date.UTC(2025, 10, 1) - JST_MS;
 export const OCTOPUS_COLLECTION_DAYS = 7;
 export const OCTOPUS_CORRECTION_OVERLAP_DAYS = 1;
 export const OCTOPUS_STABILITY_LAG_DAYS = 0;
-// Query through the current JST day so delayed readings are retried. Only
-// complete 48-slot days before the current day are persisted and graphed.
-const OCTOPUS_QUERY_LOOKAHEAD_DAYS = 1;
 
 function jstDayKey(timestampMs: number): string {
   return new Date(timestampMs + JST_MS).toISOString().slice(0, 10);
@@ -208,7 +205,9 @@ export async function synchronizeOctopusHistory(
   if (!Number.isFinite(nowMs)) throw new Error("Octopus synchronization time must be finite");
   const stableCutoff = octopusStableCutoffJst(nowMs);
   const stableThrough = octopusCompleteStableThroughJst(nowMs);
-  const queryThrough = stableThrough + OCTOPUS_QUERY_LOOKAHEAD_DAYS * DAY_MS;
+  // Never query beyond the latest completed half-hour. A day is persisted and
+  // graphed only after all 48 half-hour slots have arrived.
+  const queryThrough = stableCutoff;
   const stableThroughDay = jstDayKey(stableThrough);
   const cursorBefore = await readSyncCursor(env, accountNumber);
   const initialFrom = cursorBefore === null
