@@ -26,7 +26,6 @@ test('Actions applies contract-driven six-hour and daily read-model cadences', (
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
-    'track-history',
     'host-history:summary',
   ]);
   assert.deepEqual([...dueVariantKeys(cycleStart + 19 * MINUTE)], ['dashboard']);
@@ -42,27 +41,20 @@ test('Actions applies contract-driven six-hour and daily read-model cadences', (
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
-test('track-history advances in bounded Actions slices and publishes R2 only when complete', () => {
+test('track-history read-model generation is absent from scheduled Actions', () => {
   assert.match(runner, /export async function runPagesReadModelActions/);
-  assert.match(runner, /runSplitTrackHistoryCycleStep/);
-  assert.match(runner, /DEFAULT_TRACK_HISTORY_STEPS = 4/);
-  assert.match(runner, /MAX_TRACK_HISTORY_STEPS = 16/);
-  assert.match(runner, /while \(steps < maxSteps && Number\(clock\(\)\) < deadlineMs\)/);
-  assert.match(runner, /pages_read_model_actions_deferred/);
-  assert.match(runner, /track_history_deferred/);
-  assert.match(runner, /if \(complete\)/);
-  assert.match(runner, /trackHistoryPublishedThisRun/);
-  assert.match(runner, /dueKeys\.add\('track-history'\)/);
-  assert.match(runner, /process\.env\.PAGES_READ_MODEL_MAX_STEPS/);
-  assert.match(runner, /process\.env\.PAGES_READ_MODEL_DEADLINE_MS/);
+  assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep|DEFAULT_TRACK_HISTORY_STEPS|MAX_TRACK_HISTORY_STEPS/);
+  assert.doesNotMatch(runner, /trackHistoryPublishedThisRun|dueKeys\.add\('track-history'\)/);
+  assert.match(runner, /track-history-read-model-disabled/);
+  assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history|track-history generation/);
 });
 
 test('workflow keeps independent scheduled opportunities without Worker queues', () => {
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
-  assert.match(workflow, /PAGES_READ_MODEL_MAX_STEPS: '4'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /Refresh budget-safe read models during D1 budget deferral/);
+  assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.equal(runtime.triggers, undefined);
