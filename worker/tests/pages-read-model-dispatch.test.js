@@ -19,25 +19,23 @@ const runtime = JSON.parse(readFileSync(
 const cycleStart = Date.UTC(2026, 6, 18);
 const MINUTE = 60_000;
 
+const ALL_VARIANTS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
+];
+
+const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
+
 test('Actions applies contract-driven six-hour and daily read-model cadences', () => {
-  assert.deepEqual([...dueVariantKeys(cycleStart + 4 * MINUTE)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-    'host-history:summary',
-  ]);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 19 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 64 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 184 * MINUTE)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycleStart + 364 * MINUTE)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-  ]);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 26 * MINUTE)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 55 * MINUTE)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 56 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 86 * MINUTE)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycleStart + 386 * MINUTE)], SIX_HOUR_VARIANTS);
   assert.doesNotMatch(runner, /PAGES_CYCLE_MINUTES|cycleSlotKey|pagesSixHourTask/);
 });
 
@@ -53,6 +51,7 @@ test('workflow keeps independent scheduled opportunities without Worker queues',
   assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
+  assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.match(workflow, /Refresh budget-safe read models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /timeout-minutes: 15/);
