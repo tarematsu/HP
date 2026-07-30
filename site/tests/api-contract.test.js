@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   API_CONTRACT_VERSION,
   API_GROUPS,
+  apiCacheTtlSeconds,
   canonicalApiPaths,
   materializedResponseCadenceSeconds,
   materializedResponseMaximumAge,
@@ -18,7 +19,8 @@ function unique(values, label) {
 test('API contract contains unique canonical paths only', () => {
   const canonical = canonicalApiPaths();
   unique(canonical, 'canonical API paths');
-  assert.equal(canonical.length, 6);
+  assert.equal(canonical.length, 7);
+  assert.ok(canonical.includes('/api/history-current'));
   assert.equal(existsSync(new URL('../functions/api/_middleware.js', import.meta.url)), false);
 });
 
@@ -48,6 +50,11 @@ test('materialized response freshness follows canonical generation cadences', ()
     assert.equal(materializedResponseCadenceSeconds(key), 1440 * 60, key);
     assert.equal(materializedResponseMaximumAge(key), 1445 * minute, key);
   }
+});
+
+test('current minute history uses a 30-second shared cache', () => {
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history-current?mode=daily')), 30);
+  assert.equal(apiCacheTtlSeconds(new Request('https://skrzk.test/api/history?mode=daily')), 300);
 });
 
 test('cache middleware contains the canonical Sakurazaka policy', () => {

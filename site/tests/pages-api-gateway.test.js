@@ -14,6 +14,7 @@ const CANONICAL_PATHS = [
   '/api/health',
   '/api/dashboard',
   '/api/history',
+  '/api/history-current',
   '/api/track-history',
   '/api/sakurazaka46jp',
   '/api/host-history',
