@@ -7,6 +7,7 @@ import {
   API_GROUPS,
   apiCacheTtlSeconds,
   canonicalApiPaths,
+  materializedApiKey,
   materializedResponseCadenceSeconds,
   materializedResponseMaximumAge,
 } from '../functions/lib/api-contract.js';
@@ -46,10 +47,9 @@ test('materialized response freshness follows canonical generation cadences', ()
     assert.equal(materializedResponseCadenceSeconds(key), 360 * 60, key);
     assert.equal(materializedResponseMaximumAge(key), 365 * minute, key);
   }
-  for (const key of ['track-history', 'host-history:summary']) {
-    assert.equal(materializedResponseCadenceSeconds(key), 1440 * 60, key);
-    assert.equal(materializedResponseMaximumAge(key), 1445 * minute, key);
-  }
+  assert.equal(materializedResponseCadenceSeconds('host-history:summary'), 1440 * 60);
+  assert.equal(materializedResponseMaximumAge('host-history:summary'), 1445 * minute);
+  assert.equal(materializedApiKey('https://skrzk.test/api/track-history'), null);
 });
 
 test('current minute history uses a 30-second shared cache', () => {
