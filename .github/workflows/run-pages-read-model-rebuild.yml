@@ -14,6 +14,7 @@ on:
       - 'worker/src/pages-response-**'
       - 'site/functions/api/dashboard.js'
       - 'site/functions/api/history.js'
+      - 'site/functions/lib/api-contract.js'
       - 'site/functions/lib/materialized-history.js'
       - 'site/functions/api/host-history.js'
   workflow_dispatch:
@@ -40,6 +41,7 @@ jobs:
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
+      PAGES_READ_MODEL_FORCE_ALL: ${{ github.event_name != 'schedule' }}
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
       D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
