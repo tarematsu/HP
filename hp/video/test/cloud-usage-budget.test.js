@@ -34,7 +34,7 @@ const scheduledIntervals = {
   stationhead_health: 1_800,
   news: 1_800,
   weather: 3_600,
-  octopus: 43_200,
+  octopus: 10_800,
   update_check: 1_800,
   cleanup: 86_400,
 };
@@ -91,7 +91,7 @@ test('native sync and automatic update fallback are fixed at thirty minutes', ()
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
   assert.match(updateCadenceMigration, /interval_seconds = 1800/);
   assert.match(updateCadenceMigration, /unixepoch\(\) \+ 1800/);
-  assert.match(schedulerRuntime, /RUNTIME_VERSION = 6/);
+  assert.match(schedulerRuntime, /RUNTIME_VERSION = 7/);
   assert.match(schedulerRuntime, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
 });
 
