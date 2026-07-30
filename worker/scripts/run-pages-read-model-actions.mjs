@@ -16,12 +16,29 @@ const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
 const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
-const HISTORY_REFRESH_PHASE_MINUTES = 4;
+const WORKFLOW_INTERVAL_MINUTES = 30;
+const HISTORY_REFRESH_PHASE_MINUTES = 26;
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(minimum, Math.min(maximum, parsed));
+}
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function enabled(value) {
+  return /^(?:1|true|yes|on)$/i.test(String(value || '').trim());
+}
+
+function scheduledSlotMinute(now) {
+  const minute = Math.floor(Number(now) / 60_000);
+  return minute - positiveModulo(
+    minute - HISTORY_REFRESH_PHASE_MINUTES,
+    WORKFLOW_INTERVAL_MINUTES,
+  );
 }
 
 function wrangler(args, options = {}) {
@@ -33,14 +50,21 @@ function wrangler(args, options = {}) {
   });
 }
 
-export function dueVariantKeys(now) {
-  const minute = Math.floor(Number(now) / 60_000);
+export function dueVariantKeys(now, options = {}) {
   const due = new Set(['dashboard']);
+  if (options.forceAll === true) {
+    return new Set(MATERIALIZED_API_VARIANTS.map(({ key }) => key));
+  }
+
+  // GitHub scheduled workflows can start several minutes after their nominal cron
+  // time. Resolve the current execution to the most recent :26/:56 slot so a
+  // delayed :26 run still publishes the six-hour and daily models.
+  const slotMinute = scheduledSlotMinute(now);
   for (const variant of MATERIALIZED_API_VARIANTS) {
     if (variant.key === 'dashboard') continue;
     const cadence = Math.trunc(Number(variant.cadence_minutes));
     if (!Number.isFinite(cadence) || cadence <= 0) continue;
-    if (minute % cadence === Math.min(HISTORY_REFRESH_PHASE_MINUTES, cadence - 1)) {
+    if (positiveModulo(slotMinute - HISTORY_REFRESH_PHASE_MINUTES, cadence) === 0) {
       due.add(variant.key);
     }
   }
@@ -148,7 +172,8 @@ export async function runPagesReadModelActions(options = {}) {
   const env = options.env || productionEnvironment();
   const renderVariant = options.materializeVariant || materializeVariant;
   const variants = options.variants || MATERIALIZED_API_VARIANTS;
-  const dueKeys = new Set(options.dueKeys || dueVariantKeys(startedAt));
+  const forceAll = options.forceAll ?? enabled(process.env.PAGES_READ_MODEL_FORCE_ALL);
+  const dueKeys = new Set(options.dueKeys || dueVariantKeys(startedAt, { forceAll }));
   const published = [];
 
   for (const variant of variants.filter((item) => dueKeys.has(item.key))) {
@@ -161,6 +186,7 @@ export async function runPagesReadModelActions(options = {}) {
   return {
     ok: true,
     event: 'pages_read_model_actions_complete',
+    force_all: forceAll,
     track_history_steps: 0,
     track_history_deferred: false,
     track_history_defer_reason: null,
