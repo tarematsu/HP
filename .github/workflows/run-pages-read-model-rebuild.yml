@@ -11,12 +11,11 @@ on:
       - 'worker/scripts/run-pages-read-model-actions.mjs'
       - 'worker/scripts/refresh-pages-dashboard-actions.mjs'
       - 'worker/scripts/remote-d1-adapter.mjs'
-      - 'worker/src/pages-**'
+      - 'worker/src/pages-response-**'
       - 'site/functions/api/dashboard.js'
       - 'site/functions/api/history.js'
       - 'site/functions/lib/materialized-history.js'
       - 'site/functions/api/host-history.js'
-      - 'site/functions/api/track-history.js'
   workflow_dispatch:
 
 permissions:
@@ -40,7 +39,6 @@ jobs:
       BUDDIES_DATABASE_NAME: stationhead-buddies
       OTHER_DATABASE_NAME: stationhead-other
       PAGES_RESPONSE_BUCKET: sh-pages-responses
-      PAGES_READ_MODEL_MAX_STEPS: '4'
       PAGES_READ_MODEL_DEADLINE_MS: '720000'
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
       D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
@@ -77,9 +75,9 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
-            echo "Deferring D1-heavy read-model and track-history generation because usage telemetry is unavailable. Existing KV/R2 responses remain active, and bounded dashboard and summary refresh will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model generation because usage telemetry is unavailable. Existing R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           else
-            echo "Deferring D1-heavy read-model and track-history generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active, and bounded dashboard and summary refresh will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing R2 responses remain active, and the bounded dashboard refresh will still run." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
@@ -89,7 +87,7 @@ jobs:
         run: |
           set -o pipefail
           node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
-      - name: Rebuild track history and publish due variants
+      - name: Publish due pages read models
         if: steps.d1-write-budget.outputs.allowed == 'true'
         shell: bash
         run: |
