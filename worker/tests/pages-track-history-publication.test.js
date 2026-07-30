@@ -40,7 +40,7 @@ function baseStage(overrides = {}) {
   };
 }
 
-test('paged track-history chunks assemble the existing API response contract', () => {
+test('paged track-history chunks assemble the existing explicit-maintenance API response contract', () => {
   const publication = createTrackHistoryPublication(
     { generation: CYCLE_START },
     {
@@ -69,7 +69,7 @@ test('paged track-history chunks assemble the existing API response contract', (
   assert.equal(payload.method, 'precomputed_track_history_read_model');
 });
 
-test('publication advances by bounded rows and commits the manifest separately', async () => {
+test('explicit publication advances by bounded rows and commits the manifest separately', async () => {
   const publication = {
     ...createTrackHistoryPublication(
       { generation: CYCLE_START },
@@ -106,7 +106,7 @@ test('publication advances by bounded rows and commits the manifest separately',
   assert.equal(committed.published, true);
 });
 
-test('split cycle initializes and advances one publication page inline', async () => {
+test('explicit split cycle initializes and advances one publication page inline', async () => {
   const stage = baseStage();
   const saves = [];
   const result = await runSplitTrackHistoryCycleStep(
@@ -139,7 +139,7 @@ test('split cycle initializes and advances one publication page inline', async (
   assert.deepEqual(saves, ['rows', 'rows']);
 });
 
-test('split cycle marks the stage published in the same inline state machine', async () => {
+test('explicit split cycle marks the stage published in the same inline state machine', async () => {
   const stage = baseStage({
     publication: {
       generation: 'generation-1',
@@ -168,7 +168,7 @@ test('split cycle marks the stage published in the same inline state machine', a
   assert.equal(stage.publication.phase, 'published');
 });
 
-test('Actions runner keeps bounded stalled-publication recovery active without a Worker Queue', async () => {
+test('scheduled Actions ignore track-history publication recovery hooks', async () => {
   const runtime = JSON.parse(readFileSync(new URL('../wrangler.runtime.jsonc', import.meta.url), 'utf8'));
   let calls = 0;
   const result = await runPagesReadModelActions({
@@ -177,20 +177,14 @@ test('Actions runner keeps bounded stalled-publication recovery active without a
     now: () => CYCLE_START + 19 * 60_000,
     maxSteps: 3,
     env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => {
-      calls += 1;
-      return {
-        task: { kind: calls === 3 ? 'track-history-published' : 'track-history-publish-step' },
-        stage: { published: calls === 3 },
-        publication: { published: calls === 3, phase: calls === 3 ? 'published' : 'rows' },
-      };
-    },
+    runTrackHistoryStep: async () => { calls += 1; },
     materializeVariant: async (variant) => ({ key: variant.key }),
   });
 
-  assert.equal(result.track_history_steps, 3);
-  assert.equal(result.track_history_result.stage.published, true);
-  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard', 'track-history']);
+  assert.equal(calls, 0);
+  assert.equal(result.track_history_steps, 0);
+  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
+  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard']);
   assert.equal(runtime.queues.consumers.some(({ queue }) => queue === 'stationhead-pages-read-model-publication'), false);
   assert.equal(runtime.queues.producers.some(({ binding }) => binding === 'PAGES_READ_MODEL_QUEUE'), false);
   assert.equal(runtime.triggers, undefined);
