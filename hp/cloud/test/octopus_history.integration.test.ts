@@ -37,11 +37,11 @@ function completeReadings(range: OctopusRange, value = 0.25): OctopusReading[] {
 }
 
 describe("Octopus daily D1 history", () => {
-  it("queries through the current day while storing only seven complete days", async () => {
+  it("queries through the latest completed half-hour while storing only seven complete days", async () => {
     const now = Date.parse("2026-07-10T18:00:00Z");
     const collectionStart = octopusCollectionStart(now);
     const stableThrough = octopusCompleteStableThroughJst(now);
-    const queryThrough = stableThrough + DAY_MS;
+    const queryThrough = octopusStableCutoffJst(now);
     const requested: OctopusRange[] = [];
 
     const result = await synchronizeOctopusHistory(env, "A-123", now, async range => {
@@ -56,12 +56,14 @@ describe("Octopus daily D1 history", () => {
     expect(requested.at(-1)?.to.getTime()).toBe(queryThrough);
     expect(requested.every(range => range.from.getTime() >= collectionStart)).toBe(true);
     expect(requested.every(range => range.to.getTime() <= queryThrough)).toBe(true);
+    expect(queryThrough).toBeLessThanOrEqual(now);
 
     expect(result.completed).toBe(true);
     expect(result.cursorBefore).toBeNull();
     expect(result.cursorAfter).toBe(stableThrough);
     expect(result.fetchFrom).toBe(collectionStart);
     expect(result.stableThrough).toBe(stableThrough);
+    expect(result.stableCutoff).toBe(queryThrough);
     expect(result.historyFloor).toBe(OCTOPUS_HISTORY_FLOOR_MS);
 
     const stored = await env.DB.prepare(
@@ -83,7 +85,7 @@ describe("Octopus daily D1 history", () => {
     expect(Number(cursor?.stable_through)).toBe(stableThrough);
   });
 
-  it("fetches one correction day, a newly stable day, and one query lookahead day", async () => {
+  it("fetches one correction day, a newly complete day, and the current partial day", async () => {
     const firstNow = Date.parse("2026-07-10T18:00:00Z");
     await synchronizeOctopusHistory(env, "A-incremental", firstNow, async range => completeReadings(range));
     const firstStableThrough = octopusCompleteStableThroughJst(firstNow);
@@ -98,7 +100,8 @@ describe("Octopus daily D1 history", () => {
     expect(OCTOPUS_CORRECTION_OVERLAP_DAYS).toBe(1);
     expect(requested).toHaveLength(2);
     expect(requested[0]?.from.getTime()).toBe(firstStableThrough - DAY_MS);
-    expect(requested.at(-1)?.to.getTime()).toBe(firstStableThrough + 2 * DAY_MS);
+    expect(requested.at(-1)?.to.getTime()).toBe(octopusStableCutoffJst(secondNow));
+    expect(requested.at(-1)?.to.getTime()).toBeLessThanOrEqual(secondNow);
     expect(result.cursorBefore).toBe(firstStableThrough);
     expect(result.cursorAfter).toBe(firstStableThrough + DAY_MS);
     expect(result.fetchFrom).toBe(firstStableThrough - DAY_MS);
