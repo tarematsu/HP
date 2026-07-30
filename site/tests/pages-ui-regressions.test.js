@@ -12,7 +12,6 @@ import {
   metadataFallback,
   normalizePlaybackTrack,
 } from '../functions/lib/playback.js';
-import { summarizeCompleteTrackRows } from '../public/history/history-track-view.js';
 
 test('dashboard playback restores artwork from string and object Stationhead metadata', () => {
   const rawObject = {
@@ -97,39 +96,47 @@ test('official stream fallback does not duplicate an existing minute-fact series
   assert.equal(merged[1].event_name, 'Missing event');
 });
 
-test('track totals exclude incomplete dates instead of reporting partial plays', () => {
-  const summary = summarizeCompleteTrackRows([
-    { play_date: '2026-07-20', track_key: 'a', play_count: 3, period_complete: true },
-    { play_date: '2026-07-20', track_key: 'b', play_count: 2, play_count_excluded: false },
-    { play_date: '2026-07-21', track_key: 'c', play_count: 99, play_count_excluded: true },
-  ]);
-  assert.deepEqual(summary, { days: 1, tracks: 2, total: 5, maximum: 3 });
-});
-
-test('like summary totals all complete weekly rows, not only the bounded ranking', () => {
+test('likes UI contains no playback totals or weekly play merge', () => {
+  const page = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../public/history/history-likes.js', import.meta.url), 'utf8');
-  assert.match(source, /function completeWeekPlayCount\(rows\)/);
-  assert.match(source, /play_count_excluded === true/);
-  assert.match(source, /week_play_count: completeWeekPlayCount\(weekRows\)/);
-  assert.doesNotMatch(source, /week_play_count: state\.rows\.reduce/);
+  assert.doesNotMatch(page, /今週再生|再生曲/);
+  assert.doesNotMatch(source, /week_play_count|completeWeekPlayCount|attachWeeklyPlays|play_count_excluded/);
+  assert.match(source, /ranking_only=1/);
 });
 
-function trackHistoryDb(rankingSize = 0) {
+function directRankingDb(rankingSize = 0) {
   const prepared = [];
+  const rows = Array.from({ length: rankingSize }, (_, index) => ({
+    track_identity: `track:${index + 1}`,
+    track_id: index + 1,
+    title: `Song ${index + 1}`,
+    artist: '櫻坂46',
+    latest_like_count: rankingSize - index,
+    latest_observed_at: 1_700_000_000_000 + index,
+    latest_occurrence_key: `occurrence:${index + 1}`,
+  }));
   return {
     prepared,
     prepare(sql) {
       prepared.push(sql);
       const statement = {
-        bind() { return statement; },
-        async all() { return { results: [] }; },
+        args: [],
+        bind(...args) { statement.args = args; return statement; },
+        async all() {
+          if (sql.includes('FROM sh_track_ranking_current')) {
+            return { results: rows.slice(0, Number(statement.args[0] || 500)) };
+          }
+          return { results: [] };
+        },
         async first() {
-          return {
-            payload_json: JSON.stringify({
-              ranking: Array.from({ length: rankingSize }, (_, index) => ({ rank: index + 1 })),
-              ranking_summary: { track_count: rankingSize },
-            }),
-          };
+          if (sql.includes('FROM sh_track_ranking_current')) {
+            return {
+              track_count: rows.length,
+              max_like_count: rows[0]?.latest_like_count || 0,
+              latest_observed_at: rows.at(-1)?.latest_observed_at || null,
+            };
+          }
+          return null;
         },
       };
       return statement;
@@ -137,8 +144,35 @@ function trackHistoryDb(rankingSize = 0) {
   };
 }
 
+test('like ranking reads the current ranking projection directly', async () => {
+  const db = directRankingDb(300);
+  const response = await trackHistory({
+    request: new Request('https://pages.test/api/track-history?ranking_only=1&ranking_limit=40'),
+    env: { MINUTE_DB: db },
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.mode, 'likes');
+  assert.equal(payload.ranking.length, 40);
+  assert.equal(payload.ranking_summary.track_count, 300);
+  assert.equal(payload.ranking_truncated, true);
+  assert.equal(payload.method, 'current_track_like_ranking');
+  assert.equal(db.prepared.some((sql) => sql.includes('sh_pages_track_history_read_model')), false);
+});
+
 test('normal track history skips the unused like-ranking status payload', async () => {
-  const db = trackHistoryDb(300);
+  const prepared = [];
+  const db = {
+    prepare(sql) {
+      prepared.push(sql);
+      const statement = {
+        bind() { return statement; },
+        async all() { return { results: [] }; },
+        async first() { return null; },
+      };
+      return statement;
+    },
+  };
   const response = await trackHistory({
     request: new Request('https://pages.test/api/track-history?from=2026-07-20&to=2026-07-20&ranking=0'),
     env: { MINUTE_DB: db },
@@ -146,25 +180,13 @@ test('normal track history skips the unused like-ranking status payload', async 
   const payload = await response.json();
   assert.equal(payload.ranking_included, false);
   assert.deepEqual(payload.ranking, []);
-  assert.equal(db.prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
-});
-
-test('like ranking response is bounded for mobile rendering', async () => {
-  const db = trackHistoryDb(300);
-  const response = await trackHistory({
-    request: new Request('https://pages.test/api/track-history?from=2026-07-20&to=2026-07-20&ranking_limit=40'),
-    env: { MINUTE_DB: db },
-  });
-  const payload = await response.json();
-  assert.equal(payload.ranking.length, 40);
-  assert.equal(payload.ranking_truncated, true);
-  assert.equal(payload.ranking_limit, 40);
+  assert.equal(prepared.some((sql) => sql.includes("model_key='track-history-status'")), false);
 });
 
 test('history guard is installed before the consolidated page runtime', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   assert.ok(entry.indexOf('history-request-guard.js') < entry.indexOf('history-lite.js'));
-  assert.match(guard, /searchParams\.set\('ranking', '0'\)/);
+  assert.doesNotMatch(guard, /\/api\/track-history|ranking', '0'/);
   assert.match(guard, /searchParams\.set\('revision', '3'\)/);
 });
