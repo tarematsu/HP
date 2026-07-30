@@ -31,9 +31,17 @@
   min-width: 0;
 }
 
-/* Direct hash navigation can focus the skip link without keyboard modality. */
-.skip-link:focus:not(:focus-visible) {
+/* Programmatic/hash focus stays hidden; a preceding Tab key makes it visible. */
+.skip-link:focus {
+  opacity: 0;
+  pointer-events: none;
   transform: translateY(-150%);
+}
+
+html.keyboard-navigation .skip-link:focus {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
 }
 
 .mode-tabs.dashboard-tabs {
