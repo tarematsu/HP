@@ -10,6 +10,14 @@ const trackBoundary = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
+const nativeStartupSmoke = readFileSync(
+  new URL('../../native/scripts/ci-native-stationhead-startup-smoke.ps1', import.meta.url),
+  'utf8',
+);
+const nativeRuntimeWorkflow = readFileSync(
+  new URL('../../../.github/workflows/native-runtime-smoke.yml', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -122,4 +130,24 @@ test('only the exact optional Tooltip stylesheet is replaced with local 204', ()
   );
   assert.match(policy, /emptyResource \? 204 : 403/);
   assert.match(policy, /stationhead\.com\.evil\.example\/assets\/tooltip-u7w9wxcq\.css/);
+});
+
+test('native startup smoke rejects a late or black Stationhead pane', () => {
+  for (const role of ['A', 'B']) {
+    assert.match(
+      nativeStartupSmoke,
+      new RegExp(`Stationhead ${role} registering required startup scripts`),
+    );
+    assert.match(
+      nativeStartupSmoke,
+      new RegExp(`Stationhead ${role} auto-clicking Start Listening at`),
+    );
+  }
+  assert.match(nativeStartupSmoke, /\[int\]\$StartupBudgetSeconds = 60/);
+  assert.match(nativeStartupSmoke, /function Measure-ScreenshotVisibility/);
+  assert.match(nativeStartupSmoke, /brightPixelRatio -ge 0\.01/);
+  assert.match(nativeStartupSmoke, /luminanceRange -ge 32/);
+  assert.match(nativeStartupSmoke, /screenVisibility\.passed/);
+  assert.match(nativeRuntimeWorkflow, /-StartupBudgetSeconds 60/);
+  assert.match(nativeRuntimeWorkflow, /-PostClickSettleSeconds 3/);
 });
