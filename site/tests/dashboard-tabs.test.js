@@ -11,7 +11,7 @@ const redirects = readFileSync(new URL('../public/_redirects', import.meta.url),
 const historyPageUrl = new URL('../public/history/index.html', import.meta.url);
 const likesPageUrl = new URL('../public/history/likes/index.html', import.meta.url);
 
- test('dashboard starts on current and exposes every mode in one tab panel', () => {
+test('dashboard starts on current and exposes every mode in one tab panel', () => {
   assert.ok(page.indexOf('data-view="current"') < page.indexOf('data-mode="daily"'));
   assert.match(page, /data-view="current" class="active" aria-current="page">現在/);
   assert.match(page, /id="currentView" class="dashboard-view"/);
@@ -30,7 +30,7 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   for (const id of ['likesLoad', 'likesCsv', 'likesNotice', 'likesRankingList', 'likesTbody']) {
     assert.match(page, new RegExp(`id="${id}"`));
   }
-  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js'/);
+  assert.match(dashboardEntry, /import '\.\/dashboard-tabs\.js\?v=20260731\.1'/);
   assert.match(tabsClient, /import\('\/history\/history-main\.js'\)/);
   assert.match(tabsClient, /import\('\/history\/history-likes\.js'\)/);
   assert.match(tabsClient, /showOnly\(historyView\)/);
