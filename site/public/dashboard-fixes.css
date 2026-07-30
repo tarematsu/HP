@@ -25,7 +25,12 @@
   }
 
   .metrics {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .metric {
+    padding: 12px 8px;
   }
 
   .metric.featured {
@@ -33,7 +38,28 @@
     display: block;
   }
 
+  .metric > span {
+    font-size: clamp(.58rem, 2.4vw, .68rem);
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-value,
   .metric.featured .metric-value {
+    gap: 2px;
     margin-top: 7px;
+  }
+
+  .metric strong,
+  .metric.featured strong {
+    font-size: clamp(1rem, 4.8vw, 1.5rem);
+  }
+
+  .metric small {
+    font-size: .68rem;
+  }
+
+  .delta {
+    font-size: .58rem;
   }
 }
