@@ -1,6 +1,4 @@
-import { currentUtcWeekRange } from './history-date-utils.js';
 import {
-  completeTrackRows,
   displayTrackArtist,
   displayTrackTitle,
 } from './history-track-view.js';
@@ -8,8 +6,8 @@ import {
 (() => {
   'use strict';
 
-  const CACHE_PREFIX = 'sh.track-history-ranking.v3:';
-  const CACHE_MS = 10 * 60_000;
+  const CACHE_PREFIX = 'sh.track-like-ranking.v1:';
+  const CACHE_MS = 5 * 60_000;
   const number = new Intl.NumberFormat('ja-JP', { maximumFractionDigits: 1 });
   const dateTime = new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'UTC',
@@ -19,7 +17,7 @@ import {
     timeZone: 'UTC', month: 'numeric', day: 'numeric',
   });
 
-  const state = { rows: [], summary: {}, weekRows: [], controller: null, weekFrom: '', weekTo: '' };
+  const state = { rows: [], summary: {}, controller: null };
   const el = (id) => document.getElementById(id);
   const finite = (value) => {
     if (value === null || value === undefined || value === '') return null;
@@ -27,6 +25,8 @@ import {
     return Number.isFinite(parsed) ? parsed : null;
   };
   const fmt = (value) => finite(value) == null ? '—' : number.format(Number(value));
+  const trackName = (row) => displayTrackTitle(row);
+  const artistName = (row) => displayTrackArtist(row);
 
   function setNotice(text, error = false) {
     el('notice').textContent = text;
@@ -59,76 +59,9 @@ import {
     return { data, cached: false };
   }
 
-  function normalizeText(value) {
-    return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
-  }
-
-  function identityKeys(row) {
-    const keys = [];
-    const spotify = normalizeText(row?.spotify_id);
-    const isrc = normalizeText(row?.isrc);
-    const title = normalizeText(displayTrackTitle(row));
-    const artist = normalizeText(displayTrackArtist(row));
-    const stationhead = normalizeText(row?.stationhead_track_id);
-    if (spotify) keys.push(`spotify:${spotify}`);
-    if (isrc) keys.push(`isrc:${isrc}`);
-    if (title) keys.push(`title:${title}|${artist}`);
-    if (stationhead) keys.push(`stationhead:${stationhead}`);
-    return [...new Set(keys)];
-  }
-
-  function attachWeeklyPlays(rankingRows, weekRows) {
-    const parent = new Map();
-    const ensure = (key) => { if (!parent.has(key)) parent.set(key, key); };
-    const find = (key) => {
-      ensure(key);
-      let root = key;
-      while (parent.get(root) !== root) root = parent.get(root);
-      let current = key;
-      while (parent.get(current) !== current) {
-        const next = parent.get(current);
-        parent.set(current, root);
-        current = next;
-      }
-      return root;
-    };
-    const union = (left, right) => {
-      const leftRoot = find(left);
-      const rightRoot = find(right);
-      if (leftRoot !== rightRoot) parent.set(rightRoot, leftRoot);
-    };
-    for (const row of [...rankingRows, ...weekRows]) {
-      const keys = identityKeys(row);
-      keys.forEach(ensure);
-      for (let index = 1; index < keys.length; index += 1) union(keys[0], keys[index]);
-    }
-    const totals = new Map();
-    for (const row of weekRows) {
-      const key = identityKeys(row)[0];
-      if (!key) continue;
-      const root = find(key);
-      totals.set(root, (totals.get(root) || 0) + (finite(row.play_count) || 0));
-    }
-    return rankingRows.map((row) => {
-      const key = identityKeys(row)[0];
-      return { ...row, week_play_count: key ? totals.get(find(key)) || 0 : 0 };
-    });
-  }
-
-  function completeWeekPlayCount(rows) {
-    return (Array.isArray(rows) ? rows : []).reduce((sum, row) => {
-      if (row?.period_complete === false || row?.play_count_excluded === true) return sum;
-      return sum + Math.max(0, finite(row?.play_count) || 0);
-    }, 0);
-  }
-
-  const trackName = (row) => displayTrackTitle(row);
-  const artistName = (row) => displayTrackArtist(row);
-
   function renderSummary() {
     el('trackCount').textContent = fmt(state.summary.track_count || 0);
     el('maxLikes').textContent = fmt(state.summary.max_like_count || 0);
-    el('weekPlays').textContent = fmt(state.summary.week_play_count || 0);
     el('latestAt').textContent = state.summary.latest_observed_at
       ? shortDate.format(new Date(Number(state.summary.latest_observed_at)))
       : '—';
@@ -173,10 +106,7 @@ import {
       content.append(heading, artist);
       const metrics = document.createElement('div');
       metrics.className = 'like-rank-metrics';
-      metrics.append(
-        metric('最新いいね', fmt(row.latest_like_count)),
-        metric('今週再生', `${fmt(row.week_play_count)}回`),
-      );
+      metrics.append(metric('最新いいね', fmt(row.latest_like_count)));
       item.append(rank, content, metrics);
       fragment.appendChild(item);
     }
@@ -189,7 +119,7 @@ import {
     if (!state.rows.length) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
-      cell.colSpan = 6;
+      cell.colSpan = 5;
       cell.textContent = 'データがありません。';
       row.appendChild(cell);
       body.appendChild(row);
@@ -203,7 +133,6 @@ import {
         trackName(item),
         artistName(item),
         fmt(item.latest_like_count),
-        `${fmt(item.week_play_count)}回`,
         item.latest_observed_at ? dateTime.format(new Date(Number(item.latest_observed_at))) : '—',
       ]) {
         const cell = document.createElement('td');
@@ -227,28 +156,17 @@ import {
     state.controller = controller;
     el('load').disabled = true;
     setNotice('読み込み中…');
-    const { from: weekFrom, to: weekTo } = currentUtcWeekRange();
-    state.weekFrom = weekFrom;
-    state.weekTo = weekTo;
-    const url = `/api/track-history?${new URLSearchParams({ from: weekFrom, to: weekTo, limit: '5000' })}`;
+    const url = '/api/track-history?ranking_only=1&ranking_limit=500';
     try {
       const result = await fetchJson(url, controller.signal, force);
       if (controller.signal.aborted) return;
-      const rankingRows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
-      const weekRows = completeTrackRows(result.data.rows);
-      state.rows = attachWeeklyPlays(rankingRows, weekRows);
-      state.weekRows = weekRows;
-      state.summary = {
-        ...(result.data.ranking_summary || {}),
-        week_play_count: completeWeekPlayCount(weekRows),
-      };
+      state.rows = Array.isArray(result.data.ranking) ? result.data.ranking : [];
+      state.summary = result.data.ranking_summary || {};
       render();
-      const cached = result.cached ? ' · キャッシュ' : '';
-      setNotice(`${fmt(state.rows.length)}曲 · UTC週 ${weekFrom.replaceAll('-', '/')}〜${weekTo.replaceAll('-', '/')}${cached}`);
+      setNotice(`${fmt(state.rows.length)}曲${result.cached ? ' · キャッシュ' : ''}`);
     } catch (error) {
       if (error?.name === 'AbortError') return;
       state.rows = [];
-      state.weekRows = [];
       state.summary = {};
       render();
       setNotice(`取得失敗: ${error.message}`, true);
@@ -261,19 +179,18 @@ import {
   }
 
   function exportCsv() {
-    const header = ['順位', '曲名', 'アーティスト', '最新いいね', '今週再生', '最終観測'];
+    const header = ['順位', '曲名', 'アーティスト', '最新いいね', '最終観測'];
     const lines = [header, ...state.rows.map((row) => [
       row.rank,
       trackName(row),
       artistName(row),
       row.latest_like_count,
-      row.week_play_count,
       row.latest_observed_at ? new Date(Number(row.latest_observed_at)).toISOString() : '',
     ])].map((line) => line.map((value) => `"${String(value ?? '').replaceAll('"', '""')}"`).join(','));
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `sh-track-ranking-${state.weekFrom}-${state.weekTo}.csv`;
+    link.download = `sh-like-ranking-${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(link.href);
   }

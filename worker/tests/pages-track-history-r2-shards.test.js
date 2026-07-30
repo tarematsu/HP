@@ -97,25 +97,22 @@ function dependencies(range) {
   };
 }
 
-test('Actions aliases the compact MINUTE_DB as the track-history source', async () => {
-  const minuteDb = { name: 'minute' };
-  let observedEnv;
-  await runPagesReadModelActions({
+test('scheduled Actions never invoke track-history R2 shard generation', async () => {
+  let calls = 0;
+  const result = await runPagesReadModelActions({
     startedAt: DAY_START + 19 * 60_000,
     deadlineMs: DAY_START + 30 * 60_000,
     now: () => DAY_START + 19 * 60_000,
-    env: { DB: {}, BUDDIES_DB: { name: 'buddies' }, MINUTE_DB: minuteDb, OTHER_DB: {} },
-    runTrackHistoryStep: async (activeEnv) => {
-      observedEnv = activeEnv;
-      return { reason: 'track-history-cycle-already-published' };
-    },
+    env: { DB: {}, BUDDIES_DB: { name: 'buddies' }, MINUTE_DB: { name: 'minute' }, OTHER_DB: {} },
+    runTrackHistoryStep: async () => { calls += 1; },
     materializeVariant: async (variant) => ({ key: variant.key }),
   });
-  assert.equal(observedEnv.MINUTE_DB, minuteDb);
-  assert.equal(observedEnv.BUDDIES_DB, minuteDb);
+  assert.equal(calls, 0);
+  assert.equal(result.track_history_steps, 0);
+  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
 });
 
-test('seven staging shards stay in R2 and the final shard writes a stable day model', async () => {
+test('explicit maintenance keeps seven staging shards in R2 and writes a stable day model', async () => {
   const r2 = new FakeR2();
   const db = new FakeDb();
   const ranges = trackHistoryDayShardRanges({ fromTs: DAY_START, toTs: DAY_START + 3 * 60 * 60_000 });

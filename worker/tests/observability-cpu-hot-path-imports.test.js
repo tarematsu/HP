@@ -105,11 +105,12 @@ test('minute enrichment is queue-only and does not preload Pages generation', ()
   assert.doesNotMatch(minuteEnrichment, /pagesModulePromise|pages-read-model-entry|runPagesReadModelCron|scheduled\s*:/);
 });
 
-test('Pages recurring generation is loaded only by the bounded Actions runner', () => {
-  assert.match(pagesActions, /runSplitTrackHistoryCycleStep/);
+test('Pages summary generation is loaded only by the bounded Actions runner', () => {
   assert.match(pagesActions, /MATERIALIZED_API_VARIANTS/);
   assert.match(pagesActions, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(pagesActions, /dueVariantKeys/);
+  assert.match(pagesActions, /track-history-read-model-disabled/);
+  assert.doesNotMatch(pagesActions, /runSplitTrackHistoryCycleStep|pages-track-history/);
   assert.equal(JSON.parse(runtimeConfig).triggers, undefined);
 });
 

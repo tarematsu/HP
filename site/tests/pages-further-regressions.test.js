@@ -93,7 +93,7 @@ test('official series keeps distinct nearby events and reports missing summaries
   ], 4), 2);
 });
 
-test('active Pages runtimes are UTC-only', () => {
+test('active Pages runtimes are UTC-only and contain no playback-history UI path', () => {
   const entry = readFileSync(new URL('../public/history/history-main.js', import.meta.url), 'utf8');
   const guard = readFileSync(new URL('../public/history/history-request-guard.js', import.meta.url), 'utf8');
   const fixes = readFileSync(new URL('../public/history/history-page-fixes.js', import.meta.url), 'utf8');
@@ -102,21 +102,19 @@ test('active Pages runtimes are UTC-only', () => {
   const broadcasts = readFileSync(new URL('../public/history/history-broadcasts.js', import.meta.url), 'utf8');
   const dashboard = readFileSync(new URL('../public/dashboard-client.js', import.meta.url), 'utf8');
   const likesPage = readFileSync(new URL('../public/history/likes/index.html', import.meta.url), 'utf8');
-  const activeSources = [entry, fixes, history, likes, broadcasts, dashboard].join('\n');
+  const activeSources = [entry, guard, fixes, history, likes, broadcasts, dashboard].join('\n');
 
-  assert.match(entry, /trackDate\.value = utcDate\(-1\)/);
   assert.match(entry, /history:runtime-ready/);
-  assert.match(guard, /TRACK_CACHE_PREFIX/);
-  assert.match(guard, /Object\.defineProperty\(prototype, 'getItem'/);
-  assert.doesNotMatch(guard, /#tracks' \|\| !trackRows\.length/);
-  assert.match(fixes, /aggregateCompleteTrackRows/);
+  assert.doesNotMatch(entry, /trackDate|trackWeekMode|'tracks'/);
+  assert.doesNotMatch(guard, /TRACK_CACHE_PREFIX|\/api\/track-history|history:track-rows/);
+  assert.doesNotMatch(fixes, /aggregateCompleteTrackRows|再生数ランキング|history:track-rows/);
   assert.match(fixes, /applyUtcPreset/);
   assert.match(fixes, /inclusivePresetStart/);
   assert.match(history, /timeZone: 'UTC'/);
   assert.match(history, /todayUtc/);
-  assert.match(likes, /currentUtcWeekRange/);
   assert.match(likes, /timeZone: 'UTC'/);
-  assert.match(likes, /completeTrackRows\(result\.data\.rows\)/);
+  assert.match(likes, /ranking_only=1/);
+  assert.doesNotMatch(likes, /currentUtcWeekRange|completeTrackRows|week_play_count/);
   assert.match(likes, /else load\(\)/);
   assert.match(broadcasts, /timeZone: 'UTC'/);
   assert.match(dashboard, /timeZone: 'UTC'/);

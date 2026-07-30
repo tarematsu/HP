@@ -123,7 +123,8 @@ test('collector coordination and runtime live-job DO fit daily budgets without r
     'BUDDIES_COLLECTOR_COORDINATOR',
     'COLLECTOR_STATUS_DO_ENABLED',
   ]);
-  expectAll(pagesActions, ['PAGES_READ_MODEL_DEADLINE_MS', 'runSplitTrackHistoryCycleStep']);
+  expectAll(pagesActions, ['PAGES_READ_MODEL_DEADLINE_MS', 'track-history-read-model-disabled']);
+  expectNone(pagesActions, ['runSplitTrackHistoryCycleStep']);
   expectAll(offlineActions, ['runRollupMaintenance', 'pruneOldSnapshots', 'runStreamGoalPrediction']);
 });
 

@@ -33,13 +33,14 @@ test('D1 budget deferral still publishes dashboard and bounded summaries', () =>
   );
   assert.match(
     workflow,
-    /name: Rebuild track history and publish due variants\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
+    /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
   );
   assert.match(workflow, /bounded dashboard and summary refresh will still run\./);
   assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
+  assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
 });
 
-test('budget fallback publishes safe summaries but cannot execute track-history work', async () => {
+test('budget fallback publishes safe summaries without track-history work', async () => {
   assert.deepEqual(DASHBOARD_ONLY_VARIANTS.map(({ key }) => key), ['dashboard']);
   assert.deepEqual(BUDGET_SAFE_VARIANTS.map(({ key }) => key), SAFE_KEYS);
   const published = [];
@@ -56,7 +57,7 @@ test('budget fallback publishes safe summaries but cannot execute track-history 
 
   assert.equal(result.ok, true);
   assert.deepEqual(published, SAFE_KEYS);
-  assert.equal(result.track_history_steps, 1);
-  assert.equal(result.track_history_result.reason, 'budget-safe-summary-fallback');
+  assert.equal(result.track_history_steps, 0);
+  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
   assert.deepEqual(result.published.map(({ key }) => key), SAFE_KEYS);
 });

@@ -57,12 +57,13 @@ test('serving module stays independent from render and publication graphs', () =
   assert.doesNotMatch(responseSource, /PAGES_READ_MODEL_QUEUE|track-history-publication|runSplitTrackHistoryCycleStep/);
 });
 
-test('Actions runner owns rendering, tier selection, D1 reads, and R2 publication', () => {
+test('Actions runner owns summary rendering, tier selection, D1 reads, and R2 publication', () => {
   assert.match(runnerSource, /MATERIALIZED_API_VARIANTS/);
   assert.match(runnerSource, /responseHandler/);
-  assert.match(runnerSource, /runSplitTrackHistoryCycleStep/);
   assert.match(runnerSource, /dueVariantKeys/);
   assert.match(runnerSource, /createWranglerRemoteD1/);
+  assert.match(runnerSource, /track-history-read-model-disabled/);
+  assert.doesNotMatch(runnerSource, /runSplitTrackHistoryCycleStep|pages-track-history/);
   assert.match(d1AdapterSource, /'d1', 'execute', database/);
   assert.match(d1AdapterSource, /'--remote', '--yes', '--json'/);
   assert.match(runnerSource, /r2', 'object', 'put'/);
