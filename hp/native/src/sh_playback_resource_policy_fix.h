@@ -30,13 +30,36 @@ static_assert(!StationheadPlaybackControlRequestBoundaryFixed(
 static_assert(!StationheadPlaybackControlRequestBoundaryFixed(
     L"https://production1.stationhead.com.evil.example/station/318/listener"));
 
+// The public shell and the authenticated station route are assembled from the
+// same hash-versioned module graph. Replacing those modules with hard-coded
+// minified export maps is unsafe across deployments and account-specific feature
+// flags: one missing export can leave the persistent header mounted while the
+// route body fails to render. Keep every Stationhead-owned UI/API request open.
+inline constexpr bool StationheadOwnedRequestBoundaryFixed(
+    std::wstring_view uriLower) {
+  const StationheadRuntimeUriParts uri = StationheadParseRuntimeUri(uriLower);
+  return uri.valid && uri.scheme == L"https" &&
+         StationheadRuntimeHostMatches(uri.host, L"stationhead.com");
+}
+
+static_assert(StationheadOwnedRequestBoundaryFixed(
+    L"https://www.stationhead.com/assets/SelectedGIF-next1234.js"));
+static_assert(StationheadOwnedRequestBoundaryFixed(
+    L"https://production1.stationhead.com/chathistory"));
+static_assert(StationheadOwnedRequestBoundaryFixed(
+    L"https://realtime-production.stationhead.com/app/key"));
+static_assert(!StationheadOwnedRequestBoundaryFixed(
+    L"https://stationhead.com.evil.example/assets/main.js"));
+static_assert(!StationheadOwnedRequestBoundaryFixed(
+    L"https://cdn.example.com/assets/main.js"));
+
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
-  (void)armed;
+  (void)config;
   if (!environment || !webview) return;
 
   // Preserve the July 23 controller-lifecycle cache policy after replacing its
@@ -62,123 +85,68 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
         webview, sourceAwareWebView.Get(), context, sourceKinds);
   };
 
-  const bool blockImages = config.blockImages;
-  const bool blockFonts = config.blockFonts;
-  if (blockImages) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
-  if (blockFonts) addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
-  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET);
+  // Do not intercept images, fonts, stylesheets, media, text tracks, or
+  // manifests here. In particular, same-origin UI modules and APIs must remain
+  // fail-open. After native audio is stable, retain only explicit third-party
+  // telemetry suppression.
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
-  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_EVENT_SOURCE);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_WEBSOCKET);
-  addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING);
   addFilter(COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT);
 
   ComPtr<ICoreWebView2Environment> env = environment;
+  std::atomic<bool>* const armedState = &armed;
   webview->add_WebResourceRequested(
       Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-          [env, blockImages, blockFonts](
+          [env, armedState](
               ICoreWebView2*,
               ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
-            if (!args) return S_OK;
+            if (!args ||
+                !armedState->load(std::memory_order_acquire)) {
+              return S_OK;
+            }
+
             COREWEBVIEW2_WEB_RESOURCE_CONTEXT context =
                 COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL;
             const bool hasContext =
                 SUCCEEDED(args->get_ResourceContext(&context));
-            bool block = false;
-            bool emptyScript = false;
-            bool emptyResource = false;
-            std::string_view moduleStub;
-            bool needsUri = true;
-            if (hasContext) {
-              if ((blockImages && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE) ||
-                  (blockFonts && context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT) ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_TEXT_TRACK ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MANIFEST ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING ||
-                  context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_CSP_VIOLATION_REPORT) {
-                block = true;
-                emptyResource = true;
-                needsUri = false;
+            std::wstring lower;
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (SUCCEEDED(args->get_Request(&request)) && request) {
+              LPWSTR uriRaw = nullptr;
+              if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
+                lower = StationheadLowerAscii(uriRaw);
+                CoTaskMemFree(uriRaw);
               }
             }
-            if (needsUri) {
-              std::wstring lower;
-              ComPtr<ICoreWebView2WebResourceRequest> request;
-              if (SUCCEEDED(args->get_Request(&request)) && request) {
-                LPWSTR uriRaw = nullptr;
-                if (SUCCEEDED(request->get_Uri(&uriRaw)) && uriRaw) {
-                  lower = StationheadLowerAscii(uriRaw);
-                  CoTaskMemFree(uriRaw);
-                }
-              }
 
-              const bool protectedRequest =
-                  StationheadDataAcquisitionRequestBoundaryFixed(lower) ||
-                  StationheadPlaybackControlRequestBoundaryFixed(lower);
-              if (!protectedRequest) {
-                if (hasContext &&
-                    context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT) {
-                  moduleStub =
-                      StationheadKnownOptionalModuleStubBoundaryFixed(lower);
-                  if (!moduleStub.empty()) {
-                    block = true;
-                  } else {
-                    emptyScript =
-                        StationheadRequestIsBlockableBoundaryFixed(lower) ||
-                        StationheadExpandedNonPlaybackScriptBoundaryFixed(lower);
-                    block = emptyScript;
-                  }
-                } else if (hasContext &&
-                           context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_STYLESHEET) {
-                  block = StationheadOptionalStylesheetBoundaryFixed(lower);
-                  emptyResource = block;
-                } else {
-                  block = StationheadRequestIsBlockableBoundaryFixed(lower);
-                }
-                if (!block && blockImages &&
-                    StationheadRequestLooksLikeImage(lower)) {
-                  block = true;
-                  emptyResource = true;
-                }
-              }
+            if (lower.empty() ||
+                StationheadOwnedRequestBoundaryFixed(lower) ||
+                !StationheadTelemetryRequestBoundaryFixed(lower)) {
+              return S_OK;
             }
-            if (block) {
-              const bool replacementScript =
-                  emptyScript || !moduleStub.empty();
-              ComPtr<IStream> responseBody;
-              if (!moduleStub.empty()) {
-                responseBody.Attach(SHCreateMemStream(
-                    reinterpret_cast<const BYTE*>(moduleStub.data()),
-                    static_cast<UINT>(moduleStub.size())));
-                if (!responseBody) return S_OK;
-              }
-              ComPtr<ICoreWebView2WebResourceResponse> response;
-              const int status =
-                  replacementScript ? 200 : (emptyResource ? 204 : 403);
-              const wchar_t* reason = replacementScript
-                  ? L"OK"
-                  : (emptyResource ? L"No Content" : L"Blocked");
-              const wchar_t* headers = replacementScript
-                  ? L"Content-Type: application/javascript; charset=utf-8\r\n"
-                    L"Cache-Control: public, max-age=31536000, immutable"
-                  : (emptyResource
-                         ? L"Content-Length: 0\r\n"
-                           L"Cache-Control: public, max-age=31536000, immutable"
-                         : L"");
-              if (SUCCEEDED(env->CreateWebResourceResponse(
-                      responseBody.Get(), status, reason, headers, &response))) {
-                args->put_Response(response.Get());
-              }
+
+            const bool script = hasContext &&
+                context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT;
+            ComPtr<ICoreWebView2WebResourceResponse> response;
+            const int status = script ? 200 : 204;
+            const wchar_t* reason = script ? L"OK" : L"No Content";
+            const wchar_t* headers = script
+                ? L"Content-Type: application/javascript; charset=utf-8\r\n"
+                  L"Content-Length: 0\r\n"
+                  L"Cache-Control: public, max-age=31536000, immutable"
+                : L"Content-Length: 0\r\n"
+                  L"Cache-Control: public, max-age=31536000, immutable";
+            if (SUCCEEDED(env->CreateWebResourceResponse(
+                    nullptr, status, reason, headers, &response))) {
+              args->put_Response(response.Get());
             }
             return S_OK;
           }).Get(),
       &token);
-
-  BlockStationheadTelemetrySocketsBoundaryFixed(webview);
 }
 
 }  // namespace hp
