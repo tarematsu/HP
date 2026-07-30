@@ -13,14 +13,13 @@ import {
 const MINUTE_MS = 60_000;
 const BASE = Date.UTC(2026, 0, 1, 0, 0, 0);
 
-test('Actions cadence uses six-hour summaries and daily archive variants', () => {
+test('Actions cadence uses six-hour summaries and daily host archive variants', () => {
   assert.deepEqual([...dueVariantKeys(BASE + 4 * MINUTE_MS)], [
     'dashboard',
     'history:daily',
     'history:weekly',
     'history:monthly',
     'history:broadcasts',
-    'track-history',
     'host-history:summary',
   ]);
   assert.deepEqual([...dueVariantKeys(BASE + 19 * MINUTE_MS)], ['dashboard']);
@@ -35,34 +34,28 @@ test('Actions cadence uses six-hour summaries and daily archive variants', () =>
   ]);
 });
 
-test('one Actions process renders the dashboard before advancing and publishing track-history', async () => {
+test('one Actions process publishes due variants without advancing track-history', async () => {
   const calls = [];
+  let trackCalls = 0;
   const result = await runPagesReadModelActions({
     startedAt: BASE + 19 * MINUTE_MS,
     deadlineMs: BASE + 30 * MINUTE_MS,
     now: () => BASE + 19 * MINUTE_MS,
-    maxSteps: 3,
     env: { DB: {}, BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: {} },
-    runTrackHistoryStep: async () => {
-      calls.push('track');
-      const published = calls.filter((entry) => entry === 'track').length === 3;
-      return {
-        task: { kind: published ? 'track-history-published' : 'track-history-publish-step' },
-        stage: { published },
-        publication: { published, phase: published ? 'published' : 'rows' },
-      };
-    },
+    runTrackHistoryStep: async () => { trackCalls += 1; },
     materializeVariant: async (variant) => {
       calls.push(variant.key);
       return { key: variant.key };
     },
   });
 
-  assert.equal(result.track_history_steps, 3);
-  assert.deepEqual(calls, ['dashboard', 'track', 'track', 'track', 'track-history']);
+  assert.equal(trackCalls, 0);
+  assert.equal(result.track_history_steps, 0);
+  assert.equal(result.track_history_result.reason, 'track-history-read-model-disabled');
+  assert.deepEqual(calls, ['dashboard']);
 });
 
-test('track-history shard primitive still rejects only the final idle minutes before reading env', async () => {
+test('track-history shard primitive remains available for explicit maintenance only', async () => {
   const env = new Proxy({}, {
     get() { assert.fail('inactive track-history minute must not inspect the environment'); },
   });
