@@ -24,8 +24,16 @@ test('mobile dashboard header has no vertical flex basis', () => {
 test('mobile metrics share one row at equal widths with compact text', () => {
   assert.match(headerCss, /\.metrics\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*grid-column:\s*auto[\s\S]*display:\s*block/);
-  assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(1rem, 4\.8vw, 1\.5rem\)/);
+  assert.match(headerCss, /\.metric strong,[\s\S]*\.metric\.featured strong\s*\{[\s\S]*font-size:\s*clamp\(\.94rem, 4\.3vw, 1\.42rem\)/);
   assert.match(headerCss, /\.metric > span\s*\{[\s\S]*font-size:\s*clamp\(\.58rem, 2\.4vw, \.68rem\)/);
+});
+
+test('dashboard navigation and likes summary remain balanced across breakpoints', () => {
+  assert.match(headerCss, /\.mode-tabs\.dashboard-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.match(headerCss, /@media \(max-width: 430px\)[\s\S]*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(headerCss, /button:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
+  assert.match(headerCss, /\.summary-cards\.likes-summary\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(headerCss, /\.summary-cards\.likes-summary article:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
 });
 
 test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
