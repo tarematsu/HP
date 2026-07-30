@@ -12,12 +12,16 @@ const summarySource = readFileSync(
   new URL('../site/functions/lib/history-summary.js', import.meta.url),
   'utf8',
 );
+const currentSource = readFileSync(
+  new URL('../site/functions/api/history-current.js', import.meta.url),
+  'utf8',
+);
 const rollupSource = readFileSync(
   new URL('../worker/src/rollup-maintenance.js', import.meta.url),
   'utf8',
 );
 
- test('minute history summary uses dense facts and current stream boundaries', () => {
+test('minute history summary uses dense facts and current stream boundaries', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_channel_snapshots(
     id INTEGER PRIMARY KEY,
@@ -48,16 +52,16 @@ const rollupSource = readFileSync(
   assert.doesNotMatch(sql, /validated_stream_count AS stream_value/);
 });
 
-test('daily minute overlay keeps a bounded fallback and starts after persisted rollups', () => {
+test('minute scans are reserved for the bounded current UTC daily endpoint', () => {
   const now = Date.parse('2026-07-27T12:00:00Z');
   assert.equal(
     minuteSummaryFallbackStart('daily', now),
     Date.parse('2026-07-13T00:00:00Z'),
   );
-  assert.match(
-    summarySource,
-    /Math\.max\(fromTs, expectedLiveStart, minuteSummaryFallbackStart\(mode, now\)\)/,
-  );
+  assert.match(currentSource, /minuteSummarySql\('daily'\)/);
+  assert.match(currentSource, /currentSummaryPeriodStart\('daily', now\)/);
+  assert.doesNotMatch(summarySource, /MINUTE_DB\.prepare\(minuteSummarySql/);
+  assert.match(summarySource, /live_source: 'summary-only'/);
 });
 
 test('offline rollups reconcile missing Minute Facts before rebuilding summaries', () => {
