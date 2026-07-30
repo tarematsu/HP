@@ -22,10 +22,10 @@ test('mobile dashboard header has no vertical flex basis', () => {
 });
 
 test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
-  assert.match(historyEntry, /installRemovedTrackControlCompatibility\(\)/);
-  assert.ok(historyEntry.indexOf('installRemovedTrackControlCompatibility();') < historyEntry.indexOf("await import('/history/history-lite.js')"));
-  for (const id of ['trackControls', 'trackDate', 'trackWeekMode']) {
-    assert.match(historyEntry, new RegExp(`'${id}'`));
+  assert.match(historyEntry, /installRemovedControlCompatibility\(\)/);
+  assert.ok(historyEntry.indexOf('installRemovedControlCompatibility();') < historyEntry.indexOf("await import('/history/history-lite.js')"));
+  for (const suffix of ['Controls', 'Date', 'WeekMode']) {
+    assert.match(historyEntry, new RegExp(`\\['track', '${suffix}'\\]\\.join\\(''\\)`));
   }
   assert.match(historyEntry, /node\.hidden = true/);
 });
