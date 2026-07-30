@@ -15,6 +15,17 @@ const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
 const EPOCH = Date.UTC(2024, 4, 1);
 
+const ALL_VARIANTS = [
+  'dashboard',
+  'history:daily',
+  'history:weekly',
+  'history:monthly',
+  'history:broadcasts',
+  'host-history:summary',
+];
+
+const SIX_HOUR_VARIANTS = ALL_VARIANTS.slice(0, -1);
+
 test('missing status performs a full 35-day refresh and one-day bounded backfill', () => {
   const now = Date.UTC(2026, 6, 16, 12);
   const currentDay = Date.UTC(2026, 6, 16);
@@ -104,14 +115,7 @@ test('incremental excluded-date updates replace only dates inside the refreshed 
 
 test('canonical materialized variants exclude playback history', () => {
   const materialized = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
-  assert.deepEqual([...materialized.keys()], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-    'host-history:summary',
-  ]);
+  assert.deepEqual([...materialized.keys()], ALL_VARIANTS);
   assert.equal(materialized.has('track-history'), false);
   assert.equal(materializedApiKey('https://pages.test/api/track-history'), null);
   assert.equal(materialized.get('host-history:summary').cadence_minutes, 1440);
@@ -123,22 +127,9 @@ test('canonical materialized variants exclude playback history', () => {
 
 test('Actions cadence follows the materialized API contract', () => {
   const cycle = Date.UTC(2026, 6, 16, 0, 0);
-  assert.deepEqual([...dueVariantKeys(cycle + 4 * MINUTE_MS)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-    'host-history:summary',
-  ]);
-  assert.deepEqual([...dueVariantKeys(cycle + 19 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 64 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 184 * MINUTE_MS)], ['dashboard']);
-  assert.deepEqual([...dueVariantKeys(cycle + 364 * MINUTE_MS)], [
-    'dashboard',
-    'history:daily',
-    'history:weekly',
-    'history:monthly',
-    'history:broadcasts',
-  ]);
+  assert.deepEqual([...dueVariantKeys(cycle + 26 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 55 * MINUTE_MS)], ALL_VARIANTS);
+  assert.deepEqual([...dueVariantKeys(cycle + 56 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 86 * MINUTE_MS)], ['dashboard']);
+  assert.deepEqual([...dueVariantKeys(cycle + 386 * MINUTE_MS)], SIX_HOUR_VARIANTS);
 });
