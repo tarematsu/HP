@@ -107,17 +107,19 @@ test('complete weekly and monthly summaries skip redundant boundary scans', () =
   assert.equal(summaryRowNeedsBoundaryEvidence(monthlyRow, 'monthly'), false);
 });
 
-test('history runtime is one consolidated client and leaves completeness to the server', () => {
+test('history runtime is one consolidated client embedded in the dashboard', () => {
   const runtime = readFileSync(
     new URL('../site/public/history/history-lite.js', import.meta.url),
     'utf8',
   );
-  const html = readFileSync(new URL('../site/public/history/index.html', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../site/public/index.html', import.meta.url), 'utf8');
+  const tabs = readFileSync(new URL('../site/public/dashboard-tabs.js', import.meta.url), 'utf8');
 
   assert.match(runtime, /CACHE_PREFIX = 'sh\.history\.v3:'/);
   assert.match(runtime, /function updateSummary\(\)/);
   assert.match(runtime, /state\.rows = Array\.isArray\(data\.rows\) \? data\.rows : \[\]/);
   assert.doesNotMatch(runtime, /mondayJstKey|expectedStart|expectedEnd/);
-  assert.match(html, /src="\/history\/history-lite\.js"/);
+  assert.match(html, /id="historyView"/);
+  assert.match(tabs, /import\('\/history\/history-main\.js'\)/);
   assert.doesNotMatch(html, /history-period-completeness\.js|history-track-likes\.js/);
 });
