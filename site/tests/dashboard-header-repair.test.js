@@ -21,6 +21,11 @@ test('mobile dashboard header has no vertical flex basis', () => {
   assert.doesNotMatch(headerCss, /flex:\s*1 1 (?:360|560)px/);
 });
 
+test('mobile metrics share one row at a 1 to 1 to 2 ratio', () => {
+  assert.match(headerCss, /\.metrics\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(0, 1fr\) minmax\(0, 2fr\)/);
+  assert.match(headerCss, /\.metric\.featured\s*\{[\s\S]*grid-column:\s*auto[\s\S]*display:\s*block/);
+});
+
 test('integrated history creates inert removed-control compatibility before loading legacy runtime', () => {
   assert.match(historyEntry, /installRemovedControlCompatibility\(\)/);
   assert.ok(historyEntry.indexOf('installRemovedControlCompatibility();') < historyEntry.indexOf("await import('/history/history-lite.js')"));
