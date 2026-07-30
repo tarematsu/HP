@@ -8,21 +8,13 @@ export const DASHBOARD_ONLY_VARIANTS = Object.freeze(
   MATERIALIZED_API_VARIANTS.filter((variant) => variant.key === 'dashboard'),
 );
 
-export const BUDGET_SAFE_VARIANTS = Object.freeze(
-  MATERIALIZED_API_VARIANTS.filter((variant) => variant.key !== 'track-history'),
-);
+export const BUDGET_SAFE_VARIANTS = Object.freeze([...MATERIALIZED_API_VARIANTS]);
 
 export async function refreshPagesDashboardActions(options = {}) {
   return runPagesReadModelActions({
     ...options,
     variants: BUDGET_SAFE_VARIANTS,
     dueKeys: BUDGET_SAFE_VARIANTS.map((variant) => variant.key),
-    maxSteps: 1,
-    runTrackHistoryStep: async () => ({
-      skipped: true,
-      reason: 'budget-safe-summary-fallback',
-      stage: { published: true },
-    }),
   });
 }
 
