@@ -32,11 +32,12 @@ test('archive markup is integrated and loaded lazily', () => {
   assert.doesNotMatch(historyEntry, /tracks|utcDate/);
 });
 
-test('tab navigation supports browser traversal', () => {
+test('tab navigation supports browser traversal after the history runtime loads', () => {
   assert.match(tabsClient, /pushState/);
   assert.match(tabsClient, /replaceState/);
   assert.match(tabsClient, /addEventListener\('popstate', syncFromLocation\)/);
   assert.match(tabsClient, /addEventListener\('hashchange', syncFromLocation\)/);
+  assert.match(tabsClient, /\}, \{ capture: true \}\);/);
 });
 
 test('current and history chart details remain isolated', () => {
