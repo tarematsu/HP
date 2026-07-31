@@ -136,8 +136,11 @@ async function main() {
     credentialsAvailable: Boolean(emailValue && passwordValue),
     startListeningVisible: false,
     startListeningClicked: false,
+    musicModalCloseVisible: false,
+    musicModalCloseClicked: false,
     loginControlVisible: false,
     loginControlClicked: false,
+    loginOpenedPopup: false,
     emailInputVisible: false,
     passwordInputVisible: false,
     loginSubmitted: false,
@@ -168,25 +171,40 @@ async function main() {
     }
     report.phases.push(await capturePhase(page, 'after-start-listening'));
 
-    await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(500);
-    report.phases.push(await capturePhase(page, 'after-escape'));
+    const closeMusic = await visibleLabelled(page, /^(close|閉じる)$/i);
+    report.musicModalCloseVisible = Boolean(closeMusic);
+    if (closeMusic) {
+      report.musicModalCloseClicked = await closeMusic.click({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
+      if (report.musicModalCloseClicked) await page.waitForTimeout(1000);
+    }
+    report.phases.push(await capturePhase(page, 'after-connect-music-close'));
 
     const login = await visibleLabelled(
       page,
       /(?:^|\b)(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\b|$)/i,
     );
     report.loginControlVisible = Boolean(login);
+    let loginPage = page;
     if (login) {
-      report.loginControlClicked = await login.click({ timeout: 5000, force: true })
+      const popupPromise = context.waitForEvent('page', { timeout: 5000 })
+        .catch(() => null);
+      report.loginControlClicked = await login.click({ timeout: 5000 })
         .then(() => true)
         .catch(() => false);
-      if (report.loginControlClicked) await page.waitForTimeout(2500);
+      const popup = report.loginControlClicked ? await popupPromise : null;
+      if (popup) {
+        report.loginOpenedPopup = true;
+        loginPage = popup;
+        await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => null);
+      }
+      if (report.loginControlClicked) await loginPage.waitForTimeout(2500);
     }
-    report.phases.push(await capturePhase(page, 'after-login-control'));
+    report.phases.push(await capturePhase(loginPage, 'after-login-control'));
 
     const email = await visibleFirst(
-      page,
+      loginPage,
       'input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]',
     );
     report.emailInputVisible = Boolean(email);
@@ -195,16 +213,16 @@ async function main() {
     }
 
     let password = await visibleFirst(
-      page,
+      loginPage,
       'input[type="password"], input[autocomplete="current-password"]',
     );
     if (!password && email && report.credentialsAvailable) {
-      const next = await visibleLabelled(page, /continue|next|続ける|次へ/i);
+      const next = await visibleLabelled(loginPage, /continue|next|続ける|次へ/i);
       if (next) await next.click({ timeout: 3000 }).catch(() => null);
-      await page.waitForTimeout(2000);
-      report.phases.push(await capturePhase(page, 'after-login-next'));
+      await loginPage.waitForTimeout(2000);
+      report.phases.push(await capturePhase(loginPage, 'after-login-next'));
       password = await visibleFirst(
-        page,
+        loginPage,
         'input[type="password"], input[autocomplete="current-password"]',
       );
     }
@@ -212,14 +230,14 @@ async function main() {
     if (password && report.credentialsAvailable) {
       await password.fill(passwordValue).catch(() => null);
       const submit = await visibleLabelled(
-        page,
+        loginPage,
         /log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ/i,
       );
       report.loginSubmitted = submit
         ? await submit.click({ timeout: 3000 }).then(() => true).catch(() => false)
         : await password.press('Enter').then(() => true).catch(() => false);
-      if (report.loginSubmitted) await page.waitForTimeout(3000);
-      report.phases.push(await capturePhase(page, 'after-login-submit'));
+      if (report.loginSubmitted) await loginPage.waitForTimeout(3000);
+      report.phases.push(await capturePhase(loginPage, 'after-login-submit'));
     }
     await context.close();
   } finally {
@@ -231,8 +249,11 @@ async function main() {
     credentialsAvailable: report.credentialsAvailable,
     startListeningVisible: report.startListeningVisible,
     startListeningClicked: report.startListeningClicked,
+    musicModalCloseVisible: report.musicModalCloseVisible,
+    musicModalCloseClicked: report.musicModalCloseClicked,
     loginControlVisible: report.loginControlVisible,
     loginControlClicked: report.loginControlClicked,
+    loginOpenedPopup: report.loginOpenedPopup,
     emailInputVisible: report.emailInputVisible,
     passwordInputVisible: report.passwordInputVisible,
     loginSubmitted: report.loginSubmitted,
