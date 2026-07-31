@@ -45,6 +45,7 @@ struct NativePlaybackFeedStatus {
   bool hasTrack = false;
   bool endedWithoutNextTrack = false;
   uint64_t contentRevision = 0;
+  uint64_t healthyRevision = 0;
 };
 
 struct NativeMinuteFactsProjection {
