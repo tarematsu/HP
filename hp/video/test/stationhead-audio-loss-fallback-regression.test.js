@@ -18,6 +18,10 @@ const playerHeader = readFileSync(
   new URL('../../native/src/sh.h', import.meta.url),
   'utf8',
 );
+const rendererHeader = readFileSync(
+  new URL('../../native/src/web_renderer.h', import.meta.url),
+  'utf8',
+);
 const audioLossSource = readFileSync(
   new URL('../../native/src/sh_audio_loss.cpp', import.meta.url),
   'utf8',
@@ -40,7 +44,7 @@ const cmake = readFileSync(
 );
 
 test('audio loss policy fixes the requested timing boundaries', () => {
-  assert.match(policy, /kStationheadAudioLossGraceMs = 10'000/);
+  assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
   assert.match(policy, /kStationheadAudioLossProbeSettleMs = 1'000/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
   assert.match(policy, /kStationheadPrimaryRecoveryStabilityMs = 2'000/);
@@ -68,14 +72,27 @@ test('authentication probing is limited to visible actionable UI', () => {
   assert.match(audioLossSource, /connect\|continue\|authorize/);
   assert.match(audioLossSource, /spotifyAuthentication/);
   assert.match(audioLossSource, /authentication UI probe failed; fallback remains blocked/);
+  assert.match(audioLossSource, /audioLossProbeComplete_ = !audioLossAuthUiDetected_/);
+  assert.match(audioLossSource, /audioLossStartedAt_\.WallTime\(\) != lossStartedAt/);
   assert.match(audioLossSource, /snapshot\.navigating/);
   assert.match(audioLossSource, /snapshot\.processFailed/);
+});
+
+test('the operation surface is raised once before fallback evaluation', () => {
+  assert.match(audioLossSource, /audioLossState_ == L"transition_wait"/);
+  assert.match(audioLossSource, /ShowAfterAudioStop\(\)/);
+  assert.match(audioLossSource, /L"operation_wait"/);
+  assert.match(audioLossSource, /L"auth_wait"/);
+  assert.match(audioLossSource, /L"fallback"/);
+  assert.match(audioLossSource, /L"returning_primary"/);
+  assert.match(audioLossSource, /L"playing"/);
 });
 
 test('fallback recovery waits for dwell and stable primary audio', () => {
   assert.match(audioLossSource, /StationheadFallbackDwellSatisfied/);
   assert.match(audioLossSource, /managedPlaybackReturnRequested_/);
   assert.match(audioLossSource, /managedPrimaryReturnPending_/);
+  assert.match(audioLossSource, /audioLossPlaybackObserved_ = true/);
   assert.match(
     audioLossSource,
     /nowMs - playingSince >= kStationheadPrimaryRecoveryStabilityMs/,
@@ -88,10 +105,13 @@ test('fallback recovery waits for dwell and stable primary audio', () => {
 });
 
 test('only a newer healthy five-minute playback observation releases fallback', () => {
+  assert.match(rendererHeader, /uint64_t healthyRevision = 0/);
   assert.match(playbackResolver, /healthyObservation/);
   assert.match(playbackResolver, /!projection\.stale/);
   assert.match(playbackResolver, /!projection\.setupRequired/);
-  assert.match(playbackResolver, /static_cast<uint64_t>\(projection\.fetchedAt\)/);
+  assert.match(playbackResolver, /status\.healthyRevision = healthyObservation/);
+  assert.match(audioLossSource, /feed\.healthyRevision/);
+  assert.match(appHeader, /candidateRevision >= 100'000'000'000ULL/);
   assert.match(
     audioLossSource,
     /waiting for a newer healthy five-minute playback observation/,
