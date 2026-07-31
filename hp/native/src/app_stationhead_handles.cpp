@@ -11,9 +11,9 @@ constexpr int64_t kStationheadBoundaryRetryWindowMs = 3 * 60'000;
 
 struct TrackBoundaryRetryState {
   bool armed = false;
-  // True only after App's 30-second handoff window expired while the target
-  // was still stopped. The player's pending bit is deliberately retained and
-  // the handle re-opens a fresh App handoff window at retryAt.
+  // True only after App's handoff window expired while the target was still
+  // stopped. The player's pending bit is deliberately retained and the handle
+  // re-opens a fresh App handoff window at retryAt.
   bool detachedFromAppWindow = false;
   MonotonicProjectedDeadline retryAt;
   MonotonicProjectedDeadline deadline;
@@ -176,6 +176,7 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
     player_->RequestImmediateTick();
   }
   player_->Tick(nowMs);
+  player_->EvaluateAudioLossRecovery(nowMs);
 
   TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
   if (!retry.armed && !player_->AudioPlaying()) {
@@ -231,10 +232,10 @@ void StationheadHandleBase::CancelPendingTrackBoundaryRefresh() noexcept {
   TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
   const int64_t nowMs = UnixMillis();
   if (retry.armed && !player_->AudioPlaying() && nowMs < retry.deadline) {
-    // Keep the player's pending request alive. Only App's current 30-second
-    // handoff window expired; a peer WebView may still be rebuilding its DRM
-    // session. Retry with a fresh handoff window instead of losing the 52-minute
-    // refresh until a later track-ended message happens to arrive.
+    // Keep the player's pending request alive. Only App's current handoff
+    // window expired; a peer WebView may still be rebuilding its DRM session.
+    // Retry with a fresh handoff window instead of losing the 52-minute refresh
+    // until a later track-ended message happens to arrive.
     retry.detachedFromAppWindow = true;
     retry.retryAt = nowMs + kStationheadBoundaryRetryDelayMs;
     player_->RequestImmediateTick();
@@ -248,7 +249,7 @@ void StationheadHandleBase::SetPlaybackFallback(
     bool active, const std::wstring& reason) {
   if (!player_ || !startIssued_ || stopIssued_) return;
   ClearBoundaryRetryState(this);
-  player_->SetPlaybackFallback(active, reason);
+  player_->SetManagedPlaybackFallback(active, reason);
   ApplyBounds();
 }
 
