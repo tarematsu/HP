@@ -224,7 +224,16 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
         projection.queue[static_cast<size_t>(projection.currentIndex)]);
   }
   status.endedWithoutNextTrack = PlaybackEndedWithoutNextTrack(projection, nowMs);
-  status.contentRevision = update.contentRevision;
+  const bool healthyObservation = projection.available && !projection.stale &&
+      !projection.setupRequired && !projection.ended && status.hasTrack &&
+      !status.endedWithoutNextTrack && projection.fetchedAt > 0;
+  // Fallback recovery needs a new successful observation, not merely a changed
+  // queue. Reuse fetchedAt as the monotonic revision while playback JSON is
+  // healthy; failed/stale observations retain the content revision and cannot
+  // release fallback.
+  status.contentRevision = healthyObservation
+      ? static_cast<uint64_t>(projection.fetchedAt)
+      : update.contentRevision;
   return status;
 }
 
