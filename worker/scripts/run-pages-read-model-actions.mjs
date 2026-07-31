@@ -148,29 +148,49 @@ export async function loadVariantSourceRevision(variant, env, now = Date.now()) 
     const mode = modelKey.slice('history:'.length);
     const table = SUMMARY_TABLES[mode];
     if (table) {
-      const row = await env.OTHER_DB.prepare(
-        `SELECT COUNT(*) AS row_count,COALESCE(MAX(updated_at),0) AS max_updated_at
-         FROM ${table} WHERE period_key<?`,
-      ).bind(currentPeriodKey(mode, now)).first();
-      return revisionValue(`summary:${mode}`, row, ['row_count', 'max_updated_at']);
+      const currentFilter = mode === 'daily' ? ' WHERE period_key<?' : '';
+      const statement = env.OTHER_DB.prepare(
+        `SELECT COUNT(*) AS row_count,
+          COALESCE(MAX(updated_at),0) AS max_updated_at,
+          COALESCE(SUM(updated_at),0) AS sum_updated_at
+         FROM ${table}${currentFilter}`,
+      );
+      const row = mode === 'daily'
+        ? await statement.bind(currentPeriodKey('daily', now)).first()
+        : await statement.first();
+      return revisionValue(
+        `summary:${mode}`,
+        row,
+        ['row_count', 'max_updated_at', 'sum_updated_at'],
+      );
     }
     if (mode === 'broadcasts') {
       const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
           COALESCE(MAX(refreshed_at),0) AS max_refreshed_at,
+          COALESCE(SUM(refreshed_at),0) AS sum_refreshed_at,
           COALESCE(MAX(ended_at),0) AS max_ended_at
         FROM sh_official_broadcast_summary
         WHERE host_handle='sakurazaka46jp'`).first();
-      return revisionValue('broadcasts', row, ['row_count', 'max_refreshed_at', 'max_ended_at']);
+      return revisionValue(
+        'broadcasts',
+        row,
+        ['row_count', 'max_refreshed_at', 'sum_refreshed_at', 'max_ended_at'],
+      );
     }
   }
 
   if (modelKey === 'host-history:summary') {
     const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
         COALESCE(MAX(last_observed_at),0) AS max_observed_at,
-        COALESCE(MAX(ended_at),0) AS max_ended_at
+        COALESCE(MAX(ended_at),0) AS max_ended_at,
+        COALESCE(SUM(COALESCE(last_observed_at,0)+COALESCE(ended_at,0)),0) AS sum_revision
       FROM sh_host_broadcast_sessions
       WHERE handle='sakurazaka46jp'`).first();
-    return revisionValue('host-summary', row, ['row_count', 'max_observed_at', 'max_ended_at']);
+    return revisionValue(
+      'host-summary',
+      row,
+      ['row_count', 'max_observed_at', 'max_ended_at', 'sum_revision'],
+    );
   }
   return null;
 }
