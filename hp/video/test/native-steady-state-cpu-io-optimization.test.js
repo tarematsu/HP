@@ -99,16 +99,25 @@ test('missing serial sensors use bounded exponential retry backoff', () => {
   assert.doesNotMatch(sensorSerial, /wait_for\(lock, std::chrono::seconds\(10\)/);
 });
 
-test('UD-CO2S sampling and renderer publication run once per minute', () => {
+test('UD-CO2S sampling and renderer publication have a one-minute minimum interval', () => {
   assert.match(sensorSerial, /kSensorReadInterval = std::chrono::minutes\(1\)/);
   assert.match(
     sensorSerial,
-    /sampleReceived = true;[\s\S]*PostMessageW\(window_, WM_HP_SENSOR_UPDATED, 0, 0\);[\s\S]*break;/,
+    /sampleReceived = true;[\s\S]*sampleAcceptedAt = std::chrono::steady_clock::now\(\);[\s\S]*PostMessageW\(window_, WM_HP_SENSOR_UPDATED, 0, 0\);[\s\S]*break;/,
   );
   assert.match(
     sensorSerial,
-    /RunSensorCommand\(serial, buffer, "STP"[\s\S]*sampleCycleStartedAt \+ kSensorReadInterval[\s\S]*stopWake_\.wait_until\(lock, nextReadAt[\s\S]*RunSensorCommand\(serial, buffer, "STA"/,
+    /RunSensorCommand\(serial, buffer, "STP"[\s\S]*sampleAcceptedAt \+ kSensorReadInterval[\s\S]*stopWake_\.wait_until\(lock, nextReadAt[\s\S]*RunSensorCommand\(serial, buffer, "STA"/,
   );
+});
+
+test('UD-CO2S stream is stopped on every serial exit path', () => {
+  assert.match(sensorSerial, /if \(result == LineResult::Stopped\) return false;/);
+  assert.match(
+    sensorSerial,
+    /Always issue a best-effort stop before closing[\s\S]*WriteCommand\(serial, "STP"\);[\s\S]*CloseHandle\(serial\);/,
+  );
+  assert.doesNotMatch(sensorSerial, /if \(measurementActive\) WriteCommand\(serial, "STP"\)/);
 });
 
 test('artwork index capacity evicts one entry instead of clearing all entries', () => {
