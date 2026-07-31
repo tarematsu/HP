@@ -13,27 +13,25 @@ class Renderer;
 
 class StationheadFallbackRevisionGate {
  public:
-  StationheadFallbackRevisionGate& operator=(uint64_t revision) noexcept {
-    revision_ = revision;
-    startedAt_ = revision == 0 ? 0 : UnixMillis();
-    return *this;
+  void Arm(uint64_t healthyRevision) noexcept {
+    baselineHealthyRevision_ = healthyRevision;
+    startedAt_ = UnixMillis();
   }
 
-  friend bool operator>(
-      uint64_t candidateRevision,
-      const StationheadFallbackRevisionGate& gate) noexcept {
-    // Healthy revisions are dashboard fetch timestamps in epoch milliseconds.
-    // Small queue-content revisions remain available for legacy end detection,
-    // but can never release fallback by themselves.
-    return candidateRevision >= 100'000'000'000ULL &&
-        gate.revision_ != 0 &&
-        gate.startedAt_.ElapsedMilliseconds() >=
+  void Reset() noexcept {
+    baselineHealthyRevision_ = 0;
+    startedAt_ = 0;
+  }
+
+  [[nodiscard]] bool CanRelease(uint64_t healthyRevision) const noexcept {
+    return startedAt_.Active() && healthyRevision != 0 &&
+        startedAt_.ElapsedMilliseconds() >=
             kStationheadFallbackMinimumDwellMs &&
-        candidateRevision > gate.revision_;
+        healthyRevision > baselineHealthyRevision_;
   }
 
  private:
-  uint64_t revision_ = 0;
+  uint64_t baselineHealthyRevision_ = 0;
   MonotonicElapsedTimestamp startedAt_;
 };
 
