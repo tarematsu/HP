@@ -47,8 +47,11 @@ class FakeEdgeCache {
   }
 }
 
-const request = () => new Request(
+const historyRequest = () => new Request(
   'https://internal.test/_internal/pages-response?key=history%3Adaily',
+);
+const dashboardRequest = () => new Request(
+  'https://internal.test/_internal/pages-response?key=dashboard',
 );
 
 test('materialized responses publish once to KV and are served as streams', async () => {
@@ -101,10 +104,10 @@ test('dual storage failure never falls back to D1 response tables', async () => 
   ), /could not be persisted to KV or R2/);
 });
 
-test('internal endpoint returns a KV response or a closed fallback signal', async () => {
+test('dashboard endpoint returns a KV response or a closed fallback signal', async () => {
   const now = Date.UTC(2026, 6, 20, 0, 35);
   const hit = await runPagesResponseFetch(
-    request(),
+    dashboardRequest(),
     { PAGES_RESPONSE_KV: {} },
     {
       now: () => now,
@@ -115,17 +118,17 @@ test('internal endpoint returns a KV response or a closed fallback signal', asyn
   assert.deepEqual(await hit.json(), { source: 'kv' });
 
   const miss = await runPagesResponseFetch(
-    request(),
+    dashboardRequest(),
     {},
     { loadResponse: async () => null, loadR2Response: async () => null },
   );
   assert.equal(miss.status, 404);
 });
 
-test('internal endpoint uses R2 when a normal KV model is absent', async () => {
+test('dashboard endpoint uses R2 when the KV model is absent', async () => {
   const calls = [];
   const response = await runPagesResponseFetch(
-    request(),
+    dashboardRequest(),
     {},
     {
       loadResponse: async () => { calls.push('kv'); return null; },
@@ -133,6 +136,20 @@ test('internal endpoint uses R2 when a normal KV model is absent', async () => {
     },
   );
   assert.deepEqual(calls, ['kv', 'r2']);
+  assert.deepEqual(await response.json(), { source: 'r2' });
+});
+
+test('completed history reads R2 without consulting KV', async () => {
+  const calls = [];
+  const response = await runPagesResponseFetch(
+    historyRequest(),
+    {},
+    {
+      loadResponse: async () => { calls.push('kv'); return Response.json({ source: 'kv' }); },
+      loadR2Response: async () => { calls.push('r2'); return Response.json({ source: 'r2' }); },
+    },
+  );
+  assert.deepEqual(calls, ['r2']);
   assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
@@ -150,10 +167,10 @@ test('track-history prefers R2 before the legacy KV fallback', async () => {
   assert.deepEqual(await response.json(), { source: 'r2' });
 });
 
-test('internal endpoint uses Cache API as a same-colo L1 before KV', async () => {
+test('dashboard endpoint uses Cache API as a same-colo L1 before KV', async () => {
   const cache = new FakeEdgeCache();
   const now = Date.UTC(2026, 6, 20, 0, 35);
-  const first = await runPagesResponseFetch(request(), {}, {
+  const first = await runPagesResponseFetch(dashboardRequest(), {}, {
     cache,
     now: () => now,
     loadResponse: async () => {
@@ -166,7 +183,7 @@ test('internal endpoint uses Cache API as a same-colo L1 before KV', async () =>
   assert.equal(cache.puts, 1);
 
   let kvReads = 0;
-  const second = await runPagesResponseFetch(request(), {}, {
+  const second = await runPagesResponseFetch(dashboardRequest(), {}, {
     cache,
     now: () => now + 1_000,
     loadResponse: async () => {
@@ -179,12 +196,12 @@ test('internal endpoint uses Cache API as a same-colo L1 before KV', async () =>
   assert.deepEqual(await second.json(), { source: 'kv' });
 });
 
-test('internal endpoint schedules Cache API writes on the real execution context', async () => {
+test('dashboard endpoint schedules Cache API writes on the real execution context', async () => {
   const cache = new FakeEdgeCache();
   const waits = [];
   const now = Date.UTC(2026, 6, 20, 0, 35);
   const response = await runPagesResponseFetch(
-    request(),
+    dashboardRequest(),
     {},
     { waitUntil(promise) { waits.push(promise); } },
     {
