@@ -11,7 +11,7 @@ const CASES = [
   ['host-history:summary', '/api/host-history?mode=summary'],
 ];
 
-test('bounded summary models use the live Pages handler when materialization is temporarily unavailable', async () => {
+test('completed history models fail closed instead of reading live Pages databases', async () => {
   const originalCaches = globalThis.caches;
   let cacheWrites = 0;
   globalThis.caches = {
@@ -38,23 +38,20 @@ test('bounded summary models use the live Pages handler when materialization is 
         },
         async next() {
           liveCalls += 1;
-          return Response.json({ ok: true, model_key: modelKey, source: 'summary-db' }, {
-            headers: { 'cache-control': 'no-store' },
-          });
+          return Response.json({ ok: true, source: 'must-not-run' });
         },
         waitUntil() {},
       });
 
-      assert.equal(response.status, 200, modelKey);
-      assert.equal(response.headers.get('x-materialized-fallback'), 'live-pages', modelKey);
-      assert.equal(response.headers.get('x-edge-cache'), 'BYPASS', modelKey);
+      assert.equal(response.status, 503, modelKey);
+      assert.equal(response.headers.get('x-materialized-required'), '1', modelKey);
       assert.deepEqual(await response.json(), {
-        ok: true,
+        ok: false,
+        error: 'materialized response unavailable',
         model_key: modelKey,
-        source: 'summary-db',
       });
       assert.equal(serviceCalls, 1, modelKey);
-      assert.equal(liveCalls, 1, modelKey);
+      assert.equal(liveCalls, 0, modelKey);
     }
     assert.equal(cacheWrites, 0);
   } finally {
