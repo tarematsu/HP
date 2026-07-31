@@ -27,12 +27,13 @@ async function visibleFirst(page, selector, limit = 100) {
   return null;
 }
 
-async function visibleLabelled(page, pattern) {
+async function visibleLabelled(page, pattern, { last = false } = {}) {
   const candidates = page.locator(
     'button, [role="button"], a, input[type="button"], input[type="submit"]',
   );
   const count = Math.min(await candidates.count(), 250);
-  for (let index = 0; index < count; index += 1) {
+  for (let offset = 0; offset < count; offset += 1) {
+    const index = last ? count - offset - 1 : offset;
     const candidate = candidates.nth(index);
     if (!await candidate.isVisible().catch(() => false)) continue;
     if (pattern.test(await labelOf(candidate))) return candidate;
@@ -205,7 +206,7 @@ async function main() {
 
     const email = await visibleFirst(
       loginPage,
-      'input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]',
+      'input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i], input[placeholder*="email" i]',
     );
     report.emailInputVisible = Boolean(email);
     if (email && report.credentialsAvailable) {
@@ -214,16 +215,16 @@ async function main() {
 
     let password = await visibleFirst(
       loginPage,
-      'input[type="password"], input[autocomplete="current-password"]',
+      'input[type="password"], input[autocomplete="current-password"], input[placeholder*="password" i]',
     );
     if (!password && email && report.credentialsAvailable) {
-      const next = await visibleLabelled(loginPage, /continue|next|続ける|次へ/i);
+      const next = await visibleLabelled(loginPage, /continue|next|続ける|次へ/i, { last: true });
       if (next) await next.click({ timeout: 3000 }).catch(() => null);
       await loginPage.waitForTimeout(2000);
       report.phases.push(await capturePhase(loginPage, 'after-login-next'));
       password = await visibleFirst(
         loginPage,
-        'input[type="password"], input[autocomplete="current-password"]',
+        'input[type="password"], input[autocomplete="current-password"], input[placeholder*="password" i]',
       );
     }
     report.passwordInputVisible = Boolean(password);
@@ -231,7 +232,8 @@ async function main() {
       await password.fill(passwordValue).catch(() => null);
       const submit = await visibleLabelled(
         loginPage,
-        /log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ/i,
+        /^(log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ)(?:\s+.*)?$/i,
+        { last: true },
       );
       report.loginSubmitted = submit
         ? await submit.click({ timeout: 3000 }).then(() => true).catch(() => false)
