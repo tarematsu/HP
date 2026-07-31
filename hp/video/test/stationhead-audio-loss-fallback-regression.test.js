@@ -117,9 +117,17 @@ test('fallback recovery waits for dwell and stable primary audio', () => {
   assert.doesNotMatch(appHeader, /100'000'000'000ULL/);
 });
 
+test('individual fallback follows the currently selected A or B source', () => {
+  assert.match(playbackResolver, /SelectedStationheadIsOnFallback/);
+  assert.match(playbackResolver, /!state\.primaryAudioSelected/);
+  assert.match(playbackResolver, /state\.secondaryUrl/);
+  assert.doesNotMatch(playbackResolver, /state\.url, state\.fallbackUrl\) &&/);
+});
+
 test('only a newer healthy five-minute playback observation releases fallback', () => {
   assert.match(rendererHeader, /uint64_t healthyRevision = 0/);
   assert.match(playbackResolver, /healthyObservation/);
+  assert.match(playbackResolver, /projection\.available && projection\.playing/);
   assert.match(playbackResolver, /!projection\.stale/);
   assert.match(playbackResolver, /!projection\.setupRequired/);
   assert.match(playbackResolver, /status\.healthyRevision = healthyObservation/);
