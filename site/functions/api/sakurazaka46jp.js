@@ -8,7 +8,7 @@ const JSON_HEADERS = {
 const MAX_POINTS = 120000;
 const SERIES_CACHE_TTL_MS = 5 * 60 * 1000;
 const SERIES_CACHE_MAX = 8;
-const SERIES_CACHE_VERSION = 4;
+const SERIES_CACHE_VERSION = 5;
 const DUPLICATE_START_TOLERANCE_MS = 15 * 60 * 1000;
 const DUPLICATE_NAME_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const sakurazakaSeriesCache = new Map();
@@ -59,16 +59,35 @@ FROM sh_official_broadcast_summary
 WHERE host_handle='sakurazaka46jp' AND started_at>=? AND started_at<?
 ORDER BY started_at ASC`;
 
-export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH minute_points AS (
-  SELECT CAST((f.minute_at-?)/60000 AS INTEGER) AS elapsed_minute,
-    ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
-  FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time
-  LEFT JOIN sh_minute_fact_context c ON c.fact_id=f.id
-  LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
-  LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id,s.host_id)
-  WHERE f.minute_at>=? AND f.minute_at<?
-    AND lower(COALESCE(h.current_handle,''))='sakurazaka46jp'
+export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
+  SELECT id FROM sh_hosts
+  WHERE lower(COALESCE(current_handle,''))='sakurazaka46jp'
+  LIMIT 1
+), target_sessions AS (
+  SELECT s.id
+  FROM target_host h
+  CROSS JOIN sh_broadcast_sessions s
+  WHERE s.host_id=h.id
+), candidate_points AS (
+  SELECT f.minute_at,f.listener_count
+  FROM target_sessions target
+  CROSS JOIN sh_minute_facts f
+  WHERE f.broadcast_session_id=target.id
+    AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
+  UNION ALL
+  SELECT f.minute_at,f.listener_count
+  FROM target_host h
+  CROSS JOIN sh_minute_fact_context c
+  JOIN sh_minute_facts f ON f.id=c.fact_id
+  WHERE c.host_id=h.id
+    AND f.broadcast_session_id IS NULL
+    AND f.minute_at>=?2 AND f.minute_at<?3
+    AND f.listener_count IS NOT NULL
+), minute_points AS (
+  SELECT CAST((minute_at-?1)/60000 AS INTEGER) AS elapsed_minute,
+    ROUND(AVG(listener_count),1) AS listener_count,COUNT(*) AS source_samples
+  FROM candidate_points
   GROUP BY elapsed_minute
 ), ranked AS (
   SELECT *,ROW_NUMBER() OVER (ORDER BY elapsed_minute ASC) AS point_rank,

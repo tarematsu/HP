@@ -128,6 +128,7 @@ const expectedMigrations = [
   'database/facts-migrations/046_track_minute_fact_pending_age.sql',
   'database/facts-migrations/047_join_latest_daily_members.sql',
   'database/facts-migrations/048_use_counter_current_projection.sql',
+  'database/facts-migrations/049_bound_history_host_ranges.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
