@@ -40,6 +40,8 @@ test('offline runtime maintenance runs frequently and after reliable workflow co
   assert.match(runner, /runtime offline maintenance deadline exceeded/);
   assert.match(runner, /sh_collector_status/);
   assert.match(runner, /other-cron/);
+  assert.match(runner, /recoverStalledMinuteFactJobs/);
+  assert.match(runner, /runInboxRecovery/);
   assert.match(runner, /runRollup\(env\.BUDDIES_DB, env\.OTHER_DB, env\.MINUTE_DB, startedAt\)/);
   assert.match(runner, /runOfflineMinuteRebuilds/);
 });
@@ -53,18 +55,35 @@ test('offline runtime maintenance is protected by actual and projected D1 budget
   assert.match(workflow, /RUNTIME_MAINTENANCE_D1_PROJECTED_ROWS_READ/);
   assert.match(workflow, /Summarize D1 budget decision/);
   assert.match(runner, /runtime_offline_maintenance_actions_budget_skipped/);
+  assert.ok(
+    runner.indexOf('runInboxRecovery(') < runner.indexOf('const budget = d1BudgetSkip(options)'),
+    'bounded inbox recovery must precede the heavy-work budget exit',
+  );
 });
 
-test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () => {
+test('Actions reconciles the minute inbox before other database maintenance', async () => {
   const calls = [];
   const writes = [];
   const now = 1_000;
   const buddiesDb = { name: 'buddies' };
   const minuteDb = { name: 'minute' };
   const otherDb = statusDatabase(writes);
+  const inboxRecovery = {
+    processed: 3,
+    finalized_count: 3,
+    released_count: 0,
+    requeued_count: 0,
+    pending_count: 0,
+  };
   const result = await runRuntimeOfflineMaintenanceActions({
     now: () => now,
     env: { BUDDIES_DB: buddiesDb, MINUTE_DB: minuteDb, OTHER_DB: otherDb },
+    runInboxRecovery: async (env, options) => {
+      calls.push('inbox-recovery');
+      assert.equal(env.MINUTE_DB, minuteDb);
+      assert.deepEqual(options, { now, limit: 1000, deadLimit: 100 });
+      return inboxRecovery;
+    },
     runPrediction: async () => { calls.push('prediction'); return 'prediction'; },
     runRollup: async (...args) => {
       calls.push('rollup');
@@ -81,7 +100,7 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
     runRetention: async () => { calls.push('retention'); return 'retention'; },
   });
 
-  assert.deepEqual(calls, ['prediction', 'rollup', 'rebuilds', 'retention']);
+  assert.deepEqual(calls, ['inbox-recovery', 'prediction', 'rollup', 'rebuilds', 'retention']);
   assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
   assert.equal(writes[0].values[0], 'other-cron');
   assert.equal(writes[1].values[3], now);
@@ -90,6 +109,7 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
     ok: true,
     event: 'runtime_offline_maintenance_actions_complete',
     elapsed_ms: 0,
+    inbox_recovery: inboxRecovery,
     prediction: 'prediction',
     rollup: 'rollup',
     rebuilds: 'rebuilds',
@@ -100,9 +120,20 @@ test('Actions connects BUDDIES, MINUTE, and OTHER databases in order', async () 
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
 });
 
-test('budget pressure records a healthy deferral without falsifying maintenance success', async () => {
+test('budget pressure still repairs stale minute inbox state before deferring heavy work', async () => {
+  const calls = [];
   const writes = [];
   const fail = async () => assert.fail('D1-heavy maintenance must not run');
+  const inboxRecovery = {
+    processed: 21,
+    finalized_count: 21,
+    released_count: 0,
+    requeued_count: 0,
+    pending_count: 0,
+    processing_count: 0,
+    dead_count: 0,
+    oldest_pending_minute: null,
+  };
   const result = await runRuntimeOfflineMaintenanceActions({
     now: () => 2_000,
     d1Allowed: false,
@@ -113,18 +144,24 @@ test('budget pressure records a healthy deferral without falsifying maintenance 
     d1RowsWritten: 100,
     d1WriteLimit: 4_000,
     env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
+    runInboxRecovery: async (_env, options) => {
+      calls.push('inbox-recovery');
+      assert.deepEqual(options, { now: 2_000, limit: 1000, deadLimit: 100 });
+      return inboxRecovery;
+    },
     runPrediction: fail,
     runRollup: fail,
     runRebuilds: fail,
     runRetention: fail,
   });
 
-  assert.deepEqual(writes.map(({ values }) => values[1]), ['ok']);
-  assert.equal(writes[0].values[3], null);
-  assert.equal(writes[0].values[4], null);
-  assert.equal(writes[0].values[5], 'runtime_offline_maintenance_deferred');
-  assert.equal(writes[0].values[6], 'd1-budget-guard');
-  assert.match(writes[0].values[7], /projected-read-budget-exceeded/);
+  assert.deepEqual(calls, ['inbox-recovery']);
+  assert.deepEqual(writes.map(({ values }) => values[1]), ['running', 'ok']);
+  assert.equal(writes[1].values[3], null);
+  assert.equal(writes[1].values[4], null);
+  assert.equal(writes[1].values[5], 'runtime_offline_maintenance_deferred');
+  assert.equal(writes[1].values[6], 'd1-budget-guard');
+  assert.match(writes[1].values[7], /projected-read-budget-exceeded/);
   assert.deepEqual(result, {
     ok: true,
     skipped: true,
@@ -132,6 +169,7 @@ test('budget pressure records a healthy deferral without falsifying maintenance 
     reason: 'd1-actions-budget',
     elapsed_ms: 0,
     last_success_preserved: true,
+    inbox_recovery: inboxRecovery,
     budget: {
       reason: 'projected-read-budget-exceeded',
       rows_read: 200_000,
@@ -149,6 +187,7 @@ test('Actions persists runtime maintenance failures for public health', async ()
     runRuntimeOfflineMaintenanceActions({
       now: () => 2_000,
       env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
+      runInboxRecovery: async () => ({ processed: 0 }),
       runPrediction: async () => { throw new Error('prediction failed'); },
       runRollup: async () => assert.fail('rollup must not run'),
       runRebuilds: async () => assert.fail('rebuilds must not run'),

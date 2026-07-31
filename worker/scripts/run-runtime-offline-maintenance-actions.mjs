@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+import { recoverStalledMinuteFactJobs } from '../src/minute-facts-inbox.js';
 import { runOfflineMinuteRebuilds } from '../src/minute-offline-rebuild.js';
 import { runRollupMaintenance } from '../src/rollup-maintenance-coordinator.js';
 import { pruneOldSnapshots } from '../src/snapshot-retention.js';
@@ -93,6 +94,24 @@ function d1BudgetSkip(options = {}) {
   };
 }
 
+function inboxRecoveryOptions(options, startedAt) {
+  return {
+    now: startedAt,
+    limit: positiveInteger(
+      options.inboxRecoveryLimit ?? process.env.MINUTE_FACT_STALLED_RECOVERY_LIMIT,
+      1000,
+      1,
+      5000,
+    ),
+    deadLimit: positiveInteger(
+      options.inboxDeadRecoveryLimit ?? process.env.MINUTE_FACT_DEAD_REQUEUE_LIMIT,
+      100,
+      1,
+      1000,
+    ),
+  };
+}
+
 async function writeMaintenanceStatus(db, {
   status,
   attemptAt,
@@ -148,6 +167,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     14 * 60_000,
   );
   const env = options.env || productionEnvironment();
+  const runInboxRecovery = options.runInboxRecovery || recoverStalledMinuteFactJobs;
   const runPrediction = options.runPrediction || runStreamGoalPrediction;
   const runRollup = options.runRollup || runRollupMaintenance;
   const runRebuilds = options.runRebuilds || runOfflineMinuteRebuilds;
@@ -158,30 +178,6 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
     }
   };
 
-  const budget = d1BudgetSkip(options);
-  if (budget) {
-    const finishedAt = timestamp(clock, startedAt);
-    const summary = `Deferred by D1 Actions guard (${budget.reason})`.slice(0, 1000);
-    await writeMaintenanceStatus(env.OTHER_DB, {
-      status: 'ok',
-      attemptAt: startedAt,
-      failureCode: 'runtime_offline_maintenance_deferred',
-      failureStage: 'd1-budget-guard',
-      failureSummary: summary,
-      failureHint: 'Heavy maintenance will resume automatically when D1 usage returns within budget.',
-      updatedAt: finishedAt,
-    });
-    return {
-      ok: true,
-      skipped: true,
-      event: 'runtime_offline_maintenance_actions_budget_skipped',
-      reason: 'd1-actions-budget',
-      elapsed_ms: Math.max(0, finishedAt - startedAt),
-      last_success_preserved: true,
-      budget,
-    };
-  }
-
   await writeMaintenanceStatus(env.OTHER_DB, {
     status: 'running',
     attemptAt: startedAt,
@@ -189,6 +185,41 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   });
 
   try {
+    // Inbox reconciliation is deliberately small and must run even when the
+    // account-wide D1 budget guard defers expensive prediction and rollup work.
+    // It finalizes ledger rows whose minute facts already exist, releases expired
+    // leases, and requeues recoverable dead rows so public health reflects reality.
+    ensureTime();
+    const inboxRecovery = await runInboxRecovery(
+      env,
+      inboxRecoveryOptions(options, startedAt),
+    );
+
+    const budget = d1BudgetSkip(options);
+    if (budget) {
+      const finishedAt = timestamp(clock, startedAt);
+      const summary = `Deferred by D1 Actions guard (${budget.reason})`.slice(0, 1000);
+      await writeMaintenanceStatus(env.OTHER_DB, {
+        status: 'ok',
+        attemptAt: startedAt,
+        failureCode: 'runtime_offline_maintenance_deferred',
+        failureStage: 'd1-budget-guard',
+        failureSummary: summary,
+        failureHint: 'Heavy maintenance will resume automatically when D1 usage returns within budget.',
+        updatedAt: finishedAt,
+      });
+      return {
+        ok: true,
+        skipped: true,
+        event: 'runtime_offline_maintenance_actions_budget_skipped',
+        reason: 'd1-actions-budget',
+        elapsed_ms: Math.max(0, finishedAt - startedAt),
+        last_success_preserved: true,
+        inbox_recovery: inboxRecovery,
+        budget,
+      };
+    }
+
     ensureTime();
     const prediction = await runPrediction(env, startedAt);
     ensureTime();
@@ -210,6 +241,7 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
       ok: true,
       event: 'runtime_offline_maintenance_actions_complete',
       elapsed_ms: Math.max(0, finishedAt - startedAt),
+      inbox_recovery: inboxRecovery,
       prediction,
       rollup,
       rebuilds,
