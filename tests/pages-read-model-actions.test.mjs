@@ -85,8 +85,11 @@ test('completed history uses R2 only while realtime dashboard may fall back live
   assert.match(pagesMiddleware, /const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set\(\['dashboard'\]\)/);
   assert.match(pagesMiddleware, /applyHistoryRange/);
   assert.match(responseFetch, /const R2_ONLY_MODEL_KEYS = new Set/);
-  assert.match(responseFetch, /if \(R2_ONLY_MODEL_KEYS\.has\(modelKey\)\)/);
-  assert.doesNotMatch(responseFetch, /R2_ONLY_MODEL_KEYS[\s\S]{0,300}\|\| await loadKv/);
+  const r2OnlyStart = responseFetch.indexOf('if (R2_ONLY_MODEL_KEYS.has(modelKey))');
+  const r2OnlyEnd = responseFetch.indexOf('} else if (modelKey === TRACK_HISTORY_MODEL_KEY)', r2OnlyStart);
+  const r2OnlyBranch = responseFetch.slice(r2OnlyStart, r2OnlyEnd);
+  assert.match(r2OnlyBranch, /response = await loadR2/);
+  assert.doesNotMatch(r2OnlyBranch, /loadKv/);
 });
 
 test('dashboard materialized lifetime covers the 30-minute Actions publication interval', () => {
