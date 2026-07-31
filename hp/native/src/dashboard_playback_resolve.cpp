@@ -24,9 +24,13 @@ bool IsPlaybackFallbackUrl(const std::wstring& url, const std::wstring& fallback
          _wcsicmp(url.c_str(), fallbackUrl.c_str()) == 0;
 }
 
-bool StationheadIsOnFallback(const StationheadStatus& state) {
-  return IsPlaybackFallbackUrl(state.url, state.fallbackUrl) &&
-         IsPlaybackFallbackUrl(state.secondaryUrl, state.fallbackUrl);
+bool SelectedStationheadIsOnFallback(const StationheadStatus& state) {
+  const bool secondarySelected =
+      !state.primaryAudioSelected && !state.secondaryUrl.empty();
+  const std::wstring& selectedUrl = secondarySelected
+      ? state.secondaryUrl
+      : state.url;
+  return IsPlaybackFallbackUrl(selectedUrl, state.fallbackUrl);
 }
 
 struct ProjectedTrackPosition {
@@ -204,7 +208,7 @@ NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_
 }
 
 NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowMs) const {
-  if (StationheadIsOnFallback(nativeStationhead_) || source != 0) return {};
+  if (SelectedStationheadIsOnFallback(nativeStationhead_) || source != 0) return {};
   std::lock_guard lock(nativePlaybackMutex_);
   return ResolveNativePlaybackLocked(0, nowMs);
 }
@@ -224,12 +228,27 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
         projection.queue[static_cast<size_t>(projection.currentIndex)]);
   }
   status.endedWithoutNextTrack = PlaybackEndedWithoutNextTrack(projection, nowMs);
-  status.contentRevision = update.contentRevision;
+  const bool healthyObservation = projection.available && projection.playing &&
+      !projection.stale && !projection.setupRequired && !projection.ended &&
+      status.hasTrack && !status.endedWithoutNextTrack && projection.fetchedAt > 0;
+  status.healthyRevision = healthyObservation
+      ? static_cast<uint64_t>(projection.fetchedAt)
+      : 0;
+  // App's legacy route still reads contentRevision. Give it a tagged value:
+  // healthy observations use their fetch timestamp, a confirmed queue end uses
+  // a stable nonzero sentinel, and every other invalid/stale state is zero.
+  // Therefore only a newer healthy observation can compare above the baseline
+  // and release fallback.
+  status.contentRevision = status.healthyRevision != 0
+      ? status.healthyRevision
+      : (status.endedWithoutNextTrack
+          ? std::max<uint64_t>(1, update.contentRevision)
+          : 0);
   return status;
 }
 
 int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
-  if (StationheadIsOnFallback(nativeStationhead_)) return 0;
+  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return 0;
   std::lock_guard lock(nativePlaybackMutex_);
   const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
   if (!projection.available || projection.setupRequired) return 0;
@@ -256,7 +275,7 @@ int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
 
 Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
   NativePlaybackTickState state;
-  if (StationheadIsOnFallback(nativeStationhead_)) return state;
+  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return state;
 
   std::lock_guard lock(nativePlaybackMutex_);
   const NativePlaybackUpdate& update = nativePlaybackUpdate_;

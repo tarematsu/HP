@@ -127,6 +127,7 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
   src/sh_layout.cpp
   src/sh_polling_policy.h
+  src/sh_audio_loss_policy.h
   src/sh_runtime_policy_fix.h
   src/sh_runtime_lifecycle_policy_fix.h
   src/sh_runtime_recovery_polling_policy_fix.h
@@ -138,7 +139,8 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/sh_track_boundary_message_policy.h
   src/sh.cpp
   src/sh_webview.cpp
-  src/sh_audio.cpp)
+  src/sh_audio.cpp
+  src/sh_audio_loss.cpp)
 
 set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_lifecycle.cpp

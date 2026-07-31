@@ -46,7 +46,9 @@ test('credentials use the existing audit secrets and never enter reports', () =>
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_EMAIL/);
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_PASSWORD/);
   assert.match(workflow, /Attempt Stationhead credential login/);
-  assert.match(loginAudit, /page\.keyboard\.press\('Escape'\)/);
+  assert.match(loginAudit, /visibleLabelled\(page, \/\^\(close\|閉じる\)\$\/i\)/);
+  assert.match(loginAudit, /musicModalCloseClicked/);
+  assert.match(loginAudit, /context\.waitForEvent\('page'/);
   assert.match(loginAudit, /loginControlClicked/);
   assert.match(loginAudit, /emailInputVisible/);
   assert.match(loginAudit, /passwordInputVisible/);
