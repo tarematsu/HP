@@ -97,12 +97,16 @@ void StationheadPlayer::BeginAudioLossAuthProbe(int64_t) {
   if (!webview_ || audioLossProbeInFlight_) return;
   const auto alive = createCallbackAlive_;
   ComPtr<ICoreWebView2> view = webview_;
+  const int64_t lossStartedAt = audioLossStartedAt_.WallTime();
   audioLossProbeInFlight_ = true;
   const HRESULT started = view->ExecuteScript(
       kAuthenticationUiProbeScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, view](HRESULT result, LPCWSTR resultJson) -> HRESULT {
-            if (!AudioLossCallbackAlive(alive) || view.Get() != webview_.Get()) {
+          [this, alive, view, lossStartedAt](
+              HRESULT result, LPCWSTR resultJson) -> HRESULT {
+            if (!AudioLossCallbackAlive(alive) || view.Get() != webview_.Get() ||
+                !audioLossProbeInFlight_ ||
+                audioLossStartedAt_.WallTime() != lossStartedAt) {
               return S_OK;
             }
             audioLossProbeInFlight_ = false;
