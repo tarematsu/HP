@@ -67,7 +67,7 @@ void App::NotifyStationheadPlaybackFallbackStarted() {
   stationheadPlaybackFallbackActive_ = true;
   stationheadPlaybackNoNextTrackObserved_ = false;
   stationheadPlaybackFallbackRevision_ =
-      std::max<uint64_t>(1, feed.contentRevision);
+      std::max<uint64_t>(1, feed.healthyRevision);
   if (logger_) {
     logger_->Warn(
         L"Stationhead audio-loss fallback registered; waiting for a newer healthy five-minute playback observation");
@@ -118,20 +118,17 @@ void StationheadPlayer::BeginAudioLossAuthProbe(int64_t) {
               return S_OK;
             }
             const std::wstring value(resultJson);
-            if (value == L"null") {
+            if (value != L"true" && value != L"false") {
               audioLossProbeComplete_ = false;
               RequestImmediateTick();
               return S_OK;
             }
-            audioLossProbeComplete_ = value == L"true" || value == L"false";
             audioLossAuthUiDetected_ = value == L"true";
+            // Authentication controls can disappear after the user completes a
+            // step without navigating. Keep rechecking while they remain visible
+            // instead of permanently latching the first positive result.
+            audioLossProbeComplete_ = !audioLossAuthUiDetected_;
             if (audioLossAuthUiDetected_) {
-              loginRequired_ = true;
-              {
-                std::lock_guard lock(mutex_);
-                status_.loginRequired = true;
-              }
-              ShowForLogin();
               UpdateAudioLossState(
                   L"auth_wait",
                   L"authentication control detected; waiting for user action");
@@ -151,7 +148,7 @@ void StationheadPlayer::SetManagedPlaybackFallback(
     bool active, const std::wstring& reason) {
   const int64_t nowMs = UnixMillis();
   if (active) {
-    if (managedPlaybackFallbackActive_) return;
+    if (config_.fallbackUrl.empty() || managedPlaybackFallbackActive_) return;
     managedPlaybackFallbackActive_ = true;
     managedPlaybackReturnRequested_ = false;
     managedPrimaryReturnPending_ = false;
@@ -170,9 +167,8 @@ void StationheadPlayer::SetManagedPlaybackFallback(
   if (!StationheadFallbackDwellSatisfied(
           nowMs - managedPlaybackFallbackStartedAt_)) {
     managedPlaybackReturnRequested_ = true;
-    UpdateAudioLossState(
-        L"fallback",
-        L"healthy playback observed; holding fallback for the minimum dwell");
+    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
+              L" healthy playback observed; retaining fallback until minimum dwell expires");
     RequestImmediateTick();
     return;
   }
@@ -181,8 +177,10 @@ void StationheadPlayer::SetManagedPlaybackFallback(
   managedPlaybackReturnRequested_ = false;
   managedPrimaryReturnPending_ = true;
   managedPlaybackFallbackStartedAt_ = 0;
-  audioLossPlaybackObserved_ = false;
-  audioLossStartedAt_ = 0;
+  // Treat the attempted return as a playback session that must prove itself.
+  // If no audio starts, the same eleven-second recovery path returns to fallback.
+  audioLossPlaybackObserved_ = true;
+  audioLossStartedAt_ = nowMs;
   ResetAudioLossProbe();
   UpdateAudioLossState(L"returning_primary", reason);
   SetPlaybackFallback(false, reason);
@@ -233,13 +231,18 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     audioLossStartedAt_ = nowMs;
     UpdateAudioLossState(
         L"transition_wait",
-        L"audio stopped; waiting ten seconds for the next track");
+        L"audio stopped; waiting through the first ten seconds");
     return;
   }
   const int64_t stoppedForMs = nowMs - audioLossStartedAt_;
   if (stoppedForMs < kStationheadAudioLossGraceMs) return;
 
-  ShowAfterAudioStop();
+  if (audioLossState_ == L"transition_wait" || audioLossState_.empty()) {
+    ShowAfterAudioStop();
+    UpdateAudioLossState(
+        L"operation_wait",
+        L"operation surface visible; checking authentication controls");
+  }
   const bool authenticationPending =
       snapshot.loginRequired || snapshot.spotifyAuthorization;
   if (authenticationPending) {
@@ -264,7 +267,7 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
           audioLossProbeComplete_, audioLossAuthUiDetected_, stoppedForMs)) {
     SetManagedPlaybackFallback(
         true,
-        L"fallback: audio absent for eleven seconds and no authentication UI detected");
+        L"fallback: no authentication UI remained after the eleventh-second check");
   }
 }
 
