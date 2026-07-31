@@ -2,6 +2,7 @@
 #include "sh.h"
 #include "sh_audio_loss_policy.h"
 #include "web_renderer.h"
+#include <winrt/Windows.Data.Json.h>
 
 namespace hp {
 namespace {
@@ -10,51 +11,107 @@ bool AudioLossCallbackAlive(const std::shared_ptr<std::atomic<bool>>& alive) {
   return alive && alive->load(std::memory_order_acquire);
 }
 
+// This probe is based on the live Stationhead DOM observed on 2026-07-31.
+// The ordinary page has a persistent top-right `Log in` button. The music
+// authorization surface is a modal headed `Connect music`; its `Spotify` label
+// and `Connect` button are separate descendants, so a per-element word search
+// cannot identify it correctly.
 constexpr wchar_t kAuthenticationUiProbeScript[] = LR"JS(
 (() => {
   if (document.readyState === 'loading' || !document.body) return null;
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const selector = [
-    'button',
-    "[role='button']",
-    'a',
-    "input[type='button']",
-    "input[type='submit']",
-    '[aria-label]',
-    "[role='dialog']",
-    'h1',
-    'h2',
-    'h3'
-  ].join(',');
+  const labelsOf = element => [
+    element?.innerText,
+    element?.textContent,
+    element?.getAttribute?.('aria-label'),
+    element?.getAttribute?.('title'),
+    element?.getAttribute?.('value'),
+    element?.getAttribute?.('placeholder')
+  ].map(normalize).filter(Boolean);
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute?.('aria-disabled') === 'true' ||
         element.getAttribute?.('aria-hidden') === 'true') return false;
+    if (typeof element.checkVisibility === 'function') {
+      try {
+        if (!element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) {
+          return false;
+        }
+      } catch (_) {}
+    }
     const rect = element.getBoundingClientRect?.();
     if (!rect || rect.width <= 2 || rect.height <= 2) return false;
-    const style = getComputedStyle(element);
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-      Number(style.opacity || 1) > 0;
+    for (let node = element; node instanceof Element; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden' ||
+          Number(style.opacity || 1) <= 0) return false;
+    }
+    return true;
   };
-  const labelOf = element => [
-    element?.innerText,
-    element?.getAttribute?.('aria-label'),
-    element?.textContent,
-    element?.getAttribute?.('title'),
-    element?.getAttribute?.('value')
-  ].map(normalize).find(Boolean) || '';
-  const directAuthentication =
-    /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
-  const spotifyAuthentication =
-    /(?:connect|continue|authorize|authentication|認証|接続).{0,48}spotify|spotify.{0,48}(?:connect|continue|authorize|authentication|認証|接続)/i;
-  for (const element of document.querySelectorAll(selector)) {
-    if (!visible(element)) continue;
-    const label = labelOf(element);
-    if (directAuthentication.test(label) || spotifyAuthentication.test(label)) {
-      return true;
+  const actionableSelector =
+    "button,[role='button'],a,input[type='button'],input[type='submit']";
+  const actionable = [...document.querySelectorAll(actionableSelector)].filter(visible);
+  const labelMatches = (element, pattern) => labelsOf(element).some(label => pattern.test(label));
+  const summary = (reason, evidence) => ({
+    ready: true,
+    authentication: true,
+    reason,
+    evidence: evidence.map(normalize).filter(Boolean).slice(0, 6)
+  });
+
+  // The live service selector has no role=dialog. Locate the `Connect music`
+  // heading, then require a common visible ancestor that contains a service
+  // name and a Connect action. This joins the separate Spotify/Connect nodes
+  // without treating unrelated page text as authorization UI.
+  const connectHeading = [...document.querySelectorAll('h1,h2,h3,[role="heading"]')]
+    .filter(visible)
+    .find(element => labelsOf(element).some(label => /^connect\s+music$/i.test(label)));
+  if (connectHeading) {
+    for (let surface = connectHeading.parentElement, depth = 0;
+         surface && depth < 9;
+         surface = surface.parentElement, depth += 1) {
+      if (!visible(surface)) continue;
+      const surfaceText = normalize(surface.innerText || surface.textContent);
+      const hasService = /\bspotify\b|\bapple\s+music\b/i.test(surfaceText);
+      const hasConnect = [...surface.querySelectorAll(actionableSelector)]
+        .filter(visible)
+        .some(element => labelsOf(element).some(label => /^connect(?:\s+.*)?$/i.test(label)));
+      if (hasService && hasConnect) {
+        const evidence = ['Connect music'];
+        if (/\bspotify\b/i.test(surfaceText)) evidence.push('Spotify');
+        if (/\bapple\s+music\b/i.test(surfaceText)) evidence.push('Apple Music');
+        evidence.push('Connect');
+        return summary('music-service-connect', evidence);
+      }
     }
   }
-  return false;
+
+  const loginInput = [...document.querySelectorAll('input')].filter(visible).find(element => {
+    const type = normalize(element.getAttribute('type')).toLowerCase();
+    const autocomplete = normalize(element.getAttribute('autocomplete')).toLowerCase();
+    const identity = labelsOf(element).join(' ').toLowerCase() + ' ' +
+      normalize(element.getAttribute('name')).toLowerCase() + ' ' +
+      normalize(element.id).toLowerCase();
+    return type === 'email' || type === 'password' || type === 'tel' ||
+      /email|username|current-password|tel/.test(autocomplete) ||
+      /email|phone|user|login|password/.test(identity);
+  });
+  if (loginInput) {
+    return summary('stationhead-login-form', labelsOf(loginInput));
+  }
+
+  const loginPattern = /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const loginControl = actionable.find(element => labelMatches(element, loginPattern));
+  if (loginControl) {
+    return summary('stationhead-login-control', labelsOf(loginControl));
+  }
+
+  return {
+    ready: true,
+    authentication: false,
+    reason: 'none',
+    evidence: []
+  };
 })()
 )JS";
 
@@ -110,30 +167,44 @@ void StationheadPlayer::BeginAudioLossAuthProbe(int64_t) {
               return S_OK;
             }
             audioLossProbeInFlight_ = false;
-            if (FAILED(result) || !resultJson) {
+            if (FAILED(result) || !resultJson || std::wstring_view(resultJson) == L"null") {
               audioLossProbeComplete_ = false;
               log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
                         L" authentication UI probe failed; fallback remains blocked");
-              RequestImmediateTick();
               return S_OK;
             }
-            const std::wstring value(resultJson);
-            if (value != L"true" && value != L"false") {
+
+            try {
+              const auto probe =
+                  winrt::Windows::Data::Json::JsonObject::Parse(resultJson);
+              if (!probe.GetNamedBoolean(L"ready", false)) {
+                audioLossProbeComplete_ = false;
+                return S_OK;
+              }
+              const bool authentication =
+                  probe.GetNamedBoolean(L"authentication", false);
+              const std::wstring reason =
+                  probe.GetNamedString(L"reason", L"unknown").c_str();
+              audioLossAuthUiDetected_ = authentication;
+              // Positive observations are deliberately not latched. The UI is
+              // re-probed on the next foreground tick, so completing a login or
+              // music-service connection without navigation can continue to
+              // fallback once the blocking surface disappears.
+              audioLossProbeComplete_ = !authentication;
+              if (authentication) {
+                UpdateAudioLossState(
+                    L"auth_wait",
+                    L"authentication surface detected (" + reason +
+                        L"); waiting for user action");
+              } else {
+                RequestImmediateTick();
+                PostChange();
+              }
+            } catch (...) {
               audioLossProbeComplete_ = false;
-              RequestImmediateTick();
-              return S_OK;
+              log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
+                        L" authentication UI probe returned an invalid result");
             }
-            audioLossAuthUiDetected_ = value == L"true";
-            // Authentication controls can disappear after the user completes a
-            // step without navigating. Keep rechecking while they remain visible
-            // instead of permanently latching the first positive result.
-            audioLossProbeComplete_ = !audioLossAuthUiDetected_;
-            if (audioLossAuthUiDetected_) {
-              UpdateAudioLossState(
-                  L"auth_wait",
-                  L"authentication control detected; waiting for user action");
-            }
-            RequestImmediateTick();
             return S_OK;
           }).Get());
   if (FAILED(started)) {
@@ -177,10 +248,10 @@ void StationheadPlayer::SetManagedPlaybackFallback(
   managedPlaybackReturnRequested_ = false;
   managedPrimaryReturnPending_ = true;
   managedPlaybackFallbackStartedAt_ = 0;
-  // Treat the attempted return as a playback session that must prove itself.
-  // If no audio starts, the same eleven-second recovery path returns to fallback.
+  // Navigation time is not audio-loss time. Start a fresh eleven-second
+  // confirmation window only after the primary document has finished loading.
   audioLossPlaybackObserved_ = true;
-  audioLossStartedAt_ = nowMs;
+  audioLossStartedAt_ = 0;
   ResetAudioLossProbe();
   UpdateAudioLossState(L"returning_primary", reason);
   SetPlaybackFallback(false, reason);
@@ -223,6 +294,10 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
   if (!snapshot.created || snapshot.navigating || snapshot.processFailed ||
       recreating_.load(std::memory_order_acquire) ||
       navigationInFlight_.load(std::memory_order_acquire)) {
+    // A loading or rebuilding document has not yet had a fair opportunity to
+    // produce audio. Discard the old stop interval instead of counting page
+    // navigation toward the eleven-second fallback threshold.
+    audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
     return;
   }
@@ -231,17 +306,18 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     audioLossStartedAt_ = nowMs;
     UpdateAudioLossState(
         L"transition_wait",
-        L"audio stopped; waiting through the first ten seconds");
+        L"audio stopped; waiting through seconds zero to ten");
     return;
   }
   const int64_t stoppedForMs = nowMs - audioLossStartedAt_;
   if (stoppedForMs < kStationheadAudioLossGraceMs) return;
 
-  if (audioLossState_ == L"transition_wait" || audioLossState_.empty()) {
+  if (audioLossState_ == L"transition_wait" || audioLossState_.empty() ||
+      audioLossState_ == L"returning_primary") {
     ShowAfterAudioStop();
     UpdateAudioLossState(
         L"operation_wait",
-        L"operation surface visible; checking authentication controls");
+        L"operation surface visible after eleven seconds; checking authentication UI");
   }
   const bool authenticationPending =
       snapshot.loginRequired || snapshot.spotifyAuthorization;
@@ -267,7 +343,7 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
           audioLossProbeComplete_, audioLossAuthUiDetected_, stoppedForMs)) {
     SetManagedPlaybackFallback(
         true,
-        L"fallback: no authentication UI remained after the eleventh-second check");
+        L"fallback: no authentication surface remained at the eleven-second check");
   }
 }
 
