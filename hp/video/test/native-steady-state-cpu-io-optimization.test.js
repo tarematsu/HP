@@ -99,6 +99,18 @@ test('missing serial sensors use bounded exponential retry backoff', () => {
   assert.doesNotMatch(sensorSerial, /wait_for\(lock, std::chrono::seconds\(10\)/);
 });
 
+test('UD-CO2S sampling and renderer publication run once per minute', () => {
+  assert.match(sensorSerial, /kSensorReadInterval = std::chrono::minutes\(1\)/);
+  assert.match(
+    sensorSerial,
+    /sampleReceived = true;[\s\S]*PostMessageW\(window_, WM_HP_SENSOR_UPDATED, 0, 0\);[\s\S]*break;/,
+  );
+  assert.match(
+    sensorSerial,
+    /RunSensorCommand\(serial, buffer, "STP"[\s\S]*sampleCycleStartedAt \+ kSensorReadInterval[\s\S]*stopWake_\.wait_until\(lock, nextReadAt[\s\S]*RunSensorCommand\(serial, buffer, "STA"/,
+  );
+});
+
 test('artwork index capacity evicts one entry instead of clearing all entries', () => {
   assert.match(artworkCache, /memoryIndex\.urls\.erase\(memoryIndex\.urls\.begin\(\)\)/);
   assert.doesNotMatch(artworkCache, /size\(\) >= 128\) memoryIndex\.urls\.clear\(\)/);
