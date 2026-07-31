@@ -80,64 +80,50 @@ test('current daily history seeks canonical minute_at and ignores today-imported
   assert.match(plan, /idx_sh_minute_facts_time \(minute_at>\? AND minute_at<\?\)/);
 });
 
-test('Sakurazaka series resolves target channels before fact range seeks', () => {
+test('Sakurazaka series seeks only target broadcast sessions and sparse overrides', () => {
   const db = new DatabaseSync(':memory:');
   db.exec(`CREATE TABLE sh_hosts(id INTEGER PRIMARY KEY,current_handle TEXT);
-  CREATE TABLE sh_broadcast_sessions(
-    id INTEGER PRIMARY KEY,
-    channel_id INTEGER NOT NULL,
-    host_id INTEGER,
-    broadcast_start_time INTEGER,
-    first_observed_at INTEGER NOT NULL,
-    last_observed_at INTEGER NOT NULL,
-    ended_at INTEGER
-  );
-  CREATE INDEX idx_sh_broadcast_sessions_host_window
-    ON sh_broadcast_sessions(host_id,first_observed_at,last_observed_at,channel_id)
-    WHERE host_id IS NOT NULL;
+  CREATE TABLE sh_broadcast_sessions(id INTEGER PRIMARY KEY,host_id INTEGER);
+  CREATE INDEX idx_sh_broadcast_sessions_host_id
+    ON sh_broadcast_sessions(host_id,id) WHERE host_id IS NOT NULL;
   CREATE TABLE sh_minute_facts(
     id INTEGER PRIMARY KEY,
-    channel_id INTEGER NOT NULL,
     minute_at INTEGER NOT NULL,
+    source_code INTEGER NOT NULL,
     listener_count INTEGER,
-    broadcast_session_id INTEGER,
-    UNIQUE(channel_id,minute_at)
+    broadcast_session_id INTEGER
   );
   CREATE INDEX idx_sh_minute_facts_time ON sh_minute_facts(minute_at ASC,id ASC);
-  CREATE TABLE sh_minute_fact_context_v2(fact_id INTEGER PRIMARY KEY,host_id_override INTEGER);
-  CREATE INDEX idx_sh_minute_fact_context_host_fact
-    ON sh_minute_fact_context_v2(host_id_override,fact_id)
-    WHERE host_id_override IS NOT NULL`);
+  CREATE INDEX idx_sh_minute_facts_session_minute
+    ON sh_minute_facts(broadcast_session_id,minute_at,id)
+    WHERE broadcast_session_id IS NOT NULL;
+  CREATE TABLE sh_minute_fact_context(fact_id INTEGER PRIMARY KEY,host_id INTEGER)`);
   const start = Date.parse('2026-07-20T00:00:00Z');
   const end = start + 240_000;
   db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(1, 'sakurazaka46jp');
-  db.prepare('INSERT INTO sh_broadcast_sessions VALUES(?,?,?,?,?,?,?)')
-    .run(10, 1, 1, start, start, end - 60_000, end - 60_000);
+  db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(2, 'other');
+  db.prepare('INSERT INTO sh_broadcast_sessions VALUES(?,?)').run(10, 1);
+  db.prepare('INSERT INTO sh_broadcast_sessions VALUES(?,?)').run(20, 2);
   const insertFact = db.prepare('INSERT INTO sh_minute_facts VALUES(?,?,?,?,?)');
-  insertFact.run(1, 1, start, 10, 10);
-  insertFact.run(2, 1, start + 60_000, 20, 10);
-  insertFact.run(3, 2, start + 120_000, 30, null);
-  insertFact.run(4, 2, start + 180_000, 40, null);
-  db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)').run(3, 1);
-  db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)').run(4, 1);
-  let id = 100;
-  for (let channel = 3; channel < 103; channel += 1) {
-    for (let minute = start; minute < end; minute += 60_000) {
-      insertFact.run(id, channel, minute, 999, null);
-      id += 1;
-    }
+  insertFact.run(1, start, 1, 10, 10);
+  insertFact.run(2, start + 60_000, 1, 20, 10);
+  insertFact.run(3, start + 120_000, 1, 30, null);
+  insertFact.run(4, start + 180_000, 1, 40, null);
+  db.prepare('INSERT INTO sh_minute_fact_context VALUES(?,?)').run(3, 1);
+  db.prepare('INSERT INTO sh_minute_fact_context VALUES(?,?)').run(4, 1);
+  for (let id = 100; id < 1100; id += 1) {
+    insertFact.run(id, start + ((id - 100) % 4) * 60_000, 1, 999, 20);
   }
 
   const row = db.prepare(SAKURAZAKA_MINUTE_SERIES_SQL).get(start, start, end);
   assert.equal(row.point_count, 4);
   assert.deepEqual(JSON.parse(row.points_json), [[0, 10, 1], [1, 20, 1], [2, 30, 1], [3, 40, 1]]);
-  assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /CROSS JOIN sh_minute_facts f INDEXED BY sqlite_autoindex_sh_minute_facts_1/);
+  assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /CROSS JOIN sh_minute_facts f/);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${SAKURAZAKA_MINUTE_SERIES_SQL}`)
     .all(start, start, end)
     .map((item) => item.detail).join('\n');
-  assert.match(plan, /idx_sh_broadcast_sessions_host_window \(host_id=\?\)/);
-  assert.match(plan, /idx_sh_minute_fact_context_host_fact \(host_id_override=\?\)/);
-  assert.match(plan, /sqlite_autoindex_sh_minute_facts_1 \(channel_id=\? AND minute_at>\? AND minute_at<\?\)/);
+  assert.match(plan, /idx_sh_broadcast_sessions_host_id \(host_id=\?\)/);
+  assert.match(plan, /idx_sh_minute_facts_session_minute \(broadcast_session_id=\? AND minute_at>\? AND minute_at<\?\)/);
   assert.doesNotMatch(plan, /SCAN f USING INDEX idx_sh_minute_facts_time/);
 });
 
