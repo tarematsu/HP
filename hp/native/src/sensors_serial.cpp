@@ -22,6 +22,7 @@ bool RunSensorCommand(HANDLE serial, std::string& buffer, const char* command,
     }
     std::string line;
     const LineResult result = ReadLine(serial, buffer, line, stopping, deadline - now);
+    if (result == LineResult::Stopped) return false;
     if (result != LineResult::Line) {
       log.Warn(L"UD-CO2S command timeout/read failure: " + Utf8ToWide(command));
       return false;
@@ -130,11 +131,10 @@ void SensorHub::SerialLoop() {
     if (waitingChanged) PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
 
     // STA emits measurements about every two seconds. Accept one valid sample,
-    // stop the serial stream, then wait until the next one-minute cycle.
-    bool measurementActive = true;
-    auto sampleCycleStartedAt = std::chrono::steady_clock::now();
+    // stop the serial stream, and do not start another read for a full minute.
     while (!stopping_) {
       bool sampleReceived = false;
+      auto sampleAcceptedAt = std::chrono::steady_clock::time_point{};
       const auto validSampleDeadline = std::chrono::steady_clock::now() + kSampleTimeout;
       while (!stopping_) {
         const auto now = std::chrono::steady_clock::now();
@@ -188,25 +188,25 @@ void SensorHub::SerialLoop() {
         if (historyBucketAdvanced && AppendOutbox(sample)) lastPersistedBucket_ = bucket;
 
         sampleReceived = true;
+        sampleAcceptedAt = std::chrono::steady_clock::now();
         PostMessageW(window_, WM_HP_SENSOR_UPDATED, 0, 0);
         break;
       }
 
       if (!sampleReceived || stopping_) break;
       if (!RunSensorCommand(serial, buffer, "STP", stopping_, log_)) break;
-      measurementActive = false;
 
-      const auto nextReadAt = sampleCycleStartedAt + kSensorReadInterval;
+      const auto nextReadAt = sampleAcceptedAt + kSensorReadInterval;
       {
         std::unique_lock lock(stopMutex_);
         if (stopWake_.wait_until(lock, nextReadAt, [this] { return stopping_.load(); })) break;
       }
-      sampleCycleStartedAt = std::chrono::steady_clock::now();
       if (!RunSensorCommand(serial, buffer, "STA", stopping_, log_)) break;
-      measurementActive = true;
     }
 
-    if (measurementActive) WriteCommand(serial, "STP");
+    // Always issue a best-effort stop before closing. STA may have succeeded even
+    // when its acknowledgement was lost, in which case the local state is unknown.
+    WriteCommand(serial, "STP");
     CloseHandle(serial);
     bool disconnectedChanged = false;
     {
