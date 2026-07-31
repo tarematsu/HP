@@ -54,6 +54,7 @@ test('official stream series resolves hosts without the removed minute-fact host
       listener_count INTEGER,
       broadcast_session_id INTEGER
     );
+    CREATE INDEX idx_sh_minute_facts_time ON sh_minute_facts(minute_at ASC,id ASC);
     CREATE TABLE sh_minute_fact_context(fact_id INTEGER PRIMARY KEY,host_id INTEGER);
     INSERT INTO sh_hosts VALUES(1,'sakurazaka46jp');
     INSERT INTO sh_broadcast_sessions VALUES(10,1);
