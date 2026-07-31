@@ -45,6 +45,7 @@ const cmake = readFileSync(
 
 test('audio loss policy fixes the requested timing boundaries', () => {
   assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
+  assert.match(policy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.doesNotMatch(policy, /ProbeRetry|ProbeSettle/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
   assert.match(policy, /kStationheadPrimaryRecoveryStabilityMs = 2'000/);
@@ -52,7 +53,9 @@ test('audio loss policy fixes the requested timing boundaries', () => {
     handlesHeader,
     /kStationheadTrackTransitionGraceMs =\s*kStationheadAudioLossGraceMs/,
   );
-  assert.match(policy, /StationheadAudioLossCanFallback\(true, false, 11'000\)/);
+  assert.match(policy, /StationheadAudioLossCanProbe\([\s\S]*11'999/);
+  assert.match(policy, /StationheadAudioLossCanProbe\([\s\S]*12'000/);
+  assert.match(policy, /StationheadAudioLossCanFallback\(true, false, 12'000\)/);
 });
 
 test('each Stationhead player evaluates audio loss and uses managed fallback', () => {
