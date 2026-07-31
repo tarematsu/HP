@@ -57,7 +57,7 @@ function environment(calls) {
   };
 }
 
-test('Actions history renderer reads only completed summary rows', async () => {
+test('Actions history renderer reads only completed daily summary rows', async () => {
   const calls = [];
   const result = await loadMaterializedSummary(
     environment(calls),
@@ -68,7 +68,7 @@ test('Actions history renderer reads only completed summary rows', async () => {
   );
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].bindings, ['2026-07-01', '2026-07-28', 800]);
+  assert.deepEqual(calls[0].bindings, ['2026-07-01', '2026-07-28', '2026-07-28', 800]);
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].period_complete, true);
   assert.equal(result.live_overlay_count, 0);
