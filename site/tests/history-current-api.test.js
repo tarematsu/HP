@@ -8,9 +8,10 @@ const NOW = Date.UTC(2026, 6, 30, 1, 23, 45);
 function dailyDatabase(assertions) {
   return {
     prepare(sql) {
-      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_observed_id/);
-      assert.match(sql, /WHERE f\.observed_at>=\? AND f\.observed_at<\?/);
-      assert.doesNotMatch(sql, /FROM sh_channel_snapshots/);
+      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time/);
+      assert.match(sql, /WHERE f\.minute_at>=\? AND f\.minute_at<\?/);
+      assert.match(sql, /f\.minute_at AS observed_at/);
+      assert.doesNotMatch(sql, /FROM sh_channel_snapshots|idx_sh_minute_facts_observed_id/);
       return {
         bind(start, end, limit) {
           assertions({ start, end, limit });
@@ -41,7 +42,7 @@ function dailyDatabase(assertions) {
   };
 }
 
-test('current daily summary scans only the complete UTC day in MINUTE_DB', async () => {
+test('current daily summary scans only canonical minutes in the UTC day', async () => {
   let bindings;
   const summary = await loadCurrentMinuteSummary({
     MINUTE_DB: dailyDatabase((value) => { bindings = value; }),
