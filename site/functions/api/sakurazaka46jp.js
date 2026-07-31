@@ -73,17 +73,17 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   UNION
   SELECT f.channel_id
   FROM target_host h
-  JOIN sh_minute_fact_context_v2 c INDEXED BY idx_sh_minute_fact_context_host_fact
-    ON c.host_id_override=h.id
+  CROSS JOIN sh_minute_fact_context_v2 c INDEXED BY idx_sh_minute_fact_context_host_fact
   JOIN sh_minute_facts f ON f.id=c.fact_id
-  WHERE f.minute_at>=?2 AND f.minute_at<?3
+  WHERE c.host_id_override=h.id
+    AND f.minute_at>=?2 AND f.minute_at<?3
 ), minute_points AS (
   SELECT CAST((f.minute_at-?1)/60000 AS INTEGER) AS elapsed_minute,
     ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
   FROM target_channels target
-  JOIN sh_minute_facts f INDEXED BY sqlite_autoindex_sh_minute_facts_1
-    ON f.channel_id=target.channel_id
-  WHERE f.minute_at>=?2 AND f.minute_at<?3
+  CROSS JOIN sh_minute_facts f INDEXED BY sqlite_autoindex_sh_minute_facts_1
+  WHERE f.channel_id=target.channel_id
+    AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
   GROUP BY elapsed_minute
 ), ranked AS (
