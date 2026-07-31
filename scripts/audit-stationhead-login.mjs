@@ -8,30 +8,14 @@ const option = (name, fallback = '') => {
   const at = process.argv.indexOf(name);
   return at >= 0 && process.argv[at + 1] ? process.argv[at + 1] : fallback;
 };
+
 const labelOf = (locator) => locator.evaluate((node) => [
+  node.innerText || '',
   node.textContent || '',
   node.getAttribute('aria-label') || '',
   node.getAttribute('title') || '',
   node.getAttribute('value') || '',
 ].join(' ').replace(/\s+/g, ' ').trim()).catch(() => '');
-
-const stubs = new Map([
-  ['tooltip', 'export const T=({children})=>children??null;'],
-  ['lottieanimationviewnonlazy', 'export const LottieAnimationViewNonLazy=()=>null;'],
-  ['selectedgif', "const n=()=>null,c=24,v={$$typeof:Symbol.for('react.forward_ref'),render:n,modalOptions:{}};export{v as A,c as C,v as E,v as G,v as P,v as S,v as T,v as a,v as b,n as c,v as d,v as e,n as f,v as g,n as h,n as u};"],
-]);
-
-function stubFor(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' ||
-        (parsed.hostname !== 'stationhead.com' && parsed.hostname !== 'www.stationhead.com')) return '';
-    const match = parsed.pathname.toLowerCase().match(/^\/assets\/([a-z0-9]+)-[a-z0-9_-]{6,}\.m?js$/);
-    return match ? stubs.get(match[1]) || '' : '';
-  } catch {
-    return '';
-  }
-}
 
 async function visibleFirst(page, selector, limit = 100) {
   const candidates = page.locator(selector);
@@ -44,14 +28,101 @@ async function visibleFirst(page, selector, limit = 100) {
 }
 
 async function visibleLabelled(page, pattern) {
-  const candidates = page.locator('button, [role="button"], a, input[type="button"], input[type="submit"]');
-  const count = Math.min(await candidates.count(), 200);
+  const candidates = page.locator(
+    'button, [role="button"], a, input[type="button"], input[type="submit"]',
+  );
+  const count = Math.min(await candidates.count(), 250);
   for (let index = 0; index < count; index += 1) {
     const candidate = candidates.nth(index);
     if (!await candidate.isVisible().catch(() => false)) continue;
     if (pattern.test(await labelOf(candidate))) return candidate;
   }
   return null;
+}
+
+async function capturePhase(page, name) {
+  return page.evaluate((phaseName) => {
+    const compact = (value, limit = 240) => String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, limit);
+    const visible = (element) => {
+      if (!element || element.getAttribute?.('aria-hidden') === 'true') return false;
+      const rect = element.getBoundingClientRect?.();
+      if (!rect || rect.width <= 2 || rect.height <= 2) return false;
+      const style = getComputedStyle(element);
+      return style.display !== 'none' && style.visibility !== 'hidden' &&
+        Number(style.opacity || 1) > 0;
+    };
+    const safeHref = (element) => {
+      const raw = element.getAttribute?.('href') || '';
+      if (!raw) return '';
+      try {
+        const url = new URL(raw, location.href);
+        return `${url.origin}${url.pathname}`.slice(0, 300);
+      } catch {
+        return compact(raw, 300);
+      }
+    };
+    const selector = [
+      'button',
+      '[role="button"]',
+      'a',
+      'input',
+      'select',
+      'textarea',
+      '[role="dialog"]',
+      '[role="alertdialog"]',
+      'h1',
+      'h2',
+      'h3',
+      '[aria-label]',
+    ].join(',');
+    const elements = [];
+    for (const element of document.querySelectorAll(selector)) {
+      if (!visible(element)) continue;
+      const tag = element.tagName.toLowerCase();
+      const type = compact(element.getAttribute?.('type'), 80);
+      const valueAllowed = tag === 'button' || type === 'button' || type === 'submit';
+      const rect = element.getBoundingClientRect();
+      elements.push({
+        tag,
+        role: compact(element.getAttribute?.('role'), 80),
+        type,
+        text: compact(element.innerText || element.textContent),
+        ariaLabel: compact(element.getAttribute?.('aria-label')),
+        title: compact(element.getAttribute?.('title')),
+        placeholder: compact(element.getAttribute?.('placeholder')),
+        autocomplete: compact(element.getAttribute?.('autocomplete'), 80),
+        name: compact(element.getAttribute?.('name'), 120),
+        id: compact(element.id, 120),
+        className: compact(
+          typeof element.className === 'string' ? element.className : '',
+          180,
+        ),
+        testId: compact(element.getAttribute?.('data-testid'), 120),
+        value: valueAllowed ? compact(element.getAttribute?.('value')) : '',
+        href: safeHref(element),
+        disabled: Boolean(element.disabled) ||
+          element.getAttribute?.('aria-disabled') === 'true',
+        bounds: {
+          x: Math.round(rect.x),
+          y: Math.round(rect.y),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      });
+      if (elements.length >= 250) break;
+    }
+    return {
+      name: phaseName,
+      capturedAt: new Date().toISOString(),
+      url: `${location.origin}${location.pathname}`,
+      title: document.title,
+      readyState: document.readyState,
+      elements,
+    };
+  }, name);
 }
 
 async function main() {
@@ -61,6 +132,7 @@ async function main() {
   const emailValue = process.env.STATIONHEAD_EMAIL || '';
   const passwordValue = process.env.STATIONHEAD_PASSWORD || '';
   const report = {
+    targetUrl,
     credentialsAvailable: Boolean(emailValue && passwordValue),
     startListeningVisible: false,
     startListeningClicked: false,
@@ -69,63 +141,85 @@ async function main() {
     emailInputVisible: false,
     passwordInputVisible: false,
     loginSubmitted: false,
+    phases: [],
   };
-
-  if (!report.credentialsAvailable) {
-    await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`);
-    console.log('Stationhead audit credentials are unavailable.');
-    return;
-  }
 
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   try {
-    const context = await browser.newContext({ locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
-    const page = await context.newPage();
-    await page.route('**/*', async (route) => {
-      if (route.request().resourceType() !== 'script') return route.continue();
-      const body = stubFor(route.request().url());
-      return body
-        ? route.fulfill({ status: 200, contentType: 'application/javascript; charset=utf-8', body })
-        : route.continue();
+    const context = await browser.newContext({
+      locale: 'ja-JP',
+      timezoneId: 'Asia/Tokyo',
+      viewport: { width: 1440, height: 1000 },
     });
+    const page = await context.newPage();
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
+    await page.waitForTimeout(1500);
+    report.phases.push(await capturePhase(page, 'initial'));
 
     const start = await visibleLabelled(page, /start\s+listening/i);
     report.startListeningVisible = Boolean(start);
     if (start) {
-      report.startListeningClicked = await start.click({ timeout: 5000 }).then(() => true).catch(() => false);
+      report.startListeningClicked = await start.click({ timeout: 5000 })
+        .then(() => true)
+        .catch(() => false);
       if (report.startListeningClicked) await page.waitForTimeout(2500);
     }
+    report.phases.push(await capturePhase(page, 'after-start-listening'));
+
     await page.keyboard.press('Escape').catch(() => null);
     await page.waitForTimeout(500);
+    report.phases.push(await capturePhase(page, 'after-escape'));
 
-    const login = await visibleLabelled(page, /^(log\s*in|sign\s*in|login|ログイン)$/i);
+    const login = await visibleLabelled(
+      page,
+      /(?:^|\b)(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\b|$)/i,
+    );
     report.loginControlVisible = Boolean(login);
     if (login) {
-      report.loginControlClicked = await login.click({ timeout: 5000, force: true }).then(() => true).catch(() => false);
+      report.loginControlClicked = await login.click({ timeout: 5000, force: true })
+        .then(() => true)
+        .catch(() => false);
       if (report.loginControlClicked) await page.waitForTimeout(2500);
     }
+    report.phases.push(await capturePhase(page, 'after-login-control'));
 
-    const email = await visibleFirst(page, 'input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]');
+    const email = await visibleFirst(
+      page,
+      'input[type="email"], input[autocomplete="email"], input[name*="email" i], input[id*="email" i]',
+    );
     report.emailInputVisible = Boolean(email);
-    if (email) await email.fill(emailValue).catch(() => null);
+    if (email && report.credentialsAvailable) {
+      await email.fill(emailValue).catch(() => null);
+    }
 
-    let password = await visibleFirst(page, 'input[type="password"], input[autocomplete="current-password"]');
-    if (!password && email) {
+    let password = await visibleFirst(
+      page,
+      'input[type="password"], input[autocomplete="current-password"]',
+    );
+    if (!password && email && report.credentialsAvailable) {
       const next = await visibleLabelled(page, /continue|next|続ける|次へ/i);
       if (next) await next.click({ timeout: 3000 }).catch(() => null);
       await page.waitForTimeout(2000);
-      password = await visibleFirst(page, 'input[type="password"], input[autocomplete="current-password"]');
+      report.phases.push(await capturePhase(page, 'after-login-next'));
+      password = await visibleFirst(
+        page,
+        'input[type="password"], input[autocomplete="current-password"]',
+      );
     }
     report.passwordInputVisible = Boolean(password);
-    if (password) {
+    if (password && report.credentialsAvailable) {
       await password.fill(passwordValue).catch(() => null);
-      const submit = await visibleLabelled(page, /log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ/i);
+      const submit = await visibleLabelled(
+        page,
+        /log\s*in|sign\s*in|login|continue|next|ログイン|続ける|次へ/i,
+      );
       report.loginSubmitted = submit
         ? await submit.click({ timeout: 3000 }).then(() => true).catch(() => false)
         : await password.press('Enter').then(() => true).catch(() => false);
+      if (report.loginSubmitted) await page.waitForTimeout(3000);
+      report.phases.push(await capturePhase(page, 'after-login-submit'));
     }
     await context.close();
   } finally {
@@ -133,7 +227,17 @@ async function main() {
   }
 
   await writeFile(outPath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(JSON.stringify(report));
+  console.log(JSON.stringify({
+    credentialsAvailable: report.credentialsAvailable,
+    startListeningVisible: report.startListeningVisible,
+    startListeningClicked: report.startListeningClicked,
+    loginControlVisible: report.loginControlVisible,
+    loginControlClicked: report.loginControlClicked,
+    emailInputVisible: report.emailInputVisible,
+    passwordInputVisible: report.passwordInputVisible,
+    loginSubmitted: report.loginSubmitted,
+    phaseCount: report.phases.length,
+  }));
 }
 
 main().catch((error) => {
