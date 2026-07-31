@@ -1,11 +1,23 @@
-import { applyD1Migrations, env, SELF } from "cloudflare:test";
+import { applyD1Migrations, env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { runUpdateCheck } from "../src/update_check";
+import { queueUpdateCheckPing, runUpdateCheck } from "../src/update_check";
 import type { Env } from "../src/sources";
 
-type TestEnv = typeof env & { TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1] };
+type TestEnv = typeof env & {
+  TEST_MIGRATIONS: Parameters<typeof applyD1Migrations>[1];
+  SCHEDULER_COORDINATOR: DurableObjectNamespace;
+};
+
+type RuntimeJob = {
+  name: string;
+  nextRunAt: number;
+};
+type RuntimeEnvelope = {
+  jobs: RuntimeJob[];
+};
 
 const MANIFEST_KEY = "updates/latest/update-manifest.json";
+const RUNTIME_STORAGE_KEY = "scheduler-runtime-v2";
 
 function manifest(version: string, homePanelHash = "a".repeat(64)): string {
   return JSON.stringify({
@@ -112,6 +124,29 @@ describe("cloud-driven update check", () => {
     expect(firstBody.queued || secondBody.queued).toBe(true);
     expect(firstBody.queued && secondBody.queued).toBe(false);
     expect((await SELF.fetch("https://example.test/v1/update/ping")).status).not.toBe(202);
+  });
+
+  it("wakes only the update_check job through the Scheduler Durable Object", async () => {
+    const pending: Promise<unknown>[] = [];
+    const context = {
+      waitUntil(promise: Promise<unknown>) { pending.push(promise); },
+      passThroughOnException() {},
+    } as unknown as ExecutionContext;
+    const queued = queueUpdateCheckPing(updateEnv(), context, Date.now() + 120_000);
+    expect(queued).toBe(true);
+    await Promise.all(pending);
+
+    const namespace = (env as TestEnv).SCHEDULER_COORDINATOR;
+    const stub = namespace.get(namespace.idFromName("global"));
+    const runtime = await runInDurableObject(stub, async (_instance, state) =>
+      state.storage.get<RuntimeEnvelope>(RUNTIME_STORAGE_KEY));
+    const due = runtime?.jobs
+      .filter(job => job.nextRunAt <= Math.floor(Date.now() / 1000))
+      .map(job => job.name);
+
+    expect(due).toContain("update_check");
+    expect(await runInDurableObject(stub, async (_instance, state) => state.storage.getAlarm()))
+      .not.toBeNull();
   });
 
   it("rejects an invalid manifest without recording a new baseline", async () => {

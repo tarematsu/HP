@@ -7,12 +7,17 @@ import type { Env } from "./sources";
 const HEARTBEAT_WINDOW_MS = 30 * 86_400_000;
 const COMMAND_TTL_SECONDS = 86_400;
 const UPDATE_PING_COOLDOWN_MS = 60_000;
+const SCHEDULER_COORDINATOR_NAME = "global";
 
 type ActiveUpdateCheck = {
   db: D1Database;
   bucket: R2Bucket;
   promise: Promise<void>;
 };
+
+interface UpdateCheckSchedulerEnv extends Env {
+  SCHEDULER_COORDINATOR?: DurableObjectNamespace;
+}
 
 async function knownDeviceIds(env: Env): Promise<Set<string>> {
   const ids = new Set<string>();
@@ -87,12 +92,34 @@ function coalescedUpdateCheck(env: Env): Promise<void> {
   return promise;
 }
 
-export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
-  const now = Date.now();
+async function signalUpdateCheck(env: Env): Promise<void> {
+  const namespace = (env as UpdateCheckSchedulerEnv).SCHEDULER_COORDINATOR;
+  if (!namespace) throw new Error("scheduler coordinator binding is unavailable");
+  const stub = namespace.get(namespace.idFromName(SCHEDULER_COORDINATOR_NAME));
+  const response = await stub.fetch("https://scheduler.internal/wake", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: '{"names":["update_check"]}',
+  });
+  if (!response.ok) throw new Error(`scheduler coordinator wake failed: HTTP ${response.status}`);
+  await response.body?.cancel();
+}
+
+// Keep the public ping inside the stateless HTTP CPU budget. It only wakes the
+// SchedulerCoordinator Durable Object; manifest/R2/D1 work runs in the alarm
+// invocation under the Durable Object CPU policy.
+export function queueUpdateCheckPing(
+  env: Env,
+  ctx: ExecutionContext,
+  now = Date.now(),
+): boolean {
+  if (!(env as UpdateCheckSchedulerEnv).SCHEDULER_COORDINATOR) return false;
   if (now - lastUpdatePingAt < UPDATE_PING_COOLDOWN_MS) return false;
   lastUpdatePingAt = now;
-  ctx.waitUntil(coalescedUpdateCheck(env).catch(error =>
-    console.error("update ping failed", error instanceof Error ? error.message : String(error))));
+  ctx.waitUntil(signalUpdateCheck(env).catch(error => {
+    lastUpdatePingAt = 0;
+    console.error("update ping failed", error instanceof Error ? error.message : String(error));
+  }));
   return true;
 }
 
