@@ -69,13 +69,27 @@ function periodExpression(mode, column = 'observed_at') {
   return `date(${column} / 1000,'unixepoch','-' || ((CAST(strftime('%w', ${column} / 1000, 'unixepoch') AS INTEGER) + 6) % 7) || ' days')`;
 }
 
-function summarySql(mode, streamColumn) {
-  const periodKey = periodExpression(mode);
+function summarySql(mode, streamColumn, minuteFacts = false) {
+  const observedAt = minuteFacts ? 'f.observed_at' : 'observed_at';
+  const periodKey = periodExpression(mode, observedAt);
+  const preparedColumns = minuteFacts
+    ? `f.id AS id,f.observed_at AS observed_at,f.listener_count AS listener_count,
+      COALESCE(d.last_total_member_count,f.total_member_count) AS total_member_count,
+      f.${streamColumn} AS stream_value,h.current_handle AS host_handle`
+    : `id,observed_at,listener_count,total_member_count,
+      ${streamColumn} AS stream_value,host_handle`;
+  const source = minuteFacts
+    ? `sh_minute_facts f INDEXED BY idx_sh_minute_facts_observed_id
+    LEFT JOIN sh_minute_fact_context c ON c.fact_id=f.id
+    LEFT JOIN sh_hosts h ON h.id=c.host_id
+    LEFT JOIN sh_total_member_daily_latest d
+      ON d.channel_id=f.channel_id
+      AND d.day_at=(f.observed_at/86400000)*86400000`
+    : 'sh_channel_snapshots';
   return `WITH prepared AS (
-    SELECT id,observed_at,listener_count,total_member_count,
-      ${streamColumn} AS stream_value,host_handle,
+    SELECT ${preparedColumns},
       ${periodKey} AS period_key
-    FROM sh_channel_snapshots WHERE observed_at>=? AND observed_at<?
+    FROM ${source} WHERE ${observedAt}>=? AND ${observedAt}<?
   ), ranked AS (
     SELECT prepared.*,
       ROW_NUMBER() OVER (
@@ -130,7 +144,7 @@ export function liveSummarySql(mode) {
 }
 
 export function minuteSummarySql(mode) {
-  return summarySql(mode, 'current_stream_count');
+  return summarySql(mode, 'reported_current_stream_count', true);
 }
 
 export function combineSummaryRows(base, live) {
