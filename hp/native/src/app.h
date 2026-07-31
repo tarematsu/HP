@@ -11,6 +11,28 @@ namespace hp {
 
 class Renderer;
 
+class StationheadFallbackRevisionGate {
+ public:
+  StationheadFallbackRevisionGate& operator=(uint64_t revision) noexcept {
+    revision_ = revision;
+    startedAt_ = revision == 0 ? 0 : UnixMillis();
+    return *this;
+  }
+
+  friend bool operator>(
+      uint64_t candidateRevision,
+      const StationheadFallbackRevisionGate& gate) noexcept {
+    return gate.revision_ != 0 &&
+        gate.startedAt_.ElapsedMilliseconds() >=
+            kStationheadFallbackMinimumDwellMs &&
+        candidateRevision > gate.revision_;
+  }
+
+ private:
+  uint64_t revision_ = 0;
+  MonotonicElapsedTimestamp startedAt_;
+};
+
 class App {
  public:
   explicit App(HINSTANCE instance);
@@ -20,6 +42,7 @@ class App {
   void LogUnhandled(DWORD code, void* address);
   void ToggleStationheadAudio();
   void MuteStationheadAudio();
+  void NotifyStationheadPlaybackFallbackStarted();
 
  private:
   struct HistoryFlushGuard {
@@ -111,7 +134,7 @@ class App {
   bool startupUpdateScheduled_ = false;
   bool stationheadPlaybackFallbackActive_ = false;
   bool stationheadPlaybackNoNextTrackObserved_ = false;
-  uint64_t stationheadPlaybackFallbackRevision_ = 0;
+  StationheadFallbackRevisionGate stationheadPlaybackFallbackRevision_;
   // Track-boundary handoff windows are operational delays. Re-project them to
   // the current civil clock only at scheduler boundaries; their actual expiry
   // remains tied to GetTickCount64().
