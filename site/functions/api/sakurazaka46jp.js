@@ -63,28 +63,31 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   SELECT id FROM sh_hosts
   WHERE lower(COALESCE(current_handle,''))='sakurazaka46jp'
   LIMIT 1
-), target_channels AS (
-  SELECT s.channel_id
+), target_sessions AS (
+  SELECT s.id
   FROM target_host h
-  JOIN sh_broadcast_sessions s INDEXED BY idx_sh_broadcast_sessions_host_window
-    ON s.host_id=h.id
-  WHERE COALESCE(s.broadcast_start_time,s.first_observed_at)<?3
-    AND COALESCE(s.ended_at,s.last_observed_at)>=?2
-  UNION
-  SELECT f.channel_id
-  FROM target_host h
-  CROSS JOIN sh_minute_fact_context_v2 c INDEXED BY idx_sh_minute_fact_context_host_fact
-  JOIN sh_minute_facts f ON f.id=c.fact_id
-  WHERE c.host_id_override=h.id
-    AND f.minute_at>=?2 AND f.minute_at<?3
-), minute_points AS (
-  SELECT CAST((f.minute_at-?1)/60000 AS INTEGER) AS elapsed_minute,
-    ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
-  FROM target_channels target
-  CROSS JOIN sh_minute_facts f INDEXED BY sqlite_autoindex_sh_minute_facts_1
-  WHERE f.channel_id=target.channel_id
+  CROSS JOIN sh_broadcast_sessions s
+  WHERE s.host_id=h.id
+), candidate_points AS (
+  SELECT f.minute_at,f.listener_count
+  FROM target_sessions target
+  CROSS JOIN sh_minute_facts f
+  WHERE f.broadcast_session_id=target.id
     AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
+  UNION ALL
+  SELECT f.minute_at,f.listener_count
+  FROM target_host h
+  CROSS JOIN sh_minute_fact_context c
+  JOIN sh_minute_facts f ON f.id=c.fact_id
+  WHERE c.host_id=h.id
+    AND f.broadcast_session_id IS NULL
+    AND f.minute_at>=?2 AND f.minute_at<?3
+    AND f.listener_count IS NOT NULL
+), minute_points AS (
+  SELECT CAST((minute_at-?1)/60000 AS INTEGER) AS elapsed_minute,
+    ROUND(AVG(listener_count),1) AS listener_count,COUNT(*) AS source_samples
+  FROM candidate_points
   GROUP BY elapsed_minute
 ), ranked AS (
   SELECT *,ROW_NUMBER() OVER (ORDER BY elapsed_minute ASC) AS point_rank,
