@@ -45,13 +45,15 @@ const cmake = readFileSync(
 
 test('audio loss policy fixes the requested timing boundaries', () => {
   assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
-  assert.match(policy, /kStationheadAudioLossProbeSettleMs = 1'000/);
+  assert.match(policy, /kStationheadAudioLossProbeRetryMs = 1'000/);
+  assert.doesNotMatch(policy, /ProbeSettle/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
   assert.match(policy, /kStationheadPrimaryRecoveryStabilityMs = 2'000/);
   assert.match(
     handlesHeader,
     /kStationheadTrackTransitionGraceMs =\s*kStationheadAudioLossGraceMs/,
   );
+  assert.match(policy, /StationheadAudioLossCanFallback\(true, false, 11'000\)/);
 });
 
 test('each Stationhead player evaluates audio loss and uses managed fallback', () => {
@@ -65,17 +67,19 @@ test('each Stationhead player evaluates audio loss and uses managed fallback', (
   assert.match(cmake, /src\/sh_audio_loss\.cpp/);
 });
 
-test('authentication probing is limited to visible actionable UI', () => {
+test('authentication probing matches the live Stationhead DOM structure', () => {
+  assert.match(audioLossSource, /Connect music/);
+  assert.match(audioLossSource, /music-service-connect/);
+  assert.match(audioLossSource, /stationhead-login-form/);
+  assert.match(audioLossSource, /stationhead-login-control/);
+  assert.match(audioLossSource, /surface\.querySelectorAll\(actionableSelector\)/);
+  assert.match(audioLossSource, /\bspotify\b/);
+  assert.match(audioLossSource, /\bapple\\s\+music\b/);
+  assert.match(audioLossSource, /element\.checkVisibility/);
   assert.match(audioLossSource, /getBoundingClientRect/);
-  assert.match(audioLossSource, /style\.display !== 'none'/);
-  assert.match(audioLossSource, /log\\s\*in\|sign\\s\*in\|login/);
-  assert.match(audioLossSource, /connect\|continue\|authorize/);
-  assert.match(audioLossSource, /spotifyAuthentication/);
   assert.match(audioLossSource, /authentication UI probe failed; fallback remains blocked/);
-  assert.match(audioLossSource, /audioLossProbeComplete_ = !audioLossAuthUiDetected_/);
+  assert.match(audioLossSource, /audioLossProbeComplete_ = !authentication/);
   assert.match(audioLossSource, /audioLossStartedAt_\.WallTime\(\) != lossStartedAt/);
-  assert.match(audioLossSource, /snapshot\.navigating/);
-  assert.match(audioLossSource, /snapshot\.processFailed/);
 });
 
 test('the operation surface is raised once before fallback evaluation', () => {
@@ -88,11 +92,18 @@ test('the operation surface is raised once before fallback evaluation', () => {
   assert.match(audioLossSource, /L"playing"/);
 });
 
+test('navigation time is excluded from the recovery failure interval', () => {
+  assert.match(audioLossSource, /audioLossStartedAt_ = 0;\n\s*ResetAudioLossProbe\(\);\n\s*return;/);
+  assert.match(audioLossSource, /Navigation time is not audio-loss time/);
+  assert.match(audioLossSource, /audioLossPlaybackObserved_ = true;\n\s*audioLossStartedAt_ = 0/);
+  assert.match(audioLossSource, /snapshot\.navigating/);
+  assert.match(audioLossSource, /snapshot\.processFailed/);
+});
+
 test('fallback recovery waits for dwell and stable primary audio', () => {
   assert.match(audioLossSource, /StationheadFallbackDwellSatisfied/);
   assert.match(audioLossSource, /managedPlaybackReturnRequested_/);
   assert.match(audioLossSource, /managedPrimaryReturnPending_/);
-  assert.match(audioLossSource, /audioLossPlaybackObserved_ = true/);
   assert.match(
     audioLossSource,
     /nowMs - playingSince >= kStationheadPrimaryRecoveryStabilityMs/,
