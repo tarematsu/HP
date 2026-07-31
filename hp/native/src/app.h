@@ -13,6 +13,21 @@ class Renderer;
 
 class StationheadFallbackRevisionGate {
  public:
+  StationheadFallbackRevisionGate& operator=(uint64_t healthyRevision) noexcept {
+    if (healthyRevision == 0) {
+      Reset();
+    } else {
+      Arm(healthyRevision);
+    }
+    return *this;
+  }
+
+  friend bool operator>(
+      uint64_t healthyRevision,
+      const StationheadFallbackRevisionGate& gate) noexcept {
+    return gate.CanRelease(healthyRevision);
+  }
+
   void Arm(uint64_t healthyRevision) noexcept {
     baselineHealthyRevision_ = healthyRevision;
     startedAt_ = UnixMillis();
