@@ -75,8 +75,8 @@ test('FACTS schema deployment captures Wrangler output before classifying retrie
     'utf8',
   );
   assert.match(source, /runWranglerCommandWithRetry/);
-  assert.match(source, /maxRetries: 2/);
-  assert.match(source, /retryDelayMs: 2_000/);
+  assert.match(source, /maxRetries: 3/);
+  assert.match(source, /retryDelayMs: 5_000/);
   assert.match(source, /\['ignore', 'pipe', 'pipe'\]/);
   assert.match(source, /'--file', migrationPath/);
 });
