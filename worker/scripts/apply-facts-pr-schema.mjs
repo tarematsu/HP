@@ -39,8 +39,8 @@ function wrangler(args, stdio = 'inherit') {
       encoding: 'utf8',
       stdio: echoOutput ? ['ignore', 'pipe', 'pipe'] : stdio,
     },
-    maxRetries: 2,
-    retryDelayMs: 2_000,
+    maxRetries: 3,
+    retryDelayMs: 5_000,
   });
   if (echoOutput && output) process.stdout.write(String(output));
   return output;
