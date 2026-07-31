@@ -73,8 +73,8 @@ test('authentication probing matches the live Stationhead DOM structure', () => 
   assert.match(audioLossSource, /stationhead-login-form/);
   assert.match(audioLossSource, /stationhead-login-control/);
   assert.match(audioLossSource, /surface\.querySelectorAll\(actionableSelector\)/);
-  assert.match(audioLossSource, /\bspotify\b/);
-  assert.match(audioLossSource, /\bapple\\s\+music\b/);
+  assert.match(audioLossSource, /\\bspotify\\b/);
+  assert.match(audioLossSource, /\\bapple\\s\+music\\b/);
   assert.match(audioLossSource, /element\.checkVisibility/);
   assert.match(audioLossSource, /getBoundingClientRect/);
   assert.match(audioLossSource, /authentication UI probe failed; fallback remains blocked/);
@@ -109,10 +109,13 @@ test('fallback recovery waits for dwell and stable primary audio', () => {
     /nowMs - playingSince >= kStationheadPrimaryRecoveryStabilityMs/,
   );
   assert.match(appHeader, /StationheadFallbackRevisionGate/);
+  assert.match(appHeader, /void Arm\(uint64_t healthyRevision\)/);
+  assert.match(appHeader, /bool CanRelease\(uint64_t healthyRevision\)/);
   assert.match(
     appHeader,
     /startedAt_\.ElapsedMilliseconds\(\) >=\s*kStationheadFallbackMinimumDwellMs/,
   );
+  assert.doesNotMatch(appHeader, /100'000'000'000ULL/);
 });
 
 test('only a newer healthy five-minute playback observation releases fallback', () => {
@@ -121,8 +124,9 @@ test('only a newer healthy five-minute playback observation releases fallback', 
   assert.match(playbackResolver, /!projection\.stale/);
   assert.match(playbackResolver, /!projection\.setupRequired/);
   assert.match(playbackResolver, /status\.healthyRevision = healthyObservation/);
+  assert.match(playbackResolver, /status\.contentRevision = status\.healthyRevision != 0/);
+  assert.match(playbackResolver, /status\.endedWithoutNextTrack/);
   assert.match(audioLossSource, /feed\.healthyRevision/);
-  assert.match(appHeader, /candidateRevision >= 100'000'000'000ULL/);
   assert.match(
     audioLossSource,
     /waiting for a newer healthy five-minute playback observation/,
