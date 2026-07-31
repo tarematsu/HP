@@ -364,6 +364,8 @@ class StationheadPlayer {
     trackBoundaryRefreshPending_ = false;
   }
   void SetPlaybackFallback(bool active, const std::wstring& reason);
+  void SetManagedPlaybackFallback(bool active, const std::wstring& reason);
+  void EvaluateAudioLossRecovery(int64_t nowMs);
   void ShowForLogin();
   void ShowAfterAudioStop();
   void OpenSpotifyAuthorization(const std::wstring& url);
@@ -440,6 +442,10 @@ class StationheadPlayer {
   void SetVisible(bool visible);
   void ScheduleRecreate(const std::wstring& reason, int64_t delayMs = 0);
   void LayoutControllers();
+  void BeginAudioLossAuthProbe(int64_t nowMs);
+  void ResetAudioLossProbe() noexcept;
+  void UpdateAudioLossState(
+      const std::wstring& state, const std::wstring& detail);
 
   StationheadRole role_;
   HWND window_;
@@ -525,6 +531,16 @@ class StationheadPlayer {
   bool viewVisible_ = false;
   bool startupPreviewActive_ = false;
   bool usingFallback_ = false;
+  MonotonicElapsedTimestamp audioLossStartedAt_;
+  MonotonicElapsedTimestamp managedPlaybackFallbackStartedAt_;
+  bool audioLossPlaybackObserved_ = false;
+  bool audioLossProbeInFlight_ = false;
+  bool audioLossProbeComplete_ = false;
+  bool audioLossAuthUiDetected_ = false;
+  bool managedPlaybackFallbackActive_ = false;
+  bool managedPlaybackReturnRequested_ = false;
+  bool managedPrimaryReturnPending_ = false;
+  std::wstring audioLossState_;
   ICoreWebView2* identityWebview_ = nullptr;  // Secondary only.
 };
 }  // namespace hp
