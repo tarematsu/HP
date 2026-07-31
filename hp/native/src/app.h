@@ -22,7 +22,11 @@ class StationheadFallbackRevisionGate {
   friend bool operator>(
       uint64_t candidateRevision,
       const StationheadFallbackRevisionGate& gate) noexcept {
-    return gate.revision_ != 0 &&
+    // Healthy revisions are dashboard fetch timestamps in epoch milliseconds.
+    // Small queue-content revisions remain available for legacy end detection,
+    // but can never release fallback by themselves.
+    return candidateRevision >= 100'000'000'000ULL &&
+        gate.revision_ != 0 &&
         gate.startedAt_.ElapsedMilliseconds() >=
             kStationheadFallbackMinimumDwellMs &&
         candidateRevision > gate.revision_;
