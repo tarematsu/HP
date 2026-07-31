@@ -1,6 +1,9 @@
 import { isRealIsoDate } from './api-utils.js';
 import { SUMMARY_TABLES } from './history-summary.js';
-import { applySummaryCompleteness } from './period-completeness.js';
+import {
+  applySummaryCompleteness,
+  currentPeriodKey,
+} from './period-completeness.js';
 import { onRequestGet as publicHistory } from '../api/history.js';
 
 const JSON_HEADERS = {
@@ -32,11 +35,20 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
   const table = SUMMARY_TABLES[mode];
   if (!table) throw new Error(`unsupported summary mode: ${mode}`);
 
-  const result = await env.OTHER_DB.prepare(
+  // Only the current UTC daily row stays outside R2. It is loaded from
+  // /api/history-current and merged in the browser. Weekly and monthly rows,
+  // including their current periods when available, are served from R2.
+  const currentDailyKey = currentPeriodKey('daily', now);
+  const currentFilter = mode === 'daily' ? ' AND period_key<?' : '';
+  const statement = env.OTHER_DB.prepare(
     `SELECT ${SUMMARY_COLUMNS} FROM ${table}
-     WHERE period_key>=? AND period_key<=?
+     WHERE period_key>=? AND period_key<=?${currentFilter}
      ORDER BY period_key ASC LIMIT ?`,
-  ).bind(from, to, summaryLimit(mode)).all();
+  );
+  const bindings = mode === 'daily'
+    ? [from, to, currentDailyKey, summaryLimit(mode)]
+    : [from, to, summaryLimit(mode)];
+  const result = await statement.bind(...bindings).all();
   const rows = result.results || [];
   const completed = applySummaryCompleteness(rows, mode, now);
   return {

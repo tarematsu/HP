@@ -8,7 +8,9 @@ const NOW = Date.UTC(2026, 6, 30, 1, 23, 45);
 function dailyDatabase(assertions) {
   return {
     prepare(sql) {
-      assert.match(sql, /FROM sh_channel_snapshots WHERE observed_at>=\? AND observed_at<\?/);
+      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_observed_id/);
+      assert.match(sql, /WHERE f\.observed_at>=\? AND f\.observed_at<\?/);
+      assert.doesNotMatch(sql, /FROM sh_channel_snapshots/);
       return {
         bind(start, end, limit) {
           assertions({ start, end, limit });
@@ -58,7 +60,7 @@ test('current daily summary scans only the complete UTC day in MINUTE_DB', async
   assert.match(summary.rows[0].quality_flags, /minute_facts/);
   assert.match(summary.rows[0].quality_flags, /incomplete_current_period/);
   assert.equal(summary.live_source, 'minute_facts');
-  assert.equal(summary.storage_source, 'minute.sh_channel_snapshots');
+  assert.equal(summary.storage_source, 'minute.sh_minute_facts');
   assert.equal(summary.read_path, 'minute-current-daily');
   assert.equal(summary.live_overlay_count, 1);
 });

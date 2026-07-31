@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -7,10 +8,13 @@ import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseCadenceSeconds,
 } from '../../site/functions/lib/api-contract.js';
+import { SUMMARY_TABLES } from '../../site/functions/lib/history-summary.js';
+import { currentPeriodKey } from '../../site/functions/lib/period-completeness.js';
 import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
+const repositoryRoot = resolve(workerRoot, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
@@ -18,6 +22,28 @@ const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const WORKFLOW_INTERVAL_MINUTES = 30;
 const HISTORY_REFRESH_PHASE_MINUTES = 26;
+const COMMON_RENDERER_PATHS = Object.freeze([
+  'worker/scripts/run-pages-read-model-actions.mjs',
+]);
+const SUMMARY_RENDERER_PATHS = Object.freeze([
+  'site/functions/lib/materialized-history.js',
+  'site/functions/lib/history-summary.js',
+  'site/functions/lib/period-completeness.js',
+  'site/functions/lib/api-utils.js',
+]);
+const RENDERER_PATHS = Object.freeze({
+  'history:daily': SUMMARY_RENDERER_PATHS,
+  'history:weekly': SUMMARY_RENDERER_PATHS,
+  'history:monthly': SUMMARY_RENDERER_PATHS,
+  'history:broadcasts': Object.freeze([
+    'site/functions/lib/materialized-history.js',
+    'site/functions/api/history.js',
+    'site/functions/lib/api-utils.js',
+  ]),
+  'host-history:summary': Object.freeze([
+    'site/functions/api/host-history.js',
+  ]),
+});
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
@@ -108,8 +134,143 @@ function uploadEnvelope(modelKey, envelope) {
   }
 }
 
-async function materializeVariant(variant, env, now) {
-  const handler = await responseHandler(variant.key);
+function loadExistingEnvelope(modelKey) {
+  const directory = mkdtempSync(join(workerRoot, '.pages-response-existing-'));
+  try {
+    const path = join(directory, `${encodeURIComponent(modelKey)}.json`);
+    const key = pagesActionsR2ResponseKey(modelKey);
+    try {
+      wrangler([
+        'r2', 'object', 'get', `${responseBucket}/${key}`,
+        '--remote', '--file', path,
+      ]);
+    } catch {
+      return null;
+    }
+    try {
+      const envelope = JSON.parse(readFileSync(path, 'utf8'));
+      return envelope && typeof envelope === 'object' && !Array.isArray(envelope)
+        ? envelope
+        : null;
+    } catch {
+      return null;
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function revisionValue(prefix, row, fields) {
+  return [prefix, ...fields.map((field) => `${field}=${String(row?.[field] ?? 0)}`)].join(':');
+}
+
+function rendererRevisionFor(modelKey) {
+  const paths = [...new Set([
+    ...COMMON_RENDERER_PATHS,
+    ...(RENDERER_PATHS[modelKey] || []),
+  ])].sort();
+  const hash = createHash('sha256');
+  for (const path of paths) {
+    hash.update(path);
+    hash.update('\0');
+    hash.update(readFileSync(resolve(repositoryRoot, path)));
+    hash.update('\0');
+  }
+  return `sha256:${hash.digest('hex')}`;
+}
+
+export async function loadVariantSourceRevision(variant, env, now = Date.now()) {
+  const modelKey = String(variant?.key || '');
+  if (modelKey === 'dashboard') return null;
+
+  if (modelKey.startsWith('history:')) {
+    const mode = modelKey.slice('history:'.length);
+    const table = SUMMARY_TABLES[mode];
+    if (table) {
+      const currentFilter = mode === 'daily' ? ' WHERE period_key<?' : '';
+      const statement = env.OTHER_DB.prepare(
+        `SELECT COUNT(*) AS row_count,
+          COALESCE(MAX(updated_at),0) AS max_updated_at,
+          COALESCE(SUM(updated_at),0) AS sum_updated_at
+         FROM ${table}${currentFilter}`,
+      );
+      const row = mode === 'daily'
+        ? await statement.bind(currentPeriodKey('daily', now)).first()
+        : await statement.first();
+      return revisionValue(
+        `summary:${mode}`,
+        row,
+        ['row_count', 'max_updated_at', 'sum_updated_at'],
+      );
+    }
+    if (mode === 'broadcasts') {
+      const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
+          COALESCE(MAX(refreshed_at),0) AS max_refreshed_at,
+          COALESCE(SUM(refreshed_at),0) AS sum_refreshed_at,
+          COALESCE(MAX(ended_at),0) AS max_ended_at
+        FROM sh_official_broadcast_summary
+        WHERE host_handle='sakurazaka46jp'`).first();
+      return revisionValue(
+        'broadcasts',
+        row,
+        ['row_count', 'max_refreshed_at', 'sum_refreshed_at', 'max_ended_at'],
+      );
+    }
+  }
+
+  if (modelKey === 'host-history:summary') {
+    const row = await env.OTHER_DB.prepare(`SELECT COUNT(*) AS row_count,
+        COALESCE(MAX(last_observed_at),0) AS max_observed_at,
+        COALESCE(MAX(ended_at),0) AS max_ended_at,
+        COALESCE(SUM(COALESCE(last_observed_at,0)+COALESCE(ended_at,0)),0) AS sum_revision
+      FROM sh_host_broadcast_sessions
+      WHERE handle='sakurazaka46jp'`).first();
+    return revisionValue(
+      'host-summary',
+      row,
+      ['row_count', 'max_observed_at', 'max_ended_at', 'sum_revision'],
+    );
+  }
+  return null;
+}
+
+function reusableEnvelope(envelope, sourceRevision, rendererRevision) {
+  return Number(envelope?.version) === 1
+    && typeof envelope?.body === 'string'
+    && envelope.source_revision === sourceRevision
+    && envelope.renderer_revision === rendererRevision;
+}
+
+export async function materializeVariant(variant, env, now, dependencies = {}) {
+  const loadExisting = dependencies.loadExistingEnvelope || loadExistingEnvelope;
+  const loadRevision = dependencies.loadSourceRevision || loadVariantSourceRevision;
+  const resolveHandler = dependencies.responseHandler || responseHandler;
+  const upload = dependencies.uploadEnvelope || uploadEnvelope;
+  const rendererRevision = String(
+    dependencies.rendererRevision ?? rendererRevisionFor(variant.key),
+  );
+  const existing = await loadExisting(variant.key);
+  const sourceRevision = await loadRevision(variant, env, now);
+  const cadenceSeconds = materializedResponseCadenceSeconds(variant.key);
+
+  if (sourceRevision && reusableEnvelope(existing, sourceRevision, rendererRevision)) {
+    const envelope = {
+      ...existing,
+      updated_at: now,
+      cadence_seconds: cadenceSeconds,
+    };
+    return {
+      key: variant.key,
+      bytes: existing.body.length,
+      object_key: upload(variant.key, envelope),
+      source_revision: sourceRevision,
+      renderer_revision: rendererRevision,
+      rendered: false,
+      changed: false,
+    };
+  }
+
+  const handler = await resolveHandler(variant.key);
   const response = await handler({
     request: new Request(`https://pages-materializer.invalid${variant.url}`, {
       method: 'GET',
@@ -122,18 +283,29 @@ async function materializeVariant(variant, env, now) {
     throw new Error(`${variant.key} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
   }
   JSON.parse(body);
+  const headers = persistedHeaders(response);
   const envelope = {
     version: 1,
     status: response.status,
-    headers: persistedHeaders(response),
+    headers,
     updated_at: now,
-    cadence_seconds: materializedResponseCadenceSeconds(variant.key),
+    cadence_seconds: cadenceSeconds,
+    source_revision: sourceRevision,
+    renderer_revision: rendererRevision,
     body,
   };
+  const changed = !existing
+    || existing.body !== body
+    || Number(existing.status) !== response.status
+    || JSON.stringify(existing.headers || {}) !== JSON.stringify(headers);
   return {
     key: variant.key,
     bytes: body.length,
-    object_key: uploadEnvelope(variant.key, envelope),
+    object_key: upload(variant.key, envelope),
+    source_revision: sourceRevision,
+    renderer_revision: rendererRevision,
+    rendered: true,
+    changed,
   };
 }
 

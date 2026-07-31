@@ -48,7 +48,7 @@ export function materializedApiKey(input) {
   const url = input instanceof URL ? input : new URL(input);
   const pathname = normalizedPathname(url.pathname);
   if (pathname === '/api/dashboard' && onlyParameters(url)) return 'dashboard';
-  if (pathname === '/api/history' && onlyParameters(url, ['mode'])) {
+  if (pathname === '/api/history' && onlyParameters(url, ['mode', 'from', 'to'])) {
     const mode = String(url.searchParams.get('mode') || 'weekly').trim().toLowerCase();
     return ['daily', 'weekly', 'monthly', 'broadcasts'].includes(mode) ? `history:${mode}` : null;
   }

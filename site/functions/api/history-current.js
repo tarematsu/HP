@@ -69,7 +69,7 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
     latest_live_observed_at: completed.rows.at(-1)?.period_end || null,
     live_truncated: false,
     live_source: 'minute_facts',
-    storage_source: 'minute.sh_channel_snapshots',
+    storage_source: 'minute.sh_minute_facts',
     read_path: 'minute-current-daily',
   };
 }

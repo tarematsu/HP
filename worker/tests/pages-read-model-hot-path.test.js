@@ -27,15 +27,15 @@ const runtimeConfig = JSON.parse(readFileSync(
 
 const REQUEST = new Request('https://internal.test/_internal/pages-response?key=history%3Adaily');
 
-test('runtime exposes only the serving hot path for Pages responses', async () => {
+test('runtime exposes only the R2 serving hot path for completed history', async () => {
   const calls = [];
   const response = await runPagesResponseFetch(REQUEST, {}, {
     loadResponse: async () => { calls.push('kv'); return Response.json({ source: 'kv' }); },
-    loadR2Response: async () => { calls.push('r2'); return null; },
+    loadR2Response: async () => { calls.push('r2'); return Response.json({ source: 'r2' }); },
   });
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { source: 'kv' });
-  assert.deepEqual(calls, ['kv']);
+  assert.deepEqual(await response.json(), { source: 'r2' });
+  assert.deepEqual(calls, ['r2']);
   assert.match(runtimeSource, /pages-response-fetch-entry\.js/);
   assert.doesNotMatch(runtimeSource, /pages-read-model-entry|pages-read-model-dispatch|pages-six-hour-read-model/);
 });
