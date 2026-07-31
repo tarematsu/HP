@@ -42,7 +42,9 @@ std::wstring SensorHub::FindSerialPort() {
   SP_DEVINFO_DATA info{sizeof(info)};
   std::wstring result;
   std::vector<std::wstring> usb;
-  for (DWORD index = 0; SetupDiEnumDeviceInfo(devices, &info); ++index) {
+  for (DWORD index = 0;
+       SetupDiEnumDeviceInfo(devices, index, &info);
+       ++index) {
     wchar_t friendly[512]{};
     if (!SetupDiGetDeviceRegistryPropertyW(devices, &info, SPDRP_FRIENDLYNAME, nullptr,
                                            reinterpret_cast<PBYTE>(friendly), sizeof(friendly), nullptr)) continue;
