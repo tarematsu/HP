@@ -227,14 +227,19 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   const bool healthyObservation = projection.available && !projection.stale &&
       !projection.setupRequired && !projection.ended && status.hasTrack &&
       !status.endedWithoutNextTrack && projection.fetchedAt > 0;
-  // Keep contentRevision compatible with the existing end-of-queue route while
-  // publishing a dedicated healthy revision for the managed fallback path.
-  status.contentRevision = healthyObservation
-      ? static_cast<uint64_t>(projection.fetchedAt)
-      : update.contentRevision;
   status.healthyRevision = healthyObservation
       ? static_cast<uint64_t>(projection.fetchedAt)
       : 0;
+  // App's legacy route still reads contentRevision. Give it a tagged value:
+  // healthy observations use their fetch timestamp, a confirmed queue end uses
+  // a stable nonzero sentinel, and every other invalid/stale state is zero.
+  // Therefore only a newer healthy observation can compare above the baseline
+  // and release fallback.
+  status.contentRevision = status.healthyRevision != 0
+      ? status.healthyRevision
+      : (status.endedWithoutNextTrack
+          ? std::max<uint64_t>(1, update.contentRevision)
+          : 0);
   return status;
 }
 
