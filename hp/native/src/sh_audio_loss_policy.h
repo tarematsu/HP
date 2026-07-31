@@ -3,7 +3,7 @@
 
 namespace hp {
 
-inline constexpr int64_t kStationheadAudioLossGraceMs = 10'000;
+inline constexpr int64_t kStationheadAudioLossGraceMs = 11'000;
 inline constexpr int64_t kStationheadAudioLossProbeSettleMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
 inline constexpr int64_t kStationheadPrimaryRecoveryStabilityMs = 2'000;
@@ -36,11 +36,11 @@ inline constexpr bool StationheadFallbackDwellSatisfied(
 }
 
 static_assert(!StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 9'999));
+    true, false, true, false, false, false, 10'999));
 static_assert(StationheadAudioLossCanProbe(
-    true, false, true, false, false, false, 10'000));
-static_assert(!StationheadAudioLossCanFallback(true, false, 10'999));
-static_assert(StationheadAudioLossCanFallback(true, false, 11'000));
+    true, false, true, false, false, false, 11'000));
+static_assert(!StationheadAudioLossCanFallback(true, false, 11'999));
+static_assert(StationheadAudioLossCanFallback(true, false, 12'000));
 static_assert(!StationheadFallbackDwellSatisfied(14'999));
 static_assert(StationheadFallbackDwellSatisfied(15'000));
 
