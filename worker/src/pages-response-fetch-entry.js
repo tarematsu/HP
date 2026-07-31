@@ -1,9 +1,17 @@
 import './fetch-guard.js';
-import { materializedResponseMaximumAge } from '../../site/functions/lib/api-contract.js';
+import {
+  MATERIALIZED_API_VARIANTS,
+  materializedResponseMaximumAge,
+} from '../../site/functions/lib/api-contract.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const INTERNAL_RESPONSE_PATH = '/_internal/pages-response';
 const TRACK_HISTORY_MODEL_KEY = 'track-history';
+const R2_ONLY_MODEL_KEYS = new Set(
+  MATERIALIZED_API_VARIANTS
+    .map(({ key }) => key)
+    .filter((key) => key !== 'dashboard'),
+);
 
 let responseR2ModulePromise;
 let responseStoreModulePromise;
@@ -92,7 +100,9 @@ export async function runPagesResponseFetch(
     const loadKv = dependencies.loadResponse
       || (await loadResponseStoreModule()).loadMaterializedResponse;
     let response;
-    if (modelKey === TRACK_HISTORY_MODEL_KEY) {
+    if (R2_ONLY_MODEL_KEYS.has(modelKey)) {
+      response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge);
+    } else if (modelKey === TRACK_HISTORY_MODEL_KEY) {
       response = await loadR2(env?.PAGES_RESPONSE_R2, modelKey, now, maximumAge)
         || await loadKv(env?.PAGES_RESPONSE_KV, modelKey, now, maximumAge);
     } else {
