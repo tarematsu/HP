@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +14,7 @@ import { pagesActionsR2ResponseKey } from '../src/pages-response-r2.js';
 import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 
 const workerRoot = resolve(import.meta.dirname, '..');
+const repositoryRoot = resolve(workerRoot, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const factsDatabase = process.env.FACTS_DATABASE_NAME || 'stationhead-minute';
 const buddiesDatabase = process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies';
@@ -20,6 +22,28 @@ const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const WORKFLOW_INTERVAL_MINUTES = 30;
 const HISTORY_REFRESH_PHASE_MINUTES = 26;
+const COMMON_RENDERER_PATHS = Object.freeze([
+  'worker/scripts/run-pages-read-model-actions.mjs',
+]);
+const SUMMARY_RENDERER_PATHS = Object.freeze([
+  'site/functions/lib/materialized-history.js',
+  'site/functions/lib/history-summary.js',
+  'site/functions/lib/period-completeness.js',
+  'site/functions/lib/api-utils.js',
+]);
+const RENDERER_PATHS = Object.freeze({
+  'history:daily': SUMMARY_RENDERER_PATHS,
+  'history:weekly': SUMMARY_RENDERER_PATHS,
+  'history:monthly': SUMMARY_RENDERER_PATHS,
+  'history:broadcasts': Object.freeze([
+    'site/functions/lib/materialized-history.js',
+    'site/functions/api/history.js',
+    'site/functions/lib/api-utils.js',
+  ]),
+  'host-history:summary': Object.freeze([
+    'site/functions/api/host-history.js',
+  ]),
+});
 
 function positiveInteger(value, fallback, minimum, maximum) {
   const parsed = Math.trunc(Number(value));
@@ -140,6 +164,21 @@ function revisionValue(prefix, row, fields) {
   return [prefix, ...fields.map((field) => `${field}=${String(row?.[field] ?? 0)}`)].join(':');
 }
 
+function rendererRevisionFor(modelKey) {
+  const paths = [...new Set([
+    ...COMMON_RENDERER_PATHS,
+    ...(RENDERER_PATHS[modelKey] || []),
+  ])].sort();
+  const hash = createHash('sha256');
+  for (const path of paths) {
+    hash.update(path);
+    hash.update('\0');
+    hash.update(readFileSync(resolve(repositoryRoot, path)));
+    hash.update('\0');
+  }
+  return `sha256:${hash.digest('hex')}`;
+}
+
 export async function loadVariantSourceRevision(variant, env, now = Date.now()) {
   const modelKey = String(variant?.key || '');
   if (modelKey === 'dashboard') return null;
@@ -208,10 +247,7 @@ export async function materializeVariant(variant, env, now, dependencies = {}) {
   const resolveHandler = dependencies.responseHandler || responseHandler;
   const upload = dependencies.uploadEnvelope || uploadEnvelope;
   const rendererRevision = String(
-    dependencies.rendererRevision
-      ?? process.env.GITHUB_SHA
-      ?? process.env.CF_PAGES_COMMIT_SHA
-      ?? 'local',
+    dependencies.rendererRevision ?? rendererRevisionFor(variant.key),
   );
   const existing = await loadExisting(variant.key);
   const sourceRevision = await loadRevision(variant, env, now);
