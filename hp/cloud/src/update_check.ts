@@ -87,12 +87,16 @@ function coalescedUpdateCheck(env: Env): Promise<void> {
   return promise;
 }
 
-export function queueUpdateCheckPing(env: Env, ctx: ExecutionContext): boolean {
-  const now = Date.now();
+// Keep the public ping inside the stateless HTTP CPU budget. The caller only
+// signals the SchedulerCoordinator Durable Object; manifest/R2/D1 work runs in
+// the coordinator alarm under the Durable Object CPU policy.
+export function queueUpdateCheckPing(
+  enqueue: () => boolean,
+  now = Date.now(),
+): boolean {
   if (now - lastUpdatePingAt < UPDATE_PING_COOLDOWN_MS) return false;
+  if (!enqueue()) return false;
   lastUpdatePingAt = now;
-  ctx.waitUntil(coalescedUpdateCheck(env).catch(error =>
-    console.error("update ping failed", error instanceof Error ? error.message : String(error))));
   return true;
 }
 
