@@ -45,8 +45,7 @@ const cmake = readFileSync(
 
 test('audio loss policy fixes the requested timing boundaries', () => {
   assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
-  assert.match(policy, /kStationheadAudioLossProbeRetryMs = 1'000/);
-  assert.doesNotMatch(policy, /ProbeSettle/);
+  assert.doesNotMatch(policy, /ProbeRetry|ProbeSettle/);
   assert.match(policy, /kStationheadFallbackMinimumDwellMs = 15'000/);
   assert.match(policy, /kStationheadPrimaryRecoveryStabilityMs = 2'000/);
   assert.match(
