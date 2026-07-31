@@ -10,20 +10,10 @@ import {
 const MATERIALIZED_RETRY_TTL_SECONDS = 30;
 const MATERIALIZED_EDGE_TTL_MAX_SECONDS = 30 * 60;
 const SUPPORTED_SHARED_VARY = new Set(['accept', 'accept-encoding']);
-// These Pages handlers read compact facts or persisted summary tables with bounded
-// evidence lookups. They are safe availability fallbacks when the configured
-// read-model service responds but a materialized object is temporarily unavailable.
-const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set([
-  'dashboard',
-  'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
-  'host-history:summary',
-]);
-// The Pages service owns the storage choice. Compact payloads are read from
-// KV and large payloads such as track-history are read from R2 there, so the
-// gateway must not make a storage-specific decision before invoking it.
+// Only the realtime dashboard may fall back to live Pages bindings. Completed
+// history is an R2 read model; falling back would reintroduce D1 reads on the
+// public request path and make storage behavior depend on an outage.
+const LIVE_PAGES_FALLBACK_MODEL_KEYS = new Set(['dashboard']);
 const SERVICE_MATERIALIZED_MODEL_KEYS = new Set(
   MATERIALIZED_API_VARIANTS.map(({ key }) => key),
 );
@@ -135,6 +125,70 @@ function materializedUnavailable(modelKey) {
   });
 }
 
+function realIsoDate(value) {
+  const text = String(value || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const time = Date.parse(`${text}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === text;
+}
+
+function historyRangeError(message) {
+  return new Response(JSON.stringify({ ok: false, error: message }), {
+    status: 400,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+    },
+  });
+}
+
+function historyRange(request, modelKey) {
+  if (!String(modelKey || '').startsWith('history:')) return { requested: false };
+  const url = new URL(request.url);
+  const from = url.searchParams.get('from');
+  const to = url.searchParams.get('to');
+  if (!from && !to) return { requested: false };
+  if ((from && !realIsoDate(from)) || (to && !realIsoDate(to))) {
+    return { requested: true, error: 'from and to must be valid YYYY-MM-DD dates' };
+  }
+  if (from && to && from > to) return { requested: true, error: 'from must not be after to' };
+  return { requested: true, from, to };
+}
+
+function rowWithinHistoryRange(row, mode, range) {
+  if (mode === 'broadcasts') {
+    const timestamp = Number(row?.started_at);
+    if (!Number.isFinite(timestamp)) return false;
+    const fromTs = range.from ? Date.parse(`${range.from}T00:00:00Z`) : -Infinity;
+    const toTs = range.to ? Date.parse(`${range.to}T00:00:00Z`) + 86400000 : Infinity;
+    return timestamp >= fromTs && timestamp < toTs;
+  }
+  const key = String(row?.period_key || '');
+  const from = mode === 'monthly' ? range.from?.slice(0, 7) : range.from;
+  const to = mode === 'monthly' ? range.to?.slice(0, 7) : range.to;
+  return (!from || key >= from) && (!to || key <= to);
+}
+
+async function applyHistoryRange(origin, request, modelKey, range) {
+  if (!range.requested) return origin;
+  if (range.error) return historyRangeError(range.error);
+  const payload = await origin.clone().json().catch(() => null);
+  if (!payload || !Array.isArray(payload.rows)) return origin;
+  const mode = String(modelKey).slice('history:'.length);
+  const headers = new Headers(origin.headers);
+  headers.delete('content-length');
+  return new Response(JSON.stringify({
+    ...payload,
+    from: range.from || payload.from,
+    to: range.to || payload.to,
+    rows: payload.rows.filter((row) => rowWithinHistoryRange(row, mode, range)),
+  }), {
+    status: origin.status,
+    statusText: origin.statusText,
+    headers,
+  });
+}
+
 export async function onRequest(context) {
   const { request } = context;
   if (!edgeCacheableApiRequest(request)) return context.next();
@@ -146,6 +200,9 @@ export async function onRequest(context) {
 
   const now = Date.now();
   const modelKey = materializedApiKey(new URL(request.url));
+  const range = historyRange(request, modelKey);
+  if (range.error) return historyRangeError(range.error);
+
   let origin;
   let usedMaterialized = false;
   if (SERVICE_MATERIALIZED_MODEL_KEYS.has(modelKey)) {
@@ -177,6 +234,7 @@ export async function onRequest(context) {
   } else {
     origin = await context.next();
   }
+  if (usedMaterialized) origin = await applyHistoryRange(origin, request, modelKey, range);
   const ttlSeconds = responseCacheTtl(
     origin,
     apiCacheTtlSeconds(request),
