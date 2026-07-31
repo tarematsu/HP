@@ -1,6 +1,9 @@
 -- Resolve official-host sessions before touching the large minute-facts table,
 -- then seek only that session's event window. Sparse host overrides retain a
 -- bounded fallback through the canonical context index.
+--
+-- Every statement is intentionally idempotent. Deployment may re-run this
+-- migration after a transient remote D1 import/bookmark conflict.
 CREATE INDEX IF NOT EXISTS idx_sh_broadcast_sessions_host_id
 ON sh_broadcast_sessions(host_id,id)
 WHERE host_id IS NOT NULL;

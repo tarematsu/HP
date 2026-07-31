@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
+import { runWranglerCommandWithRetry } from './wrangler-command-retry.mjs';
+
 const workerRoot = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(workerRoot, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
@@ -27,12 +29,21 @@ if (!descriptor.schema) throw new Error('facts schema descriptor is missing');
 if (!migrationPaths.length) throw new Error('facts migration set is empty');
 
 function wrangler(args, stdio = 'inherit') {
-  return execFileSync(process.execPath, [wranglerScript, ...args], {
-    cwd: workerRoot,
-    env: process.env,
-    encoding: 'utf8',
-    stdio,
+  const echoOutput = stdio === 'inherit';
+  const output = runWranglerCommandWithRetry({
+    command: process.execPath,
+    args: [wranglerScript, ...args],
+    options: {
+      cwd: workerRoot,
+      env: process.env,
+      encoding: 'utf8',
+      stdio: echoOutput ? ['ignore', 'pipe', 'pipe'] : stdio,
+    },
+    maxRetries: 3,
+    retryDelayMs: 5_000,
   });
+  if (echoOutput && output) process.stdout.write(String(output));
+  return output;
 }
 
 function parseJsonOutput(output) {
@@ -52,7 +63,7 @@ function tableColumns(table) {
     'd1', 'execute', databaseName,
     '--remote', '--yes', '--json',
     '--command', `SELECT name FROM pragma_table_info('${table}')`,
-  ], ['ignore', 'pipe', 'inherit']);
+  ], ['ignore', 'pipe', 'pipe']);
   return new Set(resultRows(parseJsonOutput(output)).map((row) => String(row.name)));
 }
 
