@@ -62,7 +62,7 @@ ORDER BY started_at ASC`;
 export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH minute_points AS (
   SELECT CAST((f.minute_at-?)/60000 AS INTEGER) AS elapsed_minute,
     ROUND(AVG(f.listener_count),1) AS listener_count,COUNT(*) AS source_samples
-  FROM sh_minute_facts f
+  FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time
   LEFT JOIN sh_minute_fact_context c ON c.fact_id=f.id
   LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
   LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id,s.host_id)
