@@ -6,7 +6,6 @@ namespace hp {
 // 0 through 10 seconds remain a track-transition wait. Recovery UI and its
 // authentication probe become eligible only once the stop reaches 11 seconds.
 inline constexpr int64_t kStationheadAudioLossGraceMs = 11'000;
-inline constexpr int64_t kStationheadAudioLossProbeRetryMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
 inline constexpr int64_t kStationheadPrimaryRecoveryStabilityMs = 2'000;
 
