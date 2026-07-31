@@ -1,7 +1,5 @@
-import {
-  currentSummaryPeriodStart,
-  minuteSummarySql,
-} from '../lib/history-summary.js';
+import { CURRENT_DAILY_MINUTE_SUMMARY_SQL } from '../lib/current-minute-summary.js';
+import { currentSummaryPeriodStart } from '../lib/history-summary.js';
 import {
   applySummaryCompleteness,
   currentPeriodKey,
@@ -53,7 +51,7 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
 
   const periodStart = currentSummaryPeriodStart('daily', now);
   const periodKey = currentPeriodKey('daily', now);
-  const result = await env.MINUTE_DB.prepare(minuteSummarySql('daily'))
+  const result = await env.MINUTE_DB.prepare(CURRENT_DAILY_MINUTE_SUMMARY_SQL)
     .bind(periodStart, now + 1, 2)
     .all();
   const liveRows = (result.results || [])
