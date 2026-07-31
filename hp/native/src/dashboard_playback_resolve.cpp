@@ -227,13 +227,14 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
   const bool healthyObservation = projection.available && !projection.stale &&
       !projection.setupRequired && !projection.ended && status.hasTrack &&
       !status.endedWithoutNextTrack && projection.fetchedAt > 0;
-  // Fallback recovery needs a new successful observation, not merely a changed
-  // queue. Reuse fetchedAt as the monotonic revision while playback JSON is
-  // healthy; failed/stale observations retain the content revision and cannot
-  // release fallback.
+  // Keep contentRevision compatible with the existing end-of-queue route while
+  // publishing a dedicated healthy revision for the managed fallback path.
   status.contentRevision = healthyObservation
       ? static_cast<uint64_t>(projection.fetchedAt)
       : update.contentRevision;
+  status.healthyRevision = healthyObservation
+      ? static_cast<uint64_t>(projection.fetchedAt)
+      : 0;
   return status;
 }
 
