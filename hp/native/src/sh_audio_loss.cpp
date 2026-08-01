@@ -294,13 +294,47 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     return;
   }
 
-  const bool audioPlaying = AudioPlaying();
-  if (audioPlaying) {
-    audioLossPlaybackObserved_ = true;
+  const StationheadStatus snapshot = Status();
+  const bool navigationActive =
+      !snapshot.created || snapshot.navigating || snapshot.processFailed ||
+      recreating_.load(std::memory_order_acquire) ||
+      navigationInFlight_.load(std::memory_order_acquire);
+  if (navigationActive) {
+    // Initial navigation and later page rebuilds can emit a brief native audio
+    // pulse before the actual stream is ready. Never arm fallback from that
+    // transient signal. A normal primary navigation must establish continuous
+    // audio again; the managed fallback return path retains its dedicated
+    // two-second recovery confirmation.
+    if (!managedPrimaryReturnPending_) audioLossPlaybackObserved_ = false;
     audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
+    return;
+  }
+
+  const bool audioPlaying = AudioPlaying();
+  if (audioPlaying) {
+    const int64_t playingSince = AudioPlayingSince();
+    const int64_t playingForMs = playingSince > 0 && nowMs >= playingSince
+        ? nowMs - playingSince
+        : 0;
+    audioLossStartedAt_ = 0;
+    ResetAudioLossProbe();
+
+    if (!audioLossPlaybackObserved_ && !managedPrimaryReturnPending_) {
+      if (!StationheadAudioLossCanArm(
+              true, navigationActive, playingForMs)) {
+        UpdateAudioLossState(
+            L"startup_wait",
+            L"audio detected during startup; waiting for fifteen seconds of continuous playback before arming fallback");
+        return;
+      }
+      audioLossPlaybackObserved_ = true;
+      UpdateAudioLossState(
+          L"playing",
+          L"continuous primary audio confirmed; audio-loss fallback armed");
+    }
+
     if (managedPrimaryReturnPending_) {
-      const int64_t playingSince = AudioPlayingSince();
       if (playingSince > 0 &&
           nowMs - playingSince >= kStationheadPrimaryRecoveryStabilityMs) {
         managedPrimaryReturnPending_ = false;
@@ -314,18 +348,7 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     return;
   }
 
-  const StationheadStatus snapshot = Status();
   if (!audioLossPlaybackObserved_) return;
-  if (!snapshot.created || snapshot.navigating || snapshot.processFailed ||
-      recreating_.load(std::memory_order_acquire) ||
-      navigationInFlight_.load(std::memory_order_acquire)) {
-    // A loading or rebuilding document has not yet had a fair opportunity to
-    // produce audio. Discard the old stop interval instead of counting page
-    // navigation toward the eleven-second fallback threshold.
-    audioLossStartedAt_ = 0;
-    ResetAudioLossProbe();
-    return;
-  }
 
   if (audioLossStartedAt_ == 0) {
     audioLossStartedAt_ = nowMs;
