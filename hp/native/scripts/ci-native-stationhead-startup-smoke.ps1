@@ -43,6 +43,11 @@ $forbiddenMutationNames = @(
   ('Show' + 'Window'),
   ('Set' + 'ForegroundWindow'),
   ('Bring' + 'WindowToTop'),
+  ('Set' + 'Parent'),
+  ('Set' + 'WindowLong'),
+  ('Set' + 'ActiveWindow'),
+  ('SwitchToThis' + 'Window'),
+  ('Enable' + 'Window'),
   ('ForcePlayback' + 'BehindDashboard')
 )
 foreach ($name in $forbiddenMutationNames) {
@@ -154,6 +159,47 @@ public static class HomePanelStationheadObserveNative
             }
         }
         return count;
+    }
+
+    public static bool PlaybackStartupSafe(IntPtr parent, string className)
+    {
+        if (parent == IntPtr.Zero) return true;
+        List<IntPtr> children = DirectChildren(parent);
+        int hostIndex = -1;
+        int lastPanelIndex = -1;
+        IntPtr host = IntPtr.Zero;
+        for (int index = 0; index < children.Count; index += 1)
+        {
+            string currentClass = ClassName(children[index]);
+            if (String.Equals(currentClass, className, StringComparison.Ordinal))
+            {
+                hostIndex = index;
+                host = children[index];
+            }
+            if (String.Equals(currentClass, "HomePanelNativeStaticPanel", StringComparison.Ordinal))
+            {
+                lastPanelIndex = index;
+            }
+        }
+        if (host == IntPtr.Zero) return true;
+        RECT rect;
+        if (!GetWindowRect(host, out rect)) return false;
+        int width = Math.Max(0, rect.Right - rect.Left);
+        int height = Math.Max(0, rect.Bottom - rect.Top);
+        bool belowExistingPanels = lastPanelIndex < 0 || hostIndex > lastPanelIndex;
+        return width <= 1 && height <= 1 && belowExistingPanels;
+    }
+
+    public static bool HasDirectChild(IntPtr parent, string className)
+    {
+        foreach (IntPtr child in DirectChildren(parent))
+        {
+            if (String.Equals(ClassName(child), className, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static bool PlaybackBehindNativePanels(IntPtr parent, string className)
@@ -290,8 +336,11 @@ $process = $null
 $startedAtUtc = [DateTime]::UtcNow
 $mainWindow = [IntPtr]::Zero
 $monitoringStartedAtUtc = $null
+$firstSurfaceObservationAtUtc = $null
 $monitorLogOffset = 0
 $sampleCount = 0
+$primaryHostSeen = $false
+$secondaryHostSeen = $false
 $switchedRole = $null
 $switchLogIndex = -1
 $switchObservedAtMs = $null
@@ -334,6 +383,49 @@ try {
       }
     }
 
+    if ($mainWindow -ne [IntPtr]::Zero) {
+      $sampleCount += 1
+      $primaryHostSeen = $primaryHostSeen -or
+        [HomePanelStationheadObserveNative]::HasDirectChild(
+          $mainWindow, "HomePanelStationheadHost")
+      $secondaryHostSeen = $secondaryHostSeen -or
+        [HomePanelStationheadObserveNative]::HasDirectChild(
+          $mainWindow, "HomePanelSecondaryStationheadHost")
+      if (($primaryHostSeen -or $secondaryHostSeen) -and -not $firstSurfaceObservationAtUtc) {
+        $firstSurfaceObservationAtUtc = [DateTime]::UtcNow
+        Write-Host "Started non-mutating Stationhead surface observation at first host creation."
+      }
+
+      $primaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelStationheadHost")
+      $secondaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+      $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSpotifyAuthHost")
+      $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSecondarySpotifyAuthHost")
+      $lastPrimaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelStationheadHost")
+      $lastSecondaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+
+      if (-not $primaryStartupSafe -or -not $secondaryStartupSafe -or
+          -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
+        $violation = [ordered]@{
+          phase = "startup"
+          observedAtUtc = [DateTime]::UtcNow.ToString("o")
+          elapsedMs = [int][Math]::Round(
+            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          primaryPlayback = $lastPrimaryState
+          secondaryPlayback = $lastSecondaryState
+          primaryAuthHidden = $lastPrimaryAuthHidden
+          secondaryAuthHidden = $lastSecondaryAuthHidden
+          foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
+        }
+        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+      }
+    }
+
     $nativePanelsReady = $mainWindow -ne [IntPtr]::Zero -and
       [HomePanelStationheadObserveNative]::NativePanelCount($mainWindow) -ge 3
     $dashboardReady = $log.Contains("Native dashboard started")
@@ -344,7 +436,6 @@ try {
     }
 
     if ($monitoringStartedAtUtc) {
-      $sampleCount += 1
       $primaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
         $mainWindow, "HomePanelStationheadHost")
       $secondaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
@@ -361,6 +452,7 @@ try {
       if (-not $primaryOk -or -not $secondaryOk -or
           -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
         $violation = [ordered]@{
+          phase = "dashboard"
           observedAtUtc = [DateTime]::UtcNow.ToString("o")
           elapsedMs = [int][Math]::Round(
             ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
@@ -422,6 +514,10 @@ try {
   if (-not $monitoringStartedAtUtc) {
     throw "Native dashboard never became ready for foreground-invariant monitoring."
   }
+  if (-not $primaryHostSeen -or -not $secondaryHostSeen -or
+      -not $firstSurfaceObservationAtUtc) {
+    throw "Both Stationhead hosts were not observed from their creation phase."
+  }
   if (-not $switchedRole) {
     throw "No even-minute A or odd-minute B destination switch was observed after monitoring began."
   }
@@ -466,6 +562,13 @@ try {
     } else {
       $null
     }
+    firstSurfaceObservationAtUtc = if ($firstSurfaceObservationAtUtc) {
+      $firstSurfaceObservationAtUtc.ToString("o")
+    } else {
+      $null
+    }
+    primaryHostSeen = $primaryHostSeen
+    secondaryHostSeen = $secondaryHostSeen
     observationalOnly = $true
     forbiddenWindowMutationApisChecked = $forbiddenMutationNames
     sampleIntervalMs = 25
