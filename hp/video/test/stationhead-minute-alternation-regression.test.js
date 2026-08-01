@@ -39,18 +39,26 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('A starts at sakuramankai and B starts at buddy46', () => {
+test('both windows start at sakuramankai and buddy46 is the rotation source', () => {
   assert.match(
     configHeader,
     /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
   );
   assert.match(
     configHeader,
-    /secondaryUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/,
+    /alternateUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/,
+  );
+  assert.match(
+    configHeader,
+    /secondaryUrl = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
   );
   assert.match(configHeader, /std::wstring fallbackUrl;/);
   assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl/);
-  assert.match(cloudConfig, /kCanonicalSecondaryStationheadUrl/);
+  assert.match(cloudConfig, /kCanonicalAlternateStationheadUrl/);
+  assert.match(
+    cloudConfig,
+    /config\.stationhead\.alternateUrl = kCanonicalAlternateStationheadUrl/,
+  );
   assert.match(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
   assert.match(cloudConfig, /config\.stationhead\.secondaryEnabled = true/);
 });
@@ -88,7 +96,7 @@ test('minute :00 switches A and minute :30 switches B', () => {
 
 test('each window alternates independently between both stations', () => {
   assert.match(appHeader, /stationheadPrimaryUsesBuddy46_ = false/);
-  assert.match(appHeader, /stationheadSecondaryUsesBuddy46_ = true/);
+  assert.match(appHeader, /stationheadSecondaryUsesBuddy46_ = false/);
   const handler = section(
     appState,
     'void App::HandleStationheadClockSwitch()',
@@ -97,7 +105,7 @@ test('each window alternates independently between both stations', () => {
   assert.match(handler, /nextUsesBuddy46 = !usesBuddy46/);
   assert.match(
     handler,
-    /nextUsesBuddy46[\s\S]*config_\.stationhead\.secondaryUrl[\s\S]*config_\.stationhead\.url/,
+    /nextUsesBuddy46[\s\S]*config_\.stationhead\.alternateUrl[\s\S]*config_\.stationhead\.url/,
   );
   assert.match(handler, /usesBuddy46 = nextUsesBuddy46/);
 });
