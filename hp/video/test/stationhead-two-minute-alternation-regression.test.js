@@ -18,6 +18,10 @@ const appState = readFileSync(
   new URL('../../native/src/app_stationhead_state.cpp', import.meta.url),
   'utf8',
 );
+const handles = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.h', import.meta.url),
+  'utf8',
+);
 const policy = readFileSync(
   new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
   'utf8',
@@ -39,7 +43,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('A and B are dedicated to sakuramankai and buddy46', () => {
+test('A starts at sakuramankai and B starts at buddy46', () => {
   assert.match(
     configHeader,
     /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
@@ -55,38 +59,61 @@ test('A and B are dedicated to sakuramankai and buddy46', () => {
   assert.match(cloudConfig, /config\.stationhead\.secondaryEnabled = true/);
 });
 
-test('audio alternation uses a native repeating two-minute timer', () => {
-  assert.match(appHeader, /kStationheadAlternationTimerId = 2/);
-  assert.match(appHeader, /kStationheadAlternationIntervalMs = 2 \* 60'000/);
-  assert.match(appHeader, /StationheadAlternationTimerProc/);
-  assert.match(appHeader, /stationheadAlternationTimerArmed_ = false/);
-
-  const timer = section(
-    appState,
-    'void App::UpdateStationheadAlternationTimer(',
-    'void CALLBACK App::StationheadAlternationTimerProc(',
-  );
-  assert.match(timer, /SetTimer\(/);
-  assert.match(timer, /kStationheadAlternationIntervalMs/);
-  assert.match(timer, /KillTimer\(/);
-  assert.match(timer, /if \(bothPlaying\)/);
+test('the timer is re-aligned to each wall-clock minute boundary', () => {
+  assert.match(appHeader, /kStationheadClockSwitchTimerId = 2/);
+  assert.match(appHeader, /StationheadClockSwitchTimerProc/);
+  assert.match(appHeader, /stationheadClockSwitchTimerArmed_ = false/);
+  assert.match(appState, /kStationheadClockMinuteMs = 60'000/);
+  assert.match(appState, /StationheadDelayToNextClockMinute/);
+  assert.match(appState, /nowMs % kStationheadClockMinuteMs/);
+  assert.match(appState, /KillTimer\(app->window_, kStationheadClockSwitchTimerId\)/);
+  assert.match(appState, /app->ArmStationheadClockSwitchTimer\(\)/);
+  assert.doesNotMatch(appHeader, /2 \* 60'000/);
 });
 
-test('the two-minute callback changes only the native A/B audio profile', () => {
-  const callback = section(
+test('even minutes switch A and odd minutes switch B', () => {
+  const handler = section(
     appState,
-    'void CALLBACK App::StationheadAlternationTimerProc(',
+    'void App::HandleStationheadClockSwitch()',
+    'void App::CompleteStationheadClockAudioHandoff(',
+  );
+  assert.match(handler, /GetLocalTime\(&localTime\)/);
+  assert.match(handler, /\(localTime\.wMinute % 2\) == 0/);
+  assert.match(handler, /switchPrimary[\s\S]*stationhead_->SwitchClockStationDestination/);
+  assert.match(handler, /secondaryStationhead_->SwitchClockStationDestination/);
+  assert.match(handler, /stationheadPrimaryUsesBuddy46_/);
+  assert.match(handler, /stationheadSecondaryUsesBuddy46_/);
+  assert.match(handler, /nextUsesBuddy46 = !usesBuddy46/);
+  assert.match(handler, /clock even-minute destination switch/);
+  assert.match(handler, /clock odd-minute destination switch/);
+});
+
+test('each clock action performs a real background navigation', () => {
+  assert.match(handles, /SwitchClockStationDestination/);
+  assert.match(policy, /bool SwitchClockStationDestination/);
+  assert.match(policy, /NavigateStationheadUrl\(UnixMillis\(\), url, reason, false\)/);
+  assert.match(policy, /KeepPlaybackBehindDashboard\(\)/);
+  assert.match(policy, /navigationInFlight_\.load/);
+  assert.match(policy, /status_\.navigating/);
+});
+
+test('the opposite player remains audible until the changed window recovers', () => {
+  const handler = section(
+    appState,
+    'void App::HandleStationheadClockSwitch()',
+    'void App::CompleteStationheadClockAudioHandoff(',
+  );
+  const handoff = section(
+    appState,
+    'void App::CompleteStationheadClockAudioHandoff(',
     'void App::ToggleStationheadAudio()',
   );
-  assert.match(callback, /stationhead_\.AudioPlaying\(\)/);
-  assert.match(callback, /secondaryStationhead_\.AudioPlaying\(\)/);
-  assert.match(
-    callback,
-    /scheduledPrimaryAudioAudible_ =\s*!app->scheduledPrimaryAudioAudible_/,
-  );
-  assert.match(callback, /ApplyScheduledStationheadAudioProfile/);
-  assert.doesNotMatch(callback, /stationheadAudioMuted_\s*=/);
-  assert.doesNotMatch(callback, /Navigate|Reload|SetPlaybackFallback/);
+  assert.match(handler, /ApplyScheduledStationheadAudioProfile\(!switchPrimary\)/);
+  assert.match(handler, /stationheadClockPendingAudioWindow_ = switchPrimary \? 0 : 1/);
+  assert.match(handoff, /primary\.audioPlaying/);
+  assert.match(handoff, /secondary->audioPlaying/);
+  assert.match(handoff, /ApplyScheduledStationheadAudioProfile\(true\)/);
+  assert.match(handoff, /ApplyScheduledStationheadAudioProfile\(false\)/);
 });
 
 test('55-minute, 56-minute, and track-boundary navigation are removed', () => {
@@ -102,15 +129,15 @@ test('55-minute, 56-minute, and track-boundary navigation are removed', () => {
   assert.doesNotMatch(trackScript, /addEventListener\(['"]ended/);
 });
 
-test('runtime smoke verifies Start Listening while both WebViews are behind the dashboard', () => {
+test('runtime smoke verifies background Start Listening before and after a clock switch', () => {
   assert.match(startupSmoke, /HomePanelStationheadHost/);
   assert.match(startupSmoke, /HomePanelSecondaryStationheadHost/);
   assert.match(startupSmoke, /HWND_BOTTOM/);
-  assert.match(startupSmoke, /width=1|0, 0, 1, 1/);
   assert.match(startupSmoke, /primaryClickBehindDashboard/);
   assert.match(startupSmoke, /secondaryClickBehindDashboard/);
   assert.match(startupSmoke, /Stationhead A auto-clicking Start Listening at/);
   assert.match(startupSmoke, /Stationhead B auto-clicking Start Listening at/);
-  assert.match(startupSmoke, /stationhead\.com\/sakuramankai/);
-  assert.match(startupSmoke, /stationhead\.com\/buddy46/);
+  assert.match(startupSmoke, /clock even-minute destination switch/);
+  assert.match(startupSmoke, /clock odd-minute destination switch/);
+  assert.match(startupSmoke, /switchedClickBehindDashboard/);
 });
