@@ -95,6 +95,7 @@ test('even minutes switch A and odd minutes switch B', () => {
 test('each clock action performs a real background navigation', () => {
   assert.match(handles, /SwitchClockStationDestination/);
   assert.match(policy, /bool SwitchClockStationDestination/);
+  assert.match(policy, /navigationInFlight_\.store\(true, std::memory_order_release\)/);
   assert.match(policy, /NavigateStationheadUrl\(UnixMillis\(\), url, reason, false\)/);
   assert.match(policy, /KeepPlaybackBehindDashboard\(\)/);
   assert.match(policy, /navigationInFlight_\.load/);
@@ -114,7 +115,7 @@ test('outgoing page messages cannot satisfy the post-switch click check', () => 
   assert.match(clickOrderSmoke, /outgoing-document click/);
 });
 
-test('the opposite player remains audible until the changed window recovers', () => {
+test('the opposite player remains audible until navigation and playback recover', () => {
   const handler = section(
     appState,
     'void App::HandleStationheadClockSwitch()',
@@ -127,8 +128,10 @@ test('the opposite player remains audible until the changed window recovers', ()
   );
   assert.match(handler, /ApplyScheduledStationheadAudioProfile\(!switchPrimary\)/);
   assert.match(handler, /stationheadClockPendingAudioWindow_ = switchPrimary \? 0 : 1/);
-  assert.match(handoff, /primary\.audioPlaying/);
-  assert.match(handoff, /secondary->audioPlaying/);
+  assert.match(handles, /ClockStationNavigationSettled/);
+  assert.match(policy, /ClockStationNavigationSettled\(\) const noexcept/);
+  assert.match(handoff, /primary\.audioPlaying[\s\S]*stationhead_->ClockStationNavigationSettled\(\)/);
+  assert.match(handoff, /secondary->audioPlaying[\s\S]*secondaryStationhead_->ClockStationNavigationSettled\(\)/);
   assert.match(handoff, /ApplyScheduledStationheadAudioProfile\(true\)/);
   assert.match(handoff, /ApplyScheduledStationheadAudioProfile\(false\)/);
 });
