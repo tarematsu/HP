@@ -97,6 +97,16 @@ test('each clock action performs a real background navigation', () => {
   assert.match(policy, /status_\.navigating/);
 });
 
+test('outgoing page messages cannot satisfy the post-switch click check', () => {
+  assert.match(policy, /kStationheadClockNavigationClickGuardMs = 1'500/);
+  assert.match(
+    policy,
+    /NavigateStationheadUrl\([\s\S]*nextAutoClickAt_ = UnixMillis\(\) \+\s*kStationheadClockNavigationClickGuardMs/,
+  );
+  assert.match(startupSmoke, /minimumPostSwitchClickDelayMs = 1'000/);
+  assert.match(startupSmoke, /switchedClickDelayMs/);
+});
+
 test('the opposite player remains audible until the changed window recovers', () => {
   const handler = section(
     appState,
