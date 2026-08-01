@@ -5,7 +5,7 @@ namespace {
 constexpr int64_t kStationheadClockMinuteMs = 60'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
-UINT StationheadDelayToNextClockMinute(int64_t nowMs) noexcept {
+constexpr UINT StationheadDelayToNextClockMinute(int64_t nowMs) noexcept {
   if (nowMs <= 0) return 1'000;
   const int64_t remainder = nowMs % kStationheadClockMinuteMs;
   const int64_t delay = remainder == 0
