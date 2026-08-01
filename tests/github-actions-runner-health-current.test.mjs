@@ -107,3 +107,41 @@ test('an unsuperseded latest cancellation remains a failure', () => {
 
   assert.deepEqual(filtered.map((entry) => entry.id), [102, 101]);
 });
+
+test('a cancellation completed before a later run was created remains a consecutive failure', async () => {
+  const results = await collectActionsRunnerHealth(async () => ({
+    workflow_runs: [
+      run({
+        id: 103,
+        run_number: 1703,
+        conclusion: 'failure',
+        created_at: '2026-08-01T00:08:00.000Z',
+        run_started_at: '2026-08-01T00:08:05.000Z',
+        updated_at: '2026-08-01T00:09:00.000Z',
+      }),
+      run({
+        id: 102,
+        run_number: 1702,
+        conclusion: 'cancelled',
+        created_at: '2026-08-01T00:01:00.000Z',
+        run_started_at: '2026-08-01T00:01:05.000Z',
+        updated_at: '2026-08-01T00:02:00.000Z',
+      }),
+      run({
+        id: 101,
+        run_number: 1701,
+        created_at: '2026-07-31T23:45:00.000Z',
+        run_started_at: '2026-07-31T23:45:05.000Z',
+        updated_at: '2026-07-31T23:45:50.000Z',
+      }),
+    ],
+  }), {
+    now: NOW,
+    targets: [target],
+    currentRunId: null,
+  });
+
+  assert.equal(results[0].health, 'failure');
+  assert.equal(results[0].latest.id, 103);
+  assert.equal(results[0].consecutiveFailures, 2);
+});
