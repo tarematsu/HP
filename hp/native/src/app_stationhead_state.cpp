@@ -138,14 +138,15 @@ void App::HandleStationheadClockSwitch() noexcept {
   }
   const bool nextUsesBuddy46 = !usesBuddy46;
   if (!nextUsesBuddy46) {
-    // Query playback JSON at the actual buddy46 -> sakuramankai boundary.
-    // Failure and invalid/no-current-track responses keep the window on buddy46.
-    if (!StationheadPrimaryPlaybackAvailableNow()) {
+    // Reuse the shared five-minute playback JSON sample. A clock boundary must
+    // never issue its own network request; missing, failed, stale, or invalid
+    // cached data keeps the selected window on buddy46.
+    if (!StationheadPrimaryPlaybackAvailableCached()) {
       if (logger_) {
         logger_->Info(
             switchPrimary
-                ? L"Stationhead :00 A kept buddy46 because playback JSON has no fresh valid sakuramankai track"
-                : L"Stationhead :30 B kept buddy46 because playback JSON has no fresh valid sakuramankai track");
+                ? L"Stationhead :00 A kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track"
+                : L"Stationhead :30 B kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track");
       }
       return;
     }
