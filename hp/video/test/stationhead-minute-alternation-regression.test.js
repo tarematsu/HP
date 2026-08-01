@@ -10,6 +10,10 @@ const cloudConfig = readFileSync(
   new URL('../../native/src/cloud_config.cpp', import.meta.url),
   'utf8',
 );
+const playbackGate = readFileSync(
+  new URL('../../native/src/stationhead_playback_gate.h', import.meta.url),
+  'utf8',
+);
 const app = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
@@ -87,12 +91,12 @@ test('playback JSON is fetched and validated before Stationhead WebView construc
   assert.ok(run.indexOf('InitializePaths();') < run.indexOf('CreateMainWindow('));
   assert.ok(run.indexOf('CreateMainWindow(') < run.indexOf('StartServices();'));
   assert.match(startServices, /std::make_unique<StationheadPlayer>/);
-  assert.match(cloudConfig, /FetchPlaybackJsonBeforeStationheadWebView/);
-  assert.match(cloudConfig, /Cache-Control: no-cache, no-store/);
-  assert.match(cloudConfig, /JsonObject::Parse\(payload\)/);
-  assert.match(cloudConfig, /setup_required/);
-  assert.match(cloudConfig, /current_index/);
-  assert.match(cloudConfig, /L"playing"/);
+  assert.match(cloudConfig, /StationheadPrimaryPlaybackAvailableNow\(\)/);
+  assert.match(playbackGate, /Cache-Control: no-cache, no-store/);
+  assert.match(playbackGate, /JsonObject::Parse\(payload\)/);
+  assert.match(playbackGate, /setup_required/);
+  assert.match(playbackGate, /current_index/);
+  assert.match(playbackGate, /L"playing"/);
   const applyConfig = section(
     cloudConfig,
     'bool ApplyCloudConfig(',
@@ -110,10 +114,10 @@ test('invalid or unavailable startup playback selects buddy46 before player cons
     'void ApplyStationheadStartupDestination(',
     '}  // namespace',
   );
-  assert.match(startup, /FetchPlaybackJsonBeforeStationheadWebView\(\)/);
+  assert.match(startup, /StationheadPrimaryPlaybackAvailableNow\(\)/);
   assert.match(
     startup,
-    /primaryPlaybackAvailable[\s\S]*kCanonicalPrimaryStationheadUrl[\s\S]*kCanonicalAlternateStationheadUrl/,
+    /StationheadPrimaryPlaybackAvailableNow[\s\S]*kCanonicalPrimaryStationheadUrl[\s\S]*kCanonicalAlternateStationheadUrl/,
   );
   assert.match(startup, /config\.stationhead\.url = startupUrl/);
   assert.match(startup, /config\.stationhead\.secondaryUrl = startupUrl/);
@@ -158,14 +162,13 @@ test('sakuramankai navigation requires fresh playable playback JSON', () => {
     'void App::HandleStationheadClockSwitch()',
     'void App::CompleteStationheadClockAudioHandoff(',
   );
-  assert.match(appState, /kStationheadPrimaryPlaybackMaximumAgeMs = 6 \* 60'000/);
-  assert.match(appState, /StationheadPrimaryPlaybackAvailable/);
-  assert.match(handler, /NativePlaybackFeedStatusFor\(0, nowMs\)/);
-  assert.match(handler, /if \(!StationheadPrimaryPlaybackAvailable\(feed, nowMs\)\)/);
+  assert.match(appState, /#include "stationhead_playback_gate\.h"/);
+  assert.match(handler, /if \(!StationheadPrimaryPlaybackAvailableNow\(\)\)/);
+  assert.doesNotMatch(handler, /NativePlaybackFeedStatusFor/);
   assert.match(handler, /kept buddy46 because playback JSON has no fresh valid sakuramankai track/);
   assert.match(
     handler,
-    /if \(!StationheadPrimaryPlaybackAvailable[\s\S]*return;[\s\S]*config_\.stationhead\.primaryUrl/,
+    /if \(!StationheadPrimaryPlaybackAvailableNow[\s\S]*return;[\s\S]*config_\.stationhead\.primaryUrl/,
   );
 });
 
