@@ -7,7 +7,7 @@ namespace {
 using winrt::Windows::Data::Json::JsonObject;
 constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
     L"https://www.stationhead.com/sakuramankai";
-constexpr wchar_t kCanonicalSecondaryStationheadUrl[] =
+constexpr wchar_t kCanonicalAlternateStationheadUrl[] =
     L"https://www.stationhead.com/buddy46";
 
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
@@ -58,10 +58,10 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
 
     const auto station = Object(root, L"stationhead");
     // The native app owns a fixed two-station rotation. Ignore stale cloud URLs
-    // so an existing device-config cannot collapse both profiles onto one URL
-    // or re-enable buddy46 as a managed fallback target.
+    // while preserving the existing both-windows-on-sakuramankai startup path.
     config.stationhead.url = kCanonicalPrimaryStationheadUrl;
-    config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
+    config.stationhead.alternateUrl = kCanonicalAlternateStationheadUrl;
+    config.stationhead.secondaryUrl = kCanonicalPrimaryStationheadUrl;
     config.stationhead.fallbackUrl.clear();
     config.stationhead.secondaryEnabled = true;
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
