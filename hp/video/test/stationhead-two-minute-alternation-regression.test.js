@@ -121,6 +121,9 @@ test('55-minute, 56-minute, and track-boundary navigation are removed', () => {
   assert.doesNotMatch(policy, /StationheadPeriodicRefreshIntervalMs/);
   assert.doesNotMatch(policy, /RefreshPeriodicNavigation/);
   assert.doesNotMatch(policy, /periodicRefreshStartedAt_/);
+  assert.match(policy, /#define RetryPendingTrackBoundaryRefresh\(parameters\)/);
+  assert.match(policy, /RetryPendingTrackBoundaryRefreshDisabled\(parameters\)/);
+  assert.match(policy, /trackBoundaryRefreshPending_ = false;[\s\S]*return false;/);
   assert.match(
     trackScript,
     /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
