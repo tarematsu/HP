@@ -26,6 +26,8 @@
 
 namespace hp {
 
+inline constexpr int64_t kStationheadClockNavigationClickGuardMs = 1'500;
+
 inline bool StationheadPlayer::SwitchClockStationDestination(
     const std::wstring& url, const std::wstring& reason) {
   if (url.empty() || !webview_ ||
@@ -47,6 +49,10 @@ inline bool StationheadPlayer::SwitchClockStationDestination(
   }
   usingFallback_ = false;
   NavigateStationheadUrl(UnixMillis(), url, reason, false);
+  // Navigate() can return before WebView2 dispatches NavigationStarting. Block
+  // page messages from the outgoing document during that narrow interval, then
+  // let the new document's native Start Listening retry run after navigation.
+  nextAutoClickAt_ = UnixMillis() + kStationheadClockNavigationClickGuardMs;
   // NavigateStationheadUrl resets startup layout state. Collapse the playback
   // surface again immediately so the clock switch never raises it above the
   // native dashboard while Start Listening retries run.
@@ -138,6 +144,7 @@ static_assert(StationheadBoundaryElapsedMs(4'120, 1'000) == 0);
 static_assert(StationheadOperationalDeadlineValue(false, false, 42) == 0);
 static_assert(StationheadOperationalDeadlineValue(true, true, 42) == 1);
 static_assert(StationheadOperationalDeadlineValue(true, false, 42) == 42);
+static_assert(kStationheadClockNavigationClickGuardMs >= 1'000);
 
 namespace stationhead_boundary_message_policy {
 inline SRWLOCK reloadClockLock = SRWLOCK_INIT;
