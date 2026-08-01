@@ -7,16 +7,10 @@
 
 namespace hp {
 
-// The two Stationhead WebViews stay on their dedicated station pages. Media
-// boundary events no longer trigger navigation; the native layer alternates
-// only the audible A/B profile every two minutes.
+// A and B remain on their dedicated station pages. Media boundaries do not
+// initiate navigation; the App changes only the native A/B mute profile.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
   return {};
 }
 
 }  // namespace hp
-
-// sh_webview.cpp still accepts the legacy string message names for compatibility
-// with an already-running page during an in-place update. Compile those callbacks
-// as no-ops so page events cannot initiate a reload.
-#define HandleTrackEnded(...) ((void)0)
