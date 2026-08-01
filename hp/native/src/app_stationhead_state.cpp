@@ -124,7 +124,7 @@ void App::HandleStationheadClockSwitch() noexcept {
       : stationheadSecondaryUsesBuddy46_;
   const bool nextUsesBuddy46 = !usesBuddy46;
   const std::wstring& targetUrl = nextUsesBuddy46
-      ? config_.stationhead.secondaryUrl
+      ? config_.stationhead.alternateUrl
       : config_.stationhead.url;
   if (targetUrl.empty()) return;
 
