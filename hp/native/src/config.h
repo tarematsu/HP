@@ -5,13 +5,14 @@ namespace hp {
 
 struct StationheadConfig {
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
-  std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
+  // buddy46 is the dedicated second playback source, not an automatic fallback.
+  std::wstring fallbackUrl;
   int channelId = 318;
   bool blockImages = true;
   bool blockFonts = true;
   bool lowMemoryMode = true;
   bool secondaryEnabled = true;
-  std::wstring secondaryUrl = L"https://www.stationhead.com/sakuramankai";
+  std::wstring secondaryUrl = L"https://www.stationhead.com/buddy46";
 };
 
 struct AppConfig {
