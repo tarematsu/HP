@@ -7,8 +7,10 @@ namespace {
 using winrt::Windows::Data::Json::JsonObject;
 constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
     L"https://www.stationhead.com/sakuramankai";
-constexpr wchar_t kCanonicalSecondaryStationheadUrl[] =
+constexpr wchar_t kCanonicalFallbackStationheadUrl[] =
     L"https://www.stationhead.com/buddy46";
+constexpr wchar_t kCanonicalSecondaryStationheadUrl[] =
+    L"https://www.stationhead.com/sakuramankai";
 
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
@@ -57,12 +59,13 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.temperatureOffset = Decimal(co2, L"temperatureOffset", config.temperatureOffset, -20.0, 20.0);
 
     const auto station = Object(root, L"stationhead");
-    // The native player now owns a fixed two-station rotation. Ignore stale
-    // cloud URLs so an existing device-config cannot turn both profiles back
-    // into sakuramankai or re-enable buddy46 as a fallback navigation target.
+    // Keep both players on sakuramankai during normal operation. buddy46 is
+    // reserved for the existing managed fallback path when playback-a reports
+    // an abnormal end state. Ignore stale two-station rotation URLs from cloud
+    // configuration written by prior releases.
     config.stationhead.url = kCanonicalPrimaryStationheadUrl;
+    config.stationhead.fallbackUrl = kCanonicalFallbackStationheadUrl;
     config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
-    config.stationhead.fallbackUrl.clear();
     config.stationhead.secondaryEnabled = true;
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
     config.stationhead.blockImages = HasKey(station, L"blockImages")
