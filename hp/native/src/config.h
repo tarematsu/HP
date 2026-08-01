@@ -4,8 +4,13 @@
 namespace hp {
 
 struct StationheadConfig {
+  // Canonical sakuramankai destination retained even when startup preflight
+  // chooses buddy46 for the first WebView navigation.
+  std::wstring primaryUrl = L"https://www.stationhead.com/sakuramankai";
   std::wstring url = L"https://www.stationhead.com/sakuramankai";
-  std::wstring fallbackUrl = L"https://www.stationhead.com/buddy46";
+  // buddy46 is a dedicated rotation source, not an automatic fallback.
+  std::wstring alternateUrl = L"https://www.stationhead.com/buddy46";
+  std::wstring fallbackUrl;
   int channelId = 318;
   bool blockImages = true;
   bool blockFonts = true;

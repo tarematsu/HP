@@ -45,7 +45,9 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
                             std::wstring* contentType = nullptr,
                             std::wstring* error = nullptr,
                             const wchar_t* userAgent = L"HomePanel/1.0",
-                            const wchar_t* extraHeaders = nullptr) {
+                            const wchar_t* extraHeaders = nullptr,
+                            DWORD timeoutMs = 8000,
+                            bool retryWithoutProxy = true) {
   const auto fail = [error](std::wstring message) {
     if (error) *error = std::move(message);
     return false;
@@ -75,7 +77,11 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
       : 0;
 
   std::wstring failure = L"WinHTTP request failed";
-  for (const DWORD accessType : kWinHttpAccessTypes) {
+  const size_t accessTypeCount = retryWithoutProxy
+      ? std::size(kWinHttpAccessTypes)
+      : 1;
+  for (size_t accessIndex = 0; accessIndex < accessTypeCount; ++accessIndex) {
+    const DWORD accessType = kWinHttpAccessTypes[accessIndex];
     WinHttpHandle session(WinHttpOpen(userAgent, accessType,
                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) { failure = lastError(L"WinHttpOpen"); continue; }
@@ -91,7 +97,9 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
         parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
     if (!request) { failure = lastError(L"WinHttpOpenRequest"); continue; }
 
-    WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
+    const DWORD boundedTimeout = std::clamp<DWORD>(timeoutMs, 250, 60'000);
+    WinHttpSetTimeouts(
+        request, boundedTimeout, boundedTimeout, boundedTimeout, boundedTimeout);
     DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
     WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
     if (!WinHttpSendRequest(request, extraHeaders, extraHeaderLength,
@@ -162,8 +170,10 @@ inline bool WinHttpDownload(const std::wstring& rawUrl, size_t maximumBytes,
                             std::wstring* contentType = nullptr,
                             std::wstring* error = nullptr,
                             const wchar_t* userAgent = L"HomePanel/1.0",
-                            const wchar_t* extraHeaders = nullptr) {
+                            const wchar_t* extraHeaders = nullptr,
+                            DWORD timeoutMs = 8000,
+                            bool retryWithoutProxy = true) {
   return WinHttpDownload(rawUrl.c_str(), maximumBytes, body, contentType, error,
-                         userAgent, extraHeaders);
+                         userAgent, extraHeaders, timeoutMs, retryWithoutProxy);
 }
 }  // namespace hp
