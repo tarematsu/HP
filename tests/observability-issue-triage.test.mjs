@@ -8,6 +8,7 @@ import {
   extractViolationEvidence,
   observabilityIssueOverall,
   publicHealthSignal,
+  telemetryPolicySummaryHealthy,
 } from '../.github/scripts/observability-issue-triage.mjs';
 import {
   ACTIONS_RUNNER_HEALTH_END,
@@ -69,6 +70,29 @@ test('public health failure outranks budget findings and affects the Cloudflare 
     summaries: { publicHealth: failedPublicHealth },
     activeDeployments: deployments,
   }), 'failure');
+});
+
+test('collection failure does not duplicate a healthy telemetry policy incident', () => {
+  const healthyTelemetry = [
+    '## Current deployment telemetry',
+    '- CPU coverage: `OK`',
+    '- CPU violations: `0`',
+    '- Error invocations: `0`',
+    '## Collection integrity',
+    '- Public health collection failed',
+  ].join('\n');
+  const triage = buildObservabilityTriage({
+    outcomes: { ...allSuccessfulOutcomes, telemetry: 'failure' },
+    summaries: {
+      publicHealth: '| Endpoint | Result | HTTP |\n|---|---|---|\n| Unified health | failure | HTTP 503 |',
+      telemetry: healthyTelemetry,
+    },
+    activeDeployments: deployments,
+  });
+  assert.equal(telemetryPolicySummaryHealthy(healthyTelemetry), true);
+  assert.match(triage, /ACTION REQUIRED — 1 active signal/);
+  assert.doesNotMatch(triage, /\| \*\*P1\*\* \| Current-deployment telemetry policy/);
+  assert.match(triage, /\| Current-deployment telemetry policy \| \*\*OK\*\* \| No failure reported\./);
 });
 
 test('deployment signal fails closed for unavailable or incomplete inventory', () => {

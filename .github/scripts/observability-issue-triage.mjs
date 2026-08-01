@@ -153,6 +153,28 @@ function outcomeEvidence(key, outcome, summaries) {
   return firstDiagnosticLine(summary);
 }
 
+function metricCount(text, label) {
+  const match = String(text || '').match(new RegExp(`${label}:\\s*\`?([0-9,]+)`, 'i'));
+  return match ? Number(match[1].replaceAll(',', '')) : null;
+}
+
+export function telemetryPolicySummaryHealthy(summary) {
+  const text = String(summary || '');
+  const coverageOk = /CPU coverage:\s*`?OK\b/i.test(text);
+  const cpuViolations = metricCount(text, 'CPU violations');
+  const errorInvocations = metricCount(text, 'Error invocations');
+  return coverageOk && cpuViolations === 0 && errorInvocations === 0;
+}
+
+function triageOutcome(key, outcome, summaries) {
+  if (key === 'telemetry'
+    && normalizeOutcome(outcome) !== 'success'
+    && telemetryPolicySummaryHealthy(summaries?.telemetry)) {
+    return 'success';
+  }
+  return normalizeOutcome(outcome);
+}
+
 function containedHistoricalDailyTrend({
   outcome,
   summary,
@@ -313,7 +335,7 @@ export function buildObservabilityTriage({
   }
 
   for (const [key, info] of Object.entries(OBSERVABILITY_GATE_INFO)) {
-    const outcome = normalizeOutcome(outcomes[key]);
+    const outcome = triageOutcome(key, outcomes[key], summaries);
     if (outcome === 'success') continue;
     if (key === 'daily' && dailyTrend) {
       incidents.push({
@@ -365,11 +387,12 @@ export function buildObservabilityTriage({
     ['Worker deployments', deployments.state, deployments.evidence],
     ['Recent D1 rows read pace', readPace?.state || 'unknown', readPace?.evidence || paceUnavailable],
     ['Recent D1 rows written pace', writePace?.state || 'unknown', writePace?.evidence || paceUnavailable],
-    ...Object.entries(OBSERVABILITY_GATE_INFO).map(([key, info]) => (
-      key === 'daily' && dailyTrend
+    ...Object.entries(OBSERVABILITY_GATE_INFO).map(([key, info]) => {
+      const outcome = triageOutcome(key, outcomes[key], summaries);
+      return key === 'daily' && dailyTrend
         ? [info.label, 'contained', dailyTrend.evidence]
-        : [info.label, normalizeOutcome(outcomes[key]), outcomeEvidence(key, outcomes[key], summaries)]
-    )),
+        : [info.label, outcome, outcomeEvidence(key, outcome, summaries)];
+    }),
   ].map(([signal, state, evidence]) => `| ${escapeCell(signal)} | **${stateLabel(state)}** | ${escapeCell(evidence)} |`).join('\n');
 
   return `## Immediate triage

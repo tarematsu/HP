@@ -35,20 +35,20 @@ test('runtime health stays available while maintenance is actively running', asy
   assert.equal(health.status, 'running');
 });
 
-test('runtime health tolerates the same schedule delay as runner health', async () => {
+test('runtime public health remains available after the runner warning threshold', async () => {
   const health = await readOtherHealth({
-    OTHER_DB: statusDb('ok', { last_attempt_at: NOW - 65 * 60_000 }),
-    OTHER_CRON_STALE_MS: 75 * 60_000,
+    OTHER_DB: statusDb('ok', { last_attempt_at: NOW - 76 * 60_000 }),
+    OTHER_CRON_STALE_MS: 90 * 60_000,
   }, NOW);
   assert.equal(health.ok, true);
   assert.equal(health.stale, false);
-  assert.equal(health.stale_after_ms, 75 * 60_000);
+  assert.equal(health.stale_after_ms, 90 * 60_000);
 });
 
-test('runtime health becomes stale after the shared operational threshold', async () => {
+test('runtime health becomes stale after the public availability grace period', async () => {
   const health = await readOtherHealth({
-    OTHER_DB: statusDb('ok', { last_attempt_at: NOW - 76 * 60_000 }),
-    OTHER_CRON_STALE_MS: 75 * 60_000,
+    OTHER_DB: statusDb('ok', { last_attempt_at: NOW - 91 * 60_000 }),
+    OTHER_CRON_STALE_MS: 90 * 60_000,
   }, NOW);
   assert.equal(health.ok, false);
   assert.equal(health.stale, true);

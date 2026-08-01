@@ -103,6 +103,7 @@ jobs:
       D1_QUERY_OUTPUT_DIR: d1-insights
       D1_QUERY_LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       D1_QUERY_LIMIT: "20"
+      D1_HISTORY_DAYS: "7"
       LOOKBACK_MINUTES: ${{ inputs.lookback_minutes || '60' }}
       CPU_BUDGET_MS: "10"
       QUEUE_CPU_BUDGET_MS: "30000"
@@ -132,13 +133,20 @@ jobs:
         with:
           api-token: ${{ secrets.CLOUDFLARE_BUILDS_API_TOKEN }}
 
-      - name: Enforce projected UTC daily Worker, D1, and Queue budgets
+      - name: Enforce projected UTC daily budgets and collect D1 history
         id: daily-budget
         continue-on-error: true
         shell: bash
         run: |
+          set +e
           set -o pipefail
           python3 .github/scripts/audit-cloudflare-daily-usage.py 2>&1 | tee daily-usage-audit.log
+          daily_status=${PIPESTATUS[0]}
+          python3 .github/scripts/audit-cloudflare-d1-history.py 2>&1 | tee d1-daily-history.log
+          history_status=${PIPESTATUS[0]}
+          if (( daily_status != 0 || history_status != 0 )); then
+            exit 1
+          fi
 
       - name: Enforce DO, Queues, R2, and KV included-usage budgets
         id: free-tier-budget
@@ -274,6 +282,7 @@ jobs:
           path: |
             daily-usage/
             daily-usage-audit.log
+            d1-daily-history.log
             free-tier-usage/
             free-tier-usage-audit.log
             observability-gate/
