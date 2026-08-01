@@ -98,6 +98,9 @@ jobs:
             -StartupBudgetSeconds 60 `
             -PostClickSettleSeconds 3 `
             -OutputDirectory hp/native/ci-stationhead-startup-smoke
+          & hp/native/scripts/ci-native-stationhead-clock-click-order.ps1 `
+            -LogPath hp/native/ci-stationhead-startup-smoke/homepanel.log `
+            -MinimumDelaySeconds 1
 
       - name: Run updater verification and restart smoke test
         shell: pwsh
