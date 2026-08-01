@@ -25,7 +25,7 @@ const restoredScriptNames = [
   'StationheadAuthProbeScript',
 ];
 
-test('July 23 statistics scripts are selected before final resource reductions', () => {
+test('July 23 authentication boundary remains selected before final resource reductions', () => {
   const dataPolicyAt = trackBoundary.indexOf(
     '#include "sh_data_acquisition_resource_policy_fix.h"',
   );
@@ -47,15 +47,80 @@ test('July 23 statistics scripts are selected before final resource reductions',
   assert.match(baselinePolicy, /return StationheadAuthCaptureScript\(\);/);
   assert.match(
     baselinePolicy,
-    /return StationheadApiPlayStatsScript\(channelId\);/,
+    /return StationheadAuthProbeScript\(channelId\);/,
   );
   assert.match(
     baselinePolicy,
-    /return StationheadAuthProbeScript\(channelId\);/,
+    /#define StationheadApiPlayStatsScript \\\n  StationheadApiPlayStatsScriptPayloadSafe/,
   );
   assert.match(
     playbackPolicy,
     /#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
+  );
+});
+
+test('play stats keep page-owned auth while normalizing every supported payload shape', () => {
+  assert.match(
+    baselinePolicy,
+    /const headers = window\.__homepanelStationheadAuthHeaders;/,
+  );
+  assert.match(
+    baselinePolicy,
+    /production1\.stationhead\.com\/me\/channel\//,
+  );
+  assert.match(baselinePolicy, /credentials: 'include'/);
+  assert.match(
+    baselinePolicy,
+    /'chart_data', 'chartData', 'daily', 'history', 'points', 'values'/,
+  );
+  assert.match(
+    baselinePolicy,
+    /point\.ts \?\? point\.timestamp \?\? point\.date \?\? point\.day \?\? point\.x/,
+  );
+  assert.match(
+    baselinePolicy,
+    /point\.val \?\? point\.value \?\? point\.count \?\? point\.plays[\s\S]*point\.listens \?\? point\.y/,
+  );
+  assert.match(baselinePolicy, /numeric < 100000000000/);
+  assert.match(baselinePolicy, /numeric > 100000000000000/);
+  assert.match(
+    baselinePolicy,
+    /Object\.entries\(candidate\)\.map\(\(\[date, value\]\) => \(\{ date, value \}\)\)/,
+  );
+  assert.match(
+    baselinePolicy,
+    /positiveCount\(right\) - positiveCount\(left\)/,
+  );
+  assert.match(
+    baselinePolicy,
+    /data: \{ chart_data: chartData \}/,
+  );
+});
+
+test('invalid payloads are retried without caching a false success', () => {
+  assert.match(
+    baselinePolicy,
+    /if \(!chartData\.length\) \{[\s\S]*resetSuccessThrottle\(\);[\s\S]*schedulePayloadRetry\(\);/,
+  );
+  assert.match(
+    baselinePolicy,
+    /__homepanelStationheadPlayStatsPayloadRetryTimer[\s\S]*30 \* 1000/,
+  );
+  assert.match(
+    baselinePolicy,
+    /__homepanelStationheadPlayStatsAuthorization = headers\.authorization/,
+  );
+  assert.match(
+    baselinePolicy,
+    /lastSuccessAuthorization === headers\.authorization/,
+  );
+  assert.match(
+    baselinePolicy,
+    /__homepanelStationheadPlayStatsInFlight/,
+  );
+  assert.doesNotMatch(
+    baselinePolicy,
+    /stationhead-play-stats-diagnostic|response body|authorization fingerprint/i,
   );
 });
 
@@ -77,12 +142,5 @@ test('HTTP cache is session-local instead of permanently disabled', () => {
   assert.match(
     sharedEnvironment,
     /HTTP[\s\S]*cache is enabled during a live controller session[\s\S]*explicitly reset/,
-  );
-});
-
-test('rollback and final resource policy add no stats diagnostic channel', () => {
-  assert.doesNotMatch(
-    baselinePolicy + playbackPolicy,
-    /stationhead-play-stats-diagnostic|response body|authorization fingerprint/i,
   );
 });
