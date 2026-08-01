@@ -5,7 +5,11 @@
 namespace hp {
 namespace {
 using winrt::Windows::Data::Json::JsonObject;
-constexpr wchar_t kCanonicalSecondaryStationheadUrl[] = L"https://www.stationhead.com/sakuramankai";
+constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
+    L"https://www.stationhead.com/sakuramankai";
+constexpr wchar_t kCanonicalSecondaryStationheadUrl[] =
+    L"https://www.stationhead.com/buddy46";
+
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
 }
@@ -53,11 +57,13 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.temperatureOffset = Decimal(co2, L"temperatureOffset", config.temperatureOffset, -20.0, 20.0);
 
     const auto station = Object(root, L"stationhead");
-    config.stationhead.url = Text(station, L"url", config.stationhead.url);
-    if (_wcsicmp(config.stationhead.url.c_str(), L"https://www.stationhead.com/sakuramankaisv") == 0) {
-      config.stationhead.url = L"https://www.stationhead.com/sakuramankai";
-    }
-    config.stationhead.fallbackUrl = Text(station, L"fallbackUrl", config.stationhead.fallbackUrl);
+    // The native player now owns a fixed two-station rotation. Ignore stale
+    // cloud URLs so an existing device-config cannot turn both profiles back
+    // into sakuramankai or re-enable buddy46 as a fallback navigation target.
+    config.stationhead.url = kCanonicalPrimaryStationheadUrl;
+    config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
+    config.stationhead.fallbackUrl.clear();
+    config.stationhead.secondaryEnabled = true;
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
     config.stationhead.blockImages = HasKey(station, L"blockImages")
         ? Boolean(station, L"blockImages", config.stationhead.blockImages)
@@ -66,18 +72,6 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
         ? Boolean(station, L"blockFonts", config.stationhead.blockFonts)
         : Boolean(station, L"blockFontsAfterPlayback", config.stationhead.blockFonts);
     config.stationhead.lowMemoryMode = Boolean(station, L"lowMemoryMode", config.stationhead.lowMemoryMode);
-
-    const auto secondary = Object(station, L"secondary");
-    config.stationhead.secondaryEnabled = Boolean(secondary, L"enabled", config.stationhead.secondaryEnabled);
-    config.stationhead.secondaryUrl = HasKey(secondary, L"url")
-        ? Text(secondary, L"url", config.stationhead.fallbackUrl)
-        : config.stationhead.fallbackUrl;
-    if (config.stationhead.secondaryUrl.empty()) config.stationhead.secondaryUrl = config.stationhead.fallbackUrl;
-
-
-    if (_wcsicmp(config.stationhead.secondaryUrl.c_str(), kCanonicalSecondaryStationheadUrl) != 0) {
-      config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
-    }
 
     return true;
   } catch (...) {

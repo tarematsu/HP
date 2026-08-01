@@ -14,6 +14,10 @@ const refreshPolicy = readFileSync(
   new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
   'utf8',
 );
+const trackBoundaryScript = readFileSync(
+  new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
+  'utf8',
+);
 const baselinePolicy = readFileSync(
   new URL('../../native/src/sh_stats_july23_baseline_policy_fix.h', import.meta.url),
   'utf8',
@@ -38,15 +42,17 @@ test('Stationhead WebView resets browser cache before first navigation', () => {
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('55-minute A and 56-minute B reuse session cache until controller recreation', () => {
-  assert.match(refreshPolicy, /L"55-minute periodic refresh"/);
-  assert.match(refreshPolicy, /L"56-minute periodic refresh"/);
+test('long-lived A and B pages have no 55-minute or 56-minute navigation', () => {
+  assert.doesNotMatch(refreshPolicy, /55-minute|56-minute/);
+  assert.doesNotMatch(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(refreshPolicy, /RefreshPeriodicNavigation/);
+  assert.doesNotMatch(refreshPolicy, /periodicRefreshStartedAt_/);
   assert.match(
-    refreshPolicy,
-    /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/,
+    trackBoundaryScript,
+    /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
   );
   assert.equal(playbackPolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
-    'final playback boundary should clear cache once per controller configuration');
+    'controller configuration should clear cache once');
   assert.equal(baselinePolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
     'July 23 baseline keeps its original controller cache contract');
   assert.equal(environment.match(/BackForwardCache/g)?.length, 1,
