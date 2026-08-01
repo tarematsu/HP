@@ -10,6 +10,10 @@ const cloudConfig = readFileSync(
   new URL('../../native/src/cloud_config.cpp', import.meta.url),
   'utf8',
 );
+const app = readFileSync(
+  new URL('../../native/src/app.cpp', import.meta.url),
+  'utf8',
+);
 const appHeader = readFileSync(
   new URL('../../native/src/app.h', import.meta.url),
   'utf8',
@@ -39,7 +43,11 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('both windows start at sakuramankai and buddy46 is the rotation source', () => {
+test('canonical sources keep sakuramankai primary and buddy46 alternate', () => {
+  assert.match(
+    configHeader,
+    /primaryUrl = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
+  );
   assert.match(
     configHeader,
     /url = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
@@ -48,19 +56,67 @@ test('both windows start at sakuramankai and buddy46 is the rotation source', ()
     configHeader,
     /alternateUrl = L"https:\/\/www\.stationhead\.com\/buddy46"/,
   );
-  assert.match(
-    configHeader,
-    /secondaryUrl = L"https:\/\/www\.stationhead\.com\/sakuramankai"/,
-  );
   assert.match(configHeader, /std::wstring fallbackUrl;/);
   assert.match(cloudConfig, /kCanonicalPrimaryStationheadUrl/);
   assert.match(cloudConfig, /kCanonicalAlternateStationheadUrl/);
+  assert.match(
+    cloudConfig,
+    /config\.stationhead\.primaryUrl = kCanonicalPrimaryStationheadUrl/,
+  );
   assert.match(
     cloudConfig,
     /config\.stationhead\.alternateUrl = kCanonicalAlternateStationheadUrl/,
   );
   assert.match(cloudConfig, /config\.stationhead\.fallbackUrl\.clear\(\)/);
   assert.match(cloudConfig, /config\.stationhead\.secondaryEnabled = true/);
+});
+
+test('playback JSON is fetched and validated before Stationhead WebView construction', () => {
+  const initializePaths = section(
+    app,
+    'void App::InitializePaths()',
+    'void App::CreateMainWindow(',
+  );
+  const run = section(app, 'int App::Run(', 'void App::InitializePaths()');
+  const startServices = section(
+    app,
+    'void App::StartServices()',
+    'void App::ApplyStartupStationheadPreview()',
+  );
+  assert.match(initializePaths, /ApplyCloudConfig\(config_/);
+  assert.ok(run.indexOf('InitializePaths();') < run.indexOf('CreateMainWindow('));
+  assert.ok(run.indexOf('CreateMainWindow(') < run.indexOf('StartServices();'));
+  assert.match(startServices, /std::make_unique<StationheadPlayer>/);
+  assert.match(cloudConfig, /FetchPlaybackJsonBeforeStationheadWebView/);
+  assert.match(cloudConfig, /Cache-Control: no-cache, no-store/);
+  assert.match(cloudConfig, /JsonObject::Parse\(payload\)/);
+  assert.match(cloudConfig, /setup_required/);
+  assert.match(cloudConfig, /current_index/);
+  assert.match(cloudConfig, /L"playing"/);
+  const applyConfig = section(
+    cloudConfig,
+    'bool ApplyCloudConfig(',
+    '}  // namespace hp',
+  );
+  assert.ok(
+    applyConfig.indexOf('ApplyStationheadStartupDestination(config);') <
+      applyConfig.indexOf('std::ifstream input'),
+  );
+});
+
+test('invalid or unavailable startup playback selects buddy46 before player construction', () => {
+  const startup = section(
+    cloudConfig,
+    'void ApplyStationheadStartupDestination(',
+    '}  // namespace',
+  );
+  assert.match(startup, /FetchPlaybackJsonBeforeStationheadWebView\(\)/);
+  assert.match(
+    startup,
+    /primaryPlaybackAvailable[\s\S]*kCanonicalPrimaryStationheadUrl[\s\S]*kCanonicalAlternateStationheadUrl/,
+  );
+  assert.match(startup, /config\.stationhead\.url = startupUrl/);
+  assert.match(startup, /config\.stationhead\.secondaryUrl = startupUrl/);
 });
 
 test('the timer aligns to every wall-clock :00 and :30 boundary', () => {
@@ -87,6 +143,8 @@ test('minute :00 switches A and minute :30 switches B', () => {
   assert.match(handler, /secondaryStationhead_->SwitchClockStationDestination/);
   assert.match(handler, /stationheadPrimaryUsesBuddy46_/);
   assert.match(handler, /stationheadSecondaryUsesBuddy46_/);
+  assert.match(handler, /currentStatus = switchPrimary/);
+  assert.match(handler, /StationheadUrlMatches/);
   assert.match(handler, /nextUsesBuddy46 = !usesBuddy46/);
   assert.match(handler, /clock minute-zero destination switch/);
   assert.match(handler, /clock minute-thirty destination switch/);
@@ -94,7 +152,24 @@ test('minute :00 switches A and minute :30 switches B', () => {
   assert.match(handler, /Stationhead clock :30 switched B/);
 });
 
-test('each window alternates independently between both stations', () => {
+test('sakuramankai navigation requires fresh playable playback JSON', () => {
+  const handler = section(
+    appState,
+    'void App::HandleStationheadClockSwitch()',
+    'void App::CompleteStationheadClockAudioHandoff(',
+  );
+  assert.match(appState, /kStationheadPrimaryPlaybackMaximumAgeMs = 6 \* 60'000/);
+  assert.match(appState, /StationheadPrimaryPlaybackAvailable/);
+  assert.match(handler, /NativePlaybackFeedStatusFor\(0, nowMs\)/);
+  assert.match(handler, /if \(!StationheadPrimaryPlaybackAvailable\(feed, nowMs\)\)/);
+  assert.match(handler, /kept buddy46 because playback JSON has no fresh valid sakuramankai track/);
+  assert.match(
+    handler,
+    /if \(!StationheadPrimaryPlaybackAvailable[\s\S]*return;[\s\S]*config_\.stationhead\.primaryUrl/,
+  );
+});
+
+test('each window alternates independently from its actual startup destination', () => {
   assert.match(appHeader, /stationheadPrimaryUsesBuddy46_ = false/);
   assert.match(appHeader, /stationheadSecondaryUsesBuddy46_ = false/);
   const handler = section(
@@ -105,7 +180,7 @@ test('each window alternates independently between both stations', () => {
   assert.match(handler, /nextUsesBuddy46 = !usesBuddy46/);
   assert.match(
     handler,
-    /nextUsesBuddy46[\s\S]*config_\.stationhead\.alternateUrl[\s\S]*config_\.stationhead\.url/,
+    /nextUsesBuddy46[\s\S]*config_\.stationhead\.alternateUrl[\s\S]*config_\.stationhead\.primaryUrl/,
   );
   assert.match(handler, /usesBuddy46 = nextUsesBuddy46/);
 });
