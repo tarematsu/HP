@@ -2,23 +2,34 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const version = '20260731.1';
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const entry = readFileSync(new URL('../public/dashboard-metrics.js', import.meta.url), 'utf8');
 const header = readFileSync(new URL('../public/dashboard-header.js', import.meta.url), 'utf8');
 
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function assetVersion(source, asset) {
+  const match = source.match(new RegExp(
+    `(?:/|\\./)${escapeRegExp(asset)}\\?v=([^'"\\s)>]+)`,
+  ));
+  assert.ok(match, `${asset} must use an explicit deployment version`);
+  return match[1];
+}
+
 test('dashboard asset dependency chain uses one explicit deployment version', () => {
-  assert.match(html, new RegExp(`/app-lite\\.css\\?v=${version}`));
-  assert.match(html, new RegExp(`/dashboard-metrics\\.js\\?v=${version}`));
-  for (const asset of [
-    'dashboard-header.js',
-    'dashboard-tabs.js',
-    'dashboard-daily-summaries.js',
-    'dashboard-client.js',
-  ]) {
-    assert.match(entry, new RegExp(`${asset.replace('.', '\\.')}\\?v=${version}`));
-  }
-  assert.match(header, new RegExp(`/dashboard-fixes\\.css\\?v=${version}`));
+  const versions = [
+    assetVersion(html, 'app-lite.css'),
+    assetVersion(html, 'dashboard-metrics.js'),
+    assetVersion(entry, 'dashboard-header.js'),
+    assetVersion(entry, 'dashboard-tabs.js'),
+    assetVersion(entry, 'dashboard-daily-summaries.js'),
+    assetVersion(entry, 'dashboard-client.js'),
+    assetVersion(header, 'dashboard-fixes.css'),
+  ];
+
+  assert.equal(new Set(versions).size, 1, `dashboard assets use mixed versions: ${versions.join(', ')}`);
 });
 
 test('fixed entry URLs without a version cannot silently return stale layout code', () => {
