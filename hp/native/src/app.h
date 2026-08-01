@@ -189,6 +189,7 @@ class App {
   bool stationheadPrimaryUsesBuddy46_ = false;
   bool stationheadSecondaryUsesBuddy46_ = true;
   int stationheadClockPendingAudioWindow_ = -1;
+  int64_t stationheadClockSwitchStartedAt_ = 0;
   int64_t stationheadLastClockMinute_ = -1;
   WorkspaceTab selectedTab_ = WorkspaceTab::Main;
   RECT workspaceBounds_{0, 0, 1, 1};
