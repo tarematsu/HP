@@ -148,22 +148,24 @@ void App::HandleStationheadClockSwitch() noexcept {
 void App::CompleteStationheadClockAudioHandoff(
     const StationheadStatus& primary,
     const StationheadStatus* secondary) noexcept {
-  if (stationheadClockPendingAudioWindow_ == 0 && primary.audioPlaying) {
+  if (stationheadClockPendingAudioWindow_ == 0 && primary.audioPlaying &&
+      stationhead_->ClockStationNavigationSettled()) {
     ApplyScheduledStationheadAudioProfile(true);
     stationheadClockPendingAudioWindow_ = -1;
     if (logger_) {
       logger_->Info(
-          L"Stationhead clock switch handed audio to A after playback recovery");
+          L"Stationhead clock switch handed audio to A after navigation and playback recovery");
     }
     return;
   }
   if (stationheadClockPendingAudioWindow_ == 1 && secondary &&
-      secondary->audioPlaying) {
+      secondary->audioPlaying &&
+      secondaryStationhead_->ClockStationNavigationSettled()) {
     ApplyScheduledStationheadAudioProfile(false);
     stationheadClockPendingAudioWindow_ = -1;
     if (logger_) {
       logger_->Info(
-          L"Stationhead clock switch handed audio to B after playback recovery");
+          L"Stationhead clock switch handed audio to B after navigation and playback recovery");
     }
   }
 }
