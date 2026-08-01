@@ -26,6 +26,10 @@ const policy = readFileSync(
   new URL('../../native/src/sh_track_boundary_message_policy.h', import.meta.url),
   'utf8',
 );
+const layout = readFileSync(
+  new URL('../../native/src/sh_layout.cpp', import.meta.url),
+  'utf8',
+);
 const trackScript = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
@@ -102,6 +106,47 @@ test('each clock action performs a real background navigation', () => {
   assert.match(policy, /status_\.navigating/);
 });
 
+test('the playback document cannot promote itself after dashboard startup', () => {
+  const keepBehind = section(
+    layout,
+    'void StationheadPlayer::KeepPlaybackBehindDashboard()',
+    'void StationheadPlayer::SetStartupBounds()',
+  );
+  const setVisible = section(
+    layout,
+    'void StationheadPlayer::SetVisible(bool visible)',
+    'void StationheadPlayer::LayoutControllers()',
+  );
+  const selectTab = section(
+    layout,
+    'void StationheadPlayer::SelectTab(StationheadTabKind tab)',
+    'bool StationheadPlayer::HasAuthTab()',
+  );
+  const needsInteractive = section(
+    layout,
+    'bool StationheadPlayer::NeedsInteractiveWindow() const',
+    '}  // namespace hp',
+  );
+
+  assert.match(keepBehind, /viewVisible_ = false/);
+  assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
+  assert.doesNotMatch(keepBehind, /loginRequired_[\s\S]*viewVisible_ = true/);
+  assert.match(
+    setVisible,
+    /if \(selectedTab_ != StationheadTabKind::Auth\) \{[\s\S]*KeepPlaybackBehindDashboard\(\)/,
+  );
+  assert.match(
+    selectTab,
+    /tab == StationheadTabKind::Stationhead && !startupPreviewActive_[\s\S]*tab = StationheadTabKind::None/,
+  );
+  assert.doesNotMatch(needsInteractive, /!AudioPlaying\(\)/);
+  assert.doesNotMatch(needsInteractive, /loginRequired_/);
+  assert.match(
+    layout,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, policy\.showAuth/,
+  );
+});
+
 test('outgoing page messages cannot satisfy the post-switch click check', () => {
   assert.match(policy, /kStationheadClockNavigationClickGuardMs = 1'500/);
   assert.match(
@@ -152,15 +197,19 @@ test('55-minute, 56-minute, and track-boundary navigation are removed', () => {
   assert.doesNotMatch(trackScript, /addEventListener\(['"]ended/);
 });
 
-test('runtime smoke verifies background Start Listening before and after a clock switch', () => {
-  assert.match(startupSmoke, /HomePanelStationheadHost/);
-  assert.match(startupSmoke, /HomePanelSecondaryStationheadHost/);
-  assert.match(startupSmoke, /HWND_BOTTOM/);
-  assert.match(startupSmoke, /primaryClickBehindDashboard/);
-  assert.match(startupSmoke, /secondaryClickBehindDashboard/);
-  assert.match(startupSmoke, /Stationhead A auto-clicking Start Listening at/);
-  assert.match(startupSmoke, /Stationhead B auto-clicking Start Listening at/);
-  assert.match(startupSmoke, /clock even-minute destination switch/);
-  assert.match(startupSmoke, /clock odd-minute destination switch/);
-  assert.match(startupSmoke, /switchedClickBehindDashboard/);
+test('runtime smoke observes foreground state without changing any window', () => {
+  assert.match(startupSmoke, /observationalOnly = \$true/);
+  assert.match(startupSmoke, /PlaybackBehindNativePanels/);
+  assert.match(startupSmoke, /NativePanelCount/);
+  assert.match(startupSmoke, /GW_CHILD = 5/);
+  assert.match(startupSmoke, /GW_HWNDNEXT = 2/);
+  assert.match(startupSmoke, /hostIndex <= lastPanelIndex/);
+  assert.match(startupSmoke, /Start-Sleep -Milliseconds 25/);
+  assert.match(startupSmoke, /PostClickSettleSeconds = 15/);
+  assert.match(startupSmoke, /must be at least 12 seconds/);
+  assert.match(startupSmoke, /Continuing invariant monitoring/);
+  assert.match(startupSmoke, /Stationhead foreground invariant failed/);
+  assert.doesNotMatch(startupSmoke, /DllImport\("user32\.dll"[^]*SetWindowPos/);
+  assert.doesNotMatch(startupSmoke, /ForcePlaybackBehindDashboard\s*\(/);
+  assert.doesNotMatch(startupSmoke, /HWND_BOTTOM/);
 });
