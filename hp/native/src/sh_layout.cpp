@@ -71,17 +71,21 @@ bool ControllerVisibilityMatches(ICoreWebView2Controller* controller,
 bool PlaybackSurfaceMatches(HWND hostWindow,
                             ICoreWebView2Controller* controller,
                             const RECT& workspaceBounds,
-                            int width,
-                            int height,
+                            int hostWidth,
+                            int hostHeight,
                             HWND placement) noexcept {
   if (!hostWindow || !IsWindow(hostWindow) || !IsWindowVisible(hostWindow)) {
     return false;
   }
+  const int controllerWidth =
+      std::max(1L, workspaceBounds.right - workspaceBounds.left);
+  const int controllerHeight =
+      std::max(1L, workspaceBounds.bottom - workspaceBounds.top);
   const RECT hostBounds{workspaceBounds.left, workspaceBounds.top,
-                        workspaceBounds.left + width,
-                        workspaceBounds.top + height};
-  const RECT controllerBounds{0, 0, width, height};
-  return WindowClientSizeMatches(hostWindow, width, height) &&
+                        workspaceBounds.left + hostWidth,
+                        workspaceBounds.top + hostHeight};
+  const RECT controllerBounds{0, 0, controllerWidth, controllerHeight};
+  return WindowClientSizeMatches(hostWindow, hostWidth, hostHeight) &&
          ChildWindowPlacementMatches(hostWindow, hostBounds, placement) &&
          ControllerBoundsMatch(controller, controllerBounds) &&
          ControllerVisibilityMatches(controller, TRUE);
@@ -182,7 +186,11 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const int height = std::max(1L, bounds.bottom - bounds.top);
   constexpr int hostWidth = 1;
   constexpr int hostHeight = 1;
-  const RECT contentBounds{0, 0, hostWidth, hostHeight};
+  // Keep a normal browser viewport so Stationhead's responsive layout and
+  // Start Listening visibility detection continue to work. The 1x1 child host
+  // clips the controller output and remains at HWND_BOTTOM, so none of this
+  // document can cover the native dashboard.
+  const RECT contentBounds{0, 0, width, height};
   const RECT authBounds{0, 0, width, height};
   const RECT hostBounds{bounds.left, bounds.top,
                         bounds.left + hostWidth, bounds.top + hostHeight};
@@ -249,8 +257,7 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   }
 
   if (controller) {
-    if (!hostSizeMatches ||
-        !ControllerBoundsMatch(controller, contentBounds)) {
+    if (!ControllerBoundsMatch(controller, contentBounds)) {
       controller->put_Bounds(contentBounds);
     }
     if (!ControllerVisibilityMatches(controller, TRUE)) {
@@ -322,7 +329,7 @@ void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
     return;
   }
   // Retain the lifecycle marker for startup coordination, but never promote the
-  // playback WebView. It remains a visible 1x1 audio surface at HWND_BOTTOM.
+  // playback WebView. Its host remains a visible 1x1 audio surface at HWND_BOTTOM.
   startupPreviewActive_ = true;
   bounds_ = bounds;
   KeepPlaybackBehindDashboard();
@@ -368,7 +375,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   }
 
   // Only the separate Spotify authorization controller may be presented after
-  // startup. The playback document itself remains 1x1 and behind the dashboard,
+  // startup. The playback host itself remains 1x1 and behind the dashboard,
   // including login-required and audio-stopped states.
   if (selectedTab_ != StationheadTabKind::Auth) {
     KeepPlaybackBehindDashboard();
