@@ -229,17 +229,21 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                    bounds.left, bounds.top, width, height,
                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
-  } else {
-    if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
-    if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
-      authController->put_IsVisible(FALSE);
+    if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
+    if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
+      controller->put_IsVisible(FALSE);
     }
+    return;
   }
 
   if (hidePlayback) {
     if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);
     if (controller && !ControllerVisibilityMatches(controller, FALSE)) {
       controller->put_IsVisible(FALSE);
+    }
+    if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
+    if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
+      authController->put_IsVisible(FALSE);
     }
     return;
   }
@@ -257,6 +261,10 @@ void ApplyStationheadChildLayout(HWND hostWindow,
     SetWindowPos(hostWindow, HWND_BOTTOM,
                  bounds.left, bounds.top, hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  }
+  if (authWasVisible) ShowWindow(authHostWindow, SW_HIDE);
+  if (authController && !ControllerVisibilityMatches(authController, FALSE)) {
+    authController->put_IsVisible(FALSE);
   }
 }
 
@@ -406,8 +414,7 @@ void StationheadPlayer::LayoutControllers() {
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
   const RECT resolved = ResolveStationheadWorkspaceBounds(role_, config_, window_, bounds);
-  if (EqualRect(&bounds_, &resolved)) return;
-  bounds_ = resolved;
+  if (!EqualRect(&bounds_, &resolved)) bounds_ = resolved;
   LayoutControllers();
 }
 
