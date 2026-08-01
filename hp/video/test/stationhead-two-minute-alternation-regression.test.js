@@ -106,11 +106,16 @@ test('each clock action performs a real background navigation', () => {
   assert.match(policy, /status_\.navigating/);
 });
 
-test('the playback document cannot promote itself after dashboard startup', () => {
+test('the playback document cannot promote itself before or after dashboard startup', () => {
   const keepBehind = section(
     layout,
     'void StationheadPlayer::KeepPlaybackBehindDashboard()',
     'void StationheadPlayer::SetStartupBounds()',
+  );
+  const startupPreview = section(
+    layout,
+    'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
+    'void StationheadPlayer::ClearStartupPreviewBounds()',
   );
   const setVisible = section(
     layout,
@@ -130,20 +135,28 @@ test('the playback document cannot promote itself after dashboard startup', () =
 
   assert.match(keepBehind, /viewVisible_ = false/);
   assert.match(keepBehind, /selectedTab_ = StationheadTabKind::None/);
+  assert.match(
+    keepBehind,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false\)/,
+  );
   assert.doesNotMatch(keepBehind, /loginRequired_[\s\S]*viewVisible_ = true/);
+  assert.match(startupPreview, /KeepPlaybackBehindDashboard\(\)/);
+  assert.doesNotMatch(startupPreview, /HWND_TOP|showStartupPreview/);
   assert.match(
     setVisible,
     /if \(selectedTab_ != StationheadTabKind::Auth\) \{[\s\S]*KeepPlaybackBehindDashboard\(\)/,
   );
   assert.match(
     selectTab,
-    /tab == StationheadTabKind::Stationhead && !startupPreviewActive_[\s\S]*tab = StationheadTabKind::None/,
+    /if \(tab == StationheadTabKind::Stationhead\) \{[\s\S]*tab = StationheadTabKind::None;/,
   );
+  assert.doesNotMatch(selectTab, /startupPreviewActive_/);
   assert.doesNotMatch(needsInteractive, /!AudioPlaying\(\)/);
   assert.doesNotMatch(needsInteractive, /loginRequired_/);
+  assert.match(needsInteractive, /selectedTab_ == StationheadTabKind::Auth/);
   assert.match(
     layout,
-    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, policy\.showAuth/,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_,[\s\S]*policy\.showAuth, policy\.hidePlayback\)/,
   );
 });
 
