@@ -107,7 +107,8 @@ inline bool StationheadPrimaryPlaybackAvailableNow() {
           requestUrl, stationhead_playback_gate::kMaximumResponseBytes,
           &body, nullptr, &error,
           L"HomePanel-Stationhead-Playback-Gate/1.0",
-          L"Accept: application/json\r\nCache-Control: no-cache, no-store\r\nPragma: no-cache\r\n")) {
+          L"Accept: application/json\r\nCache-Control: no-cache, no-store\r\nPragma: no-cache\r\n",
+          1'500, false)) {
     return false;
   }
   const std::wstring payload = Utf8ToWide(std::string(body.begin(), body.end()));
