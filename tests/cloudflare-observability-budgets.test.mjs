@@ -20,6 +20,7 @@ function runSelfTest(path) {
 test('observability policy scripts pass offline self-tests in CI', () => {
   for (const path of [
     '.github/scripts/audit-cloudflare-daily-usage.py',
+    '.github/scripts/audit-cloudflare-d1-history.py',
     '.github/scripts/audit-cloudflare-free-tier.py',
     '.github/scripts/audit-observability-budget-gates.py',
     '.github/scripts/audit-cloudflare-telemetry.py',
@@ -30,8 +31,9 @@ test('observability policy scripts pass offline self-tests in CI', () => {
 test('observability script changes are covered by pull-request CI', () => {
   const workflow = readSource('.github/workflows/homepanel-unified-ci.yml');
   assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-cloudflare-daily-usage\.py'$/m);
+  assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-cloudflare-d1-history\.py'$/m);
   assert.match(workflow, /^\s{6}- '\.github\/scripts\/audit-deployed-cloudflare-telemetry\.py'$/m);
-  assert.match(workflow, /^\s{6}- '\.github\/scripts\/observability-\*\.mjs'$/m);
+  assert.match(workflow, /audit-cloudflare-d1-history\.py --self-test/);
   assert.match(workflow, /tests\/observability-\*\.test\.mjs/);
   assert.match(workflow, /needs\.changes\.outputs\.contracts == 'true'/);
 });
@@ -39,6 +41,7 @@ test('observability script changes are covered by pull-request CI', () => {
 test('unified observability runs account-wide post-deploy, collection, and daily gates', () => {
   const workflow = readSource('.github/workflows/sh-observability.yml');
   const dailyAudit = readSource('.github/scripts/audit-cloudflare-daily-usage.py');
+  const dailyHistory = readSource('.github/scripts/audit-cloudflare-d1-history.py');
   const freeTierAudit = readSource('.github/scripts/cloudflare_free_tier_audit.py');
   const budgetContract = readSource('.github/scripts/audit-observability-budget-gates.py');
 
@@ -53,6 +56,7 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'cron: "0 1 * * *"',
     'CLOUDFLARE_WORKERS: sh-sakurazaka46jp,sh-buddies-recovery,sh-buddies-collector,sh-runtime-orchestrator,homepanel-cloud',
     'D1_CONFIG_GLOBS: worker/wrangler*.jsonc,site/wrangler.jsonc,hp/cloud/wrangler.jsonc',
+    'D1_HISTORY_DAYS: "7"',
     'DAILY_REQUEST_BUDGET: "100000"',
     'DAILY_REQUEST_RESERVE: "0"',
     'DAILY_D1_READ_BUDGET: "5000000"',
@@ -61,6 +65,8 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'CLOUDFLARE_RUNTIME_WORKER: sh-runtime-orchestrator',
     'CLOUDFLARE_KV_BINDINGS: PAGES_RESPONSE_KV',
     'CLOUDFLARE_DO_BINDINGS: BUDDIES_COLLECTOR_COORDINATOR,SCHEDULER_COORDINATOR,DEVICE_SYNC_COORDINATOR,RADAR_BUNDLE_COORDINATOR,VIDEO_FEED_COORDINATOR',
+    'audit-cloudflare-d1-history.py',
+    'd1-daily-history.log',
     'id: free-tier-budget',
     'id: budget-contract',
     'id: d1-insights',
@@ -105,6 +111,13 @@ test('unified observability runs account-wide post-deploy, collection, and daily
     'configured_queue_ids',
     'Projected 24h',
     'ACCOUNT = os.environ.get("CLOUDFLARE_ACCOUNT_ID"',
+  ]);
+  expectAll(dailyHistory, [
+    'd1AnalyticsAdaptiveGroups',
+    'dimensions { date databaseId }',
+    'D1 UTC daily history',
+    'rowsWritten',
+    'D1_HISTORY_DAYS',
   ]);
   expectAll(freeTierAudit, [
     'def aggregate(row:',
