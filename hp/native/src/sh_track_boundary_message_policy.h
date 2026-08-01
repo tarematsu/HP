@@ -1,8 +1,45 @@
 #pragma once
 #include "common.h"
+
+// Extend the existing public reconnect surface with one native clock-driven
+// navigation entry point without changing the large StationheadPlayer header.
+#define Reconnect()                                                          \
+  Reconnect();                                                               \
+  bool SwitchClockStationDestination(                                        \
+      const std::wstring& url, const std::wstring& reason)
 #include "sh.h"
+#undef Reconnect
 
 namespace hp {
+
+inline bool StationheadPlayer::SwitchClockStationDestination(
+    const std::wstring& url, const std::wstring& reason) {
+  if (url.empty() || !webview_ ||
+      shuttingDown_.load(std::memory_order_acquire) ||
+      recreating_.load(std::memory_order_acquire) ||
+      navigationInFlight_.load(std::memory_order_acquire) ||
+      spotifyAuthorization_ || loginRequired_) {
+    return false;
+  }
+  {
+    std::lock_guard lock(mutex_);
+    if (status_.navigating) return false;
+  }
+
+  if (IsSecondary()) {
+    config_.secondaryUrl = url;
+  } else {
+    config_.url = url;
+  }
+  usingFallback_ = false;
+  NavigateStationheadUrl(UnixMillis(), url, reason, false);
+  // NavigateStationheadUrl resets startup layout state. Collapse the playback
+  // surface again immediately so the clock switch never raises it above the
+  // native dashboard while Start Listening retries run.
+  KeepPlaybackBehindDashboard();
+  PostChange();
+  return true;
+}
 
 inline constexpr int64_t StationheadBoundaryElapsedMs(
     ULONGLONG startedAt, ULONGLONG now) noexcept {
