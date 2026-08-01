@@ -83,9 +83,50 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
   }),
 ]);
 
+function operationalTimestamp(run) {
+  return run?.run_started_at || run?.created_at || run?.updated_at || null;
+}
+
+function timestamp(value) {
+  const milliseconds = Date.parse(String(value || ''));
+  return Number.isFinite(milliseconds) ? milliseconds : 0;
+}
+
+export function filterCurrentRunnerPublisherRuns(runs, {
+  currentRunId = process.env.GITHUB_RUN_ID,
+} = {}) {
+  const normalizedCurrentRunId = String(currentRunId || '').trim();
+  const ordered = [...(Array.isArray(runs) ? runs : [])].sort((left, right) => (
+    timestamp(operationalTimestamp(right)) - timestamp(operationalTimestamp(left))
+  ));
+
+  return ordered.filter((run, index) => {
+    if (normalizedCurrentRunId && String(run?.id ?? '') === normalizedCurrentRunId) {
+      return false;
+    }
+
+    const supersededCancellation = index > 0
+      && run?.status === 'completed'
+      && run?.conclusion === 'cancelled';
+    return !supersededCancellation;
+  });
+}
+
 export function collectActionsRunnerHealth(request, {
   now = Date.now(),
   targets = ACTIONS_RUNNER_TARGETS,
+  currentRunId = process.env.GITHUB_RUN_ID,
 } = {}) {
-  return collectBaseActionsRunnerHealth(request, { now, targets });
+  const requestWithPublisherFiltering = async (method, path, ...args) => {
+    const response = await request(method, path, ...args);
+    if (!String(path || '').includes('/actions/workflows/publish-github-actions-runner-health.yml/runs?')) {
+      return response;
+    }
+    return {
+      ...response,
+      workflow_runs: filterCurrentRunnerPublisherRuns(response?.workflow_runs, { currentRunId }),
+    };
+  };
+
+  return collectBaseActionsRunnerHealth(requestWithPublisherFiltering, { now, targets });
 }
