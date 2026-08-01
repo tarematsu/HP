@@ -89,7 +89,18 @@ function operationalTimestamp(run) {
 
 function timestamp(value) {
   const milliseconds = Date.parse(String(value || ''));
-  return Number.isFinite(milliseconds) ? milliseconds : 0;
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+function cancellationWasSuperseded(run, newerRuns) {
+  if (run?.status !== 'completed' || run?.conclusion !== 'cancelled') return false;
+  const cancelledAt = timestamp(run.updated_at);
+  if (cancelledAt == null) return false;
+
+  return newerRuns.some((newerRun) => {
+    const replacementCreatedAt = timestamp(newerRun?.created_at || newerRun?.run_started_at);
+    return replacementCreatedAt != null && replacementCreatedAt <= cancelledAt;
+  });
 }
 
 export function filterCurrentRunnerPublisherRuns(runs, {
@@ -97,18 +108,14 @@ export function filterCurrentRunnerPublisherRuns(runs, {
 } = {}) {
   const normalizedCurrentRunId = String(currentRunId || '').trim();
   const ordered = [...(Array.isArray(runs) ? runs : [])].sort((left, right) => (
-    timestamp(operationalTimestamp(right)) - timestamp(operationalTimestamp(left))
+    (timestamp(operationalTimestamp(right)) ?? 0) - (timestamp(operationalTimestamp(left)) ?? 0)
   ));
 
   return ordered.filter((run, index) => {
     if (normalizedCurrentRunId && String(run?.id ?? '') === normalizedCurrentRunId) {
       return false;
     }
-
-    const supersededCancellation = index > 0
-      && run?.status === 'completed'
-      && run?.conclusion === 'cancelled';
-    return !supersededCancellation;
+    return !cancellationWasSuperseded(run, ordered.slice(0, index));
   });
 }
 
