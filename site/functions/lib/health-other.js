@@ -24,9 +24,9 @@ async function readTask(db) {
 export async function readOtherHealth(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding missing');
   const row = await readTask(env.OTHER_DB);
-  // Runner health warns after 75 minutes. Keep public availability green for one
-  // additional schedule half-cycle so normal Actions queueing does not cause a 503.
-  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 90 * 60_000, 60 * 60_000);
+  // Production config uses 90 minutes: runner health warns at 75 minutes, then
+  // public availability keeps one additional schedule half-cycle of grace.
+  const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 75 * 60_000, 60 * 60_000);
   const ageMs = age(now, row?.last_attempt_at);
   const stale = ageMs == null || ageMs >= staleAfterMs;
   const failed = Boolean(row) && !HEALTHY_STATUSES.has(row.status);
