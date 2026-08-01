@@ -70,12 +70,11 @@ class App {
   static constexpr UINT kUpdateResultMessage = WM_APP + 20;
   static constexpr int kRestartExitCode = 42;
   static constexpr uint32_t kStationheadStateWakeMs = 2'000;
-  static constexpr UINT_PTR kStationheadAlternationTimerId = 2;
-  static constexpr UINT kStationheadAlternationIntervalMs = 2 * 60'000;
+  static constexpr UINT_PTR kStationheadClockSwitchTimerId = 2;
   static void EnrichRenderStationheadState(
       StationheadStatus& state, StationheadStatus* secondaryStatus,
       const StationheadConfig& config);
-  static void CALLBACK StationheadAlternationTimerProc(
+  static void CALLBACK StationheadClockSwitchTimerProc(
       HWND window, UINT message, UINT_PTR timerId, DWORD time);
   static LRESULT CALLBACK WindowProc(
       HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -96,7 +95,11 @@ class App {
   bool UpdateRenderStationheadState(StationheadStatus nextState);
   void ScheduleNextTick(uint32_t milliseconds);
   void ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept;
-  void UpdateStationheadAlternationTimer(bool bothPlaying) noexcept;
+  void ArmStationheadClockSwitchTimer() noexcept;
+  void HandleStationheadClockSwitch() noexcept;
+  void CompleteStationheadClockAudioHandoff(
+      const StationheadStatus& primary,
+      const StationheadStatus* secondary) noexcept;
   void UpdateStationheadPlaybackFallback(int64_t nowMs);
   void PublishRenderState();
   void PublishRenderStateNow();
@@ -182,7 +185,11 @@ class App {
   RECT placedBounds_{};
   bool scheduledPrimaryAudioAudible_ = true;
   bool stationheadAudioMuted_ = false;
-  bool stationheadAlternationTimerArmed_ = false;
+  bool stationheadClockSwitchTimerArmed_ = false;
+  bool stationheadPrimaryUsesBuddy46_ = false;
+  bool stationheadSecondaryUsesBuddy46_ = true;
+  int stationheadClockPendingAudioWindow_ = -1;
+  int64_t stationheadLastClockMinute_ = -1;
   WorkspaceTab selectedTab_ = WorkspaceTab::Main;
   RECT workspaceBounds_{0, 0, 1, 1};
   HistoryFlushGuard historyFlushGuard_{this};
