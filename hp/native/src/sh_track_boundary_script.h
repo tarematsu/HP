@@ -7,8 +7,8 @@
 
 namespace hp {
 
-// A and B remain on their dedicated station pages. Media boundaries do not
-// initiate navigation; the App changes only the native A/B mute profile.
+// Media boundaries never initiate navigation. Window A uses the native
+// 55-minute clock and Window B uses the native 54-minute clock instead.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
   return {};
 }
@@ -16,6 +16,5 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
 }  // namespace hp
 
 // Keep legacy trusted-origin track-ended messages harmless during an in-place
-// update. The native player must not navigate at media boundaries now that A and
-// B are long-lived dedicated station pages.
+// update. Only the independent elapsed-time refresh policy may reload a player.
 #define HandleTrackEnded(...) ((void)0)
