@@ -132,7 +132,7 @@ test('only the exact optional Tooltip stylesheet is replaced with local 204', ()
   assert.match(policy, /stationhead\.com\.evil\.example\/assets\/tooltip-u7w9wxcq\.css/);
 });
 
-test('native startup smoke rejects a late or black Stationhead pane', () => {
+test('native startup smoke observes real window state without mutating it', () => {
   for (const role of ['A', 'B']) {
     assert.match(
       nativeStartupSmoke,
@@ -144,10 +144,18 @@ test('native startup smoke rejects a late or black Stationhead pane', () => {
     );
   }
   assert.match(nativeStartupSmoke, /\[int\]\$StartupBudgetSeconds = 60/);
-  assert.match(nativeStartupSmoke, /function Measure-ScreenshotVisibility/);
-  assert.match(nativeStartupSmoke, /brightPixelRatio -ge 0\.01/);
-  assert.match(nativeStartupSmoke, /luminanceRange -ge 32/);
-  assert.match(nativeStartupSmoke, /screenVisibility\.passed/);
+  assert.match(nativeStartupSmoke, /\[int\]\$PostClickSettleSeconds = 15/);
+  assert.match(nativeStartupSmoke, /PlaybackStartupSafe/);
+  assert.match(nativeStartupSmoke, /Started non-mutating Stationhead surface observation at first host creation/);
+  assert.match(nativeStartupSmoke, /PlaybackBehindNativePanels/);
+  assert.match(nativeStartupSmoke, /observationalOnly = \$true/);
+  assert.match(nativeStartupSmoke, /sampleIntervalMs = 25/);
+  assert.match(nativeStartupSmoke, /primaryHostSeen = \$primaryHostSeen/);
+  assert.match(nativeStartupSmoke, /secondaryHostSeen = \$secondaryHostSeen/);
+  assert.doesNotMatch(
+    nativeStartupSmoke,
+    /private static extern .*\b(?:SetWindowPos|MoveWindow|ShowWindow|SetForegroundWindow|BringWindowToTop|SetParent|SetWindowLong|SetActiveWindow|SwitchToThisWindow|EnableWindow)\b/,
+  );
   assert.match(nativeRuntimeWorkflow, /-StartupBudgetSeconds 60/);
-  assert.match(nativeRuntimeWorkflow, /-PostClickSettleSeconds 3/);
+  assert.match(nativeRuntimeWorkflow, /-PostClickSettleSeconds 15/);
 });
