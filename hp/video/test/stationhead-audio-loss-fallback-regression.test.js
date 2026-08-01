@@ -44,6 +44,7 @@ const cmake = readFileSync(
 );
 
 test('audio loss policy fixes the requested timing boundaries', () => {
+  assert.match(policy, /kStationheadAudioLossArmStabilityMs = 15'000/);
   assert.match(policy, /kStationheadAudioLossGraceMs = 11'000/);
   assert.match(policy, /kStationheadAudioLossDomSettleMs = 1'000/);
   assert.doesNotMatch(policy, /ProbeRetry|ProbeSettle/);
@@ -53,6 +54,9 @@ test('audio loss policy fixes the requested timing boundaries', () => {
     handlesHeader,
     /kStationheadTrackTransitionGraceMs =\s*kStationheadAudioLossGraceMs/,
   );
+  assert.match(policy, /StationheadAudioLossCanArm\(true, false, 14'999\)/);
+  assert.match(policy, /StationheadAudioLossCanArm\(true, false, 15'000\)/);
+  assert.match(policy, /StationheadAudioLossCanArm\(true, true, 60'000\)/);
   assert.match(policy, /StationheadAudioLossCanProbe\([\s\S]*11'999/);
   assert.match(policy, /StationheadAudioLossCanProbe\([\s\S]*12'000/);
   assert.match(policy, /StationheadAudioLossCanFallback\(true, false, 12'000\)/);
@@ -67,6 +71,21 @@ test('each Stationhead player evaluates audio loss and uses managed fallback', (
   assert.match(playerHeader, /void EvaluateAudioLossRecovery\(int64_t nowMs\)/);
   assert.match(playerHeader, /void SetManagedPlaybackFallback/);
   assert.match(cmake, /src\/sh_audio_loss\.cpp/);
+});
+
+test('startup and navigation audio pulses cannot arm fallback', () => {
+  assert.match(
+    audioLossSource,
+    /void StationheadPlayer::EvaluateAudioLossRecovery[\s\S]*const bool navigationActive =[\s\S]*if \(navigationActive\) \{[\s\S]*if \(!managedPrimaryReturnPending_\) audioLossPlaybackObserved_ = false;[\s\S]*const bool audioPlaying = AudioPlaying\(\);/,
+  );
+  assert.match(audioLossSource, /const int64_t playingForMs/);
+  assert.match(
+    audioLossSource,
+    /if \(!audioLossPlaybackObserved_ && !managedPrimaryReturnPending_\) \{[\s\S]*StationheadAudioLossCanArm\([\s\S]*playingForMs/,
+  );
+  assert.match(audioLossSource, /L"startup_wait"/);
+  assert.match(audioLossSource, /fifteen seconds of continuous playback/);
+  assert.match(audioLossSource, /continuous primary audio confirmed; audio-loss fallback armed/);
 });
 
 test('authentication probing matches the live Stationhead DOM structure', () => {
