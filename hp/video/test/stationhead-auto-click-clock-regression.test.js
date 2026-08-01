@@ -44,7 +44,7 @@ test('auto-click lvalue storage synchronizes external writes into uptime', () =>
   const proxy = section(
     clockPolicy,
     'inline int64_t& StationheadAutoClickDeadlineStorage(',
-    'class StationheadNavigationInFlightProxy',
+    'class StationheadBoundaryReloadClockProxy',
   );
   assert.match(proxy, /if \(storage != exposed\) deadline = storage;/);
   assert.match(proxy, /storage = StationheadProjectedDeadlineValue\(deadline\);/);
