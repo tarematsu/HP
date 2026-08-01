@@ -4,6 +4,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kStationheadClockSlotMs = 30'000;
+constexpr int64_t kStationheadClockCycleSlots = 8;
 constexpr int64_t kStationheadClockFreshAudioDelayMs = 1'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
@@ -30,6 +31,7 @@ bool StationheadUrlMatches(
 }
 
 static_assert(kStationheadClockSlotMs == 30'000);
+static_assert(kStationheadClockCycleSlots * kStationheadClockSlotMs == 4 * 60'000);
 static_assert(StationheadDelayToNextClockSlot(30'000) == 30'000);
 static_assert(StationheadDelayToNextClockSlot(30'001) == 29'999);
 static_assert(StationheadDelayToNextClockSlot(59'999) == 50);
@@ -115,6 +117,12 @@ void App::HandleStationheadClockSwitch() noexcept {
   if (clockSlot == stationheadLastClockSlot_) return;
   stationheadLastClockSlot_ = clockSlot;
 
+  // One four-minute cycle contains eight half-minute slots. Switch A at the
+  // cycle's :00 boundary and B at :30; the remaining six slots do nothing.
+  const int64_t slotInFourMinuteCycle =
+      clockSlot % kStationheadClockCycleSlots;
+  if (slotInFourMinuteCycle != 0 && slotInFourMinuteCycle != 1) return;
+
   if (stationheadClockPendingAudioWindow_ >= 0) {
     if (logger_) {
       logger_->Warn(
@@ -124,7 +132,7 @@ void App::HandleStationheadClockSwitch() noexcept {
   }
 
   // Unix epoch minutes begin on a :00 boundary. Even half-minute slots are
-  // therefore each minute's :00 event; odd slots are the matching :30 event.
+  // therefore each selected cycle's :00 event; odd slots are its :30 event.
   const bool switchPrimary = (clockSlot % 2) == 0;
   bool& usesBuddy46 = switchPrimary
       ? stationheadPrimaryUsesBuddy46_
