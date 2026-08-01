@@ -89,7 +89,7 @@ test('the two-minute callback changes only the native A/B audio profile', () => 
   assert.doesNotMatch(callback, /Navigate|Reload|SetPlaybackFallback/);
 });
 
-test('55-minute and 56-minute periodic navigation are removed', () => {
+test('55-minute, 56-minute, and track-boundary navigation are removed', () => {
   assert.doesNotMatch(policy, /55-minute|56-minute|secondary \? 56 : 55/);
   assert.doesNotMatch(policy, /StationheadPeriodicRefreshIntervalMs/);
   assert.doesNotMatch(policy, /RefreshPeriodicNavigation/);
@@ -98,6 +98,7 @@ test('55-minute and 56-minute periodic navigation are removed', () => {
     trackScript,
     /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
   );
+  assert.match(trackScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
   assert.doesNotMatch(trackScript, /addEventListener\(['"]ended/);
 });
 
