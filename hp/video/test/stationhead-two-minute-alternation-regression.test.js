@@ -110,7 +110,7 @@ test('outgoing page messages cannot satisfy the post-switch click check', () => 
   assert.match(clickOrderSmoke, /\[int\]\$MinimumDelaySeconds = 1/);
   assert.match(clickOrderSmoke, /navigationPatterns/);
   assert.match(clickOrderSmoke, /clickPatterns/);
-  assert.match(clickOrderSmoke, /delaySeconds -lt \$MinimumDelaySeconds/);
+  assert.match(clickOrderSmoke, /\$delaySeconds -lt \$MinimumDelaySeconds/);
   assert.match(clickOrderSmoke, /outgoing-document click/);
 });
 
