@@ -1,10 +1,10 @@
 #include "app.h"
+#include "stationhead_playback_gate.h"
 
 namespace hp {
 namespace {
 constexpr int64_t kStationheadClockSlotMs = 30'000;
 constexpr int64_t kStationheadClockFreshAudioDelayMs = 1'000;
-constexpr int64_t kStationheadPrimaryPlaybackMaximumAgeMs = 6 * 60'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
 constexpr UINT StationheadDelayToNextClockSlot(int64_t nowMs) noexcept {
@@ -23,15 +23,6 @@ constexpr bool StationheadClockAudioIsFresh(
       switchStartedAt + kStationheadClockFreshAudioDelayMs;
 }
 
-constexpr bool StationheadPrimaryPlaybackAvailable(
-    const NativePlaybackFeedStatus& feed, int64_t nowMs) noexcept {
-  return feed.available && feed.playing && feed.hasTrack &&
-      !feed.endedWithoutNextTrack && feed.healthyRevision > 0 &&
-      nowMs >= static_cast<int64_t>(feed.healthyRevision) &&
-      nowMs - static_cast<int64_t>(feed.healthyRevision) <=
-          kStationheadPrimaryPlaybackMaximumAgeMs;
-}
-
 bool StationheadUrlMatches(
     const std::wstring& current, const std::wstring& expected) noexcept {
   return !current.empty() && !expected.empty() &&
@@ -39,7 +30,6 @@ bool StationheadUrlMatches(
 }
 
 static_assert(kStationheadClockSlotMs == 30'000);
-static_assert(kStationheadPrimaryPlaybackMaximumAgeMs > 5 * 60'000);
 static_assert(StationheadDelayToNextClockSlot(30'000) == 30'000);
 static_assert(StationheadDelayToNextClockSlot(30'001) == 29'999);
 static_assert(StationheadDelayToNextClockSlot(59'999) == 50);
@@ -148,10 +138,9 @@ void App::HandleStationheadClockSwitch() noexcept {
   }
   const bool nextUsesBuddy46 = !usesBuddy46;
   if (!nextUsesBuddy46) {
-    const NativePlaybackFeedStatus feed = renderer_
-        ? renderer_->NativePlaybackFeedStatusFor(0, nowMs)
-        : NativePlaybackFeedStatus{};
-    if (!StationheadPrimaryPlaybackAvailable(feed, nowMs)) {
+    // Query playback JSON at the actual buddy46 -> sakuramankai boundary.
+    // Failure and invalid/no-current-track responses keep the window on buddy46.
+    if (!StationheadPrimaryPlaybackAvailableNow()) {
       if (logger_) {
         logger_->Info(
             switchPrimary
