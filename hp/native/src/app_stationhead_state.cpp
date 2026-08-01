@@ -32,6 +32,12 @@ constexpr bool StationheadPrimaryPlaybackAvailable(
           kStationheadPrimaryPlaybackMaximumAgeMs;
 }
 
+bool StationheadUrlMatches(
+    const std::wstring& current, const std::wstring& expected) noexcept {
+  return !current.empty() && !expected.empty() &&
+      _wcsicmp(current.c_str(), expected.c_str()) == 0;
+}
+
 static_assert(kStationheadClockSlotMs == 30'000);
 static_assert(kStationheadPrimaryPlaybackMaximumAgeMs > 5 * 60'000);
 static_assert(StationheadDelayToNextClockSlot(30'000) == 30'000);
@@ -133,7 +139,14 @@ void App::HandleStationheadClockSwitch() noexcept {
   bool& usesBuddy46 = switchPrimary
       ? stationheadPrimaryUsesBuddy46_
       : stationheadSecondaryUsesBuddy46_;
-  bool nextUsesBuddy46 = !usesBuddy46;
+  const StationheadStatus currentStatus = switchPrimary
+      ? stationhead_->Status()
+      : secondaryStationhead_->Status();
+  if (!currentStatus.url.empty()) {
+    usesBuddy46 = StationheadUrlMatches(
+        currentStatus.url, config_.stationhead.alternateUrl);
+  }
+  const bool nextUsesBuddy46 = !usesBuddy46;
   if (!nextUsesBuddy46) {
     const NativePlaybackFeedStatus feed = renderer_
         ? renderer_->NativePlaybackFeedStatusFor(0, nowMs)
@@ -151,7 +164,7 @@ void App::HandleStationheadClockSwitch() noexcept {
 
   const std::wstring& targetUrl = nextUsesBuddy46
       ? config_.stationhead.alternateUrl
-      : config_.stationhead.url;
+      : config_.stationhead.primaryUrl;
   if (targetUrl.empty()) return;
 
   // Keep the already-loaded opposite player audible while the selected clock
