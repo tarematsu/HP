@@ -14,6 +14,14 @@ const playbackGate = readFileSync(
   new URL('../../native/src/stationhead_playback_gate.h', import.meta.url),
   'utf8',
 );
+const winHttp = readFileSync(
+  new URL('../../native/src/winhttp_helpers.h', import.meta.url),
+  'utf8',
+);
+const nativePlayback = readFileSync(
+  new URL('../../native/src/dashboard_native_playback.cpp', import.meta.url),
+  'utf8',
+);
 const app = readFileSync(
   new URL('../../native/src/app.cpp', import.meta.url),
   'utf8',
@@ -108,6 +116,23 @@ test('playback JSON is fetched and validated before Stationhead WebView construc
   );
 });
 
+test('startup playback fetch seeds the shared five-minute JSON cache', () => {
+  assert.match(winHttp, /kStationheadPlaybackJsonCacheMs = 5 \* 60'000/);
+  assert.match(winHttp, /IsStationheadPlaybackJsonRequest/);
+  assert.match(winHttp, /\/api\/dashboard\?history=0/);
+  assert.match(winHttp, /ReadStationheadPlaybackJsonCache/);
+  assert.match(winHttp, /StoreStationheadPlaybackJsonCache\(body\)/);
+  assert.match(winHttp, /StoreStationheadPlaybackJsonCache\(nullptr\)/);
+  assert.match(winHttp, /cached dashboard playback fetch failed/);
+  assert.match(nativePlayback, /kDashboardPollIntervalMs = 5 \* 60'000/);
+  assert.match(nativePlayback, /FetchDashboardJson/);
+  assert.match(nativePlayback, /WinHttpDownload/);
+  assert.match(
+    playbackGate,
+    /first sample of the shared five-minute[\s\S]*Renderer and the clock switch gate reuse the same response/,
+  );
+});
+
 test('invalid or unavailable startup playback selects buddy46 before player construction', () => {
   const startup = section(
     cloudConfig,
@@ -156,19 +181,26 @@ test('minute :00 switches A and minute :30 switches B', () => {
   assert.match(handler, /Stationhead clock :30 switched B/);
 });
 
-test('sakuramankai navigation requires fresh playable playback JSON', () => {
+test('sakuramankai navigation reuses the five-minute playback JSON cache', () => {
   const handler = section(
     appState,
     'void App::HandleStationheadClockSwitch()',
     'void App::CompleteStationheadClockAudioHandoff(',
   );
+  const cachedGate = section(
+    playbackGate,
+    'inline bool CachedPayloadHasUsableCurrentTrack()',
+    '}  // namespace stationhead_playback_gate',
+  );
   assert.match(appState, /#include "stationhead_playback_gate\.h"/);
-  assert.match(handler, /if \(!StationheadPrimaryPlaybackAvailableNow\(\)\)/);
-  assert.doesNotMatch(handler, /NativePlaybackFeedStatusFor/);
-  assert.match(handler, /kept buddy46 because playback JSON has no fresh valid sakuramankai track/);
+  assert.match(handler, /if \(!StationheadPrimaryPlaybackAvailableCached\(\)\)/);
+  assert.doesNotMatch(handler, /StationheadPrimaryPlaybackAvailableNow/);
+  assert.match(cachedGate, /TryGetStationheadPlaybackJsonCache/);
+  assert.doesNotMatch(cachedGate, /WinHttpDownload/);
+  assert.match(handler, /five-minute playback JSON cache has no valid sakuramankai track/);
   assert.match(
     handler,
-    /if \(!StationheadPrimaryPlaybackAvailableNow[\s\S]*return;[\s\S]*config_\.stationhead\.primaryUrl/,
+    /if \(!StationheadPrimaryPlaybackAvailableCached[\s\S]*return;[\s\S]*config_\.stationhead\.primaryUrl/,
   );
 });
 

@@ -13,6 +13,7 @@ using winrt::Windows::Data::Json::JsonValueType;
 inline constexpr wchar_t kPlaybackUrl[] =
     L"https://skrzk.pages.dev/api/dashboard?history=0";
 inline constexpr size_t kMaximumResponseBytes = 4 * 1024 * 1024;
+inline constexpr int64_t kCachedPlaybackMaximumAgeMs = 6 * 60'000;
 
 inline JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
@@ -95,8 +96,21 @@ inline bool PayloadHasUsableCurrentTrack(const std::wstring& payload) {
   }
 }
 
+inline bool CachedPayloadHasUsableCurrentTrack() {
+  std::vector<uint8_t> body;
+  if (!TryGetStationheadPlaybackJsonCache(
+          &body, nullptr, kCachedPlaybackMaximumAgeMs)) {
+    return false;
+  }
+  const std::wstring payload = Utf8ToWide(std::string(body.begin(), body.end()));
+  return PayloadHasUsableCurrentTrack(payload);
+}
+
 }  // namespace stationhead_playback_gate
 
+// App::InitializePaths calls this once before any Stationhead WebView exists.
+// WinHttpDownload stores the result as the first sample of the shared five-minute
+// playback cache; Renderer and the clock switch gate reuse the same response.
 inline bool StationheadPrimaryPlaybackAvailableNow() {
   std::wstring requestUrl(stationhead_playback_gate::kPlaybackUrl);
   requestUrl += L"&_hp=" + std::to_wstring(UnixMillis());
@@ -113,6 +127,10 @@ inline bool StationheadPrimaryPlaybackAvailableNow() {
   }
   const std::wstring payload = Utf8ToWide(std::string(body.begin(), body.end()));
   return stationhead_playback_gate::PayloadHasUsableCurrentTrack(payload);
+}
+
+inline bool StationheadPrimaryPlaybackAvailableCached() {
+  return stationhead_playback_gate::CachedPayloadHasUsableCurrentTrack();
 }
 
 }  // namespace hp
