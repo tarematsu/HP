@@ -31,10 +31,9 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
-# A fresh persistent profile exercises the public Start Listening controls. The
-# test repeatedly collapses both playback hosts to a 1x1 HWND_BOTTOM surface
-# before reading the log, so the native click request is observed while the
-# Stationhead WebViews are behind the native dashboard.
+# A fresh persistent profile exercises the public Start Listening controls. Both
+# playback hosts are repeatedly collapsed to 1x1 and sent behind the native
+# dashboard before the click markers are sampled.
 $dataDirectory = Join-Path $workingDirectory "data"
 Remove-Item -LiteralPath $dataDirectory -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -81,17 +80,16 @@ public static class HomePanelStationheadSmokeNative
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr window);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr window);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(
         IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetWindow(IntPtr window, uint command);
-
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_NOSENDCHANGING = 0x0400;
-    private const uint GW_HWNDNEXT = 2;
     private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
 
     private static string ClassName(IntPtr window)
@@ -154,28 +152,28 @@ public static class HomePanelStationheadSmokeNative
             SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
     }
 
-    public static string PlaybackSurfaceState(IntPtr window)
+    public static string PlaybackSurfaceState(IntPtr window, IntPtr expectedParent)
     {
         if (window == IntPtr.Zero) return "missing";
         RECT rect;
         if (!GetWindowRect(window, out rect)) return "rect-error";
-        bool bottom = GetWindow(window, GW_HWNDNEXT) == IntPtr.Zero;
         return String.Format(
-            "visible={0};width={1};height={2};bottom={3}",
+            "visible={0};width={1};height={2};parentMatch={3}",
             IsWindowVisible(window),
             Math.Max(0, rect.Right - rect.Left),
             Math.Max(0, rect.Bottom - rect.Top),
-            bottom);
+            GetParent(window) == expectedParent);
     }
 
-    public static bool IsPlaybackBehindDashboard(IntPtr window)
+    public static bool IsPlaybackBehindDashboard(IntPtr window, IntPtr expectedParent)
     {
-        if (window == IntPtr.Zero) return false;
+        if (window == IntPtr.Zero || expectedParent == IntPtr.Zero) return false;
         RECT rect;
         if (!GetWindowRect(window, out rect)) return false;
-        return Math.Max(0, rect.Right - rect.Left) <= 1 &&
-               Math.Max(0, rect.Bottom - rect.Top) <= 1 &&
-               GetWindow(window, GW_HWNDNEXT) == IntPtr.Zero;
+        return IsWindowVisible(window) &&
+               GetParent(window) == expectedParent &&
+               Math.Max(0, rect.Right - rect.Left) <= 1 &&
+               Math.Max(0, rect.Bottom - rect.Top) <= 1;
     }
 }
 '@
@@ -219,26 +217,77 @@ function Save-DesktopScreenshot {
   }
 }
 
-function Measure-ScreenshotContent {
+function Measure-ScreenshotVisibility {
   param([Parameter(Mandatory = $true)][string]$Path)
-  if (-not (Test-Path -LiteralPath $Path)) { return $false }
-  Add-Type -AssemblyName System.Drawing
-  $bitmap = [System.Drawing.Bitmap]::new($Path)
+
+  if (-not (Test-Path -LiteralPath $Path)) {
+    return [ordered]@{
+      passed = $false
+      error = "screenshot missing"
+      regions = @()
+    }
+  }
+
   try {
-    $samples = 0
-    $nonDark = 0
-    for ($y = 0; $y -lt $bitmap.Height; $y += 8) {
-      for ($x = 0; $x -lt $bitmap.Width; $x += 8) {
-        $pixel = $bitmap.GetPixel($x, $y)
-        $samples += 1
-        if ([Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B)) -ge 36) {
-          $nonDark += 1
+    Add-Type -AssemblyName System.Drawing
+    $bitmap = [System.Drawing.Bitmap]::new($Path)
+    try {
+      if ($bitmap.Width -lt 2 -or $bitmap.Height -lt 2) {
+        return [ordered]@{
+          passed = $false
+          error = "screenshot dimensions are invalid"
+          regions = @()
         }
       }
+
+      $sampleCount = 0
+      $brightPixelCount = 0
+      $minimumLuminance = 255
+      $maximumLuminance = 0
+      for ($y = 0; $y -lt $bitmap.Height; $y += 8) {
+        for ($x = 0; $x -lt $bitmap.Width; $x += 8) {
+          $pixel = $bitmap.GetPixel($x, $y)
+          $maximumChannel = [Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B))
+          $luminance = [int][Math]::Round(
+            0.2126 * $pixel.R + 0.7152 * $pixel.G + 0.0722 * $pixel.B)
+          $sampleCount += 1
+          if ($maximumChannel -ge 40) { $brightPixelCount += 1 }
+          $minimumLuminance = [Math]::Min($minimumLuminance, $luminance)
+          $maximumLuminance = [Math]::Max($maximumLuminance, $luminance)
+        }
+      }
+
+      $brightPixelRatio = if ($sampleCount -gt 0) {
+        [Math]::Round($brightPixelCount / $sampleCount, 4)
+      } else {
+        0
+      }
+      $luminanceRange = $maximumLuminance - $minimumLuminance
+      $regionPassed = $brightPixelRatio -ge 0.01 -and $luminanceRange -ge 32
+      $regions = @([ordered]@{
+        name = "nativeDashboard"
+        sampleCount = $sampleCount
+        brightPixelCount = $brightPixelCount
+        brightPixelRatio = $brightPixelRatio
+        minimumLuminance = $minimumLuminance
+        maximumLuminance = $maximumLuminance
+        luminanceRange = $luminanceRange
+        passed = $regionPassed
+      })
+      return [ordered]@{
+        passed = $regionPassed
+        error = $null
+        regions = $regions
+      }
+    } finally {
+      $bitmap.Dispose()
     }
-    return $samples -gt 0 -and ($nonDark / $samples) -ge 0.01
-  } finally {
-    $bitmap.Dispose()
+  } catch {
+    return [ordered]@{
+      passed = $false
+      error = $_.Exception.Message
+      regions = @()
+    }
   }
 }
 
@@ -289,20 +338,23 @@ try {
             $elapsedMs = [int][Math]::Round(([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
             $observed[$name] = $true
             $observedAtMs[$name] = $elapsedMs
-            if ($name -eq "primaryStartListeningClickRequested") {
-              $primaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard($primaryHost)
-              $backgroundStateAtObservation[$name] =
-                [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($primaryHost)
-            }
-            if ($name -eq "secondaryStartListeningClickRequested") {
-              $secondaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard($secondaryHost)
-              $backgroundStateAtObservation[$name] =
-                [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($secondaryHost)
-            }
             Write-Host "Observed $name at ${elapsedMs}ms"
           }
         }
       }
+    }
+
+    if ($observed.primaryStartListeningClickRequested) {
+      $primaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
+        $primaryHost, $mainWindow)
+      $backgroundStateAtObservation.primaryStartListeningClickRequested =
+        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($primaryHost, $mainWindow)
+    }
+    if ($observed.secondaryStartListeningClickRequested) {
+      $secondaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
+        $secondaryHost, $mainWindow)
+      $backgroundStateAtObservation.secondaryStartListeningClickRequested =
+        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($secondaryHost, $mainWindow)
     }
 
     $missing = @($required.Keys | Where-Object { -not $observed[$_] })
@@ -318,7 +370,7 @@ try {
     throw "Native Stationhead startup did not reach: $($missing -join ', ')."
   }
   if (-not $primaryClickBehind -or -not $secondaryClickBehind) {
-    throw "Start Listening was not observed with both Stationhead hosts at 1x1 HWND_BOTTOM."
+    throw "Start Listening was not observed with both Stationhead hosts collapsed behind the dashboard."
   }
   if (-not $nativePanelsReady) {
     throw "Native dashboard panels were not created during Stationhead startup smoke."
@@ -339,9 +391,14 @@ try {
     [HomePanelStationheadSmokeNative]::ForcePlaybackBehindDashboard($secondaryHost) | Out-Null
   }
   Save-DesktopScreenshot
-  $screenshotPassed = Measure-ScreenshotContent -Path $screenshotPath
-  if (-not $screenshotPassed) {
-    throw "Native dashboard screenshot was missing or effectively blank."
+  $screenVisibility = Measure-ScreenshotVisibility -Path $screenshotPath
+  if (-not $screenVisibility.passed) {
+    $detail = if ($screenVisibility.error) {
+      $screenVisibility.error
+    } else {
+      "native dashboard is dark or low contrast"
+    }
+    throw "Native Stationhead startup screenshot did not prove visible dashboard content: $detail."
   }
 
   [ordered]@{
@@ -357,7 +414,7 @@ try {
     primaryClickBehindDashboard = $primaryClickBehind
     secondaryClickBehindDashboard = $secondaryClickBehind
     nativePanelsReady = $nativePanelsReady
-    screenshotPassed = $screenshotPassed
+    screenVisibility = $screenVisibility
     passed = $true
   } | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath $resultPath -Encoding utf8
