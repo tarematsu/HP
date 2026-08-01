@@ -29,12 +29,12 @@ test('Pages read models rerun when their Cloudflare account dependency changes',
   assert.match(pages, /uses: \.\/\.github\/actions\/cloudflare-context/);
 });
 
-test('public runtime health uses the runner-health stale threshold', () => {
+test('public runtime health has one schedule half-cycle of grace after runner warning', () => {
   const config = JSON.parse(read('site/wrangler.jsonc'));
   const healthSource = read('site/functions/lib/health-other.js');
   const runnerPolicy = read('.github/scripts/github-actions-runner-health.mjs');
 
-  assert.equal(config.vars.OTHER_CRON_STALE_MS, 75 * 60_000);
-  assert.match(healthSource, /75 \* 60_000/);
+  assert.equal(config.vars.OTHER_CRON_STALE_MS, 90 * 60_000);
+  assert.match(healthSource, /90 \* 60_000/);
   assert.match(runnerPolicy, /name: 'Runtime offline maintenance'[\s\S]*?staleAfterMinutes: 75/);
 });
