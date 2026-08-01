@@ -83,9 +83,57 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
   }),
 ]);
 
+function operationalTimestamp(run) {
+  return run?.run_started_at || run?.created_at || run?.updated_at || null;
+}
+
+function timestamp(value) {
+  const milliseconds = Date.parse(String(value || ''));
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+
+function cancellationWasSuperseded(run, newerRuns) {
+  if (run?.status !== 'completed' || run?.conclusion !== 'cancelled') return false;
+  const cancelledAt = timestamp(run.updated_at);
+  if (cancelledAt == null) return false;
+
+  return newerRuns.some((newerRun) => {
+    const replacementCreatedAt = timestamp(newerRun?.created_at || newerRun?.run_started_at);
+    return replacementCreatedAt != null && replacementCreatedAt <= cancelledAt;
+  });
+}
+
+export function filterCurrentRunnerPublisherRuns(runs, {
+  currentRunId = process.env.GITHUB_RUN_ID,
+} = {}) {
+  const normalizedCurrentRunId = String(currentRunId || '').trim();
+  const ordered = [...(Array.isArray(runs) ? runs : [])].sort((left, right) => (
+    (timestamp(operationalTimestamp(right)) ?? 0) - (timestamp(operationalTimestamp(left)) ?? 0)
+  ));
+
+  return ordered.filter((run, index) => {
+    if (normalizedCurrentRunId && String(run?.id ?? '') === normalizedCurrentRunId) {
+      return false;
+    }
+    return !cancellationWasSuperseded(run, ordered.slice(0, index));
+  });
+}
+
 export function collectActionsRunnerHealth(request, {
   now = Date.now(),
   targets = ACTIONS_RUNNER_TARGETS,
+  currentRunId = process.env.GITHUB_RUN_ID,
 } = {}) {
-  return collectBaseActionsRunnerHealth(request, { now, targets });
+  const requestWithPublisherFiltering = async (method, path, ...args) => {
+    const response = await request(method, path, ...args);
+    if (!String(path || '').includes('/actions/workflows/publish-github-actions-runner-health.yml/runs?')) {
+      return response;
+    }
+    return {
+      ...response,
+      workflow_runs: filterCurrentRunnerPublisherRuns(response?.workflow_runs, { currentRunId }),
+    };
+  };
+
+  return collectBaseActionsRunnerHealth(requestWithPublisherFiltering, { now, targets });
 }
