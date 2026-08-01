@@ -60,7 +60,10 @@ test('hidden playback placement does not trust a stale cached visible flag', () 
     keepBehind,
     /if \(!viewVisible_ && selectedTab_ == StationheadTabKind::None\)[\s\S]*status_\.visible/,
   );
-  assert.match(keepBehind, /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false, false\)/);
+  assert.match(
+    keepBehind,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false\)/,
+  );
 });
 
 test('child hosts are resized before WebView controller bounds are applied', () => {
@@ -107,10 +110,17 @@ test('scheduled WebView recreation and uncommitted audio are not reported as hea
     playerHeader,
     /AtomicMonotonicElapsedTimestamp audioPlayingSinceAt_;/,
   );
-  assert.match(
+
+  const interactive = section(
     layoutSource,
-    /bool StationheadPlayer::NeedsInteractiveWindow\(\) const[\s\S]*controller_ && !AudioPlaying\(\)/,
+    'bool StationheadPlayer::NeedsInteractiveWindow() const',
+    '}  // namespace hp',
   );
+  assert.match(
+    interactive,
+    /selectedTab_ == StationheadTabKind::Auth \|\| spotifyAuthorization_/,
+  );
+  assert.doesNotMatch(interactive, /AudioPlaying\(\)|controller_/);
 });
 
 test('handle status and placement use the recreation-aware audio state', () => {
