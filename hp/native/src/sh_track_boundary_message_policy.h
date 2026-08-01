@@ -7,7 +7,21 @@
   Reconnect();                                                               \
   bool SwitchClockStationDestination(                                        \
       const std::wstring& url, const std::wstring& reason)
+
+// Track-ended messages are disabled below, but the handle also asks this method
+// to evaluate a native 52-minute recovery path whenever audio is absent. Compile
+// that legacy implementation under an unused name and keep the public method a
+// strict no-op, so clock-minute navigation is the only automatic route change.
+#define RetryPendingTrackBoundaryRefresh(parameters)                         \
+  RetryPendingTrackBoundaryRefresh(parameters) {                             \
+    (void)nowMs;                                                             \
+    trackBoundaryRefreshPending_ = false;                                    \
+    return false;                                                            \
+  }                                                                          \
+  bool RetryPendingTrackBoundaryRefreshDisabled(parameters)
+
 #include "sh.h"
+#undef RetryPendingTrackBoundaryRefresh
 #undef Reconnect
 
 namespace hp {
