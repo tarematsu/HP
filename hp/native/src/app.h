@@ -187,7 +187,7 @@ class App {
   bool stationheadAudioMuted_ = false;
   bool stationheadClockSwitchTimerArmed_ = false;
   bool stationheadPrimaryUsesBuddy46_ = false;
-  bool stationheadSecondaryUsesBuddy46_ = true;
+  bool stationheadSecondaryUsesBuddy46_ = false;
   int stationheadClockPendingAudioWindow_ = -1;
   int64_t stationheadClockSwitchStartedAt_ = 0;
   int64_t stationheadLastClockSlot_ = -1;
