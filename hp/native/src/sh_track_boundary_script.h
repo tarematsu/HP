@@ -7,8 +7,8 @@
 
 namespace hp {
 
-// Media boundaries never initiate navigation. Window A uses the native
-// 55-minute clock and Window B uses the native 54-minute clock instead.
+// Media boundaries never initiate navigation. Window A changes stations at
+// each wall-clock minute :00 and Window B changes stations at :30 instead.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
   return {};
 }
@@ -16,5 +16,5 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
 }  // namespace hp
 
 // Keep legacy trusted-origin track-ended messages harmless during an in-place
-// update. Only the independent elapsed-time refresh policy may reload a player.
+// update. Only the half-minute clock rotation may navigate a player.
 #define HandleTrackEnded(...) ((void)0)
