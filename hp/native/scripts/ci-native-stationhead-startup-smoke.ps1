@@ -3,7 +3,7 @@ param(
   [Parameter(Mandatory = $true)]
   [string]$Executable,
 
-  [int]$TimeoutSeconds = 150,
+  [int]$TimeoutSeconds = 210,
 
   [int]$StartupBudgetSeconds = 60,
 
@@ -33,7 +33,7 @@ New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
 # A fresh persistent profile exercises the public Start Listening controls. Both
 # playback hosts are repeatedly collapsed to 1x1 and sent behind the native
-# dashboard before the click markers are sampled.
+# dashboard before startup and clock-switch click markers are sampled.
 $dataDirectory = Join-Path $workingDirectory "data"
 Remove-Item -LiteralPath $dataDirectory -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -188,6 +188,14 @@ $required = [ordered]@{
   secondaryStationheadUrlNavigated = "Stationhead B navigation (startup): https://www.stationhead.com/buddy46"
   secondaryStartListeningClickRequested = "Stationhead B auto-clicking Start Listening at"
 }
+$clockSwitchMarkers = [ordered]@{
+  A = "Stationhead A navigation (clock even-minute destination switch): https://www.stationhead.com/buddy46"
+  B = "Stationhead B navigation (clock odd-minute destination switch): https://www.stationhead.com/sakuramankai"
+}
+$clockSwitchClickMarkers = [ordered]@{
+  A = "Stationhead A auto-clicking Start Listening at"
+  B = "Stationhead B auto-clicking Start Listening at"
+}
 $observed = [ordered]@{}
 $observedAtMs = [ordered]@{}
 $backgroundStateAtObservation = [ordered]@{}
@@ -299,16 +307,21 @@ $secondaryHost = [IntPtr]::Zero
 $primaryClickBehind = $false
 $secondaryClickBehind = $false
 $nativePanelsReady = $false
+$switchedRole = $null
+$switchLogIndex = -1
+$switchObservedAtMs = $null
+$switchedClickObservedAtMs = $null
+$switchedClickBehindDashboard = $false
 
 try {
-  Write-Host "Starting native Stationhead background startup smoke: $executablePath"
+  Write-Host "Starting native Stationhead background clock-switch smoke: $executablePath"
   $process = Start-Process -FilePath $executablePath -WorkingDirectory $workingDirectory -PassThru
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 
   while ([DateTime]::UtcNow -lt $deadline) {
     $process.Refresh()
     if ($process.HasExited) {
-      throw "HomePanel exited before Stationhead startup completed with code $($process.ExitCode)."
+      throw "HomePanel exited before Stationhead clock-switch smoke completed with code $($process.ExitCode)."
     }
 
     if ($mainWindow -eq [IntPtr]::Zero) {
@@ -341,6 +354,30 @@ try {
             Write-Host "Observed $name at ${elapsedMs}ms"
           }
         }
+
+        if (-not $switchedRole) {
+          foreach ($role in $clockSwitchMarkers.Keys) {
+            $candidateIndex = $log.IndexOf($clockSwitchMarkers[$role])
+            if ($candidateIndex -ge 0) {
+              $switchedRole = $role
+              $switchLogIndex = $candidateIndex
+              $switchObservedAtMs = [int][Math]::Round(
+                ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+              Write-Host "Observed clock switch for Window $role at ${switchObservedAtMs}ms"
+              break
+            }
+          }
+        }
+
+        if ($switchedRole -and $null -eq $switchedClickObservedAtMs) {
+          $searchAt = $switchLogIndex + $clockSwitchMarkers[$switchedRole].Length
+          $clickIndex = $log.IndexOf($clockSwitchClickMarkers[$switchedRole], $searchAt)
+          if ($clickIndex -ge 0) {
+            $switchedClickObservedAtMs = [int][Math]::Round(
+              ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+            Write-Host "Observed post-switch Start Listening click for Window $switchedRole at ${switchedClickObservedAtMs}ms"
+          }
+        }
       }
     }
 
@@ -356,10 +393,21 @@ try {
       $backgroundStateAtObservation.secondaryStartListeningClickRequested =
         [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($secondaryHost, $mainWindow)
     }
+    if ($switchedRole -and $null -ne $switchedClickObservedAtMs) {
+      $switchedHost = if ($switchedRole -eq "A") { $primaryHost } else { $secondaryHost }
+      $switchedClickBehindDashboard =
+        [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
+          $switchedHost, $mainWindow)
+      $backgroundStateAtObservation.switchedStartListeningClickRequested =
+        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState(
+          $switchedHost, $mainWindow)
+    }
 
     $missing = @($required.Keys | Where-Object { -not $observed[$_] })
     if ($missing.Count -eq 0 -and $nativePanelsReady -and
-        $primaryClickBehind -and $secondaryClickBehind) {
+        $primaryClickBehind -and $secondaryClickBehind -and
+        $switchedRole -and $null -ne $switchedClickObservedAtMs -and
+        $switchedClickBehindDashboard) {
       break
     }
     Start-Sleep -Milliseconds 100
@@ -370,10 +418,19 @@ try {
     throw "Native Stationhead startup did not reach: $($missing -join ', ')."
   }
   if (-not $primaryClickBehind -or -not $secondaryClickBehind) {
-    throw "Start Listening was not observed with both Stationhead hosts collapsed behind the dashboard."
+    throw "Initial Start Listening was not observed with both Stationhead hosts collapsed behind the dashboard."
   }
   if (-not $nativePanelsReady) {
     throw "Native dashboard panels were not created during Stationhead startup smoke."
+  }
+  if (-not $switchedRole) {
+    throw "No even-minute A or odd-minute B destination switch was observed."
+  }
+  if ($null -eq $switchedClickObservedAtMs) {
+    throw "Window $switchedRole did not request Start Listening after its clock destination switch."
+  }
+  if (-not $switchedClickBehindDashboard) {
+    throw "Post-switch Start Listening was not observed with Window $switchedRole collapsed behind the dashboard."
   }
 
   $startupElapsedMs = [Math]::Max(
@@ -398,7 +455,7 @@ try {
     } else {
       "native dashboard is dark or low contrast"
     }
-    throw "Native Stationhead startup screenshot did not prove visible dashboard content: $detail."
+    throw "Native Stationhead clock-switch screenshot did not prove visible dashboard content: $detail."
   }
 
   [ordered]@{
@@ -413,13 +470,17 @@ try {
     backgroundStateAtObservation = $backgroundStateAtObservation
     primaryClickBehindDashboard = $primaryClickBehind
     secondaryClickBehindDashboard = $secondaryClickBehind
+    switchedRole = $switchedRole
+    switchObservedAtMs = $switchObservedAtMs
+    switchedClickObservedAtMs = $switchedClickObservedAtMs
+    switchedClickBehindDashboard = $switchedClickBehindDashboard
     nativePanelsReady = $nativePanelsReady
     screenVisibility = $screenVisibility
     passed = $true
   } | ConvertTo-Json -Depth 8 |
     Set-Content -LiteralPath $resultPath -Encoding utf8
 
-  Write-Host "Native Stationhead background Start Listening smoke passed."
+  Write-Host "Native Stationhead background clock-switch smoke passed."
 } finally {
   if ($process) {
     $process.Refresh()
