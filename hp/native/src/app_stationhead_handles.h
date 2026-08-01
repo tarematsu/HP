@@ -80,6 +80,9 @@ class StationheadHandleBase {
       const std::wstring& url, const std::wstring& reason) {
     return player_ && player_->SwitchClockStationDestination(url, reason);
   }
+  [[nodiscard]] bool ClockStationNavigationSettled() const noexcept {
+    return player_ && player_->ClockStationNavigationSettled();
+  }
   void ShowAfterAudioStop();
   void ReleaseCompletedAuth();
   uint32_t ConsumeChangeFlags();
