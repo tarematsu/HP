@@ -3,40 +3,91 @@
 
 namespace hp {
 
-inline constexpr bool StationheadPlaybackNavigationActive(
-    bool navigationInFlight,
-    bool statusNavigating,
-    bool spotifyAuthorization) noexcept {
-  return navigationInFlight || (statusNavigating && !spotifyAuthorization);
+inline constexpr int64_t kStationheadAlternationIntervalMs = 2 * 60'000;
+inline constexpr UINT kStationheadAudioActionMessage = WM_APP + 22;
+inline constexpr WPARAM kStationheadAudioToggleAction = 3;
+inline constexpr WPARAM kStationheadAudioMuteAction = 4;
+
+struct StationheadAlternationAction {
+  bool switchAudio = false;
+  bool preserveMute = false;
+};
+
+namespace stationhead_alternation_policy {
+inline SRWLOCK lock = SRWLOCK_INIT;
+inline bool primaryPlaying = false;
+inline bool secondaryPlaying = false;
+inline bool primaryMuted = false;
+inline bool secondaryMuted = true;
+inline ULONGLONG nextSwitchAt = 0;
+}  // namespace stationhead_alternation_policy
+
+inline StationheadAlternationAction ObserveStationheadAlternation(
+    bool secondary, bool playing, bool muted) noexcept {
+  StationheadAlternationAction action;
+  const ULONGLONG now = GetTickCount64();
+  AcquireSRWLockExclusive(&stationhead_alternation_policy::lock);
+  if (secondary) {
+    stationhead_alternation_policy::secondaryPlaying = playing;
+    stationhead_alternation_policy::secondaryMuted = muted;
+  } else {
+    stationhead_alternation_policy::primaryPlaying = playing;
+    stationhead_alternation_policy::primaryMuted = muted;
+  }
+
+  const bool bothPlaying =
+      stationhead_alternation_policy::primaryPlaying &&
+      stationhead_alternation_policy::secondaryPlaying;
+  if (!bothPlaying) {
+    stationhead_alternation_policy::nextSwitchAt = 0;
+  } else if (stationhead_alternation_policy::nextSwitchAt == 0) {
+    stationhead_alternation_policy::nextSwitchAt =
+        now + static_cast<ULONGLONG>(kStationheadAlternationIntervalMs);
+  } else if (!secondary &&
+             now >= stationhead_alternation_policy::nextSwitchAt) {
+    stationhead_alternation_policy::nextSwitchAt =
+        now + static_cast<ULONGLONG>(kStationheadAlternationIntervalMs);
+    action.switchAudio = true;
+    action.preserveMute =
+        stationhead_alternation_policy::primaryMuted &&
+        stationhead_alternation_policy::secondaryMuted;
+  }
+  ReleaseSRWLockExclusive(&stationhead_alternation_policy::lock);
+  return action;
 }
 
-inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(
-    bool secondary) noexcept {
-  return (secondary ? 56 : 55) * 60'000;
+inline int64_t StationheadAlternationNextWakeAt(bool secondary) noexcept {
+  if (secondary) return 0;
+  ULONGLONG due = 0;
+  AcquireSRWLockShared(&stationhead_alternation_policy::lock);
+  due = stationhead_alternation_policy::nextSwitchAt;
+  ReleaseSRWLockShared(&stationhead_alternation_policy::lock);
+  if (due == 0) return 0;
+  const ULONGLONG now = GetTickCount64();
+  const ULONGLONG remaining = due > now ? due - now : 0;
+  const int64_t wallNow = UnixMillis();
+  if (remaining > static_cast<ULONGLONG>(INT64_MAX - wallNow)) {
+    return INT64_MAX;
+  }
+  return wallNow + static_cast<int64_t>(remaining);
 }
 
-static_assert(StationheadPlaybackNavigationActive(true, false, false));
-static_assert(StationheadPlaybackNavigationActive(true, true, true));
-static_assert(StationheadPlaybackNavigationActive(false, true, false));
-static_assert(!StationheadPlaybackNavigationActive(false, true, true));
-static_assert(!StationheadPlaybackNavigationActive(false, false, false));
-static_assert(StationheadPeriodicRefreshIntervalMs(false) == 55 * 60'000);
-static_assert(StationheadPeriodicRefreshIntervalMs(true) == 56 * 60'000);
+static_assert(kStationheadAlternationIntervalMs == 120'000);
+static_assert(kStationheadAudioToggleAction == 3);
+static_assert(kStationheadAudioMuteAction == 4);
 
 }  // namespace hp
 
-// Extend StationheadPlayer while sh.h is parsed, then remove the temporary
-// source-rewriting macros before any implementation file is compiled. Periodic
-// refresh is intentionally independent per role: A uses 55 minutes and B uses
-// 56 minutes. The one-minute skew prevents simultaneous navigation without
-// projecting either player stopped or changing the active audio profile.
+// Extend StationheadPlayer while sh.h is parsed. A/B remain on their dedicated
+// station pages; only the native mute profile changes every two minutes after
+// both WebViews report real audio. No periodic navigation or reload is used.
 #define NextWakeAt()                                                          \
   NextWakeAt() const noexcept {                                               \
     int64_t next = NextWakeAtBase();                                          \
-    if (periodicRefreshStartedAt_.Active()) {                                 \
-      const int64_t due = periodicRefreshStartedAt_ +                         \
-          ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());          \
-      if (next <= 0 || due < next) next = due;                                \
+    const int64_t alternation =                                               \
+        ::hp::StationheadAlternationNextWakeAt(IsSecondary());                \
+    if (alternation > 0 && (next <= 0 || alternation < next)) {               \
+      next = alternation;                                                     \
     }                                                                         \
     return next;                                                              \
   }                                                                           \
@@ -45,10 +96,12 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 56 * 60'000);
 #define RecoverUnavailableAuthorization()                                    \
   RecoverUnavailableAuthorization() {                                        \
     RecoverUnavailableAuthorizationBase();                                   \
-    RefreshPeriodicNavigation(UnixMillis());                                  \
+    RefreshAlternatingStationheadAudio();                                     \
   }                                                                           \
   void RecoverUnavailableAuthorizationBase()
 
+// Disable every legacy page/track-boundary refresh path. The two dedicated
+// Stationhead pages are long-lived and alternation is audio routing only.
 #define RetryPendingTrackBoundaryRefresh(parameters)                         \
   RetryPendingTrackBoundaryRefresh(parameters) {                             \
     (void)nowMs;                                                              \
@@ -59,55 +112,20 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 56 * 60'000);
 
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
-  void RefreshPeriodicNavigation(int64_t nowMs) {                             \
-    const auto lifecycle = createCallbackAlive_;                              \
-    const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
-    if (!webview_ || previousLifecycle != lifecycle) {                        \
-      periodicRefreshLifecycle_ = lifecycle;                                  \
-      periodicRefreshStartedAt_ = 0;                                          \
-      periodicRefreshNavigationObserved_ = 0;                                 \
-      if (!webview_) return;                                                   \
+  void RefreshAlternatingStationheadAudio() {                                 \
+    const ::hp::StationheadAlternationAction action =                         \
+        ::hp::ObserveStationheadAlternation(                                  \
+            IsSecondary(), AudioPlaying(), Muted());                          \
+    if (!action.switchAudio || !window_ || !IsWindow(window_)) return;        \
+    log_.Info(L"Stationhead two-minute A/B audio alternation requested");    \
+    PostMessageW(window_, ::hp::kStationheadAudioActionMessage,               \
+                 ::hp::kStationheadAudioToggleAction, 0);                     \
+    if (action.preserveMute) {                                                \
+      PostMessageW(window_, ::hp::kStationheadAudioActionMessage,             \
+                   ::hp::kStationheadAudioMuteAction, 0);                     \
     }                                                                         \
-                                                                                \
-    bool statusNavigating = false;                                            \
-    {                                                                         \
-      std::lock_guard lock(mutex_);                                            \
-      statusNavigating = status_.navigating;                                  \
-    }                                                                         \
-    const bool navigationActive =                                             \
-        ::hp::StationheadPlaybackNavigationActive(                            \
-            navigationInFlight_.load(std::memory_order_acquire),              \
-            statusNavigating, spotifyAuthorization_);                         \
-    if (navigationActive) {                                                   \
-      periodicRefreshStartedAt_ = 0;                                          \
-      periodicRefreshNavigationObserved_ = 1;                                 \
-      return;                                                                 \
-    }                                                                         \
-                                                                                \
-    if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
-        spotifyAuthorization_ || loginRequired_ ||                            \
-        recreating_.load(std::memory_order_relaxed)) {                        \
-      return;                                                                 \
-    }                                                                         \
-                                                                                \
-    if (periodicRefreshNavigationObserved_ != 0 ||                            \
-        !periodicRefreshStartedAt_.Active()) {                                \
-      periodicRefreshNavigationObserved_ = 0;                                 \
-      periodicRefreshStartedAt_ = nowMs;                                      \
-      return;                                                                 \
-    }                                                                         \
-    const int64_t intervalMs =                                                \
-        ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());            \
-    if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
-                                                                                \
-    periodicRefreshStartedAt_ = nowMs;                                        \
-    NavigateCurrentUrl(                                                       \
-        nowMs, IsSecondary() ? L"56-minute periodic refresh"                  \
-                             : L"55-minute periodic refresh");                \
   }                                                                           \
-  MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
-  std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
-  int64_t periodicRefreshNavigationObserved_
+  int64_t stationheadAlternationPolicyAnchor_
 
 #include "sh.h"
 
@@ -226,42 +244,6 @@ inline int64_t& StationheadAutoClickDeadlineStorage(
   return storage;
 }
 
-class StationheadNavigationInFlightProxy {
- public:
-  StationheadNavigationInFlightProxy(
-      std::atomic<bool>& storage,
-      MonotonicElapsedTimestamp& refreshStartedAt,
-      int64_t& navigationObserved) noexcept
-      : storage_(storage),
-        refreshStartedAt_(refreshStartedAt),
-        navigationObserved_(navigationObserved) {}
-
-  void store(bool value, std::memory_order order) noexcept {
-    if (value) {
-      refreshStartedAt_ = 0;
-      navigationObserved_ = 1;
-    }
-    storage_.store(value, order);
-  }
-
-  [[nodiscard]] bool load(std::memory_order order) const noexcept {
-    return storage_.load(order);
-  }
-
- private:
-  std::atomic<bool>& storage_;
-  MonotonicElapsedTimestamp& refreshStartedAt_;
-  int64_t& navigationObserved_;
-};
-
-inline StationheadNavigationInFlightProxy StationheadNavigationInFlightStorage(
-    std::atomic<bool>& storage,
-    MonotonicElapsedTimestamp& refreshStartedAt,
-    int64_t& navigationObserved) noexcept {
-  return StationheadNavigationInFlightProxy(
-      storage, refreshStartedAt, navigationObserved);
-}
-
 class StationheadBoundaryReloadClockProxy {
  public:
   StationheadBoundaryReloadClockProxy(
@@ -357,10 +339,6 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                               \
       (nextAutoClickAt_), IsSecondary()))
-#define navigationInFlight_                                                  \
-  (::hp::StationheadNavigationInFlightStorage(                              \
-      (navigationInFlight_), periodicRefreshStartedAt_,                     \
-      periodicRefreshNavigationObserved_))
 #define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
 
 #include "sh_shared.h"
