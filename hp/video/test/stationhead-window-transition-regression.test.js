@@ -6,6 +6,10 @@ const layoutSource = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
 );
+const handleSource = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -43,11 +47,9 @@ test('auth surface is complete before playback is retired', () => {
 });
 
 test('background playback is restored before the auth surface is retired', () => {
-  const normalPlayback = section(
-    applyLayout,
-    '  if (controller) {',
-    '\n}',
-  );
+  const normalPlaybackAt = applyLayout.lastIndexOf('  if (controller) {');
+  assert.notEqual(normalPlaybackAt, -1);
+  const normalPlayback = applyLayout.slice(normalPlaybackAt);
   assertOrdered(normalPlayback, [
     'controller->put_IsVisible(TRUE);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
@@ -118,15 +120,27 @@ test('pending auth creation never exposes the collapsed playback host as an acco
 });
 
 test('reapplying unchanged bounds still repairs playback z-order and size', () => {
-  const setBounds = section(
+  const playerSetBounds = section(
     layoutSource,
     'void StationheadPlayer::SetBounds(const RECT& bounds)',
     'void StationheadPlayer::SelectTab(',
   );
   assert.match(
-    setBounds,
+    playerSetBounds,
     /if \(!EqualRect\(&bounds_, &resolved\)\) bounds_ = resolved;/,
   );
-  assert.match(setBounds, /LayoutControllers\(\);/);
-  assert.doesNotMatch(setBounds, /EqualRect\(&bounds_, &resolved\)\) return;/);
+  assert.match(playerSetBounds, /LayoutControllers\(\);/);
+  assert.doesNotMatch(playerSetBounds, /EqualRect\(&bounds_, &resolved\)\) return;/);
+
+  const handleSetBounds = section(
+    handleSource,
+    'void StationheadHandleBase::SetBounds(const RECT& bounds)',
+    'void StationheadHandleBase::SetStartupPreviewBounds(',
+  );
+  assert.match(
+    handleSetBounds,
+    /if \(!EqualRect\(&workspaceBounds_, &bounds\)\) workspaceBounds_ = bounds;/,
+  );
+  assert.match(handleSetBounds, /ApplyBounds\(\);/);
+  assert.doesNotMatch(handleSetBounds, /EqualRect\(&workspaceBounds_, &bounds\)\) return;/);
 });
