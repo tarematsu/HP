@@ -58,24 +58,25 @@ test('dual-window placement constrains pending A left and pending B right', () =
   );
 });
 
-test('pending Spotify auth hides the playback controller in both windows', () => {
+test('Spotify auth is the only surface that may hide the background playback host', () => {
   const policy = section(
     layoutSource,
     'struct StationheadSurfacePolicy',
     'void ApplyStationheadChildLayout(',
   );
-  assert.match(policy, /bool hidePlaybackForPendingAuth = false;/);
+  assert.match(policy, /bool showAuth = false;/);
+  assert.match(policy, /bool hidePlayback = false;/);
   assert.match(
     policy,
-    /hidePlaybackForPendingAuth = authSelected && !authSurfaceReady/,
+    /return \{authSelected && authSurfaceReady, authSelected\};/,
   );
   assert.match(
     policy,
-    /startupPreviewActive && !showAuth && !hidePlaybackForPendingAuth/,
+    /StationheadTabKind::Auth, false\)\.hidePlayback/,
   );
   assert.match(
     policy,
-    /StationheadTabKind::Auth, false\)\.hidePlaybackForPendingAuth/,
+    /StationheadTabKind::None, false\)\.hidePlayback/,
   );
 
   const layout = section(
@@ -83,14 +84,9 @@ test('pending Spotify auth hides the playback controller in both windows', () =>
     'void StationheadPlayer::LayoutControllers()',
     'void StationheadPlayer::SetBounds(',
   );
-  assert.match(
-    layout,
-    /contentVisible = viewVisible_ && !policy\.hidePlaybackForPendingAuth/,
-  );
-  assert.match(
-    layout,
-    /status_\.visible = policy\.showStartupPreview \|\| policy\.showAuth \|\| contentVisible/,
-  );
+  assert.match(layout, /policy\.showAuth, policy\.hidePlayback/);
+  assert.match(layout, /status_\.visible = policy\.showAuth/);
+  assert.doesNotMatch(layout, /showStartupPreview|contentVisible|previewVisible/);
 
   const setVisible = section(
     layoutSource,
@@ -99,7 +95,11 @@ test('pending Spotify auth hides the playback controller in both windows', () =>
   );
   assert.match(
     setVisible,
-    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*activeController = authController_\.Get\(\);[\s\S]*activeHost = authHostWindow_;[\s\S]*if \(activeController && activeHost/,
+    /selectedTab_ != StationheadTabKind::Auth[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+  );
+  assert.match(
+    setVisible,
+    /authController_ && authWebview_[\s\S]*ActiveAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(authHostWindow_\)[\s\S]*return;/,
   );
 });
 

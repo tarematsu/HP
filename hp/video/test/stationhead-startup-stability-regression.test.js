@@ -19,6 +19,51 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
+function assertOrdered(source, markers) {
+  let previous = -1;
+  for (const marker of markers) {
+    const at = source.indexOf(marker);
+    assert.ok(at >= 0, `missing marker: ${marker}`);
+    assert.ok(at > previous, `out-of-order marker: ${marker}`);
+    previous = at;
+  }
+}
+
+test('native dashboard is initialized before the top-level window is exposed', () => {
+  const startServices = section(
+    appSource,
+    'void App::StartServices()',
+    'void App::ApplyStartupStationheadPreview()',
+  );
+  assertOrdered(startServices, [
+    'renderer_->Initialize();',
+    'rendererStarted_ = true;',
+    'LayoutWorkspace();',
+    'renderer_->TickNativePanels(startupAt_);',
+    'Native dashboard started before main window display',
+    'stationhead_->Start();',
+    'ShowWindow(window_, startupShowCommand_);',
+  ]);
+  assert.doesNotMatch(startServices, /ApplyStartupStationheadPreview\(\)/);
+});
+
+test('legacy Stationhead workspace cannot hide the dashboard', () => {
+  const layoutWorkspace = section(
+    appSource,
+    'void App::LayoutWorkspace()',
+    'void App::ApplyStationheadWindowPlacement(',
+  );
+  assert.match(
+    layoutWorkspace,
+    /if \(selectedTab_ == WorkspaceTab::Stationhead\) \{[\s\S]*selectedTab_ = WorkspaceTab::Main;/,
+  );
+  assert.match(layoutWorkspace, /renderer_->SetVisible\(rendererStarted_\);/);
+  assert.doesNotMatch(
+    layoutWorkspace,
+    /renderer_->SetVisible\(rendererStarted_ && selectedTab_ == WorkspaceTab::Main\)/,
+  );
+});
+
 test('App requests Window A before Window B during cold startup', () => {
   const startServices = section(
     appSource,

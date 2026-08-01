@@ -7,7 +7,7 @@ param(
 
   [int]$StartupBudgetSeconds = 60,
 
-  [int]$PostClickSettleSeconds = 3,
+  [int]$PostClickSettleSeconds = 15,
 
   [string]$OutputDirectory
 )
@@ -19,7 +19,9 @@ if ($TimeoutSeconds -le 0) { throw "TimeoutSeconds must be positive." }
 if ($StartupBudgetSeconds -le 0 -or $StartupBudgetSeconds -gt $TimeoutSeconds) {
   throw "StartupBudgetSeconds must be positive and no greater than TimeoutSeconds."
 }
-if ($PostClickSettleSeconds -lt 0) { throw "PostClickSettleSeconds cannot be negative." }
+if ($PostClickSettleSeconds -lt 12) {
+  throw "PostClickSettleSeconds must be at least 12 seconds to cover delayed audio-loss foreground paths."
+}
 
 $executablePath = (Resolve-Path -LiteralPath $Executable).Path
 $workingDirectory = Split-Path -Parent $executablePath
@@ -31,9 +33,29 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 Remove-Item -LiteralPath $OutputDirectory -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
-# A fresh persistent profile exercises the public Start Listening controls. Both
-# playback hosts are repeatedly collapsed to 1x1 and sent behind the native
-# dashboard before startup and clock-switch click markers are sampled.
+# This test is observational. It must never resize, hide, show, reorder, or focus
+# an application window. A source-level self-audit prevents the previous false
+# positive from being reintroduced under another helper name.
+$scriptSource = Get-Content -LiteralPath $PSCommandPath -Raw
+$forbiddenMutationNames = @(
+  ('Set' + 'WindowPos'),
+  ('Move' + 'Window'),
+  ('Show' + 'Window'),
+  ('Set' + 'ForegroundWindow'),
+  ('Bring' + 'WindowToTop'),
+  ('Set' + 'Parent'),
+  ('Set' + 'WindowLong'),
+  ('Set' + 'ActiveWindow'),
+  ('SwitchToThis' + 'Window'),
+  ('Enable' + 'Window'),
+  ('ForcePlayback' + 'BehindDashboard')
+)
+foreach ($name in $forbiddenMutationNames) {
+  if ($scriptSource.Contains($name)) {
+    throw "Stationhead smoke test contains forbidden window mutation API: $name"
+  }
+}
+
 $dataDirectory = Join-Path $workingDirectory "data"
 Remove-Item -LiteralPath $dataDirectory -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -48,7 +70,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 
-public static class HomePanelStationheadSmokeNative
+public static class HomePanelStationheadObserveNative
 {
     public delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
 
@@ -64,15 +86,17 @@ public static class HomePanelStationheadSmokeNative
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool EnumChildWindows(
-        IntPtr parent, EnumWindowsProc callback, IntPtr parameter);
-
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr window, StringBuilder className, int maximumCount);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr window);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr window, out RECT rect);
@@ -81,16 +105,10 @@ public static class HomePanelStationheadSmokeNative
     private static extern bool IsWindowVisible(IntPtr window);
 
     [DllImport("user32.dll")]
-    private static extern IntPtr GetParent(IntPtr window);
+    private static extern IntPtr GetForegroundWindow();
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
-
-    private const uint SWP_NOACTIVATE = 0x0010;
-    private const uint SWP_SHOWWINDOW = 0x0040;
-    private const uint SWP_NOSENDCHANGING = 0x0400;
-    private static readonly IntPtr HWND_BOTTOM = new IntPtr(1);
+    private const uint GW_CHILD = 5;
+    private const uint GW_HWNDNEXT = 2;
 
     private static string ClassName(IntPtr window)
     {
@@ -98,6 +116,18 @@ public static class HomePanelStationheadSmokeNative
         return GetClassName(window, text, text.Capacity) > 0
             ? text.ToString()
             : String.Empty;
+    }
+
+    private static List<IntPtr> DirectChildren(IntPtr parent)
+    {
+        var children = new List<IntPtr>();
+        for (IntPtr child = GetWindow(parent, GW_CHILD);
+             child != IntPtr.Zero;
+             child = GetWindow(child, GW_HWNDNEXT))
+        {
+            if (GetParent(child) == parent) children.Add(child);
+        }
+        return children;
     }
 
     public static IntPtr FindTopLevelWindow(int processId, string className)
@@ -118,62 +148,140 @@ public static class HomePanelStationheadSmokeNative
         return result;
     }
 
-    public static IntPtr FindChildWindow(IntPtr parent, string className)
+    public static int NativePanelCount(IntPtr parent)
     {
-        IntPtr result = IntPtr.Zero;
-        EnumChildWindows(parent, (window, parameter) =>
+        int count = 0;
+        foreach (IntPtr child in DirectChildren(parent))
         {
-            if (String.Equals(ClassName(window), className, StringComparison.Ordinal))
+            if (String.Equals(ClassName(child), "HomePanelNativeStaticPanel", StringComparison.Ordinal))
             {
-                result = window;
-                return false;
+                count += 1;
             }
-            return true;
-        }, IntPtr.Zero);
-        return result;
+        }
+        return count;
     }
 
-    public static string[] ChildWindowClasses(IntPtr parent)
+    public static bool PlaybackStartupSafe(IntPtr parent, string className)
     {
-        var results = new List<string>();
-        EnumChildWindows(parent, (window, parameter) =>
+        if (parent == IntPtr.Zero) return true;
+        List<IntPtr> children = DirectChildren(parent);
+        int hostIndex = -1;
+        int lastPanelIndex = -1;
+        IntPtr host = IntPtr.Zero;
+        for (int index = 0; index < children.Count; index += 1)
         {
-            results.Add(ClassName(window));
-            return true;
-        }, IntPtr.Zero);
-        return results.ToArray();
-    }
-
-    public static bool ForcePlaybackBehindDashboard(IntPtr window)
-    {
-        if (window == IntPtr.Zero) return false;
-        return SetWindowPos(
-            window, HWND_BOTTOM, 0, 0, 1, 1,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
-    }
-
-    public static string PlaybackSurfaceState(IntPtr window, IntPtr expectedParent)
-    {
-        if (window == IntPtr.Zero) return "missing";
+            string currentClass = ClassName(children[index]);
+            if (String.Equals(currentClass, className, StringComparison.Ordinal))
+            {
+                hostIndex = index;
+                host = children[index];
+            }
+            if (String.Equals(currentClass, "HomePanelNativeStaticPanel", StringComparison.Ordinal))
+            {
+                lastPanelIndex = index;
+            }
+        }
+        if (host == IntPtr.Zero) return true;
         RECT rect;
-        if (!GetWindowRect(window, out rect)) return "rect-error";
+        if (!GetWindowRect(host, out rect)) return false;
+        int width = Math.Max(0, rect.Right - rect.Left);
+        int height = Math.Max(0, rect.Bottom - rect.Top);
+        bool belowExistingPanels = lastPanelIndex < 0 || hostIndex > lastPanelIndex;
+        return width <= 1 && height <= 1 && belowExistingPanels;
+    }
+
+    public static bool HasDirectChild(IntPtr parent, string className)
+    {
+        foreach (IntPtr child in DirectChildren(parent))
+        {
+            if (String.Equals(ClassName(child), className, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static bool PlaybackBehindNativePanels(IntPtr parent, string className)
+    {
+        if (parent == IntPtr.Zero) return false;
+        List<IntPtr> children = DirectChildren(parent);
+        int hostIndex = -1;
+        int lastPanelIndex = -1;
+        IntPtr host = IntPtr.Zero;
+        for (int index = 0; index < children.Count; index += 1)
+        {
+            string currentClass = ClassName(children[index]);
+            if (String.Equals(currentClass, className, StringComparison.Ordinal))
+            {
+                hostIndex = index;
+                host = children[index];
+            }
+            if (String.Equals(currentClass, "HomePanelNativeStaticPanel", StringComparison.Ordinal))
+            {
+                lastPanelIndex = index;
+            }
+        }
+        if (host == IntPtr.Zero || hostIndex < 0 || lastPanelIndex < 0 ||
+            hostIndex <= lastPanelIndex || !IsWindowVisible(host))
+        {
+            return false;
+        }
+        RECT rect;
+        if (!GetWindowRect(host, out rect)) return false;
+        int width = Math.Max(0, rect.Right - rect.Left);
+        int height = Math.Max(0, rect.Bottom - rect.Top);
+        return width <= 1 && height <= 1;
+    }
+
+    public static bool DirectChildHiddenOrMissing(IntPtr parent, string className)
+    {
+        foreach (IntPtr child in DirectChildren(parent))
+        {
+            if (String.Equals(ClassName(child), className, StringComparison.Ordinal))
+            {
+                return !IsWindowVisible(child);
+            }
+        }
+        return true;
+    }
+
+    public static string SurfaceState(IntPtr parent, string className)
+    {
+        List<IntPtr> children = DirectChildren(parent);
+        int hostIndex = -1;
+        int lastPanelIndex = -1;
+        IntPtr host = IntPtr.Zero;
+        for (int index = 0; index < children.Count; index += 1)
+        {
+            string currentClass = ClassName(children[index]);
+            if (String.Equals(currentClass, className, StringComparison.Ordinal))
+            {
+                hostIndex = index;
+                host = children[index];
+            }
+            if (String.Equals(currentClass, "HomePanelNativeStaticPanel", StringComparison.Ordinal))
+            {
+                lastPanelIndex = index;
+            }
+        }
+        if (host == IntPtr.Zero) return "missing";
+        RECT rect;
+        if (!GetWindowRect(host, out rect)) return "rect-error";
         return String.Format(
-            "visible={0};width={1};height={2};parentMatch={3}",
-            IsWindowVisible(window),
+            "visible={0};width={1};height={2};zIndex={3};lastPanelIndex={4};belowPanels={5}",
+            IsWindowVisible(host),
             Math.Max(0, rect.Right - rect.Left),
             Math.Max(0, rect.Bottom - rect.Top),
-            GetParent(window) == expectedParent);
+            hostIndex,
+            lastPanelIndex,
+            hostIndex > lastPanelIndex);
     }
 
-    public static bool IsPlaybackBehindDashboard(IntPtr window, IntPtr expectedParent)
+    public static string ForegroundClass()
     {
-        if (window == IntPtr.Zero || expectedParent == IntPtr.Zero) return false;
-        RECT rect;
-        if (!GetWindowRect(window, out rect)) return false;
-        return IsWindowVisible(window) &&
-               GetParent(window) == expectedParent &&
-               Math.Max(0, rect.Right - rect.Left) <= 1 &&
-               Math.Max(0, rect.Bottom - rect.Top) <= 1;
+        IntPtr foreground = GetForegroundWindow();
+        return foreground == IntPtr.Zero ? "" : ClassName(foreground);
     }
 }
 '@
@@ -198,7 +306,6 @@ $clockSwitchClickMarkers = [ordered]@{
 }
 $observed = [ordered]@{}
 $observedAtMs = [ordered]@{}
-$backgroundStateAtObservation = [ordered]@{}
 foreach ($name in $required.Keys) {
   $observed[$name] = $false
   $observedAtMs[$name] = $null
@@ -225,212 +332,201 @@ function Save-DesktopScreenshot {
   }
 }
 
-function Measure-ScreenshotVisibility {
-  param([Parameter(Mandatory = $true)][string]$Path)
-
-  if (-not (Test-Path -LiteralPath $Path)) {
-    return [ordered]@{
-      passed = $false
-      error = "screenshot missing"
-      regions = @()
-    }
-  }
-
-  try {
-    Add-Type -AssemblyName System.Drawing
-    $bitmap = [System.Drawing.Bitmap]::new($Path)
-    try {
-      if ($bitmap.Width -lt 2 -or $bitmap.Height -lt 2) {
-        return [ordered]@{
-          passed = $false
-          error = "screenshot dimensions are invalid"
-          regions = @()
-        }
-      }
-
-      $sampleCount = 0
-      $brightPixelCount = 0
-      $minimumLuminance = 255
-      $maximumLuminance = 0
-      for ($y = 0; $y -lt $bitmap.Height; $y += 8) {
-        for ($x = 0; $x -lt $bitmap.Width; $x += 8) {
-          $pixel = $bitmap.GetPixel($x, $y)
-          $maximumChannel = [Math]::Max($pixel.R, [Math]::Max($pixel.G, $pixel.B))
-          $luminance = [int][Math]::Round(
-            0.2126 * $pixel.R + 0.7152 * $pixel.G + 0.0722 * $pixel.B)
-          $sampleCount += 1
-          if ($maximumChannel -ge 40) { $brightPixelCount += 1 }
-          $minimumLuminance = [Math]::Min($minimumLuminance, $luminance)
-          $maximumLuminance = [Math]::Max($maximumLuminance, $luminance)
-        }
-      }
-
-      $brightPixelRatio = if ($sampleCount -gt 0) {
-        [Math]::Round($brightPixelCount / $sampleCount, 4)
-      } else {
-        0
-      }
-      $luminanceRange = $maximumLuminance - $minimumLuminance
-      $regionPassed = $brightPixelRatio -ge 0.01 -and $luminanceRange -ge 32
-      $regions = @([ordered]@{
-        name = "nativeDashboard"
-        sampleCount = $sampleCount
-        brightPixelCount = $brightPixelCount
-        brightPixelRatio = $brightPixelRatio
-        minimumLuminance = $minimumLuminance
-        maximumLuminance = $maximumLuminance
-        luminanceRange = $luminanceRange
-        passed = $regionPassed
-      })
-      return [ordered]@{
-        passed = $regionPassed
-        error = $null
-        regions = $regions
-      }
-    } finally {
-      $bitmap.Dispose()
-    }
-  } catch {
-    return [ordered]@{
-      passed = $false
-      error = $_.Exception.Message
-      regions = @()
-    }
-  }
-}
-
 $process = $null
 $startedAtUtc = [DateTime]::UtcNow
 $mainWindow = [IntPtr]::Zero
-$primaryHost = [IntPtr]::Zero
-$secondaryHost = [IntPtr]::Zero
-$primaryClickBehind = $false
-$secondaryClickBehind = $false
-$nativePanelsReady = $false
+$monitoringStartedAtUtc = $null
+$firstSurfaceObservationAtUtc = $null
+$monitorLogOffset = 0
+$sampleCount = 0
+$primaryHostSeen = $false
+$secondaryHostSeen = $false
 $switchedRole = $null
 $switchLogIndex = -1
 $switchObservedAtMs = $null
 $switchedClickObservedAtMs = $null
-$switchedClickBehindDashboard = $false
+$postSwitchObserveUntilUtc = $null
+$violation = $null
+$failureMessage = $null
+$lastPrimaryState = "unobserved"
+$lastSecondaryState = "unobserved"
+$lastPrimaryAuthHidden = $true
+$lastSecondaryAuthHidden = $true
 
 try {
-  Write-Host "Starting native Stationhead background clock-switch smoke: $executablePath"
+  Write-Host "Starting observational native Stationhead background smoke: $executablePath"
   $process = Start-Process -FilePath $executablePath -WorkingDirectory $workingDirectory -PassThru
   $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 
   while ([DateTime]::UtcNow -lt $deadline) {
     $process.Refresh()
     if ($process.HasExited) {
-      throw "HomePanel exited before Stationhead clock-switch smoke completed with code $($process.ExitCode)."
+      throw "HomePanel exited before Stationhead background smoke completed with code $($process.ExitCode)."
     }
 
     if ($mainWindow -eq [IntPtr]::Zero) {
-      $mainWindow = [HomePanelStationheadSmokeNative]::FindTopLevelWindow(
+      $mainWindow = [HomePanelStationheadObserveNative]::FindTopLevelWindow(
         $process.Id, "HomePanelNativeWindow")
     }
-    if ($mainWindow -ne [IntPtr]::Zero) {
-      $primaryHost = [HomePanelStationheadSmokeNative]::FindChildWindow(
-        $mainWindow, "HomePanelStationheadHost")
-      $secondaryHost = [HomePanelStationheadSmokeNative]::FindChildWindow(
-        $mainWindow, "HomePanelSecondaryStationheadHost")
-      if ($primaryHost -ne [IntPtr]::Zero) {
-        [HomePanelStationheadSmokeNative]::ForcePlaybackBehindDashboard($primaryHost) | Out-Null
-      }
-      if ($secondaryHost -ne [IntPtr]::Zero) {
-        [HomePanelStationheadSmokeNative]::ForcePlaybackBehindDashboard($secondaryHost) | Out-Null
-      }
-      $classes = @([HomePanelStationheadSmokeNative]::ChildWindowClasses($mainWindow))
-      $nativePanelsReady = @($classes | Where-Object { $_ -eq "HomePanelNativeStaticPanel" }).Count -ge 3
-    }
 
+    $log = ""
     if (Test-Path -LiteralPath $logPath) {
-      $log = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
-      if ($null -ne $log) {
-        foreach ($name in $required.Keys) {
-          if (-not $observed[$name] -and $log.Contains($required[$name])) {
-            $elapsedMs = [int][Math]::Round(([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
-            $observed[$name] = $true
-            $observedAtMs[$name] = $elapsedMs
-            Write-Host "Observed $name at ${elapsedMs}ms"
-          }
-        }
-
-        if (-not $switchedRole) {
-          foreach ($role in $clockSwitchMarkers.Keys) {
-            $candidateIndex = $log.IndexOf($clockSwitchMarkers[$role])
-            if ($candidateIndex -ge 0) {
-              $switchedRole = $role
-              $switchLogIndex = $candidateIndex
-              $switchObservedAtMs = [int][Math]::Round(
-                ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
-              Write-Host "Observed clock switch for Window $role at ${switchObservedAtMs}ms"
-              break
-            }
-          }
-        }
-
-        if ($switchedRole -and $null -eq $switchedClickObservedAtMs) {
-          $searchAt = $switchLogIndex + $clockSwitchMarkers[$switchedRole].Length
-          $clickIndex = $log.IndexOf($clockSwitchClickMarkers[$switchedRole], $searchAt)
-          if ($clickIndex -ge 0) {
-            $switchedClickObservedAtMs = [int][Math]::Round(
-              ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
-            Write-Host "Observed post-switch Start Listening click for Window $switchedRole at ${switchedClickObservedAtMs}ms"
-          }
+      $log = [string](Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue)
+      foreach ($name in $required.Keys) {
+        if (-not $observed[$name] -and $log.Contains($required[$name])) {
+          $elapsedMs = [int][Math]::Round(
+            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          $observed[$name] = $true
+          $observedAtMs[$name] = $elapsedMs
+          Write-Host "Observed $name at ${elapsedMs}ms"
         }
       }
     }
 
-    if ($observed.primaryStartListeningClickRequested) {
-      $primaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
-        $primaryHost, $mainWindow)
-      $backgroundStateAtObservation.primaryStartListeningClickRequested =
-        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($primaryHost, $mainWindow)
-    }
-    if ($observed.secondaryStartListeningClickRequested) {
-      $secondaryClickBehind = [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
-        $secondaryHost, $mainWindow)
-      $backgroundStateAtObservation.secondaryStartListeningClickRequested =
-        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState($secondaryHost, $mainWindow)
-    }
-    if ($switchedRole -and $null -ne $switchedClickObservedAtMs) {
-      $switchedHost = if ($switchedRole -eq "A") { $primaryHost } else { $secondaryHost }
-      $switchedClickBehindDashboard =
-        [HomePanelStationheadSmokeNative]::IsPlaybackBehindDashboard(
-          $switchedHost, $mainWindow)
-      $backgroundStateAtObservation.switchedStartListeningClickRequested =
-        [HomePanelStationheadSmokeNative]::PlaybackSurfaceState(
-          $switchedHost, $mainWindow)
+    if ($mainWindow -ne [IntPtr]::Zero) {
+      $sampleCount += 1
+      $primaryHostSeen = $primaryHostSeen -or
+        [HomePanelStationheadObserveNative]::HasDirectChild(
+          $mainWindow, "HomePanelStationheadHost")
+      $secondaryHostSeen = $secondaryHostSeen -or
+        [HomePanelStationheadObserveNative]::HasDirectChild(
+          $mainWindow, "HomePanelSecondaryStationheadHost")
+      if (($primaryHostSeen -or $secondaryHostSeen) -and -not $firstSurfaceObservationAtUtc) {
+        $firstSurfaceObservationAtUtc = [DateTime]::UtcNow
+        Write-Host "Started non-mutating Stationhead surface observation at first host creation."
+      }
+
+      $primaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelStationheadHost")
+      $secondaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+      $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSpotifyAuthHost")
+      $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSecondarySpotifyAuthHost")
+      $lastPrimaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelStationheadHost")
+      $lastSecondaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+
+      if (-not $primaryStartupSafe -or -not $secondaryStartupSafe -or
+          -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
+        $violation = [ordered]@{
+          phase = "startup"
+          observedAtUtc = [DateTime]::UtcNow.ToString("o")
+          elapsedMs = [int][Math]::Round(
+            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          primaryPlayback = $lastPrimaryState
+          secondaryPlayback = $lastSecondaryState
+          primaryAuthHidden = $lastPrimaryAuthHidden
+          secondaryAuthHidden = $lastSecondaryAuthHidden
+          foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
+        }
+        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+      }
     }
 
-    $missing = @($required.Keys | Where-Object { -not $observed[$_] })
-    if ($missing.Count -eq 0 -and $nativePanelsReady -and
-        $primaryClickBehind -and $secondaryClickBehind -and
-        $switchedRole -and $null -ne $switchedClickObservedAtMs -and
-        $switchedClickBehindDashboard) {
-      break
+    $nativePanelsReady = $mainWindow -ne [IntPtr]::Zero -and
+      [HomePanelStationheadObserveNative]::NativePanelCount($mainWindow) -ge 3
+    $dashboardReady = $log.Contains("Native dashboard started")
+    if (-not $monitoringStartedAtUtc -and $nativePanelsReady -and $dashboardReady) {
+      $monitoringStartedAtUtc = [DateTime]::UtcNow
+      $monitorLogOffset = $log.Length
+      Write-Host "Started non-mutating foreground monitoring after native dashboard readiness."
     }
-    Start-Sleep -Milliseconds 100
+
+    if ($monitoringStartedAtUtc) {
+      $primaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
+        $mainWindow, "HomePanelStationheadHost")
+      $secondaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+      $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSpotifyAuthHost")
+      $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
+        $mainWindow, "HomePanelSecondarySpotifyAuthHost")
+      $lastPrimaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelStationheadHost")
+      $lastSecondaryState = [HomePanelStationheadObserveNative]::SurfaceState(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+
+      if (-not $primaryOk -or -not $secondaryOk -or
+          -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
+        $violation = [ordered]@{
+          phase = "dashboard"
+          observedAtUtc = [DateTime]::UtcNow.ToString("o")
+          elapsedMs = [int][Math]::Round(
+            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          primaryPlayback = $lastPrimaryState
+          secondaryPlayback = $lastSecondaryState
+          primaryAuthHidden = $lastPrimaryAuthHidden
+          secondaryAuthHidden = $lastSecondaryAuthHidden
+          foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
+        }
+        throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+      }
+
+      $monitoredLog = if ($log.Length -gt $monitorLogOffset) {
+        $log.Substring($monitorLogOffset)
+      } else {
+        ""
+      }
+      if (-not $switchedRole) {
+        foreach ($role in $clockSwitchMarkers.Keys) {
+          $candidateIndex = $monitoredLog.IndexOf($clockSwitchMarkers[$role])
+          if ($candidateIndex -ge 0) {
+            $switchedRole = $role
+            $switchLogIndex = $monitorLogOffset + $candidateIndex
+            $switchObservedAtMs = [int][Math]::Round(
+              ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+            Write-Host "Observed clock switch for Window $role at ${switchObservedAtMs}ms"
+            break
+          }
+        }
+      }
+
+      if ($switchedRole -and $null -eq $switchedClickObservedAtMs) {
+        $searchAt = $switchLogIndex + $clockSwitchMarkers[$switchedRole].Length
+        $clickIndex = $log.IndexOf($clockSwitchClickMarkers[$switchedRole], $searchAt)
+        if ($clickIndex -ge 0) {
+          $switchedClickObservedAtMs = [int][Math]::Round(
+            ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
+          $postSwitchObserveUntilUtc = [DateTime]::UtcNow.AddSeconds($PostClickSettleSeconds)
+          Write-Host "Observed post-switch Start Listening click for Window $switchedRole at ${switchedClickObservedAtMs}ms"
+          Write-Host "Continuing invariant monitoring for ${PostClickSettleSeconds}s after the click."
+        }
+      }
+
+      $missing = @($required.Keys | Where-Object { -not $observed[$_] })
+      if ($missing.Count -eq 0 -and $switchedRole -and
+          $null -ne $postSwitchObserveUntilUtc -and
+          [DateTime]::UtcNow -ge $postSwitchObserveUntilUtc) {
+        break
+      }
+    }
+
+    Start-Sleep -Milliseconds 25
   }
 
   $missing = @($required.Keys | Where-Object { -not $observed[$_] })
   if ($missing.Count -ne 0) {
     throw "Native Stationhead startup did not reach: $($missing -join ', ')."
   }
-  if (-not $primaryClickBehind -or -not $secondaryClickBehind) {
-    throw "Initial Start Listening was not observed with both Stationhead hosts collapsed behind the dashboard."
+  if (-not $monitoringStartedAtUtc) {
+    throw "Native dashboard never became ready for foreground-invariant monitoring."
   }
-  if (-not $nativePanelsReady) {
-    throw "Native dashboard panels were not created during Stationhead startup smoke."
+  if (-not $primaryHostSeen -or -not $secondaryHostSeen -or
+      -not $firstSurfaceObservationAtUtc) {
+    throw "Both Stationhead hosts were not observed from their creation phase."
   }
   if (-not $switchedRole) {
-    throw "No even-minute A or odd-minute B destination switch was observed."
+    throw "No even-minute A or odd-minute B destination switch was observed after monitoring began."
   }
   if ($null -eq $switchedClickObservedAtMs) {
     throw "Window $switchedRole did not request Start Listening after its clock destination switch."
   }
-  if (-not $switchedClickBehindDashboard) {
-    throw "Post-switch Start Listening was not observed with Window $switchedRole collapsed behind the dashboard."
+  if ($null -eq $postSwitchObserveUntilUtc -or
+      [DateTime]::UtcNow -lt $postSwitchObserveUntilUtc) {
+    throw "The post-switch foreground observation window did not complete."
   }
 
   $startupElapsedMs = [Math]::Max(
@@ -440,51 +536,14 @@ try {
     throw "Native Stationhead startup exceeded the ${StartupBudgetSeconds}s budget (${startupElapsedMs}ms)."
   }
 
-  if ($PostClickSettleSeconds -gt 0) { Start-Sleep -Seconds $PostClickSettleSeconds }
-  if ($primaryHost -ne [IntPtr]::Zero) {
-    [HomePanelStationheadSmokeNative]::ForcePlaybackBehindDashboard($primaryHost) | Out-Null
-  }
-  if ($secondaryHost -ne [IntPtr]::Zero) {
-    [HomePanelStationheadSmokeNative]::ForcePlaybackBehindDashboard($secondaryHost) | Out-Null
-  }
-  Save-DesktopScreenshot
-  $screenVisibility = Measure-ScreenshotVisibility -Path $screenshotPath
-  if (-not $screenVisibility.passed) {
-    $detail = if ($screenVisibility.error) {
-      $screenVisibility.error
-    } else {
-      "native dashboard is dark or low contrast"
-    }
-    throw "Native Stationhead clock-switch screenshot did not prove visible dashboard content: $detail."
-  }
-
-  [ordered]@{
-    executable = $executablePath
-    processId = $process.Id
-    startedAtUtc = $startedAtUtc.ToString("o")
-    completedAtUtc = [DateTime]::UtcNow.ToString("o")
-    startupElapsedMs = $startupElapsedMs
-    startupBudgetSeconds = $StartupBudgetSeconds
-    observed = $observed
-    observedAtMs = $observedAtMs
-    backgroundStateAtObservation = $backgroundStateAtObservation
-    primaryClickBehindDashboard = $primaryClickBehind
-    secondaryClickBehindDashboard = $secondaryClickBehind
-    switchedRole = $switchedRole
-    switchObservedAtMs = $switchObservedAtMs
-    switchedClickObservedAtMs = $switchedClickObservedAtMs
-    switchedClickBehindDashboard = $switchedClickBehindDashboard
-    nativePanelsReady = $nativePanelsReady
-    screenVisibility = $screenVisibility
-    passed = $true
-  } | ConvertTo-Json -Depth 8 |
-    Set-Content -LiteralPath $resultPath -Encoding utf8
-
-  Write-Host "Native Stationhead background clock-switch smoke passed."
+  Write-Host "Observational native Stationhead background smoke passed with $sampleCount samples."
+} catch {
+  $failureMessage = $_.Exception.Message
 } finally {
   if ($process) {
     $process.Refresh()
     if (-not $process.HasExited) {
+      Save-DesktopScreenshot
       Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
       $process.WaitForExit(5000) | Out-Null
     }
@@ -492,4 +551,45 @@ try {
   if (Test-Path -LiteralPath $logPath) {
     Copy-Item -LiteralPath $logPath -Destination $copiedLogPath -Force -ErrorAction SilentlyContinue
   }
+
+  [ordered]@{
+    executable = $executablePath
+    processId = if ($process) { $process.Id } else { $null }
+    startedAtUtc = $startedAtUtc.ToString("o")
+    completedAtUtc = [DateTime]::UtcNow.ToString("o")
+    monitoringStartedAtUtc = if ($monitoringStartedAtUtc) {
+      $monitoringStartedAtUtc.ToString("o")
+    } else {
+      $null
+    }
+    firstSurfaceObservationAtUtc = if ($firstSurfaceObservationAtUtc) {
+      $firstSurfaceObservationAtUtc.ToString("o")
+    } else {
+      $null
+    }
+    primaryHostSeen = $primaryHostSeen
+    secondaryHostSeen = $secondaryHostSeen
+    observationalOnly = $true
+    forbiddenWindowMutationApisChecked = $forbiddenMutationNames
+    sampleIntervalMs = 25
+    sampleCount = $sampleCount
+    postClickObservationSeconds = $PostClickSettleSeconds
+    observed = $observed
+    observedAtMs = $observedAtMs
+    switchedRole = $switchedRole
+    switchObservedAtMs = $switchObservedAtMs
+    switchedClickObservedAtMs = $switchedClickObservedAtMs
+    finalPrimaryPlayback = $lastPrimaryState
+    finalSecondaryPlayback = $lastSecondaryState
+    finalPrimaryAuthHidden = $lastPrimaryAuthHidden
+    finalSecondaryAuthHidden = $lastSecondaryAuthHidden
+    violation = $violation
+    failure = $failureMessage
+    passed = [string]::IsNullOrEmpty($failureMessage)
+  } | ConvertTo-Json -Depth 8 |
+    Set-Content -LiteralPath $resultPath -Encoding utf8
+}
+
+if (-not [string]::IsNullOrEmpty($failureMessage)) {
+  throw $failureMessage
 }

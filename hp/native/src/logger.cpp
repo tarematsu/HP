@@ -165,7 +165,14 @@ void Logger::Write(const wchar_t* level, std::wstring_view messageView) noexcept
     pendingBytes_ += line.size();
 
     const bool important = _wcsicmp(level, L"INFO") != 0;
-    if (important || pendingBytes_ >= kLogFlushThresholdBytes) {
+    // Runtime smoke and field diagnostics must observe Stationhead transitions
+    // in real time. Keep ordinary INFO buffering, but flush lifecycle records
+    // whose ordering is required to diagnose startup and clock-switch failures.
+    const bool observableLifecycle =
+        message.rfind(L"Stationhead ", 0) == 0 ||
+        message.rfind(L"Native dashboard started", 0) == 0;
+    if (important || observableLifecycle ||
+        pendingBytes_ >= kLogFlushThresholdBytes) {
       output_.flush();
       pendingBytes_ = 0;
     }

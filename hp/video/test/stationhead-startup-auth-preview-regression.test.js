@@ -37,17 +37,24 @@ function assertOrdered(source, markers) {
   }
 }
 
-test('pending Spotify auth intentionally has no playback or preview surface', () => {
+test('pending Spotify auth hides playback until the auth surface is usable', () => {
   const policy = section(
     layoutSource,
     'constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(',
-    'static_assert(ResolveStationheadSurfacePolicy(',
+    'static_assert(!ResolveStationheadSurfacePolicy(',
   );
 
-  assert.match(policy, /authSelected && !authSurfaceReady/);
   assert.match(
     policy,
-    /startupPreviewActive && !showAuth && !hidePlaybackForPendingAuth/,
+    /const bool authSelected = selectedTab == StationheadTabKind::Auth;/,
+  );
+  assert.match(
+    policy,
+    /return \{authSelected && authSurfaceReady, authSelected\};/,
+  );
+  assert.match(
+    layoutSource,
+    /StationheadTabKind::Auth, false\)\.showAuth\);[\s\S]*StationheadTabKind::Auth, false\)\.hidePlayback\);/,
   );
 });
 

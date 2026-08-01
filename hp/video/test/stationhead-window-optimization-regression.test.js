@@ -15,7 +15,14 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('unchanged startup preview skips writes only when both surfaces are healthy', () => {
+test('startup preview lifecycle keeps the playback host at 1x1 and HWND_BOTTOM', () => {
+  const createHost = section(
+    layoutSource,
+    'HWND CreateStationheadChildHost(',
+    'bool WindowClientSizeMatches(',
+  );
+  assert.match(createHost, /bounds\.left, bounds\.top, 1, 1/);
+
   const setPreviewBounds = section(
     layoutSource,
     'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
@@ -25,9 +32,33 @@ test('unchanged startup preview skips writes only when both surfaces are healthy
     setPreviewBounds,
     /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)/,
   );
-  assert.match(setPreviewBounds, /PlaybackSurfaceMatches\(/);
+  assert.match(
+    setPreviewBounds,
+    /PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)/,
+  );
   assert.match(setPreviewBounds, /HiddenAuthSurfaceMatches\(/);
-  assert.match(setPreviewBounds, /return;/);
+  assert.match(setPreviewBounds, /KeepPlaybackBehindDashboard\(\)/);
+  assert.doesNotMatch(setPreviewBounds, /HWND_TOP|showStartupPreview/);
+});
+
+test('background host clips a normal-size playback viewport', () => {
+  const applyLayout = section(
+    layoutSource,
+    'void ApplyStationheadChildLayout(',
+    '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
+  );
+  assert.match(applyLayout, /constexpr int hostWidth = 1;/);
+  assert.match(applyLayout, /constexpr int hostHeight = 1;/);
+  assert.match(applyLayout, /const RECT contentBounds\{0, 0, width, height\};/);
+  assert.match(
+    applyLayout,
+    /SetWindowPos\(hostWindow, HWND_BOTTOM,[\s\S]*hostWidth, hostHeight/,
+  );
+  assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
+  assert.doesNotMatch(
+    applyLayout,
+    /const RECT contentBounds\{0, 0, hostWidth, hostHeight\};/,
+  );
 });
 
 test('duplicate hide notifications verify stable playback and auth surfaces', () => {
@@ -48,7 +79,7 @@ test('duplicate hide notifications verify stable playback and auth surfaces', ()
   );
 });
 
-test('reselecting active playback or auth skips only verified layout writes', () => {
+test('reselecting playback stays background-only while active auth may reuse its surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -56,7 +87,11 @@ test('reselecting active playback or auth skips only verified layout writes', ()
   );
   assert.match(
     setVisible,
-    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
+    /selectedTab_ != StationheadTabKind::Auth[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+  );
+  assert.doesNotMatch(
+    setVisible,
+    /StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP/,
   );
   assert.match(
     setVisible,
@@ -74,6 +109,14 @@ test('fast-path helpers validate host placement, controller bounds and visibilit
   assert.match(playbackMatches, /ChildWindowPlacementMatches\(/);
   assert.match(playbackMatches, /ControllerBoundsMatch\(/);
   assert.match(playbackMatches, /ControllerVisibilityMatches\(controller, TRUE\)/);
+  assert.match(
+    playbackMatches,
+    /controllerWidth =[\s\S]*workspaceBounds\.right - workspaceBounds\.left/,
+  );
+  assert.match(
+    playbackMatches,
+    /controllerHeight =[\s\S]*workspaceBounds\.bottom - workspaceBounds\.top/,
+  );
 
   const activeAuthMatches = section(
     layoutSource,
@@ -125,7 +168,7 @@ test('layout reuses host size reads before controller bounds repair', () => {
   );
   assert.match(
     applyLayout,
-    /const bool hostSizeMatches[\s\S]*\(!hostSizeMatches \|\| !hostPlacementMatches\)[\s\S]*if \(!hostSizeMatches \|\|[\s\S]*ControllerBoundsMatch\(controller, contentBounds\)/,
+    /const bool hostSizeMatches[\s\S]*\(!hostSizeMatches \|\| !hostPlacementMatches\)[\s\S]*if \(!ControllerBoundsMatch\(controller, contentBounds\)\)/,
   );
   assert.match(
     applyLayout,

@@ -153,27 +153,36 @@ void App::StartServices() {
         StationheadRole::Secondary, window_, config_.stationhead, stationheadUserData, *logger_);
     logger_->Info(L"Secondary Stationhead prepared with a separate profile in the shared WebView2 user data folder");
   }
+
+  startupAt_ = UnixMillis();
+  lastNewsRotateAt_ = newsCount_ > 1 ? static_cast<int64_t>(startupAt_) : 0;
+
+  // The playback WebViews are background-only. Initialize the native dashboard
+  // before exposing the top-level window so startup can never present a black
+  // shell while waiting for Stationhead audio or Start Listening.
+  renderer_->Initialize();
+  rendererStarted_ = true;
   RECT client{};
   if (GetClientRect(window_, &client) && client.right > client.left && client.bottom > client.top) {
     renderer_->Resize(client.right - client.left, client.bottom - client.top);
-    LayoutWorkspace();
   }
-  ApplyStartupStationheadPreview();
-  startupAt_ = UnixMillis();
-  lastNewsRotateAt_ = newsCount_ > 1 ? static_cast<int64_t>(startupAt_) : 0;
+  LayoutWorkspace();
+  PublishRenderStateNow();
+  renderer_->TickNativePanels(startupAt_);
+  logger_->Info(L"Native dashboard started before main window display");
 
   // Route audio before either WebView can emit its first audio.
   ApplyScheduledStationheadAudioProfile(true);
   stationhead_->Start();
-  logger_->Info(L"Primary Stationhead started in the startup preview");
+  logger_->Info(L"Primary Stationhead started in the background");
   if (secondaryStationhead_) {
     secondaryStationhead_->Start();
     secondaryStarted_ = true;
-    logger_->Info(L"Secondary Stationhead started alongside primary");
+    logger_->Info(L"Secondary Stationhead started alongside primary in the background");
   }
 
-  // Do not expose an empty native shell before the Stationhead surfaces
-  // have startup geometry and their WebView creation has been requested.
+  // Dashboard panels and background Stationhead hosts are fully laid out before
+  // the main window becomes visible.
   ShowWindow(window_, startupShowCommand_);
   UpdateWindow(window_);
   ScheduleNextTick(kFastTickMs);
@@ -246,7 +255,9 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
   const bool startupDeadlineReached = now - startupAt_ >= kDashboardStartupFallbackMs;
   if (stableDashboardAudio && playbackReadyAt_ == 0) playbackReadyAt_ = now;
 
-  if (!rendererStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
+  // Defensive recovery only. Normal startup initializes the renderer before
+  // ShowWindow and never waits for audio to make the dashboard visible.
+  if (!rendererStarted_) {
     renderer_->Initialize();
     rendererStarted_ = true;
     ClearStartupStationheadPreview();
@@ -254,13 +265,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
     PublishRenderStateNow();
     renderer_->TickNativePanels(now);
     InvalidateAll();
-    if (stableDashboardAudio) {
-      logger_->Info(secondaryEnabled
-          ? L"Native dashboard started after Stationhead A/B audio confirmation"
-          : L"Native dashboard started after Stationhead audio confirmation");
-    } else {
-      logger_->Info(L"Native dashboard started after startup fallback deadline");
-    }
+    logger_->Warn(L"Native dashboard started by deferred recovery");
   }
 
   if (!cloudStarted_ && (stableDashboardAudio || startupDeadlineReached)) {
@@ -460,8 +465,16 @@ void App::LayoutWorkspace() {
   RECT client{};
   GetClientRect(window_, &client);
   workspaceBounds_ = client;
+
+  // The legacy Stationhead workspace can no longer replace the dashboard.
+  // Playback recovery and login detection stay in the Main workspace; only the
+  // separate Spotify authorization host may overlay it.
+  if (selectedTab_ == WorkspaceTab::Stationhead) {
+    selectedTab_ = WorkspaceTab::Main;
+  }
+
   renderer_->SetBounds(workspaceBounds_);
-  renderer_->SetVisible(rendererStarted_ && selectedTab_ == WorkspaceTab::Main);
+  renderer_->SetVisible(rendererStarted_);
 
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
@@ -474,9 +487,7 @@ void App::LayoutWorkspace() {
           secondaryStationhead_ ? secondaryStationhead_->Status() : StationheadStatus{});
       break;
     case WorkspaceTab::Stationhead:
-      stationhead_->SetBounds(fullBounds);
-      if (secondaryStationhead_) secondaryStationhead_->SetBounds(fullBounds);
-      stationhead_->SelectTab(StationheadTabKind::Stationhead);
+      // Normalized to Main above.
       break;
     case WorkspaceTab::Auth:
       stationhead_->SetBounds(fullBounds);

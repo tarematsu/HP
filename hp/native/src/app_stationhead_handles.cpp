@@ -87,8 +87,9 @@ void StationheadHandleBase::SetAudioMuted(bool muted) noexcept {
 }
 
 void StationheadHandleBase::SetBounds(const RECT& bounds) {
-  if (!startupPreviewActive_ && EqualRect(&workspaceBounds_, &bounds)) return;
-  workspaceBounds_ = bounds;
+  if (!EqualRect(&workspaceBounds_, &bounds)) workspaceBounds_ = bounds;
+  // Re-apply even when geometry is unchanged. WebView/controller callbacks can
+  // alter child Z-order without changing the dashboard workspace rectangle.
   ApplyBounds();
 }
 

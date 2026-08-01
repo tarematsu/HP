@@ -6,6 +6,10 @@ const layoutSource = readFileSync(
   new URL('../../native/src/sh_layout.cpp', import.meta.url),
   'utf8',
 );
+const handleSource = readFileSync(
+  new URL('../../native/src/app_stationhead_handles.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -32,29 +36,24 @@ function assertOrdered(source, markers) {
 }
 
 test('auth surface is complete before playback is retired', () => {
-  const authBranch = section(
-    applyLayout,
-    '  if (showAuth) {',
-    '    return;\n  }',
-  );
-
-  assertOrdered(authBranch, [
+  assertOrdered(applyLayout, [
+    'if (showAuth) {',
     'authController->put_IsVisible(TRUE);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
-    'ShowWindow(hostWindow, SW_HIDE)',
+    'if (hostWasVisible) ShowWindow(hostWindow, SW_HIDE);',
     'controller->put_IsVisible(FALSE);',
+    'return;',
   ]);
 });
 
-test('playback surface is complete before auth is retired', () => {
-  const authBranchEnd = applyLayout.indexOf('    return;\n  }');
-  assert.notEqual(authBranchEnd, -1);
-  const playbackBranch = applyLayout.slice(authBranchEnd + '    return;\n  }'.length);
-
-  assertOrdered(playbackBranch, [
+test('background playback is restored before the auth surface is retired', () => {
+  const normalPlaybackAt = applyLayout.lastIndexOf('  if (controller) {');
+  assert.notEqual(normalPlaybackAt, -1);
+  const normalPlayback = applyLayout.slice(normalPlaybackAt);
+  assertOrdered(normalPlayback, [
     'controller->put_IsVisible(TRUE);',
     'SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING',
-    'ShowWindow(authHostWindow, SW_HIDE)',
+    'ShowWindow(authHostWindow, SW_HIDE);',
     'authController->put_IsVisible(FALSE);',
   ]);
 });
@@ -62,7 +61,7 @@ test('playback surface is complete before auth is retired', () => {
 test('hidden destination hosts are sized without exposing an empty frame', () => {
   assert.match(
     applyLayout,
-    /if \(!showAuth && hostValid &&[\s\S]*SetWindowPos\(hostWindow, hostPlacement,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
+    /if \(!hidePlayback && hostValid &&[\s\S]*SetWindowPos\(hostWindow, HWND_BOTTOM,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
   );
   assert.match(
     applyLayout,
@@ -70,7 +69,7 @@ test('hidden destination hosts are sized without exposing an empty frame', () =>
   );
 });
 
-test('focus follows the selected WebView2 surface after visual handoff', () => {
+test('only the explicit Spotify authorization surface receives WebView2 focus', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -82,20 +81,13 @@ test('focus follows the selected WebView2 surface after visual handoff', () => {
   );
   assert.match(
     setVisible,
-    /PlaybackSurfaceMatches\([\s\S]*HiddenAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
+    /ActiveAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(authHostWindow_\)[\s\S]*return;/,
   );
   assert.match(
     setVisible,
-    /ActiveAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(authHostWindow_\)[\s\S]*return;/,
+    /LayoutControllers\(\);[\s\S]*ApplyMute\(\);[\s\S]*authController_->MoveFocus\(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC\);/,
   );
-
-  const focusCommit = setVisible.slice(setVisible.lastIndexOf('  viewVisible_ = true;'));
-  assertOrdered(focusCommit, [
-    'LayoutControllers();',
-    'ApplyMute();',
-    'if (selectedTab_ == StationheadTabKind::Auth)',
-    'activeController->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);',
-  ]);
+  assert.doesNotMatch(setVisible, /controller_->MoveFocus/);
 });
 
 test('hiding Stationhead only returns focus when an interactive surface owned it', () => {
@@ -114,7 +106,7 @@ test('hiding Stationhead only returns focus when an interactive surface owned it
   );
 });
 
-test('pending auth creation never raises the collapsed playback host', () => {
+test('pending auth creation never exposes the collapsed playback host as an account surface', () => {
   const activeHost = section(
     layoutSource,
     'HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept',
@@ -122,6 +114,33 @@ test('pending auth creation never raises the collapsed playback host', () => {
   );
   assert.match(
     activeHost,
-    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*return authHostWindow_;[\s\S]*return nullptr;[\s\S]*return hostWindow_;/,
+    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*return authHostWindow_;[\s\S]*return nullptr;[\s\S]*return nullptr;/,
   );
+  assert.doesNotMatch(activeHost, /return hostWindow_;/);
+});
+
+test('reapplying unchanged bounds still repairs playback z-order and size', () => {
+  const playerSetBounds = section(
+    layoutSource,
+    'void StationheadPlayer::SetBounds(const RECT& bounds)',
+    'void StationheadPlayer::SelectTab(',
+  );
+  assert.match(
+    playerSetBounds,
+    /if \(!EqualRect\(&bounds_, &resolved\)\) bounds_ = resolved;/,
+  );
+  assert.match(playerSetBounds, /LayoutControllers\(\);/);
+  assert.doesNotMatch(playerSetBounds, /EqualRect\(&bounds_, &resolved\)\) return;/);
+
+  const handleSetBounds = section(
+    handleSource,
+    'void StationheadHandleBase::SetBounds(const RECT& bounds)',
+    'void StationheadHandleBase::SetStartupPreviewBounds(',
+  );
+  assert.match(
+    handleSetBounds,
+    /if \(!EqualRect\(&workspaceBounds_, &bounds\)\) workspaceBounds_ = bounds;/,
+  );
+  assert.match(handleSetBounds, /ApplyBounds\(\);/);
+  assert.doesNotMatch(handleSetBounds, /EqualRect\(&workspaceBounds_, &bounds\)\) return;/);
 });
