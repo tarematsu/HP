@@ -42,15 +42,13 @@ test('Stationhead WebView resets browser cache before first navigation', () => {
   assert.match(player, /NavigateCurrentUrl\(UnixMillis\(\), L"startup"\)/);
 });
 
-test('long-lived A and B pages use only their independent 55-minute and 54-minute clocks', () => {
-  assert.match(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
-  assert.match(refreshPolicy, /secondary \? 54 : 55/);
-  assert.match(refreshPolicy, /RefreshPeriodicNavigation/);
-  assert.match(refreshPolicy, /periodicRefreshStartedAt_/);
-  assert.match(refreshPolicy, /L"55-minute periodic refresh"/);
-  assert.match(refreshPolicy, /L"54-minute periodic refresh"/);
-  assert.doesNotMatch(refreshPolicy, /56-minute/);
-  assert.doesNotMatch(refreshPolicy, /StationheadClockSwitch|even-minute|odd-minute/);
+test('long-lived A and B pages use only the half-minute destination scheduler', () => {
+  assert.match(refreshPolicy, /SwitchClockStationDestination/);
+  assert.match(refreshPolicy, /ClockStationNavigationSettled/);
+  assert.doesNotMatch(refreshPolicy, /StationheadPeriodicRefreshIntervalMs/);
+  assert.doesNotMatch(refreshPolicy, /RefreshPeriodicNavigation/);
+  assert.doesNotMatch(refreshPolicy, /periodicRefreshStartedAt_/);
+  assert.doesNotMatch(refreshPolicy, /54-minute|55-minute|56-minute/);
   assert.match(
     trackBoundaryScript,
     /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
