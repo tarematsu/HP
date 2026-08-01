@@ -4,28 +4,18 @@
 namespace hp {
 namespace {
 constexpr int64_t kStationheadClockSlotMs = 30'000;
-constexpr int64_t kStationheadClockCycleMs = 4 * 60'000;
-constexpr int64_t kStationheadClockSecondaryOffsetMs = 30'000;
+constexpr int64_t kStationheadClockCycleSlots = 8;
 constexpr int64_t kStationheadClockFreshAudioDelayMs = 1'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
-constexpr UINT StationheadDelayToNextClockEvent(int64_t nowMs) noexcept {
+constexpr UINT StationheadDelayToNextClockSlot(int64_t nowMs) noexcept {
   if (nowMs <= 0) return 1'000;
-  const int64_t remainder = nowMs % kStationheadClockCycleMs;
-  const int64_t delay = remainder < kStationheadClockSecondaryOffsetMs
-      ? kStationheadClockSecondaryOffsetMs - remainder
-      : kStationheadClockCycleMs - remainder;
+  const int64_t remainder = nowMs % kStationheadClockSlotMs;
+  const int64_t delay = remainder == 0
+      ? kStationheadClockSlotMs
+      : kStationheadClockSlotMs - remainder;
   return static_cast<UINT>(std::clamp<int64_t>(
-      delay, kStationheadClockMinimumTimerMs, kStationheadClockCycleMs));
-}
-
-constexpr int StationheadClockWindowForSlot(int64_t clockSlot) noexcept {
-  constexpr int64_t slotsPerCycle =
-      kStationheadClockCycleMs / kStationheadClockSlotMs;
-  const int64_t slotInCycle = clockSlot % slotsPerCycle;
-  if (slotInCycle == 0) return 0;
-  if (slotInCycle == 1) return 1;
-  return -1;
+      delay, kStationheadClockMinimumTimerMs, kStationheadClockSlotMs));
 }
 
 constexpr bool StationheadClockAudioIsFresh(
@@ -41,17 +31,10 @@ bool StationheadUrlMatches(
 }
 
 static_assert(kStationheadClockSlotMs == 30'000);
-static_assert(kStationheadClockCycleMs == 240'000);
-static_assert(kStationheadClockSecondaryOffsetMs == 30'000);
-static_assert(StationheadDelayToNextClockEvent(30'000) == 210'000);
-static_assert(StationheadDelayToNextClockEvent(239'999) == 50);
-static_assert(StationheadDelayToNextClockEvent(240'000) == 30'000);
-static_assert(StationheadDelayToNextClockEvent(240'001) == 29'999);
-static_assert(StationheadClockWindowForSlot(0) == 0);
-static_assert(StationheadClockWindowForSlot(1) == 1);
-static_assert(StationheadClockWindowForSlot(2) == -1);
-static_assert(StationheadClockWindowForSlot(8) == 0);
-static_assert(StationheadClockWindowForSlot(9) == 1);
+static_assert(kStationheadClockCycleSlots * kStationheadClockSlotMs == 4 * 60'000);
+static_assert(StationheadDelayToNextClockSlot(30'000) == 30'000);
+static_assert(StationheadDelayToNextClockSlot(30'001) == 29'999);
+static_assert(StationheadDelayToNextClockSlot(59'999) == 50);
 static_assert(!StationheadClockAudioIsFresh(1'000, 1'999));
 static_assert(StationheadClockAudioIsFresh(1'000, 2'000));
 }  // namespace
@@ -100,13 +83,13 @@ void App::ArmStationheadClockSwitchTimer() noexcept {
     return;
   }
 
-  const UINT delay = StationheadDelayToNextClockEvent(UnixMillis());
+  const UINT delay = StationheadDelayToNextClockSlot(UnixMillis());
   if (SetTimer(
           window_, kStationheadClockSwitchTimerId, delay,
           &App::StationheadClockSwitchTimerProc) == 0) {
     if (logger_) {
       logger_->Warn(
-          L"Stationhead four-minute destination timer could not be armed");
+          L"Stationhead half-minute destination timer could not be armed");
     }
     return;
   }
@@ -134,10 +117,11 @@ void App::HandleStationheadClockSwitch() noexcept {
   if (clockSlot == stationheadLastClockSlot_) return;
   stationheadLastClockSlot_ = clockSlot;
 
-  // Each four-minute wall-clock cycle has two destination events: A at the
-  // cycle's :00 boundary and B thirty seconds later. All other slots are idle.
-  const int switchWindow = StationheadClockWindowForSlot(clockSlot);
-  if (switchWindow < 0) return;
+  // One four-minute cycle contains eight half-minute slots. Switch A at the
+  // cycle's :00 boundary and B at :30; the remaining six slots do nothing.
+  const int64_t slotInFourMinuteCycle =
+      clockSlot % kStationheadClockCycleSlots;
+  if (slotInFourMinuteCycle != 0 && slotInFourMinuteCycle != 1) return;
 
   if (stationheadClockPendingAudioWindow_ >= 0) {
     if (logger_) {
@@ -147,7 +131,9 @@ void App::HandleStationheadClockSwitch() noexcept {
     return;
   }
 
-  const bool switchPrimary = switchWindow == 0;
+  // Unix epoch minutes begin on a :00 boundary. Even half-minute slots are
+  // therefore each selected cycle's :00 event; odd slots are its :30 event.
+  const bool switchPrimary = (clockSlot % 2) == 0;
   bool& usesBuddy46 = switchPrimary
       ? stationheadPrimaryUsesBuddy46_
       : stationheadSecondaryUsesBuddy46_;
@@ -167,8 +153,8 @@ void App::HandleStationheadClockSwitch() noexcept {
       if (logger_) {
         logger_->Info(
             switchPrimary
-                ? L"Stationhead four-minute :00 A kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track"
-                : L"Stationhead four-minute :30 B kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track");
+                ? L"Stationhead :00 A kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track"
+                : L"Stationhead :30 B kept buddy46 because the five-minute playback JSON cache has no valid sakuramankai track");
       }
       return;
     }
@@ -186,8 +172,8 @@ void App::HandleStationheadClockSwitch() noexcept {
   const bool previousPrimaryAudible = scheduledPrimaryAudioAudible_;
   ApplyScheduledStationheadAudioProfile(!switchPrimary);
   const std::wstring reason = switchPrimary
-      ? L"clock four-minute primary destination switch"
-      : L"clock four-minute secondary destination switch";
+      ? L"clock minute-zero destination switch"
+      : L"clock minute-thirty destination switch";
   const bool switched = switchPrimary
       ? stationhead_->SwitchClockStationDestination(targetUrl, reason)
       : secondaryStationhead_->SwitchClockStationDestination(targetUrl, reason);
@@ -196,8 +182,8 @@ void App::HandleStationheadClockSwitch() noexcept {
     if (logger_) {
       logger_->Warn(
           switchPrimary
-              ? L"Stationhead four-minute :00 A switch skipped because the window was busy"
-              : L"Stationhead four-minute :30 B switch skipped because the window was busy");
+              ? L"Stationhead :00 A switch skipped because the window was busy"
+              : L"Stationhead :30 B switch skipped because the window was busy");
     }
     return;
   }
@@ -208,8 +194,8 @@ void App::HandleStationheadClockSwitch() noexcept {
   if (logger_) {
     logger_->Info(
         std::wstring(switchPrimary
-                         ? L"Stationhead four-minute :00 switched A to "
-                         : L"Stationhead four-minute :30 switched B to ") +
+                         ? L"Stationhead clock :00 switched A to "
+                         : L"Stationhead clock :30 switched B to ") +
         (nextUsesBuddy46 ? L"buddy46" : L"sakuramankai"));
   }
 }
