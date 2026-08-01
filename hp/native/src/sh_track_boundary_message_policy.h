@@ -1,12 +1,13 @@
 #pragma once
 #include "common.h"
 
-// Extend the existing public reconnect surface with one native clock-driven
-// navigation entry point without changing the large StationheadPlayer header.
+// Extend the existing public reconnect surface with native clock-driven
+// navigation helpers without changing the large StationheadPlayer header.
 #define Reconnect()                                                          \
   Reconnect();                                                               \
   bool SwitchClockStationDestination(                                        \
-      const std::wstring& url, const std::wstring& reason)
+      const std::wstring& url, const std::wstring& reason);                  \
+  bool ClockStationNavigationSettled() const noexcept
 
 // Track-ended messages are disabled below, but the handle also asks this method
 // to evaluate a native 52-minute recovery path whenever audio is absent. Compile
@@ -48,6 +49,10 @@ inline bool StationheadPlayer::SwitchClockStationDestination(
     config_.url = url;
   }
   usingFallback_ = false;
+  // WebView2 can dispatch an outgoing-document audio callback before its
+  // NavigationStarting event. Mark the route busy synchronously so App never
+  // hands audio to that stale document.
+  navigationInFlight_.store(true, std::memory_order_release);
   NavigateStationheadUrl(UnixMillis(), url, reason, false);
   // Navigate() can return before WebView2 dispatches NavigationStarting. Block
   // page messages from the outgoing document during that narrow interval, then
@@ -59,6 +64,10 @@ inline bool StationheadPlayer::SwitchClockStationDestination(
   KeepPlaybackBehindDashboard();
   PostChange();
   return true;
+}
+
+inline bool StationheadPlayer::ClockStationNavigationSettled() const noexcept {
+  return !navigationInFlight_.load(std::memory_order_acquire);
 }
 
 inline constexpr int64_t StationheadBoundaryElapsedMs(
