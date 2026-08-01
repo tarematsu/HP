@@ -4,6 +4,7 @@ namespace hp {
 namespace {
 constexpr int64_t kStationheadClockSlotMs = 30'000;
 constexpr int64_t kStationheadClockFreshAudioDelayMs = 1'000;
+constexpr int64_t kStationheadPrimaryPlaybackMaximumAgeMs = 6 * 60'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
 constexpr UINT StationheadDelayToNextClockSlot(int64_t nowMs) noexcept {
@@ -22,7 +23,17 @@ constexpr bool StationheadClockAudioIsFresh(
       switchStartedAt + kStationheadClockFreshAudioDelayMs;
 }
 
+constexpr bool StationheadPrimaryPlaybackAvailable(
+    const NativePlaybackFeedStatus& feed, int64_t nowMs) noexcept {
+  return feed.available && feed.playing && feed.hasTrack &&
+      !feed.endedWithoutNextTrack && feed.healthyRevision > 0 &&
+      nowMs >= static_cast<int64_t>(feed.healthyRevision) &&
+      nowMs - static_cast<int64_t>(feed.healthyRevision) <=
+          kStationheadPrimaryPlaybackMaximumAgeMs;
+}
+
 static_assert(kStationheadClockSlotMs == 30'000);
+static_assert(kStationheadPrimaryPlaybackMaximumAgeMs > 5 * 60'000);
 static_assert(StationheadDelayToNextClockSlot(30'000) == 30'000);
 static_assert(StationheadDelayToNextClockSlot(30'001) == 29'999);
 static_assert(StationheadDelayToNextClockSlot(59'999) == 50);
@@ -122,7 +133,22 @@ void App::HandleStationheadClockSwitch() noexcept {
   bool& usesBuddy46 = switchPrimary
       ? stationheadPrimaryUsesBuddy46_
       : stationheadSecondaryUsesBuddy46_;
-  const bool nextUsesBuddy46 = !usesBuddy46;
+  bool nextUsesBuddy46 = !usesBuddy46;
+  if (!nextUsesBuddy46) {
+    const NativePlaybackFeedStatus feed = renderer_
+        ? renderer_->NativePlaybackFeedStatusFor(0, nowMs)
+        : NativePlaybackFeedStatus{};
+    if (!StationheadPrimaryPlaybackAvailable(feed, nowMs)) {
+      if (logger_) {
+        logger_->Info(
+            switchPrimary
+                ? L"Stationhead :00 A kept buddy46 because playback JSON has no fresh valid sakuramankai track"
+                : L"Stationhead :30 B kept buddy46 because playback JSON has no fresh valid sakuramankai track");
+      }
+      return;
+    }
+  }
+
   const std::wstring& targetUrl = nextUsesBuddy46
       ? config_.stationhead.alternateUrl
       : config_.stationhead.url;
