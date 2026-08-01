@@ -19,20 +19,6 @@ bool TrackHasIdentity(const NativePlaybackTrack& track) {
   return !track.title.empty() || !track.artist.empty() || !track.artwork.empty();
 }
 
-bool IsPlaybackFallbackUrl(const std::wstring& url, const std::wstring& fallbackUrl) {
-  return !url.empty() && !fallbackUrl.empty() &&
-         _wcsicmp(url.c_str(), fallbackUrl.c_str()) == 0;
-}
-
-bool SelectedStationheadIsOnFallback(const StationheadStatus& state) {
-  const bool secondarySelected =
-      !state.primaryAudioSelected && !state.secondaryUrl.empty();
-  const std::wstring& selectedUrl = secondarySelected
-      ? state.secondaryUrl
-      : state.url;
-  return IsPlaybackFallbackUrl(selectedUrl, state.fallbackUrl);
-}
-
 struct ProjectedTrackPosition {
   size_t index = 0;
   int64_t elapsedMs = 0;
@@ -208,7 +194,7 @@ NativePlaybackRender Renderer::ResolveNativePlaybackLocked(size_t source, int64_
 }
 
 NativePlaybackRender Renderer::ResolveNativePlayback(size_t source, int64_t nowMs) const {
-  if (SelectedStationheadIsOnFallback(nativeStationhead_) || source != 0) return {};
+  if (source != 0) return {};
   std::lock_guard lock(nativePlaybackMutex_);
   return ResolveNativePlaybackLocked(0, nowMs);
 }
@@ -248,7 +234,6 @@ NativePlaybackFeedStatus Renderer::NativePlaybackFeedStatusFor(size_t source,
 }
 
 int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
-  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return 0;
   std::lock_guard lock(nativePlaybackMutex_);
   const NativePlaybackProjection& projection = nativePlaybackUpdate_.projection;
   if (!projection.available || projection.setupRequired) return 0;
@@ -275,7 +260,6 @@ int64_t Renderer::NativePlaybackNextWakeAt(int64_t nowMs) const {
 
 Renderer::NativePlaybackTickState Renderer::NativePlaybackTickStateFor(int64_t nowMs) const {
   NativePlaybackTickState state;
-  if (SelectedStationheadIsOnFallback(nativeStationhead_)) return state;
 
   std::lock_guard lock(nativePlaybackMutex_);
   const NativePlaybackUpdate& update = nativePlaybackUpdate_;
