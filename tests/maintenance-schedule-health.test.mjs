@@ -35,6 +35,6 @@ test('public runtime health has one schedule half-cycle of grace after runner wa
   const runnerPolicy = read('.github/scripts/github-actions-runner-health.mjs');
 
   assert.equal(config.vars.OTHER_CRON_STALE_MS, 90 * 60_000);
-  assert.match(healthSource, /90 \* 60_000/);
+  assert.match(healthSource, /75 \* 60_000/);
   assert.match(runnerPolicy, /name: 'Runtime offline maintenance'[\s\S]*?staleAfterMinutes: 75/);
 });
