@@ -15,7 +15,14 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('unchanged startup preview skips writes only when both surfaces are healthy', () => {
+test('startup preview lifecycle keeps the playback host at 1x1 and HWND_BOTTOM', () => {
+  const createHost = section(
+    layoutSource,
+    'HWND CreateStationheadChildHost(',
+    'bool WindowClientSizeMatches(',
+  );
+  assert.match(createHost, /bounds\.left, bounds\.top, 1, 1/);
+
   const setPreviewBounds = section(
     layoutSource,
     'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
@@ -25,9 +32,13 @@ test('unchanged startup preview skips writes only when both surfaces are healthy
     setPreviewBounds,
     /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)/,
   );
-  assert.match(setPreviewBounds, /PlaybackSurfaceMatches\(/);
+  assert.match(
+    setPreviewBounds,
+    /PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)/,
+  );
   assert.match(setPreviewBounds, /HiddenAuthSurfaceMatches\(/);
-  assert.match(setPreviewBounds, /return;/);
+  assert.match(setPreviewBounds, /KeepPlaybackBehindDashboard\(\)/);
+  assert.doesNotMatch(setPreviewBounds, /HWND_TOP|showStartupPreview/);
 });
 
 test('duplicate hide notifications verify stable playback and auth surfaces', () => {
@@ -48,7 +59,7 @@ test('duplicate hide notifications verify stable playback and auth surfaces', ()
   );
 });
 
-test('reselecting active playback or auth skips only verified layout writes', () => {
+test('reselecting playback stays background-only while active auth may reuse its surface', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -56,7 +67,11 @@ test('reselecting active playback or auth skips only verified layout writes', ()
   );
   assert.match(
     setVisible,
-    /if \(viewVisible_\)[\s\S]*StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP\)[\s\S]*HiddenAuthSurfaceMatches\([\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
+    /selectedTab_ != StationheadTabKind::Auth[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+  );
+  assert.doesNotMatch(
+    setVisible,
+    /StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP/,
   );
   assert.match(
     setVisible,
