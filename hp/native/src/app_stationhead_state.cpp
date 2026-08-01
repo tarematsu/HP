@@ -3,6 +3,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kStationheadClockMinuteMs = 60'000;
+constexpr int64_t kStationheadClockFreshAudioDelayMs = 1'000;
 constexpr UINT kStationheadClockMinimumTimerMs = 50;
 
 constexpr UINT StationheadDelayToNextClockMinute(int64_t nowMs) noexcept {
@@ -16,10 +17,18 @@ constexpr UINT StationheadDelayToNextClockMinute(int64_t nowMs) noexcept {
       kStationheadClockMinuteMs));
 }
 
+constexpr bool StationheadClockAudioIsFresh(
+    int64_t switchStartedAt, int64_t audioPlayingSince) noexcept {
+  return switchStartedAt > 0 && audioPlayingSince >=
+      switchStartedAt + kStationheadClockFreshAudioDelayMs;
+}
+
 static_assert(kStationheadClockMinuteMs == 60'000);
 static_assert(StationheadDelayToNextClockMinute(60'000) == 60'000);
 static_assert(StationheadDelayToNextClockMinute(60'001) == 59'999);
 static_assert(StationheadDelayToNextClockMinute(119'999) == 50);
+static_assert(!StationheadClockAudioIsFresh(1'000, 1'999));
+static_assert(StationheadClockAudioIsFresh(1'000, 2'000));
 }  // namespace
 
 void App::EnrichRenderStationheadState(
@@ -55,6 +64,7 @@ void App::EnrichRenderStationheadState(
     }
     app->stationheadClockSwitchTimerArmed_ = false;
     app->stationheadClockPendingAudioWindow_ = -1;
+    app->stationheadClockSwitchStartedAt_ = 0;
   }
 }
 
@@ -99,6 +109,14 @@ void App::HandleStationheadClockSwitch() noexcept {
   if (clockMinute == stationheadLastClockMinute_) return;
   stationheadLastClockMinute_ = clockMinute;
 
+  if (stationheadClockPendingAudioWindow_ >= 0) {
+    if (logger_) {
+      logger_->Warn(
+          L"Stationhead clock destination switch skipped because the previous window is still recovering");
+    }
+    return;
+  }
+
   SYSTEMTIME localTime{};
   GetLocalTime(&localTime);
   const bool switchPrimary = (localTime.wMinute % 2) == 0;
@@ -136,6 +154,7 @@ void App::HandleStationheadClockSwitch() noexcept {
 
   usesBuddy46 = nextUsesBuddy46;
   stationheadClockPendingAudioWindow_ = switchPrimary ? 0 : 1;
+  stationheadClockSwitchStartedAt_ = nowMs;
   if (logger_) {
     logger_->Info(
         std::wstring(switchPrimary
@@ -148,24 +167,31 @@ void App::HandleStationheadClockSwitch() noexcept {
 void App::CompleteStationheadClockAudioHandoff(
     const StationheadStatus& primary,
     const StationheadStatus* secondary) noexcept {
+  const bool primaryAudioFresh = StationheadClockAudioIsFresh(
+      stationheadClockSwitchStartedAt_, stationhead_->AudioPlayingSince());
   if (stationheadClockPendingAudioWindow_ == 0 && primary.audioPlaying &&
-      stationhead_->ClockStationNavigationSettled()) {
+      primaryAudioFresh && stationhead_->ClockStationNavigationSettled()) {
     ApplyScheduledStationheadAudioProfile(true);
     stationheadClockPendingAudioWindow_ = -1;
+    stationheadClockSwitchStartedAt_ = 0;
     if (logger_) {
       logger_->Info(
-          L"Stationhead clock switch handed audio to A after navigation and playback recovery");
+          L"Stationhead clock switch handed audio to A after fresh navigation playback recovery");
     }
     return;
   }
+  const bool secondaryAudioFresh = secondary && StationheadClockAudioIsFresh(
+      stationheadClockSwitchStartedAt_,
+      secondaryStationhead_->AudioPlayingSince());
   if (stationheadClockPendingAudioWindow_ == 1 && secondary &&
-      secondary->audioPlaying &&
+      secondary->audioPlaying && secondaryAudioFresh &&
       secondaryStationhead_->ClockStationNavigationSettled()) {
     ApplyScheduledStationheadAudioProfile(false);
     stationheadClockPendingAudioWindow_ = -1;
+    stationheadClockSwitchStartedAt_ = 0;
     if (logger_) {
       logger_->Info(
-          L"Stationhead clock switch handed audio to B after navigation and playback recovery");
+          L"Stationhead clock switch handed audio to B after fresh navigation playback recovery");
     }
   }
 }
@@ -176,6 +202,7 @@ void App::ToggleStationheadAudio() {
       : true;
   stationheadAudioMuted_ = false;
   stationheadClockPendingAudioWindow_ = -1;
+  stationheadClockSwitchStartedAt_ = 0;
   ApplyScheduledStationheadAudioProfile(primaryAudible);
   ShowToast(primaryAudible ? L"A 音声ON" : L"B 音声ON", 3000, false);
   InvalidateAll();
