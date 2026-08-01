@@ -34,6 +34,10 @@ const startupSmoke = readFileSync(
   new URL('../../native/scripts/ci-native-stationhead-startup-smoke.ps1', import.meta.url),
   'utf8',
 );
+const clickOrderSmoke = readFileSync(
+  new URL('../../native/scripts/ci-native-stationhead-clock-click-order.ps1', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -103,8 +107,11 @@ test('outgoing page messages cannot satisfy the post-switch click check', () => 
     policy,
     /NavigateStationheadUrl\([\s\S]*nextAutoClickAt_ = UnixMillis\(\) \+\s*kStationheadClockNavigationClickGuardMs/,
   );
-  assert.match(startupSmoke, /minimumPostSwitchClickDelayMs = 1'000/);
-  assert.match(startupSmoke, /switchedClickDelayMs/);
+  assert.match(clickOrderSmoke, /\[int\]\$MinimumDelaySeconds = 1/);
+  assert.match(clickOrderSmoke, /navigationPatterns/);
+  assert.match(clickOrderSmoke, /clickPatterns/);
+  assert.match(clickOrderSmoke, /delaySeconds -lt \$MinimumDelaySeconds/);
+  assert.match(clickOrderSmoke, /outgoing-document click/);
 });
 
 test('the opposite player remains audible until the changed window recovers', () => {
