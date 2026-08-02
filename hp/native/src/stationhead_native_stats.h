@@ -16,6 +16,12 @@ struct StationheadNativeStatsSnapshot {
   uint64_t revision = 0;
 };
 
+// The legacy member remains declared in StationheadPlayer for source
+// compatibility, but its scheduler interval is redirected to this unreachable
+// compile-time value. Therefore no statistics ExecuteScript poll runs.
+inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
+    INT64_MAX / 2;
+
 // Installs native request/response observers on the primary Stationhead
 // WebView. No page script or WebMessage protocol is involved.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
