@@ -50,7 +50,21 @@ when authorization and cookie headers are redacted. Do not commit or share it.
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-  throw "Node.js is required. Install Node.js 20 or newer, then run this command again."
+  throw "Node.js 22 or newer is required."
+}
+$nodeVersionText = (& $node.Source --version | Select-Object -First 1)
+$nodeMajor = 0
+$nodeMajorText = if ($nodeVersionText) {
+  (($nodeVersionText.Trim()).TrimStart("v") -split "\.")[0]
+} else {
+  ""
+}
+if (
+  $LASTEXITCODE -ne 0 -or
+  -not [int]::TryParse($nodeMajorText, [ref]$nodeMajor) -or
+  $nodeMajor -lt 22
+) {
+  throw "Node.js 22 or newer is required. Current version: $nodeVersionText"
 }
 
 $arguments = @(
