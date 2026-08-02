@@ -2,279 +2,60 @@
 
 namespace hp {
 
-// Final Stationhead statistics policy. Authentication observation and statistics
-// transport are deliberately generated here in one place so later policy layers
-// cannot partially replace the request lifecycle.
+// Final play-count policy. Keep Stationhead's existing page-owned Authorization
+// capture, then add only the small native bridge needed by the Music panel.
+// A document has one generation, one in-flight request, and one monotonically
+// increasing request id. The native reducer can therefore reject old documents
+// without coupling a valid response to several independently rotating auth ids.
 inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   std::wstring script = StationheadAuthCaptureScript();
   script.append(LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
   if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
-      window.top !== window || window.__homepanelStationheadStatsSessionGuard) {
+      window.top !== window || window.__homepanelPlayCountBridge) {
     return;
   }
-  window.__homepanelStationheadStatsSessionGuard = true;
+  window.__homepanelPlayCountBridge = true;
 
-  const NativeURL = window.URL;
-  const nativeTimeout = window.setTimeout.bind(window);
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
+  };
+  const safePositiveInteger = value =>
+    Number.isSafeInteger(Number(value)) && Number(value) > 0
+      ? Number(value) : 0;
   const documentGeneration = (() => {
-    const current = Number(
-      window.__homepanelStationheadStatsDocumentGeneration || 0);
-    if (Number.isSafeInteger(current) && current > 0) return current;
+    const current = safePositiveInteger(
+      window.__homepanelStationheadStatsDocumentGeneration);
+    if (current) return current;
     const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     window.__homepanelStationheadStatsDocumentGeneration = generated;
     return generated;
   })();
-  try {
-    window.chrome?.webview?.postMessage({
-      type: 'stationhead-stats-document',
-      document_generation: documentGeneration,
-    });
-  } catch (_) {}
 
-  let nextAuthorizationGeneration = 0;
-  let acceptedAuthorizationGeneration = 0;
-  const authorizationGenerations = new Map();
-  let latestValidatedHeaders = null;
-  let latestValidatedGeneration = 0;
-
-  const requestInfo = value => {
-    try {
-      if (!NativeURL) return null;
-      const parsed = new NativeURL(String(value || ''), location.href);
-      const targetHost = String(parsed.hostname || '').toLowerCase();
-      const stationhead = parsed.protocol === 'https:' &&
-        (targetHost === 'stationhead.com' ||
-         targetHost.endsWith('.stationhead.com'));
-      if (!stationhead) return null;
-      const path = String(parsed.pathname || '').toLowerCase();
-      const accountScoped = targetHost === 'production1.stationhead.com' &&
-        (path === '/me' || path.startsWith('/me/') ||
-         path === '/account' || path.startsWith('/account/'));
-      return { accountScoped };
-    } catch (_) {
-      return null;
-    }
-  };
-
-  const observe = (url, headers) => {
-    const info = requestInfo(url);
-    const authorization = headers?.get?.('authorization') || '';
-    if (!info || !authorization) return null;
-    let generation = Number(authorizationGenerations.get(authorization) || 0);
+  const publishDocument = () => post({
+    type: 'stationhead-stats-document',
+    document_generation: documentGeneration,
+  });
+  const publishReady = () => {
+    const headers = window.__homepanelStationheadAuthHeaders;
+    if (!headers?.authorization) return false;
+    let generation = safePositiveInteger(
+      window.__homepanelStationheadStatsAuthGeneration);
     if (!generation) {
-      generation = ++nextAuthorizationGeneration;
-      authorizationGenerations.set(authorization, generation);
+      generation = 1;
+      window.__homepanelStationheadStatsAuthGeneration = generation;
     }
-    return {
-      authorization,
-      generation,
-      accountScoped: info.accountScoped,
-      headers: {
-        authorization,
-        'sth-device-uid': headers.get('sth-device-uid') || '',
-        'app-platform': headers.get('app-platform') || 'web',
-        'app-version': headers.get('app-version') || '1.0.0',
-      },
-    };
+    post({
+      type: 'stationhead-auth-ready',
+      auth_generation: generation,
+    });
+    return true;
   };
 
-  const sameAuthorization = (candidate, authorization) =>
-    candidate?.authorization && candidate.authorization === authorization;
-  const clearMatching = (name, authorization, generationName = '') => {
-    const candidate = window[name];
-    if (!sameAuthorization(candidate, authorization)) return;
-    window[name] = null;
-    if (generationName) window[generationName] = 0;
-  };
-  const cloneHeaders = headers => Object.assign({}, headers);
-
-  const publishReadyIfChanged = (
-      previousAuthorization, previousGeneration) => {
-    const currentAuthorization =
-      window.__homepanelStationheadAuthHeaders?.authorization || '';
-    const currentGeneration = Number(
-      window.__homepanelStationheadStatsAuthGeneration || 0);
-    if (!currentAuthorization ||
-        (currentAuthorization === previousAuthorization &&
-         currentGeneration === previousGeneration)) {
-      return;
-    }
-    try {
-      window.dispatchEvent(new Event('homepanel-stationhead-auth-ready'));
-    } catch (_) {}
-    try {
-      window.chrome?.webview?.postMessage({
-        type: 'stationhead-auth-ready',
-        auth_generation: currentGeneration,
-      });
-    } catch (_) {}
-  };
-
-  const restoreLatest = observation => {
-    if (!latestValidatedHeaders?.authorization) return;
-    const current = window.__homepanelStationheadAuthHeaders;
-    if (!sameAuthorization(current, observation.authorization)) return;
-    const previousAuthorization = current?.authorization || '';
-    const previousGeneration = Number(
-      window.__homepanelStationheadStatsAuthGeneration || 0);
-    window.__homepanelStationheadAuthHeaders = cloneHeaders(latestValidatedHeaders);
-    window.__homepanelStationheadLastAcceptedAuthHeaders =
-      cloneHeaders(latestValidatedHeaders);
-    window.__homepanelStationheadLatestValidatedAuthHeaders =
-      cloneHeaders(latestValidatedHeaders);
-    window.__homepanelStationheadStatsAuthGeneration = latestValidatedGeneration;
-    window.__homepanelStationheadLastAcceptedAuthGeneration =
-      latestValidatedGeneration;
-    window.__homepanelStationheadLatestValidatedAuthGeneration =
-      latestValidatedGeneration;
-    publishReadyIfChanged(previousAuthorization, previousGeneration);
-  };
-
-  const rejectGlobally = observation => {
-    const authorization = observation?.authorization || '';
-    if (!authorization) return;
-    clearMatching('__homepanelStationheadAuthHeaders', authorization);
-    clearMatching(
-      '__homepanelStationheadLastAcceptedAuthHeaders', authorization,
-      '__homepanelStationheadLastAcceptedAuthGeneration');
-    clearMatching(
-      '__homepanelStationheadAccountAuthHeaders', authorization,
-      '__homepanelStationheadAccountAuthGeneration');
-    clearMatching(
-      '__homepanelStationheadLatestValidatedAuthHeaders', authorization,
-      '__homepanelStationheadLatestValidatedAuthGeneration');
-    if (latestValidatedHeaders?.authorization === authorization) {
-      latestValidatedHeaders = null;
-      latestValidatedGeneration = 0;
-    }
-    window.__homepanelStationheadStatsAuthGeneration = 0;
-    try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
-    window.__homepanelStationheadPlayStatsInFlight = false;
-    window.__homepanelStationheadRejectedAuthorization = authorization;
-    window.__homepanelStationheadStatsRejectedAuthorization = authorization;
-)JS");
-  script.append(LR"JS(    window.__homepanelStationheadStatsRejectedAt = Date.now();
-  };
-
-  const rejectForStats = observation => {
-    const authorization = observation?.authorization || '';
-    if (!authorization) return;
-    clearMatching(
-      '__homepanelStationheadAccountAuthHeaders', authorization,
-      '__homepanelStationheadAccountAuthGeneration');
-    window.__homepanelStationheadStatsRejectedAuthorization = authorization;
-    window.__homepanelStationheadStatsRejectedAt = Date.now();
-    restoreLatest(observation);
-  };
-
-  const accept = observation => {
-    if (!observation?.authorization) return;
-    if (observation.generation < acceptedAuthorizationGeneration) {
-      restoreLatest(observation);
-      return;
-    }
-    const previousAuthorization =
-      window.__homepanelStationheadAuthHeaders?.authorization || '';
-    const previousGeneration = Number(
-      window.__homepanelStationheadStatsAuthGeneration || 0);
-    acceptedAuthorizationGeneration = Math.max(
-      acceptedAuthorizationGeneration, observation.generation);
-    latestValidatedHeaders = cloneHeaders(observation.headers);
-    latestValidatedGeneration = observation.generation;
-    window.__homepanelStationheadRejectedAuthorization = null;
-    if (window.__homepanelStationheadStatsRejectedAuthorization ===
-        observation.authorization) {
-      window.__homepanelStationheadStatsRejectedAuthorization = null;
-      window.__homepanelStationheadStatsRejectedAt = 0;
-    }
-    window.__homepanelStationheadAuthHeaders = cloneHeaders(observation.headers);
-    window.__homepanelStationheadLastAcceptedAuthHeaders =
-      cloneHeaders(observation.headers);
-    window.__homepanelStationheadLatestValidatedAuthHeaders =
-      cloneHeaders(observation.headers);
-    window.__homepanelStationheadStatsAuthGeneration = observation.generation;
-    window.__homepanelStationheadLastAcceptedAuthGeneration =
-      observation.generation;
-    window.__homepanelStationheadLatestValidatedAuthGeneration =
-      observation.generation;
-    if (observation.accountScoped) {
-      window.__homepanelStationheadAccountAuthHeaders =
-        cloneHeaders(observation.headers);
-      window.__homepanelStationheadAccountAuthGeneration =
-        observation.generation;
-    }
-    if (previousAuthorization &&
-        previousAuthorization !== observation.authorization) {
-      try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
-      window.__homepanelStationheadPlayStatsInFlight = false;
-    }
-    publishReadyIfChanged(previousAuthorization, previousGeneration);
-  };
-
-  const settle = (observation, statusValue) => {
-    if (!observation) return;
-    const status = Number(statusValue || 0);
-    if (status === 401) {
-      rejectGlobally(observation);
-      return;
-    }
-    if (status === 403 && observation.accountScoped) {
-      rejectForStats(observation);
-      return;
-    }
-    if (status >= 200 && status < 400) {
-      accept(observation);
-      return;
-    }
-    restoreLatest(observation);
-  };
-
-  const currentFetch = window.fetch ? window.fetch.bind(window) : null;
-  if (currentFetch) {
-    window.fetch = function(input, init) {
-      let observation = null;
-      try {
-        const headers = new Headers((input && input.headers) || {});
-        if (init && init.headers) {
-          const initHeaders = new Headers(init.headers);
-          initHeaders.forEach((value, name) => headers.set(name, value));
-        }
-        const url = typeof input === 'string' ? input :
-          (NativeURL && input instanceof NativeURL ? input.href :
-            (input && input.url) || '');
-        observation = observe(url, headers);
-      } catch (_) {}
-      const result = currentFetch(input, init);
-      if (observation && typeof result?.then === 'function') {
-        result.then(
-          response => settle(observation, response?.status),
-          () => restoreLatest(observation));
-      }
-      return result;
-    };
-  }
-
-  const NativeXhr = window.XMLHttpRequest;
-  if (NativeXhr) {
-    const currentSend = NativeXhr.prototype.send;
-    NativeXhr.prototype.send = function(...args) {
-      let observation = null;
-      try {
-        observation = observe(
-          this.__homepanelUrl,
-          new Headers(this.__homepanelHeaders || {}));
-      } catch (_) {}
-      const result = currentSend.apply(this, args);
-      if (observation) {
-        this.addEventListener('loadend', () => {
-          nativeTimeout(() => settle(observation, this.status), 0);
-        }, { once: true });
-      }
-      return result;
-    };
-  }
+  publishDocument();
+  window.addEventListener('homepanel-stationhead-auth-ready', publishReady);
+  window.setTimeout(publishReady, 0);
 })()
 )JS");
   return script;
@@ -292,17 +73,92 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const channelId = )JS";
   script << channelId;
   script << LR"JS(;
+  const safePositiveInteger = value =>
+    Number.isSafeInteger(Number(value)) && Number(value) > 0
+      ? Number(value) : 0;
   const documentGeneration = (() => {
-    const current = Number(
-      window.__homepanelStationheadStatsDocumentGeneration || 0);
-    if (Number.isSafeInteger(current) && current > 0) return current;
+    const current = safePositiveInteger(
+      window.__homepanelStationheadStatsDocumentGeneration);
+    if (current) return current;
     const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     window.__homepanelStationheadStatsDocumentGeneration = generated;
     return generated;
   })();
-  const requestId = Number(
-    window.__homepanelStationheadPlayStatsNextRequestId || 0) + 1;
+
+  // Re-publish the current document before every poll. WebView2 preserves
+  // message order, while the network result is asynchronous, so native always
+  // knows the active document before it receives the matching snapshot.
+  post({
+    type: 'stationhead-stats-document',
+    document_generation: documentGeneration,
+  });
+
+  if (window.__homepanelStationheadBlockingLoginVisible === true) {
+    post({ type: 'stationhead-play-stats-error', error: 'blocking-login' });
+    return false;
+  }
+
+  const candidates = [
+    {
+      headers: window.__homepanelStationheadAccountAuthHeaders,
+      generation: window.__homepanelStationheadAccountAuthGeneration,
+    },
+    {
+      headers: window.__homepanelStationheadAuthHeaders,
+      generation: window.__homepanelStationheadStatsAuthGeneration,
+    },
+    {
+      headers: window.__homepanelStationheadLatestValidatedAuthHeaders,
+      generation: window.__homepanelStationheadLatestValidatedAuthGeneration,
+    },
+    {
+      headers: window.__homepanelStationheadLastAcceptedAuthHeaders,
+      generation: window.__homepanelStationheadLastAcceptedAuthGeneration,
+    },
+  ];
+  const rejected = String(
+    window.__homepanelStationheadRejectedAuthorization || '');
+  const selected = candidates.find(candidate => {
+    const authorization = String(candidate?.headers?.authorization || '');
+    return authorization && authorization !== rejected;
+  }) || null;
+  const headers = selected?.headers || null;
+  if (!headers?.authorization) {
+    post({
+      type: 'stationhead-play-stats-error',
+      error: 'no-auth-header',
+      document_generation: documentGeneration,
+    });
+    return false;
+  }
+
+  let authGeneration = safePositiveInteger(selected?.generation);
+  if (!authGeneration) {
+    authGeneration = safePositiveInteger(
+      window.__homepanelStationheadStatsAuthGeneration) || 1;
+  }
+  window.__homepanelStationheadStatsAuthGeneration = authGeneration;
+  post({
+    type: 'stationhead-auth-ready',
+    auth_generation: authGeneration,
+  });
+
+  const now = Date.now();
+  const lastSuccessAt = Number(
+    window.__homepanelStationheadPlayStatsSuccessAt || 0);
+  const lastAuthorization = String(
+    window.__homepanelStationheadPlayStatsAuthorization || '');
+  if (lastSuccessAt > 0 && lastAuthorization === headers.authorization &&
+      now - lastSuccessAt < 5 * 60 * 1000) {
+    return false;
+  }
+  if (window.__homepanelStationheadPlayStatsInFlight) return false;
+
+  const requestId = safePositiveInteger(
+    window.__homepanelStationheadPlayStatsNextRequestId) + 1;
   window.__homepanelStationheadPlayStatsNextRequestId = requestId;
+  window.__homepanelStationheadPlayStatsLatestRequestId = requestId;
+  window.__homepanelStationheadPlayStatsInFlight = true;
   window.__homepanelStationheadStatsDocumentActive = true;
 
   if (!window.__homepanelStationheadStatsPageHideInstalled) {
@@ -315,10 +171,6 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     });
   }
 
-  const resetSuccessThrottle = () => {
-    window.__homepanelStationheadPlayStatsSuccessAt = 0;
-    window.__homepanelStationheadPlayStatsAuthorization = '';
-  };
   const clearRetry = () => {
     const timer = window.__homepanelStationheadPlayStatsRetryTimer;
     if (!timer) return;
@@ -326,15 +178,15 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadPlayStatsRetryTimer = 0;
   };
   const scheduleRetry = (error, status = 0) => {
-    resetSuccessThrottle();
+    window.__homepanelStationheadPlayStatsSuccessAt = 0;
+    window.__homepanelStationheadPlayStatsAuthorization = '';
     post({
       type: 'stationhead-play-stats-error',
       error,
       status,
       request_id: requestId,
       document_generation: documentGeneration,
-      auth_generation: Number(
-        window.__homepanelStationheadStatsAuthGeneration || 0),
+      auth_generation: authGeneration,
     });
     if (window.__homepanelStationheadPlayStatsRetryTimer) return;
     window.__homepanelStationheadPlayStatsRetryTimer = nativeTimeout(() => {
@@ -342,144 +194,29 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       post({
         type: 'stationhead-auth-ready',
         reason: 'stats-retry',
-        auth_generation: Number(
-          window.__homepanelStationheadStatsAuthGeneration || 0),
+        auth_generation: authGeneration,
       });
     }, 30 * 1000);
   };
-
-  const now = Date.now();
-  const globallyRejected = String(
-    window.__homepanelStationheadRejectedAuthorization || '');
-  const statsRejected = String(
-    window.__homepanelStationheadStatsRejectedAuthorization || '');
-  const statsRejectedAt = Number(
-    window.__homepanelStationheadStatsRejectedAt || 0);
-  const statsCooldownActive = authorization =>
-    authorization && authorization === statsRejected &&
-    statsRejectedAt > 0 && now - statsRejectedAt < 30 * 1000;
-  const usable = candidate => {
-    const authorization = String(candidate?.authorization || '');
-    return Boolean(authorization) && authorization !== globallyRejected &&
-      !statsCooldownActive(authorization);
-  };
-
-  if (window.__homepanelStationheadBlockingLoginVisible === true) {
-    scheduleRetry('blocking-login');
-    return false;
-  }
-
-  const accountHeaders = window.__homepanelStationheadAccountAuthHeaders;
-  const currentHeaders = window.__homepanelStationheadAuthHeaders;
-  const latestHeaders = window.__homepanelStationheadLatestValidatedAuthHeaders;
-  const acceptedHeaders = window.__homepanelStationheadLastAcceptedAuthHeaders;
-  const candidates = [
-    {
-      headers: accountHeaders,
-      generation: Number(
-        window.__homepanelStationheadAccountAuthGeneration ||
-          window.__homepanelStationheadStatsAuthGeneration || 0),
-    },
-    {
-      headers: currentHeaders,
-      generation: Number(
-        window.__homepanelStationheadStatsAuthGeneration || 0),
-    },
-    {
-      headers: latestHeaders,
-      generation: Number(
-        window.__homepanelStationheadLatestValidatedAuthGeneration ||
-          window.__homepanelStationheadStatsAuthGeneration || 0),
-    },
-    {
-      headers: acceptedHeaders,
-      generation: Number(
-        window.__homepanelStationheadLastAcceptedAuthGeneration ||
-          window.__homepanelStationheadStatsAuthGeneration || 0),
-    },
-  ];
-  const currentGeneration = Number(
-    window.__homepanelStationheadStatsAuthGeneration || 0);
-  const usableCandidates = candidates.filter(candidate =>
-    usable(candidate.headers) &&
-    Number.isSafeInteger(candidate.generation) && candidate.generation > 0 &&
-    (!Number.isSafeInteger(currentGeneration) || currentGeneration <= 0 ||
-      candidate.generation >= currentGeneration));
-  const newestGeneration = usableCandidates.reduce(
-    (latest, candidate) => Math.max(latest, candidate.generation), 0);
-  const selected = usableCandidates.find(candidate =>
-    candidate.generation === newestGeneration) || null;
-  const headers = selected?.headers || null;
-  const authGeneration = Number(selected?.generation || 0);
-  if (!headers?.authorization) {
-    scheduleRetry('no-auth-header');
-    return false;
-  }
-  if (!Number.isSafeInteger(authGeneration) || authGeneration <= 0) {
-    scheduleRetry('no-validated-auth');
-    return false;
-  }
-
-  const lastSuccessAt = Number(
-    window.__homepanelStationheadPlayStatsSuccessAt || 0);
-  const lastSuccessAuthorization = String(
-    window.__homepanelStationheadPlayStatsAuthorization || '');
-  if (lastSuccessAt > 0 &&
-      lastSuccessAuthorization === headers.authorization &&
-      now - lastSuccessAt < 5 * 60 * 1000) {
-    return false;
-  }
-  if (window.__homepanelStationheadPlayStatsInFlight) return false;
-  window.__homepanelStationheadPlayStatsLatestRequestId = requestId;
-  window.__homepanelStationheadPlayStatsInFlight = true;
 
   try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
   const abortController = typeof AbortController === 'function'
     ? new AbortController() : null;
   window.__homepanelStationheadPlayStatsAbort = abortController;
-  const requestTimeoutTimer = abortController
+  const timeoutTimer = abortController
     ? nativeTimeout(() => {
         if (window.__homepanelStationheadPlayStatsLatestRequestId === requestId) {
-)JS";
-  script << LR"JS(          window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
+          window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
           abortController.abort();
         }
       }, 20 * 1000)
     : 0;
-
-  const clearMatching = name => {
-    if (window[name]?.authorization === headers.authorization) window[name] = null;
-  };
-  const reject = status => {
-    resetSuccessThrottle();
-    if (status === 401) {
-      clearMatching('__homepanelStationheadAuthHeaders');
-      clearMatching('__homepanelStationheadLastAcceptedAuthHeaders');
-      clearMatching('__homepanelStationheadLatestValidatedAuthHeaders');
-      window.__homepanelStationheadLastAcceptedAuthGeneration = 0;
-      window.__homepanelStationheadLatestValidatedAuthGeneration = 0;
-      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
-    }
-    clearMatching('__homepanelStationheadAccountAuthHeaders');
-    window.__homepanelStationheadAccountAuthGeneration = 0;
-    window.__homepanelStationheadStatsRejectedAuthorization =
-      headers.authorization;
-    window.__homepanelStationheadStatsRejectedAt = Date.now();
-    post({
-      type: 'stationhead-play-stats-auth-failed',
-      status,
-      request_id: requestId,
-      document_generation: documentGeneration,
-      auth_generation: authGeneration,
-    });
-  };
-
+)JS";
+  script << LR"JS(
   const numberValue = value => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value !== 'string') return null;
-    const normalized = value.replace(/,/g, '').trim();
-    if (!normalized) return null;
-    const numeric = Number(normalized);
+    const numeric = Number(value.replace(/,/g, '').trim());
     return Number.isFinite(numeric) ? numeric : null;
   };
   const timestampValue = value => {
@@ -510,19 +247,14 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     return { ts, val: Math.round(val) };
   };
   const chartCandidates = payload => {
-    const candidates = [];
+    const output = [];
     const containers = [
-      payload,
-      payload?.data,
-      payload?.result,
-      payload?.stats,
-      payload?.payload,
-      payload?.data?.stats,
-      payload?.data?.result,
+      payload, payload?.data, payload?.result, payload?.stats,
+      payload?.payload, payload?.data?.stats, payload?.data?.result,
     ];
     for (const container of containers) {
       if (Array.isArray(container)) {
-        candidates.push(container);
+        output.push(container);
         continue;
       }
       if (!container || typeof container !== 'object') continue;
@@ -530,46 +262,43 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
         'chart_data', 'chartData', 'daily', 'history', 'points', 'values',
       ]) {
         const candidate = container[key];
-        if (Array.isArray(candidate)) candidates.push(candidate);
+        if (Array.isArray(candidate)) output.push(candidate);
         else if (candidate && typeof candidate === 'object') {
-          candidates.push(
-            Object.entries(candidate).map(([date, value]) => ({ date, value })));
+          output.push(Object.entries(candidate).map(
+            ([date, value]) => ({ date, value })));
         }
       }
     }
-    return candidates;
+    return output;
   };
   const normalizedChart = (payload, referenceTime) => {
-    const maximumFuture = referenceTime + 2 * 24 * 60 * 60 * 1000;
-    const minimumPast = referenceTime - 60 * 24 * 60 * 60 * 1000;
-    const charts = chartCandidates(payload)
+    const minimum = referenceTime - 60 * 24 * 60 * 60 * 1000;
+    const maximum = referenceTime + 2 * 24 * 60 * 60 * 1000;
+    const candidates = chartCandidates(payload)
       .map(candidate => candidate.map(normalizePoint).filter(point =>
-        point && point.ts >= minimumPast && point.ts <= maximumFuture))
+        point && point.ts >= minimum && point.ts <= maximum))
       .filter(candidate => candidate.length > 0);
-    if (!charts.length) return [];
+    if (!candidates.length) return [];
     const positiveCount = points => points.reduce(
       (count, point) => count + (point.val > 0 ? 1 : 0), 0);
-    const latestTimestamp = points => points.reduce(
-      (latest, point) => Math.max(latest, point.ts), 0);
-    charts.sort((left, right) =>
+    const latest = points => points.reduce(
+      (value, point) => Math.max(value, point.ts), 0);
+    candidates.sort((left, right) =>
       positiveCount(right) - positiveCount(left) ||
-      right.length - left.length ||
-      latestTimestamp(right) - latestTimestamp(left));
+      right.length - left.length || latest(right) - latest(left));
     const byTimestamp = new Map();
-    for (const point of charts[0]) byTimestamp.set(point.ts, point);
+    for (const point of candidates[0]) byTimestamp.set(point.ts, point);
     return Array.from(byTimestamp.values())
       .sort((left, right) => left.ts - right.ts)
       .slice(-45);
   };
-
   const stillCurrent = () =>
     window.__homepanelStationheadStatsDocumentActive === true &&
     window.__homepanelStationheadStatsDocumentGeneration ===
       documentGeneration &&
-    window.__homepanelStationheadPlayStatsLatestRequestId === requestId &&
-    Number(window.__homepanelStationheadStatsAuthGeneration || 0) ===
-      authGeneration;
-
+    window.__homepanelStationheadPlayStatsLatestRequestId === requestId;
+)JS";
+  script << LR"JS(
   const requestHeaders = {
     accept: 'application/json',
     authorization: headers.authorization,
@@ -588,7 +317,23 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   }).then(async response => {
     if (!stillCurrent()) return null;
     if (response.status === 401 || response.status === 403) {
-      reject(response.status);
+      const clearMatching = name => {
+        if (window[name]?.authorization === headers.authorization) {
+          window[name] = null;
+        }
+      };
+      clearMatching('__homepanelStationheadAuthHeaders');
+      clearMatching('__homepanelStationheadAccountAuthHeaders');
+      clearMatching('__homepanelStationheadLatestValidatedAuthHeaders');
+      clearMatching('__homepanelStationheadLastAcceptedAuthHeaders');
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      post({
+        type: 'stationhead-play-stats-auth-failed',
+        status: response.status,
+        request_id: requestId,
+        document_generation: documentGeneration,
+        auth_generation: authGeneration,
+      });
       return null;
     }
     if (!response.ok) {
@@ -599,8 +344,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     const data = await response.json();
     return {
       data,
-)JS";
-  script << LR"JS(      serverDateMs: Number.isFinite(serverDate) ? serverDate : 0,
+      serverDateMs: Number.isFinite(serverDate) ? serverDate : 0,
     };
   }).then(result => {
     if (!result || !stillCurrent()) return;
@@ -611,26 +355,19 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       scheduleRetry('invalid-payload');
       return;
     }
-
     clearRetry();
-    const updatedAt = Date.now();
-    const timezone = typeof result.data?.timezone === 'string'
-      ? result.data.timezone : '';
-    window.__homepanelStationheadStatsRejectedAuthorization = null;
-    window.__homepanelStationheadStatsRejectedAt = 0;
-    window.__homepanelStationheadAccountAuthHeaders = Object.assign({}, headers);
-    window.__homepanelStationheadAccountAuthGeneration = authGeneration;
-    window.__homepanelStationheadPlayStatsSuccessAt = updatedAt;
+    window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
     window.__homepanelStationheadPlayStatsAuthorization = headers.authorization;
     post({
       type: 'stationhead-play-stats',
       data: { chart_data: chartData },
-      source: 'authenticated-api-normalized-v3',
+      source: 'authenticated-api-normalized-v4',
       request_id: requestId,
       document_generation: documentGeneration,
       auth_generation: authGeneration,
       server_date_ms: result.serverDateMs,
-      timezone,
+      timezone: typeof result.data?.timezone === 'string'
+        ? result.data.timezone : '',
     });
   }).catch(error => {
     if (!stillCurrent()) return;
@@ -642,7 +379,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     }
     scheduleRetry('network-or-json');
   }).finally(() => {
-    if (requestTimeoutTimer) nativeClearTimeout(requestTimeoutTimer);
+    if (timeoutTimer) nativeClearTimeout(timeoutTimer);
     if (window.__homepanelStationheadPlayStatsTimedOutRequestId === requestId) {
       window.__homepanelStationheadPlayStatsTimedOutRequestId = 0;
     }

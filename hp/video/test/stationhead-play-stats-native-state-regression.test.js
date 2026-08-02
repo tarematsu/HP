@@ -7,7 +7,7 @@ const header = readFileSync(
 const webview = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
 const media = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8');
 
 test('native state owns stats timestamps and response generations', () => {
@@ -61,10 +61,10 @@ test('controller recreation preserves the native last-good snapshot', () => {
   assert.match(webview, /dailyPlayStatsReceivedAt/);
 });
 
-test('renderer projects trusted server time for UTC period labels', () => {
+test('renderer projects trusted server time into fixed period cells', () => {
   assert.match(media, /statsReferenceNowMs/);
   assert.match(media, /dailyPlayStatsServerDateAt/);
   assert.match(media, /dailyPlayStatsReceivedAt/);
-  assert.match(media, /StationheadUtcDayOrdinal\(statsReferenceNowMs\)/);
   assert.match(media, /SummarizeStationheadDailyPlays\([\s\S]*statsReferenceNowMs/);
+  assert.match(media, /std::array<std::wstring, 5> playMetricValues/);
 });

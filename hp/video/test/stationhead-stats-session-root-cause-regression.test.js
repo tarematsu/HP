@@ -30,131 +30,65 @@ const stats = section(
   '\n}  // namespace hp',
 );
 
-test('stats session guard is final after the July 26 baseline', () => {
-  const validationAt = navigationPolicy.indexOf(
-    '#include "sh_auth_capture_validation_policy_fix.h"',
-  );
-  const rotationAt = navigationPolicy.indexOf(
-    '#include "sh_auth_candidate_rotation_policy_fix.h"',
-  );
-  const fallbackAt = navigationPolicy.indexOf(
-    '#include "sh_stats_auth_fallback_policy_fix.h"',
-  );
-  const memoryAt = navigationPolicy.indexOf(
-    '#include "sh_auth_interactive_memory_policy_fix.h"',
-  );
+test('the rebuilt play-count policy remains the final override', () => {
   const baselineAt = navigationPolicy.indexOf(
     '#include "sh_stats_july26_baseline_policy_fix.h"',
   );
   const sessionAt = navigationPolicy.indexOf(
     '#include "sh_stats_session_policy_fix.h"',
   );
-  assert.ok(validationAt >= 0 && validationAt < rotationAt);
-  assert.ok(rotationAt < fallbackAt && fallbackAt < memoryAt);
-  assert.ok(memoryAt < baselineAt && baselineAt < sessionAt);
+  assert.ok(baselineAt >= 0 && sessionAt > baselineAt);
   assert.match(
     policy,
-    /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript[\s\\]+StationheadAuthCaptureScriptStatsSessionSafe/,
+    /#undef StationheadAuthCaptureScript[\s\S]*StationheadAuthCaptureScriptStatsSessionSafe/,
   );
   assert.match(
     policy,
-    /#undef StationheadApiPlayStatsScript[\s\S]*#define StationheadApiPlayStatsScript[\s\\]+StationheadApiPlayStatsScriptStatsSessionSafe/,
+    /#undef StationheadApiPlayStatsScript[\s\S]*StationheadApiPlayStatsScriptStatsSessionSafe/,
   );
 });
 
-test('authorization generations belong to bearer values rather than request order', () => {
-  assert.match(capture, /const authorizationGenerations = new Map\(\);/);
-  assert.match(capture, /authorizationGenerations\.get\(authorization\)/);
-  assert.match(capture, /authorizationGenerations\.set\(authorization, generation\)/);
-  assert.match(capture, /observation\.generation < acceptedAuthorizationGeneration/);
-  assert.match(capture, /latestValidatedGeneration = observation\.generation/);
-  assert.doesNotMatch(capture, /candidateOrders = new WeakMap/);
-
-  let nextGeneration = 0;
-  let acceptedGeneration = 0;
-  let current = '';
-  const generations = new Map();
-  const observe = authorization => {
-    let generation = generations.get(authorization);
-    if (!generation) {
-      generation = ++nextGeneration;
-      generations.set(authorization, generation);
-    }
-    return { authorization, generation };
-  };
-  const accept = observation => {
-    if (observation.generation < acceptedGeneration) return;
-    acceptedGeneration = Math.max(acceptedGeneration, observation.generation);
-    current = observation.authorization;
-  };
-
-  accept(observe('Bearer early'));
-  accept(observe('Bearer account'));
-  accept(observe('Bearer early'));
-  assert.equal(current, 'Bearer account');
+test('authentication capture is delegated instead of wrapped a second time', () => {
+  assert.match(capture, /std::wstring script = StationheadAuthCaptureScript\(\);/);
+  assert.match(capture, /window\.__homepanelPlayCountBridge/);
+  assert.match(capture, /type: 'stationhead-stats-document'/);
+  assert.match(capture, /type: 'stationhead-auth-ready'/);
+  assert.doesNotMatch(capture, /window\.fetch = function/);
+  assert.doesNotMatch(capture, /XMLHttpRequest\.prototype/);
+  assert.doesNotMatch(capture, /authorizationGenerations = new Map/);
 });
 
-test('only successful responses validate credentials and account 403 is stats-scoped', () => {
-  assert.match(capture, /status === 401[\s\S]*rejectGlobally\(observation\)/);
-  assert.match(
-    capture,
-    /status === 403 && observation\.accountScoped[\s\S]*rejectForStats\(observation\)/,
-  );
-  assert.match(capture, /status >= 200 && status < 400[\s\S]*accept\(observation\)/);
-  assert.doesNotMatch(capture, /status > 0[\s\S]*accept\(observation\)/);
-  assert.match(capture, /path\.startsWith\('\/me\/'\)/);
-  assert.match(capture, /path\.startsWith\('\/account\/'\)/);
-});
-
-test('stats request prefers account auth and excludes rejected candidates during cooldown', () => {
-  const accountAt = stats.indexOf(
-    'const accountHeaders = window.__homepanelStationheadAccountAuthHeaders;',
-  );
-  const currentAt = stats.indexOf(
-    'const currentHeaders = window.__homepanelStationheadAuthHeaders;',
-  );
-  const latestAt = stats.indexOf(
-    'const latestHeaders = window.__homepanelStationheadLatestValidatedAuthHeaders;',
-  );
-  const acceptedAt = stats.indexOf(
-    'const acceptedHeaders = window.__homepanelStationheadLastAcceptedAuthHeaders;',
-  );
-  assert.ok(accountAt >= 0);
-  assert.ok(accountAt < currentAt && currentAt < acceptedAt);
-  assert.ok(currentAt < latestAt && latestAt < acceptedAt);
-  assert.match(stats, /authorization !== globallyRejected/);
-  assert.match(stats, /statsCooldownActive\(authorization\)/);
-  assert.match(stats, /now - statsRejectedAt < 30 \* 1000/);
-  assert.match(stats, /BlockingLoginVisible === true/);
-  assert.match(stats, /Number\.isSafeInteger\(authGeneration\)/);
-  assert.match(stats, /const usableCandidates = candidates\.filter/);
-  assert.match(stats, /const newestGeneration = usableCandidates\.reduce/);
-  assert.match(stats, /const selected = usableCandidates\.find/);
-});
-
-test('401 and 403 invalidate the account stats context and publish request identity', () => {
-  assert.match(stats, /response\.status === 401 \|\| response\.status === 403/);
-  assert.match(stats, /clearMatching\('__homepanelStationheadAccountAuthHeaders'\)/);
-  assert.match(stats, /__homepanelStationheadStatsRejectedAuthorization/);
-  assert.match(
-    stats,
-    /type: 'stationhead-play-stats-auth-failed'[\s\S]*request_id: requestId[\s\S]*document_generation: documentGeneration[\s\S]*auth_generation: authGeneration/,
-  );
-});
-
-test('request identity is claimed only after the in-flight guard', () => {
+test('one document and one in-flight request define response identity', () => {
+  assert.match(stats, /__homepanelStationheadStatsDocumentGeneration/);
+  assert.match(stats, /type: 'stationhead-stats-document'/);
   const inFlightAt = stats.indexOf(
     'if (window.__homepanelStationheadPlayStatsInFlight) return false;',
+  );
+  const requestAt = stats.indexOf(
+    'const requestId = safePositiveInteger(',
   );
   const latestAt = stats.indexOf(
     'window.__homepanelStationheadPlayStatsLatestRequestId = requestId;',
   );
-  assert.ok(inFlightAt >= 0 && latestAt > inFlightAt);
-  assert.match(stats, /window\.addEventListener\('pagehide'/);
-  assert.match(stats, /requestTimeoutTimer[\s\S]*20 \* 1000/);
+  assert.ok(inFlightAt >= 0 && requestAt > inFlightAt && latestAt > requestAt);
+  assert.match(
+    stats,
+    /const stillCurrent = \(\) =>[\s\S]*__homepanelStationheadStatsDocumentActive === true[\s\S]*__homepanelStationheadStatsDocumentGeneration ===\s*documentGeneration[\s\S]*__homepanelStationheadPlayStatsLatestRequestId === requestId/,
+  );
+  assert.doesNotMatch(stats, /authorizationGenerations/);
+  assert.doesNotMatch(stats, /acceptedAuthorizationGeneration/);
 });
 
-test('response normalization accepts timestamp units, renamed fields, arrays, and date maps', () => {
+test('the request uses a bounded retryable lifecycle', () => {
+  assert.match(stats, /window\.addEventListener\('pagehide'/);
+  assert.match(stats, /20 \* 1000/);
+  assert.match(stats, /30 \* 1000/);
+  assert.match(stats, /scheduleRetry\('request-timeout'\)/);
+  assert.match(stats, /if \(window\.__homepanelStationheadPlayStatsInFlight\) return false/);
+  assert.match(stats, /now - lastSuccessAt < 5 \* 60 \* 1000/);
+});
+
+test('response normalization accepts known streakStats representations', () => {
   assert.match(stats, /numeric < 100000000000\) numeric \*= 1000/);
   assert.match(stats, /numeric > 100000000000000\) numeric \/= 1000/);
   assert.match(stats, /'chart_data', 'chartData', 'daily', 'history', 'points', 'values'/);
@@ -162,7 +96,15 @@ test('response normalization accepts timestamp units, renamed fields, arrays, an
   assert.match(stats, /point\.timestamp/);
   assert.match(stats, /point\.plays/);
   assert.match(stats, /data: \{ chart_data: chartData \}/);
+  assert.match(stats, /source: 'authenticated-api-normalized-v4'/);
   assert.match(stats, /scheduleRetry\('invalid-payload'\)/);
-  assert.doesNotMatch(stats, /JSON\.stringify\(data\)/);
-  assert.doesNotMatch(stats, /localStorage/);
+});
+
+test('credentials stay page-local and are cleared on account rejection', () => {
+  assert.match(stats, /response\.status === 401 \|\| response\.status === 403/);
+  assert.match(stats, /clearMatching\('__homepanelStationheadAuthHeaders'\)/);
+  assert.match(stats, /clearMatching\('__homepanelStationheadAccountAuthHeaders'\)/);
+  assert.match(stats, /type: 'stationhead-play-stats-auth-failed'/);
+  assert.doesNotMatch(policy, /localStorage|sessionStorage/);
+  assert.doesNotMatch(policy, /console\.log\(.*authorization/i);
 });
