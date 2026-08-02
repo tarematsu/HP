@@ -10,6 +10,10 @@ namespace hp {
 namespace {
 
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
+constexpr int64_t kRecentHistoryWindowMs = 2LL * 60 * 60 * 1000;
+constexpr int64_t kRecentHistoryBucketMs = 5LL * 60 * 1000;
+constexpr size_t kMaximumRecentHistorySamples =
+    static_cast<size_t>(kRecentHistoryWindowMs / kRecentHistoryBucketMs) + 1;
 constexpr auto kSuccessInterval = std::chrono::minutes(5);
 constexpr auto kRetryInterval = std::chrono::seconds(30);
 constexpr size_t kMaximumBodyBytes = 1024 * 1024;
@@ -150,14 +154,28 @@ class NativeStatsStore {
           return point.dayStartMsUtc / kDayMs == today;
         });
     if (current != daily_.rend()) {
-      history_.push_back({receivedAt, current->value});
-      const int64_t cutoff = receivedAt - 2LL * 60 * 60 * 1000;
+      const int64_t bucket =
+          receivedAt / kRecentHistoryBucketMs * kRecentHistoryBucketMs;
+      const auto position = std::lower_bound(
+          history_.begin(), history_.end(), bucket,
+          [](const auto& sample, int64_t timestamp) {
+            return sample.first < timestamp;
+          });
+      if (position != history_.end() && position->first == bucket) {
+        position->second = current->value;
+      } else {
+        history_.insert(position, {bucket, current->value});
+      }
+
+      const int64_t cutoff = receivedAt - kRecentHistoryWindowMs;
       while (!history_.empty() && history_.front().first < cutoff) {
         history_.pop_front();
       }
-      // Keep flat samples. Removing them discards the one-hour baseline when
-      // the daily counter does not change, leaving recentHour unavailable
-      // instead of reporting the correct zero increase.
+      if (history_.size() > kMaximumRecentHistorySamples) {
+        history_.erase(
+            history_.begin(),
+            history_.end() - kMaximumRecentHistorySamples);
+      }
     }
     ++revision_;
   }
