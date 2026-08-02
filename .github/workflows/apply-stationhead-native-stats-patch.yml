@@ -40,6 +40,24 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in lines
           ) + '\n'
+          strict = """def replace_one(text, old, new, label):
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f'{label}: expected one match, got {count}')
+    return text.replace(old, new, 1)
+"""
+          scoped = """def replace_one(text, old, new, label):
+    count = text.count(old)
+    if label == 'timer clearing':
+        if count < 1:
+            raise SystemExit(f'{label}: expected at least one match, got {count}')
+    elif count != 1:
+        raise SystemExit(f'{label}: expected one match, got {count}')
+    return text.replace(old, new, 1)
+"""
+          if script.count(strict) != 1:
+              raise SystemExit('follow-up replacement helper changed unexpectedly')
+          script = script.replace(strict, scoped, 1)
           exec(compile(script, str(workflow), 'exec'), {'__name__': '__main__'})
           PYTHON_EXTRACT
           rm -f .github/workflows/apply-stationhead-stats-followup.yml
