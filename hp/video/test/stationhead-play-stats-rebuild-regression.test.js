@@ -60,10 +60,14 @@ async function runStats({
       },
     },
     setTimeout(callback, delay) {
-      timers.push({ callback, delay });
-      return timers.length;
+      const id = timers.length + 1;
+      timers.push({ id, callback, delay, cleared: false });
+      return id;
     },
-    clearTimeout() {},
+    clearTimeout(id) {
+      const timer = timers.find(candidate => candidate.id === id);
+      if (timer) timer.cleared = true;
+    },
     addEventListener(name, callback) {
       listeners.set(name, callback);
     },
@@ -119,7 +123,7 @@ test('captured streakStats payload is normalized and published with request iden
     result.data.chart_data.at(-1),
     fixture.payload.chart_data.at(-1),
   );
-  assert.equal(timers.length, 0);
+  assert.equal(timers.filter(timer => !timer.cleared).length, 0);
   assert.equal(result.auth_generation, 7);
 });
 
@@ -214,6 +218,7 @@ test('pagehide aborts the active request and stale request results are ignored',
   const listeners = new Map();
   const window = {
     __homepanelStationheadAccountAuthHeaders: { authorization: 'Bearer fixture' },
+    __homepanelStationheadStatsAuthGeneration: 7,
     chrome: { webview: { postMessage: message => messages.push(message) } },
     setTimeout() { return 1; },
     clearTimeout() {},
@@ -247,9 +252,57 @@ test('pagehide aborts the active request and stale request results are ignored',
   assert.equal(window.__homepanelStationheadStatsDocumentActive, false);
 });
 
+test('a duplicate poll cannot supersede the active request identity', async () => {
+  let resolveResponse;
+  const pendingResponse = new Promise(resolve => { resolveResponse = resolve; });
+  const messages = [];
+  const timers = [];
+  const window = {
+    __homepanelStationheadAccountAuthHeaders: { authorization: 'Bearer fixture' },
+    __homepanelStationheadStatsAuthGeneration: 7,
+    chrome: { webview: { postMessage: message => messages.push(message) } },
+    setTimeout(callback, delay) {
+      const id = timers.length + 1;
+      timers.push({ id, callback, delay, cleared: false });
+      return id;
+    },
+    clearTimeout(id) {
+      const timer = timers.find(candidate => candidate.id === id);
+      if (timer) timer.cleared = true;
+    },
+    addEventListener() {},
+  };
+  class AbortControllerFixture {
+    constructor() { this.signal = {}; }
+    abort() {}
+  }
+  const context = {
+    window,
+    fetch: () => pendingResponse,
+    AbortController: AbortControllerFixture,
+    Date, Math, Map, JSON, Number, String, Array, Object, Event, console,
+  };
+  vm.runInNewContext(generatedStatsScript(), context);
+  const activeRequestId = window.__homepanelStationheadPlayStatsLatestRequestId;
+  vm.runInNewContext(generatedStatsScript(), context);
+  assert.equal(window.__homepanelStationheadPlayStatsLatestRequestId, activeRequestId);
+  resolveResponse({
+    status: 200,
+    ok: true,
+    headers: makeHeaders({ date: fixture.source.serverDate }),
+    async json() { return fixture.payload; },
+  });
+  for (let count = 0; count < 8; count += 1) {
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.ok(messages.some(message => message.type === 'stationhead-play-stats'));
+  assert.equal(window.__homepanelStationheadPlayStatsInFlight, false);
+});
+
 test('the generated policy uses native identity and bounded timeout without persistence', () => {
   assert.match(policy, /type: 'stationhead-stats-document'/);
   assert.match(policy, /auth_generation: authGeneration/);
+  assert.match(policy, /Number\.isSafeInteger\(authGeneration\)/);
   assert.match(policy, /requestTimeoutTimer[\s\S]*20 \* 1000/);
   assert.match(policy, /scheduleRetry\('request-timeout'\)/);
   assert.match(policy, /window\.addEventListener\('pagehide'/);
