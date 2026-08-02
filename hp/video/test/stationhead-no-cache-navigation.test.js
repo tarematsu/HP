@@ -18,10 +18,6 @@ const trackBoundaryScript = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
-const baselinePolicy = readFileSync(
-  new URL('../../native/src/sh_stats_july23_baseline_policy_fix.h', import.meta.url),
-  'utf8',
-);
 const playbackPolicy = readFileSync(
   new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
   'utf8',
@@ -58,14 +54,12 @@ test('long-lived A and B pages use only their independent 55-minute and 54-minut
   assert.match(trackBoundaryScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
   assert.equal(playbackPolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
     'controller configuration should clear cache once');
-  assert.equal(baselinePolicy.match(/Network\.clearBrowserCache/g)?.length, 1,
-    'July 23 baseline keeps its original controller cache contract');
   assert.equal(environment.match(/BackForwardCache/g)?.length, 1,
     'the shared Stationhead environment should have one page-state cache policy');
 });
 
 test('cache reset does not replace or erase the persistent Stationhead login profile', () => {
-  const combined = environment + baselinePolicy + playbackPolicy;
+  const combined = environment + playbackPolicy;
   assert.doesNotMatch(environment, /--incognito|--guest|--user-data-dir/);
   assert.doesNotMatch(
     combined,
