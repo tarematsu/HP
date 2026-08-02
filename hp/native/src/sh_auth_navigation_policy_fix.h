@@ -90,11 +90,10 @@ static_assert(kAuthControllerStableTimeoutMs <=
 #define kStationheadAuthControllerTimeoutMs                                      \
   ::hp::stationhead_auth_navigation_policy::kAuthControllerStableTimeoutMs
 
+// Authentication remains page-owned because login UI and playback still need
+// the live Stationhead session. Play-count acquisition is no longer layered on
+// these generated scripts; it is handled exclusively by WebView2's native
+// WebResourceResponseReceived event in stationhead_native_stats.h.
 #include "sh_auth_capture_validation_policy_fix.h"
 #include "sh_auth_candidate_rotation_policy_fix.h"
-#include "sh_stats_auth_fallback_policy_fix.h"
 #include "sh_auth_interactive_memory_policy_fix.h"
-#include "sh_stats_july26_baseline_policy_fix.h"
-
-#include "sh_stats_session_policy_fix.h"
-#include "sh_stats_passive_response_policy_fix.h"
