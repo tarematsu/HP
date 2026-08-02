@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mediaSection = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
+  'utf8',
+);
+const mediaEntry = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
@@ -58,15 +62,32 @@ test('captured API fixture produces the expected UTC period totals', () => {
   });
 });
 
-test('the music header keeps last-good values but marks stale statistics', () => {
-  assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
-  assert.match(mediaSection, /statsStale/);
-  assert.match(mediaSection, /L"　更新待ち"/);
-  assert.match(mediaSection, /statsStale \? kWidgetWarning : kWidgetSubtle/);
+test('the legacy media entry delegates to the rebuilt panel', () => {
+  assert.match(mediaEntry, /#include "media_section_v2\.inc"/);
+});
+
+test('five play-count metrics own fixed cells instead of one ellipsized sentence', () => {
   assert.match(
     mediaSection,
-    /if \(statsAvailable\)[\s\S]*SummarizeStationheadDailyPlays/,
+    /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
   );
+  assert.match(mediaSection, /std::array<std::wstring, 5> playMetricValues/);
+  assert.match(mediaSection, /usableMetricWidth \* index \/ 5/);
+  assert.match(mediaSection, /DrawWidgetCard\(dc, cell, kWidgetSurfaceAlt/);
+  assert.match(mediaSection, /playValueText\(summary\.today\)/);
+  assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
+  assert.doesNotMatch(mediaSection, /dailyPlaySummary/);
+  assert.doesNotMatch(
+    mediaSection,
+    /DT_RIGHT \| DT_SINGLELINE \| DT_END_ELLIPSIS \| DT_VCENTER/,
+  );
+});
+
+test('unavailable and stale values remain visible', () => {
+  assert.match(mediaSection, /value >= 0 \? std::to_wstring\(value\) : std::wstring\(L"--"\)/);
+  assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
+  assert.match(mediaSection, /statsStale \? kWidgetWarning/);
+  assert.match(mediaSection, /metricValueColor/);
 });
 
 test('the recent-hour number is hidden when its newest sample is old', () => {
