@@ -13,10 +13,10 @@ inline void ApplyStationheadResourceBlockingWithNativeStats(
   ApplyStationheadResourceBlocking(
       environment, webview, config, armed, token);
   // The Default profile is Window A and owns environment-wide worker traffic.
-  // Register exactly one native response observer there. Window B remains
-  // playback-only and never duplicates the same streakStats response.
+  // Register exactly one native credential/request pipeline there. Window B
+  // remains playback-only and never duplicates account-statistics downloads.
   if (webview && StationheadOwnsWorkerRequestFilters(webview)) {
-    AttachStationheadNativeStatsObserver(webview, config.channelId);
+    AttachStationheadNativeStats(webview, config.channelId);
   }
 }
 
