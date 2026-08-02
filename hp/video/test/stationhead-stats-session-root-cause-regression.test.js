@@ -73,7 +73,7 @@ test('one document and one in-flight request define response identity', () => {
   assert.ok(inFlightAt >= 0 && requestAt > inFlightAt && latestAt > requestAt);
   assert.match(
     stats,
-    /const stillCurrent = \(\) =>[\s\S]*StatsDocumentActive === true[\s\S]*StatsDocumentGeneration ===[\s\S]*documentGeneration[\s\S]*LatestRequestId === requestId/,
+    /const stillCurrent = \(\) =>[\s\S]*__homepanelStationheadStatsDocumentActive === true[\s\S]*__homepanelStationheadStatsDocumentGeneration ===\s*documentGeneration[\s\S]*__homepanelStationheadPlayStatsLatestRequestId === requestId/,
   );
   assert.doesNotMatch(stats, /authorizationGenerations/);
   assert.doesNotMatch(stats, /acceptedAuthorizationGeneration/);
