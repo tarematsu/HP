@@ -1,74 +1,122 @@
 #pragma once
 #include "common.h"
 
-// Extend the existing public reconnect surface with native clock-driven
-// navigation helpers without changing the large StationheadPlayer header.
-#define Reconnect()                                                          \
-  Reconnect();                                                               \
-  bool SwitchClockStationDestination(                                        \
-      const std::wstring& url, const std::wstring& reason);                  \
-  bool ClockStationNavigationSettled() const noexcept
-
-// Track-ended messages are disabled below, but the handle also asks this method
-// to evaluate a native 52-minute recovery path whenever audio is absent. Compile
-// that legacy implementation under an unused name and keep the public method a
-// strict no-op, so half-minute clock navigation is the only automatic route change.
-#define RetryPendingTrackBoundaryRefresh(parameters)                         \
-  RetryPendingTrackBoundaryRefresh(parameters) {                             \
-    (void)nowMs;                                                             \
-    trackBoundaryRefreshPending_ = false;                                    \
-    return false;                                                            \
-  }                                                                          \
-  bool RetryPendingTrackBoundaryRefreshDisabled(parameters)
-
-#include "sh.h"
-#undef RetryPendingTrackBoundaryRefresh
-#undef Reconnect
-
 namespace hp {
 
-inline constexpr int64_t kStationheadClockNavigationClickGuardMs = 1'500;
-
-inline bool StationheadPlayer::SwitchClockStationDestination(
-    const std::wstring& url, const std::wstring& reason) {
-  if (url.empty() || !webview_ ||
-      shuttingDown_.load(std::memory_order_acquire) ||
-      recreating_.load(std::memory_order_acquire) ||
-      navigationInFlight_.load(std::memory_order_acquire) ||
-      spotifyAuthorization_ || loginRequired_) {
-    return false;
-  }
-  {
-    std::lock_guard lock(mutex_);
-    if (status_.navigating) return false;
-  }
-
-  if (IsSecondary()) {
-    config_.secondaryUrl = url;
-  } else {
-    config_.url = url;
-  }
-  usingFallback_ = false;
-  // WebView2 can dispatch an outgoing-document audio callback before its
-  // NavigationStarting event. Mark the route busy synchronously so App never
-  // hands audio to that stale document.
-  navigationInFlight_.store(true, std::memory_order_release);
-  NavigateStationheadUrl(UnixMillis(), url, reason, false);
-  // Navigate() can return before WebView2 dispatches NavigationStarting. Block
-  // page messages from the outgoing document during that narrow interval, then
-  // let the new document's native Start Listening retry run after navigation.
-  nextAutoClickAt_ = UnixMillis() + kStationheadClockNavigationClickGuardMs;
-  // NavigateStationheadUrl resets startup layout state. Collapse the playback
-  // surface again immediately so the clock switch never raises it above the
-  // native dashboard while Start Listening retries run.
-  KeepPlaybackBehindDashboard();
-  PostChange();
-  return true;
+inline constexpr bool StationheadPlaybackNavigationActive(
+    bool navigationInFlight,
+    bool statusNavigating,
+    bool spotifyAuthorization) noexcept {
+  return navigationInFlight || (statusNavigating && !spotifyAuthorization);
 }
 
-inline bool StationheadPlayer::ClockStationNavigationSettled() const noexcept {
-  return !navigationInFlight_.load(std::memory_order_acquire);
+inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(
+    bool secondary) noexcept {
+  return (secondary ? 54 : 55) * 60'000;
 }
+
+static_assert(StationheadPlaybackNavigationActive(true, false, false));
+static_assert(StationheadPlaybackNavigationActive(true, true, true));
+static_assert(StationheadPlaybackNavigationActive(false, true, false));
+static_assert(!StationheadPlaybackNavigationActive(false, true, true));
+static_assert(!StationheadPlaybackNavigationActive(false, false, false));
+static_assert(StationheadPeriodicRefreshIntervalMs(false) == 55 * 60'000);
+static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
+
+}  // namespace hp
+
+// Extend StationheadPlayer while sh.h is parsed, then remove the temporary
+// source-rewriting macros before any implementation file is compiled. Periodic
+// refresh is intentionally independent per role: A uses 55 minutes and B uses
+// 54 minutes. The one-minute skew prevents the normal refreshes from starting
+// together without changing the active audio profile.
+#define NextWakeAt()                                                          \
+  NextWakeAt() const noexcept {                                               \
+    int64_t next = NextWakeAtBase();                                          \
+    if (periodicRefreshStartedAt_.Active()) {                                 \
+      const int64_t due = periodicRefreshStartedAt_ +                         \
+          ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());          \
+      if (next <= 0 || due < next) next = due;                                \
+    }                                                                         \
+    return next;                                                              \
+  }                                                                           \
+  [[nodiscard]] int64_t NextWakeAtBase()
+
+#define RecoverUnavailableAuthorization()                                    \
+  RecoverUnavailableAuthorization() {                                        \
+    RecoverUnavailableAuthorizationBase();                                   \
+    RefreshPeriodicNavigation(UnixMillis());                                  \
+  }                                                                           \
+  void RecoverUnavailableAuthorizationBase()
+
+#define RetryPendingTrackBoundaryRefresh(parameters)                         \
+  RetryPendingTrackBoundaryRefresh(parameters) {                             \
+    (void)nowMs;                                                              \
+    trackBoundaryRefreshPending_ = false;                                     \
+    return false;                                                             \
+  }                                                                           \
+  bool RetryPendingTrackBoundaryRefreshDisabled(parameters)
+
+#define nextAutoClickAt_                                                      \
+  nextAutoClickAt_ = 0;                                                       \
+  void RefreshPeriodicNavigation(int64_t nowMs) {                             \
+    const auto lifecycle = createCallbackAlive_;                              \
+    const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
+    if (!webview_ || previousLifecycle != lifecycle) {                        \
+      periodicRefreshLifecycle_ = lifecycle;                                 \
+      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshNavigationObserved_ = 0;                                 \
+      if (!webview_) return;                                                   \
+    }                                                                         \
+                                                                                \
+    bool statusNavigating = false;                                            \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                            \
+      statusNavigating = status_.navigating;                                  \
+    }                                                                         \
+    const bool navigationActive =                                             \
+        ::hp::StationheadPlaybackNavigationActive(                            \
+            navigationInFlight_.load(std::memory_order_acquire),              \
+            statusNavigating, spotifyAuthorization_);                         \
+    if (navigationActive) {                                                   \
+      periodicRefreshStartedAt_ = 0;                                          \
+      periodicRefreshNavigationObserved_ = 1;                                 \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
+        spotifyAuthorization_ || loginRequired_ ||                            \
+        recreating_.load(std::memory_order_relaxed)) {                        \
+      return;                                                                 \
+    }                                                                         \
+                                                                                \
+    if (periodicRefreshNavigationObserved_ != 0 ||                            \
+        !periodicRefreshStartedAt_.Active()) {                                \
+      periodicRefreshNavigationObserved_ = 0;                                 \
+      periodicRefreshStartedAt_ = nowMs;                                      \
+      return;                                                                 \
+    }                                                                         \
+    const int64_t intervalMs =                                                \
+        ::hp::StationheadPeriodicRefreshIntervalMs(IsSecondary());            \
+    if (nowMs - periodicRefreshStartedAt_ < intervalMs) return;               \
+                                                                                \
+    periodicRefreshStartedAt_ = nowMs;                                        \
+    NavigateCurrentUrl(                                                       \
+        nowMs, IsSecondary() ? L"54-minute periodic refresh"                  \
+                             : L"55-minute periodic refresh");                \
+  }                                                                           \
+  MonotonicElapsedTimestamp periodicRefreshStartedAt_;                        \
+  std::weak_ptr<std::atomic<bool>> periodicRefreshLifecycle_;                 \
+  int64_t periodicRefreshNavigationObserved_
+
+#include "sh.h"
+
+#undef nextAutoClickAt_
+#undef RetryPendingTrackBoundaryRefresh
+#undef RecoverUnavailableAuthorization
+#undef NextWakeAt
+
+namespace hp {
 
 inline constexpr int64_t StationheadBoundaryElapsedMs(
     ULONGLONG startedAt, ULONGLONG now) noexcept {
@@ -153,7 +201,6 @@ static_assert(StationheadBoundaryElapsedMs(4'120, 1'000) == 0);
 static_assert(StationheadOperationalDeadlineValue(false, false, 42) == 0);
 static_assert(StationheadOperationalDeadlineValue(true, true, 42) == 1);
 static_assert(StationheadOperationalDeadlineValue(true, false, 42) == 42);
-static_assert(kStationheadClockNavigationClickGuardMs >= 1'000);
 
 namespace stationhead_boundary_message_policy {
 inline SRWLOCK reloadClockLock = SRWLOCK_INIT;
@@ -177,6 +224,42 @@ inline int64_t& StationheadAutoClickDeadlineStorage(
   storage = StationheadProjectedDeadlineValue(deadline);
   exposed = storage;
   return storage;
+}
+
+class StationheadNavigationInFlightProxy {
+ public:
+  StationheadNavigationInFlightProxy(
+      std::atomic<bool>& storage,
+      MonotonicElapsedTimestamp& refreshStartedAt,
+      int64_t& navigationObserved) noexcept
+      : storage_(storage),
+        refreshStartedAt_(refreshStartedAt),
+        navigationObserved_(navigationObserved) {}
+
+  void store(bool value, std::memory_order order) noexcept {
+    if (value) {
+      refreshStartedAt_ = 0;
+      navigationObserved_ = 1;
+    }
+    storage_.store(value, order);
+  }
+
+  [[nodiscard]] bool load(std::memory_order order) const noexcept {
+    return storage_.load(order);
+  }
+
+ private:
+  std::atomic<bool>& storage_;
+  MonotonicElapsedTimestamp& refreshStartedAt_;
+  int64_t& navigationObserved_;
+};
+
+inline StationheadNavigationInFlightProxy StationheadNavigationInFlightStorage(
+    std::atomic<bool>& storage,
+    MonotonicElapsedTimestamp& refreshStartedAt,
+    int64_t& navigationObserved) noexcept {
+  return StationheadNavigationInFlightProxy(
+      storage, refreshStartedAt, navigationObserved);
 }
 
 class StationheadBoundaryReloadClockProxy {
@@ -274,6 +357,10 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 #define nextAutoClickAt_                                                     \
   (::hp::StationheadAutoClickDeadlineStorage(                               \
       (nextAutoClickAt_), IsSecondary()))
+#define navigationInFlight_                                                  \
+  (::hp::StationheadNavigationInFlightStorage(                              \
+      (navigationInFlight_), periodicRefreshStartedAt_,                     \
+      periodicRefreshNavigationObserved_))
 #define SetFocus(target) (::hp::SetFocusAfterStationheadHide((target)))
 
 #include "sh_shared.h"
