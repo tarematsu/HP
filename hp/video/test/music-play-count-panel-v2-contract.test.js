@@ -24,13 +24,20 @@ test('the compiled Music panel uses the v2 implementation', () => {
   assert.match(panel, /void Renderer::DrawMusicSection/);
 });
 
-test('every requested period has an independently rendered value cell', () => {
+test('every requested period is rendered as one compact right-aligned line', () => {
   for (const label of ['直近1時間', '本日', '昨日', '今週', '先週']) {
     assert.match(panel, new RegExp(`L"${label}"`));
   }
-  assert.match(panel, /for \(size_t index = 0; index < kPlayMetricLabels\.size\(\); \+\+index\)/);
-  assert.match(panel, /DrawWidgetCard\(dc, cell/);
-  assert.match(panel, /DrawTextInRect\(\s*dc,\s*playMetricValues\[index\]/);
+  assert.match(panel, /std::wstring metricsLine/);
+  assert.match(panel, /metricsLine \+= kPlayMetricLabels\[index\]/);
+  assert.match(panel, /metricsLine \+= playMetricValues\[index\]/);
+  assert.match(
+    panel,
+    /DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
+  );
+  assert.match(panel, /std::clamp\(metricsHeight \* 34 \/ 100, 8, 11\)/);
+  assert.doesNotMatch(panel, /DrawWidgetCard\(dc, cell/);
+  assert.doesNotMatch(panel, /usableMetricWidth/);
   assert.match(panel, /L"--"/);
 });
 
