@@ -128,7 +128,7 @@ test('captured streakStats payload is normalized and published with request iden
 });
 
 test('positive nested series wins over a zero placeholder and duplicate dates are reduced', async () => {
-  const seconds = Math.floor(fixture.payload.chart_data[0].ts / 1000);
+  const seconds = Math.floor(Date.now() / 86_400_000) * 86_400;
   const { messages } = await runStats({
     response: {
       status: 200,
