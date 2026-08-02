@@ -72,7 +72,7 @@ test('WebView2 response capture is completely native and bounded', () => {
   assert.match(nativeStats, /GetContent/);
   assert.match(nativeStats, /kStationheadNativeStatsMaximumBodyBytes = 1024 \* 1024/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
-  assert.match(nativeStats, /\/me\/channel\//);
+  assert.match(nativeStats, /L"\/me\/channel\/"/);
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
   assert.doesNotMatch(nativeStats, /authorization/i);
