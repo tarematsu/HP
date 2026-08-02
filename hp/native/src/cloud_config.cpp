@@ -1,6 +1,5 @@
 #include "cloud_config.h"
 #include "safe_json_number.h"
-#include "stationhead_playback_gate.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -8,8 +7,10 @@ namespace {
 using winrt::Windows::Data::Json::JsonObject;
 constexpr wchar_t kCanonicalPrimaryStationheadUrl[] =
     L"https://www.stationhead.com/sakuramankai";
-constexpr wchar_t kCanonicalAlternateStationheadUrl[] =
+constexpr wchar_t kCanonicalFallbackStationheadUrl[] =
     L"https://www.stationhead.com/buddy46";
+constexpr wchar_t kCanonicalSecondaryStationheadUrl[] =
+    L"https://www.stationhead.com/sakuramankai";
 
 JsonObject Object(const JsonObject& parent, const wchar_t* key) {
   try { return parent.GetNamedObject(key); } catch (...) { return JsonObject{}; }
@@ -35,27 +36,9 @@ bool Boolean(const JsonObject& object, const wchar_t* key, bool fallback) {
 std::wstring Text(const JsonObject& object, const wchar_t* key, const std::wstring& fallback) {
   try { return object.GetNamedString(key, fallback).c_str(); } catch (...) { return fallback; }
 }
-
-void ApplyStationheadStartupDestination(AppConfig& config) {
-  config.stationhead.primaryUrl = kCanonicalPrimaryStationheadUrl;
-  config.stationhead.alternateUrl = kCanonicalAlternateStationheadUrl;
-  const wchar_t* startupUrl = StationheadPrimaryPlaybackAvailableNow()
-      ? kCanonicalPrimaryStationheadUrl
-      : kCanonicalAlternateStationheadUrl;
-  config.stationhead.url = startupUrl;
-  config.stationhead.secondaryUrl = startupUrl;
-  config.stationhead.fallbackUrl.clear();
-  config.stationhead.secondaryEnabled = true;
 }
-}  // namespace
 
 bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
-  // This executes from App::InitializePaths, before the main window and before
-  // either Stationhead WebView2 controller is constructed. Network failure and
-  // any playback JSON without a usable current track intentionally choose
-  // buddy46 for the first navigation.
-  ApplyStationheadStartupDestination(config);
-
   try {
     std::ifstream input(path, std::ios::binary);
     if (!input) return false;
@@ -76,8 +59,14 @@ bool ApplyCloudConfig(AppConfig& config, const fs::path& path) {
     config.temperatureOffset = Decimal(co2, L"temperatureOffset", config.temperatureOffset, -20.0, 20.0);
 
     const auto station = Object(root, L"stationhead");
-    // Station URLs are owned by the startup preflight above. Ignore stale URL
-    // values from cloud configuration while still accepting resource settings.
+    // Keep both players on sakuramankai during normal operation. buddy46 is
+    // reserved for the existing managed fallback path when playback-a reports
+    // an abnormal end state. Ignore stale two-station rotation URLs from cloud
+    // configuration written by prior releases.
+    config.stationhead.url = kCanonicalPrimaryStationheadUrl;
+    config.stationhead.fallbackUrl = kCanonicalFallbackStationheadUrl;
+    config.stationhead.secondaryUrl = kCanonicalSecondaryStationheadUrl;
+    config.stationhead.secondaryEnabled = true;
     config.stationhead.channelId = Number(station, L"channelId", config.stationhead.channelId, 1, 100'000'000);
     config.stationhead.blockImages = HasKey(station, L"blockImages")
         ? Boolean(station, L"blockImages", config.stationhead.blockImages)
