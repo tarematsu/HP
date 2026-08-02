@@ -11,7 +11,7 @@ const panelState = readFileSync(
   'utf8',
 );
 const mediaSection = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
 
