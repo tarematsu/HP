@@ -62,6 +62,7 @@ jobs:
           PYTHON_EXTRACT
           rm -f .github/workflows/apply-stationhead-stats-followup.yml
           rm -f .github/workflows/apply-stationhead-native-stats-patch.yml
+          rm -f .github/patches/stationhead-followup-trigger
           node --check hp/native/scripts/capture-stationhead-play-stats-safe.mjs
           node --test \
             hp/video/test/stationhead-play-stats-*.test.js \
