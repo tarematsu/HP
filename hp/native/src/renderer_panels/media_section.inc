@@ -123,44 +123,83 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const auto playValueText = [](int64_t value) {
     return value >= 0 ? std::to_wstring(value) : std::wstring(L"--");
   };
-  const int recentIncrease = RecentStationheadPlayIncrease(nativeStationheadPlayHistory_);
+
+  constexpr int64_t kRecentPlaySampleMaximumAgeMs = 10 * 60'000;
+  constexpr int64_t kDailyPlayStatsStaleAfterMs = 15 * 60'000;
+  const bool recentHistoryFresh = !nativeStationheadPlayHistory_.empty() &&
+      nativeStationheadPlayHistory_.back().timestamp > 0 &&
+      nowMs >= nativeStationheadPlayHistory_.back().timestamp &&
+      nowMs - nativeStationheadPlayHistory_.back().timestamp <=
+          kRecentPlaySampleMaximumAgeMs;
+  const int recentIncrease = recentHistoryFresh
+      ? RecentStationheadPlayIncrease(nativeStationheadPlayHistory_)
+      : -1;
   const std::wstring recentText = playValueText(recentIncrease);
+  const bool statsAvailable = nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
+      !nativeStationhead_.dailyPlayCounts.empty();
+  int64_t statsReferenceNowMs = nowMs;
+  constexpr int64_t kMaximumStatsClockSkewMs = 24LL * 60 * 60 * 1000;
+  if (nativeStationhead_.dailyPlayStatsServerDateAt > 0 &&
+      nativeStationhead_.dailyPlayStatsReceivedAt > 0 &&
+      nowMs >= nativeStationhead_.dailyPlayStatsReceivedAt &&
+      nativeStationhead_.dailyPlayStatsServerDateAt >=
+          nativeStationhead_.dailyPlayStatsReceivedAt -
+              kMaximumStatsClockSkewMs &&
+      nativeStationhead_.dailyPlayStatsServerDateAt <=
+          nativeStationhead_.dailyPlayStatsReceivedAt +
+              kMaximumStatsClockSkewMs) {
+    const int64_t elapsed = nowMs - nativeStationhead_.dailyPlayStatsReceivedAt;
+    if (nativeStationhead_.dailyPlayStatsServerDateAt <=
+        std::numeric_limits<int64_t>::max() - elapsed) {
+      statsReferenceNowMs =
+          nativeStationhead_.dailyPlayStatsServerDateAt + elapsed;
+    }
+  }
+  const bool statsStale = statsAvailable &&
+      (nowMs < nativeStationhead_.dailyPlayStatsUpdatedAt ||
+       nowMs - nativeStationhead_.dailyPlayStatsUpdatedAt >
+           kDailyPlayStatsStaleAfterMs);
 
   struct DailyPlaySummaryTextCache {
     const Renderer* owner = nullptr;
     const void* pointsIdentity = nullptr;
     int64_t statsUpdatedAt = -1;
     int64_t dayOrdinal = std::numeric_limits<int64_t>::min();
+    bool stale = false;
     std::wstring text;
   };
   static DailyPlaySummaryTextCache dailyCache;
   // Stationhead daily counts are keyed by UTC date. UTC midnight is 09:00 JST,
   // so the displayed "today" changes at the requested local boundary without
   // translating the source dates into another calendar.
-  const int64_t dayOrdinal = StationheadUtcDayOrdinal(nowMs);
+  const int64_t dayOrdinal = StationheadUtcDayOrdinal(statsReferenceNowMs);
   const void* pointsIdentity = nativeStationhead_.dailyPlayCounts.identity();
   if (dailyCache.owner != this || dailyCache.pointsIdentity != pointsIdentity ||
       dailyCache.statsUpdatedAt != nativeStationhead_.dailyPlayStatsUpdatedAt ||
-      dailyCache.dayOrdinal != dayOrdinal) {
+      dailyCache.dayOrdinal != dayOrdinal || dailyCache.stale != statsStale) {
     StationheadPlayPeriodSummary playSummary;
-    if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
-        !nativeStationhead_.dailyPlayCounts.empty()) {
+    if (statsAvailable) {
+      // Keep the last known-good values during a temporary API/auth outage. The
+      // header marks them as waiting for refresh instead of silently reverting
+      // to zero or presenting old data as current.
       playSummary = SummarizeStationheadDailyPlays(
-          nativeStationhead_.dailyPlayCounts, nowMs);
+          nativeStationhead_.dailyPlayCounts, statsReferenceNowMs);
     }
     dailyCache.owner = this;
     dailyCache.pointsIdentity = pointsIdentity;
     dailyCache.statsUpdatedAt = nativeStationhead_.dailyPlayStatsUpdatedAt;
     dailyCache.dayOrdinal = dayOrdinal;
+    dailyCache.stale = statsStale;
     dailyCache.text =
         L"　本日 " + playValueText(playSummary.today) +
         L"　昨日 " + playValueText(playSummary.yesterday) +
         L"　今週 " + playValueText(playSummary.thisWeek) +
-        L"　先週 " + playValueText(playSummary.lastWeek);
+        L"　先週 " + playValueText(playSummary.lastWeek) +
+        (statsStale ? L"　更新待ち" : L"");
   }
   const std::wstring dailyPlaySummary =
       L"直近1時間 " + recentText + dailyCache.text;
-  SetTextColor(dc, kWidgetSubtle);
+  SetTextColor(dc, statsStale ? kWidgetWarning : kWidgetSubtle);
   RECT dailyPlayHeader{content.left, content.top, content.right,
                        content.top + CardHeaderHeight(content)};
   DrawTextInRect(dc, dailyPlaySummary, dailyPlayHeader,

@@ -310,6 +310,8 @@ struct StationheadStatus {
   // is today (partial, still accumulating). Empty for the secondary window.
   SharedImmutableVector<StationheadDailyPlayPoint> dailyPlayCounts;
   int64_t dailyPlayStatsUpdatedAt = 0;
+  int64_t dailyPlayStatsServerDateAt = 0;
+  int64_t dailyPlayStatsReceivedAt = 0;
 
   bool operator==(const StationheadStatus&) const = default;
 };
@@ -511,6 +513,9 @@ class StationheadPlayer {
   // 52-minute refresh may advance it.
   int64_t lastReloadAtStorage_ = 0;
   MonotonicElapsedTimestamp lastDailyPlayStatsAt_;  // Primary only.
+  uint64_t statsDocumentGeneration_ = 0;             // Primary only.
+  uint64_t statsAuthGeneration_ = 0;                 // Primary only.
+  uint64_t statsLastAcceptedRequestId_ = 0;          // Primary only.
   MonotonicElapsedTimestamp lastAuthProbeAt_;       // Secondary only.
   MonotonicElapsedTimestamp authProbeStartedAt_;    // Secondary only.
   bool authProbeInFlight_ = false;                  // Secondary only.

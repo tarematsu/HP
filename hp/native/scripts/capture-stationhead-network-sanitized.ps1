@@ -6,13 +6,65 @@ param(
   [string]$ProfileDir,
   [string]$OutDir,
   [string]$Url = "https://stationhead.com/c/buddies",
-  [switch]$IncludeAllResourceTypes
+  [switch]$IncludeAllResourceTypes,
+  [switch]$UnsafeFullCapture
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $UnsafeFullCapture) {
+  if ($IncludeAllResourceTypes) {
+    throw "-IncludeAllResourceTypes requires -UnsafeFullCapture. The safe default records only streakStats."
+  }
+  $safeScript = Join-Path $PSScriptRoot "capture-stationhead-play-stats-safe.ps1"
+  if (-not (Test-Path -LiteralPath $safeScript)) {
+    throw "Safe Stationhead capture script is missing: $safeScript"
+  }
+  $powerShell = Get-Command pwsh -ErrorAction SilentlyContinue
+  if (-not $powerShell) {
+    $powerShell = Get-Command powershell.exe -ErrorAction SilentlyContinue
+  }
+  if (-not $powerShell) {
+    throw "PowerShell executable was not found."
+  }
+  $arguments = @(
+    "-NoProfile",
+    "-ExecutionPolicy", "Bypass",
+    "-File", $safeScript,
+    "-DurationSeconds", $DurationSeconds,
+    "-DebugPort", $DebugPort,
+    "-Url", $Url
+  )
+  if ($ChromePath) { $arguments += @("-ChromePath", $ChromePath) }
+  if ($OutDir) { $arguments += @("-OutDir", $OutDir) }
+  & $powerShell.Source @arguments
+  exit $LASTEXITCODE
+}
+
+Write-Warning @"
+UNSAFE FULL CAPTURE ENABLED.
+The legacy capture can contain email addresses, chat text, account metadata,
+device identifiers, image URLs, request bodies, and other personal data even
+when authorization and cookie headers are redacted. Do not commit or share it.
+"@
+
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-  throw "Node.js is required. Install Node.js 20 or newer, then run this command again."
+  throw "Node.js 22 or newer is required."
+}
+$nodeVersionText = (& $node.Source --version | Select-Object -First 1)
+$nodeMajor = 0
+$nodeMajorText = if ($nodeVersionText) {
+  (($nodeVersionText.Trim()).TrimStart("v") -split "\.")[0]
+} else {
+  ""
+}
+if (
+  $LASTEXITCODE -ne 0 -or
+  -not [int]::TryParse($nodeMajorText, [ref]$nodeMajor) -or
+  $nodeMajor -lt 22
+) {
+  throw "Node.js 22 or newer is required. Current version: $nodeVersionText"
 }
 
 $arguments = @(

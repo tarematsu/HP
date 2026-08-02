@@ -27,12 +27,9 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('July 26 auth and stats generators are restored after every later wrapper', () => {
+test('July 26 baseline is wrapped by the final stats session guard', () => {
   const validationAt = navigationPolicy.indexOf(
     '#include "sh_auth_capture_validation_policy_fix.h"',
-  );
-  const sessionAt = navigationPolicy.indexOf(
-    '#include "sh_stats_session_policy_fix.h"',
   );
   const memoryAt = navigationPolicy.indexOf(
     '#include "sh_auth_interactive_memory_policy_fix.h"',
@@ -40,8 +37,11 @@ test('July 26 auth and stats generators are restored after every later wrapper',
   const baselineAt = navigationPolicy.indexOf(
     '#include "sh_stats_july26_baseline_policy_fix.h"',
   );
-  assert.ok(validationAt >= 0 && validationAt < sessionAt);
-  assert.ok(sessionAt < memoryAt && memoryAt < baselineAt);
+  const sessionAt = navigationPolicy.indexOf(
+    '#include "sh_stats_session_policy_fix.h"',
+  );
+  assert.ok(validationAt >= 0 && validationAt < memoryAt);
+  assert.ok(memoryAt < baselineAt && baselineAt < sessionAt);
 
   assert.match(
     baselinePolicy,
