@@ -7,6 +7,25 @@ const source = readFileSync(
   'utf8',
 );
 
+const bucketMs = 5 * 60 * 1000;
+const windowMs = 2 * 60 * 60 * 1000;
+const maximumSamples = windowMs / bucketMs + 1;
+
+function publishSample(samples, receivedAt, value) {
+  const bucket = Math.floor(receivedAt / bucketMs) * bucketMs;
+  const existing = samples.findIndex(sample => sample.timestamp === bucket);
+  if (existing >= 0) {
+    samples[existing].value = value;
+  } else {
+    const position = samples.findIndex(sample => sample.timestamp > bucket);
+    const insertion = position >= 0 ? position : samples.length;
+    samples.splice(insertion, 0, { timestamp: bucket, value });
+  }
+  const cutoff = receivedAt - windowMs;
+  while (samples.length && samples[0].timestamp < cutoff) samples.shift();
+  while (samples.length > maximumSamples) samples.shift();
+}
+
 function recentHour(samples) {
   if (samples.length < 2) return -1;
   const latest = samples.at(-1);
@@ -17,36 +36,53 @@ function recentHour(samples) {
   return delta >= 0 ? delta : latest.value;
 }
 
-test('flat play-count samples are retained for the one-hour baseline', () => {
-  assert.match(source, /history_\.push_back\(\{receivedAt, current->value\}\)/);
-  assert.match(source, /history_\.front\(\)\.first < cutoff/);
+test('native history keeps one bounded sample per five-minute bucket', () => {
+  assert.match(source, /kRecentHistoryWindowMs = 2LL \* 60 \* 60 \* 1000/);
+  assert.match(source, /kRecentHistoryBucketMs = 5LL \* 60 \* 1000/);
+  assert.match(source, /kMaximumRecentHistorySamples/);
+  assert.match(source, /std::lower_bound\(/);
+  assert.match(source, /position->second = current->value/);
+  assert.match(source, /history_\.size\(\) > kMaximumRecentHistorySamples/);
   assert.doesNotMatch(
     source,
     /history_\[history_\.size\(\) - 2\]\.second == history_\.back\(\)\.second/,
   );
-  assert.doesNotMatch(source, /history_\.erase\(history_\.end\(\) - 2\)/);
 });
 
-test('an unchanged counter reports zero after one hour instead of unavailable', () => {
+test('duplicate responses in one bucket replace instead of growing history', () => {
   const start = Date.UTC(2026, 7, 2, 12, 0, 0);
-  const samples = Array.from({ length: 14 }, (_, index) => ({
-    timestamp: start + index * 5 * 60 * 1000,
-    value: 120,
-  }));
+  const samples = [];
+  for (let index = 0; index < 1000; index += 1) {
+    publishSample(samples, start + index, 120 + index);
+  }
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].value, 1119);
+});
+
+test('an unchanged counter reports zero after one hour and remains bounded', () => {
+  const start = Date.UTC(2026, 7, 2, 12, 0, 0);
+  const samples = [];
+  for (let index = 0; index <= 36; index += 1) {
+    publishSample(samples, start + index * bucketMs, 120);
+  }
+  assert.equal(samples.length, maximumSamples);
   assert.equal(recentHour(samples), 0);
 });
 
-test('the one-hour delta still reports increases and handles UTC-day resets', () => {
+test('the one-hour delta reports increases and handles UTC-day resets', () => {
   const start = Date.UTC(2026, 7, 2, 23, 0, 0);
-  const increasing = Array.from({ length: 14 }, (_, index) => ({
-    timestamp: start + index * 5 * 60 * 1000,
-    value: 50 + Math.floor(index / 4),
-  }));
+  const increasing = [];
+  for (let index = 0; index < 14; index += 1) {
+    publishSample(
+      increasing,
+      start + index * bucketMs,
+      50 + Math.floor(index / 4),
+    );
+  }
   assert.equal(recentHour(increasing), 3);
 
-  const reset = [
-    { timestamp: start, value: 98 },
-    { timestamp: start + 65 * 60 * 1000, value: 2 },
-  ];
+  const reset = [];
+  publishSample(reset, start, 98);
+  publishSample(reset, start + 65 * 60 * 1000, 2);
   assert.equal(recentHour(reset), 2);
 });
