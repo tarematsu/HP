@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "stationhead_native_stats.h"
 
 namespace hp {
 namespace {
