@@ -84,7 +84,10 @@ test('five play-count metrics own fixed cells instead of one ellipsized sentence
 });
 
 test('unavailable and stale values remain visible', () => {
-  assert.match(mediaSection, /value >= 0 \? std::to_wstring\(value\) : std::wstring\(L"--"\)/);
+  assert.match(
+    mediaSection,
+    /value >= 0\s*\?\s*std::to_wstring\(value\)\s*:\s*std::wstring\(L"--"\)/,
+  );
   assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
   assert.match(mediaSection, /statsStale \? kWidgetWarning/);
   assert.match(mediaSection, /metricValueColor/);
@@ -95,6 +98,6 @@ test('the recent-hour number is hidden when its newest sample is old', () => {
   assert.match(mediaSection, /recentHistoryFresh/);
   assert.match(
     mediaSection,
-    /recentHistoryFresh[\s\S]*RecentStationheadPlayIncrease[\s\S]*: -1/,
+    /const int recentIncrease = recentHistoryFresh\s*\?\s*RecentStationheadPlayIncrease\([^)]*\)\s*:\s*-1;/,
   );
 });
