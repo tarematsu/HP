@@ -20,13 +20,24 @@ struct StationheadNativeStatsSnapshot {
 // WebView. No page script or WebMessage protocol is involved.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
 
-// Narrow, immutable renderer-facing access to the process-local C++ store.
+// Implemented in stationhead_native_stats.cpp. Kept separate from the renderer
+// facade so the store, credentials, worker, and WinHTTP state remain private.
+StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();
+uint64_t GetStationheadNativeStatsRevision();
+
 class StationheadNativeStatsAccess final {
  public:
-  StationheadNativeStatsSnapshot Snapshot() const;
-  uint64_t Revision() const;
+  StationheadNativeStatsSnapshot Snapshot() const {
+    return GetStationheadNativeStatsSnapshot();
+  }
+  uint64_t Revision() const {
+    return GetStationheadNativeStatsRevision();
+  }
 };
 
-StationheadNativeStatsAccess& GlobalStationheadNativeStatsStore();
+inline StationheadNativeStatsAccess& GlobalStationheadNativeStatsStore() {
+  static StationheadNativeStatsAccess access;
+  return access;
+}
 
 }  // namespace hp
