@@ -89,7 +89,7 @@ test('unavailable and stale values remain visible', () => {
     /value >= 0\s*\?\s*std::to_wstring\(value\)\s*:\s*std::wstring\(L"--"\)/,
   );
   assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
-  assert.match(mediaSection, /statsStale \? kWidgetWarning/);
+  assert.match(mediaSection, /statsStale\s*\?\s*kWidgetWarning/);
   assert.match(mediaSection, /metricValueColor/);
 });
 
