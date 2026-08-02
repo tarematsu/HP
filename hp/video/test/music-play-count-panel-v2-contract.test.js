@@ -26,7 +26,7 @@ test('every requested period has an independently rendered value cell', () => {
   }
   assert.match(panel, /for \(size_t index = 0; index < kPlayMetricLabels\.size\(\); \+\+index\)/);
   assert.match(panel, /DrawWidgetCard\(dc, cell/);
-  assert.match(panel, /DrawTextInRect\(dc, playMetricValues\[index\]/);
+  assert.match(panel, /DrawTextInRect\(\s*dc,\s*playMetricValues\[index\]/);
   assert.match(panel, /L"--"/);
 });
 
