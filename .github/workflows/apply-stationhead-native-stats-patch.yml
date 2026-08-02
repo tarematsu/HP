@@ -22,23 +22,41 @@ jobs:
           ref: agent/rebuild-stationhead-play-stats
           fetch-depth: 0
 
+      - name: Check payload readiness
+        id: ready
+        shell: bash
+        run: |
+          if [[ -f .github/patches/stationhead-native-stats-ready ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Chunked payload is not complete yet; skipping."
+          fi
+
       - name: Apply native lifecycle patch
+        if: steps.ready.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          payload=.github/patches/stationhead-native-stats-patch.tar.gz.b64
+          encoded=/tmp/stationhead-native-stats-patch.tar.gz.b64
           archive=/tmp/stationhead-native-stats-patch.tar.gz
-          base64 --decode "$payload" > "$archive"
+          cat .github/patches/stationhead-native-stats-part-* > "$encoded"
+          echo "0b35e95b43aa1df89e0cc4e78c7494200518794202e4b6d4d31cef16db8bba96  $encoded" | sha256sum -c -
+          base64 --decode "$encoded" > "$archive"
+          echo "704a688fe43b20459dd1331980573ed45047d0412323af90a3aad55415baab4f  $archive" | sha256sum -c -
           gzip -t "$archive"
           tar -tzf "$archive" >/dev/null
           tar -xzf "$archive" -C /tmp
           python3 /tmp/apply_native_stats.py
-          rm -f "$payload"
+          rm -f .github/patches/stationhead-native-stats-patch.tar.gz.b64
+          rm -f .github/patches/stationhead-native-stats-part-*
+          rm -f .github/patches/stationhead-native-stats-ready
           rm -f .github/workflows/apply-stationhead-native-stats-patch.yml
           node --check hp/native/scripts/capture-stationhead-play-stats-safe.mjs
           git diff --check
 
       - name: Commit native lifecycle rebuild
+        if: steps.ready.outputs.ready == 'true'
         shell: bash
         run: |
           set -euo pipefail
