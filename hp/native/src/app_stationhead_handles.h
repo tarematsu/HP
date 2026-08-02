@@ -76,13 +76,6 @@ class StationheadHandleBase {
   void RetryPendingTrackBoundaryRefresh(int64_t nowMs);
   void CancelPendingTrackBoundaryRefresh() noexcept;
   void SetPlaybackFallback(bool active, const std::wstring& reason);
-  bool SwitchClockStationDestination(
-      const std::wstring& url, const std::wstring& reason) {
-    return player_ && player_->SwitchClockStationDestination(url, reason);
-  }
-  [[nodiscard]] bool ClockStationNavigationSettled() const noexcept {
-    return player_ && player_->ClockStationNavigationSettled();
-  }
   void ShowAfterAudioStop();
   void ReleaseCompletedAuth();
   uint32_t ConsumeChangeFlags();
