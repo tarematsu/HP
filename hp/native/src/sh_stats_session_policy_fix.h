@@ -2,11 +2,9 @@
 
 namespace hp {
 
-// Keep an independent, account-aware validation layer outside the historical
-// capture wrappers. The older response-validation policy can temporarily promote
-// any non-401 response and its rotation order is request-based. Stationhead can
-// send an older bearer again after a newer account bearer, so request order is
-// not a safe proxy for credential generation.
+// Final Stationhead statistics policy. Authentication observation and statistics
+// transport are deliberately generated here in one place so later policy layers
+// cannot partially replace the request lifecycle.
 inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   std::wstring script = StationheadAuthCaptureScript();
   script.append(LR"JS(
@@ -25,13 +23,49 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   const authorizationGenerations = new Map();
   let latestValidatedHeaders = null;
 
+  // A controller recreation resets native StationheadStatus. Republish only a
+  // recent, already-normalized last-good value from the persistent WebView2
+  // profile. The cache contains no authorization, cookie, account, or device ID.
+  const publishRecentCachedStats = () => {
+    try {
+      const raw = localStorage.getItem(
+        'homepanel:stationhead:play-stats:last-good:v3');
+      if (!raw) return;
+      const cached = JSON.parse(raw);
+      const updatedAt = Number(cached?.updated_at || 0);
+      const channelId = Number(cached?.channel_id || 0);
+      const chartData = Array.isArray(cached?.chart_data)
+        ? cached.chart_data : [];
+      if (!Number.isFinite(updatedAt) || updatedAt <= 0 ||
+          Date.now() - updatedAt > 15 * 60 * 1000 ||
+          !Number.isInteger(channelId) || channelId <= 0 ||
+          chartData.length === 0 || chartData.length > 45) {
+        return;
+      }
+      if (window.__homepanelStationheadCachedStatsPublishedAt === updatedAt) {
+        return;
+      }
+      window.__homepanelStationheadCachedStatsPublishedAt = updatedAt;
+      window.chrome?.webview?.postMessage({
+        type: 'stationhead-play-stats',
+        data: { chart_data: chartData },
+        source: 'authenticated-api-persistent-cache',
+        cached_at: updatedAt,
+        server_date_ms: Number(cached?.server_date_ms || 0),
+        timezone: String(cached?.timezone || ''),
+      });
+    } catch (_) {}
+  };
+  publishRecentCachedStats();
+
   const requestInfo = value => {
     try {
       if (!NativeURL) return null;
       const parsed = new NativeURL(String(value || ''), location.href);
       const targetHost = String(parsed.hostname || '').toLowerCase();
       const stationhead = parsed.protocol === 'https:' &&
-        (targetHost === 'stationhead.com' || targetHost.endsWith('.stationhead.com'));
+        (targetHost === 'stationhead.com' ||
+         targetHost.endsWith('.stationhead.com'));
       if (!stationhead) return null;
       const path = String(parsed.pathname || '').toLowerCase();
       const accountScoped = targetHost === 'production1.stationhead.com' &&
@@ -76,8 +110,12 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   const publishReadyIfChanged = previousAuthorization => {
     const currentAuthorization =
       window.__homepanelStationheadAuthHeaders?.authorization || '';
-    if (!currentAuthorization || currentAuthorization === previousAuthorization) return;
-    try { window.dispatchEvent(new Event('homepanel-stationhead-auth-ready')); } catch (_) {}
+    if (!currentAuthorization || currentAuthorization === previousAuthorization) {
+      return;
+    }
+    try {
+      window.dispatchEvent(new Event('homepanel-stationhead-auth-ready'));
+    } catch (_) {}
     try {
       window.chrome?.webview?.postMessage({ type: 'stationhead-auth-ready' });
     } catch (_) {}
@@ -164,8 +202,6 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       accept(observation);
       return;
     }
-    // Network/status-0 and 4xx/5xx responses do not validate a credential. Undo
-    // an optimistic promotion made by an inner legacy wrapper when possible.
     restoreLatest(observation);
   };
 
@@ -207,8 +243,6 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       const result = currentSend.apply(this, args);
       if (observation) {
         this.addEventListener('loadend', () => {
-          // Inner response-validation listeners were registered during send().
-          // Run after them so an unsafe optimistic promotion is corrected last.
           nativeTimeout(() => settle(observation, this.status), 0);
         }, { once: true });
       }
@@ -220,10 +254,6 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   return script;
 }
 
-// Generate the statistics request directly rather than layering another fragile
-// text replacement over the historical generator. Prefer an account-scoped
-// bearer, never reuse a currently rejected bearer, and normalize the small set
-// of response shapes used by Stationhead deployments into {chart_data:[{ts,val}]}.
 inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -231,10 +261,60 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const post = message => {
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
+  const nativeTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const channelId = )JS" << channelId << LR"JS(;
+  const cacheKey = 'homepanel:stationhead:play-stats:last-good:v3';
+  const documentGeneration = (() => {
+    const current = Number(
+      window.__homepanelStationheadStatsDocumentGeneration || 0);
+    if (current > 0) return current;
+    const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    window.__homepanelStationheadStatsDocumentGeneration = generated;
+    return generated;
+  })();
+  const requestId = Number(
+    window.__homepanelStationheadPlayStatsNextRequestId || 0) + 1;
+  window.__homepanelStationheadPlayStatsNextRequestId = requestId;
+  window.__homepanelStationheadPlayStatsLatestRequestId = requestId;
+  window.__homepanelStationheadStatsDocumentActive = true;
+
+  if (!window.__homepanelStationheadStatsPageHideInstalled) {
+    window.__homepanelStationheadStatsPageHideInstalled = true;
+    window.addEventListener('pagehide', () => {
+      window.__homepanelStationheadStatsDocumentActive = false;
+      try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
+      window.__homepanelStationheadPlayStatsAbort = null;
+      window.__homepanelStationheadPlayStatsInFlight = false;
+    }, { once: true });
+  }
+
   const resetSuccessThrottle = () => {
     window.__homepanelStationheadPlayStatsSuccessAt = 0;
     window.__homepanelStationheadPlayStatsAuthorization = '';
   };
+  const clearRetry = () => {
+    const timer = window.__homepanelStationheadPlayStatsRetryTimer;
+    if (!timer) return;
+    nativeClearTimeout(timer);
+    window.__homepanelStationheadPlayStatsRetryTimer = 0;
+  };
+  const scheduleRetry = (error, status = 0) => {
+    resetSuccessThrottle();
+    post({
+      type: 'stationhead-play-stats-error',
+      error,
+      status,
+      request_id: requestId,
+      document_generation: documentGeneration,
+    });
+    if (window.__homepanelStationheadPlayStatsRetryTimer) return;
+    window.__homepanelStationheadPlayStatsRetryTimer = nativeTimeout(() => {
+      window.__homepanelStationheadPlayStatsRetryTimer = 0;
+      post({ type: 'stationhead-auth-ready', reason: 'stats-retry' });
+    }, 30 * 1000);
+  };
+
   const now = Date.now();
   const globallyRejected = String(
     window.__homepanelStationheadRejectedAuthorization || '');
@@ -250,11 +330,12 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     return Boolean(authorization) && authorization !== globallyRejected &&
       !statsCooldownActive(authorization);
   };
+
   if (window.__homepanelStationheadBlockingLoginVisible === true) {
-    resetSuccessThrottle();
-    post({ type: 'stationhead-play-stats-error', error: 'blocking-login' });
+    scheduleRetry('blocking-login');
     return false;
   }
+
   const accountHeaders = window.__homepanelStationheadAccountAuthHeaders;
   const currentHeaders = window.__homepanelStationheadAuthHeaders;
   const acceptedHeaders = window.__homepanelStationheadLastAcceptedAuthHeaders;
@@ -264,21 +345,26 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       (usable(latestHeaders) ? latestHeaders :
         (usable(acceptedHeaders) ? acceptedHeaders : null)));
   if (!headers?.authorization) {
-    resetSuccessThrottle();
-    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
+    scheduleRetry('no-auth-header');
     return false;
   }
+
   const lastSuccessAt = Number(
     window.__homepanelStationheadPlayStatsSuccessAt || 0);
   const lastSuccessAuthorization = String(
     window.__homepanelStationheadPlayStatsAuthorization || '');
   if (lastSuccessAt > 0 &&
       lastSuccessAuthorization === headers.authorization &&
-      now - lastSuccessAt < 10 * 60 * 1000) {
+      now - lastSuccessAt < 5 * 60 * 1000) {
     return false;
   }
   if (window.__homepanelStationheadPlayStatsInFlight) return false;
   window.__homepanelStationheadPlayStatsInFlight = true;
+
+  try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
+  const abortController = typeof AbortController === 'function'
+    ? new AbortController() : null;
+  window.__homepanelStationheadPlayStatsAbort = abortController;
 
   const clearMatching = name => {
     if (window[name]?.authorization === headers.authorization) window[name] = null;
@@ -295,8 +381,14 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadStatsRejectedAuthorization =
       headers.authorization;
     window.__homepanelStationheadStatsRejectedAt = Date.now();
-    post({ type: 'stationhead-play-stats-auth-failed', status });
+    post({
+      type: 'stationhead-play-stats-auth-failed',
+      status,
+      request_id: requestId,
+      document_generation: documentGeneration,
+    });
   };
+
   const numberValue = value => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value !== 'string') return null;
@@ -312,36 +404,9 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       if (Number.isFinite(parsed)) numeric = parsed;
     }
     if (!Number.isFinite(numeric) || numeric <= 0) return null;
-    if (numeric < 100000000000) numeric *= 1000;       // Unix seconds.
-    else if (numeric > 100000000000000) numeric /= 1000; // Unix microseconds.
+    if (numeric < 100000000000) numeric *= 1000;
+    else if (numeric > 100000000000000) numeric /= 1000;
     return Math.round(numeric);
-  };
-  const objectKeys = value => value && typeof value === 'object' && !Array.isArray(value)
-    ? Object.keys(value).slice(0, 16) : [];
-  const chartFrom = payload => {
-    const containers = [
-      payload,
-      payload?.data,
-      payload?.result,
-      payload?.stats,
-      payload?.payload,
-      payload?.data?.stats,
-      payload?.data?.result,
-    ];
-    for (const container of containers) {
-      if (Array.isArray(container)) return container;
-      if (!container || typeof container !== 'object') continue;
-      for (const key of [
-        'chart_data', 'chartData', 'daily', 'history', 'points', 'values',
-      ]) {
-        const candidate = container[key];
-        if (Array.isArray(candidate)) return candidate;
-        if (candidate && typeof candidate === 'object') {
-          return Object.entries(candidate).map(([date, value]) => ({ date, value }));
-        }
-      }
-    }
-    return null;
   };
   const normalizePoint = point => {
     if (Array.isArray(point) && point.length >= 2) {
@@ -353,58 +418,142 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     const val = numberValue(
       point.val ?? point.value ?? point.count ?? point.plays ??
       point.listens ?? point.y);
-    if (!Number.isFinite(ts) || !Number.isFinite(val) || val < 0) return null;
+    if (!Number.isFinite(ts) || !Number.isFinite(val) || val < 0 ||
+        val > 2147483647) {
+      return null;
+    }
     return { ts, val: Math.round(val) };
   };
+  const chartCandidates = payload => {
+    const candidates = [];
+    const containers = [
+      payload,
+      payload?.data,
+      payload?.result,
+      payload?.stats,
+      payload?.payload,
+      payload?.data?.stats,
+      payload?.data?.result,
+    ];
+    for (const container of containers) {
+      if (Array.isArray(container)) {
+        candidates.push(container);
+        continue;
+      }
+      if (!container || typeof container !== 'object') continue;
+      for (const key of [
+        'chart_data', 'chartData', 'daily', 'history', 'points', 'values',
+      ]) {
+        const candidate = container[key];
+        if (Array.isArray(candidate)) candidates.push(candidate);
+        else if (candidate && typeof candidate === 'object') {
+          candidates.push(
+            Object.entries(candidate).map(([date, value]) => ({ date, value })));
+        }
+      }
+    }
+    return candidates;
+  };
+  const normalizedChart = payload => {
+    const maximumFuture = Date.now() + 2 * 24 * 60 * 60 * 1000;
+    const minimumPast = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    const charts = chartCandidates(payload)
+      .map(candidate => candidate.map(normalizePoint).filter(point =>
+        point && point.ts >= minimumPast && point.ts <= maximumFuture))
+      .filter(candidate => candidate.length > 0);
+    if (!charts.length) return [];
+    const positiveCount = points => points.reduce(
+      (count, point) => count + (point.val > 0 ? 1 : 0), 0);
+    const latestTimestamp = points => points.reduce(
+      (latest, point) => Math.max(latest, point.ts), 0);
+    charts.sort((left, right) =>
+      positiveCount(right) - positiveCount(left) ||
+      right.length - left.length ||
+      latestTimestamp(right) - latestTimestamp(left));
+    const byTimestamp = new Map();
+    for (const point of charts[0]) byTimestamp.set(point.ts, point);
+    return Array.from(byTimestamp.values())
+      .sort((left, right) => left.ts - right.ts)
+      .slice(-45);
+  };
 
-  const url = 'https://production1.stationhead.com/me/channel/)JS"
-         << channelId << LR"JS(/streakStats';
+  const stillCurrent = () =>
+    window.__homepanelStationheadStatsDocumentActive === true &&
+    window.__homepanelStationheadStatsDocumentGeneration ===
+      documentGeneration &&
+    window.__homepanelStationheadPlayStatsLatestRequestId === requestId;
+
+  const url = 'https://production1.stationhead.com/me/channel/' +
+    channelId + '/streakStats';
   fetch(url, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
+    signal: abortController?.signal,
     headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
+    if (!stillCurrent()) return null;
     if (response.status === 401 || response.status === 403) {
       reject(response.status);
       return null;
     }
-    if (!response.ok) throw new Error('http-' + response.status);
-    return response.json();
-  }).then(data => {
-    if (!data) return;
-    const rawChart = chartFrom(data);
-    const chartData = Array.isArray(rawChart)
-      ? rawChart.map(normalizePoint).filter(Boolean).slice(-40)
-      : [];
+    if (!response.ok) {
+      scheduleRetry('http-' + response.status, response.status);
+      return null;
+    }
+    const serverDate = Date.parse(response.headers?.get?.('date') || '');
+    const data = await response.json();
+    return {
+      data,
+      serverDateMs: Number.isFinite(serverDate) ? serverDate : 0,
+    };
+  }).then(result => {
+    if (!result || !stillCurrent()) return;
+    const chartData = normalizedChart(result.data);
     if (!chartData.length) {
-      resetSuccessThrottle();
-      post({
-        type: 'stationhead-play-stats-error',
-        error: 'invalid-payload',
-        keys: objectKeys(data),
-        dataKeys: objectKeys(data?.data),
-      });
+      scheduleRetry('invalid-payload');
       return;
     }
+
+    clearRetry();
+    const updatedAt = Date.now();
+    const timezone = typeof result.data?.timezone === 'string'
+      ? result.data.timezone : '';
     window.__homepanelStationheadStatsRejectedAuthorization = null;
     window.__homepanelStationheadStatsRejectedAt = 0;
     window.__homepanelStationheadAccountAuthHeaders = Object.assign({}, headers);
-    window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
+    window.__homepanelStationheadPlayStatsSuccessAt = updatedAt;
     window.__homepanelStationheadPlayStatsAuthorization = headers.authorization;
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify({
+        schema_version: 3,
+        channel_id: channelId,
+        updated_at: updatedAt,
+        server_date_ms: result.serverDateMs,
+        timezone,
+        chart_data: chartData,
+      }));
+    } catch (_) {}
     post({
       type: 'stationhead-play-stats',
       data: { chart_data: chartData },
-      source: 'authenticated-api-normalized',
+      source: 'authenticated-api-normalized-v3',
+      request_id: requestId,
+      document_generation: documentGeneration,
+      server_date_ms: result.serverDateMs,
+      timezone,
     });
   }).catch(error => {
-    resetSuccessThrottle();
-    post({
-      type: 'stationhead-play-stats-error',
-      error: String(error?.message || error),
-    });
+    if (!stillCurrent()) return;
+    if (error?.name === 'AbortError') return;
+    scheduleRetry('network-or-json');
   }).finally(() => {
-    window.__homepanelStationheadPlayStatsInFlight = false;
+    if (window.__homepanelStationheadPlayStatsLatestRequestId === requestId) {
+      window.__homepanelStationheadPlayStatsInFlight = false;
+      if (window.__homepanelStationheadPlayStatsAbort === abortController) {
+        window.__homepanelStationheadPlayStatsAbort = null;
+      }
+    }
   });
   return true;
 })()

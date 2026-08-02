@@ -123,14 +123,31 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const auto playValueText = [](int64_t value) {
     return value >= 0 ? std::to_wstring(value) : std::wstring(L"--");
   };
-  const int recentIncrease = RecentStationheadPlayIncrease(nativeStationheadPlayHistory_);
+
+  constexpr int64_t kRecentPlaySampleMaximumAgeMs = 10 * 60'000;
+  constexpr int64_t kDailyPlayStatsStaleAfterMs = 15 * 60'000;
+  const bool recentHistoryFresh = !nativeStationheadPlayHistory_.empty() &&
+      nativeStationheadPlayHistory_.back().timestamp > 0 &&
+      nowMs >= nativeStationheadPlayHistory_.back().timestamp &&
+      nowMs - nativeStationheadPlayHistory_.back().timestamp <=
+          kRecentPlaySampleMaximumAgeMs;
+  const int recentIncrease = recentHistoryFresh
+      ? RecentStationheadPlayIncrease(nativeStationheadPlayHistory_)
+      : -1;
   const std::wstring recentText = playValueText(recentIncrease);
+  const bool statsAvailable = nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
+      !nativeStationhead_.dailyPlayCounts.empty();
+  const bool statsStale = statsAvailable &&
+      (nowMs < nativeStationhead_.dailyPlayStatsUpdatedAt ||
+       nowMs - nativeStationhead_.dailyPlayStatsUpdatedAt >
+           kDailyPlayStatsStaleAfterMs);
 
   struct DailyPlaySummaryTextCache {
     const Renderer* owner = nullptr;
     const void* pointsIdentity = nullptr;
     int64_t statsUpdatedAt = -1;
     int64_t dayOrdinal = std::numeric_limits<int64_t>::min();
+    bool stale = false;
     std::wstring text;
   };
   static DailyPlaySummaryTextCache dailyCache;
@@ -141,10 +158,12 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const void* pointsIdentity = nativeStationhead_.dailyPlayCounts.identity();
   if (dailyCache.owner != this || dailyCache.pointsIdentity != pointsIdentity ||
       dailyCache.statsUpdatedAt != nativeStationhead_.dailyPlayStatsUpdatedAt ||
-      dailyCache.dayOrdinal != dayOrdinal) {
+      dailyCache.dayOrdinal != dayOrdinal || dailyCache.stale != statsStale) {
     StationheadPlayPeriodSummary playSummary;
-    if (nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
-        !nativeStationhead_.dailyPlayCounts.empty()) {
+    if (statsAvailable) {
+      // Keep the last known-good values during a temporary API/auth outage. The
+      // header marks them as waiting for refresh instead of silently reverting
+      // to zero or presenting old data as current.
       playSummary = SummarizeStationheadDailyPlays(
           nativeStationhead_.dailyPlayCounts, nowMs);
     }
@@ -152,15 +171,17 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     dailyCache.pointsIdentity = pointsIdentity;
     dailyCache.statsUpdatedAt = nativeStationhead_.dailyPlayStatsUpdatedAt;
     dailyCache.dayOrdinal = dayOrdinal;
+    dailyCache.stale = statsStale;
     dailyCache.text =
         L"　本日 " + playValueText(playSummary.today) +
         L"　昨日 " + playValueText(playSummary.yesterday) +
         L"　今週 " + playValueText(playSummary.thisWeek) +
-        L"　先週 " + playValueText(playSummary.lastWeek);
+        L"　先週 " + playValueText(playSummary.lastWeek) +
+        (statsStale ? L"　更新待ち" : L"");
   }
   const std::wstring dailyPlaySummary =
       L"直近1時間 " + recentText + dailyCache.text;
-  SetTextColor(dc, kWidgetSubtle);
+  SetTextColor(dc, statsStale ? kWidgetWarning : kWidgetSubtle);
   RECT dailyPlayHeader{content.left, content.top, content.right,
                        content.top + CardHeaderHeight(content)};
   DrawTextInRect(dc, dailyPlaySummary, dailyPlayHeader,
