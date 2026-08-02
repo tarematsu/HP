@@ -66,14 +66,20 @@ test('the legacy media entry delegates to the rebuilt panel', () => {
   assert.match(mediaEntry, /#include "media_section_v2\.inc"/);
 });
 
-test('five play-count metrics own fixed cells', () => {
+test('five play-count metrics share one compact right-aligned line', () => {
   assert.match(
     mediaSection,
     /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
   );
   assert.match(mediaSection, /std::array<std::wstring, 5> playMetricValues/);
-  assert.match(mediaSection, /usableMetricWidth \* index \/ 5/);
-  assert.match(mediaSection, /DrawWidgetCard\(dc, cell, kWidgetSurfaceAlt/);
+  assert.match(mediaSection, /std::wstring metricsLine/);
+  assert.match(mediaSection, /metricsLine \+= L"   "/);
+  assert.match(
+    mediaSection,
+    /DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
+  );
+  assert.doesNotMatch(mediaSection, /usableMetricWidth \* index \/ 5/);
+  assert.doesNotMatch(mediaSection, /DrawWidgetCard\(dc, cell, kWidgetSurfaceAlt/);
   assert.match(mediaSection, /playValueText\(summary\.today\)/);
   assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
 });
