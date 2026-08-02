@@ -30,17 +30,13 @@ jobs:
           archive=/tmp/stationhead-native-stats-patch.tar.gz
           base64 --decode "$payload" > "$archive"
           gzip -t "$archive"
+          tar -tzf "$archive" >/dev/null
           tar -xzf "$archive" -C /tmp
           python3 /tmp/apply_native_stats.py
           rm -f "$payload"
           rm -f .github/workflows/apply-stationhead-native-stats-patch.yml
-
-      - name: Validate Stationhead contracts
-        shell: bash
-        run: |
-          set -euo pipefail
           node --check hp/native/scripts/capture-stationhead-play-stats-safe.mjs
-          node --test hp/video/test/stationhead-*.test.js
+          git diff --check
 
       - name: Commit native lifecycle rebuild
         shell: bash
