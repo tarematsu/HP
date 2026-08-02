@@ -19,18 +19,19 @@ function occurrences(source, fragment) {
   return source.split(fragment).length - 1;
 }
 
-test('validated candidate rotation is compiled before the stats fallback', () => {
+test('validated candidate rotation remains in the authentication chain', () => {
   const validationAt = navigationPolicy.indexOf(
     '#include "sh_auth_capture_validation_policy_fix.h"',
   );
   const rotationAt = navigationPolicy.indexOf(
     '#include "sh_auth_candidate_rotation_policy_fix.h"',
   );
-  const fallbackAt = navigationPolicy.indexOf(
-    '#include "sh_stats_auth_fallback_policy_fix.h"',
+  const interactiveAt = navigationPolicy.indexOf(
+    '#include "sh_auth_interactive_memory_policy_fix.h"',
   );
   assert.ok(validationAt >= 0 && validationAt < rotationAt);
-  assert.ok(rotationAt < fallbackAt);
+  assert.ok(rotationAt < interactiveAt);
+  assert.doesNotMatch(navigationPolicy, /sh_stats_/);
   assert.match(
     rotationPolicy,
     /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript[\s\\]+StationheadAuthCaptureScriptValidatedRotation/,
@@ -63,7 +64,7 @@ test('newer successful candidates supersede older account contexts safely', () =
   assert.equal(current, 'Bearer early');
   accept(accountScopedContext);
   assert.equal(current, 'Bearer account');
-  accept(earlyAnonymousContext); // delayed response from the older request
+  accept(earlyAnonymousContext);
   assert.equal(current, 'Bearer account');
 });
 
