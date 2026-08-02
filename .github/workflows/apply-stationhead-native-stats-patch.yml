@@ -1,0 +1,54 @@
+name: Apply native Stationhead stats patch
+
+on:
+  push:
+    branches:
+      - agent/rebuild-stationhead-play-stats
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-stationhead-native-stats-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/rebuild-stationhead-play-stats
+          fetch-depth: 0
+
+      - name: Apply native lifecycle patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=.github/patches/stationhead-native-stats-patch.tar.gz.b64
+          archive=/tmp/stationhead-native-stats-patch.tar.gz
+          base64 --decode "$payload" > "$archive"
+          gzip -t "$archive"
+          tar -xzf "$archive" -C /tmp
+          python3 /tmp/apply_native_stats.py
+          rm -f "$payload"
+          rm -f .github/workflows/apply-stationhead-native-stats-patch.yml
+
+      - name: Validate Stationhead contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check hp/native/scripts/capture-stationhead-play-stats-safe.mjs
+          node --test hp/video/test/stationhead-*.test.js
+
+      - name: Commit native lifecycle rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Move Stationhead stats lifecycle into native state"
+          git push origin HEAD:agent/rebuild-stationhead-play-stats
