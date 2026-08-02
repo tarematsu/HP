@@ -47,6 +47,16 @@ jobs:
           gzip -t "$archive"
           tar -tzf "$archive" >/dev/null
           tar -xzf "$archive" -C /tmp
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply_native_stats.py')
+          source = path.read_text()
+          needle = "\n'''test('the generated policy uses native identity and bounded timeout without persistence'"
+          replacement = "\nlambda _: '''test('the generated policy uses native identity and bounded timeout without persistence'"
+          if source.count(needle) != 1:
+              raise SystemExit(f'expected one replacement target, got {source.count(needle)}')
+          path.write_text(source.replace(needle, replacement, 1))
+          PY
           python3 /tmp/apply_native_stats.py
           rm -f .github/patches/stationhead-native-stats-patch.tar.gz.b64
           rm -f .github/patches/stationhead-native-stats-part-*
