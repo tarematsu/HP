@@ -117,7 +117,9 @@ test('JSON normalization and storage are implemented in C++', () => {
   assert.match(nativeStats, /normalized\.back\(\)\.value = point\.value/);
   assert.match(nativeStats, /normalized\.size\(\) > 45/);
   assert.match(nativeStats, /class NativeStatsStore/);
-  assert.match(nativeStats, /history_\.push_back/);
+  assert.match(nativeStats, /history_\.insert/);
+  assert.match(nativeStats, /kRecentHistoryBucketMs/);
+  assert.match(nativeStats, /kMaximumRecentHistorySamples/);
   assert.match(nativeStats, /snapshot\.recentHour/);
 });
 
