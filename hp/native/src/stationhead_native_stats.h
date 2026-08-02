@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include <deque>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -25,7 +26,8 @@ inline bool IsStationheadNativeStatsUri(std::wstring_view uri, int channelId) {
   if (channelId <= 0 || uri.empty()) return false;
   std::wstring lower(uri);
   std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t value) {
-    return value >= L'A' && value <= L'Z' ? value - L'A' + L'a' : value;
+    return static_cast<wchar_t>(
+        value >= L'A' && value <= L'Z' ? value - L'A' + L'a' : value);
   });
   constexpr std::wstring_view scheme = L"https://";
   if (!lower.starts_with(scheme)) return false;
@@ -57,7 +59,7 @@ inline bool ReadStationheadNativeStatsStream(
     const HRESULT result = stream->Read(buffer.data(), capacity, &read);
     if (FAILED(result)) return false;
     if (read == 0) return !output.empty();
-    output.append(buffer.data(), read);
+    output.append(buffer.data(), static_cast<size_t>(read));
     if (result == S_FALSE) break;
   }
   return !output.empty() &&
@@ -203,11 +205,10 @@ inline StationheadNativeStatsStore& GlobalStationheadNativeStatsStore() {
 inline void AttachStationheadNativeStatsObserver(
     ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
+  ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_2> responseWebView;
-  if (FAILED(webview->QueryInterface(IID_PPV_ARGS(&responseWebView))) ||
-      !responseWebView) {
-    return;
-  }
+  if (FAILED(base.As(&responseWebView)) || !responseWebView) return;
+
   EventRegistrationToken ignoredToken{};
   responseWebView->add_WebResourceResponseReceived(
       Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
@@ -235,6 +236,7 @@ inline void AttachStationheadNativeStatsObserver(
             response->GetContent(
                 Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
                     [retainedResponse](HRESULT result, IStream* stream) -> HRESULT {
+                      (void)retainedResponse;
                       if (FAILED(result) || !stream) return S_OK;
                       std::string body;
                       if (!ReadStationheadNativeStatsStream(stream, body)) return S_OK;
