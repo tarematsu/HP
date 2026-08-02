@@ -125,8 +125,8 @@ set(HOMEPANEL_CORE_SOURCES
 
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
+  src/stationhead_native_stats.cpp
   src/stationhead_native_stats.h
-  src/stationhead_native_stats_policy.h
   src/sh_layout.cpp
   src/sh_polling_policy.h
   src/sh_audio_loss_policy.h
@@ -187,8 +187,6 @@ target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_script_resource_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_track_boundary_message_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/stationhead_native_stats_policy.h)
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
   "${WEBVIEW2_NATIVE_DIR}/WebView2Loader.dll.lib"
