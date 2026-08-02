@@ -2,6 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
+if (
+  !Number.isInteger(nodeMajor) ||
+  nodeMajor < 22 ||
+  typeof globalThis.fetch !== "function" ||
+  typeof globalThis.WebSocket !== "function"
+) {
+  throw new Error("Node.js 22 or newer is required.");
+}
+
 const argv = process.argv.slice(2);
 const option = (name, fallback = "") => {
   const index = argv.indexOf(name);
@@ -12,9 +22,17 @@ const durationSeconds = Math.max(1, Number(option("--duration", "300")) || 300);
 const port = Math.max(1, Number(option("--port", "9222")) || 9222);
 const chromePath = option("--chrome");
 const url = option("--url", "https://stationhead.com/c/buddies");
-const outDir = option("--out", path.join(process.env.USERPROFILE || ".", "Downloads", "stationhead-safe-capture"));
+const outDir = option(
+  "--out",
+  path.join(
+    process.env.USERPROFILE || ".",
+    "Downloads",
+    "stationhead-safe-capture",
+  ),
+);
 const profileDir = path.join(
-  process.env.LOCALAPPDATA || path.join(process.env.USERPROFILE || ".", "AppData", "Local"),
+  process.env.LOCALAPPDATA ||
+    path.join(process.env.USERPROFILE || ".", "AppData", "Local"),
   "HomePanel",
   "StationheadSafeCaptureProfile",
 );
@@ -54,6 +72,11 @@ class Cdp {
     this.onEvent = null;
   }
 
+  rejectPending(error) {
+    for (const pending of this.pending.values()) pending.reject(error);
+    this.pending.clear();
+  }
+
   async open() {
     await new Promise((resolve, reject) => {
       this.socket.addEventListener("open", resolve, { once: true });
@@ -73,23 +96,38 @@ class Cdp {
       if (message.id && this.pending.has(message.id)) {
         const pending = this.pending.get(message.id);
         this.pending.delete(message.id);
-        if (message.error) pending.reject(new Error(message.error.message || "CDP command failed"));
-        else pending.resolve(message.result || {});
+        if (message.error) {
+          pending.reject(new Error(message.error.message || "CDP command failed"));
+        } else {
+          pending.resolve(message.result || {});
+        }
         return;
       }
       this.onEvent?.(message);
     });
+    this.socket.addEventListener(
+      "close",
+      () => this.rejectPending(new Error("CDP connection closed")),
+      { once: true },
+    );
   }
 
   send(method, params = {}) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }));
+      } catch (error) {
+        this.pending.delete(id);
+        reject(error);
+      }
     });
   }
 
   close() {
+    this.onEvent = null;
+    this.rejectPending(new Error("CDP connection closed"));
     try { this.socket.close(); } catch {}
   }
 }
@@ -103,10 +141,21 @@ function normalizeTimestamp(value) {
 }
 
 function normalizeValue(value) {
-  const numeric = typeof value === "string"
-    ? Number(value.replaceAll(",", "").trim())
-    : Number(value);
-  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  let numeric;
+  if (typeof value === "string") {
+    const normalized = value.replaceAll(",", "").trim();
+    if (!normalized) return null;
+    numeric = Number(normalized);
+  } else {
+    numeric = Number(value);
+  }
+  if (
+    !Number.isFinite(numeric) ||
+    numeric < 0 ||
+    numeric > 2_147_483_647
+  ) {
+    return null;
+  }
   return Math.round(numeric);
 }
 
@@ -128,12 +177,33 @@ fs.mkdirSync(outDir, { recursive: true });
 fs.mkdirSync(profileDir, { recursive: true });
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const outputPath = path.join(outDir, `stationhead-streak-stats-safe-${stamp}.jsonl`);
+const outputPath = path.join(
+  outDir,
+  `stationhead-streak-stats-safe-${stamp}.jsonl`,
+);
 const output = fs.createWriteStream(outputPath, { encoding: "utf8" });
+
+function closeOutput() {
+  return new Promise((resolve, reject) => {
+    const handleError = error => {
+      output.off("finish", handleFinish);
+      reject(error);
+    };
+    const handleFinish = () => {
+      output.off("error", handleError);
+      resolve();
+    };
+    output.once("error", handleError);
+    output.once("finish", handleFinish);
+    output.end();
+  });
+}
 
 let chrome;
 let cdp;
 let captured = 0;
+let capturing = true;
+const pendingFinishes = new Set();
 
 try {
   let target = await getTarget();
@@ -171,18 +241,19 @@ try {
         status: response.status,
         serverDate: response.serverDate || null,
         capturedAt: new Date().toISOString(),
-        timezone: typeof payload?.timezone === "string" ? payload.timezone : null,
-        totalStreams: Number.isFinite(Number(payload?.total_streams))
-          ? Number(payload.total_streams)
-          : null,
+        timezone:
+          typeof payload?.timezone === "string" ? payload.timezone : null,
+        totalStreams: normalizeValue(payload?.total_streams),
         pointCount: chartData.length,
         firstPoint: chartData[0] || null,
         lastPoint: chartData.at(-1) || null,
         chartData,
       })}\n`);
       captured += 1;
-      console.log(`[${response.status}] captured streakStats (${chartData.length} points)`);
-    } catch (error) {
+      console.log(
+        `[${response.status}] captured streakStats (${chartData.length} points)`,
+      );
+    } catch {
       output.write(`${JSON.stringify({
         schemaVersion: 1,
         kind: "stationhead-streak-stats-error",
@@ -196,7 +267,17 @@ try {
     }
   };
 
+  const queueFinish = requestId => {
+    const task = finish(requestId);
+    pendingFinishes.add(task);
+    void task.then(
+      () => pendingFinishes.delete(task),
+      () => pendingFinishes.delete(task),
+    );
+  };
+
   cdp.onEvent = message => {
+    if (!capturing) return;
     const params = message.params || {};
     if (message.method === "Network.requestWillBeSent") {
       const requestUrl = String(params.request?.url || "");
@@ -215,7 +296,10 @@ try {
       return;
     }
 
-    if (message.method === "Network.responseReceived" && requests.has(params.requestId)) {
+    if (
+      message.method === "Network.responseReceived" &&
+      requests.has(params.requestId)
+    ) {
       responses.set(params.requestId, {
         status: Number(params.response?.status || 0),
         serverDate:
@@ -226,8 +310,11 @@ try {
       return;
     }
 
-    if (message.method === "Network.loadingFinished" && requests.has(params.requestId)) {
-      void finish(params.requestId);
+    if (
+      message.method === "Network.loadingFinished" &&
+      requests.has(params.requestId)
+    ) {
+      queueFinish(params.requestId);
       return;
     }
 
@@ -241,8 +328,13 @@ try {
   console.log(`Safe output: ${outputPath}`);
   console.log(`Capturing only streakStats for ${durationSeconds} seconds.`);
   await sleep(durationSeconds * 1000);
+  capturing = false;
+  cdp.onEvent = null;
+  await Promise.allSettled([...pendingFinishes]);
   console.log(`Done. Captured ${captured} responses.`);
 } finally {
+  capturing = false;
   cdp?.close();
-  output.end();
+  await Promise.allSettled([...pendingFinishes]);
+  await closeOutput();
 }
