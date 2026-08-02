@@ -24,7 +24,21 @@ if (-not $ChromePath) {
 
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) {
-  throw "Node.js 20以上が必要です。"
+  throw "Node.js 22以上が必要です。"
+}
+$nodeVersionText = (& $node.Source --version | Select-Object -First 1)
+$nodeMajor = 0
+$nodeMajorText = if ($nodeVersionText) {
+  (($nodeVersionText.Trim()).TrimStart("v") -split "\.")[0]
+} else {
+  ""
+}
+if (
+  $LASTEXITCODE -ne 0 -or
+  -not [int]::TryParse($nodeMajorText, [ref]$nodeMajor) -or
+  $nodeMajor -lt 22
+) {
+  throw "Node.js 22以上が必要です。現在のバージョン: $nodeVersionText"
 }
 
 $modulePath = Join-Path $PSScriptRoot "capture-stationhead-play-stats-safe.mjs"
