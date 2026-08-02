@@ -1,0 +1,58 @@
+name: Apply Stationhead stats rebuild
+
+on:
+  push:
+    branches:
+      - agent/rebuild-stationhead-play-stats
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-stationhead-stats-rebuild
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out rebuild branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/rebuild-stationhead-play-stats
+          fetch-depth: 0
+
+      - name: Apply rebuilt files
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=.github/patches/stationhead-stats-rebuild.tar.gz.b64
+          archive=/tmp/stationhead-stats-rebuild.tar.gz
+          base64 --decode "$payload" > "$archive"
+          gzip -t "$archive"
+          tar -tzf "$archive" >/dev/null
+          tar -xzf "$archive" -C .
+          rm -f "$payload"
+          rm -f .github/workflows/apply-stationhead-stats-rebuild.yml
+
+      - name: Validate rebuilt statistics pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check hp/native/scripts/capture-stationhead-play-stats-safe.mjs
+          node --test \
+            hp/video/test/stationhead-play-stats-rebuild-regression.test.js \
+            hp/video/test/stationhead-play-stats-display-regression.test.js \
+            hp/video/test/stationhead-safe-capture-regression.test.js
+
+      - name: Commit rebuilt pipeline
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Rebuild Stationhead play stats pipeline"
+          git push origin HEAD:agent/rebuild-stationhead-play-stats
