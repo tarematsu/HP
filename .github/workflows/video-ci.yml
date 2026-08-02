@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - agent/rebuild-stationhead-play-stats
     paths:
       - 'hp/package.json'
       - 'hp/package-lock.json'
@@ -42,7 +43,7 @@ concurrency:
 
 jobs:
   apply_stationhead_followup:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/rebuild-stationhead-play-stats'
+    if: (github.event_name == 'pull_request' && github.head_ref == 'agent/rebuild-stationhead-play-stats') || (github.event_name == 'push' && github.ref_name == 'agent/rebuild-stationhead-play-stats')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
