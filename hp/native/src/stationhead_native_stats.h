@@ -1,7 +1,9 @@
 #pragma once
 
 #include "common.h"
+#include "winhttp_helpers.h"
 #include <deque>
+#include <thread>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -20,24 +22,37 @@ struct StationheadNativeStatsSnapshot {
 
 inline constexpr int64_t kStationheadNativeStatsDayMs =
     24LL * 60 * 60 * 1000;
+inline constexpr int64_t kStationheadNativeStatsSuccessIntervalMs =
+    5LL * 60 * 1000;
+inline constexpr int64_t kStationheadNativeStatsRetryIntervalMs = 30'000;
 inline constexpr size_t kStationheadNativeStatsMaximumBodyBytes = 1024 * 1024;
 
-inline bool IsStationheadNativeStatsUri(std::wstring_view uri, int channelId) {
-  if (channelId <= 0 || uri.empty()) return false;
-  std::wstring lower(uri);
-  std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t value) {
+inline std::wstring StationheadNativeLowerAscii(std::wstring_view value) {
+  std::wstring lower(value);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t ch) {
     return static_cast<wchar_t>(
-        value >= L'A' && value <= L'Z' ? value - L'A' + L'a' : value);
+        ch >= L'A' && ch <= L'Z' ? ch - L'A' + L'a' : ch);
   });
+  return lower;
+}
+
+inline bool IsStationheadNativeApiUri(std::wstring_view uri) {
+  if (uri.empty()) return false;
+  const std::wstring lower = StationheadNativeLowerAscii(uri);
   constexpr std::wstring_view scheme = L"https://";
   if (!lower.starts_with(scheme)) return false;
   const size_t hostStart = scheme.size();
   const size_t pathStart = lower.find(L'/', hostStart);
   if (pathStart == std::wstring::npos) return false;
-  if (std::wstring_view(lower).substr(hostStart, pathStart - hostStart) !=
-      L"production1.stationhead.com") {
-    return false;
-  }
+  return std::wstring_view(lower).substr(hostStart, pathStart - hostStart) ==
+      L"production1.stationhead.com";
+}
+
+inline bool IsStationheadNativeStatsUri(std::wstring_view uri, int channelId) {
+  if (channelId <= 0 || !IsStationheadNativeApiUri(uri)) return false;
+  const std::wstring lower = StationheadNativeLowerAscii(uri);
+  const size_t pathStart = lower.find(L'/', std::wstring_view(L"https://").size());
+  if (pathStart == std::wstring::npos) return false;
   size_t pathEnd = lower.find_first_of(L"?#", pathStart);
   if (pathEnd == std::wstring::npos) pathEnd = lower.size();
   std::wstring expected = L"/me/channel/";
@@ -198,11 +213,196 @@ class StationheadNativeStatsStore {
 };
 
 inline StationheadNativeStatsStore& GlobalStationheadNativeStatsStore() {
-  static StationheadNativeStatsStore store;
-  return store;
+  static auto* store = new StationheadNativeStatsStore();
+  return *store;
 }
 
-inline void AttachStationheadNativeStatsObserver(
+struct StationheadNativeRequestCredentials {
+  std::wstring authorization;
+  std::wstring deviceUid;
+  std::wstring appPlatform;
+  std::wstring appVersion;
+  std::wstring cookie;
+
+  bool operator==(const StationheadNativeRequestCredentials&) const = default;
+};
+
+inline bool StationheadNativeSafeHeaderValue(
+    std::wstring_view value, size_t maximumLength) {
+  return !value.empty() && value.size() <= maximumLength &&
+      value.find_first_of(L"\r\n") == std::wstring_view::npos;
+}
+
+inline std::wstring StationheadNativeHeader(
+    ICoreWebView2HttpRequestHeaders* headers,
+    const wchar_t* name,
+    size_t maximumLength) {
+  if (!headers || !name) return {};
+  LPWSTR raw = nullptr;
+  if (FAILED(headers->GetHeader(name, &raw)) || !raw) return {};
+  std::wstring value(raw);
+  CoTaskMemFree(raw);
+  return StationheadNativeSafeHeaderValue(value, maximumLength)
+      ? value
+      : std::wstring{};
+}
+
+inline std::wstring StationheadNativeRequestHeaders(
+    const StationheadNativeRequestCredentials& credentials) {
+  std::wstring output;
+  const auto append = [&output](
+      std::wstring_view name, std::wstring_view value) {
+    if (value.empty()) return;
+    output.append(name);
+    output.append(L": ");
+    output.append(value);
+    output.append(L"\r\n");
+  };
+  append(L"Authorization", credentials.authorization);
+  append(L"sth-device-uid", credentials.deviceUid);
+  append(L"app-platform", credentials.appPlatform);
+  append(L"app-version", credentials.appVersion);
+  append(L"Cookie", credentials.cookie);
+  append(L"Accept", L"application/json");
+  return output;
+}
+
+class StationheadNativeStatsClient {
+ public:
+  void ObserveCredentials(
+      int channelId,
+      StationheadNativeRequestCredentials credentials) {
+    if (channelId <= 0 || credentials.authorization.empty()) return;
+    const int64_t now = UnixMillis();
+    StationheadNativeRequestCredentials requestCredentials;
+    uint64_t requestGeneration = 0;
+    {
+      std::lock_guard lock(mutex_);
+      const bool changed =
+          channelId_ != channelId || credentials_ != credentials;
+      if (changed) {
+        channelId_ = channelId;
+        credentials_ = std::move(credentials);
+        ++credentialsGeneration_;
+      }
+      const bool successFresh = lastSuccessAt_ > 0 &&
+          now >= lastSuccessAt_ &&
+          now - lastSuccessAt_ < kStationheadNativeStatsSuccessIntervalMs;
+      const bool retryTooSoon = lastAttemptAt_ > 0 &&
+          now >= lastAttemptAt_ &&
+          now - lastAttemptAt_ < kStationheadNativeStatsRetryIntervalMs;
+      if (inFlight_ || (!changed && (successFresh || retryTooSoon))) return;
+      inFlight_ = true;
+      lastAttemptAt_ = now;
+      requestCredentials = credentials_;
+      requestGeneration = credentialsGeneration_;
+    }
+
+    std::thread([this, channelId, requestCredentials = std::move(requestCredentials),
+                 requestGeneration]() mutable {
+      std::wstring url =
+          L"https://production1.stationhead.com/me/channel/";
+      url += std::to_wstring(channelId);
+      url += L"/streakStats";
+      const std::wstring headers =
+          StationheadNativeRequestHeaders(requestCredentials);
+      std::vector<uint8_t> body;
+      std::wstring contentType;
+      std::wstring error;
+      const bool downloaded = WinHttpDownload(
+          url, kStationheadNativeStatsMaximumBodyBytes, &body, &contentType,
+          &error, L"HomePanel/2.2", headers.c_str());
+      const int64_t receivedAt = UnixMillis();
+      std::vector<StationheadNativeDailyPlayPoint> daily;
+      const bool parsed = downloaded && ParseStationheadNativeStatsJson(
+          std::string_view(reinterpret_cast<const char*>(body.data()), body.size()),
+          receivedAt, daily);
+      if (parsed) {
+        GlobalStationheadNativeStatsStore().Publish(
+            std::move(daily), receivedAt);
+      }
+      {
+        std::lock_guard lock(mutex_);
+        if (parsed && requestGeneration == credentialsGeneration_) {
+          lastSuccessAt_ = receivedAt;
+        }
+        inFlight_ = false;
+      }
+    }).detach();
+  }
+
+ private:
+  std::mutex mutex_;
+  StationheadNativeRequestCredentials credentials_;
+  int channelId_ = 0;
+  uint64_t credentialsGeneration_ = 0;
+  int64_t lastAttemptAt_ = 0;
+  int64_t lastSuccessAt_ = 0;
+  bool inFlight_ = false;
+};
+
+inline StationheadNativeStatsClient& GlobalStationheadNativeStatsClient() {
+  static auto* client = new StationheadNativeStatsClient();
+  return *client;
+}
+
+inline void AttachStationheadNativeCredentialObserver(
+    ICoreWebView2* webview, int channelId) {
+  if (!webview || channelId <= 0) return;
+  ComPtr<ICoreWebView2> base = webview;
+  ComPtr<ICoreWebView2_22> sourceAwareWebView;
+  base.As(&sourceAwareWebView);
+  auto sourceKinds = COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT;
+  if (StationheadOwnsWorkerRequestFilters(webview)) {
+    sourceKinds = static_cast<COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS>(
+        sourceKinds |
+        COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER |
+        COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER);
+  }
+  AddStationheadResourceFilter(
+      webview, sourceAwareWebView.Get(),
+      COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST, sourceKinds);
+  AddStationheadResourceFilter(
+      webview, sourceAwareWebView.Get(),
+      COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH, sourceKinds);
+
+  EventRegistrationToken ignoredToken{};
+  webview->add_WebResourceRequested(
+      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+          [channelId](
+              ICoreWebView2*,
+              ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            if (!args) return S_OK;
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+            LPWSTR uriRaw = nullptr;
+            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
+            const std::wstring uri(uriRaw);
+            CoTaskMemFree(uriRaw);
+            if (!IsStationheadNativeApiUri(uri)) return S_OK;
+
+            ComPtr<ICoreWebView2HttpRequestHeaders> headers;
+            if (FAILED(request->get_Headers(&headers)) || !headers) return S_OK;
+            StationheadNativeRequestCredentials credentials;
+            credentials.authorization = StationheadNativeHeader(
+                headers.Get(), L"Authorization", 16 * 1024);
+            if (credentials.authorization.empty()) return S_OK;
+            credentials.deviceUid = StationheadNativeHeader(
+                headers.Get(), L"sth-device-uid", 1024);
+            credentials.appPlatform = StationheadNativeHeader(
+                headers.Get(), L"app-platform", 256);
+            credentials.appVersion = StationheadNativeHeader(
+                headers.Get(), L"app-version", 256);
+            credentials.cookie = StationheadNativeHeader(
+                headers.Get(), L"Cookie", 32 * 1024);
+            GlobalStationheadNativeStatsClient().ObserveCredentials(
+                channelId, std::move(credentials));
+            return S_OK;
+          }).Get(),
+      &ignoredToken);
+}
+
+inline void AttachStationheadNativeStatsResponseObserver(
     ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
   ComPtr<ICoreWebView2> base = webview;
@@ -253,6 +453,12 @@ inline void AttachStationheadNativeStatsObserver(
             return S_OK;
           }).Get(),
       &ignoredToken);
+}
+
+inline void AttachStationheadNativeStats(
+    ICoreWebView2* webview, int channelId) {
+  AttachStationheadNativeCredentialObserver(webview, channelId);
+  AttachStationheadNativeStatsResponseObserver(webview, channelId);
 }
 
 }  // namespace hp
