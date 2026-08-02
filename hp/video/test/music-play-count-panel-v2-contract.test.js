@@ -30,17 +30,27 @@ test('every requested period has an independently rendered value cell', () => {
   assert.match(panel, /L"--"/);
 });
 
-test('play counts are captured by a native WebView2 response event', () => {
-  assert.match(nativeStats, /ICoreWebView2_2/);
+test('native WebView2 traffic supplies credentials and responses', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
+  assert.match(nativeStats, /GetHeader\(/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
   assert.match(nativeStats, /ICoreWebView2WebResourceResponseView/);
   assert.match(nativeStats, /GetContent\(/);
+});
+
+test('native WinHTTP actively downloads and publishes play counts', () => {
+  assert.match(nativeStats, /class StationheadNativeStatsClient/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /\/streakStats/);
   assert.match(nativeStats, /ParseStationheadNativeStatsJson/);
   assert.match(nativeStats, /GlobalStationheadNativeStatsStore\(\)\.Publish/);
+  assert.match(nativeStats, /kStationheadNativeStatsSuccessIntervalMs/);
+  assert.match(nativeStats, /kStationheadNativeStatsRetryIntervalMs/);
 });
 
 test('the native path has no generated script or WebMessage protocol', () => {
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
-  assert.doesNotMatch(nativeStats, /Authorization|authorization/);
+  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });
