@@ -148,7 +148,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   };
   RECT metricsRect{content.left, content.top, content.right,
                    content.top + CardHeaderHeight(content)};
-  const int metricsHeight = std::max(1L, metricsRect.bottom - metricsRect.top);
   const COLORREF metricTextColor = statsStale
       ? kWidgetWarning
       : (statsAvailable || nativeStats.recentHour >= 0
@@ -163,8 +162,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     metricsLine += L" ";
     metricsLine += playMetricValues[index];
   }
-  SelectObject(dc, CachedUiFont(
-      std::clamp(metricsHeight * 34 / 100, 8, 11), FW_NORMAL));
+  SelectObject(dc, TierFont(FontTier::Medium));
   SetTextColor(dc, metricTextColor);
   DrawTextInRect(dc, metricsLine, metricsRect,
                  DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
