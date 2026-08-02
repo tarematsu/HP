@@ -10,8 +10,12 @@ const panel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
-const policy = readFileSync(
-  new URL('../../native/src/sh_stats_session_policy_fix.h', import.meta.url),
+const nativeStatsHeader = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
+  'utf8',
+);
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
   'utf8',
 );
 
@@ -30,12 +34,36 @@ test('every requested period has an independently rendered value cell', () => {
   assert.match(panel, /L"--"/);
 });
 
-test('one request lifecycle publishes the identities required by native', () => {
-  assert.match(policy, /type: 'stationhead-stats-document'/);
-  assert.match(policy, /type: 'stationhead-auth-ready'/);
-  assert.match(policy, /type: 'stationhead-play-stats'/);
-  assert.match(policy, /request_id: requestId/);
-  assert.match(policy, /document_generation: documentGeneration/);
-  assert.match(policy, /auth_generation: authGeneration/);
-  assert.match(policy, /__homepanelStationheadPlayStatsInFlight/);
+test('the public header is declarations and a narrow renderer facade only', () => {
+  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
+  assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
+  assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
+});
+
+test('native WebView2 traffic supplies credentials and responses', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
+  assert.match(nativeStats, /GetHeader\(/);
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /ICoreWebView2WebResourceResponseView/);
+  assert.match(nativeStats, /GetContent\(/);
+});
+
+test('one autonomous native worker actively downloads and publishes play counts', () => {
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::condition_variable wake_/);
+  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
+  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /ParseStatsJson/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
+});
+
+test('the native path has no generated script or WebMessage protocol', () => {
+  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
+  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });

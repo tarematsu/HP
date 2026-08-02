@@ -66,7 +66,7 @@ test('the legacy media entry delegates to the rebuilt panel', () => {
   assert.match(mediaEntry, /#include "media_section_v2\.inc"/);
 });
 
-test('five play-count metrics own fixed cells instead of one ellipsized sentence', () => {
+test('five play-count metrics own fixed cells', () => {
   assert.match(
     mediaSection,
     /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
@@ -76,28 +76,26 @@ test('five play-count metrics own fixed cells instead of one ellipsized sentence
   assert.match(mediaSection, /DrawWidgetCard\(dc, cell, kWidgetSurfaceAlt/);
   assert.match(mediaSection, /playValueText\(summary\.today\)/);
   assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
-  assert.doesNotMatch(mediaSection, /dailyPlaySummary/);
-  assert.doesNotMatch(
-    mediaSection,
-    /DT_RIGHT \| DT_SINGLELINE \| DT_END_ELLIPSIS \| DT_VCENTER/,
-  );
 });
 
-test('unavailable and stale values remain visible', () => {
+test('renderer reads the native response store directly', () => {
+  assert.match(
+    mediaSection,
+    /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/,
+  );
+  assert.match(mediaSection, /nativeStats\.daily/);
+  assert.match(mediaSection, /nativeStats\.recentHour/);
+  assert.doesNotMatch(mediaSection, /dailyPlayCounts/);
+  assert.doesNotMatch(mediaSection, /dailyPlayStatsServerDateAt/);
+  assert.doesNotMatch(mediaSection, /statsDocumentGeneration/);
+  assert.doesNotMatch(mediaSection, /statsAuthGeneration/);
+});
+
+test('unavailable and stale values remain explicit', () => {
   assert.match(
     mediaSection,
     /value >= 0\s*\?\s*std::to_wstring\(value\)\s*:\s*std::wstring\(L"--"\)/,
   );
   assert.match(mediaSection, /kDailyPlayStatsStaleAfterMs = 15 \* 60'000/);
   assert.match(mediaSection, /statsStale\s*\?\s*kWidgetWarning/);
-  assert.match(mediaSection, /metricValueColor/);
-});
-
-test('the recent-hour number is hidden when its newest sample is old', () => {
-  assert.match(mediaSection, /kRecentPlaySampleMaximumAgeMs = 10 \* 60'000/);
-  assert.match(mediaSection, /recentHistoryFresh/);
-  assert.match(
-    mediaSection,
-    /const int recentIncrease = recentHistoryFresh\s*\?\s*RecentStationheadPlayIncrease\([^)]*\)\s*:\s*-1;/,
-  );
 });

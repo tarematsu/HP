@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "stationhead_native_stats.h"
 
 namespace hp {
 namespace {
@@ -8,6 +9,7 @@ struct NativeHistoryRevisionCache {
   const Renderer* owner = nullptr;
   uint64_t air = 0;
   uint64_t stationhead = 0;
+  uint64_t stationheadNativeStats = 0;
 };
 
 NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
@@ -16,6 +18,8 @@ NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
     cache.owner = owner;
     cache.air = std::numeric_limits<uint64_t>::max();
     cache.stationhead = std::numeric_limits<uint64_t>::max();
+    cache.stationheadNativeStats =
+        GlobalStationheadNativeStatsStore().Revision();
   }
   return cache;
 }
@@ -60,10 +64,6 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   NativeHistoryRevisionCache& historyRevisions = HistoryRevisionCacheFor(this);
   const bool sensorsChanged = nativeSensors_ != state.sensors;
   const bool historyChanged = historyRevisions.air != state.airHistoryRevision;
-  // The Music panel renders more than playback revisions and mute selection:
-  // daily play totals, login/auth failures, current playback state, and URLs
-  // all come from StationheadStatus. Compare the complete shared state so those
-  // updates cannot remain stuck behind an unrelated track or audio change.
   const bool stationheadChanged = nativeStationhead_ != state.stationhead;
   const bool stationheadHistoryChanged =
       historyRevisions.stationhead != state.stationheadPlayHistoryRevision;
@@ -79,8 +79,6 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     if (nativeDashboardVisible_) {
       RebuildNativeAirGraph(UnixMillis());
     } else {
-      // Keep the compact source history current but defer the filtered graph
-      // allocation and projection pass until Main becomes visible again.
       nativeAirGraph_ = {};
     }
   }
@@ -97,9 +95,6 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
     renderedDashboardRevisions_.energy = dashboardRevisions_.energy;
   }
 
-  // Hidden child windows cannot display invalidations. Avoid window traversal,
-  // region allocation and paint-message traffic while Stationhead/Auth owns the
-  // screen; SetVisible(true) rebuilds projections and invalidates every panel.
   if (!nativeDashboardVisible_) return;
   if (!EnsureNativeStaticWindows()) return;
   if (sensorsChanged || historyChanged) {
@@ -118,6 +113,15 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
+
+  NativeHistoryRevisionCache& revisions = HistoryRevisionCacheFor(this);
+  const uint64_t nativeStatsRevision =
+      GlobalStationheadNativeStatsStore().Revision();
+  const bool nativeStatsChanged =
+      revisions.stationheadNativeStats != nativeStatsRevision;
+  if (nativeStatsChanged) {
+    revisions.stationheadNativeStats = nativeStatsRevision;
+  }
 
   const int64_t airCutoff = nowMs - kAirGraphWindowMs;
   const bool airGraphExpired = !nativeAirGraph_.samples.empty() &&
@@ -157,19 +161,15 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
 
   if (clockDayChanged && nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
       IsWindowVisible(nativeMainWindow_)) {
-    // The collection calendar is date-derived and needs one full repaint at
-    // the local day boundary. This happens only once per day.
     InvalidateRect(nativeMainWindow_, nullptr, FALSE);
   }
 
-  // Resolving projected playback takes the playback mutex and advances a queue
-  // cursor. Skip that work when the main native surface is absent or hidden.
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
       IsWindowVisible(nativeMainWindow_)) {
     const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
     const bool playbackChanged = playbackState != nativePlaybackTickState_;
     nativePlaybackTickState_ = playbackState;
-    if (playbackChanged) {
+    if (nativeStatsChanged || playbackChanged) {
       InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
     } else if (playbackState.active) {
       InvalidatePanelSection(nativeMainWindow_, PanelSection::PlaybackProgress);

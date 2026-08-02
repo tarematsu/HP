@@ -125,6 +125,8 @@ set(HOMEPANEL_CORE_SOURCES
 
 set(HOMEPANEL_STATIONHEAD_SOURCES
   src/shared_webview_environment.cpp
+  src/stationhead_native_stats.cpp
+  src/stationhead_native_stats.h
   src/sh_layout.cpp
   src/sh_polling_policy.h
   src/sh_audio_loss_policy.h

@@ -10,6 +10,10 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
+  'utf8',
+);
 const sharedEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
@@ -23,9 +27,9 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('playback-safe policy remains the final Stationhead resource boundary', () => {
-  const baselineAt = composition.indexOf(
-    '#include "sh_stats_july23_baseline_policy_fix.h"',
+test('playback-safe policy remains the final request boundary', () => {
+  const acquisitionAt = composition.indexOf(
+    '#include "sh_data_acquisition_resource_policy_fix.h"',
   );
   const startupAt = composition.indexOf(
     '#include "sh_startup_resource_reduction_policy_fix.h"',
@@ -33,13 +37,18 @@ test('playback-safe policy remains the final Stationhead resource boundary', () 
   const playbackAt = composition.indexOf(
     '#include "sh_playback_resource_policy_fix.h"',
   );
-  assert.ok(baselineAt >= 0);
-  assert.ok(startupAt > baselineAt);
+  assert.ok(acquisitionAt >= 0);
+  assert.ok(startupAt > acquisitionAt);
   assert.ok(playbackAt > startupAt);
-  assert.doesNotMatch(composition, /sh_startup_dom_batch_policy_fix\.h/);
+  assert.doesNotMatch(composition, /sh_stats_|sh_startup_dom_batch_policy_fix\.h/);
   assert.match(
     policy,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
+  );
+  assert.match(policy, /#include "stationhead_native_stats\.h"/);
+  assert.match(
+    policy,
+    /StationheadOwnsWorkerRequestFilters\(webview\)[\s\S]*AttachStationheadNativeStats\(webview, config\.channelId\)/,
   );
 });
 
@@ -55,7 +64,7 @@ test('final resource boundary preserves controller cache reset without login del
   );
 });
 
-test('final playback policy installs no native request or URL blocking', () => {
+test('playback policy installs no request substitution or URL blocking', () => {
   const handler = section(
     policy,
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
@@ -75,13 +84,22 @@ test('final playback policy installs no native request or URL blocking', () => {
   );
 });
 
+test('native statistics observers are read-only and never synthesize a response', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.doesNotMatch(
+    nativeStats,
+    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs/,
+  );
+});
+
 test('all dynamic Stationhead and third-party requests remain fail-open', () => {
   const handler = section(
     policy,
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
     '}  // namespace hp',
   );
-  assert.match(handler, /Do not install WebResourceRequested or CDP/);
+  assert.match(handler, /Do not install request substitution or CDP/);
   assert.match(handler, /synthetic response after the route shell has mounted/);
   assert.doesNotMatch(
     handler,
