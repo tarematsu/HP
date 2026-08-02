@@ -20,6 +20,13 @@ if (-not $UnsafeFullCapture) {
   if (-not (Test-Path -LiteralPath $safeScript)) {
     throw "Safe Stationhead capture script is missing: $safeScript"
   }
+  $powerShell = Get-Command pwsh -ErrorAction SilentlyContinue
+  if (-not $powerShell) {
+    $powerShell = Get-Command powershell.exe -ErrorAction SilentlyContinue
+  }
+  if (-not $powerShell) {
+    throw "PowerShell executable was not found."
+  }
   $arguments = @(
     "-NoProfile",
     "-ExecutionPolicy", "Bypass",
@@ -30,7 +37,7 @@ if (-not $UnsafeFullCapture) {
   )
   if ($ChromePath) { $arguments += @("-ChromePath", $ChromePath) }
   if ($OutDir) { $arguments += @("-OutDir", $OutDir) }
-  & (Get-Command pwsh -ErrorAction Stop).Source @arguments
+  & $powerShell.Source @arguments
   exit $LASTEXITCODE
 }
 
