@@ -44,27 +44,21 @@ test('all generated play-count policy layers are removed', () => {
   assert.doesNotMatch(trackBoundary, /sh_stats_/);
 });
 
-test('the final compiled resource policy installs one native observer', () => {
+test('the final compiled resource policy installs one native pipeline', () => {
   assert.match(
     cmake,
     /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats_policy\.h\)/,
   );
-  assert.match(
-    nativePolicy,
-    /ApplyStationheadResourceBlockingWithNativeStats/,
-  );
-  assert.match(
-    nativePolicy,
-    /StationheadOwnsWorkerRequestFilters\(webview\)/,
-  );
-  assert.match(
-    nativePolicy,
-    /AttachStationheadNativeStatsObserver\(webview, config\.channelId\)/,
-  );
+  assert.match(nativePolicy, /ApplyStationheadResourceBlockingWithNativeStats/);
+  assert.match(nativePolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+  assert.match(nativePolicy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
 });
 
-test('WebView2 response capture is completely native and bounded', () => {
-  assert.match(nativeStats, /ICoreWebView2_2/);
+test('WebView2 captures authentication and successful responses natively', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
+  assert.match(nativeStats, /GetHeader\(/);
+  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
   assert.match(nativeStats, /get_Request/);
   assert.match(nativeStats, /get_Response/);
@@ -73,9 +67,17 @@ test('WebView2 response capture is completely native and bounded', () => {
   assert.match(nativeStats, /kStationheadNativeStatsMaximumBodyBytes = 1024 \* 1024/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
   assert.match(nativeStats, /L"\/me\/channel\/"/);
+});
+
+test('WinHTTP actively requests streakStats without page script execution', () => {
+  assert.match(nativeStats, /class StationheadNativeStatsClient/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /kStationheadNativeStatsSuccessIntervalMs/);
+  assert.match(nativeStats, /kStationheadNativeStatsRetryIntervalMs/);
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
-  assert.doesNotMatch(nativeStats, /authorization/i);
+  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });
 
 test('JSON normalization and storage are implemented in C++', () => {
