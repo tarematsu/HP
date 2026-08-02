@@ -8,69 +8,6 @@ inline constexpr DWORD kWinHttpAccessTypes[] = {
     WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
     WINHTTP_ACCESS_TYPE_NO_PROXY,
 };
-inline constexpr int64_t kStationheadPlaybackJsonCacheMs = 5 * 60'000;
-
-enum class StationheadPlaybackJsonCacheResult {
-  Miss,
-  Success,
-  Failure,
-};
-
-struct StationheadPlaybackJsonCache {
-  std::mutex mutex;
-  std::vector<uint8_t> body;
-  int64_t attemptedAt = 0;
-};
-
-inline StationheadPlaybackJsonCache& StationheadPlaybackJsonCacheState() {
-  static StationheadPlaybackJsonCache state;
-  return state;
-}
-
-inline bool IsStationheadPlaybackJsonRequest(
-    const std::wstring& hostName, const std::wstring& requestPath) noexcept {
-  static constexpr std::wstring_view prefix = L"/api/dashboard?history=0";
-  return _wcsicmp(hostName.c_str(), L"skrzk.pages.dev") == 0 &&
-      requestPath.starts_with(prefix);
-}
-
-inline StationheadPlaybackJsonCacheResult ReadStationheadPlaybackJsonCache(
-    int64_t maximumAgeMs,
-    std::vector<uint8_t>* body,
-    int64_t* attemptedAt = nullptr) {
-  if (!body || maximumAgeMs <= 0) {
-    return StationheadPlaybackJsonCacheResult::Miss;
-  }
-  body->clear();
-  StationheadPlaybackJsonCache& state = StationheadPlaybackJsonCacheState();
-  std::lock_guard lock(state.mutex);
-  const int64_t nowMs = UnixMillis();
-  if (state.attemptedAt <= 0 || nowMs < state.attemptedAt ||
-      nowMs - state.attemptedAt >= maximumAgeMs) {
-    return StationheadPlaybackJsonCacheResult::Miss;
-  }
-  if (attemptedAt) *attemptedAt = state.attemptedAt;
-  if (state.body.empty()) return StationheadPlaybackJsonCacheResult::Failure;
-  *body = state.body;
-  return StationheadPlaybackJsonCacheResult::Success;
-}
-
-inline void StoreStationheadPlaybackJsonCache(
-    const std::vector<uint8_t>* body) {
-  StationheadPlaybackJsonCache& state = StationheadPlaybackJsonCacheState();
-  std::lock_guard lock(state.mutex);
-  state.attemptedAt = UnixMillis();
-  if (body && !body->empty()) state.body = *body;
-  else state.body.clear();
-}
-
-inline bool TryGetStationheadPlaybackJsonCache(
-    std::vector<uint8_t>* body,
-    int64_t* fetchedAt = nullptr,
-    int64_t maximumAgeMs = kStationheadPlaybackJsonCacheMs) {
-  return ReadStationheadPlaybackJsonCache(maximumAgeMs, body, fetchedAt) ==
-      StationheadPlaybackJsonCacheResult::Success;
-}
 
 inline std::wstring QueryHeaderValue(HINTERNET request, DWORD query) {
   DWORD size = 0;
@@ -108,9 +45,7 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
                             std::wstring* contentType = nullptr,
                             std::wstring* error = nullptr,
                             const wchar_t* userAgent = L"HomePanel/1.0",
-                            const wchar_t* extraHeaders = nullptr,
-                            DWORD timeoutMs = 8000,
-                            bool retryWithoutProxy = true) {
+                            const wchar_t* extraHeaders = nullptr) {
   const auto fail = [error](std::wstring message) {
     if (error) *error = std::move(message);
     return false;
@@ -135,35 +70,12 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
   if (!WinHttpCrackUrl(rawUrl, 0, 0, &parts)) return fail(lastError(L"WinHttpCrackUrl"));
   const std::wstring hostName(host, parts.dwHostNameLength);
   const std::wstring requestPath = WinHttpRequestPathFromUrl(parts);
-  const bool stationheadPlaybackRequest =
-      IsStationheadPlaybackJsonRequest(hostName, requestPath);
-  if (stationheadPlaybackRequest) {
-    std::vector<uint8_t> cachedBody;
-    const StationheadPlaybackJsonCacheResult cached =
-        ReadStationheadPlaybackJsonCache(
-            kStationheadPlaybackJsonCacheMs, &cachedBody);
-    if (cached == StationheadPlaybackJsonCacheResult::Success) {
-      if (cachedBody.size() > maximumBytes) return fail(L"cached response too large");
-      *body = std::move(cachedBody);
-      if (contentType) *contentType = L"application/json";
-      if (error) error->clear();
-      return true;
-    }
-    if (cached == StationheadPlaybackJsonCacheResult::Failure) {
-      return fail(L"cached dashboard playback fetch failed");
-    }
-  }
-
   const DWORD extraHeaderLength = extraHeaders
       ? static_cast<DWORD>(wcslen(extraHeaders))
       : 0;
 
   std::wstring failure = L"WinHTTP request failed";
-  const size_t accessTypeCount = retryWithoutProxy
-      ? std::size(kWinHttpAccessTypes)
-      : 1;
-  for (size_t accessIndex = 0; accessIndex < accessTypeCount; ++accessIndex) {
-    const DWORD accessType = kWinHttpAccessTypes[accessIndex];
+  for (const DWORD accessType : kWinHttpAccessTypes) {
     WinHttpHandle session(WinHttpOpen(userAgent, accessType,
                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
     if (!session) { failure = lastError(L"WinHttpOpen"); continue; }
@@ -179,9 +91,7 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
         parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0));
     if (!request) { failure = lastError(L"WinHttpOpenRequest"); continue; }
 
-    const DWORD boundedTimeout = std::clamp<DWORD>(timeoutMs, 250, 60'000);
-    WinHttpSetTimeouts(
-        request, boundedTimeout, boundedTimeout, boundedTimeout, boundedTimeout);
+    WinHttpSetTimeouts(request, 8000, 8000, 8000, 8000);
     DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP | WINHTTP_DECOMPRESSION_FLAG_DEFLATE;
     WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
     if (!WinHttpSendRequest(request, extraHeaders, extraHeaderLength,
@@ -240,16 +150,10 @@ inline bool WinHttpDownload(const wchar_t* rawUrl, size_t maximumBytes,
       body->resize(offset + read);
       if (!read) break;
     }
-    if (readOk && !body->empty()) {
-      if (stationheadPlaybackRequest) {
-        StoreStationheadPlaybackJsonCache(body);
-      }
-      return true;
-    }
+    if (readOk && !body->empty()) return true;
     if (readOk) failure = L"empty response";
     body->clear();
   }
-  if (stationheadPlaybackRequest) StoreStationheadPlaybackJsonCache(nullptr);
   return fail(std::move(failure));
 }
 
@@ -258,10 +162,8 @@ inline bool WinHttpDownload(const std::wstring& rawUrl, size_t maximumBytes,
                             std::wstring* contentType = nullptr,
                             std::wstring* error = nullptr,
                             const wchar_t* userAgent = L"HomePanel/1.0",
-                            const wchar_t* extraHeaders = nullptr,
-                            DWORD timeoutMs = 8000,
-                            bool retryWithoutProxy = true) {
+                            const wchar_t* extraHeaders = nullptr) {
   return WinHttpDownload(rawUrl.c_str(), maximumBytes, body, contentType, error,
-                         userAgent, extraHeaders, timeoutMs, retryWithoutProxy);
+                         userAgent, extraHeaders);
 }
 }  // namespace hp
