@@ -153,6 +153,11 @@ void StationheadPlayer::ConfigureWebView() {
           [this, alive](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
             if (!CallbackAlive(alive) || !args) return S_OK;
             trackBoundaryRefreshPending_ = false;
+            if (!IsSecondary()) {
+              statsDocumentGeneration_ = 0;
+              statsAuthGeneration_ = 0;
+              statsLastAcceptedRequestId_ = 0;
+            }
             if (IsSecondary()) {
               // Invalidate a local probe started by the outgoing document.
               // Internal redirects do not pass through NavigateStationheadUrl(),
@@ -328,34 +333,137 @@ void StationheadPlayer::ConfigureWebView() {
             try {
               const auto message = winrt::Windows::Data::Json::JsonObject::Parse(messageJson);
               const std::wstring type = message.GetNamedString(L"type", L"").c_str();
+              if (type == L"stationhead-stats-document") {
+                if (IsSecondary()) return S_OK;
+                const double rawGeneration =
+                    json::Number(message, L"document_generation", 0);
+                if (!std::isfinite(rawGeneration) || rawGeneration <= 0 ||
+                    rawGeneration > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+                  return S_OK;
+                }
+                statsDocumentGeneration_ =
+                    static_cast<uint64_t>(rawGeneration);
+                statsAuthGeneration_ = 0;
+                statsLastAcceptedRequestId_ = 0;
+                return S_OK;
+              }
               if (type == L"stationhead-play-stats") {
+                if (IsSecondary()) return S_OK;
                 using winrt::Windows::Data::Json::JsonValueType;
+                const auto unsignedField = [&message](const wchar_t* name) {
+                  const double value = json::Number(message, name, 0);
+                  if (!std::isfinite(value) || value <= 0 ||
+                      value > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+                    return uint64_t{0};
+                  }
+                  return static_cast<uint64_t>(value);
+                };
+                const uint64_t requestId = unsignedField(L"request_id");
+                const uint64_t documentGeneration =
+                    unsignedField(L"document_generation");
+                const uint64_t authGeneration =
+                    unsignedField(L"auth_generation");
+                if (requestId == 0 || documentGeneration == 0 ||
+                    documentGeneration != statsDocumentGeneration_ ||
+                    (statsAuthGeneration_ > 0 &&
+                     authGeneration != statsAuthGeneration_) ||
+                    requestId <= statsLastAcceptedRequestId_) {
+                  log_.Info(
+                      L"Stationhead ignored stale authenticated stats result");
+                  return S_OK;
+                }
+
+                const int64_t receivedAt = UnixMillis();
+                int64_t serverDateAt = static_cast<int64_t>(
+                    json::Number(message, L"server_date_ms", 0));
+                constexpr int64_t kMaximumServerClockSkewMs =
+                    24LL * 60 * 60 * 1000;
+                if (serverDateAt <= 0 ||
+                    serverDateAt < receivedAt - kMaximumServerClockSkewMs ||
+                    serverDateAt > receivedAt + kMaximumServerClockSkewMs) {
+                  serverDateAt = 0;
+                }
+                const int64_t referenceAt =
+                    serverDateAt > 0 ? serverDateAt : receivedAt;
+                constexpr int64_t kMaximumFuturePointMs =
+                    2LL * 24 * 60 * 60 * 1000;
+                constexpr int64_t kMaximumPastPointMs =
+                    60LL * 24 * 60 * 60 * 1000;
+
                 const auto data = json::Object(message, L"data");
                 const auto chart = json::Array(data, L"chart_data");
                 std::vector<StationheadDailyPlayPoint> points;
-                for (uint32_t index = 0; index < chart.Size() && points.size() < 40; ++index) {
-                  if (chart.GetAt(index).ValueType() != JsonValueType::Object) continue;
+                points.reserve(std::min<uint32_t>(chart.Size(), 45));
+                for (uint32_t index = 0;
+                     index < chart.Size() && points.size() < 45; ++index) {
+                  if (chart.GetAt(index).ValueType() !=
+                      JsonValueType::Object) {
+                    continue;
+                  }
                   const auto point = chart.GetObjectAt(index);
                   if (!point.HasKey(L"ts") || !point.HasKey(L"val")) continue;
+                  const double rawTimestamp = json::Number(point, L"ts", 0);
+                  const double rawValue = json::Number(point, L"val", -1);
+                  if (!std::isfinite(rawTimestamp) ||
+                      !std::isfinite(rawValue) || rawTimestamp <= 0 ||
+                      rawValue < 0 ||
+                      rawValue >
+                          static_cast<double>(std::numeric_limits<int>::max())) {
+                    continue;
+                  }
+                  const int64_t timestamp =
+                      static_cast<int64_t>(rawTimestamp);
+                  if (timestamp < referenceAt - kMaximumPastPointMs ||
+                      timestamp > referenceAt + kMaximumFuturePointMs) {
+                    continue;
+                  }
                   points.push_back({
-                      static_cast<int64_t>(json::Number(point, L"ts", 0)),
-                      static_cast<int>(json::Number(point, L"val", 0)),
+                      timestamp,
+                      static_cast<int>(std::round(rawValue)),
                   });
                 }
-                if (points.empty()) {
-                  log_.Warn(L"Stationhead authenticated stats response contained no valid chart points");
+                std::sort(
+                    points.begin(), points.end(),
+                    [](const StationheadDailyPlayPoint& left,
+                       const StationheadDailyPlayPoint& right) {
+                      return left.dayStartMsUtc < right.dayStartMsUtc;
+                    });
+                std::vector<StationheadDailyPlayPoint> normalized;
+                normalized.reserve(points.size());
+                for (const auto& point : points) {
+                  if (!normalized.empty() &&
+                      normalized.back().dayStartMsUtc == point.dayStartMsUtc) {
+                    normalized.back() = point;
+                  } else {
+                    normalized.push_back(point);
+                  }
+                }
+                if (normalized.empty()) {
+                  log_.Warn(
+                      L"Stationhead authenticated stats response contained no valid chart points");
                   return S_OK;
                 }
+                statsLastAcceptedRequestId_ = requestId;
                 {
                   std::lock_guard lock(mutex_);
-                  status_.dailyPlayCounts = std::move(points);
-                  status_.dailyPlayStatsUpdatedAt = UnixMillis();
-                  status_.detail = L"authenticated Stationhead API stats updated";
+                  status_.dailyPlayCounts = std::move(normalized);
+                  status_.dailyPlayStatsUpdatedAt = receivedAt;
+                  status_.dailyPlayStatsReceivedAt = receivedAt;
+                  status_.dailyPlayStatsServerDateAt = serverDateAt;
+                  status_.detail =
+                      L"authenticated Stationhead API stats updated";
                 }
                 PostChange();
                 return S_OK;
               }
               if (type == L"stationhead-play-stats-auth-failed") {
+                const uint64_t rejectedAuthGeneration =
+                    static_cast<uint64_t>(std::max(
+                        0.0, json::Number(message, L"auth_generation", 0)));
+                if (!IsSecondary() && rejectedAuthGeneration > 0 &&
+                    rejectedAuthGeneration == statsAuthGeneration_) {
+                  statsAuthGeneration_ = 0;
+                }
                 const int status = static_cast<int>(json::Number(message, L"status", 0));
                 log_.Warn(L"Stationhead authenticated stats rejected with HTTP " +
                           std::to_wstring(status) + L"; waiting for the page session to refresh");
@@ -367,6 +475,16 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               if (type == L"stationhead-auth-ready") {
+                if (!IsSecondary()) {
+                  const double rawAuthGeneration =
+                      json::Number(message, L"auth_generation", 0);
+                  if (std::isfinite(rawAuthGeneration) &&
+                      rawAuthGeneration > 0 &&
+                      rawAuthGeneration <= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
+                    statsAuthGeneration_ =
+                        static_cast<uint64_t>(rawAuthGeneration);
+                  }
+                }
                 loginRequired_ = false;
                 {
                   std::lock_guard lock(mutex_);
@@ -543,7 +661,17 @@ void StationheadPlayer::ConfigureWebView() {
   {
     std::lock_guard lock(mutex_);
     const bool spotifyConfigured = status_.spotifyConfigured;
+    const auto dailyPlayCounts = status_.dailyPlayCounts;
+    const int64_t dailyPlayStatsUpdatedAt = status_.dailyPlayStatsUpdatedAt;
+    const int64_t dailyPlayStatsServerDateAt =
+        status_.dailyPlayStatsServerDateAt;
+    const int64_t dailyPlayStatsReceivedAt =
+        status_.dailyPlayStatsReceivedAt;
     status_ = {};
+    status_.dailyPlayCounts = dailyPlayCounts;
+    status_.dailyPlayStatsUpdatedAt = dailyPlayStatsUpdatedAt;
+    status_.dailyPlayStatsServerDateAt = dailyPlayStatsServerDateAt;
+    status_.dailyPlayStatsReceivedAt = dailyPlayStatsReceivedAt;
     status_.created = true;
     status_.navigating = true;
     status_.url = CurrentStationheadUrl();

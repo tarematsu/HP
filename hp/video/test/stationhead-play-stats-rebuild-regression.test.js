@@ -39,12 +39,10 @@ function makeHeaders(values = {}) {
 async function runStats({
   response,
   reject,
-  stored = {},
   auth = 'Bearer fixture',
 } = {}) {
   const messages = [];
   const timers = [];
-  const storage = new Map(Object.entries(stored));
   const listeners = new Map();
   const window = {
     __homepanelStationheadAccountAuthHeaders: {
@@ -53,6 +51,7 @@ async function runStats({
       'app-platform': 'web',
       'app-version': '1.0.0',
     },
+    __homepanelStationheadStatsAuthGeneration: 7,
     chrome: {
       webview: {
         postMessage(message) {
@@ -68,10 +67,6 @@ async function runStats({
     addEventListener(name, callback) {
       listeners.set(name, callback);
     },
-  };
-  const localStorage = {
-    getItem(key) { return storage.get(key) ?? null; },
-    setItem(key, value) { storage.set(key, String(value)); },
   };
   class AbortControllerFixture {
     constructor() {
@@ -91,7 +86,6 @@ async function runStats({
   };
   const context = {
     window,
-    localStorage,
     fetch,
     AbortController: AbortControllerFixture,
     Date,
@@ -109,11 +103,11 @@ async function runStats({
   for (let count = 0; count < 8; count += 1) {
     await new Promise(resolve => setImmediate(resolve));
   }
-  return { messages, timers, storage, window, listeners };
+  return { messages, timers, window, listeners };
 }
 
 test('captured streakStats payload is normalized and published with request identity', async () => {
-  const { messages, timers, storage } = await runStats();
+  const { messages, timers } = await runStats();
   const result = messages.find(message => message.type === 'stationhead-play-stats');
   assert.ok(result);
   assert.equal(result.source, 'authenticated-api-normalized-v3');
@@ -126,10 +120,7 @@ test('captured streakStats payload is normalized and published with request iden
     fixture.payload.chart_data.at(-1),
   );
   assert.equal(timers.length, 0);
-  const persisted = JSON.parse(storage.get(
-    'homepanel:stationhead:play-stats:last-good:v3'));
-  assert.equal(persisted.channel_id, 318);
-  assert.deepEqual(persisted.chart_data, result.data.chart_data);
+  assert.equal(result.auth_generation, 7);
 });
 
 test('positive nested series wins over a zero placeholder and duplicate dates are reduced', async () => {
@@ -234,7 +225,6 @@ test('pagehide aborts the active request and stale request results are ignored',
   }
   const context = {
     window,
-    localStorage: { getItem() { return null; }, setItem() {} },
     fetch: () => pendingResponse,
     AbortController: AbortControllerFixture,
     Date, Math, Map, JSON, Number, String, Array, Object, Event, console,
@@ -257,16 +247,11 @@ test('pagehide aborts the active request and stale request results are ignored',
   assert.equal(window.__homepanelStationheadStatsDocumentActive, false);
 });
 
-test('the generated policy persists only normalized statistics, never credentials', () => {
-  assert.match(policy, /localStorage\.setItem\(cacheKey, JSON\.stringify/);
-  assert.match(policy, /chart_data: chartData/);
-  assert.doesNotMatch(
-    policy,
-    /localStorage\.setItem\([^)]*(authorization|cookie|sth-device-uid)/i,
-  );
-  assert.match(policy, /Date\.now\(\) - updatedAt > 15 \* 60 \* 1000/);
+test('the generated policy uses native identity and bounded timeout without persistence', () => {
+  assert.match(policy, /type: 'stationhead-stats-document'/);
+  assert.match(policy, /auth_generation: authGeneration/);
+  assert.match(policy, /requestTimeoutTimer[\s\S]*20 \* 1000/);
+  assert.match(policy, /scheduleRetry\('request-timeout'\)/);
   assert.match(policy, /window\.addEventListener\('pagehide'/);
-  assert.match(policy, /AbortController/);
-  assert.match(policy, /request_id: requestId/);
-  assert.match(policy, /document_generation: documentGeneration/);
+  assert.doesNotMatch(policy, /localStorage/);
 });

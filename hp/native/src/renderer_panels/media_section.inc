@@ -137,6 +137,24 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   const std::wstring recentText = playValueText(recentIncrease);
   const bool statsAvailable = nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
       !nativeStationhead_.dailyPlayCounts.empty();
+  int64_t statsReferenceNowMs = nowMs;
+  constexpr int64_t kMaximumStatsClockSkewMs = 24LL * 60 * 60 * 1000;
+  if (nativeStationhead_.dailyPlayStatsServerDateAt > 0 &&
+      nativeStationhead_.dailyPlayStatsReceivedAt > 0 &&
+      nowMs >= nativeStationhead_.dailyPlayStatsReceivedAt &&
+      nativeStationhead_.dailyPlayStatsServerDateAt >=
+          nativeStationhead_.dailyPlayStatsReceivedAt -
+              kMaximumStatsClockSkewMs &&
+      nativeStationhead_.dailyPlayStatsServerDateAt <=
+          nativeStationhead_.dailyPlayStatsReceivedAt +
+              kMaximumStatsClockSkewMs) {
+    const int64_t elapsed = nowMs - nativeStationhead_.dailyPlayStatsReceivedAt;
+    if (nativeStationhead_.dailyPlayStatsServerDateAt <=
+        std::numeric_limits<int64_t>::max() - elapsed) {
+      statsReferenceNowMs =
+          nativeStationhead_.dailyPlayStatsServerDateAt + elapsed;
+    }
+  }
   const bool statsStale = statsAvailable &&
       (nowMs < nativeStationhead_.dailyPlayStatsUpdatedAt ||
        nowMs - nativeStationhead_.dailyPlayStatsUpdatedAt >
@@ -154,7 +172,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   // Stationhead daily counts are keyed by UTC date. UTC midnight is 09:00 JST,
   // so the displayed "today" changes at the requested local boundary without
   // translating the source dates into another calendar.
-  const int64_t dayOrdinal = StationheadUtcDayOrdinal(nowMs);
+  const int64_t dayOrdinal = StationheadUtcDayOrdinal(statsReferenceNowMs);
   const void* pointsIdentity = nativeStationhead_.dailyPlayCounts.identity();
   if (dailyCache.owner != this || dailyCache.pointsIdentity != pointsIdentity ||
       dailyCache.statsUpdatedAt != nativeStationhead_.dailyPlayStatsUpdatedAt ||
@@ -165,7 +183,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       // header marks them as waiting for refresh instead of silently reverting
       // to zero or presenting old data as current.
       playSummary = SummarizeStationheadDailyPlays(
-          nativeStationhead_.dailyPlayCounts, nowMs);
+          nativeStationhead_.dailyPlayCounts, statsReferenceNowMs);
     }
     dailyCache.owner = this;
     dailyCache.pointsIdentity = pointsIdentity;

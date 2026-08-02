@@ -18,45 +18,25 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
 
   const NativeURL = window.URL;
   const nativeTimeout = window.setTimeout.bind(window);
+  const documentGeneration = (() => {
+    const current = Number(
+      window.__homepanelStationheadStatsDocumentGeneration || 0);
+    if (current > 0) return current;
+    const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    window.__homepanelStationheadStatsDocumentGeneration = generated;
+    return generated;
+  })();
+  try {
+    window.chrome?.webview?.postMessage({
+      type: 'stationhead-stats-document',
+      document_generation: documentGeneration,
+    });
+  } catch (_) {}
   let nextAuthorizationGeneration = 0;
   let acceptedAuthorizationGeneration = 0;
   const authorizationGenerations = new Map();
   let latestValidatedHeaders = null;
-
-  // A controller recreation resets native StationheadStatus. Republish only a
-  // recent, already-normalized last-good value from the persistent WebView2
-  // profile. The cache contains no authorization, cookie, account, or device ID.
-  const publishRecentCachedStats = () => {
-    try {
-      const raw = localStorage.getItem(
-        'homepanel:stationhead:play-stats:last-good:v3');
-      if (!raw) return;
-      const cached = JSON.parse(raw);
-      const updatedAt = Number(cached?.updated_at || 0);
-      const channelId = Number(cached?.channel_id || 0);
-      const chartData = Array.isArray(cached?.chart_data)
-        ? cached.chart_data : [];
-      if (!Number.isFinite(updatedAt) || updatedAt <= 0 ||
-          Date.now() - updatedAt > 15 * 60 * 1000 ||
-          !Number.isInteger(channelId) || channelId <= 0 ||
-          chartData.length === 0 || chartData.length > 45) {
-        return;
-      }
-      if (window.__homepanelStationheadCachedStatsPublishedAt === updatedAt) {
-        return;
-      }
-      window.__homepanelStationheadCachedStatsPublishedAt = updatedAt;
-      window.chrome?.webview?.postMessage({
-        type: 'stationhead-play-stats',
-        data: { chart_data: chartData },
-        source: 'authenticated-api-persistent-cache',
-        cached_at: updatedAt,
-        server_date_ms: Number(cached?.server_date_ms || 0),
-        timezone: String(cached?.timezone || ''),
-      });
-    } catch (_) {}
-  };
-  publishRecentCachedStats();
+  let latestValidatedGeneration = 0;
 
   const requestInfo = value => {
     try {
@@ -107,17 +87,25 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     if (sameAuthorization(candidate, authorization)) window[name] = null;
   };
 
-  const publishReadyIfChanged = previousAuthorization => {
+  const publishReadyIfChanged = (
+      previousAuthorization, previousGeneration) => {
     const currentAuthorization =
       window.__homepanelStationheadAuthHeaders?.authorization || '';
-    if (!currentAuthorization || currentAuthorization === previousAuthorization) {
+    const currentGeneration = Number(
+      window.__homepanelStationheadStatsAuthGeneration || 0);
+    if (!currentAuthorization ||
+        (currentAuthorization === previousAuthorization &&
+         currentGeneration === previousGeneration)) {
       return;
     }
     try {
       window.dispatchEvent(new Event('homepanel-stationhead-auth-ready'));
     } catch (_) {}
     try {
-      window.chrome?.webview?.postMessage({ type: 'stationhead-auth-ready' });
+      window.chrome?.webview?.postMessage({
+        type: 'stationhead-auth-ready',
+        auth_generation: currentGeneration,
+      });
     } catch (_) {}
   };
 
@@ -126,11 +114,15 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     const current = window.__homepanelStationheadAuthHeaders;
     if (!sameAuthorization(current, observation.authorization)) return;
     const previousAuthorization = current?.authorization || '';
+    const previousGeneration = Number(
+      window.__homepanelStationheadStatsAuthGeneration || 0);
     window.__homepanelStationheadAuthHeaders =
       Object.assign({}, latestValidatedHeaders);
     window.__homepanelStationheadLastAcceptedAuthHeaders =
       Object.assign({}, latestValidatedHeaders);
-    publishReadyIfChanged(previousAuthorization);
+    window.__homepanelStationheadStatsAuthGeneration =
+      latestValidatedGeneration;
+    publishReadyIfChanged(previousAuthorization, previousGeneration);
   };
 
   const rejectGlobally = observation => {
@@ -142,7 +134,11 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     clearMatching('__homepanelStationheadLatestValidatedAuthHeaders', authorization);
     if (latestValidatedHeaders?.authorization === authorization) {
       latestValidatedHeaders = null;
+      latestValidatedGeneration = 0;
     }
+    window.__homepanelStationheadStatsAuthGeneration = 0;
+    try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
+    window.__homepanelStationheadPlayStatsInFlight = false;
     window.__homepanelStationheadRejectedAuthorization = authorization;
     window.__homepanelStationheadStatsRejectedAuthorization = authorization;
     window.__homepanelStationheadStatsRejectedAt = Date.now();
@@ -165,9 +161,12 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     }
     const previousAuthorization =
       window.__homepanelStationheadAuthHeaders?.authorization || '';
+    const previousGeneration = Number(
+      window.__homepanelStationheadStatsAuthGeneration || 0);
     acceptedAuthorizationGeneration = Math.max(
       acceptedAuthorizationGeneration, observation.generation);
     latestValidatedHeaders = Object.assign({}, observation.headers);
+    latestValidatedGeneration = observation.generation;
     window.__homepanelStationheadRejectedAuthorization = null;
     if (window.__homepanelStationheadStatsRejectedAuthorization ===
         observation.authorization) {
@@ -184,7 +183,13 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       window.__homepanelStationheadAccountAuthHeaders =
         Object.assign({}, observation.headers);
     }
-    publishReadyIfChanged(previousAuthorization);
+    window.__homepanelStationheadStatsAuthGeneration = observation.generation;
+    if (previousAuthorization &&
+        previousAuthorization !== observation.authorization) {
+      try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
+      window.__homepanelStationheadPlayStatsInFlight = false;
+    }
+    publishReadyIfChanged(previousAuthorization, previousGeneration);
   };
 
   const settle = (observation, statusValue) => {
@@ -264,7 +269,6 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const nativeTimeout = window.setTimeout.bind(window);
   const nativeClearTimeout = window.clearTimeout.bind(window);
   const channelId = )JS" << channelId << LR"JS(;
-  const cacheKey = 'homepanel:stationhead:play-stats:last-good:v3';
   const documentGeneration = (() => {
     const current = Number(
       window.__homepanelStationheadStatsDocumentGeneration || 0);
@@ -307,6 +311,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       status,
       request_id: requestId,
       document_generation: documentGeneration,
+      auth_generation: Number(
+        window.__homepanelStationheadStatsAuthGeneration || 0),
     });
     if (window.__homepanelStationheadPlayStatsRetryTimer) return;
     window.__homepanelStationheadPlayStatsRetryTimer = nativeTimeout(() => {
@@ -348,6 +354,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     scheduleRetry('no-auth-header');
     return false;
   }
+  const authGeneration = Number(
+    window.__homepanelStationheadStatsAuthGeneration || 0);
 
   const lastSuccessAt = Number(
     window.__homepanelStationheadPlayStatsSuccessAt || 0);
@@ -365,6 +373,15 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const abortController = typeof AbortController === 'function'
     ? new AbortController() : null;
   window.__homepanelStationheadPlayStatsAbort = abortController;
+  const requestTimeoutTimer = abortController
+    ? nativeTimeout(() => {
+        if (window.__homepanelStationheadPlayStatsLatestRequestId ===
+            requestId) {
+          window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
+          abortController.abort();
+        }
+      }, 20 * 1000)
+    : 0;
 
   const clearMatching = name => {
     if (window[name]?.authorization === headers.authorization) window[name] = null;
@@ -386,6 +403,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       status,
       request_id: requestId,
       document_generation: documentGeneration,
+      auth_generation: authGeneration,
     });
   };
 
@@ -481,7 +499,9 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadStatsDocumentActive === true &&
     window.__homepanelStationheadStatsDocumentGeneration ===
       documentGeneration &&
-    window.__homepanelStationheadPlayStatsLatestRequestId === requestId;
+    window.__homepanelStationheadPlayStatsLatestRequestId === requestId &&
+    Number(window.__homepanelStationheadStatsAuthGeneration || 0) ===
+      authGeneration;
 
   const url = 'https://production1.stationhead.com/me/channel/' +
     channelId + '/streakStats';
@@ -524,30 +544,30 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadAccountAuthHeaders = Object.assign({}, headers);
     window.__homepanelStationheadPlayStatsSuccessAt = updatedAt;
     window.__homepanelStationheadPlayStatsAuthorization = headers.authorization;
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify({
-        schema_version: 3,
-        channel_id: channelId,
-        updated_at: updatedAt,
-        server_date_ms: result.serverDateMs,
-        timezone,
-        chart_data: chartData,
-      }));
-    } catch (_) {}
     post({
       type: 'stationhead-play-stats',
       data: { chart_data: chartData },
       source: 'authenticated-api-normalized-v3',
       request_id: requestId,
       document_generation: documentGeneration,
+      auth_generation: authGeneration,
       server_date_ms: result.serverDateMs,
       timezone,
     });
   }).catch(error => {
     if (!stillCurrent()) return;
-    if (error?.name === 'AbortError') return;
+    if (error?.name === 'AbortError') {
+      if (window.__homepanelStationheadPlayStatsTimedOutRequestId === requestId) {
+        scheduleRetry('request-timeout');
+      }
+      return;
+    }
     scheduleRetry('network-or-json');
   }).finally(() => {
+    if (requestTimeoutTimer) nativeClearTimeout(requestTimeoutTimer);
+    if (window.__homepanelStationheadPlayStatsTimedOutRequestId === requestId) {
+      window.__homepanelStationheadPlayStatsTimedOutRequestId = 0;
+    }
     if (window.__homepanelStationheadPlayStatsLatestRequestId === requestId) {
       window.__homepanelStationheadPlayStatsInFlight = false;
       if (window.__homepanelStationheadPlayStatsAbort === abortController) {
