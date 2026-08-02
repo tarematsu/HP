@@ -12,6 +12,7 @@ const authPolicyUrl = new URL(
   '../../native/src/sh_auth_navigation_policy_fix.h', import.meta.url);
 const trackBoundaryUrl = new URL(
   '../../native/src/sh_track_boundary_script.h', import.meta.url);
+const playerSourceUrl = new URL('../../native/src/sh.cpp', import.meta.url);
 const cmakeUrl = new URL('../../native/CMakeLists.txt', import.meta.url);
 const rendererUrl = new URL(
   '../../native/src/renderer_panel_state.cpp', import.meta.url);
@@ -23,6 +24,7 @@ const nativeStats = readFileSync(nativeStatsSourceUrl, 'utf8');
 const playbackPolicy = readFileSync(playbackPolicyUrl, 'utf8');
 const authPolicy = readFileSync(authPolicyUrl, 'utf8');
 const trackBoundary = readFileSync(trackBoundaryUrl, 'utf8');
+const playerSource = readFileSync(playerSourceUrl, 'utf8');
 const cmake = readFileSync(cmakeUrl, 'utf8');
 const renderer = readFileSync(rendererUrl, 'utf8');
 const panel = readFileSync(panelUrl, 'utf8');
@@ -36,7 +38,7 @@ const removedPolicies = [
   'stationhead_native_stats_policy.h',
 ];
 
-test('all generated or post-processing play-count policy layers are removed', () => {
+test('all stacked generated play-count policy files are removed', () => {
   for (const file of removedPolicies) {
     assert.equal(
       existsSync(new URL(`../../native/src/${file}`, import.meta.url)),
@@ -62,6 +64,21 @@ test('a normal C++ source is built and explicitly attached by WebView setup', ()
     /AttachStationheadNativeStats\(webview, config\.channelId\)/,
   );
   assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
+});
+
+test('the legacy page-generated statistics scheduler is compile-time disabled', () => {
+  assert.match(
+    nativeStatsHeader,
+    /kStationheadLegacyStatsPollDisabledIntervalMs =\s*INT64_MAX \/ 2/,
+  );
+  assert.match(
+    playbackPolicy,
+    /#define kStationheadDailyPlayStatsIntervalMs\s*\\\s*::hp::kStationheadLegacyStatsPollDisabledIntervalMs/,
+  );
+  assert.match(
+    playerSource,
+    /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs/,
+  );
 });
 
 test('WebView2 captures authentication and successful responses natively', () => {
