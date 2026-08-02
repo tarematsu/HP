@@ -165,13 +165,10 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
 
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
       IsWindowVisible(nativeMainWindow_)) {
-    if (nativeStatsChanged) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
-    }
     const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
     const bool playbackChanged = playbackState != nativePlaybackTickState_;
     nativePlaybackTickState_ = playbackState;
-    if (playbackChanged) {
+    if (nativeStatsChanged || playbackChanged) {
       InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
     } else if (playbackState.active) {
       InvalidatePanelSection(nativeMainWindow_, PanelSection::PlaybackProgress);
