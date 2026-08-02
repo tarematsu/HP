@@ -33,6 +33,9 @@ test('native reducer checks document, auth, and request order', () => {
   assert.match(webview, /authGeneration != statsAuthGeneration_/);
   assert.match(webview, /requestId <= statsLastAcceptedRequestId_/);
   assert.match(webview, /ignored stale authenticated stats result/);
+  assert.match(webview, /statsAuthGeneration_ == 0/);
+  assert.match(webview, /kMaximumSafeJsonInteger = 9007199254740991\.0/);
+  assert.match(webview, /std::trunc\(value\) != value/);
 });
 
 test('native reducer normalizes chart data independently', () => {
@@ -41,6 +44,8 @@ test('native reducer normalizes chart data independently', () => {
   assert.match(webview, /std::numeric_limits<int>::max/);
   assert.match(webview, /std::sort\(/);
   assert.match(webview, /normalized\.back\(\)\.dayStartMsUtc/);
+  assert.match(webview, /timestamp % kDayMilliseconds/);
+  assert.match(webview, /normalized\.size\(\) > 45/);
 });
 
 test('controller recreation preserves the native last-good snapshot', () => {

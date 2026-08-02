@@ -30,7 +30,7 @@ const stats = section(
   '\n}  // namespace hp',
 );
 
-test('stats session guard is the final auth/stats policy before interactive memory', () => {
+test('stats session guard is final after the July 26 baseline', () => {
   const validationAt = navigationPolicy.indexOf(
     '#include "sh_auth_capture_validation_policy_fix.h"',
   );
@@ -40,15 +40,18 @@ test('stats session guard is the final auth/stats policy before interactive memo
   const fallbackAt = navigationPolicy.indexOf(
     '#include "sh_stats_auth_fallback_policy_fix.h"',
   );
-  const sessionAt = navigationPolicy.indexOf(
-    '#include "sh_stats_session_policy_fix.h"',
-  );
   const memoryAt = navigationPolicy.indexOf(
     '#include "sh_auth_interactive_memory_policy_fix.h"',
   );
+  const baselineAt = navigationPolicy.indexOf(
+    '#include "sh_stats_july26_baseline_policy_fix.h"',
+  );
+  const sessionAt = navigationPolicy.indexOf(
+    '#include "sh_stats_session_policy_fix.h"',
+  );
   assert.ok(validationAt >= 0 && validationAt < rotationAt);
-  assert.ok(rotationAt < fallbackAt && fallbackAt < sessionAt);
-  assert.ok(sessionAt < memoryAt);
+  assert.ok(rotationAt < fallbackAt && fallbackAt < memoryAt);
+  assert.ok(memoryAt < baselineAt && baselineAt < sessionAt);
   assert.match(
     policy,
     /#undef StationheadAuthCaptureScript[\s\S]*#define StationheadAuthCaptureScript[\s\\]+StationheadAuthCaptureScriptStatsSessionSafe/,
@@ -124,6 +127,9 @@ test('stats request prefers account auth and excludes rejected candidates during
   assert.match(stats, /now - statsRejectedAt < 30 \* 1000/);
   assert.match(stats, /BlockingLoginVisible === true/);
   assert.match(stats, /Number\.isSafeInteger\(authGeneration\)/);
+  assert.match(stats, /const usableCandidates = candidates\.filter/);
+  assert.match(stats, /const newestGeneration = usableCandidates\.reduce/);
+  assert.match(stats, /const selected = usableCandidates\.find/);
 });
 
 test('401 and 403 invalidate the account stats context and publish request identity', () => {

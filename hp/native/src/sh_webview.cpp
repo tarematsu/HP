@@ -333,16 +333,21 @@ void StationheadPlayer::ConfigureWebView() {
             try {
               const auto message = winrt::Windows::Data::Json::JsonObject::Parse(messageJson);
               const std::wstring type = message.GetNamedString(L"type", L"").c_str();
+              const auto positiveSafeInteger = [](double value) noexcept -> uint64_t {
+                constexpr double kMaximumSafeJsonInteger = 9007199254740991.0;
+                if (!std::isfinite(value) || value <= 0 ||
+                    value > kMaximumSafeJsonInteger ||
+                    std::trunc(value) != value) {
+                  return 0;
+                }
+                return static_cast<uint64_t>(value);
+              };
               if (type == L"stationhead-stats-document") {
                 if (IsSecondary()) return S_OK;
-                const double rawGeneration =
-                    json::Number(message, L"document_generation", 0);
-                if (!std::isfinite(rawGeneration) || rawGeneration <= 0 ||
-                    rawGeneration > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
-                  return S_OK;
-                }
-                statsDocumentGeneration_ =
-                    static_cast<uint64_t>(rawGeneration);
+                const uint64_t documentGeneration = positiveSafeInteger(
+                    json::Number(message, L"document_generation", 0));
+                if (documentGeneration == 0) return S_OK;
+                statsDocumentGeneration_ = documentGeneration;
                 statsAuthGeneration_ = 0;
                 statsLastAcceptedRequestId_ = 0;
                 return S_OK;
@@ -350,23 +355,16 @@ void StationheadPlayer::ConfigureWebView() {
               if (type == L"stationhead-play-stats") {
                 if (IsSecondary()) return S_OK;
                 using winrt::Windows::Data::Json::JsonValueType;
-                const auto unsignedField = [&message](const wchar_t* name) {
-                  const double value = json::Number(message, name, 0);
-                  if (!std::isfinite(value) || value <= 0 ||
-                      value > static_cast<double>(std::numeric_limits<uint64_t>::max())) {
-                    return uint64_t{0};
-                  }
-                  return static_cast<uint64_t>(value);
-                };
-                const uint64_t requestId = unsignedField(L"request_id");
-                const uint64_t documentGeneration =
-                    unsignedField(L"document_generation");
-                const uint64_t authGeneration =
-                    unsignedField(L"auth_generation");
+                const uint64_t requestId = positiveSafeInteger(
+                    json::Number(message, L"request_id", 0));
+                const uint64_t documentGeneration = positiveSafeInteger(
+                    json::Number(message, L"document_generation", 0));
+                const uint64_t authGeneration = positiveSafeInteger(
+                    json::Number(message, L"auth_generation", 0));
                 if (requestId == 0 || documentGeneration == 0 ||
                     documentGeneration != statsDocumentGeneration_ ||
-                    (statsAuthGeneration_ > 0 &&
-                     authGeneration != statsAuthGeneration_) ||
+                    statsAuthGeneration_ == 0 ||
+                    authGeneration != statsAuthGeneration_ ||
                     requestId <= statsLastAcceptedRequestId_) {
                   log_.Info(
                       L"Stationhead ignored stale authenticated stats result");
@@ -374,8 +372,10 @@ void StationheadPlayer::ConfigureWebView() {
                 }
 
                 const int64_t receivedAt = UnixMillis();
-                int64_t serverDateAt = static_cast<int64_t>(
+                const uint64_t serverDateValue = positiveSafeInteger(
                     json::Number(message, L"server_date_ms", 0));
+                int64_t serverDateAt =
+                    static_cast<int64_t>(serverDateValue);
                 constexpr int64_t kMaximumServerClockSkewMs =
                     24LL * 60 * 60 * 1000;
                 if (serverDateAt <= 0 ||
@@ -389,23 +389,28 @@ void StationheadPlayer::ConfigureWebView() {
                     2LL * 24 * 60 * 60 * 1000;
                 constexpr int64_t kMaximumPastPointMs =
                     60LL * 24 * 60 * 60 * 1000;
+                constexpr int64_t kDayMilliseconds =
+                    24LL * 60 * 60 * 1000;
+                constexpr uint32_t kMaximumInputChartPoints = 256;
 
                 const auto data = json::Object(message, L"data");
                 const auto chart = json::Array(data, L"chart_data");
                 std::vector<StationheadDailyPlayPoint> points;
-                points.reserve(std::min<uint32_t>(chart.Size(), 45));
+                points.reserve(std::min<uint32_t>(
+                    chart.Size(), kMaximumInputChartPoints));
                 for (uint32_t index = 0;
-                     index < chart.Size() && points.size() < 45; ++index) {
+                     index < chart.Size() &&
+                     index < kMaximumInputChartPoints; ++index) {
                   if (chart.GetAt(index).ValueType() !=
                       JsonValueType::Object) {
                     continue;
                   }
                   const auto point = chart.GetObjectAt(index);
                   if (!point.HasKey(L"ts") || !point.HasKey(L"val")) continue;
-                  const double rawTimestamp = json::Number(point, L"ts", 0);
+                  const uint64_t rawTimestamp = positiveSafeInteger(
+                      json::Number(point, L"ts", 0));
                   const double rawValue = json::Number(point, L"val", -1);
-                  if (!std::isfinite(rawTimestamp) ||
-                      !std::isfinite(rawValue) || rawTimestamp <= 0 ||
+                  if (rawTimestamp == 0 || !std::isfinite(rawValue) ||
                       rawValue < 0 ||
                       rawValue >
                           static_cast<double>(std::numeric_limits<int>::max())) {
@@ -417,8 +422,10 @@ void StationheadPlayer::ConfigureWebView() {
                       timestamp > referenceAt + kMaximumFuturePointMs) {
                     continue;
                   }
+                  const int64_t dayStart =
+                      timestamp - timestamp % kDayMilliseconds;
                   points.push_back({
-                      timestamp,
+                      dayStart,
                       static_cast<int>(std::round(rawValue)),
                   });
                 }
@@ -437,6 +444,9 @@ void StationheadPlayer::ConfigureWebView() {
                   } else {
                     normalized.push_back(point);
                   }
+                }
+                if (normalized.size() > 45) {
+                  normalized.erase(normalized.begin(), normalized.end() - 45);
                 }
                 if (normalized.empty()) {
                   log_.Warn(
@@ -457,9 +467,8 @@ void StationheadPlayer::ConfigureWebView() {
                 return S_OK;
               }
               if (type == L"stationhead-play-stats-auth-failed") {
-                const uint64_t rejectedAuthGeneration =
-                    static_cast<uint64_t>(std::max(
-                        0.0, json::Number(message, L"auth_generation", 0)));
+                const uint64_t rejectedAuthGeneration = positiveSafeInteger(
+                    json::Number(message, L"auth_generation", 0));
                 if (!IsSecondary() && rejectedAuthGeneration > 0 &&
                     rejectedAuthGeneration == statsAuthGeneration_) {
                   statsAuthGeneration_ = 0;
@@ -476,13 +485,10 @@ void StationheadPlayer::ConfigureWebView() {
               }
               if (type == L"stationhead-auth-ready") {
                 if (!IsSecondary()) {
-                  const double rawAuthGeneration =
-                      json::Number(message, L"auth_generation", 0);
-                  if (std::isfinite(rawAuthGeneration) &&
-                      rawAuthGeneration > 0 &&
-                      rawAuthGeneration <= static_cast<double>(std::numeric_limits<uint64_t>::max())) {
-                    statsAuthGeneration_ =
-                        static_cast<uint64_t>(rawAuthGeneration);
+                  const uint64_t authGeneration = positiveSafeInteger(
+                      json::Number(message, L"auth_generation", 0));
+                  if (authGeneration > 0) {
+                    statsAuthGeneration_ = authGeneration;
                   }
                 }
                 loginRequired_ = false;

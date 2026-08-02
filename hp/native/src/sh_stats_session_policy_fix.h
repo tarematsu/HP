@@ -21,7 +21,7 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   const documentGeneration = (() => {
     const current = Number(
       window.__homepanelStationheadStatsDocumentGeneration || 0);
-    if (current > 0) return current;
+    if (Number.isSafeInteger(current) && current > 0) return current;
     const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     window.__homepanelStationheadStatsDocumentGeneration = generated;
     return generated;
@@ -32,6 +32,7 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       document_generation: documentGeneration,
     });
   } catch (_) {}
+
   let nextAuthorizationGeneration = 0;
   let acceptedAuthorizationGeneration = 0;
   const authorizationGenerations = new Map();
@@ -81,11 +82,13 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
 
   const sameAuthorization = (candidate, authorization) =>
     candidate?.authorization && candidate.authorization === authorization;
-
-  const clearMatching = (name, authorization) => {
+  const clearMatching = (name, authorization, generationName = '') => {
     const candidate = window[name];
-    if (sameAuthorization(candidate, authorization)) window[name] = null;
+    if (!sameAuthorization(candidate, authorization)) return;
+    window[name] = null;
+    if (generationName) window[generationName] = 0;
   };
+  const cloneHeaders = headers => Object.assign({}, headers);
 
   const publishReadyIfChanged = (
       previousAuthorization, previousGeneration) => {
@@ -116,11 +119,15 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     const previousAuthorization = current?.authorization || '';
     const previousGeneration = Number(
       window.__homepanelStationheadStatsAuthGeneration || 0);
-    window.__homepanelStationheadAuthHeaders =
-      Object.assign({}, latestValidatedHeaders);
+    window.__homepanelStationheadAuthHeaders = cloneHeaders(latestValidatedHeaders);
     window.__homepanelStationheadLastAcceptedAuthHeaders =
-      Object.assign({}, latestValidatedHeaders);
-    window.__homepanelStationheadStatsAuthGeneration =
+      cloneHeaders(latestValidatedHeaders);
+    window.__homepanelStationheadLatestValidatedAuthHeaders =
+      cloneHeaders(latestValidatedHeaders);
+    window.__homepanelStationheadStatsAuthGeneration = latestValidatedGeneration;
+    window.__homepanelStationheadLastAcceptedAuthGeneration =
+      latestValidatedGeneration;
+    window.__homepanelStationheadLatestValidatedAuthGeneration =
       latestValidatedGeneration;
     publishReadyIfChanged(previousAuthorization, previousGeneration);
   };
@@ -129,9 +136,15 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     const authorization = observation?.authorization || '';
     if (!authorization) return;
     clearMatching('__homepanelStationheadAuthHeaders', authorization);
-    clearMatching('__homepanelStationheadLastAcceptedAuthHeaders', authorization);
-    clearMatching('__homepanelStationheadAccountAuthHeaders', authorization);
-    clearMatching('__homepanelStationheadLatestValidatedAuthHeaders', authorization);
+    clearMatching(
+      '__homepanelStationheadLastAcceptedAuthHeaders', authorization,
+      '__homepanelStationheadLastAcceptedAuthGeneration');
+    clearMatching(
+      '__homepanelStationheadAccountAuthHeaders', authorization,
+      '__homepanelStationheadAccountAuthGeneration');
+    clearMatching(
+      '__homepanelStationheadLatestValidatedAuthHeaders', authorization,
+      '__homepanelStationheadLatestValidatedAuthGeneration');
     if (latestValidatedHeaders?.authorization === authorization) {
       latestValidatedHeaders = null;
       latestValidatedGeneration = 0;
@@ -147,7 +160,9 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
   const rejectForStats = observation => {
     const authorization = observation?.authorization || '';
     if (!authorization) return;
-    clearMatching('__homepanelStationheadAccountAuthHeaders', authorization);
+    clearMatching(
+      '__homepanelStationheadAccountAuthHeaders', authorization,
+      '__homepanelStationheadAccountAuthGeneration');
     window.__homepanelStationheadStatsRejectedAuthorization = authorization;
     window.__homepanelStationheadStatsRejectedAt = Date.now();
     restoreLatest(observation);
@@ -165,7 +180,7 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       window.__homepanelStationheadStatsAuthGeneration || 0);
     acceptedAuthorizationGeneration = Math.max(
       acceptedAuthorizationGeneration, observation.generation);
-    latestValidatedHeaders = Object.assign({}, observation.headers);
+    latestValidatedHeaders = cloneHeaders(observation.headers);
     latestValidatedGeneration = observation.generation;
     window.__homepanelStationheadRejectedAuthorization = null;
     if (window.__homepanelStationheadStatsRejectedAuthorization ===
@@ -173,17 +188,22 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
       window.__homepanelStationheadStatsRejectedAuthorization = null;
       window.__homepanelStationheadStatsRejectedAt = 0;
     }
-    window.__homepanelStationheadAuthHeaders =
-      Object.assign({}, observation.headers);
+    window.__homepanelStationheadAuthHeaders = cloneHeaders(observation.headers);
     window.__homepanelStationheadLastAcceptedAuthHeaders =
-      Object.assign({}, observation.headers);
+      cloneHeaders(observation.headers);
     window.__homepanelStationheadLatestValidatedAuthHeaders =
-      Object.assign({}, observation.headers);
+      cloneHeaders(observation.headers);
+    window.__homepanelStationheadStatsAuthGeneration = observation.generation;
+    window.__homepanelStationheadLastAcceptedAuthGeneration =
+      observation.generation;
+    window.__homepanelStationheadLatestValidatedAuthGeneration =
+      observation.generation;
     if (observation.accountScoped) {
       window.__homepanelStationheadAccountAuthHeaders =
-        Object.assign({}, observation.headers);
+        cloneHeaders(observation.headers);
+      window.__homepanelStationheadAccountAuthGeneration =
+        observation.generation;
     }
-    window.__homepanelStationheadStatsAuthGeneration = observation.generation;
     if (previousAuthorization &&
         previousAuthorization !== observation.authorization) {
       try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
@@ -272,7 +292,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const documentGeneration = (() => {
     const current = Number(
       window.__homepanelStationheadStatsDocumentGeneration || 0);
-    if (current > 0) return current;
+    if (Number.isSafeInteger(current) && current > 0) return current;
     const generated = Date.now() * 1000 + Math.floor(Math.random() * 1000);
     window.__homepanelStationheadStatsDocumentGeneration = generated;
     return generated;
@@ -348,18 +368,50 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
 
   const accountHeaders = window.__homepanelStationheadAccountAuthHeaders;
   const currentHeaders = window.__homepanelStationheadAuthHeaders;
-  const acceptedHeaders = window.__homepanelStationheadLastAcceptedAuthHeaders;
   const latestHeaders = window.__homepanelStationheadLatestValidatedAuthHeaders;
-  const headers = usable(accountHeaders) ? accountHeaders :
-    (usable(currentHeaders) ? currentHeaders :
-      (usable(latestHeaders) ? latestHeaders :
-        (usable(acceptedHeaders) ? acceptedHeaders : null)));
+  const acceptedHeaders = window.__homepanelStationheadLastAcceptedAuthHeaders;
+  const candidates = [
+    {
+      headers: accountHeaders,
+      generation: Number(
+        window.__homepanelStationheadAccountAuthGeneration ||
+          window.__homepanelStationheadStatsAuthGeneration || 0),
+    },
+    {
+      headers: currentHeaders,
+      generation: Number(
+        window.__homepanelStationheadStatsAuthGeneration || 0),
+    },
+    {
+      headers: latestHeaders,
+      generation: Number(
+        window.__homepanelStationheadLatestValidatedAuthGeneration ||
+          window.__homepanelStationheadStatsAuthGeneration || 0),
+    },
+    {
+      headers: acceptedHeaders,
+      generation: Number(
+        window.__homepanelStationheadLastAcceptedAuthGeneration ||
+          window.__homepanelStationheadStatsAuthGeneration || 0),
+    },
+  ];
+  const currentGeneration = Number(
+    window.__homepanelStationheadStatsAuthGeneration || 0);
+  const usableCandidates = candidates.filter(candidate =>
+    usable(candidate.headers) &&
+    Number.isSafeInteger(candidate.generation) && candidate.generation > 0 &&
+    (!Number.isSafeInteger(currentGeneration) || currentGeneration <= 0 ||
+      candidate.generation >= currentGeneration));
+  const newestGeneration = usableCandidates.reduce(
+    (latest, candidate) => Math.max(latest, candidate.generation), 0);
+  const selected = usableCandidates.find(candidate =>
+    candidate.generation === newestGeneration) || null;
+  const headers = selected?.headers || null;
+  const authGeneration = Number(selected?.generation || 0);
   if (!headers?.authorization) {
     scheduleRetry('no-auth-header');
     return false;
   }
-  const authGeneration = Number(
-    window.__homepanelStationheadStatsAuthGeneration || 0);
   if (!Number.isSafeInteger(authGeneration) || authGeneration <= 0) {
     scheduleRetry('no-validated-auth');
     return false;
@@ -384,8 +436,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   window.__homepanelStationheadPlayStatsAbort = abortController;
   const requestTimeoutTimer = abortController
     ? nativeTimeout(() => {
-        if (window.__homepanelStationheadPlayStatsLatestRequestId ===
-            requestId) {
+        if (window.__homepanelStationheadPlayStatsLatestRequestId === requestId) {
           window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
           abortController.abort();
         }
@@ -401,9 +452,12 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       clearMatching('__homepanelStationheadAuthHeaders');
       clearMatching('__homepanelStationheadLastAcceptedAuthHeaders');
       clearMatching('__homepanelStationheadLatestValidatedAuthHeaders');
+      window.__homepanelStationheadLastAcceptedAuthGeneration = 0;
+      window.__homepanelStationheadLatestValidatedAuthGeneration = 0;
       window.__homepanelStationheadRejectedAuthorization = headers.authorization;
     }
     clearMatching('__homepanelStationheadAccountAuthHeaders');
+    window.__homepanelStationheadAccountAuthGeneration = 0;
     window.__homepanelStationheadStatsRejectedAuthorization =
       headers.authorization;
     window.__homepanelStationheadStatsRejectedAt = Date.now();
@@ -481,9 +535,9 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     }
     return candidates;
   };
-  const normalizedChart = payload => {
-    const maximumFuture = Date.now() + 2 * 24 * 60 * 60 * 1000;
-    const minimumPast = Date.now() - 60 * 24 * 60 * 60 * 1000;
+  const normalizedChart = (payload, referenceTime) => {
+    const maximumFuture = referenceTime + 2 * 24 * 60 * 60 * 1000;
+    const minimumPast = referenceTime - 60 * 24 * 60 * 60 * 1000;
     const charts = chartCandidates(payload)
       .map(candidate => candidate.map(normalizePoint).filter(point =>
         point && point.ts >= minimumPast && point.ts <= maximumFuture))
@@ -512,6 +566,13 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     Number(window.__homepanelStationheadStatsAuthGeneration || 0) ===
       authGeneration;
 
+  const requestHeaders = {
+    accept: 'application/json',
+    authorization: headers.authorization,
+    'sth-device-uid': headers['sth-device-uid'] || '',
+    'app-platform': headers['app-platform'] || 'web',
+    'app-version': headers['app-version'] || '1.0.0',
+  };
   const url = 'https://production1.stationhead.com/me/channel/' +
     channelId + '/streakStats';
   fetch(url, {
@@ -519,7 +580,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     credentials: 'include',
     cache: 'no-store',
     signal: abortController?.signal,
-    headers: Object.assign({ accept: 'application/json' }, headers),
+    headers: requestHeaders,
   }).then(async response => {
     if (!stillCurrent()) return null;
     if (response.status === 401 || response.status === 403) {
@@ -538,7 +599,9 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     };
   }).then(result => {
     if (!result || !stillCurrent()) return;
-    const chartData = normalizedChart(result.data);
+    const referenceTime = result.serverDateMs > 0
+      ? result.serverDateMs : Date.now();
+    const chartData = normalizedChart(result.data, referenceTime);
     if (!chartData.length) {
       scheduleRetry('invalid-payload');
       return;
@@ -551,6 +614,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadStatsRejectedAuthorization = null;
     window.__homepanelStationheadStatsRejectedAt = 0;
     window.__homepanelStationheadAccountAuthHeaders = Object.assign({}, headers);
+    window.__homepanelStationheadAccountAuthGeneration = authGeneration;
     window.__homepanelStationheadPlayStatsSuccessAt = updatedAt;
     window.__homepanelStationheadPlayStatsAuthorization = headers.authorization;
     post({

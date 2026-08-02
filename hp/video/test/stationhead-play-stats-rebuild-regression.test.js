@@ -133,7 +133,7 @@ test('positive nested series wins over a zero placeholder and duplicate dates ar
     response: {
       status: 200,
       ok: true,
-      headers: makeHeaders({ date: fixture.source.serverDate }),
+      headers: makeHeaders({ date: new Date().toUTCString() }),
       async json() {
         return {
           chart_data: [{ ts: seconds, val: 0 }],
