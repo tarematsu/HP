@@ -211,7 +211,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
         }
       }, 20 * 1000)
     : 0;
-
+)JS";
+  script << LR"JS(
   const numberValue = value => {
     if (typeof value === 'number') return Number.isFinite(value) ? value : null;
     if (typeof value !== 'string') return null;
@@ -296,7 +297,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     window.__homepanelStationheadStatsDocumentGeneration ===
       documentGeneration &&
     window.__homepanelStationheadPlayStatsLatestRequestId === requestId;
-
+)JS";
+  script << LR"JS(
   const requestHeaders = {
     accept: 'application/json',
     authorization: headers.authorization,
