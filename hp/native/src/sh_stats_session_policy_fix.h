@@ -280,7 +280,6 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const requestId = Number(
     window.__homepanelStationheadPlayStatsNextRequestId || 0) + 1;
   window.__homepanelStationheadPlayStatsNextRequestId = requestId;
-  window.__homepanelStationheadPlayStatsLatestRequestId = requestId;
   window.__homepanelStationheadStatsDocumentActive = true;
 
   if (!window.__homepanelStationheadStatsPageHideInstalled) {
@@ -317,7 +316,12 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     if (window.__homepanelStationheadPlayStatsRetryTimer) return;
     window.__homepanelStationheadPlayStatsRetryTimer = nativeTimeout(() => {
       window.__homepanelStationheadPlayStatsRetryTimer = 0;
-      post({ type: 'stationhead-auth-ready', reason: 'stats-retry' });
+      post({
+        type: 'stationhead-auth-ready',
+        reason: 'stats-retry',
+        auth_generation: Number(
+          window.__homepanelStationheadStatsAuthGeneration || 0),
+      });
     }, 30 * 1000);
   };
 
@@ -356,6 +360,10 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   }
   const authGeneration = Number(
     window.__homepanelStationheadStatsAuthGeneration || 0);
+  if (!Number.isSafeInteger(authGeneration) || authGeneration <= 0) {
+    scheduleRetry('no-validated-auth');
+    return false;
+  }
 
   const lastSuccessAt = Number(
     window.__homepanelStationheadPlayStatsSuccessAt || 0);
@@ -367,6 +375,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     return false;
   }
   if (window.__homepanelStationheadPlayStatsInFlight) return false;
+  window.__homepanelStationheadPlayStatsLatestRequestId = requestId;
   window.__homepanelStationheadPlayStatsInFlight = true;
 
   try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
