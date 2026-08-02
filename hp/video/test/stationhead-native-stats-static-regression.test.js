@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const nativeStatsUrl = new URL(
+const nativeStatsHeaderUrl = new URL(
   '../../native/src/stationhead_native_stats.h', import.meta.url);
-const nativePolicyUrl = new URL(
-  '../../native/src/stationhead_native_stats_policy.h', import.meta.url);
+const nativeStatsSourceUrl = new URL(
+  '../../native/src/stationhead_native_stats.cpp', import.meta.url);
+const playbackPolicyUrl = new URL(
+  '../../native/src/sh_playback_resource_policy_fix.h', import.meta.url);
 const authPolicyUrl = new URL(
   '../../native/src/sh_auth_navigation_policy_fix.h', import.meta.url);
 const trackBoundaryUrl = new URL(
@@ -16,8 +18,9 @@ const rendererUrl = new URL(
 const panelUrl = new URL(
   '../../native/src/renderer_panels/media_section_v2.inc', import.meta.url);
 
-const nativeStats = readFileSync(nativeStatsUrl, 'utf8');
-const nativePolicy = readFileSync(nativePolicyUrl, 'utf8');
+const nativeStatsHeader = readFileSync(nativeStatsHeaderUrl, 'utf8');
+const nativeStats = readFileSync(nativeStatsSourceUrl, 'utf8');
+const playbackPolicy = readFileSync(playbackPolicyUrl, 'utf8');
 const authPolicy = readFileSync(authPolicyUrl, 'utf8');
 const trackBoundary = readFileSync(trackBoundaryUrl, 'utf8');
 const cmake = readFileSync(cmakeUrl, 'utf8');
@@ -30,9 +33,10 @@ const removedPolicies = [
   'sh_stats_july26_baseline_policy_fix.h',
   'sh_stats_july23_baseline_policy_fix.h',
   'sh_stats_auth_fallback_policy_fix.h',
+  'stationhead_native_stats_policy.h',
 ];
 
-test('all generated play-count policy layers are removed', () => {
+test('all generated or post-processing play-count policy layers are removed', () => {
   for (const file of removedPolicies) {
     assert.equal(
       existsSync(new URL(`../../native/src/${file}`, import.meta.url)),
@@ -42,16 +46,22 @@ test('all generated play-count policy layers are removed', () => {
   }
   assert.doesNotMatch(authPolicy, /sh_stats_/);
   assert.doesNotMatch(trackBoundary, /sh_stats_/);
+  assert.doesNotMatch(cmake, /stationhead_native_stats_policy/);
 });
 
-test('the final compiled resource policy installs one native pipeline', () => {
-  assert.match(
+test('a normal C++ source is built and explicitly attached by WebView setup', () => {
+  assert.match(cmake, /src\/stationhead_native_stats\.cpp/);
+  assert.doesNotMatch(
     cmake,
-    /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats_policy\.h\)/,
+    /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats/,
   );
-  assert.match(nativePolicy, /ApplyStationheadResourceBlockingWithNativeStats/);
-  assert.match(nativePolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
-  assert.match(nativePolicy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
+  assert.match(playbackPolicy, /#include "stationhead_native_stats\.h"/);
+  assert.match(playbackPolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+  assert.match(
+    playbackPolicy,
+    /AttachStationheadNativeStats\(webview, config\.channelId\)/,
+  );
+  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
 });
 
 test('WebView2 captures authentication and successful responses natively', () => {
@@ -64,17 +74,20 @@ test('WebView2 captures authentication and successful responses natively', () =>
   assert.match(nativeStats, /get_Response/);
   assert.match(nativeStats, /get_StatusCode/);
   assert.match(nativeStats, /GetContent/);
-  assert.match(nativeStats, /kStationheadNativeStatsMaximumBodyBytes = 1024 \* 1024/);
+  assert.match(nativeStats, /kMaximumBodyBytes = 1024 \* 1024/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
   assert.match(nativeStats, /L"\/me\/channel\/"/);
 });
 
-test('WinHTTP actively requests streakStats without page script execution', () => {
-  assert.match(nativeStats, /class StationheadNativeStatsClient/);
+test('one autonomous worker requests streakStats without page script execution', () => {
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::condition_variable wake_/);
+  assert.match(nativeStats, /WorkerLoop\(\)/);
+  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
   assert.match(nativeStats, /WinHttpDownload\(/);
   assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /kStationheadNativeStatsSuccessIntervalMs/);
-  assert.match(nativeStats, /kStationheadNativeStatsRetryIntervalMs/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
@@ -86,7 +99,7 @@ test('JSON normalization and storage are implemented in C++', () => {
   assert.match(nativeStats, /std::stable_sort/);
   assert.match(nativeStats, /normalized\.back\(\)\.value = point\.value/);
   assert.match(nativeStats, /normalized\.size\(\) > 45/);
-  assert.match(nativeStats, /class StationheadNativeStatsStore/);
+  assert.match(nativeStats, /class NativeStatsStore/);
   assert.match(nativeStats, /history_\.push_back/);
   assert.match(nativeStats, /snapshot\.recentHour/);
 });
