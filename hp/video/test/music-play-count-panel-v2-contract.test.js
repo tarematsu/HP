@@ -10,8 +10,12 @@ const panel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
-const nativeStats = readFileSync(
+const nativeStatsHeader = readFileSync(
   new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
+  'utf8',
+);
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
   'utf8',
 );
 
@@ -30,6 +34,12 @@ test('every requested period has an independently rendered value cell', () => {
   assert.match(panel, /L"--"/);
 });
 
+test('the public header is declarations and a narrow renderer facade only', () => {
+  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
+  assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
+  assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
+});
+
 test('native WebView2 traffic supplies credentials and responses', () => {
   assert.match(nativeStats, /add_WebResourceRequested/);
   assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
@@ -39,14 +49,17 @@ test('native WebView2 traffic supplies credentials and responses', () => {
   assert.match(nativeStats, /GetContent\(/);
 });
 
-test('native WinHTTP actively downloads and publishes play counts', () => {
-  assert.match(nativeStats, /class StationheadNativeStatsClient/);
+test('one autonomous native worker actively downloads and publishes play counts', () => {
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::condition_variable wake_/);
+  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
+  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
   assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /\/streakStats/);
-  assert.match(nativeStats, /ParseStationheadNativeStatsJson/);
-  assert.match(nativeStats, /GlobalStationheadNativeStatsStore\(\)\.Publish/);
-  assert.match(nativeStats, /kStationheadNativeStatsSuccessIntervalMs/);
-  assert.match(nativeStats, /kStationheadNativeStatsRetryIntervalMs/);
+  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /ParseStatsJson/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
 });
 
 test('the native path has no generated script or WebMessage protocol', () => {
