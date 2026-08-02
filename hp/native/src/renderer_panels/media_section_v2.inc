@@ -148,55 +148,26 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   };
   RECT metricsRect{content.left, content.top, content.right,
                    content.top + CardHeaderHeight(content)};
-  const int metricsWidth = std::max(1L, metricsRect.right - metricsRect.left);
   const int metricsHeight = std::max(1L, metricsRect.bottom - metricsRect.top);
-  const int metricGap = std::clamp(metricsHeight * 8 / 100, 2, 4);
-  const int usableMetricWidth =
-      std::max(5, metricsWidth - metricGap * 4);
-  const COLORREF metricValueColor = statsStale
+  const COLORREF metricTextColor = statsStale
       ? kWidgetWarning
       : (statsAvailable || nativeStats.recentHour >= 0
              ? kWidgetText
              : kWidgetSubtle);
-  const int labelFontHeight = std::clamp(metricsHeight * 29 / 100, 8, 12);
-  const int valueFontHeight = std::clamp(metricsHeight * 42 / 100, 10, 16);
+  std::wstring metricsLine;
   for (size_t index = 0; index < kPlayMetricLabels.size(); ++index) {
-    const int left = metricsRect.left +
-        static_cast<int>(usableMetricWidth * index / 5) +
-        metricGap * static_cast<int>(index);
-    const int right = metricsRect.left +
-        static_cast<int>(usableMetricWidth * (index + 1) / 5) +
-        metricGap * static_cast<int>(index);
-    RECT cell{left, metricsRect.top, std::max(left + 1, right), metricsRect.bottom};
-    DrawWidgetCard(dc, cell, kWidgetSurfaceAlt,
-                   std::max(4, metricsHeight * 28 / 100));
-
-    const int insetX = std::max(3, metricsHeight * 10 / 100);
-    if (metricsHeight >= 24) {
-      const LONG split = cell.top + std::max<LONG>(9, metricsHeight * 44 / 100);
-      RECT labelRect{cell.left + insetX, cell.top + 1,
-                     cell.right - insetX, split};
-      RECT valueRect{cell.left + insetX, split - 1,
-                     cell.right - insetX, cell.bottom - 1};
-      SelectObject(dc, CachedUiFont(labelFontHeight, FW_NORMAL));
-      SetTextColor(dc, statsStale && index > 0 ? kWidgetWarning : kWidgetSubtle);
-      DrawTextInRect(dc, kPlayMetricLabels[index], labelRect,
-                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-      SelectObject(dc, CachedUiFont(valueFontHeight, FW_SEMIBOLD));
-      SetTextColor(dc, metricValueColor);
-      DrawTextInRect(dc, playMetricValues[index], valueRect,
-                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
-    } else {
-      std::wstring compact = kPlayMetricLabels[index];
-      compact += L" ";
-      compact += playMetricValues[index];
-      SelectObject(dc, CachedUiFont(
-          std::clamp(metricsHeight * 58 / 100, 9, 13), FW_SEMIBOLD));
-      SetTextColor(dc, metricValueColor);
-      DrawTextInRect(dc, compact, cell,
-                     DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
+    if (!metricsLine.empty()) {
+      metricsLine += L"   ";
     }
+    metricsLine += kPlayMetricLabels[index];
+    metricsLine += L" ";
+    metricsLine += playMetricValues[index];
   }
+  SelectObject(dc, CachedUiFont(
+      std::clamp(metricsHeight * 34 / 100, 8, 11), FW_NORMAL));
+  SetTextColor(dc, metricTextColor);
+  DrawTextInRect(dc, metricsLine, metricsRect,
+                 DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);
 
   const int artworkRadius = std::max(6, rowHeight * 14 / 100);
   DrawWidgetCard(dc, rects.artwork, kWidgetSurfaceAlt, artworkRadius);
