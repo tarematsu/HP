@@ -10,8 +10,8 @@ const panel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
-const policy = readFileSync(
-  new URL('../../native/src/sh_stats_session_policy_fix.h', import.meta.url),
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
   'utf8',
 );
 
@@ -30,12 +30,17 @@ test('every requested period has an independently rendered value cell', () => {
   assert.match(panel, /L"--"/);
 });
 
-test('one request lifecycle publishes the identities required by native', () => {
-  assert.match(policy, /type: 'stationhead-stats-document'/);
-  assert.match(policy, /type: 'stationhead-auth-ready'/);
-  assert.match(policy, /type: 'stationhead-play-stats'/);
-  assert.match(policy, /request_id: requestId/);
-  assert.match(policy, /document_generation: documentGeneration/);
-  assert.match(policy, /auth_generation: authGeneration/);
-  assert.match(policy, /__homepanelStationheadPlayStatsInFlight/);
+test('play counts are captured by a native WebView2 response event', () => {
+  assert.match(nativeStats, /ICoreWebView2_2/);
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /ICoreWebView2WebResourceResponseView/);
+  assert.match(nativeStats, /GetContent\(/);
+  assert.match(nativeStats, /ParseStationheadNativeStatsJson/);
+  assert.match(nativeStats, /GlobalStationheadNativeStatsStore\(\)\.Publish/);
+});
+
+test('the native path has no generated script or WebMessage protocol', () => {
+  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
+  assert.doesNotMatch(nativeStats, /Authorization|authorization/);
 });
