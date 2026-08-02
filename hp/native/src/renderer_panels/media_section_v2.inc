@@ -122,54 +122,25 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     return value >= 0 ? std::to_wstring(value) : std::wstring(L"--");
   };
 
-  constexpr int64_t kRecentPlaySampleMaximumAgeMs = 10 * 60'000;
+  // Play counts are sourced directly from WebView2's native response event.
+  // No generated JavaScript, WebMessage generation ids, auth ids, or reducer
+  // state participates in this display path.
   constexpr int64_t kDailyPlayStatsStaleAfterMs = 15 * 60'000;
-  const bool recentHistoryFresh = !nativeStationheadPlayHistory_.empty() &&
-      nativeStationheadPlayHistory_.back().timestamp > 0 &&
-      nowMs >= nativeStationheadPlayHistory_.back().timestamp &&
-      nowMs - nativeStationheadPlayHistory_.back().timestamp <=
-          kRecentPlaySampleMaximumAgeMs;
-  const int recentIncrease = recentHistoryFresh
-      ? RecentStationheadPlayIncrease(nativeStationheadPlayHistory_)
-      : -1;
-  const bool statsAvailable = nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
-      !nativeStationhead_.dailyPlayCounts.empty();
-
-  int64_t statsReferenceNowMs = nowMs;
-  constexpr int64_t kMaximumStatsClockSkewMs = 24LL * 60 * 60 * 1000;
-  if (nativeStationhead_.dailyPlayStatsServerDateAt > 0 &&
-      nativeStationhead_.dailyPlayStatsReceivedAt > 0 &&
-      nowMs >= nativeStationhead_.dailyPlayStatsReceivedAt &&
-      nativeStationhead_.dailyPlayStatsServerDateAt >=
-          nativeStationhead_.dailyPlayStatsReceivedAt -
-              kMaximumStatsClockSkewMs &&
-      nativeStationhead_.dailyPlayStatsServerDateAt <=
-          nativeStationhead_.dailyPlayStatsReceivedAt +
-              kMaximumStatsClockSkewMs) {
-    const int64_t elapsed = nowMs - nativeStationhead_.dailyPlayStatsReceivedAt;
-    if (nativeStationhead_.dailyPlayStatsServerDateAt <=
-        std::numeric_limits<int64_t>::max() - elapsed) {
-      statsReferenceNowMs =
-          nativeStationhead_.dailyPlayStatsServerDateAt + elapsed;
-    }
-  }
+  const StationheadNativeStatsSnapshot nativeStats =
+      GlobalStationheadNativeStatsStore().Snapshot();
+  const bool statsAvailable = nativeStats.updatedAt > 0 &&
+      !nativeStats.daily.empty();
   const bool statsStale = statsAvailable &&
-      (nowMs < nativeStationhead_.dailyPlayStatsUpdatedAt ||
-       nowMs - nativeStationhead_.dailyPlayStatsUpdatedAt >
-           kDailyPlayStatsStaleAfterMs);
+      (nowMs < nativeStats.updatedAt ||
+       nowMs - nativeStats.updatedAt > kDailyPlayStatsStaleAfterMs);
   const StationheadPlayPeriodSummary summary = statsAvailable
-      ? SummarizeStationheadDailyPlays(
-            nativeStationhead_.dailyPlayCounts, statsReferenceNowMs)
+      ? SummarizeStationheadDailyPlays(nativeStats.daily, nowMs)
       : StationheadPlayPeriodSummary{};
 
-  // The old implementation rendered all five numbers as one right-aligned line.
-  // On the actual 65%-width Music card that line could be ellipsized down to
-  // nothing useful. Each metric now owns a fixed cell, so unavailable values are
-  // explicit "--" and valid values can never be displaced by another label.
   static constexpr std::array<const wchar_t*, 5> kPlayMetricLabels{
       L"直近1時間", L"本日", L"昨日", L"今週", L"先週"};
   const std::array<std::wstring, 5> playMetricValues{
-      playValueText(recentIncrease),
+      playValueText(nativeStats.recentHour),
       playValueText(summary.today),
       playValueText(summary.yesterday),
       playValueText(summary.thisWeek),
@@ -184,7 +155,9 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
       std::max(5, metricsWidth - metricGap * 4);
   const COLORREF metricValueColor = statsStale
       ? kWidgetWarning
-      : (statsAvailable || recentIncrease >= 0 ? kWidgetText : kWidgetSubtle);
+      : (statsAvailable || nativeStats.recentHour >= 0
+             ? kWidgetText
+             : kWidgetSubtle);
   const int labelFontHeight = std::clamp(metricsHeight * 29 / 100, 8, 12);
   const int valueFontHeight = std::clamp(metricsHeight * 42 / 100, 10, 16);
   for (size_t index = 0; index < kPlayMetricLabels.size(); ++index) {
@@ -304,4 +277,4 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   SelectObject(dc, previousFont);
 }
 
-// Stationhead play history is recorded by App; no history bar is rendered here.
+// Native WebView2 response capture owns play-count history and summaries.
