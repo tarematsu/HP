@@ -92,7 +92,7 @@ async function runStats({ response, reject, auth = 'Bearer fixture' } = {}) {
     window,
     fetch,
     AbortController: AbortControllerFixture,
-    Date, Math, Map, JSON, Number, String, Array, Object, Event, console,
+    Date, Math, Map, JSON, Number, String, Array, Object, console,
   };
   vm.runInNewContext(generatedStatsScript(), context);
   for (let count = 0; count < 8; count += 1) {
@@ -234,7 +234,7 @@ test('pagehide aborts the active request and suppresses its late result', async 
     window,
     fetch: () => pendingResponse,
     AbortController: AbortControllerFixture,
-    Date, Math, Map, JSON, Number, String, Array, Object, Event, console,
+    Date, Math, Map, JSON, Number, String, Array, Object, console,
   };
   vm.runInNewContext(generatedStatsScript(), context);
   listeners.get('pagehide')();
@@ -273,7 +273,7 @@ test('a duplicate poll cannot replace the active request id', async () => {
     window,
     fetch: () => pendingResponse,
     AbortController: AbortControllerFixture,
-    Date, Math, Map, JSON, Number, String, Array, Object, Event, console,
+    Date, Math, Map, JSON, Number, String, Array, Object, console,
   };
   vm.runInNewContext(generatedStatsScript(), context);
   const activeRequestId = window.__homepanelStationheadPlayStatsLatestRequestId;
