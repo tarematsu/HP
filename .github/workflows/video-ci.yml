@@ -1,54 +1,81 @@
 name: Video CI
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
+      - 'hp/cloud/src/unified_worker.js'
+      - 'hp/cloud/wrangler.jsonc'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
+      - 'hp/video/test/**'
+      - 'hp/video/scripts/**'
+      - 'hp/video/package.json'
+      - 'hp/video/.ci-full-trigger'
+      - '.github/workflows/video-ci.yml'
   pull_request:
     paths:
-      - 'hp/native/src/**'
+      - 'hp/package.json'
+      - 'hp/package-lock.json'
+      - 'hp/cloud/src/unified_worker.js'
+      - 'hp/cloud/wrangler.jsonc'
+      - 'hp/video/src/**'
+      - 'hp/video/public/**'
+      - 'hp/video/migrations/**'
       - 'hp/video/test/**'
-      - '.github/scripts/fix_stationhead_remaining.py'
+      - 'hp/video/scripts/**'
+      - 'hp/video/package.json'
+      - 'hp/video/.ci-full-trigger'
       - '.github/workflows/video-ci.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: stationhead-final-repair-${{ github.event.pull_request.number || github.ref }}
+  group: video-ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-stationhead-final-repair:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/rebuild-stationhead-play-stats'
+  test:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-      - name: Apply final audited repair
-        run: python .github/scripts/fix_stationhead_remaining.py
-      - name: Validate focused regressions
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: hp/package-lock.json
+      - name: Install HomePanel workspace dependencies
+        working-directory: hp
+        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Run syntax checks
+        working-directory: hp
+        run: npm run check:syntax --workspace video
+      - name: Run repository audit
+        working-directory: hp
+        run: npm run check:audit --workspace video
+      - name: Run tests
+        working-directory: hp
+        shell: bash
         run: |
-          python - <<'PY'
-          import re
-          from pathlib import Path
-          source = Path('hp/native/src/sh_stats_session_policy_fix.h').read_text()
-          sizes = [len(value) for value in re.findall(r'LR"JS\((.*?)\)JS"', source, re.S)]
-          if len(sizes) < 5 or max(sizes) >= 8000:
-              raise SystemExit(f'unsafe raw literal sizes: {sizes}')
-          print('raw literal sizes:', sizes)
-          PY
-          node --test \
-            hp/video/test/stationhead-play-stats-rebuild-regression.test.js \
-            hp/video/test/stationhead-play-stats-native-state-regression.test.js \
-            hp/video/test/stationhead-stats-session-root-cause-regression.test.js \
-            hp/video/test/stationhead-stats-july26-baseline-regression.test.js
-      - name: Commit repaired source
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Fix Stationhead MSVC literals and deterministic daily reduction"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          set -o pipefail
+          npm test --workspace video 2>&1 | tee video/test-output.log
+      - name: Upload failed test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-ci-test-output-${{ github.run_id }}
+          path: hp/video/test-output.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Validate integrated Worker bundle
+        working-directory: hp
+        run: npm run check:unified-bundle --workspace cloud

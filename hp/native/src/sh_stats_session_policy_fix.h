@@ -154,7 +154,8 @@ inline std::wstring StationheadAuthCaptureScriptStatsSessionSafe() {
     window.__homepanelStationheadPlayStatsInFlight = false;
     window.__homepanelStationheadRejectedAuthorization = authorization;
     window.__homepanelStationheadStatsRejectedAuthorization = authorization;
-    window.__homepanelStationheadStatsRejectedAt = Date.now();
+)JS");
+  script.append(LR"JS(    window.__homepanelStationheadStatsRejectedAt = Date.now();
   };
 
   const rejectForStats = observation => {
@@ -288,7 +289,9 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   };
   const nativeTimeout = window.setTimeout.bind(window);
   const nativeClearTimeout = window.clearTimeout.bind(window);
-  const channelId = )JS" << channelId << LR"JS(;
+  const channelId = )JS";
+  script << channelId;
+  script << LR"JS(;
   const documentGeneration = (() => {
     const current = Number(
       window.__homepanelStationheadStatsDocumentGeneration || 0);
@@ -309,7 +312,7 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
       try { window.__homepanelStationheadPlayStatsAbort?.abort(); } catch (_) {}
       window.__homepanelStationheadPlayStatsAbort = null;
       window.__homepanelStationheadPlayStatsInFlight = false;
-    }, { once: true });
+    });
   }
 
   const resetSuccessThrottle = () => {
@@ -437,7 +440,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
   const requestTimeoutTimer = abortController
     ? nativeTimeout(() => {
         if (window.__homepanelStationheadPlayStatsLatestRequestId === requestId) {
-          window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
+)JS";
+  script << LR"JS(          window.__homepanelStationheadPlayStatsTimedOutRequestId = requestId;
           abortController.abort();
         }
       }, 20 * 1000)
@@ -595,7 +599,8 @@ inline std::wstring StationheadApiPlayStatsScriptStatsSessionSafe(int channelId)
     const data = await response.json();
     return {
       data,
-      serverDateMs: Number.isFinite(serverDate) ? serverDate : 0,
+)JS";
+  script << LR"JS(      serverDateMs: Number.isFinite(serverDate) ? serverDate : 0,
     };
   }).then(result => {
     if (!result || !stillCurrent()) return;

@@ -422,14 +422,12 @@ void StationheadPlayer::ConfigureWebView() {
                       timestamp > referenceAt + kMaximumFuturePointMs) {
                     continue;
                   }
-                  const int64_t dayStart =
-                      timestamp - timestamp % kDayMilliseconds;
                   points.push_back({
-                      dayStart,
+                      timestamp,
                       static_cast<int>(std::round(rawValue)),
                   });
                 }
-                std::sort(
+                std::stable_sort(
                     points.begin(), points.end(),
                     [](const StationheadDailyPlayPoint& left,
                        const StationheadDailyPlayPoint& right) {
@@ -438,11 +436,14 @@ void StationheadPlayer::ConfigureWebView() {
                 std::vector<StationheadDailyPlayPoint> normalized;
                 normalized.reserve(points.size());
                 for (const auto& point : points) {
+                  const int64_t dayStart =
+                      point.dayStartMsUtc -
+                      point.dayStartMsUtc % kDayMilliseconds;
                   if (!normalized.empty() &&
-                      normalized.back().dayStartMsUtc == point.dayStartMsUtc) {
-                    normalized.back() = point;
+                      normalized.back().dayStartMsUtc == dayStart) {
+                    normalized.back().value = point.value;
                   } else {
-                    normalized.push_back(point);
+                    normalized.push_back({dayStart, point.value});
                   }
                 }
                 if (normalized.size() > 45) {

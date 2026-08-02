@@ -42,9 +42,11 @@ test('native reducer normalizes chart data independently', () => {
   assert.match(webview, /kMaximumFuturePointMs/);
   assert.match(webview, /kMaximumPastPointMs/);
   assert.match(webview, /std::numeric_limits<int>::max/);
-  assert.match(webview, /std::sort\(/);
+  assert.match(webview, /std::stable_sort\(/);
+  assert.match(webview, /points\.push_back\(\{[\s\S]*timestamp/);
   assert.match(webview, /normalized\.back\(\)\.dayStartMsUtc/);
-  assert.match(webview, /timestamp % kDayMilliseconds/);
+  assert.match(webview, /point\.dayStartMsUtc % kDayMilliseconds/);
+  assert.match(webview, /normalized\.back\(\)\.value = point\.value/);
   assert.match(webview, /normalized\.size\(\) > 45/);
 });
 

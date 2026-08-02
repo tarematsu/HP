@@ -19,11 +19,12 @@ function generatedStatsScript(channelId = 318) {
   const end = policy.indexOf('\n}  // namespace hp', start);
   assert.ok(start >= 0 && end > start);
   const source = policy.slice(start, end);
-  const match = source.match(
-    /script << LR"JS\(([\s\S]*?)\)JS"\s*<< channelId << LR"JS\(([\s\S]*?)\)JS";/,
-  );
-  assert.ok(match, 'stats generator raw-string boundary is intact');
-  return `${match[1]}${channelId}${match[2]}`;
+  const tokens = [...source.matchAll(
+    /LR"JS\(([\s\S]*?)\)JS"|script << channelId;/g,
+  )];
+  assert.ok(tokens.length >= 3, 'stats generator raw-string boundary is intact');
+  assert.equal(tokens.filter(token => token[0] === 'script << channelId;').length, 1);
+  return tokens.map(token => token[1] ?? String(channelId)).join('');
 }
 
 function makeHeaders(values = {}) {
@@ -306,5 +307,13 @@ test('the generated policy uses native identity and bounded timeout without pers
   assert.match(policy, /requestTimeoutTimer[\s\S]*20 \* 1000/);
   assert.match(policy, /scheduleRetry\('request-timeout'\)/);
   assert.match(policy, /window\.addEventListener\('pagehide'/);
+  assert.doesNotMatch(
+    policy,
+    /window\.addEventListener\('pagehide',[\s\S]*?once: true/,
+  );
+  const rawLiteralSizes = [...policy.matchAll(/LR"JS\(([\s\S]*?)\)JS"/g)]
+    .map(match => match[1].length);
+  assert.ok(rawLiteralSizes.length >= 5);
+  assert.ok(rawLiteralSizes.every(size => size < 8000));
   assert.doesNotMatch(policy, /localStorage/);
 });
