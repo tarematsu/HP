@@ -41,3 +41,9 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
+
+// Stop the old page-generated statistics poll at its scheduler boundary. The
+// legacy member remains only for source compatibility and is never reached.
+#undef kStationheadDailyPlayStatsIntervalMs
+#define kStationheadDailyPlayStatsIntervalMs \
+  ::hp::kStationheadLegacyStatsPollDisabledIntervalMs
