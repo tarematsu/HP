@@ -155,10 +155,9 @@ class NativeStatsStore {
       while (!history_.empty() && history_.front().first < cutoff) {
         history_.pop_front();
       }
-      while (history_.size() >= 2 &&
-             history_[history_.size() - 2].second == history_.back().second) {
-        history_.erase(history_.end() - 2);
-      }
+      // Keep flat samples. Removing them discards the one-hour baseline when
+      // the daily counter does not change, leaving recentHour unavailable
+      // instead of reporting the correct zero increase.
     }
     ++revision_;
   }
