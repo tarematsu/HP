@@ -28,6 +28,9 @@ void PrepareParentWindow(HWND window) {
 
 Renderer::Renderer(HWND window, int width, int height)
     : window_(window), width_(width), height_(height) {
+  current_ = this;
+  powerSavingMode_ = globalPowerSavingMode_;
+  nativeDashboardVisible_ = requestedDashboardVisible_ && !powerSavingMode_;
   wchar_t executable[MAX_PATH * 4]{};
   GetModuleFileNameW(nullptr, executable, _countof(executable));
   rootDir_ = fs::path(executable).parent_path();
@@ -40,6 +43,12 @@ Renderer::~Renderer() {
   StopNativePlaybackBridge();
   StopRadarCompose();
   DestroyNativeStaticWindows();
+  if (current_ == this) current_ = nullptr;
+}
+
+void Renderer::SetGlobalPowerSavingMode(bool enabled) {
+  globalPowerSavingMode_ = enabled;
+  if (current_) current_->SetPowerSavingMode(enabled);
 }
 
 void Renderer::Initialize() {
@@ -58,7 +67,7 @@ void Renderer::Initialize() {
       throw std::runtime_error("native dashboard window initialization failed");
     }
     StartNativePlaybackBridge();
-    StartRadarCompose();
+    if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
     StopRadarCompose();
     StopNativePlaybackBridge();
@@ -89,6 +98,18 @@ void Renderer::SetBounds(const RECT& bounds) {
 }
 
 void Renderer::SetVisible(bool visible) {
+  requestedDashboardVisible_ = visible;
+  ApplyDashboardVisibility();
+}
+
+void Renderer::SetPowerSavingMode(bool enabled) {
+  if (powerSavingMode_ == enabled) return;
+  powerSavingMode_ = enabled;
+  ApplyDashboardVisibility();
+}
+
+void Renderer::ApplyDashboardVisibility() {
+  const bool visible = requestedDashboardVisible_ && !powerSavingMode_;
   const bool visibilityChanged = nativeDashboardVisible_ != visible;
   nativeDashboardVisible_ = visible;
   if (visibilityChanged) ApplyNativeStaticBounds();
@@ -120,8 +141,8 @@ void Renderer::SetVisible(bool visible) {
     // skip graph projection. Rebuild once before repainting the restored panel.
     RebuildNativeAirGraph(UnixMillis());
     // Radar animation and its large composition surfaces are needed only while
-    // the native Dashboard is visible. Recreate them on demand after a tab or
-    // authorization surface returns to Main.
+    // the native Dashboard is visible. Recreate them on demand after a tab,
+    // authorization surface, or power-saving interval returns to Main.
     StartRadarCompose();
     NotifyRadarUpdated();
     InvalidateAllNativePanels();
