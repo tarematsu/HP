@@ -50,11 +50,12 @@ int64_t NextScheduleBoundary(int64_t nowMs) {
   }
 
   const std::time_t next = std::mktime(&boundary);
-  if (next == static_cast<std::time_t>(-1)) return nowMs + 60'000;
-  return static_cast<int64_t>(next) * 1000;
+  return next == static_cast<std::time_t>(-1)
+      ? nowMs + 60'000
+      : static_cast<int64_t>(next) * 1000;
 }
 
-RECT InsetRect(RECT rect, int inset) {
+RECT ShrinkRect(RECT rect, int inset) {
   rect.left += inset;
   rect.top += inset;
   rect.right -= inset;
@@ -97,7 +98,8 @@ LRESULT CALLBACK PowerSavingController::CallWndProc(
   if (code >= 0 && controller && lParam) {
     controller->ObserveMessage(*reinterpret_cast<const CWPSTRUCT*>(lParam));
   }
-  return CallNextHookEx(controller ? controller->hook_ : nullptr, code, wParam, lParam);
+  return CallNextHookEx(
+      controller ? controller->hook_ : nullptr, code, wParam, lParam);
 }
 
 LRESULT CALLBACK PowerSavingController::OverlayWndProc(
@@ -122,7 +124,9 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
     case WM_LBUTTONUP: {
       const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
       const RECT button = controller->LocalButtonRect();
-      if (PtInRect(&button, point)) controller->ApplyMode(!controller->powerSaving_);
+      if (PtInRect(&button, point)) {
+        controller->ApplyMode(!controller->powerSaving_);
+      }
       return 0;
     }
     case WM_SETCURSOR:
@@ -157,7 +161,9 @@ void PowerSavingController::ObserveMessage(const CWPSTRUCT& message) {
       case WM_SIZE:
       case WM_DISPLAYCHANGE:
       case WM_WINDOWPOSCHANGED:
-        LayoutOverlay();
+      case WM_SHOWWINDOW:
+      case WM_TIMER:
+        if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
         break;
       case WM_TIMECHANGE:
         CheckSchedule(true);
@@ -211,13 +217,15 @@ void PowerSavingController::EnsureOverlay() {
     windowClass.lpfnWndProc = OverlayWndProc;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.hCursor = LoadCursorW(nullptr, IDC_HAND);
-    windowClass.hbrBackground = reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
+    windowClass.hbrBackground =
+        reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     windowClass.lpszClassName = kOverlayWindowClass;
     SetLastError(ERROR_SUCCESS);
     if (!RegisterClassW(&windowClass) &&
         GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
       ThrowIfFailed(
-          HRESULT_FROM_WIN32(GetLastError()), "RegisterClass power saving overlay");
+          HRESULT_FROM_WIN32(GetLastError()),
+          "RegisterClass power saving overlay");
     }
   });
 
@@ -236,7 +244,8 @@ void PowerSavingController::EnsureOverlay() {
       this);
   if (!overlay_) {
     ThrowIfFailed(
-        HRESULT_FROM_WIN32(GetLastError()), "CreateWindow power saving overlay");
+        HRESULT_FROM_WIN32(GetLastError()),
+        "CreateWindow power saving overlay");
   }
 }
 
@@ -254,10 +263,10 @@ void PowerSavingController::CheckSchedule(bool force) {
 void PowerSavingController::ArmScheduleTimer() {
   if (!overlay_) return;
   KillTimer(overlay_, kScheduleTimer);
-  const int64_t now = UnixMillis();
-  const int64_t remaining = std::max<int64_t>(1, nextScheduleBoundaryAt_ - now);
-  const UINT delay = static_cast<UINT>(
-      std::clamp<int64_t>(remaining, 1, std::numeric_limits<UINT>::max()));
+  const int64_t remaining = std::max<int64_t>(
+      1, nextScheduleBoundaryAt_ - UnixMillis());
+  const UINT delay = static_cast<UINT>(std::clamp<int64_t>(
+      remaining, 1, std::numeric_limits<UINT>::max()));
   SetTimer(overlay_, kScheduleTimer, delay, nullptr);
 }
 
@@ -297,7 +306,7 @@ RECT PowerSavingController::ParentButtonRect() const {
   const RECT clock{side.left, side.top, side.right, side.top + clockHeight};
   const int pad = std::clamp(
       std::min(sideWidth, clockHeight) * 10 / 100, 8, 26);
-  const RECT content = InsetRect(clock, pad);
+  const RECT content = ShrinkRect(clock, pad);
   const int contentWidth = std::max(1L, content.right - content.left);
   const int contentHeight = std::max(1L, content.bottom - content.top);
   const LONG statusTop = content.top + contentHeight * 735 / 1000;
@@ -305,20 +314,21 @@ RECT PowerSavingController::ParentButtonRect() const {
   const int statusHeight = std::max(1L, status.bottom - status.top);
   const int buttonWidth = std::clamp(contentWidth * 300 / 1000, 86, 150);
   const int buttonHeight = std::clamp(statusHeight * 70 / 100, 26, 42);
-  const LONG top = status.top + std::max(0, (statusHeight - buttonHeight) / 2);
+  const LONG top =
+      status.top + std::max(0, (statusHeight - buttonHeight) / 2);
   return RECT{
-      status.right - buttonWidth, top,
-      status.right, top + buttonHeight};
+      status.right - buttonWidth,
+      top,
+      status.right,
+      top + buttonHeight};
 }
 
 RECT PowerSavingController::LocalButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
-  if (!powerSaving_) {
-    RECT client{};
-    GetClientRect(overlay_, &client);
-    return client;
-  }
-  return ParentButtonRect();
+  if (powerSaving_) return ParentButtonRect();
+  RECT client{};
+  GetClientRect(overlay_, &client);
+  return client;
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
@@ -328,16 +338,23 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   RECT client{};
   GetClientRect(window, &client);
-  FillRect(dc, &client, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+  FillRect(
+      dc, &client,
+      reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
 
   const RECT button = LocalButtonRect();
-  const COLORREF surface = powerSaving_ ? RGB(30, 92, 55) : RGB(31, 39, 52);
+  const COLORREF surface =
+      powerSaving_ ? RGB(30, 92, 55) : RGB(31, 39, 52);
   HBRUSH brush = CreateSolidBrush(surface);
-  HPEN pen = CreatePen(PS_SOLID, 1, powerSaving_ ? RGB(74, 180, 105) : RGB(74, 88, 108));
+  HPEN pen = CreatePen(
+      PS_SOLID, 1,
+      powerSaving_ ? RGB(74, 180, 105) : RGB(74, 88, 108));
   HGDIOBJ previousBrush = SelectObject(dc, brush);
   HGDIOBJ previousPen = SelectObject(dc, pen);
   const int radius = std::max(8L, button.bottom - button.top);
-  RoundRect(dc, button.left, button.top, button.right, button.bottom, radius, radius);
+  RoundRect(
+      dc, button.left, button.top, button.right, button.bottom,
+      radius, radius);
   SelectObject(dc, previousPen);
   SelectObject(dc, previousBrush);
   DeleteObject(pen);
@@ -353,9 +370,8 @@ void PowerSavingController::PaintOverlay(HWND window) {
   SetBkMode(dc, TRANSPARENT);
   SetTextColor(dc, RGB(238, 242, 248));
   RECT textRect = button;
-  const wchar_t* text = powerSaving_ ? L"省電力 ON" : L"省電力";
   DrawTextW(
-      dc, text, -1, &textRect,
+      dc, powerSaving_ ? L"省電力 ON" : L"省電力", -1, &textRect,
       DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
   SelectObject(dc, previousFont);
   DeleteObject(font);
