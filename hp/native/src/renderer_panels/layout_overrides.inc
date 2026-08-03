@@ -112,8 +112,11 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
   const LONG hpStatusMiddle = hpStatusRect.top + std::max<LONG>(1, (hpStatusRect.bottom - hpStatusRect.top) / 2); \
-  RECT hpMonitorRect = hpStatusRect; hpMonitorRect.bottom = hpStatusMiddle; \
-  RECT hpVersionRect = hpStatusRect; hpVersionRect.top = hpStatusMiddle; \
+  const int hpPowerButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
+  const int hpPowerButtonGap = std::max(6, SpanX(hpStatusRect, 20)); \
+  const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpPowerButtonWidth - hpPowerButtonGap); \
+  RECT hpMonitorRect = hpStatusRect; hpMonitorRect.bottom = hpStatusMiddle; hpMonitorRect.right = hpStatusTextRight; \
+  RECT hpVersionRect = hpStatusRect; hpVersionRect.top = hpStatusMiddle; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
   SetTextColor((dc), hpStationheadStatus.available ? kWidgetMuted : kWidgetSubtle); \
   DrawTextInRect((dc), hpMonitorText, hpMonitorRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \

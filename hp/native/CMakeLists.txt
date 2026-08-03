@@ -106,6 +106,7 @@ endfunction()
 
 set(HOMEPANEL_CORE_SOURCES
   src/main.cpp
+  src/power_saving_controller.cpp
   src/app.cpp
   src/app_startup_tick_fallback.cpp
   src/app_air_history.cpp
