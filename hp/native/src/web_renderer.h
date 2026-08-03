@@ -117,6 +117,7 @@ class Renderer {
  public:
   Renderer(HWND window, int width, int height);
   ~Renderer();
+  static void SetGlobalPowerSavingMode(bool enabled);
   void Initialize();
   void Resize(int width, int height);
   void SetBounds(const RECT& bounds);
@@ -206,6 +207,8 @@ class Renderer {
   void ApplyNativeStaticBounds();
   void DestroyNativeStaticWindows();
   void UpdateNativeStaticPanels(const RenderState& state);
+  void SetPowerSavingMode(bool enabled);
+  void ApplyDashboardVisibility();
 
   template <LRESULT (Renderer::*Handler)(HWND, UINT, WPARAM, LPARAM)>
   static LRESULT CALLBACK NativeWndProcThunk(
@@ -302,6 +305,8 @@ class Renderer {
   int width_ = 0;
   int height_ = 0;
   RECT bounds_{};
+  bool requestedDashboardVisible_ = true;
+  bool powerSavingMode_ = false;
   bool nativeDashboardVisible_ = true;
   bool nativePanelTimerActive_ = false;
   int nativeClockDayKey_ = 0;
@@ -343,6 +348,9 @@ class Renderer {
   bool radarComposePending_ = false;
   std::atomic<bool> radarComposeStarted_{false};
   std::atomic<bool> radarComposeStopping_{false};
+
+  inline static Renderer* current_ = nullptr;
+  inline static bool globalPowerSavingMode_ = false;
 };
 
 }  // namespace hp
