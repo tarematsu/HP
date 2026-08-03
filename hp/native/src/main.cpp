@@ -1,4 +1,5 @@
 #include "app.h"
+#include "power_saving_controller.h"
 
 namespace {
 
@@ -111,10 +112,13 @@ int WINAPI wWinMain(
     }
     winrt::init_apartment(winrt::apartment_type::single_threaded);
     apartmentInitialized = true;
+    hp::PowerSavingController powerSavingController;
+    powerSavingController.InstallForCurrentThread();
     {
       hp::App app(instance);
       result = app.Run(showCommand);
     }
+    powerSavingController.Uninstall();
     if (result == 42) result = RelaunchSelf() ? 0 : 1;
   } catch (const std::exception& error) {
     ShowStartupFailure(hp::Utf8ToWide(error.what()));
