@@ -90,6 +90,10 @@ const counterCurrentMigration = readFileSync(
   new URL('../database/facts-migrations/048_use_counter_current_projection.sql', import.meta.url),
   'utf8',
 );
+const minuteJobWriteAmplificationMigration = readFileSync(
+  new URL('../database/facts-migrations/050_reduce_minute_job_write_amplification.sql', import.meta.url),
+  'utf8',
+);
 const prSchema = readFileSync(
   new URL('../worker/scripts/apply-facts-pr-schema.mjs', import.meta.url),
   'utf8',
@@ -129,6 +133,7 @@ const expectedMigrations = [
   'database/facts-migrations/047_join_latest_daily_members.sql',
   'database/facts-migrations/048_use_counter_current_projection.sql',
   'database/facts-migrations/049_bound_history_host_ranges.sql',
+  'database/facts-migrations/050_reduce_minute_job_write_amplification.sql',
 ];
 
 test('MINUTE_DB deployment selects changed migrations through the current schema tip', () => {
@@ -222,6 +227,22 @@ test('MINUTE_DB deployment selects changed migrations through the current schema
   assert.match(counterCurrentMigration, /DROP INDEX IF EXISTS idx_sh_counter_changes_occurrence_time/);
   assert.match(counterCurrentMigration, /FROM sh_track_counter_current cc/);
   assert.doesNotMatch(counterCurrentMigration, /FROM sh_track_counter_changes cc/);
+  assert.match(
+    minuteJobWriteAmplificationMigration,
+    /DROP INDEX IF EXISTS idx_sh_minute_fact_jobs_pending/,
+  );
+  assert.match(
+    minuteJobWriteAmplificationMigration,
+    /WHEN OLD\.status IS NOT NEW\.status/,
+  );
+  assert.match(
+    minuteJobWriteAmplificationMigration,
+    /payload_clearable IS NOT CASE/,
+  );
+  assert.doesNotMatch(
+    minuteJobWriteAmplificationMigration,
+    /CREATE INDEX|INSERT|DELETE|ANALYZE|PRAGMA optimize/,
+  );
 });
 
 test('production keeps realtime derive bounded while Actions owns ordinary reconstruction', () => {
