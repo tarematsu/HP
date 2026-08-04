@@ -10,7 +10,10 @@ const layout = readFileSync(
 test('clock time keeps a stable width when narrow digits are displayed', () => {
   assert.match(layout, /void DrawFixedWidthClockTime/);
   assert.match(layout, /for \(wchar_t digit = L'0'; digit <= L'9'; \+\+digit\)/);
-  assert.match(layout, /digitCellWidth = std::max\(digitCellWidth, extent\.cx\)/);
+  assert.match(
+    layout,
+    /digitCellWidth = std::max\(digitCellWidth, static_cast<int>\(extent\.cx\)\)/,
+  );
   assert.match(layout, /separatorCellWidth = std::max\(1, digitCellWidth \* 45 \/ 100\)/);
   assert.match(
     layout,
