@@ -102,6 +102,14 @@ function feedStateWrites(db) {
   return db.runs.filter((item) => item.sql.includes('SET content_hash=?, row_count=?'));
 }
 
+function rankingWriteBatches(db) {
+  return db.batches.filter((batch) => batch.some((item) => (
+    item.sql.startsWith('DELETE FROM ranking_entries')
+    || item.sql.startsWith('UPDATE ranking_entries')
+    || item.sql.startsWith('INSERT INTO ranking_entries')
+  )));
+}
+
 const replacementItems = [
   { key: 'one' },
   { key: 'two' },
@@ -141,15 +149,10 @@ test('unchanged playback feed skips ranking writes and commits feed state under 
   const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z', {
     replaceItems: replacementItems
   });
-  const rankingWrites = db.batches.filter((batch) => batch.some((item) => (
-    item.sql.startsWith('DELETE FROM ranking_entries')
-    || item.sql.startsWith('UPDATE ranking_entries')
-    || item.sql.startsWith('INSERT INTO ranking_entries')
-  )));
   const stateWrites = feedStateWrites(db);
 
   assert.equal(count, 3);
-  assert.equal(rankingWrites.length, 0);
+  assert.equal(rankingWriteBatches(db).length, 0);
   assert.equal(stateWrites.length, 1);
   assert.equal(stateWrites[0].args[1], 3);
   assert.equal(stateWrites[0].args[2], '2026-07-02T00:00:00.000Z');
@@ -157,7 +160,26 @@ test('unchanged playback feed skips ranking writes and commits feed state under 
   assert.equal(String(db.state.contentHash).startsWith('finalizing:'), false);
 });
 
-test('changed playback feed writes only the calculated delta and commits feed state', async () => {
+test('source ordering changes preserve existing ranks without ranking writes', async () => {
+  const db = createFeedDb(
+    [{ videoId: 10 }, { videoId: 30 }, { videoId: 20 }],
+    [
+      { videoId: 30, rank: 1 },
+      { videoId: 20, rank: 2 },
+      { videoId: 10, rank: 3 }
+    ]
+  );
+
+  const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z', {
+    replaceItems: replacementItems
+  });
+
+  assert.equal(count, 3);
+  assert.equal(rankingWriteBatches(db).length, 0);
+  assert.equal(db.state.rowCount, 3);
+});
+
+test('changed playback feed removes stale rows and appends only new membership', async () => {
   const db = createFeedDb(
     [{ videoId: 30 }, { videoId: 20 }, { videoId: 10 }],
     [
@@ -170,17 +192,15 @@ test('changed playback feed writes only the calculated delta and commits feed st
   const count = await rebuildPlaybackFeed(db, '2026-07-02T00:00:00.000Z', {
     replaceItems: replacementItems
   });
-  const writeBatch = db.batches.find((batch) => batch.some((item) => (
-    item.sql.startsWith('DELETE FROM ranking_entries')
-  )));
+  const writeBatch = rankingWriteBatches(db)[0];
   const stateWrites = feedStateWrites(db);
 
   assert.equal(count, 3);
   assert.ok(writeBatch);
-  assert.equal(writeBatch.length, 3);
+  assert.equal(writeBatch.length, 2);
   assert.equal(writeBatch[0].sql.startsWith('DELETE FROM ranking_entries'), true);
-  assert.equal(writeBatch[1].sql.startsWith('UPDATE ranking_entries'), true);
-  assert.equal(writeBatch[2].sql.startsWith('INSERT INTO ranking_entries'), true);
+  assert.equal(writeBatch[1].sql.startsWith('INSERT INTO ranking_entries'), true);
+  assert.equal(writeBatch.some((item) => item.sql.startsWith('UPDATE ranking_entries')), false);
   assert.equal(writeBatch.some((item) => item.sql === 'DELETE FROM ranking_entries WHERE period = ?'), false);
   assert.equal(stateWrites.length, 1);
   assert.equal(stateWrites[0].args[1], 3);
