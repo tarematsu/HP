@@ -18,6 +18,8 @@ const DEFAULT_LEASE_MS = 60_000;
 const DEFAULT_MAX_ATTEMPTS = 8;
 const DEFAULT_RUN_BUDGET_MS = 50_000;
 const DEFAULT_STATS_INTERVAL_MS = 60 * 60_000;
+const DEADLINE_GUARD_MS = 1_000;
+const CLAIM_JOB_OVERHEAD_MS = 1_000;
 
 function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
   const parsed = Math.trunc(Number(value));
@@ -34,6 +36,20 @@ export function deriveConfig(env = {}) {
     runBudgetMs: positiveInteger(env.DERIVE_RUN_BUDGET_MS, DEFAULT_RUN_BUDGET_MS, 55_000),
     statsIntervalMs: positiveInteger(env.DERIVE_STATS_INTERVAL_MS, DEFAULT_STATS_INTERVAL_MS, 24 * 60 * 60_000),
   };
+}
+
+export function minuteFactClaimLimit(config, remainingJobs, remainingBudgetMs) {
+  const jobsRemaining = Math.max(0, Math.trunc(Number(remainingJobs) || 0));
+  const budgetRemaining = Math.max(0, Math.trunc(Number(remainingBudgetMs) || 0));
+  const perJobBudgetMs = positiveInteger(
+    config?.jobTimeoutMs,
+    DEFAULT_JOB_TIMEOUT_MS,
+    20_000,
+  ) + CLAIM_JOB_OVERHEAD_MS;
+  const budgetCapacity = Math.floor(
+    Math.max(0, budgetRemaining - DEADLINE_GUARD_MS) / perJobBudgetMs,
+  );
+  return Math.min(MAX_CLAIM_BATCH, jobsRemaining, budgetCapacity);
 }
 
 export function minuteFactRetryDelayMs(attempts) {
@@ -94,10 +110,15 @@ export async function runMinuteFactDeriveCron(env, dependencies = {}) {
   let handled = 0;
   let stopForBudget = false;
   while (handled < config.maxJobs && !stopForBudget) {
-    if (nowFn() >= deadlineAt - 1_000) break;
-    const claimLimit = Math.min(MAX_CLAIM_BATCH, config.maxJobs - handled);
+    const claimStartedAt = nowFn();
+    const claimLimit = minuteFactClaimLimit(
+      config,
+      config.maxJobs - handled,
+      deadlineAt - claimStartedAt,
+    );
+    if (claimLimit <= 0) break;
     const jobs = await claim(env, {
-      now: nowFn(),
+      now: claimStartedAt,
       limit: claimLimit,
       leaseMs: config.leaseMs,
     });
@@ -105,7 +126,7 @@ export async function runMinuteFactDeriveCron(env, dependencies = {}) {
 
     let index = 0;
     for (; index < jobs.length; index += 1) {
-      if (nowFn() >= deadlineAt - 1_000) {
+      if (nowFn() >= deadlineAt - DEADLINE_GUARD_MS) {
         summary.skipped_budget += jobs.length - index;
         stopForBudget = true;
         break;
