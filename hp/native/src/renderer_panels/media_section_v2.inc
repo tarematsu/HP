@@ -162,7 +162,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     metricsLine += L" ";
     metricsLine += playMetricValues[index];
   }
-  SelectObject(dc, TierFont(FontTier::Medium));
+  SelectObject(dc, TierFont(FontTier::Small));
   SetTextColor(dc, metricTextColor);
   DrawTextInRect(dc, metricsLine, metricsRect,
                  DT_RIGHT | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);

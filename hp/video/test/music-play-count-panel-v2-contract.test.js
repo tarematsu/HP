@@ -24,7 +24,7 @@ test('the compiled Music panel uses the v2 implementation', () => {
   assert.match(panel, /void Renderer::DrawMusicSection/);
 });
 
-test('every requested period is rendered as one medium right-aligned line', () => {
+test('every requested period is rendered as one small right-aligned line', () => {
   for (const label of ['直近1時間', '本日', '昨日', '今週', '先週']) {
     assert.match(panel, new RegExp(`L"${label}"`));
   }
@@ -33,7 +33,7 @@ test('every requested period is rendered as one medium right-aligned line', () =
   assert.match(panel, /metricsLine \+= playMetricValues\[index\]/);
   assert.match(
     panel,
-    /SelectObject\(dc, TierFont\(FontTier::Medium\)\);[\s\S]*DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
+    /SelectObject\(dc, TierFont\(FontTier::Small\)\);[\s\S]*DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
   );
   assert.doesNotMatch(panel, /DrawWidgetCard\(dc, cell/);
   assert.doesNotMatch(panel, /usableMetricWidth/);

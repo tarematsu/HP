@@ -88,6 +88,44 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   return text;
 }
 
+void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
+                             const RECT& rect) {
+  if (text.empty() || rect.right <= rect.left || rect.bottom <= rect.top) return;
+
+  int digitCellWidth = 1;
+  for (wchar_t digit = L'0'; digit <= L'9'; ++digit) {
+    SIZE extent{};
+    if (GetTextExtentPoint32W(dc, &digit, 1, &extent)) {
+      digitCellWidth = std::max(digitCellWidth, static_cast<int>(extent.cx));
+    }
+  }
+  const int separatorCellWidth = std::max(1, digitCellWidth * 45 / 100);
+
+  int totalWidth = 0;
+  for (const wchar_t character : text) {
+    totalWidth += character >= L'0' && character <= L'9'
+        ? digitCellWidth
+        : separatorCellWidth;
+  }
+
+  const int availableWidth =
+      std::max(1, static_cast<int>(rect.right - rect.left));
+  LONG left = rect.left + std::max(0, (availableWidth - totalWidth) / 2);
+  for (const wchar_t character : text) {
+    const int cellWidth = character >= L'0' && character <= L'9'
+        ? digitCellWidth
+        : separatorCellWidth;
+    RECT cell{left, rect.top,
+              std::min<LONG>(rect.right, left + cellWidth), rect.bottom};
+    if (cell.right <= cell.left) break;
+    const wchar_t glyph[2]{character, L'\0'};
+    DrawTextInRect(dc, glyph, cell,
+                   DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    left += cellWidth;
+    if (left >= rect.right) break;
+  }
+}
+
 #define HP_DRAW_CLOCK_WITH_STATUS(dc, card) do { \
   DrawSectionCard((dc), (card)); \
   const RECT hpClockContent = CardContentRect((card)); \
@@ -103,7 +141,7 @@ std::wstring DashboardStatusTimeText(int64_t epochMs) {
   const int hpTimeFontHeight = std::clamp(std::min(hpTimeHeight * 72 / 100, hpTimeWidth * 18 / 100), 32, 88); \
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
-  DrawTextInRect((dc), TimeText(hpNow), hpTimeRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER); \
+  DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); \
   const NativeMinuteFactsProjection hpStationheadStatus = NativeMinuteFactsSnapshot(); \
   std::wstring hpMonitorText = L"Stationheadモニター 生成"; \
   hpMonitorText += DashboardStatusTimeText(hpStationheadStatus.minuteAt); \
