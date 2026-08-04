@@ -49,6 +49,31 @@ export function planPlaybackFeedChanges(desiredRows, currentRows) {
   return { desiredCount: desired.length, stale, moved, upserts };
 }
 
+function stablePlaybackFeedRows(desiredRows, currentRows) {
+  const desiredById = new Map();
+  for (const row of desiredRows || []) {
+    const videoId = positiveInteger(row?.videoId ?? row?.id);
+    if (videoId && !desiredById.has(videoId)) desiredById.set(videoId, row);
+  }
+
+  const rows = [];
+  const added = new Set();
+  for (const current of currentRows || []) {
+    const videoId = positiveInteger(current?.videoId ?? current?.id);
+    const desired = desiredById.get(videoId);
+    if (!desired || added.has(videoId)) continue;
+    added.add(videoId);
+    rows.push(desired);
+  }
+  for (const desired of desiredRows || []) {
+    const videoId = positiveInteger(desired?.videoId ?? desired?.id);
+    if (!videoId || added.has(videoId)) continue;
+    added.add(videoId);
+    rows.push(desired);
+  }
+  return rows;
+}
+
 export function currentFeedRowsStatement(db) {
   return db.prepare(
     `SELECT ranking.video_id AS videoId,
@@ -159,6 +184,7 @@ async function syncPlaybackFeed(db, capturedAt, options = {}) {
     desiredRows = currentRows;
   }
 
+  desiredRows = stablePlaybackFeedRows(desiredRows, currentRows);
   const plan = planPlaybackFeedChanges(desiredRows, currentRows);
   const statements = [];
   for (const payload of rankingEntryPayloads(plan.stale)) {
