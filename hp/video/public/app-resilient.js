@@ -1,4 +1,5 @@
 import { adminFetch, ensureViewerAdminTokenPrompt, readAdminToken } from './admin-token.js';
+import { createFeedSeed, shuffleFeedItems } from './feed-shuffle.js';
 import { normalizeOrientation } from './video-orientation.js';
 import {
   currentLandscapeLayout,
@@ -40,17 +41,6 @@ function playbackFailureMessage() {
   return 'この動画は再生できません。BAD登録またはスワイプで次へ進めます';
 }
 
-function randomInt(max) {
-  if (!Number.isInteger(max) || max <= 0) return 0;
-  const range = 0x100000000;
-  const limit = Math.floor(range / max) * max;
-  const buffer = new Uint32Array(1);
-  do {
-    crypto.getRandomValues(buffer);
-  } while (buffer[0] >= limit);
-  return buffer[0] % max;
-}
-
 function readOrientationPreference() {
   try {
     return normalizeOrientation(localStorage.getItem(ORIENTATION_KEY));
@@ -60,7 +50,7 @@ function readOrientationPreference() {
 }
 
 const state = {
-  seed: crypto.getRandomValues(new Uint32Array(1))[0] % 2147483645 + 1,
+  seed: 1,
   items: [],
   activeSlot: 0,
   activeIndex: -1,
@@ -114,31 +104,13 @@ function clearActiveItem() {
   player.dataset.activeVideoId = '';
 }
 
-function shuffleItems(items) {
-  const shuffled = [...items];
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    const swapIndex = randomInt(index + 1);
-    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
-  }
-
-  const previousFirstId = readLastFirstVideoId();
-  if (previousFirstId && shuffled.length > 1) {
-    const previousIndex = shuffled.findIndex((item) => String(item.id) === previousFirstId);
-    if (previousIndex >= 0) {
-      const [previousItem] = shuffled.splice(previousIndex, 1);
-      shuffled.splice(Math.min(MAX_SKIP_ATTEMPTS - 1, shuffled.length), 0, previousItem);
-    }
-  }
-  return shuffled;
-}
-
 function orientationEmptyMessage() {
   if (state.orientation === 'vertical') return '縦動画が見つかりません';
   if (state.orientation === 'horizontal') return '横動画が見つかりません';
   return '動画がまだありません';
 }
 
-async function fetchFeed(generation) {
+async function fetchFeed(generation, seed) {
   const targetSize = state.orientation === 'both'
     ? INITIAL_FEED_SIZE
     : ORIENTED_INITIAL_FEED_SIZE;
@@ -149,7 +121,7 @@ async function fetchFeed(generation) {
   while (matches.length < targetSize && pages < MAX_FEED_PAGES) {
     if (generation !== state.feedGeneration) return [];
     const params = new URLSearchParams({
-      seed: String(state.seed),
+      seed: String(seed),
       cursor: cursor || 'start',
       limit: String(FEED_PAGE_SIZE),
       orientation: state.orientation
@@ -321,7 +293,9 @@ function preloadNext() {
 async function showFirst() {
   if (!await ensurePlaybackAuth()) return;
   const generation = state.feedGeneration + 1;
+  const seed = createFeedSeed();
   state.feedGeneration = generation;
+  state.seed = seed;
   state.moving = true;
   state.items = [];
   state.failedIndexes.clear();
@@ -331,9 +305,14 @@ async function showFirst() {
   setLoading(true);
   setMessage('');
   try {
-    const items = await fetchFeed(generation);
+    const items = await fetchFeed(generation, seed);
     if (generation !== state.feedGeneration) return;
-    state.items = shuffleItems(items);
+    state.items = shuffleFeedItems(
+      items,
+      seed,
+      readLastFirstVideoId(),
+      MAX_SKIP_ATTEMPTS
+    );
     const result = await findPlayable(0, 0);
     if (generation !== state.feedGeneration) return;
     if (result.index === null) throw new Error('再生候補がありません');
@@ -423,7 +402,6 @@ function selectOrientation(value) {
   const orientation = normalizeOrientation(value);
   if (orientation === state.orientation) return;
   state.orientation = orientation;
-  state.seed = crypto.getRandomValues(new Uint32Array(1))[0] % 2147483645 + 1;
   rememberOrientation();
   updateOrientationControls();
   showFirst().catch(() => {});
