@@ -123,7 +123,7 @@ describe("SchedulerCoordinator Durable Object", () => {
       lastError: "manifest unavailable",
     });
     expect(Number(stored?.jobs.find(job => job.name === "update_check")?.nextRunAt))
-      .toBeLessThanOrEqual(now + 1_800);
+      .toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 1_800);
   });
 
   it("schedules an alarm for the earliest runtime job", async () => {
