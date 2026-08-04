@@ -96,7 +96,7 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   for (wchar_t digit = L'0'; digit <= L'9'; ++digit) {
     SIZE extent{};
     if (GetTextExtentPoint32W(dc, &digit, 1, &extent)) {
-      digitCellWidth = std::max(digitCellWidth, extent.cx);
+      digitCellWidth = std::max(digitCellWidth, static_cast<int>(extent.cx));
     }
   }
   const int separatorCellWidth = std::max(1, digitCellWidth * 45 / 100);
