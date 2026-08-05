@@ -53,7 +53,7 @@ test('retry delay grows exponentially and is capped at one hour', () => {
 test('derive cron claims one budgeted partial batch, then writes and completes each job', async () => {
   const calls = [];
   const result = await runMinuteFactDeriveCron(
-    { MINUTE_DB: {} },
+    { MINUTE_DB: {}, DERIVE_MAX_JOBS: 2 },
     {
       now: () => 1_000,
       claim: async (_env, options) => {
