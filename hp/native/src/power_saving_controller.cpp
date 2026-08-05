@@ -72,6 +72,7 @@ struct PowerSavingController::BrightnessState {
   bool active = false;
 };
 
+PowerSavingController::PowerSavingController() = default;
 PowerSavingController::~PowerSavingController() { Uninstall(); }
 
 void PowerSavingController::InstallForCurrentThread() {
