@@ -5,7 +5,7 @@ namespace hp {
 
 class PowerSavingController {
  public:
-  PowerSavingController() = default;
+  PowerSavingController();
   ~PowerSavingController();
 
   PowerSavingController(const PowerSavingController&) = delete;
