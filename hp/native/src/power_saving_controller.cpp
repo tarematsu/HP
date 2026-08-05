@@ -1,5 +1,6 @@
 #include "power_saving_controller.h"
 #include "web_renderer.h"
+#include <winrt/Windows.Graphics.Display.h>
 
 namespace hp {
 namespace {
@@ -65,6 +66,11 @@ RECT ShrinkRect(RECT rect, int inset) {
   return rect;
 }
 }  // namespace
+
+struct PowerSavingController::BrightnessState {
+  winrt::Windows::Graphics::Display::BrightnessOverride controller{nullptr};
+  bool active = false;
+};
 
 PowerSavingController::~PowerSavingController() { Uninstall(); }
 
@@ -158,8 +164,11 @@ void PowerSavingController::ObserveMessage(const CWPSTRUCT& message) {
 
   if (message.hwnd == parent_) {
     switch (message.message) {
-      case WM_SIZE:
       case WM_DISPLAYCHANGE:
+        if (powerSaving_) RefreshMinimumBrightness();
+        if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
+        break;
+      case WM_SIZE:
       case WM_WINDOWPOSCHANGED:
       case WM_SHOWWINDOW:
       case WM_TIMER:
@@ -172,6 +181,7 @@ void PowerSavingController::ObserveMessage(const CWPSTRUCT& message) {
         if (message.wParam == PBT_APMRESUMEAUTOMATIC ||
             message.wParam == PBT_APMRESUMESUSPEND) {
           CheckSchedule();
+          if (powerSaving_) RefreshMinimumBrightness();
           LayoutOverlay();
         }
         break;
@@ -198,6 +208,7 @@ void PowerSavingController::Attach(HWND parent) {
 }
 
 void PowerSavingController::Detach() noexcept {
+  RestoreBrightness();
   if (overlay_ && IsWindow(overlay_)) {
     KillTimer(overlay_, kScheduleTimer);
     DestroyWindow(overlay_);
@@ -273,9 +284,54 @@ void PowerSavingController::ArmScheduleTimer() {
 void PowerSavingController::ApplyMode(bool enabled) {
   const bool changed = powerSaving_ != enabled;
   powerSaving_ = enabled;
+  if (enabled) {
+    ApplyMinimumBrightness();
+  } else {
+    RestoreBrightness();
+  }
   Renderer::SetGlobalPowerSavingMode(enabled);
   if (changed) LayoutOverlay();
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
+}
+
+void PowerSavingController::ApplyMinimumBrightness() noexcept {
+  try {
+    if (!brightnessState_) brightnessState_ = std::make_unique<BrightnessState>();
+    if (brightnessState_->active) return;
+    if (!brightnessState_->controller) {
+      brightnessState_->controller =
+          winrt::Windows::Graphics::Display::BrightnessOverride::GetDefaultForSystem();
+    }
+    if (!brightnessState_->controller) return;
+    brightnessState_->controller.SetBrightnessLevel(
+        0.0,
+        winrt::Windows::Graphics::Display::DisplayBrightnessOverrideOptions::None);
+    brightnessState_->controller.StartOverride();
+    brightnessState_->active = true;
+  } catch (...) {
+    try {
+      if (brightnessState_ && brightnessState_->controller) {
+        brightnessState_->controller.StopOverride();
+      }
+    } catch (...) {
+    }
+    brightnessState_.reset();
+  }
+}
+
+void PowerSavingController::RestoreBrightness() noexcept {
+  auto state = std::move(brightnessState_);
+  if (!state || !state->active || !state->controller) return;
+  try {
+    state->controller.StopOverride();
+  } catch (...) {
+  }
+}
+
+void PowerSavingController::RefreshMinimumBrightness() noexcept {
+  if (!powerSaving_) return;
+  RestoreBrightness();
+  ApplyMinimumBrightness();
 }
 
 void PowerSavingController::LayoutOverlay() {
