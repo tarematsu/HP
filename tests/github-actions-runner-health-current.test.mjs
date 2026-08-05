@@ -13,6 +13,7 @@ const target = {
   cadenceMinutes: 15,
   staleAfterMinutes: 45,
   stalledAfterMinutes: 10,
+  ignoreSupersededCancellations: true,
 };
 
 function run(overrides = {}) {
@@ -210,7 +211,7 @@ test('a cancellation completed before a later run was created remains a consecut
     ],
   }), {
     now: NOW,
-    targets: [target],
+    targets: [{ ...target, ignoreSupersededCancellations: false }],
     currentRunId: null,
   });
 
