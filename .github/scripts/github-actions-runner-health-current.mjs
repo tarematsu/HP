@@ -73,6 +73,7 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     cadenceMinutes: 15,
     staleAfterMinutes: 45,
     stalledAfterMinutes: 10,
+    ignoreSupersededCancellations: true,
   }),
   Object.freeze({
     name: 'Runner health publisher',
@@ -80,6 +81,7 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     cadenceMinutes: 15,
     staleAfterMinutes: 45,
     stalledAfterMinutes: 10,
+    ignoreSupersededCancellations: true,
   }),
 ]);
 
@@ -92,19 +94,23 @@ function timestamp(value) {
   return Number.isFinite(milliseconds) ? milliseconds : null;
 }
 
-function cancellationWasSuperseded(run, newerRuns) {
+function cancellationWasSuperseded(run, newerRuns, {
+  ignoreReplacementTiming = false,
+} = {}) {
   if (run?.status !== 'completed' || run?.conclusion !== 'cancelled') return false;
   const cancelledAt = timestamp(run.updated_at);
   if (cancelledAt == null) return false;
 
   return newerRuns.some((newerRun) => {
     const replacementCreatedAt = timestamp(newerRun?.created_at || newerRun?.run_started_at);
-    return replacementCreatedAt != null && replacementCreatedAt <= cancelledAt;
+    if (replacementCreatedAt == null) return false;
+    return ignoreReplacementTiming || replacementCreatedAt <= cancelledAt;
   });
 }
 
 export function filterCurrentRunnerPublisherRuns(runs, {
   currentRunId = process.env.GITHUB_RUN_ID,
+  ignoreReplacementTiming = false,
 } = {}) {
   const normalizedCurrentRunId = String(currentRunId || '').trim();
   const ordered = [...(Array.isArray(runs) ? runs : [])].sort((left, right) => (
@@ -115,7 +121,9 @@ export function filterCurrentRunnerPublisherRuns(runs, {
     if (normalizedCurrentRunId && String(run?.id ?? '') === normalizedCurrentRunId) {
       return false;
     }
-    return !cancellationWasSuperseded(run, ordered.slice(0, index));
+    return !cancellationWasSuperseded(run, ordered.slice(0, index), {
+      ignoreReplacementTiming,
+    });
   });
 }
 
@@ -126,12 +134,16 @@ export function collectActionsRunnerHealth(request, {
 } = {}) {
   const requestWithPublisherFiltering = async (method, path, ...args) => {
     const response = await request(method, path, ...args);
-    if (!String(path || '').includes('/actions/workflows/publish-github-actions-runner-health.yml/runs?')) {
-      return response;
-    }
+    const target = targets.find((candidate) => (
+      String(path || '').includes(`/actions/workflows/${candidate.workflow}/runs?`)
+    ));
+    if (!target?.ignoreSupersededCancellations) return response;
     return {
       ...response,
-      workflow_runs: filterCurrentRunnerPublisherRuns(response?.workflow_runs, { currentRunId }),
+      workflow_runs: filterCurrentRunnerPublisherRuns(response?.workflow_runs, {
+        currentRunId,
+        ignoreReplacementTiming: true,
+      }),
     };
   };
 
