@@ -5,7 +5,7 @@ namespace hp {
 
 class PowerSavingController {
  public:
-  PowerSavingController() = default;
+  PowerSavingController();
   ~PowerSavingController();
 
   PowerSavingController(const PowerSavingController&) = delete;
@@ -15,6 +15,8 @@ class PowerSavingController {
   void Uninstall() noexcept;
 
  private:
+  struct BrightnessState;
+
   static constexpr UINT_PTR kScheduleTimer = 1;
   static constexpr UINT kRaiseOverlayMessage = WM_APP + 1;
 
@@ -29,6 +31,9 @@ class PowerSavingController {
   void CheckSchedule(bool force = false);
   void ArmScheduleTimer();
   void ApplyMode(bool enabled);
+  void ApplyMinimumBrightness() noexcept;
+  void RestoreBrightness() noexcept;
+  void RefreshMinimumBrightness() noexcept;
   void LayoutOverlay();
   void PaintOverlay(HWND window);
   RECT ParentButtonRect() const;
@@ -40,6 +45,7 @@ class PowerSavingController {
   bool powerSaving_ = false;
   bool scheduleInitialized_ = false;
   int64_t nextScheduleBoundaryAt_ = 0;
+  std::unique_ptr<BrightnessState> brightnessState_;
 
   inline static thread_local PowerSavingController* current_ = nullptr;
 };
