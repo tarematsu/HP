@@ -13,14 +13,14 @@ inline std::wstring StationheadMediaProgressWatchdogScript() {
   if (window.__homepanelStationheadMediaProgressWatchdog) return;
   window.__homepanelStationheadMediaProgressWatchdog = true;
 
-  const nativeSetInterval = window.setInterval.bind(window);
-  const nativeClearInterval = window.clearInterval.bind(window);
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
   const reloadKey = '__homepanelStationheadMediaStallReloadAt';
   const sampleIntervalMs = 15 * 1000;
   const stallThresholdMs = 2 * 60 * 1000;
   const reloadCooldownMs = 5 * 60 * 1000;
   let pageActive = true;
-  let interval = 0;
+  let timer = 0;
   let lastProgressSignature = '';
   let stalledSince = 0;
 
@@ -79,24 +79,33 @@ inline std::wstring StationheadMediaProgressWatchdogScript() {
     }
     writeLastReloadAt(now);
     pageActive = false;
-    if (interval) {
-      nativeClearInterval(interval);
-      interval = 0;
+    if (timer) {
+      nativeClearTimeout(timer);
+      timer = 0;
     }
     location.reload();
+  };
+  const schedule = () => {
+    if (!pageActive || timer) return;
+    timer = nativeSetTimeout(() => {
+      timer = 0;
+      if (!pageActive) return;
+      check();
+      schedule();
+    }, sampleIntervalMs);
   };
   const stop = () => {
     pageActive = false;
     stalledSince = 0;
-    if (interval) {
-      nativeClearInterval(interval);
-      interval = 0;
+    if (timer) {
+      nativeClearTimeout(timer);
+      timer = 0;
     }
   };
 
   window.addEventListener('pagehide', stop, true);
-  interval = nativeSetInterval(check, sampleIntervalMs);
   check();
+  schedule();
 })()
 )JS";
   return kScript;
