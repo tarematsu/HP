@@ -40,16 +40,15 @@ test('stalled active media progress reloads only after a guarded two-minute wind
   assert.match(watchdog, /location\.reload\(\)/);
 });
 
-test('flat play-count runs retain both endpoints for the one-hour baseline', () => {
-  assert.match(nativeStats, /history_\.size\(\) >= 3/);
+test('recent-hour history keeps one sample per five-minute bucket', () => {
+  assert.match(nativeStats, /kHistorySampleBucketMs = 5LL \* 60 \* 1000/);
+  assert.match(nativeStats, /const int64_t bucket = receivedAt \/ kHistorySampleBucketMs/);
   assert.match(
     nativeStats,
-    /history_\[history_\.size\(\) - 3\]\.second ==[\s\S]*history_\[history_\.size\(\) - 2\]\.second/,
+    /history_\.back\(\)\.first \/ kHistorySampleBucketMs == bucket/,
   );
-  assert.match(nativeStats, /history_\.erase\(history_\.end\(\) - 2\)/);
+  assert.match(nativeStats, /history_\.back\(\) = sample/);
+  assert.match(nativeStats, /history_\.push_back\(sample\)/);
   assert.match(nativeStats, /latest\.first - 60LL \* 60 \* 1000/);
-  assert.doesNotMatch(
-    nativeStats,
-    /history_\.size\(\) >= 2 &&\s*history_\[history_\.size\(\) - 2\]\.second == history_\.back\(\)\.second/,
-  );
+  assert.doesNotMatch(nativeStats, /history_\.erase\(history_\.end\(\) - 2\)/);
 });
