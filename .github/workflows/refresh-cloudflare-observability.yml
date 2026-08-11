@@ -6,7 +6,7 @@ on:
     paths:
       - '.github/workflows/refresh-cloudflare-observability.yml'
   schedule:
-    - cron: '7 * * * *'
+    - cron: '12 * * * *'
   workflow_dispatch:
 
 permissions:
