@@ -61,9 +61,12 @@ inline std::wstring StationheadMediaProgressWatchdogScript() {
 
     const now = Date.now();
     if (signature !== lastProgressSignature) {
+      const mediaAdvanced = lastProgressSignature !== '';
       lastProgressSignature = signature;
       stalledSince = 0;
-      clearLastReloadAt();
+      // Keep a previous reload marker across a newly loaded but immediately
+      // frozen media element. Only proven media-clock progress clears it.
+      if (mediaAdvanced) clearLastReloadAt();
       return;
     }
     if (!stalledSince) {
