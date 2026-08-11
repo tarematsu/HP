@@ -8,7 +8,7 @@ test('full Cloudflare observability has an independent hourly refresh dispatcher
 
   expectAll(workflow, [
     'name: Refresh Cloudflare observability',
-    "cron: '7 * * * *'",
+    "cron: '12 * * * *'",
     'workflow_dispatch:',
     'actions: write',
     'actions/github-script@v7',
