@@ -1,6 +1,6 @@
 #pragma once
 
-#include "sh_polling_policy.h"
+#include "sh_runtime_recovery_polling_policy_fix.h"
 
 namespace hp {
 
@@ -105,7 +105,8 @@ inline std::wstring StationheadMediaProgressWatchdogScript() {
 inline std::wstring StationheadAutoplayScriptWithMediaProgressWatchdog(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
-  std::wstring script = StationheadAutoplayScript(globalName, messagePrefix);
+  std::wstring script =
+      StationheadAutoplayScriptRecoveryPollingFixed(globalName, messagePrefix);
   script.push_back(L'\n');
   script.append(StationheadMediaProgressWatchdogScript());
   return script;
@@ -113,8 +114,8 @@ inline std::wstring StationheadAutoplayScriptWithMediaProgressWatchdog(
 
 }  // namespace hp
 
-// sh_polling_policy.h has already defined the canonical autoplay wrapper above.
-// Rewrite subsequent call sites only, so sh_webview.cpp injects the additional
-// watchdog without duplicating or replacing the existing Start Listening,
-// blank-page recovery, and audio-only UI policies.
+// Recovery polling is the final existing autoplay policy layer. Override its
+// call-site macro only after that wrapper has been defined, so lifecycle/login
+// refinements remain intact and the watchdog is appended exactly once.
+#undef StationheadAutoplayScript
 #define StationheadAutoplayScript StationheadAutoplayScriptWithMediaProgressWatchdog
