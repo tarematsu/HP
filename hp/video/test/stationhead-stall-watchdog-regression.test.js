@@ -50,6 +50,8 @@ test('stalled active media progress reloads after a guarded two-minute window', 
   assert.match(watchdog, /nativeSetTimeout/);
   assert.match(watchdog, /nativeClearTimeout/);
   assert.doesNotMatch(watchdog, /setInterval/);
+  assert.match(watchdog, /const mediaAdvanced = lastProgressSignature !== ''/);
+  assert.match(watchdog, /if \(mediaAdvanced\) clearLastReloadAt\(\)/);
   assert.match(watchdog, /sessionStorage\.setItem\(reloadKey/);
   assert.match(watchdog, /window\.addEventListener\('pagehide', stop, true\)/);
   assert.match(watchdog, /location\.reload\(\)/);
