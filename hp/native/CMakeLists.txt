@@ -134,6 +134,7 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
   src/sh_runtime_policy_fix.h
   src/sh_runtime_lifecycle_policy_fix.h
   src/sh_runtime_recovery_polling_policy_fix.h
+  src/sh_media_stall_watchdog_policy_fix.h
   src/sh_webview_event_policy.h
   src/sh_runtime_resource_policy_fix.h
   src/sh_runtime_resource_boundary_policy_fix.h
@@ -176,6 +177,8 @@ target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_lifecycle_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_runtime_recovery_polling_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_media_stall_watchdog_policy_fix.h)
 target_precompile_headers(HomePanel PRIVATE
   src/sh_webview_event_policy.h)
 target_precompile_headers(HomePanel PRIVATE
