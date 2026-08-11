@@ -39,13 +39,17 @@ test('the media progress watchdog is layered after runtime recovery polling', ()
   );
 });
 
-test('stalled active media progress reloads only after a guarded two-minute window', () => {
+test('stalled active media progress reloads after a guarded two-minute window', () => {
   assert.match(watchdog, /document\.querySelectorAll\('audio,video'\)/);
   assert.match(watchdog, /element\.paused \|\| element\.ended/);
   assert.match(watchdog, /element\.readyState < 2/);
   assert.match(watchdog, /element\.currentTime/);
+  assert.match(watchdog, /sampleIntervalMs = 15 \* 1000/);
   assert.match(watchdog, /stallThresholdMs = 2 \* 60 \* 1000/);
   assert.match(watchdog, /reloadCooldownMs = 5 \* 60 \* 1000/);
+  assert.match(watchdog, /nativeSetTimeout/);
+  assert.match(watchdog, /nativeClearTimeout/);
+  assert.doesNotMatch(watchdog, /setInterval/);
   assert.match(watchdog, /sessionStorage\.setItem\(reloadKey/);
   assert.match(watchdog, /window\.addEventListener\('pagehide', stop, true\)/);
   assert.match(watchdog, /location\.reload\(\)/);
