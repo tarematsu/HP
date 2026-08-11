@@ -10,6 +10,7 @@ namespace hp {
 namespace {
 
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
+constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
 constexpr auto kSuccessInterval = std::chrono::minutes(5);
 constexpr auto kRetryInterval = std::chrono::seconds(30);
 constexpr size_t kMaximumBodyBytes = 1024 * 1024;
@@ -150,20 +151,17 @@ class NativeStatsStore {
           return point.dayStartMsUtc / kDayMs == today;
         });
     if (current != daily_.rend()) {
-      history_.push_back({receivedAt, current->value});
+      const std::pair<int64_t, int> sample{receivedAt, current->value};
+      const int64_t bucket = receivedAt / kHistorySampleBucketMs;
+      if (!history_.empty() &&
+          history_.back().first / kHistorySampleBucketMs == bucket) {
+        history_.back() = sample;
+      } else {
+        history_.push_back(sample);
+      }
       const int64_t cutoff = receivedAt - 2LL * 60 * 60 * 1000;
       while (!history_.empty() && history_.front().first < cutoff) {
         history_.pop_front();
-      }
-      // Keep both ends of an unchanged-value run. The one-hour summary needs
-      // a sample at or before its target time; retaining only the newest equal
-      // value made recentHour fall back to -1/"--" whenever the count stayed
-      // flat for an hour. Collapse only interior duplicates instead.
-      while (history_.size() >= 3 &&
-             history_[history_.size() - 3].second ==
-                 history_[history_.size() - 2].second &&
-             history_[history_.size() - 2].second == history_.back().second) {
-        history_.erase(history_.end() - 2);
       }
     }
     ++revision_;
