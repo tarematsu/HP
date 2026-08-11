@@ -206,7 +206,7 @@ test('all status writers share a non-cancelling issue lock', () => {
   }
 });
 
-test('lightweight workflow refreshes after all operational workflows and synchronizes system status', () => {
+test('lightweight workflow refreshes after operational workflows and synchronizes system status', () => {
   const workflow = read('.github/workflows/publish-github-actions-runner-health.yml');
   for (const name of [
     'Unified Cloudflare Observability',
@@ -214,9 +214,9 @@ test('lightweight workflow refreshes after all operational workflows and synchro
     'Run runtime offline maintenance',
     'Repair track metadata',
     'Run local minute facts rebuild',
-    'Refresh Cloudflare observability',
     'Publish GitHub deployment health',
   ]) assert.match(workflow, new RegExp(name));
+  assert.doesNotMatch(workflow, /Refresh Cloudflare observability/);
   assert.match(workflow, /github-actions-runner-health-current\.mjs/);
   assert.match(workflow, /observability-system-status\.mjs/);
   assert.match(workflow, /cron: '2,17,32,47 \* \* \* \*'/);
