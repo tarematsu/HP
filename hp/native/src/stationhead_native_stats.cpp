@@ -155,7 +155,13 @@ class NativeStatsStore {
       while (!history_.empty() && history_.front().first < cutoff) {
         history_.pop_front();
       }
-      while (history_.size() >= 2 &&
+      // Keep both ends of an unchanged-value run. The one-hour summary needs
+      // a sample at or before its target time; retaining only the newest equal
+      // value made recentHour fall back to -1/"--" whenever the count stayed
+      // flat for an hour. Collapse only interior duplicates instead.
+      while (history_.size() >= 3 &&
+             history_[history_.size() - 3].second ==
+                 history_[history_.size() - 2].second &&
              history_[history_.size() - 2].second == history_.back().second) {
         history_.erase(history_.end() - 2);
       }
