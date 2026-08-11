@@ -53,8 +53,16 @@ test('stalled active media progress reloads after a guarded two-minute window', 
   assert.match(watchdog, /const mediaAdvanced = lastProgressSignature !== ''/);
   assert.match(watchdog, /if \(mediaAdvanced\) clearLastReloadAt\(\)/);
   assert.match(watchdog, /sessionStorage\.setItem\(reloadKey/);
-  assert.match(watchdog, /window\.addEventListener\('pagehide', stop, true\)/);
   assert.match(watchdog, /location\.reload\(\)/);
+});
+
+test('the watchdog resumes when a Stationhead document returns from BFCache', () => {
+  assert.match(watchdog, /const stop = \(\) => \{[\s\S]*pageActive = false/);
+  assert.match(watchdog, /const resume = \(\) => \{[\s\S]*pageActive = true/);
+  assert.match(watchdog, /lastProgressSignature = ''/);
+  assert.match(watchdog, /window\.addEventListener\('pagehide', stop, true\)/);
+  assert.match(watchdog, /window\.addEventListener\('pageshow', resume, true\)/);
+  assert.match(watchdog, /resume[\s\S]*check\(\);[\s\S]*schedule\(\);/);
 });
 
 test('recent-hour history keeps one sample per five-minute bucket', () => {
