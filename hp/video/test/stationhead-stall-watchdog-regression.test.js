@@ -15,13 +15,24 @@ const nativeStats = readFileSync(
   'utf8',
 );
 
-test('the media progress watchdog is precompiled after the canonical polling policy', () => {
+test('the media progress watchdog is layered after runtime recovery polling', () => {
   assert.match(cmake, /src\/sh_media_stall_watchdog_policy_fix\.h/);
-  assert.match(
-    cmake,
-    /target_precompile_headers\(HomePanel PRIVATE\s+src\/sh_polling_policy\.h\s+src\/sh_media_stall_watchdog_policy_fix\.h\s+src\/sh_runtime_policy_fix\.h\)/,
+  const recoveryPch = cmake.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_recovery_polling_policy_fix.h)',
   );
-  assert.match(watchdog, /#include "sh_polling_policy\.h"/);
+  const watchdogPch = cmake.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_media_stall_watchdog_policy_fix.h)',
+  );
+  assert.ok(recoveryPch >= 0 && watchdogPch > recoveryPch);
+  assert.match(
+    watchdog,
+    /#include "sh_runtime_recovery_polling_policy_fix\.h"/,
+  );
+  assert.match(
+    watchdog,
+    /StationheadAutoplayScriptRecoveryPollingFixed\(globalName, messagePrefix\)/,
+  );
+  assert.match(watchdog, /#undef StationheadAutoplayScript/);
   assert.match(
     watchdog,
     /#define StationheadAutoplayScript StationheadAutoplayScriptWithMediaProgressWatchdog/,
