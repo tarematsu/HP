@@ -99,14 +99,24 @@ inline std::wstring StationheadMediaProgressWatchdogScript() {
   };
   const stop = () => {
     pageActive = false;
+    lastProgressSignature = '';
     stalledSince = 0;
     if (timer) {
       nativeClearTimeout(timer);
       timer = 0;
     }
   };
+  const resume = () => {
+    if (pageActive) return;
+    pageActive = true;
+    lastProgressSignature = '';
+    stalledSince = 0;
+    check();
+    schedule();
+  };
 
   window.addEventListener('pagehide', stop, true);
+  window.addEventListener('pageshow', resume, true);
   check();
   schedule();
 })()
