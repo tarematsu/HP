@@ -81,7 +81,7 @@ test('the legacy page-generated statistics scheduler is compile-time disabled', 
   );
 });
 
-test('one committed-response observer captures authentication and stats natively', () => {
+test('one committed-response observer captures credentials only', () => {
   assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
   assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
   assert.doesNotMatch(
@@ -92,16 +92,14 @@ test('one committed-response observer captures authentication and stats natively
   assert.match(nativeStats, /get_Request/);
   assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
   assert.match(nativeStats, /GetHeader\(/);
-  assert.match(nativeStats, /get_Response/);
-  assert.match(nativeStats, /get_StatusCode/);
-  assert.match(nativeStats, /GetContent/);
-  assert.match(nativeStats, /kMaximumBodyBytes = 1024 \* 1024/);
+  assert.doesNotMatch(nativeStats, /get_Response/);
+  assert.doesNotMatch(nativeStats, /get_StatusCode/);
+  assert.doesNotMatch(nativeStats, /GetContent/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
-  assert.match(nativeStats, /L"\/me\/channel\/"/);
 });
 
-test('committed response requests seed authentication before the stats response gate', () => {
-  const responseObserverAt = nativeStats.indexOf('void AttachResponseObserver');
+test('committed response requests seed the sole native statistics worker', () => {
+  const responseObserverAt = nativeStats.indexOf('void AttachCredentialObserver');
   assert.ok(responseObserverAt >= 0);
   const responseObserver = nativeStats.slice(responseObserverAt);
   const apiGate = responseObserver.indexOf(
@@ -114,15 +112,12 @@ test('committed response requests seed authentication before the stats response 
   const observeCredentials = responseObserver.indexOf(
     'StatsClient().ObserveCredentials',
   );
-  const statsGate = responseObserver.indexOf(
-    'if (!IsStatsUri(uri, channelId)) return S_OK;',
-  );
 
   assert.ok(apiGate >= 0);
   assert.ok(headerRead > apiGate);
   assert.ok(authorizationRead > headerRead);
   assert.ok(observeCredentials > authorizationRead);
-  assert.ok(statsGate > observeCredentials);
+  assert.doesNotMatch(responseObserver, /IsStatsUri|GetContent|get_Response/);
 });
 
 test('one autonomous worker requests streakStats without page script execution', () => {
