@@ -440,6 +440,32 @@ void AttachResponseObserver(ICoreWebView2* webview, int channelId) {
             if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
             const std::wstring uri(uriRaw);
             CoTaskMemFree(uriRaw);
+            if (!IsStationheadApiUri(uri)) return S_OK;
+
+            // WebResourceResponseReceived exposes the committed request, which
+            // includes authentication headers that the network stack can add
+            // after WebResourceRequested. Seed the autonomous native worker
+            // from that later view as well so a missing early Authorization
+            // observation cannot leave every play-count metric unavailable.
+            ComPtr<ICoreWebView2HttpRequestHeaders> headers;
+            if (SUCCEEDED(request->get_Headers(&headers)) && headers) {
+              RequestCredentials credentials;
+              credentials.authorization = HeaderValue(
+                  headers.Get(), L"Authorization", 16 * 1024);
+              if (!credentials.authorization.empty()) {
+                credentials.deviceUid = HeaderValue(
+                    headers.Get(), L"sth-device-uid", 1024);
+                credentials.appPlatform = HeaderValue(
+                    headers.Get(), L"app-platform", 256);
+                credentials.appVersion = HeaderValue(
+                    headers.Get(), L"app-version", 256);
+                credentials.cookie = HeaderValue(
+                    headers.Get(), L"Cookie", 32 * 1024);
+                StatsClient().ObserveCredentials(
+                    channelId, std::move(credentials));
+              }
+            }
+
             if (!IsStatsUri(uri, channelId)) return S_OK;
 
             ComPtr<ICoreWebView2WebResourceResponseView> response;
