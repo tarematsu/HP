@@ -51,14 +51,14 @@ test('all stacked generated play-count policy files are removed', () => {
   assert.doesNotMatch(cmake, /stationhead_native_stats_policy/);
 });
 
-test('a normal C++ source is built and explicitly attached by WebView setup', () => {
+test('a normal C++ source is built and directly attached by WebView setup', () => {
   assert.match(cmake, /src\/stationhead_native_stats\.cpp/);
   assert.doesNotMatch(
     cmake,
     /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats/,
   );
   assert.match(playbackPolicy, /#include "stationhead_native_stats\.h"/);
-  assert.match(playbackPolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+  assert.doesNotMatch(playbackPolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
   assert.match(
     playbackPolicy,
     /AttachStationheadNativeStats\(webview, config\.channelId\)/,
@@ -81,13 +81,17 @@ test('the legacy page-generated statistics scheduler is compile-time disabled', 
   );
 });
 
-test('WebView2 captures authentication and successful responses natively', () => {
-  assert.match(nativeStats, /add_WebResourceRequested/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/);
+test('one committed-response observer captures authentication and stats natively', () => {
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
+  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
+  assert.doesNotMatch(
+    nativeStats,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
+  );
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
   assert.match(nativeStats, /get_Request/);
+  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
+  assert.match(nativeStats, /GetHeader\(/);
   assert.match(nativeStats, /get_Response/);
   assert.match(nativeStats, /get_StatusCode/);
   assert.match(nativeStats, /GetContent/);
@@ -96,7 +100,7 @@ test('WebView2 captures authentication and successful responses natively', () =>
   assert.match(nativeStats, /L"\/me\/channel\/"/);
 });
 
-test('committed response requests seed late-added authentication headers', () => {
+test('committed response requests seed authentication before the stats response gate', () => {
   const responseObserverAt = nativeStats.indexOf('void AttachResponseObserver');
   assert.ok(responseObserverAt >= 0);
   const responseObserver = nativeStats.slice(responseObserverAt);
