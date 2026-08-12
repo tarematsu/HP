@@ -46,11 +46,13 @@ test('the public header is declarations and a narrow renderer facade only', () =
   assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
 });
 
-test('native WebView2 traffic supplies credentials and responses', () => {
-  assert.match(nativeStats, /add_WebResourceRequested/);
+test('one committed WebView2 response stream supplies credentials and stats bodies', () => {
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
+  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /get_Request/);
   assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
   assert.match(nativeStats, /GetHeader\(/);
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
   assert.match(nativeStats, /ICoreWebView2WebResourceResponseView/);
   assert.match(nativeStats, /GetContent\(/);
 });
