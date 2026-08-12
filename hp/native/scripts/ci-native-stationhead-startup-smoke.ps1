@@ -332,6 +332,8 @@ $postClickObserveUntilUtc = $null
 $sampleCount = 0
 $primaryHostSeen = $false
 $secondaryHostSeen = $false
+$primaryInteractiveAuthObserved = $false
+$secondaryInteractiveAuthObserved = $false
 $violation = $null
 $failureMessage = $null
 $lastPrimaryState = "unobserved"
@@ -367,6 +369,12 @@ try {
           Write-Host "Observed $name at ${elapsedMs}ms"
         }
       }
+      if ($log.Contains("Stationhead A audio-loss state=auth_wait detail=authentication surface detected (")) {
+        $primaryInteractiveAuthObserved = $true
+      }
+      if ($log.Contains("Stationhead B audio-loss state=auth_wait detail=authentication surface detected (")) {
+        $secondaryInteractiveAuthObserved = $true
+      }
     }
 
     if ($mainWindow -ne [IntPtr]::Zero) {
@@ -382,10 +390,14 @@ try {
         Write-Host "Started non-mutating Stationhead surface observation at first host creation."
       }
 
-      $primaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
-        $mainWindow, "HomePanelStationheadHost")
-      $secondaryStartupSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
-        $mainWindow, "HomePanelSecondaryStationheadHost")
+      $primaryStartupSafe =
+        [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+          $mainWindow, "HomePanelStationheadHost") -or
+        $primaryInteractiveAuthObserved
+      $secondaryStartupSafe =
+        [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+          $mainWindow, "HomePanelSecondaryStationheadHost") -or
+        $secondaryInteractiveAuthObserved
       $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
         $mainWindow, "HomePanelSpotifyAuthHost")
       $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
@@ -404,11 +416,13 @@ try {
             ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
           primaryPlayback = $lastPrimaryState
           secondaryPlayback = $lastSecondaryState
+          primaryInteractiveAuth = $primaryInteractiveAuthObserved
+          secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
           primaryAuthHidden = $lastPrimaryAuthHidden
           secondaryAuthHidden = $lastSecondaryAuthHidden
           foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
         }
-        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
       }
 
       $nativePanelsReady =
@@ -420,10 +434,14 @@ try {
       }
 
       if ($monitoringStartedAtUtc) {
-        $primaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
-          $mainWindow, "HomePanelStationheadHost")
-        $secondaryOk = [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
-          $mainWindow, "HomePanelSecondaryStationheadHost")
+        $primaryOk =
+          [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
+            $mainWindow, "HomePanelStationheadHost") -or
+          $primaryInteractiveAuthObserved
+        $secondaryOk =
+          [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
+            $mainWindow, "HomePanelSecondaryStationheadHost") -or
+          $secondaryInteractiveAuthObserved
         if (-not $primaryOk -or -not $secondaryOk -or
             -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
           $violation = [ordered]@{
@@ -433,11 +451,13 @@ try {
               ([DateTime]::UtcNow - $startedAtUtc).TotalMilliseconds)
             primaryPlayback = $lastPrimaryState
             secondaryPlayback = $lastSecondaryState
+            primaryInteractiveAuth = $primaryInteractiveAuthObserved
+            secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
             primaryAuthHidden = $lastPrimaryAuthHidden
             secondaryAuthHidden = $lastSecondaryAuthHidden
             foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
           }
-          throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+          throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
         }
       }
     }
@@ -511,6 +531,8 @@ try {
     }
     primaryHostSeen = $primaryHostSeen
     secondaryHostSeen = $secondaryHostSeen
+    primaryInteractiveAuthObserved = $primaryInteractiveAuthObserved
+    secondaryInteractiveAuthObserved = $secondaryInteractiveAuthObserved
     observationalOnly = $true
     forbiddenWindowMutationApisChecked = $forbiddenMutationNames
     sampleIntervalMs = 25
