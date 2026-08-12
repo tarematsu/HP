@@ -96,6 +96,31 @@ test('WebView2 captures authentication and successful responses natively', () =>
   assert.match(nativeStats, /L"\/me\/channel\/"/);
 });
 
+test('committed response requests seed late-added authentication headers', () => {
+  const responseObserverAt = nativeStats.indexOf('void AttachResponseObserver');
+  assert.ok(responseObserverAt >= 0);
+  const responseObserver = nativeStats.slice(responseObserverAt);
+  const apiGate = responseObserver.indexOf(
+    'if (!IsStationheadApiUri(uri)) return S_OK;',
+  );
+  const headerRead = responseObserver.indexOf('request->get_Headers(&headers)');
+  const authorizationRead = responseObserver.indexOf(
+    'headers.Get(), L"Authorization", 16 * 1024',
+  );
+  const observeCredentials = responseObserver.indexOf(
+    'StatsClient().ObserveCredentials',
+  );
+  const statsGate = responseObserver.indexOf(
+    'if (!IsStatsUri(uri, channelId)) return S_OK;',
+  );
+
+  assert.ok(apiGate >= 0);
+  assert.ok(headerRead > apiGate);
+  assert.ok(authorizationRead > headerRead);
+  assert.ok(observeCredentials > authorizationRead);
+  assert.ok(statsGate > observeCredentials);
+});
+
 test('one autonomous worker requests streakStats without page script execution', () => {
   assert.match(nativeStats, /class NativeStatsClient/);
   assert.match(nativeStats, /std::condition_variable wake_/);
