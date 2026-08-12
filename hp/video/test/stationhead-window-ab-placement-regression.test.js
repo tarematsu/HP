@@ -58,34 +58,33 @@ test('dual-window placement constrains pending A left and pending B right', () =
   );
 });
 
-test('Spotify auth is the only surface that may hide the background playback host', () => {
+test('normal playback stays behind while explicit auth surfaces may occupy the workspace', () => {
   const policy = section(
     layoutSource,
     'struct StationheadSurfacePolicy',
     'void ApplyStationheadChildLayout(',
   );
   assert.match(policy, /bool showAuth = false;/);
+  assert.match(policy, /bool showPlayback = false;/);
   assert.match(policy, /bool hidePlayback = false;/);
   assert.match(
     policy,
-    /return \{authSelected && authSurfaceReady, authSelected\};/,
+    /return \{authSelected && authSurfaceReady, playbackSelected, authSelected\};/,
   );
-  assert.match(
-    policy,
-    /StationheadTabKind::Auth, false\)\.hidePlayback/,
-  );
-  assert.match(
-    policy,
-    /StationheadTabKind::None, false\)\.hidePlayback/,
-  );
+  assert.match(policy, /StationheadTabKind::Stationhead, true\)\.showPlayback/);
+  assert.match(policy, /StationheadTabKind::Auth, false\)\.hidePlayback/);
+  assert.match(policy, /StationheadTabKind::None, false\)\.hidePlayback/);
 
   const layout = section(
     layoutSource,
     'void StationheadPlayer::LayoutControllers()',
     'void StationheadPlayer::SetBounds(',
   );
-  assert.match(layout, /policy\.showAuth, policy\.hidePlayback/);
-  assert.match(layout, /status_\.visible = policy\.showAuth/);
+  assert.match(
+    layout,
+    /policy\.showAuth, policy\.showPlayback,[\s\S]*policy\.hidePlayback/,
+  );
+  assert.match(layout, /status_\.visible = policy\.showAuth \|\| policy\.showPlayback/);
   assert.doesNotMatch(layout, /showStartupPreview|contentVisible|previewVisible/);
 
   const setVisible = section(
@@ -95,7 +94,11 @@ test('Spotify auth is the only surface that may hide the background playback hos
   );
   assert.match(
     setVisible,
-    /selectedTab_ != StationheadTabKind::Auth[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+    /selectedTab_ != StationheadTabKind::Auth &&[\s\S]*selectedTab_ != StationheadTabKind::Stationhead[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+  );
+  assert.match(
+    setVisible,
+    /PlaybackSurfaceMatches\([\s\S]*width, height, HWND_TOP\)[\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
   );
   assert.match(
     setVisible,

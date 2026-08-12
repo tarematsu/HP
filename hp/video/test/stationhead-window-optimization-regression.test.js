@@ -15,7 +15,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('startup preview lifecycle keeps the playback host at 1x1 and HWND_BOTTOM', () => {
+test('startup preview keeps normal playback backgrounded but preserves explicit interaction', () => {
   const createHost = section(
     layoutSource,
     'HWND CreateStationheadChildHost(',
@@ -28,31 +28,28 @@ test('startup preview lifecycle keeps the playback host at 1x1 and HWND_BOTTOM',
     'void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds)',
     'void StationheadPlayer::ClearStartupPreviewBounds()',
   );
+  assert.match(setPreviewBounds, /startupPreviewActive_ = true;/);
+  assert.match(setPreviewBounds, /bounds_ = bounds;/);
   assert.match(
     setPreviewBounds,
-    /startupPreviewActive_ && EqualRect\(&bounds_, &bounds\)/,
+    /if \(selectedTab_ == StationheadTabKind::None\) \{[\s\S]*KeepPlaybackBehindDashboard\(\);[\s\S]*return;/,
   );
-  assert.match(
-    setPreviewBounds,
-    /PlaybackSurfaceMatches\([\s\S]*1, 1, HWND_BOTTOM\)/,
-  );
-  assert.match(setPreviewBounds, /HiddenAuthSurfaceMatches\(/);
-  assert.match(setPreviewBounds, /KeepPlaybackBehindDashboard\(\)/);
-  assert.doesNotMatch(setPreviewBounds, /HWND_TOP|showStartupPreview/);
+  assert.match(setPreviewBounds, /viewVisible_ = true;[\s\S]*LayoutControllers\(\);/);
 });
 
-test('background host clips a normal-size playback viewport', () => {
+test('background host clips a normal-size playback viewport while interactive auth can expand it', () => {
   const applyLayout = section(
     layoutSource,
     'void ApplyStationheadChildLayout(',
     '\n}\n\n}\n\nbool StationheadPlayer::EnsureHostWindow()',
   );
-  assert.match(applyLayout, /constexpr int hostWidth = 1;/);
-  assert.match(applyLayout, /constexpr int hostHeight = 1;/);
+  assert.match(applyLayout, /const int hostWidth = showPlayback \? width : 1;/);
+  assert.match(applyLayout, /const int hostHeight = showPlayback \? height : 1;/);
+  assert.match(applyLayout, /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/);
   assert.match(applyLayout, /const RECT contentBounds\{0, 0, width, height\};/);
   assert.match(
     applyLayout,
-    /SetWindowPos\(hostWindow, HWND_BOTTOM,[\s\S]*hostWidth, hostHeight/,
+    /SetWindowPos\(hostWindow, hostPlacement,[\s\S]*hostWidth, hostHeight/,
   );
   assert.match(applyLayout, /controller->put_Bounds\(contentBounds\);/);
   assert.doesNotMatch(
@@ -79,7 +76,7 @@ test('duplicate hide notifications verify stable playback and auth surfaces', ()
   );
 });
 
-test('reselecting playback stays background-only while active auth may reuse its surface', () => {
+test('explicit Stationhead interaction may reuse the playback surface while normal playback stays background-only', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -87,11 +84,11 @@ test('reselecting playback stays background-only while active auth may reuse its
   );
   assert.match(
     setVisible,
-    /selectedTab_ != StationheadTabKind::Auth[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
+    /selectedTab_ != StationheadTabKind::Auth &&[\s\S]*selectedTab_ != StationheadTabKind::Stationhead[\s\S]*KeepPlaybackBehindDashboard\(\)[\s\S]*return;/,
   );
-  assert.doesNotMatch(
+  assert.match(
     setVisible,
-    /StationheadTabKind::Stationhead[\s\S]*PlaybackSurfaceMatches\([\s\S]*HWND_TOP/,
+    /PlaybackSurfaceMatches\([\s\S]*width, height, HWND_TOP\)[\s\S]*WindowContainsFocus\(hostWindow_\)/,
   );
   assert.match(
     setVisible,

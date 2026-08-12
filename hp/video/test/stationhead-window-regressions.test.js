@@ -62,7 +62,7 @@ test('hidden playback placement does not trust a stale cached visible flag', () 
   );
   assert.match(
     keepBehind,
-    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false\)/,
+    /ApplyStationheadChildLayout\([\s\S]*bounds_, false, false, false\)/,
   );
 });
 
@@ -118,7 +118,7 @@ test('scheduled WebView recreation and uncommitted audio are not reported as hea
   );
   assert.match(
     interactive,
-    /selectedTab_ == StationheadTabKind::Auth \|\| spotifyAuthorization_/,
+    /selectedTab_ == StationheadTabKind::Stationhead \|\|[\s\S]*selectedTab_ == StationheadTabKind::Auth \|\| spotifyAuthorization_/,
   );
   assert.doesNotMatch(interactive, /AudioPlaying\(\)|controller_/);
 });

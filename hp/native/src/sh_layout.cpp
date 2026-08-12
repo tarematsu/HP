@@ -148,6 +148,7 @@ RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
 
 struct StationheadSurfacePolicy {
   bool showAuth = false;
+  bool showPlayback = false;
   bool hidePlayback = false;
 };
 
@@ -155,15 +156,20 @@ constexpr StationheadSurfacePolicy ResolveStationheadSurfacePolicy(
     StationheadTabKind selectedTab,
     bool authSurfaceReady) noexcept {
   const bool authSelected = selectedTab == StationheadTabKind::Auth;
-  return {authSelected && authSurfaceReady, authSelected};
+  const bool playbackSelected = selectedTab == StationheadTabKind::Stationhead;
+  return {authSelected && authSurfaceReady, playbackSelected, authSelected};
 }
 
 static_assert(!ResolveStationheadSurfacePolicy(
                    StationheadTabKind::None, false).showAuth);
 static_assert(!ResolveStationheadSurfacePolicy(
+                   StationheadTabKind::None, false).showPlayback);
+static_assert(!ResolveStationheadSurfacePolicy(
                    StationheadTabKind::None, false).hidePlayback);
 static_assert(ResolveStationheadSurfacePolicy(
                   StationheadTabKind::Auth, true).showAuth);
+static_assert(!ResolveStationheadSurfacePolicy(
+                   StationheadTabKind::Auth, true).showPlayback);
 static_assert(ResolveStationheadSurfacePolicy(
                   StationheadTabKind::Auth, true).hidePlayback);
 static_assert(!ResolveStationheadSurfacePolicy(
@@ -172,6 +178,8 @@ static_assert(ResolveStationheadSurfacePolicy(
                   StationheadTabKind::Auth, false).hidePlayback);
 static_assert(!ResolveStationheadSurfacePolicy(
                    StationheadTabKind::Stationhead, true).showAuth);
+static_assert(ResolveStationheadSurfacePolicy(
+                  StationheadTabKind::Stationhead, true).showPlayback);
 static_assert(!ResolveStationheadSurfacePolicy(
                    StationheadTabKind::Stationhead, true).hidePlayback);
 
@@ -181,15 +189,16 @@ void ApplyStationheadChildLayout(HWND hostWindow,
                                  ICoreWebView2Controller* authController,
                                  const RECT& bounds,
                                  bool showAuth,
+                                 bool showPlayback,
                                  bool hidePlayback) {
   const int width = std::max(1L, bounds.right - bounds.left);
   const int height = std::max(1L, bounds.bottom - bounds.top);
-  constexpr int hostWidth = 1;
-  constexpr int hostHeight = 1;
-  // Keep a normal browser viewport so Stationhead's responsive layout and
-  // Start Listening visibility detection continue to work. The 1x1 child host
-  // clips the controller output and remains at HWND_BOTTOM, so none of this
-  // document can cover the native dashboard.
+  const int hostWidth = showPlayback ? width : 1;
+  const int hostHeight = showPlayback ? height : 1;
+  const HWND hostPlacement = showPlayback ? HWND_TOP : HWND_BOTTOM;
+  // Keep a normal browser viewport while playback is backgrounded. When a
+  // genuine account/music-service interaction is required, expand only that
+  // Stationhead host to its assigned workspace so the user can complete it.
   const RECT contentBounds{0, 0, width, height};
   const RECT authBounds{0, 0, width, height};
   const RECT hostBounds{bounds.left, bounds.top,
@@ -205,13 +214,13 @@ void ApplyStationheadChildLayout(HWND hostWindow,
   const bool authHostSizeMatches =
       authHostValid && WindowClientSizeMatches(authHostWindow, width, height);
   const bool hostPlacementMatches =
-      hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, HWND_BOTTOM);
+      hostValid && ChildWindowPlacementMatches(hostWindow, hostBounds, hostPlacement);
   const bool authHostPlacementMatches =
       authHostValid && ChildWindowPlacementMatches(authHostWindow, authHostBounds, HWND_TOP);
 
   if (!hidePlayback && hostValid &&
       (!hostSizeMatches || !hostPlacementMatches)) {
-    SetWindowPos(hostWindow, HWND_BOTTOM,
+    SetWindowPos(hostWindow, hostPlacement,
                  bounds.left, bounds.top, hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_NOSENDCHANGING);
   }
@@ -264,8 +273,8 @@ void ApplyStationheadChildLayout(HWND hostWindow,
       controller->put_IsVisible(TRUE);
     }
   }
-  if (hostValid && !hostWasVisible) {
-    SetWindowPos(hostWindow, HWND_BOTTOM,
+  if (hostValid && (!hostWasVisible || !hostSizeMatches || !hostPlacementMatches)) {
+    SetWindowPos(hostWindow, hostPlacement,
                  bounds.left, bounds.top, hostWidth, hostHeight,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   }
@@ -305,12 +314,13 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     status_.visible = false;
     return;
   }
-  // Playback navigation, startup, audio loss, login detection, clock switching,
-  // and Start Listening retries are all background operations.
+  // Normal playback, navigation, clock switching, and Start Listening retries
+  // remain background operations. Genuine account interaction uses the explicit
+  // Stationhead tab path below instead of this 1x1 surface.
   viewVisible_ = false;
   selectedTab_ = StationheadTabKind::None;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
-                              authController_.Get(), bounds_, false, false);
+                              authController_.Get(), bounds_, false, false, false);
   std::lock_guard lock(mutex_);
   status_.visible = false;
 }
@@ -322,24 +332,21 @@ void StationheadPlayer::SetStartupBounds() {
 }
 
 void StationheadPlayer::SetStartupPreviewBounds(const RECT& bounds) {
-  if (startupPreviewActive_ && EqualRect(&bounds_, &bounds) &&
-      PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds,
-                             1, 1, HWND_BOTTOM) &&
-      HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get())) {
-    return;
-  }
-  // Retain the lifecycle marker for startup coordination, but never promote the
-  // playback WebView. Its host remains a visible 1x1 audio surface at HWND_BOTTOM.
   startupPreviewActive_ = true;
   bounds_ = bounds;
-  KeepPlaybackBehindDashboard();
+  if (selectedTab_ == StationheadTabKind::None) {
+    KeepPlaybackBehindDashboard();
+    return;
+  }
+  viewVisible_ = true;
+  LayoutControllers();
 }
 
 void StationheadPlayer::ClearStartupPreviewBounds() {
   if (!startupPreviewActive_) return;
-  const bool preserveAuthTab = selectedTab_ == StationheadTabKind::Auth;
+  const bool preserveInteractiveTab = selectedTab_ != StationheadTabKind::None;
   startupPreviewActive_ = false;
-  if (preserveAuthTab) {
+  if (preserveInteractiveTab) {
     viewVisible_ = true;
     LayoutControllers();
     return;
@@ -374,10 +381,8 @@ void StationheadPlayer::SetVisible(bool visible) {
     return;
   }
 
-  // Only the separate Spotify authorization controller may be presented after
-  // startup. The playback host itself remains 1x1 and behind the dashboard,
-  // including login-required and audio-stopped states.
-  if (selectedTab_ != StationheadTabKind::Auth) {
+  if (selectedTab_ != StationheadTabKind::Auth &&
+      selectedTab_ != StationheadTabKind::Stationhead) {
     KeepPlaybackBehindDashboard();
     return;
   }
@@ -387,19 +392,35 @@ void StationheadPlayer::SetVisible(bool visible) {
     status_.visible = false;
     return;
   }
-  if (viewVisible_ && authController_ && authWebview_ &&
-      ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
-                               authController_.Get(), bounds_) &&
-      WindowContainsFocus(authHostWindow_)) {
+
+  const int width = std::max(1L, bounds_.right - bounds_.left);
+  const int height = std::max(1L, bounds_.bottom - bounds_.top);
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    if (viewVisible_ && authController_ && authWebview_ &&
+        ActiveAuthSurfaceMatches(hostWindow_, authHostWindow_, controller_.Get(),
+                                 authController_.Get(), bounds_) &&
+        WindowContainsFocus(authHostWindow_)) {
+      return;
+    }
+  } else if (viewVisible_ &&
+             PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
+                                    width, height, HWND_TOP) &&
+             HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) &&
+             WindowContainsFocus(hostWindow_)) {
     return;
   }
+
   viewVisible_ = true;
   LayoutControllers();
   ApplyMute();
 
-  if (authController_ && authHostWindow_ &&
-      !WindowContainsFocus(authHostWindow_)) {
-    authController_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+  if (selectedTab_ == StationheadTabKind::Auth) {
+    if (authController_ && authHostWindow_ &&
+        !WindowContainsFocus(authHostWindow_)) {
+      authController_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
+    }
+  } else if (controller_ && hostWindow_ && !WindowContainsFocus(hostWindow_)) {
+    controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
   }
 }
 
@@ -414,9 +435,10 @@ void StationheadPlayer::LayoutControllers() {
       ResolveStationheadSurfacePolicy(selectedTab_, authSurfaceReady);
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
                               authController_.Get(), bounds_,
-                              policy.showAuth, policy.hidePlayback);
+                              policy.showAuth, policy.showPlayback,
+                              policy.hidePlayback);
   std::lock_guard lock(mutex_);
-  status_.visible = policy.showAuth;
+  status_.visible = policy.showAuth || policy.showPlayback;
 }
 
 void StationheadPlayer::SetBounds(const RECT& bounds) {
@@ -426,11 +448,17 @@ void StationheadPlayer::SetBounds(const RECT& bounds) {
 }
 
 void StationheadPlayer::SelectTab(StationheadTabKind tab) {
-  // StationheadTabKind::Stationhead is an automatic recovery/login surface in
-  // the current app. Treat it as a background request. Auth remains separate
-  // and may be shown because it requires an explicit OAuth interaction.
-  if (tab == StationheadTabKind::Stationhead) {
-    tab = StationheadTabKind::None;
+  // While a genuine Stationhead account/music-service surface is pending, App
+  // placement calls requesting the background tab must not hide the interaction
+  // again. Once the page reports auth-ready, loginRequired_ clears and the next
+  // normal placement call returns this host to 1x1/background mode.
+  if (tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_) {
+    tab = StationheadTabKind::Stationhead;
+  }
+  if (tab == StationheadTabKind::Auth && loginRequired_) {
+    loginRequired_ = false;
+    std::lock_guard lock(mutex_);
+    status_.loginRequired = false;
   }
   if (selectedTab_ == tab) {
     if (tab == StationheadTabKind::None && !viewVisible_) {
@@ -456,11 +484,16 @@ HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept {
     }
     return nullptr;
   }
+  if (selectedTab_ == StationheadTabKind::Stationhead &&
+      controller_ && hostWindow_ && IsWindow(hostWindow_)) {
+    return hostWindow_;
+  }
   return nullptr;
 }
 
 bool StationheadPlayer::NeedsInteractiveWindow() const {
-  return selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_;
+  return selectedTab_ == StationheadTabKind::Stationhead ||
+         selectedTab_ == StationheadTabKind::Auth || spotifyAuthorization_;
 }
 
 }  // namespace hp

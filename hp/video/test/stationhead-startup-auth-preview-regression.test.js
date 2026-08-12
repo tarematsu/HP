@@ -50,7 +50,11 @@ test('pending Spotify auth hides playback until the auth surface is usable', () 
   );
   assert.match(
     policy,
-    /return \{authSelected && authSurfaceReady, authSelected\};/,
+    /const bool playbackSelected = selectedTab == StationheadTabKind::Stationhead;/,
+  );
+  assert.match(
+    policy,
+    /return \{authSelected && authSurfaceReady, playbackSelected, authSelected\};/,
   );
   assert.match(
     layoutSource,

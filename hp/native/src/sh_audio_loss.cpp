@@ -211,12 +211,18 @@ void StationheadPlayer::BeginAudioLossAuthProbe(int64_t) {
               const std::wstring reason =
                   probe.GetNamedString(L"reason", L"unknown").c_str();
               audioLossAuthUiDetected_ = authentication;
-              // Positive observations are deliberately not latched. The UI is
-              // re-probed on the next foreground tick, so completing a login or
-              // music-service connection without navigation can continue to
-              // fallback once the blocking surface disappears.
               audioLossProbeComplete_ = !authentication;
               if (authentication) {
+                // This probe also runs before the first successful playback.
+                // A genuine Stationhead login/Connect music surface therefore
+                // has to become interactive instead of remaining clipped to the
+                // normal 1x1 background playback host.
+                loginRequired_ = true;
+                ShowForLogin();
+                {
+                  std::lock_guard lock(mutex_);
+                  status_.loginRequired = true;
+                }
                 UpdateAudioLossState(
                     L"auth_wait",
                     L"authentication surface detected (" + reason +
@@ -348,7 +354,36 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     return;
   }
 
-  if (!audioLossPlaybackObserved_) return;
+  const bool authenticationPending =
+      snapshot.loginRequired || snapshot.spotifyAuthorization;
+
+  // A fresh/expired Stationhead session can require an in-page login or
+  // `Connect music` interaction before any media element has ever played. The
+  // old audio-loss state machine returned here forever, leaving that UI inside
+  // the 1x1 background host. Probe the same audited auth surface after the
+  // normal transition grace period and keep rechecking while startup is silent.
+  if (!audioLossPlaybackObserved_) {
+    if (authenticationPending) {
+      ResetAudioLossProbe();
+      UpdateAudioLossState(
+          L"auth_wait",
+          L"authentication is pending before initial playback");
+      return;
+    }
+    if (audioLossStartedAt_ == 0) {
+      audioLossStartedAt_ = nowMs;
+      return;
+    }
+    const int64_t silentForMs = nowMs - audioLossStartedAt_;
+    if (silentForMs < kStationheadAudioLossGraceMs) return;
+    if (audioLossProbeComplete_) {
+      ResetAudioLossProbe();
+      audioLossStartedAt_ = nowMs;
+      return;
+    }
+    if (!audioLossProbeInFlight_) BeginAudioLossAuthProbe(nowMs);
+    return;
+  }
 
   if (audioLossStartedAt_ == 0) {
     audioLossStartedAt_ = nowMs;
@@ -367,8 +402,6 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
         L"operation_wait",
         L"operation surface visible after eleven seconds; checking authentication UI");
   }
-  const bool authenticationPending =
-      snapshot.loginRequired || snapshot.spotifyAuthorization;
   if (authenticationPending) {
     ResetAudioLossProbe();
     UpdateAudioLossState(
