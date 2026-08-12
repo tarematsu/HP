@@ -334,6 +334,9 @@ $primaryHostSeen = $false
 $secondaryHostSeen = $false
 $primaryInteractiveAuthObserved = $false
 $secondaryInteractiveAuthObserved = $false
+$primaryUnexpectedForegroundSamples = 0
+$secondaryUnexpectedForegroundSamples = 0
+$interactiveAuthSignalGraceSamples = 40
 $violation = $null
 $failureMessage = $null
 $lastPrimaryState = "unobserved"
@@ -390,14 +393,28 @@ try {
         Write-Host "Started non-mutating Stationhead surface observation at first host creation."
       }
 
-      $primaryStartupSafe =
-        [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
-          $mainWindow, "HomePanelStationheadHost") -or
-        $primaryInteractiveAuthObserved
-      $secondaryStartupSafe =
-        [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
-          $mainWindow, "HomePanelSecondaryStationheadHost") -or
-        $secondaryInteractiveAuthObserved
+      $primaryBackgroundSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelStationheadHost")
+      $secondaryBackgroundSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
+        $mainWindow, "HomePanelSecondaryStationheadHost")
+
+      if ($primaryBackgroundSafe -or $primaryInteractiveAuthObserved) {
+        $primaryUnexpectedForegroundSamples = 0
+        $primaryStartupSafe = $true
+      } else {
+        $primaryUnexpectedForegroundSamples += 1
+        $primaryStartupSafe =
+          $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
+      }
+      if ($secondaryBackgroundSafe -or $secondaryInteractiveAuthObserved) {
+        $secondaryUnexpectedForegroundSamples = 0
+        $secondaryStartupSafe = $true
+      } else {
+        $secondaryUnexpectedForegroundSamples += 1
+        $secondaryStartupSafe =
+          $secondaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
+      }
+
       $lastPrimaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
         $mainWindow, "HomePanelSpotifyAuthHost")
       $lastSecondaryAuthHidden = [HomePanelStationheadObserveNative]::DirectChildHiddenOrMissing(
@@ -418,6 +435,8 @@ try {
           secondaryPlayback = $lastSecondaryState
           primaryInteractiveAuth = $primaryInteractiveAuthObserved
           secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
+          primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
+          secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
           primaryAuthHidden = $lastPrimaryAuthHidden
           secondaryAuthHidden = $lastSecondaryAuthHidden
           foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
@@ -437,11 +456,15 @@ try {
         $primaryOk =
           [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
             $mainWindow, "HomePanelStationheadHost") -or
-          $primaryInteractiveAuthObserved
+          $primaryInteractiveAuthObserved -or
+          ($primaryUnexpectedForegroundSamples -gt 0 -and
+           $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
         $secondaryOk =
           [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
             $mainWindow, "HomePanelSecondaryStationheadHost") -or
-          $secondaryInteractiveAuthObserved
+          $secondaryInteractiveAuthObserved -or
+          ($secondaryUnexpectedForegroundSamples -gt 0 -and
+           $secondaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
         if (-not $primaryOk -or -not $secondaryOk -or
             -not $lastPrimaryAuthHidden -or -not $lastSecondaryAuthHidden) {
           $violation = [ordered]@{
@@ -453,6 +476,8 @@ try {
             secondaryPlayback = $lastSecondaryState
             primaryInteractiveAuth = $primaryInteractiveAuthObserved
             secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
+            primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
+            secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
             primaryAuthHidden = $lastPrimaryAuthHidden
             secondaryAuthHidden = $lastSecondaryAuthHidden
             foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
@@ -533,6 +558,9 @@ try {
     secondaryHostSeen = $secondaryHostSeen
     primaryInteractiveAuthObserved = $primaryInteractiveAuthObserved
     secondaryInteractiveAuthObserved = $secondaryInteractiveAuthObserved
+    primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
+    secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
+    interactiveAuthSignalGraceSamples = $interactiveAuthSignalGraceSamples
     observationalOnly = $true
     forbiddenWindowMutationApisChecked = $forbiddenMutationNames
     sampleIntervalMs = 25
