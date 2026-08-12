@@ -405,7 +405,7 @@ void StationheadPlayer::SetVisible(bool visible) {
   } else if (viewVisible_ &&
              PlaybackSurfaceMatches(hostWindow_, controller_.Get(), bounds_,
                                     width, height, HWND_TOP) &&
-             HiddenAuthSurfaceMatches(authHostWindow_, authController_) &&
+             HiddenAuthSurfaceMatches(authHostWindow_, authController_.Get()) &&
              WindowContainsFocus(hostWindow_)) {
     return;
   }
