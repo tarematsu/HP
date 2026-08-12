@@ -22,8 +22,9 @@ struct StationheadNativeStatsSnapshot {
 inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
     INT64_MAX / 2;
 
-// Installs native request/response observers on the primary Stationhead
-// WebView. No page script or WebMessage protocol is involved.
+// Installs one read-only response observer on a Stationhead playback WebView.
+// The committed request supplies the authenticated headers used by the native
+// worker; no page script, WebMessage protocol, or request filter is involved.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
 
 // Implemented in stationhead_native_stats.cpp. Kept separate from the renderer
