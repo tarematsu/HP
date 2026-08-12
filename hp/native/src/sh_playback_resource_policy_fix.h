@@ -8,8 +8,8 @@ namespace hp {
 // configuration, and telemetry are loaded through one evolving module/API graph.
 // Native request substitution cannot reliably distinguish an optional request
 // from a route-critical dependency across account flags and staged deployments.
-// Keep the final playback WebView boundary fail-open. The primary profile adds
-// one read-only native statistics observer; it never substitutes a response.
+// Keep the final playback WebView boundary fail-open. Statistics observation is
+// read-only and does not substitute or filter requests.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -29,12 +29,10 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 
-  // The first playback WebView is Window A/Default and owns shared/service-worker
-  // traffic. Attach the native C++ statistics client exactly once there. Window B
-  // does not duplicate account-statistics requests.
-  if (StationheadOwnsWorkerRequestFilters(webview)) {
-    AttachStationheadNativeStats(webview, config.channelId);
-  }
+  // Observe committed Stationhead responses directly. The observer installs no
+  // WebResourceRequested filters, so each playback WebView may safely expose a
+  // valid authenticated request to the single native statistics client.
+  AttachStationheadNativeStats(webview, config.channelId);
 }
 
 }  // namespace hp
@@ -42,8 +40,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
-// Stop the old page-generated statistics poll at its scheduler boundary. The
-// legacy member remains only for source compatibility and is never reached.
+// The active statistics path is fully native. Keep the old scheduler unreachable
+// until its remaining source-compatible fields are removed separately.
 #undef kStationheadDailyPlayStatsIntervalMs
 #define kStationheadDailyPlayStatsIntervalMs \
   ::hp::kStationheadLegacyStatsPollDisabledIntervalMs
