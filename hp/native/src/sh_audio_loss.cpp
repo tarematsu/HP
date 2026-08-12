@@ -326,6 +326,27 @@ void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
     audioLossStartedAt_ = 0;
     ResetAudioLossProbe();
 
+    // An in-page login/Connect music surface is promoted to the foreground by
+    // selecting the Stationhead tab. Once real audio is flowing again, that
+    // interaction has succeeded even if the page's auth-ready web message was
+    // delayed or missed. Release both the login latch and the selected tab so
+    // the playback host immediately returns to its normal 1x1 background mode.
+    if (selectedTab_ == StationheadTabKind::Stationhead &&
+        !spotifyAuthorization_) {
+      const bool loginWasRequired = loginRequired_;
+      loginRequired_ = false;
+      {
+        std::lock_guard lock(mutex_);
+        status_.loginRequired = false;
+      }
+      SelectTab(StationheadTabKind::None);
+      if (loginWasRequired) {
+        log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
+                  L" authenticated playback started; returning interaction surface behind dashboard");
+      }
+      PostChange();
+    }
+
     if (!audioLossPlaybackObserved_ && !managedPrimaryReturnPending_) {
       if (!StationheadAudioLossCanArm(
               true, navigationActive, playingForMs)) {
