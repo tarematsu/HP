@@ -36,38 +36,6 @@ bool IsStationheadApiUri(std::wstring_view uri) {
       L"production1.stationhead.com";
 }
 
-bool IsStatsUri(std::wstring_view uri, int channelId) {
-  if (channelId <= 0 || !IsStationheadApiUri(uri)) return false;
-  const std::wstring lower = LowerAscii(uri);
-  constexpr size_t schemeLength = std::wstring_view(L"https://").size();
-  const size_t pathStart = lower.find(L'/', schemeLength);
-  if (pathStart == std::wstring::npos) return false;
-  size_t pathEnd = lower.find_first_of(L"?#", pathStart);
-  if (pathEnd == std::wstring::npos) pathEnd = lower.size();
-  std::wstring expected = L"/me/channel/";
-  expected += std::to_wstring(channelId);
-  expected += L"/streakstats";
-  return std::wstring_view(lower).substr(pathStart, pathEnd - pathStart) ==
-      expected;
-}
-
-bool ReadBoundedStream(IStream* stream, std::string& output) {
-  output.clear();
-  if (!stream) return false;
-  std::array<char, 4 * 1024> buffer{};
-  while (output.size() < kMaximumBodyBytes) {
-    ULONG read = 0;
-    const ULONG capacity = static_cast<ULONG>(std::min(
-        buffer.size(), kMaximumBodyBytes - output.size()));
-    const HRESULT result = stream->Read(buffer.data(), capacity, &read);
-    if (FAILED(result)) return false;
-    if (read == 0) return !output.empty();
-    output.append(buffer.data(), static_cast<size_t>(read));
-    if (result == S_FALSE) break;
-  }
-  return !output.empty() && output.size() <= kMaximumBodyBytes;
-}
-
 bool ParseStatsJson(
     std::string_view utf8,
     int64_t referenceAt,
@@ -355,7 +323,7 @@ NativeStatsClient& StatsClient() {
   return *client;
 }
 
-void AttachResponseObserver(ICoreWebView2* webview, int channelId) {
+void AttachCredentialObserver(ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_2> responseWebView;
@@ -377,53 +345,25 @@ void AttachResponseObserver(ICoreWebView2* webview, int channelId) {
             CoTaskMemFree(uriRaw);
             if (!IsStationheadApiUri(uri)) return S_OK;
 
-            // A response event exposes the committed request, including headers
-            // added by Chromium or a worker after the request-start event. Use
-            // that single native observation point for both credential capture
-            // and passive streakStats ingestion.
+            // ResponseReceived exposes the committed request, including headers
+            // Chromium or a worker added after request-start. Observe those
+            // credentials only; the native worker is the sole stats fetch path.
             ComPtr<ICoreWebView2HttpRequestHeaders> headers;
-            if (SUCCEEDED(request->get_Headers(&headers)) && headers) {
-              RequestCredentials credentials;
-              credentials.authorization = HeaderValue(
-                  headers.Get(), L"Authorization", 16 * 1024);
-              if (!credentials.authorization.empty()) {
-                credentials.deviceUid = HeaderValue(
-                    headers.Get(), L"sth-device-uid", 1024);
-                credentials.appPlatform = HeaderValue(
-                    headers.Get(), L"app-platform", 256);
-                credentials.appVersion = HeaderValue(
-                    headers.Get(), L"app-version", 256);
-                credentials.cookie = HeaderValue(
-                    headers.Get(), L"Cookie", 32 * 1024);
-                StatsClient().ObserveCredentials(
-                    channelId, std::move(credentials));
-              }
-            }
+            if (FAILED(request->get_Headers(&headers)) || !headers) return S_OK;
 
-            if (!IsStatsUri(uri, channelId)) return S_OK;
-
-            ComPtr<ICoreWebView2WebResourceResponseView> response;
-            if (FAILED(args->get_Response(&response)) || !response) return S_OK;
-            int status = 0;
-            if (FAILED(response->get_StatusCode(&status)) ||
-                status < 200 || status >= 300) {
-              return S_OK;
-            }
-            ComPtr<ICoreWebView2WebResourceResponseView> retainedResponse = response;
-            response->GetContent(
-                Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
-                    [retainedResponse](HRESULT result, IStream* stream) -> HRESULT {
-                      (void)retainedResponse;
-                      if (FAILED(result) || !stream) return S_OK;
-                      std::string body;
-                      if (!ReadBoundedStream(stream, body)) return S_OK;
-                      const int64_t receivedAt = UnixMillis();
-                      std::vector<StationheadNativeDailyPlayPoint> daily;
-                      if (ParseStatsJson(body, receivedAt, daily)) {
-                        StatsStore().Publish(std::move(daily), receivedAt);
-                      }
-                      return S_OK;
-                    }).Get());
+            RequestCredentials credentials;
+            credentials.authorization = HeaderValue(
+                headers.Get(), L"Authorization", 16 * 1024);
+            if (credentials.authorization.empty()) return S_OK;
+            credentials.deviceUid = HeaderValue(
+                headers.Get(), L"sth-device-uid", 1024);
+            credentials.appPlatform = HeaderValue(
+                headers.Get(), L"app-platform", 256);
+            credentials.appVersion = HeaderValue(
+                headers.Get(), L"app-version", 256);
+            credentials.cookie = HeaderValue(
+                headers.Get(), L"Cookie", 32 * 1024);
+            StatsClient().ObserveCredentials(channelId, std::move(credentials));
             return S_OK;
           }).Get(),
       &ignoredToken);
@@ -432,7 +372,7 @@ void AttachResponseObserver(ICoreWebView2* webview, int channelId) {
 }  // namespace
 
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
-  AttachResponseObserver(webview, channelId);
+  AttachCredentialObserver(webview, channelId);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
