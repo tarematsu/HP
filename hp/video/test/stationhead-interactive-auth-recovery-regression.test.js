@@ -97,22 +97,19 @@ test('silent startup probes auth before any successful playback has occurred', (
     'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
     '}\n\n}  // namespace hp',
   );
-  const startupBranch = section(
-    evaluate,
-    'if (!audioLossPlaybackObserved_) {',
+  const startupAt = evaluate.indexOf('if (!audioLossPlaybackObserved_) {');
+  assert.ok(startupAt >= 0);
+  const firstTimerAt = evaluate.indexOf('if (audioLossStartedAt_ == 0) {', startupAt);
+  assert.ok(firstTimerAt > startupAt);
+  const postStartupTimerAt = evaluate.indexOf(
     'if (audioLossStartedAt_ == 0) {',
+    firstTimerAt + 1,
   );
+  assert.ok(postStartupTimerAt > firstTimerAt);
+  const startupBranch = evaluate.slice(startupAt, postStartupTimerAt);
   assert.match(startupBranch, /authenticationPending/);
-
-  const startupProbe = evaluate.slice(
-    evaluate.indexOf('if (!audioLossPlaybackObserved_) {'),
-    evaluate.indexOf('if (audioLossStartedAt_ == 0) {', evaluate.indexOf('if (!audioLossPlaybackObserved_) {')),
-  );
-  assert.match(startupProbe, /audioLossProbeComplete_/);
-  assert.match(startupProbe, /ResetAudioLossProbe\(\)/);
-  assert.match(startupProbe, /BeginAudioLossAuthProbe\(nowMs\)/);
-  assert.ok(
-    evaluate.indexOf('if (!audioLossPlaybackObserved_) {') <
-      evaluate.lastIndexOf('if (audioLossStartedAt_ == 0) {'),
-  );
+  assert.match(startupBranch, /silentForMs < kStationheadAudioLossGraceMs/);
+  assert.match(startupBranch, /audioLossProbeComplete_/);
+  assert.match(startupBranch, /ResetAudioLossProbe\(\)/);
+  assert.match(startupBranch, /BeginAudioLossAuthProbe\(nowMs\)/);
 });
