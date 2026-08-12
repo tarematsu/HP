@@ -46,10 +46,8 @@ test('playback-safe policy remains the final request boundary', () => {
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
   );
   assert.match(policy, /#include "stationhead_native_stats\.h"/);
-  assert.match(
-    policy,
-    /StationheadOwnsWorkerRequestFilters\(webview\)[\s\S]*AttachStationheadNativeStats\(webview, config\.channelId\)/,
-  );
+  assert.doesNotMatch(policy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+  assert.match(policy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
 });
 
 test('final resource boundary preserves controller cache reset without login deletion', () => {
@@ -84,8 +82,8 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics observers are read-only and never synthesize a response', () => {
-  assert.match(nativeStats, /add_WebResourceRequested/);
+test('native statistics observer is read-only and never synthesizes a response', () => {
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
   assert.doesNotMatch(
     nativeStats,
