@@ -46,7 +46,7 @@ test('auth surface is complete before playback is retired', () => {
   ]);
 });
 
-test('background playback is restored before the auth surface is retired', () => {
+test('playback surface is restored before the auth surface is retired', () => {
   const normalPlaybackAt = applyLayout.lastIndexOf('  if (controller) {');
   assert.notEqual(normalPlaybackAt, -1);
   const normalPlayback = applyLayout.slice(normalPlaybackAt);
@@ -58,10 +58,14 @@ test('background playback is restored before the auth surface is retired', () =>
   ]);
 });
 
-test('hidden destination hosts are sized without exposing an empty frame', () => {
+test('destination hosts are sized before visibility changes without exposing an empty frame', () => {
   assert.match(
     applyLayout,
-    /if \(!hidePlayback && hostValid &&[\s\S]*SetWindowPos\(hostWindow, HWND_BOTTOM,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
+    /if \(!hidePlayback && hostValid &&[\s\S]*SetWindowPos\(hostWindow, hostPlacement,[\s\S]*SWP_NOACTIVATE \| SWP_NOSENDCHANGING\);/,
+  );
+  assert.match(
+    applyLayout,
+    /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/,
   );
   assert.match(
     applyLayout,
@@ -69,7 +73,7 @@ test('hidden destination hosts are sized without exposing an empty frame', () =>
   );
 });
 
-test('only the explicit Spotify authorization surface receives WebView2 focus', () => {
+test('only explicit account interaction surfaces receive WebView2 focus', () => {
   const setVisible = section(
     layoutSource,
     'void StationheadPlayer::SetVisible(bool visible)',
@@ -85,9 +89,16 @@ test('only the explicit Spotify authorization surface receives WebView2 focus', 
   );
   assert.match(
     setVisible,
-    /LayoutControllers\(\);[\s\S]*ApplyMute\(\);[\s\S]*authController_->MoveFocus\(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC\);/,
+    /PlaybackSurfaceMatches\([\s\S]*width, height, HWND_TOP\)[\s\S]*WindowContainsFocus\(hostWindow_\)[\s\S]*return;/,
   );
-  assert.doesNotMatch(setVisible, /controller_->MoveFocus/);
+  assert.match(
+    setVisible,
+    /StationheadTabKind::Auth[\s\S]*authController_->MoveFocus\(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC\);/,
+  );
+  assert.match(
+    setVisible,
+    /else if \(controller_ && hostWindow_ && !WindowContainsFocus\(hostWindow_\)\) \{[\s\S]*controller_->MoveFocus\(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC\);/,
+  );
 });
 
 test('hiding Stationhead only returns focus when an interactive surface owned it', () => {
@@ -106,7 +117,7 @@ test('hiding Stationhead only returns focus when an interactive surface owned it
   );
 });
 
-test('pending auth creation never exposes the collapsed playback host as an account surface', () => {
+test('account setup returns the host that is actually interactive', () => {
   const activeHost = section(
     layoutSource,
     'HWND StationheadPlayer::ActiveHostWindowForAccountSetup() const noexcept',
@@ -114,9 +125,12 @@ test('pending auth creation never exposes the collapsed playback host as an acco
   );
   assert.match(
     activeHost,
-    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*return authHostWindow_;[\s\S]*return nullptr;[\s\S]*return nullptr;/,
+    /if \(selectedTab_ == StationheadTabKind::Auth\)[\s\S]*return authHostWindow_;[\s\S]*return nullptr;/,
   );
-  assert.doesNotMatch(activeHost, /return hostWindow_;/);
+  assert.match(
+    activeHost,
+    /selectedTab_ == StationheadTabKind::Stationhead &&[\s\S]*controller_ && hostWindow_[\s\S]*return hostWindow_;/,
+  );
 });
 
 test('reapplying unchanged bounds still repairs playback z-order and size', () => {
