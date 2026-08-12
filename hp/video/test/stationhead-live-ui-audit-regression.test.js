@@ -6,10 +6,6 @@ const workflow = readFileSync(
   new URL('../../../.github/workflows/sh-live-js-audit.yml', import.meta.url),
   'utf8',
 );
-const audit = readFileSync(
-  new URL('../../../scripts/audit-stationhead-js-live.mjs', import.meta.url),
-  'utf8',
-);
 const loginAudit = readFileSync(
   new URL('../../../scripts/audit-stationhead-login.mjs', import.meta.url),
   'utf8',
@@ -23,23 +19,13 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('replaced Stationhead page requires a visible Start Listening control and post-click screen', () => {
-  const summary = section(audit, 'function summarize(', 'function markdown(');
-  assert.match(summary, /blocked\.ui\.startListeningVisible/);
-  assert.match(summary, /blocked\.ui\.clicked/);
-  assert.match(summary, /blocked\.ui\.afterClickScreenVisible/);
-  assert.match(summary, /const passed = Boolean/);
-  assert.doesNotMatch(summary, /audio|media|playbackState|HTMLMediaElement/);
-});
-
-test('UI audit captures evidence before credentials can be entered', () => {
-  const capture = section(audit, 'async function runCapture(', 'function summarize(');
-  assert.match(capture, /\$\{captureName\}-before-click\.png/);
-  assert.match(capture, /\$\{captureName\}-after-click\.png/);
-  const screenshotAt = capture.indexOf('`${captureName}-after-click.png`');
-  const loginAt = capture.indexOf('attemptCredentialLogin(page, credentials)');
-  assert.ok(screenshotAt >= 0 && screenshotAt < loginAt);
-  assert.match(capture, /const finalState = ui\.after \|\| ui\.before/);
+test('live Stationhead CI measures the actual Start Listening surface directly', () => {
+  assert.match(workflow, /Measure Start Listening visibility/);
+  assert.match(workflow, /measure-stationhead-start-listening\.mjs/);
+  assert.match(workflow, /--attempts=3/);
+  assert.doesNotMatch(workflow, /audit-stationhead-js-live\.mjs/);
+  assert.doesNotMatch(workflow, /audit-stationhead-svg-icon-reduction-live\.mjs/);
+  assert.doesNotMatch(workflow, /inspect-stationhead-module-graph\.mjs/);
 });
 
 test('credentials use the existing audit secrets and never enter reports', () => {
@@ -56,13 +42,12 @@ test('credentials use the existing audit secrets and never enter reports', () =>
   assert.doesNotMatch(loginAudit, /JSON\.stringify\([^\n]*(?:emailValue|passwordValue)/);
 });
 
-test('workflow always runs both pages and has an authoritative UI gate', () => {
-  assert.match(workflow, /Audit primary Stationhead page[\s\S]*continue-on-error: true/);
-  assert.match(workflow, /Audit fallback Stationhead page[\s\S]*if: always\(\)[\s\S]*continue-on-error: true/);
+test('workflow gate checks reachability and startup budget instead of obsolete replacements', () => {
   const gate = section(workflow, '- name: Enforce Stationhead UI audit', 'NODE\n');
-  assert.match(gate, /ui\.startListeningVisible/);
-  assert.match(gate, /ui\.clicked/);
-  assert.match(gate, /ui\.afterClickScreenVisible/);
-  assert.match(gate, /report\.passed !== true/);
+  assert.match(gate, /timing\.visibleCount !== timing\.sampleCount/);
+  assert.match(gate, /timing\.p95VisibleAfterMs/);
+  assert.match(gate, /> 5000/);
+  assert.doesNotMatch(gate, /missedInterceptions/);
+  assert.doesNotMatch(gate, /svgIconIntercepted|premiumIconRequested|report\.passed/);
   assert.doesNotMatch(gate, /audio\.paused|playbackState|mediaSession|HTMLMediaElement/);
 });
