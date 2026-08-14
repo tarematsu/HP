@@ -11,7 +11,7 @@ const watchdog = readFileSync(
   'utf8',
 );
 const nativeStats = readFileSync(
-  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
+  new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
   'utf8',
 );
 
