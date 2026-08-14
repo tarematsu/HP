@@ -20,6 +20,7 @@ struct StationheadNativeStatsSnapshot {
 
 inline constexpr int64_t kStationheadNativeStatsDayMs =
     24LL * 60 * 60 * 1000;
+inline constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
 inline constexpr size_t kStationheadNativeStatsMaximumBodyBytes = 1024 * 1024;
 
 inline bool IsStationheadNativeStatsUri(std::wstring_view uri, int channelId) {
@@ -149,14 +150,17 @@ class StationheadNativeStatsStore {
           return point.dayStartMsUtc / kStationheadNativeStatsDayMs == today;
         });
     if (current != daily_.rend()) {
-      history_.push_back({receivedAt, current->value});
+      const std::pair<int64_t, int> sample{receivedAt, current->value};
+      const int64_t bucket = receivedAt / kHistorySampleBucketMs;
+      if (!history_.empty() &&
+          history_.back().first / kHistorySampleBucketMs == bucket) {
+        history_.back() = sample;
+      } else {
+        history_.push_back(sample);
+      }
       const int64_t cutoff = receivedAt - 2LL * 60 * 60 * 1000;
       while (!history_.empty() && history_.front().first < cutoff) {
         history_.pop_front();
-      }
-      while (history_.size() >= 2 &&
-             history_[history_.size() - 2].second == history_.back().second) {
-        history_.erase(history_.end() - 2);
       }
     }
     ++revision_;
