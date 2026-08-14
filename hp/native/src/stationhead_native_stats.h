@@ -50,7 +50,7 @@ inline bool ReadStationheadNativeStatsStream(
     IStream* stream, std::string& output) {
   output.clear();
   if (!stream) return false;
-  std::array<char, 16 * 1024> buffer{};
+  std::array<char, 4 * 1024> buffer{};
   while (output.size() < kStationheadNativeStatsMaximumBodyBytes) {
     ULONG read = 0;
     const ULONG capacity = static_cast<ULONG>(std::min(
