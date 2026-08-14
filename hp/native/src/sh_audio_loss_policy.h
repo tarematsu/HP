@@ -12,6 +12,10 @@ inline constexpr int64_t kStationheadAudioLossArmStabilityMs = 15'000;
 inline constexpr int64_t kStationheadAudioLossGraceMs = 11'000;
 inline constexpr int64_t kStationheadAudioLossDomSettleMs = 1'000;
 inline constexpr int64_t kStationheadFallbackMinimumDwellMs = 15'000;
+// A fallback document that also produces no native WebView2 audio must never
+// become a terminal state. Give it enough time to load and auto-start, then
+// return to the canonical station so normal login/click recovery can run there.
+inline constexpr int64_t kStationheadFallbackSilentRetryMs = 30'000;
 inline constexpr int64_t kStationheadPrimaryRecoveryStabilityMs = 2'000;
 
 inline constexpr bool StationheadAudioLossCanArm(
@@ -61,5 +65,6 @@ static_assert(!StationheadAudioLossCanFallback(true, false, 11'999));
 static_assert(StationheadAudioLossCanFallback(true, false, 12'000));
 static_assert(!StationheadFallbackDwellSatisfied(14'999));
 static_assert(StationheadFallbackDwellSatisfied(15'000));
+static_assert(kStationheadFallbackSilentRetryMs > kStationheadFallbackMinimumDwellMs);
 
 }  // namespace hp
