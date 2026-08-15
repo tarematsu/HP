@@ -251,13 +251,6 @@ void StationheadPlayer::SetManagedPlaybackFallback(
   const int64_t nowMs = UnixMillis();
   if (active) {
     if (config_.fallbackUrl.empty() || managedPlaybackFallbackActive_) return;
-    const int64_t stoppedForMs = audioLossStartedAt_.ElapsedMilliseconds();
-    if (!StationheadAudioLossCanFallback(
-            audioLossProbeComplete_, audioLossAuthUiDetected_, stoppedForMs)) {
-      log_.Info(L"Stationhead " + std::wstring(RoleTag()) +
-                L" ignored fallback request before native audio-loss validation");
-      return;
-    }
     managedPlaybackFallbackActive_ = true;
     managedPlaybackReturnRequested_ = false;
     managedPrimaryReturnPending_ = false;
@@ -297,23 +290,9 @@ void StationheadPlayer::SetManagedPlaybackFallback(
 
 void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {
   if (managedPlaybackFallbackActive_) {
-    const int64_t fallbackElapsedMs =
-        nowMs - managedPlaybackFallbackStartedAt_;
-    if (!AudioPlaying() &&
-        fallbackElapsedMs >= kStationheadFallbackSilentRetryMs) {
-      SetManagedPlaybackFallback(
-          false,
-          L"returning_primary: fallback remained silent; retrying canonical station");
-      // If the canonical station is also silent, treat it like a fresh startup
-      // instead of bouncing back to fallback every few seconds. Normal auth and
-      // Start Listening recovery continues to run on the canonical document.
-      audioLossPlaybackObserved_ = false;
-      log_.Warn(L"Stationhead " + std::wstring(RoleTag()) +
-                L" fallback produced no audio; returned to canonical station");
-      return;
-    }
     if (managedPlaybackReturnRequested_ &&
-        StationheadFallbackDwellSatisfied(fallbackElapsedMs)) {
+        StationheadFallbackDwellSatisfied(
+            nowMs - managedPlaybackFallbackStartedAt_)) {
       SetManagedPlaybackFallback(
           false,
           L"returning_primary: newer healthy playback JSON observed");
