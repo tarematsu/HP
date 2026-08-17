@@ -19,3 +19,13 @@ test('player consumes the bag in order and only creates a new round at the end',
   assert.doesNotMatch(playerSource, /pickRandomIndexExcluding/);
   assert.doesNotMatch(playerSource, /\(state\.activeIndex \+ 1\) % state\.items\.length/);
 });
+
+test('player requests and exhausts the complete active-video feed instead of stopping at 2000', () => {
+  assert.match(playerSource, /scope: 'all'/);
+  assert.match(playerSource, /while \(cursor\)/);
+  assert.match(playerSource, /seenCursors\.has\(cursor\)/);
+  assert.doesNotMatch(playerSource, /INITIAL_FEED_SIZE/);
+  assert.doesNotMatch(playerSource, /ORIENTED_INITIAL_FEED_SIZE/);
+  assert.doesNotMatch(playerSource, /MAX_FEED_PAGES/);
+  assert.doesNotMatch(playerSource, /slice\(0, targetSize\)/);
+});
