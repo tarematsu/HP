@@ -1,5 +1,6 @@
 import { adminFetch, ensureViewerAdminTokenPrompt, readAdminToken } from './admin-token.js';
 import { createFeedSeed, shuffleFeedItems } from './feed-shuffle.js';
+import { pickRandomIndexExcluding } from './playback-random.js';
 import { normalizeOrientation } from './video-orientation.js';
 import {
   currentLandscapeLayout,
@@ -255,11 +256,12 @@ function prepareFailedSlot(slot, index) {
   return normalizedIndex;
 }
 
-async function findPlayable(slot, startIndex) {
+async function findPlayable(slot, startIndex, excludedIndex = -1) {
   const attempts = Math.min(MAX_SKIP_ATTEMPTS, state.items.length);
   let lastFailedIndex = null;
   for (let offset = 0; offset < attempts; offset += 1) {
     const index = (startIndex + offset) % state.items.length;
+    if (index === excludedIndex) continue;
     lastFailedIndex = index;
     if (state.failedIndexes.has(index)) continue;
     if (await loadSlot(slot, index)) return { index, playable: true };
@@ -287,7 +289,9 @@ function activateSlot(slot, index) {
 
 function preloadNext() {
   if (!state.items.length || state.activeIndex < 0) return;
-  findPlayable(1 - state.activeSlot, (state.activeIndex + 1) % state.items.length).catch(() => {});
+  const nextSlot = 1 - state.activeSlot;
+  const startIndex = pickRandomIndexExcluding(state.items.length, state.activeIndex);
+  findPlayable(nextSlot, startIndex, state.activeIndex).catch(() => {});
 }
 
 async function showFirst() {
@@ -352,7 +356,11 @@ async function nextVideo(direction = -1) {
   const landscape = currentLandscapeLayout();
   try {
     setLoading(true);
-    const result = await findPlayable(nextSlot, (state.activeIndex + 1) % state.items.length);
+    const preloadedIndex = state.slotIndexes[nextSlot];
+    const startIndex = preloadedIndex >= 0 && preloadedIndex !== state.activeIndex
+      ? preloadedIndex
+      : pickRandomIndexExcluding(state.items.length, state.activeIndex);
+    const result = await findPlayable(nextSlot, startIndex, state.activeIndex);
     if (result.index === null) {
       setMessage('次の再生候補がありません');
       return;
