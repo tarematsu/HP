@@ -7,26 +7,20 @@ const playerSource = readFileSync(
   'utf8'
 );
 
-test('initial playback feed loads up to 2000 URLs with bounded cursor invocations', () => {
-  // The API stays capped at 100 rows per request, so twenty cursor pages produce
-  // the requested initial pool while allowing the wider D1 read budget.
+test('initial playback feed exhausts all active-video cursor pages', () => {
+  // Each request remains capped at 100 rows, but the player continues until the
+  // server reports no next cursor instead of stopping after a fixed page count.
   assert.match(playerSource, /const FEED_PAGE_SIZE = 100;/);
-  assert.match(playerSource, /const INITIAL_FEED_SIZE = 2000;/);
-  assert.match(playerSource, /const ORIENTED_INITIAL_FEED_SIZE = 2000;/);
-  assert.match(playerSource, /const MAX_FEED_PAGES = 20;/);
-  assert.match(
-    playerSource,
-    /const targetSize = state\.orientation === 'both'[\s\S]*?ORIENTED_INITIAL_FEED_SIZE;/
-  );
-  assert.match(
-    playerSource,
-    /while \(matches\.length < targetSize && pages < MAX_FEED_PAGES\)/
-  );
-  assert.match(playerSource, /if \(matches\.length >= targetSize\) break;/);
-  assert.match(playerSource, /return matches\.slice\(0, targetSize\);/);
-  assert.match(playerSource, /cursor: cursor \|\| 'start'/);
+  assert.match(playerSource, /scope: 'all'/);
+  assert.match(playerSource, /let cursor = 'start';/);
+  assert.match(playerSource, /while \(cursor\)/);
+  assert.match(playerSource, /seenCursors\.has\(cursor\)/);
   assert.match(playerSource, /cursor = typeof data\.nextCursor/);
-  assert.match(playerSource, /if \(!cursor\) break;/);
+  assert.match(playerSource, /return matches;/);
+  assert.doesNotMatch(playerSource, /INITIAL_FEED_SIZE/);
+  assert.doesNotMatch(playerSource, /ORIENTED_INITIAL_FEED_SIZE/);
+  assert.doesNotMatch(playerSource, /MAX_FEED_PAGES/);
+  assert.doesNotMatch(playerSource, /targetSize/);
   assert.doesNotMatch(playerSource, /nextOffset/);
   assert.doesNotMatch(playerSource, /offset: String\(offset\)/);
 });
