@@ -30,9 +30,6 @@ const ORIENTATION_KEY = 'video-scraper-orientation';
 const NEXT_EVENT_NAME = 'videoscraper:next';
 const ADMIN_TOKEN_CHANGE_EVENT = 'videoscraper:admin-token-change';
 const FEED_PAGE_SIZE = 100;
-const INITIAL_FEED_SIZE = 2000;
-const ORIENTED_INITIAL_FEED_SIZE = 2000;
-const MAX_FEED_PAGES = 20;
 
 function setMessage(text = '') {
   message.textContent = text;
@@ -125,20 +122,22 @@ function orientationEmptyMessage() {
 }
 
 async function fetchFeed(generation, seed) {
-  const targetSize = state.orientation === 'both'
-    ? INITIAL_FEED_SIZE
-    : ORIENTED_INITIAL_FEED_SIZE;
   const matches = [];
+  const seenIds = new Set();
+  const seenCursors = new Set();
   let cursor = 'start';
-  let pages = 0;
 
-  while (matches.length < targetSize && pages < MAX_FEED_PAGES) {
+  while (cursor) {
     if (generation !== state.feedGeneration) return [];
+    if (seenCursors.has(cursor)) throw new Error('動画一覧のカーソルが循環しました');
+    seenCursors.add(cursor);
+
     const params = new URLSearchParams({
       seed: String(seed),
-      cursor: cursor || 'start',
+      cursor,
       limit: String(FEED_PAGE_SIZE),
-      orientation: state.orientation
+      orientation: state.orientation,
+      scope: 'all'
     });
     const response = await adminFetch(`/api/videos?${params}`, {
       cache: 'no-store',
@@ -151,18 +150,18 @@ async function fetchFeed(generation, seed) {
     if (!Array.isArray(data.items)) throw new Error('動画一覧を読み込めませんでした');
 
     for (const item of data.items) {
+      const id = item?.id === undefined || item?.id === null ? '' : String(item.id);
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
       matches.push(item);
-      if (matches.length >= targetSize) break;
     }
-    pages += 1;
     cursor = typeof data.nextCursor === 'string' && data.nextCursor
       ? data.nextCursor
       : null;
-    if (!cursor) break;
   }
 
   if (!matches.length) throw new Error(orientationEmptyMessage());
-  return matches.slice(0, targetSize);
+  return matches;
 }
 
 async function loadPlaybackRound(generation, forceNewRound = false) {
