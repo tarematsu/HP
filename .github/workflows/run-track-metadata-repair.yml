@@ -1,6 +1,9 @@
 name: Repair track metadata
 
 on:
+  workflow_run:
+    workflows: ["Run runtime offline maintenance"]
+    types: [completed]
   schedule:
     - cron: '12,42 * * * *'
   workflow_dispatch:
@@ -14,6 +17,7 @@ concurrency:
 
 jobs:
   repair:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Consolidate and repair track metadata
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -30,6 +34,8 @@ jobs:
       TRACK_METADATA_FETCH_CONCURRENCY: '4'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: Resolve Cloudflare account context
         uses: ./.github/actions/cloudflare-context
         with:

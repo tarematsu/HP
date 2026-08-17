@@ -1,6 +1,9 @@
 name: Run local minute facts rebuild
 
 on:
+  workflow_run:
+    workflows: ["Run runtime offline maintenance"]
+    types: [completed]
   schedule:
     - cron: '7,22,37,52 * * * *'
   push:
@@ -20,6 +23,7 @@ concurrency:
 
 jobs:
   rebuild:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     uses: ./.github/workflows/database.yml
     with:
       operation: minute-facts-local-rebuild
