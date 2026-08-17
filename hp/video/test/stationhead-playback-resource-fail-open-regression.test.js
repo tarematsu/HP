@@ -18,6 +18,10 @@ const sharedEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
+const cmake = readFileSync(
+  new URL('../../native/CMakeLists.txt', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -48,6 +52,39 @@ test('playback-safe policy remains the final request boundary', () => {
   assert.match(policy, /#include "stationhead_native_stats\.h"/);
   assert.doesNotMatch(policy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
   assert.match(policy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
+});
+
+test('playback-safe policy is the final precompiled Stationhead policy for every translation unit', () => {
+  const scriptPolicyAt = cmake.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_script_resource_policy_fix.h)',
+  );
+  const playbackPolicyAt = cmake.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_playback_resource_policy_fix.h)',
+  );
+  const messagePolicyAt = cmake.indexOf(
+    'target_precompile_headers(HomePanel PRIVATE\n  src/sh_track_boundary_message_policy.h)',
+  );
+  assert.ok(scriptPolicyAt >= 0);
+  assert.ok(playbackPolicyAt > scriptPolicyAt);
+  assert.ok(messagePolicyAt > playbackPolicyAt);
+  assert.match(
+    policy,
+    /#undef kStationheadDailyPlayStatsIntervalMs[\s\S]*kStationheadLegacyStatsPollDisabledIntervalMs/,
+  );
+});
+
+test('document-start auth capture is a no-op instead of patching Stationhead fetch or XHR', () => {
+  const disabledCapture = section(
+    composition,
+    'inline std::wstring StationheadAuthCaptureScriptDisabled()',
+    '// Media boundaries never initiate navigation.',
+  );
+  assert.match(disabledCapture, /return L"void 0";/);
+  assert.doesNotMatch(disabledCapture, /window\.fetch|XMLHttpRequest/);
+  assert.match(
+    composition,
+    /#undef StationheadAuthCaptureScript\s*#define StationheadAuthCaptureScript StationheadAuthCaptureScriptDisabled/,
+  );
 });
 
 test('final resource boundary preserves controller cache reset without login deletion', () => {
