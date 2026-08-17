@@ -715,6 +715,10 @@ void StationheadPlayer::Tick(int64_t nowMs) {
     return;
   }
   if (!spotifyAuthorization_ && authController_) CloseAuthWebView();
+  if (!spotifyAuthorization_ && loginRequired_ &&
+      selectedTab_ != StationheadTabKind::Stationhead) {
+    ShowForLogin();
+  }
   if (spotifyAuthorization_ || loginRequired_) {
     if (trackBoundaryPlaybackRecoveryPending_) {
       trackBoundaryPlaybackRecoveryPending_ = false;
