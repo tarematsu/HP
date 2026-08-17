@@ -1,6 +1,11 @@
 import { adminFetch, ensureViewerAdminTokenPrompt, readAdminToken } from './admin-token.js';
-import { createFeedSeed, shuffleFeedItems } from './feed-shuffle.js';
-import { pickRandomIndexExcluding } from './playback-random.js';
+import { createFeedSeed } from './feed-shuffle.js';
+import {
+  createPlaybackBag,
+  parsePlaybackBag,
+  playbackBagAfterIndex,
+  restorePlaybackBagItems
+} from './playback-bag.js';
 import { normalizeOrientation } from './video-orientation.js';
 import {
   currentLandscapeLayout,
@@ -20,14 +25,11 @@ const orientationButtons = [...orientationFilter.querySelectorAll('[data-orienta
 
 const LOAD_TIMEOUT_MS = 8000;
 const MAX_SKIP_ATTEMPTS = 12;
-const LAST_FIRST_VIDEO_KEY = 'video-scraper-last-first-video-id';
+const PLAYBACK_BAG_KEY = 'video-scraper-playback-bag-v1';
 const ORIENTATION_KEY = 'video-scraper-orientation';
 const NEXT_EVENT_NAME = 'videoscraper:next';
 const ADMIN_TOKEN_CHANGE_EVENT = 'videoscraper:admin-token-change';
 const FEED_PAGE_SIZE = 100;
-const INITIAL_FEED_SIZE = 2000;
-const ORIENTED_INITIAL_FEED_SIZE = 2000;
-const MAX_FEED_PAGES = 20;
 
 function setMessage(text = '') {
   message.textContent = text;
@@ -66,18 +68,26 @@ const state = {
   feedGeneration: 0
 };
 
-function readLastFirstVideoId() {
+function playbackBagStorageKey() {
+  return `${PLAYBACK_BAG_KEY}:${state.orientation}`;
+}
+
+function readPlaybackBag() {
   try {
-    return localStorage.getItem(`${LAST_FIRST_VIDEO_KEY}:${state.orientation}`);
+    return parsePlaybackBag(localStorage.getItem(playbackBagStorageKey()));
   } catch {
     return null;
   }
 }
 
-function rememberFirstVideoId(id) {
+function writePlaybackBag(bag) {
   try {
-    localStorage.setItem(`${LAST_FIRST_VIDEO_KEY}:${state.orientation}`, String(id));
+    localStorage.setItem(playbackBagStorageKey(), JSON.stringify(bag));
   } catch {}
+}
+
+function persistPlaybackProgress(index) {
+  writePlaybackBag(playbackBagAfterIndex(state.items, index, state.seed));
 }
 
 function rememberOrientation() {
@@ -112,20 +122,22 @@ function orientationEmptyMessage() {
 }
 
 async function fetchFeed(generation, seed) {
-  const targetSize = state.orientation === 'both'
-    ? INITIAL_FEED_SIZE
-    : ORIENTED_INITIAL_FEED_SIZE;
   const matches = [];
+  const seenIds = new Set();
+  const seenCursors = new Set();
   let cursor = 'start';
-  let pages = 0;
 
-  while (matches.length < targetSize && pages < MAX_FEED_PAGES) {
+  while (cursor) {
     if (generation !== state.feedGeneration) return [];
+    if (seenCursors.has(cursor)) throw new Error('動画一覧のカーソルが循環しました');
+    seenCursors.add(cursor);
+
     const params = new URLSearchParams({
       seed: String(seed),
-      cursor: cursor || 'start',
+      cursor,
       limit: String(FEED_PAGE_SIZE),
-      orientation: state.orientation
+      orientation: state.orientation,
+      scope: 'all'
     });
     const response = await adminFetch(`/api/videos?${params}`, {
       cache: 'no-store',
@@ -138,18 +150,51 @@ async function fetchFeed(generation, seed) {
     if (!Array.isArray(data.items)) throw new Error('動画一覧を読み込めませんでした');
 
     for (const item of data.items) {
+      const id = item?.id === undefined || item?.id === null ? '' : String(item.id);
+      if (!id || seenIds.has(id)) continue;
+      seenIds.add(id);
       matches.push(item);
-      if (matches.length >= targetSize) break;
     }
-    pages += 1;
     cursor = typeof data.nextCursor === 'string' && data.nextCursor
       ? data.nextCursor
       : null;
-    if (!cursor) break;
   }
 
   if (!matches.length) throw new Error(orientationEmptyMessage());
-  return matches.slice(0, targetSize);
+  return matches;
+}
+
+async function loadPlaybackRound(generation, forceNewRound = false) {
+  const savedBag = readPlaybackBag();
+  const continueRound = !forceNewRound
+    && savedBag
+    && savedBag.remainingIds.length > 0;
+  const fetchSeed = continueRound ? savedBag.seed : createFeedSeed();
+  const fetchedItems = await fetchFeed(generation, fetchSeed);
+  if (generation !== state.feedGeneration) return null;
+
+  if (continueRound) {
+    const restoredItems = restorePlaybackBagItems(fetchedItems, savedBag);
+    if (restoredItems.length) {
+      state.seed = savedBag.seed;
+      writePlaybackBag({
+        ...savedBag,
+        remainingIds: restoredItems.map((item) => String(item.id))
+      });
+      return restoredItems;
+    }
+  }
+
+  const seed = continueRound ? createFeedSeed() : fetchSeed;
+  const bag = createPlaybackBag(
+    fetchedItems,
+    seed,
+    savedBag?.lastPlayedId || null,
+    MAX_SKIP_ATTEMPTS
+  );
+  state.seed = seed;
+  writePlaybackBag(bag);
+  return restorePlaybackBagItems(fetchedItems, bag);
 }
 
 function resetSlot(slot) {
@@ -256,12 +301,13 @@ function prepareFailedSlot(slot, index) {
   return normalizedIndex;
 }
 
-async function findPlayable(slot, startIndex, excludedIndex = -1) {
-  const attempts = Math.min(MAX_SKIP_ATTEMPTS, state.items.length);
+async function findPlayable(slot, startIndex) {
+  const normalizedStart = Math.max(0, Math.trunc(Number(startIndex) || 0));
+  if (normalizedStart >= state.items.length) return { index: null, playable: false };
+  const attempts = Math.min(MAX_SKIP_ATTEMPTS, state.items.length - normalizedStart);
   let lastFailedIndex = null;
   for (let offset = 0; offset < attempts; offset += 1) {
-    const index = (startIndex + offset) % state.items.length;
-    if (index === excludedIndex) continue;
+    const index = normalizedStart + offset;
     lastFailedIndex = index;
     if (state.failedIndexes.has(index)) continue;
     if (await loadSlot(slot, index)) return { index, playable: true };
@@ -289,17 +335,15 @@ function activateSlot(slot, index) {
 
 function preloadNext() {
   if (!state.items.length || state.activeIndex < 0) return;
-  const nextSlot = 1 - state.activeSlot;
-  const startIndex = pickRandomIndexExcluding(state.items.length, state.activeIndex);
-  findPlayable(nextSlot, startIndex, state.activeIndex).catch(() => {});
+  const nextIndex = state.activeIndex + 1;
+  if (nextIndex >= state.items.length) return;
+  findPlayable(1 - state.activeSlot, nextIndex).catch(() => {});
 }
 
 async function showFirst() {
   if (!await ensurePlaybackAuth()) return;
   const generation = state.feedGeneration + 1;
-  const seed = createFeedSeed();
   state.feedGeneration = generation;
-  state.seed = seed;
   state.moving = true;
   state.items = [];
   state.failedIndexes.clear();
@@ -309,20 +353,15 @@ async function showFirst() {
   setLoading(true);
   setMessage('');
   try {
-    const items = await fetchFeed(generation, seed);
-    if (generation !== state.feedGeneration) return;
-    state.items = shuffleFeedItems(
-      items,
-      seed,
-      readLastFirstVideoId(),
-      MAX_SKIP_ATTEMPTS
-    );
+    const items = await loadPlaybackRound(generation);
+    if (generation !== state.feedGeneration || !items) return;
+    state.items = items;
     const result = await findPlayable(0, 0);
     if (generation !== state.feedGeneration) return;
     if (result.index === null) throw new Error('再生候補がありません');
     if (!result.playable) prepareFailedSlot(0, result.index);
     activateSlot(0, result.index);
-    rememberFirstVideoId(state.items[result.index].id);
+    persistPlaybackProgress(result.index);
     setLoading(false);
     if (result.playable) {
       if (!await startVideo(videos[0])) setMessage(playbackFailureMessage());
@@ -357,10 +396,25 @@ async function nextVideo(direction = -1) {
   try {
     setLoading(true);
     const preloadedIndex = state.slotIndexes[nextSlot];
-    const startIndex = preloadedIndex >= 0 && preloadedIndex !== state.activeIndex
+    let startIndex = preloadedIndex > state.activeIndex
       ? preloadedIndex
-      : pickRandomIndexExcluding(state.items.length, state.activeIndex);
-    const result = await findPlayable(nextSlot, startIndex, state.activeIndex);
+      : state.activeIndex + 1;
+
+    if (startIndex >= state.items.length) {
+      const generation = state.feedGeneration;
+      const nextRoundItems = await loadPlaybackRound(generation, true);
+      if (generation !== state.feedGeneration || !nextRoundItems) return;
+      if (!nextRoundItems.length) {
+        setMessage('次の再生候補がありません');
+        return;
+      }
+      state.items = nextRoundItems;
+      state.failedIndexes.clear();
+      resetSlot(nextSlot);
+      startIndex = 0;
+    }
+
+    const result = await findPlayable(nextSlot, startIndex);
     if (result.index === null) {
       setMessage('次の再生候補がありません');
       return;
@@ -380,6 +434,7 @@ async function nextVideo(direction = -1) {
     incoming.classList.add('is-active');
     state.activeSlot = nextSlot;
     setActiveItem(result.index);
+    persistPlaybackProgress(result.index);
     setLoading(false);
     if (result.playable) {
       if (!await startVideo(incoming)) setMessage(playbackFailureMessage());

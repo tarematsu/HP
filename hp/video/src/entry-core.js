@@ -2,6 +2,7 @@ import {
   readCollectionCaptureDetails,
   readCollectionCaptureSummaries
 } from './collection-capture.js';
+import { readAllActivePlaybackCursorPage } from './active-playback-feed.js';
 import { withSecurityHeaders } from './security-headers.js';
 import { blockPlaybackMedia } from './video-blocklist.js';
 import { runLivenessMonitor } from './liveness-monitor.js';
@@ -212,15 +213,17 @@ function trimPlaybackCache(cache) {
 
 async function cachedPlaybackPage(env, options) {
   const cache = playbackCacheFor(env.DB);
-  const key = `${options.orientation}:${options.seed}:${options.cursor}:${options.limit}`;
+  const key = `${options.scope}:${options.orientation}:${options.seed}:${options.cursor}:${options.limit}`;
   const now = Date.now();
   const existing = cache.get(key);
   if (existing?.page && existing.expiresAt > now) return existing.page;
   if (existing?.pending) return existing.pending;
 
-  const pending = options.orientation === 'both'
-    ? readSeededPlaybackCursorPage(env.DB, options)
-    : readOrientationPlaybackCursorPage(env.DB, options);
+  const pending = options.scope === 'all'
+    ? readAllActivePlaybackCursorPage(env.DB, options)
+    : options.orientation === 'both'
+      ? readSeededPlaybackCursorPage(env.DB, options)
+      : readOrientationPlaybackCursorPage(env.DB, options);
   cache.set(key, { pending, expiresAt: now + PLAYBACK_CACHE_TTL_MS });
 
   try {
@@ -241,11 +244,13 @@ async function playbackResponse(url, env) {
   const cursor = url.searchParams.get('cursor') || 'start';
   const seed = intParam(url.searchParams.get('seed'), 1, 1, 2_147_483_646);
   const orientation = normalizeVideoOrientationFilter(url.searchParams.get('orientation'));
-  const page = await cachedPlaybackPage(env, { limit, cursor, seed, orientation });
+  const scope = url.searchParams.get('scope') === 'all' ? 'all' : 'ranked';
+  const page = await cachedPlaybackPage(env, { limit, cursor, seed, orientation, scope });
   return json({
     ok: true,
     seed,
     orientation,
+    scope,
     items: page.items,
     nextCursor: page.nextCursor
   }, { headers: { 'cache-control': 'private, no-store' } });
