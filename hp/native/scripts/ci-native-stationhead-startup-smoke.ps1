@@ -372,10 +372,12 @@ try {
           Write-Host "Observed $name at ${elapsedMs}ms"
         }
       }
-      if ($log.Contains("Stationhead A audio-loss state=auth_wait detail=authentication surface detected (")) {
+      if ($log.Contains("Stationhead A login required; window visible") -or
+          $log.Contains("Stationhead A audio-loss state=auth_wait detail=authentication surface detected (")) {
         $primaryInteractiveAuthObserved = $true
       }
-      if ($log.Contains("Stationhead B audio-loss state=auth_wait detail=authentication surface detected (")) {
+      if ($log.Contains("Stationhead B login required; window visible") -or
+          $log.Contains("Stationhead B audio-loss state=auth_wait detail=authentication surface detected (")) {
         $secondaryInteractiveAuthObserved = $true
       }
     }
