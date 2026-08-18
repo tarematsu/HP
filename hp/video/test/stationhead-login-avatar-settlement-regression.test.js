@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
@@ -19,12 +20,16 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('existing first document-start slot owns only Stationhead login settlement', () => {
-  const settlement = section(
+function settlementSection() {
+  return section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
     '// Media boundaries never initiate navigation.',
   );
+}
+
+test('existing first document-start slot owns only Stationhead login settlement', () => {
+  const settlement = settlementSection();
 
   assert.match(
     composition,
@@ -43,12 +48,15 @@ test('existing first document-start slot owns only Stationhead login settlement'
   assert.ok(startupRegistration > firstRegistration);
 });
 
+test('embedded login settlement JavaScript parses independently', () => {
+  const settlement = settlementSection();
+  const raw = settlement.match(/LR"JS\(([\s\S]*?)\)JS"/);
+  assert.ok(raw, 'missing Stationhead login settlement raw JavaScript');
+  assert.doesNotThrow(() => new vm.Script(raw[1]));
+});
+
 test('login settlement captures the original WebView2 native bridge before startup wrappers', () => {
-  const settlement = section(
-    composition,
-    'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
-  );
+  const settlement = settlementSection();
 
   assert.match(settlement, /webview\.postMessage\.bind\(webview\)/);
   assert.match(settlement, /nativePost\(\{ type: 'stationhead-auth-ready' \}\)/);
@@ -56,11 +64,7 @@ test('login settlement captures the original WebView2 native bridge before start
 });
 
 test('top-right account control is resolved from the exact Stationhead menu slot', () => {
-  const settlement = section(
-    composition,
-    'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
-  );
+  const settlement = settlementSection();
 
   assert.match(settlement, /document\.elementsFromPoint/);
   assert.match(settlement, /innerWidth - 24/);
@@ -78,11 +82,7 @@ test('top-right account control is resolved from the exact Stationhead menu slot
 });
 
 test('only a stable signed-in account slot clears the native login latch', () => {
-  const settlement = section(
-    composition,
-    'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
-  );
+  const settlement = settlementSection();
 
   assert.match(settlement, /const visibleLoginSurface = \(\) =>/);
   assert.match(settlement, /credentialSelector/);
@@ -102,11 +102,7 @@ test('only a stable signed-in account slot clears the native login latch', () =>
 });
 
 test('settlement loop is bounded and lifecycle-aware without a DOM observer', () => {
-  const settlement = section(
-    composition,
-    'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
-  );
+  const settlement = settlementSection();
 
   assert.match(settlement, /const schedule = \(delay = 1000\) =>/);
   assert.match(settlement, /pagehide/);
