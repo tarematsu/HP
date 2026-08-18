@@ -385,7 +385,7 @@ inline void ApplyStationheadResourceBlockingRuntimeFixed(
 // login control in place while authentication changes underneath it. Compose the
 // fixed blank-page policy directly, gate document messages, treat Stationhead's
 // login affordance as an authentication requirement even when responsive CSS
-// hides it, and retain a low-frequency check while audio is active.
+// hides it, and keep auth-surface checks independent of playback state.
 inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     const wchar_t* globalName, const wchar_t* messagePrefix) {
   std::wstring script = StationheadAudioOnlyUiScript();
@@ -429,7 +429,9 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
+  const authHeadingSelector = "h1,h2,h3,[role='heading']";
   const loginPattern = /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const serviceConnectPattern = /^connect\s+music$/i;
   const visible = element => {
     if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
         element.getAttribute?.('aria-hidden') === 'true') return false;
@@ -454,6 +456,9 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     }
     for (const element of document.querySelectorAll(credentialSelector)) {
       if (visible(element)) return true;
+    }
+    for (const heading of document.querySelectorAll(authHeadingSelector)) {
+      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) return true;
     }
     for (const element of document.querySelectorAll(selector)) {
       const label = labelOf(element);
