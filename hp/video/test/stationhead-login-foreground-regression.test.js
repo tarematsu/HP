@@ -31,30 +31,34 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('hidden menu Log in is only a passive pre-auth signal', () => {
+test('responsive hidden Log in stays anonymous until the account avatar replaces it', () => {
   const autoplay = section(
     runtime,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
     '// The page can complete a fresh login',
+  );
+  const accountProbe = section(
+    autoplay,
+    'const accountUiVisible = () => {',
+    'const loginSurfaceState = () => {',
   );
   const loginProbe = section(
     autoplay,
     'const loginSurfaceState = () => {',
     'const playing = () => {',
   );
-  const update = section(
-    autoplay,
-    'const updateBlockingLogin = () => {',
-    'const flushPendingAuthReady = () => {',
-  );
 
   assert.match(autoplay, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login/);
-  assert.match(loginProbe, /let passive = false;/);
-  assert.match(loginProbe, /getAttribute\?\.\('href'\)/);
-  assert.match(loginProbe, /if \(visible\(element\)\) return \{ strong: true, passive: true \};/);
-  assert.match(loginProbe, /passive = true;/);
-  assert.match(loginProbe, /return \{ strong: false, passive \};/);
-  assert.match(update, /surface\.strong \|\| \(surface\.passive && !confirmedAuthenticated\)/);
+  assert.match(autoplay, /accountPattern = .*account\|profile\|avatar/);
+  assert.match(accountProbe, /rect\.top > 96/);
+  assert.match(accountProbe, /rect\.right < Math\.max\(96, innerWidth \* 0\.72\)/);
+  assert.match(accountProbe, /img,picture/);
+  assert.match(accountProbe, /data-testid\*='avatar'/);
+  assert.doesNotMatch(accountProbe, /\.complete|naturalWidth|naturalHeight/);
+  assert.match(loginProbe, /const authenticated = accountUiVisible\(\);/);
+  assert.match(loginProbe, /let loginSeen = false;/);
+  assert.match(loginProbe, /loginSeen = true;/);
+  assert.match(loginProbe, /return \{ blocking: loginSeen && !authenticated, authenticated \};/);
   assert.match(
     autoplay,
     /if \(!robustLoginReported && pageActive && nativePost\) \{[\s\S]*nativePost\(loginMessage\);/,
@@ -65,7 +69,7 @@ test('hidden menu Log in is only a passive pre-auth signal', () => {
   );
 });
 
-test('auth-ready settles hidden menu login without relatching foreground', () => {
+test('auth-ready follows the live account/login surface instead of a sticky auth flag', () => {
   const autoplay = section(
     runtime,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
@@ -77,16 +81,15 @@ test('auth-ready settles hidden menu login without relatching foreground', () =>
     'return nativePost(message);',
   );
 
-  assert.match(autoplay, /let confirmedAuthenticated = false;/);
+  assert.doesNotMatch(autoplay, /confirmedAuthenticated/);
   assert.match(interception, /message\.type === 'stationhead-auth-ready'/);
   assert.match(interception, /const surface = loginSurfaceState\(\);/);
-  assert.match(interception, /if \(surface\.strong\) \{[\s\S]*updateBlockingLogin\(\);[\s\S]*return;/);
-  assert.match(interception, /confirmedAuthenticated = true;/);
+  assert.match(interception, /if \(surface\.blocking\) \{[\s\S]*updateBlockingLogin\(\);[\s\S]*return;/);
   assert.match(interception, /pendingAuthReady = message;/);
   assert.match(interception, /updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/);
 });
 
-test('visible login and Connect music remain strong blockers after auth', () => {
+test('real auth surfaces still win over a stale account avatar', () => {
   const autoplay = section(
     runtime,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
@@ -97,20 +100,19 @@ test('visible login and Connect music remain strong blockers after auth', () => 
     'const loginSurfaceState = () => {',
     'const playing = () => {',
   );
-  const update = section(
-    autoplay,
-    'const updateBlockingLogin = () => {',
-    'const flushPendingAuthReady = () => {',
-  );
 
   assert.match(autoplay, /const authHeadingSelector = "h1,h2,h3,\[role='heading'\]";/);
+  assert.match(autoplay, /const blockingShellSelector = "form,\[role='dialog'\],\[aria-modal='true'\]/);
   assert.match(autoplay, /const serviceConnectPattern = \/\^connect\\s\+music\$\/i;/);
   assert.match(
     loginProbe,
-    /visible\(heading\) && serviceConnectPattern\.test\(labelOf\(heading\)\)[\s\S]*return \{ strong: true, passive: true \}/,
+    /visible\(heading\) && serviceConnectPattern\.test\(labelOf\(heading\)\)[\s\S]*return \{ blocking: true, authenticated: false \}/,
   );
-  assert.match(loginProbe, /if \(visible\(element\)\) return \{ strong: true, passive: true \};/);
-  assert.match(update, /if \(surface\.strong\) confirmedAuthenticated = false;/);
+  assert.match(loginProbe, /const shell = element\.closest\?\.\(blockingShellSelector\);/);
+  assert.match(
+    loginProbe,
+    /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) \{[\s\S]*return \{ blocking: true, authenticated \};/,
+  );
 });
 
 test('login detector is assembled before optional startup policies', () => {
