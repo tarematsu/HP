@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const shared = readFileSync(
+  new URL('../../native/src/sh_shared.h', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
@@ -19,24 +23,28 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('responsive-hidden Log in is reported after document commit without playback or viewport gating', () => {
-  const probe = section(
-    composition,
-    'inline std::wstring StationheadAutoplayScriptForegroundLogin(',
-    '// Media boundaries never initiate navigation.',
+test('active Stationhead observer reports Log in before playback viewport gating', () => {
+  const autoplay = section(
+    shared,
+    'inline std::wstring StationheadAutoplayScript(',
+    'inline std::wstring StationheadVolumeScript(',
   );
 
-  assert.match(probe, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login\)/);
-  assert.match(probe, /\^\\\/\(sign-in\|login\)/);
-  assert.match(probe, /DOMContentLoaded', activate/);
-  assert.match(probe, /\}, 500\);/);
-  assert.match(probe, /postMessage\(prefix \+ '-login-required'\)/);
-  assert.doesNotMatch(probe, /__homepanelAudioPlaying|mediaSession|audioPlaying|isPlaying/);
-  assert.doesNotMatch(probe, /getBoundingClientRect|getComputedStyle|style\.display|style\.visibility/);
-  assert.doesNotMatch(probe, /15000|15 \* 1000/);
-  assert.match(
+  assert.match(autoplay, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login\)/);
+  const loopAt = autoplay.indexOf('for (const element of document.querySelectorAll(selector))');
+  const loginAt = autoplay.indexOf('if (!login && loginPattern.test(label)) login = true;', loopAt);
+  const visibleAt = autoplay.indexOf('if (!visible(element))', loopAt);
+  assert.notEqual(loopAt, -1);
+  assert.notEqual(loginAt, -1);
+  assert.notEqual(visibleAt, -1);
+  assert.ok(loginAt < visibleAt, 'login detection must precede CSS/viewport visibility gating');
+
+  assert.match(autoplay, /if \(!loginReported\) \{[\s\S]*postMessage\('\{\{PREFIX\}\}-login-required'\)/);
+  assert.doesNotMatch(autoplay, /observedAt|15000|nativeTimeout\(schedule, 15000\)/);
+  assert.match(autoplay, /if \(!start && !isPlaying && startPattern\.test\(label\)\) start = element;/);
+  assert.doesNotMatch(
     composition,
-    /#undef StationheadAutoplayScript\s+#define StationheadAutoplayScript StationheadAutoplayScriptForegroundLogin/,
+    /StationheadAutoplayScriptForegroundLogin|#define StationheadAutoplayScript/,
   );
 });
 
