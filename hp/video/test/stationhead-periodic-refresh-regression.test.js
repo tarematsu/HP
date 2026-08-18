@@ -149,12 +149,14 @@ test('track-boundary reload remains disabled', () => {
   assert.match(policy, /#define RetryPendingTrackBoundaryRefresh\(parameters\)/);
   assert.match(policy, /RetryPendingTrackBoundaryRefreshDisabled\(parameters\)/);
   assert.match(policy, /trackBoundaryRefreshPending_ = false;[\s\S]*return false;/);
-  assert.match(
+  const boundaryScript = section(
     trackScript,
-    /StationheadTrackBoundaryScript\(const wchar_t\*\)[\s\S]*return \{\};/,
+    'inline std::wstring StationheadTrackBoundaryScript(const wchar_t*)',
+    '}  // namespace hp',
   );
+  assert.match(boundaryScript, /return \{\};/);
   assert.match(trackScript, /#define HandleTrackEnded\(\.\.\.\) \(\(void\)0\)/);
-  assert.doesNotMatch(trackScript, /addEventListener\(['"]ended|postMessage/);
+  assert.doesNotMatch(boundaryScript, /addEventListener\(['"]ended|postMessage/);
 });
 
 test('the existing managed abnormal-state fallback still switches both windows', () => {
