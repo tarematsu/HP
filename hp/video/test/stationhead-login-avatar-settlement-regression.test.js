@@ -31,7 +31,7 @@ test('native postMessage is captured before wrapped runtime policy is appended',
   const captureAt = avatarPolicy.indexOf(
     'window.__homepanelStationheadNativePost =',
   );
-  const baseAt = avatarPolicy.indexOf('script.append(base);');
+  const baseAt = avatarPolicy.indexOf("script << L'\\n' << base << L'\\n';");
   const detectorAt = avatarPolicy.indexOf(
     'window.__homepanelStationheadAvatarSettlement = true;',
   );
