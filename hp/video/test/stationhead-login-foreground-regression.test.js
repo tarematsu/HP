@@ -31,27 +31,34 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('final runtime policy treats responsive-hidden Log in as authentication required', () => {
+test('responsive hidden Log in stays anonymous until the account avatar replaces it', () => {
   const autoplay = section(
     runtime,
     'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
     '// The page can complete a fresh login',
   );
+  const accountProbe = section(
+    autoplay,
+    'const accountUiVisible = () => {',
+    'const loginSurfaceState = () => {',
+  );
   const loginProbe = section(
     autoplay,
-    'const blockingLoginVisible = () => {',
+    'const loginSurfaceState = () => {',
     'const playing = () => {',
   );
 
   assert.match(autoplay, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login/);
-  assert.match(loginProbe, /const label = labelOf\(element\);/);
-  assert.match(loginProbe, /getAttribute\?\.\('href'\)/);
-  assert.match(loginProbe, /loginPattern\.test\(label\)/);
-  assert.match(loginProbe, /login\|signin\|sign-in/);
-  assert.doesNotMatch(
-    loginProbe,
-    /!visible\(element\)[^\n]*loginPattern|visible\(element\)[^\n]*loginPattern/,
-  );
+  assert.match(autoplay, /accountPattern = .*account\|profile\|avatar/);
+  assert.match(accountProbe, /rect\.top > 96/);
+  assert.match(accountProbe, /rect\.right < Math\.max\(96, innerWidth \* 0\.72\)/);
+  assert.match(accountProbe, /img,picture/);
+  assert.match(accountProbe, /data-testid\*='avatar'/);
+  assert.doesNotMatch(accountProbe, /\.complete|naturalWidth|naturalHeight/);
+  assert.match(loginProbe, /const authenticated = accountUiVisible\(\);/);
+  assert.match(loginProbe, /let loginSeen = false;/);
+  assert.match(loginProbe, /loginSeen = true;/);
+  assert.match(loginProbe, /return \{ blocking: loginSeen && !authenticated, authenticated \};/);
   assert.match(
     autoplay,
     /if \(!robustLoginReported && pageActive && nativePost\) \{[\s\S]*nativePost\(loginMessage\);/,
@@ -59,6 +66,52 @@ test('final runtime policy treats responsive-hidden Log in as authentication req
   assert.doesNotMatch(
     composition,
     /StationheadAutoplayScriptForegroundLogin|#define StationheadAutoplayScript/,
+  );
+});
+
+test('auth-ready follows the live account/login surface instead of a sticky auth flag', () => {
+  const autoplay = section(
+    runtime,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  const interception = section(
+    autoplay,
+    "if (message && typeof message === 'object' &&",
+    'return nativePost(message);',
+  );
+
+  assert.doesNotMatch(autoplay, /confirmedAuthenticated/);
+  assert.match(interception, /message\.type === 'stationhead-auth-ready'/);
+  assert.match(interception, /const surface = loginSurfaceState\(\);/);
+  assert.match(interception, /if \(surface\.blocking\) \{[\s\S]*updateBlockingLogin\(\);[\s\S]*return;/);
+  assert.match(interception, /pendingAuthReady = message;/);
+  assert.match(interception, /updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/);
+});
+
+test('real auth surfaces still win over a stale account avatar', () => {
+  const autoplay = section(
+    runtime,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  const loginProbe = section(
+    autoplay,
+    'const loginSurfaceState = () => {',
+    'const playing = () => {',
+  );
+
+  assert.match(autoplay, /const authHeadingSelector = "h1,h2,h3,\[role='heading'\]";/);
+  assert.match(autoplay, /const blockingShellSelector = "form,\[role='dialog'\],\[aria-modal='true'\]/);
+  assert.match(autoplay, /const serviceConnectPattern = \/\^connect\\s\+music\$\/i;/);
+  assert.match(
+    loginProbe,
+    /visible\(heading\) && serviceConnectPattern\.test\(labelOf\(heading\)\)[\s\S]*return \{ blocking: true, authenticated: false \}/,
+  );
+  assert.match(loginProbe, /const shell = element\.closest\?\.\(blockingShellSelector\);/);
+  assert.match(
+    loginProbe,
+    /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) \{[\s\S]*return \{ blocking: true, authenticated \};/,
   );
 });
 
@@ -83,26 +136,6 @@ test('login detector is assembled before optional startup policies', () => {
   assert.ok(uiAt > assembledAt);
   assert.ok(blankAt > uiAt);
   assert.ok(baseAt > blankAt);
-});
-
-test('final runtime policy also promotes the live Connect music surface', () => {
-  const autoplay = section(
-    runtime,
-    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
-    '// The page can complete a fresh login',
-  );
-  const loginProbe = section(
-    autoplay,
-    'const blockingLoginVisible = () => {',
-    'const playing = () => {',
-  );
-
-  assert.match(autoplay, /const authHeadingSelector = "h1,h2,h3,\[role='heading'\]";/);
-  assert.match(autoplay, /const serviceConnectPattern = \/\^connect\\s\+music\$\/i;/);
-  assert.match(
-    loginProbe,
-    /for \(const heading of document\.querySelectorAll\(authHeadingSelector\)\)[\s\S]*visible\(heading\) && serviceConnectPattern\.test\(labelOf\(heading\)\)/,
-  );
 });
 
 test('final lifecycle keeps login detection active while music is playing', () => {

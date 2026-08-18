@@ -27,7 +27,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('active runtime policy gates message sources and generic login links', () => {
+test('active runtime policy gates message sources and resolves login against account UI', () => {
   const baseAutoplay = section(
     policySource,
     'inline std::wstring StationheadAutoplayScript(',
@@ -63,12 +63,15 @@ test('active runtime policy gates message sources and generic login links', () =
   const runtimeGuardAt = runtimeAutoplay.indexOf('AuthRecheck) return;');
   assert.ok(sourceGateAt >= 0 && sourceGateAt < runtimeGuardAt);
 
-  assert.match(runtimeAutoplay, /const blockingLoginVisible = \(\) =>/);
+  assert.match(runtimeAutoplay, /const accountUiVisible = \(\) =>/);
+  assert.match(runtimeAutoplay, /const loginSurfaceState = \(\) =>/);
   assert.match(runtimeAutoplay, /login\|signin\|sign-in\|auth/);
   assert.match(runtimeAutoplay, /const credentialSelector =/);
   assert.match(runtimeAutoplay, /getAttribute\?\.\('href'\)/);
   assert.match(runtimeAutoplay, /loginPattern\.test\(label\)/);
   assert.match(runtimeAutoplay, /login\|signin\|sign-in/);
+  assert.match(runtimeAutoplay, /const authenticated = accountUiVisible\(\)/);
+  assert.match(runtimeAutoplay, /blocking: loginSeen && !authenticated/);
   assert.match(runtimeAutoplay, /const restoreAuthAfterFalsePositive = \(\) =>/);
   assert.match(runtimeAutoplay, /__homepanelStationheadLastAcceptedAuthHeaders/);
   assert.match(
@@ -82,7 +85,7 @@ test('active runtime policy gates message sources and generic login links', () =
   assert.match(runtimeAutoplay, /addEventListener\('pageshow',[\s\S]*pageActive = true/);
   assert.match(
     runtimeAutoplay,
-    /message\.type === 'stationhead-auth-ready'[\s\S]*pendingAuthReady = message;[\s\S]*nativeTimeout\([\s\S]*updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/,
+    /message\.type === 'stationhead-auth-ready'[\s\S]*if \(surface\.blocking\)[\s\S]*pendingAuthReady = message;[\s\S]*nativeTimeout\([\s\S]*updateBlockingLogin\(\);[\s\S]*flushPendingAuthReady\(\);/,
   );
   assert.match(
     runtimeAutoplay,
