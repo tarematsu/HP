@@ -16,8 +16,8 @@ inline std::wstring StationheadAuthCaptureScriptDisabled() {
 // The playback WebView is intentionally kept in a tiny background viewport.
 // Stationhead's desktop Log in anchor is consequently CSS-hidden there even
 // though the control remains in the DOM and accurately reflects guest state.
-// Treat that semantic control as an interactive requirement immediately; once
-// the native host is foregrounded the same control becomes visually available.
+// Probe only after DOMContentLoaded plus a short commit grace so WebView2's
+// current-source origin has settled before the trusted WebMessage is emitted.
 inline std::wstring StationheadAutoplayScriptForegroundLogin(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
@@ -75,19 +75,24 @@ inline std::wstring StationheadAutoplayScriptForegroundLogin(
       }
     }
   };
-  const start = () => {
-    scan();
-    if (reported || !document.documentElement) return;
-    observer = new MutationObserver(scan);
-    observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['aria-label', 'title', 'value', 'href', 'class']
-    });
+  const activate = () => {
+    window.setTimeout(() => {
+      scan();
+      if (reported || !document.documentElement) return;
+      observer = new MutationObserver(scan);
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['aria-label', 'title', 'value', 'href', 'class']
+      });
+    }, 500);
   };
-  if (document.documentElement) start();
-  else document.addEventListener('DOMContentLoaded', start, { once: true });
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', activate, { once: true });
+  } else {
+    activate();
+  }
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) scan();
   });
