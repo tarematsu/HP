@@ -1,4 +1,5 @@
 export interface VideoStatusCounts {
+  totalVideos: number;
   activeVideos: number;
   activeMp4Videos: number;
   feedVideos: number;
