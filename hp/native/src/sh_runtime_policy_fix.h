@@ -423,7 +423,9 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
   const authHeadingSelector = "h1,h2,h3,[role='heading']";
+  const blockingShellSelector = "form,[role='dialog'],[aria-modal='true'],[data-modal],[class*='modal'],[class*='dialog']";
   const loginPattern = /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const accountPattern = /\b(account|profile|avatar|user\s+menu|my\s+profile)\b|アカウント|プロフィール/i;
   const serviceConnectPattern = /^connect\s+music$/i;
   const visible = element => {
     if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
@@ -442,20 +444,44 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     element?.getAttribute?.('value'),
     element?.getAttribute?.('data-testid'),
   ].map(normalize).find(Boolean) || '';
+  const accountUiVisible = () => {
+    for (const element of document.querySelectorAll(selector)) {
+      if (!visible(element)) continue;
+      const label = labelOf(element);
+      const href = String(element?.getAttribute?.('href') || '').toLowerCase();
+      if (accountPattern.test(label) ||
+          /(^|\/)(account|profile|settings|user)(?:\/|[?#]|$)/i.test(href)) {
+        return true;
+      }
+      const rect = element.getBoundingClientRect?.();
+      if (!rect || rect.top < -2 || rect.top > 96 ||
+          rect.right < Math.max(96, innerWidth * 0.72) ||
+          rect.width > 96 || rect.height > 96) {
+        continue;
+      }
+      const avatarNode = element.matches?.('img,picture') ? element :
+        element.querySelector?.("img,picture,[data-testid*='avatar' i],[data-testid*='profile' i],[class*='avatar' i]");
+      if (avatarNode) return true;
+      const style = getComputedStyle(element);
+      if (style.backgroundImage && style.backgroundImage !== 'none') return true;
+    }
+    return false;
+  };
   const loginSurfaceState = () => {
     if (/(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
           String(location.pathname || ''))) {
-      return { strong: true, passive: true };
+      return { blocking: true, authenticated: false };
     }
     for (const element of document.querySelectorAll(credentialSelector)) {
-      if (visible(element)) return { strong: true, passive: true };
+      if (visible(element)) return { blocking: true, authenticated: false };
     }
     for (const heading of document.querySelectorAll(authHeadingSelector)) {
       if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) {
-        return { strong: true, passive: true };
+        return { blocking: true, authenticated: false };
       }
     }
-    let passive = false;
+    const authenticated = accountUiVisible();
+    let loginSeen = false;
     for (const element of document.querySelectorAll(selector)) {
       const label = labelOf(element);
       const href = String(element?.getAttribute?.('href') || '').toLowerCase();
@@ -463,10 +489,14 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
           !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
         continue;
       }
-      if (visible(element)) return { strong: true, passive: true };
-      passive = true;
+      loginSeen = true;
+      if (!visible(element)) continue;
+      const shell = element.closest?.(blockingShellSelector);
+      if (!authenticated || (shell && visible(shell))) {
+        return { blocking: true, authenticated };
+      }
     }
-    return { strong: false, passive };
+    return { blocking: loginSeen && !authenticated, authenticated };
   };
   const playing = () => {
     if (typeof window.__homepanelAudioPlaying === 'boolean') {
@@ -484,7 +514,6 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   let loginMissingSince = 0;
   let timer = 0;
   let pendingAuthReady = null;
-  let confirmedAuthenticated = false;
   const restoreAuthAfterFalsePositive = () => {
     const last = window.__homepanelStationheadLastAcceptedAuthHeaders;
     if (!last?.authorization || window.__homepanelStationheadAuthHeaders?.authorization ||
@@ -503,10 +532,8 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   };
   const updateBlockingLogin = () => {
     const surface = loginSurfaceState();
-    if (surface.strong) confirmedAuthenticated = false;
-    const blocking = surface.strong || (surface.passive && !confirmedAuthenticated);
     const now = Date.now();
-    if (blocking) {
+    if (surface.blocking) {
       loginMissingSince = 0;
       window.__homepanelStationheadBlockingLoginVisible = true;
       pendingAuthReady = null;
@@ -544,11 +571,10 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
         if (message && typeof message === 'object' &&
             message.type === 'stationhead-auth-ready') {
           const surface = loginSurfaceState();
-          if (surface.strong) {
+          if (surface.blocking) {
             updateBlockingLogin();
             return;
           }
-          confirmedAuthenticated = true;
           pendingAuthReady = message;
           nativeTimeout(() => {
             if (!pageActive) return;
