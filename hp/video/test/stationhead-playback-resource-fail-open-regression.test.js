@@ -73,17 +73,17 @@ test('playback-safe policy is the final precompiled Stationhead policy for every
   );
 });
 
-test('document-start auth capture is a no-op instead of patching Stationhead fetch or XHR', () => {
-  const disabledCapture = section(
+test('document-start auth slot settles login UI without patching Stationhead fetch or XHR', () => {
+  const settlement = section(
     composition,
-    'inline std::wstring StationheadAuthCaptureScriptDisabled()',
+    'inline std::wstring StationheadLoginSettlementScript()',
     '// Media boundaries never initiate navigation.',
   );
-  assert.match(disabledCapture, /return L"void 0";/);
-  assert.doesNotMatch(disabledCapture, /window\.fetch|XMLHttpRequest/);
+  assert.match(settlement, /stationhead-auth-ready/);
+  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest|Authorization|authorization/);
   assert.match(
     composition,
-    /#undef StationheadAuthCaptureScript\s*#define StationheadAuthCaptureScript StationheadAuthCaptureScriptDisabled/,
+    /#undef StationheadAuthCaptureScript\s*#define StationheadAuthCaptureScript StationheadLoginSettlementScript/,
   );
 });
 
