@@ -13,11 +13,11 @@ inline std::wstring StationheadAuthCaptureScriptDisabled() {
   return L"void 0";
 }
 
-// Treat a visible Stationhead `Log in` control as an interactive requirement
-// immediately, even while WebView2 still reports audible playback. The native
-// message handler already latches loginRequired_ and calls ShowForLogin(); this
-// document observer only makes that signal unconditional and independent of
-// the playback state or the older 15-second autoplay scan grace period.
+// The playback WebView is intentionally kept in a tiny background viewport.
+// Stationhead's desktop Log in anchor is consequently CSS-hidden there even
+// though the control remains in the DOM and accurately reflects guest state.
+// Treat that semantic control as an interactive requirement immediately; once
+// the native host is foregrounded the same control becomes visually available.
 inline std::wstring StationheadAutoplayScriptForegroundLogin(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
@@ -32,26 +32,30 @@ inline std::wstring StationheadAutoplayScriptForegroundLogin(
   loginProbe.append(messagePrefix ? messagePrefix : L"stationhead");
   loginProbe.append(LR"JS(';
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
-  const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
+  const selector = "button,[role='button'],a,input[type='button'],input[type='submit']";
   const loginPattern = /^(log\s*in|sign\s*in|login)(?:\s+.*)?$/i;
   const labelsOf = element => [
     element?.innerText,
     element?.textContent,
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('title'),
-    element?.getAttribute?.('value'),
-    element?.getAttribute?.('data-testid')
+    element?.getAttribute?.('value')
   ].map(normalize).filter(Boolean);
-  const visible = element => {
-    if (!element || element.getAttribute?.('aria-hidden') === 'true') return false;
-    const rect = element.getBoundingClientRect?.();
-    if (!rect || rect.width <= 2 || rect.height <= 2) return false;
-    for (let node = element; node instanceof Element; node = node.parentElement) {
-      const style = getComputedStyle(node);
-      if (style.display === 'none' || style.visibility === 'hidden' ||
-          Number(style.opacity || 1) <= 0) return false;
+  const hasLoginDestination = element => {
+    if (element?.tagName !== 'A') return false;
+    const raw = element.getAttribute?.('href') || '';
+    if (!raw) return false;
+    try {
+      const target = new URL(raw, location.href);
+      const targetHost = String(target.hostname || '').toLowerCase();
+      if (target.protocol !== 'https:' ||
+          (targetHost !== 'stationhead.com' && !targetHost.endsWith('.stationhead.com'))) {
+        return false;
+      }
+      return /^\/(sign-in|login)(?:\/|$)/i.test(target.pathname || '');
+    } catch (_) {
+      return false;
     }
-    return true;
   };
   let reported = false;
   let observer = null;
@@ -64,8 +68,8 @@ inline std::wstring StationheadAutoplayScriptForegroundLogin(
   const scan = () => {
     if (reported || !document.body) return;
     for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element)) continue;
-      if (labelsOf(element).some(label => loginPattern.test(label))) {
+      if (hasLoginDestination(element) ||
+          labelsOf(element).some(label => loginPattern.test(label))) {
         report();
         return;
       }
@@ -79,7 +83,7 @@ inline std::wstring StationheadAutoplayScriptForegroundLogin(
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['aria-label', 'data-testid', 'title', 'value', 'style', 'class']
+      attributeFilter: ['aria-label', 'title', 'value', 'href', 'class']
     });
   };
   if (document.documentElement) start();
