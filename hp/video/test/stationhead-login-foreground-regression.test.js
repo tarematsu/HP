@@ -19,7 +19,7 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('responsive-hidden Log in is reported immediately without playback or viewport gating', () => {
+test('responsive-hidden Log in is reported after document commit without playback or viewport gating', () => {
   const probe = section(
     composition,
     'inline std::wstring StationheadAutoplayScriptForegroundLogin(',
@@ -28,6 +28,8 @@ test('responsive-hidden Log in is reported immediately without playback or viewp
 
   assert.match(probe, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login\)/);
   assert.match(probe, /\^\\\/\(sign-in\|login\)/);
+  assert.match(probe, /DOMContentLoaded', activate/);
+  assert.match(probe, /\}, 500\);/);
   assert.match(probe, /postMessage\(prefix \+ '-login-required'\)/);
   assert.doesNotMatch(probe, /__homepanelAudioPlaying|mediaSession|audioPlaying|isPlaying/);
   assert.doesNotMatch(probe, /getBoundingClientRect|getComputedStyle|style\.display|style\.visibility/);
