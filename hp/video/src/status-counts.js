@@ -1,12 +1,12 @@
 const STATUS_VIDEO_COUNTS_REFRESH = `INSERT INTO status_counts (
-  id, active_videos, active_mp4_videos, feed_videos, feed_mp4_videos,
+  id, total_videos, active_videos, active_mp4_videos, feed_videos, feed_mp4_videos,
   blocked_videos, death_videos, updated_at
 )
-WITH active AS (
-  SELECT COUNT(*) AS activeVideos,
-         COALESCE(SUM(media_type = 'mp4'), 0) AS activeMp4Videos
+WITH video_counts AS (
+  SELECT COUNT(*) AS totalVideos,
+         COALESCE(SUM(status = 'active'), 0) AS activeVideos,
+         COALESCE(SUM(status = 'active' AND media_type = 'mp4'), 0) AS activeMp4Videos
     FROM videos
-   WHERE status = 'active'
 ), feed AS (
   SELECT COUNT(*) AS feedVideos,
          COALESCE(SUM(video.media_type = 'mp4'), 0) AS feedMp4Videos
@@ -14,10 +14,11 @@ WITH active AS (
     INNER JOIN videos AS video ON video.id = ranking.video_id
    WHERE ranking.period = '24h' AND video.status = 'active'
 )
-SELECT 1, activeVideos, activeMp4Videos, feedVideos, feedMp4Videos, 0, 0, ?
-  FROM active CROSS JOIN feed
+SELECT 1, totalVideos, activeVideos, activeMp4Videos, feedVideos, feedMp4Videos, 0, 0, ?
+  FROM video_counts CROSS JOIN feed
  WHERE true
 ON CONFLICT(id) DO UPDATE SET
+  total_videos=excluded.total_videos,
   active_videos=excluded.active_videos,
   active_mp4_videos=excluded.active_mp4_videos,
   feed_videos=excluded.feed_videos,
@@ -25,7 +26,7 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at=excluded.updated_at`;
 
 const STATUS_EXCLUSION_COUNTS_REFRESH = `INSERT INTO status_counts (
-  id, active_videos, active_mp4_videos, feed_videos, feed_mp4_videos,
+  id, total_videos, active_videos, active_mp4_videos, feed_videos, feed_mp4_videos,
   blocked_videos, death_videos, updated_at
 )
 WITH blocked AS (
@@ -33,7 +34,7 @@ WITH blocked AS (
 ), death AS (
   SELECT COUNT(*) AS deathVideos FROM video_death_list
 )
-SELECT 1, 0, 0, 0, 0, blockedVideos, deathVideos, ?
+SELECT 1, 0, 0, 0, 0, 0, blockedVideos, deathVideos, ?
   FROM blocked CROSS JOIN death
  WHERE true
 ON CONFLICT(id) DO UPDATE SET
@@ -44,7 +45,8 @@ ON CONFLICT(id) DO UPDATE SET
 const STATUS_COUNTS_CLEAR_DIRTY = `UPDATE status_counts
   SET dirty = 0, updated_at = ?
   WHERE id = 1
-  RETURNING active_videos AS activeVideos,
+  RETURNING total_videos AS totalVideos,
+            active_videos AS activeVideos,
             active_mp4_videos AS activeMp4Videos,
             feed_videos AS feedVideos,
             feed_mp4_videos AS feedMp4Videos,
@@ -54,6 +56,7 @@ const STATUS_COUNTS_CLEAR_DIRTY = `UPDATE status_counts
             updated_at AS countsUpdatedAt`;
 
 const STATUS_COUNTS_READ = `SELECT
+  total_videos AS totalVideos,
   active_videos AS activeVideos,
   active_mp4_videos AS activeMp4Videos,
   feed_videos AS feedVideos,
@@ -74,6 +77,7 @@ function prepareStatusExclusionCountsRefresh(db, capturedAt) {
 
 export function emptyStatusCounts() {
   return {
+    totalVideos: 0,
     activeVideos: 0,
     activeMp4Videos: 0,
     feedVideos: 0,
