@@ -6,6 +6,10 @@ const runtime = readFileSync(
   new URL('../../native/src/sh_runtime_policy_fix.h', import.meta.url),
   'utf8',
 );
+const lifecycle = readFileSync(
+  new URL('../../native/src/sh_runtime_lifecycle_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
@@ -52,6 +56,25 @@ test('final runtime policy treats responsive-hidden Log in as authentication req
     composition,
     /StationheadAutoplayScriptForegroundLogin|#define StationheadAutoplayScript/,
   );
+});
+
+test('final lifecycle keeps login detection active while music is playing', () => {
+  const fixedSchedule = section(
+    lifecycle,
+    'static constexpr std::wstring_view kScheduleFixed =',
+    'static constexpr std::wstring_view kPageLifecycle =',
+  );
+  const fixedTail = section(
+    lifecycle,
+    'static constexpr std::wstring_view kAuthReadyTailFixed =',
+    'const bool uiLifecycleReplaced =',
+  );
+
+  assert.match(fixedSchedule, /const loginRecheckMs = 5000;/);
+  assert.match(fixedSchedule, /updateBlockingLogin\(\);/);
+  assert.doesNotMatch(fixedSchedule, /playing\(\)|stablePlaybackRecheckMs|30000/);
+  assert.match(fixedTail, /DOMContentLoaded', recheckLoginSurface/);
+  assert.match(fixedTail, /addEventListener\('load', recheckLoginSurface/);
 });
 
 test('native login-required message always surfaces Stationhead', () => {
