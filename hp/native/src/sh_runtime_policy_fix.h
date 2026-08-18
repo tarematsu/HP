@@ -442,26 +442,31 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     element?.getAttribute?.('value'),
     element?.getAttribute?.('data-testid'),
   ].map(normalize).find(Boolean) || '';
-  const blockingLoginVisible = () => {
+  const loginSurfaceState = () => {
     if (/(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
           String(location.pathname || ''))) {
-      return true;
+      return { strong: true, passive: true };
     }
     for (const element of document.querySelectorAll(credentialSelector)) {
-      if (visible(element)) return true;
+      if (visible(element)) return { strong: true, passive: true };
     }
     for (const heading of document.querySelectorAll(authHeadingSelector)) {
-      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) return true;
+      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) {
+        return { strong: true, passive: true };
+      }
     }
+    let passive = false;
     for (const element of document.querySelectorAll(selector)) {
       const label = labelOf(element);
       const href = String(element?.getAttribute?.('href') || '').toLowerCase();
-      if (loginPattern.test(label) ||
-          /(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
-        return true;
+      if (!loginPattern.test(label) &&
+          !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
+        continue;
       }
+      if (visible(element)) return { strong: true, passive: true };
+      passive = true;
     }
-    return false;
+    return { strong: false, passive };
   };
   const playing = () => {
     if (typeof window.__homepanelAudioPlaying === 'boolean') {
@@ -479,6 +484,7 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   let loginMissingSince = 0;
   let timer = 0;
   let pendingAuthReady = null;
+  let confirmedAuthenticated = false;
   const restoreAuthAfterFalsePositive = () => {
     const last = window.__homepanelStationheadLastAcceptedAuthHeaders;
     if (!last?.authorization || window.__homepanelStationheadAuthHeaders?.authorization ||
@@ -496,7 +502,9 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     window.__homepanelStationheadAuthHeaders = null;
   };
   const updateBlockingLogin = () => {
-    const blocking = blockingLoginVisible();
+    const surface = loginSurfaceState();
+    if (surface.strong) confirmedAuthenticated = false;
+    const blocking = surface.strong || (surface.passive && !confirmedAuthenticated);
     const now = Date.now();
     if (blocking) {
       loginMissingSince = 0;
@@ -535,6 +543,12 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
         }
         if (message && typeof message === 'object' &&
             message.type === 'stationhead-auth-ready') {
+          const surface = loginSurfaceState();
+          if (surface.strong) {
+            updateBlockingLogin();
+            return;
+          }
+          confirmedAuthenticated = true;
           pendingAuthReady = message;
           nativeTimeout(() => {
             if (!pageActive) return;
