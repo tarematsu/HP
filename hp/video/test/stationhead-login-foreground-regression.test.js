@@ -62,6 +62,29 @@ test('final runtime policy treats responsive-hidden Log in as authentication req
   );
 });
 
+test('login detector is assembled before optional startup policies', () => {
+  const autoplay = section(
+    runtime,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  const detectorAt = autoplay.indexOf('std::wostringstream extension;');
+  const assembledAt = autoplay.indexOf('std::wstring script = extension.str();');
+  const uiAt = autoplay.indexOf('script.append(StationheadAudioOnlyUiScript());');
+  const blankAt = autoplay.indexOf(
+    'script.append(StationheadBlankPageRecoveryScriptRuntimeFixed());',
+  );
+  const baseAt = autoplay.indexOf(
+    'script.append(StationheadAutoplayScriptBase(globalName, messagePrefix));',
+  );
+
+  assert.ok(detectorAt >= 0);
+  assert.ok(assembledAt > detectorAt);
+  assert.ok(uiAt > assembledAt);
+  assert.ok(blankAt > uiAt);
+  assert.ok(baseAt > blankAt);
+});
+
 test('final runtime policy also promotes the live Connect music surface', () => {
   const autoplay = section(
     runtime,
