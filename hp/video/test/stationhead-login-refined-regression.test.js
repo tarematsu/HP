@@ -30,7 +30,7 @@ test('refined blocking-login detection invalidates captured auth independently',
 
   const blockingBranch = section(
     autoplay,
-    'if (blocking) {',
+    'if (surface.blocking) {',
     'if (!loginMissingSince)',
   );
   const markBlockingAt = blockingBranch.indexOf(
