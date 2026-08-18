@@ -65,8 +65,10 @@ test('active runtime policy gates message sources and generic login links', () =
 
   assert.match(runtimeAutoplay, /const blockingLoginVisible = \(\) =>/);
   assert.match(runtimeAutoplay, /login\|signin\|sign-in\|auth/);
-  assert.match(runtimeAutoplay, /form,\[role='dialog'\],\[aria-modal='true'\]/);
-  assert.match(runtimeAutoplay, /credentialSelector/);
+  assert.match(runtimeAutoplay, /const credentialSelector =/);
+  assert.match(runtimeAutoplay, /getAttribute\?\.\('href'\)/);
+  assert.match(runtimeAutoplay, /loginPattern\.test\(label\)/);
+  assert.match(runtimeAutoplay, /login\|signin\|sign-in/);
   assert.match(runtimeAutoplay, /const restoreAuthAfterFalsePositive = \(\) =>/);
   assert.match(runtimeAutoplay, /__homepanelStationheadLastAcceptedAuthHeaders/);
   assert.match(
