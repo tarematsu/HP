@@ -18,6 +18,10 @@ const webview = readFileSync(
   new URL('../../native/src/sh_webview.cpp', import.meta.url),
   'utf8',
 );
+const audioLoss = readFileSync(
+  new URL('../../native/src/sh_audio_loss.cpp', import.meta.url),
+  'utf8',
+);
 
 function section(source, start, end) {
   const startAt = source.indexOf(start);
@@ -58,6 +62,26 @@ test('final runtime policy treats responsive-hidden Log in as authentication req
   );
 });
 
+test('final runtime policy also promotes the live Connect music surface', () => {
+  const autoplay = section(
+    runtime,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  const loginProbe = section(
+    autoplay,
+    'const blockingLoginVisible = () => {',
+    'const playing = () => {',
+  );
+
+  assert.match(autoplay, /const authHeadingSelector = "h1,h2,h3,\[role='heading'\]";/);
+  assert.match(autoplay, /const serviceConnectPattern = \/\^connect\\s\+music\$\/i;/);
+  assert.match(
+    loginProbe,
+    /for \(const heading of document\.querySelectorAll\(authHeadingSelector\)\)[\s\S]*visible\(heading\) && serviceConnectPattern\.test\(labelOf\(heading\)\)/,
+  );
+});
+
 test('final lifecycle keeps login detection active while music is playing', () => {
   const fixedSchedule = section(
     lifecycle,
@@ -87,4 +111,20 @@ test('native login-required message always surfaces Stationhead', () => {
   assert.match(handler, /loginRequired_ = true;/);
   assert.match(handler, /ShowForLogin\(\);/);
   assert.doesNotMatch(handler, /AudioPlaying\(|audioPlaying_|playing\)/);
+});
+
+test('audible playback cannot clear a confirmed login-required surface', () => {
+  const audioPlayingBranch = section(
+    audioLoss,
+    'const bool audioPlaying = AudioPlaying();',
+    'const bool authenticationPending =',
+  );
+
+  assert.match(
+    audioPlayingBranch,
+    /selectedTab_ == StationheadTabKind::Stationhead &&[\s\S]*!spotifyAuthorization_ && !loginRequired_/,
+  );
+  assert.match(audioPlayingBranch, /SelectTab\(StationheadTabKind::None\);/);
+  assert.doesNotMatch(audioPlayingBranch, /loginRequired_ = false;/);
+  assert.doesNotMatch(audioPlayingBranch, /status_\.loginRequired = false;/);
 });
