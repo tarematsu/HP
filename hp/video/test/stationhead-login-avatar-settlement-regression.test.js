@@ -2,10 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const avatarPolicy = readFileSync(
-  new URL('../../native/src/sh_login_avatar_policy_fix.h', import.meta.url),
-  'utf8',
-);
 const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
@@ -15,55 +11,84 @@ const webview = readFileSync(
   'utf8',
 );
 
-test('final Stationhead composition installs the account-avatar settlement bridge', () => {
-  assert.match(composition, /#include "sh_login_avatar_policy_fix\.h"/);
-  assert.match(
-    avatarPolicy,
-    /return StationheadAutoplayScript\(globalName, messagePrefix\);/,
+function section(source, start, end) {
+  const startAt = source.indexOf(start);
+  assert.notEqual(startAt, -1, `missing section: ${start}`);
+  const endAt = source.indexOf(end, startAt + start.length);
+  assert.notEqual(endAt, -1, `missing section terminator: ${end}`);
+  return source.slice(startAt, endAt);
+}
+
+test('existing first document-start slot owns only Stationhead login settlement', () => {
+  const settlement = section(
+    composition,
+    'inline std::wstring StationheadLoginSettlementScript()',
+    '// Media boundaries never initiate navigation.',
   );
+
   assert.match(
-    avatarPolicy,
-    /#define StationheadAutoplayScript StationheadAutoplayScriptAvatarSettlementFixed/,
+    composition,
+    /#define StationheadAuthCaptureScript StationheadLoginSettlementScript/,
   );
+  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest|MutationObserver/);
+  assert.doesNotMatch(settlement, /Connect\s+music|connectMusic|serviceConnect/);
+
+  const firstRegistration = webview.indexOf(
+    'const HRESULT authCaptureResult = webview_->AddScriptToExecuteOnDocumentCreated(',
+  );
+  const startupRegistration = webview.indexOf(
+    'const HRESULT startupScriptResult = webview_->AddScriptToExecuteOnDocumentCreated(',
+  );
+  assert.ok(firstRegistration >= 0);
+  assert.ok(startupRegistration > firstRegistration);
 });
 
-test('native postMessage is captured before wrapped runtime policy is appended', () => {
-  const captureAt = avatarPolicy.indexOf(
-    'window.__homepanelStationheadNativePost =',
-  );
-  const baseAt = avatarPolicy.indexOf("script << L'\\n' << base << L'\\n';");
-  const detectorAt = avatarPolicy.indexOf(
-    'window.__homepanelStationheadAvatarSettlement = true;',
+test('login settlement captures the original WebView2 native bridge before startup wrappers', () => {
+  const settlement = section(
+    composition,
+    'inline std::wstring StationheadLoginSettlementScript()',
+    '// Media boundaries never initiate navigation.',
   );
 
-  assert.ok(captureAt >= 0);
-  assert.ok(baseAt > captureAt);
-  assert.ok(detectorAt > baseAt);
-  assert.match(avatarPolicy, /webview\.postMessage\.bind\(webview\)/);
+  assert.match(settlement, /webview\.postMessage\.bind\(webview\)/);
+  assert.match(settlement, /nativePost\(\{ type: 'stationhead-auth-ready' \}\)/);
+  assert.doesNotMatch(settlement, /webview\.postMessage\s*=/);
 });
 
-test('top-right account image is detected directly instead of requiring an interactive wrapper', () => {
-  assert.match(avatarPolicy, /const avatarSelector =/);
-  assert.match(avatarPolicy, /img,picture/);
-  assert.match(avatarPolicy, /data-testid\*='avatar'/);
-  assert.match(avatarPolicy, /class\*='avatar'/);
-  assert.match(avatarPolicy, /innerWidth \* 0\.60/);
-  assert.match(avatarPolicy, /rect\.top > 128/);
-  assert.match(avatarPolicy, /rect\.width < 12/);
-  assert.match(avatarPolicy, /rect\.width > 112/);
-  assert.doesNotMatch(avatarPolicy, /naturalWidth|naturalHeight|\.complete/);
+test('top-right account control is resolved from the exact Stationhead menu slot', () => {
+  const settlement = section(
+    composition,
+    'inline std::wstring StationheadLoginSettlementScript()',
+    '// Media boundaries never initiate navigation.',
+  );
+
+  assert.match(settlement, /document\.elementsFromPoint/);
+  assert.match(settlement, /innerWidth - 24/);
+  assert.match(settlement, /innerWidth - 32/);
+  assert.match(settlement, /innerWidth - 40/);
+  assert.match(settlement, /rect\.right < innerWidth - 96/);
+  assert.match(settlement, /rect\.top > 96/);
+  assert.match(settlement, /\^menu\$/);
+  assert.match(settlement, /element\.matches\?\.\('img,picture'\)/);
+  assert.match(settlement, /data-testid\*='avatar'/);
+  assert.match(settlement, /class\*='avatar'/);
+  assert.match(settlement, /account\|profile\|avatar/);
+  assert.match(settlement, /style\.backgroundImage/);
+  assert.doesNotMatch(settlement, /naturalWidth|naturalHeight|\.complete/);
 });
 
-test('stable account avatar clears the native login latch without page auth capture', () => {
-  assert.match(avatarPolicy, /now - avatarSince >= 3000/);
-  assert.match(
-    avatarPolicy,
-    /nativePost\(\{ type: 'stationhead-auth-ready' \}\)/,
+test('only a stable signed-in account slot clears the native login latch', () => {
+  const settlement = section(
+    composition,
+    'inline std::wstring StationheadLoginSettlementScript()',
+    '// Media boundaries never initiate navigation.',
   );
-  assert.doesNotMatch(
-    avatarPolicy,
-    /dispatchEvent\(new Event\('homepanel-stationhead-auth-ready'\)\)/,
-  );
+
+  assert.match(settlement, /const visibleLoginSurface = \(\) =>/);
+  assert.match(settlement, /credentialSelector/);
+  assert.match(settlement, /loginPattern\.test\(label\)/);
+  assert.match(settlement, /if \(visibleLoginSurface\(\)\)/);
+  assert.match(settlement, /now - accountSince >= 3000/);
 
   const authReadyAt = webview.indexOf(
     'if (type == L"stationhead-auth-ready") {',
@@ -76,29 +101,17 @@ test('stable account avatar clears the native login latch without page auth capt
   assert.match(authReadyHandler, /PostChange\(\);/);
 });
 
-test('visible authentication surfaces win and later logout can re-latch login', () => {
-  assert.match(avatarPolicy, /const strongAuthSurfaceVisible = \(\) =>/);
-  assert.match(avatarPolicy, /loginRoute\(\)/);
-  assert.match(avatarPolicy, /credentialSelector/);
-  assert.match(avatarPolicy, /connectMusicPattern/);
-  assert.match(avatarPolicy, /loginControlPresent\(true\)/);
-  assert.match(
-    avatarPolicy,
-    /if \(authenticatedReported\)[\s\S]*nativePost\(loginMessage\)/,
+test('settlement loop is bounded and lifecycle-aware without a DOM observer', () => {
+  const settlement = section(
+    composition,
+    'inline std::wstring StationheadLoginSettlementScript()',
+    '// Media boundaries never initiate navigation.',
   );
-  assert.match(
-    avatarPolicy,
-    /authenticatedReported && loginControlPresent\(false\)[\s\S]*now - anonymousSince >= 3000[\s\S]*nativePost\(loginMessage\)/,
-  );
-});
 
-test('legacy page auth capture remains disabled', () => {
-  assert.match(
-    composition,
-    /inline std::wstring StationheadAuthCaptureScriptDisabled\(\) \{\s*return L"void 0";/,
-  );
-  assert.match(
-    composition,
-    /#define StationheadAuthCaptureScript StationheadAuthCaptureScriptDisabled/,
-  );
+  assert.match(settlement, /const schedule = \(delay = 1000\) =>/);
+  assert.match(settlement, /pagehide/);
+  assert.match(settlement, /pageshow/);
+  assert.match(settlement, /DOMContentLoaded/);
+  assert.match(settlement, /nativeClearTimeout\(timer\)/);
+  assert.doesNotMatch(settlement, /setInterval|MutationObserver/);
 });
