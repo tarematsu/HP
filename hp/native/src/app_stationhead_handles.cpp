@@ -178,6 +178,11 @@ void StationheadHandleBase::Tick(int64_t nowMs) {
   }
   player_->Tick(nowMs);
   player_->EvaluateAudioLossRecovery(nowMs);
+  // Native dashboard panels are sibling child windows and may be raised after
+  // the login surface first becomes visible. Reassert the existing interactive
+  // host Z-order on every handle tick; RaiseActiveHost() is a no-op for normal
+  // 1x1 background playback, so the steady-state playback path stays untouched.
+  RaiseActiveHost();
 
   TrackBoundaryRetryState& retry = BoundaryRetryStateFor(this);
   if (!retry.armed && !player_->AudioPlaying()) {
