@@ -164,7 +164,7 @@ test('resource filtering callbacks do not borrow StationheadPlayer lifetime', ()
   const blocking = section(
     runtimeFixSource,
     'inline void ApplyStationheadResourceBlockingRuntimeFixed(',
-    '// The base autoplay script reacts to DOM changes',
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
   );
   assert.match(blocking, /\(void\)armed;/);
   assert.match(blocking, /\[env, blockImages, blockFonts\]/);
