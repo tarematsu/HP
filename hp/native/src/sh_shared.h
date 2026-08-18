@@ -44,7 +44,6 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   let lastSignalAt = 0;
   let loginReported = false;
   let lastPlaying = null;
-  const observedAt = Date.now();
   const rejectCapturedAuth = () => {
     const authorization = window.__homepanelStationheadAuthHeaders?.authorization || '';
     if (authorization) window.__homepanelStationheadRejectedAuthorization = authorization;
@@ -106,14 +105,17 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
     let start = null;
     let login = false;
     for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element)) continue;
       const label = labelOf(element);
-      if (!start && !isPlaying && startPattern.test(label)) start = element;
       if (!login && loginPattern.test(label)) login = true;
+      if (!visible(element)) {
+        if (login) break;
+        continue;
+      }
+      if (!start && !isPlaying && startPattern.test(label)) start = element;
       if (start && login) break;
     }
     if (login) {
-      if (!loginReported && Date.now() - observedAt >= 15000) {
+      if (!loginReported) {
         loginReported = true;
         rejectCapturedAuth();
         try { window.chrome?.webview?.postMessage('{{PREFIX}}-login-required'); } catch (_) {}
@@ -162,7 +164,6 @@ inline std::wstring StationheadAutoplayScript(const wchar_t* globalName,
   document.addEventListener('DOMContentLoaded', schedule, { once: true });
   window.addEventListener('load', schedule, { once: true });
   schedule();
-  nativeTimeout(schedule, 15000);
 })()
 )JS";
   const auto replaceAll = [](std::wstring text, std::wstring_view from, std::wstring_view to) {
