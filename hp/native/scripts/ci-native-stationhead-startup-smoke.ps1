@@ -233,6 +233,35 @@ public static class HomePanelStationheadObserveNative
         return width <= 1 && height <= 1;
     }
 
+    public static bool InteractiveSurfaceAboveNativePanels(IntPtr parent, string className)
+    {
+        if (parent == IntPtr.Zero) return false;
+        List<IntPtr> children = DirectChildren(parent);
+        int hostIndex = -1;
+        int firstPanelIndex = Int32.MaxValue;
+        IntPtr host = IntPtr.Zero;
+        for (int index = 0; index < children.Count; index += 1)
+        {
+            string currentClass = ClassName(children[index]);
+            if (String.Equals(currentClass, className, StringComparison.Ordinal))
+            {
+                hostIndex = index;
+                host = children[index];
+            }
+            if (String.Equals(currentClass, "HomePanelNativeStaticPanel", StringComparison.Ordinal))
+            {
+                firstPanelIndex = Math.Min(firstPanelIndex, index);
+            }
+        }
+        if (host == IntPtr.Zero || hostIndex < 0 || !IsWindowVisible(host)) return false;
+        RECT rect;
+        if (!GetWindowRect(host, out rect)) return false;
+        int width = Math.Max(0, rect.Right - rect.Left);
+        int height = Math.Max(0, rect.Bottom - rect.Top);
+        bool abovePanels = firstPanelIndex == Int32.MaxValue || hostIndex < firstPanelIndex;
+        return width > 1 && height > 1 && abovePanels;
+    }
+
     public static bool DirectChildHiddenOrMissing(IntPtr parent, string className)
     {
         foreach (IntPtr child in DirectChildren(parent))
@@ -334,9 +363,13 @@ $primaryHostSeen = $false
 $secondaryHostSeen = $false
 $primaryInteractiveAuthObserved = $false
 $secondaryInteractiveAuthObserved = $false
+$primaryInteractiveFront = $false
+$secondaryInteractiveFront = $false
 $primaryUnexpectedForegroundSamples = 0
 $secondaryUnexpectedForegroundSamples = 0
-$interactiveAuthSignalGraceSamples = 40
+# The central native tick is 2 seconds while Stationhead is interactive. Allow
+# one complete tick plus scheduler jitter before declaring a Z-order failure.
+$interactiveAuthSignalGraceSamples = 120
 $violation = $null
 $failureMessage = $null
 $lastPrimaryState = "unobserved"
@@ -399,8 +432,14 @@ try {
         $mainWindow, "HomePanelStationheadHost")
       $secondaryBackgroundSafe = [HomePanelStationheadObserveNative]::PlaybackStartupSafe(
         $mainWindow, "HomePanelSecondaryStationheadHost")
+      $primaryInteractiveFront = $primaryInteractiveAuthObserved -and
+        [HomePanelStationheadObserveNative]::InteractiveSurfaceAboveNativePanels(
+          $mainWindow, "HomePanelStationheadHost")
+      $secondaryInteractiveFront = $secondaryInteractiveAuthObserved -and
+        [HomePanelStationheadObserveNative]::InteractiveSurfaceAboveNativePanels(
+          $mainWindow, "HomePanelSecondaryStationheadHost")
 
-      if ($primaryBackgroundSafe -or $primaryInteractiveAuthObserved) {
+      if ($primaryBackgroundSafe -or $primaryInteractiveFront) {
         $primaryUnexpectedForegroundSamples = 0
         $primaryStartupSafe = $true
       } else {
@@ -408,7 +447,7 @@ try {
         $primaryStartupSafe =
           $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples
       }
-      if ($secondaryBackgroundSafe -or $secondaryInteractiveAuthObserved) {
+      if ($secondaryBackgroundSafe -or $secondaryInteractiveFront) {
         $secondaryUnexpectedForegroundSamples = 0
         $secondaryStartupSafe = $true
       } else {
@@ -437,13 +476,15 @@ try {
           secondaryPlayback = $lastSecondaryState
           primaryInteractiveAuth = $primaryInteractiveAuthObserved
           secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
+          primaryInteractiveFront = $primaryInteractiveFront
+          secondaryInteractiveFront = $secondaryInteractiveFront
           primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
           secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
           primaryAuthHidden = $lastPrimaryAuthHidden
           secondaryAuthHidden = $lastSecondaryAuthHidden
           foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
         }
-        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+        throw "Stationhead startup invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved interactiveFront=$primaryInteractiveFront/$secondaryInteractiveFront authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
       }
 
       $nativePanelsReady =
@@ -458,13 +499,13 @@ try {
         $primaryOk =
           [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
             $mainWindow, "HomePanelStationheadHost") -or
-          $primaryInteractiveAuthObserved -or
+          $primaryInteractiveFront -or
           ($primaryUnexpectedForegroundSamples -gt 0 -and
            $primaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
         $secondaryOk =
           [HomePanelStationheadObserveNative]::PlaybackBehindNativePanels(
             $mainWindow, "HomePanelSecondaryStationheadHost") -or
-          $secondaryInteractiveAuthObserved -or
+          $secondaryInteractiveFront -or
           ($secondaryUnexpectedForegroundSamples -gt 0 -and
            $secondaryUnexpectedForegroundSamples -le $interactiveAuthSignalGraceSamples)
         if (-not $primaryOk -or -not $secondaryOk -or
@@ -478,13 +519,15 @@ try {
             secondaryPlayback = $lastSecondaryState
             primaryInteractiveAuth = $primaryInteractiveAuthObserved
             secondaryInteractiveAuth = $secondaryInteractiveAuthObserved
+            primaryInteractiveFront = $primaryInteractiveFront
+            secondaryInteractiveFront = $secondaryInteractiveFront
             primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
             secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
             primaryAuthHidden = $lastPrimaryAuthHidden
             secondaryAuthHidden = $lastSecondaryAuthHidden
             foregroundClass = [HomePanelStationheadObserveNative]::ForegroundClass()
           }
-          throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
+          throw "Stationhead foreground invariant failed: A=[$lastPrimaryState] B=[$lastSecondaryState] interactiveAuth=$primaryInteractiveAuthObserved/$secondaryInteractiveAuthObserved interactiveFront=$primaryInteractiveFront/$secondaryInteractiveFront authHidden=$lastPrimaryAuthHidden/$lastSecondaryAuthHidden"
         }
       }
     }
@@ -560,6 +603,8 @@ try {
     secondaryHostSeen = $secondaryHostSeen
     primaryInteractiveAuthObserved = $primaryInteractiveAuthObserved
     secondaryInteractiveAuthObserved = $secondaryInteractiveAuthObserved
+    finalPrimaryInteractiveFront = $primaryInteractiveFront
+    finalSecondaryInteractiveFront = $secondaryInteractiveFront
     primaryUnexpectedForegroundSamples = $primaryUnexpectedForegroundSamples
     secondaryUnexpectedForegroundSamples = $secondaryUnexpectedForegroundSamples
     interactiveAuthSignalGraceSamples = $interactiveAuthSignalGraceSamples
