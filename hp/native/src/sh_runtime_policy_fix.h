@@ -381,18 +381,11 @@ inline void ApplyStationheadResourceBlockingRuntimeFixed(
   ApplyStationheadAdditionalScriptBlocking(environment, webview);
 }
 
-// The base autoplay script reacts to DOM changes, but an SPA can leave the same
-// login control in place while authentication changes underneath it. Compose the
-// fixed blank-page policy directly, gate document messages, treat Stationhead's
-// login affordance as an authentication requirement even when responsive CSS
-// hides it, and keep auth-surface checks independent of playback state.
+// Install login/auth detection before the other document-start policies. It is
+// self-contained and owns its own timer, so a later optional UI/recovery script
+// cannot prevent an already-installed login foreground detector from running.
 inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     const wchar_t* globalName, const wchar_t* messagePrefix) {
-  std::wstring script = StationheadAudioOnlyUiScript();
-  script.push_back(L'\n');
-  script.append(StationheadBlankPageRecoveryScriptRuntimeFixed());
-  script.push_back(L'\n');
-  script.append(StationheadAutoplayScriptBase(globalName, messagePrefix));
   std::wostringstream extension;
   extension << LR"JS(
 (() => {
@@ -590,8 +583,14 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   schedule();
 })()
 )JS";
+
+  std::wstring script = extension.str();
   script.push_back(L'\n');
-  script.append(extension.str());
+  script.append(StationheadAudioOnlyUiScript());
+  script.push_back(L'\n');
+  script.append(StationheadBlankPageRecoveryScriptRuntimeFixed());
+  script.push_back(L'\n');
+  script.append(StationheadAutoplayScriptBase(globalName, messagePrefix));
   return script;
 }
 
