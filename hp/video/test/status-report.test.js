@@ -42,6 +42,7 @@ function createFakeDb() {
       return statements.map((item) => {
         if (item.sql.includes('FROM status_counts WHERE id = 1')) {
           return { results: [{
+            totalVideos: 107,
             activeVideos: 100,
             activeMp4Videos: 100,
             feedVideos: 80,
@@ -69,32 +70,70 @@ function createFakeDb() {
         if (item.sql.includes('FROM video_liveness_state WHERE id = 1')) {
           return { results: [{ phase: 'base', baseCursorId: 50, baseUpperId: 100 }] };
         }
+        if (item.sql.includes('FROM videos ORDER BY id DESC LIMIT ?')) {
+          return { results: [
+            {
+              id: 107,
+              mediaUrl: 'https://media.example.test/latest.mp4',
+              mediaType: 'mp4',
+              status: 'active',
+              firstSeenAt: '2026-07-07T02:30:00.000Z'
+            },
+            {
+              id: 106,
+              mediaUrl: 'https://media.example.test/previous.mp4',
+              mediaType: 'mp4',
+              status: 'hidden',
+              firstSeenAt: '2026-07-07T02:29:00.000Z'
+            }
+          ] };
+        }
         return { results: [], meta: { changes: 0 } };
       });
     }
   };
 }
 
-test('status summary batches persisted counts and bounded manual history', async () => {
+test('status summary batches persisted counts, bounded manual history, and recent registrations', async () => {
   const DB = createFakeDb();
   const report = await withFixedNow('2026-07-07T03:01:00.000Z', () => readStatusReport({ DB }));
   const readBatch = DB.batches.find((batch) => (
-    batch.length === 3 && batch[1].sql.includes('FROM collection_runs AS runs')
+    batch.length === 4 && batch[1].sql.includes('FROM collection_runs AS runs')
   ));
 
   assert.ok(readBatch);
   assert.match(readBatch[0].sql, /FROM status_counts WHERE id = 1/);
   assert.deepEqual(readBatch[1].args, ['manual-browser-import', 256]);
   assert.match(readBatch[2].sql, /FROM video_liveness_state WHERE id = 1/);
+  assert.match(readBatch[3].sql, /FROM videos ORDER BY id DESC LIMIT \?/);
+  assert.deepEqual(readBatch[3].args, [10]);
   assert.equal(readBatch.some((item) => item.sql.includes('ORDER BY blocked_at')), false);
   assert.equal(readBatch.some((item) => item.sql.includes('ORDER BY detected_at')), false);
 
   assert.equal(report.mode, 'manual-import-site-stats');
   assert.equal(report.automaticCollection, false);
   assert.deepEqual(report.schedules, {});
+  assert.equal(report.counts.totalVideos, 107);
   assert.equal(report.counts.activeVideos, 100);
   assert.equal(report.counts.blockedVideos, 3);
   assert.equal(report.counts.deathVideos, 4);
+  assert.equal(report.storagePolicy.storedCountField, 'counts.totalVideos');
+  assert.deepEqual(report.recentRegistrations, [
+    {
+      id: 107,
+      mediaUrl: 'https://media.example.test/latest.mp4',
+      mediaType: 'mp4',
+      status: 'active',
+      firstSeenAt: '2026-07-07T02:30:00.000Z'
+    },
+    {
+      id: 106,
+      mediaUrl: 'https://media.example.test/previous.mp4',
+      mediaType: 'mp4',
+      status: 'hidden',
+      firstSeenAt: '2026-07-07T02:29:00.000Z'
+    }
+  ]);
   assert.deepEqual(report.playbackExclusions, {
     count: 3,
     type: 'manual-playback-exclusion-list',

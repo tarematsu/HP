@@ -6,6 +6,7 @@ import {
   LIVENESS_INTERVAL_SECONDS,
   LIVENESS_SCHEDULE
 } from './liveness-schedule.js';
+import { prepareRecentRegistrationsRead } from './recent-registrations.js';
 import {
   emptyStatusCounts,
   prepareStatusCountsRead
@@ -22,10 +23,11 @@ export function needsStatusCountRefresh(countRow) {
 }
 
 async function buildStatusReport(env) {
-  const [counts, manualRuns, state] = await env.DB.batch([
+  const [counts, manualRuns, state, recentRegistrations] = await env.DB.batch([
     prepareStatusCountsRead(env.DB),
     manualImportRunsStatement(env.DB),
-    prepareLivenessStateRead(env.DB)
+    prepareLivenessStateRead(env.DB),
+    prepareRecentRegistrationsRead(env.DB)
   ]);
   const countRow = counts?.results?.[0] || emptyStatusCounts();
   const livenessState = state?.results?.[0] || null;
@@ -60,6 +62,7 @@ async function buildStatusReport(env) {
       stale: countsStale,
       repair: countsStale ? 'daily-cleanup' : null
     },
+    recentRegistrations: recentRegistrations?.results || [],
     collectionHealth: {
       healthy: collectionHealthy,
       status: collectionHealthy ? 'ok' : 'degraded',
@@ -68,7 +71,7 @@ async function buildStatusReport(env) {
     storagePolicy: {
       storedUrlLimit: null,
       deduplication: 'media-host-and-path',
-      storedCountField: 'counts.activeVideos',
+      storedCountField: 'counts.totalVideos',
       playbackFeedLimit: 2000,
       playbackFeedCountField: 'counts.feedVideos',
       note: 'Manual imports are grouped by sourceUrl hostname; playback feed remains a separate recent-item window.'
