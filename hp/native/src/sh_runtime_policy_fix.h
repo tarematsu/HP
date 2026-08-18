@@ -383,9 +383,9 @@ inline void ApplyStationheadResourceBlockingRuntimeFixed(
 
 // The base autoplay script reacts to DOM changes, but an SPA can leave the same
 // login control in place while authentication changes underneath it. Compose the
-// fixed blank-page policy directly, gate document messages, distinguish a
-// blocking login surface from a generic header link, and retain a low-frequency
-// check while audio is active.
+// fixed blank-page policy directly, gate document messages, treat Stationhead's
+// login affordance as an authentication requirement even when responsive CSS
+// hides it, and retain a low-frequency check while audio is active.
 inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     const wchar_t* globalName, const wchar_t* messagePrefix) {
   std::wstring script = StationheadAudioOnlyUiScript();
@@ -448,14 +448,18 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     element?.getAttribute?.('data-testid'),
   ].map(normalize).find(Boolean) || '';
   const blockingLoginVisible = () => {
-    const loginRoute = /(^|\/)(login|signin|sign-in|auth)(\/|$)/i.test(
-      String(location.pathname || ''));
+    if (/(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
+          String(location.pathname || ''))) {
+      return true;
+    }
+    for (const element of document.querySelectorAll(credentialSelector)) {
+      if (visible(element)) return true;
+    }
     for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element) || !loginPattern.test(labelOf(element))) continue;
-      const shell = element.closest?.(
-        "form,[role='dialog'],[aria-modal='true'],[data-testid*='login' i],[id*='login' i]");
-      if (loginRoute || shell?.matches?.("form,[role='dialog'],[aria-modal='true']") ||
-          shell?.querySelector?.(credentialSelector)) {
+      const label = labelOf(element);
+      const href = String(element?.getAttribute?.('href') || '').toLowerCase();
+      if (loginPattern.test(label) ||
+          /(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
         return true;
       }
     }

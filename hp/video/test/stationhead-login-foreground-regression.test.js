@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const shared = readFileSync(
-  new URL('../../native/src/sh_shared.h', import.meta.url),
+const runtime = readFileSync(
+  new URL('../../native/src/sh_runtime_policy_fix.h', import.meta.url),
   'utf8',
 );
 const composition = readFileSync(
@@ -23,25 +23,31 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('active Stationhead observer reports Log in before playback viewport gating', () => {
+test('final runtime policy treats responsive-hidden Log in as authentication required', () => {
   const autoplay = section(
-    shared,
-    'inline std::wstring StationheadAutoplayScript(',
-    'inline std::wstring StationheadVolumeScript(',
+    runtime,
+    'inline std::wstring StationheadAutoplayScriptRuntimeFixed(',
+    '// The page can complete a fresh login',
+  );
+  const loginProbe = section(
+    autoplay,
+    'const blockingLoginVisible = () => {',
+    'const playing = () => {',
   );
 
-  assert.match(autoplay, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login\)/);
-  const loopAt = autoplay.indexOf('for (const element of document.querySelectorAll(selector))');
-  const loginAt = autoplay.indexOf('if (!login && loginPattern.test(label)) login = true;', loopAt);
-  const visibleAt = autoplay.indexOf('if (!visible(element))', loopAt);
-  assert.notEqual(loopAt, -1);
-  assert.notEqual(loginAt, -1);
-  assert.notEqual(visibleAt, -1);
-  assert.ok(loginAt < visibleAt, 'login detection must precede CSS/viewport visibility gating');
-
-  assert.match(autoplay, /if \(!loginReported\) \{[\s\S]*postMessage\('\{\{PREFIX\}\}-login-required'\)/);
-  assert.doesNotMatch(autoplay, /observedAt|15000|nativeTimeout\(schedule, 15000\)/);
-  assert.match(autoplay, /if \(!start && !isPlaying && startPattern\.test\(label\)\) start = element;/);
+  assert.match(autoplay, /loginPattern = \/\^\(log\\s\*in\|sign\\s\*in\|login/);
+  assert.match(loginProbe, /const label = labelOf\(element\);/);
+  assert.match(loginProbe, /getAttribute\?\.\('href'\)/);
+  assert.match(loginProbe, /loginPattern\.test\(label\)/);
+  assert.match(loginProbe, /login\|signin\|sign-in/);
+  assert.doesNotMatch(
+    loginProbe,
+    /!visible\(element\)[^\n]*loginPattern|visible\(element\)[^\n]*loginPattern/,
+  );
+  assert.match(
+    autoplay,
+    /if \(!robustLoginReported && pageActive && nativePost\) \{[\s\S]*nativePost\(loginMessage\);/,
+  );
   assert.doesNotMatch(
     composition,
     /StationheadAutoplayScriptForegroundLogin|#define StationheadAutoplayScript/,
