@@ -381,18 +381,11 @@ inline void ApplyStationheadResourceBlockingRuntimeFixed(
   ApplyStationheadAdditionalScriptBlocking(environment, webview);
 }
 
-// The base autoplay script reacts to DOM changes, but an SPA can leave the same
-// login control in place while authentication changes underneath it. Compose the
-// fixed blank-page policy directly, gate document messages, distinguish a
-// blocking login surface from a generic header link, and retain a low-frequency
-// check while audio is active.
+// Install login/auth detection before the other document-start policies. It is
+// self-contained and owns its own timer, so a later optional UI/recovery script
+// cannot prevent an already-installed login foreground detector from running.
 inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     const wchar_t* globalName, const wchar_t* messagePrefix) {
-  std::wstring script = StationheadAudioOnlyUiScript();
-  script.push_back(L'\n');
-  script.append(StationheadBlankPageRecoveryScriptRuntimeFixed());
-  script.push_back(L'\n');
-  script.append(StationheadAutoplayScriptBase(globalName, messagePrefix));
   std::wostringstream extension;
   extension << LR"JS(
 (() => {
@@ -429,7 +422,9 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   const normalize = value => String(value || '').replace(/\s+/g, ' ').trim();
   const selector = "button,[role='button'],a,input[type='button'],input[type='submit'],[aria-label],[data-testid],[tabindex]";
   const credentialSelector = "input[type='password'],input[type='email'],input[autocomplete='username'],input[autocomplete='current-password']";
+  const authHeadingSelector = "h1,h2,h3,[role='heading']";
   const loginPattern = /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const serviceConnectPattern = /^connect\s+music$/i;
   const visible = element => {
     if (!element || element.disabled || element.getAttribute?.('aria-disabled') === 'true' ||
         element.getAttribute?.('aria-hidden') === 'true') return false;
@@ -448,14 +443,21 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
     element?.getAttribute?.('data-testid'),
   ].map(normalize).find(Boolean) || '';
   const blockingLoginVisible = () => {
-    const loginRoute = /(^|\/)(login|signin|sign-in|auth)(\/|$)/i.test(
-      String(location.pathname || ''));
+    if (/(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
+          String(location.pathname || ''))) {
+      return true;
+    }
+    for (const element of document.querySelectorAll(credentialSelector)) {
+      if (visible(element)) return true;
+    }
+    for (const heading of document.querySelectorAll(authHeadingSelector)) {
+      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) return true;
+    }
     for (const element of document.querySelectorAll(selector)) {
-      if (!visible(element) || !loginPattern.test(labelOf(element))) continue;
-      const shell = element.closest?.(
-        "form,[role='dialog'],[aria-modal='true'],[data-testid*='login' i],[id*='login' i]");
-      if (loginRoute || shell?.matches?.("form,[role='dialog'],[aria-modal='true']") ||
-          shell?.querySelector?.(credentialSelector)) {
+      const label = labelOf(element);
+      const href = String(element?.getAttribute?.('href') || '').toLowerCase();
+      if (loginPattern.test(label) ||
+          /(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
         return true;
       }
     }
@@ -581,8 +583,14 @@ inline std::wstring StationheadAutoplayScriptRuntimeFixed(
   schedule();
 })()
 )JS";
+
+  std::wstring script = extension.str();
   script.push_back(L'\n');
-  script.append(extension.str());
+  script.append(StationheadAudioOnlyUiScript());
+  script.push_back(L'\n');
+  script.append(StationheadBlankPageRecoveryScriptRuntimeFixed());
+  script.push_back(L'\n');
+  script.append(StationheadAutoplayScriptBase(globalName, messagePrefix));
   return script;
 }
 

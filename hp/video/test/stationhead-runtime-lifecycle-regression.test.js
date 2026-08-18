@@ -75,34 +75,45 @@ test('obsolete Stationhead documents cancel and do not re-arm login timers', () 
   );
 });
 
-test('stable playback backs off periodic DOM scans without delaying transitions', () => {
+test('login rechecks stay fixed during playback and run at document readiness', () => {
   const wrapper = section(
     lifecycleSource,
     'inline std::wstring StationheadAutoplayScriptLifecycleFixed(',
     '}  // namespace hp',
-  );
-  assert.match(wrapper, /const stablePlaybackRecheckMs = 30000;/);
-  assert.match(wrapper, /const interactiveRecheckMs = 5000;/);
-  assert.match(
-    wrapper,
-    /const nextRecheckDelay = \(\) =>[\s\S]*playing\(\)[\s\S]*!pendingAuthReady[\s\S]*homepanelStationheadBlockingLoginVisible !== true/,
   );
   const fixedSchedule = section(
     lifecycleSource,
     'static constexpr std::wstring_view kScheduleFixed =',
     'static constexpr std::wstring_view kPageLifecycle =',
   );
-  assert.doesNotMatch(fixedSchedule, /if \(playing\(\)\) baseScan\(\);/);
-  assert.match(fixedSchedule, /const schedule = \(delay = nextRecheckDelay\(\)\) =>/);
+  const fixedTail = section(
+    lifecycleSource,
+    'static constexpr std::wstring_view kAuthReadyTailFixed =',
+    'const bool uiLifecycleReplaced =',
+  );
+
+  assert.match(fixedSchedule, /const loginRecheckMs = 5000;/);
+  assert.match(fixedSchedule, /const schedule = \(delay = loginRecheckMs\) =>/);
   assert.match(fixedSchedule, /const reschedule = \(delay = 0\) =>/);
+  assert.doesNotMatch(fixedSchedule, /stablePlaybackRecheckMs|nextRecheckDelay|playing\(\)/);
+  assert.doesNotMatch(wrapper, /const stablePlaybackRecheckMs|const nextRecheckDelay/);
   assert.match(
-    wrapper,
-    /for \(const eventName of \['play','playing','pause','ended','stalled','waiting','error'\]\)[\s\S]*reschedule\(\)/,
+    fixedTail,
+    /const recheckLoginSurface = \(\) => \{[\s\S]*scan\(\);[\s\S]*reschedule\(loginRecheckMs\);/,
   );
   assert.match(
-    wrapper,
-    /homepanel-stationhead-auth-ready[\s\S]*scan\(\);[\s\S]*reschedule\(\);/,
+    fixedTail,
+    /document\.addEventListener\('DOMContentLoaded', recheckLoginSurface, \{ once: true \}\);/,
   );
+  assert.match(
+    fixedTail,
+    /window\.addEventListener\('load', recheckLoginSurface, \{ once: true \}\);/,
+  );
+  assert.match(
+    fixedTail,
+    /homepanel-stationhead-auth-ready[\s\S]*recheckLoginSurface\(\);/,
+  );
+  assert.doesNotMatch(fixedTail, /\['play','playing','pause','ended','stalled','waiting','error'\]/);
 });
 
 test('base autoplay and UI observers stop across BFCache transitions', () => {

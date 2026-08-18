@@ -19,16 +19,6 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-function assertOrdered(source, markers) {
-  let previous = -1;
-  for (const marker of markers) {
-    const at = source.indexOf(marker);
-    assert.ok(at >= 0, `missing marker: ${marker}`);
-    assert.ok(at > previous, `out-of-order marker: ${marker}`);
-    previous = at;
-  }
-}
-
 test('Stationhead interaction tab expands the playback host instead of forcing background mode', () => {
   const policy = section(
     layout,
@@ -101,7 +91,7 @@ test('auth probe promotes a genuine Connect music or login surface to interactiv
   assert.ok(setRequiredAt >= 0 && showAt > setRequiredAt && publishAt > showAt);
 });
 
-test('real audio after in-page authentication returns Stationhead behind the dashboard', () => {
+test('real audio returns Stationhead behind the dashboard only after authentication clears', () => {
   const evaluate = section(
     audioLoss,
     'void StationheadPlayer::EvaluateAudioLossRecovery(int64_t nowMs) {',
@@ -115,14 +105,11 @@ test('real audio after in-page authentication returns Stationhead behind the das
 
   assert.match(
     audioBranch,
-    /selectedTab_ == StationheadTabKind::Stationhead &&[\s\S]*!spotifyAuthorization_/,
+    /selectedTab_ == StationheadTabKind::Stationhead &&[\s\S]*!spotifyAuthorization_ && !loginRequired_/,
   );
-  assertOrdered(audioBranch, [
-    'loginRequired_ = false;',
-    'status_.loginRequired = false;',
-    'SelectTab(StationheadTabKind::None);',
-    'PostChange();',
-  ]);
+  assert.match(audioBranch, /SelectTab\(StationheadTabKind::None\);[\s\S]*PostChange\(\);/);
+  assert.doesNotMatch(audioBranch, /loginRequired_ = false;/);
+  assert.doesNotMatch(audioBranch, /status_\.loginRequired = false;/);
 });
 
 test('silent startup probes auth before any successful playback has occurred', () => {

@@ -15,8 +15,9 @@ inline bool ReplaceStationheadRuntimeFragment(
 // Stationhead composes several document-lifetime policies into one startup
 // script. Patch their generated source at the final policy layer so every timer
 // and MutationObserver stops on pagehide/BFCache entry and is rebuilt only when
-// that exact document receives pageshow again. Stable playback uses an adaptive
-// login fallback cadence so both long-lived WebViews avoid redundant DOM scans.
+// that exact document receives pageshow again. Login rechecks keep one fixed
+// cadence regardless of playback state so authentication never waits behind
+// the older audio-loss fallback.
 inline std::wstring StationheadAutoplayScriptLifecycleFixed(
     const wchar_t* globalName,
     const wchar_t* messagePrefix) {
@@ -129,15 +130,8 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
     }, 5000);
   };
 )JS";
-  static constexpr std::wstring_view kScheduleFixed = LR"JS(  const stablePlaybackRecheckMs = 30000;
-  const interactiveRecheckMs = 5000;
-  const nextRecheckDelay = () =>
-    playing() &&
-    !pendingAuthReady &&
-    window.__homepanelStationheadBlockingLoginVisible !== true
-      ? stablePlaybackRecheckMs
-      : interactiveRecheckMs;
-  const schedule = (delay = nextRecheckDelay()) => {
+  static constexpr std::wstring_view kScheduleFixed = LR"JS(  const loginRecheckMs = 5000;
+  const schedule = (delay = loginRecheckMs) => {
     if (!pageActive || timer) return;
     timer = nativeTimeout(() => {
       timer = 0;
@@ -182,17 +176,17 @@ inline std::wstring StationheadAutoplayScriptLifecycleFixed(
   updateBlockingLogin();
   schedule();
 )JS";
-  static constexpr std::wstring_view kAuthReadyTailFixed = LR"JS(  const recheckAfterPlaybackStateChange = () => {
-    if (pageActive) reschedule();
+  static constexpr std::wstring_view kAuthReadyTailFixed = LR"JS(  const recheckLoginSurface = () => {
+    if (!pageActive) return;
+    scan();
+    reschedule(loginRecheckMs);
   };
-  for (const eventName of ['play','playing','pause','ended','stalled','waiting','error']) {
-    document.addEventListener(eventName, recheckAfterPlaybackStateChange, true);
-  }
+  document.addEventListener('DOMContentLoaded', recheckLoginSurface, { once: true });
+  window.addEventListener('load', recheckLoginSurface, { once: true });
   window.addEventListener('homepanel-stationhead-auth-ready', () => {
     robustLoginReported = false;
     loginMissingSince = 0;
-    scan();
-    reschedule();
+    recheckLoginSurface();
   });
   updateBlockingLogin();
   schedule();
