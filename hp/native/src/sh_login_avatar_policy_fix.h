@@ -42,9 +42,7 @@ inline std::wstring StationheadAutoplayScriptAvatarSettlementFixed(
       webview.postMessage.bind(webview);
 })()
 )JS";
-  script.push_back(L'\n');
-  script.append(base);
-  script.push_back(L'\n');
+  script << L'\n' << base << L'\n';
   script << LR"JS(
 (() => {
   const host = String(location.hostname || '').toLowerCase();
