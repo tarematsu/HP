@@ -16,19 +16,17 @@ struct StationheadNativeStatsSnapshot {
   uint64_t revision = 0;
 };
 
-// The legacy member remains declared in StationheadPlayer for source
-// compatibility, but its scheduler interval is redirected to this unreachable
-// compile-time value. Therefore no statistics ExecuteScript poll runs.
+// Keep the legacy page-side statistics scheduler unreachable. The browser's
+// own authenticated streakStats response is the only statistics request path.
 inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
     INT64_MAX / 2;
 
-// Observes Stationhead API credentials at request-start and committed-response
-// time and feeds one native statistics worker. No page script, WebMessage stats
-// protocol, response substitution, or parallel statistics data path is involved.
+// Reads Stationhead's already-authenticated successful streakStats response
+// directly from WebView2's WebResourceResponseReceived event. No credential
+// copying, second HTTP client, DevTools network-event correlation, page script,
+// or WebMessage statistics protocol participates in this path.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
 
-// Implemented in stationhead_native_stats.cpp. The worker, parser, credentials,
-// and store remain private behind the renderer's snapshot/revision interface.
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();
 uint64_t GetStationheadNativeStatsRevision();
 

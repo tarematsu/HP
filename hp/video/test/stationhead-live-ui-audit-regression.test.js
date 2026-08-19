@@ -28,18 +28,31 @@ test('live Stationhead CI measures the actual Start Listening surface directly',
   assert.doesNotMatch(workflow, /inspect-stationhead-module-graph\.mjs/);
 });
 
-test('credentials use the existing audit secrets and never enter reports', () => {
+test('credentials use audit secrets while the report stays metadata-only', () => {
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_EMAIL/);
   assert.match(workflow, /secrets\.STATIONHEAD_AUDIT_PASSWORD/);
   assert.match(workflow, /Attempt Stationhead credential login/);
-  assert.match(loginAudit, /visibleLabelled\(page, \/\^\(close\|閉じる\)\$\/i\)/);
   assert.match(loginAudit, /musicModalCloseClicked/);
-  assert.match(loginAudit, /context\.waitForEvent\('page'/);
-  assert.match(loginAudit, /loginControlClicked/);
+  assert.match(loginAudit, /click\(\{\s*timeout: 5000,\s*force: true/);
+  assert.match(loginAudit, /loginNavigationUsed/);
+  assert.match(loginAudit, /page\.goto\(loginUrl/);
   assert.match(loginAudit, /emailInputVisible/);
   assert.match(loginAudit, /passwordInputVisible/);
   assert.doesNotMatch(loginAudit, /console\.(?:log|error)\([^\n]*(?:emailValue|passwordValue|STATIONHEAD_PASSWORD)/);
   assert.doesNotMatch(loginAudit, /JSON\.stringify\([^\n]*(?:emailValue|passwordValue)/);
+});
+
+test('authenticated audit observes real streakStats without storing its body', () => {
+  assert.match(loginAudit, /isStreakStatsUrl/);
+  assert.match(loginAudit, /page\.on\('response'/);
+  assert.match(loginAudit, /production1\.stationhead\.com/);
+  assert.match(loginAudit, /streakStatsSeen/);
+  assert.match(loginAudit, /streakStatsStatus/);
+  assert.match(loginAudit, /streakStatsValid/);
+  assert.match(loginAudit, /streakStatsPointCount/);
+  assert.match(loginAudit, /postLoginStationProbe/);
+  assert.match(loginAudit, /Array\.isArray\(payload\?\.chart_data\)/);
+  assert.doesNotMatch(loginAudit, /report\.streakStats(?:Body|Payload|Response)\s*=/);
 });
 
 test('workflow gate checks reachability and startup budget instead of obsolete replacements', () => {

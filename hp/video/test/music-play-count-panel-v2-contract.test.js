@@ -40,37 +40,31 @@ test('every requested period is rendered as one small right-aligned line', () =>
   assert.match(panel, /L"--"/);
 });
 
-test('the public header is declarations and a narrow renderer facade only', () => {
+test('the public header stays a narrow renderer facade', () => {
   assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
   assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
-  assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
+  assert.doesNotMatch(
+    nativeStatsHeader,
+    /WinHttpDownload|WebResourceRequested|JsonObject::Parse|GetDevToolsProtocolEventReceiver/,
+  );
 });
 
-test('WebView2 only observes credentials while one worker owns play-count retrieval', () => {
-  assert.match(nativeStats, /add_WebResourceRequested/);
+test('play counts come from one browser-owned successful streakStats response', () => {
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /ObserveRequestCredentials/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /ICoreWebView2WebResourceResponseView/);
-  assert.doesNotMatch(nativeStats, /GetContent\(/);
-});
-
-test('one autonomous native worker actively downloads and publishes play counts', () => {
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::condition_variable wake_/);
-  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
-  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /get_StatusCode\(&status\)/);
+  assert.match(nativeStats, /response->GetContent/);
   assert.match(nativeStats, /ParseStatsJson/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
+  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.doesNotMatch(nativeStats, /Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
+  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
+  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
+  assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient|WorkerLoop/);
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
 });
 
 test('the native path has no generated script or WebMessage statistics protocol', () => {
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });

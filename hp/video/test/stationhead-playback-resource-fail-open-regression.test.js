@@ -50,7 +50,6 @@ test('playback-safe policy remains the final request boundary', () => {
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
   );
   assert.match(policy, /#include "stationhead_native_stats\.h"/);
-  assert.doesNotMatch(policy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
   assert.match(policy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
 });
 
@@ -92,6 +91,7 @@ test('final resource boundary preserves controller cache reset without login del
     policy,
     /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
   );
+  assert.doesNotMatch(policy, /Network\.enable/);
   assert.match(policy, /Cookies and DOM storage remain intact/);
   assert.doesNotMatch(
     policy,
@@ -119,18 +119,18 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics auth observation is read-only and never synthesizes a response', () => {
-  assert.match(nativeStats, /add_WebResourceRequested/);
+test('native statistics observation reads one WebView2 response without mutating browser traffic', () => {
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /ObserveRequestCredentials/);
-  assert.match(
-    nativeStats,
-    /L"https:\/\/production1\.stationhead\.com\/\*"/,
-  );
+  assert.match(nativeStats, /get_Request\(&request\)/);
+  assert.match(nativeStats, /get_Response\(&response\)/);
+  assert.match(nativeStats, /response->GetContent/);
+  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver|Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
   assert.doesNotMatch(
     nativeStats,
-    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|GetContent\(/,
+    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|Network\.setExtraHTTPHeaders|Network\.setCacheDisabled/,
   );
+  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
+  assert.doesNotMatch(nativeStats, /WinHttpDownload|WebResourceRequested/);
 });
 
 test('all dynamic Stationhead and third-party requests remain fail-open', () => {
@@ -139,8 +139,7 @@ test('all dynamic Stationhead and third-party requests remain fail-open', () => 
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
     '}  // namespace hp',
   );
-  assert.match(handler, /Do not install request substitution or CDP/);
-  assert.match(handler, /synthetic response after the route shell has mounted/);
+  assert.match(handler, /Do not block or synthesize dynamic requests/);
   assert.doesNotMatch(
     handler,
     /StationheadRequestIsBlockable|StationheadTelemetryRequest|StationheadExpandedNonPlaybackScript|StationheadKnownOptionalModuleStub|StationheadOptionalStylesheet/,
