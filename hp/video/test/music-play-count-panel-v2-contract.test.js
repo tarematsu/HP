@@ -46,11 +46,10 @@ test('the public header is declarations and a narrow renderer facade only', () =
   assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
 });
 
-test('one committed WebView2 response stream supplies credentials only', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
+test('WebView2 only observes credentials while one worker owns play-count retrieval', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
+  assert.match(nativeStats, /ObserveRequestCredentials/);
   assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
   assert.match(nativeStats, /GetHeader\(/);
   assert.doesNotMatch(nativeStats, /ICoreWebView2WebResourceResponseView/);
@@ -70,7 +69,7 @@ test('one autonomous native worker actively downloads and publishes play counts'
   assert.match(nativeStats, /kRetryInterval/);
 });
 
-test('the native path has no generated script or WebMessage protocol', () => {
+test('the native path has no generated script or WebMessage statistics protocol', () => {
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);

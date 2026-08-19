@@ -81,43 +81,36 @@ test('the legacy page-generated statistics scheduler is compile-time disabled', 
   );
 });
 
-test('one committed-response observer captures credentials only', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
-  assert.doesNotMatch(
+test('request-start and committed-response observers feed one credential reader', () => {
+  assert.match(nativeStats, /void ObserveRequestCredentials/);
+  assert.match(nativeStats, /void AttachRequestCredentialObserver/);
+  assert.match(nativeStats, /void AttachResponseCredentialObserver/);
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /AddWebResourceRequestedFilter/);
+  assert.match(
     nativeStats,
     /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
   );
+  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
+  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
   assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
   assert.match(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /get_Response/);
-  assert.doesNotMatch(nativeStats, /get_StatusCode/);
-  assert.doesNotMatch(nativeStats, /GetContent/);
+  assert.match(nativeStats, /StatsClient\(\)\.ObserveCredentials/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
+  assert.doesNotMatch(nativeStats, /get_Response\(&response\)/);
+  assert.doesNotMatch(nativeStats, /GetContent\(/);
 });
 
-test('committed response requests seed the sole native statistics worker', () => {
-  const responseObserverAt = nativeStats.indexOf('void AttachCredentialObserver');
-  assert.ok(responseObserverAt >= 0);
-  const responseObserver = nativeStats.slice(responseObserverAt);
-  const apiGate = responseObserver.indexOf(
-    'if (!IsStationheadApiUri(uri)) return S_OK;',
-  );
-  const headerRead = responseObserver.indexOf('request->get_Headers(&headers)');
-  const authorizationRead = responseObserver.indexOf(
-    'headers.Get(), L"Authorization", 16 * 1024',
-  );
-  const observeCredentials = responseObserver.indexOf(
-    'StatsClient().ObserveCredentials',
-  );
-
-  assert.ok(apiGate >= 0);
-  assert.ok(headerRead > apiGate);
-  assert.ok(authorizationRead > headerRead);
-  assert.ok(observeCredentials > authorizationRead);
-  assert.doesNotMatch(responseObserver, /IsStatsUri|GetContent|get_Response/);
+test('both observation stages are attached and no passive response data path exists', () => {
+  const attachAt = nativeStats.indexOf('void AttachStationheadNativeStats');
+  assert.ok(attachAt >= 0);
+  const attach = nativeStats.slice(attachAt);
+  const requestAt = attach.indexOf('AttachRequestCredentialObserver(webview, channelId)');
+  const responseAt = attach.indexOf('AttachResponseCredentialObserver(webview, channelId)');
+  assert.ok(requestAt >= 0);
+  assert.ok(responseAt > requestAt);
+  assert.doesNotMatch(nativeStats, /IsStatsUri|ReadBoundedStream/);
 });
 
 test('one autonomous worker requests streakStats without page script execution', () => {

@@ -323,7 +323,81 @@ NativeStatsClient& StatsClient() {
   return *client;
 }
 
-void AttachCredentialObserver(ICoreWebView2* webview, int channelId) {
+void ObserveRequestCredentials(
+    ICoreWebView2WebResourceRequest* request,
+    int channelId) {
+  if (!request || channelId <= 0) return;
+  LPWSTR uriRaw = nullptr;
+  if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return;
+  const std::wstring uri(uriRaw);
+  CoTaskMemFree(uriRaw);
+  if (!IsStationheadApiUri(uri)) return;
+
+  ComPtr<ICoreWebView2HttpRequestHeaders> headers;
+  if (FAILED(request->get_Headers(&headers)) || !headers) return;
+
+  RequestCredentials credentials;
+  credentials.authorization = HeaderValue(
+      headers.Get(), L"Authorization", 16 * 1024);
+  if (credentials.authorization.empty()) return;
+  credentials.deviceUid = HeaderValue(
+      headers.Get(), L"sth-device-uid", 1024);
+  credentials.appPlatform = HeaderValue(
+      headers.Get(), L"app-platform", 256);
+  credentials.appVersion = HeaderValue(
+      headers.Get(), L"app-version", 256);
+  credentials.cookie = HeaderValue(
+      headers.Get(), L"Cookie", 32 * 1024);
+  StatsClient().ObserveCredentials(channelId, std::move(credentials));
+}
+
+void AddCredentialRequestFilter(
+    ICoreWebView2* webview,
+    ICoreWebView2_22* sourceAwareWebView,
+    COREWEBVIEW2_WEB_RESOURCE_CONTEXT context) {
+  constexpr auto sourceKinds =
+      static_cast<COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS>(
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_DOCUMENT |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SHARED_WORKER |
+          COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER);
+  if (sourceAwareWebView &&
+      SUCCEEDED(sourceAwareWebView->AddWebResourceRequestedFilterWithRequestSourceKinds(
+          L"https://production1.stationhead.com/*", context, sourceKinds))) {
+    return;
+  }
+  webview->AddWebResourceRequestedFilter(
+      L"https://production1.stationhead.com/*", context);
+}
+
+void AttachRequestCredentialObserver(ICoreWebView2* webview, int channelId) {
+  if (!webview || channelId <= 0) return;
+  ComPtr<ICoreWebView2> base = webview;
+  ComPtr<ICoreWebView2_22> sourceAwareWebView;
+  base.As(&sourceAwareWebView);
+  AddCredentialRequestFilter(
+      webview, sourceAwareWebView.Get(),
+      COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST);
+  AddCredentialRequestFilter(
+      webview, sourceAwareWebView.Get(),
+      COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH);
+
+  EventRegistrationToken ignoredToken{};
+  webview->add_WebResourceRequested(
+      Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+          [channelId](
+              ICoreWebView2*,
+              ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT {
+            if (!args) return S_OK;
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (SUCCEEDED(args->get_Request(&request)) && request) {
+              ObserveRequestCredentials(request.Get(), channelId);
+            }
+            return S_OK;
+          }).Get(),
+      &ignoredToken);
+}
+
+void AttachResponseCredentialObserver(ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
   ComPtr<ICoreWebView2> base = webview;
   ComPtr<ICoreWebView2_2> responseWebView;
@@ -338,32 +412,9 @@ void AttachCredentialObserver(ICoreWebView2* webview, int channelId) {
               -> HRESULT {
             if (!args) return S_OK;
             ComPtr<ICoreWebView2WebResourceRequest> request;
-            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
-            LPWSTR uriRaw = nullptr;
-            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
-            const std::wstring uri(uriRaw);
-            CoTaskMemFree(uriRaw);
-            if (!IsStationheadApiUri(uri)) return S_OK;
-
-            // ResponseReceived exposes the committed request, including headers
-            // Chromium or a worker added after request-start. Observe those
-            // credentials only; the native worker is the sole stats fetch path.
-            ComPtr<ICoreWebView2HttpRequestHeaders> headers;
-            if (FAILED(request->get_Headers(&headers)) || !headers) return S_OK;
-
-            RequestCredentials credentials;
-            credentials.authorization = HeaderValue(
-                headers.Get(), L"Authorization", 16 * 1024);
-            if (credentials.authorization.empty()) return S_OK;
-            credentials.deviceUid = HeaderValue(
-                headers.Get(), L"sth-device-uid", 1024);
-            credentials.appPlatform = HeaderValue(
-                headers.Get(), L"app-platform", 256);
-            credentials.appVersion = HeaderValue(
-                headers.Get(), L"app-version", 256);
-            credentials.cookie = HeaderValue(
-                headers.Get(), L"Cookie", 32 * 1024);
-            StatsClient().ObserveCredentials(channelId, std::move(credentials));
+            if (SUCCEEDED(args->get_Request(&request)) && request) {
+              ObserveRequestCredentials(request.Get(), channelId);
+            }
             return S_OK;
           }).Get(),
       &ignoredToken);
@@ -372,7 +423,8 @@ void AttachCredentialObserver(ICoreWebView2* webview, int channelId) {
 }  // namespace
 
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
-  AttachCredentialObserver(webview, channelId);
+  AttachRequestCredentialObserver(webview, channelId);
+  AttachResponseCredentialObserver(webview, channelId);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
