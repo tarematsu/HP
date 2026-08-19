@@ -7,6 +7,7 @@ import {
 } from '../site/functions/lib/api-contract.js';
 
 const MATERIALIZED_SOURCES = new Set(['actions-r2', 'worker-r2', 'worker-kv', 'edge-cache']);
+const MAX_DAILY_MINUTE_SAMPLES = 1_440;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -53,6 +54,45 @@ function timestampHeader(headers, name) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function auditDailyRows(payload) {
+  const rows = Array.isArray(payload?.rows) ? payload.rows : null;
+  if (!rows) {
+    return {
+      rowCount: null,
+      maxSampleCount: null,
+      invalidRows: [{ period_key: null, reason: 'rows-missing' }],
+    };
+  }
+
+  let maxSampleCount = 0;
+  const invalidRows = [];
+  for (const row of rows) {
+    const sampleCount = Number(row?.sample_count);
+    const reliableSampleCount = Number(row?.reliable_sample_count);
+    if (Number.isInteger(sampleCount)) maxSampleCount = Math.max(maxSampleCount, sampleCount);
+    if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > MAX_DAILY_MINUTE_SAMPLES) {
+      invalidRows.push({
+        period_key: row?.period_key || null,
+        sample_count: row?.sample_count ?? null,
+        reliable_sample_count: row?.reliable_sample_count ?? null,
+        reason: 'sample-count-out-of-range',
+      });
+      continue;
+    }
+    if (!Number.isInteger(reliableSampleCount)
+        || reliableSampleCount < 0
+        || reliableSampleCount > sampleCount) {
+      invalidRows.push({
+        period_key: row?.period_key || null,
+        sample_count: sampleCount,
+        reliable_sample_count: row?.reliable_sample_count ?? null,
+        reason: 'reliable-sample-count-out-of-range',
+      });
+    }
+  }
+  return { rowCount: rows.length, maxSampleCount, invalidRows };
+}
+
 async function auditMaterializedVariant(baseUrl, variant, options = {}) {
   const now = Number(options.now ?? Date.now());
   const url = new URL(variant.url, `${normalizeBaseUrl(baseUrl)}/`);
@@ -66,6 +106,7 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
   let materializedAt = null;
   let fallback = null;
   let edgeCache = null;
+  let dailyIntegrity = null;
 
   try {
     const response = await (options.fetch || fetch)(url, {
@@ -86,6 +127,12 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
       failures.push(`${variant.key} did not return a JSON object`);
     } else if (payload.ok !== true) {
       failures.push(`${variant.key} payload did not return { ok: true }`);
+    }
+    if (variant.key === 'history:daily' && payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      dailyIntegrity = auditDailyRows(payload);
+      for (const row of dailyIntegrity.invalidRows) {
+        failures.push(`history:daily invalid ${row.period_key || 'unknown'}: ${row.reason}`);
+      }
     }
     if (fallback) failures.push(`${variant.key} used fallback path: ${fallback}`);
     if (!MATERIALIZED_SOURCES.has(String(source || ''))) {
@@ -112,6 +159,7 @@ async function auditMaterializedVariant(baseUrl, variant, options = {}) {
     fallback,
     edgeCache,
     payloadOk: Boolean(payload && typeof payload === 'object' && !Array.isArray(payload) && payload.ok === true),
+    dailyIntegrity,
     error,
     failures,
     ok: failures.length === 0,
@@ -150,6 +198,17 @@ function markdownSummary(report) {
   for (const variant of report.variants) {
     const age = variant.materializedAgeMs == null ? '-' : `${variant.materializedAgeMs} ms`;
     lines.push(`| ${variant.key} | ${variant.status ?? '-'} | ${variant.source || '-'} | ${age} | ${variant.maximumAgeMs} ms | ${variant.fallback || 'none'} | ${variant.ok ? 'PASS' : 'FAIL'} |`);
+  }
+  const daily = report.variants.find(({ key }) => key === 'history:daily')?.dailyIntegrity;
+  if (daily) {
+    lines.push(
+      '',
+      '### Daily data integrity',
+      '',
+      `- Rows checked: ${daily.rowCount ?? '-'}`,
+      `- Maximum sample_count: ${daily.maxSampleCount ?? '-'} / ${MAX_DAILY_MINUTE_SAMPLES}`,
+      `- Invalid rows: ${daily.invalidRows.length}`,
+    );
   }
   if (report.failures.length) lines.push('', '### Failures', '', ...report.failures.map((failure) => `- ${failure}`));
   lines.push('');
