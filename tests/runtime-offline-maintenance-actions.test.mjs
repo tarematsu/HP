@@ -115,8 +115,8 @@ test('Actions reconciles the minute inbox before other database maintenance', as
     rebuilds: 'rebuilds',
     retention: 'retention',
   });
-  assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 5000/);
-  assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 100/);
+  assert.match(runner, /SNAPSHOT_RETENTION_BATCH_SIZE: 500/);
+  assert.match(runner, /SNAPSHOT_RETENTION_MAX_BATCHES: 1/);
   assert.match(runner, /STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 \* 60_000/);
 });
 
