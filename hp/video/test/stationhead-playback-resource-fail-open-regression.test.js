@@ -87,11 +87,11 @@ test('document-start auth slot settles login UI without patching Stationhead fet
 });
 
 test('final resource boundary preserves controller cache reset without login deletion', () => {
-  assert.match(policy, /CallDevToolsProtocolMethod\(L"Network\.enable", L"\{\}", nullptr\)/);
   assert.match(
     policy,
     /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
   );
+  assert.doesNotMatch(policy, /Network\.enable/);
   assert.match(policy, /Cookies and DOM storage remain intact/);
   assert.doesNotMatch(
     policy,
@@ -119,11 +119,12 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics observation reads response data but never mutates browser traffic', () => {
-  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.match(nativeStats, /Network\.responseReceived/);
-  assert.match(nativeStats, /Network\.loadingFinished/);
-  assert.match(nativeStats, /Network\.getResponseBody/);
+test('native statistics observation reads one WebView2 response without mutating browser traffic', () => {
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /get_Request\(&request\)/);
+  assert.match(nativeStats, /get_Response\(&response\)/);
+  assert.match(nativeStats, /response->GetContent/);
+  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver|Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
   assert.doesNotMatch(
     nativeStats,
     /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|Network\.setExtraHTTPHeaders|Network\.setCacheDisabled/,
@@ -138,7 +139,7 @@ test('all dynamic Stationhead and third-party requests remain fail-open', () => 
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
     '}  // namespace hp',
   );
-  assert.match(handler, /do not install URL blocking or synthesize responses/);
+  assert.match(handler, /Do not block or synthesize dynamic requests/);
   assert.doesNotMatch(
     handler,
     /StationheadRequestIsBlockable|StationheadTelemetryRequest|StationheadExpandedNonPlaybackScript|StationheadKnownOptionalModuleStub|StationheadOptionalStylesheet/,
