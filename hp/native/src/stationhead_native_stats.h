@@ -22,13 +22,14 @@ struct StationheadNativeStatsSnapshot {
 inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
     INT64_MAX / 2;
 
-// Observes Stationhead API credentials at request-start and committed-response
-// time and feeds one native statistics worker. No page script, WebMessage stats
-// protocol, response substitution, or parallel statistics data path is involved.
+// Observes the browser's own successful streakStats network response through
+// WebView2 DevTools Protocol events. Authentication remains entirely inside
+// Stationhead's WebView: no credential copying, second HTTP client, page script,
+// WebMessage statistics protocol, or parallel statistics request path exists.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
 
-// Implemented in stationhead_native_stats.cpp. The worker, parser, credentials,
-// and store remain private behind the renderer's snapshot/revision interface.
+// Implemented in stationhead_native_stats.cpp. The response parser, short
+// request-id correlation state, recent-hour history, and store remain private.
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();
 uint64_t GetStationheadNativeStatsRevision();
 
