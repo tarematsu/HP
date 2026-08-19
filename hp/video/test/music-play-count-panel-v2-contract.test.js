@@ -45,25 +45,29 @@ test('the public header stays a narrow renderer facade', () => {
   assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
   assert.doesNotMatch(
     nativeStatsHeader,
-    /WinHttpDownload|WebResourceRequested|JsonObject::Parse|GetDevToolsProtocolEventReceiver/,
+    /WinHttpDownload|WebResourceRequested|JsonObject::Parse/,
   );
 });
 
-test('play counts come from one browser-owned successful streakStats response', () => {
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_StatusCode\(&status\)/);
-  assert.match(nativeStats, /response->GetContent/);
+test('one native worker actively owns streakStats retrieval', () => {
+  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.match(nativeStats, /Network\.responseReceived/);
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /L"\/streakStats"/);
   assert.match(nativeStats, /ParseStatsJson/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.doesNotMatch(nativeStats, /Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
-  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
-  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
-  assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient|WorkerLoop/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
+
+  assert.doesNotMatch(nativeStats, /add_WebResourceResponseReceived/);
   assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
+  assert.doesNotMatch(nativeStats, /Network\.requestWillBeSent|Network\.loadingFinished|Network\.getResponseBody/);
+  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
 });
 
-test('the native path has no generated script or WebMessage statistics protocol', () => {
+test('the native path does not patch page JavaScript or use a WebMessage stats protocol', () => {
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
