@@ -41,6 +41,35 @@ async function visibleLabelled(page, pattern, { last = false } = {}) {
   return null;
 }
 
+const isStreakStatsUrl = (value) => {
+  try {
+    const url = new URL(String(value || ''));
+    return url.hostname.toLowerCase() === 'production1.stationhead.com' &&
+      /^\/me\/channel\/\d+\/streakStats\/?$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+};
+
+function observeStatsResponses(page, report) {
+  page.on('response', async (response) => {
+    if (!isStreakStatsUrl(response.url())) return;
+    report.streakStatsSeen = true;
+    report.streakStatsStatus = response.status();
+    if (!response.ok()) return;
+    try {
+      const payload = await response.json();
+      if (Array.isArray(payload?.chart_data) && payload.chart_data.length > 0) {
+        report.streakStatsValid = true;
+        report.streakStatsPointCount = payload.chart_data.length;
+      }
+    } catch {
+      // Keep the report metadata-only. A malformed body is represented by
+      // streakStatsValid=false and is never copied into the artifact.
+    }
+  });
+}
+
 async function capturePhase(page, name) {
   return page.evaluate((phaseName) => {
     const compact = (value, limit = 240) => String(value || '')
@@ -141,10 +170,16 @@ async function main() {
     musicModalCloseClicked: false,
     loginControlVisible: false,
     loginControlClicked: false,
+    loginNavigationUsed: false,
     loginOpenedPopup: false,
     emailInputVisible: false,
     passwordInputVisible: false,
     loginSubmitted: false,
+    postLoginStationProbe: false,
+    streakStatsSeen: false,
+    streakStatsStatus: 0,
+    streakStatsValid: false,
+    streakStatsPointCount: 0,
     phases: [],
   };
 
@@ -157,6 +192,7 @@ async function main() {
       viewport: { width: 1440, height: 1000 },
     });
     const page = await context.newPage();
+    observeStatsResponses(page, report);
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
     await page.waitForTimeout(1500);
@@ -175,10 +211,14 @@ async function main() {
     const closeMusic = await visibleLabelled(page, /^(close|閉じる)$/i);
     report.musicModalCloseVisible = Boolean(closeMusic);
     if (closeMusic) {
-      report.musicModalCloseClicked = await closeMusic.click({ timeout: 5000 })
-        .then(() => true)
-        .catch(() => false);
-      if (report.musicModalCloseClicked) await page.waitForTimeout(1000);
+      report.musicModalCloseClicked = await closeMusic.click({
+        timeout: 5000,
+        force: true,
+      }).then(() => true).catch(() => false);
+      if (!report.musicModalCloseClicked) {
+        await page.keyboard.press('Escape').catch(() => null);
+      }
+      await page.waitForTimeout(1000);
     }
     report.phases.push(await capturePhase(page, 'after-connect-music-close'));
 
@@ -189,18 +229,29 @@ async function main() {
     report.loginControlVisible = Boolean(login);
     let loginPage = page;
     if (login) {
-      const popupPromise = context.waitForEvent('page', { timeout: 5000 })
-        .catch(() => null);
-      report.loginControlClicked = await login.click({ timeout: 5000 })
-        .then(() => true)
-        .catch(() => false);
-      const popup = report.loginControlClicked ? await popupPromise : null;
-      if (popup) {
-        report.loginOpenedPopup = true;
-        loginPage = popup;
-        await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => null);
+      const href = await login.getAttribute('href').catch(() => null);
+      if (href) {
+        const loginUrl = new URL(href, page.url()).href;
+        report.loginNavigationUsed = await page.goto(loginUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30_000,
+        }).then(() => true).catch(() => false);
+        report.loginControlClicked = report.loginNavigationUsed;
+      } else {
+        const popupPromise = context.waitForEvent('page', { timeout: 5000 })
+          .catch(() => null);
+        report.loginControlClicked = await login.click({ timeout: 5000, force: true })
+          .then(() => true)
+          .catch(() => false);
+        const popup = report.loginControlClicked ? await popupPromise : null;
+        if (popup) {
+          report.loginOpenedPopup = true;
+          loginPage = popup;
+          observeStatsResponses(loginPage, report);
+          await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => null);
+        }
       }
-      if (report.loginControlClicked) await loginPage.waitForTimeout(2500);
+      if (report.loginControlClicked) await loginPage.waitForTimeout(1500);
     }
     report.phases.push(await capturePhase(loginPage, 'after-login-control'));
 
@@ -219,7 +270,7 @@ async function main() {
     );
     if (!password && email && report.credentialsAvailable) {
       const next = await visibleLabelled(loginPage, /continue|next|続ける|次へ/i, { last: true });
-      if (next) await next.click({ timeout: 3000 }).catch(() => null);
+      if (next) await next.click({ timeout: 3000, force: true }).catch(() => null);
       await loginPage.waitForTimeout(2000);
       report.phases.push(await capturePhase(loginPage, 'after-login-next'));
       password = await visibleFirst(
@@ -236,10 +287,24 @@ async function main() {
         { last: true },
       );
       report.loginSubmitted = submit
-        ? await submit.click({ timeout: 3000 }).then(() => true).catch(() => false)
+        ? await submit.click({ timeout: 5000, force: true }).then(() => true).catch(() => false)
         : await password.press('Enter').then(() => true).catch(() => false);
-      if (report.loginSubmitted) await loginPage.waitForTimeout(3000);
-      report.phases.push(await capturePhase(loginPage, 'after-login-submit'));
+      if (report.loginSubmitted) {
+        await loginPage.waitForTimeout(5000);
+        report.phases.push(await capturePhase(loginPage, 'after-login-submit'));
+
+        // Re-open the station in the same browser context. Cookies/session state
+        // remain browser-owned; the audit records only whether the real API
+        // response appears and whether it contains chart points.
+        report.postLoginStationProbe = await page.goto(targetUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 60_000,
+        }).then(() => true).catch(() => false);
+        if (report.postLoginStationProbe) {
+          await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => null);
+          await page.waitForTimeout(5000);
+        }
+      }
     }
     await context.close();
   } finally {
@@ -255,10 +320,16 @@ async function main() {
     musicModalCloseClicked: report.musicModalCloseClicked,
     loginControlVisible: report.loginControlVisible,
     loginControlClicked: report.loginControlClicked,
+    loginNavigationUsed: report.loginNavigationUsed,
     loginOpenedPopup: report.loginOpenedPopup,
     emailInputVisible: report.emailInputVisible,
     passwordInputVisible: report.passwordInputVisible,
     loginSubmitted: report.loginSubmitted,
+    postLoginStationProbe: report.postLoginStationProbe,
+    streakStatsSeen: report.streakStatsSeen,
+    streakStatsStatus: report.streakStatsStatus,
+    streakStatsValid: report.streakStatsValid,
+    streakStatsPointCount: report.streakStatsPointCount,
     phaseCount: report.phases.length,
   }));
 }
