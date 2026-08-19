@@ -19,6 +19,10 @@ const outboxCleanupMigration = readFileSync(
   new URL('../../database/buddies-migrations/013_minute_fact_outbox_cleanup_index.sql', import.meta.url),
   'utf8',
 );
+const retentionIndexMigration = readFileSync(
+  new URL('../../database/buddies-migrations/014_retention_time_indexes.sql', import.meta.url),
+  'utf8',
+);
 const manifest = JSON.parse(readFileSync(
   new URL('../../database/buddies-db.json', import.meta.url),
   'utf8',
@@ -37,7 +41,7 @@ test('all durable reconstruction sources share a thirty-day retention floor', ()
 });
 
 test('current buddies schema keeps retention safe and indexes bounded repair paths', () => {
-  assert.equal(manifest.schema, 'database/buddies-migrations/013_minute_fact_outbox_cleanup_index.sql');
+  assert.equal(manifest.schema, 'database/buddies-migrations/014_retention_time_indexes.sql');
   assert.match(retentionMigration, /DROP TRIGGER IF EXISTS trg_sh_claim_retention/);
   assert.doesNotMatch(retentionMigration, /172800000/);
   assert.doesNotMatch(retentionMigration, /DELETE FROM sh_comment_minute_counts/);
@@ -49,4 +53,11 @@ test('current buddies schema keeps retention safe and indexes bounded repair pat
   assert.doesNotMatch(materializationMigration, /DELETE FROM sh_channel_snapshots|DELETE FROM sh_queue_snapshots/);
   assert.match(outboxCleanupMigration, /CREATE INDEX IF NOT EXISTS idx_sh_minute_fact_outbox_cleanup/);
   assert.doesNotMatch(outboxCleanupMigration, /DELETE FROM sh_channel_snapshots|DELETE FROM sh_queue_snapshots/);
+  assert.match(retentionIndexMigration, /idx_sh_queue_items_observed/);
+  assert.match(retentionIndexMigration, /ON sh_queue_items\(observed_at ASC, id ASC\)/);
+  assert.match(retentionIndexMigration, /idx_sh_ingest_claims_observed/);
+  assert.match(retentionIndexMigration, /ON sh_ingest_claims\(observed_at ASC\)/);
+  assert.match(retentionIndexMigration, /idx_sh_ingest_conflicts_observed/);
+  assert.match(retentionIndexMigration, /ON sh_ingest_conflicts\(observed_at ASC, id ASC\)/);
+  assert.doesNotMatch(retentionIndexMigration, /DELETE|UPDATE|ANALYZE|PRAGMA optimize/);
 });

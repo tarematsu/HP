@@ -40,8 +40,10 @@ function productionEnvironment() {
     SNAPSHOT_RETENTION_ENABLED: true,
     SNAPSHOT_RETENTION_MS: 30 * 24 * 60 * 60_000,
     SNAPSHOT_RETENTION_INTERVAL_MS: 6 * 60 * 60_000,
-    SNAPSHOT_RETENTION_BATCH_SIZE: 5000,
-    SNAPSHOT_RETENTION_MAX_BATCHES: 100,
+    // Keep one retention round within the Actions write guard. Each round can
+    // touch at most eight tables, so 500 rows/table caps deletes at 4,000.
+    SNAPSHOT_RETENTION_BATCH_SIZE: 500,
+    SNAPSHOT_RETENTION_MAX_BATCHES: 1,
     STREAM_GOAL_PREDICTION_INTERVAL_MS: 30 * 60_000,
   };
 }

@@ -12,6 +12,16 @@ const MAX_BATCH_SIZE = 5000;
 const DEFAULT_MAX_BATCHES = 5;
 const MAX_MAX_BATCHES = 100;
 const STATE_ID = 'snapshot-retention-v1';
+const REQUIRED_RETENTION_INDEXES = Object.freeze([
+  'idx_sh_channel_snapshots_observed_id',
+  'idx_sh_queue_snapshots_time',
+  'idx_sh_comment_minute_counts_bucket',
+  'idx_sh_queue_items_observed',
+  'idx_sh_track_like_observations_time',
+  'idx_sh_track_metadata_fetched_at',
+  'idx_sh_ingest_claims_observed',
+  'idx_sh_ingest_conflicts_observed',
+]);
 const TABLES = [
   // These three sources are required to reconstruct minute facts and therefore
   // must never be configured below the thirty-day rebuild horizon.
@@ -59,6 +69,16 @@ export function shouldRunSnapshotRetention(lastCleanupAt, now = Date.now(), env 
   return now - Number(lastCleanupAt || 0) >= intervalMs(env);
 }
 
+async function missingRetentionIndexes(db) {
+  const placeholders = REQUIRED_RETENTION_INDEXES.map(() => '?').join(',');
+  const result = await db.prepare(`SELECT name FROM sqlite_schema
+    WHERE type='index' AND name IN (${placeholders})`)
+    .bind(...REQUIRED_RETENTION_INDEXES)
+    .all();
+  const installed = new Set((result?.results || []).map((row) => String(row?.name || '')));
+  return REQUIRED_RETENTION_INDEXES.filter((name) => !installed.has(name));
+}
+
 function deleteStatement(db, table, cutoff, size) {
   return db.prepare(`DELETE FROM ${table.name} WHERE ${table.keyColumn} IN (
       SELECT ${table.keyColumn} FROM ${table.name}
@@ -102,6 +122,15 @@ export async function pruneOldSnapshots(env, now = Date.now()) {
     FROM sh_data_maintenance_state WHERE id=?`).bind(STATE_ID).first();
   if (!shouldRunSnapshotRetention(state?.last_cleanup_at, now, env)) {
     return { skipped: true, reason: 'not-due' };
+  }
+
+  const missingIndexes = await missingRetentionIndexes(db);
+  if (missingIndexes.length) {
+    return {
+      skipped: true,
+      reason: 'retention-indexes-missing',
+      missing_indexes: missingIndexes,
+    };
   }
 
   const cutoff = now - retentionMs(env);
