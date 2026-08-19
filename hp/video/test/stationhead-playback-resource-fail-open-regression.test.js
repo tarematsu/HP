@@ -119,12 +119,17 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics observer is read-only and never synthesizes a response', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
+test('native statistics auth observation is read-only and never synthesizes a response', () => {
+  assert.match(nativeStats, /add_WebResourceRequested/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /ObserveRequestCredentials/);
+  assert.match(
+    nativeStats,
+    /L"https:\/\/production1\.stationhead\.com\/\*"/,
+  );
   assert.doesNotMatch(
     nativeStats,
-    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs/,
+    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|GetContent\(/,
   );
 });
 
