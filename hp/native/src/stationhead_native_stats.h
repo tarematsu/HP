@@ -16,15 +16,15 @@ struct StationheadNativeStatsSnapshot {
   uint64_t revision = 0;
 };
 
-// Keep the legacy page-side statistics scheduler unreachable. The browser's
-// own authenticated streakStats response is the only statistics request path.
+// Keep the legacy page-side statistics scheduler unreachable. One native worker
+// owns active streakStats retrieval after WebView2 exposes a successful account
+// request's final authenticated Stationhead headers.
 inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
     INT64_MAX / 2;
 
-// Reads Stationhead's already-authenticated successful streakStats response
-// directly from WebView2's WebResourceResponseReceived event. No credential
-// copying, second HTTP client, DevTools network-event correlation, page script,
-// or WebMessage statistics protocol participates in this path.
+// Observes only Network.responseReceived so browser traffic is not modified and
+// no request-id correlation is needed. A successful /me/* or /account/* response
+// exposes the request headers actually transmitted; those seed one active worker.
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();

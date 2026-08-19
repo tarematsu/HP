@@ -119,18 +119,18 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics observation reads one WebView2 response without mutating browser traffic', () => {
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request\(&request\)/);
-  assert.match(nativeStats, /get_Response\(&response\)/);
-  assert.match(nativeStats, /response->GetContent/);
-  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver|Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
+test('native statistics observes final headers without mutating browser traffic', () => {
+  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.match(nativeStats, /Network\.responseReceived/);
+  assert.match(nativeStats, /get_ParameterObjectAsJson/);
+  assert.match(nativeStats, /WinHttpDownload/);
+  assert.doesNotMatch(nativeStats, /WebResourceRequested|WebResourceResponseReceived/);
+  assert.doesNotMatch(nativeStats, /Network\.requestWillBeSent|Network\.loadingFinished|Network\.getResponseBody/);
+  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
   assert.doesNotMatch(
     nativeStats,
     /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|Network\.setExtraHTTPHeaders|Network\.setCacheDisabled/,
   );
-  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
-  assert.doesNotMatch(nativeStats, /WinHttpDownload|WebResourceRequested/);
 });
 
 test('all dynamic Stationhead and third-party requests remain fail-open', () => {

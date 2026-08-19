@@ -80,44 +80,54 @@ test('the legacy page-generated statistics scheduler remains disabled', () => {
   );
 });
 
-test('one WebView2 response event is the only browser stats capture path', () => {
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request\(&request\)/);
-  assert.match(nativeStats, /get_Uri\(&uriRaw\)/);
-  assert.match(nativeStats, /get_Response\(&response\)/);
-  assert.match(nativeStats, /get_StatusCode\(&status\)/);
-  assert.match(nativeStats, /response->GetContent/);
-  assert.match(nativeStats, /production1\.stationhead\.com/);
-  assert.match(nativeStats, /L"\/streakstats"/);
+test('one successful account response CDP event seeds the active native worker', () => {
+  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.match(nativeStats, /Network\.responseReceived/);
+  assert.match(nativeStats, /get_ParameterObjectAsJson/);
+  assert.match(nativeStats, /GetNamedNumber\(L"status", 0\)/);
+  assert.match(nativeStats, /status < 200 \|\| status >= 300/);
+  assert.match(nativeStats, /IsStationheadAccountApiUri/);
+  assert.match(nativeStats, /path\.starts_with\(L"\/me\/"\)/);
+  assert.match(nativeStats, /path == L"\/account"/);
+  assert.match(nativeStats, /GetNamedObject\(L"requestHeaders"\)/);
+  assert.match(nativeStats, /DevToolsHeaderValue\(headers, L"authorization"/);
+  assert.match(nativeStats, /StatsClient\(\)\.ObserveCredentials/);
+  assert.match(nativeStats, /CallDevToolsProtocolMethod\(L"Network\.enable"/);
 
-  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.doesNotMatch(nativeStats, /Network\.responseReceived/);
+  assert.doesNotMatch(nativeStats, /Network\.requestWillBeSent/);
   assert.doesNotMatch(nativeStats, /Network\.loadingFinished/);
   assert.doesNotMatch(nativeStats, /Network\.loadingFailed/);
   assert.doesNotMatch(nativeStats, /Network\.getResponseBody/);
   assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
-  assert.doesNotMatch(playbackPolicy, /Network\.enable/);
-
-  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
-  assert.doesNotMatch(nativeStats, /ICoreWebView2HttpRequestHeaders|GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
-  assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient/);
-  assert.doesNotMatch(nativeStats, /std::condition_variable|std::thread|WorkerLoop/);
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested|add_WebResourceResponseReceived/);
 });
 
-test('the response body is bounded, parsed once, and published directly', () => {
-  assert.match(nativeStats, /kMaximumBodyBytes = 1024 \* 1024/);
-  assert.match(nativeStats, /bool ReadResponseBody\(IStream\* stream/);
-  assert.match(nativeStats, /output\.size\(\) > kMaximumBodyBytes/);
-  assert.match(nativeStats, /ParseStatsJson\(body, receivedAt, daily\)/);
-  assert.match(nativeStats, /StatsStore\(\)\.Publish\(std::move\(daily\), receivedAt\)/);
+test('one worker actively downloads and publishes play counts', () => {
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::condition_variable wake_/);
+  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
+  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
+  assert.match(nativeStats, /ParseStatsJson/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
 });
 
-test('the native response path does not patch page JavaScript or add a second request path', () => {
+test('credential switching is stable across the two playback WebViews', () => {
+  assert.match(nativeStats, /credentials_\.authorization == credentials\.authorization/);
+  assert.match(nativeStats, /!replaceCredentials_/);
+  assert.match(nativeStats, /error == L"HTTP 401" \|\| error == L"HTTP 403"/);
+  assert.match(nativeStats, /replaceCredentials_ = authRejected/);
+  assert.doesNotMatch(nativeStats, /credentialsGeneration|authGeneration/);
+});
+
+test('the active native path does not patch page JavaScript or add request correlation', () => {
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id|requestId/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
-  assert.doesNotMatch(nativeStats, /kSuccessInterval|kRetryInterval|wait_until/);
+  assert.doesNotMatch(nativeStats, /WebResourceRequested|WebResourceResponseReceived/);
 });
 
 test('JSON normalization and storage remain implemented in C++', () => {

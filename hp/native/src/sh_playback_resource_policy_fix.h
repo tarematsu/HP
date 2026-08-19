@@ -9,7 +9,7 @@ namespace hp {
 // Native request substitution cannot reliably distinguish an optional request
 // from a route-critical dependency across account flags and staged deployments.
 // Keep the final playback WebView boundary fail-open. Statistics observation is
-// read-only and never substitutes a Stationhead response.
+// read-only and never substitutes or delays a Stationhead request.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -26,8 +26,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 
-  // Consume the exact streakStats response Stationhead already authenticated.
-  // No Authorization/Cookie extraction and no second HTTP request are involved.
+  // Read the browser's final Stationhead auth headers without touching page JS.
+  // One native worker then owns the only active streakStats request loop.
   AttachStationheadNativeStats(webview, config.channelId);
 }
 
@@ -36,8 +36,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
-// Keep the old page-side scheduler unreachable so Stationhead itself remains
-// the only statistics request owner.
+// The native worker owns statistics refreshes. Keep the old page-generated
+// scheduler unreachable so there is still exactly one stats request owner.
 #undef kStationheadDailyPlayStatsIntervalMs
 #define kStationheadDailyPlayStatsIntervalMs \
   ::hp::kStationheadLegacyStatsPollDisabledIntervalMs

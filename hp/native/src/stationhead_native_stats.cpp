@@ -1,6 +1,9 @@
 #include "stationhead_native_stats.h"
 
+#include "winhttp_helpers.h"
+#include <condition_variable>
 #include <deque>
+#include <thread>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -8,6 +11,8 @@ namespace {
 
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
+constexpr auto kSuccessInterval = std::chrono::minutes(5);
+constexpr auto kRetryInterval = std::chrono::seconds(30);
 constexpr size_t kMaximumBodyBytes = 1024 * 1024;
 
 std::wstring LowerAscii(std::wstring_view value) {
@@ -19,8 +24,8 @@ std::wstring LowerAscii(std::wstring_view value) {
   return lower;
 }
 
-bool IsStatsUri(std::wstring_view uri, int channelId) {
-  if (channelId <= 0 || uri.empty()) return false;
+bool IsStationheadAccountApiUri(std::wstring_view uri) {
+  if (uri.empty()) return false;
   const std::wstring lower = LowerAscii(uri);
   constexpr std::wstring_view scheme = L"https://";
   if (!lower.starts_with(scheme)) return false;
@@ -33,11 +38,10 @@ bool IsStatsUri(std::wstring_view uri, int channelId) {
   }
   size_t pathEnd = lower.find_first_of(L"?#", pathStart);
   if (pathEnd == std::wstring::npos) pathEnd = lower.size();
-  std::wstring expected = L"/me/channel/";
-  expected += std::to_wstring(channelId);
-  expected += L"/streakstats";
-  return std::wstring_view(lower).substr(pathStart, pathEnd - pathStart) ==
-      expected;
+  const std::wstring_view path =
+      std::wstring_view(lower).substr(pathStart, pathEnd - pathStart);
+  return path.starts_with(L"/me/") || path == L"/account" ||
+      path.starts_with(L"/account/");
 }
 
 bool ParseStatsJson(
@@ -179,88 +183,230 @@ NativeStatsStore& StatsStore() {
   return *store;
 }
 
-bool ReadResponseBody(IStream* stream, std::string& output) {
-  output.clear();
-  if (!stream) return false;
+struct RequestCredentials {
+  std::wstring authorization;
+  std::wstring deviceUid;
+  std::wstring appPlatform;
+  std::wstring appVersion;
+  std::wstring cookie;
+};
 
-  std::array<char, 8192> buffer{};
-  for (;;) {
-    const size_t remaining = kMaximumBodyBytes + 1 - output.size();
-    if (remaining == 0) {
-      output.clear();
-      return false;
-    }
-    const ULONG requested = static_cast<ULONG>(
-        std::min<size_t>(buffer.size(), remaining));
-    ULONG read = 0;
-    const HRESULT result = stream->Read(buffer.data(), requested, &read);
-    if (FAILED(result)) {
-      output.clear();
-      return false;
-    }
-    if (read > 0) output.append(buffer.data(), read);
-    if (output.size() > kMaximumBodyBytes) {
-      output.clear();
-      return false;
-    }
-    if (read == 0 || result == S_FALSE) break;
-  }
-  return !output.empty();
+bool SafeHeaderValue(std::wstring_view value, size_t maximumLength) {
+  return !value.empty() && value.size() <= maximumLength &&
+      value.find_first_of(L"\r\n") == std::wstring_view::npos;
 }
 
-void ConsumeStatsResponse(
-    ICoreWebView2WebResourceResponseReceivedEventArgs* args,
-    int channelId) {
-  if (!args || channelId <= 0) return;
+std::wstring DevToolsHeaderValue(
+    const winrt::Windows::Data::Json::JsonObject& headers,
+    std::wstring_view name,
+    size_t maximumLength) {
+  const std::wstring expected = LowerAscii(name);
+  for (const auto& entry : headers) {
+    if (LowerAscii(entry.Key().c_str()) != expected) continue;
+    const auto value = entry.Value();
+    if (value.ValueType() !=
+        winrt::Windows::Data::Json::JsonValueType::String) {
+      return {};
+    }
+    const std::wstring text(value.GetString().c_str());
+    return SafeHeaderValue(text, maximumLength) ? text : std::wstring{};
+  }
+  return {};
+}
 
-  ComPtr<ICoreWebView2WebResourceRequest> request;
-  if (FAILED(args->get_Request(&request)) || !request) return;
-  LPWSTR uriRaw = nullptr;
-  if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return;
-  const std::wstring uri(uriRaw);
-  CoTaskMemFree(uriRaw);
-  if (!IsStatsUri(uri, channelId)) return;
+std::wstring RequestHeaders(const RequestCredentials& credentials) {
+  std::wstring output;
+  const auto append = [&output](
+      std::wstring_view name, std::wstring_view value) {
+    if (value.empty()) return;
+    output.append(name);
+    output.append(L": ");
+    output.append(value);
+    output.append(L"\r\n");
+  };
+  append(L"Authorization", credentials.authorization);
+  append(L"sth-device-uid", credentials.deviceUid);
+  append(L"app-platform", credentials.appPlatform);
+  append(L"app-version", credentials.appVersion);
+  append(L"Cookie", credentials.cookie);
+  append(L"Accept", L"application/json");
+  return output;
+}
 
-  ComPtr<ICoreWebView2WebResourceResponseView> response;
-  if (FAILED(args->get_Response(&response)) || !response) return;
-  int status = 0;
-  if (FAILED(response->get_StatusCode(&status)) || status < 200 || status >= 300) {
-    return;
+class NativeStatsClient {
+ public:
+  NativeStatsClient() {
+    std::thread([this] { WorkerLoop(); }).detach();
   }
 
-  response->GetContent(
-      Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
-          [](HRESULT result, IStream* content) -> HRESULT {
-            if (FAILED(result) || !content) return S_OK;
-            std::string body;
-            if (!ReadResponseBody(content, body)) return S_OK;
-            const int64_t receivedAt = UnixMillis();
-            std::vector<StationheadNativeDailyPlayPoint> daily;
-            if (!ParseStatsJson(body, receivedAt, daily)) return S_OK;
-            StatsStore().Publish(std::move(daily), receivedAt);
-            return S_OK;
-          }).Get());
+  void ObserveCredentials(int channelId, RequestCredentials credentials) {
+    if (channelId <= 0 || credentials.authorization.empty()) return;
+    {
+      std::lock_guard lock(mutex_);
+      if (channelId_ == channelId &&
+          credentials_.authorization == credentials.authorization) {
+        credentials_ = std::move(credentials);
+        return;
+      }
+      if (channelId_ == channelId && !credentials_.authorization.empty() &&
+          !replaceCredentials_) {
+        return;
+      }
+      channelId_ = channelId;
+      credentials_ = std::move(credentials);
+      replaceCredentials_ = false;
+      nextAttempt_ = std::chrono::steady_clock::time_point::min();
+    }
+    wake_.notify_one();
+  }
+
+ private:
+  void WorkerLoop() noexcept {
+    try {
+      winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    } catch (...) {
+    }
+    for (;;) {
+      try {
+        DownloadOnce();
+      } catch (...) {
+        std::lock_guard lock(mutex_);
+        if (channelId_ > 0 && !credentials_.authorization.empty()) {
+          nextAttempt_ = std::chrono::steady_clock::now() + kRetryInterval;
+        }
+        wake_.notify_one();
+      }
+    }
+  }
+
+  void DownloadOnce() {
+    int channelId = 0;
+    RequestCredentials credentials;
+    {
+      std::unique_lock lock(mutex_);
+      wake_.wait(lock, [this] {
+        return channelId_ > 0 && !credentials_.authorization.empty();
+      });
+      while (nextAttempt_ != std::chrono::steady_clock::time_point::min() &&
+             std::chrono::steady_clock::now() < nextAttempt_) {
+        wake_.wait_until(lock, nextAttempt_);
+      }
+      channelId = channelId_;
+      credentials = credentials_;
+      nextAttempt_ = std::chrono::steady_clock::time_point::max();
+    }
+
+    std::wstring url = L"https://production1.stationhead.com/me/channel/";
+    url += std::to_wstring(channelId);
+    url += L"/streakStats";
+    const std::wstring headers = RequestHeaders(credentials);
+    std::vector<uint8_t> body;
+    std::wstring contentType;
+    std::wstring error;
+    const bool downloaded = WinHttpDownload(
+        url, kMaximumBodyBytes, &body, &contentType, &error,
+        L"HomePanel/2.2", headers.c_str());
+    const int64_t receivedAt = UnixMillis();
+    std::vector<StationheadNativeDailyPlayPoint> daily;
+    const bool parsed = downloaded && ParseStatsJson(
+        std::string_view(
+            reinterpret_cast<const char*>(body.data()), body.size()),
+        receivedAt, daily);
+    const bool authRejected = !downloaded &&
+        (error == L"HTTP 401" || error == L"HTTP 403");
+
+    {
+      std::lock_guard lock(mutex_);
+      if (channelId_ == channelId &&
+          credentials_.authorization == credentials.authorization) {
+        replaceCredentials_ = authRejected;
+        nextAttempt_ = std::chrono::steady_clock::now() +
+            (parsed ? kSuccessInterval : kRetryInterval);
+      }
+    }
+    if (parsed) StatsStore().Publish(std::move(daily), receivedAt);
+    wake_.notify_one();
+  }
+
+  std::mutex mutex_;
+  std::condition_variable wake_;
+  RequestCredentials credentials_;
+  int channelId_ = 0;
+  bool replaceCredentials_ = false;
+  std::chrono::steady_clock::time_point nextAttempt_ =
+      std::chrono::steady_clock::time_point::min();
+};
+
+NativeStatsClient& StatsClient() {
+  static auto* client = new NativeStatsClient();
+  return *client;
+}
+
+void ObserveDevToolsResponse(std::wstring_view json, int channelId) {
+  if (json.empty() || channelId <= 0) return;
+  try {
+    const auto root = winrt::Windows::Data::Json::JsonObject::Parse(
+        std::wstring(json));
+    if (!root.HasKey(L"response")) return;
+    const auto response = root.GetNamedObject(L"response");
+    const double status = response.GetNamedNumber(L"status", 0);
+    if (status < 200 || status >= 300) return;
+    const std::wstring uri(response.GetNamedString(L"url", L"").c_str());
+    if (!IsStationheadAccountApiUri(uri) ||
+        !response.HasKey(L"requestHeaders")) {
+      return;
+    }
+    const auto headers = response.GetNamedObject(L"requestHeaders");
+
+    RequestCredentials credentials;
+    credentials.authorization =
+        DevToolsHeaderValue(headers, L"authorization", 16 * 1024);
+    if (credentials.authorization.empty()) return;
+    credentials.deviceUid =
+        DevToolsHeaderValue(headers, L"sth-device-uid", 1024);
+    credentials.appPlatform =
+        DevToolsHeaderValue(headers, L"app-platform", 256);
+    credentials.appVersion =
+        DevToolsHeaderValue(headers, L"app-version", 256);
+    credentials.cookie = DevToolsHeaderValue(headers, L"cookie", 32 * 1024);
+    StatsClient().ObserveCredentials(channelId, std::move(credentials));
+  } catch (...) {
+  }
 }
 
 }  // namespace
 
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
-  ComPtr<ICoreWebView2> base = webview;
-  ComPtr<ICoreWebView2_2> responseWebView;
-  if (FAILED(base.As(&responseWebView)) || !responseWebView) return;
+
+  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> receiver;
+  if (FAILED(webview->GetDevToolsProtocolEventReceiver(
+          L"Network.responseReceived", &receiver)) ||
+      !receiver) {
+    return;
+  }
 
   EventRegistrationToken ignoredToken{};
-  responseWebView->add_WebResourceResponseReceived(
-      Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
+  const HRESULT handlerResult = receiver->add_DevToolsProtocolEventReceived(
+      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
           [channelId](
               ICoreWebView2*,
-              ICoreWebView2WebResourceResponseReceivedEventArgs* args)
+              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
               -> HRESULT {
-            ConsumeStatsResponse(args, channelId);
+            if (!args) return S_OK;
+            LPWSTR jsonRaw = nullptr;
+            if (FAILED(args->get_ParameterObjectAsJson(&jsonRaw)) || !jsonRaw) {
+              return S_OK;
+            }
+            const std::wstring json(jsonRaw);
+            CoTaskMemFree(jsonRaw);
+            ObserveDevToolsResponse(json, channelId);
             return S_OK;
           }).Get(),
       &ignoredToken);
+  if (FAILED(handlerResult)) return;
+
+  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
