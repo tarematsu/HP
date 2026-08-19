@@ -189,6 +189,8 @@ struct RequestCredentials {
   std::wstring appPlatform;
   std::wstring appVersion;
   std::wstring cookie;
+
+  bool operator==(const RequestCredentials&) const = default;
 };
 
 bool SafeHeaderValue(std::wstring_view value, size_t maximumLength) {
@@ -243,18 +245,10 @@ class NativeStatsClient {
     if (channelId <= 0 || credentials.authorization.empty()) return;
     {
       std::lock_guard lock(mutex_);
-      if (channelId_ == channelId &&
-          credentials_.authorization == credentials.authorization) {
-        credentials_ = std::move(credentials);
-        return;
-      }
-      if (channelId_ == channelId && !credentials_.authorization.empty() &&
-          !replaceCredentials_) {
-        return;
-      }
+      if (channelId_ == channelId && credentials_ == credentials) return;
       channelId_ = channelId;
       credentials_ = std::move(credentials);
-      replaceCredentials_ = false;
+      ++credentialsGeneration_;
       nextAttempt_ = std::chrono::steady_clock::time_point::min();
     }
     wake_.notify_one();
@@ -281,6 +275,7 @@ class NativeStatsClient {
 
   void DownloadOnce() {
     int channelId = 0;
+    uint64_t generation = 0;
     RequestCredentials credentials;
     {
       std::unique_lock lock(mutex_);
@@ -292,6 +287,7 @@ class NativeStatsClient {
         wake_.wait_until(lock, nextAttempt_);
       }
       channelId = channelId_;
+      generation = credentialsGeneration_;
       credentials = credentials_;
       nextAttempt_ = std::chrono::steady_clock::time_point::max();
     }
@@ -301,10 +297,8 @@ class NativeStatsClient {
     url += L"/streakStats";
     const std::wstring headers = RequestHeaders(credentials);
     std::vector<uint8_t> body;
-    std::wstring contentType;
-    std::wstring error;
     const bool downloaded = WinHttpDownload(
-        url, kMaximumBodyBytes, &body, &contentType, &error,
+        url, kMaximumBodyBytes, &body, nullptr, nullptr,
         L"HomePanel/2.2", headers.c_str());
     const int64_t receivedAt = UnixMillis();
     std::vector<StationheadNativeDailyPlayPoint> daily;
@@ -312,19 +306,19 @@ class NativeStatsClient {
         std::string_view(
             reinterpret_cast<const char*>(body.data()), body.size()),
         receivedAt, daily);
-    const bool authRejected = !downloaded &&
-        (error == L"HTTP 401" || error == L"HTTP 403");
 
+    bool currentCredentials = false;
     {
       std::lock_guard lock(mutex_);
-      if (channelId_ == channelId &&
-          credentials_.authorization == credentials.authorization) {
-        replaceCredentials_ = authRejected;
+      currentCredentials = generation == credentialsGeneration_;
+      if (currentCredentials) {
         nextAttempt_ = std::chrono::steady_clock::now() +
             (parsed ? kSuccessInterval : kRetryInterval);
       }
     }
-    if (parsed) StatsStore().Publish(std::move(daily), receivedAt);
+    if (parsed && currentCredentials) {
+      StatsStore().Publish(std::move(daily), receivedAt);
+    }
     wake_.notify_one();
   }
 
@@ -332,7 +326,7 @@ class NativeStatsClient {
   std::condition_variable wake_;
   RequestCredentials credentials_;
   int channelId_ = 0;
-  bool replaceCredentials_ = false;
+  uint64_t credentialsGeneration_ = 0;
   std::chrono::steady_clock::time_point nextAttempt_ =
       std::chrono::steady_clock::time_point::min();
 };
