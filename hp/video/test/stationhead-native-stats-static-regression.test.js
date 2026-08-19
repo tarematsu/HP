@@ -115,12 +115,13 @@ test('one worker actively downloads and publishes play counts', () => {
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
 });
 
-test('credential switching is stable across the two playback WebViews', () => {
-  assert.match(nativeStats, /credentials_\.authorization == credentials\.authorization/);
-  assert.match(nativeStats, /!replaceCredentials_/);
-  assert.match(nativeStats, /error == L"HTTP 401" \|\| error == L"HTTP 403"/);
-  assert.match(nativeStats, /replaceCredentials_ = authRejected/);
-  assert.doesNotMatch(nativeStats, /credentialsGeneration|authGeneration/);
+test('credential updates use one generation guard instead of sticky auth state', () => {
+  assert.match(nativeStats, /bool operator==\(const RequestCredentials&\) const = default/);
+  assert.match(nativeStats, /\+\+credentialsGeneration_/);
+  assert.match(nativeStats, /generation = credentialsGeneration_/);
+  assert.match(nativeStats, /currentCredentials = generation == credentialsGeneration_/);
+  assert.match(nativeStats, /parsed && currentCredentials/);
+  assert.doesNotMatch(nativeStats, /replaceCredentials_|authRejected/);
 });
 
 test('the active native path does not patch page JavaScript or add request correlation', () => {
