@@ -22,9 +22,7 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 
   // Clear only Chromium's HTTP cache once per newly created playback controller.
   // Cookies and DOM storage remain intact, so Stationhead login and Spotify
-  // authorization survive the reset. Network.enable is observation-only here;
-  // do not install URL blocking or synthesize responses for dynamic resources.
-  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
+  // authorization survive the reset. Do not block or synthesize dynamic requests.
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 
@@ -38,8 +36,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
-// The active statistics path is fully native and passive. Keep the old page-side
-// scheduler unreachable so Stationhead itself remains the only request owner.
+// Keep the old page-side scheduler unreachable so Stationhead itself remains
+// the only statistics request owner.
 #undef kStationheadDailyPlayStatsIntervalMs
 #define kStationheadDailyPlayStatsIntervalMs \
   ::hp::kStationheadLegacyStatsPollDisabledIntervalMs
