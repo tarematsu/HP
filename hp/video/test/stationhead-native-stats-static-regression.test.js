@@ -58,7 +58,6 @@ test('a normal C++ source is built and directly attached by WebView setup', () =
     /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats/,
   );
   assert.match(playbackPolicy, /#include "stationhead_native_stats\.h"/);
-  assert.doesNotMatch(playbackPolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
   assert.match(
     playbackPolicy,
     /AttachStationheadNativeStats\(webview, config\.channelId\)/,
@@ -66,7 +65,7 @@ test('a normal C++ source is built and directly attached by WebView setup', () =
   assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
 });
 
-test('the legacy page-generated statistics scheduler is compile-time disabled', () => {
+test('the legacy page-generated statistics scheduler remains disabled', () => {
   assert.match(
     nativeStatsHeader,
     /kStationheadLegacyStatsPollDisabledIntervalMs =\s*INT64_MAX \/ 2/,
@@ -81,53 +80,52 @@ test('the legacy page-generated statistics scheduler is compile-time disabled', 
   );
 });
 
-test('request-start and committed-response observers feed one credential reader', () => {
-  assert.match(nativeStats, /void ObserveRequestCredentials/);
-  assert.match(nativeStats, /void AttachRequestCredentialObserver/);
-  assert.match(nativeStats, /void AttachResponseCredentialObserver/);
-  assert.match(nativeStats, /add_WebResourceRequested/);
-  assert.match(nativeStats, /AddWebResourceRequestedFilter/);
-  assert.match(
-    nativeStats,
-    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
-  );
-  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
-  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.match(nativeStats, /StatsClient\(\)\.ObserveCredentials/);
+test('the browser owns authentication and the only stats input is its response body', () => {
+  assert.match(playbackPolicy, /CallDevToolsProtocolMethod\(L"Network\.enable"/);
+  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.match(nativeStats, /L"Network\.responseReceived"/);
+  assert.match(nativeStats, /L"Network\.loadingFinished"/);
+  assert.match(nativeStats, /L"Network\.loadingFailed"/);
+  assert.match(nativeStats, /L"Network\.getResponseBody"/);
+  assert.match(nativeStats, /GetNamedString\(L"requestId"/);
+  assert.match(nativeStats, /GetNamedString\(L"url"/);
+  assert.match(nativeStats, /GetNamedNumber\(L"status"/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
-  assert.doesNotMatch(nativeStats, /get_Response\(&response\)/);
-  assert.doesNotMatch(nativeStats, /GetContent\(/);
+  assert.match(nativeStats, /L"\/streakstats"/);
+  assert.match(nativeStats, /kMaximumPendingRequests = 16/);
+
+  assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
+  assert.doesNotMatch(nativeStats, /ICoreWebView2HttpRequestHeaders|GetHeader\(/);
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
+  assert.doesNotMatch(nativeStats, /add_WebResourceResponseReceived|GetContent\(/);
+  assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient/);
+  assert.doesNotMatch(nativeStats, /std::condition_variable|std::thread|WorkerLoop/);
 });
 
-test('both observation stages are attached and no passive response data path exists', () => {
-  const attachAt = nativeStats.indexOf('void AttachStationheadNativeStats');
-  assert.ok(attachAt >= 0);
-  const attach = nativeStats.slice(attachAt);
-  const requestAt = attach.indexOf('AttachRequestCredentialObserver(webview, channelId)');
-  const responseAt = attach.indexOf('AttachResponseCredentialObserver(webview, channelId)');
-  assert.ok(requestAt >= 0);
-  assert.ok(responseAt > requestAt);
-  assert.doesNotMatch(nativeStats, /IsStatsUri|ReadBoundedStream/);
+test('one completed successful streakStats request feeds the native parser and store', () => {
+  const responseAt = nativeStats.indexOf('void AttachResponseObserver');
+  const finishedAt = nativeStats.indexOf('void AttachLoadingFinishedObserver');
+  const bodyAt = nativeStats.indexOf('void RequestStatsBody');
+  assert.ok(responseAt >= 0);
+  assert.ok(finishedAt >= 0);
+  assert.ok(bodyAt >= 0);
+  assert.match(nativeStats, /RememberPendingRequest\(\*pending, requestId\)/);
+  assert.match(nativeStats, /TakePendingRequest\(\*pending, requestId\)/);
+  assert.match(nativeStats, /RequestStatsBody\(sender, requestId\)/);
+  assert.match(nativeStats, /GetNamedBoolean\(L"base64Encoded", false\)/);
+  assert.match(nativeStats, /GetNamedString\(L"body"/);
+  assert.match(nativeStats, /ParseStatsJson\(body, receivedAt, daily\)/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish\(std::move\(daily\), receivedAt\)/);
 });
 
-test('one autonomous worker requests streakStats without page script execution', () => {
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::condition_variable wake_/);
-  assert.match(nativeStats, /WorkerLoop\(\)/);
-  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
-  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
+test('the native response path does not patch page JavaScript or add a second request path', () => {
+  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
+  assert.doesNotMatch(nativeStats, /kSuccessInterval|kRetryInterval|wait_until/);
 });
 
-test('JSON normalization and storage are implemented in C++', () => {
+test('JSON normalization and storage remain implemented in C++', () => {
   assert.match(nativeStats, /JsonObject::Parse/);
   assert.match(nativeStats, /GetNamedArray\(L"chart_data"\)/);
   assert.match(nativeStats, /std::stable_sort/);
