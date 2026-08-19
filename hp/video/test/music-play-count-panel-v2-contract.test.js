@@ -49,16 +49,18 @@ test('the public header stays a narrow renderer facade', () => {
   );
 });
 
-test('play counts come from the browser-owned successful streakStats response', () => {
-  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.match(nativeStats, /Network\.responseReceived/);
-  assert.match(nativeStats, /Network\.loadingFinished/);
-  assert.match(nativeStats, /Network\.getResponseBody/);
+test('play counts come from one browser-owned successful streakStats response', () => {
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /get_StatusCode\(&status\)/);
+  assert.match(nativeStats, /response->GetContent/);
   assert.match(nativeStats, /ParseStatsJson/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
+  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.doesNotMatch(nativeStats, /Network\.responseReceived|Network\.loadingFinished|Network\.getResponseBody/);
+  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
   assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
   assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient|WorkerLoop/);
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested|add_WebResourceResponseReceived/);
+  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
 });
 
 test('the native path has no generated script or WebMessage statistics protocol', () => {
