@@ -29,9 +29,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 
-  // Observe committed Stationhead responses directly. The observer installs no
-  // WebResourceRequested filters, so each playback WebView may safely expose a
-  // valid authenticated request to the single native statistics client.
+  // Consume the authenticated streakStats response already received by this
+  // WebView. Do not copy credentials or replay the request through another client.
   AttachStationheadNativeStats(webview, config.channelId);
 }
 
@@ -40,8 +39,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
-// The active statistics path is fully native. Keep the old scheduler unreachable
-// until its remaining source-compatible fields are removed separately.
+// Stationhead's own authenticated request supplies the statistics response, so
+// the legacy page-generated poll remains unreachable.
 #undef kStationheadDailyPlayStatsIntervalMs
 #define kStationheadDailyPlayStatsIntervalMs \
   ::hp::kStationheadLegacyStatsPollDisabledIntervalMs
