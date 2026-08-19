@@ -246,8 +246,12 @@ void ConsumeStatsResponse(
 
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
+  ComPtr<ICoreWebView2> base = webview;
+  ComPtr<ICoreWebView2_2> responseWebView;
+  if (FAILED(base.As(&responseWebView)) || !responseWebView) return;
+
   EventRegistrationToken ignoredToken{};
-  webview->add_WebResourceResponseReceived(
+  responseWebView->add_WebResourceResponseReceived(
       Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
           [channelId](
               ICoreWebView2*,
