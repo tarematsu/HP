@@ -9,7 +9,6 @@ namespace {
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
 constexpr size_t kMaximumBodyBytes = 1024 * 1024;
-constexpr size_t kMaximumPendingRequests = 16;
 
 std::wstring LowerAscii(std::wstring_view value) {
   std::wstring lower(value);
@@ -180,171 +179,84 @@ NativeStatsStore& StatsStore() {
   return *store;
 }
 
-using PendingRequestIds = std::vector<std::wstring>;
+bool ReadResponseBody(IStream* stream, std::string& output) {
+  output.clear();
+  if (!stream) return false;
 
-void RememberPendingRequest(PendingRequestIds& pending, std::wstring requestId) {
-  if (requestId.empty()) return;
-  if (std::find(pending.begin(), pending.end(), requestId) != pending.end()) {
+  std::array<char, 8192> buffer{};
+  for (;;) {
+    const size_t remaining = kMaximumBodyBytes + 1 - output.size();
+    if (remaining == 0) {
+      output.clear();
+      return false;
+    }
+    const ULONG requested = static_cast<ULONG>(
+        std::min<size_t>(buffer.size(), remaining));
+    ULONG read = 0;
+    const HRESULT result = stream->Read(buffer.data(), requested, &read);
+    if (FAILED(result)) {
+      output.clear();
+      return false;
+    }
+    if (read > 0) output.append(buffer.data(), read);
+    if (output.size() > kMaximumBodyBytes) {
+      output.clear();
+      return false;
+    }
+    if (read == 0 || result == S_FALSE) break;
+  }
+  return !output.empty();
+}
+
+void ConsumeStatsResponse(
+    ICoreWebView2WebResourceResponseReceivedEventArgs* args,
+    int channelId) {
+  if (!args || channelId <= 0) return;
+
+  ComPtr<ICoreWebView2WebResourceRequest> request;
+  if (FAILED(args->get_Request(&request)) || !request) return;
+  LPWSTR uriRaw = nullptr;
+  if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return;
+  const std::wstring uri(uriRaw);
+  CoTaskMemFree(uriRaw);
+  if (!IsStatsUri(uri, channelId)) return;
+
+  ComPtr<ICoreWebView2WebResourceResponseView> response;
+  if (FAILED(args->get_Response(&response)) || !response) return;
+  int status = 0;
+  if (FAILED(response->get_StatusCode(&status)) || status < 200 || status >= 300) {
     return;
   }
-  if (pending.size() >= kMaximumPendingRequests) {
-    pending.erase(pending.begin());
-  }
-  pending.push_back(std::move(requestId));
-}
 
-bool TakePendingRequest(PendingRequestIds& pending, std::wstring_view requestId) {
-  const auto found = std::find(pending.begin(), pending.end(), requestId);
-  if (found == pending.end()) return false;
-  pending.erase(found);
-  return true;
-}
-
-std::wstring EventJson(
-    ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args) {
-  if (!args) return {};
-  LPWSTR raw = nullptr;
-  if (FAILED(args->get_ParameterObjectAsJson(&raw)) || !raw) return {};
-  std::wstring json(raw);
-  CoTaskMemFree(raw);
-  return json;
-}
-
-void RequestStatsBody(ICoreWebView2* webview, std::wstring_view requestId) {
-  if (!webview || requestId.empty()) return;
-  const std::wstring parameters =
-      L"{\"requestId\":" + JsonQuote(std::wstring(requestId)) + L"}";
-  webview->CallDevToolsProtocolMethod(
-      L"Network.getResponseBody", parameters.c_str(),
-      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-          [](HRESULT result, LPCWSTR resultJson) -> HRESULT {
-            if (FAILED(result) || !resultJson || !*resultJson) return S_OK;
-            try {
-              const auto response =
-                  winrt::Windows::Data::Json::JsonObject::Parse(resultJson);
-              if (response.GetNamedBoolean(L"base64Encoded", false)) return S_OK;
-              const std::wstring bodyWide =
-                  response.GetNamedString(L"body", L"").c_str();
-              if (bodyWide.empty()) return S_OK;
-              const std::string body = WideToUtf8(bodyWide);
-              if (body.empty() || body.size() > kMaximumBodyBytes) return S_OK;
-              const int64_t receivedAt = UnixMillis();
-              std::vector<StationheadNativeDailyPlayPoint> daily;
-              if (!ParseStatsJson(body, receivedAt, daily)) return S_OK;
-              StatsStore().Publish(std::move(daily), receivedAt);
-            } catch (...) {
-            }
+  response->GetContent(
+      Callback<ICoreWebView2WebResourceResponseViewGetContentCompletedHandler>(
+          [](HRESULT result, IStream* content) -> HRESULT {
+            if (FAILED(result) || !content) return S_OK;
+            std::string body;
+            if (!ReadResponseBody(content, body)) return S_OK;
+            const int64_t receivedAt = UnixMillis();
+            std::vector<StationheadNativeDailyPlayPoint> daily;
+            if (!ParseStatsJson(body, receivedAt, daily)) return S_OK;
+            StatsStore().Publish(std::move(daily), receivedAt);
             return S_OK;
           }).Get());
-}
-
-void AttachResponseObserver(
-    ICoreWebView2* webview,
-    int channelId,
-    const std::shared_ptr<PendingRequestIds>& pending) {
-  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> receiver;
-  if (FAILED(webview->GetDevToolsProtocolEventReceiver(
-          L"Network.responseReceived", &receiver)) || !receiver) {
-    return;
-  }
-  EventRegistrationToken ignoredToken{};
-  receiver->add_DevToolsProtocolEventReceived(
-      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
-          [channelId, pending](
-              ICoreWebView2*,
-              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
-              -> HRESULT {
-            try {
-              const std::wstring eventJson = EventJson(args);
-              if (eventJson.empty()) return S_OK;
-              const auto event =
-                  winrt::Windows::Data::Json::JsonObject::Parse(eventJson);
-              const std::wstring requestId =
-                  event.GetNamedString(L"requestId", L"").c_str();
-              const auto response = event.GetNamedObject(L"response");
-              const std::wstring url =
-                  response.GetNamedString(L"url", L"").c_str();
-              const double status = response.GetNamedNumber(L"status", 0);
-              if (status >= 200 && status < 300 &&
-                  IsStatsUri(url, channelId)) {
-                RememberPendingRequest(*pending, requestId);
-              }
-            } catch (...) {
-            }
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
-}
-
-void AttachLoadingFinishedObserver(
-    ICoreWebView2* webview,
-    const std::shared_ptr<PendingRequestIds>& pending) {
-  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> receiver;
-  if (FAILED(webview->GetDevToolsProtocolEventReceiver(
-          L"Network.loadingFinished", &receiver)) || !receiver) {
-    return;
-  }
-  EventRegistrationToken ignoredToken{};
-  receiver->add_DevToolsProtocolEventReceived(
-      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
-          [pending](
-              ICoreWebView2* sender,
-              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
-              -> HRESULT {
-            try {
-              const std::wstring eventJson = EventJson(args);
-              if (eventJson.empty()) return S_OK;
-              const auto event =
-                  winrt::Windows::Data::Json::JsonObject::Parse(eventJson);
-              const std::wstring requestId =
-                  event.GetNamedString(L"requestId", L"").c_str();
-              if (!TakePendingRequest(*pending, requestId)) return S_OK;
-              RequestStatsBody(sender, requestId);
-            } catch (...) {
-            }
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
-}
-
-void AttachLoadingFailedObserver(
-    ICoreWebView2* webview,
-    const std::shared_ptr<PendingRequestIds>& pending) {
-  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> receiver;
-  if (FAILED(webview->GetDevToolsProtocolEventReceiver(
-          L"Network.loadingFailed", &receiver)) || !receiver) {
-    return;
-  }
-  EventRegistrationToken ignoredToken{};
-  receiver->add_DevToolsProtocolEventReceived(
-      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
-          [pending](
-              ICoreWebView2*,
-              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
-              -> HRESULT {
-            try {
-              const std::wstring eventJson = EventJson(args);
-              if (eventJson.empty()) return S_OK;
-              const auto event =
-                  winrt::Windows::Data::Json::JsonObject::Parse(eventJson);
-              const std::wstring requestId =
-                  event.GetNamedString(L"requestId", L"").c_str();
-              TakePendingRequest(*pending, requestId);
-            } catch (...) {
-            }
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
 }
 
 }  // namespace
 
 void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
   if (!webview || channelId <= 0) return;
-  const auto pending = std::make_shared<PendingRequestIds>();
-  AttachResponseObserver(webview, channelId, pending);
-  AttachLoadingFinishedObserver(webview, pending);
-  AttachLoadingFailedObserver(webview, pending);
+  EventRegistrationToken ignoredToken{};
+  webview->add_WebResourceResponseReceived(
+      Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
+          [channelId](
+              ICoreWebView2*,
+              ICoreWebView2WebResourceResponseReceivedEventArgs* args)
+              -> HRESULT {
+            ConsumeStatsResponse(args, channelId);
+            return S_OK;
+          }).Get(),
+      &ignoredToken);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
