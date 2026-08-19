@@ -10,7 +10,7 @@ const DAY = 86_400_000;
 const PERIOD_START = Date.parse('2026-07-26T00:00:00Z');
 const PERIOD_END = PERIOD_START + DAY - 60_000;
 
-function summaryRow() {
+function summaryRow(overrides = {}) {
   return {
     period_key: '2026-07-26',
     period_start: PERIOD_START,
@@ -31,10 +31,11 @@ function summaryRow() {
     primary_host: 'host',
     quality_score: 1,
     quality_flags: '["daily_reconciled"]',
+    ...overrides,
   };
 }
 
-function environment(calls) {
+function environment(calls, rows = [summaryRow()]) {
   const forbidden = new Proxy({}, {
     get() { assert.fail('summary-only materialization must not inspect raw history databases'); },
   });
@@ -49,7 +50,7 @@ function environment(calls) {
         return {
           bind(...bindings) {
             calls.at(-1).bindings = bindings;
-            return { all: async () => ({ results: [summaryRow()] }) };
+            return { all: async () => ({ results: rows }) };
           },
         };
       },
@@ -74,6 +75,20 @@ test('Actions history renderer reads only completed daily summary rows', async (
   assert.equal(result.live_overlay_count, 0);
   assert.equal(result.live_source, 'summary-only');
   assert.equal(result.storage_source, 'other.sh_daily_summary');
+});
+
+test('daily materialization rejects sample counts above one row per minute', async () => {
+  const calls = [];
+  await assert.rejects(
+    loadMaterializedSummary(
+      environment(calls, [summaryRow({ sample_count: 1441, reliable_sample_count: 1441 })]),
+      'daily',
+      '2026-07-01',
+      '2026-07-28',
+      Date.parse('2026-07-28T01:00:00Z'),
+    ),
+    /daily summary 2026-07-26 has invalid sample_count: 1441/,
+  );
 });
 
 test('materialized history response keeps the public payload shape without raw D1 reads', async () => {
