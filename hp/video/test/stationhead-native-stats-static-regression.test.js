@@ -80,40 +80,35 @@ test('the legacy page-generated statistics scheduler remains disabled', () => {
   );
 });
 
-test('the browser owns authentication and the only stats input is its response body', () => {
-  assert.match(playbackPolicy, /CallDevToolsProtocolMethod\(L"Network\.enable"/);
-  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.match(nativeStats, /L"Network\.responseReceived"/);
-  assert.match(nativeStats, /L"Network\.loadingFinished"/);
-  assert.match(nativeStats, /L"Network\.loadingFailed"/);
-  assert.match(nativeStats, /L"Network\.getResponseBody"/);
-  assert.match(nativeStats, /GetNamedString\(L"requestId"/);
-  assert.match(nativeStats, /GetNamedString\(L"url"/);
-  assert.match(nativeStats, /GetNamedNumber\(L"status"/);
+test('one WebView2 response event is the only browser stats capture path', () => {
+  assert.match(nativeStats, /add_WebResourceResponseReceived/);
+  assert.match(nativeStats, /get_Request\(&request\)/);
+  assert.match(nativeStats, /get_Uri\(&uriRaw\)/);
+  assert.match(nativeStats, /get_Response\(&response\)/);
+  assert.match(nativeStats, /get_StatusCode\(&status\)/);
+  assert.match(nativeStats, /response->GetContent/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
   assert.match(nativeStats, /L"\/streakstats"/);
-  assert.match(nativeStats, /kMaximumPendingRequests = 16/);
+
+  assert.doesNotMatch(nativeStats, /GetDevToolsProtocolEventReceiver/);
+  assert.doesNotMatch(nativeStats, /Network\.responseReceived/);
+  assert.doesNotMatch(nativeStats, /Network\.loadingFinished/);
+  assert.doesNotMatch(nativeStats, /Network\.loadingFailed/);
+  assert.doesNotMatch(nativeStats, /Network\.getResponseBody/);
+  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
+  assert.doesNotMatch(playbackPolicy, /Network\.enable/);
 
   assert.doesNotMatch(nativeStats, /Authorization|authorization|Cookie|cookie/);
   assert.doesNotMatch(nativeStats, /ICoreWebView2HttpRequestHeaders|GetHeader\(/);
   assert.doesNotMatch(nativeStats, /add_WebResourceRequested|AddWebResourceRequestedFilter/);
-  assert.doesNotMatch(nativeStats, /add_WebResourceResponseReceived|GetContent\(/);
   assert.doesNotMatch(nativeStats, /WinHttpDownload|NativeStatsClient/);
   assert.doesNotMatch(nativeStats, /std::condition_variable|std::thread|WorkerLoop/);
 });
 
-test('one completed successful streakStats request feeds the native parser and store', () => {
-  const responseAt = nativeStats.indexOf('void AttachResponseObserver');
-  const finishedAt = nativeStats.indexOf('void AttachLoadingFinishedObserver');
-  const bodyAt = nativeStats.indexOf('void RequestStatsBody');
-  assert.ok(responseAt >= 0);
-  assert.ok(finishedAt >= 0);
-  assert.ok(bodyAt >= 0);
-  assert.match(nativeStats, /RememberPendingRequest\(\*pending, requestId\)/);
-  assert.match(nativeStats, /TakePendingRequest\(\*pending, requestId\)/);
-  assert.match(nativeStats, /RequestStatsBody\(sender, requestId\)/);
-  assert.match(nativeStats, /GetNamedBoolean\(L"base64Encoded", false\)/);
-  assert.match(nativeStats, /GetNamedString\(L"body"/);
+test('the response body is bounded, parsed once, and published directly', () => {
+  assert.match(nativeStats, /kMaximumBodyBytes = 1024 \* 1024/);
+  assert.match(nativeStats, /bool ReadResponseBody\(IStream\* stream/);
+  assert.match(nativeStats, /output\.size\(\) > kMaximumBodyBytes/);
   assert.match(nativeStats, /ParseStatsJson\(body, receivedAt, daily\)/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish\(std::move\(daily\), receivedAt\)/);
 });
