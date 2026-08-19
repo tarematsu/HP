@@ -46,31 +46,23 @@ test('the public header is declarations and a narrow renderer facade only', () =
   assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
 });
 
-test('one committed WebView2 response stream supplies credentials only', () => {
+test('one committed WebView2 response directly supplies play counts', () => {
   assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
   assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /ICoreWebView2WebResourceResponseView/);
-  assert.doesNotMatch(nativeStats, /GetContent\(/);
-});
-
-test('one autonomous native worker actively downloads and publishes play counts', () => {
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::condition_variable wake_/);
-  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
-  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /ParseStatsJson/);
+  assert.match(nativeStats, /IsStatsUri\(uri, channelId\)/);
+  assert.match(nativeStats, /ICoreWebView2WebResourceResponseView/);
+  assert.match(nativeStats, /get_StatusCode\(&status\)/);
+  assert.match(nativeStats, /GetContent\(/);
+  assert.match(nativeStats, /ParseStatsJson\(body, receivedAt, daily\)/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
 });
 
-test('the native path has no generated script or WebMessage protocol', () => {
+test('the native path has no duplicate downloader, credential replay, or page protocol', () => {
+  assert.doesNotMatch(nativeStats, /NativeStatsClient/);
+  assert.doesNotMatch(nativeStats, /WinHttpDownload\(/);
+  assert.doesNotMatch(nativeStats, /ICoreWebView2HttpRequestHeaders|GetHeader\(/);
+  assert.doesNotMatch(nativeStats, /condition_variable|std::thread/);
   assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
   assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
   assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
