@@ -81,29 +81,50 @@ test('the legacy page-generated statistics scheduler is compile-time disabled', 
   );
 });
 
-test('one committed response observer consumes streakStats directly', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
+test('request-start and committed-response observers feed one credential reader', () => {
+  assert.match(nativeStats, /void ObserveRequestCredentials/);
+  assert.match(nativeStats, /void AttachRequestCredentialObserver/);
+  assert.match(nativeStats, /void AttachResponseCredentialObserver/);
+  assert.match(nativeStats, /add_WebResourceRequested/);
+  assert.match(nativeStats, /AddWebResourceRequestedFilter/);
+  assert.match(
+    nativeStats,
+    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
+  );
+  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_XML_HTTP_REQUEST/);
+  assert.match(nativeStats, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FETCH/);
   assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
-  assert.match(nativeStats, /IsStatsUri\(uri, channelId\)/);
-  assert.match(nativeStats, /get_Response\(&response\)/);
-  assert.match(nativeStats, /get_StatusCode\(&status\)/);
-  assert.match(nativeStats, /response->GetContent\(/);
-  assert.match(nativeStats, /ReadBoundedStream\(stream, body\)/);
-  assert.match(nativeStats, /ParseStatsJson\(body, receivedAt, daily\)/);
-  assert.match(nativeStats, /StatsStore\(\)\.Publish\(std::move\(daily\), receivedAt\)/);
+  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
+  assert.match(nativeStats, /GetHeader\(/);
+  assert.match(nativeStats, /StatsClient\(\)\.ObserveCredentials/);
   assert.match(nativeStats, /production1\.stationhead\.com/);
+  assert.doesNotMatch(nativeStats, /get_Response\(&response\)/);
+  assert.doesNotMatch(nativeStats, /GetContent\(/);
 });
 
-test('the statistics path has no credential replay or second HTTP client', () => {
-  assert.doesNotMatch(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.doesNotMatch(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /Authorization/);
-  assert.doesNotMatch(nativeStats, /RequestCredentials/);
-  assert.doesNotMatch(nativeStats, /NativeStatsClient/);
-  assert.doesNotMatch(nativeStats, /WinHttpDownload\(/);
-  assert.doesNotMatch(nativeStats, /condition_variable|std::thread/);
+test('both observation stages are attached and no passive response data path exists', () => {
+  const attachAt = nativeStats.indexOf('void AttachStationheadNativeStats');
+  assert.ok(attachAt >= 0);
+  const attach = nativeStats.slice(attachAt);
+  const requestAt = attach.indexOf('AttachRequestCredentialObserver(webview, channelId)');
+  const responseAt = attach.indexOf('AttachResponseCredentialObserver(webview, channelId)');
+  assert.ok(requestAt >= 0);
+  assert.ok(responseAt > requestAt);
+  assert.doesNotMatch(nativeStats, /IsStatsUri|ReadBoundedStream/);
+});
+
+test('one autonomous worker requests streakStats without page script execution', () => {
+  assert.match(nativeStats, /class NativeStatsClient/);
+  assert.match(nativeStats, /std::condition_variable wake_/);
+  assert.match(nativeStats, /WorkerLoop\(\)/);
+  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
+  assert.match(nativeStats, /WinHttpDownload\(/);
+  assert.match(nativeStats, /L"\/streakStats"/);
+  assert.match(nativeStats, /kSuccessInterval/);
+  assert.match(nativeStats, /kRetryInterval/);
+  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
+  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
+  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });
 
 test('JSON normalization and storage are implemented in C++', () => {
@@ -115,12 +136,6 @@ test('JSON normalization and storage are implemented in C++', () => {
   assert.match(nativeStats, /class NativeStatsStore/);
   assert.match(nativeStats, /history_\.push_back/);
   assert.match(nativeStats, /snapshot\.recentHour/);
-});
-
-test('the direct native path has no generated script or WebMessage protocol', () => {
-  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
-  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
 });
 
 test('renderer directly consumes and observes the native store revision', () => {
