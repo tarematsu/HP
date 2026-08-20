@@ -24,16 +24,24 @@ function settlementSection() {
   return section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
+    '// Restore only the proven session-local credential observation',
   );
 }
 
-test('existing first document-start slot owns only Stationhead login settlement', () => {
+test('first document-start slot combines auth capture with login settlement', () => {
   const settlement = settlementSection();
 
   assert.match(
     composition,
-    /#define StationheadAuthCaptureScript StationheadLoginSettlementScript/,
+    /#define StationheadAuthCaptureScript StationheadAuthAndLoginSettlementScript/,
+  );
+  assert.match(
+    composition,
+    /std::wstring script = StationheadAuthCaptureScript\(\)/,
+  );
+  assert.match(
+    composition,
+    /script\.append\(StationheadLoginSettlementScript\(\)\)/,
   );
   assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest|MutationObserver/);
   assert.doesNotMatch(settlement, /Connect\s+music|connectMusic|serviceConnect/);
