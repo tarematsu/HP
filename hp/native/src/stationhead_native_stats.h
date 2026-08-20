@@ -16,19 +16,12 @@ struct StationheadNativeStatsSnapshot {
   uint64_t revision = 0;
 };
 
-// The legacy member remains declared in StationheadPlayer for source
-// compatibility, but its scheduler interval is redirected to this unreachable
-// compile-time value. Therefore no statistics ExecuteScript poll runs.
-inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
-    INT64_MAX / 2;
+// Consumes the successful play-count message produced by the primary
+// Stationhead WebView's authenticated July 19 streakStats fetch. Acquisition
+// remains inside that logged-in browser session; this module only validates
+// and stores the chart data for the native Music panel.
+bool PublishStationheadNativeStatsMessage(std::wstring_view messageJson);
 
-// Installs one read-only response observer on a Stationhead playback WebView.
-// The committed request supplies the authenticated headers used by the native
-// worker; no page script, WebMessage protocol, or request filter is involved.
-void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
-
-// Implemented in stationhead_native_stats.cpp. Kept separate from the renderer
-// facade so the store, credentials, worker, and WinHTTP state remain private.
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();
 uint64_t GetStationheadNativeStatsRevision();
 
