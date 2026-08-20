@@ -1,9 +1,6 @@
 #include "stationhead_native_stats.h"
 
-#include "winhttp_helpers.h"
-#include <condition_variable>
 #include <deque>
-#include <thread>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -11,49 +8,14 @@ namespace {
 
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
-constexpr auto kSuccessInterval = std::chrono::minutes(5);
-constexpr auto kRetryInterval = std::chrono::seconds(30);
-constexpr size_t kMaximumBodyBytes = 1024 * 1024;
 
-std::wstring LowerAscii(std::wstring_view value) {
-  std::wstring lower(value);
-  std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t ch) {
-    return static_cast<wchar_t>(
-        ch >= L'A' && ch <= L'Z' ? ch - L'A' + L'a' : ch);
-  });
-  return lower;
-}
-
-bool IsStationheadAccountApiUri(std::wstring_view uri) {
-  if (uri.empty()) return false;
-  const std::wstring lower = LowerAscii(uri);
-  constexpr std::wstring_view scheme = L"https://";
-  if (!lower.starts_with(scheme)) return false;
-  const size_t hostStart = scheme.size();
-  const size_t pathStart = lower.find(L'/', hostStart);
-  if (pathStart == std::wstring::npos) return false;
-  if (std::wstring_view(lower).substr(hostStart, pathStart - hostStart) !=
-      L"production1.stationhead.com") {
-    return false;
-  }
-  size_t pathEnd = lower.find_first_of(L"?#", pathStart);
-  if (pathEnd == std::wstring::npos) pathEnd = lower.size();
-  const std::wstring_view path =
-      std::wstring_view(lower).substr(pathStart, pathEnd - pathStart);
-  return path.starts_with(L"/me/") || path == L"/account" ||
-      path.starts_with(L"/account/");
-}
-
-bool ParseStatsJson(
-    std::string_view utf8,
+bool ParseStatsObject(
+    const winrt::Windows::Data::Json::JsonObject& root,
     int64_t referenceAt,
     std::vector<StationheadNativeDailyPlayPoint>& output) {
   output.clear();
-  if (utf8.empty() || referenceAt <= 0) return false;
+  if (referenceAt <= 0 || !root.HasKey(L"chart_data")) return false;
   try {
-    const auto root = winrt::Windows::Data::Json::JsonObject::Parse(
-        Utf8ToWide(std::string(utf8)));
-    if (!root.HasKey(L"chart_data")) return false;
     const auto chart = root.GetNamedArray(L"chart_data");
     constexpr uint32_t kMaximumPoints = 256;
     constexpr int64_t kMaximumPastMs = 60LL * kDayMs;
@@ -183,224 +145,26 @@ NativeStatsStore& StatsStore() {
   return *store;
 }
 
-struct RequestCredentials {
-  std::wstring authorization;
-  std::wstring deviceUid;
-  std::wstring appPlatform;
-  std::wstring appVersion;
-  std::wstring cookie;
-
-  bool operator==(const RequestCredentials&) const = default;
-};
-
-bool SafeHeaderValue(std::wstring_view value, size_t maximumLength) {
-  return !value.empty() && value.size() <= maximumLength &&
-      value.find_first_of(L"\r\n") == std::wstring_view::npos;
-}
-
-std::wstring DevToolsHeaderValue(
-    const winrt::Windows::Data::Json::JsonObject& headers,
-    std::wstring_view name,
-    size_t maximumLength) {
-  const std::wstring expected = LowerAscii(name);
-  for (const auto& entry : headers) {
-    if (LowerAscii(entry.Key().c_str()) != expected) continue;
-    const auto value = entry.Value();
-    if (value.ValueType() !=
-        winrt::Windows::Data::Json::JsonValueType::String) {
-      return {};
-    }
-    const std::wstring text(value.GetString().c_str());
-    return SafeHeaderValue(text, maximumLength) ? text : std::wstring{};
-  }
-  return {};
-}
-
-std::wstring RequestHeaders(const RequestCredentials& credentials) {
-  std::wstring output;
-  const auto append = [&output](
-      std::wstring_view name, std::wstring_view value) {
-    if (value.empty()) return;
-    output.append(name);
-    output.append(L": ");
-    output.append(value);
-    output.append(L"\r\n");
-  };
-  append(L"Authorization", credentials.authorization);
-  append(L"sth-device-uid", credentials.deviceUid);
-  append(L"app-platform", credentials.appPlatform);
-  append(L"app-version", credentials.appVersion);
-  append(L"Cookie", credentials.cookie);
-  append(L"Accept", L"application/json");
-  return output;
-}
-
-class NativeStatsClient {
- public:
-  NativeStatsClient() {
-    std::thread([this] { WorkerLoop(); }).detach();
-  }
-
-  void ObserveCredentials(int channelId, RequestCredentials credentials) {
-    if (channelId <= 0 || credentials.authorization.empty()) return;
-    {
-      std::lock_guard lock(mutex_);
-      if (channelId_ == channelId && credentials_ == credentials) return;
-      channelId_ = channelId;
-      credentials_ = std::move(credentials);
-      ++credentialsGeneration_;
-      nextAttempt_ = std::chrono::steady_clock::time_point::min();
-    }
-    wake_.notify_one();
-  }
-
- private:
-  void WorkerLoop() noexcept {
-    try {
-      winrt::init_apartment(winrt::apartment_type::multi_threaded);
-    } catch (...) {
-    }
-    for (;;) {
-      try {
-        DownloadOnce();
-      } catch (...) {
-        std::lock_guard lock(mutex_);
-        if (channelId_ > 0 && !credentials_.authorization.empty()) {
-          nextAttempt_ = std::chrono::steady_clock::now() + kRetryInterval;
-        }
-        wake_.notify_one();
-      }
-    }
-  }
-
-  void DownloadOnce() {
-    int channelId = 0;
-    uint64_t generation = 0;
-    RequestCredentials credentials;
-    {
-      std::unique_lock lock(mutex_);
-      wake_.wait(lock, [this] {
-        return channelId_ > 0 && !credentials_.authorization.empty();
-      });
-      while (nextAttempt_ != std::chrono::steady_clock::time_point::min() &&
-             std::chrono::steady_clock::now() < nextAttempt_) {
-        wake_.wait_until(lock, nextAttempt_);
-      }
-      channelId = channelId_;
-      generation = credentialsGeneration_;
-      credentials = credentials_;
-      nextAttempt_ = std::chrono::steady_clock::time_point::max();
-    }
-
-    std::wstring url = L"https://production1.stationhead.com/me/channel/";
-    url += std::to_wstring(channelId);
-    url += L"/streakStats";
-    const std::wstring headers = RequestHeaders(credentials);
-    std::vector<uint8_t> body;
-    const bool downloaded = WinHttpDownload(
-        url, kMaximumBodyBytes, &body, nullptr, nullptr,
-        L"HomePanel/2.2", headers.c_str());
-    const int64_t receivedAt = UnixMillis();
-    std::vector<StationheadNativeDailyPlayPoint> daily;
-    const bool parsed = downloaded && ParseStatsJson(
-        std::string_view(
-            reinterpret_cast<const char*>(body.data()), body.size()),
-        receivedAt, daily);
-
-    bool currentCredentials = false;
-    {
-      std::lock_guard lock(mutex_);
-      currentCredentials = generation == credentialsGeneration_;
-      if (currentCredentials) {
-        nextAttempt_ = std::chrono::steady_clock::now() +
-            (parsed ? kSuccessInterval : kRetryInterval);
-      }
-    }
-    if (parsed && currentCredentials) {
-      StatsStore().Publish(std::move(daily), receivedAt);
-    }
-    wake_.notify_one();
-  }
-
-  std::mutex mutex_;
-  std::condition_variable wake_;
-  RequestCredentials credentials_;
-  int channelId_ = 0;
-  uint64_t credentialsGeneration_ = 0;
-  std::chrono::steady_clock::time_point nextAttempt_ =
-      std::chrono::steady_clock::time_point::min();
-};
-
-NativeStatsClient& StatsClient() {
-  static auto* client = new NativeStatsClient();
-  return *client;
-}
-
-void ObserveDevToolsResponse(std::wstring_view json, int channelId) {
-  if (json.empty() || channelId <= 0) return;
-  try {
-    const auto root = winrt::Windows::Data::Json::JsonObject::Parse(
-        std::wstring(json));
-    if (!root.HasKey(L"response")) return;
-    const auto response = root.GetNamedObject(L"response");
-    const double status = response.GetNamedNumber(L"status", 0);
-    if (status < 200 || status >= 300) return;
-    const std::wstring uri(response.GetNamedString(L"url", L"").c_str());
-    if (!IsStationheadAccountApiUri(uri) ||
-        !response.HasKey(L"requestHeaders")) {
-      return;
-    }
-    const auto headers = response.GetNamedObject(L"requestHeaders");
-
-    RequestCredentials credentials;
-    credentials.authorization =
-        DevToolsHeaderValue(headers, L"authorization", 16 * 1024);
-    if (credentials.authorization.empty()) return;
-    credentials.deviceUid =
-        DevToolsHeaderValue(headers, L"sth-device-uid", 1024);
-    credentials.appPlatform =
-        DevToolsHeaderValue(headers, L"app-platform", 256);
-    credentials.appVersion =
-        DevToolsHeaderValue(headers, L"app-version", 256);
-    credentials.cookie = DevToolsHeaderValue(headers, L"cookie", 32 * 1024);
-    StatsClient().ObserveCredentials(channelId, std::move(credentials));
-  } catch (...) {
-  }
-}
-
 }  // namespace
 
-void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
-  if (!webview || channelId <= 0) return;
-
-  ComPtr<ICoreWebView2DevToolsProtocolEventReceiver> receiver;
-  if (FAILED(webview->GetDevToolsProtocolEventReceiver(
-          L"Network.responseReceived", &receiver)) ||
-      !receiver) {
-    return;
+bool PublishStationheadNativeStatsMessage(std::wstring_view messageJson) {
+  if (messageJson.empty()) return false;
+  try {
+    const auto message = winrt::Windows::Data::Json::JsonObject::Parse(
+        std::wstring(messageJson));
+    if (message.GetNamedString(L"type", L"") != L"stationhead-play-stats" ||
+        !message.HasKey(L"data")) {
+      return false;
+    }
+    const auto data = message.GetNamedObject(L"data");
+    const int64_t receivedAt = UnixMillis();
+    std::vector<StationheadNativeDailyPlayPoint> daily;
+    if (!ParseStatsObject(data, receivedAt, daily)) return false;
+    StatsStore().Publish(std::move(daily), receivedAt);
+    return true;
+  } catch (...) {
+    return false;
   }
-
-  EventRegistrationToken ignoredToken{};
-  const HRESULT handlerResult = receiver->add_DevToolsProtocolEventReceived(
-      Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>(
-          [channelId](
-              ICoreWebView2*,
-              ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args)
-              -> HRESULT {
-            if (!args) return S_OK;
-            LPWSTR jsonRaw = nullptr;
-            if (FAILED(args->get_ParameterObjectAsJson(&jsonRaw)) || !jsonRaw) {
-              return S_OK;
-            }
-            const std::wstring json(jsonRaw);
-            CoTaskMemFree(jsonRaw);
-            ObserveDevToolsResponse(json, channelId);
-            return S_OK;
-          }).Get(),
-      &ignoredToken);
-  if (FAILED(handlerResult)) return;
-
-  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
