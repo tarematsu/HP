@@ -49,11 +49,9 @@ test('playback-safe policy remains the final request boundary', () => {
     policy,
     /#undef ApplyStationheadResourceBlocking[\s\S]*#define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe/,
   );
-  assert.match(policy, /#include "stationhead_native_stats\.h"/);
-  assert.match(policy, /AttachStationheadNativeStats\(webview, config\.channelId\)/);
 });
 
-test('playback-safe policy is the final precompiled Stationhead policy for every translation unit', () => {
+test('playback-safe policy is still the final precompiled request policy', () => {
   const scriptPolicyAt = cmake.indexOf(
     'target_precompile_headers(HomePanel PRIVATE\n  src/sh_runtime_script_resource_policy_fix.h)',
   );
@@ -66,23 +64,28 @@ test('playback-safe policy is the final precompiled Stationhead policy for every
   assert.ok(scriptPolicyAt >= 0);
   assert.ok(playbackPolicyAt > scriptPolicyAt);
   assert.ok(messagePolicyAt > playbackPolicyAt);
-  assert.match(
-    policy,
-    /#undef kStationheadDailyPlayStatsIntervalMs[\s\S]*kStationheadLegacyStatsPollDisabledIntervalMs/,
-  );
+  assert.doesNotMatch(policy, /kStationheadLegacyStatsPollDisabledIntervalMs/);
 });
 
-test('document-start auth slot settles login UI without patching Stationhead fetch or XHR', () => {
+test('document-start combines credential capture with existing login settlement', () => {
   const settlement = section(
     composition,
     'inline std::wstring StationheadLoginSettlementScript()',
-    '// Media boundaries never initiate navigation.',
+    '// Restore only the proven session-local credential observation',
   );
   assert.match(settlement, /stationhead-auth-ready/);
-  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest|Authorization|authorization/);
+  assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest/);
   assert.match(
     composition,
-    /#undef StationheadAuthCaptureScript\s*#define StationheadAuthCaptureScript StationheadLoginSettlementScript/,
+    /std::wstring script = StationheadAuthCaptureScript\(\)/,
+  );
+  assert.match(
+    composition,
+    /script\.append\(StationheadLoginSettlementScript\(\)\)/,
+  );
+  assert.match(
+    composition,
+    /#define StationheadAuthCaptureScript StationheadAuthAndLoginSettlementScript/,
   );
 });
 
@@ -103,7 +106,7 @@ test('playback policy installs no request substitution or URL blocking', () => {
   const handler = section(
     policy,
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
-    '}  // namespace hp',
+    '// Restore the proven page-owned acquisition shape',
   );
   assert.doesNotMatch(
     handler,
@@ -119,27 +122,24 @@ test('playback policy installs no request substitution or URL blocking', () => {
   );
 });
 
-test('native statistics observes final headers without mutating browser traffic', () => {
-  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.match(nativeStats, /Network\.responseReceived/);
-  assert.match(nativeStats, /get_ParameterObjectAsJson/);
-  assert.match(nativeStats, /WinHttpDownload/);
-  assert.doesNotMatch(nativeStats, /WebResourceRequested|WebResourceResponseReceived/);
-  assert.doesNotMatch(nativeStats, /Network\.requestWillBeSent|Network\.loadingFinished|Network\.getResponseBody/);
-  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
+test('statistics request stays inside the logged-in browser session', () => {
+  assert.match(policy, /StationheadPrimaryWebViewStatsScript/);
+  assert.match(policy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(policy, /credentials: 'include'/);
+  assert.match(policy, /\/streakStats/);
+  assert.doesNotMatch(policy, /AttachStationheadNativeStats|WinHttpDownload/);
   assert.doesNotMatch(
     nativeStats,
-    /CreateWebResourceResponse|put_Response|Network\.setBlockedURLs|Network\.setExtraHTTPHeaders|Network\.setCacheDisabled/,
+    /WinHttpDownload|Network\.responseReceived|GetDevToolsProtocolEventReceiver|WebResourceRequested|WebResourceResponseReceived/,
   );
 });
 
-test('all dynamic Stationhead and third-party requests remain fail-open', () => {
+test('all dynamic Stationhead requests remain fail-open at the native boundary', () => {
   const handler = section(
     policy,
     'inline void ApplyStationheadResourceBlockingPlaybackSafe',
-    '}  // namespace hp',
+    '// Restore the proven page-owned acquisition shape',
   );
-  assert.match(handler, /Do not block or synthesize dynamic requests/);
   assert.doesNotMatch(
     handler,
     /StationheadRequestIsBlockable|StationheadTelemetryRequest|StationheadExpandedNonPlaybackScript|StationheadKnownOptionalModuleStub|StationheadOptionalStylesheet/,

@@ -10,6 +10,10 @@ const panel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
+const playbackPolicy = readFileSync(
+  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const nativeStatsHeader = readFileSync(
   new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
   'utf8',
@@ -40,35 +44,27 @@ test('every requested period is rendered as one small right-aligned line', () =>
   assert.match(panel, /L"--"/);
 });
 
-test('the public header stays a narrow renderer facade', () => {
-  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
+test('the public native stats facade only accepts and exposes browser results', () => {
+  assert.match(nativeStatsHeader, /PublishStationheadNativeStatsMessage/);
   assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
   assert.doesNotMatch(
     nativeStatsHeader,
-    /WinHttpDownload|WebResourceRequested|JsonObject::Parse/,
+    /AttachStationheadNativeStats|WinHttpDownload|WebResourceRequested|JsonObject::Parse/,
   );
 });
 
-test('one native worker actively owns streakStats retrieval', () => {
-  assert.match(nativeStats, /GetDevToolsProtocolEventReceiver/);
-  assert.match(nativeStats, /Network\.responseReceived/);
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /ParseStatsJson/);
+test('play-count acquisition is owned by the authenticated Primary WebView', () => {
+  assert.match(playbackPolicy, /StationheadPrimaryWebViewStatsScript/);
+  assert.match(playbackPolicy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(playbackPolicy, /credentials: 'include'/);
+  assert.match(playbackPolicy, /\/streakStats/);
+  assert.match(playbackPolicy, /stationhead-play-stats/);
+  assert.doesNotMatch(playbackPolicy, /WinHttpDownload|Network\.responseReceived/);
+
+  assert.match(nativeStats, /PublishStationheadNativeStatsMessage/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
-
-  assert.doesNotMatch(nativeStats, /add_WebResourceResponseReceived/);
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /Network\.requestWillBeSent|Network\.loadingFinished|Network\.getResponseBody/);
-  assert.doesNotMatch(nativeStats, /requestId|PendingRequest/);
-});
-
-test('the native path does not patch page JavaScript or use a WebMessage stats protocol', () => {
-  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation/);
-  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
+  assert.doesNotMatch(
+    nativeStats,
+    /WinHttpDownload|std::thread|GetDevToolsProtocolEventReceiver|Network\.responseReceived/,
+  );
 });

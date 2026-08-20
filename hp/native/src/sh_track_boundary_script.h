@@ -6,9 +6,8 @@
 
 namespace hp {
 
-// Native response observation owns play-count credentials. Reuse the existing
-// first document-start registration slot only for login-state settlement; do
-// not restore the legacy fetch/XHR credential wrappers.
+// Keep the existing login-state settlement probe. It clears the native login
+// latch only after the top-right account control is stable for three seconds.
 inline std::wstring StationheadLoginSettlementScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -205,6 +204,17 @@ inline std::wstring StationheadLoginSettlementScript() {
   return kScript;
 }
 
+// Restore only the proven session-local credential observation from the older
+// working path, then keep the current login settlement probe. The capture code
+// is the already-hardened policy produced by the earlier PCH layers; this file
+// merely composes it with the current settlement logic instead of replacing it.
+inline std::wstring StationheadAuthAndLoginSettlementScript() {
+  std::wstring script = StationheadAuthCaptureScript();
+  script.push_back(L'\n');
+  script.append(StationheadLoginSettlementScript());
+  return script;
+}
+
 // Media boundaries never initiate navigation. Window A uses the native
 // 55-minute clock and Window B uses the native 54-minute clock instead.
 inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
@@ -218,4 +228,4 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
 #define HandleTrackEnded(...) ((void)0)
 
 #undef StationheadAuthCaptureScript
-#define StationheadAuthCaptureScript StationheadLoginSettlementScript
+#define StationheadAuthCaptureScript StationheadAuthAndLoginSettlementScript
