@@ -1,47 +1,31 @@
 #pragma once
 #include "sh_startup_resource_reduction_policy_fix.h"
-#include "stationhead_native_stats.h"
 
 namespace hp {
 
-// Stationhead's public shell, authenticated route, playback controls, feature
-// configuration, and telemetry are loaded through one evolving module/API graph.
-// Native request substitution cannot reliably distinguish an optional request
-// from a route-critical dependency across account flags and staged deployments.
-// Keep the final playback WebView boundary fail-open. Statistics observation is
-// read-only and does not substitute or filter requests.
+// Keep Stationhead's playback boundary fail-open. Statistics acquisition is
+// supplied by the later July 19 policy and must not attach a native request or
+// response observer here.
 inline void ApplyStationheadResourceBlockingPlaybackSafe(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
     const StationheadConfig& config,
     std::atomic<bool>& armed,
     EventRegistrationToken& token) {
+  (void)config;
   (void)armed;
   (void)token;
   if (!environment || !webview) return;
 
   // Clear only Chromium's HTTP cache once per newly created playback controller.
   // Cookies and DOM storage remain intact, so Stationhead login and Spotify
-  // authorization survive the reset. Do not install request substitution or CDP
-  // URL blocking: a delayed module, feature flag, or authenticated API must never
-  // be replaced by a synthetic response after the route shell has mounted.
-  webview->CallDevToolsProtocolMethod(L"Network.enable", L"{}", nullptr);
+  // authorization survive the reset. Do not install request substitution, URL
+  // blocking, or statistics observers at this boundary.
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
-
-  // Observe committed Stationhead responses directly. The observer installs no
-  // WebResourceRequested filters, so each playback WebView may safely expose a
-  // valid authenticated request to the single native statistics client.
-  AttachStationheadNativeStats(webview, config.channelId);
 }
 
 }  // namespace hp
 
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
-
-// The active statistics path is fully native. Keep the old scheduler unreachable
-// until its remaining source-compatible fields are removed separately.
-#undef kStationheadDailyPlayStatsIntervalMs
-#define kStationheadDailyPlayStatsIntervalMs \
-  ::hp::kStationheadLegacyStatsPollDisabledIntervalMs

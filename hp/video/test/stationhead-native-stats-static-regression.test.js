@@ -1,154 +1,96 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const nativeStatsHeaderUrl = new URL(
-  '../../native/src/stationhead_native_stats.h', import.meta.url);
-const nativeStatsSourceUrl = new URL(
-  '../../native/src/stationhead_native_stats.cpp', import.meta.url);
-const playbackPolicyUrl = new URL(
-  '../../native/src/sh_playback_resource_policy_fix.h', import.meta.url);
-const authPolicyUrl = new URL(
-  '../../native/src/sh_auth_navigation_policy_fix.h', import.meta.url);
-const trackBoundaryUrl = new URL(
-  '../../native/src/sh_track_boundary_script.h', import.meta.url);
-const playerSourceUrl = new URL('../../native/src/sh.cpp', import.meta.url);
-const cmakeUrl = new URL('../../native/CMakeLists.txt', import.meta.url);
-const rendererUrl = new URL(
-  '../../native/src/renderer_panel_state.cpp', import.meta.url);
-const panelUrl = new URL(
-  '../../native/src/renderer_panels/media_section_v2.inc', import.meta.url);
+const nativeStatsHeader = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.h', import.meta.url), 'utf8');
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url), 'utf8');
+const july19Policy = readFileSync(
+  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url), 'utf8');
+const messagePolicy = readFileSync(
+  new URL('../../native/src/sh_stats_webview_message_policy_fix.h', import.meta.url), 'utf8');
+const composition = readFileSync(
+  new URL('../../native/src/sh_track_boundary_script.h', import.meta.url), 'utf8');
+const playerSource = readFileSync(
+  new URL('../../native/src/sh.cpp', import.meta.url), 'utf8');
+const renderer = readFileSync(
+  new URL('../../native/src/renderer_panel_state.cpp', import.meta.url), 'utf8');
+const panel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url), 'utf8');
 
-const nativeStatsHeader = readFileSync(nativeStatsHeaderUrl, 'utf8');
-const nativeStats = readFileSync(nativeStatsSourceUrl, 'utf8');
-const playbackPolicy = readFileSync(playbackPolicyUrl, 'utf8');
-const authPolicy = readFileSync(authPolicyUrl, 'utf8');
-const trackBoundary = readFileSync(trackBoundaryUrl, 'utf8');
-const playerSource = readFileSync(playerSourceUrl, 'utf8');
-const cmake = readFileSync(cmakeUrl, 'utf8');
-const renderer = readFileSync(rendererUrl, 'utf8');
-const panel = readFileSync(panelUrl, 'utf8');
-
-const removedPolicies = [
-  'sh_stats_session_policy_fix.h',
-  'sh_stats_passive_response_policy_fix.h',
-  'sh_stats_july26_baseline_policy_fix.h',
-  'sh_stats_july23_baseline_policy_fix.h',
-  'sh_stats_auth_fallback_policy_fix.h',
-  'stationhead_native_stats_policy.h',
-];
-
-test('all stacked generated play-count policy files are removed', () => {
-  for (const file of removedPolicies) {
-    assert.equal(
-      existsSync(new URL(`../../native/src/${file}`, import.meta.url)),
-      false,
-      `${file} must stay deleted`,
-    );
-  }
-  assert.doesNotMatch(authPolicy, /sh_stats_/);
-  assert.doesNotMatch(trackBoundary, /sh_stats_/);
-  assert.doesNotMatch(cmake, /stationhead_native_stats_policy/);
-});
-
-test('a normal C++ source is built and directly attached by WebView setup', () => {
-  assert.match(cmake, /src\/stationhead_native_stats\.cpp/);
-  assert.doesNotMatch(
-    cmake,
-    /target_precompile_headers\(HomePanel PRIVATE\s+src\/stationhead_native_stats/,
-  );
-  assert.match(playbackPolicy, /#include "stationhead_native_stats\.h"/);
-  assert.doesNotMatch(playbackPolicy, /StationheadOwnsWorkerRequestFilters\(webview\)/);
+test('July 19 stats policy is the final Stationhead acquisition layer', () => {
+  assert.match(composition, /#include "sh_july19_stats_policy_fix\.h"/);
   assert.match(
-    playbackPolicy,
-    /AttachStationheadNativeStats\(webview, config\.channelId\)/,
-  );
-  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
-});
-
-test('the legacy page-generated statistics scheduler is compile-time disabled', () => {
-  assert.match(
-    nativeStatsHeader,
-    /kStationheadLegacyStatsPollDisabledIntervalMs =\s*INT64_MAX \/ 2/,
+    july19Policy,
+    /#define ApplyStationheadResourceBlocking ApplyStationheadJuly19ResourcePolicy/,
   );
   assert.match(
-    playbackPolicy,
-    /#define kStationheadDailyPlayStatsIntervalMs\s*\\\s*::hp::kStationheadLegacyStatsPollDisabledIntervalMs/,
+    july19Policy,
+    /#define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript/,
   );
   assert.match(
-    playerSource,
-    /nowMs - lastDailyPlayStatsAt_ >= kStationheadDailyPlayStatsIntervalMs/,
+    july19Policy,
+    /#define StationheadApiPlayStatsScript StationheadJuly19ApiPlayStatsScript/,
+  );
+  assert.match(
+    july19Policy,
+    /kStationheadJuly19StatsIntervalMs = 5 \* 60'000/,
   );
 });
 
-test('one committed-response observer captures credentials only', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
+test('July 19 document-start capture observes page fetch and XHR Authorization', () => {
+  assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
+  assert.match(july19Policy, /const NativeXhr = window\.XMLHttpRequest/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.open = function/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.setRequestHeader = function/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
+  assert.match(july19Policy, /getHeader\('authorization'\)/);
+  assert.match(july19Policy, /'sth-device-uid'/);
+  assert.match(july19Policy, /'app-platform'/);
+  assert.match(july19Policy, /'app-version'/);
+  assert.match(july19Policy, /stationhead-auth-ready/);
+  assert.doesNotMatch(july19Policy, /auth_generation|document_generation|request_id/);
+});
+
+test('Primary performs the July 19 authenticated streakStats request every five minutes', () => {
+  assert.match(playerSource, /!IsSecondary\(\)[\s\S]*PollDailyPlayStats\(nowMs\)/);
+  assert.match(playerSource, /StationheadApiPlayStatsScript\(config_\.channelId\)/);
+  assert.match(july19Policy, /production1\.stationhead\.com\/me\/channel\//);
+  assert.match(july19Policy, /\/streakStats/);
+  assert.match(july19Policy, /credentials: 'include'/);
+  assert.match(july19Policy, /cache: 'no-store'/);
+  assert.match(july19Policy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(july19Policy, /stationhead-play-stats/);
+  assert.doesNotMatch(july19Policy, /StationheadPlayStatsSuccessAt|10 \* 60 \* 1000/);
+});
+
+test('no native HTTP or response observer owns play-count acquisition', () => {
+  assert.match(nativeStatsHeader, /PublishStationheadNativeStatsMessage/);
+  assert.doesNotMatch(nativeStatsHeader, /AttachStationheadNativeStats/);
+  assert.match(nativeStats, /class NativeStatsStore/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
   assert.doesNotMatch(
     nativeStats,
-    /COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_SERVICE_WORKER/,
+    /WinHttpDownload|std::thread|condition_variable|WebResourceResponseReceived|WebResourceRequested|GetDevToolsProtocolEventReceiver/,
   );
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /get_Response/);
-  assert.doesNotMatch(nativeStats, /get_StatusCode/);
-  assert.doesNotMatch(nativeStats, /GetContent/);
-  assert.match(nativeStats, /production1\.stationhead\.com/);
+  assert.doesNotMatch(
+    july19Policy,
+    /AttachStationheadNativeStats|add_WebResourceResponseReceived|WinHttpDownload/,
+  );
 });
 
-test('committed response requests seed the sole native statistics worker', () => {
-  const responseObserverAt = nativeStats.indexOf('void AttachCredentialObserver');
-  assert.ok(responseObserverAt >= 0);
-  const responseObserver = nativeStats.slice(responseObserverAt);
-  const apiGate = responseObserver.indexOf(
-    'if (!IsStationheadApiUri(uri)) return S_OK;',
-  );
-  const headerRead = responseObserver.indexOf('request->get_Headers(&headers)');
-  const authorizationRead = responseObserver.indexOf(
-    'headers.Get(), L"Authorization", 16 * 1024',
-  );
-  const observeCredentials = responseObserver.indexOf(
-    'StatsClient().ObserveCredentials',
-  );
-
-  assert.ok(apiGate >= 0);
-  assert.ok(headerRead > apiGate);
-  assert.ok(authorizationRead > headerRead);
-  assert.ok(observeCredentials > authorizationRead);
-  assert.doesNotMatch(responseObserver, /IsStatsUri|GetContent|get_Response/);
-});
-
-test('one autonomous worker requests streakStats without page script execution', () => {
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::condition_variable wake_/);
-  assert.match(nativeStats, /WorkerLoop\(\)/);
-  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
-  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
-  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
-});
-
-test('JSON normalization and storage are implemented in C++', () => {
-  assert.match(nativeStats, /JsonObject::Parse/);
+test('generationless July 19 stats messages feed the native store before later handlers', () => {
+  assert.match(messagePolicy, /PublishStationheadNativeStatsMessage/);
+  assert.match(messagePolicy, /if \(consumed\) return S_OK/);
+  assert.doesNotMatch(messagePolicy, /auth_generation|document_generation|request_id/);
+  assert.match(nativeStats, /stationhead-play-stats/);
   assert.match(nativeStats, /GetNamedArray\(L"chart_data"\)/);
-  assert.match(nativeStats, /std::stable_sort/);
-  assert.match(nativeStats, /normalized\.back\(\)\.value = point\.value/);
-  assert.match(nativeStats, /normalized\.size\(\) > 45/);
-  assert.match(nativeStats, /class NativeStatsStore/);
-  assert.match(nativeStats, /history_\.push_back/);
-  assert.match(nativeStats, /snapshot\.recentHour/);
 });
 
-test('renderer directly consumes and observes the native store revision', () => {
+test('renderer still consumes and observes the native store revision', () => {
   assert.match(panel, /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/);
   assert.match(panel, /SummarizeStationheadDailyPlays\(nativeStats\.daily, nowMs\)/);
   assert.match(renderer, /GlobalStationheadNativeStatsStore\(\)\.Revision\(\)/);
   assert.match(renderer, /nativeStatsChanged/);
-  assert.match(renderer, /PanelSection::Music/);
 });

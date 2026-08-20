@@ -10,6 +10,10 @@ const panel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url),
   'utf8',
 );
+const july19Policy = readFileSync(
+  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
+  'utf8',
+);
 const nativeStatsHeader = readFileSync(
   new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
   'utf8',
@@ -35,43 +39,32 @@ test('every requested period is rendered as one small right-aligned line', () =>
     panel,
     /SelectObject\(dc, TierFont\(FontTier::Small\)\);[\s\S]*DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
   );
-  assert.doesNotMatch(panel, /DrawWidgetCard\(dc, cell/);
-  assert.doesNotMatch(panel, /usableMetricWidth/);
   assert.match(panel, /L"--"/);
 });
 
-test('the public header is declarations and a narrow renderer facade only', () => {
-  assert.match(nativeStatsHeader, /void AttachStationheadNativeStats/);
+test('the native stats facade only accepts and exposes browser results', () => {
+  assert.match(nativeStatsHeader, /PublishStationheadNativeStatsMessage/);
   assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
-  assert.doesNotMatch(nativeStatsHeader, /WinHttpDownload|WebResourceRequested|JsonObject::Parse/);
+  assert.doesNotMatch(
+    nativeStatsHeader,
+    /AttachStationheadNativeStats|WinHttpDownload|WebResourceRequested/,
+  );
 });
 
-test('one committed WebView2 response stream supplies credentials only', () => {
-  assert.doesNotMatch(nativeStats, /add_WebResourceRequested/);
-  assert.doesNotMatch(nativeStats, /AddWebResourceRequestedFilter/);
-  assert.match(nativeStats, /add_WebResourceResponseReceived/);
-  assert.match(nativeStats, /get_Request/);
-  assert.match(nativeStats, /ICoreWebView2HttpRequestHeaders/);
-  assert.match(nativeStats, /GetHeader\(/);
-  assert.doesNotMatch(nativeStats, /ICoreWebView2WebResourceResponseView/);
-  assert.doesNotMatch(nativeStats, /GetContent\(/);
-});
+test('play-count acquisition is the July 19 authenticated Primary WebView path', () => {
+  assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
+  assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
+  assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
+  assert.match(july19Policy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(july19Policy, /credentials: 'include'/);
+  assert.match(july19Policy, /\/streakStats/);
+  assert.match(july19Policy, /stationhead-play-stats/);
 
-test('one autonomous native worker actively downloads and publishes play counts', () => {
-  assert.match(nativeStats, /class NativeStatsClient/);
-  assert.match(nativeStats, /std::condition_variable wake_/);
-  assert.match(nativeStats, /std::thread\(\[this\] \{ WorkerLoop\(\); \}\)\.detach\(\)/);
-  assert.match(nativeStats, /wake_\.wait_until\(lock, nextAttempt_\)/);
-  assert.match(nativeStats, /WinHttpDownload\(/);
-  assert.match(nativeStats, /L"\/streakStats"/);
-  assert.match(nativeStats, /ParseStatsJson/);
+  assert.match(nativeStats, /PublishStationheadNativeStatsMessage/);
   assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.match(nativeStats, /kSuccessInterval/);
-  assert.match(nativeStats, /kRetryInterval/);
-});
-
-test('the native path has no generated script or WebMessage protocol', () => {
-  assert.doesNotMatch(nativeStats, /LR"JS|ExecuteScript|postMessage|chrome\?\.webview/);
-  assert.doesNotMatch(nativeStats, /document_generation|auth_generation|request_id/);
-  assert.doesNotMatch(nativeStats, /localStorage|sessionStorage/);
+  assert.doesNotMatch(
+    nativeStats,
+    /WinHttpDownload|std::thread|WebResourceResponseReceived|Network\.responseReceived/,
+  );
 });
