@@ -23,7 +23,7 @@ const sharedEnvironment = readFileSync(
   'utf8',
 );
 
-test('July 19 policy is included after the later playback boundary', () => {
+test('July 19 policy is included after the playback boundary', () => {
   const playbackAt = composition.indexOf('#include "sh_playback_resource_policy_fix.h"');
   const july19At = composition.indexOf('#include "sh_july19_stats_policy_fix.h"');
   assert.ok(playbackAt >= 0);
@@ -43,8 +43,8 @@ test('final July 19 resource boundary remains fail-open', () => {
   assert.doesNotMatch(july19Policy, /AttachStationheadNativeStats/);
 });
 
-test('later native observer implementation is superseded and not used by final policy', () => {
-  assert.match(playbackPolicy, /AttachStationheadNativeStats/);
+test('playback boundary no longer attaches a native statistics observer', () => {
+  assert.doesNotMatch(playbackPolicy, /AttachStationheadNativeStats/);
   assert.doesNotMatch(nativeStats, /WebResourceResponseReceived|WinHttpDownload|std::thread/);
   assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
   assert.match(july19Policy, /credentials: 'include'/);
