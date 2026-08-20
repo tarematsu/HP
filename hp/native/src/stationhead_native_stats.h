@@ -16,16 +16,11 @@ struct StationheadNativeStatsSnapshot {
   uint64_t revision = 0;
 };
 
-// Keep the legacy page-side statistics scheduler unreachable. One native worker
-// owns active streakStats retrieval after WebView2 exposes a successful account
-// request's final authenticated Stationhead headers.
-inline constexpr int64_t kStationheadLegacyStatsPollDisabledIntervalMs =
-    INT64_MAX / 2;
-
-// Observes only Network.responseReceived so browser traffic is not modified and
-// no request-id correlation is needed. A successful /me/* or /account/* response
-// exposes the request headers actually transmitted; those seed one active worker.
-void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId);
+// Consumes only the successful play-count message produced by the primary
+// Stationhead WebView's own authenticated streakStats fetch. Acquisition stays
+// inside that logged-in browser session; this module only validates and stores
+// the returned chart data for the native Music panel.
+bool PublishStationheadNativeStatsMessage(std::wstring_view messageJson);
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot();
 uint64_t GetStationheadNativeStatsRevision();
