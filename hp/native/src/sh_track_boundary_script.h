@@ -219,3 +219,5 @@ inline std::wstring StationheadTrackBoundaryScript(const wchar_t*) {
 
 #undef StationheadAuthCaptureScript
 #define StationheadAuthCaptureScript StationheadLoginSettlementScript
+
+#include "sh_july19_stats_policy_fix.h"
