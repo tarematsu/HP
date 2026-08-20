@@ -1,6 +1,9 @@
 #include "stationhead_native_stats.h"
 
+#include "winhttp_helpers.h"
+#include <condition_variable>
 #include <deque>
+#include <thread>
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -8,14 +11,41 @@ namespace {
 
 constexpr int64_t kDayMs = 24LL * 60 * 60 * 1000;
 constexpr int64_t kHistorySampleBucketMs = 5LL * 60 * 1000;
+constexpr auto kSuccessInterval = std::chrono::minutes(5);
+constexpr auto kRetryInterval = std::chrono::seconds(30);
+constexpr size_t kMaximumBodyBytes = 1024 * 1024;
 
-bool ParseStatsObject(
-    const winrt::Windows::Data::Json::JsonObject& root,
+std::wstring LowerAscii(std::wstring_view value) {
+  std::wstring lower(value);
+  std::transform(lower.begin(), lower.end(), lower.begin(), [](wchar_t ch) {
+    return static_cast<wchar_t>(
+        ch >= L'A' && ch <= L'Z' ? ch - L'A' + L'a' : ch);
+  });
+  return lower;
+}
+
+bool IsStationheadApiUri(std::wstring_view uri) {
+  if (uri.empty()) return false;
+  const std::wstring lower = LowerAscii(uri);
+  constexpr std::wstring_view scheme = L"https://";
+  if (!lower.starts_with(scheme)) return false;
+  const size_t hostStart = scheme.size();
+  const size_t pathStart = lower.find(L'/', hostStart);
+  if (pathStart == std::wstring::npos) return false;
+  return std::wstring_view(lower).substr(hostStart, pathStart - hostStart) ==
+      L"production1.stationhead.com";
+}
+
+bool ParseStatsJson(
+    std::string_view utf8,
     int64_t referenceAt,
     std::vector<StationheadNativeDailyPlayPoint>& output) {
   output.clear();
-  if (referenceAt <= 0 || !root.HasKey(L"chart_data")) return false;
+  if (utf8.empty() || referenceAt <= 0) return false;
   try {
+    const auto root = winrt::Windows::Data::Json::JsonObject::Parse(
+        Utf8ToWide(std::string(utf8)));
+    if (!root.HasKey(L"chart_data")) return false;
     const auto chart = root.GetNamedArray(L"chart_data");
     constexpr uint32_t kMaximumPoints = 256;
     constexpr int64_t kMaximumPastMs = 60LL * kDayMs;
@@ -145,26 +175,204 @@ NativeStatsStore& StatsStore() {
   return *store;
 }
 
-}  // namespace
+struct RequestCredentials {
+  std::wstring authorization;
+  std::wstring deviceUid;
+  std::wstring appPlatform;
+  std::wstring appVersion;
+  std::wstring cookie;
 
-bool PublishStationheadNativeStatsMessage(std::wstring_view messageJson) {
-  if (messageJson.empty()) return false;
-  try {
-    const auto message = winrt::Windows::Data::Json::JsonObject::Parse(
-        std::wstring(messageJson));
-    if (message.GetNamedString(L"type", L"") != L"stationhead-play-stats" ||
-        !message.HasKey(L"data")) {
-      return false;
+  bool operator==(const RequestCredentials&) const = default;
+};
+
+bool SafeHeaderValue(std::wstring_view value, size_t maximumLength) {
+  return !value.empty() && value.size() <= maximumLength &&
+      value.find_first_of(L"\r\n") == std::wstring_view::npos;
+}
+
+std::wstring HeaderValue(
+    ICoreWebView2HttpRequestHeaders* headers,
+    const wchar_t* name,
+    size_t maximumLength) {
+  if (!headers || !name) return {};
+  LPWSTR raw = nullptr;
+  if (FAILED(headers->GetHeader(name, &raw)) || !raw) return {};
+  std::wstring value(raw);
+  CoTaskMemFree(raw);
+  return SafeHeaderValue(value, maximumLength) ? value : std::wstring{};
+}
+
+std::wstring RequestHeaders(const RequestCredentials& credentials) {
+  std::wstring output;
+  const auto append = [&output](
+      std::wstring_view name, std::wstring_view value) {
+    if (value.empty()) return;
+    output.append(name);
+    output.append(L": ");
+    output.append(value);
+    output.append(L"\r\n");
+  };
+  append(L"Authorization", credentials.authorization);
+  append(L"sth-device-uid", credentials.deviceUid);
+  append(L"app-platform", credentials.appPlatform);
+  append(L"app-version", credentials.appVersion);
+  append(L"Cookie", credentials.cookie);
+  append(L"Accept", L"application/json");
+  return output;
+}
+
+class NativeStatsClient {
+ public:
+  NativeStatsClient() {
+    std::thread([this] { WorkerLoop(); }).detach();
+  }
+
+  void ObserveCredentials(int channelId, RequestCredentials credentials) {
+    if (channelId <= 0 || credentials.authorization.empty()) return;
+    {
+      std::lock_guard lock(mutex_);
+      if (channelId_ == channelId && credentials_ == credentials) return;
+      channelId_ = channelId;
+      credentials_ = std::move(credentials);
+      ++credentialsGeneration_;
+      nextAttempt_ = std::chrono::steady_clock::time_point::min();
     }
-    const auto data = message.GetNamedObject(L"data");
+    wake_.notify_one();
+  }
+
+ private:
+  void WorkerLoop() noexcept {
+    try {
+      winrt::init_apartment(winrt::apartment_type::multi_threaded);
+    } catch (...) {
+    }
+    for (;;) {
+      try {
+        DownloadOnce();
+      } catch (...) {
+        std::lock_guard lock(mutex_);
+        if (channelId_ > 0 && !credentials_.authorization.empty()) {
+          nextAttempt_ = std::chrono::steady_clock::now() + kRetryInterval;
+        }
+      }
+    }
+  }
+
+  void DownloadOnce() {
+    int channelId = 0;
+    uint64_t generation = 0;
+    RequestCredentials credentials;
+    {
+      std::unique_lock lock(mutex_);
+      wake_.wait(lock, [this] {
+        return channelId_ > 0 && !credentials_.authorization.empty();
+      });
+      while (nextAttempt_ != std::chrono::steady_clock::time_point::min() &&
+             std::chrono::steady_clock::now() < nextAttempt_) {
+        wake_.wait_until(lock, nextAttempt_);
+      }
+      channelId = channelId_;
+      generation = credentialsGeneration_;
+      credentials = credentials_;
+      nextAttempt_ = std::chrono::steady_clock::time_point::max();
+    }
+
+    std::wstring url = L"https://production1.stationhead.com/me/channel/";
+    url += std::to_wstring(channelId);
+    url += L"/streakStats";
+    const std::wstring headers = RequestHeaders(credentials);
+    std::vector<uint8_t> body;
+    std::wstring contentType;
+    std::wstring error;
+    const bool downloaded = WinHttpDownload(
+        url, kMaximumBodyBytes, &body, &contentType, &error,
+        L"HomePanel/2.2", headers.c_str());
     const int64_t receivedAt = UnixMillis();
     std::vector<StationheadNativeDailyPlayPoint> daily;
-    if (!ParseStatsObject(data, receivedAt, daily)) return false;
-    StatsStore().Publish(std::move(daily), receivedAt);
-    return true;
-  } catch (...) {
-    return false;
+    const bool parsed = downloaded && ParseStatsJson(
+        std::string_view(
+            reinterpret_cast<const char*>(body.data()), body.size()),
+        receivedAt, daily);
+
+    bool currentCredentials = false;
+    {
+      std::lock_guard lock(mutex_);
+      currentCredentials = generation == credentialsGeneration_;
+      if (currentCredentials) {
+        nextAttempt_ = std::chrono::steady_clock::now() +
+            (parsed ? kSuccessInterval : kRetryInterval);
+      }
+    }
+    if (parsed && currentCredentials) {
+      StatsStore().Publish(std::move(daily), receivedAt);
+    }
+    wake_.notify_one();
   }
+
+  std::mutex mutex_;
+  std::condition_variable wake_;
+  RequestCredentials credentials_;
+  int channelId_ = 0;
+  uint64_t credentialsGeneration_ = 0;
+  std::chrono::steady_clock::time_point nextAttempt_ =
+      std::chrono::steady_clock::time_point::min();
+};
+
+NativeStatsClient& StatsClient() {
+  static auto* client = new NativeStatsClient();
+  return *client;
+}
+
+void AttachCredentialObserver(ICoreWebView2* webview, int channelId) {
+  if (!webview || channelId <= 0) return;
+  ComPtr<ICoreWebView2> base = webview;
+  ComPtr<ICoreWebView2_2> responseWebView;
+  if (FAILED(base.As(&responseWebView)) || !responseWebView) return;
+
+  EventRegistrationToken ignoredToken{};
+  responseWebView->add_WebResourceResponseReceived(
+      Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>(
+          [channelId](
+              ICoreWebView2*,
+              ICoreWebView2WebResourceResponseReceivedEventArgs* args)
+              -> HRESULT {
+            if (!args) return S_OK;
+            ComPtr<ICoreWebView2WebResourceRequest> request;
+            if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+            LPWSTR uriRaw = nullptr;
+            if (FAILED(request->get_Uri(&uriRaw)) || !uriRaw) return S_OK;
+            const std::wstring uri(uriRaw);
+            CoTaskMemFree(uriRaw);
+            if (!IsStationheadApiUri(uri)) return S_OK;
+
+            // ResponseReceived exposes the committed request, including headers
+            // Chromium or a worker added after request-start. Observe those
+            // credentials only; the native worker is the sole stats fetch path.
+            ComPtr<ICoreWebView2HttpRequestHeaders> headers;
+            if (FAILED(request->get_Headers(&headers)) || !headers) return S_OK;
+
+            RequestCredentials credentials;
+            credentials.authorization = HeaderValue(
+                headers.Get(), L"Authorization", 16 * 1024);
+            if (credentials.authorization.empty()) return S_OK;
+            credentials.deviceUid = HeaderValue(
+                headers.Get(), L"sth-device-uid", 1024);
+            credentials.appPlatform = HeaderValue(
+                headers.Get(), L"app-platform", 256);
+            credentials.appVersion = HeaderValue(
+                headers.Get(), L"app-version", 256);
+            credentials.cookie = HeaderValue(
+                headers.Get(), L"Cookie", 32 * 1024);
+            StatsClient().ObserveCredentials(channelId, std::move(credentials));
+            return S_OK;
+          }).Get(),
+      &ignoredToken);
+}
+
+}  // namespace
+
+void AttachStationheadNativeStats(ICoreWebView2* webview, int channelId) {
+  AttachCredentialObserver(webview, channelId);
 }
 
 StationheadNativeStatsSnapshot GetStationheadNativeStatsSnapshot() {
