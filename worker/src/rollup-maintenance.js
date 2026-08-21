@@ -20,27 +20,45 @@ const MINUTE_SOURCE_REPAIR_KEYS = Object.freeze([
   '2026-07-25',
   '2026-07-26',
 ]);
+const MAX_DAILY_MINUTE_SAMPLES = 1_440;
 const STREAM_VALUE_SQL = `COALESCE(
   CASE WHEN validated_stream_count IS NOT NULL AND validated_stream_count>=0
     AND validated_stream_count IS NOT total_listens THEN validated_stream_count END,
   CASE WHEN current_stream_count IS NOT NULL AND current_stream_count>=0
     AND current_stream_count IS NOT total_listens THEN current_stream_count END
 )`;
-const DAILY_BOUNDARIES_SQL = `SELECT
-    (SELECT ${STREAM_VALUE_SQL} FROM sh_channel_snapshots
-     WHERE observed_at>=?1 AND observed_at<?2 AND ${STREAM_VALUE_SQL} IS NOT NULL
+const DAILY_MINUTE_ROWS_CTE = `WITH ranked_daily_rows AS (
+  SELECT snapshots.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY snapshots.channel_id,CAST(snapshots.observed_at/60000 AS INTEGER)
+      ORDER BY snapshots.observed_at DESC,snapshots.id DESC
+    ) AS minute_rank
+  FROM sh_channel_snapshots snapshots
+  WHERE snapshots.observed_at>=?1 AND snapshots.observed_at<?2
+), daily_minute_rows AS (
+  SELECT * FROM ranked_daily_rows WHERE minute_rank=1
+), selected_channel AS (
+  SELECT channel_id FROM daily_minute_rows
+  GROUP BY channel_id
+  ORDER BY COUNT(*) DESC,MAX(observed_at) DESC,channel_id ASC
+  LIMIT 1
+)`;
+const DAILY_BOUNDARIES_SQL = `${DAILY_MINUTE_ROWS_CTE}
+SELECT
+    (SELECT ${STREAM_VALUE_SQL} FROM daily_minute_rows
+     WHERE channel_id=(SELECT channel_id FROM selected_channel) AND ${STREAM_VALUE_SQL} IS NOT NULL
      ORDER BY observed_at ASC,id ASC LIMIT 1) AS stream_start,
-    (SELECT ${STREAM_VALUE_SQL} FROM sh_channel_snapshots
-     WHERE observed_at>=?1 AND observed_at<?2 AND ${STREAM_VALUE_SQL} IS NOT NULL
+    (SELECT ${STREAM_VALUE_SQL} FROM daily_minute_rows
+     WHERE channel_id=(SELECT channel_id FROM selected_channel) AND ${STREAM_VALUE_SQL} IS NOT NULL
      ORDER BY observed_at DESC,id DESC LIMIT 1) AS stream_end,
-    (SELECT total_member_count FROM sh_channel_snapshots
-     WHERE observed_at>=?1 AND observed_at<?2 AND total_member_count IS NOT NULL
+    (SELECT total_member_count FROM daily_minute_rows
+     WHERE channel_id=(SELECT channel_id FROM selected_channel) AND total_member_count IS NOT NULL
      ORDER BY observed_at ASC,id ASC LIMIT 1) AS member_start,
-    (SELECT total_member_count FROM sh_channel_snapshots
-     WHERE observed_at>=?1 AND observed_at<?2 AND total_member_count IS NOT NULL
+    (SELECT total_member_count FROM daily_minute_rows
+     WHERE channel_id=(SELECT channel_id FROM selected_channel) AND total_member_count IS NOT NULL
      ORDER BY observed_at DESC,id DESC LIMIT 1) AS member_end,
-    (SELECT host_handle FROM sh_channel_snapshots
-     WHERE observed_at>=?1 AND observed_at<?2 AND host_handle IS NOT NULL AND host_handle<>''
+    (SELECT host_handle FROM daily_minute_rows
+     WHERE channel_id=(SELECT channel_id FROM selected_channel) AND host_handle IS NOT NULL AND host_handle<>''
      GROUP BY host_handle ORDER BY COUNT(*) DESC,host_handle ASC LIMIT 1) AS primary_host`;
 const SUMMARY_BOUNDARIES_SQL = `SELECT
     (SELECT stream_start FROM sh_daily_summary
@@ -65,8 +83,29 @@ function finite(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function dailySummaryCountsValid(summary) {
+  const sampleCount = Number(summary?.sample_count);
+  const reliableSampleCount = Number(summary?.reliable_sample_count ?? summary?.sample_count);
+  return Number.isInteger(sampleCount)
+    && sampleCount >= 1
+    && sampleCount <= MAX_DAILY_MINUTE_SAMPLES
+    && Number.isInteger(reliableSampleCount)
+    && reliableSampleCount >= 0
+    && reliableSampleCount <= sampleCount;
+}
+
+function validateSummaryCounts(table, aggregate) {
+  if (table !== 'sh_daily_summary') return;
+  if (!dailySummaryCountsValid(aggregate)) {
+    throw new Error(
+      `daily summary sample counts are invalid: ${aggregate?.sample_count}/${aggregate?.reliable_sample_count}`,
+    );
+  }
+}
+
 async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt, qualityFlags = '["live_rollup"]') {
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return false;
+  validateSummaryCounts(table, aggregate);
   const streamStart = finite(boundaries?.stream_start);
   const streamEnd = finite(boundaries?.stream_end);
   const memberStart = finite(boundaries?.member_start);
@@ -102,13 +141,17 @@ async function upsertSummary(db, table, key, aggregate, boundaries, updatedAt, q
 }
 
 async function rollupDaily(sourceDb, otherDb, period, now, qualityFlags = '["live_rollup"]') {
-  const aggregate = await sourceDb.prepare(`SELECT MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
+  const aggregate = await sourceDb.prepare(`${DAILY_MINUTE_ROWS_CTE}
+    SELECT channel_id,MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
       COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
       AVG(listener_count) AS listener_avg,MIN(listener_count) AS listener_min,
       MAX(listener_count) AS listener_max,NULL AS likes_max,NULL AS distinct_tracks,1 AS quality_score
-    FROM sh_channel_snapshots WHERE observed_at>=? AND observed_at<?`)
+    FROM daily_minute_rows
+    WHERE channel_id=(SELECT channel_id FROM selected_channel)
+    GROUP BY channel_id`)
     .bind(period.start, period.end).first();
   if (!aggregate || Number(aggregate.sample_count || 0) < 1) return false;
+  validateSummaryCounts('sh_daily_summary', aggregate);
   const boundaries = await sourceDb.prepare(DAILY_BOUNDARIES_SQL)
     .bind(period.start, period.end).first();
   return upsertSummary(otherDb, 'sh_daily_summary', period.key, aggregate, boundaries, now, qualityFlags);
@@ -213,7 +256,7 @@ async function repairMinuteSourceSummaries(stateDb, minuteDb, otherDb, now) {
 const IMMUTABLE_SUMMARY_STATE_ID = 'immutable-summary-rollups-v1';
 
 async function loadSummary(db, table, key) {
-  return db.prepare(`SELECT period_key,sample_count,quality_flags,updated_at FROM ${table}
+  return db.prepare(`SELECT period_key,sample_count,reliable_sample_count,quality_flags,updated_at FROM ${table}
     WHERE period_key=? LIMIT 1`).bind(key).first();
 }
 
@@ -298,6 +341,18 @@ async function persistentDirtyPeriods(db, now, limit = 3) {
   }).filter((period) => period.end <= currentDay);
 }
 
+async function invalidDailyPeriods(otherDb, now, limit = 3) {
+  const result = await otherDb.prepare(`SELECT period_key FROM sh_daily_summary
+    WHERE sample_count<1 OR sample_count>?
+      OR reliable_sample_count<0 OR reliable_sample_count>sample_count
+    ORDER BY period_key ASC LIMIT ?`)
+    .bind(MAX_DAILY_MINUTE_SAMPLES, limit).all();
+  const currentDay = Math.floor(now / DAY_MS) * DAY_MS;
+  return (result.results || [])
+    .map((row) => utcPeriod(String(row.period_key || '')))
+    .filter((period) => Number.isFinite(period.start) && period.end <= currentDay);
+}
+
 function mergePeriods(primary, secondary, limit = 6) {
   const byKey = new Map();
   for (const period of [...primary, ...secondary]) {
@@ -317,7 +372,9 @@ async function rebuildDailyWhenComplete(minuteDb, otherDb, period, reconciliatio
       reconciliation,
     };
   }
-  if (existing && summaryGeneration(existing) === reconciliation.generation) {
+  if (existing
+      && dailySummaryCountsValid(existing)
+      && summaryGeneration(existing) === reconciliation.generation) {
     return { skipped: true, reason: 'already-current', periodKey: period.key, reconciliation };
   }
   const qualityFlags = JSON.stringify([
@@ -403,8 +460,14 @@ export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now
     minuteDb = null;
   }
   if (!db || !otherDb || !minuteDb) return { skipped: true, reason: 'db-binding-missing' };
-  const dirtyPeriods = await persistentDirtyPeriods(db, now);
-  const periods = mergePeriods(dirtyPeriods, minuteFactReconcileCandidates(now));
+  const [dirtyPeriods, invalidPeriods] = await Promise.all([
+    persistentDirtyPeriods(db, now),
+    invalidDailyPeriods(otherDb, now),
+  ]);
+  const periods = mergePeriods(
+    [...invalidPeriods, ...dirtyPeriods],
+    minuteFactReconcileCandidates(now),
+  );
   const results = [];
   for (const period of periods) {
     const reconciliation = await reconcileMinuteFactsForDay({ DB: db, MINUTE_DB: minuteDb }, period, now);

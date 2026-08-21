@@ -1,7 +1,17 @@
 // Current-day history must follow the fact's canonical minute, not the time a
 // historical/backfill row happened to be received. Using observed_at here can
 // classify millions of old minutes as "today" during a repair import.
-export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH prepared AS (
+//
+// Keep the current daily series on the same active channel as the dashboard.
+// Minute Facts are unique by (channel_id, minute_at), so this also preserves the
+// invariant that one channel can contribute at most 1,440 samples to a UTC day.
+export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
+  SELECT channel_id
+  FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
+  WHERE source_code=1
+  ORDER BY minute_at DESC,id DESC
+  LIMIT 1
+), prepared AS (
   SELECT f.id AS id,
     f.minute_at AS observed_at,
     f.listener_count AS listener_count,
@@ -16,7 +26,8 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH prepared AS (
   LEFT JOIN sh_total_member_daily_latest d
     ON d.channel_id=f.channel_id
     AND d.day_at=(f.minute_at/86400000)*86400000
-  WHERE f.minute_at>=? AND f.minute_at<?
+  WHERE f.channel_id=(SELECT channel_id FROM latest_channel)
+    AND f.minute_at>=? AND f.minute_at<?
 ), ranked AS (
   SELECT prepared.*,
     ROW_NUMBER() OVER (

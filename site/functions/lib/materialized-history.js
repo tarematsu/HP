@@ -10,6 +10,7 @@ const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store',
 };
+const MAX_DAILY_MINUTE_SAMPLES = 1_440;
 
 const SUMMARY_COLUMNS = `period_key,period_start,period_end,sample_count,reliable_sample_count,
 listener_avg,listener_min,listener_max,stream_start,stream_end,stream_growth,
@@ -28,6 +29,22 @@ function summaryLimit(mode) {
   if (mode === 'daily') return 800;
   if (mode === 'weekly') return 160;
   return 60;
+}
+
+function validateDailySummaryRows(rows) {
+  for (const row of rows) {
+    const sampleCount = Number(row?.sample_count);
+    const reliableSampleCount = Number(row?.reliable_sample_count);
+    if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > MAX_DAILY_MINUTE_SAMPLES) {
+      throw new Error(`daily summary ${row?.period_key || 'unknown'} has invalid sample_count: ${row?.sample_count}`);
+    }
+    if (!Number.isInteger(reliableSampleCount)
+        || reliableSampleCount < 0
+        || reliableSampleCount > sampleCount) {
+      throw new Error(`daily summary ${row?.period_key || 'unknown'} has invalid reliable_sample_count: ${row?.reliable_sample_count}`);
+    }
+  }
+  return rows;
 }
 
 export async function loadMaterializedSummary(env, mode, from, to, now = Date.now()) {
@@ -50,6 +67,7 @@ export async function loadMaterializedSummary(env, mode, from, to, now = Date.no
     : [from, to, summaryLimit(mode)];
   const result = await statement.bind(...bindings).all();
   const rows = result.results || [];
+  if (mode === 'daily') validateDailySummaryRows(rows);
   const completed = applySummaryCompleteness(rows, mode, now);
   return {
     rows: completed.rows,

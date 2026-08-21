@@ -10,6 +10,7 @@ const JSON_HEADERS = {
   'cache-control': 'public, max-age=15, s-maxage=30, stale-while-revalidate=30',
   vary: 'accept-encoding',
 };
+const MAX_DAILY_MINUTE_SAMPLES = 1_440;
 
 function json(data, status = 200, headers = {}) {
   return new Response(JSON.stringify(data), {
@@ -45,6 +46,20 @@ function normalizeMinuteRow(row) {
   };
 }
 
+function validateDailyMinuteRow(row) {
+  const sampleCount = Number(row?.sample_count);
+  const reliableSampleCount = Number(row?.reliable_sample_count);
+  if (!Number.isInteger(sampleCount) || sampleCount < 1 || sampleCount > MAX_DAILY_MINUTE_SAMPLES) {
+    throw new Error(`current daily sample_count is invalid: ${row?.sample_count}`);
+  }
+  if (!Number.isInteger(reliableSampleCount)
+      || reliableSampleCount < 0
+      || reliableSampleCount > sampleCount) {
+    throw new Error(`current daily reliable_sample_count is invalid: ${row?.reliable_sample_count}`);
+  }
+  return row;
+}
+
 export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.now()) {
   if (mode !== 'daily') throw new Error(`unsupported summary mode: ${mode}`);
   if (!env?.MINUTE_DB) throw new Error('MINUTE_DB binding missing');
@@ -56,7 +71,8 @@ export async function loadCurrentMinuteSummary(env, mode = 'daily', now = Date.n
     .all();
   const liveRows = (result.results || [])
     .map(normalizeMinuteRow)
-    .filter((row) => String(row?.period_key || '') === periodKey);
+    .filter((row) => String(row?.period_key || '') === periodKey)
+    .map(validateDailyMinuteRow);
   const completed = applySummaryCompleteness(liveRows, 'daily', now);
 
   return {

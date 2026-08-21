@@ -9,7 +9,9 @@ function dailyDatabase(assertions) {
   return {
     prepare(sql) {
       assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time/);
-      assert.match(sql, /WHERE f\.minute_at>=\? AND f\.minute_at<\?/);
+      assert.match(sql, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute/);
+      assert.match(sql, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
+      assert.match(sql, /f\.minute_at>=\? AND f\.minute_at<\?/);
       assert.match(sql, /f\.minute_at AS observed_at/);
       assert.doesNotMatch(sql, /FROM sh_channel_snapshots|idx_sh_minute_facts_observed_id/);
       return {
