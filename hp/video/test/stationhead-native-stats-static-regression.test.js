@@ -21,6 +21,18 @@ test('final acquisition selection returns to the pre-368 page-owned path', () =>
   assert.match(composition, /#include "sh_july19_stats_policy_fix\.h"/);
   assert.match(policy, /StationheadPre368AuthAndLoginSettlementScript/);
   assert.match(policy, /StationheadPre368ApiPlayStatsScript/);
+  const wrapperAt = policy.indexOf(
+    'inline std::wstring StationheadPre368AuthAndLoginSettlementScript()',
+  );
+  assert.ok(wrapperAt >= 0);
+  assert.match(
+    policy.slice(0, wrapperAt),
+    /#undef StationheadAuthCaptureScript/,
+  );
+  assert.match(
+    policy.slice(wrapperAt),
+    /std::wstring script = StationheadAuthCaptureScript\(\);/,
+  );
   assert.match(
     policy,
     /#define StationheadAuthCaptureScript StationheadPre368AuthAndLoginSettlementScript/,
