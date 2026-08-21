@@ -2,78 +2,95 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const shared = readFileSync(
-  new URL('../../native/src/sh_shared.h', import.meta.url), 'utf8');
-const policy = readFileSync(
+const nativeStatsHeader = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.h', import.meta.url), 'utf8');
+const nativeStats = readFileSync(
+  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url), 'utf8');
+const july19Policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url), 'utf8');
+const messagePolicy = readFileSync(
+  new URL('../../native/src/sh_stats_webview_message_policy_fix.h', import.meta.url), 'utf8');
 const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url), 'utf8');
 const playerSource = readFileSync(
   new URL('../../native/src/sh.cpp', import.meta.url), 'utf8');
-const webview = readFileSync(
-  new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
-const history = readFileSync(
-  new URL('../../native/src/app_stationhead_history.cpp', import.meta.url), 'utf8');
+const renderer = readFileSync(
+  new URL('../../native/src/renderer_panel_state.cpp', import.meta.url), 'utf8');
 const panel = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
+  new URL('../../native/src/renderer_panels/media_section_v2.inc', import.meta.url), 'utf8');
 
-test('final acquisition selection returns to the pre-368 page-owned path', () => {
+test('July 19 stats policy is the final Stationhead acquisition layer', () => {
   assert.match(composition, /#include "sh_july19_stats_policy_fix\.h"/);
-  assert.match(policy, /StationheadPre368AuthAndLoginSettlementScript/);
-  assert.match(policy, /StationheadPre368ApiPlayStatsScript/);
-  const wrapperAt = policy.indexOf(
-    'inline std::wstring StationheadPre368AuthAndLoginSettlementScript()',
-  );
-  assert.ok(wrapperAt >= 0);
   assert.match(
-    policy.slice(0, wrapperAt),
-    /#undef StationheadAuthCaptureScript/,
+    july19Policy,
+    /#define ApplyStationheadResourceBlocking ApplyStationheadJuly19ResourcePolicy/,
   );
   assert.match(
-    policy.slice(wrapperAt),
-    /std::wstring script = StationheadAuthCaptureScript\(\);/,
+    july19Policy,
+    /#define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript/,
   );
   assert.match(
-    policy,
-    /#define StationheadAuthCaptureScript StationheadPre368AuthAndLoginSettlementScript/,
+    july19Policy,
+    /#define StationheadApiPlayStatsScript StationheadJuly19ApiPlayStatsScript/,
   );
   assert.match(
-    policy,
-    /#define StationheadApiPlayStatsScript StationheadPre368ApiPlayStatsScript/,
+    july19Policy,
+    /kStationheadJuly19StatsIntervalMs = 5 \* 60'000/,
   );
-  assert.doesNotMatch(policy, /sh_stats_webview_message_policy_fix|stationhead_native_stats/);
 });
 
-test('original pre-368 capture still owns Authorization observation', () => {
-  assert.match(shared, /window\.fetch = function\(input, init\)/);
-  assert.match(shared, /NativeXhr\.prototype\.send = function/);
-  assert.match(shared, /window\.__homepanelStationheadAuthHeaders = next/);
-  assert.match(shared, /homepanel-stationhead-auth-ready/);
+test('July 19 document-start capture observes page fetch and XHR Authorization', () => {
+  assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
+  assert.match(july19Policy, /const NativeXhr = window\.XMLHttpRequest/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.open = function/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.setRequestHeader = function/);
+  assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
+  assert.match(july19Policy, /getHeader\('authorization'\)/);
+  assert.match(july19Policy, /'sth-device-uid'/);
+  assert.match(july19Policy, /'app-platform'/);
+  assert.match(july19Policy, /'app-version'/);
+  assert.match(july19Policy, /stationhead-auth-ready/);
+  assert.doesNotMatch(july19Policy, /auth_generation|document_generation|request_id/);
 });
 
-test('Primary uses the stable streakStats cadence and request shape', () => {
+test('Primary performs the July 19 authenticated streakStats request every five minutes', () => {
   assert.match(playerSource, /!IsSecondary\(\)[\s\S]*PollDailyPlayStats\(nowMs\)/);
   assert.match(playerSource, /StationheadApiPlayStatsScript\(config_\.channelId\)/);
-  assert.match(policy, /production1\.stationhead\.com\/me\/channel\//);
-  assert.match(policy, /\/streakStats/);
-  assert.match(policy, /credentials: 'include'/);
-  assert.match(policy, /10 \* 60 \* 1000/);
+  assert.match(july19Policy, /production1\.stationhead\.com\/me\/channel\//);
+  assert.match(july19Policy, /\/streakStats/);
+  assert.match(july19Policy, /credentials: 'include'/);
+  assert.match(july19Policy, /cache: 'no-store'/);
+  assert.match(july19Policy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(july19Policy, /stationhead-play-stats/);
+  assert.doesNotMatch(july19Policy, /StationheadPlayStatsSuccessAt|10 \* 60 \* 1000/);
 });
 
-test('successful stats flow through StationheadStatus and App history', () => {
-  const statsAt = webview.indexOf('if (type == L"stationhead-play-stats") {');
-  assert.ok(statsAt >= 0);
-  const handler = webview.slice(statsAt, statsAt + 9000);
-  assert.match(handler, /status_\.dailyPlayCounts = std::move\(normalized\)/);
-  assert.match(handler, /status_\.dailyPlayStatsUpdatedAt = receivedAt/);
-  assert.match(handler, /PostChange\(\)/);
-  assert.match(history, /status\.dailyPlayCounts/);
-  assert.match(history, /nativeStationheadPlayHistory_/);
+test('no native HTTP or response observer owns play-count acquisition', () => {
+  assert.match(nativeStatsHeader, /PublishStationheadNativeStatsMessage/);
+  assert.doesNotMatch(nativeStatsHeader, /AttachStationheadNativeStats/);
+  assert.match(nativeStats, /class NativeStatsStore/);
+  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
+  assert.doesNotMatch(
+    nativeStats,
+    /WinHttpDownload|std::thread|condition_variable|WebResourceResponseReceived|WebResourceRequested|GetDevToolsProtocolEventReceiver/,
+  );
+  assert.doesNotMatch(
+    july19Policy,
+    /AttachStationheadNativeStats|add_WebResourceResponseReceived|WinHttpDownload/,
+  );
 });
 
-test('Music panel consumes the same StationheadStatus and history path', () => {
-  assert.match(panel, /nativeStationhead_\.dailyPlayCounts/);
-  assert.match(panel, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
-  assert.match(panel, /RecentStationheadPlayIncrease\(nativeStationheadPlayHistory_\)/);
-  assert.doesNotMatch(panel, /GlobalStationheadNativeStatsStore/);
+test('generationless July 19 stats messages feed the native store before later handlers', () => {
+  assert.match(messagePolicy, /PublishStationheadNativeStatsMessage/);
+  assert.match(messagePolicy, /if \(consumed\) return S_OK/);
+  assert.doesNotMatch(messagePolicy, /auth_generation|document_generation|request_id/);
+  assert.match(nativeStats, /stationhead-play-stats/);
+  assert.match(nativeStats, /GetNamedArray\(L"chart_data"\)/);
+});
+
+test('renderer still consumes and observes the native store revision', () => {
+  assert.match(panel, /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/);
+  assert.match(panel, /SummarizeStationheadDailyPlays\(nativeStats\.daily, nowMs\)/);
+  assert.match(renderer, /GlobalStationheadNativeStatsStore\(\)\.Revision\(\)/);
+  assert.match(renderer, /nativeStatsChanged/);
 });
