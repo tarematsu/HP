@@ -6,6 +6,7 @@ import type { Env, SourceResult } from "./sources";
 const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const DEFAULT_RADAR_ZOOM = 10;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
+const RADAR_FORECAST_START_MS = 30 * 60 * 1000;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
 const RADAR_FRAME_INTERVAL_MS = 5 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/";
@@ -61,19 +62,18 @@ export function selectRadarForecastEntries(
   if (!current) return [];
 
   const currentAt = jmaTimestampToMillis(current.validtime);
+  const forecastStart = currentAt + RADAR_FORECAST_START_MS;
   const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
   const futureByValidTime = new Map<string, RadarTimeEntry>();
   for (const entry of forecastAvailable) {
     if (entry.basetime !== current.basetime) continue;
     const validAt = jmaTimestampToMillis(entry.validtime);
-    if (validAt > currentAt && validAt <= forecastEnd) {
+    if (validAt >= forecastStart && validAt <= forecastEnd) {
       futureByValidTime.set(entry.validtime, entry);
     }
   }
   const future = Array.from(futureByValidTime.values());
   future.sort((left, right) => left.validtime.localeCompare(right.validtime));
-  if (!future.length) return [];
-  future.unshift(current);
   return future;
 }
 
@@ -127,8 +127,8 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     fetchJson<RadarTimeEntry[]>(JMA_FORECAST_TIMES_URL),
   ]);
   const entries = selectRadarForecastEntries(observed, forecast);
-  if (entries.length < 2) throw new Error("JMA current-to-one-hour forecast frames are unavailable");
-  const currentAt = jmaTimestampToMillis(entries[0]!.validtime);
+  if (entries.length < 2) throw new Error("JMA 30-to-60-minute forecast frames are unavailable");
+  const currentAt = jmaTimestampToMillis(entries[0]!.basetime);
   const width = 480;
   const height = 320;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
@@ -158,7 +158,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   }
   const frames = await Promise.all(framePromises);
   const payload = {
-    provider: "JMA current radar and one-hour forecast via Cloudflare radar bundle",
+    provider: "JMA 30-to-60-minute radar forecast via Cloudflare radar bundle",
     precomposed: false,
     bundleUrl: `/v1/radar/bundle/${entries[0]!.basetime}.hpb`,
     width,
