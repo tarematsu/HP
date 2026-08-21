@@ -8,16 +8,18 @@ function entry(basetime: string, validtime = basetime): RadarTimeEntry {
 }
 
 describe("radar forecast frame selection", () => {
-  it("starts at the latest observed frame with a matching forecast cycle", () => {
+  it("selects only frames from 30 through 60 minutes after the latest coherent observed cycle", () => {
     const observed = [
       entry("20260717102000"),
       entry("20260717102500"),
       entry("20260717103000"),
     ];
     const forecast = [
-      entry("20260717102000", "20260717102500"),
+      entry("20260717102000", "20260717105000"),
       entry("20260717102500", "20260717103000"),
-      entry("20260717102500", "20260717103500"),
+      entry("20260717102500", "20260717105000"),
+      entry("20260717102500", "20260717105500"),
+      entry("20260717102500", "20260717110000"),
       entry("20260717102500", "20260717112500"),
       entry("20260717102500", "20260717113000"),
     ];
@@ -25,9 +27,8 @@ describe("radar forecast frame selection", () => {
     const selected = selectRadarForecastEntries(observed, forecast);
 
     expect(selected.map(frame => frame.validtime)).toEqual([
-      "20260717102500",
-      "20260717103000",
-      "20260717103500",
+      "20260717105500",
+      "20260717110000",
       "20260717112500",
     ]);
     expect(selected.every(frame => frame.basetime === "20260717102500")).toBe(true);
@@ -35,7 +36,7 @@ describe("radar forecast frame selection", () => {
 
   it("returns no animation when a coherent future cycle is unavailable", () => {
     const observed = [entry("20260717102500")];
-    const forecast = [entry("20260717102000", "20260717103000")];
+    const forecast = [entry("20260717102000", "20260717105500")];
 
     expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
   });
@@ -43,14 +44,13 @@ describe("radar forecast frame selection", () => {
   it("ignores non-radar elements and duplicate forecast valid times", () => {
     const observed = [entry("20260717102500")];
     const forecast: RadarTimeEntry[] = [
-      entry("20260717102500", "20260717103000"),
-      entry("20260717102500", "20260717103000"),
-      { basetime: "20260717102500", validtime: "20260717103500", elements: ["other"] },
+      entry("20260717102500", "20260717105500"),
+      entry("20260717102500", "20260717105500"),
+      { basetime: "20260717102500", validtime: "20260717110000", elements: ["other"] },
     ];
 
     expect(selectRadarForecastEntries(observed, forecast).map(frame => frame.validtime)).toEqual([
-      "20260717102500",
-      "20260717103000",
+      "20260717105500",
     ]);
   });
 });
