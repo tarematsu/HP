@@ -6,7 +6,7 @@ const playbackPolicy = readFileSync(
   new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
-const july19Policy = readFileSync(
+const stableStatsPolicy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
 );
@@ -14,40 +14,29 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
-const nativeStats = readFileSync(
-  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
-  'utf8',
-);
 const sharedEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
 
-test('July 19 policy is included after the playback boundary', () => {
+test('stable stats selection is included after the playback boundary', () => {
   const playbackAt = composition.indexOf('#include "sh_playback_resource_policy_fix.h"');
-  const july19At = composition.indexOf('#include "sh_july19_stats_policy_fix.h"');
+  const statsAt = composition.indexOf('#include "sh_july19_stats_policy_fix.h"');
   assert.ok(playbackAt >= 0);
-  assert.ok(july19At > playbackAt);
-  assert.match(
-    july19Policy,
-    /#define ApplyStationheadResourceBlocking ApplyStationheadJuly19ResourcePolicy/,
-  );
+  assert.ok(statsAt > playbackAt);
 });
 
-test('final July 19 resource boundary remains fail-open', () => {
-  assert.match(july19Policy, /Network\.clearBrowserCache/);
-  assert.doesNotMatch(
-    july19Policy,
-    /AddWebResourceRequestedFilter|add_WebResourceRequested|Network\.setBlockedURLs|CreateWebResourceResponse|put_Response/,
-  );
-  assert.doesNotMatch(july19Policy, /AttachStationheadNativeStats/);
+test('stats restoration does not replace the current playback resource policy', () => {
+  assert.doesNotMatch(stableStatsPolicy, /#define ApplyStationheadResourceBlocking/);
+  assert.doesNotMatch(stableStatsPolicy, /AddWebResourceRequestedFilter|add_WebResourceRequested|Network\.setBlockedURLs|CreateWebResourceResponse|put_Response/);
+  assert.match(playbackPolicy, /ApplyStationheadResourceBlockingPlaybackSafe/);
 });
 
-test('playback boundary no longer attaches a native statistics observer', () => {
-  assert.doesNotMatch(playbackPolicy, /AttachStationheadNativeStats/);
-  assert.doesNotMatch(nativeStats, /WebResourceResponseReceived|WinHttpDownload|std::thread/);
-  assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
-  assert.match(july19Policy, /credentials: 'include'/);
+test('play-count request stays in the authenticated Primary WebView', () => {
+  assert.match(stableStatsPolicy, /StationheadPre368ApiPlayStatsScript/);
+  assert.match(stableStatsPolicy, /credentials: 'include'/);
+  assert.match(stableStatsPolicy, /\/streakStats/);
+  assert.doesNotMatch(stableStatsPolicy, /AttachStationheadNativeStats|WinHttpDownload/);
 });
 
 test('safe image and font reduction remains environment-level', () => {
