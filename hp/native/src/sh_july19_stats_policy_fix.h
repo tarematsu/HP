@@ -1,5 +1,13 @@
 #pragma once
 
+// sh_track_boundary_script.h maps the normal document-start hook to the
+// current login-settlement script before including this policy. Drop that
+// temporary alias here so the restored wrapper calls the original pre-#368
+// Authorization observer from sh_shared.h exactly once.
+#ifdef StationheadAuthCaptureScript
+#undef StationheadAuthCaptureScript
+#endif
+
 namespace hp {
 
 // The last sustained stable play-count period ended when PR #368 changed
