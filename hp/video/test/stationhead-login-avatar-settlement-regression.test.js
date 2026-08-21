@@ -7,7 +7,7 @@ const composition = readFileSync(
   new URL('../../native/src/sh_track_boundary_script.h', import.meta.url),
   'utf8',
 );
-const july19Policy = readFileSync(
+const policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
 );
@@ -40,21 +40,14 @@ test('current login settlement remains intact', () => {
   assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest/);
 });
 
-test('July 19 credential capture is composed before login settlement', () => {
-  assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
-  assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
-  assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
+test('pre-368 credential capture is composed before login settlement', () => {
+  assert.match(policy, /StationheadPre368AuthAndLoginSettlementScript/);
+  assert.match(policy, /std::wstring script = StationheadAuthCaptureScript\(\)/);
+  assert.match(policy, /homepanel-stationhead-auth-ready/);
+  assert.match(policy, /script\.append\(StationheadLoginSettlementScript\(\)\)/);
   assert.match(
-    july19Policy,
-    /std::wstring script = StationheadJuly19AuthCaptureScript\(\)/,
-  );
-  assert.match(
-    july19Policy,
-    /script\.append\(StationheadLoginSettlementScript\(\)\)/,
-  );
-  assert.match(
-    july19Policy,
-    /#define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript/,
+    policy,
+    /#define StationheadAuthCaptureScript StationheadPre368AuthAndLoginSettlementScript/,
   );
 });
 
@@ -76,7 +69,7 @@ test('document-start registration still occurs before startup script', () => {
   assert.ok(startupRegistration > firstRegistration);
 });
 
-test('only a stable signed-in account slot clears the native login latch', () => {
+test('auth-ready still clears the native login latch', () => {
   const authReadyAt = webview.indexOf(
     'if (type == L"stationhead-auth-ready") {',
   );
