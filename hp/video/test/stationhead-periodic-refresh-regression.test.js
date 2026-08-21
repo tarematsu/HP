@@ -69,16 +69,16 @@ test('both windows normally use sakuramankai and buddy46 is the fallback', () =>
   );
 });
 
-test('Window A refreshes at 55 minutes and Window B at 54 minutes', () => {
+test('Window A refreshes at 53 minutes and Window B at 54 minutes', () => {
   const interval = section(
     policy,
     'inline constexpr int64_t StationheadPeriodicRefreshIntervalMs(',
     'static_assert(StationheadPlaybackNavigationActive',
   );
-  assert.match(interval, /secondary \? 54 : 55/);
+  assert.match(interval, /secondary \? 54 : 53/);
   assert.match(
     policy,
-    /static_assert\(StationheadPeriodicRefreshIntervalMs\(false\) == 55 \* 60'000\);/,
+    /static_assert\(StationheadPeriodicRefreshIntervalMs\(false\) == 53 \* 60'000\);/,
   );
   assert.match(
     policy,
@@ -110,7 +110,7 @@ test('each role reloads its current URL with its own reason', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
   assert.match(injected, /StationheadPeriodicRefreshIntervalMs\(IsSecondary\(\)\)/);
   assert.match(injected, /L"54-minute periodic refresh"/);
-  assert.match(injected, /L"55-minute periodic refresh"/);
+  assert.match(injected, /L"53-minute periodic refresh"/);
   assert.match(injected, /NavigateCurrentUrl\(/);
   assert.match(injected, /nowMs - periodicRefreshStartedAt_ < intervalMs/);
   assert.doesNotMatch(injected, /ApplyScheduledStationheadAudioProfile|handoff/i);
