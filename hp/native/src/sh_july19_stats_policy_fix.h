@@ -6,9 +6,8 @@ namespace hp {
 
 inline constexpr int64_t kStationheadJuly19StatsIntervalMs = 5 * 60'000;
 
-// Keep the current playback boundary fail-open, but remove the later native
-// credential observer/WinHTTP worker. July 19 acquisition is owned entirely by
-// the already-authenticated primary Stationhead WebView.
+// Keep playback fail-open and preserve the signed-in WebView profile. Statistics
+// acquisition stays entirely inside the primary Stationhead WebView.
 inline void ApplyStationheadJuly19ResourcePolicy(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -20,16 +19,13 @@ inline void ApplyStationheadJuly19ResourcePolicy(
   (void)token;
   if (!environment || !webview) return;
 
-  // Preserve login/session storage. Only Chromium's HTTP cache is reset when a
-  // new playback controller is created, matching the current playback-safe
-  // boundary without installing request filters or response observers.
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
-// Exact July 19 credential-capture shape: observe Authorization on the page's
-// own Stationhead fetch/XHR calls at document start and cache only the headers
-// needed by the later in-WebView streakStats request.
+// Observe Authorization on Stationhead's own fetch/XHR traffic when it is
+// present. The stats request below no longer depends on this observer firing:
+// the existing WebView session cookies are also a valid authentication source.
 inline std::wstring StationheadJuly19AuthCaptureScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -97,9 +93,6 @@ inline std::wstring StationheadJuly19AuthCaptureScript() {
   return kScript;
 }
 
-// Preserve the current login-settlement probe after the restored July 19 auth
-// capture. The acquisition part above is intentionally not delegated to any of
-// the later hardened/generation-aware wrappers.
 inline std::wstring StationheadJuly19AuthAndLoginSettlementScript() {
   std::wstring script = StationheadJuly19AuthCaptureScript();
   script.push_back(L'\n');
@@ -107,9 +100,11 @@ inline std::wstring StationheadJuly19AuthAndLoginSettlementScript() {
   return script;
 }
 
-// Exact July 19 active stats request: Primary Tick executes this every five
-// minutes inside the logged-in WebView, using the Authorization and device/app
-// headers captured from the page's own Stationhead traffic.
+// Primary owns one simple streakStats request. Prefer the Authorization/device
+// headers captured from Stationhead itself, but do not block the request when
+// newer Stationhead sessions authenticate through cookies instead. A 403 is a
+// stats permission result and must not discard an otherwise usable playback
+// Authorization token; only 401 invalidates the captured token.
 inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -117,23 +112,27 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   const post = message => {
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
-  const headers = window.__homepanelStationheadAuthHeaders;
-  if (!headers?.authorization) {
-    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
-    return false;
-  }
+  const captured = window.__homepanelStationheadAuthHeaders;
+  const requestHeaders = { accept: 'application/json' };
+  if (captured?.authorization) Object.assign(requestHeaders, captured);
   const url = 'https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats';
   fetch(url, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: Object.assign({ accept: 'application/json' }, headers),
+    headers: requestHeaders,
   }).then(async response => {
-    if (response.status === 401 || response.status === 403) {
-      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
-      window.__homepanelStationheadAuthHeaders = null;
+    if (response.status === 401) {
+      if (captured?.authorization) {
+        window.__homepanelStationheadRejectedAuthorization = captured.authorization;
+        window.__homepanelStationheadAuthHeaders = null;
+      }
       post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
+      return null;
+    }
+    if (response.status === 403) {
+      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
@@ -151,9 +150,6 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
 
 }  // namespace hp
 
-// This header is included after the current playback/login policy stack. These
-// final overrides make the July 19 data-acquisition path authoritative without
-// rolling back unrelated Stationhead playback or UI code.
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadJuly19ResourcePolicy
 
