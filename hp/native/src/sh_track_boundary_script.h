@@ -32,12 +32,17 @@ inline std::wstring StationheadLoginSettlementScript() {
       /\b(account|profile|avatar|user\s+menu|my\s+profile)\b|アカウント|プロフィール/i;
   const loginPattern =
       /^(log\s*in|sign\s*in|login|ログイン|サインイン)(?:\s+.*)?$/i;
+  const serviceConnectPattern = /^connect\s+music$/i;
   const controlSelector =
       "button,[role='button'],a,input[type='button'],input[type='submit']," +
       "[aria-label],[data-testid],[tabindex]";
   const credentialSelector =
       "input[type='password'],input[type='email'],input[autocomplete='username']," +
       "input[autocomplete='current-password']";
+  const headingSelector = "h1,h2,h3,[role='heading']";
+  const blockingShellSelector =
+      "form,[role='dialog'],[aria-modal='true'],[data-modal]," +
+      "[class*='modal'],[class*='dialog']";
 
   let pageActive = true;
   let timer = 0;
@@ -73,19 +78,26 @@ inline std::wstring StationheadLoginSettlementScript() {
       /(^|\/)(login|signin|sign-in|auth)(?:\/|[?#]|$)/i.test(
           String(location.pathname || ''));
 
-  const visibleLoginSurface = () => {
+  const blockingLoginSurfaceVisible = authenticated => {
     if (loginRoute()) return true;
     for (const input of document.querySelectorAll(credentialSelector)) {
       if (visible(input)) return true;
+    }
+    for (const heading of document.querySelectorAll(headingSelector)) {
+      if (visible(heading) && serviceConnectPattern.test(labelOf(heading))) {
+        return true;
+      }
     }
     for (const element of document.querySelectorAll(controlSelector)) {
       if (!visible(element)) continue;
       const label = labelOf(element);
       const href = String(element.getAttribute?.('href') || '').toLowerCase();
-      if (loginPattern.test(label) ||
-          /(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
-        return true;
+      if (!loginPattern.test(label) &&
+          !/(^|\/)(login|signin|sign-in)(?:\/|[?#]|$)/i.test(href)) {
+        continue;
       }
+      const shell = element.closest?.(blockingShellSelector);
+      if (!authenticated || (shell && visible(shell))) return true;
     }
     return false;
   };
@@ -153,12 +165,13 @@ inline std::wstring StationheadLoginSettlementScript() {
   const check = () => {
     if (!pageActive) return;
     const now = Date.now();
-    if (visibleLoginSurface()) {
+    const account = topRightAccountControl();
+    if (blockingLoginSurfaceVisible(Boolean(account))) {
       accountSince = 0;
       accountReported = false;
       return;
     }
-    if (!topRightAccountControl()) {
+    if (!account) {
       accountSince = 0;
       accountReported = false;
       return;
