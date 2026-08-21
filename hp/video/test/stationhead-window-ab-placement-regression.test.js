@@ -58,6 +58,50 @@ test('dual-window placement constrains pending A left and pending B right', () =
   );
 });
 
+test('Window A and B converge on the same foreground and background implementation', () => {
+  const placement = section(
+    appSource,
+    'void App::ApplyStationheadWindowPlacement(',
+    'void App::PublishRenderState()',
+  );
+  assert.match(placement, /stationhead_->SelectTab\(StationheadTabKind::None\);/);
+  assert.match(placement, /secondaryStationhead_->RefreshVisibility\(\);/);
+
+  const selectPlayerTab = section(
+    handleSource,
+    'void StationheadHandleBase::SelectPlayerTab(StationheadTabKind tab)',
+    'bool StationheadHandleBase::IsInteractive(',
+  );
+  assert.match(
+    selectPlayerTab,
+    /if \(tab == StationheadTabKind::None\) \{[\s\S]*RefreshVisibility\(\);[\s\S]*return;/,
+  );
+
+  const refreshVisibility = section(
+    handleSource,
+    'void StationheadHandleBase::RefreshVisibility()',
+    'void StationheadHandleBase::Start()',
+  );
+  assert.match(refreshVisibility, /player_->SelectTab\(StationheadTabKind::None\);/);
+  assert.match(refreshVisibility, /ApplyBounds\(\);/);
+
+  const tick = section(
+    handleSource,
+    'void StationheadHandleBase::Tick(int64_t nowMs)',
+    'void StationheadHandleBase::Reconnect()',
+  );
+  assert.match(tick, /RaiseActiveHost\(\);/);
+
+  const raiseActiveHost = section(
+    handleSource,
+    'void StationheadHandleBase::RaiseActiveHost() const',
+    'void StationheadHandleBase::ApplyInteractiveBounds()',
+  );
+  assert.match(raiseActiveHost, /IsInteractive\(status\)/);
+  assert.match(raiseActiveHost, /SetWindowPos\(host, HWND_TOP/);
+  assert.match(raiseActiveHost, /BringMainWindowToFront\(host\);/);
+});
+
 test('normal playback stays behind while explicit auth surfaces may occupy the workspace', () => {
   const policy = section(
     layoutSource,

@@ -40,6 +40,41 @@ test('current login settlement remains intact', () => {
   assert.doesNotMatch(settlement, /window\.fetch|XMLHttpRequest/);
 });
 
+test('signed-in account wins over a stray standalone Log in affordance', () => {
+  const settlement = settlementSection();
+  const blockingSurface = section(
+    settlement,
+    'const blockingLoginSurfaceVisible = authenticated => {',
+    'const accountNode = element => {',
+  );
+  const check = section(
+    settlement,
+    'const check = () => {',
+    'const schedule = (delay = 1000) => {',
+  );
+
+  assert.match(blockingSurface, /if \(!authenticated \|\| \(shell && visible\(shell\)\)\) return true;/);
+  assert.match(blockingSurface, /credentialSelector/);
+  assert.match(blockingSurface, /serviceConnectPattern/);
+  assert.match(check, /const account = topRightAccountControl\(\);/);
+  assert.match(check, /blockingLoginSurfaceVisible\(Boolean\(account\)\)/);
+  assert.match(check, /if \(!account\)/);
+});
+
+test('real blocking authentication surfaces still beat a stale account icon', () => {
+  const settlement = settlementSection();
+  const blockingSurface = section(
+    settlement,
+    'const blockingLoginSurfaceVisible = authenticated => {',
+    'const accountNode = element => {',
+  );
+
+  assert.match(blockingSurface, /if \(loginRoute\(\)\) return true;/);
+  assert.match(blockingSurface, /if \(visible\(input\)\) return true;/);
+  assert.match(blockingSurface, /serviceConnectPattern\.test\(labelOf\(heading\)\)/);
+  assert.match(blockingSurface, /element\.closest\?\.\(blockingShellSelector\)/);
+});
+
 test('July 19 credential capture is composed before login settlement', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
