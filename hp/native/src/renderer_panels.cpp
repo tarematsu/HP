@@ -1,5 +1,9 @@
 // Kept as one translation unit so cached GDI primitives remain shared.
 // Fragment boundaries follow complete responsibilities and never split functions.
+#if 0  // Stationhead renderer helpers are intentionally disabled.
+#include "stationhead_native_stats.h"
+#include "stationhead_play_summary.h"
+#endif
 #include "shared_webview_environment.h"
 #include "version.h"
 #include "renderer_panels/primitives.inc"
