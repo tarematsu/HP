@@ -45,6 +45,7 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
 #define RecoverUnavailableAuthorization()                                    \
   RecoverUnavailableAuthorization() {                                        \
     RecoverUnavailableAuthorizationBase();                                   \
+    SettleStaleInteractivePlayback();                                         \
     RefreshPeriodicNavigation(UnixMillis());                                  \
   }                                                                           \
   void RecoverUnavailableAuthorizationBase()
@@ -59,6 +60,20 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
 
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
+  void SettleStaleInteractivePlayback() {                                     \
+    if (!AudioPlaying() || spotifyAuthorization_ || !loginRequired_) return;  \
+    loginRequired_ = false;                                                   \
+    {                                                                         \
+      std::lock_guard lock(mutex_);                                           \
+      status_.loginRequired = false;                                          \
+    }                                                                         \
+    if (selectedTab_ == StationheadTabKind::Stationhead) {                   \
+      SelectTab(StationheadTabKind::None);                                    \
+    }                                                                         \
+    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +                    \
+              L" confirmed audio cleared stale login foreground");           \
+    PostChange(StationheadChangeReturnMain);                                  \
+  }                                                                           \
   void RefreshPeriodicNavigation(int64_t nowMs) {                             \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
@@ -84,8 +99,9 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
       return;                                                                 \
     }                                                                         \
                                                                                 \
+    const bool unresolvedInteractiveLogin = loginRequired_ && !AudioPlaying();\
     if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
-        spotifyAuthorization_ || loginRequired_ ||                            \
+        spotifyAuthorization_ || unresolvedInteractiveLogin ||                \
         recreating_.load(std::memory_order_relaxed)) {                        \
       return;                                                                 \
     }                                                                         \
