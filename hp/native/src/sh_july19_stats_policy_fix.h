@@ -184,3 +184,11 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
 #define StationheadAuthCaptureScript StationheadJuly19AuthAndLoginSettlementScript
 
 #include "sh_stats_webview_message_policy_fix.h"
+
+// sh_webview.cpp includes this policy after sh.h, so a function-like macro can
+// safely replace only subsequent ShowForLogin() call sites without touching the
+// StationheadPlayer declaration or its out-of-line implementation in sh.cpp.
+#ifndef HOMEPANEL_STATIONHEAD_LOGIN_VISIBILITY_DISABLED
+#define HOMEPANEL_STATIONHEAD_LOGIN_VISIBILITY_DISABLED
+#define ShowForLogin() do { loginRequired_ = false; } while (false)
+#endif

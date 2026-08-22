@@ -45,7 +45,7 @@ test('Stationhead interaction tab expands the playback host instead of forcing b
   assert.match(childLayout, /const HWND hostPlacement = showPlayback \? HWND_TOP : HWND_BOTTOM;/);
 });
 
-test('pending Stationhead authentication cannot be hidden by normal placement refreshes', () => {
+test('login detection no longer owns foreground while manual visibility and Spotify auth do', () => {
   const selectTab = section(
     layout,
     'void StationheadPlayer::SelectTab(StationheadTabKind tab) {',
@@ -53,10 +53,17 @@ test('pending Stationhead authentication cannot be hidden by normal placement re
   );
   assert.match(
     selectTab,
-    /tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_/,
+    /if \(spotifyAuthorization_\) \{[\s\S]*tab = StationheadTabKind::Auth;/,
   );
-  assert.match(selectTab, /tab = StationheadTabKind::Stationhead;/);
-  assert.doesNotMatch(
+  assert.match(
+    selectTab,
+    /StationheadManualForegroundEnabled\(\)[\s\S]*tab = StationheadTabKind::Stationhead;/,
+  );
+  assert.match(
+    selectTab,
+    /if \(loginRequired_\) \{[\s\S]*loginRequired_ = false;[\s\S]*status_\.loginRequired = false;/,
+  );
+  assert.match(
     selectTab,
     /if \(tab == StationheadTabKind::Stationhead\) \{\s*tab = StationheadTabKind::None;/,
   );
@@ -78,7 +85,7 @@ test('opening the dedicated Spotify auth surface releases the in-page interactio
   );
 });
 
-test('auth probe promotes a genuine Connect music or login surface to interactive mode', () => {
+test('auth probe can still observe Connect music or login surfaces for recovery diagnostics', () => {
   assert.match(audioLoss, /return summary\('music-service-connect', evidence\);/);
   const callback = section(
     audioLoss,

@@ -1,4 +1,5 @@
 #include "sh.h"
+#include "stationhead_manual_visibility.h"
 
 namespace hp {
 namespace {
@@ -133,14 +134,27 @@ RECT ResolveStationheadWorkspaceBounds(StationheadRole role,
                                         const StationheadConfig& config,
                                         HWND parent,
                                         const RECT& requested) noexcept {
-  if (role == StationheadRole::Secondary ||
-      ConfiguresSecondaryStationheadWindow(config) ||
-      !parent || !IsWindow(parent)) {
-    return requested;
-  }
   RECT client{};
-  if (!GetClientRect(parent, &client) ||
-      client.right <= client.left || client.bottom <= client.top) {
+  const bool clientAvailable = parent && IsWindow(parent) &&
+      GetClientRect(parent, &client) &&
+      client.right > client.left && client.bottom > client.top;
+
+  // Manual foreground is a deliberate operator view, not an authentication
+  // inference. Resolve it from the actual parent client so A/B always occupy
+  // stable left/right halves even when the normal background placement passed
+  // a full-size or pending half-size rectangle on the same tick.
+  if (StationheadManualForegroundEnabled() && clientAvailable) {
+    if (!ConfiguresSecondaryStationheadWindow(config)) return client;
+    const LONG mid = client.left +
+        std::max<LONG>(1, client.right - client.left) / 2;
+    if (role == StationheadRole::Secondary) {
+      return RECT{mid, client.top, client.right, client.bottom};
+    }
+    return RECT{client.left, client.top, mid, client.bottom};
+  }
+
+  if (role == StationheadRole::Secondary ||
+      ConfiguresSecondaryStationheadWindow(config) || !clientAvailable) {
     return requested;
   }
   return client;
@@ -314,9 +328,9 @@ void StationheadPlayer::KeepPlaybackBehindDashboard() {
     status_.visible = false;
     return;
   }
-  // Normal playback, navigation, clock switching, and Start Listening retries
-  // remain background operations. Genuine account interaction uses the explicit
-  // Stationhead tab path below instead of this 1x1 surface.
+  // Normal playback, navigation, clock switching, Start Listening retries, and
+  // Stationhead login detection remain background operations. Only explicit
+  // manual foreground or the dedicated Spotify authorization tab is visible.
   viewVisible_ = false;
   selectedTab_ = StationheadTabKind::None;
   ApplyStationheadChildLayout(hostWindow_, authHostWindow_, controller_.Get(),
@@ -448,12 +462,22 @@ void StationheadPlayer::SetBounds(const RECT& bounds) {
 }
 
 void StationheadPlayer::SelectTab(StationheadTabKind tab) {
-  // While a genuine Stationhead account/music-service surface is pending, App
-  // placement calls requesting the background tab must not hide the interaction
-  // again. Once the page reports auth-ready, loginRequired_ clears and the next
-  // normal placement call returns this host to 1x1/background mode.
-  if (tab == StationheadTabKind::None && loginRequired_ && !spotifyAuthorization_) {
-    tab = StationheadTabKind::Stationhead;
+  // Spotify authorization is the only automatic foreground path. Stationhead
+  // login detection may still run for diagnostics/recovery, but it cannot own
+  // visibility or block the normal background placement state.
+  if (spotifyAuthorization_) {
+    tab = StationheadTabKind::Auth;
+  } else if (StationheadManualForegroundEnabled()) {
+    if (tab != StationheadTabKind::Auth) tab = StationheadTabKind::Stationhead;
+  } else {
+    if (loginRequired_) {
+      loginRequired_ = false;
+      std::lock_guard lock(mutex_);
+      status_.loginRequired = false;
+    }
+    if (tab == StationheadTabKind::Stationhead) {
+      tab = StationheadTabKind::None;
+    }
   }
   if (tab == StationheadTabKind::Auth && loginRequired_) {
     loginRequired_ = false;

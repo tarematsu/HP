@@ -63,3 +63,12 @@ static_assert(!StationheadFallbackDwellSatisfied(14'999));
 static_assert(StationheadFallbackDwellSatisfied(15'000));
 
 }  // namespace hp
+
+// Login detection remains available to the audio-loss diagnostics, but it is
+// no longer allowed to invoke StationheadPlayer::ShowForLogin(), which also
+// cancels refresh/recovery state. Clear only the obsolete latch at those call
+// sites; Spotify authorization continues through its dedicated Auth tab.
+#ifndef HOMEPANEL_STATIONHEAD_LOGIN_VISIBILITY_DISABLED
+#define HOMEPANEL_STATIONHEAD_LOGIN_VISIBILITY_DISABLED
+#define ShowForLogin() do { loginRequired_ = false; } while (false)
+#endif
