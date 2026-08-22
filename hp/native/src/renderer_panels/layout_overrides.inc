@@ -69,23 +69,12 @@ RECT RearrangedWasteCalendarRect(const RECT& client) {
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   const RECT content = CardContentRect(card);
-  // The one-second tick changes only the large time text. The monitor footer
-  // displays minute precision and is refreshed by the minute boundary tick.
+  // The one-second tick changes only the large time text. The footer is static.
   RECT timeRect{content.left, content.top + SpanY(content, 170),
                 content.right, content.top + SpanY(content, 705)};
   if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
   if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
   return timeRect;
-}
-
-std::wstring DashboardStatusTimeText(int64_t epochMs) {
-  if (epochMs <= 0) return L"--:--";
-  const std::time_t seconds = static_cast<std::time_t>(epochMs / 1000);
-  std::tm local{};
-  if (localtime_s(&local, &seconds) != 0) return L"--:--";
-  wchar_t text[16]{};
-  if (wcsftime(text, std::size(text), L"%H:%M", &local) == 0) return L"--:--";
-  return text;
 }
 
 void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
@@ -142,22 +131,13 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
   DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); \
-  const NativeMinuteFactsProjection hpStationheadStatus = NativeMinuteFactsSnapshot(); \
-  std::wstring hpMonitorText = L"Stationheadモニター 生成"; \
-  hpMonitorText += DashboardStatusTimeText(hpStationheadStatus.minuteAt); \
-  hpMonitorText += L" 取得"; \
-  hpMonitorText += DashboardStatusTimeText(hpStationheadStatus.fetchedAt); \
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
-  const LONG hpStatusMiddle = hpStatusRect.top + std::max<LONG>(1, (hpStatusRect.bottom - hpStatusRect.top) / 2); \
   const int hpPowerButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
   const int hpPowerButtonGap = std::max(6, SpanX(hpStatusRect, 20)); \
   const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpPowerButtonWidth - hpPowerButtonGap); \
-  RECT hpMonitorRect = hpStatusRect; hpMonitorRect.bottom = hpStatusMiddle; hpMonitorRect.right = hpStatusTextRight; \
-  RECT hpVersionRect = hpStatusRect; hpVersionRect.top = hpStatusMiddle; hpVersionRect.right = hpStatusTextRight; \
+  RECT hpVersionRect = hpStatusRect; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
-  SetTextColor((dc), hpStationheadStatus.available ? kWidgetMuted : kWidgetSubtle); \
-  DrawTextInRect((dc), hpMonitorText, hpMonitorRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   SetTextColor((dc), kWidgetMuted); \
   DrawTextInRect((dc), hpVersionText, hpVersionRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   SelectObject((dc), hpPreviousFont); \
