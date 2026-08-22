@@ -2,6 +2,7 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPlaylistUrl[] =
     L"https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&autoplay=1&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0";
+constexpr wchar_t kNativeMvReferer[] = L"https://github.com/tarematsu/HP/";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -149,7 +150,21 @@ class NativeMvPanelHost {
 
       Resize();
       controller_->put_IsVisible(TRUE);
-      if (FAILED(webview_->Navigate(kNativeMvPlaylistUrl))) {
+
+      // YouTube error 153 is returned when a desktop WebView embed has no
+      // HTTP Referer/client identity. Keep direct playlist navigation, but make
+      // the initial GET an identified WebView2 request rather than Navigate().
+      ComPtr<ICoreWebView2Environment2> environment2;
+      ComPtr<ICoreWebView2_2> webview2;
+      ComPtr<ICoreWebView2WebResourceRequest> request;
+      ComPtr<ICoreWebView2HttpRequestHeaders> requestHeaders;
+      if (FAILED(environment_.As(&environment2)) || !environment2 ||
+          FAILED(webview_.As(&webview2)) || !webview2 ||
+          FAILED(environment2->CreateWebResourceRequest(
+              kNativeMvPlaylistUrl, L"GET", nullptr, L"", &request)) || !request ||
+          FAILED(request->get_Headers(&requestHeaders)) || !requestHeaders ||
+          FAILED(requestHeaders->SetHeader(L"Referer", kNativeMvReferer)) ||
+          FAILED(webview2->NavigateWithWebResourceRequest(request.Get()))) {
         Fail();
       }
     } catch (...) {
