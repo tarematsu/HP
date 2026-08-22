@@ -6,8 +6,6 @@ namespace hp {
 
 inline constexpr int64_t kStationheadJuly19StatsIntervalMs = 5 * 60'000;
 
-// Keep playback fail-open and preserve the signed-in WebView profile. Statistics
-// acquisition stays entirely inside the primary Stationhead WebView.
 inline void ApplyStationheadJuly19ResourcePolicy(
     ICoreWebView2Environment* environment,
     ICoreWebView2* webview,
@@ -18,15 +16,14 @@ inline void ApplyStationheadJuly19ResourcePolicy(
   (void)armed;
   (void)token;
   if (!environment || !webview) return;
-
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
 // PR #48 treats an Authorization header observed from Stationhead's own page
-// traffic as the readiness signal for account statistics. Keep that model: the
-// stats poller below waits for this capture instead of attempting a cookie-only
-// request before the authenticated page traffic is ready.
+// traffic as the readiness signal. The generation values posted here are only
+// compatibility metadata for the current native parser; acquisition still has
+// the PR48 single auth state and no cookie-only fallback.
 inline std::wstring StationheadJuly19AuthCaptureScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -36,6 +33,13 @@ inline std::wstring StationheadJuly19AuthCaptureScript() {
   window.__homepanelStationheadAuthCapture = true;
   window.__homepanelStationheadAuthHeaders = null;
   window.__homepanelStationheadRejectedAuthorization = null;
+  window.__homepanelStationheadStatsRequestId = 0;
+  try {
+    window.chrome?.webview?.postMessage({
+      type: 'stationhead-stats-document',
+      document_generation: 1,
+    });
+  } catch (_) {}
   const relevant = url => /(^|\.)stationhead\.com/i.test(String(url || ''));
   const capture = (url, getHeader) => {
     if (!relevant(url)) return;
@@ -52,7 +56,12 @@ inline std::wstring StationheadJuly19AuthCaptureScript() {
     window.__homepanelStationheadRejectedAuthorization = null;
     window.__homepanelStationheadAuthHeaders = next;
     if (changed) {
-      try { window.chrome?.webview?.postMessage({ type: 'stationhead-auth-ready' }); } catch (_) {}
+      try {
+        window.chrome?.webview?.postMessage({
+          type: 'stationhead-auth-ready',
+          auth_generation: 1,
+        });
+      } catch (_) {}
     }
   };
   const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
@@ -101,9 +110,6 @@ inline std::wstring StationheadJuly19AuthAndLoginSettlementScript() {
   return script;
 }
 
-// Mirror PR #48's Window A request exactly: captured Authorization is required,
-// no-header/auth failures use the existing short recovery retry, and a successful
-// authenticated response starts a ten-minute quiet period.
 inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -120,6 +126,8 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   if (lastSuccessAt > 0 && Date.now() - lastSuccessAt < 10 * 60 * 1000) {
     return false;
   }
+  const requestId = Number(window.__homepanelStationheadStatsRequestId || 0) + 1;
+  window.__homepanelStationheadStatsRequestId = requestId;
   const url = 'https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats';
   fetch(url, {
@@ -131,7 +139,11 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
     if (response.status === 401 || response.status === 403) {
       window.__homepanelStationheadRejectedAuthorization = headers.authorization;
       window.__homepanelStationheadAuthHeaders = null;
-      post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
+      post({
+        type: 'stationhead-play-stats-auth-failed',
+        status: response.status,
+        auth_generation: 1,
+      });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
@@ -139,7 +151,14 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   }).then(data => {
     if (data) {
       window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
-      post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+      post({
+        type: 'stationhead-play-stats',
+        data,
+        source: 'authenticated-api',
+        request_id: requestId,
+        document_generation: 1,
+        auth_generation: 1,
+      });
     }
   }).catch(error => {
     post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
