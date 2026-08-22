@@ -15,12 +15,15 @@ const composition = readFileSync(
   'utf8',
 );
 
-test('native dashboard compiles the MV panel and its WebView2 environment dependency', () => {
+test('native dashboard compiles the MV panel and mounts it in the former radar window', () => {
   assert.match(entry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(entry, /media_section_v2\.inc/);
   assert.match(composition, /#include "shared_webview_environment\.h"/);
   assert.match(mvPanel, /void Renderer::DrawMusicSection/);
-  assert.match(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_, dataDir_, playerBounds\)/);
+  assert.match(mvPanel, /nativeRadarWindow_ && IsWindow\(nativeRadarWindow_\)/);
+  assert.match(mvPanel, /GetClientRect\(nativeRadarWindow_, &mvBounds\)/);
+  assert.match(mvPanel, /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/);
+  assert.doesNotMatch(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_,/);
 });
 
 test('MV playback uses the requested YouTube playlist directly', () => {

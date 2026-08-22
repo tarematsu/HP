@@ -15,11 +15,32 @@ option(HOMEPANEL_CI_STATIC_ANALYSIS "Run MSVC native code analysis" OFF)
 
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 
-set(HOMEPANEL_RADAR_SATELLITE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-satellite.png")
-set(HOMEPANEL_RADAR_MAP "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-map.png")
-if(NOT EXISTS "${HOMEPANEL_RADAR_SATELLITE}" OR NOT EXISTS "${HOMEPANEL_RADAR_MAP}")
+set(HOMEPANEL_RADAR_SATELLITE_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-satellite.png")
+set(HOMEPANEL_RADAR_MAP_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/radar-map.png")
+set(HOMEPANEL_RADAR_SATELLITE "${CMAKE_CURRENT_BINARY_DIR}/generated/radar-satellite.png")
+set(HOMEPANEL_RADAR_MAP "${CMAKE_CURRENT_BINARY_DIR}/generated/radar-map.png")
+set(HOMEPANEL_RADAR_CROP_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build-radar-base.ps1")
+if(NOT EXISTS "${HOMEPANEL_RADAR_SATELLITE_SOURCE}" OR NOT EXISTS "${HOMEPANEL_RADAR_MAP_SOURCE}")
   message(FATAL_ERROR "Bundled radar layers are missing from scripts/ui")
 endif()
+if(NOT EXISTS "${HOMEPANEL_RADAR_CROP_SCRIPT}")
+  message(FATAL_ERROR "Radar crop build script is missing")
+endif()
+add_custom_command(
+  OUTPUT "${HOMEPANEL_RADAR_SATELLITE}" "${HOMEPANEL_RADAR_MAP}"
+  COMMAND powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass
+          -File "${HOMEPANEL_RADAR_CROP_SCRIPT}"
+          -Satellite "${HOMEPANEL_RADAR_SATELLITE_SOURCE}"
+          -Map "${HOMEPANEL_RADAR_MAP_SOURCE}"
+          -SatelliteOutput "${HOMEPANEL_RADAR_SATELLITE}"
+          -MapOutput "${HOMEPANEL_RADAR_MAP}"
+  DEPENDS
+    "${HOMEPANEL_RADAR_CROP_SCRIPT}"
+    "${HOMEPANEL_RADAR_SATELLITE_SOURCE}"
+    "${HOMEPANEL_RADAR_MAP_SOURCE}"
+  COMMENT "Cropping centered 40% radar layers"
+  VERBATIM)
+
 file(GLOB HOMEPANEL_WEATHER_ICON_FILES CONFIGURE_DEPENDS
   "${CMAKE_CURRENT_SOURCE_DIR}/scripts/ui/weather-icons/*.png")
 list(SORT HOMEPANEL_WEATHER_ICON_FILES)
@@ -61,6 +82,7 @@ add_custom_target(homepanel_version_files ALL
           -DHOMEPANEL_RADAR_MAP=${HOMEPANEL_RADAR_MAP}
           -DHOMEPANEL_WEATHER_ICON_RC_INCLUDE=${HOMEPANEL_WEATHER_ICON_RC_INCLUDE}
           -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/write_version_files.cmake"
+  DEPENDS "${HOMEPANEL_RADAR_SATELLITE}" "${HOMEPANEL_RADAR_MAP}"
   BYPRODUCTS
     "${HOMEPANEL_GENERATED_HOME_RC}"
     "${HOMEPANEL_GENERATED_UPDATER_RC}"

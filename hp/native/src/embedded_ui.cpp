@@ -79,7 +79,7 @@ std::string ExecutableStamp(const fs::path& executable) {
   std::string stamp = WideToUtf8(kVersion);
   stamp.reserve(stamp.size() + 64 +
                 (std::size(kRuntimeAssets) + std::size(kWeatherIconAssets)) * 40);
-  stamp += "|native-assets-v3";
+  stamp += "|native-assets-v5";
   if (!error) {
     stamp.push_back('|');
     AppendUnsigned(stamp, size);
@@ -128,6 +128,7 @@ void RemoveObsoleteDashboardFiles(const fs::path& folder) {
       L"stationhead-audio-controls.js",
       L"stationhead-playback.js",
       L"radar-direct.js",
+      L"radar-base-old.png",
       L"radar-base.png",
       L"performance.css",
       L"ui-overrides.css",

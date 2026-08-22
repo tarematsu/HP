@@ -10,6 +10,8 @@ namespace {
 constexpr int64_t kRadarTileFailureTtlMs = 5 * 60'000;
 constexpr int64_t kDefaultRadarFrameIntervalMs = 5'000;
 constexpr size_t kRadarRainPresenceCacheLimit = 512;
+constexpr int kRadarLayerWidth = 768;
+constexpr int kRadarLayerHeight = 512;
 constexpr wchar_t kNoRainMessage[] = L"しばらく雨は降りません";
 using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
@@ -105,12 +107,6 @@ int64_t RadarAnimationIntervalFromSignature(const std::wstring& signature) noexc
     value = std::min<int64_t>(60'000, value * 10 + (character - L'0'));
   }
   return hasDigit && value >= 1'000 ? value : 0;
-}
-
-void InvalidateRadarWindow(HWND window) {
-  if (window && IsWindow(window) && IsWindowVisible(window)) {
-    InvalidateRect(window, nullptr, FALSE);
-  }
 }
 
 std::wstring RadarTimeFromMillis(int64_t milliseconds) {
@@ -301,12 +297,20 @@ bool SaveBitmapAsBmp(HBITMAP bitmap, const fs::path& path, int width, int height
 
 void BlendBitmap(HDC dc, HBITMAP bitmap, int left, int top, int width, int height) {
   if (!bitmap || width <= 0 || height <= 0) return;
+  BITMAP details{};
+  if (GetObjectW(bitmap, sizeof(details), &details) != sizeof(details) ||
+      details.bmWidth <= 0 || details.bmHeight == 0) {
+    return;
+  }
+  const int sourceWidth = details.bmWidth;
+  const int sourceHeight = details.bmHeight < 0 ? -details.bmHeight : details.bmHeight;
   HDC sourceDc = RadarSourceDc(dc);
   if (!sourceDc) return;
   HGDIOBJ previous = SelectObject(sourceDc, bitmap);
   if (!previous || previous == HGDI_ERROR) return;
   const BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-  AlphaBlend(dc, left, top, width, height, sourceDc, 0, 0, width, height, blend);
+  AlphaBlend(dc, left, top, width, height,
+             sourceDc, 0, 0, sourceWidth, sourceHeight, blend);
   SelectObject(sourceDc, previous);
 }
 }  // namespace
@@ -389,8 +393,8 @@ void Renderer::ComposeRadarFrame() {
   } catch (...) {
   }
 
-  int sourceWidth = 480;
-  int sourceHeight = 320;
+  int sourceWidth = 192;
+  int sourceHeight = 128;
   int64_t validAt = 0;
   int64_t animationIntervalMs = 0;
   bool precomposed = false;
@@ -405,8 +409,8 @@ void Renderer::ComposeRadarFrame() {
   if (!json.empty()) {
     try {
       const JsonObject root = JsonObject::Parse(json);
-      sourceWidth = std::max(1, static_cast<int>(json::Number(root, L"width", 480)));
-      sourceHeight = std::max(1, static_cast<int>(json::Number(root, L"height", 320)));
+      sourceWidth = std::max(1, static_cast<int>(json::Number(root, L"width", 192)));
+      sourceHeight = std::max(1, static_cast<int>(json::Number(root, L"height", 128)));
       precomposed = json::Boolean(root, L"precomposed");
       const int64_t frameIntervalMs = std::clamp<int64_t>(
           static_cast<int64_t>(json::Number(root, L"frameIntervalMs", kDefaultRadarFrameIntervalMs)),
@@ -462,7 +466,7 @@ void Renderer::ComposeRadarFrame() {
           if (noRainForecast) animationIntervalMs = 0;
 
           std::wostringstream signatureStream;
-          signatureStream << L"native-radar-v10|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
+          signatureStream << L"native-radar-v12|" << kRadarCanvasWidth << L'x' << kRadarCanvasHeight
                           << L"|source:" << sourceWidth << L'x' << sourceHeight
                           << L"|precomposed:" << (precomposed ? 1 : 0)
                           << L"|no-rain:" << (noRainForecast ? 1 : 0)
@@ -472,7 +476,7 @@ void Renderer::ComposeRadarFrame() {
                           << L"|" << json::Text(frame, L"validTime")
                           << L"|" << validAt;
           if (!precomposed) {
-            signatureStream << L"|sat:" << Utf8ToWide(satelliteStamp)
+            signatureStream << L"|satellite:" << Utf8ToWide(satelliteStamp)
                             << L"|map:" << Utf8ToWide(mapStamp);
           }
           signatureStream << L"|tiles:" << tiles.size();
@@ -520,7 +524,7 @@ void Renderer::ComposeRadarFrame() {
         radarSignature_ = signature;
       }
       if (previousFrame) DeleteObject(previousFrame);
-      InvalidateRadarWindow(nativeRadarWindow_);
+      InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
       return;
     }
   }
@@ -530,15 +534,16 @@ void Renderer::ComposeRadarFrame() {
     return;
   }
 
-  HBITMAP radarSatelliteBitmap = nullptr;
-  HBITMAP radarMapBitmap = nullptr;
+  HBITMAP satelliteBitmap = nullptr;
+  HBITMAP mapBitmap = nullptr;
   if (!precomposed) {
-    radarSatelliteBitmap = CachedRadarBitmap(
+    satelliteBitmap = CachedRadarBitmap(
         L"radar-satellite", satellitePath, satelliteStamp,
-        kRadarCanvasWidth, kRadarCanvasHeight);
-    radarMapBitmap = CachedRadarBitmap(
-        L"radar-map", mapPath, mapStamp, kRadarCanvasWidth, kRadarCanvasHeight);
-    if (!radarSatelliteBitmap || !radarMapBitmap) return;
+        kRadarLayerWidth, kRadarLayerHeight);
+    mapBitmap = CachedRadarBitmap(
+        L"radar-map", mapPath, mapStamp,
+        kRadarLayerWidth, kRadarLayerHeight);
+    if (!satelliteBitmap || !mapBitmap) return;
   }
 
   BITMAPINFO info{};
@@ -555,7 +560,7 @@ void Renderer::ComposeRadarFrame() {
   if (precomposed) {
     PatBlt(composeDc, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight, BLACKNESS);
   } else {
-    BlendBitmap(composeDc, radarSatelliteBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
+    BlendBitmap(composeDc, satelliteBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
   }
 
   const double scaleX = static_cast<double>(kRadarCanvasWidth) / sourceWidth;
@@ -571,7 +576,7 @@ void Renderer::ComposeRadarFrame() {
     HBITMAP tileBitmap = tile.path.empty()
         ? nullptr
         : CachedRadarBitmap(L"radar-tile:" + tile.url, tile.path,
-                            tile.fileStamp, tileWidth, tileHeight);
+                            tile.fileStamp, 256, 256);
     if (!tileBitmap) {
       radarFailedTiles_[tile.url] = now + kRadarTileFailureTtlMs;
       continue;
@@ -583,11 +588,10 @@ void Renderer::ComposeRadarFrame() {
     ++loadedTiles;
   }
 
-  if (!precomposed) {
-    BlendBitmap(composeDc, radarMapBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
-  }
-
   if (!tiles.empty() && loadedTiles == 0) return;
+  if (!precomposed) {
+    BlendBitmap(composeDc, mapBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
+  }
 
   std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
   if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
@@ -613,6 +617,6 @@ void Renderer::ComposeRadarFrame() {
     radarSignature_ = signature;
   }
   if (previousFrame) DeleteObject(previousFrame);
-  InvalidateRadarWindow(nativeRadarWindow_);
+  InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
 }
 }  // namespace hp

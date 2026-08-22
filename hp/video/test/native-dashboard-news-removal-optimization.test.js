@@ -257,8 +257,9 @@ test('animated radar avoids per-frame disk snapshot serialization', () => {
   );
 });
 
-test('radar updates invalidate only the radar window and reuse a source DC', () => {
-  assert.match(radarUi, /InvalidateRadarWindow\(nativeRadarWindow_\);/);
+test('radar updates invalidate only the relocated radar section and reuse a source DC', () => {
+  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\);/);
+  assert.doesNotMatch(radarUi, /InvalidateRadarWindow\(nativeRadarWindow_\);/);
   assert.doesNotMatch(radarUi, /InvalidateAllNativePanels\(\)/);
   assert.match(radarUi, /thread_local CachedRadarSourceDc cached/);
   assert.doesNotMatch(radarUi, /void BlendBitmap[\s\S]*DeleteDC\(sourceDc\)/);

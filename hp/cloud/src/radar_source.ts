@@ -10,6 +10,11 @@ const RADAR_FORECAST_START_MS = 30 * 60 * 1000;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
 const RADAR_FRAME_INTERVAL_MS = 5 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/";
+// The former viewport was 480x320 logical pixels. Keep only its centered 40%
+// so the cloud bundle never signs, prewarms, downloads, or ships outer tiles
+// that the compact native radar panel cannot display.
+const RADAR_SOURCE_WIDTH = 192;
+const RADAR_SOURCE_HEIGHT = 128;
 const RADAR_OUTPUT_WIDTH = 1920;
 const RADAR_OUTPUT_HEIGHT = 1280;
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
@@ -129,8 +134,8 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   const entries = selectRadarForecastEntries(observed, forecast);
   if (entries.length < 2) throw new Error("JMA 30-to-60-minute forecast frames are unavailable");
   const currentAt = jmaTimestampToMillis(entries[0]!.basetime);
-  const width = 480;
-  const height = 320;
+  const width = RADAR_SOURCE_WIDTH;
+  const height = RADAR_SOURCE_HEIGHT;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
   const center = {
     lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),
