@@ -19,7 +19,7 @@ const webviewPolicy = readFileSync(
   'utf8',
 );
 
-test('sh.cpp receives the fixed stats generator through its actual PCH path', () => {
+test('sh.cpp receives the PR48 stats generator through its actual PCH path', () => {
   assert.match(
     cmake,
     /target_precompile_headers\(HomePanel PRIVATE[\s\S]*src\/sh_playback_resource_policy_fix\.h/,
@@ -32,42 +32,54 @@ test('sh.cpp receives the fixed stats generator through its actual PCH path', ()
   );
 });
 
-test('the generator used by PollDailyPlayStats supports the existing WebView session', () => {
-  assert.match(activePolicy, /const captured = window\.__homepanelStationheadAuthHeaders/);
-  assert.match(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
-  assert.match(
-    activePolicy,
-    /if \(captured\?\.authorization\) Object\.assign\(requestHeaders, captured\)/,
-  );
+test('Window A waits for the page-observed Authorization header like PR48', () => {
+  assert.match(activePolicy, /const headers = window\.__homepanelStationheadAuthHeaders/);
+  assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
+  assert.match(activePolicy, /error: 'no-auth-header'/);
   assert.match(activePolicy, /credentials: 'include'/);
-  assert.match(activePolicy, /headers: requestHeaders/);
-  assert.doesNotMatch(activePolicy, /error: 'no-auth-header'/);
-});
-
-test('the active generator invalidates Authorization only on 401', () => {
-  const unauthorizedAt = activePolicy.indexOf('if (response.status === 401) {');
-  const forbiddenAt = activePolicy.indexOf('if (response.status === 403) {');
-  assert.ok(unauthorizedAt >= 0);
-  assert.ok(forbiddenAt > unauthorizedAt);
-
-  const unauthorized = activePolicy.slice(unauthorizedAt, forbiddenAt);
-  assert.match(unauthorized, /__homepanelStationheadRejectedAuthorization/);
-  assert.match(unauthorized, /__homepanelStationheadAuthHeaders = null/);
-  assert.match(unauthorized, /stationhead-play-stats-auth-failed/);
-
-  const forbidden = activePolicy.slice(
-    forbiddenAt,
-    activePolicy.indexOf('if (!response.ok)', forbiddenAt),
-  );
-  assert.match(forbidden, /stationhead-play-stats-error/);
-  assert.match(forbidden, /error: 'forbidden'/);
-  assert.doesNotMatch(forbidden, /__homepanelStationheadRejectedAuthorization/);
-  assert.doesNotMatch(forbidden, /__homepanelStationheadAuthHeaders = null/);
-});
-
-test('successful payload still enters the existing native-store bridge', () => {
   assert.match(
     activePolicy,
+    /headers: Object\.assign\(\{ accept: 'application\/json' \}, headers\)/,
+  );
+  assert.doesNotMatch(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
+});
+
+test('successful authenticated polling has the PR48 ten-minute quiet period', () => {
+  assert.match(
+    activePolicy,
+    /__homepanelStationheadPlayStatsSuccessAt \|\| 0/,
+  );
+  assert.match(
+    activePolicy,
+    /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/,
+  );
+  assert.match(
+    activePolicy,
+    /__homepanelStationheadPlayStatsSuccessAt = Date\.now\(\)/,
+  );
+});
+
+test('401 and 403 both invalidate the captured Authorization like PR48', () => {
+  const rejectedAt = activePolicy.indexOf(
+    'if (response.status === 401 || response.status === 403) {',
+  );
+  assert.ok(rejectedAt >= 0);
+  const rejected = activePolicy.slice(
+    rejectedAt,
+    activePolicy.indexOf('if (!response.ok)', rejectedAt),
+  );
+  assert.match(rejected, /__homepanelStationheadRejectedAuthorization = headers\.authorization/);
+  assert.match(rejected, /__homepanelStationheadAuthHeaders = null/);
+  assert.match(rejected, /stationhead-play-stats-auth-failed/);
+  assert.doesNotMatch(rejected, /error: 'forbidden'/);
+});
+
+test('document-start capture and successful payload remain wired to the existing native display bridge', () => {
+  assert.match(webviewPolicy, /StationheadJuly19AuthCaptureScript/);
+  assert.match(webviewPolicy, /if \(!headers\?\.authorization\)/);
+  assert.match(webviewPolicy, /10 \* 60 \* 1000/);
+  assert.match(
+    webviewPolicy,
     /post\(\{ type: 'stationhead-play-stats', data, source: 'authenticated-api' \}\)/,
   );
   assert.match(webviewPolicy, /#include "sh_stats_webview_message_policy_fix\.h"/);
