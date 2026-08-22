@@ -56,14 +56,15 @@ test('dashboard A/B and MUTE actions use only the native WebView2 mute API', () 
   assert.doesNotMatch(handleMute, /SetVolume|ExecuteScript/);
 });
 
-test('dashboard runtime installs only native image assets, including one precomposed radar base', () => {
+test('dashboard runtime installs only native image assets and keeps radar layers separate', () => {
   const runtimeAssets = section(
     assets,
     'constexpr RuntimeAsset kRuntimeAssets[]',
     'void AppendAssetStamp(',
   );
-  assert.match(runtimeAssets, /radar-base\.png/);
-  assert.doesNotMatch(runtimeAssets, /radar-satellite\.png|radar-map\.png/);
+  assert.match(runtimeAssets, /radar-satellite\.png/);
+  assert.match(runtimeAssets, /radar-map\.png/);
+  assert.doesNotMatch(runtimeAssets, /radar-base\.png/);
   assert.doesNotMatch(runtimeAssets, /\.js/);
 
   const obsolete = section(
@@ -73,7 +74,8 @@ test('dashboard runtime installs only native image assets, including one precomp
   );
   assert.match(obsolete, /L"app\.js"/);
   assert.match(obsolete, /L"stationhead-audio-controls\.js"/);
-  assert.match(obsolete, /L"radar-satellite\.png"/);
-  assert.match(obsolete, /L"radar-map\.png"/);
+  assert.match(obsolete, /L"radar-base\.png"/);
+  assert.doesNotMatch(obsolete, /L"radar-satellite\.png"/);
+  assert.doesNotMatch(obsolete, /L"radar-map\.png"/);
   assert.match(assets, /RemoveObsoleteDashboardFiles\(folder\)/);
 });
