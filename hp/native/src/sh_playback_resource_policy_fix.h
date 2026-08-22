@@ -25,11 +25,12 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
-// PollDailyPlayStats() is compiled in sh.cpp. sh.cpp receives this header through
-// the precompiled-header chain, whereas the later sh_track_boundary_script.h is
-// included only by sh_webview.cpp. Keep the actual periodic request at this
-// shared compile boundary so the code that runs every five minutes cannot fall
-// back to the older Authorization-required generator.
+// Restore PR #48's authenticated polling behavior. Window A waits until
+// Stationhead's own traffic has exposed an Authorization header, retries quickly
+// while that header is unavailable, and suppresses successful streakStats
+// requests for ten minutes. This deliberately does not fall back to a
+// cookie-only request: PR #48 used the page-observed account credentials as the
+// single readiness signal for statistics acquisition.
 inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -37,33 +38,36 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   const post = message => {
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
-  const captured = window.__homepanelStationheadAuthHeaders;
-  const requestHeaders = { accept: 'application/json' };
-  if (captured?.authorization) Object.assign(requestHeaders, captured);
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers?.authorization) {
+    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
+    return false;
+  }
+  const lastSuccessAt = Number(window.__homepanelStationheadPlayStatsSuccessAt || 0);
+  if (lastSuccessAt > 0 && Date.now() - lastSuccessAt < 10 * 60 * 1000) {
+    return false;
+  }
   const url = 'https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats';
   fetch(url, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: requestHeaders,
+    headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
-    if (response.status === 401) {
-      if (captured?.authorization) {
-        window.__homepanelStationheadRejectedAuthorization = captured.authorization;
-        window.__homepanelStationheadAuthHeaders = null;
-      }
+    if (response.status === 401 || response.status === 403) {
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      window.__homepanelStationheadAuthHeaders = null;
       post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
-      return null;
-    }
-    if (response.status === 403) {
-      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
     return response.json();
   }).then(data => {
-    if (data) post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    if (data) {
+      window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
+      post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    }
   }).catch(error => {
     post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
   });
@@ -79,6 +83,7 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
 // This macro is consumed by StationheadPlayer::PollDailyPlayStats() in sh.cpp.
-// Define it at the PCH-visible boundary instead of only in sh_webview.cpp.
+// Define it at the PCH-visible boundary so Window A always uses the PR #48
+// authenticated request policy.
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript
