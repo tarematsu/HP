@@ -34,6 +34,15 @@ test('MV playback uses the requested YouTube playlist directly', () => {
   assert.match(mvPanel, /controls=1/);
 });
 
+test('MV navigation supplies desktop WebView2 client identity for YouTube', () => {
+  assert.match(mvPanel, /kNativeMvReferer/);
+  assert.match(mvPanel, /ICoreWebView2Environment2/);
+  assert.match(mvPanel, /CreateWebResourceRequest\(/);
+  assert.match(mvPanel, /SetHeader\(L"Referer", kNativeMvReferer\)/);
+  assert.match(mvPanel, /NavigateWithWebResourceRequest\(/);
+  assert.doesNotMatch(mvPanel, /webview_->Navigate\(kNativeMvPlaylistUrl\)/);
+});
+
 test('MV playback no longer runs local iframe API playlist machinery', () => {
   assert.doesNotMatch(mvPanel, /kNativeMvPanelHtml/);
   assert.doesNotMatch(mvPanel, /youtube\.com\/iframe_api/);
