@@ -4,7 +4,7 @@
 --
 -- Preserve the sh_channel_snapshots compatibility surface, but expose minute_at
 -- as its timeline and force the existing minute range index. This is metadata
--- only: no new index build, ANALYZE, or data rewrite is required.
+-- only: no new index build, statistics refresh, or data rewrite is required.
 
 DROP VIEW IF EXISTS sh_channel_snapshots;
 CREATE VIEW sh_channel_snapshots AS
