@@ -79,7 +79,8 @@ test('rollup compatibility view excludes today-imported historical facts and see
 
   const rows = db.prepare(`SELECT id,observed_at FROM sh_channel_snapshots
     WHERE observed_at>=? AND observed_at<? ORDER BY observed_at ASC,id ASC`)
-    .all(day, day + 86_400_000);
+    .all(day, day + 86_400_000)
+    .map((row) => ({ id: Number(row.id), observed_at: Number(row.observed_at) }));
   assert.deepEqual(rows, [{ id: 2, observed_at: currentMinute }]);
 
   const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT id FROM sh_channel_snapshots
