@@ -49,7 +49,7 @@ test('clear forecast detection ignores off-panel pixels and rejects incomplete t
     radarUi,
     /if \(!RadarTileLayoutCoversSource\(\s*frameDestinations, sourceWidth, sourceHeight\)\) \{\s*forecastComplete = false;/s,
   );
-  assert.match(radarUi, /native-radar-v11/);
+  assert.match(radarUi, /native-radar-v12/);
   assert.doesNotMatch(radarUi, /bool BitmapHasVisiblePixels\(HBITMAP bitmap\) \{/);
 });
 
