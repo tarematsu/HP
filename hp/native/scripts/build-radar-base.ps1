@@ -26,7 +26,7 @@ try {
   $cropLeft = [int][Math]::Floor(($satelliteImage.Width - $cropWidth) / 2)
   $cropTop = [int][Math]::Floor(($satelliteImage.Height - $cropHeight) / 2)
 
-  $outputBitmap = New-Object System.Drawing.Bitmap(
+  $outputBitmap = [System.Drawing.Bitmap]::new(
     $cropWidth,
     $cropHeight,
     [System.Drawing.Imaging.PixelFormat]::Format32bppArgb
@@ -37,8 +37,8 @@ try {
   $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
   $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
 
-  $destination = New-Object System.Drawing.Rectangle(0, 0, $cropWidth, $cropHeight)
-  $source = New-Object System.Drawing.Rectangle($cropLeft, $cropTop, $cropWidth, $cropHeight)
+  $destination = [System.Drawing.Rectangle]::new(0, 0, $cropWidth, $cropHeight)
+  $source = [System.Drawing.Rectangle]::new($cropLeft, $cropTop, $cropWidth, $cropHeight)
   $graphics.DrawImage($satelliteImage, $destination, $source, [System.Drawing.GraphicsUnit]::Pixel)
   $graphics.DrawImage($mapImage, $destination, $source, [System.Drawing.GraphicsUnit]::Pixel)
 
