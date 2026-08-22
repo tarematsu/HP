@@ -15,36 +15,57 @@ function section(source, start, end) {
   return source.slice(startAt, endAt);
 }
 
-test('confirmed audio settles a stale login foreground for either Stationhead role', () => {
+test('A and B use the live DOM interaction state instead of an audio settlement latch', () => {
   const wrapper = section(
     policy,
     '#define RecoverUnavailableAuthorization()',
     '#define RetryPendingTrackBoundaryRefresh',
   );
-  const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
+  const bridge = section(
+    policy,
+    'inline std::wstring StationheadAutoplayScriptCurrentInteraction(',
+    '// Window B no longer asks Stationhead',
+  );
 
-  assert.match(wrapper, /SettleStaleInteractivePlayback\(\);/);
-  assert.match(injected, /void SettleStaleInteractivePlayback\(\)/);
-  assert.match(injected, /!AudioPlaying\(\) \|\| spotifyAuthorization_ \|\| !loginRequired_/);
-  assert.match(injected, /loginRequired_ = false;/);
-  assert.match(injected, /status_\.loginRequired = false;/);
-  assert.match(injected, /SelectTab\(StationheadTabKind::None\);/);
-  assert.match(injected, /PostChange\(StationheadChangeReturnMain\);/);
-  assert.doesNotMatch(injected, /IsSecondary\(\).*SettleStaleInteractivePlayback/);
+  assert.doesNotMatch(policy, /SettleStaleInteractivePlayback/);
+  assert.doesNotMatch(wrapper, /AudioPlaying\(\).*loginRequired_/);
+  assert.match(bridge, /__homepanelStationheadBlockingLoginVisible/);
+  assert.match(bridge, /blocking !== true && blocking !== false/);
+  assert.match(bridge, /if \(!blocking\)/);
+  assert.match(bridge, /type: 'stationhead-auth-ready'/);
+  assert.match(bridge, /source: 'current-interaction-state'/);
+  assert.match(
+    policy,
+    /#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction/,
+  );
 });
 
-test('53/54-minute refresh is blocked only by unresolved interactive login', () => {
+test('Window B legacy auth probe is local-only and shares the same interaction state', () => {
+  const probe = section(
+    policy,
+    'inline std::wstring StationheadCurrentInteractionAuthProbeScript(',
+    'inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs',
+  );
+
+  assert.match(probe, /__homepanelStationheadBlockingLoginVisible === true/);
+  assert.match(probe, /post\(\{ type: 'stationhead-auth-probe'/);
+  assert.match(probe, /blocking \? 'auth-failed' : 'ok'/);
+  assert.doesNotMatch(probe, /fetch\s*\(/);
+  assert.doesNotMatch(probe, /production1\.stationhead\.com|streakStats/);
+  assert.match(
+    policy,
+    /#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript/,
+  );
+});
+
+test('53/54-minute refresh has one direct interactive-state gate', () => {
   const injected = section(policy, '#define nextAutoClickAt_', '#include "sh.h"');
 
-  assert.match(injected, /const bool unresolvedInteractiveLogin = loginRequired_ && !AudioPlaying\(\);/);
   assert.match(
     injected,
-    /spotifyAuthorization_ \|\| unresolvedInteractiveLogin \|\|[\s\S]*recreating_/,
+    /spotifyAuthorization_ \|\| loginRequired_ \|\|[\s\S]*recreating_/,
   );
-  assert.doesNotMatch(
-    injected,
-    /spotifyAuthorization_ \|\| loginRequired_ \|\|/,
-  );
+  assert.doesNotMatch(injected, /unresolvedInteractiveLogin/);
   assert.match(policy, /secondary \? 54 : 53/);
   assert.match(injected, /L"54-minute periodic refresh"/);
   assert.match(injected, /L"53-minute periodic refresh"/);

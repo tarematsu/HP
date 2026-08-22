@@ -45,7 +45,6 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
 #define RecoverUnavailableAuthorization()                                    \
   RecoverUnavailableAuthorization() {                                        \
     RecoverUnavailableAuthorizationBase();                                   \
-    SettleStaleInteractivePlayback();                                         \
     RefreshPeriodicNavigation(UnixMillis());                                  \
   }                                                                           \
   void RecoverUnavailableAuthorizationBase()
@@ -60,20 +59,6 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
 
 #define nextAutoClickAt_                                                      \
   nextAutoClickAt_ = 0;                                                       \
-  void SettleStaleInteractivePlayback() {                                     \
-    if (!AudioPlaying() || spotifyAuthorization_ || !loginRequired_) return;  \
-    loginRequired_ = false;                                                   \
-    {                                                                         \
-      std::lock_guard lock(mutex_);                                           \
-      status_.loginRequired = false;                                          \
-    }                                                                         \
-    if (selectedTab_ == StationheadTabKind::Stationhead) {                   \
-      SelectTab(StationheadTabKind::None);                                    \
-    }                                                                         \
-    log_.Info(L"Stationhead " + std::wstring(RoleTag()) +                    \
-              L" confirmed audio cleared stale login foreground");           \
-    PostChange(StationheadChangeReturnMain);                                  \
-  }                                                                           \
   void RefreshPeriodicNavigation(int64_t nowMs) {                             \
     const auto lifecycle = createCallbackAlive_;                              \
     const auto previousLifecycle = periodicRefreshLifecycle_.lock();          \
@@ -99,9 +84,8 @@ static_assert(StationheadPeriodicRefreshIntervalMs(true) == 54 * 60'000);
       return;                                                                 \
     }                                                                         \
                                                                                 \
-    const bool unresolvedInteractiveLogin = loginRequired_ && !AudioPlaying();\
     if (!webViewConfigured_ || !startupNavigationStarted_ ||                  \
-        spotifyAuthorization_ || unresolvedInteractiveLogin ||                \
+        spotifyAuthorization_ || loginRequired_ ||                            \
         recreating_.load(std::memory_order_relaxed)) {                        \
       return;                                                                 \
     }                                                                         \
@@ -382,10 +366,80 @@ inline HWND SetFocusAfterStationheadHide(HWND target) noexcept {
 #include "sh_shared.h"
 
 namespace hp {
+
+// The page-side detector is the single source of in-page interaction state for
+// both A and B. It already raises the existing login-required message when a
+// blocking surface appears. This small bridge publishes the opposite edge once
+// the same detector has observed a stable non-blocking page, so native state is
+// current rather than a sticky login-history latch.
+inline std::wstring StationheadAutoplayScriptCurrentInteraction(
+    const wchar_t* globalName, const wchar_t* messagePrefix) {
+  std::wstring script =
+      StationheadAutoplayScriptRuntimeFixed(globalName, messagePrefix);
+  script.append(LR"JS(
+(() => {
+  const host = String(location.hostname || '').toLowerCase();
+  if ((host !== 'stationhead.com' && !host.endsWith('.stationhead.com')) ||
+      window.top !== window || window.__homepanelStationheadInteractionBridge) {
+    return;
+  }
+  const webview = window.chrome?.webview;
+  if (!webview || typeof webview.postMessage !== 'function') return;
+  window.__homepanelStationheadInteractionBridge = true;
+  const nativeSetInterval = window.setInterval.bind(window);
+  let lastBlocking = null;
+  const publish = () => {
+    const blocking = window.__homepanelStationheadBlockingLoginVisible;
+    if (blocking !== true && blocking !== false) return;
+    if (blocking === lastBlocking) return;
+    lastBlocking = blocking;
+    if (!blocking) {
+      try {
+        webview.postMessage({
+          type: 'stationhead-auth-ready',
+          source: 'current-interaction-state'
+        });
+      } catch (_) {}
+    }
+  };
+  publish();
+  nativeSetInterval(publish, 1000);
+})()
+)JS");
+  return script;
+}
+
+// Window B no longer asks Stationhead's account API whether a historical auth
+// token is still accepted. Its legacy five-minute probe is retained only as a
+// local safety sample of the same live DOM interaction state used by A and B.
+// This removes the second, network-derived login state machine without changing
+// the established scheduler surface.
+inline std::wstring StationheadCurrentInteractionAuthProbeScript(int channelId) {
+  (void)channelId;
+  static constexpr wchar_t kScript[] = LR"JS(
+(() => {
+  const post = message => {
+    try { window.chrome?.webview?.postMessage(message); } catch (_) {}
+  };
+  const blocking = window.__homepanelStationheadBlockingLoginVisible === true;
+  post({ type: 'stationhead-auth-probe',
+         state: blocking ? 'auth-failed' : 'ok', status: 0 });
+  return true;
+})()
+)JS";
+  return kScript;
+}
+
 inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs =
     3'500;
 static_assert(kStationheadMeasuredPostPlaybackStopClickDelayMs < 12'000);
+
 }  // namespace hp
+
+#undef StationheadAutoplayScript
+#define StationheadAutoplayScript StationheadAutoplayScriptCurrentInteraction
+#undef StationheadAuthProbeScript
+#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript
 
 #define kStationheadPostPlaybackStopClickDelayMs                             \
   (::hp::kStationheadMeasuredPostPlaybackStopClickDelayMs)
