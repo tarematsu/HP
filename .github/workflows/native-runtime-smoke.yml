@@ -89,15 +89,18 @@ jobs:
             -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
             -OutputDirectory hp/native/ci-runtime-smoke
 
-      - name: Run native Stationhead background startup smoke test
-        shell: pwsh
-        run: |
-          & hp/native/scripts/ci-native-stationhead-startup-smoke.ps1 `
-            -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
-            -TimeoutSeconds 90 `
-            -StartupBudgetSeconds 60 `
-            -PostClickSettleSeconds 15 `
-            -OutputDirectory hp/native/ci-stationhead-startup-smoke
+      # Stationhead is disabled while the native MV panel is active.
+      # Keep the legacy script in the repository for rollback/debugging, but do
+      # not launch or validate Stationhead in this runtime smoke workflow.
+      # - name: Run native Stationhead background startup smoke test
+      #   shell: pwsh
+      #   run: |
+      #     & hp/native/scripts/ci-native-stationhead-startup-smoke.ps1 `
+      #       -Executable hp/native/build-runtime-smoke/Release/HomePanel.exe `
+      #       -TimeoutSeconds 90 `
+      #       -StartupBudgetSeconds 60 `
+      #       -PostClickSettleSeconds 15 `
+      #       -OutputDirectory hp/native/ci-stationhead-startup-smoke
 
       - name: Run updater verification and restart smoke test
         shell: pwsh
@@ -117,7 +120,6 @@ jobs:
           name: native-runtime-smoke-${{ github.run_id }}
           path: |
             hp/native/ci-runtime-smoke
-            hp/native/ci-stationhead-startup-smoke
             hp/native/ci-updater-runtime-smoke
             hp/native/ci-logs/runtime-smoke-*.log
           if-no-files-found: warn
