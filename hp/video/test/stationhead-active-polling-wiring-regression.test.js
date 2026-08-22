@@ -33,5 +33,5 @@ test('the PCH-visible policy selects the generator used by sh.cpp', () => {
     /#define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript/,
   );
   assert.match(playbackPolicy, /credentials: 'include'/);
-  assert.doesNotMatch(playbackPolicy, /error: 'no-auth-header'/);
+  assert.match(playbackPolicy, /error: 'no-auth-header'/);
 });
