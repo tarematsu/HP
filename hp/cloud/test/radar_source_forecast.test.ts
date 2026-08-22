@@ -8,7 +8,7 @@ function entry(basetime: string, validtime = basetime): RadarTimeEntry {
 }
 
 describe("radar forecast frame selection", () => {
-  it("selects only frames from 30 through 60 minutes after the latest coherent observed cycle", () => {
+  it("selects the current frame and forecasts through 60 minutes from the latest coherent observed cycle", () => {
     const observed = [
       entry("20260717102000"),
       entry("20260717102500"),
@@ -27,6 +27,9 @@ describe("radar forecast frame selection", () => {
     const selected = selectRadarForecastEntries(observed, forecast);
 
     expect(selected.map(frame => frame.validtime)).toEqual([
+      "20260717102500",
+      "20260717103000",
+      "20260717105000",
       "20260717105500",
       "20260717110000",
       "20260717112500",
@@ -41,6 +44,13 @@ describe("radar forecast frame selection", () => {
     expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
   });
 
+  it("does not return a current-only cycle when the matching forecast has no future frame", () => {
+    const observed = [entry("20260717102500")];
+    const forecast = [entry("20260717102500", "20260717102500")];
+
+    expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
+  });
+
   it("ignores non-radar elements and duplicate forecast valid times", () => {
     const observed = [entry("20260717102500")];
     const forecast: RadarTimeEntry[] = [
@@ -50,6 +60,7 @@ describe("radar forecast frame selection", () => {
     ];
 
     expect(selectRadarForecastEntries(observed, forecast).map(frame => frame.validtime)).toEqual([
+      "20260717102500",
       "20260717105500",
     ]);
   });
