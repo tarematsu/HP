@@ -23,9 +23,10 @@ inline void ApplyStationheadJuly19ResourcePolicy(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
-// Observe Authorization on Stationhead's own fetch/XHR traffic when it is
-// present. The stats request below no longer depends on this observer firing:
-// the existing WebView session cookies are also a valid authentication source.
+// PR #48 treats an Authorization header observed from Stationhead's own page
+// traffic as the readiness signal for account statistics. Keep that model: the
+// stats poller below waits for this capture instead of attempting a cookie-only
+// request before the authenticated page traffic is ready.
 inline std::wstring StationheadJuly19AuthCaptureScript() {
   static constexpr wchar_t kScript[] = LR"JS(
 (() => {
@@ -100,11 +101,9 @@ inline std::wstring StationheadJuly19AuthAndLoginSettlementScript() {
   return script;
 }
 
-// Primary owns one simple streakStats request. Prefer the Authorization/device
-// headers captured from Stationhead itself, but do not block the request when
-// newer Stationhead sessions authenticate through cookies instead. A 403 is a
-// stats permission result and must not discard an otherwise usable playback
-// Authorization token; only 401 invalidates the captured token.
+// Mirror PR #48's Window A request exactly: captured Authorization is required,
+// no-header/auth failures use the existing short recovery retry, and a successful
+// authenticated response starts a ten-minute quiet period.
 inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -112,33 +111,36 @@ inline std::wstring StationheadJuly19ApiPlayStatsScript(int channelId) {
   const post = message => {
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
-  const captured = window.__homepanelStationheadAuthHeaders;
-  const requestHeaders = { accept: 'application/json' };
-  if (captured?.authorization) Object.assign(requestHeaders, captured);
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers?.authorization) {
+    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
+    return false;
+  }
+  const lastSuccessAt = Number(window.__homepanelStationheadPlayStatsSuccessAt || 0);
+  if (lastSuccessAt > 0 && Date.now() - lastSuccessAt < 10 * 60 * 1000) {
+    return false;
+  }
   const url = 'https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats';
   fetch(url, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: requestHeaders,
+    headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
-    if (response.status === 401) {
-      if (captured?.authorization) {
-        window.__homepanelStationheadRejectedAuthorization = captured.authorization;
-        window.__homepanelStationheadAuthHeaders = null;
-      }
+    if (response.status === 401 || response.status === 403) {
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      window.__homepanelStationheadAuthHeaders = null;
       post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
-      return null;
-    }
-    if (response.status === 403) {
-      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
     return response.json();
   }).then(data => {
-    if (data) post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    if (data) {
+      window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
+      post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    }
   }).catch(error => {
     post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
   });
