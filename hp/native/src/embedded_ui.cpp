@@ -59,7 +59,8 @@ struct RuntimeAsset {
 #include "weather_icon_assets.h"
 
 constexpr RuntimeAsset kRuntimeAssets[] = {
-    {110, L"radar-base.png"},
+    {110, L"radar-satellite.png"},
+    {112, L"radar-map.png"},
 };
 
 void AppendAssetStamp(std::string& stamp, const RuntimeAsset& asset) {
@@ -78,7 +79,7 @@ std::string ExecutableStamp(const fs::path& executable) {
   std::string stamp = WideToUtf8(kVersion);
   stamp.reserve(stamp.size() + 64 +
                 (std::size(kRuntimeAssets) + std::size(kWeatherIconAssets)) * 40);
-  stamp += "|native-assets-v4";
+  stamp += "|native-assets-v5";
   if (!error) {
     stamp.push_back('|');
     AppendUnsigned(stamp, size);
@@ -128,8 +129,7 @@ void RemoveObsoleteDashboardFiles(const fs::path& folder) {
       L"stationhead-playback.js",
       L"radar-direct.js",
       L"radar-base-old.png",
-      L"radar-satellite.png",
-      L"radar-map.png",
+      L"radar-base.png",
       L"performance.css",
       L"ui-overrides.css",
       L"canvas-transparency.js",
