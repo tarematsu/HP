@@ -17,6 +17,8 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   (void)token;
   if (!environment || !webview) return;
 
+  // Only the HTTP cache is cleared. Cookies and DOM storage remain intact so
+  // the persistent Stationhead login profile is preserved across restarts.
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
