@@ -77,6 +77,7 @@ export function selectRadarForecastEntries(
   }
   const future = Array.from(futureByValidTime.values());
   future.sort((left, right) => left.validtime.localeCompare(right.validtime));
+  if (!future.length) return [];
   return [current, ...future];
 }
 
@@ -131,7 +132,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   ]);
   const entries = selectRadarForecastEntries(observed, forecast);
   if (entries.length < 2) throw new Error("JMA current-to-60-minute forecast frames are unavailable");
-  const currentAt = jmaTimestampToMillis(entries[0]!.basetime);
+  const currentAt = jmaTimestampToMillis(entries[0]!.validtime);
   const width = RADAR_SOURCE_WIDTH;
   const height = RADAR_SOURCE_HEIGHT;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
