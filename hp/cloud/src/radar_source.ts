@@ -6,9 +6,8 @@ import type { Env, SourceResult } from "./sources";
 const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const DEFAULT_RADAR_ZOOM = 10;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
-const RADAR_FORECAST_START_MS = 30 * 60 * 1000;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
-const RADAR_FRAME_INTERVAL_MS = 5 * 1000;
+const RADAR_FRAME_INTERVAL_MS = 1_000;
 const RADAR_FRAME_PREFIX = "radar/frames/";
 // The former viewport was 480x320 logical pixels. Keep only its centered 40%
 // so the cloud bundle never signs, prewarms, downloads, or ships outer tiles
@@ -67,19 +66,18 @@ export function selectRadarForecastEntries(
   if (!current) return [];
 
   const currentAt = jmaTimestampToMillis(current.validtime);
-  const forecastStart = currentAt + RADAR_FORECAST_START_MS;
   const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
   const futureByValidTime = new Map<string, RadarTimeEntry>();
   for (const entry of forecastAvailable) {
     if (entry.basetime !== current.basetime) continue;
     const validAt = jmaTimestampToMillis(entry.validtime);
-    if (validAt >= forecastStart && validAt <= forecastEnd) {
+    if (validAt > currentAt && validAt <= forecastEnd) {
       futureByValidTime.set(entry.validtime, entry);
     }
   }
   const future = Array.from(futureByValidTime.values());
   future.sort((left, right) => left.validtime.localeCompare(right.validtime));
-  return future;
+  return [current, ...future];
 }
 
 function radarTileLayout(lat: number, lon: number, zoom: number, width: number, height: number): RadarTileLayout[] {
@@ -132,7 +130,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     fetchJson<RadarTimeEntry[]>(JMA_FORECAST_TIMES_URL),
   ]);
   const entries = selectRadarForecastEntries(observed, forecast);
-  if (entries.length < 2) throw new Error("JMA 30-to-60-minute forecast frames are unavailable");
+  if (entries.length < 2) throw new Error("JMA current-to-60-minute forecast frames are unavailable");
   const currentAt = jmaTimestampToMillis(entries[0]!.basetime);
   const width = RADAR_SOURCE_WIDTH;
   const height = RADAR_SOURCE_HEIGHT;
@@ -163,7 +161,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   }
   const frames = await Promise.all(framePromises);
   const payload = {
-    provider: "JMA 30-to-60-minute radar forecast via Cloudflare radar bundle",
+    provider: "JMA current-to-60-minute radar forecast via Cloudflare radar bundle",
     precomposed: false,
     bundleUrl: `/v1/radar/bundle/${entries[0]!.basetime}.hpb`,
     width,
