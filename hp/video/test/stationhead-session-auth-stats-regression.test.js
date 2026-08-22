@@ -3,21 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const cmake = readFileSync(
-  new URL('../../native/CMakeLists.txt', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/CMakeLists.txt', import.meta.url), 'utf8');
 const player = readFileSync(
-  new URL('../../native/src/sh.cpp', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/sh.cpp', import.meta.url), 'utf8');
 const activePolicy = readFileSync(
-  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url), 'utf8');
 const webviewPolicy = readFileSync(
-  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url), 'utf8');
+const messagePolicy = readFileSync(
+  new URL('../../native/src/sh_stats_webview_message_policy_fix.h', import.meta.url), 'utf8');
+const webview = readFileSync(
+  new URL('../../native/src/sh_webview.cpp', import.meta.url), 'utf8');
 
 test('sh.cpp receives the PR48 stats generator through its actual PCH path', () => {
   assert.match(
@@ -45,18 +41,9 @@ test('Window A waits for the page-observed Authorization header like PR48', () =
 });
 
 test('successful authenticated polling has the PR48 ten-minute quiet period', () => {
-  assert.match(
-    activePolicy,
-    /__homepanelStationheadPlayStatsSuccessAt \|\| 0/,
-  );
-  assert.match(
-    activePolicy,
-    /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/,
-  );
-  assert.match(
-    activePolicy,
-    /__homepanelStationheadPlayStatsSuccessAt = Date\.now\(\)/,
-  );
+  assert.match(activePolicy, /__homepanelStationheadPlayStatsSuccessAt \|\| 0/);
+  assert.match(activePolicy, /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/);
+  assert.match(activePolicy, /__homepanelStationheadPlayStatsSuccessAt = Date\.now\(\)/);
 });
 
 test('401 and 403 both invalidate the captured Authorization like PR48', () => {
@@ -74,13 +61,15 @@ test('401 and 403 both invalidate the captured Authorization like PR48', () => {
   assert.doesNotMatch(rejected, /error: 'forbidden'/);
 });
 
-test('document-start capture and successful payload remain wired to the existing native display bridge', () => {
+test('successful stats return to StationheadStatus instead of being consumed by NativeStatsStore', () => {
   assert.match(webviewPolicy, /StationheadJuly19AuthCaptureScript/);
-  assert.match(webviewPolicy, /if \(!headers\?\.authorization\)/);
-  assert.match(webviewPolicy, /10 \* 60 \* 1000/);
-  assert.match(
-    webviewPolicy,
-    /post\(\{ type: 'stationhead-play-stats', data, source: 'authenticated-api' \}\)/,
-  );
-  assert.match(webviewPolicy, /#include "sh_stats_webview_message_policy_fix\.h"/);
+  assert.match(webviewPolicy, /stationhead-stats-document/);
+  assert.match(webviewPolicy, /auth_generation: 1/);
+  assert.match(activePolicy, /request_id: requestId/);
+  assert.match(activePolicy, /document_generation: 1/);
+  assert.match(activePolicy, /auth_generation: 1/);
+  assert.doesNotMatch(messagePolicy, /PublishStationheadNativeStatsMessage/);
+  assert.match(webview, /status_\.dailyPlayCounts = std::move\(normalized\)/);
+  assert.match(webview, /status_\.dailyPlayStatsUpdatedAt = receivedAt/);
+  assert.match(webview, /PostChange\(\)/);
 });
