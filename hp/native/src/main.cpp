@@ -1,5 +1,6 @@
 #include "app.h"
 #include "power_saving_controller.h"
+#include "stationhead_visibility_overlay.h"
 
 namespace {
 
@@ -114,10 +115,13 @@ int WINAPI wWinMain(
     apartmentInitialized = true;
     hp::PowerSavingController powerSavingController;
     powerSavingController.InstallForCurrentThread();
+    hp::StationheadVisibilityOverlay stationheadVisibilityOverlay;
+    stationheadVisibilityOverlay.InstallForCurrentThread();
     {
       hp::App app(instance);
       result = app.Run(showCommand);
     }
+    stationheadVisibilityOverlay.Uninstall();
     powerSavingController.Uninstall();
     if (result == 42) result = RelaunchSelf() ? 0 : 1;
   } catch (const std::exception& error) {
