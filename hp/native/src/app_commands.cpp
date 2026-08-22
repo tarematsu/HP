@@ -98,8 +98,6 @@ void App::ProcessRemoteCommands() {
           logger_->Info(L"Update install command deferred because an update check is already running");
           continue;
         }
-        // Cloud release commands install genuinely newer versions automatically,
-        // but never reinterpret a same-version hash difference as an automatic repair.
         CheckForUpdateAsync(true, false);
       }
 
@@ -133,7 +131,11 @@ void App::SendTelemetryAsync() {
   try {
     static const std::string versionUtf8 = WideToUtf8(kVersion);
     const auto sensor = sensors_->Snapshot();
+#if 0  // Stationhead disabled; telemetry no longer reads its audio state.
     const bool stationPlaying = stationhead_->AudioPlaying();
+#else
+    constexpr bool stationPlaying = false;
+#endif
     const size_t count = std::min<size_t>(60, sensor.outboxCount);
     const std::string body = sensors_->BuildTelemetryPayload(
         config_.deviceId, versionUtf8, stationPlaying, count);
@@ -155,8 +157,8 @@ void App::ClearDisplayCache() {
   fs::remove(dataDir_ / L"radar.json", ignored);
   fs::remove_all(dataDir_ / L"radar-cache", ignored);
   cloud_->RefreshNow();
-  ShowToast(L"表示キャッシュを削除しました。ログイン情報と履歴は保持しています", 5000);
-  logger_->Info(L"Display cache cleared; WebView user data and telemetry outbox preserved");
+  ShowToast(L"表示キャッシュを削除しました。履歴は保持しています", 5000);
+  logger_->Info(L"Display cache cleared; telemetry outbox preserved");
 }
 
 }  // namespace hp

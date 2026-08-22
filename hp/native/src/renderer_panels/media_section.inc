@@ -1,2 +1,2 @@
-// Music panel v2: fixed play-count cells and a single statistics request session.
-#include "media_section_v2.inc"
+// Native MV panel backed by the official Sakurazaka46 YouTube sources.
+#include "mv_section.inc"

@@ -5,6 +5,7 @@
 namespace hp {
 namespace {
 constexpr UINT kStationheadHealthUpdatedMessage = WM_APP + 10;
+#if 0  // Stationhead disabled while MV playback is active.
 constexpr int64_t kStationheadHandoffAudioStabilityMs = 1'500;
 
 constexpr int64_t StableAudioReadyAt(
@@ -32,9 +33,6 @@ constexpr TrackBoundaryPendingAction TrackBoundaryPendingActionFor(
     bool otherWindowPlaying) noexcept {
   if (pendingUntilMs <= 0) return TrackBoundaryPendingAction::Wait;
   if (nowMs >= pendingUntilMs) return TrackBoundaryPendingAction::CancelExpired;
-  // The ended message can beat WebView2's audio-stopped notification. Do not
-  // call a still-true flag "next track resumed" until the initial stability
-  // window has elapsed.
   if (nowMs < handoffReadyAtMs) return TrackBoundaryPendingAction::Wait;
   if (pendingWindowPlaying) return TrackBoundaryPendingAction::CancelResumed;
   if (otherWindowRequired && !otherWindowPlaying) {
@@ -71,6 +69,7 @@ static_assert(TrackBoundaryPendingActionFor(160, 200, 150, false, false, false) 
 static_assert(ShouldReturnMainForStationheadChanges(StationheadChangeReturnMain));
 static_assert(!ShouldReturnMainForStationheadChanges(
     StationheadChangeReturnMain | StationheadChangeReleaseAuth));
+#endif
 }
 
 LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -93,6 +92,7 @@ LRESULT CALLBACK App::WindowProc(HWND window, UINT message, WPARAM wParam, LPARA
 }
 
 void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
+#if 0  // Stationhead disabled.
   const auto process = [this, nowMs](
                            auto& pendingUntil,
                            auto& handoffReadyAt,
@@ -155,12 +155,16 @@ void App::ProcessPendingStationheadTrackBoundaryRefreshes(int64_t nowMs) {
           static_cast<bool>(secondaryStationhead_), L"A");
   process(secondaryTrackBoundaryPendingUntil_, secondaryTrackBoundaryHandoffReadyAt_,
           secondaryStationhead_, stationhead_, true, L"B");
+#else
+  (void)nowMs;
+#endif
 }
 
 LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_TIMER:
       Tick();
+#if 0  // Stationhead disabled: no handoff processing or health toast.
       ProcessPendingStationheadTrackBoundaryRefreshes(UnixMillis());
       if (cloud_ && toastUntil_ == 0 && renderState_.toast.empty()) {
         std::wstring health = cloud_->StationheadHealthText();
@@ -169,6 +173,7 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
           PublishRenderStateNow();
         }
       }
+#endif
       return 0;
     case kStartupUpdateWakeMessage:
       HandleStartupUpdateWake();
@@ -216,15 +221,26 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
       if (renderer_) renderer_->NotifyRadarUpdated();
       return 0;
     case WM_HP_SWITCHBOT_UPDATED:
+      if (!sensors_) return 0;
       sensors_->ApplyCloudSwitchBot(dataDir_ / L"switchbot.json");
       renderState_.sensors = sensors_->Snapshot();
       PublishRenderStateNow();
       return 0;
     case WM_HP_SENSOR_UPDATED:
+      if (!sensors_) return 0;
       renderState_.sensors = sensors_->Snapshot();
       UpdateAirHistory(renderState_.sensors);
       PublishRenderStateNow();
       return 0;
+
+    case WM_HP_PRIMARY_RELOAD_READY:
+    case WM_HP_SECONDARY_RELOAD_READY:
+    case WM_HP_STATIONHEAD_CHANGED:
+    case kStationheadHealthUpdatedMessage:
+      // Stationhead messages are intentionally ignored while the MV panel is active.
+      return 0;
+
+#if 0  // Legacy Stationhead message handling retained but not compiled.
     case WM_HP_PRIMARY_RELOAD_READY: {
       const int64_t now = UnixMillis();
       if (primaryTrackBoundaryPendingUntil_ <= 0) {
@@ -335,18 +351,12 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         showPlayer = true;
       }
       if (showPlayer) {
-        // Keep the shared workspace in Main placement mode. It evaluates A and B
-        // independently, so a request from B remains in B's half instead of the
-        // legacy Stationhead workspace selecting A full-screen over it.
         if (selectedTab_ != WorkspaceTab::Main) {
           selectedTab_ = WorkspaceTab::Main;
           layoutChanged = true;
         }
       } else if (ShouldReturnMainForStationheadChanges(changes) &&
                  selectedTab_ != WorkspaceTab::Main) {
-        // Auth completion is handled by the originating StationheadPlayer,
-        // which selects its own Stationhead tab before releasing its auth view.
-        // Do not replace Window A or B with the dashboard during that handoff.
         selectedTab_ = WorkspaceTab::Main;
         layoutChanged = true;
       }
@@ -382,6 +392,8 @@ LRESULT App::HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         }
       }
       return 0;
+#endif
+
     case WM_HP_CONFIG_UPDATED:
       renderState_.toast = L"クラウド設定を保存しました。再起動時に適用します";
       ShowToast(std::move(renderState_.toast), 5000);

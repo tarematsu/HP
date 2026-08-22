@@ -40,7 +40,9 @@ Renderer::Renderer(HWND window, int width, int height)
 
 Renderer::~Renderer() {
   shuttingDown_ = true;
+#if 0  // Stationhead playback bridge disabled for the MV panel build.
   StopNativePlaybackBridge();
+#endif
   StopRadarCompose();
   DestroyNativeStaticWindows();
   if (current_ == this) current_ = nullptr;
@@ -56,21 +58,20 @@ void Renderer::Initialize() {
     throw std::runtime_error("runtime dashboard asset installation failed");
   }
 
-  // Dashboard startup is transactional. Previously a partially-created panel
-  // set or a thread-construction failure could leave callbacks targeting an
-  // incomplete renderer while App retried initialization on the next tick.
-  // Roll every stage back before propagating the failure so Stationhead can
-  // remain alive and the parent callback boundary can retry safely.
   try {
     PrepareParentWindow(window_);
     if (!EnsureNativeStaticWindows()) {
       throw std::runtime_error("native dashboard window initialization failed");
     }
+#if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
+#endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
     StopRadarCompose();
+#if 0  // Stationhead playback bridge disabled.
     StopNativePlaybackBridge();
+#endif
     DestroyNativeStaticWindows();
     throw;
   }
@@ -117,9 +118,6 @@ void Renderer::ApplyDashboardVisibility() {
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     if (visible) {
       if (!nativePanelTimerActive_) {
-        // The clock still updates once per second, but Windows may align this
-        // timer with nearby App/WebView wakeups instead of waking the CPU for a
-        // separate exact deadline. Fall back for older timer implementations.
         const UINT_PTR coalesced = SetCoalescableTimer(
             nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs,
             nullptr, kNativePanelTimerToleranceMs);
@@ -137,23 +135,13 @@ void Renderer::ApplyDashboardVisibility() {
 
   if (!visibilityChanged) return;
   if (visible) {
-    // Hidden sensor updates retain the compact source samples but intentionally
-    // skip graph projection. Rebuild once before repainting the restored panel.
     RebuildNativeAirGraph(UnixMillis());
-    // Radar animation and its large composition surfaces are needed only while
-    // the native Dashboard is visible. Recreate them on demand after a tab,
-    // authorization surface, or power-saving interval returns to Main.
     StartRadarCompose();
     NotifyRadarUpdated();
     InvalidateAllNativePanels();
     return;
   }
 
-  // A 1920x1280 32-bit radar frame is roughly 10 MiB, before decoded tiles,
-  // artwork, weather icons, panel back buffers and cached static sections. Stop
-  // the only worker that touches the radar cache before releasing all native
-  // display-only bitmaps. Stationhead playback and the lightweight dashboard
-  // data poll remain active, so switching back is immediate and state-correct.
   StopRadarCompose();
   {
     std::lock_guard lock(radarFrameMutex_);
@@ -164,8 +152,6 @@ void Renderer::ApplyDashboardVisibility() {
   }
   radarFailedTiles_.clear();
   ResetNativeBitmapCaches();
-  // The source history remains available in nativeAirHistory_; discard only the
-  // filtered render projection so its capacity does not stay resident off-screen.
   nativeAirGraph_ = {};
 }
 
