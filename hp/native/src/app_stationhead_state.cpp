@@ -6,12 +6,10 @@ void App::EnrichRenderStationheadState(
     StationheadStatus& state,
     StationheadStatus* secondaryStatus,
     const StationheadConfig& config) {
+#if 0  // Stationhead disabled while the MV panel is active.
   state.fallbackUrl = config.fallbackUrl;
   if (secondaryStatus) {
     state.secondaryContentRevision = secondaryStatus->contentRevision;
-    // The dashboard exposes one combined Stationhead health line. Preserve the
-    // primary playback fields, but surface interactive/error states from either
-    // window so a failed or authorizing B window is not hidden by a healthy A.
     state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
     state.spotifyAuthorization =
         state.spotifyAuthorization || secondaryStatus->spotifyAuthorization;
@@ -25,9 +23,15 @@ void App::EnrichRenderStationheadState(
   state.secondaryAudioMuted = false;
   state.secondaryPlaying = false;
   state.secondaryUrl.clear();
+#else
+  (void)state;
+  (void)secondaryStatus;
+  (void)config;
+#endif
 }
 
 void App::ToggleStationheadAudio() {
+#if 0  // Stationhead disabled.
   const bool primaryAudible = secondaryStationhead_
       ? !scheduledPrimaryAudioAudible_
       : true;
@@ -35,13 +39,16 @@ void App::ToggleStationheadAudio() {
   ApplyScheduledStationheadAudioProfile(primaryAudible);
   ShowToast(primaryAudible ? L"A 音声ON" : L"B 音声ON", 3000, false);
   InvalidateAll();
+#endif
 }
 
 void App::MuteStationheadAudio() {
+#if 0  // Stationhead disabled.
   stationheadAudioMuted_ = true;
   ApplyScheduledStationheadAudioProfile(scheduledPrimaryAudioAudible_);
   ShowToast(L"MUTE", 3000, false);
   InvalidateAll();
+#endif
 }
 
 }  // namespace hp
