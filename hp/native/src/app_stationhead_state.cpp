@@ -7,12 +7,12 @@ void App::EnrichRenderStationheadState(
     StationheadStatus* secondaryStatus,
     const StationheadConfig& config) {
   state.fallbackUrl = config.fallbackUrl;
+  // Stationhead's in-page Log in surface is intentionally not a dashboard
+  // interaction state. It may still be observed internally for diagnostics,
+  // but only Spotify authorization is allowed to drive automatic foreground UI.
+  state.loginRequired = false;
   if (secondaryStatus) {
     state.secondaryContentRevision = secondaryStatus->contentRevision;
-    // The dashboard exposes one combined Stationhead health line. Preserve the
-    // primary playback fields, but surface interactive/error states from either
-    // window so a failed or authorizing B window is not hidden by a healthy A.
-    state.loginRequired = state.loginRequired || secondaryStatus->loginRequired;
     state.spotifyAuthorization =
         state.spotifyAuthorization || secondaryStatus->spotifyAuthorization;
     state.processFailed = state.processFailed || secondaryStatus->processFailed;
