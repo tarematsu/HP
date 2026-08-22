@@ -6,8 +6,8 @@ const radarUi = readFileSync(
   new URL('../../native/src/renderer_radar_ui.cpp', import.meta.url),
   'utf8',
 );
-const panelWindows = readFileSync(
-  new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
+const mvPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/mv_section.inc', import.meta.url),
   'utf8',
 );
 
@@ -49,21 +49,23 @@ test('clear forecast detection ignores off-panel pixels and rejects incomplete t
     radarUi,
     /if \(!RadarTileLayoutCoversSource\(\s*frameDestinations, sourceWidth, sourceHeight\)\) \{\s*forecastComplete = false;/s,
   );
-  assert.match(radarUi, /native-radar-v10/);
+  assert.match(radarUi, /native-radar-v11/);
   assert.doesNotMatch(radarUi, /bool BitmapHasVisiblePixels\(HBITMAP bitmap\) \{/);
 });
 
-test('native radar panel renders the clear forecast message prominently', () => {
+test('native radar renders in the former MV slot and keeps the clear forecast message', () => {
   assert.match(
-    panelWindows,
+    mvPanel,
     /const bool noRain = hasFrame && timeText == L"しばらく雨は降りません";/,
   );
   assert.match(
-    panelWindows,
+    mvPanel,
     /else if \(noRain\) \{[\s\S]*TierFont\(FontTier::Large\)[\s\S]*L"しばらく雨は降りません"/,
   );
   assert.match(
-    panelWindows,
+    mvPanel,
     /const std::wstring chipText = noRain\s*\? L"雨雲レーダー"/s,
   );
+  assert.match(mvPanel, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
+  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\)/);
 });
