@@ -2,6 +2,7 @@
 // Fragment boundaries follow complete responsibilities and never split functions.
 #include "stationhead_native_stats.h"
 #include "stationhead_play_summary.h"
+#include "shared_webview_environment.h"
 #include "version.h"
 #include "renderer_panels/primitives.inc"
 #include "renderer_panels/layout_overrides.inc"
@@ -21,4 +22,4 @@
 
 #include "renderer_panels/environment_sections.inc"
 #include "renderer_panels/media_section.inc"
-#include "renderer_panels/data_sections.inc"
+#include "renderer_panels/data_sections.inc"}

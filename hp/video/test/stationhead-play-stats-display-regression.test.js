@@ -62,11 +62,12 @@ test('captured API fixture produces the expected UTC period totals', () => {
   });
 });
 
-test('the legacy media entry delegates to the rebuilt panel', () => {
-  assert.match(mediaEntry, /#include "media_section_v2\.inc"/);
+test('the compiled media entry is now the MV panel, not the legacy play-count panel', () => {
+  assert.match(mediaEntry, /#include "mv_section\.inc"/);
+  assert.doesNotMatch(mediaEntry, /media_section_v2\.inc/);
 });
 
-test('five play-count metrics share one compact right-aligned line', () => {
+test('legacy five play-count metrics remain testable outside the compiled MV panel', () => {
   assert.match(
     mediaSection,
     /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
@@ -82,7 +83,7 @@ test('five play-count metrics share one compact right-aligned line', () => {
   assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
 });
 
-test('renderer reads PR48 StationheadStatus and App history', () => {
+test('legacy renderer source reads PR48 StationheadStatus and App history', () => {
   assert.match(mediaSection, /nativeStationhead_\.dailyPlayCounts/);
   assert.match(mediaSection, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
   assert.match(mediaSection, /nativeStationheadPlayHistory_/);
@@ -93,7 +94,7 @@ test('renderer reads PR48 StationheadStatus and App history', () => {
   );
 });
 
-test('unavailable and stale values remain explicit', () => {
+test('legacy unavailable and stale values remain explicit', () => {
   assert.match(
     mediaSection,
     /value >= 0\s*\?\s*std::to_wstring\(value\)\s*:\s*std::wstring\(L"--"\)/,

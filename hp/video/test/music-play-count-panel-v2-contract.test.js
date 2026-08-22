@@ -23,12 +23,13 @@ const messagePolicy = readFileSync(
   'utf8',
 );
 
-test('the compiled Music panel uses the v2 implementation', () => {
-  assert.match(entry, /#include "media_section_v2\.inc"/);
+test('the compiled media panel has moved from the legacy Music panel to MV', () => {
+  assert.match(entry, /#include "mv_section\.inc"/);
+  assert.doesNotMatch(entry, /media_section_v2\.inc/);
   assert.match(panel, /void Renderer::DrawMusicSection/);
 });
 
-test('every requested period is rendered as one small right-aligned line', () => {
+test('legacy play-count rendering remains isolated for Stationhead regression coverage', () => {
   for (const label of ['直近1時間', '本日', '昨日', '今週', '先週']) {
     assert.match(panel, new RegExp(`L"${label}"`));
   }
@@ -54,7 +55,7 @@ test('play-count acquisition uses PR48 authenticated Primary WebView polling', (
   assert.match(activePolicy, /10 \* 60 \* 1000/);
 });
 
-test('the display path is StationheadStatus plus App play history', () => {
+test('the legacy display path remains StationheadStatus plus App play history', () => {
   assert.doesNotMatch(messagePolicy, /PublishStationheadNativeStatsMessage/);
   assert.match(panel, /nativeStationhead_\.dailyPlayCounts/);
   assert.match(panel, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
