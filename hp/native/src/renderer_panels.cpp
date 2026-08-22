@@ -22,4 +22,4 @@
 
 #include "renderer_panels/environment_sections.inc"
 #include "renderer_panels/media_section.inc"
-#include "renderer_panels/data_sections.inc"}
+#include "renderer_panels/data_sections.inc"
