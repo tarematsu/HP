@@ -44,6 +44,13 @@ describe("radar forecast frame selection", () => {
     expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
   });
 
+  it("does not return a current-only cycle when the matching forecast has no future frame", () => {
+    const observed = [entry("20260717102500")];
+    const forecast = [entry("20260717102500", "20260717102500")];
+
+    expect(selectRadarForecastEntries(observed, forecast)).toEqual([]);
+  });
+
   it("ignores non-radar elements and duplicate forecast valid times", () => {
     const observed = [entry("20260717102500")];
     const forecast: RadarTimeEntry[] = [
