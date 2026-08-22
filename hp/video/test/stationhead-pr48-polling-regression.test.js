@@ -11,9 +11,13 @@ const finalInteractionPolicy = readFileSync(
   'utf8',
 );
 
-test('PR48 stats rollback does not restore the old Window B network auth probe', () => {
+test('PR48 stats rollback restores authenticated A polling without restoring B network auth', () => {
+  assert.match(activePolicy, /const headers = window\.__homepanelStationheadAuthHeaders/);
   assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
+  assert.match(activePolicy, /error: 'no-auth-header'/);
   assert.match(activePolicy, /Date\.now\(\) - lastSuccessAt < 10 \* 60 \* 1000/);
+  assert.doesNotMatch(activePolicy, /const requestHeaders = \{ accept: 'application\/json' \}/);
+
   assert.match(
     finalInteractionPolicy,
     /#define StationheadAuthProbeScript StationheadCurrentInteractionAuthProbeScript/,
@@ -22,7 +26,12 @@ test('PR48 stats rollback does not restore the old Window B network auth probe',
     'inline std::wstring StationheadCurrentInteractionAuthProbeScript',
   );
   assert.ok(localProbeAt >= 0);
-  const localProbe = finalInteractionPolicy.slice(localProbeAt);
+  const localProbeEnd = finalInteractionPolicy.indexOf(
+    'inline constexpr int64_t kStationheadMeasuredPostPlaybackStopClickDelayMs',
+    localProbeAt,
+  );
+  assert.ok(localProbeEnd > localProbeAt);
+  const localProbe = finalInteractionPolicy.slice(localProbeAt, localProbeEnd);
   assert.match(localProbe, /__homepanelStationheadBlockingLoginVisible/);
-  assert.doesNotMatch(localProbe, /streakStats|fetch\(/);
+  assert.doesNotMatch(localProbe, /streakStats|fetch\s*\(/);
 });
