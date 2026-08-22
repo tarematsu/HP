@@ -14,12 +14,12 @@ const july19Policy = readFileSync(
   new URL('../../native/src/sh_july19_stats_policy_fix.h', import.meta.url),
   'utf8',
 );
-const nativeStatsHeader = readFileSync(
-  new URL('../../native/src/stationhead_native_stats.h', import.meta.url),
+const activePolicy = readFileSync(
+  new URL('../../native/src/sh_playback_resource_policy_fix.h', import.meta.url),
   'utf8',
 );
-const nativeStats = readFileSync(
-  new URL('../../native/src/stationhead_native_stats.cpp', import.meta.url),
+const messagePolicy = readFileSync(
+  new URL('../../native/src/sh_stats_webview_message_policy_fix.h', import.meta.url),
   'utf8',
 );
 
@@ -42,29 +42,22 @@ test('every requested period is rendered as one small right-aligned line', () =>
   assert.match(panel, /L"--"/);
 });
 
-test('the native stats facade only accepts and exposes browser results', () => {
-  assert.match(nativeStatsHeader, /PublishStationheadNativeStatsMessage/);
-  assert.match(nativeStatsHeader, /class StationheadNativeStatsAccess final/);
-  assert.doesNotMatch(
-    nativeStatsHeader,
-    /AttachStationheadNativeStats|WinHttpDownload|WebResourceRequested/,
-  );
-});
-
-test('play-count acquisition is the July 19 authenticated Primary WebView path', () => {
+test('play-count acquisition uses PR48 authenticated Primary WebView polling', () => {
   assert.match(july19Policy, /StationheadJuly19AuthCaptureScript/);
   assert.match(july19Policy, /window\.fetch = function\(input, init\)/);
   assert.match(july19Policy, /NativeXhr\.prototype\.send = function/);
-  assert.match(july19Policy, /StationheadJuly19ApiPlayStatsScript/);
-  assert.match(july19Policy, /window\.__homepanelStationheadAuthHeaders/);
-  assert.match(july19Policy, /credentials: 'include'/);
-  assert.match(july19Policy, /\/streakStats/);
-  assert.match(july19Policy, /stationhead-play-stats/);
+  assert.match(activePolicy, /StationheadPrimaryPlayStatsScript/);
+  assert.match(activePolicy, /window\.__homepanelStationheadAuthHeaders/);
+  assert.match(activePolicy, /if \(!headers\?\.authorization\)/);
+  assert.match(activePolicy, /credentials: 'include'/);
+  assert.match(activePolicy, /\/streakStats/);
+  assert.match(activePolicy, /10 \* 60 \* 1000/);
+});
 
-  assert.match(nativeStats, /PublishStationheadNativeStatsMessage/);
-  assert.match(nativeStats, /StatsStore\(\)\.Publish/);
-  assert.doesNotMatch(
-    nativeStats,
-    /WinHttpDownload|std::thread|WebResourceResponseReceived|Network\.responseReceived/,
-  );
+test('the display path is StationheadStatus plus App play history', () => {
+  assert.doesNotMatch(messagePolicy, /PublishStationheadNativeStatsMessage/);
+  assert.match(panel, /nativeStationhead_\.dailyPlayCounts/);
+  assert.match(panel, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
+  assert.match(panel, /nativeStationheadPlayHistory_/);
+  assert.doesNotMatch(panel, /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/);
 });
