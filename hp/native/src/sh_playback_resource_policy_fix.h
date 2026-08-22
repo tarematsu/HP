@@ -17,19 +17,17 @@ inline void ApplyStationheadResourceBlockingPlaybackSafe(
   (void)token;
   if (!environment || !webview) return;
 
-  // Clear only Chromium's HTTP cache once per newly created playback controller.
-  // Cookies and DOM storage remain intact, so Stationhead login and Spotify
-  // authorization survive the reset. Do not install request substitution, URL
-  // blocking, or statistics observers at this boundary.
+  // Only the HTTP cache is cleared. Cookies and DOM storage remain intact so
+  // the persistent Stationhead login profile is preserved across restarts.
   webview->CallDevToolsProtocolMethod(
       L"Network.clearBrowserCache", L"{}", nullptr);
 }
 
-// PollDailyPlayStats() is compiled in sh.cpp. sh.cpp receives this header through
-// the precompiled-header chain, whereas the later sh_track_boundary_script.h is
-// included only by sh_webview.cpp. Keep the actual periodic request at this
-// shared compile boundary so the code that runs every five minutes cannot fall
-// back to the older Authorization-required generator.
+// Restore PR #48's authenticated polling behavior. The three generation fields
+// are compatibility metadata for the current WebMessage parser only; they do
+// not participate in request/auth decisions. The request itself retains PR48's
+// single readiness signal (captured Authorization), retry behavior, ten-minute
+// success quiet period, and 401/403 invalidation semantics.
 inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   std::wostringstream script;
   script << LR"JS(
@@ -37,33 +35,49 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
   const post = message => {
     try { window.chrome?.webview?.postMessage(message); } catch (_) {}
   };
-  const captured = window.__homepanelStationheadAuthHeaders;
-  const requestHeaders = { accept: 'application/json' };
-  if (captured?.authorization) Object.assign(requestHeaders, captured);
+  const headers = window.__homepanelStationheadAuthHeaders;
+  if (!headers?.authorization) {
+    post({ type: 'stationhead-play-stats-error', error: 'no-auth-header' });
+    return false;
+  }
+  const lastSuccessAt = Number(window.__homepanelStationheadPlayStatsSuccessAt || 0);
+  if (lastSuccessAt > 0 && Date.now() - lastSuccessAt < 10 * 60 * 1000) {
+    return false;
+  }
+  const requestId = Number(window.__homepanelStationheadStatsRequestId || 0) + 1;
+  window.__homepanelStationheadStatsRequestId = requestId;
   const url = 'https://production1.stationhead.com/me/channel/)JS"
          << channelId << LR"JS(/streakStats';
   fetch(url, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: requestHeaders,
+    headers: Object.assign({ accept: 'application/json' }, headers),
   }).then(async response => {
-    if (response.status === 401) {
-      if (captured?.authorization) {
-        window.__homepanelStationheadRejectedAuthorization = captured.authorization;
-        window.__homepanelStationheadAuthHeaders = null;
-      }
-      post({ type: 'stationhead-play-stats-auth-failed', status: response.status });
-      return null;
-    }
-    if (response.status === 403) {
-      post({ type: 'stationhead-play-stats-error', error: 'forbidden' });
+    if (response.status === 401 || response.status === 403) {
+      window.__homepanelStationheadRejectedAuthorization = headers.authorization;
+      window.__homepanelStationheadAuthHeaders = null;
+      post({
+        type: 'stationhead-play-stats-auth-failed',
+        status: response.status,
+        auth_generation: 1,
+      });
       return null;
     }
     if (!response.ok) throw new Error('http-' + response.status);
     return response.json();
   }).then(data => {
-    if (data) post({ type: 'stationhead-play-stats', data, source: 'authenticated-api' });
+    if (data) {
+      window.__homepanelStationheadPlayStatsSuccessAt = Date.now();
+      post({
+        type: 'stationhead-play-stats',
+        data,
+        source: 'authenticated-api',
+        request_id: requestId,
+        document_generation: 1,
+        auth_generation: 1,
+      });
+    }
   }).catch(error => {
     post({ type: 'stationhead-play-stats-error', error: String(error?.message || error) });
   });
@@ -78,7 +92,5 @@ inline std::wstring StationheadPrimaryPlayStatsScript(int channelId) {
 #undef ApplyStationheadResourceBlocking
 #define ApplyStationheadResourceBlocking ApplyStationheadResourceBlockingPlaybackSafe
 
-// This macro is consumed by StationheadPlayer::PollDailyPlayStats() in sh.cpp.
-// Define it at the PCH-visible boundary instead of only in sh_webview.cpp.
 #undef StationheadApiPlayStatsScript
 #define StationheadApiPlayStatsScript StationheadPrimaryPlayStatsScript

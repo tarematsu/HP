@@ -122,25 +122,42 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     return value >= 0 ? std::to_wstring(value) : std::wstring(L"--");
   };
 
-  // Play counts are sourced directly from WebView2's native response event.
-  // No generated JavaScript, WebMessage generation ids, auth ids, or reducer
-  // state participates in this display path.
+  // PR #48 path: the Stationhead WebMessage handler owns successful stats,
+  // publishes them through StationheadStatus, and App records the rolling
+  // history used for the one-hour delta. The renderer does not depend on the
+  // later NativeStatsStore interception path.
   constexpr int64_t kDailyPlayStatsStaleAfterMs = 15 * 60'000;
-  const StationheadNativeStatsSnapshot nativeStats =
-      GlobalStationheadNativeStatsStore().Snapshot();
-  const bool statsAvailable = nativeStats.updatedAt > 0 &&
-      !nativeStats.daily.empty();
+  const bool statsAvailable = nativeStationhead_.dailyPlayStatsUpdatedAt > 0 &&
+      !nativeStationhead_.dailyPlayCounts.empty();
   const bool statsStale = statsAvailable &&
-      (nowMs < nativeStats.updatedAt ||
-       nowMs - nativeStats.updatedAt > kDailyPlayStatsStaleAfterMs);
+      (nowMs < nativeStationhead_.dailyPlayStatsUpdatedAt ||
+       nowMs - nativeStationhead_.dailyPlayStatsUpdatedAt >
+           kDailyPlayStatsStaleAfterMs);
   const StationheadPlayPeriodSummary summary = statsAvailable
-      ? SummarizeStationheadDailyPlays(nativeStats.daily, nowMs)
+      ? SummarizeStationheadDailyPlays(nativeStationhead_.dailyPlayCounts, nowMs)
       : StationheadPlayPeriodSummary{};
+
+  int64_t recentHour = -1;
+  if (nativeStationheadPlayHistory_.size() >= 2) {
+    const auto& latest = nativeStationheadPlayHistory_.back();
+    const int64_t target = latest.timestamp - 60LL * 60 * 1000;
+    const auto baseline = std::upper_bound(
+        nativeStationheadPlayHistory_.begin(),
+        nativeStationheadPlayHistory_.end(), target,
+        [](int64_t timestamp, const StationheadPlayHistorySample& sample) {
+          return timestamp < sample.timestamp;
+        });
+    if (baseline != nativeStationheadPlayHistory_.begin()) {
+      const int64_t delta =
+          static_cast<int64_t>(latest.value) - std::prev(baseline)->value;
+      recentHour = delta >= 0 ? delta : latest.value;
+    }
+  }
 
   static constexpr std::array<const wchar_t*, 5> kPlayMetricLabels{
       L"直近1時間", L"本日", L"昨日", L"今週", L"先週"};
   const std::array<std::wstring, 5> playMetricValues{
-      playValueText(nativeStats.recentHour),
+      playValueText(recentHour),
       playValueText(summary.today),
       playValueText(summary.yesterday),
       playValueText(summary.thisWeek),
@@ -150,9 +167,7 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
                    content.top + CardHeaderHeight(content)};
   const COLORREF metricTextColor = statsStale
       ? kWidgetWarning
-      : (statsAvailable || nativeStats.recentHour >= 0
-             ? kWidgetText
-             : kWidgetSubtle);
+      : (statsAvailable || recentHour >= 0 ? kWidgetText : kWidgetSubtle);
   std::wstring metricsLine;
   for (size_t index = 0; index < kPlayMetricLabels.size(); ++index) {
     if (!metricsLine.empty()) {
@@ -246,4 +261,4 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
   SelectObject(dc, previousFont);
 }
 
-// Native WebView2 response capture owns play-count history and summaries.
+// Stationhead play-count history is recorded by App from StationheadStatus.

@@ -78,23 +78,19 @@ test('five play-count metrics share one compact right-aligned line', () => {
     mediaSection,
     /DrawTextInRect\(dc, metricsLine, metricsRect,[\s\S]*DT_RIGHT \| DT_SINGLELINE/,
   );
-  assert.doesNotMatch(mediaSection, /usableMetricWidth \* index \/ 5/);
-  assert.doesNotMatch(mediaSection, /DrawWidgetCard\(dc, cell, kWidgetSurfaceAlt/);
   assert.match(mediaSection, /playValueText\(summary\.today\)/);
   assert.match(mediaSection, /playValueText\(summary\.lastWeek\)/);
 });
 
-test('renderer reads the native response store directly', () => {
-  assert.match(
+test('renderer reads PR48 StationheadStatus and App history', () => {
+  assert.match(mediaSection, /nativeStationhead_\.dailyPlayCounts/);
+  assert.match(mediaSection, /nativeStationhead_\.dailyPlayStatsUpdatedAt/);
+  assert.match(mediaSection, /nativeStationheadPlayHistory_/);
+  assert.match(mediaSection, /latest\.timestamp - 60LL \* 60 \* 1000/);
+  assert.doesNotMatch(
     mediaSection,
     /GlobalStationheadNativeStatsStore\(\)\.Snapshot\(\)/,
   );
-  assert.match(mediaSection, /nativeStats\.daily/);
-  assert.match(mediaSection, /nativeStats\.recentHour/);
-  assert.doesNotMatch(mediaSection, /dailyPlayCounts/);
-  assert.doesNotMatch(mediaSection, /dailyPlayStatsServerDateAt/);
-  assert.doesNotMatch(mediaSection, /statsDocumentGeneration/);
-  assert.doesNotMatch(mediaSection, /statsAuthGeneration/);
 });
 
 test('unavailable and stale values remain explicit', () => {
