@@ -38,6 +38,22 @@ test('cloud radar signs and prewarms only the centered forty-percent viewport', 
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_HEIGHT/);
 });
 
+test('radar playback covers current through one hour at a one-second native cadence', () => {
+  assert.match(cloudRadar, /const RADAR_FORECAST_WINDOW_MS = 60 \* 60 \* 1000;/);
+  assert.match(cloudRadar, /const RADAR_FRAME_INTERVAL_MS = 1_000;/);
+  assert.match(cloudRadar, /validAt > currentAt && validAt <= forecastEnd/);
+  assert.match(cloudRadar, /return \[current, \.\.\.future\];/);
+  assert.match(cloudRadar, /frameIntervalMs: RADAR_FRAME_INTERVAL_MS/);
+  assert.match(
+    radarUi,
+    /const int64_t frameIntervalMs = std::clamp<int64_t>\([\s\S]*json::Number\(root, L"frameIntervalMs", kDefaultRadarFrameIntervalMs\)[\s\S]*1'000, 60'000\);/,
+  );
+  assert.match(
+    radarUi,
+    /\(UnixMillis\(\) \/ frameIntervalMs\) % static_cast<int64_t>\(frames\.Size\(\)\)/,
+  );
+});
+
 test('native build crops satellite and map separately before embedding', () => {
   assert.match(buildRadarBase, /\$satelliteImage\.Width \* 0\.4/);
   assert.match(buildRadarBase, /\$satelliteImage\.Height \* 0\.4/);
