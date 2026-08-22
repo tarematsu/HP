@@ -38,32 +38,34 @@ test('cloud radar signs and prewarms only the centered forty-percent viewport', 
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_HEIGHT/);
 });
 
-test('native build crops and precomposes satellite and map before embedding one radar asset', () => {
+test('native build crops satellite and map separately before embedding', () => {
   assert.match(buildRadarBase, /\$satelliteImage\.Width \* 0\.4/);
   assert.match(buildRadarBase, /\$satelliteImage\.Height \* 0\.4/);
   assert.match(buildRadarBase, /\$cropLeft = \[int\]\[Math\]::Floor/);
   assert.match(buildRadarBase, /\$cropTop = \[int\]\[Math\]::Floor/);
-  assert.match(buildRadarBase, /DrawImage\(\$satelliteImage/);
-  assert.match(buildRadarBase, /DrawImage\(\$mapImage/);
+  assert.match(buildRadarBase, /Write-CroppedLayer -Image \$satelliteImage/);
+  assert.match(buildRadarBase, /Write-CroppedLayer -Image \$mapImage/);
+  assert.doesNotMatch(buildRadarBase, /DrawImage\(\$satelliteImage[\s\S]*DrawImage\(\$mapImage/);
 
-  assert.match(cmake, /set\(HOMEPANEL_RADAR_BASE .*generated\/radar-base\.png/);
-  assert.match(cmake, /build-radar-base\.ps1/);
-  assert.match(cmake, /-DHOMEPANEL_RADAR_BASE=\$\{HOMEPANEL_RADAR_BASE\}/);
-  assert.match(resource, /110 RCDATA "@HOMEPANEL_RADAR_BASE@"/);
-  assert.doesNotMatch(resource, /112 RCDATA/);
+  assert.match(cmake, /generated\/radar-satellite\.png/);
+  assert.match(cmake, /generated\/radar-map\.png/);
+  assert.match(cmake, /-SatelliteOutput "\$\{HOMEPANEL_RADAR_SATELLITE\}"/);
+  assert.match(cmake, /-MapOutput "\$\{HOMEPANEL_RADAR_MAP\}"/);
+  assert.match(resource, /110 RCDATA "@HOMEPANEL_RADAR_SATELLITE@"/);
+  assert.match(resource, /112 RCDATA "@HOMEPANEL_RADAR_MAP@"/);
 });
 
-test('runtime installs and decodes only the cropped precomposed base', () => {
-  assert.match(embeddedUi, /\{110, L"radar-base\.png"\}/);
-  assert.doesNotMatch(embeddedUi, /\{112,/);
-  assert.match(embeddedUi, /L"radar-satellite\.png"/);
-  assert.match(embeddedUi, /L"radar-map\.png"/);
+test('runtime keeps satellite, rain tiles, and white map as three ordered layers', () => {
+  assert.match(embeddedUi, /\{110, L"radar-satellite\.png"\}/);
+  assert.match(embeddedUi, /\{112, L"radar-map\.png"\}/);
+  assert.doesNotMatch(embeddedUi.match(/constexpr RuntimeAsset kRuntimeAssets\[\][\s\S]*?\};/)?.[0] ?? '', /radar-base\.png/);
 
-  assert.match(radarUi, /constexpr int kRadarBaseWidth = 768;/);
-  assert.match(radarUi, /constexpr int kRadarBaseHeight = 512;/);
-  assert.match(radarUi, /uiDir \/ L"radar-base\.png"/);
-  assert.match(radarUi, /CachedRadarBitmap\(\s*L"radar-base", basePath, baseStamp, kRadarBaseWidth, kRadarBaseHeight\)/s);
-  assert.doesNotMatch(radarUi, /radar-satellite\.png/);
-  assert.doesNotMatch(radarUi, /radar-map\.png/);
+  assert.match(radarUi, /constexpr int kRadarLayerWidth = 768;/);
+  assert.match(radarUi, /constexpr int kRadarLayerHeight = 512;/);
+  assert.match(radarUi, /uiDir \/ L"radar-satellite\.png"/);
+  assert.match(radarUi, /uiDir \/ L"radar-map\.png"/);
+  assert.match(radarUi, /CachedRadarBitmap\(\s*L"radar-satellite"/s);
+  assert.match(radarUi, /CachedRadarBitmap\(\s*L"radar-map"/s);
+  assert.match(radarUi, /BlendBitmap\(composeDc, satelliteBitmap[\s\S]*for \(const RadarTile& tile : tiles\)[\s\S]*BlendBitmap\(composeDc, tileBitmap[\s\S]*BlendBitmap\(composeDc, mapBitmap/s);
   assert.match(radarUi, /CachedRadarBitmap\(L"radar-tile:" \+ tile\.url, tile\.path,[\s\S]*256, 256\)/);
 });
