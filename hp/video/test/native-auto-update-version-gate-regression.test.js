@@ -45,8 +45,12 @@ test('automatic cloud updates do not treat same-version hash drift as a release'
 test('startup update checks install newer releases silently without same-version repair', () => {
   const startupCheck = section(
     appSource,
-    'const bool updateDelayElapsed',
+    'void App::StartDeferredServices(',
     'void App::StopServices()',
+  );
+  assert.match(
+    startupCheck,
+    /!startupUpdateScheduled_ && cloudStarted_ && now - startupAt_ >= 60'000/,
   );
   assert.match(startupCheck, /CheckForUpdateAsync\(false\)/);
 

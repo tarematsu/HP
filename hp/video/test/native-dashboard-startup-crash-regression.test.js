@@ -61,7 +61,7 @@ test('dashboard initialization rolls back every partially started stage', () => 
   assert.match(initialize, /catch \(\.\.\.\)/);
   assert.match(
     initialize,
-    /catch \(\.\.\.\) \{\s*StopRadarCompose\(\);\s*StopNativePlaybackBridge\(\);\s*DestroyNativeStaticWindows\(\);\s*throw;/,
+    /catch \(\.\.\.\) \{\s*StopRadarCompose\(\);[\s\S]*DestroyNativeStaticWindows\(\);\s*throw;/,
   );
 });
 

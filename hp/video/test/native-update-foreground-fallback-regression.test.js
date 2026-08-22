@@ -106,7 +106,7 @@ test('dedicated wake evaluates only the startup update scheduler', () => {
   );
   assert.match(
     deferred,
-    /!startupUpdateScheduled_ && cloudStarted_ && updateDelayElapsed/,
+    /!startupUpdateScheduled_ && cloudStarted_ && now - startupAt_ >= 60'000/,
   );
   assert.match(deferred, /CheckForUpdateAsync\(false\)/);
 });

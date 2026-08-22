@@ -23,28 +23,37 @@ test('native dashboard compiles the MV panel and its WebView2 environment depend
   assert.match(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_, dataDir_, playerBounds\)/);
 });
 
-test('MV sources are the Sakurazaka Channel uploads and official Music Videos playlist', () => {
-  assert.match(mvPanel, /UUDNDlqJRz4FsO_ByfUNOSuQ/);
-  assert.match(mvPanel, /PL0eK3gfF1BbM6tiu8UThzL9nYNowS8LL2/);
-  assert.match(mvPanel, /櫻坂チャンネル/);
-  assert.match(mvPanel, /櫻坂46 MUSIC VIDEO/);
+test('MV playback uses the requested YouTube playlist directly', () => {
+  assert.match(mvPanel, /PLMWqSdpIVl30/);
+  assert.match(mvPanel, /youtube\.com\/embed\/videoseries/);
+  assert.match(mvPanel, /autoplay=1/);
+  assert.match(mvPanel, /loop=1/);
+  assert.match(mvPanel, /controls=1/);
 });
 
-test('each source is random while completed videos switch sources strictly', () => {
-  assert.match(mvPanel, /crypto\.getRandomValues/);
-  assert.match(mvPanel, /player\.cuePlaylist/);
-  assert.match(mvPanel, /player\.getPlaylist\(\)/);
-  assert.match(mvPanel, /player\.playVideoAt\(index\)/);
-  assert.match(mvPanel, /YT\.PlayerState\.ENDED/);
-  assert.match(mvPanel, /loadSource\(1 - currentSource\)/);
+test('MV playback no longer runs local iframe API playlist machinery', () => {
+  assert.doesNotMatch(mvPanel, /kNativeMvPanelHtml/);
+  assert.doesNotMatch(mvPanel, /youtube\.com\/iframe_api/);
+  assert.doesNotMatch(mvPanel, /crypto\.getRandomValues/);
+  assert.doesNotMatch(mvPanel, /cuePlaylist/);
+  assert.doesNotMatch(mvPanel, /playVideoAt/);
+  assert.doesNotMatch(mvPanel, /SetVirtualHostNameToFolderMapping/);
+  assert.doesNotMatch(mvPanel, /PreparePlayerHtml/);
+  assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('embedded playback uses a local HTTPS virtual host and an autoplay fallback', () => {
-  assert.match(mvPanel, /SetVirtualHostNameToFolderMapping/);
-  assert.match(mvPanel, /https:\/\/homepanel\.mv\/index\.html/);
-  assert.match(mvPanel, /autoplay: 1/);
-  assert.match(mvPanel, /onAutoplayBlocked: showResume/);
-  assert.match(mvPanel, />再生<\/button>/);
+test('MV WebView is restricted to playback-only browser features', () => {
+  assert.match(mvPanel, /Acquire\(\s*userDataFolder_, true, true,/);
+  assert.match(mvPanel, /put_IsWebMessageEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_AreDefaultScriptDialogsEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_AreDefaultContextMenusEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_AreDevToolsEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_IsStatusBarEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_AreHostObjectsAllowed\(FALSE\)/);
+  assert.match(mvPanel, /put_IsZoomControlEnabled\(FALSE\)/);
+  assert.match(mvPanel, /put_AreBrowserAcceleratorKeysEnabled\(FALSE\)/);
+  assert.match(mvPanel, /add_NewWindowRequested/);
+  assert.match(mvPanel, /put_Handled\(TRUE\)/);
 });
 
 test('Stationhead audio is muted once when the MV surface becomes active', () => {
