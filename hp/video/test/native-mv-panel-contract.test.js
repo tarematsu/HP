@@ -46,32 +46,40 @@ test('MV playback uses the requested YouTube playlist without autoplay query', (
   assert.match(mvPanel, /controls=1/);
 });
 
-test('MV startup clicks the WebView center from native Windows input after YouTube frame load', () => {
-  assert.match(mvPanel, /add_FrameNavigationStarting\(/);
-  assert.match(mvPanel, /add_FrameNavigationCompleted\(/);
-  assert.match(mvPanel, /https:\/\/www\.youtube\.com\/embed\/videoseries/);
-  assert.match(mvPanel, /youtubeFrameNavigationId_/);
-  assert.match(mvPanel, /ScheduleAutoStartClick\(\)/);
-  assert.match(mvPanel, /client\.left \+ \(client\.right - client\.left\) \/ 2/);
-  assert.match(mvPanel, /client\.top \+ \(client\.bottom - client\.top\) \/ 2/);
-  assert.match(mvPanel, /ClientToScreen\(hostWindow_, &center\)/);
-  assert.match(mvPanel, /SendInput\(kInputCount, input, sizeof\(INPUT\)\)/);
-  assert.match(mvPanel, /MOUSEEVENTF_LEFTDOWN/);
-  assert.match(mvPanel, /MOUSEEVENTF_LEFTUP/);
+test('MV center click runs once after startup and then every hour', () => {
+  assert.match(mvPanel, /kNativeMvClickTimer = 0x4D56/);
+  assert.match(mvPanel, /kNativeMvInitialClickDelayMs = 5'000/);
+  assert.match(mvPanel, /kNativeMvHourlyClickIntervalMs = 60U \* 60U \* 1000U/);
+  assert.match(
+    mvPanel,
+    /SetTimer\(hostWindow_, kNativeMvClickTimer,\s*kNativeMvInitialClickDelayMs, nullptr\)/,
+  );
+  assert.match(
+    mvPanel,
+    /SetTimer\(hostWindow_, kNativeMvClickTimer,\s*kNativeMvHourlyClickIntervalMs, nullptr\)/,
+  );
+  assert.match(mvPanel, /ClickCenter\(\)/);
 });
 
-test('native MV click is guarded against background or covered-window misclicks', () => {
+test('native MV click is one guarded Windows input batch at the panel center', () => {
   assert.match(mvPanel, /GetForegroundWindow\(\) != root/);
   assert.match(mvPanel, /WindowFromPoint\(center\)/);
   assert.match(mvPanel, /hit != hostWindow_ && !IsChild\(hostWindow_, hit\)/);
-  assert.match(mvPanel, /GetCursorPos\(&previousCursor\)/);
-  assert.match(mvPanel, /SetCursorPos\(center\.x, center\.y\)/);
-  assert.match(mvPanel, /SetCursorPos\(previousCursor\.x, previousCursor\.y\)/);
-  assert.match(mvPanel, /autoStartClickSent_ = true/);
-  assert.match(mvPanel, /kNativeMvAutoStartMaxAttempts = 20/);
+  assert.match(mvPanel, /ClientToScreen\(hostWindow_, &center\)/);
+  assert.match(mvPanel, /GetCursorPos\(&previous\)/);
+  assert.match(mvPanel, /INPUT input\[4\]/);
+  assert.match(mvPanel, /MOUSEEVENTF_MOVE \| MOUSEEVENTF_ABSOLUTE \| MOUSEEVENTF_VIRTUALDESK/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTDOWN/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTUP/);
+  assert.match(mvPanel, /SendInput\(kInputCount, input, sizeof\(INPUT\)\)/);
 });
 
-test('MV startup does not depend on YouTube DOM selectors or injected click JavaScript', () => {
+test('MV click system has no YouTube frame monitoring, retries, or injected DOM click logic', () => {
+  assert.doesNotMatch(mvPanel, /add_FrameNavigationStarting\(/);
+  assert.doesNotMatch(mvPanel, /add_FrameNavigationCompleted\(/);
+  assert.doesNotMatch(mvPanel, /youtubeFrameNavigationId_/);
+  assert.doesNotMatch(mvPanel, /autoStartAttempts_/);
+  assert.doesNotMatch(mvPanel, /autoStartClickSent_/);
   assert.doesNotMatch(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
   assert.doesNotMatch(mvPanel, /ytp-large-play-button/);
   assert.doesNotMatch(mvPanel, /ytp-play-button/);
@@ -95,8 +103,8 @@ test('MV WebView stays alive behind the power-saving overlay', () => {
   assert.match(webviewEnvironment, /--disable-backgrounding-occluded-windows/);
 });
 
-test('power saving briefly exposes the MV only while native click retries are active', () => {
-  assert.match(mvPanel, /kNativeMvAutoStartTimer = 0x4D56/);
+test('power saving briefly exposes the MV when the fixed native click timer fires', () => {
+  assert.match(mvPanel, /kNativeMvClickTimer = 0x4D56/);
   assert.match(powerSaving, /kObservedNativeMvAutoStartTimer = 0x4D56/);
   assert.match(powerSaving, /kMvStartupPassHoldMs = 1'500/);
   assert.match(powerSaving, /IsMvPanelWindow\(message\.hwnd\)/);
