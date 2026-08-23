@@ -26,10 +26,10 @@ test('native dashboard compiles the MV panel and mounts it in the former radar w
   assert.doesNotMatch(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_,/);
 });
 
-test('MV playback uses the requested YouTube playlist directly', () => {
+test('MV playback uses the requested YouTube playlist and waits for the native player button', () => {
   assert.match(mvPanel, /PLMWqSdpIVl30/);
   assert.match(mvPanel, /youtube\.com\/embed\/videoseries/);
-  assert.match(mvPanel, /autoplay=1/);
+  assert.doesNotMatch(mvPanel, /autoplay=1/);
   assert.match(mvPanel, /loop=1/);
   assert.match(mvPanel, /controls=1/);
 });
