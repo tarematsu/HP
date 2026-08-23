@@ -14,10 +14,6 @@ const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
 );
-const webviewEnvironment = readFileSync(
-  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
-  'utf8',
-);
 
 test('native dashboard compiles the MV panel and mounts it in the former radar window', () => {
   assert.match(entry, /#include "mv_section\.inc"/);
@@ -30,23 +26,45 @@ test('native dashboard compiles the MV panel and mounts it in the former radar w
   assert.doesNotMatch(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_,/);
 });
 
-test('MV playback uses the requested YouTube playlist with native autoplay', () => {
+test('MV playback uses the requested YouTube playlist without autoplay query', () => {
   assert.match(mvPanel, /PLMWqSdpIVl30/);
   assert.match(mvPanel, /youtube\.com\/embed\/videoseries/);
-  assert.match(mvPanel, /autoplay=1/);
+  assert.doesNotMatch(mvPanel, /autoplay=1/);
   assert.match(mvPanel, /loop=1/);
   assert.match(mvPanel, /controls=1/);
-  assert.match(mvPanel, /allow="autoplay; encrypted-media; picture-in-picture"/);
 });
 
-test('MV autoplay uses WebView2 policy instead of synthetic YouTube clicks', () => {
-  assert.match(webviewEnvironment, /--autoplay-policy=no-user-gesture-required/);
-  assert.match(mvPanel, /FAILED\(webview_->Navigate\(kNativeMvPanelPageUrl\)\)/);
-  assert.doesNotMatch(mvPanel, /kNativeMvAutoStartScript/);
+test('MV startup clicks the WebView center from native Windows input after YouTube frame load', () => {
+  assert.match(mvPanel, /add_FrameNavigationStarting\(/);
+  assert.match(mvPanel, /add_FrameNavigationCompleted\(/);
+  assert.match(mvPanel, /https:\/\/www\.youtube\.com\/embed\/videoseries/);
+  assert.match(mvPanel, /youtubeFrameNavigationId_/);
+  assert.match(mvPanel, /ScheduleAutoStartClick\(\)/);
+  assert.match(mvPanel, /client\.left \+ \(client\.right - client\.left\) \/ 2/);
+  assert.match(mvPanel, /client\.top \+ \(client\.bottom - client\.top\) \/ 2/);
+  assert.match(mvPanel, /ClientToScreen\(hostWindow_, &center\)/);
+  assert.match(mvPanel, /SendInput\(kInputCount, input, sizeof\(INPUT\)\)/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTDOWN/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTUP/);
+});
+
+test('native MV click is guarded against background or covered-window misclicks', () => {
+  assert.match(mvPanel, /GetForegroundWindow\(\) != root/);
+  assert.match(mvPanel, /WindowFromPoint\(center\)/);
+  assert.match(mvPanel, /hit != hostWindow_ && !IsChild\(hostWindow_, hit\)/);
+  assert.match(mvPanel, /GetCursorPos\(&previousCursor\)/);
+  assert.match(mvPanel, /SetCursorPos\(center\.x, center\.y\)/);
+  assert.match(mvPanel, /SetCursorPos\(previousCursor\.x, previousCursor\.y\)/);
+  assert.match(mvPanel, /autoStartClickSent_ = true/);
+  assert.match(mvPanel, /kNativeMvAutoStartMaxAttempts = 20/);
+});
+
+test('MV startup does not depend on YouTube DOM selectors or injected click JavaScript', () => {
   assert.doesNotMatch(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
   assert.doesNotMatch(mvPanel, /ytp-large-play-button/);
   assert.doesNotMatch(mvPanel, /ytp-play-button/);
   assert.doesNotMatch(mvPanel, /button\.click\(\)/);
+  assert.doesNotMatch(mvPanel, /querySelector\(['"]video['"]\)/);
 });
 
 test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
