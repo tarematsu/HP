@@ -26,12 +26,22 @@ test('native dashboard compiles the MV panel and mounts it in the former radar w
   assert.doesNotMatch(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_,/);
 });
 
-test('MV playback uses the requested YouTube playlist and waits for the native player button', () => {
+test('MV playback uses the requested YouTube playlist without autoplay query', () => {
   assert.match(mvPanel, /PLMWqSdpIVl30/);
   assert.match(mvPanel, /youtube\.com\/embed\/videoseries/);
   assert.doesNotMatch(mvPanel, /autoplay=1/);
   assert.match(mvPanel, /loop=1/);
   assert.match(mvPanel, /controls=1/);
+});
+
+test('MV playback auto-clicks the native YouTube player control after load', () => {
+  assert.match(mvPanel, /kNativeMvAutoStartScript/);
+  assert.match(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
+  assert.match(mvPanel, /ytp-large-play-button/);
+  assert.match(mvPanel, /ytp-play-button/);
+  assert.match(mvPanel, /button\.click\(\)/);
+  assert.match(mvPanel, /attempts >= 20/);
+  assert.match(mvPanel, /}, 500\)/);
 });
 
 test('MV navigation supplies desktop WebView2 client identity for YouTube', () => {
