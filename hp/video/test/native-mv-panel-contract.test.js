@@ -10,8 +10,16 @@ const mvPanel = readFileSync(
   new URL('../../native/src/renderer_panels/mv_section.inc', import.meta.url),
   'utf8',
 );
+const nativeWindows = readFileSync(
+  new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+  'utf8',
+);
+const webviewEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
 
@@ -65,6 +73,22 @@ test('MV startup does not depend on YouTube DOM selectors or injected click Java
   assert.doesNotMatch(mvPanel, /ytp-play-button/);
   assert.doesNotMatch(mvPanel, /button\.click\(\)/);
   assert.doesNotMatch(mvPanel, /querySelector\(['"]video['"]\)/);
+});
+
+test('MV WebView stays alive behind the power-saving overlay', () => {
+  assert.match(
+    nativeWindows,
+    /keepMvPlaybackVisible = requestedDashboardVisible_ && powerSavingMode_/,
+  );
+  assert.match(
+    nativeWindows,
+    /nativeDashboardVisible_ \|\|\s*\(keepMvPlaybackVisible && hwnd == nativeRadarWindow_\)/,
+  );
+  assert.match(
+    nativeWindows,
+    /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/,
+  );
+  assert.match(webviewEnvironment, /--disable-backgrounding-occluded-windows/);
 });
 
 test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
