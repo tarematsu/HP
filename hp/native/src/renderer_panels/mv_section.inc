@@ -3,6 +3,23 @@ constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPlaylistUrl[] =
     L"https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0";
 constexpr wchar_t kNativeMvReferer[] = L"https://github.com/tarematsu/HP/";
+constexpr wchar_t kNativeMvAutoStartScript[] = LR"JS(
+(() => {
+  let attempts = 0;
+  const timer = setInterval(() => {
+    const video = document.querySelector('video');
+    if (video && !video.paused) {
+      clearInterval(timer);
+      return;
+    }
+    const button = document.querySelector('.ytp-large-play-button') ||
+        (video && video.paused ? document.querySelector('.ytp-play-button') : null);
+    if (button && typeof button.click === 'function') button.click();
+    attempts += 1;
+    if (attempts >= 20) clearInterval(timer);
+  }, 500);
+})();
+)JS";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -147,6 +164,18 @@ class NativeMvPanelHost {
               }).Get(),
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
+
+      // Keep autoplay out of the URL, but start playback smoothly by clicking
+      // YouTube's own play control once it appears. The script gives the player
+      // up to ten seconds to initialize and then stops polling permanently.
+      const HRESULT autoStartResult = webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMvAutoStartScript,
+          Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+              [](HRESULT, LPCWSTR) -> HRESULT { return S_OK; }).Get());
+      if (FAILED(autoStartResult)) {
+        Fail();
+        return;
+      }
 
       Resize();
       controller_->put_IsVisible(TRUE);
