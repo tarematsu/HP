@@ -2,6 +2,9 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] = L"https://homepanel.mv/index.html";
 constexpr wchar_t kNativeMvPanelVirtualHost[] = L"homepanel.mv";
+constexpr UINT_PTR kNativeMvAutoStartTimer = 0x4D56;
+constexpr UINT kNativeMvAutoStartIntervalMs = 500;
+constexpr unsigned kNativeMvAutoStartMaxAttempts = 20;
 constexpr char kNativeMvPanelHtml[] = R"HTML(<!doctype html>
 <html lang="ja">
 <head>
@@ -29,7 +32,7 @@ html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
 </head>
 <body>
 <iframe id="mv"
-  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&autoplay=1&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
+  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="autoplay; encrypted-media; picture-in-picture"
   title="MV playlist"></iframe>
@@ -205,11 +208,34 @@ class NativeMvPanelHost {
     EndPaint(hostWindow_, &paint);
   }
 
+  void HandleTimer(UINT_PTR timerId) noexcept {
+    if (timerId != kNativeMvAutoStartTimer || !autoStartTimerArmed_) return;
+    if (TryAutoStartCenterClick() ||
+        ++autoStartAttempts_ >= kNativeMvAutoStartMaxAttempts) {
+      KillTimer(hostWindow_, kNativeMvAutoStartTimer);
+      autoStartTimerArmed_ = false;
+    }
+  }
+
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
-    if (webview_ && newWindowToken_.value != 0) {
-      webview_->remove_NewWindowRequested(newWindowToken_);
-      newWindowToken_ = {};
+    if (hostWindow_ && autoStartTimerArmed_) {
+      KillTimer(hostWindow_, kNativeMvAutoStartTimer);
+      autoStartTimerArmed_ = false;
+    }
+    if (webview_) {
+      if (frameNavigationStartingToken_.value != 0) {
+        webview_->remove_FrameNavigationStarting(frameNavigationStartingToken_);
+        frameNavigationStartingToken_ = {};
+      }
+      if (frameNavigationCompletedToken_.value != 0) {
+        webview_->remove_FrameNavigationCompleted(frameNavigationCompletedToken_);
+        frameNavigationCompletedToken_ = {};
+      }
+      if (newWindowToken_.value != 0) {
+        webview_->remove_NewWindowRequested(newWindowToken_);
+        newWindowToken_ = {};
+      }
     }
     if (controller_) {
       controller_->put_IsVisible(FALSE);
@@ -243,6 +269,61 @@ class NativeMvPanelHost {
     } catch (...) {
       return false;
     }
+  }
+
+  void ScheduleAutoStartClick() noexcept {
+    if (autoStartClickSent_ || autoStartTimerArmed_ || !hostWindow_ ||
+        !IsWindow(hostWindow_)) {
+      return;
+    }
+    autoStartAttempts_ = 0;
+    if (SetTimer(hostWindow_, kNativeMvAutoStartTimer,
+                 kNativeMvAutoStartIntervalMs, nullptr) != 0) {
+      autoStartTimerArmed_ = true;
+    }
+  }
+
+  bool TryAutoStartCenterClick() noexcept {
+    if (autoStartClickSent_ || !hostWindow_ || !IsWindow(hostWindow_) ||
+        !IsWindowVisible(hostWindow_)) {
+      return autoStartClickSent_;
+    }
+
+    const HWND root = GetAncestor(hostWindow_, GA_ROOT);
+    if (!root || GetForegroundWindow() != root) return false;
+
+    RECT client{};
+    if (!GetClientRect(hostWindow_, &client) ||
+        client.right <= client.left || client.bottom <= client.top) {
+      return false;
+    }
+    POINT center{
+        client.left + (client.right - client.left) / 2,
+        client.top + (client.bottom - client.top) / 2};
+    if (!ClientToScreen(hostWindow_, &center)) return false;
+
+    const HWND hit = WindowFromPoint(center);
+    if (!hit || (hit != hostWindow_ && !IsChild(hostWindow_, hit))) {
+      return false;
+    }
+
+    POINT previousCursor{};
+    if (!GetCursorPos(&previousCursor) || !SetCursorPos(center.x, center.y)) {
+      return false;
+    }
+
+    INPUT input[2]{};
+    input[0].type = INPUT_MOUSE;
+    input[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    input[1].type = INPUT_MOUSE;
+    input[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+    constexpr UINT kInputCount = 2;
+    const UINT sent = SendInput(kInputCount, input, sizeof(INPUT));
+    SetCursorPos(previousCursor.x, previousCursor.y);
+    if (sent != kInputCount) return false;
+
+    autoStartClickSent_ = true;
+    return true;
   }
 
   void Configure() noexcept {
@@ -280,6 +361,52 @@ class NativeMvPanelHost {
               }).Get(),
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
+
+      const auto alive = alive_;
+      const HRESULT frameStartingResult = webview_->add_FrameNavigationStarting(
+          Callback<ICoreWebView2NavigationStartingEventHandler>(
+              [this, alive](ICoreWebView2*,
+                            ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
+                LPWSTR uri = nullptr;
+                UINT64 navigationId = 0;
+                if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
+                  const bool youtubePlaylist =
+                      wcsstr(uri, L"https://www.youtube.com/embed/videoseries") == uri;
+                  CoTaskMemFree(uri);
+                  if (youtubePlaylist &&
+                      SUCCEEDED(args->get_NavigationId(&navigationId))) {
+                    youtubeFrameNavigationId_ = navigationId;
+                  }
+                }
+                return S_OK;
+              }).Get(),
+          &frameNavigationStartingToken_);
+      if (FAILED(frameStartingResult)) {
+        Fail();
+        return;
+      }
+
+      const HRESULT frameCompletedResult = webview_->add_FrameNavigationCompleted(
+          Callback<ICoreWebView2NavigationCompletedEventHandler>(
+              [this, alive](ICoreWebView2*,
+                            ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
+                UINT64 navigationId = 0;
+                BOOL succeeded = FALSE;
+                if (youtubeFrameNavigationId_ != 0 &&
+                    SUCCEEDED(args->get_NavigationId(&navigationId)) &&
+                    navigationId == youtubeFrameNavigationId_ &&
+                    SUCCEEDED(args->get_IsSuccess(&succeeded)) && succeeded) {
+                  ScheduleAutoStartClick();
+                }
+                return S_OK;
+              }).Get(),
+          &frameNavigationCompletedToken_);
+      if (FAILED(frameCompletedResult)) {
+        Fail();
+        return;
+      }
 
       // YouTube explicitly requires an enclosing page/context for embedded
       // playback. Hosting the tiny wrapper on a local HTTPS virtual host makes
@@ -319,6 +446,12 @@ class NativeMvPanelHost {
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
+  EventRegistrationToken frameNavigationStartingToken_{};
+  EventRegistrationToken frameNavigationCompletedToken_{};
+  UINT64 youtubeFrameNavigationId_ = 0;
+  unsigned autoStartAttempts_ = 0;
+  bool autoStartTimerArmed_ = false;
+  bool autoStartClickSent_ = false;
   bool failed_ = false;
 };
 
@@ -340,6 +473,9 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
     switch (message) {
       case WM_SIZE:
         host->Resize();
+        return 0;
+      case WM_TIMER:
+        host->HandleTimer(static_cast<UINT_PTR>(wparam));
         return 0;
       case WM_ERASEBKGND:
         return 1;
