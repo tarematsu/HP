@@ -29,7 +29,7 @@ html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
 </head>
 <body>
 <iframe id="mv"
-  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
+  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&autoplay=1&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="autoplay; encrypted-media; picture-in-picture"
   title="MV playlist"></iframe>
@@ -81,23 +81,6 @@ html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
 </script>
 </body>
 </html>)HTML";
-constexpr wchar_t kNativeMvAutoStartScript[] = LR"JS(
-(() => {
-  let attempts = 0;
-  const timer = setInterval(() => {
-    const video = document.querySelector('video');
-    if (video && !video.paused) {
-      clearInterval(timer);
-      return;
-    }
-    const button = document.querySelector('.ytp-large-play-button') ||
-        (video && video.paused ? document.querySelector('.ytp-play-button') : null);
-    if (button && typeof button.click === 'function') button.click();
-    attempts += 1;
-    if (attempts >= 20) clearInterval(timer);
-  }, 500);
-})();
-)JS";
 
 std::string BuildCourse36WasteScheduleJson() {
   std::string json;
@@ -312,22 +295,9 @@ class NativeMvPanelHost {
 
       Resize();
       controller_->put_IsVisible(TRUE);
-
-      // This API is asynchronous. Navigate only after registration completes so
-      // the click helper is guaranteed to run in the YouTube child frame too.
-      const auto alive = alive_;
-      const HRESULT autoStartResult = webview_->AddScriptToExecuteOnDocumentCreated(
-          kNativeMvAutoStartScript,
-          Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
-              [this, alive](HRESULT result, LPCWSTR) -> HRESULT {
-                if (!alive->load(std::memory_order_acquire)) return S_OK;
-                if (FAILED(result) || !webview_ ||
-                    FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
-                  Fail();
-                }
-                return S_OK;
-              }).Get());
-      if (FAILED(autoStartResult)) Fail();
+      if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+        Fail();
+      }
     } catch (...) {
       Fail();
     }
