@@ -59,6 +59,24 @@ test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer'
   assert.doesNotMatch(mvPanel, /CreateWebResourceRequest\(/);
 });
 
+test('waste calendar overlays the MV at top-right without taking pointer input', () => {
+  assert.match(mvPanel, /id="waste"/);
+  assert.match(mvPanel, /#waste\{position:absolute;z-index:2;top:12px;right:12px;/);
+  assert.match(mvPanel, /opacity:\.42;pointer-events:none/);
+  assert.match(mvPanel, /grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+  assert.match(mvPanel, /ごみ収集カレンダー/);
+  assert.match(mvPanel, /コース36/);
+  assert.match(mvPanel, /setInterval\(renderWaste, 60_000\)/);
+});
+
+test('waste overlay is generated from the native course 36 schedule', () => {
+  assert.match(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
+  assert.match(mvPanel, /Course36WasteForDate\(date\)/);
+  assert.match(mvPanel, /__COURSE36_SCHEDULE__/);
+  assert.match(mvPanel, /html\.replace\(marker, sizeof\(kScheduleMarker\) - 1,/);
+  assert.match(mvPanel, /const schedule = __COURSE36_SCHEDULE__;/);
+});
+
 test('MV wrapper stays minimal and does not restore iframe API playlist machinery', () => {
   assert.doesNotMatch(mvPanel, /youtube\.com\/iframe_api/);
   assert.doesNotMatch(mvPanel, /crypto\.getRandomValues/);
