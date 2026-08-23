@@ -42,26 +42,28 @@ test('MV playback auto-clicks the native YouTube player control after load', () 
   assert.match(mvPanel, /button\.click\(\)/);
   assert.match(mvPanel, /attempts >= 20/);
   assert.match(mvPanel, /}, 500\)/);
+  assert.match(mvPanel, /\[this, alive\]\(HRESULT result, LPCWSTR\)/);
+  assert.match(mvPanel, /FAILED\(webview_->Navigate\(kNativeMvPanelPageUrl\)\)/);
 });
 
-test('MV navigation supplies desktop WebView2 client identity for YouTube', () => {
-  assert.match(mvPanel, /kNativeMvReferer/);
-  assert.match(mvPanel, /ICoreWebView2Environment2/);
-  assert.match(mvPanel, /CreateWebResourceRequest\(/);
-  assert.match(mvPanel, /SetHeader\(L"Referer", kNativeMvReferer\)/);
-  assert.match(mvPanel, /NavigateWithWebResourceRequest\(/);
-  assert.doesNotMatch(mvPanel, /webview_->Navigate\(kNativeMvPlaylistUrl\)/);
+test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
+  assert.match(mvPanel, /kNativeMvPanelHtml/);
+  assert.match(mvPanel, /https:\/\/homepanel\.mv\/index\.html/);
+  assert.match(mvPanel, /SetVirtualHostNameToFolderMapping\(/);
+  assert.match(mvPanel, /referrerpolicy="strict-origin-when-cross-origin"/);
+  assert.match(mvPanel, /<iframe/);
+  assert.match(mvPanel, /PreparePlayerHtml\(\)/);
+  assert.match(mvPanel, /assetFolder_/);
+  assert.doesNotMatch(mvPanel, /kNativeMvReferer/);
+  assert.doesNotMatch(mvPanel, /NavigateWithWebResourceRequest\(/);
+  assert.doesNotMatch(mvPanel, /CreateWebResourceRequest\(/);
 });
 
-test('MV playback no longer runs local iframe API playlist machinery', () => {
-  assert.doesNotMatch(mvPanel, /kNativeMvPanelHtml/);
+test('MV wrapper stays minimal and does not restore iframe API playlist machinery', () => {
   assert.doesNotMatch(mvPanel, /youtube\.com\/iframe_api/);
   assert.doesNotMatch(mvPanel, /crypto\.getRandomValues/);
   assert.doesNotMatch(mvPanel, /cuePlaylist/);
   assert.doesNotMatch(mvPanel, /playVideoAt/);
-  assert.doesNotMatch(mvPanel, /SetVirtualHostNameToFolderMapping/);
-  assert.doesNotMatch(mvPanel, /PreparePlayerHtml/);
-  assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
 test('MV WebView is restricted to playback-only browser features', () => {
