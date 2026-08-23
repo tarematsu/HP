@@ -23,10 +23,10 @@ const mvPanel = readFileSync(
   'utf8',
 );
 
-test('course 36 schedule is loaded before the MV wrapper that consumes it', () => {
+test('course 36 schedule is loaded before the media fragment that consumes it', () => {
   assert.match(
     rendererPanels,
-    /waste_calendar_section\.inc"[\s\S]*mv_section\.inc"/,
+    /waste_calendar_section\.inc"[\s\S]*media_section\.inc"/,
   );
   assert.match(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
   assert.match(mvPanel, /Course36WasteForDate\(date\)/);
