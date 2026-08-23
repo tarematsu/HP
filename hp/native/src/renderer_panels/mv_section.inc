@@ -2,9 +2,9 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] = L"https://homepanel.mv/index.html";
 constexpr wchar_t kNativeMvPanelVirtualHost[] = L"homepanel.mv";
-constexpr UINT_PTR kNativeMvAutoStartTimer = 0x4D56;
-constexpr UINT kNativeMvAutoStartIntervalMs = 500;
-constexpr unsigned kNativeMvAutoStartMaxAttempts = 20;
+constexpr UINT_PTR kNativeMvClickTimer = 0x4D56;
+constexpr UINT kNativeMvInitialClickDelayMs = 5'000;
+constexpr UINT kNativeMvHourlyClickIntervalMs = 60U * 60U * 1000U;
 constexpr char kNativeMvPanelHtml[] = R"HTML(<!doctype html>
 <html lang="ja">
 <head>
@@ -117,6 +117,19 @@ std::string BuildCourse36WasteScheduleJson() {
   return json;
 }
 
+bool NativeMvScreenPointToAbsolute(POINT point, LONG& x, LONG& y) noexcept {
+  const int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  const int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+  if (width <= 1 || height <= 1) return false;
+  x = static_cast<LONG>(
+      (static_cast<long long>(point.x - left) * 65535LL) / (width - 1));
+  y = static_cast<LONG>(
+      (static_cast<long long>(point.y - top) * 65535LL) / (height - 1));
+  return true;
+}
+
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
 
@@ -140,9 +153,6 @@ class NativeMvPanelHost {
 
     const auto alive = alive_;
     try {
-      // The MV surface is video-only. Disable image downloads/decoding and
-      // downloadable fonts at the browser environment level to keep the single
-      // YouTube playback WebView as small as practical.
       SharedWebViewEnvironment::Instance().Acquire(
           userDataFolder_, true, true,
           [this, alive](HRESULT result, ICoreWebView2Environment* environment) {
@@ -209,33 +219,23 @@ class NativeMvPanelHost {
   }
 
   void HandleTimer(UINT_PTR timerId) noexcept {
-    if (timerId != kNativeMvAutoStartTimer || !autoStartTimerArmed_) return;
-    if (TryAutoStartCenterClick() ||
-        ++autoStartAttempts_ >= kNativeMvAutoStartMaxAttempts) {
-      KillTimer(hostWindow_, kNativeMvAutoStartTimer);
-      autoStartTimerArmed_ = false;
+    if (timerId != kNativeMvClickTimer) return;
+    if (!hourlyTimerStarted_) {
+      hourlyTimerStarted_ = true;
+      SetTimer(hostWindow_, kNativeMvClickTimer,
+               kNativeMvHourlyClickIntervalMs, nullptr);
     }
+    ClickCenter();
   }
 
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
-    if (hostWindow_ && autoStartTimerArmed_) {
-      KillTimer(hostWindow_, kNativeMvAutoStartTimer);
-      autoStartTimerArmed_ = false;
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvClickTimer);
     }
-    if (webview_) {
-      if (frameNavigationStartingToken_.value != 0) {
-        webview_->remove_FrameNavigationStarting(frameNavigationStartingToken_);
-        frameNavigationStartingToken_ = {};
-      }
-      if (frameNavigationCompletedToken_.value != 0) {
-        webview_->remove_FrameNavigationCompleted(frameNavigationCompletedToken_);
-        frameNavigationCompletedToken_ = {};
-      }
-      if (newWindowToken_.value != 0) {
-        webview_->remove_NewWindowRequested(newWindowToken_);
-        newWindowToken_ = {};
-      }
+    if (webview_ && newWindowToken_.value != 0) {
+      webview_->remove_NewWindowRequested(newWindowToken_);
+      newWindowToken_ = {};
     }
     if (controller_) {
       controller_->put_IsVisible(FALSE);
@@ -271,59 +271,56 @@ class NativeMvPanelHost {
     }
   }
 
-  void ScheduleAutoStartClick() noexcept {
-    if (autoStartClickSent_ || autoStartTimerArmed_ || !hostWindow_ ||
-        !IsWindow(hostWindow_)) {
+  void ClickCenter() noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_) || !IsWindowVisible(hostWindow_)) {
       return;
-    }
-    autoStartAttempts_ = 0;
-    if (SetTimer(hostWindow_, kNativeMvAutoStartTimer,
-                 kNativeMvAutoStartIntervalMs, nullptr) != 0) {
-      autoStartTimerArmed_ = true;
-    }
-  }
-
-  bool TryAutoStartCenterClick() noexcept {
-    if (autoStartClickSent_ || !hostWindow_ || !IsWindow(hostWindow_) ||
-        !IsWindowVisible(hostWindow_)) {
-      return autoStartClickSent_;
     }
 
     const HWND root = GetAncestor(hostWindow_, GA_ROOT);
-    if (!root || GetForegroundWindow() != root) return false;
+    if (!root || GetForegroundWindow() != root) return;
 
     RECT client{};
     if (!GetClientRect(hostWindow_, &client) ||
         client.right <= client.left || client.bottom <= client.top) {
-      return false;
+      return;
     }
     POINT center{
         client.left + (client.right - client.left) / 2,
         client.top + (client.bottom - client.top) / 2};
-    if (!ClientToScreen(hostWindow_, &center)) return false;
+    if (!ClientToScreen(hostWindow_, &center)) return;
 
     const HWND hit = WindowFromPoint(center);
-    if (!hit || (hit != hostWindow_ && !IsChild(hostWindow_, hit))) {
-      return false;
+    if (!hit || (hit != hostWindow_ && !IsChild(hostWindow_, hit))) return;
+
+    POINT previous{};
+    if (!GetCursorPos(&previous)) return;
+
+    LONG centerX = 0;
+    LONG centerY = 0;
+    LONG previousX = 0;
+    LONG previousY = 0;
+    if (!NativeMvScreenPointToAbsolute(center, centerX, centerY) ||
+        !NativeMvScreenPointToAbsolute(previous, previousX, previousY)) {
+      return;
     }
 
-    POINT previousCursor{};
-    if (!GetCursorPos(&previousCursor) || !SetCursorPos(center.x, center.y)) {
-      return false;
-    }
-
-    INPUT input[2]{};
+    INPUT input[4]{};
     input[0].type = INPUT_MOUSE;
-    input[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    input[0].mi.dx = centerX;
+    input[0].mi.dy = centerY;
+    input[0].mi.dwFlags =
+        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
     input[1].type = INPUT_MOUSE;
-    input[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
-    constexpr UINT kInputCount = 2;
-    const UINT sent = SendInput(kInputCount, input, sizeof(INPUT));
-    SetCursorPos(previousCursor.x, previousCursor.y);
-    if (sent != kInputCount) return false;
-
-    autoStartClickSent_ = true;
-    return true;
+    input[1].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    input[2].type = INPUT_MOUSE;
+    input[2].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+    input[3].type = INPUT_MOUSE;
+    input[3].mi.dx = previousX;
+    input[3].mi.dy = previousY;
+    input[3].mi.dwFlags =
+        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+    constexpr UINT kInputCount = 4;
+    SendInput(kInputCount, input, sizeof(INPUT));
   }
 
   void Configure() noexcept {
@@ -362,55 +359,6 @@ class NativeMvPanelHost {
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
 
-      const auto alive = alive_;
-      const HRESULT frameStartingResult = webview_->add_FrameNavigationStarting(
-          Callback<ICoreWebView2NavigationStartingEventHandler>(
-              [this, alive](ICoreWebView2*,
-                            ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
-                if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-                LPWSTR uri = nullptr;
-                UINT64 navigationId = 0;
-                if (SUCCEEDED(args->get_Uri(&uri)) && uri) {
-                  const bool youtubePlaylist =
-                      wcsstr(uri, L"https://www.youtube.com/embed/videoseries") == uri;
-                  CoTaskMemFree(uri);
-                  if (youtubePlaylist &&
-                      SUCCEEDED(args->get_NavigationId(&navigationId))) {
-                    youtubeFrameNavigationId_ = navigationId;
-                  }
-                }
-                return S_OK;
-              }).Get(),
-          &frameNavigationStartingToken_);
-      if (FAILED(frameStartingResult)) {
-        Fail();
-        return;
-      }
-
-      const HRESULT frameCompletedResult = webview_->add_FrameNavigationCompleted(
-          Callback<ICoreWebView2NavigationCompletedEventHandler>(
-              [this, alive](ICoreWebView2*,
-                            ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT {
-                if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-                UINT64 navigationId = 0;
-                BOOL succeeded = FALSE;
-                if (youtubeFrameNavigationId_ != 0 &&
-                    SUCCEEDED(args->get_NavigationId(&navigationId)) &&
-                    navigationId == youtubeFrameNavigationId_ &&
-                    SUCCEEDED(args->get_IsSuccess(&succeeded)) && succeeded) {
-                  ScheduleAutoStartClick();
-                }
-                return S_OK;
-              }).Get(),
-          &frameNavigationCompletedToken_);
-      if (FAILED(frameCompletedResult)) {
-        Fail();
-        return;
-      }
-
-      // YouTube explicitly requires an enclosing page/context for embedded
-      // playback. Hosting the tiny wrapper on a local HTTPS virtual host makes
-      // the iframe send a normal Referer instead of opening /embed/ directly.
       ComPtr<ICoreWebView2_3> webview3;
       if (FAILED(webview_.As(&webview3)) || !webview3 ||
           FAILED(webview3->SetVirtualHostNameToFolderMapping(
@@ -424,7 +372,10 @@ class NativeMvPanelHost {
       controller_->put_IsVisible(TRUE);
       if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
         Fail();
+        return;
       }
+      SetTimer(hostWindow_, kNativeMvClickTimer,
+               kNativeMvInitialClickDelayMs, nullptr);
     } catch (...) {
       Fail();
     }
@@ -446,12 +397,7 @@ class NativeMvPanelHost {
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
-  EventRegistrationToken frameNavigationStartingToken_{};
-  EventRegistrationToken frameNavigationCompletedToken_{};
-  UINT64 youtubeFrameNavigationId_ = 0;
-  unsigned autoStartAttempts_ = 0;
-  bool autoStartTimerArmed_ = false;
-  bool autoStartClickSent_ = false;
+  bool hourlyTimerStarted_ = false;
   bool failed_ = false;
 };
 
@@ -554,8 +500,6 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
 }  // namespace
 
 void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
-  // The YouTube WebView occupies the upper native panel while this section is
-  // the rain radar in the lower-left main column.
   if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
     RECT mvBounds{};
     GetClientRect(nativeRadarWindow_, &mvBounds);
