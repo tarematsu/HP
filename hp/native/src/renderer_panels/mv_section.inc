@@ -1,8 +1,44 @@
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
-constexpr wchar_t kNativeMvPlaylistUrl[] =
-    L"https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&autoplay=1&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0";
-constexpr wchar_t kNativeMvReferer[] = L"https://github.com/tarematsu/HP/";
+constexpr wchar_t kNativeMvPanelPageUrl[] = L"https://homepanel.mv/index.html";
+constexpr wchar_t kNativeMvPanelVirtualHost[] = L"homepanel.mv";
+constexpr char kNativeMvPanelHtml[] = R"HTML(<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>MV</title>
+<style>
+html,body,iframe{width:100%;height:100%;margin:0;border:0;background:#000;overflow:hidden}
+iframe{position:absolute;inset:0}
+</style>
+</head>
+<body>
+<iframe
+  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
+  referrerpolicy="strict-origin-when-cross-origin"
+  allow="autoplay; encrypted-media; picture-in-picture"
+  title="MV playlist"></iframe>
+</body>
+</html>)HTML";
+constexpr wchar_t kNativeMvAutoStartScript[] = LR"JS(
+(() => {
+  let attempts = 0;
+  const timer = setInterval(() => {
+    const video = document.querySelector('video');
+    if (video && !video.paused) {
+      clearInterval(timer);
+      return;
+    }
+    const button = document.querySelector('.ytp-large-play-button') ||
+        (video && video.paused ? document.querySelector('.ytp-play-button') : null);
+    if (button && typeof button.click === 'function') button.click();
+    attempts += 1;
+    if (attempts >= 20) clearInterval(timer);
+  }, 500);
+})();
+)JS";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -11,13 +47,17 @@ class NativeMvPanelHost {
  public:
   explicit NativeMvPanelHost(const fs::path& dataDir)
       : userDataFolder_(dataDir / L"webview2-youtube-mv"),
+        assetFolder_(dataDir / L"mv-player"),
         alive_(std::make_shared<std::atomic<bool>>(true)) {}
 
   void Attach(HWND hwnd) noexcept { hostWindow_ = hwnd; }
 
   void Start() noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_)) {
+    if (!hostWindow_ || !IsWindow(hostWindow_) || !PreparePlayerHtml()) {
       failed_ = true;
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        InvalidateRect(hostWindow_, nullptr, FALSE);
+      }
       return;
     }
 
@@ -108,6 +148,23 @@ class NativeMvPanelHost {
   }
 
  private:
+  bool PreparePlayerHtml() noexcept {
+    try {
+      std::error_code error;
+      fs::create_directories(assetFolder_, error);
+      if (error) return false;
+      const fs::path indexPath = assetFolder_ / L"index.html";
+      std::ofstream output(indexPath, std::ios::binary | std::ios::trunc);
+      if (!output) return false;
+      output.write(kNativeMvPanelHtml,
+                   static_cast<std::streamsize>(sizeof(kNativeMvPanelHtml) - 1));
+      output.flush();
+      return output.good();
+    } catch (...) {
+      return false;
+    }
+  }
+
   void Configure() noexcept {
     try {
       ComPtr<ICoreWebView2Controller2> controller2;
@@ -118,8 +175,6 @@ class NativeMvPanelHost {
 
       ComPtr<ICoreWebView2Settings> settings;
       if (SUCCEEDED(webview_->get_Settings(&settings)) && settings) {
-        // YouTube itself still needs JavaScript for playback. Everything that
-        // turns this surface into a general-purpose browser is disabled.
         settings->put_IsScriptEnabled(TRUE);
         settings->put_IsWebMessageEnabled(FALSE);
         settings->put_AreDefaultScriptDialogsEnabled(FALSE);
@@ -136,8 +191,6 @@ class NativeMvPanelHost {
         }
       }
 
-      // The panel is playback-only; discard any popup/login/navigation surface
-      // YouTube may request instead of creating another WebView process tree.
       const HRESULT newWindowResult = webview_->add_NewWindowRequested(
           Callback<ICoreWebView2NewWindowRequestedEventHandler>(
               [](ICoreWebView2*,
@@ -148,25 +201,36 @@ class NativeMvPanelHost {
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
 
+      // YouTube explicitly requires an enclosing page/context for embedded
+      // playback. Hosting the tiny wrapper on a local HTTPS virtual host makes
+      // the iframe send a normal Referer instead of opening /embed/ directly.
+      ComPtr<ICoreWebView2_3> webview3;
+      if (FAILED(webview_.As(&webview3)) || !webview3 ||
+          FAILED(webview3->SetVirtualHostNameToFolderMapping(
+              kNativeMvPanelVirtualHost, assetFolder_.c_str(),
+              COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
+        Fail();
+        return;
+      }
+
       Resize();
       controller_->put_IsVisible(TRUE);
 
-      // YouTube error 153 is returned when a desktop WebView embed has no
-      // HTTP Referer/client identity. Keep direct playlist navigation, but make
-      // the initial GET an identified WebView2 request rather than Navigate().
-      ComPtr<ICoreWebView2Environment2> environment2;
-      ComPtr<ICoreWebView2_2> webview2;
-      ComPtr<ICoreWebView2WebResourceRequest> request;
-      ComPtr<ICoreWebView2HttpRequestHeaders> requestHeaders;
-      if (FAILED(environment_.As(&environment2)) || !environment2 ||
-          FAILED(webview_.As(&webview2)) || !webview2 ||
-          FAILED(environment2->CreateWebResourceRequest(
-              kNativeMvPlaylistUrl, L"GET", nullptr, L"", &request)) || !request ||
-          FAILED(request->get_Headers(&requestHeaders)) || !requestHeaders ||
-          FAILED(requestHeaders->SetHeader(L"Referer", kNativeMvReferer)) ||
-          FAILED(webview2->NavigateWithWebResourceRequest(request.Get()))) {
-        Fail();
-      }
+      // This API is asynchronous. Navigate only after registration completes so
+      // the click helper is guaranteed to run in the YouTube child frame too.
+      const auto alive = alive_;
+      const HRESULT autoStartResult = webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMvAutoStartScript,
+          Callback<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler>(
+              [this, alive](HRESULT result, LPCWSTR) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire)) return S_OK;
+                if (FAILED(result) || !webview_ ||
+                    FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+                  Fail();
+                }
+                return S_OK;
+              }).Get());
+      if (FAILED(autoStartResult)) Fail();
     } catch (...) {
       Fail();
     }
@@ -182,6 +246,7 @@ class NativeMvPanelHost {
 
   HWND hostWindow_ = nullptr;
   fs::path userDataFolder_;
+  fs::path assetFolder_;
   std::shared_ptr<std::atomic<bool>> alive_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
