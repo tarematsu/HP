@@ -18,28 +18,29 @@ const calendar = readFileSync(
   new URL('../../native/src/renderer_panels/waste_calendar_section.inc', import.meta.url),
   'utf8',
 );
-const panelState = readFileSync(
-  new URL('../../native/src/renderer_panel_state.cpp', import.meta.url),
+const mvPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/mv_section.inc', import.meta.url),
   'utf8',
 );
 
-test('native dashboard loads the course 36 calendar before panel painting', () => {
+test('course 36 schedule is loaded before the media fragment that consumes it', () => {
   assert.match(
     rendererPanels,
-    /layout_overrides\.inc"\s*#include "renderer_panels\/waste_calendar_section\.inc"[\s\S]*windows\.inc"/,
+    /waste_calendar_section\.inc"[\s\S]*media_section\.inc"/,
   );
-  assert.match(panelWindows, /DrawCourse36WasteCalendar\(scope\.dc, wasteCalendar\)/);
+  assert.match(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
+  assert.match(mvPanel, /Course36WasteForDate\(date\)/);
+  assert.match(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
-test('Spotify music card occupies the lower half while electricity keeps the right column', () => {
-  assert.match(layout, /const int musicHeight = std::max\(1, height \/ 2\);/);
+test('standalone waste panel is removed and radar fills the full left column', () => {
+  assert.doesNotMatch(panelWindows, /DrawCourse36WasteCalendar/);
+  assert.doesNotMatch(panelWindows, /RearrangedWasteCalendarRect/);
+  assert.doesNotMatch(layout, /wasteCalendar/);
+  assert.doesNotMatch(layout, /RearrangedWasteCalendarRect/);
   assert.match(
     layout,
-    /layout\.sections\.music =\s*RECT\{client\.left, musicTop, client\.left \+ leftWidth, client\.bottom\};/s,
-  );
-  assert.match(
-    layout,
-    /layout\.wasteCalendar =\s*RECT\{client\.left, client\.top, client\.left \+ leftWidth, calendarBottom\};/s,
+    /layout\.sections\.music =\s*RECT\{client\.left, client\.top, client\.left \+ leftWidth, client\.bottom\};/s,
   );
   assert.match(
     layout,
@@ -49,22 +50,7 @@ test('Spotify music card occupies the lower half while electricity keeps the rig
 
 test('course 36 fiscal-year table includes the published July week', () => {
   assert.match(calendar, /\{2026, 7, \{2, 16, 30\}, 3, 23, \{9, 0\}, 1, 27\}/);
-  assert.match(calendar, /収集コース36・令和8年度/);
-  assert.match(calendar, /びん・かん/);
-  assert.match(calendar, /ペットボトル/);
-  assert.match(calendar, /不燃・有害/);
-  assert.match(calendar, /プラ製容器/);
-});
-
-test('calendar headers use small text and waste items use medium text', () => {
-  assert.match(
-    calendar,
-    /CachedUiFont\(std::clamp\(headerHeight \* 45 \/ 100, 10, 15\), FW_NORMAL\)/,
-  );
-  assert.match(
-    calendar,
-    /CachedUiFont\(std::clamp\(cellHeight \* 14 \/ 100, 14, 22\), FW_SEMIBOLD\)/,
-  );
+  assert.match(calendar, /2026-04-01 through 2027-03-31/);
 });
 
 test('weekly rules and year-end exceptions follow the published course 36 notes', () => {
@@ -75,9 +61,8 @@ test('weekly rules and year-end exceptions follow the published course 36 notes'
   assert.match(calendar, /dateKey < 20260401 \|\| dateKey > 20270331/);
 });
 
-test('calendar refreshes at the local day boundary', () => {
-  assert.match(
-    panelState,
-    /if \(clockDayChanged && nativeMainWindow_[\s\S]*InvalidateRect\(nativeMainWindow_, nullptr, FALSE\);/s,
-  );
+test('waste calendar data remains schedule-driven instead of duplicated in JavaScript', () => {
+  assert.match(mvPanel, /static_cast<unsigned>\(Course36WasteForDate\(date\)\)/);
+  assert.match(mvPanel, /Course36AddDays\(date, 1, next\)/);
+  assert.doesNotMatch(mvPanel, /2026, 7, \{2, 16, 30\}/);
 });

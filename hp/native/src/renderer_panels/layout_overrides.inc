@@ -24,34 +24,28 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
 
 struct RearrangedMainLayout {
   MainSections sections{};
-  RECT wasteCalendar{};
 };
 
 RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int width = std::max(1L, client.right - client.left);
-  const int height = std::max(1L, client.bottom - client.top);
   const int gapX = std::max(8, width * 16 / 1000);
-  const int gapY = std::max(6, height * 35 / 1000);
   const int rowWidth = std::max(2, width - gapX);
   const int leftWidth = std::max(1, rowWidth * 65 / 100);
-  const int musicHeight = std::max(1, height / 2);
-  const LONG musicTop = std::max(client.top + 1, client.bottom - musicHeight);
-  const LONG calendarBottom = std::max(client.top + 1, musicTop - gapY);
 
   RearrangedMainLayout layout;
-  layout.wasteCalendar =
-      RECT{client.left, client.top, client.left + leftWidth, calendarBottom};
+  // The waste calendar moved onto the MV WebView. Give its former upper-left
+  // slot to the rain radar so the radar now fills the complete left column.
   layout.sections.music =
-      RECT{client.left, musicTop, client.left + leftWidth, client.bottom};
+      RECT{client.left, client.top, client.left + leftWidth, client.bottom};
   // MainSections::air is the right-hand slot. The rearranged dashboard uses it
   // for Electricity while Air occupies the expanded side-card slot.
   layout.sections.air =
       RECT{layout.sections.music.right + gapX, client.top, client.right, client.bottom};
-  if (layout.wasteCalendar.right <= layout.wasteCalendar.left) {
-    layout.wasteCalendar.right = layout.wasteCalendar.left + 1;
+  if (layout.sections.music.right <= layout.sections.music.left) {
+    layout.sections.music.right = layout.sections.music.left + 1;
   }
-  if (layout.wasteCalendar.bottom <= layout.wasteCalendar.top) {
-    layout.wasteCalendar.bottom = layout.wasteCalendar.top + 1;
+  if (layout.sections.music.bottom <= layout.sections.music.top) {
+    layout.sections.music.bottom = layout.sections.music.top + 1;
   }
   if (layout.sections.air.right <= layout.sections.air.left) {
     layout.sections.air.right = layout.sections.air.left + 1;
@@ -61,10 +55,6 @@ RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
 
 MainSections SplitRearrangedMainSections(const RECT& client) {
   return ComputeRearrangedMainLayout(client).sections;
-}
-
-RECT RearrangedWasteCalendarRect(const RECT& client) {
-  return ComputeRearrangedMainLayout(client).wasteCalendar;
 }
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {

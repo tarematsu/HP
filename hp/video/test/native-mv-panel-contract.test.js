@@ -10,8 +10,16 @@ const mvPanel = readFileSync(
   new URL('../../native/src/renderer_panels/mv_section.inc', import.meta.url),
   'utf8',
 );
+const nativeWindows = readFileSync(
+  new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+  'utf8',
+);
+const webviewEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
 
@@ -34,16 +42,53 @@ test('MV playback uses the requested YouTube playlist without autoplay query', (
   assert.match(mvPanel, /controls=1/);
 });
 
-test('MV playback auto-clicks the native YouTube player control after load', () => {
-  assert.match(mvPanel, /kNativeMvAutoStartScript/);
-  assert.match(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
-  assert.match(mvPanel, /ytp-large-play-button/);
-  assert.match(mvPanel, /ytp-play-button/);
-  assert.match(mvPanel, /button\.click\(\)/);
-  assert.match(mvPanel, /attempts >= 20/);
-  assert.match(mvPanel, /}, 500\)/);
-  assert.match(mvPanel, /\[this, alive\]\(HRESULT result, LPCWSTR\)/);
-  assert.match(mvPanel, /FAILED\(webview_->Navigate\(kNativeMvPanelPageUrl\)\)/);
+test('MV startup clicks the WebView center from native Windows input after YouTube frame load', () => {
+  assert.match(mvPanel, /add_FrameNavigationStarting\(/);
+  assert.match(mvPanel, /add_FrameNavigationCompleted\(/);
+  assert.match(mvPanel, /https:\/\/www\.youtube\.com\/embed\/videoseries/);
+  assert.match(mvPanel, /youtubeFrameNavigationId_/);
+  assert.match(mvPanel, /ScheduleAutoStartClick\(\)/);
+  assert.match(mvPanel, /client\.left \+ \(client\.right - client\.left\) \/ 2/);
+  assert.match(mvPanel, /client\.top \+ \(client\.bottom - client\.top\) \/ 2/);
+  assert.match(mvPanel, /ClientToScreen\(hostWindow_, &center\)/);
+  assert.match(mvPanel, /SendInput\(kInputCount, input, sizeof\(INPUT\)\)/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTDOWN/);
+  assert.match(mvPanel, /MOUSEEVENTF_LEFTUP/);
+});
+
+test('native MV click is guarded against background or covered-window misclicks', () => {
+  assert.match(mvPanel, /GetForegroundWindow\(\) != root/);
+  assert.match(mvPanel, /WindowFromPoint\(center\)/);
+  assert.match(mvPanel, /hit != hostWindow_ && !IsChild\(hostWindow_, hit\)/);
+  assert.match(mvPanel, /GetCursorPos\(&previousCursor\)/);
+  assert.match(mvPanel, /SetCursorPos\(center\.x, center\.y\)/);
+  assert.match(mvPanel, /SetCursorPos\(previousCursor\.x, previousCursor\.y\)/);
+  assert.match(mvPanel, /autoStartClickSent_ = true/);
+  assert.match(mvPanel, /kNativeMvAutoStartMaxAttempts = 20/);
+});
+
+test('MV startup does not depend on YouTube DOM selectors or injected click JavaScript', () => {
+  assert.doesNotMatch(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
+  assert.doesNotMatch(mvPanel, /ytp-large-play-button/);
+  assert.doesNotMatch(mvPanel, /ytp-play-button/);
+  assert.doesNotMatch(mvPanel, /button\.click\(\)/);
+  assert.doesNotMatch(mvPanel, /querySelector\(['"]video['"]\)/);
+});
+
+test('MV WebView stays alive behind the power-saving overlay', () => {
+  assert.match(
+    nativeWindows,
+    /keepMvPlaybackVisible = requestedDashboardVisible_ && powerSavingMode_/,
+  );
+  assert.match(
+    nativeWindows,
+    /nativeDashboardVisible_ \|\|\s*\(keepMvPlaybackVisible && hwnd == nativeRadarWindow_\)/,
+  );
+  assert.match(
+    nativeWindows,
+    /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/,
+  );
+  assert.match(webviewEnvironment, /--disable-backgrounding-occluded-windows/);
 });
 
 test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
@@ -57,6 +102,24 @@ test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer'
   assert.doesNotMatch(mvPanel, /kNativeMvReferer/);
   assert.doesNotMatch(mvPanel, /NavigateWithWebResourceRequest\(/);
   assert.doesNotMatch(mvPanel, /CreateWebResourceRequest\(/);
+});
+
+test('waste calendar overlays the MV at top-right without taking pointer input', () => {
+  assert.match(mvPanel, /id="waste"/);
+  assert.match(mvPanel, /#waste\{position:absolute;z-index:2;top:12px;right:12px;/);
+  assert.match(mvPanel, /opacity:\.42;pointer-events:none/);
+  assert.match(mvPanel, /grid-template-columns:repeat\(7,minmax\(0,1fr\)\)/);
+  assert.match(mvPanel, /ごみ収集カレンダー/);
+  assert.match(mvPanel, /コース36/);
+  assert.match(mvPanel, /setInterval\(renderWaste, 60_000\)/);
+});
+
+test('waste overlay is generated from the native course 36 schedule', () => {
+  assert.match(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
+  assert.match(mvPanel, /Course36WasteForDate\(date\)/);
+  assert.match(mvPanel, /__COURSE36_SCHEDULE__/);
+  assert.match(mvPanel, /html\.replace\(marker, sizeof\(kScheduleMarker\) - 1,/);
+  assert.match(mvPanel, /const schedule = __COURSE36_SCHEDULE__;/);
 });
 
 test('MV wrapper stays minimal and does not restore iframe API playlist machinery', () => {

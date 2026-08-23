@@ -1,3 +1,8 @@
+namespace {
+bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
+                         const RECT& bounds) noexcept;
+}
+
 const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
   static const std::array<NativePanelSlot, 3> slots{{
       {&Renderer::nativeRadarWindow_, &NativeDashboardLayout::radar,
@@ -119,15 +124,30 @@ bool Renderer::EnsureNativeStaticWindows() {
       nativePanelTimerActive_ = false;
     }
   }
+
+  // Create the MV WebView independently of nativeMainWindow_ painting. This is
+  // required when HomePanel starts while power saving is already active: the
+  // main panel remains hidden, but the video controller still has to exist so
+  // playback can continue behind the black power-saving overlay.
+  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
+    RECT mvBounds{};
+    GetClientRect(nativeRadarWindow_, &mvBounds);
+    if (mvBounds.right > mvBounds.left && mvBounds.bottom > mvBounds.top) {
+      allCreated = EnsureNativeMvPanel(nativeRadarWindow_, dataDir_, mvBounds) && allCreated;
+    }
+  }
   return allCreated;
 }
 
 void Renderer::ApplyNativeStaticBounds() {
   const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
+  const bool keepMvPlaybackVisible = requestedDashboardVisible_ && powerSavingMode_;
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (!hwnd || !IsWindow(hwnd)) continue;
-    PlaceNativeWindow(hwnd, layout.*slot.rect, nativeDashboardVisible_);
+    const bool panelVisible = nativeDashboardVisible_ ||
+        (keepMvPlaybackVisible && hwnd == nativeRadarWindow_);
+    PlaceNativeWindow(hwnd, layout.*slot.rect, panelVisible);
     InvalidateRect(hwnd, nullptr, FALSE);
   }
 }
@@ -274,11 +294,7 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   NativePanelPaintScope scope(*this, hwnd);
   if (!scope.Valid()) return;
   const MainSections sections = SplitMainSections(scope.bounds);
-  const RECT wasteCalendar = RearrangedWasteCalendarRect(scope.bounds);
   RECT overlap{};
-  if (IntersectRect(&overlap, &scope.dirty, &wasteCalendar)) {
-    DrawCourse36WasteCalendar(scope.dc, wasteCalendar);
-  }
   if (IntersectRect(&overlap, &scope.dirty, &sections.music)) {
     DrawMusicSection(scope.dc, sections.music);
   }
