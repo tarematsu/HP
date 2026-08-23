@@ -1,7 +1,7 @@
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPlaylistUrl[] =
-    L"https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&autoplay=1&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0";
+    L"https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0";
 constexpr wchar_t kNativeMvReferer[] = L"https://github.com/tarematsu/HP/";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
