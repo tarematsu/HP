@@ -22,6 +22,10 @@ const webviewEnvironment = readFileSync(
   new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
   'utf8',
 );
+const powerSaving = readFileSync(
+  new URL('../../native/src/power_saving_controller.cpp', import.meta.url),
+  'utf8',
+);
 
 test('native dashboard compiles the MV panel and mounts it in the former radar window', () => {
   assert.match(entry, /#include "mv_section\.inc"/);
@@ -89,6 +93,23 @@ test('MV WebView stays alive behind the power-saving overlay', () => {
     /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/,
   );
   assert.match(webviewEnvironment, /--disable-backgrounding-occluded-windows/);
+});
+
+test('power saving briefly exposes the MV only while native click retries are active', () => {
+  assert.match(mvPanel, /kNativeMvAutoStartTimer = 0x4D56/);
+  assert.match(powerSaving, /kObservedNativeMvAutoStartTimer = 0x4D56/);
+  assert.match(powerSaving, /kMvStartupPassHoldMs = 1'500/);
+  assert.match(powerSaving, /IsMvPanelWindow\(message\.hwnd\)/);
+  assert.match(powerSaving, /OpenMvStartupInputPass\(\)/);
+  assert.match(
+    powerSaving,
+    /SetTimer\(overlay_, kMvStartupPassTimer, kMvStartupPassHoldMs, nullptr\)/,
+  );
+  assert.match(
+    powerSaving,
+    /if \(!powerSaving_ \|\| mvStartupInputPass_\) target = ParentButtonRect\(\)/,
+  );
+  assert.match(powerSaving, /CloseMvStartupInputPass\(\)/);
 });
 
 test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
