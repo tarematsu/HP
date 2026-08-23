@@ -10,16 +10,75 @@ constexpr char kNativeMvPanelHtml[] = R"HTML(<!doctype html>
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <title>MV</title>
 <style>
-html,body,iframe{width:100%;height:100%;margin:0;border:0;background:#000;overflow:hidden}
-iframe{position:absolute;inset:0}
+*{box-sizing:border-box}
+html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
+#mv{position:absolute;z-index:1;inset:0;width:100%;height:100%;border:0}
+#waste{position:absolute;z-index:2;top:12px;right:12px;width:min(62%,720px);padding:8px;
+  border:1px solid rgba(255,255,255,.28);border-radius:10px;background:rgba(8,10,14,.90);
+  color:#fff;font-family:"Segoe UI","Yu Gothic UI",sans-serif;opacity:.42;pointer-events:none}
+#waste-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 6px;
+  font-size:clamp(9px,1.25vw,13px);font-weight:600;line-height:1.1}
+#waste-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.waste-day{min-width:0;padding:5px 2px;border:1px solid rgba(255,255,255,.20);border-radius:7px;
+  background:rgba(255,255,255,.08);text-align:center;line-height:1.1}
+.waste-day.today{border-color:rgba(255,255,255,.62);background:rgba(255,255,255,.18)}
+.waste-date{display:block;font-size:clamp(8px,1.1vw,12px);font-weight:600;white-space:nowrap}
+.waste-kind{display:flex;align-items:center;justify-content:center;min-height:2.25em;margin-top:3px;
+  font-size:clamp(7px,1vw,11px);font-weight:600;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
-<iframe
+<iframe id="mv"
   src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="autoplay; encrypted-media; picture-in-picture"
   title="MV playlist"></iframe>
+<div id="waste" aria-hidden="true">
+  <div id="waste-head"><span>ごみ収集カレンダー</span><span>コース36</span></div>
+  <div id="waste-grid"></div>
+</div>
+<script>
+(() => {
+  'use strict';
+  const schedule = __COURSE36_SCHEDULE__;
+  const labels = [
+    '回収なし', '年度外', '可燃ごみ', 'プラ製容器・包装',
+    'びん・かん・ペット', '不燃・有害', '布類', '紙類'
+  ];
+  const weekdays = ['日','月','火','水','木','金','土'];
+  const grid = document.getElementById('waste-grid');
+  const dateKey = date => date.getFullYear() * 10000 +
+      (date.getMonth() + 1) * 100 + date.getDate();
+
+  function renderWaste() {
+    const now = new Date();
+    const todayKey = dateKey(now);
+    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    grid.replaceChildren();
+    for (let index = 0; index < 7; ++index) {
+      const date = new Date(weekStart);
+      date.setDate(weekStart.getDate() + index);
+      const key = dateKey(date);
+      const kind = key < 20260401 || key > 20270331 ? 1 : (schedule[key] ?? 0);
+      const cell = document.createElement('div');
+      cell.className = 'waste-day' + (key === todayKey ? ' today' : '');
+      const dateLine = document.createElement('span');
+      dateLine.className = 'waste-date';
+      dateLine.textContent = weekdays[date.getDay()] + ' ' +
+          (date.getMonth() + 1) + '/' + date.getDate();
+      const kindLine = document.createElement('span');
+      kindLine.className = 'waste-kind';
+      kindLine.textContent = labels[kind] || labels[0];
+      cell.append(dateLine, kindLine);
+      grid.append(cell);
+    }
+  }
+
+  renderWaste();
+  setInterval(renderWaste, 60_000);
+})();
+</script>
 </body>
 </html>)HTML";
 constexpr wchar_t kNativeMvAutoStartScript[] = LR"JS(
@@ -39,6 +98,38 @@ constexpr wchar_t kNativeMvAutoStartScript[] = LR"JS(
   }, 500);
 })();
 )JS";
+
+std::string BuildCourse36WasteScheduleJson() {
+  std::string json;
+  json.reserve(6'000);
+  json.push_back('{');
+
+  SYSTEMTIME date{};
+  date.wYear = 2026;
+  date.wMonth = 4;
+  date.wDayOfWeek = 3;
+  date.wDay = 1;
+  bool first = true;
+  for (;;) {
+    char entry[32]{};
+    sprintf_s(entry, "\"%04u%02u%02u\":%u",
+              static_cast<unsigned>(date.wYear),
+              static_cast<unsigned>(date.wMonth),
+              static_cast<unsigned>(date.wDay),
+              static_cast<unsigned>(Course36WasteForDate(date)));
+    if (!first) json.push_back(',');
+    first = false;
+    json += entry;
+    if (Course36DateKey(date) >= 20270331) break;
+
+    SYSTEMTIME next{};
+    if (!Course36AddDays(date, 1, next)) return "{}";
+    date = next;
+  }
+
+  json.push_back('}');
+  return json;
+}
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -153,11 +244,17 @@ class NativeMvPanelHost {
       std::error_code error;
       fs::create_directories(assetFolder_, error);
       if (error) return false;
+      std::string html(kNativeMvPanelHtml);
+      constexpr char kScheduleMarker[] = "__COURSE36_SCHEDULE__";
+      const size_t marker = html.find(kScheduleMarker);
+      if (marker == std::string::npos) return false;
+      html.replace(marker, sizeof(kScheduleMarker) - 1,
+                   BuildCourse36WasteScheduleJson());
+
       const fs::path indexPath = assetFolder_ / L"index.html";
       std::ofstream output(indexPath, std::ios::binary | std::ios::trunc);
       if (!output) return false;
-      output.write(kNativeMvPanelHtml,
-                   static_cast<std::streamsize>(sizeof(kNativeMvPanelHtml) - 1));
+      output.write(html.data(), static_cast<std::streamsize>(html.size()));
       output.flush();
       return output.good();
     } catch (...) {
@@ -351,8 +448,8 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
 }  // namespace
 
 void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
-  // The YouTube WebView now occupies the former radar window. Keeping it as a
-  // child of that existing HWND avoids another top-level browser surface.
+  // The YouTube WebView occupies the upper native panel while this section is
+  // the rain radar in the lower-left main column.
   if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
     RECT mvBounds{};
     GetClientRect(nativeRadarWindow_, &mvBounds);
@@ -361,7 +458,6 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
     }
   }
 
-  // The former MV slot is now the compact rain-radar surface.
   const RECT& bounds = card;
   const int radius = CardRadius(bounds);
   HRGN rounded = CreateRoundRectRgn(bounds.left, bounds.top, bounds.right + 1,
