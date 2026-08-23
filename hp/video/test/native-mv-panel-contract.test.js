@@ -14,6 +14,10 @@ const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
 );
+const webviewEnvironment = readFileSync(
+  new URL('../../native/src/shared_webview_environment.cpp', import.meta.url),
+  'utf8',
+);
 
 test('native dashboard compiles the MV panel and mounts it in the former radar window', () => {
   assert.match(entry, /#include "mv_section\.inc"/);
@@ -26,24 +30,23 @@ test('native dashboard compiles the MV panel and mounts it in the former radar w
   assert.doesNotMatch(mvPanel, /EnsureNativeMvPanel\(nativeMainWindow_,/);
 });
 
-test('MV playback uses the requested YouTube playlist without autoplay query', () => {
+test('MV playback uses the requested YouTube playlist with native autoplay', () => {
   assert.match(mvPanel, /PLMWqSdpIVl30/);
   assert.match(mvPanel, /youtube\.com\/embed\/videoseries/);
-  assert.doesNotMatch(mvPanel, /autoplay=1/);
+  assert.match(mvPanel, /autoplay=1/);
   assert.match(mvPanel, /loop=1/);
   assert.match(mvPanel, /controls=1/);
+  assert.match(mvPanel, /allow="autoplay; encrypted-media; picture-in-picture"/);
 });
 
-test('MV playback auto-clicks the native YouTube player control after load', () => {
-  assert.match(mvPanel, /kNativeMvAutoStartScript/);
-  assert.match(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
-  assert.match(mvPanel, /ytp-large-play-button/);
-  assert.match(mvPanel, /ytp-play-button/);
-  assert.match(mvPanel, /button\.click\(\)/);
-  assert.match(mvPanel, /attempts >= 20/);
-  assert.match(mvPanel, /}, 500\)/);
-  assert.match(mvPanel, /\[this, alive\]\(HRESULT result, LPCWSTR\)/);
+test('MV autoplay uses WebView2 policy instead of synthetic YouTube clicks', () => {
+  assert.match(webviewEnvironment, /--autoplay-policy=no-user-gesture-required/);
   assert.match(mvPanel, /FAILED\(webview_->Navigate\(kNativeMvPanelPageUrl\)\)/);
+  assert.doesNotMatch(mvPanel, /kNativeMvAutoStartScript/);
+  assert.doesNotMatch(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
+  assert.doesNotMatch(mvPanel, /ytp-large-play-button/);
+  assert.doesNotMatch(mvPanel, /ytp-play-button/);
+  assert.doesNotMatch(mvPanel, /button\.click\(\)/);
 });
 
 test('MV is enclosed by a local HTTPS page so YouTube receives a normal Referer', () => {
