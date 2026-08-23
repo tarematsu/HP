@@ -6,6 +6,9 @@ namespace hp {
 namespace {
 constexpr wchar_t kMainWindowClass[] = L"HomePanelNativeWindow";
 constexpr wchar_t kOverlayWindowClass[] = L"HomePanelPowerSavingOverlay";
+constexpr wchar_t kMvPanelWindowClass[] = L"HomePanelNativeMvPanel";
+constexpr UINT_PTR kObservedNativeMvAutoStartTimer = 0x4D56;
+constexpr UINT kMvStartupPassHoldMs = 1'500;
 constexpr int kPowerSavingStartMinute = 12 * 60;
 constexpr int kPowerSavingEndMinute = 20 * 60;
 
@@ -20,10 +23,19 @@ static_assert(ScheduledPowerSavingAt(12, 0));
 static_assert(ScheduledPowerSavingAt(19, 59));
 static_assert(!ScheduledPowerSavingAt(20, 0));
 
-bool IsMainWindow(HWND window) {
+bool WindowHasClass(HWND window, const wchar_t* expected) {
   wchar_t className[64]{};
-  return window && GetClassNameW(window, className, _countof(className)) > 0 &&
-      wcscmp(className, kMainWindowClass) == 0;
+  return window && expected &&
+      GetClassNameW(window, className, _countof(className)) > 0 &&
+      wcscmp(className, expected) == 0;
+}
+
+bool IsMainWindow(HWND window) {
+  return WindowHasClass(window, kMainWindowClass);
+}
+
+bool IsMvPanelWindow(HWND window) {
+  return WindowHasClass(window, kMvPanelWindowClass);
 }
 
 bool ScheduledPowerSavingNow(int64_t nowMs) {
@@ -127,6 +139,10 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
         controller->CheckSchedule();
         return 0;
       }
+      if (wParam == kMvStartupPassTimer) {
+        controller->CloseMvStartupInputPass();
+        return 0;
+      }
       break;
     case WM_LBUTTONUP: {
       const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
@@ -149,6 +165,7 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       return 0;
     case WM_NCDESTROY:
       KillTimer(window, kScheduleTimer);
+      KillTimer(window, kMvStartupPassTimer);
       if (controller->overlay_ == window) controller->overlay_ = nullptr;
       SetWindowLongPtrW(window, GWLP_USERDATA, 0);
       break;
@@ -162,6 +179,18 @@ void PowerSavingController::ObserveMessage(const CWPSTRUCT& message) {
     return;
   }
   if (!parent_) return;
+
+  // The MV WebView uses this native timer only after the YouTube child frame has
+  // loaded and a center-click attempt is about to run. While scheduled power
+  // saving is active, briefly shrink the full-screen black overlay so the click
+  // can actually reach the WebView. Every retry extends the pass; once the MV
+  // timer stops after success or its bounded retry window, the overlay expands
+  // again 1.5 seconds later without waking radar composition or panel timers.
+  if (powerSaving_ && message.message == WM_TIMER &&
+      message.wParam == kObservedNativeMvAutoStartTimer &&
+      IsMvPanelWindow(message.hwnd)) {
+    OpenMvStartupInputPass();
+  }
 
   if (message.hwnd == parent_) {
     switch (message.message) {
@@ -210,8 +239,10 @@ void PowerSavingController::Attach(HWND parent) {
 
 void PowerSavingController::Detach() noexcept {
   RestoreBrightness();
+  mvStartupInputPass_ = false;
   if (overlay_ && IsWindow(overlay_)) {
     KillTimer(overlay_, kScheduleTimer);
+    KillTimer(overlay_, kMvStartupPassTimer);
     DestroyWindow(overlay_);
   }
   overlay_ = nullptr;
@@ -282,7 +313,29 @@ void PowerSavingController::ArmScheduleTimer() {
   SetTimer(overlay_, kScheduleTimer, delay, nullptr);
 }
 
+void PowerSavingController::OpenMvStartupInputPass() {
+  if (!powerSaving_ || !overlay_ || !IsWindow(overlay_)) return;
+  const bool changed = !mvStartupInputPass_;
+  mvStartupInputPass_ = true;
+  KillTimer(overlay_, kMvStartupPassTimer);
+  SetTimer(overlay_, kMvStartupPassTimer, kMvStartupPassHoldMs, nullptr);
+  if (changed) LayoutOverlay();
+}
+
+void PowerSavingController::CloseMvStartupInputPass() {
+  if (overlay_ && IsWindow(overlay_)) {
+    KillTimer(overlay_, kMvStartupPassTimer);
+  }
+  if (!mvStartupInputPass_) return;
+  mvStartupInputPass_ = false;
+  if (powerSaving_) LayoutOverlay();
+}
+
 void PowerSavingController::ApplyMode(bool enabled) {
+  if (!enabled && mvStartupInputPass_) {
+    mvStartupInputPass_ = false;
+    if (overlay_) KillTimer(overlay_, kMvStartupPassTimer);
+  }
   const bool changed = powerSaving_ != enabled;
   powerSaving_ = enabled;
   if (enabled) {
@@ -339,7 +392,7 @@ void PowerSavingController::LayoutOverlay() {
   if (!parent_ || !overlay_ || !IsWindow(parent_) || !IsWindow(overlay_)) return;
   RECT target{};
   GetClientRect(parent_, &target);
-  if (!powerSaving_) target = ParentButtonRect();
+  if (!powerSaving_ || mvStartupInputPass_) target = ParentButtonRect();
   SetWindowPos(
       overlay_, HWND_TOP,
       target.left, target.top,

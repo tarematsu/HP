@@ -18,6 +18,7 @@ class PowerSavingController {
   struct BrightnessState;
 
   static constexpr UINT_PTR kScheduleTimer = 1;
+  static constexpr UINT_PTR kMvStartupPassTimer = 2;
   static constexpr UINT kRaiseOverlayMessage = WM_APP + 1;
 
   static LRESULT CALLBACK CallWndProc(int code, WPARAM wParam, LPARAM lParam);
@@ -30,6 +31,8 @@ class PowerSavingController {
   void EnsureOverlay();
   void CheckSchedule(bool force = false);
   void ArmScheduleTimer();
+  void OpenMvStartupInputPass();
+  void CloseMvStartupInputPass();
   void ApplyMode(bool enabled);
   void ApplyMinimumBrightness() noexcept;
   void RestoreBrightness() noexcept;
@@ -43,6 +46,7 @@ class PowerSavingController {
   HWND parent_ = nullptr;
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
+  bool mvStartupInputPass_ = false;
   bool scheduleInitialized_ = false;
   int64_t nextScheduleBoundaryAt_ = 0;
   std::unique_ptr<BrightnessState> brightnessState_;
