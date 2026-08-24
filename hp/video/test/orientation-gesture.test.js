@@ -19,7 +19,12 @@ test('portrait and landscape layouts swap navigation and seek axes', () => {
   assert.equal(isLandscapeLayout(0, 0, 'landscape-primary'), true);
 });
 
-test('screen orientation overrides stale WebView viewport dimensions', () => {
+test('native Android orientation overrides stale WebView state', () => {
+  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', true), true);
+  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', false), false);
+});
+
+test('screen orientation overrides stale WebView viewport dimensions without a native bridge', () => {
   assert.equal(isLandscapeLayout(360, 720, 'landscape-primary'), true);
   assert.equal(isLandscapeLayout(720, 360, 'portrait-primary'), false);
 });
