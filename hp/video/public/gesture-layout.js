@@ -1,31 +1,35 @@
 const MAX_FULL_SPAN_SEEK_SECONDS = 120;
 
 export function isLandscapeLayout(width, height, orientationType = '') {
+  const type = String(orientationType || '').toLowerCase();
+
+  // Android WebView can keep visualViewport dimensions from the previous
+  // orientation after a rotation. screen.orientation tracks the device
+  // configuration directly, so prefer it whenever it is available.
+  if (type.startsWith('landscape')) return true;
+  if (type.startsWith('portrait')) return false;
+
   const viewportWidth = Number(width);
   const viewportHeight = Number(height);
   const hasUsableViewport = Number.isFinite(viewportWidth)
     && Number.isFinite(viewportHeight)
     && viewportWidth > 0
-    && viewportHeight > 0
-    && viewportWidth !== viewportHeight;
-
-  // Mobile browsers can briefly keep screen.orientation.type stale after a
-  // rotation. The actual viewport is therefore the source of truth whenever
-  // it has a clear aspect ratio.
-  if (hasUsableViewport) return viewportWidth > viewportHeight;
-
-  const type = String(orientationType || '').toLowerCase();
-  if (type.startsWith('landscape')) return true;
-  if (type.startsWith('portrait')) return false;
-  return viewportWidth > viewportHeight;
+    && viewportHeight > 0;
+  return hasUsableViewport ? viewportWidth > viewportHeight : false;
 }
 
 export function currentLandscapeLayout() {
   if (typeof window === 'undefined') return false;
   const viewport = globalThis.visualViewport;
+  const layoutWidth = Number(window.innerWidth) > 0
+    ? window.innerWidth
+    : viewport?.width;
+  const layoutHeight = Number(window.innerHeight) > 0
+    ? window.innerHeight
+    : viewport?.height;
   return isLandscapeLayout(
-    viewport?.width ?? window.innerWidth,
-    viewport?.height ?? window.innerHeight,
+    layoutWidth,
+    layoutHeight,
     globalThis.screen?.orientation?.type || ''
   );
 }
