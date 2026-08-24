@@ -16,8 +16,12 @@ test('portrait and landscape layouts swap navigation and seek axes', () => {
   assert.deepEqual(gestureAxes(true), { nextAxis: 'x', seekAxis: 'y' });
   assert.equal(isLandscapeLayout(360, 720, ''), false);
   assert.equal(isLandscapeLayout(720, 360, ''), true);
-  assert.equal(isLandscapeLayout(360, 720, 'landscape-primary'), false);
   assert.equal(isLandscapeLayout(0, 0, 'landscape-primary'), true);
+});
+
+test('screen orientation overrides stale WebView viewport dimensions', () => {
+  assert.equal(isLandscapeLayout(360, 720, 'landscape-primary'), true);
+  assert.equal(isLandscapeLayout(720, 360, 'portrait-primary'), false);
 });
 
 test('axis delta follows the selected screen axis', () => {
