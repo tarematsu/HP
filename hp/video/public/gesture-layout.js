@@ -1,11 +1,20 @@
 const MAX_FULL_SPAN_SEEK_SECONDS = 120;
 
-export function isLandscapeLayout(width, height, orientationType = '') {
-  const type = String(orientationType || '').toLowerCase();
+function nativeLandscapeLayout() {
+  try {
+    const bridge = globalThis.VideoPlayerNative;
+    if (!bridge || typeof bridge.isLandscape !== 'function') return null;
+    const value = bridge.isLandscape();
+    if (value === true || value === 'true' || value === 1 || value === '1') return true;
+    if (value === false || value === 'false' || value === 0 || value === '0') return false;
+  } catch {}
+  return null;
+}
 
-  // Android WebView can keep visualViewport dimensions from the previous
-  // orientation after a rotation. screen.orientation tracks the device
-  // configuration directly, so prefer it whenever it is available.
+export function isLandscapeLayout(width, height, orientationType = '', nativeLandscape = null) {
+  if (nativeLandscape === true || nativeLandscape === false) return nativeLandscape;
+
+  const type = String(orientationType || '').toLowerCase();
   if (type.startsWith('landscape')) return true;
   if (type.startsWith('portrait')) return false;
 
@@ -30,7 +39,8 @@ export function currentLandscapeLayout() {
   return isLandscapeLayout(
     layoutWidth,
     layoutHeight,
-    globalThis.screen?.orientation?.type || ''
+    globalThis.screen?.orientation?.type || '',
+    nativeLandscapeLayout()
   );
 }
 
