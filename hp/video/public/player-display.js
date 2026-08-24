@@ -1,4 +1,3 @@
-import { currentLandscapeLayout } from './gesture-layout.js';
 import { normalizedStoredVolume } from './player-state-bridge.js';
 import { inferVideoOrientation } from './video-orientation.js';
 
@@ -44,15 +43,9 @@ export function orientationLockForVideo(videoWidth, videoHeight, mediaUrl = '') 
   return null;
 }
 
-export function doubleTapSeekSeconds(
-  clientX,
-  width,
-  clientY = 0,
-  height = 0,
-  landscape = false
-) {
-  const position = Number(landscape ? clientY : clientX);
-  const span = Number(landscape ? height : width);
+export function doubleTapSeekSeconds(clientX, width) {
+  const position = Number(clientX);
+  const span = Number(width);
   if (!Number.isFinite(position) || !Number.isFinite(span) || span <= 0) return 0;
   const fraction = position / span;
   if (fraction < 0.4) return -10;
@@ -197,7 +190,6 @@ function initialize() {
     }
     return Math.min(100, Math.max(0, (end / duration) * 100));
   }
-
   function updateTimeline() {
     const video = activeVideo();
     const duration = Number(video?.duration);
@@ -373,18 +365,14 @@ function initialize() {
 
   function handleTap(event) {
     const now = performance.now();
-    const landscape = currentLandscapeLayout();
     const sideSeconds = doubleTapSeekSeconds(
       event.clientX,
-      player.clientWidth || window.innerWidth,
-      event.clientY,
-      player.clientHeight || window.innerHeight,
-      landscape
+      player.clientWidth || window.innerWidth
     );
     const side = sideSeconds < 0
-      ? (landscape ? 'top' : 'left')
+      ? 'left'
       : sideSeconds > 0
-        ? (landscape ? 'bottom' : 'right')
+        ? 'right'
         : 'center';
     const repeat = lastTap
       && now - lastTap.time <= DOUBLE_TAP_DELAY_MS
