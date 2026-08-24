@@ -1,0 +1,25 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.tarematsu.videoscraper'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.tarematsu.videoscraper'
+        minSdk 28
+        targetSdk 34
+        versionCode 7
+        versionName '1.6.0'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError true
+    }
+}
