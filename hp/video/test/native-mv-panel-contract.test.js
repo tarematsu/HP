@@ -49,9 +49,22 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV playlist reloads hourly and starts Play all with DOM-first native input', () => {
-  assert.match(mvPanel, /kNativeMvHourlyReloadTimer/);
-  assert.match(mvPanel, /kNativeMvHourlyReloadMs = 60U \* 60U \* 1000U/);
+test('MV playlist reloads after a fresh 20:00-39:59 random delay and starts Play all with DOM-first native input', () => {
+  assert.match(mvPanel, /kNativeMvReloadTimer/);
+  assert.match(mvPanel, /kNativeMvReloadMinSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvReloadSpanSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /random % kNativeMvReloadSpanSeconds/);
+  assert.match(mvPanel, /return seconds \* 1000U/);
+  assert.match(mvPanel, /ScheduleNextPlaylistReload\(\)/);
+  assert.match(
+    mvPanel,
+    /if \(timerId == kNativeMvReloadTimer\) \{\s*ReloadPlaylist\(\);\s*if \(!failed_ && !ScheduleNextPlaylistReload\(\)\) Fail\(\);/s,
+  );
+  assert.match(
+    mvPanel,
+    /controller_->put_IsVisible\(TRUE\);\s*ReloadPlaylist\(\);\s*if \(failed_\) return;\s*if \(!ScheduleNextPlaylistReload\(\)\)/s,
+  );
+  assert.doesNotMatch(mvPanel, /kNativeMvHourlyReloadMs/);
   assert.match(mvPanel, /add_NavigationCompleted/);
   assert.match(mvPanel, /ExecuteScript/);
   assert.match(mvPanel, /すべて再生/);
