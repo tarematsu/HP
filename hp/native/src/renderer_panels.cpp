@@ -26,11 +26,6 @@
 // Stationhead actions inside the retained MV fragment are compiled out while
 // the legacy source remains available for a future rollback.
 #define QueueAction(...) ((void)0)
-// The visible radar is now DrawMusicSection inside the main native panel. The
-// old nativeRadarWindow_ hosts the YouTube WebView, so drawing the calendar in
-// windows.inc put it behind that child WebView and made it invisible.
-#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay
 #include "renderer_panels/media_section.inc"
-#undef DrawCardOutline
 #undef QueueAction
 #include "renderer_panels/data_sections.inc"
