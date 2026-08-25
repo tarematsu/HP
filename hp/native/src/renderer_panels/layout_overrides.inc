@@ -33,8 +33,8 @@ RearrangedMainLayout ComputeRearrangedMainLayout(const RECT& client) {
   const int leftWidth = std::max(1, rowWidth * 65 / 100);
 
   RearrangedMainLayout layout;
-  // The waste calendar moved onto the MV WebView. Give its former upper-left
-  // slot to the rain radar so the radar now fills the complete left column.
+  // The waste summary now lives below the clock. Keep the rain radar filling
+  // the complete left column that previously also hosted the waste calendar.
   layout.sections.music =
       RECT{client.left, client.top, client.left + leftWidth, client.bottom};
   // MainSections::air is the right-hand slot. The rearranged dashboard uses it
@@ -59,9 +59,10 @@ MainSections SplitRearrangedMainSections(const RECT& client) {
 
 RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   const RECT content = CardContentRect(card);
-  // The one-second tick changes only the large time text. The footer is static.
+  // The one-second tick changes only the large time text. The waste summary and
+  // version footer are date/static content and do not need second-by-second repainting.
   RECT timeRect{content.left, content.top + SpanY(content, 170),
-                content.right, content.top + SpanY(content, 705)};
+                content.right, content.top + SpanY(content, 650)};
   if (timeRect.right <= timeRect.left) timeRect.right = timeRect.left + 1;
   if (timeRect.bottom <= timeRect.top) timeRect.bottom = timeRect.top + 1;
   return timeRect;
@@ -110,8 +111,9 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   const RECT hpClockContent = CardContentRect((card)); \
   SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
   RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 170)}; \
-  RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 705)}; \
-  RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 735), hpClockContent.right, hpClockContent.bottom}; \
+  RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 650)}; \
+  RECT hpWasteRect{hpClockContent.left, hpTimeRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 820)}; \
+  RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 830), hpClockContent.right, hpClockContent.bottom}; \
   HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetMuted); \
   DrawTextInRect((dc), DateText(hpNow), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
@@ -121,6 +123,10 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
   DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); \
+  const std::wstring& hpWasteText = Course36ClockWasteSummary(hpNow); \
+  SelectObject((dc), TierFont(FontTier::Medium)); \
+  SetTextColor((dc), kWidgetText); \
+  DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
   const int hpPowerButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
