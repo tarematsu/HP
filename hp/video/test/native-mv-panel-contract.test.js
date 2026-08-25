@@ -49,16 +49,30 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('direct playlist page has no synthetic native autoplay click machinery', () => {
-  assert.doesNotMatch(mvPanel, /kNativeMvClickTimer/);
-  assert.doesNotMatch(mvPanel, /ClickCenter\(/);
-  assert.doesNotMatch(mvPanel, /SendInput\(/);
-  assert.doesNotMatch(mvPanel, /MOUSEEVENTF_LEFTDOWN/);
-  assert.doesNotMatch(mvPanel, /MOUSEEVENTF_LEFTUP/);
-  assert.doesNotMatch(mvPanel, /case WM_TIMER:/);
-  assert.doesNotMatch(mvPanel, /AddScriptToExecuteOnDocumentCreated\(/);
-  assert.doesNotMatch(mvPanel, /ytp-large-play-button/);
-  assert.doesNotMatch(mvPanel, /ytp-play-button/);
+test('MV playlist reloads hourly and starts Play all with DOM-first native input', () => {
+  assert.match(mvPanel, /kNativeMvHourlyReloadTimer/);
+  assert.match(mvPanel, /kNativeMvHourlyReloadMs = 60U \* 60U \* 1000U/);
+  assert.match(mvPanel, /add_NavigationCompleted/);
+  assert.match(mvPanel, /ExecuteScript/);
+  assert.match(mvPanel, /すべて再生/);
+  assert.match(mvPanel, /Play all/);
+  assert.match(mvPanel, /ClientToScreen/);
+  assert.match(mvPanel, /SendInput/);
+  assert.match(mvPanel, /kNativeMvFallbackPlayAllXTenThousandths = 5850/);
+  assert.match(mvPanel, /kNativeMvFallbackPlayAllYTenThousandths = 4250/);
+  assert.match(mvPanel, /case WM_TIMER:/);
+  assert.match(mvPanel, /ReloadPlaylist\(\)/);
+  assert.doesNotMatch(mvPanel, /SendMouseInput/);
+});
+
+test('MV playback enters YouTube fullscreen with DOM-located native input', () => {
+  assert.match(mvPanel, /kNativeMvFullscreenRetryTimer/);
+  assert.match(mvPanel, /kNativeMvFullscreenRetryMs = 500U/);
+  assert.match(mvPanel, /kNativeMvFullscreenRetryLimit = 30/);
+  assert.match(mvPanel, /\.ytp-fullscreen-button/);
+  assert.match(mvPanel, /BeginFullscreenProbe\(\)/);
+  assert.match(mvPanel, /ProbeFullscreenButton\(\)/);
+  assert.match(mvPanel, /IsWatchPage\(\)/);
 });
 
 test('MV WebView keeps its persistent profile and stays alive behind power saving', () => {
