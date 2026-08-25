@@ -15,7 +15,9 @@
 #define ClockTimeRectFromCard RearrangedClockTimeRectFromCard
 #define DrawClockSection HP_DRAW_CLOCK_WITH_STATUS
 #define DrawControlsSection DrawAirSection
+#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay
 #include "renderer_panels/windows.inc"
+#undef DrawCardOutline
 #undef DrawControlsSection
 #undef DrawClockSection
 #undef ClockTimeRectFromCard
