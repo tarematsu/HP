@@ -31,8 +31,16 @@ test('course 36 schedule remains isolated from the direct YouTube MV page', () =
   assert.doesNotMatch(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
-test('standalone waste panel is removed and radar fills the full left column', () => {
-  assert.doesNotMatch(panelWindows, /DrawCourse36WasteCalendar/);
+test('waste calendar overlays the radar while radar keeps the full left column', () => {
+  assert.match(calendar, /DrawCourse36WasteCalendarOverlay\(HDC dc, const RECT& bounds\)/);
+  assert.match(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
+  assert.match(calendar, /bounds\.right - margin - panelWidth/);
+  assert.match(calendar, /bounds\.top \+ margin/);
+  assert.match(
+    rendererPanels,
+    /#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay[\s\S]*windows\.inc/,
+  );
+  assert.match(panelWindows, /DrawCardOutline\(scope\.dc, bounds, radius\)/);
   assert.doesNotMatch(panelWindows, /RearrangedWasteCalendarRect/);
   assert.doesNotMatch(layout, /wasteCalendar/);
   assert.doesNotMatch(layout, /RearrangedWasteCalendarRect/);
@@ -57,6 +65,12 @@ test('weekly rules and year-end exceptions follow the published course 36 notes'
   assert.match(calendar, /date\.wDayOfWeek == 3/);
   assert.match(calendar, /dateKey == 20261230/);
   assert.match(calendar, /dateKey < 20260401 \|\| dateKey > 20270331/);
+});
+
+test('radar overlay uses the existing course 36 date rules', () => {
+  assert.match(calendar, /Course36AddDays\(now, -static_cast<int>\(now\.wDayOfWeek\), weekStart\)/);
+  assert.match(calendar, /Course36WasteLabel\(Course36WasteForDate\(date\)\)/);
+  assert.match(calendar, /ごみ収集カレンダー  コース36/);
 });
 
 test('waste calendar data is not duplicated into the direct YouTube page', () => {
