@@ -10,10 +10,6 @@ const layout = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',
 );
-const panelWindows = readFileSync(
-  new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
-  'utf8',
-);
 const calendar = readFileSync(
   new URL('../../native/src/renderer_panels/waste_calendar_section.inc', import.meta.url),
   'utf8',
@@ -31,32 +27,30 @@ test('course 36 schedule remains isolated from the direct YouTube MV page', () =
   assert.doesNotMatch(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
-test('waste calendar overlays the visible radar card rather than the YouTube host', () => {
-  assert.match(calendar, /DrawCourse36WasteCalendarOverlay\(HDC dc, const RECT& bounds\)/);
-  assert.match(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
-  assert.match(calendar, /bounds\.right - margin - panelWidth/);
-  assert.match(calendar, /bounds\.top \+ margin/);
-  assert.match(
-    rendererPanels,
-    /#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay[\s\S]*media_section\.inc/,
-  );
-  assert.doesNotMatch(
-    rendererPanels,
-    /#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay[\s\S]*windows\.inc/,
-  );
-  assert.match(mvPanel, /void Renderer::DrawMusicSection/);
-  assert.match(mvPanel, /DrawCardOutline\(dc, bounds, radius\)/);
-  assert.match(panelWindows, /DrawCardOutline\(scope\.dc, bounds, radius\)/);
-  assert.doesNotMatch(panelWindows, /RearrangedWasteCalendarRect/);
-  assert.doesNotMatch(layout, /wasteCalendar/);
-  assert.doesNotMatch(layout, /RearrangedWasteCalendarRect/);
+test('waste calendar summary is rendered below the clock instead of on the radar', () => {
+  assert.match(calendar, /Course36ClockWasteSummary\(const SYSTEMTIME& now\)/);
+  assert.doesNotMatch(calendar, /DrawCourse36WasteCalendarOverlay/);
+  assert.doesNotMatch(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
+  assert.doesNotMatch(rendererPanels, /DrawCardOutlineWithWasteCalendarOverlay/);
+  assert.match(layout, /hpWasteText = Course36ClockWasteSummary\(hpNow\)/);
+  assert.match(layout, /hpWasteRect\{hpClockContent\.left, hpTimeRect\.bottom/);
   assert.match(
     layout,
-    /layout\.sections\.music =\s*RECT\{client\.left, client\.top, client\.left \+ leftWidth, client\.bottom\};/s,
+    /hpWasteText[\s\S]*TierFont\(FontTier::Medium\)[\s\S]*DrawTextInRect\(\(dc\), hpWasteText, hpWasteRect/,
   );
+  assert.match(layout, /hpVersionText = L"アプリバージョン "/);
+  assert.match(layout, /TierFont\(FontTier::Small\)/);
+});
+
+test('clock waste summary is limited to non-burnable hazardous, bottles/cans, and paper', () => {
+  assert.match(calendar, /BottlesCansPet: return L"びんかん"/);
+  assert.match(calendar, /NonBurnableHazardous: return L"不燃有害"/);
+  assert.match(calendar, /Paper: return L"紙類"/);
+  assert.doesNotMatch(calendar, /L"可燃"|L"プラ"|L"布類"/);
+  assert.match(calendar, /foundCount < 3/);
   assert.match(
-    layout,
-    /layout\.sections\.air =\s*RECT\{layout\.sections\.music\.right \+ gapX, client\.top, client\.right, client\.bottom\};/s,
+    calendar,
+    /swprintf_s\(item, L"%d日後 %s", offset, Course36ClockWasteLabel\(kind\)\)/,
   );
 });
 
@@ -71,15 +65,6 @@ test('weekly rules and year-end exceptions follow the published course 36 notes'
   assert.match(calendar, /date\.wDayOfWeek == 3/);
   assert.match(calendar, /dateKey == 20261230/);
   assert.match(calendar, /dateKey < 20260401 \|\| dateKey > 20270331/);
-});
-
-test('radar overlay shows only today and tomorrow using the existing rules', () => {
-  assert.match(calendar, /for \(int index = 0; index < 2; \+\+index\)/);
-  assert.match(calendar, /Course36AddDays\(now, index, date\)/);
-  assert.match(calendar, /kDayLabels\[\] = \{L"今日", L"明日"\}/);
-  assert.match(calendar, /Course36WasteLabel\(Course36WasteForDate\(date\)\)/);
-  assert.match(calendar, /ごみ収集  コース36/);
-  assert.doesNotMatch(calendar, /weekStart/);
 });
 
 test('waste calendar data is not duplicated into the direct YouTube page', () => {
