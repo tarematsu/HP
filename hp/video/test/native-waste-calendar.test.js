@@ -31,15 +31,21 @@ test('course 36 schedule remains isolated from the direct YouTube MV page', () =
   assert.doesNotMatch(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
-test('waste calendar overlays the radar while radar keeps the full left column', () => {
+test('waste calendar overlays the visible radar card rather than the YouTube host', () => {
   assert.match(calendar, /DrawCourse36WasteCalendarOverlay\(HDC dc, const RECT& bounds\)/);
   assert.match(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
   assert.match(calendar, /bounds\.right - margin - panelWidth/);
   assert.match(calendar, /bounds\.top \+ margin/);
   assert.match(
     rendererPanels,
+    /#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay[\s\S]*media_section\.inc/,
+  );
+  assert.doesNotMatch(
+    rendererPanels,
     /#define DrawCardOutline DrawCardOutlineWithWasteCalendarOverlay[\s\S]*windows\.inc/,
   );
+  assert.match(mvPanel, /void Renderer::DrawMusicSection/);
+  assert.match(mvPanel, /DrawCardOutline\(dc, bounds, radius\)/);
   assert.match(panelWindows, /DrawCardOutline\(scope\.dc, bounds, radius\)/);
   assert.doesNotMatch(panelWindows, /RearrangedWasteCalendarRect/);
   assert.doesNotMatch(layout, /wasteCalendar/);
