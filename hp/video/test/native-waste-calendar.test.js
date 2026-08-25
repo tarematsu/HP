@@ -67,10 +67,13 @@ test('weekly rules and year-end exceptions follow the published course 36 notes'
   assert.match(calendar, /dateKey < 20260401 \|\| dateKey > 20270331/);
 });
 
-test('radar overlay uses the existing course 36 date rules', () => {
-  assert.match(calendar, /Course36AddDays\(now, -static_cast<int>\(now\.wDayOfWeek\), weekStart\)/);
+test('radar overlay shows only today and tomorrow using the existing rules', () => {
+  assert.match(calendar, /for \(int index = 0; index < 2; \+\+index\)/);
+  assert.match(calendar, /Course36AddDays\(now, index, date\)/);
+  assert.match(calendar, /kDayLabels\[\] = \{L"今日", L"明日"\}/);
   assert.match(calendar, /Course36WasteLabel\(Course36WasteForDate\(date\)\)/);
-  assert.match(calendar, /ごみ収集カレンダー  コース36/);
+  assert.match(calendar, /ごみ収集  コース36/);
+  assert.doesNotMatch(calendar, /weekStart/);
 });
 
 test('waste calendar data is not duplicated into the direct YouTube page', () => {
