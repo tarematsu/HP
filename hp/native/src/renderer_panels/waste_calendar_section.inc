@@ -117,4 +117,122 @@ bool Course36AddDays(const SYSTEMTIME& source, int days, SYSTEMTIME& result) {
   return FileTimeToSystemTime(&fileTime, &result) != FALSE;
 }
 
+const wchar_t* Course36WasteLabel(Course36WasteKind kind) {
+  switch (kind) {
+    case Course36WasteKind::Combustible: return L"可燃";
+    case Course36WasteKind::PlasticContainers: return L"プラ";
+    case Course36WasteKind::BottlesCansPet: return L"びん缶\nPET";
+    case Course36WasteKind::NonBurnableHazardous: return L"不燃\n有害";
+    case Course36WasteKind::Cloth: return L"布類";
+    case Course36WasteKind::Paper: return L"紙類";
+    case Course36WasteKind::OutsidePublishedPeriod: return L"年度外";
+    case Course36WasteKind::None:
+    default: return L"なし";
+  }
+}
+
+void DrawCourse36WasteCalendarOverlay(HDC dc, const RECT& bounds) {
+  const int width = std::max(1, static_cast<int>(bounds.right - bounds.left));
+  const int height = std::max(1, static_cast<int>(bounds.bottom - bounds.top));
+  const int margin = std::max(10, SpanY(bounds, 25));
+  const int availableWidth = width - margin * 2;
+  const int availableHeight = height - margin * 2;
+  if (availableWidth < 140 || availableHeight < 80) return;
+
+  const int minPanelWidth = std::min(300, availableWidth);
+  const int panelWidth = std::clamp(width * 62 / 100, minPanelWidth, availableWidth);
+  const int minPanelHeight = std::min(118, availableHeight);
+  const int panelHeight = std::clamp(height * 30 / 100, minPanelHeight, availableHeight);
+  const RECT panel{
+      bounds.right - margin - panelWidth,
+      bounds.top + margin,
+      bounds.right - margin,
+      bounds.top + margin + panelHeight,
+  };
+  const int radius = std::clamp(panelHeight / 10, 8, 16);
+  FillRoundRectTranslucent(dc, panel, RGB(8, 10, 14), radius, 190);
+  DrawCardOutline(dc, panel, radius);
+
+  const int horizontalPad = std::max(6, panelWidth / 70);
+  const int verticalPad = std::max(4, panelHeight / 28);
+  const int headerHeight = std::clamp(panelHeight * 24 / 100, 24, 40);
+  RECT header{
+      panel.left + horizontalPad,
+      panel.top + verticalPad,
+      panel.right - horizontalPad,
+      panel.top + headerHeight,
+  };
+  HGDIOBJ previousFont = SelectObject(
+      dc, CachedUiFont(std::clamp(panelHeight * 90 / 1000, 11, 18), FW_SEMIBOLD));
+  SetTextColor(dc, kWidgetText);
+  DrawTextInRect(dc, L"ごみ収集カレンダー  コース36", header,
+                 DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+
+  RECT grid{
+      panel.left + horizontalPad,
+      header.bottom + std::max(2, verticalPad / 2),
+      panel.right - horizontalPad,
+      panel.bottom - verticalPad,
+  };
+  if (grid.right <= grid.left || grid.bottom <= grid.top) {
+    SelectObject(dc, previousFont);
+    return;
+  }
+
+  SYSTEMTIME now{};
+  GetLocalTime(&now);
+  SYSTEMTIME weekStart{};
+  if (!Course36AddDays(now, -static_cast<int>(now.wDayOfWeek), weekStart)) {
+    SelectObject(dc, previousFont);
+    return;
+  }
+  const int todayKey = Course36DateKey(now);
+  static constexpr const wchar_t* kWeekdays[] = {
+      L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
+
+  const int gridWidth = static_cast<int>(grid.right - grid.left);
+  const int gridHeight = static_cast<int>(grid.bottom - grid.top);
+  const int cellGap = std::max(1, panelWidth / 260);
+  for (int index = 0; index < 7; ++index) {
+    SYSTEMTIME date{};
+    if (!Course36AddDays(weekStart, index, date)) continue;
+    const int cellLeft = grid.left + gridWidth * index / 7;
+    const int cellRight = grid.left + gridWidth * (index + 1) / 7;
+    RECT cell{
+        cellLeft + (index == 0 ? 0 : cellGap),
+        grid.top,
+        cellRight - (index == 6 ? 0 : cellGap),
+        grid.bottom,
+    };
+    if (cell.right <= cell.left || cell.bottom <= cell.top) continue;
+
+    const bool today = Course36DateKey(date) == todayKey;
+    FillRoundRectTranslucent(
+        dc, cell, RGB(255, 255, 255), std::max(5, gridHeight / 10), today ? 62 : 24);
+
+    const int dateHeight = std::clamp(gridHeight * 34 / 100, 18, std::max(18, gridHeight));
+    RECT dateRect{cell.left, cell.top, cell.right,
+                  std::min(cell.bottom, cell.top + dateHeight)};
+    wchar_t dateText[20]{};
+    swprintf_s(dateText, L"%s %u/%u", kWeekdays[date.wDayOfWeek % 7],
+               date.wMonth, date.wDay);
+    SelectObject(dc, CachedUiFont(std::clamp(panelHeight * 72 / 1000, 10, 15), FW_SEMIBOLD));
+    SetTextColor(dc, today ? kWidgetText : kWidgetMuted);
+    DrawTextInRect(dc, dateText, dateRect,
+                   DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
+
+    RECT kindRect{cell.left + 1, dateRect.bottom, cell.right - 1, cell.bottom};
+    SelectObject(dc, CachedUiFont(std::clamp(panelHeight * 76 / 1000, 10, 16), FW_SEMIBOLD));
+    SetTextColor(dc, kWidgetText);
+    DrawTextInRect(dc, Course36WasteLabel(Course36WasteForDate(date)), kindRect,
+                   DT_CENTER | DT_VCENTER | DT_WORDBREAK);
+  }
+  SelectObject(dc, previousFont);
+}
+
+void DrawCardOutlineWithWasteCalendarOverlay(HDC dc, const RECT& bounds, int radius) {
+  DrawCourse36WasteCalendarOverlay(dc, bounds);
+  DrawCardOutline(dc, bounds, radius);
+}
+
 }  // namespace
