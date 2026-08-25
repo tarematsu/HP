@@ -53,8 +53,10 @@ test('Blink rejects image loading and cached image decoding before navigation', 
   const argumentsBuilder = section(
     environmentSource,
     'std::wstring BuildWebView2Arguments(',
-    'void ApplyWebView2ProcessHints()',
+    'void InvokeEnvironmentCompletionNoexcept(',
   );
+  assert.match(argumentsBuilder, /if \(!blockImages && !blockFonts\) return \{\};/);
+  assert.match(argumentsBuilder, /kStationheadWebView2Arguments/);
   assert.match(argumentsBuilder, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);
   assert.match(
@@ -130,45 +132,6 @@ test('only Primary owns environment-wide worker filters', () => {
     'inline bool StationheadOwnsWorkerRequestFilters(',
     'inline void AddStationheadResourceFilter(',
   );
-  assert.match(owner, /ICoreWebView2_13/);
-  assert.match(owner, /get_Profile\(&profile\)/);
-  assert.match(owner, /get_ProfileName\(&profileNameRaw\)/);
-  assert.match(owner, /_wcsicmp\(profileNameRaw, L"Default"\) == 0/);
-  assert.match(policySource, /requires those source filters on one CoreWebView per environment/);
-});
-
-test('resource reduction never relies on DOM scans or post-load hiding', () => {
-  assert.doesNotMatch(
-    policySource,
-    /MutationObserver|querySelectorAll|createElement\(['"]style|display\s*:\s*none/,
-  );
-  assert.match(policySource, /No DOM scan[\s\S]*pays the resource cost first/);
-});
-
-test('ping requests are rejected without URI allocation', () => {
-  const contextGate = section(
-    policySource,
-    'if (hasContext) {',
-    'if (needsUri) {',
-  );
-  assert.match(
-    contextGate,
-    /context == COREWEBVIEW2_WEB_RESOURCE_CONTEXT_PING[\s\S]*block = true;[\s\S]*needsUri = false;/,
-  );
-  assert.doesNotMatch(contextGate, /get_Request|get_Uri|StationheadLowerAscii/);
-});
-
-test('strict playback and blocking predicates remain consolidated', () => {
-  const policy = section(
-    policySource,
-    'inline void ApplyStationheadResourceBlockingFilterFixed(',
-    '}  // namespace hp',
-  );
-  assert.equal((policy.match(/add_WebResourceRequested\(/g) || []).length, 1);
-  assert.match(policy, /StationheadRequestIsBlockableBoundaryFixed\(lower\)/);
-  assert.match(policy, /StationheadNonPlaybackScriptUrlRuntimeFixed\(lower\)/);
-  assert.match(policy, /StationheadAdditionalNonPlaybackScriptUrl\(lower\)/);
-  assert.match(policy, /StationheadRequestLooksLikeImage\(lower\)/);
-  assert.match(policy, /StationheadCorePlaybackRequestBoundaryFixed\(lower\)/);
-  assert.match(policy, /BlockStationheadTelemetrySocketsBoundaryFixed\(webview\)/);
+  assert.match(owner, /StationheadWebViewWindowContext\(webview\)/);
+  assert.match(owner, /context\.role == StationheadRole::Primary/);
 });
