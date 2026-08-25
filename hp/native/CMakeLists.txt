@@ -205,29 +205,29 @@ homepanel_configure_common_target(HomePanel)
 # Keep the historical Stationhead PCH chain visible for reference/tests, but do
 # not apply any Stationhead policy macros to the active HomePanel build.
 if(FALSE)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_polling_policy.h
-    src/sh_runtime_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_lifecycle_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_recovery_polling_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_media_stall_watchdog_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_webview_event_policy.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_resource_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_resource_boundary_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_resource_filter_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_runtime_script_resource_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_playback_resource_policy_fix.h)
-  target_precompile_headers(HomePanel PRIVATE
-    src/sh_track_boundary_message_policy.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_polling_policy.h
+  src/sh_runtime_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_lifecycle_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_recovery_polling_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_media_stall_watchdog_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_webview_event_policy.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_resource_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_resource_boundary_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_resource_filter_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_runtime_script_resource_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_playback_resource_policy_fix.h)
+target_precompile_headers(HomePanel PRIVATE
+  src/sh_track_boundary_message_policy.h)
 endif()
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
