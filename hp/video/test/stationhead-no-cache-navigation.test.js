@@ -26,11 +26,13 @@ const playbackPolicy = readFileSync(
 test('Stationhead WebView resets browser cache before first navigation', () => {
   assert.doesNotMatch(environment, /--disable-http-cache/);
   assert.match(environment, /--disable-features=BackForwardCache,/);
-  assert.match(environment, /ApplyWebView2ProcessHints\(\);[\s\S]*CreateCoreWebView2EnvironmentWithOptions/);
+  assert.match(environment, /kStationheadWebView2Arguments/);
+  assert.match(environment, /BuildWebView2Arguments\([\s\S]*CreateCoreWebView2EnvironmentWithOptions/);
   assert.match(
     environment,
     /put_AdditionalBrowserArguments\(webView2Arguments\.c_str\(\)\)/,
   );
+  assert.doesNotMatch(environment, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
   assert.match(
     playbackPolicy,
     /CallDevToolsProtocolMethod\(\s*L"Network\.clearBrowserCache", L"\{\}", nullptr\);/,
