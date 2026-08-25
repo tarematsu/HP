@@ -23,14 +23,12 @@ const mvPanel = readFileSync(
   'utf8',
 );
 
-test('course 36 schedule is loaded before the media fragment that consumes it', () => {
-  assert.match(
-    rendererPanels,
-    /waste_calendar_section\.inc"[\s\S]*media_section\.inc"/,
-  );
-  assert.match(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
-  assert.match(mvPanel, /Course36WasteForDate\(date\)/);
-  assert.match(mvPanel, /__COURSE36_SCHEDULE__/);
+test('course 36 schedule remains isolated from the direct YouTube MV page', () => {
+  assert.match(rendererPanels, /waste_calendar_section\.inc/);
+  assert.match(rendererPanels, /media_section\.inc/);
+  assert.doesNotMatch(mvPanel, /BuildCourse36WasteScheduleJson\(\)/);
+  assert.doesNotMatch(mvPanel, /Course36WasteForDate\(date\)/);
+  assert.doesNotMatch(mvPanel, /__COURSE36_SCHEDULE__/);
 });
 
 test('standalone waste panel is removed and radar fills the full left column', () => {
@@ -61,8 +59,8 @@ test('weekly rules and year-end exceptions follow the published course 36 notes'
   assert.match(calendar, /dateKey < 20260401 \|\| dateKey > 20270331/);
 });
 
-test('waste calendar data remains schedule-driven instead of duplicated in JavaScript', () => {
-  assert.match(mvPanel, /static_cast<unsigned>\(Course36WasteForDate\(date\)\)/);
-  assert.match(mvPanel, /Course36AddDays\(date, 1, next\)/);
+test('waste calendar data is not duplicated into the direct YouTube page', () => {
+  assert.doesNotMatch(mvPanel, /static_cast<unsigned>\(Course36WasteForDate\(date\)\)/);
+  assert.doesNotMatch(mvPanel, /Course36AddDays\(date, 1, next\)/);
   assert.doesNotMatch(mvPanel, /2026, 7, \{2, 16, 30\}/);
 });
