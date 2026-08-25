@@ -340,35 +340,68 @@ class NativeMvPanelHost {
                          kNativeMvFallbackPlayAllYTenThousandths);
   }
 
+  static LONG AbsoluteMouseCoordinate(int value, int origin,
+                                      int span) noexcept {
+    if (span <= 1) return 0;
+    long long scaled =
+        (static_cast<long long>(value - origin) * 65535LL) / (span - 1);
+    if (scaled < 0) scaled = 0;
+    if (scaled > 65535) scaled = 65535;
+    return static_cast<LONG>(scaled);
+  }
+
   void ClickNormalizedPoint(int xTenThousandths,
                             int yTenThousandths) noexcept {
-    if (!controller_ || !hostWindow_ || !IsWindow(hostWindow_)) return;
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     RECT client{};
     GetClientRect(hostWindow_, &client);
     const LONG width = client.right - client.left;
     const LONG height = client.bottom - client.top;
     if (width <= 0 || height <= 0) return;
 
-    POINT point{};
-    point.x = client.left + static_cast<LONG>(
-                                (static_cast<long long>(width) *
-                                 xTenThousandths) /
+    POINT target{};
+    target.x = client.left + static_cast<LONG>(
+                                 (static_cast<long long>(width) *
+                                  xTenThousandths) /
+                                 10000);
+    target.y = client.top + static_cast<LONG>(
+                                (static_cast<long long>(height) *
+                                 yTenThousandths) /
                                 10000);
-    point.y = client.top + static_cast<LONG>(
-                               (static_cast<long long>(height) *
-                                yTenThousandths) /
-                               10000);
-    point.x = std::max(client.left, std::min(client.right - 1, point.x));
-    point.y = std::max(client.top, std::min(client.bottom - 1, point.y));
+    target.x = std::max(client.left, std::min(client.right - 1, target.x));
+    target.y = std::max(client.top, std::min(client.bottom - 1, target.y));
+    if (!ClientToScreen(hostWindow_, &target)) return;
 
-    const HRESULT down = controller_->SendMouseInput(
-        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
-        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON, 0, point);
-    if (SUCCEEDED(down)) {
-      controller_->SendMouseInput(
-          COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
-          COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+    const int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (virtualWidth <= 1 || virtualHeight <= 1) return;
+
+    auto setAbsoluteMove = [&](INPUT* input, const POINT& point) noexcept {
+      input->type = INPUT_MOUSE;
+      input->mi.dx =
+          AbsoluteMouseCoordinate(point.x, virtualLeft, virtualWidth);
+      input->mi.dy =
+          AbsoluteMouseCoordinate(point.y, virtualTop, virtualHeight);
+      input->mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
+                          MOUSEEVENTF_VIRTUALDESK;
+    };
+
+    INPUT inputs[4]{};
+    setAbsoluteMove(&inputs[0], target);
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    inputs[2].type = INPUT_MOUSE;
+    inputs[2].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+
+    POINT previous{};
+    UINT inputCount = 3;
+    if (GetCursorPos(&previous)) {
+      setAbsoluteMove(&inputs[3], previous);
+      inputCount = 4;
     }
+    SendInput(inputCount, inputs, sizeof(INPUT));
   }
 
   void Fail() noexcept {
