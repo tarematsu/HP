@@ -10,6 +10,10 @@ namespace hp {
 
 StationheadPlayer::~StationheadPlayer() = default;
 
+StationheadHandleBase::operator bool() const noexcept {
+  return false;
+}
+
 AppStationheadHandle::AppStationheadHandle() = default;
 AppStationheadHandle::~AppStationheadHandle() = default;
 AppSecondaryStationheadHandle::AppSecondaryStationheadHandle() = default;
