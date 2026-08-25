@@ -132,9 +132,13 @@ set(HOMEPANEL_CORE_SOURCES
   src/app.cpp
   src/app_startup_tick_fallback.cpp
   src/app_air_history.cpp
-  src/app_stationhead_history.cpp
-  src/app_stationhead_handles.cpp
-  src/app_stationhead_state.cpp
+  # Stationhead is disabled. Keep the old implementation in the repository for
+  # reference, but do not compile any App-side Stationhead runtime helpers.
+  # src/app_stationhead_history.cpp
+  # src/app_stationhead_handles.cpp
+  # src/app_stationhead_state.cpp
+  src/stationhead_disabled_stubs.cpp
+  src/shared_webview_environment.cpp
   src/app_update.cpp
   src/app_messages.cpp
   src/app_commands.cpp
@@ -146,28 +150,32 @@ set(HOMEPANEL_CORE_SOURCES
   src/update_client.cpp
   src/sensors.cpp)
 
+# Stationhead runtime implementation is intentionally kept out of HomePanel.
+# The generic shared WebView2 environment remains active above because the
+# YouTube MV panel still requires WebView2.
 set(HOMEPANEL_STATIONHEAD_SOURCES
-  src/shared_webview_environment.cpp
-  src/stationhead_native_stats.cpp
-  src/stationhead_native_stats.h
-  src/sh_layout.cpp
-  src/sh_polling_policy.h
-  src/sh_audio_loss_policy.h
-  src/sh_runtime_policy_fix.h
-  src/sh_runtime_lifecycle_policy_fix.h
-  src/sh_runtime_recovery_polling_policy_fix.h
-  src/sh_media_stall_watchdog_policy_fix.h
-  src/sh_webview_event_policy.h
-  src/sh_runtime_resource_policy_fix.h
-  src/sh_runtime_resource_boundary_policy_fix.h
-  src/sh_runtime_resource_filter_policy_fix.h
-  src/sh_runtime_script_resource_policy_fix.h
-  src/sh_playback_resource_policy_fix.h
-  src/sh_track_boundary_message_policy.h
-  src/sh.cpp
-  src/sh_webview.cpp
-  src/sh_audio.cpp
-  src/sh_audio_loss.cpp)
+  # src/shared_webview_environment.cpp
+  # src/stationhead_native_stats.cpp
+  # src/stationhead_native_stats.h
+  # src/sh_layout.cpp
+  # src/sh_polling_policy.h
+  # src/sh_audio_loss_policy.h
+  # src/sh_runtime_policy_fix.h
+  # src/sh_runtime_lifecycle_policy_fix.h
+  # src/sh_runtime_recovery_polling_policy_fix.h
+  # src/sh_media_stall_watchdog_policy_fix.h
+  # src/sh_webview_event_policy.h
+  # src/sh_runtime_resource_policy_fix.h
+  # src/sh_runtime_resource_boundary_policy_fix.h
+  # src/sh_runtime_resource_filter_policy_fix.h
+  # src/sh_runtime_script_resource_policy_fix.h
+  # src/sh_playback_resource_policy_fix.h
+  # src/sh_track_boundary_message_policy.h
+  # src/sh.cpp
+  # src/sh_webview.cpp
+  # src/sh_audio.cpp
+  # src/sh_audio_loss.cpp
+)
 
 set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_lifecycle.cpp
@@ -193,29 +201,34 @@ add_executable(HomePanel WIN32
   ${HOMEPANEL_RENDERER_SOURCES}
   ${HOMEPANEL_RESOURCE_SOURCES})
 homepanel_configure_common_target(HomePanel)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_polling_policy.h
-  src/sh_runtime_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_lifecycle_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_recovery_polling_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_media_stall_watchdog_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_webview_event_policy.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_boundary_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_resource_filter_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_runtime_script_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_playback_resource_policy_fix.h)
-target_precompile_headers(HomePanel PRIVATE
-  src/sh_track_boundary_message_policy.h)
+
+# Keep the historical Stationhead PCH chain visible for reference/tests, but do
+# not apply any Stationhead policy macros to the active HomePanel build.
+if(FALSE)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_polling_policy.h
+    src/sh_runtime_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_lifecycle_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_recovery_polling_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_media_stall_watchdog_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_webview_event_policy.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_resource_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_resource_boundary_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_resource_filter_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_runtime_script_resource_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_playback_resource_policy_fix.h)
+  target_precompile_headers(HomePanel PRIVATE
+    src/sh_track_boundary_message_policy.h)
+endif()
 add_dependencies(HomePanel homepanel_version_files)
 target_link_libraries(HomePanel PRIVATE
   "${WEBVIEW2_NATIVE_DIR}/WebView2Loader.dll.lib"
