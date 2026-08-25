@@ -5,10 +5,14 @@ constexpr wchar_t kNativeMvPanelPageUrl[] =
 constexpr UINT_PTR kNativeMvReloadTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
+constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
+constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
 constexpr UINT kNativeMvReloadMinSeconds = 20U * 60U;
 constexpr UINT kNativeMvReloadSpanSeconds = 20U * 60U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
+constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
+constexpr UINT kNativeMvNavigationRetryMs = 3U * 1000U;
 constexpr int kNativeMvPlayAllRetryLimit = 20;
 constexpr int kNativeMvFullscreenRetryLimit = 30;
 // Screenshot 709x1536: WebView ~= (213,531)-(700,804), Play all center
@@ -82,6 +86,24 @@ constexpr wchar_t kNativeMvFullscreenProbeScript[] = LR"JS(
   const y = Math.max(0, Math.min(10000, Math.round(
       ((rect.top + rect.height / 2) / window.innerHeight) * 10000)));
   return [x, y];
+})()
+)JS";
+constexpr wchar_t kNativeMvPlaybackHealthScript[] = LR"JS(
+(() => {
+  const video = document.querySelector('video');
+  if (video && video.error) return true;
+
+  const player = document.querySelector('.html5-video-player');
+  if (player && player.classList.contains('ytp-error')) return true;
+
+  const error = document.querySelector(
+      '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
+      + 'yt-player-error-message-renderer, ytd-player-error-message-renderer');
+  if (!error) return false;
+  const style = window.getComputedStyle(error);
+  const rect = error.getBoundingClientRect();
+  return style.display !== 'none' && style.visibility !== 'hidden' &&
+         rect.width > 0 && rect.height > 0;
 })()
 )JS";
 
@@ -188,6 +210,15 @@ class NativeMvPanelHost {
       ProbeFullscreenButton();
       return true;
     }
+    if (timerId == kNativeMvPlaybackHealthTimer) {
+      ProbePlaybackHealth();
+      return true;
+    }
+    if (timerId == kNativeMvNavigationRetryTimer) {
+      StopNavigationRetry();
+      ReloadPlaylist();
+      return true;
+    }
     return false;
   }
 
@@ -197,6 +228,8 @@ class NativeMvPanelHost {
       KillTimer(hostWindow_, kNativeMvReloadTimer);
       KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
       KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
+      KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
+      KillTimer(hostWindow_, kNativeMvNavigationRetryTimer);
     }
     if (webview_ && navigationCompletedToken_.value != 0) {
       webview_->remove_NavigationCompleted(navigationCompletedToken_);
@@ -265,17 +298,23 @@ class NativeMvPanelHost {
                     !succeeded) {
                   StopPlayAllProbe();
                   StopFullscreenProbe();
+                  StopPlaybackHealthMonitor();
+                  ScheduleNavigationRetry();
                   return S_OK;
                 }
+                StopNavigationRetry();
                 if (IsPlaylistPage()) {
                   StopFullscreenProbe();
+                  StopPlaybackHealthMonitor();
                   BeginPlayAllProbe();
                 } else if (IsWatchPage()) {
                   StopPlayAllProbe();
                   BeginFullscreenProbe();
+                  BeginPlaybackHealthMonitor();
                 } else {
                   StopPlayAllProbe();
                   StopFullscreenProbe();
+                  StopPlaybackHealthMonitor();
                 }
                 return S_OK;
               }).Get(),
@@ -324,6 +363,19 @@ class NativeMvPanelHost {
                     NextReloadDelayMs(), nullptr) != 0;
   }
 
+  bool ScheduleNavigationRetry() noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return false;
+    KillTimer(hostWindow_, kNativeMvNavigationRetryTimer);
+    return SetTimer(hostWindow_, kNativeMvNavigationRetryTimer,
+                    kNativeMvNavigationRetryMs, nullptr) != 0;
+  }
+
+  void StopNavigationRetry() noexcept {
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvNavigationRetryTimer);
+    }
+  }
+
   bool IsPlaylistPage() noexcept {
     if (!webview_) return false;
     LPWSTR source = nullptr;
@@ -347,7 +399,14 @@ class NativeMvPanelHost {
   void ReloadPlaylist() noexcept {
     StopPlayAllProbe();
     StopFullscreenProbe();
-    if (!webview_ || FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+    StopPlaybackHealthMonitor();
+    StopNavigationRetry();
+    if (!webview_) {
+      Fail();
+      return;
+    }
+    if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl)) &&
+        !ScheduleNavigationRetry()) {
       Fail();
     }
   }
@@ -384,6 +443,21 @@ class NativeMvPanelHost {
       KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
     }
     fullscreenProbeInFlight_ = false;
+  }
+
+  void BeginPlaybackHealthMonitor() noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
+    KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
+    playbackHealthProbeInFlight_ = false;
+    SetTimer(hostWindow_, kNativeMvPlaybackHealthTimer,
+             kNativeMvPlaybackHealthMs, nullptr);
+  }
+
+  void StopPlaybackHealthMonitor() noexcept {
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
+    }
+    playbackHealthProbeInFlight_ = false;
   }
 
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
@@ -436,6 +510,7 @@ class NativeMvPanelHost {
                 StopPlayAllProbe();
                 ClickNormalizedPoint(x, y);
                 BeginFullscreenProbe();
+                BeginPlaybackHealthMonitor();
                 return S_OK;
               }
               if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
@@ -489,10 +564,29 @@ class NativeMvPanelHost {
     }
   }
 
+  void ProbePlaybackHealth() noexcept {
+    if (!webview_ || playbackHealthProbeInFlight_) return;
+    playbackHealthProbeInFlight_ = true;
+    const auto alive = alive_;
+    const HRESULT started = webview_->ExecuteScript(
+        kNativeMvPlaybackHealthScript,
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              playbackHealthProbeInFlight_ = false;
+              if (SUCCEEDED(result) && json && std::wstring_view(json) == L"true") {
+                ReloadPlaylist();
+              }
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) playbackHealthProbeInFlight_ = false;
+  }
+
   void ClickPlayAllFallback() noexcept {
     ClickNormalizedPoint(kNativeMvFallbackPlayAllXTenThousandths,
                          kNativeMvFallbackPlayAllYTenThousandths);
     BeginFullscreenProbe();
+    BeginPlaybackHealthMonitor();
   }
 
   static LONG AbsoluteMouseCoordinate(int value, int origin,
@@ -563,6 +657,8 @@ class NativeMvPanelHost {
     failed_ = true;
     StopPlayAllProbe();
     StopFullscreenProbe();
+    StopPlaybackHealthMonitor();
+    StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMvReloadTimer);
     }
@@ -584,6 +680,7 @@ class NativeMvPanelHost {
   int fullscreenProbeAttempts_ = 0;
   bool playAllProbeInFlight_ = false;
   bool fullscreenProbeInFlight_ = false;
+  bool playbackHealthProbeInFlight_ = false;
   bool failed_ = false;
 };
 
