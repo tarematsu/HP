@@ -4,7 +4,7 @@
 namespace hp {
 namespace {
 
-constexpr wchar_t kBaseWebView2Arguments[] =
+constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--disable-breakpad "
     L"--disable-extensions "
@@ -18,9 +18,13 @@ constexpr wchar_t kBaseWebView2Arguments[] =
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  std::wstring arguments = kBaseWebView2Arguments;
-  if (!blockImages && !blockFonts) return arguments;
+  // A full-resource surface such as YouTube should behave like stock WebView2.
+  // Do not leak Stationhead's autoplay or lightweight Chromium switches into
+  // that environment; playlist/view telemetry should see the normal browser
+  // execution policy.
+  if (!blockImages && !blockFonts) return {};
 
+  std::wstring arguments = kStationheadWebView2Arguments;
   arguments += L" --blink-settings=";
   bool needsSeparator = false;
   if (blockImages) {
@@ -34,16 +38,6 @@ std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
     arguments += L"downloadableBinaryFontsEnabled=false";
   }
   return arguments;
-}
-
-void ApplyWebView2ProcessHints() {
-  static std::once_flag once;
-  std::call_once(once, [] {
-    // Keep only process-wide, configuration-independent switches here. The
-    // image/font Blink policy is supplied through environment options below.
-    SetEnvironmentVariableW(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                            kBaseWebView2Arguments);
-  });
 }
 
 void InvokeEnvironmentCompletionNoexcept(
@@ -159,12 +153,11 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
       return;
     }
 
-    ApplyWebView2ProcessHints();
     const std::wstring webView2Arguments = BuildWebView2Arguments(
         blockImagesForCreation, blockFontsForCreation);
     ComPtr<CoreWebView2EnvironmentOptions> options =
         Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
-    if (options) {
+    if (options && !webView2Arguments.empty()) {
       options->put_AdditionalBrowserArguments(webView2Arguments.c_str());
     }
     const auto key = std::make_shared<std::wstring>(requestedKey);
