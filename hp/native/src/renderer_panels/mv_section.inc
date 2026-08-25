@@ -2,6 +2,37 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
+constexpr UINT_PTR kNativeMvHourlyReloadTimer = 0x4D560001;
+constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
+constexpr UINT kNativeMvHourlyReloadMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMvPlayAllRetryMs = 500U;
+constexpr int kNativeMvPlayAllRetryLimit = 20;
+// Screenshot 709x1536: WebView ~= (213,531)-(700,804), Play all center
+// ~= (498,647), which is 58.5% across and 42.5% down the WebView.
+constexpr int kNativeMvFallbackPlayAllXTenThousandths = 5850;
+constexpr int kNativeMvFallbackPlayAllYTenThousandths = 4250;
+constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
+(() => {
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const candidates = Array.from(document.querySelectorAll(
+      'button, a, tp-yt-paper-button, [role="button"]'));
+  const target = candidates.find(element => {
+    const label = normalize(element.getAttribute('aria-label'));
+    const text = normalize(element.textContent);
+    return label === 'すべて再生' || text === 'すべて再生' ||
+           /^Play all(?:\s|$)/i.test(label) ||
+           /^Play all(?:\s|$)/i.test(text);
+  });
+  if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+  const rect = target.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const x = Math.max(0, Math.min(10000, Math.round(
+      ((rect.left + rect.width / 2) / window.innerWidth) * 10000)));
+  const y = Math.max(0, Math.min(10000, Math.round(
+      ((rect.top + rect.height / 2) / window.innerHeight) * 10000)));
+  return [x, y];
+})()
+)JS";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -92,8 +123,28 @@ class NativeMvPanelHost {
     EndPaint(hostWindow_, &paint);
   }
 
+  bool OnTimer(UINT_PTR timerId) noexcept {
+    if (timerId == kNativeMvHourlyReloadTimer) {
+      ReloadPlaylist();
+      return true;
+    }
+    if (timerId == kNativeMvPlayAllRetryTimer) {
+      ProbePlayAllButton();
+      return true;
+    }
+    return false;
+  }
+
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvHourlyReloadTimer);
+      KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
+    }
+    if (webview_ && navigationCompletedToken_.value != 0) {
+      webview_->remove_NavigationCompleted(navigationCompletedToken_);
+      navigationCompletedToken_ = {};
+    }
     if (webview_ && newWindowToken_.value != 0) {
       webview_->remove_NewWindowRequested(newWindowToken_);
       newWindowToken_ = {};
@@ -145,19 +196,187 @@ class NativeMvPanelHost {
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
 
-      Resize();
-      controller_->put_IsVisible(TRUE);
-      if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+      const auto alive = alive_;
+      const HRESULT navigationResult = webview_->add_NavigationCompleted(
+          Callback<ICoreWebView2NavigationCompletedEventHandler>(
+              [this, alive](ICoreWebView2*,
+                            ICoreWebView2NavigationCompletedEventArgs* args)
+                  -> HRESULT {
+                if (!alive->load(std::memory_order_acquire)) return S_OK;
+                BOOL succeeded = FALSE;
+                if (!args || FAILED(args->get_IsSuccess(&succeeded)) ||
+                    !succeeded) {
+                  StopPlayAllProbe();
+                  return S_OK;
+                }
+                if (IsPlaylistPage()) {
+                  BeginPlayAllProbe();
+                } else {
+                  StopPlayAllProbe();
+                }
+                return S_OK;
+              }).Get(),
+          &navigationCompletedToken_);
+      if (FAILED(navigationResult)) {
         Fail();
         return;
       }
+
+      Resize();
+      controller_->put_IsVisible(TRUE);
+      if (!SetTimer(hostWindow_, kNativeMvHourlyReloadTimer,
+                    kNativeMvHourlyReloadMs, nullptr)) {
+        Fail();
+        return;
+      }
+      ReloadPlaylist();
     } catch (...) {
       Fail();
     }
   }
 
+  bool IsPlaylistPage() noexcept {
+    if (!webview_) return false;
+    LPWSTR source = nullptr;
+    if (FAILED(webview_->get_Source(&source)) || !source) return false;
+    const std::wstring url(source);
+    CoTaskMemFree(source);
+    return url.find(L"youtube.com/playlist") != std::wstring::npos &&
+           url.find(L"list=PLMWqSdpIVl30") != std::wstring::npos;
+  }
+
+  void ReloadPlaylist() noexcept {
+    StopPlayAllProbe();
+    if (!webview_ || FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+      Fail();
+    }
+  }
+
+  void BeginPlayAllProbe() noexcept {
+    StopPlayAllProbe();
+    playAllProbeAttempts_ = 0;
+    playAllProbeInFlight_ = false;
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
+    SetTimer(hostWindow_, kNativeMvPlayAllRetryTimer,
+             kNativeMvPlayAllRetryMs, nullptr);
+    ProbePlayAllButton();
+  }
+
+  void StopPlayAllProbe() noexcept {
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
+    }
+    playAllProbeInFlight_ = false;
+  }
+
+  static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
+    if (!json || !x || !y) return false;
+    try {
+      const std::wstring value(json);
+      if (value.size() < 5 || value.front() != L'[') return false;
+      const size_t comma = value.find(L',');
+      const size_t close = value.find(L']', comma == std::wstring::npos
+                                               ? 0
+                                               : comma + 1);
+      if (comma == std::wstring::npos || close == std::wstring::npos) {
+        return false;
+      }
+      const int parsedX = std::stoi(value.substr(1, comma - 1));
+      const int parsedY = std::stoi(value.substr(comma + 1,
+                                                  close - comma - 1));
+      if (parsedX < 0 || parsedX > 10000 || parsedY < 0 ||
+          parsedY > 10000) {
+        return false;
+      }
+      *x = parsedX;
+      *y = parsedY;
+      return true;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  void ProbePlayAllButton() noexcept {
+    if (!webview_ || playAllProbeInFlight_) return;
+    if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
+      StopPlayAllProbe();
+      ClickPlayAllFallback();
+      return;
+    }
+
+    ++playAllProbeAttempts_;
+    playAllProbeInFlight_ = true;
+    const auto alive = alive_;
+    const HRESULT started = webview_->ExecuteScript(
+        kNativeMvPlayAllProbeScript,
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              playAllProbeInFlight_ = false;
+              int x = 0;
+              int y = 0;
+              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
+                StopPlayAllProbe();
+                ClickNormalizedPoint(x, y);
+                return S_OK;
+              }
+              if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
+                StopPlayAllProbe();
+                ClickPlayAllFallback();
+              }
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) {
+      playAllProbeInFlight_ = false;
+      if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
+        StopPlayAllProbe();
+        ClickPlayAllFallback();
+      }
+    }
+  }
+
+  void ClickPlayAllFallback() noexcept {
+    ClickNormalizedPoint(kNativeMvFallbackPlayAllXTenThousandths,
+                         kNativeMvFallbackPlayAllYTenThousandths);
+  }
+
+  void ClickNormalizedPoint(int xTenThousandths,
+                            int yTenThousandths) noexcept {
+    if (!controller_ || !hostWindow_ || !IsWindow(hostWindow_)) return;
+    RECT client{};
+    GetClientRect(hostWindow_, &client);
+    const LONG width = client.right - client.left;
+    const LONG height = client.bottom - client.top;
+    if (width <= 0 || height <= 0) return;
+
+    POINT point{};
+    point.x = client.left + static_cast<LONG>(
+                                (static_cast<long long>(width) *
+                                 xTenThousandths) /
+                                10000);
+    point.y = client.top + static_cast<LONG>(
+                               (static_cast<long long>(height) *
+                                yTenThousandths) /
+                               10000);
+    point.x = std::max(client.left, std::min(client.right - 1, point.x));
+    point.y = std::max(client.top, std::min(client.bottom - 1, point.y));
+
+    const HRESULT down = controller_->SendMouseInput(
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON, 0, point);
+    if (SUCCEEDED(down)) {
+      controller_->SendMouseInput(
+          COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+          COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+    }
+  }
+
   void Fail() noexcept {
     failed_ = true;
+    StopPlayAllProbe();
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvHourlyReloadTimer);
+    }
     if (controller_) controller_->put_IsVisible(FALSE);
     if (hostWindow_ && IsWindow(hostWindow_)) {
       InvalidateRect(hostWindow_, nullptr, FALSE);
@@ -171,6 +390,9 @@ class NativeMvPanelHost {
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
+  EventRegistrationToken navigationCompletedToken_{};
+  int playAllProbeAttempts_ = 0;
+  bool playAllProbeInFlight_ = false;
   bool failed_ = false;
 };
 
@@ -193,6 +415,9 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
       case WM_SIZE:
         host->Resize();
         return 0;
+      case WM_TIMER:
+        if (host->OnTimer(static_cast<UINT_PTR>(wparam))) return 0;
+        break;
       case WM_ERASEBKGND:
         return 1;
       case WM_PAINT:
