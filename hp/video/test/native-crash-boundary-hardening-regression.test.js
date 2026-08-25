@@ -86,13 +86,16 @@ test('sensor worker failure reporting cannot throw a second exception', () => {
   assert.match(start, /stopping_ = true;\s*throw;/);
 });
 
-test('WebView process hint failures remain inside the guarded acquisition path', () => {
-  assert.match(sharedEnvironment, /void ApplyWebView2ProcessHints\(\) \{/);
-  assert.doesNotMatch(sharedEnvironment, /void ApplyWebView2ProcessHints\(\) noexcept/);
+test('WebView environment option failures remain inside the guarded acquisition path', () => {
+  assert.doesNotMatch(sharedEnvironment, /ApplyWebView2ProcessHints/);
+  assert.doesNotMatch(sharedEnvironment, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
   const acquireCreation = section(
     sharedEnvironment,
     '  try {\n    std::error_code directoryError;',
     '  } catch (const std::bad_alloc&) {\n    Complete(requestedKey, creationGeneration',
   );
-  assert.match(acquireCreation, /ApplyWebView2ProcessHints\(\)/);
+  assert.match(acquireCreation, /BuildWebView2Arguments\(/);
+  assert.match(acquireCreation, /Make<CoreWebView2EnvironmentOptions>/);
+  assert.match(acquireCreation, /put_AdditionalBrowserArguments/);
+  assert.match(acquireCreation, /CreateCoreWebView2EnvironmentWithOptions/);
 });

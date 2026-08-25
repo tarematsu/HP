@@ -53,8 +53,10 @@ test('Blink rejects image loading and cached image decoding before navigation', 
   const argumentsBuilder = section(
     environmentSource,
     'std::wstring BuildWebView2Arguments(',
-    'void ApplyWebView2ProcessHints()',
+    'void InvokeEnvironmentCompletionNoexcept(',
   );
+  assert.match(argumentsBuilder, /if \(!blockImages && !blockFonts\) return \{\};/);
+  assert.match(argumentsBuilder, /kStationheadWebView2Arguments/);
   assert.match(argumentsBuilder, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);
   assert.match(
