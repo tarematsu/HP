@@ -173,7 +173,7 @@ const std::wstring& Course36ClockWasteSummary(const SYSTEMTIME& now) {
     ++foundCount;
 
     wchar_t item[40]{};
-    swprintf_s(item, L"%d日後 %s", offset, Course36ClockWasteLabel(kind));
+    swprintf_s(item, L"%d日後 %ls", offset, Course36ClockWasteLabel(kind));
     if (!cache.text.empty()) cache.text += L"　";
     cache.text += item;
   }
