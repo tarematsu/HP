@@ -277,7 +277,7 @@ test('clock second ticks redraw only the time while footer refreshes by minute',
   assert.match(panelState, /clockDayChanged \|\| clockMinuteChanged[\s\S]*PanelSection::Clock[\s\S]*PanelSection::ClockTime/s);
   assert.match(
     layout,
-    /RECT timeRect\{content\.left, content\.top \+ SpanY\(content, 170\),\s*content\.right, content\.top \+ SpanY\(content, 705\)\}/s,
+    /RECT timeRect\{content\.left, content\.top \+ SpanY\(content, 170\),\s*content\.right, content\.top \+ SpanY\(content, 650\)\}/s,
   );
   assert.doesNotMatch(layout, /Include the footer in the clock tick invalidation/);
 });
