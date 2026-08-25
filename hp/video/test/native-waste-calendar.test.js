@@ -50,7 +50,7 @@ test('clock waste summary is limited to non-burnable hazardous, bottles/cans, an
   assert.match(calendar, /foundCount < 3/);
   assert.match(
     calendar,
-    /swprintf_s\(item, L"%d日後 %s", offset, Course36ClockWasteLabel\(kind\)\)/,
+    /swprintf_s\(item, L"%d日後 %ls", offset, Course36ClockWasteLabel\(kind\)\)/,
   );
 });
 
