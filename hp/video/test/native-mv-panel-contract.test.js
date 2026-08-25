@@ -65,6 +65,16 @@ test('MV playlist reloads hourly and starts Play all with DOM-first native input
   assert.doesNotMatch(mvPanel, /SendMouseInput/);
 });
 
+test('MV playback enters YouTube fullscreen with DOM-located native input', () => {
+  assert.match(mvPanel, /kNativeMvFullscreenRetryTimer/);
+  assert.match(mvPanel, /kNativeMvFullscreenRetryMs = 500U/);
+  assert.match(mvPanel, /kNativeMvFullscreenRetryLimit = 30/);
+  assert.match(mvPanel, /\.ytp-fullscreen-button/);
+  assert.match(mvPanel, /BeginFullscreenProbe\(\)/);
+  assert.match(mvPanel, /ProbeFullscreenButton\(\)/);
+  assert.match(mvPanel, /IsWatchPage\(\)/);
+});
+
 test('MV WebView keeps its persistent profile and stays alive behind power saving', () => {
   assert.match(mvPanel, /webview2-youtube-mv/);
   assert.match(
