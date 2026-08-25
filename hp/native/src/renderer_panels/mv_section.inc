@@ -1,134 +1,7 @@
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
-constexpr wchar_t kNativeMvPanelPageUrl[] = L"https://homepanel.mv/index.html";
-constexpr wchar_t kNativeMvPanelVirtualHost[] = L"homepanel.mv";
-constexpr UINT_PTR kNativeMvClickTimer = 0x4D56;
-constexpr UINT kNativeMvInitialClickDelayMs = 5'000;
-constexpr UINT kNativeMvHourlyClickIntervalMs = 60U * 60U * 1000U;
-constexpr char kNativeMvPanelHtml[] = R"HTML(<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="referrer" content="strict-origin-when-cross-origin">
-<title>MV</title>
-<style>
-*{box-sizing:border-box}
-html,body{width:100%;height:100%;margin:0;background:#000;overflow:hidden}
-#mv{position:absolute;z-index:1;inset:0;width:100%;height:100%;border:0}
-#waste{position:absolute;z-index:2;top:12px;right:12px;width:min(62%,720px);padding:8px;
-  border:1px solid rgba(255,255,255,.28);border-radius:10px;background:rgba(8,10,14,.90);
-  color:#fff;font-family:"Segoe UI","Yu Gothic UI",sans-serif;opacity:.42;pointer-events:none}
-#waste-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 2px 6px;
-  font-size:clamp(9px,1.25vw,13px);font-weight:600;line-height:1.1}
-#waste-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
-.waste-day{min-width:0;padding:5px 2px;border:1px solid rgba(255,255,255,.20);border-radius:7px;
-  background:rgba(255,255,255,.08);text-align:center;line-height:1.1}
-.waste-day.today{border-color:rgba(255,255,255,.62);background:rgba(255,255,255,.18)}
-.waste-date{display:block;font-size:clamp(8px,1.1vw,12px);font-weight:600;white-space:nowrap}
-.waste-kind{display:flex;align-items:center;justify-content:center;min-height:2.25em;margin-top:3px;
-  font-size:clamp(7px,1vw,11px);font-weight:600;overflow-wrap:anywhere}
-</style>
-</head>
-<body>
-<iframe id="mv"
-  src="https://www.youtube.com/embed/videoseries?list=PLMWqSdpIVl30&loop=1&controls=1&playsinline=1&rel=0&iv_load_policy=3&fs=0"
-  referrerpolicy="strict-origin-when-cross-origin"
-  allow="autoplay; encrypted-media; picture-in-picture"
-  title="MV playlist"></iframe>
-<div id="waste" aria-hidden="true">
-  <div id="waste-head"><span>ごみ収集カレンダー</span><span>コース36</span></div>
-  <div id="waste-grid"></div>
-</div>
-<script>
-(() => {
-  'use strict';
-  const schedule = __COURSE36_SCHEDULE__;
-  const labels = [
-    '回収なし', '年度外', '可燃ごみ', 'プラ製容器・包装',
-    'びん・かん・ペット', '不燃・有害', '布類', '紙類'
-  ];
-  const weekdays = ['日','月','火','水','木','金','土'];
-  const grid = document.getElementById('waste-grid');
-  const dateKey = date => date.getFullYear() * 10000 +
-      (date.getMonth() + 1) * 100 + date.getDate();
-
-  function renderWaste() {
-    const now = new Date();
-    const todayKey = dateKey(now);
-    const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    grid.replaceChildren();
-    for (let index = 0; index < 7; ++index) {
-      const date = new Date(weekStart);
-      date.setDate(weekStart.getDate() + index);
-      const key = dateKey(date);
-      const kind = key < 20260401 || key > 20270331 ? 1 : (schedule[key] ?? 0);
-      const cell = document.createElement('div');
-      cell.className = 'waste-day' + (key === todayKey ? ' today' : '');
-      const dateLine = document.createElement('span');
-      dateLine.className = 'waste-date';
-      dateLine.textContent = weekdays[date.getDay()] + ' ' +
-          (date.getMonth() + 1) + '/' + date.getDate();
-      const kindLine = document.createElement('span');
-      kindLine.className = 'waste-kind';
-      kindLine.textContent = labels[kind] || labels[0];
-      cell.append(dateLine, kindLine);
-      grid.append(cell);
-    }
-  }
-
-  renderWaste();
-  setInterval(renderWaste, 60_000);
-})();
-</script>
-</body>
-</html>)HTML";
-
-std::string BuildCourse36WasteScheduleJson() {
-  std::string json;
-  json.reserve(6'000);
-  json.push_back('{');
-
-  SYSTEMTIME date{};
-  date.wYear = 2026;
-  date.wMonth = 4;
-  date.wDayOfWeek = 3;
-  date.wDay = 1;
-  bool first = true;
-  for (;;) {
-    char entry[32]{};
-    sprintf_s(entry, "\"%04u%02u%02u\":%u",
-              static_cast<unsigned>(date.wYear),
-              static_cast<unsigned>(date.wMonth),
-              static_cast<unsigned>(date.wDay),
-              static_cast<unsigned>(Course36WasteForDate(date)));
-    if (!first) json.push_back(',');
-    first = false;
-    json += entry;
-    if (Course36DateKey(date) >= 20270331) break;
-
-    SYSTEMTIME next{};
-    if (!Course36AddDays(date, 1, next)) return "{}";
-    date = next;
-  }
-
-  json.push_back('}');
-  return json;
-}
-
-bool NativeMvScreenPointToAbsolute(POINT point, LONG& x, LONG& y) noexcept {
-  const int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-  const int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  if (width <= 1 || height <= 1) return false;
-  x = static_cast<LONG>(
-      (static_cast<long long>(point.x - left) * 65535LL) / (width - 1));
-  y = static_cast<LONG>(
-      (static_cast<long long>(point.y - top) * 65535LL) / (height - 1));
-  return true;
-}
+constexpr wchar_t kNativeMvPanelPageUrl[] =
+    L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
 
 LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
                                       LPARAM lparam);
@@ -137,13 +10,12 @@ class NativeMvPanelHost {
  public:
   explicit NativeMvPanelHost(const fs::path& dataDir)
       : userDataFolder_(dataDir / L"webview2-youtube-mv"),
-        assetFolder_(dataDir / L"mv-player"),
         alive_(std::make_shared<std::atomic<bool>>(true)) {}
 
   void Attach(HWND hwnd) noexcept { hostWindow_ = hwnd; }
 
   void Start() noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_) || !PreparePlayerHtml()) {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) {
       failed_ = true;
       if (hostWindow_ && IsWindow(hostWindow_)) {
         InvalidateRect(hostWindow_, nullptr, FALSE);
@@ -153,8 +25,10 @@ class NativeMvPanelHost {
 
     const auto alive = alive_;
     try {
+      // This is now the normal YouTube playlist page rather than a video-only
+      // iframe, so keep images and downloadable fonts enabled.
       SharedWebViewEnvironment::Instance().Acquire(
-          userDataFolder_, true, true,
+          userDataFolder_, false, false,
           [this, alive](HRESULT result, ICoreWebView2Environment* environment) {
             if (!alive->load(std::memory_order_acquire)) return;
             if (FAILED(result) || !environment || !hostWindow_ ||
@@ -218,21 +92,8 @@ class NativeMvPanelHost {
     EndPaint(hostWindow_, &paint);
   }
 
-  void HandleTimer(UINT_PTR timerId) noexcept {
-    if (timerId != kNativeMvClickTimer) return;
-    if (!hourlyTimerStarted_) {
-      hourlyTimerStarted_ = true;
-      SetTimer(hostWindow_, kNativeMvClickTimer,
-               kNativeMvHourlyClickIntervalMs, nullptr);
-    }
-    ClickCenter();
-  }
-
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
-    if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvClickTimer);
-    }
     if (webview_ && newWindowToken_.value != 0) {
       webview_->remove_NewWindowRequested(newWindowToken_);
       newWindowToken_ = {};
@@ -248,81 +109,6 @@ class NativeMvPanelHost {
   }
 
  private:
-  bool PreparePlayerHtml() noexcept {
-    try {
-      std::error_code error;
-      fs::create_directories(assetFolder_, error);
-      if (error) return false;
-      std::string html(kNativeMvPanelHtml);
-      constexpr char kScheduleMarker[] = "__COURSE36_SCHEDULE__";
-      const size_t marker = html.find(kScheduleMarker);
-      if (marker == std::string::npos) return false;
-      html.replace(marker, sizeof(kScheduleMarker) - 1,
-                   BuildCourse36WasteScheduleJson());
-
-      const fs::path indexPath = assetFolder_ / L"index.html";
-      std::ofstream output(indexPath, std::ios::binary | std::ios::trunc);
-      if (!output) return false;
-      output.write(html.data(), static_cast<std::streamsize>(html.size()));
-      output.flush();
-      return output.good();
-    } catch (...) {
-      return false;
-    }
-  }
-
-  void ClickCenter() noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_) || !IsWindowVisible(hostWindow_)) {
-      return;
-    }
-
-    const HWND root = GetAncestor(hostWindow_, GA_ROOT);
-    if (!root || GetForegroundWindow() != root) return;
-
-    RECT client{};
-    if (!GetClientRect(hostWindow_, &client) ||
-        client.right <= client.left || client.bottom <= client.top) {
-      return;
-    }
-    POINT center{
-        client.left + (client.right - client.left) / 2,
-        client.top + (client.bottom - client.top) / 2};
-    if (!ClientToScreen(hostWindow_, &center)) return;
-
-    const HWND hit = WindowFromPoint(center);
-    if (!hit || (hit != hostWindow_ && !IsChild(hostWindow_, hit))) return;
-
-    POINT previous{};
-    if (!GetCursorPos(&previous)) return;
-
-    LONG centerX = 0;
-    LONG centerY = 0;
-    LONG previousX = 0;
-    LONG previousY = 0;
-    if (!NativeMvScreenPointToAbsolute(center, centerX, centerY) ||
-        !NativeMvScreenPointToAbsolute(previous, previousX, previousY)) {
-      return;
-    }
-
-    INPUT input[4]{};
-    input[0].type = INPUT_MOUSE;
-    input[0].mi.dx = centerX;
-    input[0].mi.dy = centerY;
-    input[0].mi.dwFlags =
-        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
-    input[1].type = INPUT_MOUSE;
-    input[1].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
-    input[2].type = INPUT_MOUSE;
-    input[2].mi.dwFlags = MOUSEEVENTF_LEFTUP;
-    input[3].type = INPUT_MOUSE;
-    input[3].mi.dx = previousX;
-    input[3].mi.dy = previousY;
-    input[3].mi.dwFlags =
-        MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
-    constexpr UINT kInputCount = 4;
-    SendInput(kInputCount, input, sizeof(INPUT));
-  }
-
   void Configure() noexcept {
     try {
       ComPtr<ICoreWebView2Controller2> controller2;
@@ -341,7 +127,7 @@ class NativeMvPanelHost {
         settings->put_IsStatusBarEnabled(FALSE);
         settings->put_AreHostObjectsAllowed(FALSE);
         settings->put_IsZoomControlEnabled(FALSE);
-        settings->put_IsBuiltInErrorPageEnabled(FALSE);
+        settings->put_IsBuiltInErrorPageEnabled(TRUE);
 
         ComPtr<ICoreWebView2Settings3> settings3;
         if (SUCCEEDED(settings.As(&settings3)) && settings3) {
@@ -359,23 +145,12 @@ class NativeMvPanelHost {
           &newWindowToken_);
       if (FAILED(newWindowResult)) newWindowToken_ = {};
 
-      ComPtr<ICoreWebView2_3> webview3;
-      if (FAILED(webview_.As(&webview3)) || !webview3 ||
-          FAILED(webview3->SetVirtualHostNameToFolderMapping(
-              kNativeMvPanelVirtualHost, assetFolder_.c_str(),
-              COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND_DENY_CORS))) {
-        Fail();
-        return;
-      }
-
       Resize();
       controller_->put_IsVisible(TRUE);
       if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
         Fail();
         return;
       }
-      SetTimer(hostWindow_, kNativeMvClickTimer,
-               kNativeMvInitialClickDelayMs, nullptr);
     } catch (...) {
       Fail();
     }
@@ -391,13 +166,11 @@ class NativeMvPanelHost {
 
   HWND hostWindow_ = nullptr;
   fs::path userDataFolder_;
-  fs::path assetFolder_;
   std::shared_ptr<std::atomic<bool>> alive_;
   ComPtr<ICoreWebView2Environment> environment_;
   ComPtr<ICoreWebView2Controller> controller_;
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
-  bool hourlyTimerStarted_ = false;
   bool failed_ = false;
 };
 
@@ -419,9 +192,6 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
     switch (message) {
       case WM_SIZE:
         host->Resize();
-        return 0;
-      case WM_TIMER:
-        host->HandleTimer(static_cast<UINT_PTR>(wparam));
         return 0;
       case WM_ERASEBKGND:
         return 1;
