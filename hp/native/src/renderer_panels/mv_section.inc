@@ -2,10 +2,11 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
-constexpr UINT_PTR kNativeMvHourlyReloadTimer = 0x4D560001;
+constexpr UINT_PTR kNativeMvReloadTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
-constexpr UINT kNativeMvHourlyReloadMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMvReloadMinSeconds = 20U * 60U;
+constexpr UINT kNativeMvReloadSpanSeconds = 20U * 60U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr int kNativeMvPlayAllRetryLimit = 20;
@@ -174,8 +175,9 @@ class NativeMvPanelHost {
   }
 
   bool OnTimer(UINT_PTR timerId) noexcept {
-    if (timerId == kNativeMvHourlyReloadTimer) {
+    if (timerId == kNativeMvReloadTimer) {
       ReloadPlaylist();
+      if (!failed_ && !ScheduleNextPlaylistReload()) Fail();
       return true;
     }
     if (timerId == kNativeMvPlayAllRetryTimer) {
@@ -192,7 +194,7 @@ class NativeMvPanelHost {
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvHourlyReloadTimer);
+      KillTimer(hostWindow_, kNativeMvReloadTimer);
       KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
       KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
     }
@@ -285,15 +287,41 @@ class NativeMvPanelHost {
 
       Resize();
       controller_->put_IsVisible(TRUE);
-      if (!SetTimer(hostWindow_, kNativeMvHourlyReloadTimer,
-                    kNativeMvHourlyReloadMs, nullptr)) {
+      ReloadPlaylist();
+      if (failed_) return;
+      if (!ScheduleNextPlaylistReload()) {
         Fail();
         return;
       }
-      ReloadPlaylist();
     } catch (...) {
       Fail();
     }
+  }
+
+  static UINT NextReloadDelayMs() noexcept {
+    static ULONGLONG state = 0;
+    if (state == 0) {
+      LARGE_INTEGER counter{};
+      if (!QueryPerformanceCounter(&counter)) counter.QuadPart = 0;
+      state = GetTickCount64() ^
+              static_cast<ULONGLONG>(counter.QuadPart) ^
+              (static_cast<ULONGLONG>(GetCurrentProcessId()) << 32) ^
+              static_cast<ULONGLONG>(GetCurrentThreadId());
+      if (state == 0) state = 1;
+    }
+    state ^= state >> 12;
+    state ^= state << 25;
+    state ^= state >> 27;
+    const ULONGLONG random = state * 2685821657736338717ULL;
+    const UINT seconds = kNativeMvReloadMinSeconds +
+        static_cast<UINT>(random % kNativeMvReloadSpanSeconds);
+    return seconds * 1000U;
+  }
+
+  bool ScheduleNextPlaylistReload() noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return false;
+    return SetTimer(hostWindow_, kNativeMvReloadTimer,
+                    NextReloadDelayMs(), nullptr) != 0;
   }
 
   bool IsPlaylistPage() noexcept {
@@ -536,7 +564,7 @@ class NativeMvPanelHost {
     StopPlayAllProbe();
     StopFullscreenProbe();
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvHourlyReloadTimer);
+      KillTimer(hostWindow_, kNativeMvReloadTimer);
     }
     if (controller_) controller_->put_IsVisible(FALSE);
     if (hostWindow_ && IsWindow(hostWindow_)) {
