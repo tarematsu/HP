@@ -99,7 +99,7 @@ test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.doesNotMatch(mvPanel, /visibility:\s*hidden/);
 });
 
-test('MV WebView keeps its persistent profile and stays alive behind power saving', () => {
+test('MV WebView keeps its persistent profile and host window alive behind power saving', () => {
   assert.match(mvPanel, /webview2-youtube-mv/);
   assert.match(
     nativeWindows,
@@ -113,7 +113,17 @@ test('MV WebView keeps its persistent profile and stays alive behind power savin
     nativeWindows,
     /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/,
   );
+});
+
+test('YouTube uses stock WebView2 browser arguments while Stationhead optimizations stay isolated', () => {
+  assert.match(mvPanel, /Acquire\(\s*userDataFolder_, false, false,/);
+  assert.match(webviewEnvironment, /if \(!blockImages && !blockFonts\) return \{\};/);
+  assert.match(webviewEnvironment, /kStationheadWebView2Arguments/);
+  assert.match(webviewEnvironment, /--autoplay-policy=no-user-gesture-required/);
   assert.match(webviewEnvironment, /--disable-backgrounding-occluded-windows/);
+  assert.match(webviewEnvironment, /options && !webView2Arguments\.empty\(\)/);
+  assert.doesNotMatch(webviewEnvironment, /WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS/);
+  assert.doesNotMatch(webviewEnvironment, /ApplyWebView2ProcessHints/);
 });
 
 test('normal YouTube page resources are enabled while privileged browser features stay disabled', () => {
