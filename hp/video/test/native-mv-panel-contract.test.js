@@ -88,6 +88,30 @@ test('MV playback enters YouTube fullscreen with DOM-located native input', () =
   assert.match(mvPanel, /IsWatchPage\(\)/);
 });
 
+test('MV playback detects YouTube player errors and recovers through the playlist', () => {
+  assert.match(mvPanel, /kNativeMvPlaybackHealthTimer/);
+  assert.match(mvPanel, /kNativeMvPlaybackHealthMs = 5U \* 1000U/);
+  assert.match(mvPanel, /kNativeMvNavigationRetryTimer/);
+  assert.match(mvPanel, /kNativeMvNavigationRetryMs = 3U \* 1000U/);
+  assert.match(mvPanel, /video && video\.error/);
+  assert.match(mvPanel, /classList\.contains\('ytp-error'\)/);
+  assert.match(mvPanel, /\.ytp-error-content-wrap/);
+  assert.match(mvPanel, /ProbePlaybackHealth\(\)/);
+  assert.match(mvPanel, /BeginPlaybackHealthMonitor\(\)/);
+  assert.match(
+    mvPanel,
+    /std::wstring_view\(json\) == L"true"[\s\S]*ReloadPlaylist\(\)/,
+  );
+  assert.match(
+    mvPanel,
+    /!succeeded\)[\s\S]*StopPlaybackHealthMonitor\(\);[\s\S]*ScheduleNavigationRetry\(\)/,
+  );
+  assert.match(
+    mvPanel,
+    /timerId == kNativeMvNavigationRetryTimer[\s\S]*StopNavigationRetry\(\);[\s\S]*ReloadPlaylist\(\)/,
+  );
+});
+
 test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.match(mvPanel, /homepanel-youtube-clean-player/);
   assert.match(mvPanel, /\.ytp-chrome-top/);
