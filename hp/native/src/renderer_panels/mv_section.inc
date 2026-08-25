@@ -16,6 +16,23 @@ constexpr int kNativeMvFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMvFallbackPlayAllYTenThousandths = 4250;
 constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
 (() => {
+  const styleId = 'homepanel-youtube-clean-player';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      .html5-video-player .ytp-chrome-top,
+      .html5-video-player .ytp-gradient-top,
+      .html5-video-player .ytp-chrome-bottom,
+      .html5-video-player .ytp-gradient-bottom {
+        opacity: 0 !important;
+        transition: none !important;
+      }
+    `;
+    const parent = document.head || document.documentElement;
+    if (parent) parent.appendChild(style);
+  }
+
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const candidates = Array.from(document.querySelectorAll(
       'button, a, tp-yt-paper-button, [role="button"]'));
@@ -38,6 +55,23 @@ constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
 )JS";
 constexpr wchar_t kNativeMvFullscreenProbeScript[] = LR"JS(
 (() => {
+  const styleId = 'homepanel-youtube-clean-player';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      .html5-video-player .ytp-chrome-top,
+      .html5-video-player .ytp-gradient-top,
+      .html5-video-player .ytp-chrome-bottom,
+      .html5-video-player .ytp-gradient-bottom {
+        opacity: 0 !important;
+        transition: none !important;
+      }
+    `;
+    const parent = document.head || document.documentElement;
+    if (parent) parent.appendChild(style);
+  }
+
   const target = document.querySelector('.ytp-fullscreen-button');
   if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
   const rect = target.getBoundingClientRect();

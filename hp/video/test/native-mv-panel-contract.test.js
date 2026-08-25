@@ -75,6 +75,17 @@ test('MV playback enters YouTube fullscreen with DOM-located native input', () =
   assert.match(mvPanel, /IsWatchPage\(\)/);
 });
 
+test('MV playback keeps YouTube transition chrome visually hidden', () => {
+  assert.match(mvPanel, /homepanel-youtube-clean-player/);
+  assert.match(mvPanel, /\.ytp-chrome-top/);
+  assert.match(mvPanel, /\.ytp-gradient-top/);
+  assert.match(mvPanel, /\.ytp-chrome-bottom/);
+  assert.match(mvPanel, /\.ytp-gradient-bottom/);
+  assert.match(mvPanel, /opacity:\s*0\s*!important/);
+  assert.match(mvPanel, /transition:\s*none\s*!important/);
+  assert.doesNotMatch(mvPanel, /visibility:\s*hidden/);
+});
+
 test('MV WebView keeps its persistent profile and stays alive behind power saving', () => {
   assert.match(mvPanel, /webview2-youtube-mv/);
   assert.match(
