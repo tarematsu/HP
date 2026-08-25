@@ -56,12 +56,13 @@ test('MV playlist reloads hourly and starts Play all with DOM-first native input
   assert.match(mvPanel, /ExecuteScript/);
   assert.match(mvPanel, /すべて再生/);
   assert.match(mvPanel, /Play all/);
-  assert.match(mvPanel, /SendMouseInput/);
+  assert.match(mvPanel, /ClientToScreen/);
+  assert.match(mvPanel, /SendInput/);
   assert.match(mvPanel, /kNativeMvFallbackPlayAllXTenThousandths = 5850/);
   assert.match(mvPanel, /kNativeMvFallbackPlayAllYTenThousandths = 4250/);
   assert.match(mvPanel, /case WM_TIMER:/);
   assert.match(mvPanel, /ReloadPlaylist\(\)/);
-  assert.doesNotMatch(mvPanel, /SendInput\(/);
+  assert.doesNotMatch(mvPanel, /SendMouseInput/);
 });
 
 test('MV WebView keeps its persistent profile and stays alive behind power saving', () => {
