@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.CancellationSignal;
 import android.text.InputType;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -43,11 +44,12 @@ public final class MainActivity extends Activity {
     private boolean foreground;
     private boolean clearHistoryAfterLoad;
     private volatile boolean landscape;
+    private volatile int displayRotationDegrees;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        refreshNativeOrientation();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         WindowManager.LayoutParams p = getWindow().getAttributes();
         p.screenBrightness = 1.0f;
@@ -218,6 +220,19 @@ public final class MainActivity extends Activity {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
     }
 
+    private int readDisplayRotationDegrees() {
+        int rotation = getWindowManager().getDefaultDisplay().getRotation();
+        if (rotation == Surface.ROTATION_90) return 90;
+        if (rotation == Surface.ROTATION_180) return 180;
+        if (rotation == Surface.ROTATION_270) return 270;
+        return 0;
+    }
+
+    private void refreshNativeOrientation() {
+        displayRotationDegrees = readDisplayRotationDegrees();
+        landscape = displayRotationDegrees == 90 || displayRotationDegrees == 270;
+    }
+
     private void notifyWebOrientationChanged() {
         if (webView == null) return;
         webView.post(() -> {
@@ -231,7 +246,7 @@ public final class MainActivity extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        landscape = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE;
+        refreshNativeOrientation();
         hideSystemUi();
         notifyWebOrientationChanged();
     }
@@ -240,7 +255,7 @@ public final class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         foreground = true;
-        landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        refreshNativeOrientation();
         if (webView != null) {
             webView.resumeTimers();
             webView.onResume();
@@ -283,7 +298,9 @@ public final class MainActivity extends Activity {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (hasFocus) {
+            refreshNativeOrientation();
             hideSystemUi();
+            notifyWebOrientationChanged();
             if (foreground && !authenticated) showAuthenticationPrompt();
         }
     }
@@ -308,6 +325,16 @@ public final class MainActivity extends Activity {
         @JavascriptInterface
         public boolean isLandscape() {
             return landscape;
+        }
+
+        @JavascriptInterface
+        public int getDisplayRotationDegrees() {
+            return displayRotationDegrees;
+        }
+
+        @JavascriptInterface
+        public boolean usesPortraitFixedTouchAxes() {
+            return true;
         }
     }
 
@@ -349,6 +376,7 @@ public final class MainActivity extends Activity {
                 view.clearHistory();
                 clearHistoryAfterLoad = false;
             }
+            notifyWebOrientationChanged();
         }
 
         @Override

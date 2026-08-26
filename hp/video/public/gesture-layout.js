@@ -17,22 +17,44 @@ function nativeBridge() {
   }
 }
 
-function nativeLandscapeLayout() {
-  const bridge = nativeBridge();
-  if (!bridge) return null;
-  try {
-    const value = bridge.isLandscape();
-    if (value === true || value === 'true' || value === 1 || value === '1') return true;
-    if (value === false || value === 'false' || value === 0 || value === '0') return false;
-  } catch {}
+function booleanBridgeValue(value) {
+  if (value === true || value === 'true' || value === 1 || value === '1') return true;
+  if (value === false || value === 'false' || value === 0 || value === '0') return false;
   return null;
 }
 
+function nativeRotationLandscape() {
+  const bridge = nativeBridge();
+  if (!bridge) return null;
+  try {
+    return landscapeFromRotationAngle(bridge.getDisplayRotationDegrees());
+  } catch {
+    return null;
+  }
+}
+
+function nativeLandscapeLayout() {
+  const rotationLandscape = nativeRotationLandscape();
+  if (rotationLandscape !== null) return rotationLandscape;
+
+  const bridge = nativeBridge();
+  if (!bridge) return null;
+  try {
+    return booleanBridgeValue(bridge.isLandscape());
+  } catch {
+    return null;
+  }
+}
+
 function nativeUsesPortraitFixedTouchAxes() {
-  // The Android wrapper reports PointerEvent coordinates in the same physical
-  // portrait-oriented axes after the phone rotates. In that environment,
-  // landscape screen-left/right is absolute Y and screen-up/down is absolute X.
-  return Boolean(nativeBridge());
+  const bridge = nativeBridge();
+  if (!bridge) return false;
+  try {
+    const explicit = booleanBridgeValue(bridge.usesPortraitFixedTouchAxes());
+    if (explicit !== null) return explicit;
+  } catch {}
+  // Compatibility with APKs that have the older isLandscape-only bridge.
+  return true;
 }
 
 function currentRotationLandscape() {
@@ -48,8 +70,6 @@ export function isLandscapeLayout(
   nativeLandscape = null,
   rotationLandscape = null
 ) {
-  // Android Configuration is the source of truth in the native wrapper.
-  // window.orientation can remain 0 after rotation on affected WebView builds.
   if (nativeLandscape === true || nativeLandscape === false) return nativeLandscape;
 
   if (rotationLandscape === true || rotationLandscape === false) return rotationLandscape;
