@@ -14,6 +14,10 @@ const nativeWindows = readFileSync(
   new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
   'utf8',
 );
+const lifecycle = readFileSync(
+  new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
@@ -123,20 +127,34 @@ test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.doesNotMatch(mvPanel, /visibility:\s*hidden/);
 });
 
-test('MV WebView keeps its persistent profile and host window alive behind power saving', () => {
+test('power saving stops the YouTube WebView and blocks periodic URL loading', () => {
   assert.match(mvPanel, /webview2-youtube-mv/);
+  assert.match(lifecycle, /kNativeMvPanelHostClass\[\] = L"HomePanelNativeMvPanel"/);
   assert.match(
-    nativeWindows,
-    /keepMvPlaybackVisible = requestedDashboardVisible_ && powerSavingMode_/,
+    lifecycle,
+    /FindWindowExW\(\s*radarWindow, nullptr, kNativeMvPanelHostClass, nullptr\)/s,
+  );
+  assert.match(
+    lifecycle,
+    /if \(mvWindow && IsWindow\(mvWindow\)\) DestroyWindow\(mvWindow\)/,
+  );
+  assert.match(
+    lifecycle,
+    /void Renderer::SetPowerSavingMode\(bool enabled\)[\s\S]*if \(enabled\) StopNativeMvPlayback\(nativeRadarWindow_\);[\s\S]*ApplyDashboardVisibility\(\)/,
+  );
+  assert.match(
+    lifecycle,
+    /if \(powerSavingMode_\) StopNativeMvPlayback\(nativeRadarWindow_\)/,
   );
   assert.match(
     nativeWindows,
-    /nativeDashboardVisible_ \|\|\s*\(keepMvPlaybackVisible && hwnd == nativeRadarWindow_\)/,
+    /if \(nativeDashboardVisible_ && nativeRadarWindow_ && IsWindow\(nativeRadarWindow_\)\)/,
   );
   assert.match(
     nativeWindows,
-    /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mvBounds\)/,
+    /PlaceNativeWindow\(hwnd, layout\.\*slot\.rect, nativeDashboardVisible_\)/,
   );
+  assert.doesNotMatch(nativeWindows, /keepMvPlaybackVisible/);
 });
 
 test('YouTube uses stock WebView2 browser arguments while Stationhead optimizations stay isolated', () => {
