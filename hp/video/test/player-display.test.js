@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
@@ -40,6 +41,12 @@ test('native landscape maps absolute Y across the landscape screen width', () =>
   assert.equal(doubleTapSeekSeconds(10, 100, 50, 50, true, true), 0);
   assert.equal(doubleTapSeekSeconds(10, 100, 90, 50, true, true), 10);
   assert.equal(doubleTapSeekSeconds(10, 0, 10, 50, true, true), 0);
+});
+
+test('tap pointerup is captured before competing APK gesture handlers', async () => {
+  const source = await readFile(new URL('../public/player-display.js', import.meta.url), 'utf8');
+  assert.equal(source.includes('const DOUBLE_TAP_DELAY_MS = 380;'), true);
+  assert.equal(source.includes("  }, { capture: true });\n\n  player.addEventListener('pointercancel'"), true);
 });
 
 test('orientation lock prefers decoded video dimensions', () => {
