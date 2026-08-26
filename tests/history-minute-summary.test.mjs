@@ -145,7 +145,13 @@ test('Sakurazaka series seeks only target broadcast sessions and sparse override
   CREATE INDEX idx_sh_minute_facts_session_minute
     ON sh_minute_facts(broadcast_session_id,minute_at,id)
     WHERE broadcast_session_id IS NOT NULL;
-  CREATE TABLE sh_minute_fact_context(fact_id INTEGER PRIMARY KEY,host_id INTEGER)`);
+  CREATE TABLE sh_minute_fact_context_v2(
+    fact_id INTEGER PRIMARY KEY,
+    host_id_override INTEGER
+  );
+  CREATE INDEX idx_sh_minute_fact_context_host_fact
+    ON sh_minute_fact_context_v2(host_id_override,fact_id)
+    WHERE host_id_override IS NOT NULL`);
   const start = Date.parse('2026-07-20T00:00:00Z');
   const end = start + 240_000;
   db.prepare('INSERT INTO sh_hosts VALUES(?,?)').run(1, 'sakurazaka46jp');
@@ -157,8 +163,8 @@ test('Sakurazaka series seeks only target broadcast sessions and sparse override
   insertFact.run(2, start + 60_000, 1, 20, 10);
   insertFact.run(3, start + 120_000, 1, 30, null);
   insertFact.run(4, start + 180_000, 1, 40, null);
-  db.prepare('INSERT INTO sh_minute_fact_context VALUES(?,?)').run(3, 1);
-  db.prepare('INSERT INTO sh_minute_fact_context VALUES(?,?)').run(4, 1);
+  db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)').run(3, 1);
+  db.prepare('INSERT INTO sh_minute_fact_context_v2 VALUES(?,?)').run(4, 1);
   for (let id = 100; id < 1100; id += 1) {
     insertFact.run(id, start + ((id - 100) % 4) * 60_000, 1, 999, 20);
   }
@@ -167,11 +173,15 @@ test('Sakurazaka series seeks only target broadcast sessions and sparse override
   assert.equal(row.point_count, 4);
   assert.deepEqual(JSON.parse(row.points_json), [[0, 10, 1], [1, 20, 1], [2, 30, 1], [3, 40, 1]]);
   assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /CROSS JOIN sh_minute_facts f/);
+  assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /CROSS JOIN sh_minute_fact_context_v2 c/);
+  assert.match(SAKURAZAKA_MINUTE_SERIES_SQL, /c\.host_id_override=h\.id/);
+  assert.doesNotMatch(SAKURAZAKA_MINUTE_SERIES_SQL, /CROSS JOIN sh_minute_fact_context c/);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${SAKURAZAKA_MINUTE_SERIES_SQL}`)
     .all(start, start, end)
     .map((item) => item.detail).join('\n');
   assert.match(plan, /idx_sh_broadcast_sessions_host_id \(host_id=\?\)/);
   assert.match(plan, /idx_sh_minute_facts_session_minute \(broadcast_session_id=\? AND minute_at>\? AND minute_at<\?\)/);
+  assert.match(plan, /idx_sh_minute_fact_context_host_fact \(host_id_override=\?\)/);
   assert.doesNotMatch(plan, /SCAN f USING INDEX idx_sh_minute_facts_time/);
 });
 
