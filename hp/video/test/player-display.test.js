@@ -28,11 +28,18 @@ test('portrait double tap zones use the horizontal position', () => {
   assert.equal(doubleTapSeekSeconds(10, 0), 0);
 });
 
-test('landscape double tap zones use the vertical position', () => {
-  assert.equal(doubleTapSeekSeconds(90, 100, 10, 100, true), -10);
-  assert.equal(doubleTapSeekSeconds(10, 100, 50, 100, true), 0);
-  assert.equal(doubleTapSeekSeconds(10, 100, 90, 100, true), 10);
-  assert.equal(doubleTapSeekSeconds(10, 100, 10, 0, true), 0);
+test('browser landscape double tap zones use the vertical position', () => {
+  assert.equal(doubleTapSeekSeconds(90, 100, 10, 100, true, false), -10);
+  assert.equal(doubleTapSeekSeconds(10, 100, 50, 100, true, false), 0);
+  assert.equal(doubleTapSeekSeconds(10, 100, 90, 100, true, false), 10);
+  assert.equal(doubleTapSeekSeconds(10, 100, 10, 0, true, false), 0);
+});
+
+test('native landscape maps absolute Y across the landscape screen width', () => {
+  assert.equal(doubleTapSeekSeconds(10, 100, 10, 50, true, true), -10);
+  assert.equal(doubleTapSeekSeconds(10, 100, 50, 50, true, true), 0);
+  assert.equal(doubleTapSeekSeconds(10, 100, 90, 50, true, true), 10);
+  assert.equal(doubleTapSeekSeconds(10, 0, 10, 50, true, true), 0);
 });
 
 test('orientation lock prefers decoded video dimensions', () => {
