@@ -36,11 +36,11 @@ test('browser landscape double tap zones use the vertical position', () => {
   assert.equal(doubleTapSeekSeconds(10, 100, 10, 0, true, false), 0);
 });
 
-test('native landscape maps absolute Y across the landscape screen width', () => {
-  assert.equal(doubleTapSeekSeconds(10, 100, 10, 50, true, true), -10);
-  assert.equal(doubleTapSeekSeconds(10, 100, 50, 50, true, true), 0);
-  assert.equal(doubleTapSeekSeconds(10, 100, 90, 50, true, true), 10);
-  assert.equal(doubleTapSeekSeconds(10, 0, 10, 50, true, true), 0);
+test('native landscape scales absolute Y by its actual coordinate span', () => {
+  assert.equal(doubleTapSeekSeconds(10, 100, 5, 50, true, true), -10);
+  assert.equal(doubleTapSeekSeconds(10, 100, 25, 50, true, true), 0);
+  assert.equal(doubleTapSeekSeconds(10, 100, 45, 50, true, true), 10);
+  assert.equal(doubleTapSeekSeconds(10, 100, 5, 0, true, true), 0);
 });
 
 test('tap pointerup is captured before competing APK gesture handlers', async () => {
