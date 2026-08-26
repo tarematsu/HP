@@ -51,6 +51,12 @@ void AppendUnsigned(std::wstring& output, unsigned long value) {
   output.append(cursor, std::end(buffer));
 }
 
+fs::path PendingUpdateManifestPath(const fs::path& dataDir) {
+  return dataDir /
+      (L"pending-update-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+       std::to_wstring(GetTickCount64()) + L".json");
+}
+
 std::wstring InstalledHomePanelVersion(const fs::path& executable) {
   DWORD handle = 0;
   const DWORD size = GetFileVersionInfoSizeW(executable.c_str(), &handle);
@@ -240,7 +246,7 @@ bool App::LaunchVerifiedUpdater(const std::wstring& version, const std::string& 
     return false;
   }
 
-  const fs::path pending = dataDir_ / L"pending-update.json";
+  const fs::path pending = PendingUpdateManifestPath(dataDir_);
   if (!AtomicWriteText(pending, manifestJson)) return false;
 
   const fs::path runnerDirectory = dataDir_ / L"update-runner";
@@ -249,6 +255,8 @@ bool App::LaunchVerifiedUpdater(const std::wstring& version, const std::string& 
   fs::create_directories(runnerDirectory, ignored);
   if (ignored || !CopyFileW(installedUpdater.c_str(), runner.c_str(), FALSE)) {
     logger_->Warn(L"Failed to stage the update runner: " + std::to_wstring(GetLastError()));
+    ignored.clear();
+    fs::remove(pending, ignored);
     return false;
   }
 
@@ -277,6 +285,8 @@ bool App::LaunchVerifiedUpdater(const std::wstring& version, const std::string& 
   if (!CreateProcessW(runner.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
                       nullptr, rootDir_.c_str(), &startup, &process)) {
     logger_->Warn(L"CreateProcess for updater failed: " + std::to_wstring(GetLastError()));
+    ignored.clear();
+    fs::remove(pending, ignored);
     return false;
   }
   CloseHandle(process.hThread);
