@@ -110,11 +110,16 @@ export function seekGestureDeltaSeconds(
   const mediaDuration = Number(duration);
   if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return 0;
 
-  const useHorizontalAbsoluteAxis = !landscape || portraitFixedCoordinates;
-  const delta = useHorizontalAbsoluteAxis ? Number(deltaX) || 0 : Number(deltaY) || 0;
-  const span = Math.max(1, useHorizontalAbsoluteAxis
-    ? Number(viewportWidth) || 1
-    : Number(viewportHeight) || 1);
+  if (landscape && portraitFixedCoordinates) {
+    const delta = Number(deltaX) || 0;
+    const span = Math.max(1, Number(viewportHeight) || 1);
+    return delta / span * Math.min(mediaDuration, MAX_FULL_SPAN_SEEK_SECONDS);
+  }
+
+  const delta = landscape ? Number(deltaY) || 0 : Number(deltaX) || 0;
+  const span = Math.max(1, landscape
+    ? Number(viewportHeight) || 1
+    : Number(viewportWidth) || 1);
   return delta / span * Math.min(mediaDuration, MAX_FULL_SPAN_SEEK_SECONDS);
 }
 
