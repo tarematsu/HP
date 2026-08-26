@@ -2,11 +2,19 @@ export const MIN_VIDEO_LONG_EDGE = 1280;
 export const MIN_VIDEO_SHORT_EDGE = 720;
 
 const VIDEO_DIMENSION_SEGMENT = /(?:^|\/)(\d{2,5})x(\d{2,5})(?=\/|$)/gi;
+const VIDEO_FILTERS = new Set([
+  'vertical',
+  'horizontal',
+  'both',
+  'vertical-720',
+  'vertical-1080',
+  'horizontal-720',
+  'horizontal-1080'
+]);
 
 export function normalizeVideoOrientationFilter(value) {
-  if (value === 'vertical' || value === 'horizontal') return value;
   const normalized = String(value || '').trim().toLowerCase();
-  return normalized === 'vertical' || normalized === 'horizontal' ? normalized : 'both';
+  return VIDEO_FILTERS.has(normalized) ? normalized : 'both';
 }
 
 function absoluteUrlPathname(value) {
@@ -70,4 +78,27 @@ export function inferVideoOrientation(mediaUrl) {
   if (height > width) return 'vertical';
   if (width > height) return 'horizontal';
   return 'square';
+}
+
+export function matchesVideoOrientationFilter(mediaUrl, filter) {
+  const normalized = normalizeVideoOrientationFilter(filter);
+  if (normalized === 'both') return true;
+
+  const dimensions = inferVideoDimensions(mediaUrl);
+  if (!dimensions) return false;
+
+  const { width, height } = dimensions;
+  const orientation = height > width ? 'vertical' : width > height ? 'horizontal' : 'square';
+  if (normalized === 'vertical' || normalized === 'horizontal') {
+    return orientation === normalized;
+  }
+
+  const separator = normalized.lastIndexOf('-');
+  const targetOrientation = normalized.slice(0, separator);
+  const resolution = normalized.slice(separator + 1);
+  if (orientation !== targetOrientation) return false;
+
+  const shortEdge = Math.min(width, height);
+  if (resolution === '1080') return shortEdge >= 1080;
+  return shortEdge >= 720 && shortEdge < 1080;
 }
