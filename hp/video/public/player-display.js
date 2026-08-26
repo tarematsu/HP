@@ -61,11 +61,7 @@ export function doubleTapSeekSeconds(
   portraitFixedCoordinates = nativeUsesPortraitFixedTouchAxes()
 ) {
   const position = Number(landscape ? clientY : clientX);
-  const span = Number(
-    landscape
-      ? (portraitFixedCoordinates ? width : height)
-      : width
-  );
+  const span = Number(landscape ? height : width);
   if (!Number.isFinite(position) || !Number.isFinite(span) || span <= 0) return 0;
   const fraction = position / span;
   if (fraction < 0.4) return -10;
