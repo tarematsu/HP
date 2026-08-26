@@ -7,6 +7,7 @@ import {
   gestureAxisDelta,
   hiddenTransform,
   isLandscapeLayout,
+  landscapeFromRotationAngle,
   seekGestureDeltaSeconds,
   transitionTransform
 } from '../public/gesture-layout.js';
@@ -19,7 +20,19 @@ test('portrait and landscape layouts swap navigation and seek axes', () => {
   assert.equal(isLandscapeLayout(0, 0, 'landscape-primary'), true);
 });
 
-test('native Android orientation overrides stale WebView state', () => {
+test('physical rotation angle overrides stale WebView and native orientation state', () => {
+  assert.equal(landscapeFromRotationAngle(90), true);
+  assert.equal(landscapeFromRotationAngle(-90), true);
+  assert.equal(landscapeFromRotationAngle(270), true);
+  assert.equal(landscapeFromRotationAngle(0), false);
+  assert.equal(landscapeFromRotationAngle(180), false);
+  assert.equal(landscapeFromRotationAngle('unknown'), null);
+
+  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', false, true), true);
+  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', true, false), false);
+});
+
+test('native Android orientation overrides stale WebView state without a rotation angle', () => {
   assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', true), true);
   assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', false), false);
 });

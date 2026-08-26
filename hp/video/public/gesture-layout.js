@@ -1,9 +1,18 @@
 const MAX_FULL_SPAN_SEEK_SECONDS = 120;
 
+export function landscapeFromRotationAngle(value) {
+  const angle = Number(value);
+  if (!Number.isFinite(angle)) return null;
+  const normalized = ((angle % 360) + 360) % 360;
+  if (normalized === 90 || normalized === 270) return true;
+  if (normalized === 0 || normalized === 180) return false;
+  return null;
+}
+
 function nativeLandscapeLayout() {
   try {
     const bridge = globalThis.VideoPlayerNative;
-    if (!bridge || typeof bridge.isLandscape !== 'function') return null;
+    if (!bridge) return null;
     const value = bridge.isLandscape();
     if (value === true || value === 'true' || value === 1 || value === '1') return true;
     if (value === false || value === 'false' || value === 0 || value === '0') return false;
@@ -11,7 +20,26 @@ function nativeLandscapeLayout() {
   return null;
 }
 
-export function isLandscapeLayout(width, height, orientationType = '', nativeLandscape = null) {
+function currentRotationLandscape() {
+  // Android WebView can keep viewport/screen.orientation.type stale across a
+  // configuration change. The legacy window.orientation angle tracks the
+  // physical display rotation more reliably on those WebView versions.
+  const legacy = landscapeFromRotationAngle(globalThis.orientation);
+  if (legacy !== null) return legacy;
+  return landscapeFromRotationAngle(globalThis.screen?.orientation?.angle);
+}
+
+export function isLandscapeLayout(
+  width,
+  height,
+  orientationType = '',
+  nativeLandscape = null,
+  rotationLandscape = null
+) {
+  // Rotation angle is the closest signal to the phone's actual rotation and
+  // must win over stale WebView/native layout metadata.
+  if (rotationLandscape === true || rotationLandscape === false) return rotationLandscape;
+
   if (nativeLandscape === true || nativeLandscape === false) return nativeLandscape;
 
   const type = String(orientationType || '').toLowerCase();
@@ -40,7 +68,8 @@ export function currentLandscapeLayout() {
     layoutWidth,
     layoutHeight,
     globalThis.screen?.orientation?.type || '',
-    nativeLandscapeLayout()
+    nativeLandscapeLayout(),
+    currentRotationLandscape()
   );
 }
 
