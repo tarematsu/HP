@@ -45,6 +45,26 @@ test('native app remains active while the updater validates release files', () =
   assert.match(launch, /AppendUnsigned\(command, GetCurrentProcessId\(\)\)/g);
 });
 
+test('in-app updater gives each launch its own pending manifest', () => {
+  const pathBuilder = section(
+    appUpdateSource,
+    'fs::path PendingUpdateManifestPath(',
+    'std::wstring InstalledHomePanelVersion(',
+  );
+  assert.match(pathBuilder, /L"pending-update-"/);
+  assert.match(pathBuilder, /GetCurrentProcessId\(\)/);
+  assert.match(pathBuilder, /GetTickCount64\(\)/);
+
+  const launch = section(
+    appUpdateSource,
+    'bool App::LaunchVerifiedUpdater(',
+    '\n}\n\n}  // namespace hp',
+  );
+  assert.match(launch, /PendingUpdateManifestPath\(dataDir_\)/);
+  assert.doesNotMatch(launch, /dataDir_ \/ L"pending-update\.json"/);
+  assert.match(launch, /fs::remove\(pending, ignored\)/);
+});
+
 test('only a verified runner can request HomePanel shutdown', () => {
   assert.match(updaterSource, /bool gRunnerMode = false/);
 
