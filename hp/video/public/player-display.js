@@ -44,15 +44,28 @@ export function orientationLockForVideo(videoWidth, videoHeight, mediaUrl = '') 
   return null;
 }
 
+function nativeUsesPortraitFixedTouchAxes() {
+  try {
+    return Boolean(globalThis.VideoPlayerNative);
+  } catch {
+    return false;
+  }
+}
+
 export function doubleTapSeekSeconds(
   clientX,
   width,
   clientY = 0,
   height = 0,
-  landscape = false
+  landscape = false,
+  portraitFixedCoordinates = nativeUsesPortraitFixedTouchAxes()
 ) {
   const position = Number(landscape ? clientY : clientX);
-  const span = Number(landscape ? height : width);
+  const span = Number(
+    landscape
+      ? (portraitFixedCoordinates ? width : height)
+      : width
+  );
   if (!Number.isFinite(position) || !Number.isFinite(span) || span <= 0) return 0;
   const fraction = position / span;
   if (fraction < 0.4) return -10;
@@ -374,17 +387,20 @@ function initialize() {
   function handleTap(event) {
     const now = performance.now();
     const landscape = currentLandscapeLayout();
+    const portraitFixedCoordinates = nativeUsesPortraitFixedTouchAxes();
     const sideSeconds = doubleTapSeekSeconds(
       event.clientX,
       player.clientWidth || window.innerWidth,
       event.clientY,
       player.clientHeight || window.innerHeight,
-      landscape
+      landscape,
+      portraitFixedCoordinates
     );
+    const visualHorizontal = !landscape || portraitFixedCoordinates;
     const side = sideSeconds < 0
-      ? (landscape ? 'top' : 'left')
+      ? (visualHorizontal ? 'left' : 'top')
       : sideSeconds > 0
-        ? (landscape ? 'bottom' : 'right')
+        ? (visualHorizontal ? 'right' : 'bottom')
         : 'center';
     const repeat = lastTap
       && now - lastTap.time <= DOUBLE_TAP_DELAY_MS
