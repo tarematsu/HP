@@ -78,9 +78,9 @@ export const SAKURAZAKA_MINUTE_SERIES_SQL = `WITH target_host AS (
   UNION ALL
   SELECT f.minute_at,f.listener_count
   FROM target_host h
-  CROSS JOIN sh_minute_fact_context c
+  CROSS JOIN sh_minute_fact_context_v2 c
   JOIN sh_minute_facts f ON f.id=c.fact_id
-  WHERE c.host_id=h.id
+  WHERE c.host_id_override=h.id
     AND f.broadcast_session_id IS NULL
     AND f.minute_at>=?2 AND f.minute_at<?3
     AND f.listener_count IS NOT NULL
