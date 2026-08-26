@@ -83,7 +83,7 @@ function initialize() {
 
   function updateHint() {
     hint.textContent = currentLandscapeLayout()
-      ? '左右スワイプ: 次へ / 上下スワイプ: 時間移動 / 上下ダブルタップ: 10秒移動'
+      ? '左右スワイプ: 次へ / 上下スワイプ: 時間移動 / 左右ダブルタップ: 10秒移動'
       : '上下スワイプ: 次へ / 左右スワイプ: 時間移動 / 左右ダブルタップ: 10秒移動';
   }
 
