@@ -23,8 +23,8 @@ test('browser layout swaps navigation and seek axes in landscape', () => {
 test('native Android landscape keeps portrait-fixed physical touch axes', () => {
   assert.deepEqual(gestureAxes(false, true), { nextAxis: 'y', seekAxis: 'x' });
   assert.deepEqual(gestureAxes(true, true), { nextAxis: 'y', seekAxis: 'x' });
-  assert.equal(seekGestureDeltaSeconds(180, 0, 360, 720, 60, true, true), 30);
-  assert.equal(seekGestureDeltaSeconds(0, 180, 360, 720, 60, true, true), 0);
+  assert.equal(seekGestureDeltaSeconds(180, 0, 720, 360, 60, true, true), 30);
+  assert.equal(seekGestureDeltaSeconds(0, 180, 720, 360, 60, true, true), 0);
 });
 
 test('native Android orientation overrides stale rotation and WebView state', () => {
