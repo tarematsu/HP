@@ -58,10 +58,11 @@
         </button>
       </div>
     </div>
-    <div id="orientationFilter" role="group" aria-label="動画表示とNG登録">
-      <button type="button" data-orientation="vertical" aria-pressed="false" aria-label="縦動画のみ">縦</button>
-      <button type="button" data-orientation="horizontal" aria-pressed="false" aria-label="横動画のみ">横</button>
-      <button type="button" data-orientation="both" aria-pressed="true" aria-label="縦横両方">両方</button>
+    <div id="orientationFilter" role="group" aria-label="動画解像度とNG登録">
+      <button type="button" data-orientation="vertical-720" aria-pressed="true" aria-label="縦動画 720">縦720</button>
+      <button type="button" data-orientation="vertical-1080" aria-pressed="false" aria-label="縦動画 1080以上">縦1080</button>
+      <button type="button" data-orientation="horizontal-720" aria-pressed="false" aria-label="横動画 720">横720</button>
+      <button type="button" data-orientation="horizontal-1080" aria-pressed="false" aria-label="横動画 1080以上">横1080</button>
       <span class="controlDivider" aria-hidden="true"></span>
       <button id="adminTokenButton" type="button" aria-pressed="false" aria-label="ADMIN_TOKENを削除">認証済</button>
       <button id="blockButton" type="button" aria-label="この動画をNGリストへ追加">NG</button>
