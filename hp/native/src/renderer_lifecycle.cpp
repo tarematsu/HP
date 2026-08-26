@@ -7,6 +7,7 @@ namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 constexpr ULONG kNativePanelTimerToleranceMs = 100;
+constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -23,6 +24,13 @@ void PrepareParentWindow(HWND window) {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
   }
+}
+
+void StopNativeMvPlayback(HWND radarWindow) noexcept {
+  if (!radarWindow || !IsWindow(radarWindow)) return;
+  HWND mvWindow = FindWindowExW(
+      radarWindow, nullptr, kNativeMvPanelHostClass, nullptr);
+  if (mvWindow && IsWindow(mvWindow)) DestroyWindow(mvWindow);
 }
 }  // namespace
 
@@ -63,6 +71,7 @@ void Renderer::Initialize() {
     if (!EnsureNativeStaticWindows()) {
       throw std::runtime_error("native dashboard window initialization failed");
     }
+    if (powerSavingMode_) StopNativeMvPlayback(nativeRadarWindow_);
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
@@ -106,6 +115,7 @@ void Renderer::SetVisible(bool visible) {
 void Renderer::SetPowerSavingMode(bool enabled) {
   if (powerSavingMode_ == enabled) return;
   powerSavingMode_ = enabled;
+  if (enabled) StopNativeMvPlayback(nativeRadarWindow_);
   ApplyDashboardVisibility();
 }
 
