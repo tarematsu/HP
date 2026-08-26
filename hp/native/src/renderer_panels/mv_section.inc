@@ -2,13 +2,13 @@ namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
-constexpr UINT_PTR kNativeMvReloadTimer = 0x4D560001;
+constexpr UINT_PTR kNativeMvRandomActionTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
 constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
-constexpr UINT kNativeMvReloadMinSeconds = 20U * 60U;
-constexpr UINT kNativeMvReloadSpanSeconds = 20U * 60U;
+constexpr UINT kNativeMvRandomMinSeconds = 20U * 60U;
+constexpr UINT kNativeMvRandomSpanSeconds = 20U * 60U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
@@ -19,6 +19,8 @@ constexpr int kNativeMvFullscreenRetryLimit = 30;
 // ~= (498,647), which is 58.5% across and 42.5% down the WebView.
 constexpr int kNativeMvFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMvFallbackPlayAllYTenThousandths = 4250;
+constexpr int kNativeMvCenterXTenThousandths = 5000;
+constexpr int kNativeMvCenterYTenThousandths = 5000;
 constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
 (() => {
   const styleId = 'homepanel-youtube-clean-player';
@@ -197,9 +199,15 @@ class NativeMvPanelHost {
   }
 
   bool OnTimer(UINT_PTR timerId) noexcept {
-    if (timerId == kNativeMvReloadTimer) {
-      ReloadPlaylist();
-      if (!failed_ && !ScheduleNextPlaylistReload()) Fail();
+    if (timerId == kNativeMvRandomActionTimer) {
+      if (nextRandomActionIsCenterClick_) {
+        ClickNormalizedPoint(kNativeMvCenterXTenThousandths,
+                             kNativeMvCenterYTenThousandths);
+        nextRandomActionIsCenterClick_ = false;
+        if (!failed_ && !ScheduleNextRandomAction()) Fail();
+      } else {
+        ReloadPlaylist();
+      }
       return true;
     }
     if (timerId == kNativeMvPlayAllRetryTimer) {
@@ -225,7 +233,7 @@ class NativeMvPanelHost {
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvReloadTimer);
+      KillTimer(hostWindow_, kNativeMvRandomActionTimer);
       KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
       KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
       KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
@@ -327,17 +335,12 @@ class NativeMvPanelHost {
       Resize();
       controller_->put_IsVisible(TRUE);
       ReloadPlaylist();
-      if (failed_) return;
-      if (!ScheduleNextPlaylistReload()) {
-        Fail();
-        return;
-      }
     } catch (...) {
       Fail();
     }
   }
 
-  static UINT NextReloadDelayMs() noexcept {
+  static UINT NextRandomActionDelayMs() noexcept {
     static ULONGLONG state = 0;
     if (state == 0) {
       LARGE_INTEGER counter{};
@@ -352,15 +355,15 @@ class NativeMvPanelHost {
     state ^= state << 25;
     state ^= state >> 27;
     const ULONGLONG random = state * 2685821657736338717ULL;
-    const UINT seconds = kNativeMvReloadMinSeconds +
-        static_cast<UINT>(random % kNativeMvReloadSpanSeconds);
+    const UINT seconds = kNativeMvRandomMinSeconds +
+        static_cast<UINT>(random % kNativeMvRandomSpanSeconds);
     return seconds * 1000U;
   }
 
-  bool ScheduleNextPlaylistReload() noexcept {
+  bool ScheduleNextRandomAction() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return false;
-    return SetTimer(hostWindow_, kNativeMvReloadTimer,
-                    NextReloadDelayMs(), nullptr) != 0;
+    return SetTimer(hostWindow_, kNativeMvRandomActionTimer,
+                    NextRandomActionDelayMs(), nullptr) != 0;
   }
 
   bool ScheduleNavigationRetry() noexcept {
@@ -401,14 +404,16 @@ class NativeMvPanelHost {
     StopFullscreenProbe();
     StopPlaybackHealthMonitor();
     StopNavigationRetry();
+    nextRandomActionIsCenterClick_ = true;
     if (!webview_) {
       Fail();
       return;
     }
-    if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl)) &&
-        !ScheduleNavigationRetry()) {
-      Fail();
+    if (FAILED(webview_->Navigate(kNativeMvPanelPageUrl))) {
+      if (!ScheduleNavigationRetry()) Fail();
+      return;
     }
+    if (!ScheduleNextRandomAction()) Fail();
   }
 
   void BeginPlayAllProbe() noexcept {
@@ -660,7 +665,7 @@ class NativeMvPanelHost {
     StopPlaybackHealthMonitor();
     StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvReloadTimer);
+      KillTimer(hostWindow_, kNativeMvRandomActionTimer);
     }
     if (controller_) controller_->put_IsVisible(FALSE);
     if (hostWindow_ && IsWindow(hostWindow_)) {
@@ -681,6 +686,7 @@ class NativeMvPanelHost {
   bool playAllProbeInFlight_ = false;
   bool fullscreenProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
+  bool nextRandomActionIsCenterClick_ = true;
   bool failed_ = false;
 };
 
