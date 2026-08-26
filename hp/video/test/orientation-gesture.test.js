@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 import {
+  currentLandscapeLayout,
   gestureAxes,
   gestureAxisDelta,
   hiddenTransform,
@@ -25,6 +26,31 @@ test('native Android landscape keeps portrait-fixed physical touch axes', () => 
   assert.deepEqual(gestureAxes(true, true), { nextAxis: 'y', seekAxis: 'x' });
   assert.equal(seekGestureDeltaSeconds(180, 0, 720, 360, 60, true, true), 30);
   assert.equal(seekGestureDeltaSeconds(0, 180, 720, 360, 60, true, true), 0);
+});
+
+test('APK display rotation overrides stale WebView orientation metadata', () => {
+  const previousWindow = globalThis.window;
+  const previousScreen = globalThis.screen;
+  const previousBridge = globalThis.VideoPlayerNative;
+  try {
+    globalThis.window = { innerWidth: 360, innerHeight: 720 };
+    globalThis.screen = { orientation: { type: 'portrait-primary', angle: 0 } };
+    globalThis.VideoPlayerNative = {
+      getDisplayRotationDegrees: () => 90,
+      isLandscape: () => false,
+      usesPortraitFixedTouchAxes: () => true
+    };
+
+    assert.equal(currentLandscapeLayout(), true);
+    assert.deepEqual(gestureAxes(true), { nextAxis: 'y', seekAxis: 'x' });
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+    if (previousScreen === undefined) delete globalThis.screen;
+    else globalThis.screen = previousScreen;
+    if (previousBridge === undefined) delete globalThis.VideoPlayerNative;
+    else globalThis.VideoPlayerNative = previousBridge;
+  }
 });
 
 test('native Android orientation overrides stale rotation and WebView state', () => {
