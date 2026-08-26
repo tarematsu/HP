@@ -1,4 +1,5 @@
 #include "web_renderer.h"
+#include "weather_alerts.h"
 
 namespace hp {
 bool InstallRuntimeAssets() noexcept;
@@ -40,6 +41,7 @@ Renderer::Renderer(HWND window, int width, int height)
 
 Renderer::~Renderer() {
   shuttingDown_ = true;
+  StopWeatherAlerts();
 #if 0  // Stationhead playback bridge disabled for the MV panel build.
   StopNativePlaybackBridge();
 #endif
@@ -63,11 +65,13 @@ void Renderer::Initialize() {
     if (!EnsureNativeStaticWindows()) {
       throw std::runtime_error("native dashboard window initialization failed");
     }
+    StartWeatherAlerts(window_, nativeRadarWindow_);
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
+    StopWeatherAlerts();
     StopRadarCompose();
 #if 0  // Stationhead playback bridge disabled.
     StopNativePlaybackBridge();
@@ -87,6 +91,7 @@ void Renderer::Resize(int width, int height) {
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
+  RefreshWeatherAlertLayout();
 }
 
 void Renderer::SetBounds(const RECT& bounds) {
@@ -96,6 +101,7 @@ void Renderer::SetBounds(const RECT& bounds) {
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
+  RefreshWeatherAlertLayout();
 }
 
 void Renderer::SetVisible(bool visible) {
@@ -113,7 +119,12 @@ void Renderer::ApplyDashboardVisibility() {
   const bool visible = requestedDashboardVisible_ && !powerSavingMode_;
   const bool visibilityChanged = nativeDashboardVisible_ != visible;
   nativeDashboardVisible_ = visible;
-  if (visibilityChanged) ApplyNativeStaticBounds();
+  if (visibilityChanged) {
+    ApplyNativeStaticBounds();
+    // Native panel placement raises sibling windows. Reassert alert z-order so
+    // an active EEW remains above the dashboard even during power-mode changes.
+    RefreshWeatherAlertLayout();
+  }
 
   if (nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
     if (visible) {

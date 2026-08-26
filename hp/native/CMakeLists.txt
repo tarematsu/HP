@@ -176,6 +176,7 @@ set(HOMEPANEL_RENDERER_SOURCES
   src/renderer_bitmap_cache.cpp
   src/renderer_panels.cpp
   src/renderer_radar_ui.cpp
+  src/weather_alerts.cpp
   src/dashboard_native_playback.cpp
   src/dashboard_native_minute_facts.cpp
   src/dashboard_playback_resolve.cpp
@@ -235,10 +236,12 @@ set(HOMEPANEL_UPDATER_SOURCES
   "${HOMEPANEL_GENERATED_UPDATER_RC}"
   "${CMAKE_CURRENT_SOURCE_DIR}/resources/HomePanel.manifest")
 
-add_executable(HomePanelUpdater WIN32 ${HOMEPANEL_UPDATER_SOURCES})
+add_executable(HomePanelUpdater WIN32
+  ${HOMEPANEL_UPDATER_SOURCES})
 homepanel_configure_common_target(HomePanelUpdater)
 add_dependencies(HomePanelUpdater homepanel_version_files)
-target_link_libraries(HomePanelUpdater PRIVATE winhttp bcrypt wintrust crypt32 shell32 ole32 user32 windowsapp runtimeobject iphlpapi)
+target_link_libraries(HomePanelUpdater PRIVATE
+  winhttp bcrypt wintrust crypt32 shell32 ole32 user32 windowsapp runtimeobject iphlpapi)
 
 install(TARGETS HomePanel HomePanelUpdater RUNTIME DESTINATION .)
 install(FILES config.example.json "${CMAKE_CURRENT_SOURCE_DIR}/../../THIRD_PARTY_NOTICES.md" DESTINATION .)
