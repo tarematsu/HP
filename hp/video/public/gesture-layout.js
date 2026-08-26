@@ -9,10 +9,18 @@ export function landscapeFromRotationAngle(value) {
   return null;
 }
 
-function nativeLandscapeLayout() {
+function nativeBridge() {
   try {
-    const bridge = globalThis.VideoPlayerNative;
-    if (!bridge) return null;
+    return globalThis.VideoPlayerNative || null;
+  } catch {
+    return null;
+  }
+}
+
+function nativeLandscapeLayout() {
+  const bridge = nativeBridge();
+  if (!bridge) return null;
+  try {
     const value = bridge.isLandscape();
     if (value === true || value === 'true' || value === 1 || value === '1') return true;
     if (value === false || value === 'false' || value === 0 || value === '0') return false;
@@ -20,10 +28,14 @@ function nativeLandscapeLayout() {
   return null;
 }
 
+function nativeUsesPortraitFixedTouchAxes() {
+  // The Android wrapper reports PointerEvent coordinates in the same physical
+  // portrait-oriented axes after the phone rotates. In that environment,
+  // landscape screen-left/right is absolute Y and screen-up/down is absolute X.
+  return Boolean(nativeBridge());
+}
+
 function currentRotationLandscape() {
-  // Android WebView can keep viewport/screen.orientation.type stale across a
-  // configuration change. The legacy window.orientation angle tracks the
-  // physical display rotation more reliably on those WebView versions.
   const legacy = landscapeFromRotationAngle(globalThis.orientation);
   if (legacy !== null) return legacy;
   return landscapeFromRotationAngle(globalThis.screen?.orientation?.angle);
@@ -36,11 +48,11 @@ export function isLandscapeLayout(
   nativeLandscape = null,
   rotationLandscape = null
 ) {
-  // Rotation angle is the closest signal to the phone's actual rotation and
-  // must win over stale WebView/native layout metadata.
-  if (rotationLandscape === true || rotationLandscape === false) return rotationLandscape;
-
+  // Android Configuration is the source of truth in the native wrapper.
+  // window.orientation can remain 0 after rotation on affected WebView builds.
   if (nativeLandscape === true || nativeLandscape === false) return nativeLandscape;
+
+  if (rotationLandscape === true || rotationLandscape === false) return rotationLandscape;
 
   const type = String(orientationType || '').toLowerCase();
   if (type.startsWith('landscape')) return true;
@@ -73,10 +85,11 @@ export function currentLandscapeLayout() {
   );
 }
 
-export function gestureAxes(landscape) {
-  return landscape
-    ? { nextAxis: 'x', seekAxis: 'y' }
-    : { nextAxis: 'y', seekAxis: 'x' };
+export function gestureAxes(landscape, portraitFixedCoordinates = nativeUsesPortraitFixedTouchAxes()) {
+  if (landscape && !portraitFixedCoordinates) {
+    return { nextAxis: 'x', seekAxis: 'y' };
+  }
+  return { nextAxis: 'y', seekAxis: 'x' };
 }
 
 export function gestureAxisDelta(axis, startX, startY, currentX, currentY) {
@@ -91,10 +104,17 @@ export function seekGestureDeltaSeconds(
   viewportWidth,
   viewportHeight,
   duration,
-  landscape
+  landscape,
+  portraitFixedCoordinates = nativeUsesPortraitFixedTouchAxes()
 ) {
   const mediaDuration = Number(duration);
   if (!Number.isFinite(mediaDuration) || mediaDuration <= 0) return 0;
+
+  if (landscape && portraitFixedCoordinates) {
+    const delta = Number(deltaX) || 0;
+    const span = Math.max(1, Number(viewportHeight) || 1);
+    return delta / span * Math.min(mediaDuration, MAX_FULL_SPAN_SEEK_SECONDS);
+  }
 
   const delta = landscape ? Number(deltaY) || 0 : Number(deltaX) || 0;
   const span = Math.max(1, landscape

@@ -12,15 +12,22 @@ import {
   transitionTransform
 } from '../public/gesture-layout.js';
 
-test('portrait and landscape layouts swap navigation and seek axes', () => {
-  assert.deepEqual(gestureAxes(false), { nextAxis: 'y', seekAxis: 'x' });
-  assert.deepEqual(gestureAxes(true), { nextAxis: 'x', seekAxis: 'y' });
+test('browser layout swaps navigation and seek axes in landscape', () => {
+  assert.deepEqual(gestureAxes(false, false), { nextAxis: 'y', seekAxis: 'x' });
+  assert.deepEqual(gestureAxes(true, false), { nextAxis: 'x', seekAxis: 'y' });
   assert.equal(isLandscapeLayout(360, 720, ''), false);
   assert.equal(isLandscapeLayout(720, 360, ''), true);
   assert.equal(isLandscapeLayout(0, 0, 'landscape-primary'), true);
 });
 
-test('physical rotation angle overrides stale WebView and native orientation state', () => {
+test('native Android landscape keeps portrait-fixed physical touch axes', () => {
+  assert.deepEqual(gestureAxes(false, true), { nextAxis: 'y', seekAxis: 'x' });
+  assert.deepEqual(gestureAxes(true, true), { nextAxis: 'y', seekAxis: 'x' });
+  assert.equal(seekGestureDeltaSeconds(180, 0, 720, 360, 60, true, true), 30);
+  assert.equal(seekGestureDeltaSeconds(0, 180, 720, 360, 60, true, true), 0);
+});
+
+test('native Android orientation overrides stale rotation and WebView state', () => {
   assert.equal(landscapeFromRotationAngle(90), true);
   assert.equal(landscapeFromRotationAngle(-90), true);
   assert.equal(landscapeFromRotationAngle(270), true);
@@ -28,29 +35,29 @@ test('physical rotation angle overrides stale WebView and native orientation sta
   assert.equal(landscapeFromRotationAngle(180), false);
   assert.equal(landscapeFromRotationAngle('unknown'), null);
 
-  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', false, true), true);
-  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', true, false), false);
+  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', true, false), true);
+  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', false, true), false);
 });
 
-test('native Android orientation overrides stale WebView state without a rotation angle', () => {
-  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', true), true);
-  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', false), false);
+test('rotation angle remains fallback without a native bridge', () => {
+  assert.equal(isLandscapeLayout(360, 720, 'portrait-primary', null, true), true);
+  assert.equal(isLandscapeLayout(720, 360, 'landscape-primary', null, false), false);
 });
 
-test('screen orientation overrides stale WebView viewport dimensions without a native bridge', () => {
+test('screen orientation overrides stale WebView viewport dimensions without native metadata', () => {
   assert.equal(isLandscapeLayout(360, 720, 'landscape-primary'), true);
   assert.equal(isLandscapeLayout(720, 360, 'portrait-primary'), false);
 });
 
-test('axis delta follows the selected screen axis', () => {
+test('axis delta follows the selected physical axis', () => {
   assert.equal(gestureAxisDelta('x', 10, 20, 70, 5), 60);
   assert.equal(gestureAxisDelta('y', 10, 20, 70, 5), -15);
 });
 
-test('seek distance uses the axis perpendicular to video navigation', () => {
-  assert.equal(seekGestureDeltaSeconds(180, 0, 360, 720, 60, false), 30);
-  assert.equal(seekGestureDeltaSeconds(0, 180, 720, 360, 60, true), 30);
-  assert.equal(seekGestureDeltaSeconds(720, 0, 720, 360, 600, false), 120);
+test('browser seek distance uses the axis perpendicular to video navigation', () => {
+  assert.equal(seekGestureDeltaSeconds(180, 0, 360, 720, 60, false, false), 30);
+  assert.equal(seekGestureDeltaSeconds(0, 180, 720, 360, 60, true, false), 30);
+  assert.equal(seekGestureDeltaSeconds(720, 0, 720, 360, 600, false, false), 120);
 });
 
 test('transition direction changes with the display orientation', () => {
