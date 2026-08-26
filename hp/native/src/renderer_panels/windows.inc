@@ -125,11 +125,9 @@ bool Renderer::EnsureNativeStaticWindows() {
     }
   }
 
-  // Create the MV WebView independently of nativeMainWindow_ painting. This is
-  // required when HomePanel starts while power saving is already active: the
-  // main panel remains hidden, but the video controller still has to exist so
-  // playback can continue behind the black power-saving overlay.
-  if (nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
+  // Do not create or navigate the YouTube WebView while power saving hides the
+  // dashboard. Once normal mode returns, DrawMusicSection creates it on demand.
+  if (nativeDashboardVisible_ && nativeRadarWindow_ && IsWindow(nativeRadarWindow_)) {
     RECT mvBounds{};
     GetClientRect(nativeRadarWindow_, &mvBounds);
     if (mvBounds.right > mvBounds.left && mvBounds.bottom > mvBounds.top) {
@@ -141,13 +139,10 @@ bool Renderer::EnsureNativeStaticWindows() {
 
 void Renderer::ApplyNativeStaticBounds() {
   const NativeDashboardLayout layout = ComputeNativeDashboardLayout(bounds_);
-  const bool keepMvPlaybackVisible = requestedDashboardVisible_ && powerSavingMode_;
   for (const NativePanelSlot& slot : NativePanelSlots()) {
     const HWND hwnd = this->*slot.window;
     if (!hwnd || !IsWindow(hwnd)) continue;
-    const bool panelVisible = nativeDashboardVisible_ ||
-        (keepMvPlaybackVisible && hwnd == nativeRadarWindow_);
-    PlaceNativeWindow(hwnd, layout.*slot.rect, panelVisible);
+    PlaceNativeWindow(hwnd, layout.*slot.rect, nativeDashboardVisible_);
     InvalidateRect(hwnd, nullptr, FALSE);
   }
 }
