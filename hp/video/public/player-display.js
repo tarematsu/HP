@@ -5,7 +5,7 @@ import { inferVideoOrientation } from './video-orientation.js';
 const SOUND_ENABLED_KEY = 'video-scraper-sound-enabled';
 const SOUND_VOLUME_KEY = 'video-scraper-volume';
 const TAP_THRESHOLD_PX = 28;
-const DOUBLE_TAP_DELAY_MS = 280;
+const DOUBLE_TAP_DELAY_MS = 380;
 const CONTROL_HIDE_DELAY_MS = 2600;
 
 export function formatMediaTime(value) {
@@ -538,7 +538,7 @@ function initialize() {
     event.preventDefault();
     event.stopImmediatePropagation();
     handleTap(event);
-  });
+  }, { capture: true });
 
   player.addEventListener('pointercancel', (event) => {
     if (pointerStart?.pointerId === event.pointerId) pointerStart = null;
