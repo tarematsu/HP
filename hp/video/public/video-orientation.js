@@ -25,7 +25,7 @@ export function inferVideoDimensions(mediaUrl) {
     return null;
   }
 
-  const matches = [...pathname.matchAll(/(?:^|\/)(\d{2,5})x(\d{2,5})(?:\/|$)/gi)];
+  const matches = [...pathname.matchAll(/(?:^|\/)(\d{2,5})x(\d{2,5})(?=\/|$)/gi)];
   const match = matches.at(-1);
   if (!match) return null;
 
