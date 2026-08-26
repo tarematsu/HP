@@ -53,22 +53,26 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV playlist reloads after a fresh 20:00-39:59 random delay and starts Play all with DOM-first native input', () => {
-  assert.match(mvPanel, /kNativeMvReloadTimer/);
-  assert.match(mvPanel, /kNativeMvReloadMinSeconds = 20U \* 60U/);
-  assert.match(mvPanel, /kNativeMvReloadSpanSeconds = 20U \* 60U/);
-  assert.match(mvPanel, /random % kNativeMvReloadSpanSeconds/);
+test('MV random cycle clicks center after 20:00-39:59, then reloads the playlist after another fresh 20:00-39:59', () => {
+  assert.match(mvPanel, /kNativeMvRandomActionTimer/);
+  assert.match(mvPanel, /kNativeMvRandomMinSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvRandomSpanSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /random % kNativeMvRandomSpanSeconds/);
   assert.match(mvPanel, /return seconds \* 1000U/);
-  assert.match(mvPanel, /ScheduleNextPlaylistReload\(\)/);
+  assert.match(mvPanel, /ScheduleNextRandomAction\(\)/);
+  assert.match(mvPanel, /kNativeMvCenterXTenThousandths = 5000/);
+  assert.match(mvPanel, /kNativeMvCenterYTenThousandths = 5000/);
+  assert.match(mvPanel, /nextRandomActionIsCenterClick_ = true/);
   assert.match(
     mvPanel,
-    /if \(timerId == kNativeMvReloadTimer\) \{\s*ReloadPlaylist\(\);\s*if \(!failed_ && !ScheduleNextPlaylistReload\(\)\) Fail\(\);/s,
+    /if \(timerId == kNativeMvRandomActionTimer\) \{\s*if \(nextRandomActionIsCenterClick_\) \{\s*ClickNormalizedPoint\(kNativeMvCenterXTenThousandths,\s*kNativeMvCenterYTenThousandths\);\s*nextRandomActionIsCenterClick_ = false;\s*if \(!failed_ && !ScheduleNextRandomAction\(\)\) Fail\(\);\s*\} else \{\s*ReloadPlaylist\(\);\s*\}/s,
   );
   assert.match(
     mvPanel,
-    /controller_->put_IsVisible\(TRUE\);\s*ReloadPlaylist\(\);\s*if \(failed_\) return;\s*if \(!ScheduleNextPlaylistReload\(\)\)/s,
+    /void ReloadPlaylist\(\) noexcept \{[\s\S]*nextRandomActionIsCenterClick_ = true;[\s\S]*Navigate\(kNativeMvPanelPageUrl\)[\s\S]*ScheduleNextRandomAction\(\)/,
   );
-  assert.doesNotMatch(mvPanel, /kNativeMvHourlyReloadMs/);
+  assert.doesNotMatch(mvPanel, /kNativeMvReloadTimer/);
+  assert.doesNotMatch(mvPanel, /ScheduleNextPlaylistReload/);
   assert.match(mvPanel, /add_NavigationCompleted/);
   assert.match(mvPanel, /ExecuteScript/);
   assert.match(mvPanel, /すべて再生/);
