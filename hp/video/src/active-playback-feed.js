@@ -1,5 +1,5 @@
 import {
-  inferVideoOrientation,
+  matchesVideoOrientationFilter,
   normalizeVideoOrientationFilter
 } from './video-orientation.js';
 
@@ -59,7 +59,7 @@ export async function readAllActivePlaybackCursorPage(db, options = {}) {
   for (const row of rows.slice(0, ORIENTATION_SCAN_LIMIT)) {
     processed += 1;
     lastProcessedId = Number(row.id);
-    if (inferVideoOrientation(row.mediaUrl) === orientation) items.push(row);
+    if (matchesVideoOrientationFilter(row.mediaUrl, orientation)) items.push(row);
     if (items.length >= limit) break;
   }
 
