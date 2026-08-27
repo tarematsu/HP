@@ -38,6 +38,15 @@ test('archive and likes markup are integrated below the shared tab panel', () =>
   assert.match(historyEntry, /VALID_MODES/);
 });
 
+test('history and likes startup release unintended skip-link focus', () => {
+  assert.match(tabsClient, /const skipLink = document\.querySelector\('\.skip-link'\)/);
+  assert.match(tabsClient, /function releaseUnexpectedSkipLinkFocus\(\)/);
+  assert.match(tabsClient, /document\.activeElement === skipLink[\s\S]*skipLink\?\.blur\(\)/);
+  assert.match(tabsClient, /classList\.remove\('keyboard-navigation'\)/);
+  assert.match(tabsClient, /showHistory[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
+  assert.match(tabsClient, /showLikes[\s\S]*finally \{[\s\S]*releaseUnexpectedSkipLinkFocus\(\)/);
+});
+
 test('tab selection stays on the root document and never navigates to history pages', () => {
   assert.match(tabsClient, /mode === 'current' \? '\/' : `\/#\$\{mode\}`/);
   assert.match(tabsClient, /event\.preventDefault\(\)/);
