@@ -5,10 +5,16 @@ const currentView = document.getElementById('currentView');
 const historyView = document.getElementById('historyView');
 const likesView = document.getElementById('likesView');
 const tabs = document.getElementById('modeTabs');
+const skipLink = document.querySelector('.skip-link');
 let historyRuntimePromise = null;
 let likesRuntimePromise = null;
 let historyRuntimeMode = null;
 let activeMode = 'current';
+
+function releaseUnexpectedSkipLinkFocus() {
+  if (document.activeElement === skipLink) skipLink?.blur();
+  document.documentElement.classList.remove('keyboard-navigation');
+}
 
 function updateTabs(mode) {
   tabs?.querySelectorAll('button').forEach((button) => {
@@ -87,6 +93,8 @@ async function showHistory(mode, { updateUrl = true, replaceUrl = false, syncRun
       notice.textContent = '過去データの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
     }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
   }
 }
 
@@ -105,6 +113,8 @@ async function showLikes({ updateUrl = true, replaceUrl = false } = {}) {
       notice.textContent = 'いいねデータの初期化に失敗しました。再読み込みしてください。';
       notice.classList.add('error');
     }
+  } finally {
+    releaseUnexpectedSkipLinkFocus();
   }
 }
 
