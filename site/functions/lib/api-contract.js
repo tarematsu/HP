@@ -20,6 +20,7 @@ export const API_EDGE_TTL_SECONDS = 300;
 export const API_BROWSER_TTL_SECONDS = 30;
 export const MATERIALIZED_RESPONSE_MAX_AGE_MS = 15 * 60_000;
 
+// D1 budget fallback selection belongs to the Actions runner; serving keeps the full canonical set.
 export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'dashboard', url: '/api/dashboard', cadence_minutes: 30 }),
   Object.freeze({ key: 'history:daily', url: '/api/history?mode=daily', cadence_minutes: 360 }),

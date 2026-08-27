@@ -14,16 +14,9 @@ const workflow = readFileSync(
 );
 
 const NOW = Date.UTC(2026, 6, 28, 0, 4);
-const SAFE_KEYS = [
-  'dashboard',
-  'history:daily',
-  'history:weekly',
-  'history:monthly',
-  'history:broadcasts',
-  'host-history:summary',
-];
+const SAFE_KEYS = ['dashboard'];
 
-test('D1 budget deferral still publishes dashboard and bounded summaries', () => {
+test('D1 budget deferral only publishes the bounded dashboard', () => {
   assert.match(workflow, /name: Record D1 budget deferral/);
   assert.match(workflow, /name: Install Worker dependencies\n        run: npm ci/);
   assert.match(workflow, /name: Refresh budget-safe read models during D1 budget deferral/);
@@ -35,12 +28,13 @@ test('D1 budget deferral still publishes dashboard and bounded summaries', () =>
     workflow,
     /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
   );
-  assert.match(workflow, /bounded dashboard and summary refresh will still run\./);
+  assert.match(workflow, /bounded dashboard refresh will still run\./);
+  assert.doesNotMatch(workflow, /bounded dashboard and summary refresh will still run\./);
   assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
   assert.doesNotMatch(workflow, /Rebuild track history|track-history generation/);
 });
 
-test('budget fallback publishes safe summaries without track-history work', async () => {
+test('budget fallback publishes dashboard without history or track-history work', async () => {
   assert.deepEqual(DASHBOARD_ONLY_VARIANTS.map(({ key }) => key), ['dashboard']);
   assert.deepEqual(BUDGET_SAFE_VARIANTS.map(({ key }) => key), SAFE_KEYS);
   const published = [];
