@@ -54,13 +54,6 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     stalledAfterMinutes: 25,
   }),
   Object.freeze({
-    name: 'Observability refresh dispatch',
-    workflow: 'refresh-cloudflare-observability.yml',
-    cadenceMinutes: 60,
-    staleAfterMinutes: 150,
-    stalledAfterMinutes: 15,
-  }),
-  Object.freeze({
     name: 'Unified Cloudflare observability',
     workflow: 'sh-observability.yml',
     cadenceMinutes: 60,
