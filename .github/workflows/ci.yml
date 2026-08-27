@@ -98,7 +98,7 @@ jobs:
           npm run test:js > github-js-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -n -B 8 -A 24 '^not ok ' github-js-tests.log || tail -n 160 github-js-tests.log
+            tail -n 160 github-js-tests.log
           fi
           exit "$status"
       - name: Upload JavaScript test failure log
@@ -150,7 +150,7 @@ jobs:
           node --test tests/*.test.js > pages-integration-tests.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
-            grep -n -B 8 -A 24 '^not ok ' pages-integration-tests.log || tail -n 200 pages-integration-tests.log
+            tail -n 200 pages-integration-tests.log
           fi
           exit "$status"
       - name: Upload Pages integration failure log
