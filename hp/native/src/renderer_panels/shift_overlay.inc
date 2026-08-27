@@ -52,8 +52,8 @@ void PaintShiftOverlay(HWND hwnd) {
   FillRect(dc, &bounds, keyBrush);
   DeleteObject(keyBrush);
 
-  const int width = std::max(1L, bounds.right - bounds.left);
-  const int height = std::max(1L, bounds.bottom - bounds.top);
+  const int width = static_cast<int>(std::max(1L, bounds.right - bounds.left));
+  const int height = static_cast<int>(std::max(1L, bounds.bottom - bounds.top));
   int fontHeight = std::clamp(height * 240 / 1000, 64, 360);
   HFONT font = CreateShiftOverlayFont(fontHeight);
   if (!font) {
@@ -69,7 +69,8 @@ void PaintShiftOverlay(HWND hwnd) {
     if (extent.cx > targetWidth) {
       SelectObject(dc, previousFont);
       DeleteObject(font);
-      fontHeight = std::max(24, fontHeight * targetWidth / std::max(1L, extent.cx));
+      const int measuredWidth = std::max(1, static_cast<int>(extent.cx));
+      fontHeight = std::max(24, fontHeight * targetWidth / measuredWidth);
       font = CreateShiftOverlayFont(fontHeight);
       if (!font) {
         EndPaint(hwnd, &paint);
