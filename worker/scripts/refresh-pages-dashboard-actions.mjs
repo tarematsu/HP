@@ -1,14 +1,11 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
+import { BUDGET_SAFE_MATERIALIZED_API_VARIANTS } from '../../site/functions/lib/api-contract.js';
 import { runPagesReadModelActions } from './run-pages-read-model-actions.mjs';
 
-export const DASHBOARD_ONLY_VARIANTS = Object.freeze(
-  MATERIALIZED_API_VARIANTS.filter((variant) => variant.key === 'dashboard'),
-);
-
-export const BUDGET_SAFE_VARIANTS = Object.freeze([...DASHBOARD_ONLY_VARIANTS]);
+export const DASHBOARD_ONLY_VARIANTS = BUDGET_SAFE_MATERIALIZED_API_VARIANTS;
+export const BUDGET_SAFE_VARIANTS = BUDGET_SAFE_MATERIALIZED_API_VARIANTS;
 
 export async function refreshPagesDashboardActions(options = {}) {
   return runPagesReadModelActions({
