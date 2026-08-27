@@ -1,6 +1,6 @@
-import './dashboard-header.js?v=20260731.1';
-import './dashboard-tabs.js?v=20260731.1';
-import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260731.1';
+import './dashboard-header.js?v=20260828.1';
+import './dashboard-tabs.js?v=20260828.1';
+import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260828.1';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
 const IMAGE_RETRY_DELAYS = [5_000, 30_000, 120_000];
@@ -112,7 +112,7 @@ window.fetch = async (input, init) => {
 };
 
 restoreDashboardCache();
-void import('/dashboard-client.js?v=20260731.1').catch((error) => {
+void import('/dashboard-client.js?v=20260828.1').catch((error) => {
   console.error('dashboard client failed to start', error);
   const status = document.getElementById('statusMessage');
   if (status) {
