@@ -8,7 +8,7 @@ export const DASHBOARD_ONLY_VARIANTS = Object.freeze(
   MATERIALIZED_API_VARIANTS.filter((variant) => variant.key === 'dashboard'),
 );
 
-export const BUDGET_SAFE_VARIANTS = Object.freeze([...MATERIALIZED_API_VARIANTS]);
+export const BUDGET_SAFE_VARIANTS = Object.freeze([...DASHBOARD_ONLY_VARIANTS]);
 
 export async function refreshPagesDashboardActions(options = {}) {
   return runPagesReadModelActions({
