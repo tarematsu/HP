@@ -6,7 +6,10 @@
 #endif
 #include "shared_webview_environment.h"
 #include "version.h"
+#define PlaceNativeWindow BasePlaceNativeWindow
 #include "renderer_panels/primitives.inc"
+#undef PlaceNativeWindow
+#include "renderer_panels/shift_overlay.inc"
 #include "renderer_panels/layout_overrides.inc"
 #include "renderer_panels/waste_calendar_section.inc"
 
