@@ -37,10 +37,12 @@ test('dashboard navigation and likes summary remain balanced across breakpoints'
   assert.match(headerCss, /\.summary-cards\.likes-summary article:last-child\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
 });
 
-test('hash navigation hides skip-link focus until keyboard navigation is detected', () => {
+test('hash navigation hides skip-link focus until a real Tab focuses the skip link', () => {
   assert.match(headerCss, /\.skip-link:focus\s*\{[\s\S]*opacity:\s*0[\s\S]*translateY\(-150%\)/);
   assert.match(headerCss, /html\.keyboard-navigation \.skip-link:focus\s*\{[\s\S]*opacity:\s*1[\s\S]*transform:\s*none/);
-  assert.match(headerRepair, /event\.key === 'Tab'/);
+  assert.match(headerRepair, /event\.key !== 'Tab' \|\| !event\.isTrusted/);
+  assert.match(headerRepair, /document\.activeElement !== skipLink/);
+  assert.match(headerRepair, /focusout/);
   assert.match(headerRepair, /pointerdown/);
 });
 

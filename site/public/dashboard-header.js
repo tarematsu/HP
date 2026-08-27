@@ -7,12 +7,21 @@ if (!document.querySelector(`link[href="${stylesheetHref}"]`)) {
 }
 
 const KEYBOARD_NAVIGATION_CLASS = 'keyboard-navigation';
-document.addEventListener('keydown', (event) => {
-  if (event.key === 'Tab') document.documentElement.classList.add(KEYBOARD_NAVIGATION_CLASS);
-}, { capture: true });
-document.addEventListener('pointerdown', () => {
+const skipLink = document.querySelector('.skip-link');
+const clearKeyboardNavigation = () => {
   document.documentElement.classList.remove(KEYBOARD_NAVIGATION_CLASS);
+};
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab' || !event.isTrusted) return;
+  document.documentElement.classList.add(KEYBOARD_NAVIGATION_CLASS);
+  setTimeout(() => {
+    if (document.activeElement !== skipLink) clearKeyboardNavigation();
+  }, 0);
 }, { capture: true });
+document.addEventListener('focusout', (event) => {
+  if (event.target === skipLink) clearKeyboardNavigation();
+}, { capture: true });
+document.addEventListener('pointerdown', clearKeyboardNavigation, { capture: true });
 
 const description = document.getElementById('description');
 const updated = document.getElementById('updated');
