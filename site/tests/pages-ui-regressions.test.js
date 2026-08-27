@@ -55,7 +55,10 @@ test('official stream series resolves hosts without the removed minute-fact host
       broadcast_session_id INTEGER
     );
     CREATE INDEX idx_sh_minute_facts_time ON sh_minute_facts(minute_at ASC,id ASC);
-    CREATE TABLE sh_minute_fact_context(fact_id INTEGER PRIMARY KEY,host_id INTEGER);
+    CREATE TABLE sh_minute_fact_context_v2(
+      fact_id INTEGER PRIMARY KEY,
+      host_id_override INTEGER
+    );
     INSERT INTO sh_hosts VALUES(1,'sakurazaka46jp');
     INSERT INTO sh_broadcast_sessions VALUES(10,1);
     INSERT INTO sh_minute_facts VALUES
@@ -63,7 +66,7 @@ test('official stream series resolves hosts without the removed minute-fact host
       (2,160000,2,102,10),
       (3,220000,3,103,NULL),
       (4,280000,4,104,NULL);
-    INSERT INTO sh_minute_fact_context VALUES(3,1),(4,1);
+    INSERT INTO sh_minute_fact_context_v2 VALUES(3,1),(4,1);
   `);
 
   assert.doesNotMatch(SAKURAZAKA_MINUTE_SERIES_SQL, /\bf\.host_id\b/);
