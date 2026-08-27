@@ -29,6 +29,10 @@ export const MATERIALIZED_API_VARIANTS = Object.freeze([
   Object.freeze({ key: 'host-history:summary', url: '/api/host-history?mode=summary', cadence_minutes: 1440 }),
 ]);
 
+export const BUDGET_SAFE_MATERIALIZED_API_VARIANTS = Object.freeze(
+  MATERIALIZED_API_VARIANTS.filter((variant) => variant.key === 'dashboard'),
+);
+
 const materializedVariantsByKey = new Map(MATERIALIZED_API_VARIANTS.map((variant) => [variant.key, variant]));
 
 function normalizedPathname(value) {
