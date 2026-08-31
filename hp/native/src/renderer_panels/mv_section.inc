@@ -7,8 +7,10 @@ constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
 constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
-constexpr UINT kNativeMvRandomMinSeconds = 20U * 60U;
-constexpr UINT kNativeMvRandomSpanSeconds = 20U * 60U;
+constexpr UINT kNativeMvCenterClickMinSeconds = 20U * 60U;
+constexpr UINT kNativeMvCenterClickSpanSeconds = 20U * 60U;
+constexpr UINT kNativeMvReloadAfterCenterMinSeconds = 60U * 60U;
+constexpr UINT kNativeMvReloadAfterCenterSpanSeconds = 20U * 60U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
@@ -204,7 +206,11 @@ class NativeMvPanelHost {
         ClickNormalizedPoint(kNativeMvCenterXTenThousandths,
                              kNativeMvCenterYTenThousandths);
         nextRandomActionIsCenterClick_ = false;
-        if (!failed_ && !ScheduleNextRandomAction()) Fail();
+        if (!failed_ &&
+            !ScheduleNextRandomAction(kNativeMvReloadAfterCenterMinSeconds,
+                                      kNativeMvReloadAfterCenterSpanSeconds)) {
+          Fail();
+        }
       } else {
         ReloadPlaylist();
       }
@@ -340,7 +346,8 @@ class NativeMvPanelHost {
     }
   }
 
-  static UINT NextRandomActionDelayMs() noexcept {
+  static UINT NextRandomActionDelayMs(UINT minSeconds,
+                                      UINT spanSeconds) noexcept {
     static ULONGLONG state = 0;
     if (state == 0) {
       LARGE_INTEGER counter{};
@@ -355,15 +362,15 @@ class NativeMvPanelHost {
     state ^= state << 25;
     state ^= state >> 27;
     const ULONGLONG random = state * 2685821657736338717ULL;
-    const UINT seconds = kNativeMvRandomMinSeconds +
-        static_cast<UINT>(random % kNativeMvRandomSpanSeconds);
+    const UINT seconds = minSeconds +
+        static_cast<UINT>(random % spanSeconds);
     return seconds * 1000U;
   }
 
-  bool ScheduleNextRandomAction() noexcept {
+  bool ScheduleNextRandomAction(UINT minSeconds, UINT spanSeconds) noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return false;
     return SetTimer(hostWindow_, kNativeMvRandomActionTimer,
-                    NextRandomActionDelayMs(), nullptr) != 0;
+                    NextRandomActionDelayMs(minSeconds, spanSeconds), nullptr) != 0;
   }
 
   bool ScheduleNavigationRetry() noexcept {
@@ -413,7 +420,10 @@ class NativeMvPanelHost {
       if (!ScheduleNavigationRetry()) Fail();
       return;
     }
-    if (!ScheduleNextRandomAction()) Fail();
+    if (!ScheduleNextRandomAction(kNativeMvCenterClickMinSeconds,
+                                  kNativeMvCenterClickSpanSeconds)) {
+      Fail();
+    }
   }
 
   void BeginPlayAllProbe() noexcept {
