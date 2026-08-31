@@ -21,9 +21,19 @@ function run({ minutesAgo, status = 'completed', conclusion = 'success', id = 1 
   };
 }
 
-function requestFor({ pages = 10, runtime = 10, metadata = 10, localMinute = 10 } = {}) {
+function runSpec(value) {
+  return typeof value === 'number' ? { minutesAgo: value } : value;
+}
+
+function requestFor({
+  pages = 10,
+  runtime = 10,
+  metadata = 10,
+  localMinute = 10,
+  observability = 10,
+} = {}) {
   const calls = [];
-  const minutes = { pages, runtime, metadata, localMinute };
+  const specs = { pages, runtime, metadata, localMinute, observability };
   const byFile = Object.fromEntries(Object.entries(WORKFLOWS).map(([key, definition]) => [definition.file, key]));
   return {
     calls,
@@ -33,20 +43,25 @@ function requestFor({ pages = 10, runtime = 10, metadata = 10, localMinute = 10 
       const file = decodeURIComponent(url.match(/actions\/workflows\/([^/]+)\/runs/)?.[1] || '');
       const key = byFile[file];
       assert.ok(key, `unexpected workflow URL: ${url}`);
-      return { workflow_runs: [run({ minutesAgo: minutes[key] })] };
+      return { workflow_runs: [run(runSpec(specs[key]))] };
     },
   };
 }
 
 test('generic state preserves active and failed runs instead of retrying them', () => {
-  assert.equal(workflowRunState([run({ minutesAgo: 80, status: 'in_progress', conclusion: '' })], {
+  const active = workflowRunState([run({ minutesAgo: 80, status: 'in_progress', conclusion: '' })], {
     now,
     staleAfterMs: 60 * 60_000,
-  }).state, 'active');
-  assert.equal(workflowRunState([run({ minutesAgo: 80, conclusion: 'failure' })], {
+  });
+  assert.equal(active.state, 'active');
+  assert.equal(active.startedAtMs, now - 80 * 60_000);
+
+  const failed = workflowRunState([run({ minutesAgo: 80, conclusion: 'failure' })], {
     now,
     staleAfterMs: 60 * 60_000,
-  }).state, 'failed');
+  });
+  assert.equal(failed.state, 'failed');
+  assert.equal(failed.startedAtMs, now - 80 * 60_000);
 });
 
 test('stale Runtime is recovered when Pages is fresh', async () => {
@@ -96,6 +111,50 @@ test('fresh Runtime independently recovers stale metadata and local minute workf
   assert.ok(postUrls.some((url) => /run-local-minute-facts-rebuild\.yml\/dispatches$/.test(url)));
 });
 
+test('Runtime recovery refreshes an older failed observability diagnostic', async () => {
+  const fixture = requestFor({
+    runtime: 5,
+    observability: { minutesAgo: 20, conclusion: 'failure' },
+  });
+  const result = await recoverMaintenanceWorkflows({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    request: fixture.request,
+  });
+  assert.deepEqual(result.dispatched, ['observabilityRefresh']);
+  assert.equal(result.reason, 'observability-refresh-dispatched');
+  const posts = fixture.calls.filter((call) => call.options.method === 'POST');
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].url, /refresh-cloudflare-observability\.yml\/dispatches$/);
+});
+
+test('newer observability failures remain visible instead of being auto-retried', async () => {
+  const fixture = requestFor({
+    runtime: 20,
+    observability: { minutesAgo: 5, conclusion: 'failure' },
+  });
+  const result = await recoverMaintenanceWorkflows({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    request: fixture.request,
+  });
+  assert.deepEqual(result.dispatched, []);
+  assert.equal(result.reason, 'maintenance-fresh-or-visible');
+});
+
+test('stale observability is refreshed after Runtime is healthy', async () => {
+  const fixture = requestFor({ runtime: 5, observability: 70 });
+  const result = await recoverMaintenanceWorkflows({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    request: fixture.request,
+  });
+  assert.deepEqual(result.dispatched, ['observabilityRefresh']);
+});
+
 test('maintenance watchdog is independent, offset, and has no Cloudflare credentials', () => {
   const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
   const script = read('.github/scripts/recover-maintenance-workflows.mjs');
@@ -110,6 +169,9 @@ test('maintenance watchdog is independent, offset, and has no Cloudflare credent
   assert.match(script, /run-runtime-offline-maintenance\.yml/);
   assert.match(script, /run-track-metadata-repair\.yml/);
   assert.match(script, /run-local-minute-facts-rebuild\.yml/);
+  assert.match(script, /sh-observability\.yml/);
+  assert.match(script, /refresh-cloudflare-observability\.yml/);
   assert.match(script, /runtime-waits-for-pages-recovery/);
+  assert.match(script, /runtime\.startedAtMs > observability\.startedAtMs/);
   assert.match(script, /state !== 'fresh'/);
 });
