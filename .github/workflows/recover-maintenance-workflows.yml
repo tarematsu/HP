@@ -1,0 +1,43 @@
+name: Recover maintenance workflows
+
+on:
+  workflow_run:
+    workflows: ["Publish GitHub Actions runner health"]
+    types: [completed]
+  schedule:
+    - cron: '18,48 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/recover-maintenance-workflows.yml'
+      - '.github/scripts/recover-maintenance-workflows.mjs'
+      - '.github/workflows/run-pages-read-model-rebuild.yml'
+      - '.github/workflows/run-runtime-offline-maintenance.yml'
+      - '.github/workflows/run-track-metadata-repair.yml'
+      - '.github/workflows/run-local-minute-facts-rebuild.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: maintenance-workflow-recovery
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recover missing maintenance schedule delivery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/recover-maintenance-workflows.mjs
