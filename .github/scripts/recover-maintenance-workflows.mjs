@@ -6,8 +6,10 @@ export const WORKFLOWS = Object.freeze({
   runtime: Object.freeze({ file: 'run-runtime-offline-maintenance.yml', staleAfterMs: 60 * 60_000 }),
   metadata: Object.freeze({ file: 'run-track-metadata-repair.yml', staleAfterMs: 60 * 60_000 }),
   localMinute: Object.freeze({ file: 'run-local-minute-facts-rebuild.yml', staleAfterMs: 45 * 60_000 }),
+  observability: Object.freeze({ file: 'sh-observability.yml', staleAfterMs: 60 * 60_000 }),
 });
 
+const OBSERVABILITY_REFRESH_WORKFLOW = Object.freeze({ file: 'refresh-cloudflare-observability.yml' });
 const ACTIVE_STATUSES = new Set(['queued', 'in_progress', 'waiting', 'pending', 'requested']);
 
 function startedAt(run) {
@@ -21,21 +23,33 @@ export function workflowRunState(runs, { now = Date.now(), staleAfterMs } = {}) 
     .filter(({ timestamp }) => timestamp != null)
     .sort((left, right) => right.timestamp - left.timestamp)[0];
 
-  if (!latest) return { state: 'missing', runId: null, ageMs: null };
+  if (!latest) return { state: 'missing', runId: null, ageMs: null, startedAtMs: null };
 
   const status = String(latest.run.status || '').toLowerCase();
   const conclusion = String(latest.run.conclusion || '').toLowerCase();
   const ageMs = Math.max(0, Number(now) - latest.timestamp);
   const runId = latest.run.id ?? null;
+  const common = { runId, ageMs, startedAtMs: latest.timestamp };
 
-  if (ACTIVE_STATUSES.has(status)) return { state: 'active', runId, ageMs };
-  if (conclusion !== 'success') return { state: 'failed', runId, ageMs, conclusion };
-  if (ageMs >= staleAfterMs) return { state: 'stale', runId, ageMs };
-  return { state: 'fresh', runId, ageMs };
+  if (ACTIVE_STATUSES.has(status)) return { state: 'active', ...common };
+  if (conclusion !== 'success') return { state: 'failed', ...common, conclusion };
+  if (ageMs >= staleAfterMs) return { state: 'stale', ...common };
+  return { state: 'fresh', ...common };
 }
 
 function shouldRecover(state) {
   return state === 'missing' || state === 'stale';
+}
+
+function shouldRefreshObservability(states) {
+  const runtime = states.runtime;
+  const observability = states.observability;
+  if (runtime?.state !== 'fresh') return false;
+  if (shouldRecover(observability?.state)) return true;
+  if (observability?.state !== 'failed') return false;
+  return Number.isFinite(runtime.startedAtMs)
+    && Number.isFinite(observability.startedAtMs)
+    && runtime.startedAtMs > observability.startedAtMs;
 }
 
 async function githubRequest(url, { token, method = 'GET', body } = {}) {
@@ -119,11 +133,28 @@ export async function recoverMaintenanceWorkflows({
     dispatched.push(key);
   }
 
+  // A failed full diagnostic is safe to retry only when Runtime has recovered
+  // after that failure. Stale/missing diagnostics are also refreshed. Reuse the
+  // existing lightweight dispatcher instead of duplicating the full workflow API contract.
+  if (shouldRefreshObservability(states)) {
+    await dispatchWorkflow(repository, OBSERVABILITY_REFRESH_WORKFLOW, token, request);
+    dispatched.push('observabilityRefresh');
+  }
+
+  let reason = 'maintenance-fresh-or-visible';
+  if (dispatched.includes('observabilityRefresh') && dispatched.length > 1) {
+    reason = 'downstream-and-observability-recovered';
+  } else if (dispatched.includes('observabilityRefresh')) {
+    reason = 'observability-refresh-dispatched';
+  } else if (dispatched.length) {
+    reason = 'downstream-recovered';
+  }
+
   return {
     ok: true,
     dispatched,
     states,
-    reason: dispatched.length ? 'downstream-recovered' : 'maintenance-fresh-or-visible',
+    reason,
   };
 }
 
