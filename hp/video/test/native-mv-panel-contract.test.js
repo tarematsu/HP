@@ -53,23 +53,25 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV random cycle clicks center after 20:00-39:59, then reloads the playlist after another fresh 20:00-39:59', () => {
+test('MV random cycle clicks center after 20:00-39:59, then reloads after 60:00-79:59', () => {
   assert.match(mvPanel, /kNativeMvRandomActionTimer/);
-  assert.match(mvPanel, /kNativeMvRandomMinSeconds = 20U \* 60U/);
-  assert.match(mvPanel, /kNativeMvRandomSpanSeconds = 20U \* 60U/);
-  assert.match(mvPanel, /random % kNativeMvRandomSpanSeconds/);
+  assert.match(mvPanel, /kNativeMvCenterClickMinSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvCenterClickSpanSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvReloadAfterCenterMinSeconds = 60U \* 60U/);
+  assert.match(mvPanel, /kNativeMvReloadAfterCenterSpanSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /random % spanSeconds/);
   assert.match(mvPanel, /return seconds \* 1000U/);
-  assert.match(mvPanel, /ScheduleNextRandomAction\(\)/);
+  assert.match(mvPanel, /ScheduleNextRandomAction\(UINT minSeconds, UINT spanSeconds\)/);
   assert.match(mvPanel, /kNativeMvCenterXTenThousandths = 5000/);
   assert.match(mvPanel, /kNativeMvCenterYTenThousandths = 5000/);
   assert.match(mvPanel, /nextRandomActionIsCenterClick_ = true/);
   assert.match(
     mvPanel,
-    /if \(timerId == kNativeMvRandomActionTimer\) \{\s*if \(nextRandomActionIsCenterClick_\) \{\s*ClickNormalizedPoint\(kNativeMvCenterXTenThousandths,\s*kNativeMvCenterYTenThousandths\);\s*nextRandomActionIsCenterClick_ = false;\s*if \(!failed_ && !ScheduleNextRandomAction\(\)\) Fail\(\);\s*\} else \{\s*ReloadPlaylist\(\);\s*\}/s,
+    /if \(timerId == kNativeMvRandomActionTimer\) \{\s*if \(nextRandomActionIsCenterClick_\) \{\s*ClickNormalizedPoint\(kNativeMvCenterXTenThousandths,\s*kNativeMvCenterYTenThousandths\);\s*nextRandomActionIsCenterClick_ = false;[\s\S]*ScheduleNextRandomAction\(kNativeMvReloadAfterCenterMinSeconds,\s*kNativeMvReloadAfterCenterSpanSeconds\)[\s\S]*\} else \{\s*ReloadPlaylist\(\);\s*\}/s,
   );
   assert.match(
     mvPanel,
-    /void ReloadPlaylist\(\) noexcept \{[\s\S]*nextRandomActionIsCenterClick_ = true;[\s\S]*Navigate\(kNativeMvPanelPageUrl\)[\s\S]*ScheduleNextRandomAction\(\)/,
+    /void ReloadPlaylist\(\) noexcept \{[\s\S]*nextRandomActionIsCenterClick_ = true;[\s\S]*Navigate\(kNativeMvPanelPageUrl\)[\s\S]*ScheduleNextRandomAction\(kNativeMvCenterClickMinSeconds,\s*kNativeMvCenterClickSpanSeconds\)/,
   );
   assert.doesNotMatch(mvPanel, /kNativeMvReloadTimer/);
   assert.doesNotMatch(mvPanel, /ScheduleNextPlaylistReload/);
