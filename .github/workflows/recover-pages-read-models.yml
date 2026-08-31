@@ -1,0 +1,34 @@
+name: Recover Pages read models
+
+on:
+  workflow_run:
+    workflows: ["Publish GitHub Actions runner health"]
+    types: [completed]
+  schedule:
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: pages-read-model-recovery
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recover missing Pages schedule delivery
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/recover-pages-read-models.mjs
