@@ -53,9 +53,9 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV random cycle clicks center after 20:00-39:59, then reloads after 60:00-79:59', () => {
+test('MV random cycle clicks center after 60:00-79:59, then reloads after another 60:00-79:59', () => {
   assert.match(mvPanel, /kNativeMvRandomActionTimer/);
-  assert.match(mvPanel, /kNativeMvCenterClickMinSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvCenterClickMinSeconds = 60U \* 60U/);
   assert.match(mvPanel, /kNativeMvCenterClickSpanSeconds = 20U \* 60U/);
   assert.match(mvPanel, /kNativeMvReloadAfterCenterMinSeconds = 60U \* 60U/);
   assert.match(mvPanel, /kNativeMvReloadAfterCenterSpanSeconds = 20U \* 60U/);
