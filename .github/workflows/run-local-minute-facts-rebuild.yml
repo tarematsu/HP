@@ -9,6 +9,8 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/run-local-minute-facts-rebuild.yml'
+      - 'scripts/cloudflare-d1-write-guard.mjs'
       - 'database/minute-facts-local-rebuild.trigger'
   workflow_dispatch:
 
@@ -22,8 +24,59 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rebuild:
+  d1-budget:
+    name: Check D1 Actions budget
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
+      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
+      D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
+    outputs:
+      allowed: ${{ steps.d1-budget.outputs.allowed }}
+      reason: ${{ steps.d1-budget.outputs.reason }}
+      rows_read: ${{ steps.d1-budget.outputs.rows_read }}
+      projected_rows_read: ${{ steps.d1-budget.outputs.projected_rows_read }}
+      read_limit: ${{ steps.d1-budget.outputs.read_limit }}
+      rows_written: ${{ steps.d1-budget.outputs.rows_written }}
+      write_limit: ${{ steps.d1-budget.outputs.limit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Resolve Cloudflare account context
+        uses: ./.github/actions/cloudflare-context
+        with:
+          api-token: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check D1 Actions read and write budgets
+        id: d1-budget
+        run: node ../scripts/cloudflare-d1-write-guard.mjs
+      - name: Summarize D1 budget decision
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### D1 Actions budget"
+            echo "- Decision: ${{ steps.d1-budget.outputs.reason }}"
+            echo "- UTC-day reads: ${{ steps.d1-budget.outputs.rows_read }} / ${{ steps.d1-budget.outputs.read_limit }}"
+            echo "- Projected UTC-day reads: ${{ steps.d1-budget.outputs.projected_rows_read }} / ${{ steps.d1-budget.outputs.read_limit }}"
+            echo "- Hourly writes: ${{ steps.d1-budget.outputs.rows_written }} / ${{ steps.d1-budget.outputs.limit }}"
+            if [[ "${{ steps.d1-budget.outputs.allowed }}" != 'true' ]]; then
+              echo "- Local minute facts rebuild: deferred"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rebuild:
+    needs: d1-budget
+    if: needs.d1-budget.result == 'success' && needs.d1-budget.outputs.allowed == 'true'
     uses: ./.github/workflows/database.yml
     with:
       operation: minute-facts-local-rebuild
