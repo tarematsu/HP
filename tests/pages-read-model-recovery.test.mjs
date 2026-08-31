@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   STALE_AFTER_MS,
   pagesRecoveryDecision,
+  recoverPagesReadModels,
 } from '../.github/scripts/recover-pages-read-models.mjs';
 
 const root = new URL('../', import.meta.url);
@@ -22,9 +23,9 @@ function run({ minutesAgo, status = 'completed', conclusion = 'success', id = 1 
 
 test('Pages recovery only dispatches a missing stale successful schedule', () => {
   assert.equal(STALE_AFTER_MS, 45 * 60_000);
-  assert.deepEqual(pagesRecoveryDecision([run({ minutesAgo: 30 })], { now }).dispatch, false);
-  assert.deepEqual(pagesRecoveryDecision([run({ minutesAgo: 46 })], { now }).dispatch, true);
-  assert.deepEqual(pagesRecoveryDecision([], { now }).reason, 'no-pages-runs');
+  assert.equal(pagesRecoveryDecision([run({ minutesAgo: 30 })], { now }).dispatch, false);
+  assert.equal(pagesRecoveryDecision([run({ minutesAgo: 46 })], { now }).dispatch, true);
+  assert.equal(pagesRecoveryDecision([], { now }).reason, 'no-pages-runs');
 });
 
 test('Pages recovery does not hide active or failed operational runs', () => {
@@ -36,6 +37,44 @@ test('Pages recovery does not hide active or failed operational runs', () => {
     pagesRecoveryDecision([run({ minutesAgo: 90, conclusion: 'failure' })], { now }).reason,
     'latest-pages-run-not-successful',
   );
+});
+
+test('stale recovery dispatches the existing Pages workflow without forcing all variants', async () => {
+  const calls = [];
+  const result = await recoverPagesReadModels({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    async request(url, options) {
+      calls.push({ url, options });
+      if (options?.method === 'POST') return null;
+      return { workflow_runs: [run({ minutesAgo: 90, id: 834 })] };
+    },
+  });
+
+  assert.equal(result.dispatched, true);
+  assert.equal(result.reason, 'pages-run-stale');
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].url, /run-pages-read-model-rebuild\.yml\/runs\?branch=main&per_page=20$/);
+  assert.match(calls[1].url, /run-pages-read-model-rebuild\.yml\/dispatches$/);
+  assert.equal(calls[1].options.method, 'POST');
+  assert.deepEqual(calls[1].options.body, { ref: 'main', inputs: { force_all: 'false' } });
+});
+
+test('fresh Pages run suppresses recovery dispatch', async () => {
+  const calls = [];
+  const result = await recoverPagesReadModels({
+    token: 'test-token',
+    repository: 'tarematsu/HP',
+    now,
+    async request(url, options) {
+      calls.push({ url, options });
+      return { workflow_runs: [run({ minutesAgo: 10 })] };
+    },
+  });
+  assert.equal(result.dispatched, false);
+  assert.equal(result.reason, 'pages-run-fresh');
+  assert.equal(calls.length, 1);
 });
 
 test('Pages recovery watchdog is independent and budget-safe', () => {
