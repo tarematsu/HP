@@ -46,6 +46,16 @@ test('login foreground uses six tall side-by-side WebView hosts', () => {
   assert.match(spotify, /RecomputeAuthenticationForeground\(\)/);
 });
 
+test('foreground Spotify WebViews show account names from left to right', () => {
+  assert.match(
+    spotify,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
+  );
+  assert.match(spotify, /__homePanelSpotifyAccount/);
+  assert.match(spotify, /position:fixed;left:8px;top:8px/);
+  assert.match(spotify, /BuildSpotifyPanelLabelScript\(target->index\)/);
+});
+
 test('all Spotify profiles keep Lonesome rabbit playing on repeat one', () => {
   assert.match(spotify, /2f2Ik9JeinFVWZuFb3i35b/);
   assert.match(
