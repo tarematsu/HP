@@ -91,15 +91,20 @@ test('MV cycle closes WebView after 50:00-59:59 and reopens it after 60:00-79:59
   assert.doesNotMatch(mvPanel, /ScheduleNextPlaylistReload/);
 });
 
-test('MV pause surface uses a Sakurazaka46 artist image and native pause label', () => {
-  assert.match(mvPanel, /sakurazaka46\.com\/files\/14\/Sakurazaka4615th/);
-  assert.match(mvPanel, /WinHttpDownload\(/);
-  assert.match(mvPanel, /DecodeImageBytesToBitmap\(/);
-  assert.match(mvPanel, /StartPauseImageLoad\(\)/);
+test('MV pause surface is plain black with only a native pause label', () => {
+  assert.match(
+    mvPanel,
+    /FillRect\(dc, &client, static_cast<HBRUSH>\(GetStockObject\(BLACK_BRUSH\)\)\)/,
+  );
   assert.match(mvPanel, /DrawPauseScreen\(dc, client\)/);
   assert.match(mvPanel, /L"一時停止"/);
-  assert.match(mvPanel, /StretchBlt\(/);
-  assert.match(mvPanel, /kNativeMvPauseImageReadyMessage/);
+  assert.doesNotMatch(mvPanel, /sakurazaka46\.com\/files/);
+  assert.doesNotMatch(mvPanel, /WinHttpDownload\(/);
+  assert.doesNotMatch(mvPanel, /DecodeImageBytesToBitmap\(/);
+  assert.doesNotMatch(mvPanel, /StartPauseImageLoad\(/);
+  assert.doesNotMatch(mvPanel, /StretchBlt\(/);
+  assert.doesNotMatch(mvPanel, /kNativeMvPauseImageReadyMessage/);
+  assert.doesNotMatch(composition, /#include "winhttp_helpers\.h"/);
 });
 
 test('MV playback enters YouTube fullscreen with DOM-located native input', () => {
