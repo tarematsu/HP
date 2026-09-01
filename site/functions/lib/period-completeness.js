@@ -6,6 +6,8 @@ export const DAILY_BOUNDARY_TOLERANCE_MS = 15 * 60 * 1000;
 export const WEEKLY_BOUNDARY_TOLERANCE_MS = 12 * 60 * 60 * 1000;
 export const MONTHLY_BOUNDARY_TOLERANCE_MS = 2 * DAY_MS;
 export const PERIOD_BOUNDARY_TOLERANCE_MS = DAILY_BOUNDARY_TOLERANCE_MS;
+export const DAILY_EXPECTED_SAMPLE_COUNT = 1440;
+export const DAILY_MINIMUM_SAMPLE_COUNT = 1400;
 export const KNOWN_DAILY_STREAM_GAPS = new Set(['2026-04-30']);
 
 const EMAIL_WEEKLY_FROM = '2026-01-01';
@@ -111,6 +113,7 @@ export function evaluatePeriodCompleteness({
   periodKey,
   firstObservedAt,
   lastObservedAt,
+  sampleCount,
   qualityFlags,
   now = Date.now(),
   toleranceMs,
@@ -135,6 +138,11 @@ export function evaluatePeriodCompleteness({
   const reasons = [];
   if (current) reasons.push('current_period');
   if (knownGap) reasons.push('known_collection_gap');
+  const samples = finiteNumber(sampleCount);
+  if (mode === 'daily' && samples != null) {
+    if (samples < DAILY_MINIMUM_SAMPLE_COUNT) reasons.push('insufficient_samples');
+    if (samples > DAILY_EXPECTED_SAMPLE_COUNT) reasons.push('excess_samples');
+  }
   if (!withinPeriodBoundaryTolerance(firstObservedAt, bounds.start, effectiveToleranceMs)) {
     reasons.push('missing_period_start');
   }
@@ -148,6 +156,8 @@ function qualityFlagsForReasons(reasons) {
   const flags = [];
   if (reasons.includes('current_period')) flags.push('incomplete_current_period');
   if (reasons.includes('known_collection_gap')) flags.push('known_collection_gap');
+  if (reasons.includes('insufficient_samples')) flags.push('incomplete_sample_count');
+  if (reasons.includes('excess_samples')) flags.push('excess_sample_count');
   if (reasons.includes('missing_period_start')) flags.push('incomplete_period_start');
   if (reasons.includes('missing_period_end')) flags.push('incomplete_period_end');
   if (reasons.includes('invalid_period_key')) flags.push('invalid_period_key');
@@ -165,6 +175,7 @@ export function applySummaryCompleteness(rows, mode, now = Date.now()) {
       periodKey,
       firstObservedAt: hasBoundaryStart ? row?.boundary_start_at : row?.period_start,
       lastObservedAt: hasBoundaryEnd ? row?.boundary_end_at : row?.period_end,
+      sampleCount: row?.sample_count,
       qualityFlags: row?.quality_flags,
       now,
       knownGap: mode === 'daily' && KNOWN_DAILY_STREAM_GAPS.has(periodKey),
