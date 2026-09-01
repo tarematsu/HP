@@ -26,7 +26,9 @@ class SpotifyWebViews final {
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
+    EventRegistrationToken webMessageReceivedToken{};
     bool authNavigation = false;
+    bool playing = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -38,8 +40,8 @@ class SpotifyWebViews final {
   bool CreateHost(Slot& slot) noexcept;
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
-  void SetAuthenticationForeground(bool foreground) noexcept;
-  void RecomputeAuthenticationForeground() noexcept;
+  void SetForeground(bool foreground) noexcept;
+  void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
   void CloseSlot(Slot& slot) noexcept;
 
@@ -49,7 +51,7 @@ class SpotifyWebViews final {
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   bool started_ = false;
-  bool authenticationForeground_ = false;
+  bool foreground_ = true;
 };
 
 }  // namespace hp
