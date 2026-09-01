@@ -5,8 +5,71 @@ namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
 constexpr wchar_t kSpotifyLoginUrl[] =
-    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F";
+    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
+constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
+    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
+constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
+(() => {
+  if (window.__homePanelLonesomeRabbitLoop) return;
+  window.__homePanelLonesomeRabbitLoop = true;
+
+  const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
+  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
+  const ensure = () => {
+    if (location.hostname !== 'open.spotify.com') return;
+    if (!location.pathname.endsWith(targetPath)) {
+      location.replace(targetUrl);
+      return;
+    }
+
+    const playButton =
+        document.querySelector('button[data-testid="play-button"]');
+    if (playButton) {
+      const label = (playButton.getAttribute('aria-label') || '').toLowerCase();
+      const isPauseAction =
+          label.includes('pause') || label.includes('一時停止');
+      if (!isPauseAction) playButton.click();
+    }
+
+    const repeatButton = document.querySelector(
+        'button[data-testid="control-button-repeat"]');
+    if (repeatButton && repeatButton.getAttribute('aria-checked') !== 'mixed') {
+      repeatButton.click();
+    }
+  };
+
+  ensure();
+  window.setInterval(ensure, 1000);
+})();
+)JS";
+
+std::wstring BuildSpotifyPanelLabelScript(size_t index) {
+  if (index >= kSpotifyPanelNames.size()) return {};
+  std::wstring script = LR"JS(
+(() => {
+  const mount = () => {
+    if (document.getElementById('__homePanelSpotifyAccount')) return;
+    const badge = document.createElement('div');
+    badge.id = '__homePanelSpotifyAccount';
+    badge.textContent = ')JS";
+  script.append(kSpotifyPanelNames[index]);
+  script += LR"JS(';
+    badge.style.cssText =
+        'position:fixed;left:8px;top:8px;z-index:2147483647;' +
+        'padding:4px 7px;border-radius:4px;background:rgba(0,0,0,.78);' +
+        'color:#fff;font:600 14px/1.2 "Segoe UI",sans-serif;pointer-events:none;';
+    (document.body || document.documentElement).appendChild(badge);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount, { once: true });
+  } else {
+    mount();
+  }
+})();
+)JS";
+  return script;
+}
 
 bool StartsWithInsensitive(std::wstring_view value,
                            std::wstring_view prefix) noexcept {
@@ -197,12 +260,28 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) return S_OK;
+              bool injectPlayback = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
-                if (IsSpotifyPlayerUri(rawUri)) target->authNavigation = false;
-                else if (IsSpotifyAuthUri(rawUri)) target->authNavigation = true;
+                const bool authUri = IsSpotifyAuthUri(rawUri);
+                const bool playerUri = IsSpotifyPlayerUri(rawUri);
+                if (authUri) {
+                  target->authNavigation = true;
+                } else if (playerUri) {
+                  target->authNavigation = false;
+                  injectPlayback = true;
+                }
                 CoTaskMemFree(rawUri);
                 RecomputeAuthenticationForeground();
+              }
+
+              const std::wstring labelScript =
+                  BuildSpotifyPanelLabelScript(target->index);
+              if (!labelScript.empty()) {
+                sender->ExecuteScript(labelScript.c_str(), nullptr);
+              }
+              if (injectPlayback) {
+                sender->ExecuteScript(kSpotifyPlaybackScript, nullptr);
               }
               return S_OK;
             }).Get(),
@@ -214,8 +293,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     slot.controller->put_IsVisible(TRUE);
 
     // Opening the login endpoint makes an expired/new profile surface itself.
-    // An already authenticated profile is redirected straight back to the web
-    // player and therefore stays in the background on normal launches.
+    // Authenticated profiles continue directly to the one-track official
+    // Lonesome rabbit release, which the injected player script starts and
+    // keeps in repeat-one mode.
     slot.webview->Navigate(kSpotifyLoginUrl);
   } catch (...) {
   }

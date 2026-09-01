@@ -46,6 +46,29 @@ test('login foreground uses six tall side-by-side WebView hosts', () => {
   assert.match(spotify, /RecomputeAuthenticationForeground\(\)/);
 });
 
+test('foreground Spotify WebViews show account names from left to right', () => {
+  assert.match(
+    spotify,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
+  );
+  assert.match(spotify, /__homePanelSpotifyAccount/);
+  assert.match(spotify, /position:fixed;left:8px;top:8px/);
+  assert.match(spotify, /BuildSpotifyPanelLabelScript\(target->index\)/);
+});
+
+test('all Spotify profiles keep Lonesome rabbit playing on repeat one', () => {
+  assert.match(spotify, /2f2Ik9JeinFVWZuFb3i35b/);
+  assert.match(
+    spotify,
+    /continue=https%3A%2F%2Fopen\.spotify\.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b/,
+  );
+  assert.match(spotify, /button\[data-testid="play-button"\]/);
+  assert.match(spotify, /control-button-repeat/);
+  assert.match(spotify, /aria-checked/);
+  assert.match(spotify, /mixed/);
+  assert.match(spotify, /ExecuteScript\(kSpotifyPlaybackScript/);
+});
+
 test('Spotify pool follows renderer lifetime and power saving', () => {
   assert.match(lifecycle, /std::unique_ptr<SpotifyWebViews> gSpotifyWebViews/);
   assert.match(lifecycle, /gSpotifyWebViews->Start\(\)/);
