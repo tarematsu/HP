@@ -27,13 +27,11 @@ class SpotifyWebViews final {
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
     EventRegistrationToken webMessageReceivedToken{};
-    bool authNavigation = false;
     bool playing = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-  static bool IsSpotifyAuthUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
 
   bool EnsureHostClass() noexcept;
