@@ -460,7 +460,8 @@ class NativeMvPanelHost {
       }
     }
 
-    const int height = std::max(1, client.bottom - client.top);
+    const int height =
+        std::max(1, static_cast<int>(client.bottom - client.top));
     HFONT font = CreateFontW(
         -std::max(28, height / 7), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
