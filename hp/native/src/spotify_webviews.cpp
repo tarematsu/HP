@@ -51,7 +51,7 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   };
 
   ensure();
-  window.setInterval(ensure, 1000);
+  window.setInterval(ensure, 60000);
 })();
 )JS";
 
@@ -146,7 +146,6 @@ void SpotifyWebViews::Start() noexcept {
   alive_->store(true, std::memory_order_release);
 
   for (Slot& slot : slots_) {
-    slot.authNavigation = false;
     slot.playing = false;
     if (!CreateHost(slot)) continue;
     CreateController(slot);
@@ -254,12 +253,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              LPWSTR rawUri = nullptr;
               target->playing = false;
-              if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
-                target->authNavigation = IsSpotifyAuthUri(rawUri);
-                CoTaskMemFree(rawUri);
-              }
               RecomputeForeground();
               return S_OK;
             }).Get(),
@@ -282,11 +276,8 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               bool injectPlayback = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
-                const bool authUri = IsSpotifyAuthUri(rawUri);
-                const bool playerUri = IsSpotifyPlayerUri(rawUri);
-                target->authNavigation = authUri;
                 target->playing = false;
-                injectPlayback = playerUri && !authUri;
+                injectPlayback = IsSpotifyPlayerUri(rawUri);
                 CoTaskMemFree(rawUri);
                 RecomputeForeground();
               }
@@ -315,8 +306,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               LPWSTR rawUri = nullptr;
               bool playerPage = false;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
-                playerPage = IsSpotifyPlayerUri(rawUri) &&
-                             !IsSpotifyAuthUri(rawUri);
+                playerPage = IsSpotifyPlayerUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
               if (!playerPage) return S_OK;
@@ -356,24 +346,17 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
   }
 }
 
-bool SpotifyWebViews::IsSpotifyAuthUri(const wchar_t* uri) noexcept {
-  if (!uri) return false;
-  const std::wstring_view value(uri);
-  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") ||
-         StartsWithInsensitive(value, L"https://www.spotify.com/login") ||
-         StartsWithInsensitive(value, L"https://open.spotify.com/login");
-}
-
 bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
   if (!uri) return false;
-  return StartsWithInsensitive(std::wstring_view(uri),
-                               L"https://open.spotify.com/");
+  const std::wstring_view value(uri);
+  return StartsWithInsensitive(value, L"https://open.spotify.com/") &&
+         !StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
   bool foreground = false;
   for (const Slot& slot : slots_) {
-    foreground = foreground || slot.authNavigation || !slot.playing;
+    foreground = foreground || !slot.playing;
   }
   SetForeground(foreground);
 }
@@ -446,7 +429,6 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.controller.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
   slot.hostWindow = nullptr;
-  slot.authNavigation = false;
   slot.playing = false;
 }
 
