@@ -134,8 +134,14 @@ void Renderer::SetPowerSavingMode(bool enabled) {
   powerSavingMode_ = enabled;
   if (enabled) {
     StopNativeMvPlayback(nativeRadarWindow_);
-    if (gSpotifyWebViews) gSpotifyWebViews->Shutdown();
-  } else if (gSpotifyWebViews) {
+    if (gSpotifyWebViews) {
+      gSpotifyWebViews->Shutdown();
+      gSpotifyWebViews.reset();
+    }
+  } else {
+    if (!gSpotifyWebViews) {
+      gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
+    }
     gSpotifyWebViews->Start();
   }
   ApplyDashboardVisibility();
