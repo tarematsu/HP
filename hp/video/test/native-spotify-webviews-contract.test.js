@@ -36,7 +36,7 @@ test('Spotify sessions are isolated with six named profiles inside that environm
   assert.match(spotify, /put_IsInPrivateModeEnabled\(FALSE\)/);
 });
 
-test('attention foreground uses six tall side-by-side WebView hosts', () => {
+test('playback attention foreground uses six tall side-by-side WebView hosts', () => {
   assert.match(spotify, /clientWidth \/ static_cast<int>\(kAccountCount\)/);
   assert.match(spotify, /clientHeight \* 9 \/ 20/);
   assert.match(spotify, /phoneWidth \* 20 \/ 9/);
@@ -69,14 +69,16 @@ test('all Spotify profiles keep Lonesome rabbit playing on repeat one', () => {
   assert.match(spotify, /ExecuteScript\(kSpotifyPlaybackScript/);
 });
 
-test('Spotify stays foreground until every account is authenticated and playing', () => {
+test('Spotify foreground depends only on all six playback states checked every minute', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
   assert.match(spotify, /spotify:playing/);
   assert.match(spotify, /spotify:not-playing/);
   assert.match(spotify, /add_WebMessageReceived/);
-  assert.match(spotify, /slot\.authNavigation \|\| !slot\.playing/);
+  assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
+  assert.match(spotify, /setInterval\(ensure, 60000\)/);
+  assert.doesNotMatch(spotifyHeader, /authNavigation/);
   assert.match(spotify, /target->playing = false/);
   assert.match(spotify, /remove_WebMessageReceived/);
 });
