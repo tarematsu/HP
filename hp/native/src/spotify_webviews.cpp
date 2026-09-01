@@ -5,8 +5,42 @@ namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
 constexpr wchar_t kSpotifyLoginUrl[] =
-    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F";
+    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
+constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
+(() => {
+  if (window.__homePanelLonesomeRabbitLoop) return;
+  window.__homePanelLonesomeRabbitLoop = true;
+
+  const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
+  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
+  const ensure = () => {
+    if (location.hostname !== 'open.spotify.com') return;
+    if (!location.pathname.endsWith(targetPath)) {
+      location.replace(targetUrl);
+      return;
+    }
+
+    const playButton =
+        document.querySelector('button[data-testid="play-button"]');
+    if (playButton) {
+      const label = (playButton.getAttribute('aria-label') || '').toLowerCase();
+      const isPauseAction =
+          label.includes('pause') || label.includes('一時停止');
+      if (!isPauseAction) playButton.click();
+    }
+
+    const repeatButton = document.querySelector(
+        'button[data-testid="control-button-repeat"]');
+    if (repeatButton && repeatButton.getAttribute('aria-checked') !== 'mixed') {
+      repeatButton.click();
+    }
+  };
+
+  ensure();
+  window.setInterval(ensure, 1000);
+})();
+)JS";
 
 bool StartsWithInsensitive(std::wstring_view value,
                            std::wstring_view prefix) noexcept {
@@ -197,12 +231,22 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               }
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) return S_OK;
+              bool injectPlayback = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
-                if (IsSpotifyPlayerUri(rawUri)) target->authNavigation = false;
-                else if (IsSpotifyAuthUri(rawUri)) target->authNavigation = true;
+                const bool authUri = IsSpotifyAuthUri(rawUri);
+                const bool playerUri = IsSpotifyPlayerUri(rawUri);
+                if (authUri) {
+                  target->authNavigation = true;
+                } else if (playerUri) {
+                  target->authNavigation = false;
+                  injectPlayback = true;
+                }
                 CoTaskMemFree(rawUri);
                 RecomputeAuthenticationForeground();
+              }
+              if (injectPlayback) {
+                sender->ExecuteScript(kSpotifyPlaybackScript, nullptr);
               }
               return S_OK;
             }).Get(),
@@ -214,8 +258,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     slot.controller->put_IsVisible(TRUE);
 
     // Opening the login endpoint makes an expired/new profile surface itself.
-    // An already authenticated profile is redirected straight back to the web
-    // player and therefore stays in the background on normal launches.
+    // Authenticated profiles continue directly to the one-track official
+    // Lonesome rabbit release, which the injected player script starts and
+    // keeps in repeat-one mode.
     slot.webview->Navigate(kSpotifyLoginUrl);
   } catch (...) {
   }
