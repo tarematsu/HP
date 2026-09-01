@@ -7,6 +7,8 @@ constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
+constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
+    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
 constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 (() => {
   if (window.__homePanelLonesomeRabbitLoop) return;
@@ -41,6 +43,33 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   window.setInterval(ensure, 1000);
 })();
 )JS";
+
+std::wstring BuildSpotifyPanelLabelScript(size_t index) {
+  if (index >= kSpotifyPanelNames.size()) return {};
+  std::wstring script = LR"JS(
+(() => {
+  const mount = () => {
+    if (document.getElementById('__homePanelSpotifyAccount')) return;
+    const badge = document.createElement('div');
+    badge.id = '__homePanelSpotifyAccount';
+    badge.textContent = ')JS";
+  script.append(kSpotifyPanelNames[index]);
+  script += LR"JS(';
+    badge.style.cssText =
+        'position:fixed;left:8px;top:8px;z-index:2147483647;' +
+        'padding:4px 7px;border-radius:4px;background:rgba(0,0,0,.78);' +
+        'color:#fff;font:600 14px/1.2 "Segoe UI",sans-serif;pointer-events:none;';
+    (document.body || document.documentElement).appendChild(badge);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount, { once: true });
+  } else {
+    mount();
+  }
+})();
+)JS";
+  return script;
+}
 
 bool StartsWithInsensitive(std::wstring_view value,
                            std::wstring_view prefix) noexcept {
@@ -244,6 +273,12 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 }
                 CoTaskMemFree(rawUri);
                 RecomputeAuthenticationForeground();
+              }
+
+              const std::wstring labelScript =
+                  BuildSpotifyPanelLabelScript(target->index);
+              if (!labelScript.empty()) {
+                sender->ExecuteScript(labelScript.c_str(), nullptr);
               }
               if (injectPlayback) {
                 sender->ExecuteScript(kSpotifyPlaybackScript, nullptr);
