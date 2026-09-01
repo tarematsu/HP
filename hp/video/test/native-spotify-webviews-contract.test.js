@@ -6,6 +6,10 @@ const spotify = readFileSync(
   new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
   'utf8',
 );
+const spotifyHeader = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+  'utf8',
+);
 const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
   'utf8',
@@ -16,7 +20,7 @@ const mvPanel = readFileSync(
 );
 
 test('six Spotify accounts reuse the YouTube WebView2 user data folder', () => {
-  assert.match(spotify, /kAccountCount = 6/);
+  assert.match(spotifyHeader, /kAccountCount = 6/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mvPanel, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
