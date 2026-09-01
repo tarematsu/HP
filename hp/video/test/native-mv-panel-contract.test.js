@@ -53,39 +53,53 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV random cycle clicks center after 60:00-79:59, then reloads after another 60:00-79:59', () => {
+test('MV cycle closes WebView after 50:00-59:59 and reopens it after 60:00-79:59', () => {
   assert.match(mvPanel, /kNativeMvRandomActionTimer/);
-  assert.match(mvPanel, /kNativeMvCenterClickMinSeconds = 60U \* 60U/);
-  assert.match(mvPanel, /kNativeMvCenterClickSpanSeconds = 20U \* 60U/);
-  assert.match(mvPanel, /kNativeMvReloadAfterCenterMinSeconds = 60U \* 60U/);
-  assert.match(mvPanel, /kNativeMvReloadAfterCenterSpanSeconds = 20U \* 60U/);
+  assert.match(mvPanel, /kNativeMvPauseMinSeconds = 50U \* 60U/);
+  assert.match(mvPanel, /kNativeMvPauseSpanSeconds = 10U \* 60U/);
+  assert.match(mvPanel, /kNativeMvResumeMinSeconds = 60U \* 60U/);
+  assert.match(mvPanel, /kNativeMvResumeSpanSeconds = 20U \* 60U/);
   assert.match(mvPanel, /random % spanSeconds/);
   assert.match(mvPanel, /return seconds \* 1000U/);
   assert.match(mvPanel, /ScheduleNextRandomAction\(UINT minSeconds, UINT spanSeconds\)/);
-  assert.match(mvPanel, /kNativeMvCenterXTenThousandths = 5000/);
-  assert.match(mvPanel, /kNativeMvCenterYTenThousandths = 5000/);
-  assert.match(mvPanel, /nextRandomActionIsCenterClick_ = true/);
   assert.match(
     mvPanel,
-    /if \(timerId == kNativeMvRandomActionTimer\) \{\s*if \(nextRandomActionIsCenterClick_\) \{\s*ClickNormalizedPoint\(kNativeMvCenterXTenThousandths,\s*kNativeMvCenterYTenThousandths\);\s*nextRandomActionIsCenterClick_ = false;[\s\S]*ScheduleNextRandomAction\(kNativeMvReloadAfterCenterMinSeconds,\s*kNativeMvReloadAfterCenterSpanSeconds\)[\s\S]*\} else \{\s*ReloadPlaylist\(\);\s*\}/s,
+    /if \(timerId == kNativeMvRandomActionTimer\) \{\s*if \(paused_\) \{\s*ResumeFromPause\(\);\s*\} else \{\s*EnterPause\(\);\s*\}/s,
   );
   assert.match(
     mvPanel,
-    /void ReloadPlaylist\(\) noexcept \{[\s\S]*nextRandomActionIsCenterClick_ = true;[\s\S]*Navigate\(kNativeMvPanelPageUrl\)[\s\S]*ScheduleNextRandomAction\(kNativeMvCenterClickMinSeconds,\s*kNativeMvCenterClickSpanSeconds\)/,
+    /void EnterPause\(\) noexcept \{[\s\S]*paused_ = true;[\s\S]*CloseWebView\(\);[\s\S]*ScheduleNextRandomAction\(kNativeMvResumeMinSeconds,\s*kNativeMvResumeSpanSeconds\)/,
+  );
+  assert.match(
+    mvPanel,
+    /void ResumeFromPause\(\) noexcept \{[\s\S]*paused_ = false;[\s\S]*ReopenWebView\(\);/,
+  );
+  assert.match(
+    mvPanel,
+    /void ReloadPlaylist\(\) noexcept \{[\s\S]*Navigate\(kNativeMvPanelPageUrl\)[\s\S]*ScheduleNextRandomAction\(kNativeMvPauseMinSeconds,\s*kNativeMvPauseSpanSeconds\)/,
+  );
+  assert.match(mvPanel, /controller_->Close\(\)/);
+  assert.match(mvPanel, /webview_\.Reset\(\)/);
+  assert.match(mvPanel, /CreateCoreWebView2Controller/);
+  assert.doesNotMatch(mvPanel, /kNativeMvCenterXTenThousandths/);
+  assert.doesNotMatch(mvPanel, /kNativeMvCenterYTenThousandths/);
+  assert.doesNotMatch(
+    mvPanel,
+    /ClickNormalizedPoint\(kNativeMvCenterXTenThousandths/,
   );
   assert.doesNotMatch(mvPanel, /kNativeMvReloadTimer/);
   assert.doesNotMatch(mvPanel, /ScheduleNextPlaylistReload/);
-  assert.match(mvPanel, /add_NavigationCompleted/);
-  assert.match(mvPanel, /ExecuteScript/);
-  assert.match(mvPanel, /すべて再生/);
-  assert.match(mvPanel, /Play all/);
-  assert.match(mvPanel, /ClientToScreen/);
-  assert.match(mvPanel, /SendInput/);
-  assert.match(mvPanel, /kNativeMvFallbackPlayAllXTenThousandths = 5850/);
-  assert.match(mvPanel, /kNativeMvFallbackPlayAllYTenThousandths = 4250/);
-  assert.match(mvPanel, /case WM_TIMER:/);
-  assert.match(mvPanel, /ReloadPlaylist\(\)/);
-  assert.doesNotMatch(mvPanel, /SendMouseInput/);
+});
+
+test('MV pause surface uses a Sakurazaka46 artist image and native pause label', () => {
+  assert.match(mvPanel, /sakurazaka46\.com\/files\/14\/Sakurazaka4615th/);
+  assert.match(mvPanel, /WinHttpDownload\(/);
+  assert.match(mvPanel, /DecodeImageBytesToBitmap\(/);
+  assert.match(mvPanel, /StartPauseImageLoad\(\)/);
+  assert.match(mvPanel, /DrawPauseScreen\(dc, client\)/);
+  assert.match(mvPanel, /L"一時停止"/);
+  assert.match(mvPanel, /StretchBlt\(/);
+  assert.match(mvPanel, /kNativeMvPauseImageReadyMessage/);
 });
 
 test('MV playback enters YouTube fullscreen with DOM-located native input', () => {
