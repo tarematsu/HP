@@ -1,23 +1,16 @@
-#include "../wic_image.h"
-#include "../winhttp_helpers.h"
-
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
-constexpr wchar_t kNativeMvPauseImageUrl[] =
-    L"https://sakurazaka46.com/files/14/Sakurazaka4615th%20Single_Lonesome%20rabbit%20What%27s%20KAZOKU_AP.jpg";
 constexpr UINT_PTR kNativeMvRandomActionTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
 constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
-constexpr UINT kNativeMvPauseImageReadyMessage = WM_APP + 0x4D5;
 constexpr UINT kNativeMvPauseMinSeconds = 50U * 60U;
 constexpr UINT kNativeMvPauseSpanSeconds = 10U * 60U;
 constexpr UINT kNativeMvResumeMinSeconds = 60U * 60U;
 constexpr UINT kNativeMvResumeSpanSeconds = 20U * 60U;
-constexpr size_t kNativeMvPauseImageMaxBytes = 16U * 1024U * 1024U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
@@ -136,7 +129,6 @@ class NativeMvPanelHost {
       return;
     }
 
-    StartPauseImageLoad();
     const auto alive = alive_;
     try {
       // This is now the normal YouTube playlist page rather than a video-only
@@ -237,15 +229,6 @@ class NativeMvPanelHost {
     return false;
   }
 
-  void OnPauseImageReady(HBITMAP bitmap) noexcept {
-    pauseImageLoading_ = false;
-    if (pauseBitmap_) DeleteObject(pauseBitmap_);
-    pauseBitmap_ = bitmap;
-    if (paused_ && hostWindow_ && IsWindow(hostWindow_)) {
-      InvalidateRect(hostWindow_, nullptr, FALSE);
-    }
-  }
-
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
     if (hostWindow_ && IsWindow(hostWindow_)) {
@@ -257,10 +240,6 @@ class NativeMvPanelHost {
     }
     CloseWebView();
     environment_.Reset();
-    if (pauseBitmap_) {
-      DeleteObject(pauseBitmap_);
-      pauseBitmap_ = nullptr;
-    }
     hostWindow_ = nullptr;
   }
 
@@ -387,79 +366,7 @@ class NativeMvPanelHost {
     }
   }
 
-  void StartPauseImageLoad() noexcept {
-    if (pauseBitmap_ || pauseImageLoading_ || !hostWindow_ ||
-        !IsWindow(hostWindow_)) {
-      return;
-    }
-    pauseImageLoading_ = true;
-    const HWND target = hostWindow_;
-    const auto alive = alive_;
-    try {
-      std::thread([target, alive] {
-        const HRESULT initialized =
-            CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-        std::vector<uint8_t> bytes;
-        HBITMAP bitmap = nullptr;
-        if (hp::WinHttpDownload(
-                kNativeMvPauseImageUrl, kNativeMvPauseImageMaxBytes, &bytes,
-                nullptr, nullptr, L"HomePanel/1.0",
-                L"Referer: https://sakurazaka46.com/\r\n"
-                L"Accept: image/jpeg,*/*;q=0.8\r\n")) {
-          bitmap = hp::DecodeImageBytesToBitmap(
-              bytes.data(), bytes.size(), 1600, 900);
-        }
-        if (SUCCEEDED(initialized)) CoUninitialize();
-
-        if (!alive->load(std::memory_order_acquire) || !IsWindow(target) ||
-            !PostMessageW(target, kNativeMvPauseImageReadyMessage, 0,
-                          reinterpret_cast<LPARAM>(bitmap))) {
-          if (bitmap) DeleteObject(bitmap);
-        }
-      }).detach();
-    } catch (...) {
-      pauseImageLoading_ = false;
-    }
-  }
-
   void DrawPauseScreen(HDC dc, const RECT& client) noexcept {
-    if (pauseBitmap_) {
-      BITMAP bitmapInfo{};
-      if (GetObjectW(pauseBitmap_, sizeof(bitmapInfo), &bitmapInfo) ==
-              sizeof(bitmapInfo) &&
-          bitmapInfo.bmWidth > 0 && bitmapInfo.bmHeight > 0) {
-        HDC sourceDc = CreateCompatibleDC(dc);
-        if (sourceDc) {
-          HGDIOBJ previous = SelectObject(sourceDc, pauseBitmap_);
-          const int targetWidth = client.right - client.left;
-          const int targetHeight = client.bottom - client.top;
-          const double targetAspect = static_cast<double>(targetWidth) /
-              static_cast<double>(std::max(1, targetHeight));
-          const double sourceAspect = static_cast<double>(bitmapInfo.bmWidth) /
-              static_cast<double>(bitmapInfo.bmHeight);
-          int sourceX = 0;
-          int sourceY = 0;
-          int sourceWidth = bitmapInfo.bmWidth;
-          int sourceHeight = bitmapInfo.bmHeight;
-          if (targetAspect > sourceAspect) {
-            sourceHeight = std::max(
-                1, static_cast<int>(bitmapInfo.bmWidth / targetAspect));
-            sourceY = (bitmapInfo.bmHeight - sourceHeight) / 2;
-          } else {
-            sourceWidth = std::max(
-                1, static_cast<int>(bitmapInfo.bmHeight * targetAspect));
-            sourceX = (bitmapInfo.bmWidth - sourceWidth) / 2;
-          }
-          SetStretchBltMode(dc, HALFTONE);
-          StretchBlt(dc, client.left, client.top, targetWidth, targetHeight,
-                     sourceDc, sourceX, sourceY, sourceWidth, sourceHeight,
-                     SRCCOPY);
-          SelectObject(sourceDc, previous);
-          DeleteDC(sourceDc);
-        }
-      }
-    }
-
     const int height =
         std::max(1, static_cast<int>(client.bottom - client.top));
     HFONT font = CreateFontW(
@@ -468,13 +375,9 @@ class NativeMvPanelHost {
         CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
     HGDIOBJ previousFont = font ? SelectObject(dc, font) : nullptr;
     SetBkMode(dc, TRANSPARENT);
-    RECT shadow = client;
-    OffsetRect(&shadow, 3, 3);
-    SetTextColor(dc, RGB(0, 0, 0));
-    DrawTextW(dc, L"一時停止", -1, &shadow,
-              DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     SetTextColor(dc, RGB(255, 255, 255));
-    DrawTextW(dc, L"一時停止", -1, const_cast<RECT*>(&client),
+    RECT textBounds = client;
+    DrawTextW(dc, L"一時停止", -1, &textBounds,
               DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
     if (previousFont) SelectObject(dc, previousFont);
     if (font) DeleteObject(font);
@@ -505,7 +408,6 @@ class NativeMvPanelHost {
     paused_ = true;
     failed_ = false;
     CloseWebView();
-    StartPauseImageLoad();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       InvalidateRect(hostWindow_, nullptr, FALSE);
     }
@@ -866,13 +768,11 @@ class NativeMvPanelHost {
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};
-  HBITMAP pauseBitmap_ = nullptr;
   int playAllProbeAttempts_ = 0;
   int fullscreenProbeAttempts_ = 0;
   bool playAllProbeInFlight_ = false;
   bool fullscreenProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
-  bool pauseImageLoading_ = false;
   bool paused_ = false;
   bool failed_ = false;
 };
@@ -891,12 +791,6 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
     }
   }
 
-  if (!host && message == kNativeMvPauseImageReadyMessage) {
-    HBITMAP bitmap = reinterpret_cast<HBITMAP>(lparam);
-    if (bitmap) DeleteObject(bitmap);
-    return 0;
-  }
-
   if (host) {
     switch (message) {
       case WM_SIZE:
@@ -905,9 +799,6 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
       case WM_TIMER:
         if (host->OnTimer(static_cast<UINT_PTR>(wparam))) return 0;
         break;
-      case kNativeMvPauseImageReadyMessage:
-        host->OnPauseImageReady(reinterpret_cast<HBITMAP>(lparam));
-        return 0;
       case WM_ERASEBKGND:
         return 1;
       case WM_PAINT:
