@@ -88,11 +88,11 @@ void Renderer::Initialize() {
 #endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
+    StopRadarCompose();
     if (gSpotifyWebViews) {
       gSpotifyWebViews->Shutdown();
       gSpotifyWebViews.reset();
     }
-    StopRadarCompose();
 #if 0  // Stationhead playback bridge disabled.
     StopNativePlaybackBridge();
 #endif
@@ -132,8 +132,8 @@ void Renderer::SetVisible(bool visible) {
 void Renderer::SetPowerSavingMode(bool enabled) {
   if (powerSavingMode_ == enabled) return;
   powerSavingMode_ = enabled;
+  if (enabled) StopNativeMvPlayback(nativeRadarWindow_);
   if (enabled) {
-    StopNativeMvPlayback(nativeRadarWindow_);
     if (gSpotifyWebViews) {
       gSpotifyWebViews->Shutdown();
       gSpotifyWebViews.reset();
