@@ -6,6 +6,7 @@
 #endif
 #include "shared_webview_environment.h"
 #include "version.h"
+#include "winhttp_helpers.h"
 #define PlaceNativeWindow BasePlaceNativeWindow
 #include "renderer_panels/primitives.inc"
 #undef PlaceNativeWindow

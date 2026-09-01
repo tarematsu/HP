@@ -1,16 +1,23 @@
+#include "../wic_image.h"
+#include "../winhttp_helpers.h"
+
 namespace {
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 constexpr wchar_t kNativeMvPanelPageUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
+constexpr wchar_t kNativeMvPauseImageUrl[] =
+    L"https://sakurazaka46.com/files/14/Sakurazaka4615th%20Single_Lonesome%20rabbit%20What%27s%20KAZOKU_AP.jpg";
 constexpr UINT_PTR kNativeMvRandomActionTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
 constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
-constexpr UINT kNativeMvCenterClickMinSeconds = 60U * 60U;
-constexpr UINT kNativeMvCenterClickSpanSeconds = 20U * 60U;
-constexpr UINT kNativeMvReloadAfterCenterMinSeconds = 60U * 60U;
-constexpr UINT kNativeMvReloadAfterCenterSpanSeconds = 20U * 60U;
+constexpr UINT kNativeMvPauseImageReadyMessage = WM_APP + 0x4D5;
+constexpr UINT kNativeMvPauseMinSeconds = 50U * 60U;
+constexpr UINT kNativeMvPauseSpanSeconds = 10U * 60U;
+constexpr UINT kNativeMvResumeMinSeconds = 60U * 60U;
+constexpr UINT kNativeMvResumeSpanSeconds = 20U * 60U;
+constexpr size_t kNativeMvPauseImageMaxBytes = 16U * 1024U * 1024U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
@@ -21,8 +28,6 @@ constexpr int kNativeMvFullscreenRetryLimit = 30;
 // ~= (498,647), which is 58.5% across and 42.5% down the WebView.
 constexpr int kNativeMvFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMvFallbackPlayAllYTenThousandths = 4250;
-constexpr int kNativeMvCenterXTenThousandths = 5000;
-constexpr int kNativeMvCenterYTenThousandths = 5000;
 constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
 (() => {
   const styleId = 'homepanel-youtube-clean-player';
@@ -131,6 +136,7 @@ class NativeMvPanelHost {
       return;
     }
 
+    StartPauseImageLoad();
     const auto alive = alive_;
     try {
       // This is now the normal YouTube playlist page rather than a video-only
@@ -191,7 +197,9 @@ class NativeMvPanelHost {
     RECT client{};
     GetClientRect(hostWindow_, &client);
     FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-    if (failed_) {
+    if (paused_) {
+      DrawPauseScreen(dc, client);
+    } else if (failed_) {
       SetBkMode(dc, TRANSPARENT);
       SetTextColor(dc, RGB(220, 225, 232));
       DrawTextW(dc, L"動画を読み込めません", -1, &client,
@@ -202,17 +210,10 @@ class NativeMvPanelHost {
 
   bool OnTimer(UINT_PTR timerId) noexcept {
     if (timerId == kNativeMvRandomActionTimer) {
-      if (nextRandomActionIsCenterClick_) {
-        ClickNormalizedPoint(kNativeMvCenterXTenThousandths,
-                             kNativeMvCenterYTenThousandths);
-        nextRandomActionIsCenterClick_ = false;
-        if (!failed_ &&
-            !ScheduleNextRandomAction(kNativeMvReloadAfterCenterMinSeconds,
-                                      kNativeMvReloadAfterCenterSpanSeconds)) {
-          Fail();
-        }
+      if (paused_) {
+        ResumeFromPause();
       } else {
-        ReloadPlaylist();
+        EnterPause();
       }
       return true;
     }
@@ -236,6 +237,15 @@ class NativeMvPanelHost {
     return false;
   }
 
+  void OnPauseImageReady(HBITMAP bitmap) noexcept {
+    pauseImageLoading_ = false;
+    if (pauseBitmap_) DeleteObject(pauseBitmap_);
+    pauseBitmap_ = bitmap;
+    if (paused_ && hostWindow_ && IsWindow(hostWindow_)) {
+      InvalidateRect(hostWindow_, nullptr, FALSE);
+    }
+  }
+
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
     if (hostWindow_ && IsWindow(hostWindow_)) {
@@ -245,21 +255,12 @@ class NativeMvPanelHost {
       KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
       KillTimer(hostWindow_, kNativeMvNavigationRetryTimer);
     }
-    if (webview_ && navigationCompletedToken_.value != 0) {
-      webview_->remove_NavigationCompleted(navigationCompletedToken_);
-      navigationCompletedToken_ = {};
-    }
-    if (webview_ && newWindowToken_.value != 0) {
-      webview_->remove_NewWindowRequested(newWindowToken_);
-      newWindowToken_ = {};
-    }
-    if (controller_) {
-      controller_->put_IsVisible(FALSE);
-      controller_->Close();
-    }
-    webview_.Reset();
-    controller_.Reset();
+    CloseWebView();
     environment_.Reset();
+    if (pauseBitmap_) {
+      DeleteObject(pauseBitmap_);
+      pauseBitmap_ = nullptr;
+    }
     hostWindow_ = nullptr;
   }
 
@@ -306,7 +307,7 @@ class NativeMvPanelHost {
               [this, alive](ICoreWebView2*,
                             ICoreWebView2NavigationCompletedEventArgs* args)
                   -> HRESULT {
-                if (!alive->load(std::memory_order_acquire)) return S_OK;
+                if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
                 BOOL succeeded = FALSE;
                 if (!args || FAILED(args->get_IsSuccess(&succeeded)) ||
                     !succeeded) {
@@ -386,6 +387,179 @@ class NativeMvPanelHost {
     }
   }
 
+  void StartPauseImageLoad() noexcept {
+    if (pauseBitmap_ || pauseImageLoading_ || !hostWindow_ ||
+        !IsWindow(hostWindow_)) {
+      return;
+    }
+    pauseImageLoading_ = true;
+    const HWND target = hostWindow_;
+    const auto alive = alive_;
+    try {
+      std::thread([target, alive] {
+        const HRESULT initialized =
+            CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        std::vector<uint8_t> bytes;
+        HBITMAP bitmap = nullptr;
+        if (hp::WinHttpDownload(
+                kNativeMvPauseImageUrl, kNativeMvPauseImageMaxBytes, &bytes,
+                nullptr, nullptr, L"HomePanel/1.0",
+                L"Referer: https://sakurazaka46.com/\r\n"
+                L"Accept: image/jpeg,*/*;q=0.8\r\n")) {
+          bitmap = hp::DecodeImageBytesToBitmap(
+              bytes.data(), bytes.size(), 1600, 900);
+        }
+        if (SUCCEEDED(initialized)) CoUninitialize();
+
+        if (!alive->load(std::memory_order_acquire) || !IsWindow(target) ||
+            !PostMessageW(target, kNativeMvPauseImageReadyMessage, 0,
+                          reinterpret_cast<LPARAM>(bitmap))) {
+          if (bitmap) DeleteObject(bitmap);
+        }
+      }).detach();
+    } catch (...) {
+      pauseImageLoading_ = false;
+    }
+  }
+
+  void DrawPauseScreen(HDC dc, const RECT& client) noexcept {
+    if (pauseBitmap_) {
+      BITMAP bitmapInfo{};
+      if (GetObjectW(pauseBitmap_, sizeof(bitmapInfo), &bitmapInfo) ==
+              sizeof(bitmapInfo) &&
+          bitmapInfo.bmWidth > 0 && bitmapInfo.bmHeight > 0) {
+        HDC sourceDc = CreateCompatibleDC(dc);
+        if (sourceDc) {
+          HGDIOBJ previous = SelectObject(sourceDc, pauseBitmap_);
+          const int targetWidth = client.right - client.left;
+          const int targetHeight = client.bottom - client.top;
+          const double targetAspect = static_cast<double>(targetWidth) /
+              static_cast<double>(std::max(1, targetHeight));
+          const double sourceAspect = static_cast<double>(bitmapInfo.bmWidth) /
+              static_cast<double>(bitmapInfo.bmHeight);
+          int sourceX = 0;
+          int sourceY = 0;
+          int sourceWidth = bitmapInfo.bmWidth;
+          int sourceHeight = bitmapInfo.bmHeight;
+          if (targetAspect > sourceAspect) {
+            sourceHeight = std::max(
+                1, static_cast<int>(bitmapInfo.bmWidth / targetAspect));
+            sourceY = (bitmapInfo.bmHeight - sourceHeight) / 2;
+          } else {
+            sourceWidth = std::max(
+                1, static_cast<int>(bitmapInfo.bmHeight * targetAspect));
+            sourceX = (bitmapInfo.bmWidth - sourceWidth) / 2;
+          }
+          SetStretchBltMode(dc, HALFTONE);
+          StretchBlt(dc, client.left, client.top, targetWidth, targetHeight,
+                     sourceDc, sourceX, sourceY, sourceWidth, sourceHeight,
+                     SRCCOPY);
+          SelectObject(sourceDc, previous);
+          DeleteDC(sourceDc);
+        }
+      }
+    }
+
+    const int height =
+        std::max(1, static_cast<int>(client.bottom - client.top));
+    HFONT font = CreateFontW(
+        -std::max(28, height / 7), 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    HGDIOBJ previousFont = font ? SelectObject(dc, font) : nullptr;
+    SetBkMode(dc, TRANSPARENT);
+    RECT shadow = client;
+    OffsetRect(&shadow, 3, 3);
+    SetTextColor(dc, RGB(0, 0, 0));
+    DrawTextW(dc, L"一時停止", -1, &shadow,
+              DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    SetTextColor(dc, RGB(255, 255, 255));
+    DrawTextW(dc, L"一時停止", -1, const_cast<RECT*>(&client),
+              DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX);
+    if (previousFont) SelectObject(dc, previousFont);
+    if (font) DeleteObject(font);
+  }
+
+  void CloseWebView() noexcept {
+    if (webview_ && navigationCompletedToken_.value != 0) {
+      webview_->remove_NavigationCompleted(navigationCompletedToken_);
+      navigationCompletedToken_ = {};
+    }
+    if (webview_ && newWindowToken_.value != 0) {
+      webview_->remove_NewWindowRequested(newWindowToken_);
+      newWindowToken_ = {};
+    }
+    if (controller_) {
+      controller_->put_IsVisible(FALSE);
+      controller_->Close();
+    }
+    webview_.Reset();
+    controller_.Reset();
+  }
+
+  void EnterPause() noexcept {
+    StopPlayAllProbe();
+    StopFullscreenProbe();
+    StopPlaybackHealthMonitor();
+    StopNavigationRetry();
+    paused_ = true;
+    failed_ = false;
+    CloseWebView();
+    StartPauseImageLoad();
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      InvalidateRect(hostWindow_, nullptr, FALSE);
+    }
+    if (!ScheduleNextRandomAction(kNativeMvResumeMinSeconds,
+                                  kNativeMvResumeSpanSeconds)) {
+      Fail();
+    }
+  }
+
+  void ReopenWebView() noexcept {
+    if (!environment_ || !hostWindow_ || !IsWindow(hostWindow_)) {
+      Fail();
+      return;
+    }
+    const auto alive = alive_;
+    const auto controllerReady =
+        Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+            [this, alive](HRESULT result,
+                          ICoreWebView2Controller* controller) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire)) {
+                if (controller) controller->Close();
+                return S_OK;
+              }
+              if (FAILED(result) || !controller) {
+                if (controller) controller->Close();
+                Fail();
+                return S_OK;
+              }
+              controller_ = controller;
+              controller_->get_CoreWebView2(&webview_);
+              if (!webview_) {
+                Fail();
+                return S_OK;
+              }
+              Configure();
+              return S_OK;
+            });
+    const HRESULT started = environment_->CreateCoreWebView2Controller(
+        hostWindow_, controllerReady.Get());
+    if (FAILED(started)) Fail();
+  }
+
+  void ResumeFromPause() noexcept {
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMvRandomActionTimer);
+    }
+    paused_ = false;
+    failed_ = false;
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      InvalidateRect(hostWindow_, nullptr, FALSE);
+    }
+    ReopenWebView();
+  }
+
   bool IsPlaylistPage() noexcept {
     if (!webview_) return false;
     LPWSTR source = nullptr;
@@ -407,11 +581,11 @@ class NativeMvPanelHost {
   }
 
   void ReloadPlaylist() noexcept {
+    if (paused_) return;
     StopPlayAllProbe();
     StopFullscreenProbe();
     StopPlaybackHealthMonitor();
     StopNavigationRetry();
-    nextRandomActionIsCenterClick_ = true;
     if (!webview_) {
       Fail();
       return;
@@ -420,8 +594,8 @@ class NativeMvPanelHost {
       if (!ScheduleNavigationRetry()) Fail();
       return;
     }
-    if (!ScheduleNextRandomAction(kNativeMvCenterClickMinSeconds,
-                                  kNativeMvCenterClickSpanSeconds)) {
+    if (!ScheduleNextRandomAction(kNativeMvPauseMinSeconds,
+                                  kNativeMvPauseSpanSeconds)) {
       Fail();
     }
   }
@@ -503,7 +677,7 @@ class NativeMvPanelHost {
   }
 
   void ProbePlayAllButton() noexcept {
-    if (!webview_ || playAllProbeInFlight_) return;
+    if (!webview_ || playAllProbeInFlight_ || paused_) return;
     if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
       StopPlayAllProbe();
       ClickPlayAllFallback();
@@ -517,7 +691,7 @@ class NativeMvPanelHost {
         kNativeMvPlayAllProbeScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
               playAllProbeInFlight_ = false;
               int x = 0;
               int y = 0;
@@ -544,7 +718,7 @@ class NativeMvPanelHost {
   }
 
   void ProbeFullscreenButton() noexcept {
-    if (!webview_ || fullscreenProbeInFlight_) return;
+    if (!webview_ || fullscreenProbeInFlight_ || paused_) return;
     if (fullscreenProbeAttempts_ >= kNativeMvFullscreenRetryLimit) {
       StopFullscreenProbe();
       return;
@@ -557,7 +731,7 @@ class NativeMvPanelHost {
         kNativeMvFullscreenProbeScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
               fullscreenProbeInFlight_ = false;
               int x = 0;
               int y = 0;
@@ -580,14 +754,14 @@ class NativeMvPanelHost {
   }
 
   void ProbePlaybackHealth() noexcept {
-    if (!webview_ || playbackHealthProbeInFlight_) return;
+    if (!webview_ || playbackHealthProbeInFlight_ || paused_) return;
     playbackHealthProbeInFlight_ = true;
     const auto alive = alive_;
     const HRESULT started = webview_->ExecuteScript(
         kNativeMvPlaybackHealthScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
               playbackHealthProbeInFlight_ = false;
               if (SUCCEEDED(result) && json && std::wstring_view(json) == L"true") {
                 ReloadPlaylist();
@@ -598,6 +772,7 @@ class NativeMvPanelHost {
   }
 
   void ClickPlayAllFallback() noexcept {
+    if (paused_) return;
     ClickNormalizedPoint(kNativeMvFallbackPlayAllXTenThousandths,
                          kNativeMvFallbackPlayAllYTenThousandths);
     BeginFullscreenProbe();
@@ -616,7 +791,7 @@ class NativeMvPanelHost {
 
   void ClickNormalizedPoint(int xTenThousandths,
                             int yTenThousandths) noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
+    if (paused_ || !hostWindow_ || !IsWindow(hostWindow_)) return;
     RECT client{};
     GetClientRect(hostWindow_, &client);
     const LONG width = client.right - client.left;
@@ -691,12 +866,14 @@ class NativeMvPanelHost {
   ComPtr<ICoreWebView2> webview_;
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};
+  HBITMAP pauseBitmap_ = nullptr;
   int playAllProbeAttempts_ = 0;
   int fullscreenProbeAttempts_ = 0;
   bool playAllProbeInFlight_ = false;
   bool fullscreenProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
-  bool nextRandomActionIsCenterClick_ = true;
+  bool pauseImageLoading_ = false;
+  bool paused_ = false;
   bool failed_ = false;
 };
 
@@ -714,6 +891,12 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
     }
   }
 
+  if (!host && message == kNativeMvPauseImageReadyMessage) {
+    HBITMAP bitmap = reinterpret_cast<HBITMAP>(lparam);
+    if (bitmap) DeleteObject(bitmap);
+    return 0;
+  }
+
   if (host) {
     switch (message) {
       case WM_SIZE:
@@ -722,6 +905,9 @@ LRESULT CALLBACK NativeMvPanelWndProc(HWND hwnd, UINT message, WPARAM wparam,
       case WM_TIMER:
         if (host->OnTimer(static_cast<UINT_PTR>(wparam))) return 0;
         break;
+      case kNativeMvPauseImageReadyMessage:
+        host->OnPauseImageReady(reinterpret_cast<HBITMAP>(lparam));
+        return 0;
       case WM_ERASEBKGND:
         return 1;
       case WM_PAINT:
