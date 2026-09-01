@@ -155,11 +155,20 @@ test('stale observability is refreshed after Runtime is healthy', async () => {
   assert.deepEqual(result.dispatched, ['observabilityRefresh']);
 });
 
+test('maintenance watchdog resumes the recovery chain after Pages and Runtime complete', () => {
+  const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
+
+  assert.match(workflow, /- "Publish GitHub Actions runner health"/);
+  assert.match(workflow, /- "Rebuild pages read models"/);
+  assert.match(workflow, /- "Run runtime offline maintenance"/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+});
+
 test('maintenance watchdog is independent, offset, and has no Cloudflare credentials', () => {
   const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
   const script = read('.github/scripts/recover-maintenance-workflows.mjs');
 
-  assert.match(workflow, /workflows: \["Publish GitHub Actions runner health"\]/);
+  assert.match(workflow, /Publish GitHub Actions runner health/);
   assert.match(workflow, /cron: '18,48 \* \* \* \*'/);
   assert.match(workflow, /actions: write/);
   assert.match(workflow, /maintenance-workflow-recovery/);

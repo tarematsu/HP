@@ -2,7 +2,10 @@ name: Recover maintenance workflows
 
 on:
   workflow_run:
-    workflows: ["Publish GitHub Actions runner health"]
+    workflows:
+      - "Publish GitHub Actions runner health"
+      - "Rebuild pages read models"
+      - "Run runtime offline maintenance"
     types: [completed]
   schedule:
     - cron: '18,48 * * * *'
