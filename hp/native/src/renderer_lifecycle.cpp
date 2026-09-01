@@ -1,4 +1,6 @@
 #include "web_renderer.h"
+#include "spotify_webviews.h"
+#include "spotify_webviews.inc"
 
 namespace hp {
 bool InstallRuntimeAssets() noexcept;
@@ -8,6 +10,7 @@ constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 constexpr ULONG kNativePanelTimerToleranceMs = 100;
 constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
+std::unique_ptr<SpotifyWebViews> gSpotifyWebViews;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -48,6 +51,10 @@ Renderer::Renderer(HWND window, int width, int height)
 
 Renderer::~Renderer() {
   shuttingDown_ = true;
+  if (gSpotifyWebViews) {
+    gSpotifyWebViews->Shutdown();
+    gSpotifyWebViews.reset();
+  }
 #if 0  // Stationhead playback bridge disabled for the MV panel build.
   StopNativePlaybackBridge();
 #endif
@@ -72,12 +79,20 @@ void Renderer::Initialize() {
       throw std::runtime_error("native dashboard window initialization failed");
     }
     if (powerSavingMode_) StopNativeMvPlayback(nativeRadarWindow_);
+    if (!gSpotifyWebViews) {
+      gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
+    }
+    if (!powerSavingMode_) gSpotifyWebViews->Start();
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
     if (nativeDashboardVisible_) StartRadarCompose();
   } catch (...) {
     StopRadarCompose();
+    if (gSpotifyWebViews) {
+      gSpotifyWebViews->Shutdown();
+      gSpotifyWebViews.reset();
+    }
 #if 0  // Stationhead playback bridge disabled.
     StopNativePlaybackBridge();
 #endif
@@ -96,6 +111,7 @@ void Renderer::Resize(int width, int height) {
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
+  if (gSpotifyWebViews) gSpotifyWebViews->Resize();
 }
 
 void Renderer::SetBounds(const RECT& bounds) {
@@ -105,6 +121,7 @@ void Renderer::SetBounds(const RECT& bounds) {
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
+  if (gSpotifyWebViews) gSpotifyWebViews->Resize();
 }
 
 void Renderer::SetVisible(bool visible) {
@@ -116,6 +133,17 @@ void Renderer::SetPowerSavingMode(bool enabled) {
   if (powerSavingMode_ == enabled) return;
   powerSavingMode_ = enabled;
   if (enabled) StopNativeMvPlayback(nativeRadarWindow_);
+  if (enabled) {
+    if (gSpotifyWebViews) {
+      gSpotifyWebViews->Shutdown();
+      gSpotifyWebViews.reset();
+    }
+  } else {
+    if (!gSpotifyWebViews) {
+      gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
+    }
+    gSpotifyWebViews->Start();
+  }
   ApplyDashboardVisibility();
 }
 
