@@ -53,7 +53,7 @@ test('MV WebView opens the requested YouTube playlist page directly', () => {
   assert.doesNotMatch(mvPanel, /assetFolder_/);
 });
 
-test('MV cycle closes WebView after 50:00-59:59 and reopens it after 60:00-79:59', () => {
+test('MV cycle closes WebView after 50:00-59:59 and reopens it after 60:00-79:59 internally', () => {
   assert.match(mvPanel, /kNativeMvRandomActionTimer/);
   assert.match(mvPanel, /kNativeMvPauseMinSeconds = 50U \* 60U/);
   assert.match(mvPanel, /kNativeMvPauseSpanSeconds = 10U \* 60U/);
@@ -179,12 +179,44 @@ test('power saving hides dashboard work but keeps the YouTube MV WebView alive',
   );
 });
 
-test('MV pause schedule drives the amazon Spotify podcast switch', () => {
+test('media cycle runs YouTube, Spotify podcast, then TVer for one hour each', () => {
   assert.match(composition, /#include "spotify_webviews\.h"/);
-  assert.match(composition, /kNativeMvRandomActionTimerForSpotify = 0x4D560001/);
-  assert.match(composition, /kNativeMvResumeDelayFloorMsForSpotify = 60U \* 60U \* 1000U/);
-  assert.match(composition, /#define SetTimer SetNativeMvTimerWithSpotifyMode/);
-  assert.match(composition, /SetSpotifyAmazonPodcastMode/);
+  assert.match(composition, /kNativeMvRandomActionTimerForMediaCycle = 0x4D560001/);
+  assert.match(composition, /kMediaCycleHourMs = 60U \* 60U \* 1000U/);
+  assert.match(composition, /kNativeMvPodcastAndTverPauseMs = 2U \* 60U \* 60U \* 1000U/);
+  assert.match(composition, /#define SetTimer SetNativeMvTimerWithMediaCycle/);
+  assert.match(
+    composition,
+    /const UINT effectiveDelay =\s*enteringPause \? kNativeMvPodcastAndTverPauseMs : kMediaCycleHourMs/,
+  );
+  assert.match(
+    composition,
+    /SetSpotifyAmazonPodcastMode\(true\)[\s\S]*kSakuraMeetsTverStartTimer[\s\S]*kMediaCycleHourMs/,
+  );
+  assert.match(
+    composition,
+    /SakuraMeetsTverStartTimerProc[\s\S]*SetSpotifyAmazonPodcastMode\(false\)[\s\S]*gSakuraMeetsTverPlayer\.Start\(hwnd\)/,
+  );
+});
+
+test('TVer phase always returns through the Sakura Meets series page and latest episode', () => {
+  assert.match(composition, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
+  assert.match(composition, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
+  assert.match(composition, /最新話\|最新回/);
+  assert.match(composition, /放課後トーク\|予告/);
+  assert.match(composition, /location\.replace\(latest\.href\)/);
+  assert.match(composition, /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300/);
+  assert.match(composition, /location\.replace\(seriesUrl\)/);
+  assert.match(composition, /video\.play\(\)/);
+  assert.match(composition, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(
+    composition,
+    /SharedMediaUserDataFolder[\s\S]*L"data" \/ L"webview2-youtube-mv"/,
+  );
+  assert.match(
+    composition,
+    /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder, false, false,/,
+  );
 });
 
 test('YouTube uses stock WebView2 browser arguments while Stationhead optimizations stay isolated', () => {
