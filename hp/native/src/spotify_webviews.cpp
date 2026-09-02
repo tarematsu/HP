@@ -38,6 +38,8 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     let playing = false;
     if (playButton) {
       const label = (playButton.getAttribute('aria-label') || '').toLowerCase();
+      // This is the Spotify transport state. Native WebView2 output muting is
+      // deliberately independent so a muted player still counts as playing.
       playing = label.includes('pause') || label.includes('一時停止');
       if (!playing) playButton.click();
     }
@@ -80,6 +82,14 @@ std::wstring BuildSpotifyPanelLabelScript(size_t index) {
 })();
 )JS";
   return script;
+}
+
+void MuteSpotifyOutput(const ComPtr<ICoreWebView2>& webview) noexcept {
+  if (!webview) return;
+  ComPtr<ICoreWebView2_8> audio;
+  if (SUCCEEDED(webview.As(&audio)) && audio) {
+    audio->put_IsMuted(TRUE);
+  }
 }
 
 bool StartsWithInsensitive(std::wstring_view value,
@@ -222,6 +232,10 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
 void SpotifyWebViews::Configure(Slot& slot) noexcept {
   if (!slot.controller || !slot.webview) return;
   try {
+    // Host-level WebView2 muting suppresses device output without pausing or
+    // changing Spotify's own player state.
+    MuteSpotifyOutput(slot.webview);
+
     ComPtr<ICoreWebView2Controller2> controller2;
     if (SUCCEEDED(slot.controller.As(&controller2)) && controller2) {
       COREWEBVIEW2_COLOR background{255, 0, 0, 0};
@@ -267,6 +281,11 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!alive->load(std::memory_order_acquire) || !sender || !args) {
                 return S_OK;
               }
+
+              // Re-assert native output muting after every navigation. The mute
+              // does not affect the DOM transport state used by playback checks.
+              MuteSpotifyOutput(target->webview);
+
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
                 target->playing = false;
