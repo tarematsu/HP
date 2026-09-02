@@ -77,7 +77,7 @@ test('music phase keeps the requested track release on repeat one', () => {
   assert.match(spotify, /window\.setInterval\(ensure, 60000\)/);
 });
 
-test('podcast phase starts Sakura TALKABOUT from the latest episode then allows continuous playback', () => {
+test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x playback', () => {
   assert.match(spotify, /2ZQy2mlwQodabAILwZ02Ed/);
   assert.match(spotify, /kSpotifyPodcastPlaybackScript/);
   assert.match(spotify, /a\[href\*="\/episode\/"\]/);
@@ -85,6 +85,14 @@ test('podcast phase starts Sakura TALKABOUT from the latest episode then allows 
   assert.match(spotify, /const onEpisode = location\.pathname\.startsWith\('\/episode\/'\)/);
   assert.match(spotify, /const playButton = onShow \? latestEpisodeButton\(\)/);
   assert.match(spotify, /disableRepeat\(\)/);
+  assert.match(spotify, /const playbackRate = 3\.0/);
+  assert.match(spotify, /document\.querySelectorAll\('audio, video'\)/);
+  assert.match(spotify, /media\.defaultPlaybackRate = playbackRate/);
+  assert.match(
+    spotify,
+    /if \(media\.playbackRate !== playbackRate\) media\.playbackRate = playbackRate/,
+  );
+  assert.match(spotify, /window\.setInterval\(ensure, 5000\)/);
   assert.doesNotMatch(
     spotify,
     /if \(!location\.pathname\.endsWith\(showPath\)\)[\s\S]*location\.replace\(showUrl\)/,
@@ -100,7 +108,7 @@ test('all six Spotify WebViews stay natively muted so media-panel audio never ov
   assert.doesNotMatch(spotify, /amazonPodcastMode_/);
 });
 
-test('Spotify foreground depends on six playback states checked every minute', () => {
+test('Spotify foreground depends on six playback states checked periodically', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
@@ -109,6 +117,7 @@ test('Spotify foreground depends on six playback states checked every minute', (
   assert.match(spotify, /add_WebMessageReceived/);
   assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
   assert.match(spotify, /setInterval\(ensure, 60000\)/);
+  assert.match(spotify, /setInterval\(ensure, 5000\)/);
 });
 
 test('Spotify and media playback ignore power-saving mode while following renderer lifetime', () => {
