@@ -141,10 +141,24 @@ constexpr wchar_t kNativeMvAdSkipProbeScript[] = LR"JS(
 )JS";
 constexpr wchar_t kNativeMvPlaybackHealthScript[] = LR"JS(
 (() => {
+  const player = document.querySelector('#movie_player');
+  if (player) {
+    try {
+      // YouTube's internal quality name for 480p is "large". Pin both
+      // ends of the adaptive range so automatic quality cannot climb above it.
+      if (typeof player.setPlaybackQualityRange === 'function') {
+        player.setPlaybackQualityRange('large', 'large');
+      }
+      if (typeof player.setPlaybackQuality === 'function') {
+        player.setPlaybackQuality('large');
+      }
+    } catch (_) {
+    }
+  }
+
   const video = document.querySelector('video');
   if (video && video.error) return true;
 
-  const player = document.querySelector('.html5-video-player');
   if (player && player.classList.contains('ytp-error')) return true;
 
   const error = document.querySelector(
@@ -693,6 +707,7 @@ class NativeMvPanelHost {
     playbackHealthProbeInFlight_ = false;
     SetTimer(hostWindow_, kNativeMvPlaybackHealthTimer,
              kNativeMvPlaybackHealthMs, nullptr);
+    ProbePlaybackHealth();
   }
 
   void StopPlaybackHealthMonitor() noexcept {
