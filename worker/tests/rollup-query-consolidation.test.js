@@ -18,7 +18,7 @@ function assertSharedRangeParameters(sql) {
   assert.doesNotMatch(sql, /\?(?![12])/);
 }
 
-test('daily rollups dedupe each channel to one row per minute and select one channel', () => {
+test('legacy daily rollups dedupe each channel to one row per minute and select one channel', () => {
   const cte = section('const DAILY_MINUTE_ROWS_CTE', 'const DAILY_BOUNDARIES_SQL');
   assert.equal((cte.match(/\?1/g) || []).length, 1);
   assert.equal((cte.match(/\?2/g) || []).length, 1);
@@ -27,7 +27,7 @@ test('daily rollups dedupe each channel to one row per minute and select one cha
   assert.match(cte, /selected_channel/);
   assert.match(cte, /ORDER BY COUNT\(\*\) DESC,MAX\(observed_at\) DESC,channel_id ASC/);
 
-  const boundaries = section('const DAILY_BOUNDARIES_SQL', 'const SUMMARY_BOUNDARIES_SQL');
+  const boundaries = section('const DAILY_BOUNDARIES_SQL', '// The normal maintenance path');
   assert.match(boundaries, /\$\{DAILY_MINUTE_ROWS_CTE\}/);
   assert.equal((boundaries.match(/channel_id=\(SELECT channel_id FROM selected_channel\)/g) || []).length, 5);
   assert.match(boundaries, /AS stream_start/);
@@ -36,11 +36,38 @@ test('daily rollups dedupe each channel to one row per minute and select one cha
   assert.match(boundaries, /AS member_end/);
   assert.match(boundaries, /AS primary_host/);
 
-  const daily = section('async function rollupDaily', 'async function rollupFromDaily');
+  const daily = section('async function rollupDaily', 'async function rollupMinuteDaily');
   assert.match(daily, /FROM daily_minute_rows/);
   assert.match(daily, /GROUP BY channel_id/);
   assert.equal((daily.match(/\.bind\(period\.start, period\.end\)\.first\(\)/g) || []).length, 2);
   assert.match(daily, /validateSummaryCounts\('sh_daily_summary', aggregate\)/);
+});
+
+test('normal daily maintenance seeks the canonical minute range directly', () => {
+  const cte = section('const MINUTE_DAILY_ROWS_CTE', 'const MINUTE_DAILY_SUMMARY_SQL');
+  assert.match(cte, /daily_minute_rows AS MATERIALIZED/);
+  assert.match(cte, /FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(cte, /WHERE f\.minute_at>=\?1 AND f\.minute_at<\?2/);
+  assert.match(cte, /selected_rows AS MATERIALIZED/);
+  assert.doesNotMatch(cte, /sh_channel_snapshots/);
+
+  const summary = section('const MINUTE_DAILY_SUMMARY_SQL', 'const SUMMARY_BOUNDARIES_SQL');
+  assert.match(summary, /\$\{MINUTE_DAILY_ROWS_CTE\}/);
+  assert.match(summary, /FROM selected_rows/);
+  assert.match(summary, /AS stream_start/);
+  assert.match(summary, /AS stream_end/);
+  assert.match(summary, /AS member_start/);
+  assert.match(summary, /AS member_end/);
+  assert.match(summary, /AS primary_host/);
+
+  const minuteDaily = section('async function rollupMinuteDaily', 'async function rollupFromDaily');
+  assert.match(minuteDaily, /prepare\(MINUTE_DAILY_SUMMARY_SQL\)/);
+  assert.equal((minuteDaily.match(/\.bind\(period\.start, period\.end\)\.first\(\)/g) || []).length, 1);
+  assert.match(minuteDaily, /upsertSummary\(otherDb, 'sh_daily_summary', period\.key, summary, summary/);
+
+  const rebuild = section('async function rebuildDailyWhenComplete', 'function dayKey');
+  assert.match(rebuild, /rollupMinuteDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
+  assert.doesNotMatch(rebuild, /rollupDaily\(minuteDb/);
 });
 
 test('weekly and monthly boundary SQL reuses the same two numbered parameters', () => {
