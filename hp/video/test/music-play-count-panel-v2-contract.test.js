@@ -23,10 +23,13 @@ const messagePolicy = readFileSync(
   'utf8',
 );
 
-test('the compiled media panel has moved from the legacy Music panel to MV', () => {
-  assert.match(entry, /#include "mv_section\.inc"/);
+test('the compiled media panel uses the integrated YouTube and TVer surface', () => {
+  assert.match(entry, /HomePanelNativeMvPanel/);
+  assert.match(entry, /void Renderer::DrawMusicSection/);
+  assert.match(entry, /kNativeMediaYoutubeUrl/);
+  assert.match(entry, /kNativeMediaTverUrl/);
+  assert.doesNotMatch(entry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(entry, /media_section_v2\.inc/);
-  assert.match(panel, /void Renderer::DrawMusicSection/);
 });
 
 test('legacy play-count rendering remains isolated for Stationhead regression coverage', () => {
