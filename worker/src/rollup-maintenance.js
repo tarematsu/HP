@@ -60,6 +60,62 @@ SELECT
     (SELECT host_handle FROM daily_minute_rows
      WHERE channel_id=(SELECT channel_id FROM selected_channel) AND host_handle IS NOT NULL AND host_handle<>''
      GROUP BY host_handle ORDER BY COUNT(*) DESC,host_handle ASC LIMIT 1) AS primary_host`;
+
+// The normal maintenance path reads MINUTE_DB. Do not route that through the
+// sh_channel_snapshots compatibility view: the view alias plus the ranking CTE
+// can make SQLite materialize the full minute-fact history before applying the
+// requested UTC-day range. Seek the canonical minute_at index first, then do
+// all ranking/summary work on at most one day of facts.
+const MINUTE_STREAM_VALUE_SQL = `CASE WHEN current_stream_count IS NOT NULL
+  AND current_stream_count>=0 AND current_stream_count IS NOT total_listens
+  THEN current_stream_count END`;
+const MINUTE_DAILY_ROWS_CTE = `WITH daily_minute_rows AS MATERIALIZED (
+  SELECT
+    f.id,f.minute_at AS observed_at,f.channel_id,f.listener_count,
+    COALESCE(d.last_total_member_count,f.total_member_count) AS total_member_count,
+    f.reported_total_listens AS total_listens,
+    f.reported_current_stream_count AS current_stream_count,
+    h.current_handle AS host_handle
+  FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time
+  LEFT JOIN sh_minute_fact_context AS c ON c.fact_id=f.id
+  LEFT JOIN sh_hosts AS h ON h.id=c.host_id
+  LEFT JOIN sh_total_member_daily_latest AS d
+    ON d.channel_id=f.channel_id
+    AND d.day_at=(f.minute_at/86400000)*86400000
+  WHERE f.minute_at>=?1 AND f.minute_at<?2
+), selected_channel AS (
+  SELECT channel_id FROM daily_minute_rows
+  GROUP BY channel_id
+  ORDER BY COUNT(*) DESC,MAX(observed_at) DESC,channel_id ASC
+  LIMIT 1
+), selected_rows AS MATERIALIZED (
+  SELECT * FROM daily_minute_rows
+  WHERE channel_id=(SELECT channel_id FROM selected_channel)
+)`;
+const MINUTE_DAILY_SUMMARY_SQL = `${MINUTE_DAILY_ROWS_CTE}
+SELECT
+  channel_id,MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
+  COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
+  AVG(listener_count) AS listener_avg,MIN(listener_count) AS listener_min,
+  MAX(listener_count) AS listener_max,NULL AS likes_max,NULL AS distinct_tracks,1 AS quality_score,
+  (SELECT ${MINUTE_STREAM_VALUE_SQL} FROM selected_rows
+   WHERE ${MINUTE_STREAM_VALUE_SQL} IS NOT NULL
+   ORDER BY observed_at ASC,id ASC LIMIT 1) AS stream_start,
+  (SELECT ${MINUTE_STREAM_VALUE_SQL} FROM selected_rows
+   WHERE ${MINUTE_STREAM_VALUE_SQL} IS NOT NULL
+   ORDER BY observed_at DESC,id DESC LIMIT 1) AS stream_end,
+  (SELECT total_member_count FROM selected_rows
+   WHERE total_member_count IS NOT NULL
+   ORDER BY observed_at ASC,id ASC LIMIT 1) AS member_start,
+  (SELECT total_member_count FROM selected_rows
+   WHERE total_member_count IS NOT NULL
+   ORDER BY observed_at DESC,id DESC LIMIT 1) AS member_end,
+  (SELECT host_handle FROM selected_rows
+   WHERE host_handle IS NOT NULL AND host_handle<>''
+   GROUP BY host_handle ORDER BY COUNT(*) DESC,host_handle ASC LIMIT 1) AS primary_host
+FROM selected_rows
+GROUP BY channel_id`;
+
 const SUMMARY_BOUNDARIES_SQL = `SELECT
     (SELECT stream_start FROM sh_daily_summary
      WHERE period_key>=?1 AND period_key<?2 AND stream_start IS NOT NULL
@@ -155,6 +211,14 @@ async function rollupDaily(sourceDb, otherDb, period, now, qualityFlags = '["liv
   const boundaries = await sourceDb.prepare(DAILY_BOUNDARIES_SQL)
     .bind(period.start, period.end).first();
   return upsertSummary(otherDb, 'sh_daily_summary', period.key, aggregate, boundaries, now, qualityFlags);
+}
+
+async function rollupMinuteDaily(minuteDb, otherDb, period, now, qualityFlags) {
+  const summary = await minuteDb.prepare(MINUTE_DAILY_SUMMARY_SQL)
+    .bind(period.start, period.end).first();
+  if (!summary || Number(summary.sample_count || 0) < 1) return false;
+  validateSummaryCounts('sh_daily_summary', summary);
+  return upsertSummary(otherDb, 'sh_daily_summary', period.key, summary, summary, now, qualityFlags);
 }
 
 async function rollupFromDaily(otherDb, table, range, now, qualityFlags = '["live_rollup"]') {
@@ -381,7 +445,7 @@ async function rebuildDailyWhenComplete(minuteDb, otherDb, period, reconciliatio
     'daily_reconciled',
     'minute_generation:' + reconciliation.generation,
   ]);
-  const written = await rollupDaily(minuteDb, otherDb, period, now, qualityFlags);
+  const written = await rollupMinuteDaily(minuteDb, otherDb, period, now, qualityFlags);
   return {
     skipped: !written,
     rebuilt: Boolean(existing && written),
@@ -451,9 +515,9 @@ async function refreshMonthly(otherDb, range, now, force = false) {
   return { skipped: !written, rebuilt: Boolean(existing && written), generated: Boolean(!existing && written), reason: written ? null : 'daily-summaries-empty', periodKey: range.key, generation };
 }
 
-// Maintenance state remains in Buddies DB. Summary source rows prefer MINUTE_DB's
-// minute-backed sh_channel_snapshots compatibility view; UTC rollups are stored
-// in OTHER_DB because only monitoring and Pages read them.
+// Maintenance state remains in Buddies DB. Current daily summaries are built
+// directly from MINUTE_DB's canonical minute facts; UTC rollups are stored in
+// OTHER_DB because only monitoring and Pages read them.
 export async function runRollupMaintenance(db, otherDb, minuteDb, now = Date.now()) {
   if (typeof minuteDb === 'number') {
     now = minuteDb;
