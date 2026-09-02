@@ -136,6 +136,16 @@ test('MV playback detects YouTube player errors and recovers through the playlis
   );
 });
 
+test('MV playback pins YouTube quality to 480p and reapplies it', () => {
+  assert.match(mvPanel, /document\.querySelector\('#movie_player'\)/);
+  assert.match(mvPanel, /setPlaybackQualityRange\('large', 'large'\)/);
+  assert.match(mvPanel, /setPlaybackQuality\('large'\)/);
+  assert.match(
+    mvPanel,
+    /void BeginPlaybackHealthMonitor\(\) noexcept \{[\s\S]*SetTimer\(hostWindow_, kNativeMvPlaybackHealthTimer,[\s\S]*ProbePlaybackHealth\(\);[\s\S]*\}/,
+  );
+});
+
 test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.match(mvPanel, /homepanel-youtube-clean-player/);
   assert.match(mvPanel, /\.ytp-chrome-top/);
