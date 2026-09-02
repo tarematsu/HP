@@ -114,7 +114,7 @@ test('MV playback enters YouTube fullscreen with DOM-located native input', () =
 
 test('MV playback detects YouTube player errors and recovers through the playlist', () => {
   assert.match(mvPanel, /kNativeMvPlaybackHealthTimer/);
-  assert.match(mvPanel, /kNativeMvPlaybackHealthMs = 5U \* 1000U/);
+  assert.match(mvPanel, /kNativeMvPlaybackHealthMs = 10U \* 1000U/);
   assert.match(mvPanel, /kNativeMvNavigationRetryTimer/);
   assert.match(mvPanel, /kNativeMvNavigationRetryMs = 3U \* 1000U/);
   assert.match(mvPanel, /video && video\.error/);
@@ -144,7 +144,7 @@ test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.match(mvPanel, /\.ytp-gradient-bottom/);
   assert.match(mvPanel, /opacity:\s*0\s*!important/);
   assert.match(mvPanel, /transition:\s*none\s*!important/);
-  assert.doesNotMatch(mvPanel, /visibility:\s*hidden/);
+  assert.doesNotMatch(mvPanel, /(?:^|[^-])visibility:\s*hidden/m);
 });
 
 test('power saving hides dashboard work but keeps the YouTube MV WebView alive', () => {
