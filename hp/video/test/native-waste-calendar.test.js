@@ -42,12 +42,13 @@ test('waste calendar summary is rendered below the clock instead of on the radar
   assert.match(layout, /TierFont\(FontTier::Small\)/);
 });
 
-test('clock waste summary is limited to non-burnable hazardous, bottles/cans, and paper', () => {
+test('clock waste summary is limited to two non-burnable hazardous, bottles/cans, or paper notices', () => {
   assert.match(calendar, /BottlesCansPet: return L"びんかん"/);
   assert.match(calendar, /NonBurnableHazardous: return L"不燃有害"/);
   assert.match(calendar, /Paper: return L"紙類"/);
   assert.doesNotMatch(calendar, /L"可燃"|L"プラ"|L"布類"/);
-  assert.match(calendar, /foundCount < 3/);
+  assert.match(calendar, /foundCount < 2/);
+  assert.doesNotMatch(calendar, /foundCount < 3/);
   assert.match(
     calendar,
     /swprintf_s\(item, L"%d日後 %ls", offset, Course36ClockWasteLabel\(kind\)\)/,
