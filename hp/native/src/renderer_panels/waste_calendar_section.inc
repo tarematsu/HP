@@ -149,7 +149,7 @@ const std::wstring& Course36ClockWasteSummary(const SYSTEMTIME& now) {
   int foundCount = 0;
   constexpr int kSearchDays = 62;
 
-  for (int offset = 0; offset <= kSearchDays && foundCount < 3; ++offset) {
+  for (int offset = 0; offset <= kSearchDays && foundCount < 2; ++offset) {
     SYSTEMTIME date{};
     if (!Course36AddDays(now, offset, date)) break;
     const Course36WasteKind kind = Course36WasteForDate(date);
