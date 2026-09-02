@@ -23,12 +23,15 @@ class SpotifyWebViews final {
     SpotifyWebViews* owner = nullptr;
     size_t index = 0;
     HWND hostWindow = nullptr;
+    ComPtr<ICoreWebView2Environment> environment;
     ComPtr<ICoreWebView2Controller> controller;
     ComPtr<ICoreWebView2> webview;
     EventRegistrationToken navigationStartingToken{};
     EventRegistrationToken navigationCompletedToken{};
     EventRegistrationToken webMessageReceivedToken{};
+    EventRegistrationToken webResourceRequestedToken{};
     bool playing = false;
+    bool playerPage = false;
   };
 
   static LRESULT CALLBACK HostWndProc(

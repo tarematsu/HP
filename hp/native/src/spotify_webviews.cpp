@@ -13,6 +13,8 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 constexpr wchar_t kSpotifyPodcastLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fshow%2F2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
+constexpr UINT_PTR kSpotifyStartupTimer = 1;
+constexpr UINT kSpotifyStartupStaggerMs = 400;
 constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
     L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
 SpotifyWebViews* gActiveSpotifyWebViews = nullptr;
@@ -218,10 +220,19 @@ void SpotifyWebViews::Start() noexcept {
   alive_->store(true, std::memory_order_release);
   gActiveSpotifyWebViews = this;
 
-  for (Slot& slot : slots_) {
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    Slot& slot = slots_[i];
     slot.playing = false;
+    slot.playerPage = false;
     if (!CreateHost(slot)) continue;
-    CreateController(slot);
+    if (i == 0) {
+      CreateController(slot);
+      continue;
+    }
+    const UINT delay = static_cast<UINT>(i) * kSpotifyStartupStaggerMs;
+    if (SetTimer(slot.hostWindow, kSpotifyStartupTimer, delay, nullptr) == 0) {
+      CreateController(slot);
+    }
   }
   Resize();
 }
@@ -240,6 +251,7 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
               !IsWindow(target->hostWindow)) {
             return;
           }
+          target->environment = environment;
 
           const auto controllerReady =
               Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
@@ -333,6 +345,34 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
     Slot* const target = &slot;
     const auto alive = alive_;
+
+    // Spotify's player shell is only used for transport/audio. Avoid downloading
+    // and rasterizing decorative images and web fonts once the main document is
+    // on open.spotify.com. Login/auth pages remain untouched and usable.
+    slot.webview->AddWebResourceRequestedFilter(
+        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE);
+    slot.webview->AddWebResourceRequestedFilter(
+        L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT);
+    slot.webview->add_WebResourceRequested(
+        Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+            [alive, target](
+                ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args)
+                -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || !args ||
+                  !target->playerPage || !target->environment) {
+                return S_OK;
+              }
+              ComPtr<ICoreWebView2WebResourceResponse> response;
+              if (SUCCEEDED(target->environment->CreateWebResourceResponse(
+                      nullptr, 204, L"No Content",
+                      L"Cache-Control: no-store\r\n", &response)) &&
+                  response) {
+                args->put_Response(response.Get());
+              }
+              return S_OK;
+            }).Get(),
+        &slot.webResourceRequestedToken);
+
     slot.webview->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
             [this, alive, target](
@@ -340,6 +380,12 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
               target->playing = false;
+              target->playerPage = false;
+              LPWSTR rawUri = nullptr;
+              if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
+                target->playerPage = IsSpotifyPlayerUri(rawUri);
+                CoTaskMemFree(rawUri);
+              }
               RecomputeForeground();
               return S_OK;
             }).Get(),
@@ -361,6 +407,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
                 target->playing = false;
+                target->playerPage = false;
                 RecomputeForeground();
                 return S_OK;
               }
@@ -369,6 +416,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
                 target->playing = false;
                 injectPlayback = IsSpotifyPlayerUri(rawUri);
+                target->playerPage = injectPlayback;
                 CoTaskMemFree(rawUri);
                 RecomputeForeground();
               }
@@ -429,7 +477,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     RECT client{};
     GetClientRect(slot.hostWindow, &client);
     slot.controller->put_Bounds(client);
-    slot.controller->put_IsVisible(TRUE);
+    slot.controller->put_IsVisible(foreground_ ? TRUE : FALSE);
 
     // Opening the login endpoint makes an expired/new profile surface itself.
     // The amazon slot follows the MV pause state; the remaining accounts always
@@ -504,6 +552,9 @@ void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
+    if (slot.controller) {
+      slot.controller->put_IsVisible(foreground ? TRUE : FALSE);
+    }
     if (!foreground) {
       ShowWindow(slot.hostWindow, SW_HIDE);
       continue;
@@ -526,6 +577,9 @@ void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
+  if (slot.hostWindow && IsWindow(slot.hostWindow)) {
+    KillTimer(slot.hostWindow, kSpotifyStartupTimer);
+  }
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
       slot.webview->remove_NavigationStarting(slot.navigationStartingToken);
@@ -536,16 +590,22 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.webMessageReceivedToken.value != 0) {
       slot.webview->remove_WebMessageReceived(slot.webMessageReceivedToken);
     }
+    if (slot.webResourceRequestedToken.value != 0) {
+      slot.webview->remove_WebResourceRequested(slot.webResourceRequestedToken);
+    }
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
   slot.webMessageReceivedToken = {};
+  slot.webResourceRequestedToken = {};
   slot.webview.Reset();
   if (slot.controller) slot.controller->Close();
   slot.controller.Reset();
+  slot.environment.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
   slot.hostWindow = nullptr;
   slot.playing = false;
+  slot.playerPage = false;
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
@@ -567,6 +627,11 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
+    if (message == WM_TIMER && wparam == kSpotifyStartupTimer) {
+      KillTimer(hwnd, kSpotifyStartupTimer);
+      if (slot->owner) slot->owner->CreateController(*slot);
+      return 0;
+    }
     if (message == WM_SIZE && slot->controller) {
       RECT client{};
       GetClientRect(hwnd, &client);
