@@ -27,11 +27,17 @@
 #include "renderer_panels/environment_sections.inc"
 
 namespace {
-constexpr UINT_PTR kNativeMvRandomActionTimerForMediaCycle = 0x4D560001;
+constexpr UINT_PTR kNativeMvRandomActionTimerForSpotify = 0x4D560001;
+constexpr UINT kNativeMvResumeDelayFloorMsForSpotify = 60U * 60U * 1000U;
+// Keep the legacy Spotify contract names above while the same phase timer now
+// governs the complete YouTube -> Spotify -> TVer media cycle.
+constexpr UINT_PTR kNativeMvRandomActionTimerForMediaCycle =
+    kNativeMvRandomActionTimerForSpotify;
+constexpr UINT kNativeMvResumeDelayFloorMsForMediaCycle =
+    kNativeMvResumeDelayFloorMsForSpotify;
 constexpr UINT_PTR kSakuraMeetsTverStartTimer = 0x4D560101;
 constexpr UINT_PTR kSakuraMeetsTverStopTimer = 0x4D560102;
 constexpr UINT_PTR kSakuraMeetsTverMaintenanceTimer = 0x4D560103;
-constexpr UINT kNativeMvResumeDelayFloorMsForMediaCycle = 60U * 60U * 1000U;
 constexpr UINT kMediaCycleHourMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMvPodcastAndTverPauseMs = 2U * 60U * 60U * 1000U;
 constexpr UINT kSakuraMeetsTverMaintenanceMs = 5U * 1000U;
