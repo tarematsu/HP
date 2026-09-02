@@ -52,6 +52,7 @@ constexpr wchar_t kSakuraMeetsTverLoopScript[] = LR"JS(
   if (window.__homePanelSakuraMeetsLoopTimer) return;
 
   const seriesUrl = 'https://tver.jp/series/srx97ftk3w';
+  const playbackRate = 1.75;
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const isDisplayed = element => {
     if (!element) return false;
@@ -87,6 +88,11 @@ constexpr wchar_t kSakuraMeetsTverLoopScript[] = LR"JS(
     const videos = Array.from(document.querySelectorAll('video'));
     const video = videos.find(isDisplayed) || videos[0] || null;
     if (video) {
+      // TVer may replace the media element between ads and the programme, so
+      // reapply the requested speed every maintenance pass.
+      video.defaultPlaybackRate = playbackRate;
+      if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate;
+
       if (Number.isFinite(video.duration)) {
         state.maxDuration = Math.max(state.maxDuration, video.duration);
       }
