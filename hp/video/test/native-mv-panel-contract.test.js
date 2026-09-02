@@ -102,14 +102,22 @@ test('MV pause surface uses a Sakurazaka46 artist image and native pause label',
   assert.match(mvPanel, /kNativeMvPauseImageReadyMessage/);
 });
 
-test('MV playback enters YouTube fullscreen with DOM-located native input', () => {
-  assert.match(mvPanel, /kNativeMvFullscreenRetryTimer/);
-  assert.match(mvPanel, /kNativeMvFullscreenRetryMs = 500U/);
-  assert.match(mvPanel, /kNativeMvFullscreenRetryLimit = 30/);
-  assert.match(mvPanel, /\.ytp-fullscreen-button/);
-  assert.match(mvPanel, /BeginFullscreenProbe\(\)/);
-  assert.match(mvPanel, /ProbeFullscreenButton\(\)/);
-  assert.match(mvPanel, /IsWatchPage\(\)/);
+test('ad skip watchdog also restores YouTube fullscreen', () => {
+  assert.match(mvPanel, /kNativeMvAdSkipProbeMs = 1000U/);
+  assert.match(mvPanel, /document\.fullscreenElement/);
+  assert.match(mvPanel, /classList\.contains\('ytp-fullscreen'\)/);
+  assert.match(mvPanel, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
+  assert.match(
+    mvPanel,
+    /let target = candidates\.find\(isClickable\) \|\| null;[\s\S]*if \(!target\) \{[\s\S]*const fullscreen = document\.fullscreenElement[\s\S]*if \(fullscreen\) return null;[\s\S]*\.ytp-fullscreen-button/,
+  );
+  assert.match(mvPanel, /void ProbeAdSkipButton\(\) noexcept/);
+  assert.doesNotMatch(mvPanel, /kNativeMvFullscreenRetryTimer/);
+  assert.doesNotMatch(mvPanel, /kNativeMvFullscreenRetryMs/);
+  assert.doesNotMatch(mvPanel, /kNativeMvFullscreenRetryLimit/);
+  assert.doesNotMatch(mvPanel, /BeginFullscreenProbe\(/);
+  assert.doesNotMatch(mvPanel, /StopFullscreenProbe\(/);
+  assert.doesNotMatch(mvPanel, /ProbeFullscreenButton\(/);
 });
 
 test('MV playback detects YouTube player errors and recovers through the playlist', () => {
