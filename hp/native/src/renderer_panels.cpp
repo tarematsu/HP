@@ -8,10 +8,7 @@
 #include "spotify_webviews.h"
 #include "version.h"
 #include "winhttp_helpers.h"
-#define PlaceNativeWindow BasePlaceNativeWindow
 #include "renderer_panels/primitives.inc"
-#undef PlaceNativeWindow
-#include "renderer_panels/shift_overlay.inc"
 #include "renderer_panels/layout_overrides.inc"
 #include "renderer_panels/waste_calendar_section.inc"
 
