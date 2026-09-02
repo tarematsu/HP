@@ -15,8 +15,10 @@ constexpr wchar_t kSpotifyPodcastLoginUrl[] =
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
 constexpr UINT_PTR kSpotifyStartupTimer = 1;
 constexpr UINT_PTR kSpotifyModeTimer = 2;
+constexpr UINT_PTR kSpotifyModeSwitchTimer = 3;
 constexpr UINT kSpotifyStartupStaggerMs = 400;
 constexpr UINT kSpotifyModePhaseMs = 60U * 60U * 1000U;
+constexpr UINT kSpotifyModeStaggerMs = 10U * 1000U;
 constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
     L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
 
@@ -506,7 +508,18 @@ void SpotifyWebViews::ArmModeTimer() noexcept {
 void SpotifyWebViews::ToggleMode() noexcept {
   if (!started_) return;
   podcastMode_ = !podcastMode_;
-  for (Slot& slot : slots_) NavigateSlotToCurrentMode(slot);
+  for (Slot& slot : slots_) {
+    if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
+    KillTimer(slot.hostWindow, kSpotifyModeSwitchTimer);
+    if (slot.index == 0) {
+      NavigateSlotToCurrentMode(slot);
+      continue;
+    }
+    const UINT delay = static_cast<UINT>(slot.index) * kSpotifyModeStaggerMs;
+    if (SetTimer(slot.hostWindow, kSpotifyModeSwitchTimer, delay, nullptr) == 0) {
+      NavigateSlotToCurrentMode(slot);
+    }
+  }
   RecomputeForeground();
   ArmModeTimer();
 }
@@ -578,6 +591,7 @@ void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   if (slot.hostWindow && IsWindow(slot.hostWindow)) {
     KillTimer(slot.hostWindow, kSpotifyStartupTimer);
+    KillTimer(slot.hostWindow, kSpotifyModeSwitchTimer);
     if (slot.index == 0) KillTimer(slot.hostWindow, kSpotifyModeTimer);
   }
   if (slot.webview) {
@@ -633,6 +647,11 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     }
     if (message == WM_TIMER && wparam == kSpotifyModeTimer && slot->index == 0) {
       if (slot->owner) slot->owner->ToggleMode();
+      return 0;
+    }
+    if (message == WM_TIMER && wparam == kSpotifyModeSwitchTimer) {
+      KillTimer(hwnd, kSpotifyModeSwitchTimer);
+      if (slot->owner) slot->owner->NavigateSlotToCurrentMode(*slot);
       return 0;
     }
     if (message == WM_SIZE && slot->controller) {
