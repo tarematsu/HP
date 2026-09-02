@@ -82,7 +82,9 @@ void Renderer::Initialize() {
     if (!gSpotifyWebViews) {
       gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
     }
-    if (!powerSavingMode_) gSpotifyWebViews->Start();
+    // Spotify remains active in power-saving mode. Its six WebViews stay
+    // natively muted and continue their independent playback health checks.
+    gSpotifyWebViews->Start();
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
@@ -133,17 +135,7 @@ void Renderer::SetPowerSavingMode(bool enabled) {
   if (powerSavingMode_ == enabled) return;
   powerSavingMode_ = enabled;
   if (enabled) StopNativeMvPlayback(nativeRadarWindow_);
-  if (enabled) {
-    if (gSpotifyWebViews) {
-      gSpotifyWebViews->Shutdown();
-      gSpotifyWebViews.reset();
-    }
-  } else {
-    if (!gSpotifyWebViews) {
-      gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
-    }
-    gSpotifyWebViews->Start();
-  }
+  // Spotify intentionally ignores power-saving mode and keeps running.
   ApplyDashboardVisibility();
 }
 
