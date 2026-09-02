@@ -84,6 +84,7 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
   window.__homePanelSakuraTalkAboutPlayback = true;
   const showUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
   const showPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
+  const playbackRate = 3.0;
   const report = playing => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
@@ -100,6 +101,15 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
   const isPlayingButton = button => {
     const label = (button.getAttribute('aria-label') || '').toLowerCase();
     return label.includes('pause') || label.includes('一時停止');
+  };
+  const ensurePlaybackRate = () => {
+    document.querySelectorAll('audio, video').forEach(media => {
+      try {
+        media.defaultPlaybackRate = playbackRate;
+        if (media.playbackRate !== playbackRate) media.playbackRate = playbackRate;
+      } catch (_) {
+      }
+    });
   };
   const disableRepeat = () => {
     const repeat = document.querySelector(
@@ -134,6 +144,7 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
       location.replace(showUrl);
       return;
     }
+    ensurePlaybackRate();
     disableRepeat();
     const playButtons = Array.from(document.querySelectorAll(
         'button[data-testid="play-button"]'));
@@ -149,7 +160,7 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
     report(playing);
   };
   ensure();
-  window.setInterval(ensure, 60000);
+  window.setInterval(ensure, 5000);
 })();
 )JS";
 
