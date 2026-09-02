@@ -53,18 +53,25 @@ test('Spotify foreground uses six tall side-by-side WebView hosts with account l
   assert.match(spotify, /__homePanelSpotifyAccount/);
 });
 
-test('all six accounts alternate Lonesome rabbit and Sakura TALKABOUT every hour', () => {
+test('all six accounts alternate Lonesome rabbit and Sakura TALKABOUT every hour with staggered switches', () => {
   assert.match(spotify, /kSpotifyModeTimer = 2/);
+  assert.match(spotify, /kSpotifyModeSwitchTimer = 3/);
   assert.match(spotify, /kSpotifyModePhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(spotify, /kSpotifyModeStaggerMs = 10U \* 1000U/);
   assert.match(spotifyHeader, /bool podcastMode_ = false/);
   assert.match(
     spotify,
-    /void SpotifyWebViews::ToggleMode\(\) noexcept[\s\S]*podcastMode_ = !podcastMode_;[\s\S]*for \(Slot& slot : slots_\) NavigateSlotToCurrentMode\(slot\);[\s\S]*ArmModeTimer\(\)/,
+    /void SpotifyWebViews::ToggleMode\(\) noexcept[\s\S]*podcastMode_ = !podcastMode_;[\s\S]*for \(Slot& slot : slots_\)[\s\S]*slot\.index == 0[\s\S]*NavigateSlotToCurrentMode\(slot\)[\s\S]*slot\.index\) \* kSpotifyModeStaggerMs[\s\S]*SetTimer\(slot\.hostWindow, kSpotifyModeSwitchTimer, delay, nullptr\)[\s\S]*ArmModeTimer\(\)/,
+  );
+  assert.match(
+    spotify,
+    /wparam == kSpotifyModeSwitchTimer[\s\S]*KillTimer\(hwnd, kSpotifyModeSwitchTimer\)[\s\S]*NavigateSlotToCurrentMode\(\*slot\)/,
   );
   assert.match(
     spotify,
     /NavigateSlotToCurrentMode\(Slot& slot\)[\s\S]*Navigate\(podcastMode_ \? kSpotifyPodcastUrl : kSpotifyAlbumUrl\)/,
   );
+  assert.match(spotify, /KillTimer\(slot\.hostWindow, kSpotifyModeSwitchTimer\)/);
   assert.doesNotMatch(spotifyHeader, /SetAmazonPodcastMode/);
   assert.doesNotMatch(spotify, /SetSpotifyAmazonPodcastMode/);
 });
