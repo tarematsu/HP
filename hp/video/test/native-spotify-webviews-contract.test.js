@@ -93,9 +93,18 @@ test('Spotify foreground depends only on all six playback states checked every m
   assert.match(spotify, /remove_WebMessageReceived/);
 });
 
-test('Spotify pool follows renderer lifetime and power saving', () => {
+test('Spotify ignores power-saving mode but still follows renderer lifetime', () => {
   assert.match(lifecycle, /std::unique_ptr<SpotifyWebViews> gSpotifyWebViews/);
   assert.match(lifecycle, /gSpotifyWebViews->Start\(\)/);
   assert.match(lifecycle, /gSpotifyWebViews->Shutdown\(\)/);
   assert.match(lifecycle, /gSpotifyWebViews->Resize\(\)/);
+  assert.doesNotMatch(lifecycle, /if \(!powerSavingMode_\) gSpotifyWebViews->Start\(\)/);
+
+  const powerSavingStart = lifecycle.indexOf('void Renderer::SetPowerSavingMode');
+  const visibilityStart = lifecycle.indexOf('void Renderer::ApplyDashboardVisibility');
+  assert.notEqual(powerSavingStart, -1);
+  assert.notEqual(visibilityStart, -1);
+  const powerSavingSection = lifecycle.slice(powerSavingStart, visibilityStart);
+  assert.match(powerSavingSection, /StopNativeMvPlayback/);
+  assert.doesNotMatch(powerSavingSection, /gSpotifyWebViews/);
 });
