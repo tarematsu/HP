@@ -2,17 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const composition = readFileSync(
-  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+const mediaPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
 
 test('TVer Sakura Meets playback is kept at 1.75x after media element changes', () => {
-  assert.match(composition, /const playbackRate = 1\.75/);
-  assert.match(composition, /video\.defaultPlaybackRate = playbackRate/);
+  assert.match(mediaPanel, /const playbackRate = 1\.75/);
+  assert.match(mediaPanel, /video\.defaultPlaybackRate = playbackRate/);
   assert.match(
-    composition,
+    mediaPanel,
     /if \(video\.playbackRate !== playbackRate\) video\.playbackRate = playbackRate/,
   );
-  assert.match(composition, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
 });

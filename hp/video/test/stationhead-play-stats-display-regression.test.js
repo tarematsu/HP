@@ -62,12 +62,15 @@ test('captured API fixture produces the expected UTC period totals', () => {
   });
 });
 
-test('the compiled media entry is now the MV panel, not the legacy play-count panel', () => {
-  assert.match(mediaEntry, /#include "mv_section\.inc"/);
+test('the compiled media entry is the integrated YouTube and TVer panel', () => {
+  assert.match(mediaEntry, /HomePanelNativeMvPanel/);
+  assert.match(mediaEntry, /kNativeMediaYoutubeUrl/);
+  assert.match(mediaEntry, /kNativeMediaTverUrl/);
+  assert.doesNotMatch(mediaEntry, /#include "mv_section\.inc"/);
   assert.doesNotMatch(mediaEntry, /media_section_v2\.inc/);
 });
 
-test('legacy five play-count metrics remain testable outside the compiled MV panel', () => {
+test('legacy five play-count metrics remain testable outside the compiled media panel', () => {
   assert.match(
     mediaSection,
     /kPlayMetricLabels\{[\s\S]*L"直近1時間"[\s\S]*L"本日"[\s\S]*L"昨日"[\s\S]*L"今週"[\s\S]*L"先週"/,
