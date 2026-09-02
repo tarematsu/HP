@@ -98,6 +98,12 @@ constexpr wchar_t kNativeMvFullscreenProbeScript[] = LR"JS(
     if (parent) parent.appendChild(style);
   }
 
+  const player = document.querySelector('#movie_player');
+  if (document.fullscreenElement ||
+      (player && player.classList.contains('ytp-fullscreen'))) {
+    return 'fullscreen';
+  }
+
   const target = document.querySelector('.ytp-fullscreen-button');
   if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
   const rect = target.getBoundingClientRect();
@@ -802,7 +808,7 @@ class NativeMvPanelHost {
   }
 
   void ProbeFullscreenButton() noexcept {
-    if (!webview_ || fullscreenProbeInFlight_ || paused_) return;
+    if (!webview_ || fullscreenProbeInFlight_ || paused_ || !IsWatchPage()) return;
     if (fullscreenProbeAttempts_ >= kNativeMvFullscreenRetryLimit) {
       StopFullscreenProbe();
       return;
@@ -817,10 +823,14 @@ class NativeMvPanelHost {
             [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
               fullscreenProbeInFlight_ = false;
+              if (SUCCEEDED(result) && json &&
+                  std::wstring_view(json) == L"\"fullscreen\"") {
+                StopFullscreenProbe();
+                return S_OK;
+              }
               int x = 0;
               int y = 0;
               if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
-                StopFullscreenProbe();
                 ClickNormalizedPoint(x, y);
                 return S_OK;
               }
