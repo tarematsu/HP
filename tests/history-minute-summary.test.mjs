@@ -204,5 +204,5 @@ test('offline rollups reconcile missing Minute Facts before rebuilding summaries
   assert.match(rollupSource, /rebuildDailyWhenComplete/);
   assert.match(rollupSource, /daily-summaries-incomplete/);
   assert.match(rollupSource, /weekly-summaries-incomplete/);
-  assert.match(rollupSource, /rollupDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
+  assert.match(rollupSource, /rollupMinuteDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);
 });
