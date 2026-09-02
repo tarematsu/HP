@@ -147,24 +147,17 @@ test('MV playback keeps YouTube transition chrome visually hidden', () => {
   assert.doesNotMatch(mvPanel, /visibility:\s*hidden/);
 });
 
-test('power saving stops the YouTube WebView and blocks periodic URL loading', () => {
+test('power saving hides dashboard work but keeps the YouTube MV WebView alive', () => {
   assert.match(mvPanel, /webview2-youtube-mv/);
-  assert.match(lifecycle, /kNativeMvPanelHostClass\[\] = L"HomePanelNativeMvPanel"/);
+  assert.doesNotMatch(lifecycle, /StopNativeMvPlayback/);
+  assert.doesNotMatch(lifecycle, /kNativeMvPanelHostClass/);
   assert.match(
     lifecycle,
-    /FindWindowExW\(\s*radarWindow, nullptr, kNativeMvPanelHostClass, nullptr\)/s,
+    /void Renderer::SetPowerSavingMode\(bool enabled\)[\s\S]*ApplyDashboardVisibility\(\)/,
   );
   assert.match(
     lifecycle,
-    /if \(mvWindow && IsWindow\(mvWindow\)\) DestroyWindow\(mvWindow\)/,
-  );
-  assert.match(
-    lifecycle,
-    /void Renderer::SetPowerSavingMode\(bool enabled\)[\s\S]*if \(enabled\) StopNativeMvPlayback\(nativeRadarWindow_\);[\s\S]*ApplyDashboardVisibility\(\)/,
-  );
-  assert.match(
-    lifecycle,
-    /if \(powerSavingMode_\) StopNativeMvPlayback\(nativeRadarWindow_\)/,
+    /if \(powerSavingMode_\) \{[\s\S]*nativeDashboardVisible_ = true;[\s\S]*EnsureNativeStaticWindows\(\);[\s\S]*nativeDashboardVisible_ = savedVisibility;/,
   );
   assert.match(
     nativeWindows,
@@ -174,7 +167,14 @@ test('power saving stops the YouTube WebView and blocks periodic URL loading', (
     nativeWindows,
     /PlaceNativeWindow\(hwnd, layout\.\*slot\.rect, nativeDashboardVisible_\)/,
   );
-  assert.doesNotMatch(nativeWindows, /keepMvPlaybackVisible/);
+});
+
+test('MV pause schedule drives the amazon Spotify podcast switch', () => {
+  assert.match(composition, /#include "spotify_webviews\.h"/);
+  assert.match(composition, /kNativeMvRandomActionTimerForSpotify = 0x4D560001/);
+  assert.match(composition, /kNativeMvResumeDelayFloorMsForSpotify = 60U \* 60U \* 1000U/);
+  assert.match(composition, /#define SetTimer SetNativeMvTimerWithSpotifyMode/);
+  assert.match(composition, /SetSpotifyAmazonPodcastMode/);
 });
 
 test('YouTube uses stock WebView2 browser arguments while Stationhead optimizations stay isolated', () => {

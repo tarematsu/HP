@@ -9,7 +9,6 @@ namespace {
 constexpr UINT_PTR kNativePanelTickTimer = 1;
 constexpr UINT kNativePanelTickMs = 1'000;
 constexpr ULONG kNativePanelTimerToleranceMs = 100;
-constexpr wchar_t kNativeMvPanelHostClass[] = L"HomePanelNativeMvPanel";
 std::unique_ptr<SpotifyWebViews> gSpotifyWebViews;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
@@ -27,13 +26,6 @@ void PrepareParentWindow(HWND window) {
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE |
                      SWP_FRAMECHANGED);
   }
-}
-
-void StopNativeMvPlayback(HWND radarWindow) noexcept {
-  if (!radarWindow || !IsWindow(radarWindow)) return;
-  HWND mvWindow = FindWindowExW(
-      radarWindow, nullptr, kNativeMvPanelHostClass, nullptr);
-  if (mvWindow && IsWindow(mvWindow)) DestroyWindow(mvWindow);
 }
 }  // namespace
 
@@ -78,12 +70,23 @@ void Renderer::Initialize() {
     if (!EnsureNativeStaticWindows()) {
       throw std::runtime_error("native dashboard window initialization failed");
     }
-    if (powerSavingMode_) StopNativeMvPlayback(nativeRadarWindow_);
+    if (powerSavingMode_) {
+      // EnsureNativeStaticWindows normally defers MV creation while the native
+      // dashboard is hidden. Create the MV child once against the already-hidden
+      // radar host so YouTube playback remains alive during power saving too.
+      const bool savedVisibility = nativeDashboardVisible_;
+      nativeDashboardVisible_ = true;
+      const bool mvReady = EnsureNativeStaticWindows();
+      nativeDashboardVisible_ = savedVisibility;
+      if (!mvReady) {
+        throw std::runtime_error("native MV initialization failed");
+      }
+    }
     if (!gSpotifyWebViews) {
       gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
     }
-    // Spotify remains active in power-saving mode. Its six WebViews stay
-    // natively muted and continue their independent playback health checks.
+    // Spotify remains active in power-saving mode. Its six WebViews continue
+    // playback, and the amazon slot is audible only during the MV pause period.
     gSpotifyWebViews->Start();
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
@@ -134,8 +137,8 @@ void Renderer::SetVisible(bool visible) {
 void Renderer::SetPowerSavingMode(bool enabled) {
   if (powerSavingMode_ == enabled) return;
   powerSavingMode_ = enabled;
-  if (enabled) StopNativeMvPlayback(nativeRadarWindow_);
-  // Spotify intentionally ignores power-saving mode and keeps running.
+  // MV and Spotify playback intentionally ignore power-saving mode. Only the
+  // dashboard/radar rendering workload is suspended below.
   ApplyDashboardVisibility();
 }
 

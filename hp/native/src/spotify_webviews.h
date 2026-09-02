@@ -14,6 +14,7 @@ class SpotifyWebViews final {
   void Start() noexcept;
   void Resize() noexcept;
   void Shutdown() noexcept;
+  void SetAmazonPodcastMode(bool enabled) noexcept;
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -50,6 +51,9 @@ class SpotifyWebViews final {
       std::make_shared<std::atomic<bool>>(true);
   bool started_ = false;
   bool foreground_ = true;
+  bool amazonPodcastMode_ = false;
 };
+
+void SetSpotifyAmazonPodcastMode(bool enabled) noexcept;
 
 }  // namespace hp
