@@ -9,7 +9,6 @@ constexpr wchar_t kNativeMvPauseImageUrl[] =
     L"https://sakurazaka46.com/files/14/Sakurazaka4615th%20Single_Lonesome%20rabbit%20What%27s%20KAZOKU_AP.jpg";
 constexpr UINT_PTR kNativeMvRandomActionTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMvPlayAllRetryTimer = 0x4D560002;
-constexpr UINT_PTR kNativeMvFullscreenRetryTimer = 0x4D560003;
 constexpr UINT_PTR kNativeMvPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMvNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMvAdSkipTimer = 0x4D560006;
@@ -20,12 +19,10 @@ constexpr UINT kNativeMvResumeMinSeconds = 60U * 60U;
 constexpr UINT kNativeMvResumeSpanSeconds = 20U * 60U;
 constexpr size_t kNativeMvPauseImageMaxBytes = 16U * 1024U * 1024U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
-constexpr UINT kNativeMvFullscreenRetryMs = 500U;
 constexpr UINT kNativeMvPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMvNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMvAdSkipProbeMs = 1000U;
 constexpr int kNativeMvPlayAllRetryLimit = 20;
-constexpr int kNativeMvFullscreenRetryLimit = 30;
 // Screenshot 709x1536: WebView ~= (213,531)-(700,804), Play all center
 // ~= (498,647), which is 58.5% across and 42.5% down the WebView.
 constexpr int kNativeMvFallbackPlayAllXTenThousandths = 5850;
@@ -74,51 +71,21 @@ constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
   return [x, y];
 })()
 )JS";
-constexpr wchar_t kNativeMvFullscreenProbeScript[] = LR"JS(
-(() => {
-  const styleId = 'homepanel-youtube-clean-player';
-  if (!document.getElementById(styleId)) {
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      .html5-video-player .ytp-chrome-top,
-      .html5-video-player .ytp-gradient-top,
-      .html5-video-player .ytp-chrome-bottom,
-      .html5-video-player .ytp-gradient-bottom {
-        opacity: 0 !important;
-        transition: none !important;
-      }
-      ytd-watch-flexy #below,
-      ytd-watch-flexy #secondary {
-        content-visibility: hidden !important;
-        contain-intrinsic-size: 1px 1px !important;
-      }
-    `;
-    const parent = document.head || document.documentElement;
-    if (parent) parent.appendChild(style);
-  }
-
-  const player = document.querySelector('#movie_player');
-  if (document.fullscreenElement ||
-      (player && player.classList.contains('ytp-fullscreen'))) {
-    return 'fullscreen';
-  }
-
-  const target = document.querySelector('.ytp-fullscreen-button');
-  if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
-  const rect = target.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  const x = Math.max(0, Math.min(10000, Math.round(
-      ((rect.left + rect.width / 2) / window.innerWidth) * 10000)));
-  const y = Math.max(0, Math.min(10000, Math.round(
-      ((rect.top + rect.height / 2) / window.innerHeight) * 10000)));
-  return [x, y];
-})()
-)JS";
 constexpr wchar_t kNativeMvAdSkipProbeScript[] = LR"JS(
 (() => {
   const player = document.querySelector('#movie_player');
   if (!player || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+
+  const isClickable = element => {
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true' ||
+        element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+
   const selectors = [
     '.ytp-ad-skip-button',
     '.ytp-ad-skip-button-modern',
@@ -128,15 +95,19 @@ constexpr wchar_t kNativeMvAdSkipProbeScript[] = LR"JS(
     '.ytp-ad-skip-button-container button'
   ];
   const candidates = Array.from(player.querySelectorAll(selectors.join(',')));
-  const target = candidates.find(element => {
-    if (element.disabled || element.getAttribute('aria-disabled') === 'true' ||
-        element.getAttribute('aria-hidden') === 'true') return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
-  });
-  if (!target) return null;
+  let target = candidates.find(isClickable) || null;
+
+  // Keep fullscreen recovery in this existing 1-second watchdog. Ad skipping
+  // wins when both controls are available; otherwise restore fullscreen only
+  // when the page itself reports that the player is not fullscreen.
+  if (!target) {
+    const fullscreen = document.fullscreenElement ||
+        player.classList.contains('ytp-fullscreen');
+    if (fullscreen) return null;
+    target = player.querySelector('.ytp-fullscreen-button');
+    if (!isClickable(target)) return null;
+  }
+
   const rect = target.getBoundingClientRect();
   const x = Math.max(0, Math.min(10000, Math.round(
       ((rect.left + rect.width / 2) / window.innerWidth) * 10000)));
@@ -283,10 +254,6 @@ class NativeMvPanelHost {
       ProbePlayAllButton();
       return true;
     }
-    if (timerId == kNativeMvFullscreenRetryTimer) {
-      ProbeFullscreenButton();
-      return true;
-    }
     if (timerId == kNativeMvPlaybackHealthTimer) {
       ProbePlaybackHealth();
       return true;
@@ -317,7 +284,6 @@ class NativeMvPanelHost {
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMvRandomActionTimer);
       KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
-      KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
       KillTimer(hostWindow_, kNativeMvPlaybackHealthTimer);
       KillTimer(hostWindow_, kNativeMvNavigationRetryTimer);
       KillTimer(hostWindow_, kNativeMvAdSkipTimer);
@@ -379,7 +345,6 @@ class NativeMvPanelHost {
                 if (!args || FAILED(args->get_IsSuccess(&succeeded)) ||
                     !succeeded) {
                   StopPlayAllProbe();
-                  StopFullscreenProbe();
                   StopPlaybackHealthMonitor();
                   StopAdSkipMonitor();
                   ScheduleNavigationRetry();
@@ -387,18 +352,15 @@ class NativeMvPanelHost {
                 }
                 StopNavigationRetry();
                 if (IsPlaylistPage()) {
-                  StopFullscreenProbe();
                   StopPlaybackHealthMonitor();
                   StopAdSkipMonitor();
                   BeginPlayAllProbe();
                 } else if (IsWatchPage()) {
                   StopPlayAllProbe();
-                  BeginFullscreenProbe();
                   BeginPlaybackHealthMonitor();
                   BeginAdSkipMonitor();
                 } else {
                   StopPlayAllProbe();
-                  StopFullscreenProbe();
                   StopPlaybackHealthMonitor();
                   StopAdSkipMonitor();
                 }
@@ -570,7 +532,6 @@ class NativeMvPanelHost {
 
   void EnterPause() noexcept {
     StopPlayAllProbe();
-    StopFullscreenProbe();
     StopPlaybackHealthMonitor();
     StopAdSkipMonitor();
     StopNavigationRetry();
@@ -655,7 +616,6 @@ class NativeMvPanelHost {
   void ReloadPlaylist() noexcept {
     if (paused_) return;
     StopPlayAllProbe();
-    StopFullscreenProbe();
     StopPlaybackHealthMonitor();
     StopAdSkipMonitor();
     StopNavigationRetry();
@@ -688,23 +648,6 @@ class NativeMvPanelHost {
       KillTimer(hostWindow_, kNativeMvPlayAllRetryTimer);
     }
     playAllProbeInFlight_ = false;
-  }
-
-  void BeginFullscreenProbe() noexcept {
-    StopFullscreenProbe();
-    fullscreenProbeAttempts_ = 0;
-    fullscreenProbeInFlight_ = false;
-    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
-    SetTimer(hostWindow_, kNativeMvFullscreenRetryTimer,
-             kNativeMvFullscreenRetryMs, nullptr);
-    ProbeFullscreenButton();
-  }
-
-  void StopFullscreenProbe() noexcept {
-    if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMvFullscreenRetryTimer);
-    }
-    fullscreenProbeInFlight_ = false;
   }
 
   void BeginPlaybackHealthMonitor() noexcept {
@@ -787,7 +730,6 @@ class NativeMvPanelHost {
               if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
                 StopPlayAllProbe();
                 ClickNormalizedPoint(x, y);
-                BeginFullscreenProbe();
                 BeginPlaybackHealthMonitor();
                 BeginAdSkipMonitor();
                 return S_OK;
@@ -803,46 +745,6 @@ class NativeMvPanelHost {
       if (playAllProbeAttempts_ >= kNativeMvPlayAllRetryLimit) {
         StopPlayAllProbe();
         ClickPlayAllFallback();
-      }
-    }
-  }
-
-  void ProbeFullscreenButton() noexcept {
-    if (!webview_ || fullscreenProbeInFlight_ || paused_ || !IsWatchPage()) return;
-    if (fullscreenProbeAttempts_ >= kNativeMvFullscreenRetryLimit) {
-      StopFullscreenProbe();
-      return;
-    }
-
-    ++fullscreenProbeAttempts_;
-    fullscreenProbeInFlight_ = true;
-    const auto alive = alive_;
-    const HRESULT started = webview_->ExecuteScript(
-        kNativeMvFullscreenProbeScript,
-        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire) || paused_) return S_OK;
-              fullscreenProbeInFlight_ = false;
-              if (SUCCEEDED(result) && json &&
-                  std::wstring_view(json) == L"\"fullscreen\"") {
-                StopFullscreenProbe();
-                return S_OK;
-              }
-              int x = 0;
-              int y = 0;
-              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
-                ClickNormalizedPoint(x, y);
-                return S_OK;
-              }
-              if (fullscreenProbeAttempts_ >= kNativeMvFullscreenRetryLimit) {
-                StopFullscreenProbe();
-              }
-              return S_OK;
-            }).Get());
-    if (FAILED(started)) {
-      fullscreenProbeInFlight_ = false;
-      if (fullscreenProbeAttempts_ >= kNativeMvFullscreenRetryLimit) {
-        StopFullscreenProbe();
       }
     }
   }
@@ -890,7 +792,6 @@ class NativeMvPanelHost {
     if (paused_) return;
     ClickNormalizedPoint(kNativeMvFallbackPlayAllXTenThousandths,
                          kNativeMvFallbackPlayAllYTenThousandths);
-    BeginFullscreenProbe();
     BeginPlaybackHealthMonitor();
     BeginAdSkipMonitor();
   }
@@ -962,7 +863,6 @@ class NativeMvPanelHost {
   void Fail() noexcept {
     failed_ = true;
     StopPlayAllProbe();
-    StopFullscreenProbe();
     StopPlaybackHealthMonitor();
     StopAdSkipMonitor();
     StopNavigationRetry();
@@ -985,9 +885,7 @@ class NativeMvPanelHost {
   EventRegistrationToken navigationCompletedToken_{};
   HBITMAP pauseBitmap_ = nullptr;
   int playAllProbeAttempts_ = 0;
-  int fullscreenProbeAttempts_ = 0;
   bool playAllProbeInFlight_ = false;
-  bool fullscreenProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
   bool adSkipProbeInFlight_ = false;
   bool pauseImageLoading_ = false;
