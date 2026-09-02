@@ -69,6 +69,16 @@ test('all Spotify profiles keep Lonesome rabbit playing on repeat one', () => {
   assert.match(spotify, /ExecuteScript\(kSpotifyPlaybackScript/);
 });
 
+test('Spotify WebViews stay host-muted while playback detection remains transport-based', () => {
+  assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
+  assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
+  assert.match(spotify, /MuteSpotifyOutput\(slot\.webview\)/);
+  assert.match(spotify, /MuteSpotifyOutput\(target->webview\)/);
+  assert.match(spotify, /playing = label\.includes\('pause'\)/);
+  assert.doesNotMatch(spotify, /\.muted\s*=\s*true/);
+  assert.doesNotMatch(spotify, /\.volume\s*=\s*0/);
+});
+
 test('Spotify foreground depends only on all six playback states checked every minute', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
