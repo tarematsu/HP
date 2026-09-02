@@ -21,9 +21,9 @@ constexpr UINT kNativeMvResumeSpanSeconds = 20U * 60U;
 constexpr size_t kNativeMvPauseImageMaxBytes = 16U * 1024U * 1024U;
 constexpr UINT kNativeMvPlayAllRetryMs = 500U;
 constexpr UINT kNativeMvFullscreenRetryMs = 500U;
-constexpr UINT kNativeMvPlaybackHealthMs = 5U * 1000U;
+constexpr UINT kNativeMvPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMvNavigationRetryMs = 3U * 1000U;
-constexpr UINT kNativeMvAdSkipProbeMs = 500U;
+constexpr UINT kNativeMvAdSkipProbeMs = 1000U;
 constexpr int kNativeMvPlayAllRetryLimit = 20;
 constexpr int kNativeMvFullscreenRetryLimit = 30;
 // Screenshot 709x1536: WebView ~= (213,531)-(700,804), Play all center
@@ -43,6 +43,11 @@ constexpr wchar_t kNativeMvPlayAllProbeScript[] = LR"JS(
       .html5-video-player .ytp-gradient-bottom {
         opacity: 0 !important;
         transition: none !important;
+      }
+      ytd-watch-flexy #below,
+      ytd-watch-flexy #secondary {
+        content-visibility: hidden !important;
+        contain-intrinsic-size: 1px 1px !important;
       }
     `;
     const parent = document.head || document.documentElement;
@@ -82,6 +87,11 @@ constexpr wchar_t kNativeMvFullscreenProbeScript[] = LR"JS(
       .html5-video-player .ytp-gradient-bottom {
         opacity: 0 !important;
         transition: none !important;
+      }
+      ytd-watch-flexy #below,
+      ytd-watch-flexy #secondary {
+        content-visibility: hidden !important;
+        contain-intrinsic-size: 1px 1px !important;
       }
     `;
     const parent = document.head || document.documentElement;
