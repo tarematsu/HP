@@ -4,11 +4,19 @@
 namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
+constexpr wchar_t kSpotifyAlbumUrl[] =
+    L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
+constexpr wchar_t kSpotifyPodcastUrl[] =
+    L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
+constexpr wchar_t kSpotifyPodcastLoginUrl[] =
+    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fshow%2F2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
 constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
     L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
+SpotifyWebViews* gActiveSpotifyWebViews = nullptr;
+
 constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 (() => {
   if (window.__homePanelLonesomeRabbitLoop) return;
@@ -57,6 +65,59 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 })();
 )JS";
 
+constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
+(() => {
+  if (window.__homePanelPodcastPlayback) return;
+  window.__homePanelPodcastPlayback = true;
+
+  const targetUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
+  const targetPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
+  const report = (playing) => {
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.postMessage(
+          playing ? 'spotify:playing' : 'spotify:not-playing');
+    }
+  };
+  const ensure = () => {
+    if (location.hostname !== 'open.spotify.com') {
+      report(false);
+      return;
+    }
+    if (!location.pathname.endsWith(targetPath)) {
+      report(false);
+      location.replace(targetUrl);
+      return;
+    }
+
+    const playButtons = Array.from(
+        document.querySelectorAll('button[data-testid="play-button"]'));
+    let playing = false;
+    for (const button of playButtons) {
+      const label = (button.getAttribute('aria-label') || '').toLowerCase();
+      if (label.includes('pause') || label.includes('一時停止')) {
+        playing = true;
+        break;
+      }
+    }
+
+    if (!playing) {
+      const playButton = playButtons.find(button => {
+        const rect = button.getBoundingClientRect();
+        return !button.disabled && rect.width > 0 && rect.height > 0;
+      });
+      if (playButton) {
+        playButton.click();
+        window.setTimeout(ensure, 1500);
+      }
+    }
+    report(playing);
+  };
+
+  ensure();
+  window.setInterval(ensure, 60000);
+})();
+)JS";
+
 std::wstring BuildSpotifyPanelLabelScript(size_t index) {
   if (index >= kSpotifyPanelNames.size()) return {};
   std::wstring script = LR"JS(
@@ -84,11 +145,12 @@ std::wstring BuildSpotifyPanelLabelScript(size_t index) {
   return script;
 }
 
-void MuteSpotifyOutput(const ComPtr<ICoreWebView2>& webview) noexcept {
+void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview,
+                           bool muted) noexcept {
   if (!webview) return;
   ComPtr<ICoreWebView2_8> audio;
   if (SUCCEEDED(webview.As(&audio)) && audio) {
-    audio->put_IsMuted(TRUE);
+    audio->put_IsMuted(muted ? TRUE : FALSE);
   }
 }
 
@@ -104,9 +166,9 @@ bool StartsWithInsensitive(std::wstring_view value,
 
 SpotifyWebViews::SpotifyWebViews(HWND parentWindow, fs::path dataDir)
     : parentWindow_(parentWindow),
-      // Intentionally use the exact same UDF as the existing YouTube MV WebView.
-      // Named WebView2 profiles isolate the six Spotify sessions while all seven
-      // controls share one WebView2 browser environment/process family.
+      // YouTube and all Spotify surfaces share one WebView2 user-data folder.
+      // The amazon slot additionally uses YouTube's default profile; the other
+      // five Spotify accounts keep named profiles for independent sessions.
       userDataFolder_(std::move(dataDir) / L"webview2-youtube-mv") {
   for (size_t i = 0; i < slots_.size(); ++i) {
     slots_[i].owner = this;
@@ -154,6 +216,7 @@ void SpotifyWebViews::Start() noexcept {
   started_ = true;
   foreground_ = true;
   alive_->store(true, std::memory_order_release);
+  gActiveSpotifyWebViews = this;
 
   for (Slot& slot : slots_) {
     slot.playing = false;
@@ -175,25 +238,6 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           if (!alive->load(std::memory_order_acquire) ||
               FAILED(result) || !environment || !target->hostWindow ||
               !IsWindow(target->hostWindow)) {
-            return;
-          }
-
-          ComPtr<ICoreWebView2Environment10> environment10;
-          if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
-              !environment10) {
-            return;
-          }
-
-          ComPtr<ICoreWebView2ControllerOptions> options;
-          if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
-              !options) {
-            return;
-          }
-          const std::wstring profileName =
-              std::wstring(kSpotifyProfilePrefix) +
-              std::to_wstring(target->index + 1);
-          if (FAILED(options->put_ProfileName(profileName.c_str())) ||
-              FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
             return;
           }
 
@@ -222,6 +266,33 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                     return S_OK;
                   });
 
+          if (target->index == 0) {
+            // The amazon panel intentionally uses the environment's default
+            // profile, exactly like the YouTube MV controller.
+            environment->CreateCoreWebView2Controller(
+                target->hostWindow, controllerReady.Get());
+            return;
+          }
+
+          ComPtr<ICoreWebView2Environment10> environment10;
+          if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
+              !environment10) {
+            return;
+          }
+
+          ComPtr<ICoreWebView2ControllerOptions> options;
+          if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
+              !options) {
+            return;
+          }
+          const std::wstring profileName =
+              std::wstring(kSpotifyProfilePrefix) +
+              std::to_wstring(target->index + 1);
+          if (FAILED(options->put_ProfileName(profileName.c_str())) ||
+              FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
+            return;
+          }
+
           environment10->CreateCoreWebView2ControllerWithOptions(
               target->hostWindow, options.Get(), controllerReady.Get());
         });
@@ -232,9 +303,10 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
 void SpotifyWebViews::Configure(Slot& slot) noexcept {
   if (!slot.controller || !slot.webview) return;
   try {
-    // Host-level WebView2 muting suppresses device output without pausing or
-    // changing Spotify's own player state.
-    MuteSpotifyOutput(slot.webview);
+    const bool amazonPodcast = slot.index == 0 && amazonPodcastMode_;
+    // Spotify streaming remains natively muted except for the amazon podcast
+    // while the MV panel is in its scheduled pause period.
+    SetSpotifyOutputMuted(slot.webview, !amazonPodcast);
 
     ComPtr<ICoreWebView2Controller2> controller2;
     if (SUCCEEDED(slot.controller.As(&controller2)) && controller2) {
@@ -282,9 +354,9 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 return S_OK;
               }
 
-              // Re-assert native output muting after every navigation. The mute
-              // does not affect the DOM transport state used by playback checks.
-              MuteSpotifyOutput(target->webview);
+              const bool amazonPodcast =
+                  target->index == 0 && amazonPodcastMode_;
+              SetSpotifyOutputMuted(target->webview, !amazonPodcast);
 
               BOOL success = FALSE;
               if (FAILED(args->get_IsSuccess(&success)) || !success) {
@@ -307,7 +379,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 sender->ExecuteScript(labelScript.c_str(), nullptr);
               }
               if (injectPlayback) {
-                sender->ExecuteScript(kSpotifyPlaybackScript, nullptr);
+                sender->ExecuteScript(
+                    amazonPodcast ? kSpotifyPodcastPlaybackScript
+                                  : kSpotifyPlaybackScript,
+                    nullptr);
               }
               return S_OK;
             }).Get(),
@@ -357,10 +432,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     slot.controller->put_IsVisible(TRUE);
 
     // Opening the login endpoint makes an expired/new profile surface itself.
-    // Authenticated profiles continue directly to the one-track official
-    // Lonesome rabbit release, which the injected player script starts and
-    // keeps in repeat-one mode.
-    slot.webview->Navigate(kSpotifyLoginUrl);
+    // The amazon slot follows the MV pause state; the remaining accounts always
+    // continue to the one-track official Lonesome rabbit release.
+    slot.webview->Navigate(
+        amazonPodcast ? kSpotifyPodcastLoginUrl : kSpotifyLoginUrl);
   } catch (...) {
   }
 }
@@ -370,6 +445,28 @@ bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
   const std::wstring_view value(uri);
   return StartsWithInsensitive(value, L"https://open.spotify.com/") &&
          !StartsWithInsensitive(value, L"https://open.spotify.com/login");
+}
+
+void SpotifyWebViews::SetAmazonPodcastMode(bool enabled) noexcept {
+  if (amazonPodcastMode_ == enabled) return;
+  amazonPodcastMode_ = enabled;
+  if (slots_.empty()) return;
+
+  Slot& amazon = slots_[0];
+  amazon.playing = false;
+  if (amazon.webview) {
+    // Mute before leaving the podcast so MV audio cannot overlap the tail of
+    // Spotify navigation. Enabling stays muted until the podcast page loads.
+    if (!enabled) SetSpotifyOutputMuted(amazon.webview, true);
+    amazon.webview->Navigate(enabled ? kSpotifyPodcastUrl : kSpotifyAlbumUrl);
+  }
+  RecomputeForeground();
+}
+
+void SetSpotifyAmazonPodcastMode(bool enabled) noexcept {
+  if (gActiveSpotifyWebViews) {
+    gActiveSpotifyWebViews->SetAmazonPodcastMode(enabled);
+  }
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
@@ -454,9 +551,11 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
 void SpotifyWebViews::Shutdown() noexcept {
   if (!started_) return;
   started_ = false;
+  if (gActiveSpotifyWebViews == this) gActiveSpotifyWebViews = nullptr;
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
   foreground_ = true;
+  amazonPodcastMode_ = false;
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(
