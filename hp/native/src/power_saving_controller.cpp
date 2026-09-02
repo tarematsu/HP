@@ -392,13 +392,25 @@ void PowerSavingController::LayoutOverlay() {
   if (!parent_ || !overlay_ || !IsWindow(parent_) || !IsWindow(overlay_)) return;
   RECT target{};
   GetClientRect(parent_, &target);
-  if (!powerSaving_ || mvStartupInputPass_) target = ParentButtonRect();
+  const bool compact = !powerSaving_ || mvStartupInputPass_;
+  if (compact) target = ParentButtonRect();
+  const int width = std::max(1L, target.right - target.left);
+  const int height = std::max(1L, target.bottom - target.top);
   SetWindowPos(
       overlay_, HWND_TOP,
       target.left, target.top,
-      std::max(1L, target.right - target.left),
-      std::max(1L, target.bottom - target.top),
+      width, height,
       SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
+  if (compact) {
+    HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1,
+                                     std::max(8, height),
+                                     std::max(8, height));
+    if (region && SetWindowRgn(overlay_, region, TRUE) == 0) {
+      DeleteObject(region);
+    }
+  } else {
+    SetWindowRgn(overlay_, nullptr, TRUE);
+  }
   InvalidateRect(overlay_, nullptr, FALSE);
 }
 
@@ -419,11 +431,11 @@ RECT PowerSavingController::ParentButtonRect() const {
   const RECT content = ShrinkRect(clock, pad);
   const int contentWidth = std::max(1L, content.right - content.left);
   const int contentHeight = std::max(1L, content.bottom - content.top);
-  const LONG statusTop = content.top + contentHeight * 735 / 1000;
+  const LONG statusTop = content.top + contentHeight * 830 / 1000;
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
-  const int buttonWidth = std::clamp(contentWidth * 300 / 1000, 86, 150);
-  const int buttonHeight = std::clamp(statusHeight * 70 / 100, 26, 42);
+  const int buttonWidth = std::clamp(contentWidth * 220 / 1000, 78, 112);
+  const int buttonHeight = std::clamp(statusHeight * 58 / 100, 22, 30);
   const LONG top =
       status.top + std::max(0, (statusHeight - buttonHeight) / 2);
   return RECT{
@@ -435,7 +447,7 @@ RECT PowerSavingController::ParentButtonRect() const {
 
 RECT PowerSavingController::LocalButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
-  if (powerSaving_) return ParentButtonRect();
+  if (powerSaving_ && !mvStartupInputPass_) return ParentButtonRect();
   RECT client{};
   GetClientRect(overlay_, &client);
   return client;
@@ -454,11 +466,11 @@ void PowerSavingController::PaintOverlay(HWND window) {
 
   const RECT button = LocalButtonRect();
   const COLORREF surface =
-      powerSaving_ ? RGB(30, 92, 55) : RGB(31, 39, 52);
+      powerSaving_ ? RGB(30, 92, 55) : RGB(28, 36, 48);
   HBRUSH brush = CreateSolidBrush(surface);
   HPEN pen = CreatePen(
       PS_SOLID, 1,
-      powerSaving_ ? RGB(74, 180, 105) : RGB(74, 88, 108));
+      powerSaving_ ? RGB(74, 180, 105) : RGB(63, 76, 96));
   HGDIOBJ previousBrush = SelectObject(dc, brush);
   HGDIOBJ previousPen = SelectObject(dc, pen);
   const int radius = std::max(8L, button.bottom - button.top);
@@ -471,14 +483,14 @@ void PowerSavingController::PaintOverlay(HWND window) {
   DeleteObject(brush);
 
   const int fontHeight = std::clamp(
-      static_cast<int>((button.bottom - button.top) * 42 / 100), 12, 20);
+      static_cast<int>((button.bottom - button.top) * 38 / 100), 11, 16);
   HFONT font = CreateFontW(
-      -fontHeight, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+      -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
       DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
       CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
   HGDIOBJ previousFont = SelectObject(dc, font);
   SetBkMode(dc, TRANSPARENT);
-  SetTextColor(dc, RGB(238, 242, 248));
+  SetTextColor(dc, RGB(232, 237, 244));
   RECT textRect = button;
   DrawTextW(
       dc, powerSaving_ ? L"省電力 ON" : L"省電力", -1, &textRect,
