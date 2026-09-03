@@ -81,7 +81,7 @@ test('music phase keeps the requested track release on repeat one', () => {
   assert.match(spotify, /kSpotifyPlaybackScript/);
   assert.match(spotify, /control-button-repeat/);
   assert.match(spotify, /aria-checked.*mixed/s);
-  assert.match(spotify, /window\.setInterval\(ensure, 60000\)/);
+  assert.match(spotify, /window\.setInterval\(ensure, checkIntervalMs\)/);
 });
 
 test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x playback', () => {
@@ -90,7 +90,7 @@ test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x
   assert.match(spotify, /a\[href\*="\/episode\/"\]/);
   assert.match(spotify, /const latest = links\[0\]/);
   assert.match(spotify, /const onEpisode = location\.pathname\.startsWith\('\/episode\/'\)/);
-  assert.match(spotify, /const playButton = onShow \? latestEpisodeButton\(\)/);
+  assert.match(spotify, /const recoveryButton = onShow => playerControl\(\)/);
   assert.match(spotify, /disableRepeat\(\)/);
   assert.match(spotify, /const playbackRate = 3\.0/);
   assert.match(spotify, /document\.querySelectorAll\('audio, video'\)/);
@@ -99,11 +99,34 @@ test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x
     spotify,
     /if \(media\.playbackRate !== playbackRate\) media\.playbackRate = playbackRate/,
   );
-  assert.match(spotify, /window\.setInterval\(ensure, 5000\)/);
+  assert.match(spotify, /window\.setInterval\(ensure, checkIntervalMs\)/);
   assert.doesNotMatch(
     spotify,
     /if \(!location\.pathname\.endsWith\(showPath\)\)[\s\S]*location\.replace\(showUrl\)/,
   );
+});
+
+test('each Spotify WebView verifies real media progress and self-recovers every ten seconds', () => {
+  assert.equal((spotify.match(/const checkIntervalMs = 10000/g) || []).length, 2);
+  assert.equal((spotify.match(/const stallLimit = 2/g) || []).length, 2);
+  assert.equal(
+    (spotify.match(/document\.querySelectorAll\('audio, video'\)/g) || []).length >= 2,
+    true,
+  );
+  assert.equal(
+    (spotify.match(/!media\.paused && !media\.ended && media\.readyState >= 2/g) || []).length,
+    2,
+  );
+  assert.equal(
+    (spotify.match(/Math\.abs\(currentTime - lastTime\) >= 0\.5/g) || []).length,
+    2,
+  );
+  assert.equal((spotify.match(/stalledChecks < stallLimit/g) || []).length, 2);
+  assert.equal((spotify.match(/recoverPlayback/g) || []).length >= 4, true);
+  assert.equal((spotify.match(/if \(lastReported === playing\) return/g) || []).length, 2);
+  assert.match(spotify, /control-button-playpause/);
+  assert.doesNotMatch(spotify, /setInterval\(ensure, 60000\)/);
+  assert.doesNotMatch(spotify, /setInterval\(ensure, 5000\)/);
 });
 
 test('all six Spotify WebViews stay natively muted so media-panel audio never overlaps', () => {
@@ -115,7 +138,7 @@ test('all six Spotify WebViews stay natively muted so media-panel audio never ov
   assert.doesNotMatch(spotify, /amazonPodcastMode_/);
 });
 
-test('Spotify foreground depends on six playback states checked periodically', () => {
+test('Spotify foreground depends on six playback states reported by the WebView watchdogs', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
@@ -123,8 +146,7 @@ test('Spotify foreground depends on six playback states checked periodically', (
   assert.match(spotify, /spotify:not-playing/);
   assert.match(spotify, /add_WebMessageReceived/);
   assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
-  assert.match(spotify, /setInterval\(ensure, 60000\)/);
-  assert.match(spotify, /setInterval\(ensure, 5000\)/);
+  assert.equal((spotify.match(/window\.setInterval\(ensure, checkIntervalMs\)/g) || []).length, 2);
 });
 
 test('Spotify and media playback ignore power-saving mode while following renderer lifetime', () => {
