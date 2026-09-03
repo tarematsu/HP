@@ -169,15 +169,19 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     }
     if (!targetStarted) {
       const target = targetPlayButton();
-      if (target) {
+      if (!target) {
+        report(false);
+        return;
+      }
+      if (!buttonShowsPlaying(target)) {
         target.click();
-        targetStarted = true;
         lastMedia = null;
         lastTime = NaN;
         stalledChecks = 0;
         report(false);
         return;
       }
+      targetStarted = true;
     }
     ensureRepeatOne();
     const mediaPlaying = samplePlayback();

@@ -107,7 +107,7 @@ test('music phase keeps the requested track release on repeat one', () => {
   assert.match(spotify, /const targetPlayButton = \(\) =>/);
   assert.match(
     spotify,
-    /if \(!targetStarted\)[\s\S]*targetPlayButton\(\)[\s\S]*target\.click\(\)[\s\S]*targetStarted = true[\s\S]*report\(false\)/,
+    /if \(!targetStarted\)[\s\S]*if \(!target\)[\s\S]*report\(false\)[\s\S]*if \(!buttonShowsPlaying\(target\)\)[\s\S]*target\.click\(\)[\s\S]*report\(false\)[\s\S]*targetStarted = true/,
   );
   assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
 });
