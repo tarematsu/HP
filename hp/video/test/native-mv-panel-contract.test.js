@@ -93,7 +93,19 @@ test('YouTube keeps playlist autoplay, 480p, ad skip, and fullscreen recovery', 
   assert.match(mediaPanel, /setPlaybackQualityRange\('large', 'large'\)/);
   assert.match(mediaPanel, /setPlaybackQuality\('large'\)/);
   assert.match(mediaPanel, /kNativeMediaPlaybackHealthMs = 10U \* 1000U/);
-  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogMs = 1000U/);
+  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogMinMs = 2U \* 1000U/);
+  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogMaxMs = 10U \* 1000U/);
+  assert.match(mediaPanel, /NextNativeMediaYoutubeWatchdogMs\(\)/);
+  assert.match(mediaPanel, /QueryPerformanceCounter\(&counter\)/);
+  assert.match(
+    mediaPanel,
+    /timerId == kNativeMediaYoutubeWatchdogTimer[\s\S]*NextNativeMediaYoutubeWatchdogMs\(\)[\s\S]*ProbeYoutubeWatchdog\(\)/,
+  );
+  assert.match(
+    mediaPanel,
+    /SetTimer\(hostWindow_, kNativeMediaYoutubeWatchdogTimer,[\s\S]*NextNativeMediaYoutubeWatchdogMs\(\), nullptr\)/,
+  );
+  assert.doesNotMatch(mediaPanel, /kNativeMediaYoutubeWatchdogMs = 1000U/);
   assert.match(mediaPanel, /document\.fullscreenElement/);
   assert.match(mediaPanel, /classList\.contains\('ytp-fullscreen'\)/);
   assert.match(mediaPanel, /\.ytp-fullscreen-button/);
