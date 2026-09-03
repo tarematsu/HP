@@ -8,6 +8,8 @@ constexpr wchar_t kSpotifyAlbumUrl[] =
     L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
+constexpr wchar_t kSpotifyTokyoSnowUrl[] =
+    L"https://open.spotify.com/track/307SI8AgVvBbNTkNrETKHW";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastLoginUrl[] =
@@ -18,7 +20,8 @@ constexpr UINT_PTR kSpotifyModeTimer = 2;
 constexpr UINT_PTR kSpotifyModeSwitchTimer = 3;
 constexpr UINT_PTR kSpotifyPlaybackWatchdogTimer = 4;
 constexpr UINT kSpotifyStartupStaggerMs = 400;
-constexpr UINT kSpotifyModePhaseMs = 60U * 60U * 1000U;
+constexpr UINT kSpotifyMusicPhaseMs = 90U * 60U * 1000U;
+constexpr UINT kSpotifyPodcastPhaseMs = 30U * 60U * 1000U;
 constexpr UINT kSpotifyModeStaggerMs = 10U * 1000U;
 constexpr UINT kSpotifyPlaybackWatchdogTickMs = 2U * 1000U;
 constexpr int kSpotifyBackgroundExtent = 1;
@@ -58,16 +61,20 @@ constexpr wchar_t kSpotifyLightweightScript[] = LR"JS(
 
 constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 (() => {
-  if (window.__homePanelLonesomeRabbitLoop) return;
-  window.__homePanelLonesomeRabbitLoop = true;
-  const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
-  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
+  if (window.__homePanelSakuraAlternatingLoop) return;
+  window.__homePanelSakuraAlternatingLoop = true;
+  const lonesomeUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
+  const lonesomePath = '/album/2f2Ik9JeinFVWZuFb3i35b';
+  const tokyoSnowUrl = 'https://open.spotify.com/track/307SI8AgVvBbNTkNrETKHW';
+  const tokyoSnowPath = '/track/307SI8AgVvBbNTkNrETKHW';
   const stallLimit = 2;
   let lastMedia = null;
   let lastTime = NaN;
   let stalledChecks = 0;
   let lastReported = null;
   let targetStarted = false;
+  let lastTargetTime = NaN;
+  let completionMedia = null;
 
   const report = playing => {
     if (lastReported === playing) return;
@@ -98,6 +105,15 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   const mediaElement = () => {
     const items = Array.from(document.querySelectorAll('audio, video'));
     return items.find(item => !item.paused && !item.ended) || items[0] || null;
+  };
+  const currentTarget = () => {
+    if (location.pathname.endsWith(lonesomePath)) {
+      return { nextUrl: tokyoSnowUrl };
+    }
+    if (location.pathname.endsWith(tokyoSnowPath)) {
+      return { nextUrl: lonesomeUrl };
+    }
+    return null;
   };
   const ensureRepeatOne = () => {
     const repeat = document.querySelector(
@@ -157,14 +173,31 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     if (!visible(button) || buttonShowsPlaying(button)) return;
     button.click();
   };
+  const armCompletion = (media, nextUrl) => {
+    if (!media || media === completionMedia) return;
+    completionMedia = media;
+    media.addEventListener('ended', () => {
+      report(false);
+      location.replace(nextUrl);
+    }, { once: true });
+  };
+  const targetWrapped = media => {
+    if (!media || !Number.isFinite(media.currentTime)) return false;
+    const currentTime = media.currentTime;
+    const wrapped = Number.isFinite(lastTargetTime) &&
+        lastTargetTime >= 30 && currentTime + 30 < lastTargetTime;
+    lastTargetTime = currentTime;
+    return wrapped;
+  };
   const ensure = () => {
     if (location.hostname !== 'open.spotify.com') {
       report(false);
       return;
     }
-    if (!location.pathname.endsWith(targetPath)) {
+    const targetInfo = currentTarget();
+    if (!targetInfo) {
       report(false);
-      location.replace(targetUrl);
+      location.replace(lonesomeUrl);
       return;
     }
     if (!targetStarted) {
@@ -178,12 +211,21 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
         lastMedia = null;
         lastTime = NaN;
         stalledChecks = 0;
+        lastTargetTime = NaN;
         report(false);
         return;
       }
       targetStarted = true;
+      lastTargetTime = NaN;
     }
     ensureRepeatOne();
+    const media = mediaElement();
+    armCompletion(media, targetInfo.nextUrl);
+    if (targetWrapped(media)) {
+      report(false);
+      location.replace(targetInfo.nextUrl);
+      return;
+    }
     const mediaPlaying = samplePlayback();
     const button = playbackButton();
     const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
@@ -690,7 +732,9 @@ void SpotifyWebViews::ArmModeTimer() noexcept {
   HWND host = slots_[0].hostWindow;
   if (!host || !IsWindow(host)) return;
   KillTimer(host, kSpotifyModeTimer);
-  SetTimer(host, kSpotifyModeTimer, kSpotifyModePhaseMs, nullptr);
+  const UINT duration =
+      podcastMode_ ? kSpotifyPodcastPhaseMs : kSpotifyMusicPhaseMs;
+  SetTimer(host, kSpotifyModeTimer, duration, nullptr);
 }
 
 void SpotifyWebViews::ArmPlaybackWatchdog() noexcept {

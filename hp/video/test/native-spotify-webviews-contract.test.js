@@ -75,10 +75,12 @@ test('Spotify player pages suppress decorative rendering and downloads only', ()
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('all six accounts alternate Lonesome rabbit and Sakura TALKABOUT every hour with staggered switches', () => {
+test('all six accounts run 90 minutes of alternating music then 30 minutes of Sakura TALKABOUT', () => {
   assert.match(spotify, /kSpotifyModeTimer = 2/);
   assert.match(spotify, /kSpotifyModeSwitchTimer = 3/);
-  assert.match(spotify, /kSpotifyModePhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(spotify, /kSpotifyMusicPhaseMs = 90U \* 60U \* 1000U/);
+  assert.match(spotify, /kSpotifyPodcastPhaseMs = 30U \* 60U \* 1000U/);
+  assert.match(spotify, /podcastMode_ \? kSpotifyPodcastPhaseMs : kSpotifyMusicPhaseMs/);
   assert.match(spotify, /kSpotifyModeStaggerMs = 10U \* 1000U/);
   assert.match(spotifyHeader, /bool podcastMode_ = false/);
   assert.match(
@@ -98,13 +100,19 @@ test('all six accounts alternate Lonesome rabbit and Sakura TALKABOUT every hour
   assert.doesNotMatch(spotify, /SetSpotifyAmazonPodcastMode/);
 });
 
-test('music phase keeps the requested track release on repeat one', () => {
+test('music phase alternates Lonesome rabbit and TOKYO SNOW after full-track completion', () => {
   assert.match(spotify, /2f2Ik9JeinFVWZuFb3i35b/);
-  assert.match(spotify, /kSpotifyPlaybackScript/);
+  assert.match(spotify, /307SI8AgVvBbNTkNrETKHW/);
+  assert.match(spotify, /__homePanelSakuraAlternatingLoop/);
+  assert.match(spotify, /currentTarget/);
+  assert.match(spotify, /return \{ nextUrl: tokyoSnowUrl \}/);
+  assert.match(spotify, /return \{ nextUrl: lonesomeUrl \}/);
   assert.match(spotify, /control-button-repeat/);
   assert.match(spotify, /aria-checked.*mixed/s);
+  assert.match(spotify, /media\.addEventListener\('ended'/);
+  assert.match(spotify, /lastTargetTime >= 30 && currentTime \+ 30 < lastTargetTime/);
+  assert.match(spotify, /location\.replace\(targetInfo\.nextUrl\)/);
   assert.match(spotify, /let targetStarted = false/);
-  assert.match(spotify, /const targetPlayButton = \(\) =>/);
   assert.match(
     spotify,
     /if \(!targetStarted\)[\s\S]*if \(!target\)[\s\S]*report\(false\)[\s\S]*if \(!buttonShowsPlaying\(target\)\)[\s\S]*target\.click\(\)[\s\S]*report\(false\)[\s\S]*targetStarted = true/,
