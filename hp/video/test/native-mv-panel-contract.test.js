@@ -146,7 +146,7 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   );
 });
 
-test('TVer phase opens Sakura Meets latest episode and loops it at 1.75x', () => {
+test('TVer opens Sakura Meets latest episode at 1.75x, low quality, and fullscreen', () => {
   assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
   assert.match(mediaPanel, /最新話\|最新回/);
@@ -157,6 +157,20 @@ test('TVer phase opens Sakura Meets latest episode and loops it at 1.75x', () =>
   assert.match(mediaPanel, /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300/);
   assert.match(mediaPanel, /location\.replace\(seriesUrl\)/);
   assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(mediaPanel, /kNativeMediaTverWatchdogTimer = 0x4D560007/);
+  assert.match(mediaPanel, /kNativeMediaTverWatchdogMs = 2U \* 1000U/);
+  assert.match(mediaPanel, /kNativeMediaTverWatchdogScript/);
+  assert.match(mediaPanel, /lowQualitySet/);
+  assert.match(mediaPanel, /低画質/);
+  assert.match(mediaPanel, /画質設定/);
+  assert.match(mediaPanel, /document\.fullscreenElement/);
+  assert.match(mediaPanel, /全画面/);
+  assert.match(mediaPanel, /BeginTverPlaybackMonitor\(\)/);
+  assert.match(mediaPanel, /ProbeTverWatchdog\(\)/);
+  assert.match(
+    mediaPanel,
+    /timerId == kNativeMediaTverWatchdogTimer[\s\S]*ProbeTverWatchdog\(\)/,
+  );
 });
 
 test('normal YouTube and TVer resources remain enabled on the shared WebView environment', () => {

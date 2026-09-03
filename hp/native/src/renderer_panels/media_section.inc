@@ -11,12 +11,14 @@ constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMediaPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
+constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaPlayAllRetryMs = 500U;
 constexpr UINT kNativeMediaPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogMinMs = 2U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogMaxMs = 10U * 1000U;
+constexpr UINT kNativeMediaTverWatchdogMs = 2U * 1000U;
 constexpr int kNativeMediaPlayAllRetryLimit = 20;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
@@ -270,6 +272,102 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
 })()
 )JS";
 
+constexpr wchar_t kNativeMediaTverWatchdogScript[] = LR"JS(
+(() => {
+  if (location.hostname !== 'tver.jp' ||
+      !location.pathname.startsWith('/episodes/')) return null;
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const visible = element => {
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true' ||
+        element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+  const labelOf = element => normalize(
+      (element.getAttribute('aria-label') || '') + ' ' +
+      (element.getAttribute('title') || '') + ' ' +
+      (element.textContent || ''));
+  const point = element => {
+    if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    return [
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+    ];
+  };
+  const controls = Array.from(document.querySelectorAll(
+      'button, [role="button"], [role="menuitem"], [role="radio"], '
+      + '[role="option"], li'));
+  const state = window.__homePanelTverPlayerPrefs ||
+      (window.__homePanelTverPlayerPrefs = {
+        lowQualitySet: false,
+        lowClickPending: false,
+      });
+  const selected = element =>
+      element.getAttribute('aria-checked') === 'true' ||
+      element.getAttribute('aria-selected') === 'true' ||
+      element.getAttribute('data-state') === 'checked' ||
+      /選択中|設定中/.test(labelOf(element));
+  const lowOption = controls.find(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element);
+    return label === '低' || label === '低画質' ||
+           /^低(?:\s|$)/.test(label) || /低画質/.test(label);
+  }) || null;
+
+  if (!state.lowQualitySet) {
+    if (state.lowClickPending && !lowOption) {
+      state.lowQualitySet = true;
+      state.lowClickPending = false;
+    } else if (lowOption) {
+      if (selected(lowOption)) {
+        state.lowQualitySet = true;
+        state.lowClickPending = false;
+      } else {
+        state.lowClickPending = true;
+        return point(lowOption);
+      }
+    }
+    if (!state.lowQualitySet) {
+      const quality = controls.find(element =>
+          visible(element) && /(^|\s)画質($|\s)|画質設定/.test(labelOf(element)));
+      if (quality) return point(quality);
+      const settings = controls.find(element => {
+        if (!visible(element)) return false;
+        const label = labelOf(element).toLowerCase();
+        return label === '設定' || label.includes('プレイヤー設定') ||
+               label === 'settings' || label.includes('setting');
+      });
+      if (settings) return point(settings);
+      return null;
+    }
+  }
+
+  const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
+      controls.some(element => {
+        if (!visible(element)) return false;
+        const label = labelOf(element).toLowerCase();
+        return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
+               label.includes('exit fullscreen');
+      });
+  if (fullscreen) return null;
+  const fullscreenButton = controls.find(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
+    return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
+  });
+  return fullscreenButton ? point(fullscreenButton) : null;
+})()
+)JS";
+
 LRESULT CALLBACK NativeMediaPanelWndProc(HWND, UINT, WPARAM, LPARAM);
 
 class NativeMediaPanelHost final {
@@ -337,6 +435,10 @@ class NativeMediaPanelHost final {
       ProbeYoutubeWatchdog();
       return true;
     }
+    if (timerId == kNativeMediaTverWatchdogTimer) {
+      ProbeTverWatchdog();
+      return true;
+    }
     return false;
   }
 
@@ -359,6 +461,7 @@ class NativeMediaPanelHost final {
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
     StopYoutubeMonitors();
+    StopTverPlaybackMonitor();
     StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaPhaseTimer);
@@ -563,6 +666,7 @@ class NativeMediaPanelHost final {
                 BOOL succeeded = FALSE;
                 if (FAILED(args->get_IsSuccess(&succeeded)) || !succeeded) {
                   StopYoutubeMonitors();
+                  StopTverPlaybackMonitor();
                   ScheduleNavigationRetry();
                   return S_OK;
                 }
@@ -571,14 +675,18 @@ class NativeMediaPanelHost final {
                 if (phase_ == Phase::Tver && IsTverPage()) {
                   StopYoutubeMonitors();
                   webview_->ExecuteScript(kNativeMediaTverLoopScript, nullptr);
+                  BeginTverPlaybackMonitor();
                 } else if (phase_ == Phase::YouTube && IsYoutubePlaylistPage()) {
+                  StopTverPlaybackMonitor();
                   StopYoutubePlaybackMonitors();
                   BeginPlayAllProbe();
                 } else if (phase_ == Phase::YouTube && IsYoutubeWatchPage()) {
+                  StopTverPlaybackMonitor();
                   StopPlayAllProbe();
                   BeginYoutubePlaybackMonitors();
                 } else {
                   StopYoutubeMonitors();
+                  StopTverPlaybackMonitor();
                 }
                 ShowPhaseOverlay();
                 return S_OK;
@@ -607,6 +715,7 @@ class NativeMediaPanelHost final {
     CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
+    StopTverPlaybackMonitor();
     StopNavigationRetry();
     CloseController();
     CreateControllerForCurrentPhase();
@@ -618,6 +727,7 @@ class NativeMediaPanelHost final {
     CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
+    StopTverPlaybackMonitor();
     StopNavigationRetry();
     CloseController();
     CreateControllerForCurrentPhase();
@@ -722,6 +832,22 @@ class NativeMediaPanelHost final {
     StopYoutubePlaybackMonitors();
   }
 
+  void BeginTverPlaybackMonitor() noexcept {
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
+    tverWatchdogInFlight_ = false;
+    KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
+    SetTimer(hostWindow_, kNativeMediaTverWatchdogTimer,
+             kNativeMediaTverWatchdogMs, nullptr);
+    ProbeTverWatchdog();
+  }
+
+  void StopTverPlaybackMonitor() noexcept {
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
+    }
+    tverWatchdogInFlight_ = false;
+  }
+
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
     if (!json || !x || !y) return false;
     try {
@@ -818,6 +944,28 @@ class NativeMediaPanelHost final {
     if (FAILED(started)) youtubeWatchdogInFlight_ = false;
   }
 
+  void ProbeTverWatchdog() noexcept {
+    if (phase_ != Phase::Tver || !webview_ || tverWatchdogInFlight_ ||
+        !IsTverPage()) return;
+    tverWatchdogInFlight_ = true;
+    const auto alive = alive_;
+    const HRESULT started = webview_->ExecuteScript(
+        kNativeMediaTverWatchdogScript,
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              tverWatchdogInFlight_ = false;
+              if (phase_ != Phase::Tver || !IsTverPage()) return S_OK;
+              int x = 0;
+              int y = 0;
+              if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
+                ClickNormalizedPoint(x, y);
+              }
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) tverWatchdogInFlight_ = false;
+  }
+
   static LONG AbsoluteMouseCoordinate(int value, int origin, int span) noexcept {
     if (span <= 1) return 0;
     long long scaled =
@@ -828,7 +976,7 @@ class NativeMediaPanelHost final {
 
   void ClickNormalizedPoint(int xTenThousandths,
                             int yTenThousandths) noexcept {
-    if (phase_ != Phase::YouTube || !hostWindow_ || !IsWindow(hostWindow_)) return;
+    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     RECT client{};
     GetClientRect(hostWindow_, &client);
     const LONG width = client.right - client.left;
@@ -873,6 +1021,7 @@ class NativeMediaPanelHost final {
   void Fail() noexcept {
     failed_ = true;
     StopYoutubeMonitors();
+    StopTverPlaybackMonitor();
     StopNavigationRetry();
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaPhaseTimer);
@@ -897,6 +1046,7 @@ class NativeMediaPanelHost final {
   bool playAllProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
   bool youtubeWatchdogInFlight_ = false;
+  bool tverWatchdogInFlight_ = false;
   bool failed_ = false;
 };
 
