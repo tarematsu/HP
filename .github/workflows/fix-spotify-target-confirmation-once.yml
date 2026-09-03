@@ -1,0 +1,55 @@
+name: Apply Spotify target confirmation fix once
+
+on:
+  push:
+    branches:
+      - fix/spotify-mode-deadline-fallback
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/spotify-mode-deadline-fallback
+
+      - name: Require confirmed Lonesome rabbit playback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          source_path = Path('hp/native/src/spotify_webviews.cpp')
+          source = source_path.read_text(encoding='utf-8')
+          old = """    if (!targetStarted) {\n      const target = targetPlayButton();\n      if (target) {\n        target.click();\n        targetStarted = true;\n        lastMedia = null;\n        lastTime = NaN;\n        stalledChecks = 0;\n        report(false);\n        return;\n      }\n    }\n"""
+          new = """    if (!targetStarted) {\n      const target = targetPlayButton();\n      if (!target) {\n        report(false);\n        return;\n      }\n      if (!buttonShowsPlaying(target)) {\n        target.click();\n        lastMedia = null;\n        lastTime = NaN;\n        stalledChecks = 0;\n        report(false);\n        return;\n      }\n      targetStarted = true;\n    }\n"""
+          if old not in source:
+              raise SystemExit('target start block not found')
+          source_path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('hp/video/test/native-spotify-webviews-contract.test.js')
+          tests = test_path.read_text(encoding='utf-8')
+          old = """  assert.match(\n    spotify,\n    /if \\(!targetStarted\\)[\\s\\S]*targetPlayButton\\(\\)[\\s\\S]*target\\.click\\(\\)[\\s\\S]*targetStarted = true[\\s\\S]*report\\(false\\)/,\n  );\n"""
+          new = """  assert.match(\n    spotify,\n    /if \\(!targetStarted\\)[\\s\\S]*if \\(!target\\)[\\s\\S]*report\\(false\\)[\\s\\S]*if \\(!buttonShowsPlaying\\(target\\)\\)[\\s\\S]*target\\.click\\(\\)[\\s\\S]*report\\(false\\)[\\s\\S]*targetStarted = true/,\n  );\n"""
+          if old not in tests:
+              raise SystemExit('target start test anchor not found')
+          test_path.write_text(tests.replace(old, new, 1), encoding='utf-8')
+          PY
+
+      - name: Run Spotify contract tests
+        run: |
+          node --test hp/video/test/native-spotify-webviews-contract.test.js
+          node --test hp/video/test/native-spotify-load-reduction-contract.test.js
+
+      - name: Commit patch
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hp/native/src/spotify_webviews.cpp hp/video/test/native-spotify-webviews-contract.test.js
+          git commit -m 'Require confirmed Lonesome rabbit playback'
+          git push origin HEAD:fix/spotify-mode-deadline-fallback
