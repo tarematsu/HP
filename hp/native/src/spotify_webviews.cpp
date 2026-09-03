@@ -8,8 +8,6 @@ constexpr wchar_t kSpotifyAlbumUrl[] =
     L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
-constexpr wchar_t kSpotifyTokyoSnowUrl[] =
-    L"https://open.spotify.com/track/307SI8AgVvBbNTkNrETKHW";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastLoginUrl[] =
