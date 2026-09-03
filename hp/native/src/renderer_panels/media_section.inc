@@ -4,6 +4,8 @@ constexpr wchar_t kNativeMediaYoutubeUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
 constexpr wchar_t kNativeMediaTverUrl[] =
     L"https://tver.jp/series/srx97ftk3w";
+constexpr wchar_t kNativeMediaYoutubeProfile[] = L"media-youtube";
+constexpr wchar_t kNativeMediaTverProfile[] = L"media-tver";
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMediaPlaybackHealthTimer = 0x4D560004;
@@ -291,34 +293,10 @@ class NativeMediaPanelHost final {
               return;
             }
             environment_ = environment;
-            const auto ready =
-                Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [this, alive](HRESULT controllerResult,
-                                  ICoreWebView2Controller* controller) -> HRESULT {
-                      if (!alive->load(std::memory_order_acquire)) {
-                        if (controller) controller->Close();
-                        return S_OK;
-                      }
-                      if (FAILED(controllerResult) || !controller) {
-                        if (controller) controller->Close();
-                        Fail();
-                        return S_OK;
-                      }
-                      controller_ = controller;
-                      controller_->get_CoreWebView2(&webview_);
-                      if (!webview_) {
-                        controller_->Close();
-                        controller_.Reset();
-                        Fail();
-                        return S_OK;
-                      }
-                      Configure();
-                      return S_OK;
-                    });
-            if (FAILED(environment_->CreateCoreWebView2Controller(
-                    hostWindow_, ready.Get()))) {
-              Fail();
-            }
+            phase_ = Phase::YouTube;
+            CapturePhaseTimes();
+            CreateControllerForCurrentPhase();
+            ArmPhaseTimer();
           });
     } catch (...) {
       Fail();
@@ -385,19 +363,7 @@ class NativeMediaPanelHost final {
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaPhaseTimer);
     }
-    if (webview_) {
-      if (navigationCompletedToken_.value != 0) {
-        webview_->remove_NavigationCompleted(navigationCompletedToken_);
-      }
-      if (newWindowToken_.value != 0) {
-        webview_->remove_NewWindowRequested(newWindowToken_);
-      }
-    }
-    navigationCompletedToken_ = {};
-    newWindowToken_ = {};
-    webview_.Reset();
-    if (controller_) controller_->Close();
-    controller_.Reset();
+    CloseController();
     environment_.Reset();
     hostWindow_ = nullptr;
   }
@@ -462,6 +428,96 @@ class NativeMediaPanelHost final {
     if (!webview_) return;
     const std::wstring script = BuildPhaseOverlayScript();
     if (!script.empty()) webview_->ExecuteScript(script.c_str(), nullptr);
+  }
+
+  const wchar_t* CurrentProfileName() const noexcept {
+    return phase_ == Phase::YouTube
+        ? kNativeMediaYoutubeProfile
+        : kNativeMediaTverProfile;
+  }
+
+  void CloseController() noexcept {
+    ++controllerGeneration_;
+    controllerCreating_ = false;
+    if (webview_) {
+      if (navigationCompletedToken_.value != 0) {
+        webview_->remove_NavigationCompleted(navigationCompletedToken_);
+      }
+      if (newWindowToken_.value != 0) {
+        webview_->remove_NewWindowRequested(newWindowToken_);
+      }
+    }
+    navigationCompletedToken_ = {};
+    newWindowToken_ = {};
+    webview_.Reset();
+    if (controller_) controller_->Close();
+    controller_.Reset();
+  }
+
+  void CreateControllerForCurrentPhase() noexcept {
+    if (!environment_ || controller_ || controllerCreating_ ||
+        !hostWindow_ || !IsWindow(hostWindow_)) {
+      return;
+    }
+    controllerCreating_ = true;
+    const Phase requestedPhase = phase_;
+    const uint64_t generation = ++controllerGeneration_;
+    const auto alive = alive_;
+    try {
+      ComPtr<ICoreWebView2Environment10> environment10;
+      if (FAILED(environment_->QueryInterface(IID_PPV_ARGS(&environment10))) ||
+          !environment10) {
+        controllerCreating_ = false;
+        ScheduleNavigationRetry();
+        return;
+      }
+      ComPtr<ICoreWebView2ControllerOptions> options;
+      if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
+          !options ||
+          FAILED(options->put_ProfileName(CurrentProfileName())) ||
+          FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
+        controllerCreating_ = false;
+        ScheduleNavigationRetry();
+        return;
+      }
+
+      const auto ready =
+          Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+              [this, alive, requestedPhase, generation](
+                  HRESULT controllerResult,
+                  ICoreWebView2Controller* controller) -> HRESULT {
+                if (!alive->load(std::memory_order_acquire) ||
+                    generation != controllerGeneration_ ||
+                    requestedPhase != phase_) {
+                  if (controller) controller->Close();
+                  return S_OK;
+                }
+                controllerCreating_ = false;
+                if (FAILED(controllerResult) || !controller) {
+                  if (controller) controller->Close();
+                  ScheduleNavigationRetry();
+                  return S_OK;
+                }
+                controller_ = controller;
+                controller_->get_CoreWebView2(&webview_);
+                if (!webview_) {
+                  controller_->Close();
+                  controller_.Reset();
+                  ScheduleNavigationRetry();
+                  return S_OK;
+                }
+                Configure();
+                return S_OK;
+              });
+      if (FAILED(environment10->CreateCoreWebView2ControllerWithOptions(
+              hostWindow_, options.Get(), ready.Get()))) {
+        controllerCreating_ = false;
+        ScheduleNavigationRetry();
+      }
+    } catch (...) {
+      controllerCreating_ = false;
+      ScheduleNavigationRetry();
+    }
   }
 
   void Configure() noexcept {
@@ -531,7 +587,7 @@ class NativeMediaPanelHost final {
 
       Resize();
       controller_->put_IsVisible(TRUE);
-      SwitchToYouTube();
+      NavigateCurrentPhase();
     } catch (...) {
       Fail();
     }
@@ -552,9 +608,8 @@ class NativeMediaPanelHost final {
     failed_ = false;
     StopYoutubeMonitors();
     StopNavigationRetry();
-    if (!webview_ || FAILED(webview_->Navigate(kNativeMediaYoutubeUrl))) {
-      ScheduleNavigationRetry();
-    }
+    CloseController();
+    CreateControllerForCurrentPhase();
     ArmPhaseTimer();
   }
 
@@ -564,15 +619,15 @@ class NativeMediaPanelHost final {
     failed_ = false;
     StopYoutubeMonitors();
     StopNavigationRetry();
-    if (!webview_ || FAILED(webview_->Navigate(kNativeMediaTverUrl))) {
-      ScheduleNavigationRetry();
-    }
+    CloseController();
+    CreateControllerForCurrentPhase();
     ArmPhaseTimer();
   }
 
   void NavigateCurrentPhase() noexcept {
     if (!webview_) {
-      Fail();
+      CreateControllerForCurrentPhase();
+      ScheduleNavigationRetry();
       return;
     }
     const wchar_t* url =
@@ -836,7 +891,9 @@ class NativeMediaPanelHost final {
   Phase phase_ = Phase::YouTube;
   std::wstring phaseStartText_;
   std::wstring phaseEndText_;
+  uint64_t controllerGeneration_ = 0;
   int playAllProbeAttempts_ = 0;
+  bool controllerCreating_ = false;
   bool playAllProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
   bool youtubeWatchdogInFlight_ = false;
