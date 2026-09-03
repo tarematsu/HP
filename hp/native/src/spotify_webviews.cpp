@@ -4,12 +4,12 @@
 namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
-constexpr wchar_t kSpotifyAlbumUrl[] =
-    L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
+constexpr wchar_t kSpotifyPlaylistUrl[] =
+    L"https://open.spotify.com/playlist/5DQCO4Hv3MbVYHgyXEfx8g";
 constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
-    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
+    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fplaylist%2F5DQCO4Hv3MbVYHgyXEfx8g";
 constexpr wchar_t kSpotifyPodcastLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fshow%2F2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
@@ -18,8 +18,8 @@ constexpr UINT_PTR kSpotifyModeTimer = 2;
 constexpr UINT_PTR kSpotifyModeSwitchTimer = 3;
 constexpr UINT_PTR kSpotifyPlaybackWatchdogTimer = 4;
 constexpr UINT kSpotifyStartupStaggerMs = 400;
-constexpr UINT kSpotifyMusicPhaseMs = 90U * 60U * 1000U;
-constexpr UINT kSpotifyPodcastPhaseMs = 30U * 60U * 1000U;
+constexpr UINT kSpotifyMusicPhaseMs = 60U * 60U * 1000U;
+constexpr UINT kSpotifyPodcastPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kSpotifyModeStaggerMs = 10U * 1000U;
 constexpr UINT kSpotifyPlaybackWatchdogTickMs = 2U * 1000U;
 constexpr int kSpotifyBackgroundExtent = 1;
@@ -53,20 +53,16 @@ constexpr wchar_t kSpotifyLightweightScript[] = LR"JS(
 
 constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 (() => {
-  if (window.__homePanelSakuraAlternatingLoop) return;
-  window.__homePanelSakuraAlternatingLoop = true;
-  const lonesomeUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
-  const lonesomePath = '/album/2f2Ik9JeinFVWZuFb3i35b';
-  const tokyoSnowUrl = 'https://open.spotify.com/track/307SI8AgVvBbNTkNrETKHW';
-  const tokyoSnowPath = '/track/307SI8AgVvBbNTkNrETKHW';
+  if (window.__homePanelSakuraPlaylistLoop) return;
+  window.__homePanelSakuraPlaylistLoop = true;
+  const playlistUrl = 'https://open.spotify.com/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
+  const playlistPath = '/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
   const stallLimit = 2;
   let lastMedia = null;
   let lastTime = NaN;
   let stalledChecks = 0;
   let lastReported = null;
   let targetStarted = false;
-  let lastTargetTime = NaN;
-  let completionMedia = null;
 
   const report = playing => {
     if (lastReported === playing) return;
@@ -98,24 +94,15 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     const items = Array.from(document.querySelectorAll('audio, video'));
     return items.find(item => !item.paused && !item.ended) || items[0] || null;
   };
-  const currentTarget = () => {
-    if (location.pathname.endsWith(lonesomePath)) {
-      return { nextUrl: tokyoSnowUrl };
-    }
-    if (location.pathname.endsWith(tokyoSnowPath)) {
-      return { nextUrl: lonesomeUrl };
-    }
-    return null;
-  };
-  const ensureRepeatOne = () => {
+  const ensureRepeatContext = () => {
     const repeat = document.querySelector(
         'button[data-testid="control-button-repeat"]');
-    if (!repeat || repeat.getAttribute('aria-checked') === 'mixed') return;
+    if (!repeat || repeat.getAttribute('aria-checked') === 'true') return;
     repeat.click();
     window.setTimeout(() => {
       const current = document.querySelector(
           'button[data-testid="control-button-repeat"]');
-      if (current && current.getAttribute('aria-checked') !== 'mixed') {
+      if (current && current.getAttribute('aria-checked') !== 'true') {
         current.click();
       }
     }, 300);
@@ -165,31 +152,14 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     if (!visible(button) || buttonShowsPlaying(button)) return;
     button.click();
   };
-  const armCompletion = (media, nextUrl) => {
-    if (!media || media === completionMedia) return;
-    completionMedia = media;
-    media.addEventListener('ended', () => {
-      report(false);
-      location.replace(nextUrl);
-    }, { once: true });
-  };
-  const targetWrapped = media => {
-    if (!media || !Number.isFinite(media.currentTime)) return false;
-    const currentTime = media.currentTime;
-    const wrapped = Number.isFinite(lastTargetTime) &&
-        lastTargetTime >= 30 && currentTime + 30 < lastTargetTime;
-    lastTargetTime = currentTime;
-    return wrapped;
-  };
   const ensure = () => {
     if (location.hostname !== 'open.spotify.com') {
       report(false);
       return;
     }
-    const targetInfo = currentTarget();
-    if (!targetInfo) {
+    if (!location.pathname.endsWith(playlistPath)) {
       report(false);
-      location.replace(lonesomeUrl);
+      location.replace(playlistUrl);
       return;
     }
     if (!targetStarted) {
@@ -203,21 +173,12 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
         lastMedia = null;
         lastTime = NaN;
         stalledChecks = 0;
-        lastTargetTime = NaN;
         report(false);
         return;
       }
       targetStarted = true;
-      lastTargetTime = NaN;
     }
-    ensureRepeatOne();
-    const media = mediaElement();
-    armCompletion(media, targetInfo.nextUrl);
-    if (targetWrapped(media)) {
-      report(false);
-      location.replace(targetInfo.nextUrl);
-      return;
-    }
+    ensureRepeatContext();
     const mediaPlaying = samplePlayback();
     const button = playbackButton();
     const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
@@ -769,7 +730,7 @@ void SpotifyWebViews::NavigateSlotToCurrentMode(Slot& slot) noexcept {
   slot.playing = false;
   if (slot.webview) {
     SetSpotifyOutputMuted(slot.webview);
-    slot.webview->Navigate(podcastMode_ ? kSpotifyPodcastUrl : kSpotifyAlbumUrl);
+    slot.webview->Navigate(podcastMode_ ? kSpotifyPodcastUrl : kSpotifyPlaylistUrl);
   }
 }
 
