@@ -29,6 +29,10 @@ void PrepareParentWindow(HWND window) {
 }
 }  // namespace
 
+void SetSpotifyMediaPhase(bool podcastMode) noexcept {
+  if (gSpotifyWebViews) gSpotifyWebViews->SetPodcastMode(podcastMode);
+}
+
 Renderer::Renderer(HWND window, int width, int height)
     : window_(window), width_(width), height_(height) {
   current_ = this;
@@ -86,8 +90,9 @@ void Renderer::Initialize() {
       gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
     }
     // Spotify remains active in power-saving mode. Its six WebViews continue
-    // playback, and the amazon slot is audible only during the MV pause period.
+    // playback while the media panel owns the shared one-hour phase cadence.
     gSpotifyWebViews->Start();
+    SetSpotifyMediaPhase(false);
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
