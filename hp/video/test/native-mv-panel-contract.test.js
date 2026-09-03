@@ -75,6 +75,21 @@ test('YouTube keeps playlist autoplay, 480p, ad skip, and fullscreen recovery', 
   assert.match(mediaPanel, /content-visibility: hidden/);
 });
 
+test('YouTube transition title and fullscreen quick actions stay visually hidden', () => {
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-title/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-quick-actions/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-overlay-top-left/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-overlay-bottom-right/);
+  assert.match(mediaPanel, /yt-player-overlay-video-details-renderer/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid-stills-container/);
+  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid-expand-button/);
+  assert.match(
+    mediaPanel,
+    /\.ytp-fullscreen-grid-expand-button \{[\s\S]*display: none !important;/,
+  );
+});
+
 test('TVer phase opens Sakura Meets latest episode and loops it at 1.75x', () => {
   assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);

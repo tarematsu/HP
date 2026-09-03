@@ -32,6 +32,16 @@ constexpr wchar_t kNativeMediaPlayAllScript[] = LR"JS(
         opacity: 0 !important;
         transition: none !important;
       }
+      .html5-video-player .ytp-title,
+      .html5-video-player .ytp-fullscreen-quick-actions,
+      .html5-video-player .ytp-overlay-top-left,
+      .html5-video-player .ytp-overlay-bottom-right,
+      .html5-video-player yt-player-overlay-video-details-renderer,
+      .html5-video-player .ytp-fullscreen-grid,
+      .html5-video-player .ytp-fullscreen-grid-stills-container,
+      .html5-video-player .ytp-fullscreen-grid-expand-button {
+        display: none !important;
+      }
       ytd-watch-flexy #below,
       ytd-watch-flexy #secondary {
         content-visibility: hidden !important;
