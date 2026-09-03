@@ -93,7 +93,7 @@ async function loadExpectedMinutes(sourceDb, period) {
         PARTITION BY channel_id,CAST(observed_at/60000 AS INTEGER)
         ORDER BY observed_at DESC,id DESC
       ) AS source_rank
-      FROM sh_channel_snapshots
+      FROM sh_channel_snapshots INDEXED BY idx_sh_channel_snapshots_observed_id
       WHERE observed_at>=? AND observed_at<?
     ) WHERE source_rank=1
     ORDER BY observed_at ASC,id ASC`)
