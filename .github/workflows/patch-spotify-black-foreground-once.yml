@@ -71,12 +71,12 @@ jobs:
           spotify = spotify.replace(old_layout, new_layout, 1)
           spotify_path.write_text(spotify, encoding='utf-8')
 
-          test_path = Path('hp/video/test/native-spotify-load-reduction-contract.test.js')
-          tests = test_path.read_text(encoding='utf-8')
-          old_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
+          load_test_path = Path('hp/video/test/native-spotify-load-reduction-contract.test.js')
+          load_tests = load_test_path.read_text(encoding='utf-8')
+          old_load_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
           });
           '''
-          new_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
+          new_load_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
             assert.match(
               spotify,
               /if \\(batch\\) EndDeferWindowPos\\(batch\\);[\\s\\S]*GetClientRect\\(slot\\.hostWindow, &bounds\\);[\\s\\S]*slot\\.controller->put_Bounds\\(bounds\\);[\\s\\S]*slot\\.controller->NotifyParentWindowPositionChanged\\(\\)/,
@@ -88,10 +88,29 @@ jobs:
             assert.doesNotMatch(spotify, /visibility: hidden !important/);
           });
           '''
-          if old_test not in tests:
+          if old_load_test not in load_tests:
               raise SystemExit('Spotify load-reduction test insertion point not found')
-          tests = tests.replace(old_test, new_test, 1)
-          test_path.write_text(tests, encoding='utf-8')
+          load_tests = load_tests.replace(old_load_test, new_load_test, 1)
+          load_test_path.write_text(load_tests, encoding='utf-8')
+
+          webviews_test_path = Path('hp/video/test/native-spotify-webviews-contract.test.js')
+          webviews_tests = webviews_test_path.read_text(encoding='utf-8')
+          old_webviews_test = '''test('Spotify player pages suppress decorative rendering and downloads only', () => {
+            assert.match(spotify, /kSpotifyLightweightScript/);
+            assert.match(spotify, /animation: none !important/);
+            assert.match(spotify, /transition: none !important/);
+            assert.match(spotify, /canvas/);
+          '''
+          new_webviews_test = '''test('Spotify player pages reduce decorative work without hiding foreground surfaces', () => {
+            assert.match(spotify, /kSpotifyLightweightScript/);
+            assert.match(spotify, /animation: none !important/);
+            assert.match(spotify, /transition: none !important/);
+            assert.doesNotMatch(spotify, /visibility: hidden !important/);
+          '''
+          if old_webviews_test not in webviews_tests:
+              raise SystemExit('Spotify webviews decorative-rendering contract not found')
+          webviews_tests = webviews_tests.replace(old_webviews_test, new_webviews_test, 1)
+          webviews_test_path.write_text(webviews_tests, encoding='utf-8')
       - name: Run Spotify contract tests
         run: |
           node --test hp/video/test/native-spotify-load-reduction-contract.test.js hp/video/test/native-spotify-webviews-contract.test.js
@@ -103,6 +122,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add hp/native/src/spotify_webviews.cpp hp/video/test/native-spotify-load-reduction-contract.test.js
+          git add hp/native/src/spotify_webviews.cpp hp/video/test/native-spotify-load-reduction-contract.test.js hp/video/test/native-spotify-webviews-contract.test.js
           git commit -m "Fix Spotify foreground black rendering"
           git push origin HEAD:fix/spotify-black-foreground-20260904
