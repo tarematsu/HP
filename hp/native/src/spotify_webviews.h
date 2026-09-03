@@ -42,6 +42,8 @@ class SpotifyWebViews final {
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
   void ArmModeTimer() noexcept;
+  void ArmPlaybackWatchdog() noexcept;
+  void RunPlaybackWatchdog() noexcept;
   void ToggleMode() noexcept;
   void NavigateSlotToCurrentMode(Slot& slot) noexcept;
   void SetForeground(bool foreground) noexcept;
@@ -54,6 +56,7 @@ class SpotifyWebViews final {
   std::array<Slot, kAccountCount> slots_{};
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
+  size_t playbackWatchdogIndex_ = 0;
   bool started_ = false;
   bool foreground_ = true;
   bool podcastMode_ = false;
