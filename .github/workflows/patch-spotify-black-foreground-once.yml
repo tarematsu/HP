@@ -1,0 +1,108 @@
+name: Patch Spotify foreground rendering once
+
+on:
+  push:
+    branches:
+      - fix/spotify-black-foreground-20260904
+    paths:
+      - .github/workflows/patch-spotify-black-foreground-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/spotify-black-foreground-20260904
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch Spotify foreground rendering
+        shell: python
+        run: |
+          from pathlib import Path
+
+          spotify_path = Path('hp/native/src/spotify_webviews.cpp')
+          spotify = spotify_path.read_text(encoding='utf-8')
+
+          old_css = '''    img,
+              canvas,
+              [data-testid="cover-art-image"],
+              [data-testid="entity-image"] {
+                visibility: hidden !important;
+              }
+          '''
+          if old_css not in spotify:
+              raise SystemExit('Spotify lightweight visibility block not found')
+          spotify = spotify.replace(old_css, '', 1)
+
+          old_layout = '''  if (batch) EndDeferWindowPos(batch);
+          }
+          
+          void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
+          '''
+          new_layout = '''  if (batch) EndDeferWindowPos(batch);
+          
+            // A controller that spent time on a 1x1 host can keep a stale
+            // composition surface after the host is expanded again. Do not rely
+            // only on WM_SIZE: synchronize WebView2 bounds and parent position
+            // after the whole six-window batch has reached its final geometry.
+            for (Slot& slot : slots_) {
+              if (!slot.hostWindow || !IsWindow(slot.hostWindow) || !slot.controller) {
+                continue;
+              }
+              RECT bounds{};
+              GetClientRect(slot.hostWindow, &bounds);
+              slot.controller->put_Bounds(bounds);
+              slot.controller->NotifyParentWindowPositionChanged();
+              slot.controller->put_IsVisible(TRUE);
+              InvalidateRect(slot.hostWindow, nullptr, FALSE);
+            }
+          }
+          
+          void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
+          '''
+          if old_layout not in spotify:
+              raise SystemExit('Spotify PlaceHosts tail not found')
+          spotify = spotify.replace(old_layout, new_layout, 1)
+          spotify_path.write_text(spotify, encoding='utf-8')
+
+          test_path = Path('hp/video/test/native-spotify-load-reduction-contract.test.js')
+          tests = test_path.read_text(encoding='utf-8')
+          old_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
+          });
+          '''
+          new_test = '''  assert.doesNotMatch(spotify, /if \\(!foreground\\)[\\s\\S]{0,300}controller->Close\\(\\)/);
+            assert.match(
+              spotify,
+              /if \\(batch\\) EndDeferWindowPos\\(batch\\);[\\s\\S]*GetClientRect\\(slot\\.hostWindow, &bounds\\);[\\s\\S]*slot\\.controller->put_Bounds\\(bounds\\);[\\s\\S]*slot\\.controller->NotifyParentWindowPositionChanged\\(\\)/,
+            );
+          });
+          
+          test('lightweight Spotify CSS does not blank foreground player surfaces', () => {
+            assert.doesNotMatch(spotify, /canvas,\\s*\\[data-testid="cover-art-image"\\]/);
+            assert.doesNotMatch(spotify, /visibility: hidden !important/);
+          });
+          '''
+          if old_test not in tests:
+              raise SystemExit('Spotify load-reduction test insertion point not found')
+          tests = tests.replace(old_test, new_test, 1)
+          test_path.write_text(tests, encoding='utf-8')
+      - name: Run Spotify contract tests
+        run: |
+          node --test hp/video/test/native-spotify-load-reduction-contract.test.js hp/video/test/native-spotify-webviews-contract.test.js
+      - name: Commit repair
+        run: |
+          if git diff --quiet; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hp/native/src/spotify_webviews.cpp hp/video/test/native-spotify-load-reduction-contract.test.js
+          git commit -m "Fix Spotify foreground black rendering"
+          git push origin HEAD:fix/spotify-black-foreground-20260904
