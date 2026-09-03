@@ -28,17 +28,35 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   window.__homePanelLonesomeRabbitLoop = true;
   const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
   const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
+  const checkIntervalMs = 10000;
+  const stallLimit = 2;
+  let lastMedia = null;
+  let lastTime = NaN;
+  let stalledChecks = 0;
+  let lastReported = null;
   const report = playing => {
+    if (lastReported === playing) return;
+    lastReported = playing;
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
           playing ? 'spotify:playing' : 'spotify:not-playing');
     }
   };
   const visible = element => {
-    if (!element) return false;
+    if (!element || element.disabled) return false;
+    const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
-    return !element.disabled && rect.width > 0 && rect.height > 0;
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           rect.width > 0 && rect.height > 0;
   };
+  const buttonShowsPlaying = button => {
+    if (!button) return false;
+    const label = (button.getAttribute('aria-label') || '').toLowerCase();
+    return label.includes('pause') || label.includes('一時停止');
+  };
+  const playbackButton = () =>
+      document.querySelector('button[data-testid="control-button-playpause"]') ||
+      document.querySelector('button[data-testid="play-button"]');
   const ensureRepeatOne = () => {
     const repeat = document.querySelector(
         'button[data-testid="control-button-repeat"]');
@@ -52,6 +70,52 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
       }
     }, 300);
   };
+  const samplePlayback = () => {
+    const mediaElements = Array.from(document.querySelectorAll('audio, video'));
+    const media = mediaElements.find(item => !item.paused && !item.ended) ||
+        mediaElements[0] || null;
+    if (!media) {
+      lastMedia = null;
+      lastTime = NaN;
+      stalledChecks = 0;
+      return null;
+    }
+    const currentTime = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
+    const ready = !media.paused && !media.ended && media.readyState >= 2;
+    if (!ready) {
+      lastMedia = media;
+      lastTime = currentTime;
+      stalledChecks = stallLimit;
+      return false;
+    }
+    if (media !== lastMedia || !Number.isFinite(lastTime) ||
+        !Number.isFinite(currentTime)) {
+      lastMedia = media;
+      lastTime = currentTime;
+      stalledChecks = 0;
+      return true;
+    }
+    if (Math.abs(currentTime - lastTime) >= 0.5) {
+      stalledChecks = 0;
+    } else {
+      ++stalledChecks;
+    }
+    lastMedia = media;
+    lastTime = currentTime;
+    return stalledChecks < stallLimit;
+  };
+  const recoverPlayback = () => {
+    const button = playbackButton();
+    if (!visible(button)) return;
+    const wasPlaying = buttonShowsPlaying(button);
+    button.click();
+    if (wasPlaying) {
+      window.setTimeout(() => {
+        const current = playbackButton();
+        if (visible(current) && !buttonShowsPlaying(current)) current.click();
+      }, 500);
+    }
+  };
   const ensure = () => {
     if (location.hostname !== 'open.spotify.com') {
       report(false);
@@ -62,21 +126,15 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
       location.replace(targetUrl);
       return;
     }
-    const playButton = document.querySelector('button[data-testid="play-button"]');
-    let playing = false;
-    if (playButton) {
-      const label = (playButton.getAttribute('aria-label') || '').toLowerCase();
-      playing = label.includes('pause') || label.includes('一時停止');
-      if (!playing && visible(playButton)) {
-        playButton.click();
-        window.setTimeout(ensure, 1500);
-      }
-    }
     ensureRepeatOne();
+    const mediaPlaying = samplePlayback();
+    const button = playbackButton();
+    const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
+    if (!playing) recoverPlayback();
     report(playing);
   };
   ensure();
-  window.setInterval(ensure, 60000);
+  window.setInterval(ensure, checkIntervalMs);
 })();
 )JS";
 
@@ -87,7 +145,15 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
   const showUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
   const showPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
   const playbackRate = 3.0;
+  const checkIntervalMs = 10000;
+  const stallLimit = 2;
+  let lastMedia = null;
+  let lastTime = NaN;
+  let stalledChecks = 0;
+  let lastReported = null;
   const report = playing => {
+    if (lastReported === playing) return;
+    lastReported = playing;
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
           playing ? 'spotify:playing' : 'spotify:not-playing');
@@ -100,10 +166,13 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
     return style.display !== 'none' && style.visibility !== 'hidden' &&
            rect.width > 0 && rect.height > 0;
   };
-  const isPlayingButton = button => {
+  const buttonShowsPlaying = button => {
+    if (!button) return false;
     const label = (button.getAttribute('aria-label') || '').toLowerCase();
     return label.includes('pause') || label.includes('一時停止');
   };
+  const playerControl = () =>
+      document.querySelector('button[data-testid="control-button-playpause"]');
   const ensurePlaybackRate = () => {
     document.querySelectorAll('audio, video').forEach(media => {
       try {
@@ -134,6 +203,56 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
     return Array.from(document.querySelectorAll(
         'button[data-testid="play-button"]')).find(visible) || null;
   };
+  const recoveryButton = onShow => playerControl() ||
+      (onShow ? latestEpisodeButton() :
+          Array.from(document.querySelectorAll(
+              'button[data-testid="play-button"]')).find(visible) || null);
+  const samplePlayback = () => {
+    const mediaElements = Array.from(document.querySelectorAll('audio, video'));
+    const media = mediaElements.find(item => !item.paused && !item.ended) ||
+        mediaElements[0] || null;
+    if (!media) {
+      lastMedia = null;
+      lastTime = NaN;
+      stalledChecks = 0;
+      return null;
+    }
+    const currentTime = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
+    const ready = !media.paused && !media.ended && media.readyState >= 2;
+    if (!ready) {
+      lastMedia = media;
+      lastTime = currentTime;
+      stalledChecks = stallLimit;
+      return false;
+    }
+    if (media !== lastMedia || !Number.isFinite(lastTime) ||
+        !Number.isFinite(currentTime)) {
+      lastMedia = media;
+      lastTime = currentTime;
+      stalledChecks = 0;
+      return true;
+    }
+    if (Math.abs(currentTime - lastTime) >= 0.5) {
+      stalledChecks = 0;
+    } else {
+      ++stalledChecks;
+    }
+    lastMedia = media;
+    lastTime = currentTime;
+    return stalledChecks < stallLimit;
+  };
+  const recoverPlayback = onShow => {
+    const button = recoveryButton(onShow);
+    if (!visible(button)) return;
+    const wasPlaying = buttonShowsPlaying(button);
+    button.click();
+    if (wasPlaying) {
+      window.setTimeout(() => {
+        const current = recoveryButton(onShow);
+        if (visible(current) && !buttonShowsPlaying(current)) current.click();
+      }, 500);
+    }
+  };
   const ensure = () => {
     if (location.hostname !== 'open.spotify.com') {
       report(false);
@@ -148,21 +267,14 @@ constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
     }
     ensurePlaybackRate();
     disableRepeat();
-    const playButtons = Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]'));
-    const playing = playButtons.some(isPlayingButton);
-    if (!playing) {
-      const playButton = onShow ? latestEpisodeButton() :
-          playButtons.find(visible) || null;
-      if (playButton) {
-        playButton.click();
-        window.setTimeout(ensure, 1500);
-      }
-    }
+    const mediaPlaying = samplePlayback();
+    const button = recoveryButton(onShow);
+    const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
+    if (!playing) recoverPlayback(onShow);
     report(playing);
   };
   ensure();
-  window.setInterval(ensure, 5000);
+  window.setInterval(ensure, checkIntervalMs);
 })();
 )JS";
 
