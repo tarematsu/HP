@@ -56,6 +56,33 @@ test('media cycle alternates YouTube and TVer every hour by navigation only', ()
   assert.doesNotMatch(mediaPanel, /ReopenWebView|CloseWebView/);
 });
 
+test('YouTube and TVer keep phase start/end times visible for the whole hour', () => {
+  assert.match(mediaPanel, /FormatNativeMediaLocalHourMinute/);
+  assert.match(
+    mediaPanel,
+    /CapturePhaseTimes\(\)[\s\S]*kNativeMediaPhaseMs\) \* 10000ULL/,
+  );
+  assert.match(
+    mediaPanel,
+    /SwitchToYouTube\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*Navigate\(kNativeMediaYoutubeUrl\)/,
+  );
+  assert.match(
+    mediaPanel,
+    /SwitchToTver\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*Navigate\(kNativeMediaTverUrl\)/,
+  );
+  assert.match(mediaPanel, /__homePanelMediaPhaseTime/);
+  assert.match(mediaPanel, /phase_ == Phase::YouTube \? L"YouTube " : L"TVer "/);
+  assert.match(mediaPanel, /top:8px;right:8px;z-index:2147483647/);
+  assert.match(mediaPanel, /font:600 12px\/1\.2/);
+  assert.match(mediaPanel, /document\.querySelector\('#movie_player'\)/);
+  assert.match(mediaPanel, /window\.__homePanelMediaPhaseClockTimer/);
+  assert.match(mediaPanel, /window\.setInterval\(mount, 1000\)/);
+  assert.match(
+    mediaPanel,
+    /add_NavigationCompleted[\s\S]*ShowPhaseOverlay\(\)/,
+  );
+});
+
 test('YouTube keeps playlist autoplay, 480p, ad skip, and fullscreen recovery', () => {
   assert.match(
     mediaPanel,

@@ -18,6 +18,21 @@ constexpr int kNativeMediaPlayAllRetryLimit = 20;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
 
+std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexcept {
+  SYSTEMTIME utc{};
+  SYSTEMTIME local{};
+  if (!FileTimeToSystemTime(&utcFileTime, &utc) ||
+      !SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local)) {
+    return L"--:--";
+  }
+  std::wstring value = L"00:00";
+  value[0] = static_cast<wchar_t>(L'0' + local.wHour / 10);
+  value[1] = static_cast<wchar_t>(L'0' + local.wHour % 10);
+  value[3] = static_cast<wchar_t>(L'0' + local.wMinute / 10);
+  value[4] = static_cast<wchar_t>(L'0' + local.wMinute % 10);
+  return value;
+}
+
 constexpr wchar_t kNativeMediaPlayAllScript[] = LR"JS(
 (() => {
   const styleId = 'homepanel-youtube-clean-player';
@@ -372,6 +387,65 @@ class NativeMediaPanelHost final {
  private:
   enum class Phase { YouTube, Tver };
 
+  void CapturePhaseTimes() noexcept {
+    FILETIME startUtc{};
+    GetSystemTimeAsFileTime(&startUtc);
+    ULARGE_INTEGER endTicks{};
+    endTicks.LowPart = startUtc.dwLowDateTime;
+    endTicks.HighPart = startUtc.dwHighDateTime;
+    endTicks.QuadPart += static_cast<ULONGLONG>(kNativeMediaPhaseMs) * 10000ULL;
+    FILETIME endUtc{};
+    endUtc.dwLowDateTime = endTicks.LowPart;
+    endUtc.dwHighDateTime = endTicks.HighPart;
+    phaseStartText_ = FormatNativeMediaLocalHourMinute(startUtc);
+    phaseEndText_ = FormatNativeMediaLocalHourMinute(endUtc);
+  }
+
+  std::wstring BuildPhaseOverlayScript() const {
+    if (phaseStartText_.empty() || phaseEndText_.empty()) return {};
+    std::wstring script = LR"JS(
+(() => {
+  const id = '__homePanelMediaPhaseTime';
+  const text = ')JS";
+    script += phase_ == Phase::YouTube ? L"YouTube " : L"TVer ";
+    script += phaseStartText_;
+    script += L"–";
+    script += phaseEndText_;
+    script += LR"JS(';
+  const mount = () => {
+    const player = document.querySelector('#movie_player');
+    const root = player || document.body || document.documentElement;
+    if (!root) return;
+    let badge = document.getElementById(id);
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.id = id;
+    }
+    badge.textContent = text;
+    badge.style.cssText =
+        (player ? 'position:absolute;' : 'position:fixed;') +
+        'top:8px;right:8px;z-index:2147483647;' +
+        'padding:4px 6px;border-radius:4px;background:rgba(0,0,0,.58);' +
+        'color:#fff;font:600 12px/1.2 "Segoe UI",sans-serif;' +
+        'letter-spacing:.2px;white-space:nowrap;pointer-events:none;';
+    if (badge.parentElement !== root) root.appendChild(badge);
+  };
+  mount();
+  if (window.__homePanelMediaPhaseClockTimer) {
+    window.clearInterval(window.__homePanelMediaPhaseClockTimer);
+  }
+  window.__homePanelMediaPhaseClockTimer = window.setInterval(mount, 1000);
+})()
+)JS";
+    return script;
+  }
+
+  void ShowPhaseOverlay() noexcept {
+    if (!webview_) return;
+    const std::wstring script = BuildPhaseOverlayScript();
+    if (!script.empty()) webview_->ExecuteScript(script.c_str(), nullptr);
+  }
+
   void Configure() noexcept {
     try {
       ComPtr<ICoreWebView2Controller2> controller2;
@@ -432,6 +506,7 @@ class NativeMediaPanelHost final {
                 } else {
                   StopYoutubeMonitors();
                 }
+                ShowPhaseOverlay();
                 return S_OK;
               }).Get(),
           &navigationCompletedToken_);
@@ -455,6 +530,7 @@ class NativeMediaPanelHost final {
 
   void SwitchToYouTube() noexcept {
     phase_ = Phase::YouTube;
+    CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
     StopNavigationRetry();
@@ -466,6 +542,7 @@ class NativeMediaPanelHost final {
 
   void SwitchToTver() noexcept {
     phase_ = Phase::Tver;
+    CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
     StopNavigationRetry();
@@ -739,6 +816,8 @@ class NativeMediaPanelHost final {
   EventRegistrationToken newWindowToken_{};
   EventRegistrationToken navigationCompletedToken_{};
   Phase phase_ = Phase::YouTube;
+  std::wstring phaseStartText_;
+  std::wstring phaseEndText_;
   int playAllProbeAttempts_ = 0;
   bool playAllProbeInFlight_ = false;
   bool playbackHealthProbeInFlight_ = false;
