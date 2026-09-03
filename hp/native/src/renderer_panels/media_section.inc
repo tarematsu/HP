@@ -13,10 +13,24 @@ constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaPlayAllRetryMs = 500U;
 constexpr UINT kNativeMediaPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
-constexpr UINT kNativeMediaYoutubeWatchdogMs = 1000U;
+constexpr UINT kNativeMediaYoutubeWatchdogMinMs = 2U * 1000U;
+constexpr UINT kNativeMediaYoutubeWatchdogMaxMs = 10U * 1000U;
 constexpr int kNativeMediaPlayAllRetryLimit = 20;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
+
+UINT NextNativeMediaYoutubeWatchdogMs() noexcept {
+  LARGE_INTEGER counter{};
+  QueryPerformanceCounter(&counter);
+  const ULONGLONG mixed = GetTickCount64() ^
+      static_cast<ULONGLONG>(counter.QuadPart);
+  constexpr UINT secondCount =
+      (kNativeMediaYoutubeWatchdogMaxMs - kNativeMediaYoutubeWatchdogMinMs) /
+          1000U +
+      1U;
+  return kNativeMediaYoutubeWatchdogMinMs +
+         static_cast<UINT>(mixed % secondCount) * 1000U;
+}
 
 std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexcept {
   SYSTEMTIME utc{};
@@ -338,6 +352,10 @@ class NativeMediaPanelHost final {
       return true;
     }
     if (timerId == kNativeMediaYoutubeWatchdogTimer) {
+      if (hostWindow_ && IsWindow(hostWindow_)) {
+        SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+                 NextNativeMediaYoutubeWatchdogMs(), nullptr);
+      }
       ProbeYoutubeWatchdog();
       return true;
     }
@@ -630,7 +648,7 @@ class NativeMediaPanelHost final {
     SetTimer(hostWindow_, kNativeMediaPlaybackHealthTimer,
              kNativeMediaPlaybackHealthMs, nullptr);
     SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-             kNativeMediaYoutubeWatchdogMs, nullptr);
+             NextNativeMediaYoutubeWatchdogMs(), nullptr);
     ProbeYoutubeHealth();
     ProbeYoutubeWatchdog();
   }
