@@ -25,6 +25,15 @@ test('background Spotify playback stays visible at 1x1 and keeps controllers ali
   assert.match(spotify, /const int width = foreground \? phoneWidth : kSpotifyBackgroundExtent/);
   assert.match(spotify, /const int height = foreground \? phoneHeight : kSpotifyBackgroundExtent/);
   assert.doesNotMatch(spotify, /if \(!foreground\)[\s\S]{0,300}controller->Close\(\)/);
+  assert.match(
+    spotify,
+    /if \(batch\) EndDeferWindowPos\(batch\);[\s\S]*GetClientRect\(slot\.hostWindow, &bounds\);[\s\S]*slot\.controller->put_Bounds\(bounds\);[\s\S]*slot\.controller->NotifyParentWindowPositionChanged\(\)/,
+  );
+});
+
+test('lightweight Spotify CSS does not blank foreground player surfaces', () => {
+  assert.doesNotMatch(spotify, /canvas,\s*\[data-testid="cover-art-image"\]/);
+  assert.doesNotMatch(spotify, /visibility: hidden !important/);
 });
 
 test('Spotify player pages block only images and fonts while auth pages stay unfiltered', () => {

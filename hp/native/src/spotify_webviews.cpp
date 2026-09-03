@@ -46,12 +46,6 @@ constexpr wchar_t kSpotifyLightweightScript[] = LR"JS(
       transition: none !important;
       scroll-behavior: auto !important;
     }
-    img,
-    canvas,
-    [data-testid="cover-art-image"],
-    [data-testid="entity-image"] {
-      visibility: hidden !important;
-    }
   `;
   (document.head || document.documentElement).appendChild(style);
 })()
@@ -832,6 +826,22 @@ void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
     }
   }
   if (batch) EndDeferWindowPos(batch);
+
+  // A controller that spent time on a 1x1 host can keep a stale
+  // composition surface after the host is expanded again. Do not rely
+  // only on WM_SIZE: synchronize WebView2 bounds and parent position
+  // after the whole six-window batch has reached its final geometry.
+  for (Slot& slot : slots_) {
+    if (!slot.hostWindow || !IsWindow(slot.hostWindow) || !slot.controller) {
+      continue;
+    }
+    RECT bounds{};
+    GetClientRect(slot.hostWindow, &bounds);
+    slot.controller->put_Bounds(bounds);
+    slot.controller->NotifyParentWindowPositionChanged();
+    slot.controller->put_IsVisible(TRUE);
+    InvalidateRect(slot.hostWindow, nullptr, FALSE);
+  }
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {

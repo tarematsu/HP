@@ -56,11 +56,11 @@ test('Spotify foreground uses six tall hosts and background keeps 1px visible co
   assert.match(spotify, /__homePanelSpotifyAccount/);
 });
 
-test('Spotify player pages suppress decorative rendering and downloads only', () => {
+test('Spotify player pages reduce decorative work without hiding foreground surfaces', () => {
   assert.match(spotify, /kSpotifyLightweightScript/);
   assert.match(spotify, /animation: none !important/);
   assert.match(spotify, /transition: none !important/);
-  assert.match(spotify, /canvas/);
+  assert.doesNotMatch(spotify, /visibility: hidden !important/);
   assert.match(
     spotify,
     /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/,
