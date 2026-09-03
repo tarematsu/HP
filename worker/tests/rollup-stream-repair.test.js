@@ -20,6 +20,7 @@ test('daily reconciliation waits for complete source coverage', () => {
   assert.match(source, /reconcileMinuteFactsForDay/);
   assert.match(source, /reason: reconciliation\.blocked \? 'minute-facts-dead-jobs' : 'minute-facts-incomplete'/);
   assert.match(source, /summaryGeneration\(existing\) === reconciliation\.generation/);
+  assert.match(reconcile, /FROM sh_channel_snapshots INDEXED BY idx_sh_channel_snapshots_observed_id/);
   assert.match(reconcile, /PARTITION BY channel_id,CAST\(observed_at\/60000 AS INTEGER\)/);
   assert.match(reconcile, /status IN \('pending','processing','dead'\)/);
   assert.match(source, /rollupMinuteDaily\(minuteDb, otherDb, period, now, qualityFlags\)/);

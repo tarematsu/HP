@@ -24,14 +24,15 @@ async function readTask(db) {
 export async function readOtherHealth(env, now = Date.now()) {
   if (!env?.OTHER_DB?.prepare) throw new Error('OTHER_DB binding missing');
   const row = await readTask(env.OTHER_DB);
-  // Production config uses 90 minutes: runner health warns at 75 minutes, then
-  // public availability keeps one additional schedule half-cycle of grace.
+  // GitHub Actions schedule delivery is monitored separately by runner health.
+  // Keep the 90-minute production threshold as diagnostic freshness, but do not
+  // turn a late offline-maintenance schedule into a public availability outage.
   const staleAfterMs = positiveMs(env.OTHER_CRON_STALE_MS, 75 * 60_000, 60 * 60_000);
   const ageMs = age(now, row?.last_attempt_at);
   const stale = ageMs == null || ageMs >= staleAfterMs;
   const failed = Boolean(row) && !HEALTHY_STATUSES.has(row.status);
   return {
-    ok: Boolean(row) && !stale && !failed,
+    ok: Boolean(row) && !failed,
     setup_required: !row,
     stale,
     stale_after_ms: staleAfterMs,
