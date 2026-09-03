@@ -27,30 +27,52 @@ test('six Spotify accounts reuse the media WebView2 user data folder', () => {
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
 });
 
-test('amazon shares the default profile while the other five Spotify sessions stay isolated', () => {
-  assert.match(spotify, /if \(target->index == 0\)/);
-  assert.match(
-    spotify,
-    /environment->CreateCoreWebView2Controller\(\s*target->hostWindow, ready\.Get\(\)\)/,
-  );
+test('all six Spotify sessions use isolated named profiles', () => {
   assert.match(spotify, /ICoreWebView2Environment10/);
   assert.match(spotify, /CreateCoreWebView2ControllerOptions/);
   assert.match(spotify, /kSpotifyProfilePrefix\[\] = L"spotify-"/);
+  assert.match(spotify, /std::to_wstring\(target->index \+ 1\)/);
   assert.match(spotify, /put_ProfileName\(profileName\.c_str\(\)\)/);
   assert.match(spotify, /CreateCoreWebView2ControllerWithOptions/);
+  assert.doesNotMatch(spotify, /if \(target->index == 0\)/);
+  assert.doesNotMatch(
+    spotify,
+    /environment->CreateCoreWebView2Controller\(\s*target->hostWindow/,
+  );
 });
 
-test('Spotify foreground uses six tall side-by-side WebView hosts with account labels', () => {
+test('Spotify foreground uses six tall hosts and background keeps 1px visible controllers alive', () => {
   assert.match(spotify, /clientWidth \/ static_cast<int>\(kAccountCount\)/);
   assert.match(spotify, /clientHeight \* 9 \/ 20/);
   assert.match(spotify, /phoneWidth \* 20 \/ 9/);
-  assert.match(spotify, /SW_SHOWNOACTIVATE/);
-  assert.match(spotify, /SW_HIDE/);
+  assert.match(spotify, /kSpotifyBackgroundExtent = 1/);
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+  assert.doesNotMatch(spotify, /SW_HIDE/);
   assert.match(
     spotify,
     /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
   );
   assert.match(spotify, /__homePanelSpotifyAccount/);
+});
+
+test('Spotify player pages suppress decorative rendering and downloads only', () => {
+  assert.match(spotify, /kSpotifyLightweightScript/);
+  assert.match(spotify, /animation: none !important/);
+  assert.match(spotify, /transition: none !important/);
+  assert.match(spotify, /canvas/);
+  assert.match(
+    spotify,
+    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/,
+  );
+  assert.match(
+    spotify,
+    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/,
+  );
+  assert.match(spotify, /CreateWebResourceResponse\(\s*nullptr, 204, L"No Content"/);
+  assert.match(spotify, /!target->playerPage \|\| !target->environment/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
 test('all six accounts alternate Lonesome rabbit and Sakura TALKABOUT every hour with staggered switches', () => {
@@ -81,7 +103,7 @@ test('music phase keeps the requested track release on repeat one', () => {
   assert.match(spotify, /kSpotifyPlaybackScript/);
   assert.match(spotify, /control-button-repeat/);
   assert.match(spotify, /aria-checked.*mixed/s);
-  assert.match(spotify, /window\.setInterval\(ensure, checkIntervalMs\)/);
+  assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
 });
 
 test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x playback', () => {
@@ -99,20 +121,28 @@ test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x
     spotify,
     /if \(media\.playbackRate !== playbackRate\) media\.playbackRate = playbackRate/,
   );
-  assert.match(spotify, /window\.setInterval\(ensure, checkIntervalMs\)/);
+  assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
   assert.doesNotMatch(
     spotify,
     /if \(!location\.pathname\.endsWith\(showPath\)\)[\s\S]*location\.replace\(showUrl\)/,
   );
 });
 
-test('each Spotify WebView verifies real media progress and self-recovers every ten seconds', () => {
-  assert.equal((spotify.match(/const checkIntervalMs = 10000/g) || []).length, 2);
-  assert.equal((spotify.match(/const stallLimit = 2/g) || []).length, 2);
-  assert.equal(
-    (spotify.match(/document\.querySelectorAll\('audio, video'\)/g) || []).length >= 2,
-    true,
+test('one native round-robin timer verifies all six Spotify playback states', () => {
+  assert.match(spotify, /kSpotifyPlaybackWatchdogTimer = 4/);
+  assert.match(spotify, /kSpotifyPlaybackWatchdogTickMs = 2U \* 1000U/);
+  assert.match(spotifyHeader, /size_t playbackWatchdogIndex_ = 0/);
+  assert.match(
+    spotify,
+    /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/,
   );
+  assert.match(spotify, /ExecuteScript\(kSpotifyWatchdogScript, nullptr\)/);
+  assert.match(
+    spotify,
+    /wparam == kSpotifyPlaybackWatchdogTimer[\s\S]*RunPlaybackWatchdog\(\)/,
+  );
+  assert.doesNotMatch(spotify, /window\.setInterval\(ensure/);
+  assert.equal((spotify.match(/const stallLimit = 2/g) || []).length, 2);
   assert.equal(
     (spotify.match(/!media\.paused && !media\.ended && media\.readyState >= 2/g) || []).length,
     2,
@@ -122,11 +152,7 @@ test('each Spotify WebView verifies real media progress and self-recovers every 
     2,
   );
   assert.equal((spotify.match(/stalledChecks < stallLimit/g) || []).length, 2);
-  assert.equal((spotify.match(/recoverPlayback/g) || []).length >= 4, true);
   assert.equal((spotify.match(/if \(lastReported === playing\) return/g) || []).length, 2);
-  assert.match(spotify, /control-button-playpause/);
-  assert.doesNotMatch(spotify, /setInterval\(ensure, 60000\)/);
-  assert.doesNotMatch(spotify, /setInterval\(ensure, 5000\)/);
 });
 
 test('all six Spotify WebViews stay natively muted so media-panel audio never overlaps', () => {
@@ -138,7 +164,7 @@ test('all six Spotify WebViews stay natively muted so media-panel audio never ov
   assert.doesNotMatch(spotify, /amazonPodcastMode_/);
 });
 
-test('Spotify foreground depends on six playback states reported by the WebView watchdogs', () => {
+test('Spotify foreground depends on six playback states reported by the shared watchdog', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
@@ -146,7 +172,6 @@ test('Spotify foreground depends on six playback states reported by the WebView 
   assert.match(spotify, /spotify:not-playing/);
   assert.match(spotify, /add_WebMessageReceived/);
   assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
-  assert.equal((spotify.match(/window\.setInterval\(ensure, checkIntervalMs\)/g) || []).length, 2);
 });
 
 test('Spotify and media playback ignore power-saving mode while following renderer lifetime', () => {

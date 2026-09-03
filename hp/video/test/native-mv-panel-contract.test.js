@@ -23,19 +23,35 @@ const webviewEnvironment = readFileSync(
   'utf8',
 );
 
-test('native dashboard mounts one reusable media WebView in the former radar window', () => {
+test('native dashboard keeps one active media controller on the shared WebView2 environment', () => {
   assert.match(composition, /#include "renderer_panels\/media_section\.inc"/);
   assert.match(mediaPanel, /HomePanelNativeMvPanel/);
   assert.match(mediaPanel, /void Renderer::DrawMusicSection/);
   assert.match(mediaPanel, /EnsureNativeMvPanel\(nativeRadarWindow_, dataDir_, mediaBounds\)/);
   assert.match(mediaPanel, /webview2-youtube-mv/);
-  assert.equal(
-    (mediaPanel.match(/environment_->CreateCoreWebView2Controller\(/g) || []).length,
-    1,
+  assert.match(mediaPanel, /ICoreWebView2Environment10/);
+  assert.match(mediaPanel, /CreateCoreWebView2ControllerWithOptions/);
+  assert.match(mediaPanel, /CloseController\(\)/);
+  assert.doesNotMatch(mediaPanel, /environment_->CreateCoreWebView2Controller\(/);
+});
+
+test('YouTube and TVer use separate named login profiles while sharing the process family', () => {
+  assert.match(mediaPanel, /kNativeMediaYoutubeProfile\[\] = L"media-youtube"/);
+  assert.match(mediaPanel, /kNativeMediaTverProfile\[\] = L"media-tver"/);
+  assert.match(
+    mediaPanel,
+    /CurrentProfileName\(\)[\s\S]*Phase::YouTube[\s\S]*kNativeMediaYoutubeProfile[\s\S]*kNativeMediaTverProfile/,
+  );
+  assert.match(mediaPanel, /CreateCoreWebView2ControllerOptions/);
+  assert.match(mediaPanel, /put_ProfileName\(CurrentProfileName\(\)\)/);
+  assert.match(mediaPanel, /put_IsInPrivateModeEnabled\(FALSE\)/);
+  assert.match(
+    mediaPanel,
+    /SharedWebViewEnvironment::Instance\(\)\.Acquire\(\s*userDataFolder_, false, false,/,
   );
 });
 
-test('media cycle alternates YouTube and TVer every hour by navigation only', () => {
+test('media cycle alternates YouTube and TVer every hour by recreating only the active profile controller', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaPanel, /enum class Phase \{ YouTube, Tver \}/);
   assert.match(
@@ -44,16 +60,17 @@ test('media cycle alternates YouTube and TVer every hour by navigation only', ()
   );
   assert.match(
     mediaPanel,
-    /void SwitchToYouTube\(\) noexcept[\s\S]*Navigate\(kNativeMediaYoutubeUrl\)[\s\S]*ArmPhaseTimer\(\)/,
+    /void SwitchToYouTube\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*ArmPhaseTimer\(\)/,
   );
   assert.match(
     mediaPanel,
-    /void SwitchToTver\(\) noexcept[\s\S]*Navigate\(kNativeMediaTverUrl\)[\s\S]*ArmPhaseTimer\(\)/,
+    /void SwitchToTver\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*ArmPhaseTimer\(\)/,
   );
+  assert.match(mediaPanel, /uint64_t controllerGeneration_ = 0/);
+  assert.match(mediaPanel, /bool controllerCreating_ = false/);
   assert.doesNotMatch(composition, /SakuraMeetsTverPlayer/);
   assert.doesNotMatch(composition, /SetNativeMvTimerWithMediaCycle/);
   assert.doesNotMatch(composition, /SetSpotifyAmazonPodcastMode/);
-  assert.doesNotMatch(mediaPanel, /ReopenWebView|CloseWebView/);
 });
 
 test('YouTube and TVer keep phase start/end times visible for the whole hour', () => {
@@ -64,11 +81,11 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour', (
   );
   assert.match(
     mediaPanel,
-    /SwitchToYouTube\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*Navigate\(kNativeMediaYoutubeUrl\)/,
+    /SwitchToYouTube\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
   );
   assert.match(
     mediaPanel,
-    /SwitchToTver\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*Navigate\(kNativeMediaTverUrl\)/,
+    /SwitchToTver\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
   );
   assert.match(mediaPanel, /__homePanelMediaPhaseTime/);
   assert.match(mediaPanel, /phase_ == Phase::YouTube \? L"YouTube " : L"TVer "/);
