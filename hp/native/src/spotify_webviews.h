@@ -14,6 +14,7 @@ class SpotifyWebViews final {
   void Start() noexcept;
   void Resize() noexcept;
   void Shutdown() noexcept;
+  void SetPodcastMode(bool podcastMode) noexcept;
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -61,5 +62,7 @@ class SpotifyWebViews final {
   bool foreground_ = true;
   bool podcastMode_ = false;
 };
+
+void SetSpotifyMediaPhase(bool podcastMode) noexcept;
 
 }  // namespace hp
