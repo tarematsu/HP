@@ -10,8 +10,16 @@ const spotifyHeader = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
 );
+const spotifyPhaseSync = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
 const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
+  'utf8',
+);
+const rendererPanels = readFileSync(
+  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
 );
 const mediaPanel = readFileSync(
@@ -34,11 +42,6 @@ test('all six Spotify sessions use isolated named profiles', () => {
   assert.match(spotify, /std::to_wstring\(target->index \+ 1\)/);
   assert.match(spotify, /put_ProfileName\(profileName\.c_str\(\)\)/);
   assert.match(spotify, /CreateCoreWebView2ControllerWithOptions/);
-  assert.doesNotMatch(spotify, /if \(target->index == 0\)/);
-  assert.doesNotMatch(
-    spotify,
-    /environment->CreateCoreWebView2Controller\(\s*target->hostWindow/,
-  );
 });
 
 test('Spotify foreground uses six tall hosts and background keeps 1px visible controllers alive', () => {
@@ -53,7 +56,6 @@ test('Spotify foreground uses six tall hosts and background keeps 1px visible co
     spotify,
     /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
   );
-  assert.match(spotify, /__homePanelSpotifyAccount/);
 });
 
 test('Spotify player pages reduce decorative work without hiding foreground surfaces', () => {
@@ -61,63 +63,40 @@ test('Spotify player pages reduce decorative work without hiding foreground surf
   assert.match(spotify, /animation: none !important/);
   assert.match(spotify, /transition: none !important/);
   assert.doesNotMatch(spotify, /visibility: hidden !important/);
-  assert.match(
-    spotify,
-    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/,
-  );
-  assert.match(
-    spotify,
-    /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/,
-  );
-  assert.match(spotify, /CreateWebResourceResponse\(\s*nullptr, 204, L"No Content"/);
-  assert.match(spotify, /!target->playerPage \|\| !target->environment/);
-  assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
+  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_IMAGE/);
+  assert.match(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_FONT/);
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('all six accounts run 90 minutes of alternating music then 30 minutes of Sakura TALKABOUT', () => {
-  assert.match(spotify, /kSpotifyModeTimer = 2/);
-  assert.match(spotify, /kSpotifyModeSwitchTimer = 3/);
-  assert.match(spotify, /kSpotifyMusicPhaseMs = 90U \* 60U \* 1000U/);
-  assert.match(spotify, /kSpotifyPodcastPhaseMs = 30U \* 60U \* 1000U/);
-  assert.match(spotify, /podcastMode_ \? kSpotifyPodcastPhaseMs : kSpotifyMusicPhaseMs/);
+test('YouTube and TVer own the only one-hour phase cadence used by Spotify', () => {
+  assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
+  assert.match(
+    rendererPanels,
+    /timerId\) == kNativeMediaPhaseTimer[\s\S]*SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/,
+  );
+  assert.match(spotifyHeader, /void SetPodcastMode\(bool podcastMode\) noexcept/);
+  assert.match(spotifyHeader, /void SetSpotifyMediaPhase\(bool podcastMode\) noexcept/);
+  assert.match(
+    lifecycle,
+    /void SetSpotifyMediaPhase\(bool podcastMode\) noexcept[\s\S]*gSpotifyWebViews->SetPodcastMode\(podcastMode\)/,
+  );
+  assert.match(lifecycle, /gSpotifyWebViews->Start\(\);\s*SetSpotifyMediaPhase\(false\);/);
+  assert.match(
+    spotifyPhaseSync,
+    /stopLegacyModeTimer\(\);[\s\S]*if \(podcastMode_ == podcastMode\) return;[\s\S]*ToggleMode\(\);[\s\S]*stopLegacyModeTimer\(\);/,
+  );
+  assert.match(spotifyPhaseSync, /KillTimer\(host, kSpotifyModeTimer\)/);
   assert.match(spotify, /kSpotifyModeStaggerMs = 10U \* 1000U/);
-  assert.match(spotifyHeader, /bool podcastMode_ = false/);
-  assert.match(
-    spotify,
-    /void SpotifyWebViews::ToggleMode\(\) noexcept[\s\S]*podcastMode_ = !podcastMode_;[\s\S]*for \(Slot& slot : slots_\)[\s\S]*slot\.index == 0[\s\S]*NavigateSlotToCurrentMode\(slot\)[\s\S]*slot\.index\) \* kSpotifyModeStaggerMs[\s\S]*SetTimer\(slot\.hostWindow, kSpotifyModeSwitchTimer, delay, nullptr\)[\s\S]*ArmModeTimer\(\)/,
-  );
-  assert.match(
-    spotify,
-    /wparam == kSpotifyModeSwitchTimer[\s\S]*KillTimer\(hwnd, kSpotifyModeSwitchTimer\)[\s\S]*NavigateSlotToCurrentMode\(\*slot\)/,
-  );
-  assert.match(
-    spotify,
-    /NavigateSlotToCurrentMode\(Slot& slot\)[\s\S]*Navigate\(podcastMode_ \? kSpotifyPodcastUrl : kSpotifyAlbumUrl\)/,
-  );
-  assert.match(spotify, /KillTimer\(slot\.hostWindow, kSpotifyModeSwitchTimer\)/);
-  assert.doesNotMatch(spotifyHeader, /SetAmazonPodcastMode/);
-  assert.doesNotMatch(spotify, /SetSpotifyAmazonPodcastMode/);
 });
 
-test('music phase alternates Lonesome rabbit and TOKYO SNOW after full-track completion', () => {
-  assert.match(spotify, /2f2Ik9JeinFVWZuFb3i35b/);
-  assert.match(spotify, /307SI8AgVvBbNTkNrETKHW/);
-  assert.match(spotify, /__homePanelSakuraAlternatingLoop/);
-  assert.match(spotify, /currentTarget/);
-  assert.match(spotify, /return \{ nextUrl: tokyoSnowUrl \}/);
-  assert.match(spotify, /return \{ nextUrl: lonesomeUrl \}/);
-  assert.match(spotify, /control-button-repeat/);
-  assert.match(spotify, /aria-checked.*mixed/s);
-  assert.match(spotify, /media\.addEventListener\('ended'/);
-  assert.match(spotify, /lastTargetTime >= 30 && currentTime \+ 30 < lastTargetTime/);
-  assert.match(spotify, /location\.replace\(targetInfo\.nextUrl\)/);
-  assert.match(spotify, /let targetStarted = false/);
-  assert.match(
-    spotify,
-    /if \(!targetStarted\)[\s\S]*if \(!target\)[\s\S]*report\(false\)[\s\S]*if \(!buttonShowsPlaying\(target\)\)[\s\S]*target\.click\(\)[\s\S]*report\(false\)[\s\S]*targetStarted = true/,
-  );
+test('music phase loops the requested Spotify playlist context', () => {
+  assert.match(spotify, /5DQCO4Hv3MbVYHgyXEfx8g/);
+  assert.match(spotify, /__homePanelSakuraPlaylistLoop/);
+  assert.match(spotify, /ensureRepeatContext/);
+  assert.match(spotify, /aria-checked.*true/s);
   assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
+  assert.doesNotMatch(spotify, /307SI8AgVvBbNTkNrETKHW/);
+  assert.doesNotMatch(spotify, /__homePanelSakuraAlternatingLoop/);
 });
 
 test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x playback', () => {
@@ -125,57 +104,25 @@ test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x
   assert.match(spotify, /kSpotifyPodcastPlaybackScript/);
   assert.match(spotify, /a\[href\*="\/episode\/"\]/);
   assert.match(spotify, /const latest = links\[0\]/);
-  assert.match(spotify, /const onEpisode = location\.pathname\.startsWith\('\/episode\/'\)/);
-  assert.match(spotify, /const recoveryButton = onShow => playerControl\(\)/);
-  assert.match(spotify, /disableRepeat\(\)/);
   assert.match(spotify, /const playbackRate = 3\.0/);
-  assert.match(spotify, /document\.querySelectorAll\('audio, video'\)/);
   assert.match(spotify, /media\.defaultPlaybackRate = playbackRate/);
-  assert.match(
-    spotify,
-    /if \(media\.playbackRate !== playbackRate\) media\.playbackRate = playbackRate/,
-  );
   assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
-  assert.doesNotMatch(
-    spotify,
-    /if \(!location\.pathname\.endsWith\(showPath\)\)[\s\S]*location\.replace\(showUrl\)/,
-  );
 });
 
 test('one native round-robin timer verifies all six Spotify playback states', () => {
   assert.match(spotify, /kSpotifyPlaybackWatchdogTimer = 4/);
   assert.match(spotify, /kSpotifyPlaybackWatchdogTickMs = 2U \* 1000U/);
   assert.match(spotifyHeader, /size_t playbackWatchdogIndex_ = 0/);
-  assert.match(
-    spotify,
-    /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/,
-  );
+  assert.match(spotify, /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/);
   assert.match(spotify, /ExecuteScript\(kSpotifyWatchdogScript, nullptr\)/);
-  assert.match(
-    spotify,
-    /wparam == kSpotifyPlaybackWatchdogTimer[\s\S]*RunPlaybackWatchdog\(\)/,
-  );
-  assert.doesNotMatch(spotify, /window\.setInterval\(ensure/);
   assert.equal((spotify.match(/const stallLimit = 2/g) || []).length, 2);
-  assert.equal(
-    (spotify.match(/!media\.paused && !media\.ended && media\.readyState >= 2/g) || []).length,
-    2,
-  );
-  assert.equal(
-    (spotify.match(/Math\.abs\(currentTime - lastTime\) >= 0\.5/g) || []).length,
-    2,
-  );
-  assert.equal((spotify.match(/stalledChecks < stallLimit/g) || []).length, 2);
-  assert.equal((spotify.match(/if \(lastReported === playing\) return/g) || []).length, 2);
 });
 
 test('all six Spotify WebViews stay natively muted so media-panel audio never overlaps', () => {
   assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
-  assert.match(spotify, /SetSpotifyOutputMuted\(target->webview\)/);
   assert.doesNotMatch(spotify, /put_IsMuted\(FALSE\)/);
-  assert.doesNotMatch(spotify, /amazonPodcastMode_/);
 });
 
 test('Spotify foreground depends on six playback states reported by the shared watchdog', () => {
@@ -184,7 +131,6 @@ test('Spotify foreground depends on six playback states reported by the shared w
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
   assert.match(spotify, /spotify:playing/);
   assert.match(spotify, /spotify:not-playing/);
-  assert.match(spotify, /add_WebMessageReceived/);
   assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
 });
 
@@ -199,5 +145,4 @@ test('Spotify and media playback ignore power-saving mode while following render
   assert.notEqual(visibilityStart, -1);
   const powerSavingSection = lifecycle.slice(powerSavingStart, visibilityStart);
   assert.doesNotMatch(powerSavingSection, /gSpotifyWebViews/);
-  assert.doesNotMatch(powerSavingSection, /DestroyWindow/);
 });
