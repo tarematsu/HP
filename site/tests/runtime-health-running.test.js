@@ -45,12 +45,12 @@ test('runtime public health remains available after the runner warning threshold
   assert.equal(health.stale_after_ms, 90 * 60_000);
 });
 
-test('runtime health becomes stale after the public availability grace period', async () => {
+test('late offline maintenance is stale telemetry without a public availability outage', async () => {
   const health = await readOtherHealth({
     OTHER_DB: statusDb('ok', { last_attempt_at: NOW - 91 * 60_000 }),
     OTHER_CRON_STALE_MS: 90 * 60_000,
   }, NOW);
-  assert.equal(health.ok, false);
+  assert.equal(health.ok, true);
   assert.equal(health.stale, true);
 });
 
