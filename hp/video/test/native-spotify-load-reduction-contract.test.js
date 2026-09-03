@@ -19,12 +19,11 @@ test('Spotify WebViews stagger startup without blocking the UI thread', () => {
   assert.doesNotMatch(spotify, /Sleep\(/);
 });
 
-test('background Spotify playback stops WebView2 rendering but keeps controllers alive', () => {
-  assert.match(
-    spotify,
-    /slot\.controller->put_IsVisible\(foreground \? TRUE : FALSE\)/,
-  );
-  assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_HIDE\)/);
+test('background Spotify playback stays visible at 1x1 and keeps controllers alive', () => {
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+  assert.match(spotify, /const int width = foreground \? phoneWidth : kSpotifyBackgroundExtent/);
+  assert.match(spotify, /const int height = foreground \? phoneHeight : kSpotifyBackgroundExtent/);
   assert.doesNotMatch(spotify, /if \(!foreground\)[\s\S]{0,300}controller->Close\(\)/);
 });
 
