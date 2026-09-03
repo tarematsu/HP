@@ -72,7 +72,8 @@ constexpr wchar_t kNativeMediaPlayAllScript[] = LR"JS(
       .html5-video-player yt-player-overlay-video-details-renderer,
       .html5-video-player .ytp-fullscreen-grid,
       .html5-video-player .ytp-fullscreen-grid-stills-container,
-      .html5-video-player .ytp-fullscreen-grid-expand-button {
+      .html5-video-player .ytp-fullscreen-grid-expand-button,
+      .html5-video-player .ytp-caption-window-container {
         display: none !important;
       }
       ytd-watch-flexy #below,
@@ -120,6 +121,21 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogScript[] = LR"JS(
     return style.display !== 'none' && style.visibility !== 'hidden' &&
            style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
   };
+
+  const captionsButton = player.querySelector('.ytp-subtitles-button');
+  if (captionsButton && captionsButton.getAttribute('aria-pressed') === 'true') {
+    try {
+      captionsButton.click();
+    } catch (_) {
+    }
+  } else {
+    try {
+      if (typeof player.setOption === 'function') {
+        player.setOption('captions', 'track', {});
+      }
+    } catch (_) {
+    }
+  }
 
   const selectors = [
     '.ytp-ad-skip-button',
@@ -512,7 +528,7 @@ class NativeMediaPanelHost final {
     badge.style.cssText =
         (player ? 'position:absolute;' : 'position:fixed;') +
         'top:8px;right:8px;z-index:2147483647;' +
-        'padding:4px 6px;border-radius:4px;background:rgba(0,0,0,.58);' +
+        'padding:4px 6px;border-radius:4px;background:rgba(96,96,96,.62);' +
         'color:#fff;font:600 12px/1.2 "Segoe UI",sans-serif;' +
         'letter-spacing:.2px;white-space:nowrap;pointer-events:none;';
     if (badge.parentElement !== root) root.appendChild(badge);

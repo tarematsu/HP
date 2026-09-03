@@ -90,6 +90,7 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour', (
   assert.match(mediaPanel, /__homePanelMediaPhaseTime/);
   assert.match(mediaPanel, /phase_ == Phase::YouTube \? L"YouTube " : L"TVer "/);
   assert.match(mediaPanel, /top:8px;right:8px;z-index:2147483647/);
+  assert.match(mediaPanel, /background:rgba\(96,96,96,\.62\)/);
   assert.match(mediaPanel, /font:600 12px\/1\.2/);
   assert.match(mediaPanel, /document\.querySelector\('#movie_player'\)/);
   assert.match(mediaPanel, /window\.__homePanelMediaPhaseClockTimer/);
@@ -100,7 +101,7 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour', (
   );
 });
 
-test('YouTube keeps playlist autoplay, 480p, ad skip, and fullscreen recovery', () => {
+test('YouTube keeps playlist autoplay, 480p, captions off, ad skip, and fullscreen recovery', () => {
   assert.match(
     mediaPanel,
     /https:\/\/www\.youtube\.com\/playlist\?list=PLMWqSdpIVl30/,
@@ -109,6 +110,11 @@ test('YouTube keeps playlist autoplay, 480p, ad skip, and fullscreen recovery', 
   assert.match(mediaPanel, /すべて再生/);
   assert.match(mediaPanel, /setPlaybackQualityRange\('large', 'large'\)/);
   assert.match(mediaPanel, /setPlaybackQuality\('large'\)/);
+  assert.match(mediaPanel, /\.ytp-caption-window-container/);
+  assert.match(mediaPanel, /player\.querySelector\('\.ytp-subtitles-button'\)/);
+  assert.match(mediaPanel, /getAttribute\('aria-pressed'\) === 'true'/);
+  assert.match(mediaPanel, /captionsButton\.click\(\)/);
+  assert.match(mediaPanel, /player\.setOption\('captions', 'track', \{\}\)/);
   assert.match(mediaPanel, /kNativeMediaPlaybackHealthMs = 10U \* 1000U/);
   assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogMinMs = 2U \* 1000U/);
   assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogMaxMs = 10U \* 1000U/);
@@ -142,7 +148,7 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid-expand-button/);
   assert.match(
     mediaPanel,
-    /\.ytp-fullscreen-grid-expand-button \{[\s\S]*display: none !important;/,
+    /\.ytp-fullscreen-grid-expand-button,[\s\S]*\.ytp-caption-window-container \{[\s\S]*display: none !important;/,
   );
 });
 
