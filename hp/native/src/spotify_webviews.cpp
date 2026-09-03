@@ -67,6 +67,7 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   let lastTime = NaN;
   let stalledChecks = 0;
   let lastReported = null;
+  let targetStarted = false;
 
   const report = playing => {
     if (lastReported === playing) return;
@@ -91,6 +92,9 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
   const playbackButton = () =>
       document.querySelector('button[data-testid="control-button-playpause"]') ||
       document.querySelector('button[data-testid="play-button"]');
+  const targetPlayButton = () =>
+      Array.from(document.querySelectorAll(
+          'button[data-testid="play-button"]')).find(visible) || null;
   const mediaElement = () => {
     const items = Array.from(document.querySelectorAll('audio, video'));
     return items.find(item => !item.paused && !item.ended) || items[0] || null;
@@ -162,6 +166,18 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
       report(false);
       location.replace(targetUrl);
       return;
+    }
+    if (!targetStarted) {
+      const target = targetPlayButton();
+      if (target) {
+        target.click();
+        targetStarted = true;
+        lastMedia = null;
+        lastTime = NaN;
+        stalledChecks = 0;
+        report(false);
+        return;
+      }
     }
     ensureRepeatOne();
     const mediaPlaying = samplePlayback();
