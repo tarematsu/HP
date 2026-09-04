@@ -47,6 +47,13 @@ test('remote provisioning and local smoke tests share the schema contract', () =
   assert.match(smokeTest, /migrationFiles\('database\/other-migrations'/);
 });
 
+test('OTHER_DB provisioning treats retired metadata as an expected no-op', () => {
+  const provisioner = readFileSync('worker/scripts/provision-other-db.mjs', 'utf8');
+  assert.match(provisioner, /LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata'/);
+  assert.match(provisioner, /if \(!hasSchemaObject\(LEGACY_TRACK_METADATA_TABLE, 'table'\)\)/);
+  assert.match(provisioner, /reason: 'source-table-retired'/);
+});
+
 test('metadata consolidation compares canonical ISRC values and recognizes missing text', () => {
   assert.equal(normalizedIsrc(' jp-ab c-123 '), 'JPABC123');
   assert.equal(normalizedIsrc('JPABC123'), 'JPABC123');
