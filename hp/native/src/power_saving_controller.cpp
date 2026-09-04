@@ -1,4 +1,5 @@
 #include "power_saving_controller.h"
+#include "native_media_audio.h"
 #include "web_renderer.h"
 #include <winrt/Windows.Graphics.Display.h>
 
@@ -77,6 +78,23 @@ RECT ShrinkRect(RECT rect, int inset) {
   if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
   return rect;
 }
+
+int ControlStackGap(int height) noexcept {
+  return std::clamp(height * 8 / 100, 3, 6);
+}
+
+RECT ControlButtonRect(const RECT& stack, bool bottom) noexcept {
+  const int height = std::max(1L, stack.bottom - stack.top);
+  const int gap = ControlStackGap(height);
+  const int buttonHeight = std::max(1, (height - gap) / 2);
+  if (!bottom) {
+    return RECT{stack.left, stack.top, stack.right,
+                std::min<LONG>(stack.bottom, stack.top + buttonHeight)};
+  }
+  return RECT{stack.left,
+              std::min<LONG>(stack.bottom, stack.top + buttonHeight + gap),
+              stack.right, stack.bottom};
+}
 }  // namespace
 
 struct PowerSavingController::BrightnessState {
@@ -146,9 +164,12 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
       break;
     case WM_LBUTTONUP: {
       const POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-      const RECT button = controller->LocalButtonRect();
-      if (PtInRect(&button, point)) {
+      const RECT powerButton = controller->LocalPowerButtonRect();
+      const RECT muteButton = controller->LocalMuteButtonRect();
+      if (PtInRect(&powerButton, point)) {
         controller->ApplyMode(!controller->powerSaving_);
+      } else if (PtInRect(&muteButton, point)) {
+        controller->ApplyMediaMute(!controller->mediaMuted_);
       }
       return 0;
     }
@@ -275,7 +296,7 @@ void PowerSavingController::EnsureOverlay() {
   overlay_ = CreateWindowExW(
       WS_EX_NOPARENTNOTIFY,
       kOverlayWindowClass,
-      L"省電力",
+      L"省電力 / ミュート",
       WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
       0,
       0,
@@ -348,6 +369,12 @@ void PowerSavingController::ApplyMode(bool enabled) {
   if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
 }
 
+void PowerSavingController::ApplyMediaMute(bool enabled) noexcept {
+  mediaMuted_ = enabled;
+  SetNativeMediaPanelMuted(enabled);
+  if (overlay_) InvalidateRect(overlay_, nullptr, FALSE);
+}
+
 void PowerSavingController::ApplyMinimumBrightness() noexcept {
   try {
     if (!brightnessState_) brightnessState_ = std::make_unique<BrightnessState>();
@@ -393,7 +420,7 @@ void PowerSavingController::LayoutOverlay() {
   RECT target{};
   GetClientRect(parent_, &target);
   const bool compact = !powerSaving_ || mvStartupInputPass_;
-  if (compact) target = ParentButtonRect();
+  if (compact) target = ParentControlStackRect();
   const int width = std::max(1L, target.right - target.left);
   const int height = std::max(1L, target.bottom - target.top);
   SetWindowPos(
@@ -402,9 +429,9 @@ void PowerSavingController::LayoutOverlay() {
       width, height,
       SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOSENDCHANGING);
   if (compact) {
+    const int corner = std::max(8, std::min(20, height / 3));
     HRGN region = CreateRoundRectRgn(0, 0, width + 1, height + 1,
-                                     std::max(8, height),
-                                     std::max(8, height));
+                                     corner, corner);
     if (region && SetWindowRgn(overlay_, region, TRUE) == 0) {
       DeleteObject(region);
     }
@@ -414,7 +441,7 @@ void PowerSavingController::LayoutOverlay() {
   InvalidateRect(overlay_, nullptr, FALSE);
 }
 
-RECT PowerSavingController::ParentButtonRect() const {
+RECT PowerSavingController::ParentControlStackRect() const {
   RECT client{0, 0, 1, 1};
   if (!parent_ || !GetClientRect(parent_, &client)) return client;
 
@@ -431,26 +458,43 @@ RECT PowerSavingController::ParentButtonRect() const {
   const RECT content = ShrinkRect(clock, pad);
   const int contentWidth = std::max(1L, content.right - content.left);
   const int contentHeight = std::max(1L, content.bottom - content.top);
-  const LONG statusTop = content.top + contentHeight * 830 / 1000;
+  const LONG statusTop = content.top + contentHeight * 790 / 1000;
   const RECT status{content.left, statusTop, content.right, content.bottom};
   const int statusHeight = std::max(1L, status.bottom - status.top);
   const int buttonWidth = std::clamp(contentWidth * 220 / 1000, 78, 112);
-  const int buttonHeight = std::clamp(statusHeight * 58 / 100, 22, 30);
+  const int buttonGap = ControlStackGap(statusHeight);
+  const int buttonHeight = std::min(
+      26, std::max(1, (statusHeight - buttonGap) / 2));
+  const int stackHeight = buttonHeight * 2 + buttonGap;
   const LONG top =
-      status.top + std::max(0, (statusHeight - buttonHeight) / 2);
+      status.top + std::max(0, (statusHeight - stackHeight) / 2);
   return RECT{
       status.right - buttonWidth,
       top,
       status.right,
-      top + buttonHeight};
+      top + stackHeight};
 }
 
-RECT PowerSavingController::LocalButtonRect() const {
+RECT PowerSavingController::LocalPowerButtonRect() const {
   if (!overlay_) return RECT{0, 0, 1, 1};
-  if (powerSaving_ && !mvStartupInputPass_) return ParentButtonRect();
-  RECT client{};
-  GetClientRect(overlay_, &client);
-  return client;
+  RECT stack{};
+  if (powerSaving_ && !mvStartupInputPass_) {
+    stack = ParentControlStackRect();
+  } else {
+    GetClientRect(overlay_, &stack);
+  }
+  return ControlButtonRect(stack, false);
+}
+
+RECT PowerSavingController::LocalMuteButtonRect() const {
+  if (!overlay_) return RECT{0, 0, 1, 1};
+  RECT stack{};
+  if (powerSaving_ && !mvStartupInputPass_) {
+    stack = ParentControlStackRect();
+  } else {
+    GetClientRect(overlay_, &stack);
+  }
+  return ControlButtonRect(stack, true);
 }
 
 void PowerSavingController::PaintOverlay(HWND window) {
@@ -464,39 +508,49 @@ void PowerSavingController::PaintOverlay(HWND window) {
       dc, &client,
       reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
 
-  const RECT button = LocalButtonRect();
-  const COLORREF surface =
-      powerSaving_ ? RGB(30, 92, 55) : RGB(28, 36, 48);
-  HBRUSH brush = CreateSolidBrush(surface);
-  HPEN pen = CreatePen(
-      PS_SOLID, 1,
-      powerSaving_ ? RGB(74, 180, 105) : RGB(63, 76, 96));
-  HGDIOBJ previousBrush = SelectObject(dc, brush);
-  HGDIOBJ previousPen = SelectObject(dc, pen);
-  const int radius = std::max(8L, button.bottom - button.top);
-  RoundRect(
-      dc, button.left, button.top, button.right, button.bottom,
-      radius, radius);
-  SelectObject(dc, previousPen);
-  SelectObject(dc, previousBrush);
-  DeleteObject(pen);
-  DeleteObject(brush);
+  const RECT powerButton = LocalPowerButtonRect();
+  const RECT muteButton = LocalMuteButtonRect();
+  auto drawButton = [&](const RECT& button, bool active,
+                        COLORREF activeSurface, COLORREF activeBorder,
+                        const wchar_t* text) {
+    const COLORREF surface = active ? activeSurface : RGB(28, 36, 48);
+    HBRUSH brush = CreateSolidBrush(surface);
+    HPEN pen = CreatePen(
+        PS_SOLID, 1, active ? activeBorder : RGB(63, 76, 96));
+    HGDIOBJ previousBrush = SelectObject(dc, brush);
+    HGDIOBJ previousPen = SelectObject(dc, pen);
+    const int radius = std::max(8L, button.bottom - button.top);
+    RoundRect(
+        dc, button.left, button.top, button.right, button.bottom,
+        radius, radius);
+    SelectObject(dc, previousPen);
+    SelectObject(dc, previousBrush);
+    DeleteObject(pen);
+    DeleteObject(brush);
 
-  const int fontHeight = std::clamp(
-      static_cast<int>((button.bottom - button.top) * 38 / 100), 11, 16);
-  HFONT font = CreateFontW(
-      -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
-      DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-      CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
-  HGDIOBJ previousFont = SelectObject(dc, font);
-  SetBkMode(dc, TRANSPARENT);
-  SetTextColor(dc, RGB(232, 237, 244));
-  RECT textRect = button;
-  DrawTextW(
-      dc, powerSaving_ ? L"省電力 ON" : L"省電力", -1, &textRect,
-      DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-  SelectObject(dc, previousFont);
-  DeleteObject(font);
+    const int fontHeight = std::clamp(
+        static_cast<int>((button.bottom - button.top) * 38 / 100), 10, 15);
+    HFONT font = CreateFontW(
+        -fontHeight, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Yu Gothic UI");
+    HGDIOBJ previousFont = SelectObject(dc, font);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(232, 237, 244));
+    RECT textRect = button;
+    DrawTextW(
+        dc, text, -1, &textRect,
+        DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SelectObject(dc, previousFont);
+    DeleteObject(font);
+  };
+
+  drawButton(
+      powerButton, powerSaving_, RGB(30, 92, 55), RGB(74, 180, 105),
+      powerSaving_ ? L"省電力 ON" : L"省電力");
+  drawButton(
+      muteButton, mediaMuted_, RGB(88, 43, 47), RGB(190, 92, 102),
+      mediaMuted_ ? L"ミュート ON" : L"ミュート");
 
   EndPaint(window, &paint);
 }
