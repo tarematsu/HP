@@ -46,5 +46,6 @@ test('Pages summary materialization is owned by the bounded independent Actions 
   assert.match(runner, /track-history-read-model-disabled/);
   assert.doesNotMatch(runner, /runSplitTrackHistoryCycleStep/);
   assert.match(responseStore, /pages-response\/actions-v2/);
-  assert.match(responseStore, /pages-response\/actions-v1/);
+  assert.doesNotMatch(responseStore, /pages-response\/actions-v1/);
+  assert.match(responseStore, /TRACK_HISTORY_MODEL_KEY/);
 });
