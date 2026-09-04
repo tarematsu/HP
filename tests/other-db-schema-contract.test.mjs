@@ -27,6 +27,17 @@ test('active ranking schema is separated from the retired legacy archive migrati
   assert.doesNotMatch(migration, /sh_legacy_snapshots/);
 });
 
+test('featured ranking reads use the channel/date/rank expression index', () => {
+  const migrationPath = 'database/other-migrations/015_channel_rankings_featured_index.sql';
+  const migration = readFileSync(migrationPath, 'utf8');
+  const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
+  assert.match(
+    migration,
+    /ON sh_channel_rankings\(lower\(channel_name\), ranking_date, rank\)/,
+  );
+  assert.equal(metadata.schema, migrationPath);
+});
+
 test('remote provisioning and local smoke tests share the schema contract', () => {
   const provisioner = readFileSync('worker/scripts/provision-other-db.mjs', 'utf8');
   const smokeTest = readFileSync('site/scripts/test-local-d1.mjs', 'utf8');
