@@ -68,17 +68,17 @@ test('Spotify player pages reduce decorative work without hiding foreground surf
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('YouTube and TVer own the media phase cadence while Spotify follows it through one reconciler', () => {
+test('YouTube starts one TALKABOUT pass and TVer forces playlist mode at the 30-minute boundary', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(
     rendererPanels,
     /timerId\) == kNativeMediaPhaseTimer[\s\S]*SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/,
   );
-  assert.match(spotifyHeader, /void SetPodcastMode\(bool podcastMode\) noexcept/);
-  assert.match(spotifyHeader, /void SetSpotifyMediaPhase\(bool podcastMode\) noexcept/);
+  assert.match(spotifyHeader, /void SetPodcastMode\(bool podcastWindowActive\) noexcept/);
+  assert.match(spotifyHeader, /void SetSpotifyMediaPhase\(bool tverPhase\) noexcept/);
   assert.match(
     lifecycle,
-    /void SetSpotifyMediaPhase\(bool podcastMode\) noexcept[\s\S]*gSpotifyWebViews->SetPodcastMode\(podcastMode\)/,
+    /void SetSpotifyMediaPhase\(bool tverPhase\) noexcept[\s\S]*gSpotifyWebViews->SetPodcastMode\(!tverPhase\)/,
   );
   assert.match(lifecycle, /gSpotifyWebViews->Start\(\);\s*SetSpotifyMediaPhase\(false\);/);
   assert.match(spotifyPhaseSync, /StopLegacySchedulers\(\)/);
@@ -87,7 +87,12 @@ test('YouTube and TVer own the media phase cadence while Spotify follows it thro
   assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyModeTimer\)/);
   assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyPlaybackWatchdogTimer\)/);
   assert.match(spotifyPhaseSync, /kSpotifyRobustReconcileTickMs = 2U \* 1000U/);
-  assert.match(spotifyPhaseSync, /podcastMode_ = podcastMode/);
+  assert.match(spotifyPhaseSync, /podcastMode_ = podcastWindowActive/);
+  assert.match(spotifyPhaseSync, /slot\.podcastCompleted = !podcastWindowActive/);
+  assert.match(
+    spotifyPhaseSync,
+    /if \(!podcastWindowActive\)[\s\S]*for \(Slot& slot : slots_\)[\s\S]*NavigateSlotRobustly\(slot\)/,
+  );
   assert.doesNotMatch(
     spotifyPhaseSync,
     /void SpotifyWebViews::SetPodcastMode[\s\S]*ToggleMode\(\)/,
@@ -104,7 +109,7 @@ test('robust Spotify scheduler serializes six-window work and retries missed mod
   assert.match(spotifyPhaseSync, /kSpotifyRobustUnhealthyLimit = 3/);
   assert.match(spotifyPhaseSync, /SlotMatchesDesiredMode\(slot\)/);
   assert.match(spotifyPhaseSync, /NavigateSlotRobustly\(slot\)/);
-  assert.match(spotifyPhaseSync, /requestedPodcastMode != podcastMode_/);
+  assert.match(spotifyPhaseSync, /requestedPodcastMode != SlotWantsPodcast\(\*target\)/);
   assert.match(spotifyPhaseSync, /window\.__homePanelSpotifyEnsure = null/);
   assert.match(spotifyPhaseSync, /__homePanelSpotifyRobustMode = 'switching'/);
 });
@@ -143,17 +148,32 @@ test('music phase uses a trusted native click when Spotify needs user activation
   assert.doesNotMatch(spotify, /307SI8AgVvBbNTkNrETKHW/);
 });
 
-test('podcast phase repeatedly recovers Sakura TALKABOUT latest episode at 3x', () => {
+test('TALKABOUT is one-shot per YouTube window and each finished slot immediately returns to playlist', () => {
   assert.match(spotify, /2ZQy2mlwQodabAILwZ02Ed/);
+  assert.match(spotifyHeader, /bool podcastCompleted = false/);
+  assert.match(spotifyHeader, /bool SlotWantsPodcast\(const Slot& slot\) const noexcept/);
+  assert.match(
+    spotifyPhaseSync,
+    /SlotWantsPodcast\(const Slot& slot\) const noexcept[\s\S]*podcastMode_ && !slot\.podcastCompleted/,
+  );
   assert.match(spotifyPhaseSync, /kSpotifyRobustPodcastScript/);
   assert.match(spotifyPhaseSync, /a\[href\*="\/episode\/"\]/);
   assert.match(spotifyPhaseSync, /const latest = links\[0\]/);
   assert.match(spotifyPhaseSync, /const playbackRate = 3\.0/);
   assert.match(spotifyPhaseSync, /media\.defaultPlaybackRate = playbackRate/);
   assert.match(spotifyPhaseSync, /ensureRepeatOff/);
-  assert.match(spotifyPhaseSync, /media && media\.ended && onEpisode/);
-  assert.match(spotifyPhaseSync, /location\.replace\(showUrl\)/);
-  assert.match(spotifyPhaseSync, /latestEpisodeButton\(\)/);
+  assert.match(spotifyPhaseSync, /__homePanelSpotifyPodcastOneShot/);
+  assert.match(spotifyPhaseSync, /media\.addEventListener\('play'/);
+  assert.match(spotifyPhaseSync, /media\.addEventListener\('ended'/);
+  assert.match(spotifyPhaseSync, /return 'completed'/);
+  assert.match(
+    spotifyPhaseSync,
+    /requestedPodcastMode && json[\s\S]*L"\\"completed\\""[\s\S]*target->podcastCompleted = true[\s\S]*target->lastModeNavigateTick = 0[\s\S]*NavigateSlotRobustly\(\*target\)/,
+  );
+  assert.match(
+    spotifyPhaseSync,
+    /SlotWantsPodcast\(slot\) \? kSpotifyPodcastUrl : kSpotifyPlaylistUrl/,
+  );
 });
 
 test('trusted recovery expands the target host and sends a real Windows mouse click', () => {
