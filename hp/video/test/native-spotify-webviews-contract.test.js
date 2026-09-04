@@ -68,7 +68,7 @@ test('Spotify player pages reduce decorative work without hiding foreground surf
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('YouTube and TVer own the only one-hour phase cadence used by Spotify', () => {
+test('YouTube and TVer own the only one-hour phase cadence while Spotify uses a reconciler', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(
     rendererPanels,
@@ -81,41 +81,83 @@ test('YouTube and TVer own the only one-hour phase cadence used by Spotify', () 
     /void SetSpotifyMediaPhase\(bool podcastMode\) noexcept[\s\S]*gSpotifyWebViews->SetPodcastMode\(podcastMode\)/,
   );
   assert.match(lifecycle, /gSpotifyWebViews->Start\(\);\s*SetSpotifyMediaPhase\(false\);/);
-  assert.match(
+  assert.match(spotifyPhaseSync, /StopLegacySchedulers\(\)/);
+  assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyModeSwitchTimer\)/);
+  assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyModeTimer\)/);
+  assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyPlaybackWatchdogTimer\)/);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustReconcileTickMs = 2U \* 1000U/);
+  assert.match(spotifyPhaseSync, /podcastMode_ = podcastMode/);
+  assert.doesNotMatch(
     spotifyPhaseSync,
-    /stopLegacyModeTimer\(\);[\s\S]*if \(podcastMode_ == podcastMode\) return;[\s\S]*ToggleMode\(\);[\s\S]*stopLegacyModeTimer\(\);/,
+    /void SpotifyWebViews::SetPodcastMode[\s\S]*ToggleMode\(\)/,
   );
-  assert.match(spotifyPhaseSync, /KillTimer\(host, kSpotifyModeTimer\)/);
-  assert.match(spotify, /kSpotifyModeStaggerMs = 10U \* 1000U/);
 });
 
-test('music phase loops the requested Spotify playlist context', () => {
+test('robust Spotify scheduler serializes six-window work and retries missed mode navigation', () => {
+  assert.match(spotifyHeader, /size_t reconcileIndex_ = 0/);
+  assert.match(spotifyHeader, /ULONGLONG lastModeNavigateTick = 0/);
+  assert.match(spotifyHeader, /bool reconcileInFlight = false/);
+  assert.match(spotifyHeader, /int unhealthyChecks = 0/);
+  assert.match(spotifyPhaseSync, /reconcileIndex_\+\+ % slots_\.size\(\)/);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustUnhealthyLimit = 3/);
+  assert.match(spotifyPhaseSync, /SlotMatchesDesiredMode\(slot\)/);
+  assert.match(spotifyPhaseSync, /NavigateSlotRobustly\(slot\)/);
+  assert.match(spotifyPhaseSync, /requestedPodcastMode != podcastMode_/);
+  assert.match(spotifyPhaseSync, /window\.__homePanelSpotifyEnsure = null/);
+  assert.match(spotifyPhaseSync, /__homePanelSpotifyRobustMode = 'switching'/);
+});
+
+test('robust scheduler softens six-WebView startup pressure', () => {
+  assert.match(spotifyPhaseSync, /kSpotifyRobustStartupStaggerMs = 1500U/);
+  assert.match(spotifyPhaseSync, /KillTimer\(slot\.hostWindow, kSpotifyStartupTimer\)/);
+  assert.match(
+    spotifyPhaseSync,
+    /SetTimer\(slot\.hostWindow, kSpotifyStartupTimer, delay, nullptr\)/,
+  );
+  assert.match(spotifyHeader, /bool robustSchedulerStarted_ = false/);
+});
+
+test('music phase loops the requested Spotify playlist context with robust repeat recovery', () => {
   assert.match(spotify, /5DQCO4Hv3MbVYHgyXEfx8g/);
   assert.match(spotify, /__homePanelSakuraPlaylistLoop/);
   assert.match(spotify, /ensureRepeatContext/);
-  assert.match(spotify, /aria-checked.*true/s);
-  assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustMusicScript/);
+  assert.match(spotifyPhaseSync, /repeatState/);
+  assert.match(spotifyPhaseSync, /checked === 'true'.*'context'/s);
+  assert.match(spotifyPhaseSync, /checked === 'mixed'.*'one'/s);
+  assert.match(spotifyPhaseSync, /enable repeat one/);
+  assert.match(spotifyPhaseSync, /playlistPlayButton/);
+  assert.match(spotifyPhaseSync, /window\.__homePanelSpotifyEnsure = window\.__homePanelSpotifyRobustEnsure/);
   assert.doesNotMatch(spotify, /307SI8AgVvBbNTkNrETKHW/);
   assert.doesNotMatch(spotify, /__homePanelSakuraAlternatingLoop/);
 });
 
-test('podcast phase starts Sakura TALKABOUT from the latest episode and keeps 3x playback', () => {
+test('podcast phase repeatedly recovers Sakura TALKABOUT latest episode at 3x', () => {
   assert.match(spotify, /2ZQy2mlwQodabAILwZ02Ed/);
   assert.match(spotify, /kSpotifyPodcastPlaybackScript/);
-  assert.match(spotify, /a\[href\*="\/episode\/"\]/);
-  assert.match(spotify, /const latest = links\[0\]/);
-  assert.match(spotify, /const playbackRate = 3\.0/);
-  assert.match(spotify, /media\.defaultPlaybackRate = playbackRate/);
-  assert.match(spotify, /window\.__homePanelSpotifyEnsure = ensure/);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustPodcastScript/);
+  assert.match(spotifyPhaseSync, /a\[href\*="\/episode\/"\]/);
+  assert.match(spotifyPhaseSync, /const latest = links\[0\]/);
+  assert.match(spotifyPhaseSync, /const playbackRate = 3\.0/);
+  assert.match(spotifyPhaseSync, /media\.defaultPlaybackRate = playbackRate/);
+  assert.match(spotifyPhaseSync, /ensureRepeatOff/);
+  assert.match(spotifyPhaseSync, /media && media\.ended && onEpisode/);
+  assert.match(spotifyPhaseSync, /location\.replace\(showUrl\)/);
+  assert.match(spotifyPhaseSync, /latestEpisodeButton\(\)/);
 });
 
-test('one native round-robin timer verifies all six Spotify playback states', () => {
+test('legacy watchdog is disabled after startup and robust reconciler becomes the single authority', () => {
   assert.match(spotify, /kSpotifyPlaybackWatchdogTimer = 4/);
-  assert.match(spotify, /kSpotifyPlaybackWatchdogTickMs = 2U \* 1000U/);
-  assert.match(spotifyHeader, /size_t playbackWatchdogIndex_ = 0/);
   assert.match(spotify, /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/);
-  assert.match(spotify, /ExecuteScript\(kSpotifyWatchdogScript, nullptr\)/);
-  assert.equal((spotify.match(/const stallLimit = 2/g) || []).length, 2);
+  assert.match(spotifyPhaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
+  assert.match(spotifyPhaseSync, /SetTimer\(host, kSpotifyRobustReconcileTimer/);
+  assert.match(spotifyPhaseSync, /ReconcileTimerProc/);
+  assert.match(spotifyPhaseSync, /ReconcileDesiredMode\(\)/);
+  assert.match(
+    spotifyPhaseSync,
+    /StopLegacySchedulers\(\);[\s\S]*ArmRobustScheduler\(\)/,
+  );
 });
 
 test('all six Spotify WebViews stay natively muted so media-panel audio never overlaps', () => {
@@ -125,12 +167,12 @@ test('all six Spotify WebViews stay natively muted so media-panel audio never ov
   assert.doesNotMatch(spotify, /put_IsMuted\(FALSE\)/);
 });
 
-test('Spotify foreground depends on six playback states reported by the shared watchdog', () => {
+test('Spotify foreground still depends on playback state reported by the robust scripts', () => {
   assert.match(spotifyHeader, /bool playing = false/);
   assert.match(spotifyHeader, /bool foreground_ = true/);
   assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
-  assert.match(spotify, /spotify:playing/);
-  assert.match(spotify, /spotify:not-playing/);
+  assert.match(spotifyPhaseSync, /spotify:playing/);
+  assert.match(spotifyPhaseSync, /spotify:not-playing/);
   assert.match(spotify, /foreground = foreground \|\| !slot\.playing/);
 });
 

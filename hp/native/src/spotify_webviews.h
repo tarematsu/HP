@@ -30,12 +30,17 @@ class SpotifyWebViews final {
     EventRegistrationToken navigationCompletedToken{};
     EventRegistrationToken webMessageReceivedToken{};
     EventRegistrationToken webResourceRequestedToken{};
+    ULONGLONG lastModeNavigateTick = 0;
+    int unhealthyChecks = 0;
+    bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
+  static void CALLBACK ReconcileTimerProc(
+      HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
 
   bool EnsureHostClass() noexcept;
@@ -47,6 +52,12 @@ class SpotifyWebViews final {
   void RunPlaybackWatchdog() noexcept;
   void ToggleMode() noexcept;
   void NavigateSlotToCurrentMode(Slot& slot) noexcept;
+  void StopLegacySchedulers() noexcept;
+  void ArmRobustScheduler() noexcept;
+  void ReconcileDesiredMode() noexcept;
+  bool SlotMatchesDesiredMode(const Slot& slot) const noexcept;
+  bool SlotIsLoginPage(const Slot& slot) const noexcept;
+  void NavigateSlotRobustly(Slot& slot) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -58,9 +69,11 @@ class SpotifyWebViews final {
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   size_t playbackWatchdogIndex_ = 0;
+  size_t reconcileIndex_ = 0;
   bool started_ = false;
   bool foreground_ = true;
   bool podcastMode_ = false;
+  bool robustSchedulerStarted_ = false;
 };
 
 void SetSpotifyMediaPhase(bool podcastMode) noexcept;
