@@ -130,6 +130,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
         previewMode,
         maxDuration: 0,
         maxTime: 0,
+        endCandidateAt: 0,
         lowQualitySet: false,
         restartRequested: false,
       };
@@ -146,11 +147,29 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
       if (Number.isFinite(video.currentTime)) {
         state.maxTime = Math.max(state.maxTime, video.currentTime);
       }
+      if (video.__homePanelTverEndState !== state) {
+        video.__homePanelTverEndState = state;
+        video.addEventListener('ended', () => {
+          if (window.__homePanelSakuraMeetsState === state) {
+            state.endCandidateAt = Date.now();
+          }
+        });
+      }
+      if (video.ended && !state.endCandidateAt) {
+        state.endCandidateAt = Date.now();
+      }
+      if (state.endCandidateAt && !video.ended && !video.paused &&
+          Number.isFinite(video.currentTime) && video.currentTime < 3) {
+        // An ad or intermediate clip ended and playback immediately continued.
+        state.endCandidateAt = 0;
+      }
       const completedPreview = state.previewMode &&
           state.maxDuration >= 10 && state.maxTime >= 5;
       const completedEpisode = !state.previewMode &&
           state.maxDuration >= 600 && state.maxTime >= 300;
-      if (video.ended && (completedPreview || completedEpisode)) {
+      const stableEnd = state.endCandidateAt > 0 &&
+          Date.now() - state.endCandidateAt >= 2500;
+      if (stableEnd && (completedPreview || completedEpisode)) {
         state.restartRequested = true;
         return;
       }
@@ -464,8 +483,8 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 }  // namespace
 
 // The media panel runs YouTube for 30 minutes and TVer for 90 minutes. Spotify
-// follows the same phase boundary. TVer keeps the existing cleanup/recreate flow,
-// but each completed item advances Sakura Meets <-> Death (Youth) Game. Until
+// follows the same phase boundary. Each completed TVer item advances Sakura Meets
+// <-> Death (Youth) Game and recreates only the TVer WebView controller. Until
 // Death Game starts broadcasting, its series slot selects the available preview.
 // TVer also uses a trusted native click followed by requestFullscreen so hidden
 // or unlabeled fullscreen controls cannot leave the player stuck inline.
@@ -483,8 +502,12 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
                    : (interval)),                                               \
               (callback))))
 #define Navigate(url) Navigate(ResolveNativeMediaNavigateUrl((url)))
+#define get_Profile(out)                                                        \
+  get_Profile((AdvanceNativeMediaTverSeries(), (out)))
 #define ClearBrowsingData(dataKinds, handler)                                   \
-  ClearBrowsingData((AdvanceNativeMediaTverSeries(), (dataKinds)), (handler))
+  AddRef() > 0                                                                  \
+      ? ((void)(dataKinds), profile2->Release(), CompleteTverRestart(), S_OK)  \
+      : E_FAIL
 #define ExecuteScript(script, callback)                                         \
   ExecuteScript(RewriteNativeMediaExecuteScript((script)).c_str(), (callback))
 #define get_CoreWebView2(out)                                                    \
@@ -497,6 +520,7 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 #undef get_CoreWebView2
 #undef ExecuteScript
 #undef ClearBrowsingData
+#undef get_Profile
 #undef Navigate
 #undef SetTimer
 #include "renderer_panels/data_sections.inc"

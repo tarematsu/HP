@@ -183,21 +183,24 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and
   );
 });
 
-test('TVer episode completion clears cookies and caches before recreating its WebView controller', () => {
-  assert.match(
-    mediaPanel,
-    /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300[\s\S]*state\.restartRequested = true/,
-  );
+test('effective TVer completion path recreates the controller without deleting cookies or caches', () => {
   assert.match(mediaPanel, /state && state\.restartRequested\) return 'restart'/);
   assert.match(mediaPanel, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
   assert.match(mediaPanel, /RestartTverAfterPlayback\(\)/);
-  assert.match(mediaPanel, /ICoreWebView2_13/);
-  assert.match(mediaPanel, /get_Profile\(&profile\)/);
-  assert.match(mediaPanel, /ICoreWebView2Profile2/);
-  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES/);
-  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE/);
-  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE/);
-  assert.match(mediaPanel, /profile2->ClearBrowsingData\(/);
+  assert.match(
+    composition,
+    /#define get_Profile\(out\)[\s\S]*AdvanceNativeMediaTverSeries\(\)/,
+  );
+  assert.match(
+    composition,
+    /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AddRef\(\) > 0[\s\S]*profile2->Release\(\)[\s\S]*CompleteTverRestart\(\)/,
+  );
+  const clearOverrideStart = composition.indexOf('#define ClearBrowsingData');
+  const executeOverrideStart = composition.indexOf('#define ExecuteScript');
+  assert.notEqual(clearOverrideStart, -1);
+  assert.notEqual(executeOverrideStart, -1);
+  const clearOverride = composition.slice(clearOverrideStart, executeOverrideStart);
+  assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
