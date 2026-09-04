@@ -13,6 +13,7 @@ constexpr wchar_t kSpotifyClearLegacyEnsureScript[] = LR"JS(
   window.__homePanelSpotifyRobustMode = 'switching';
   window.__homePanelSakuraPlaylistLoop = false;
   window.__homePanelSakuraTalkAboutPlayback = false;
+  window.__homePanelSpotifyPodcastOneShot = null;
 })()
 )JS";
 
@@ -135,7 +136,6 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
 
 constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
 (() => {
-  const showUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
   const showPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
   const playbackRate = 3.0;
   const report = playing => {
@@ -254,6 +254,21 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
       } catch (_) {}
     });
   };
+  const oneShot = window.__homePanelSpotifyPodcastOneShot ||
+      (window.__homePanelSpotifyPodcastOneShot = {
+        started: false,
+        completed: false
+      });
+  const bindOneShot = media => {
+    if (!media || media.__homePanelSpotifyPodcastOneShotBound) return;
+    media.__homePanelSpotifyPodcastOneShotBound = true;
+    media.addEventListener('play', () => {
+      oneShot.started = true;
+    }, { passive: true });
+    media.addEventListener('ended', () => {
+      if (oneShot.started) oneShot.completed = true;
+    }, { passive: true });
+  };
 
   if (location.hostname !== 'open.spotify.com') {
     report(false);
@@ -268,16 +283,20 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
 
   ensureRate();
   ensureRepeatOff();
-  const media = Array.from(document.querySelectorAll('audio, video'))
-      .find(item => item && item.ended) || null;
-  if (media && media.ended && onEpisode) {
+  const mediaItems = Array.from(document.querySelectorAll('audio, video'));
+  mediaItems.forEach(bindOneShot);
+  const media = mediaItems.find(item => item && !item.paused && !item.ended) ||
+      mediaItems[0] || null;
+  if (media && !media.paused && !media.ended) oneShot.started = true;
+  if (media && media.ended && oneShot.started) oneShot.completed = true;
+  if (oneShot.completed) {
     report(false);
-    location.replace(showUrl);
-    return null;
+    return 'completed';
   }
 
   const control = playerControl();
   if (buttonShowsPlaying(control)) {
+    oneShot.started = true;
     report(true);
     return true;
   }
@@ -350,6 +369,10 @@ bool SpotifyWebViews::SlotIsLoginPage(const Slot& slot) const noexcept {
   return IsSpotifyLoginSource(source);
 }
 
+bool SpotifyWebViews::SlotWantsPodcast(const Slot& slot) const noexcept {
+  return podcastMode_ && !slot.podcastCompleted;
+}
+
 bool SpotifyWebViews::SlotMatchesDesiredMode(const Slot& slot) const noexcept {
   if (!slot.webview) return false;
   LPWSTR rawSource = nullptr;
@@ -357,7 +380,7 @@ bool SpotifyWebViews::SlotMatchesDesiredMode(const Slot& slot) const noexcept {
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   if (!IsSpotifyOpenSource(source)) return false;
-  if (podcastMode_) {
+  if (SlotWantsPodcast(slot)) {
     return source.find(L"/show/2ZQy2mlwQodabAILwZ02Ed") != std::wstring::npos ||
            source.find(L"/episode/") != std::wstring::npos;
   }
@@ -399,7 +422,7 @@ void SpotifyWebViews::NavigateSlotRobustly(Slot& slot) noexcept {
   slot.webview->ExecuteScript(kSpotifyClearLegacyEnsureScript, nullptr);
   RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(
-      podcastMode_ ? kSpotifyPodcastUrl : kSpotifyPlaylistUrl);
+      SlotWantsPodcast(slot) ? kSpotifyPodcastUrl : kSpotifyPlaylistUrl);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
 }
 
@@ -505,7 +528,7 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
   if (slot.reconcileInFlight) return;
 
   slot.reconcileInFlight = true;
-  const bool requestedPodcastMode = podcastMode_;
+  const bool requestedPodcastMode = SlotWantsPodcast(slot);
   Slot* const target = &slot;
   const auto alive = alive_;
   const wchar_t* script = requestedPodcastMode
@@ -518,7 +541,9 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
               -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             target->reconcileInFlight = false;
-            if (!started_ || requestedPodcastMode != podcastMode_) return S_OK;
+            if (!started_ || requestedPodcastMode != SlotWantsPodcast(*target)) {
+              return S_OK;
+            }
 
             if (FAILED(result)) {
               target->playing = false;
@@ -527,6 +552,16 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
               } else {
                 RecomputeForeground();
               }
+              return S_OK;
+            }
+
+            if (requestedPodcastMode && json &&
+                std::wstring_view(json) == L"\"completed\"") {
+              target->podcastCompleted = true;
+              target->playing = false;
+              target->unhealthyChecks = 0;
+              target->lastModeNavigateTick = 0;
+              NavigateSlotRobustly(*target);
               return S_OK;
             }
 
@@ -560,7 +595,7 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
   }
 }
 
-void SpotifyWebViews::SetPodcastMode(bool podcastMode) noexcept {
+void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   if (!started_ || slots_.empty()) return;
 
   StopLegacySchedulers();
@@ -584,19 +619,33 @@ void SpotifyWebViews::SetPodcastMode(bool podcastMode) noexcept {
   }
   ArmRobustScheduler();
 
-  const bool modeChanged = podcastMode_ != podcastMode;
-  podcastMode_ = podcastMode;
+  const bool modeChanged = podcastMode_ != podcastWindowActive;
+  podcastMode_ = podcastWindowActive;
   if (modeChanged) {
     reconcileIndex_ = 0;
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
       slot.unhealthyChecks = 0;
       slot.playing = false;
+      slot.podcastCompleted = !podcastWindowActive;
       if (slot.webview) {
         slot.webview->ExecuteScript(kSpotifyClearLegacyEnsureScript, nullptr);
       }
     }
     RecomputeForeground();
+
+    // TVer begins exactly at the end of the 30-minute YouTube window. Force all
+    // already-created Spotify slots to the playlist immediately instead of
+    // waiting for the serialized reconciler to visit them one-by-one.
+    if (!podcastWindowActive) {
+      for (Slot& slot : slots_) {
+        if (!slot.webview || SlotIsLoginPage(slot) || SlotMatchesDesiredMode(slot)) {
+          continue;
+        }
+        NavigateSlotRobustly(slot);
+      }
+      return;
+    }
   }
   ReconcileDesiredMode();
 }
