@@ -1,6 +1,6 @@
 const R2_RESPONSE_KEY_PREFIX = 'pages-response/v1/';
 const ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v2/';
-const LEGACY_ACTIONS_RESPONSE_KEY_PREFIX = 'pages-response/actions-v1/';
+const TRACK_HISTORY_MODEL_KEY = 'track-history';
 
 function normalizedModelKey(value) {
   const key = String(value || '').trim();
@@ -21,15 +21,6 @@ export function pagesR2ResponseKey(modelKey) {
 export function pagesActionsR2ResponseKey(modelKey) {
   const key = normalizedModelKey(modelKey);
   return key ? `${ACTIONS_RESPONSE_KEY_PREFIX}${hexModelKey(key)}.json` : null;
-}
-
-export function legacyPagesActionsR2ResponseKeys(modelKey) {
-  const key = normalizedModelKey(modelKey);
-  if (!key) return [];
-  return [...new Set([
-    `${LEGACY_ACTIONS_RESPONSE_KEY_PREFIX}${encodeURIComponent(key)}.json`,
-    `${LEGACY_ACTIONS_RESPONSE_KEY_PREFIX}${key}.json`,
-  ])];
 }
 
 function objectOrNull(value) {
@@ -136,27 +127,10 @@ async function responseFromActionsObject(object, now, maximumAgeMs) {
 async function loadActionsEnvelope(r2, modelKey, now, maximumAgeMs) {
   const key = pagesActionsR2ResponseKey(modelKey);
   if (!key || typeof r2?.get !== 'function') return null;
-  const keys = [key, ...legacyPagesActionsR2ResponseKeys(modelKey)];
-  for (const candidate of keys) {
-    const response = await responseFromActionsObject(
-      await r2.get(candidate),
-      now,
-      maximumAgeMs,
-    );
-    if (response) return response;
-  }
-  return null;
+  return responseFromActionsObject(await r2.get(key), now, maximumAgeMs);
 }
 
-export async function loadMaterializedR2Response(
-  r2,
-  modelKey,
-  now = Date.now(),
-  maximumAgeMs = Number.MAX_SAFE_INTEGER,
-) {
-  const actions = await loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
-  if (actions) return actions;
-
+async function loadWorkerR2Response(r2, modelKey, now, maximumAgeMs) {
   const key = pagesR2ResponseKey(modelKey);
   if (!key || typeof r2?.get !== 'function') return null;
   const object = await r2.get(key);
@@ -184,4 +158,21 @@ export async function loadMaterializedR2Response(
     status: Number(metadata.status) || 200,
     headers,
   });
+}
+
+export async function loadMaterializedR2Response(
+  r2,
+  modelKey,
+  now = Date.now(),
+  maximumAgeMs = Number.MAX_SAFE_INTEGER,
+) {
+  // Actions owns every current materialized API variant. A miss or stale object
+  // must therefore stop after the canonical actions-v2 lookup; probing retired
+  // Actions/Worker keys multiplies R2 work on the strict 10 ms HTTP path.
+  // Track history remains the one Worker-owned R2 model and reads its own key
+  // directly, so every serving lookup performs at most one R2 get.
+  if (modelKey === TRACK_HISTORY_MODEL_KEY) {
+    return loadWorkerR2Response(r2, modelKey, now, maximumAgeMs);
+  }
+  return loadActionsEnvelope(r2, modelKey, now, maximumAgeMs);
 }
