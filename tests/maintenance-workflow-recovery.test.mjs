@@ -155,13 +155,15 @@ test('stale observability is refreshed after Runtime is healthy', async () => {
   assert.deepEqual(result.dispatched, ['observabilityRefresh']);
 });
 
-test('maintenance watchdog resumes the recovery chain after Pages and Runtime complete', () => {
+test('maintenance watchdog uses the runner-health completion as its single heartbeat', () => {
   const workflow = read('.github/workflows/recover-maintenance-workflows.yml');
 
-  assert.match(workflow, /- "Publish GitHub Actions runner health"/);
-  assert.match(workflow, /- "Rebuild pages read models"/);
-  assert.match(workflow, /- "Run runtime offline maintenance"/);
+  assert.match(workflow, /workflows: \["Publish GitHub Actions runner health"\]/);
+  assert.doesNotMatch(workflow, /- "Rebuild pages read models"/);
+  assert.doesNotMatch(workflow, /- "Run runtime offline maintenance"/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /actions\/checkout@v7/);
+  assert.match(workflow, /actions\/setup-node@v7/);
 });
 
 test('maintenance watchdog is independent, offset, and has no Cloudflare credentials', () => {
@@ -183,4 +185,10 @@ test('maintenance watchdog is independent, offset, and has no Cloudflare credent
   assert.match(script, /runtime-waits-for-pages-recovery/);
   assert.match(script, /runtime\.startedAtMs > observability\.startedAtMs/);
   assert.match(script, /state !== 'fresh'/);
+});
+
+test('Pages watchdog uses Node 24 generation actions', () => {
+  const workflow = read('.github/workflows/recover-pages-read-models.yml');
+  assert.match(workflow, /actions\/checkout@v7/);
+  assert.match(workflow, /actions\/setup-node@v7/);
 });
