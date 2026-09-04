@@ -3,21 +3,22 @@ namespace {
 
 constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
 constexpr UINT kSpotifyRobustReconcileTickMs = 2U * 1000U;
-constexpr UINT kSpotifyRobustStartupStaggerMs = 1500U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr int kSpotifyRobustUnhealthyLimit = 3;
 
 constexpr wchar_t kSpotifyClearLegacyEnsureScript[] = LR"JS(
 (() => {
   window.__homePanelSpotifyEnsure = null;
   window.__homePanelSpotifyRobustMode = 'switching';
+  window.__homePanelSakuraPlaylistLoop = false;
+  window.__homePanelSakuraTalkAboutPlayback = false;
 })()
 )JS";
 
 constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
 (() => {
   const playlistPath = '/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
-  const mode = 'music';
   const report = playing => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
@@ -25,28 +26,58 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
     }
   };
   const visible = element => {
-    if (!element || element.disabled) return false;
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true') return false;
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
            style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
   };
   const labelOf = element =>
-      ((element && element.getAttribute('aria-label')) || '').toLowerCase();
+      ((element && (element.getAttribute('aria-label') ||
+                    element.getAttribute('title'))) || '')
+          .replace(/\s+/g, ' ').trim().toLowerCase();
   const buttonShowsPlaying = button => {
     const label = labelOf(button);
     return label.includes('pause') || label.includes('一時停止');
   };
-  const mediaElement = () => {
-    const items = Array.from(document.querySelectorAll('audio, video'));
-    return items.find(item => !item.paused && !item.ended) || items[0] || null;
+  const playerControl = () => {
+    const primary = document.querySelector(
+        'button[data-testid="control-button-playpause"]');
+    if (visible(primary)) return primary;
+    return Array.from(document.querySelectorAll('button, [role="button"]'))
+        .find(button => {
+          if (!visible(button)) return false;
+          const label = labelOf(button);
+          return label === 'play' || label === 'pause' ||
+                 label === '再生' || label === '一時停止';
+        }) || null;
   };
-  const playerControl = () =>
-      document.querySelector('button[data-testid="control-button-playpause"]');
-  const playlistPlayButton = () =>
-      Array.from(document.querySelectorAll(
-          'button[data-testid="play-button"]')).find(visible) || null;
-
+  const playlistPlayButton = () => {
+    const primary = Array.from(document.querySelectorAll(
+        'button[data-testid="play-button"]')).find(visible);
+    if (primary) return primary;
+    return Array.from(document.querySelectorAll('button, [role="button"]'))
+        .find(button => {
+          if (!visible(button)) return false;
+          const label = labelOf(button);
+          if (/speed|速度/.test(label)) return false;
+          return label === 'play' || label === '再生' ||
+                 label.startsWith('play ') || label.endsWith('を再生');
+        }) || null;
+  };
+  const point = element => {
+    if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    return [
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+    ];
+  };
   const repeatState = button => {
     if (!button) return 'unknown';
     const checked = button.getAttribute('aria-checked');
@@ -71,88 +102,34 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
     if (!visible(repeat)) return;
     const state = repeatState(repeat);
     if (state === 'context' || state === 'unknown') return;
-    if (state === 'off') {
-      try { repeat.click(); } catch (_) {}
-      return;
+    try { repeat.click(); } catch (_) { return; }
+    if (state === 'one') {
+      window.setTimeout(() => {
+        const current = document.querySelector(
+            'button[data-testid="control-button-repeat"]');
+        if (visible(current) && repeatState(current) === 'off') {
+          try { current.click(); } catch (_) {}
+        }
+      }, 250);
     }
-    try { repeat.click(); } catch (_) {}
-    window.setTimeout(() => {
-      const current = document.querySelector(
-          'button[data-testid="control-button-repeat"]');
-      if (!visible(current)) return;
-      if (repeatState(current) === 'off') {
-        try { current.click(); } catch (_) {}
-      }
-    }, 250);
   };
 
-  if (window.__homePanelSpotifyRobustMode !== mode ||
-      typeof window.__homePanelSpotifyRobustEnsure !== 'function') {
-    window.__homePanelSpotifyRobustMode = mode;
-    window.__homePanelSpotifyRobustState = {
-      media: null,
-      time: NaN,
-      stalled: 0,
-    };
-    window.__homePanelSpotifyRobustEnsure = () => {
-      if (location.hostname !== 'open.spotify.com' ||
-          !location.pathname.endsWith(playlistPath)) {
-        report(false);
-        return false;
-      }
-      ensureContextRepeat();
-      const state = window.__homePanelSpotifyRobustState;
-      const media = mediaElement();
-      const control = playerControl();
-      let playing = false;
-
-      if (media) {
-        const current = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
-        const ready = !media.paused && !media.ended && media.readyState >= 2;
-        if (ready) {
-          if (media !== state.media || !Number.isFinite(state.time) ||
-              !Number.isFinite(current) || Math.abs(current - state.time) >= 0.5) {
-            state.stalled = 0;
-          } else {
-            ++state.stalled;
-          }
-          playing = state.stalled < 2;
-        } else {
-          state.stalled = 2;
-        }
-        state.media = media;
-        state.time = current;
-      } else {
-        state.media = null;
-        state.time = NaN;
-        state.stalled = 0;
-        playing = buttonShowsPlaying(control);
-      }
-
-      if (!playing && media && !media.ended) {
-        try {
-          const promise = media.play();
-          if (promise && typeof promise.then === 'function') {
-            promise.then(() => report(true)).catch(() => report(false));
-            return false;
-          }
-        } catch (_) {
-        }
-      }
-
-      if (!playing) {
-        const button = visible(control) ? control : playlistPlayButton();
-        if (visible(button) && !buttonShowsPlaying(button)) {
-          try { button.click(); } catch (_) {}
-        }
-      }
-      report(playing || buttonShowsPlaying(playerControl()));
-      return playing;
-    };
+  if (location.hostname !== 'open.spotify.com' ||
+      !location.pathname.endsWith(playlistPath)) {
+    report(false);
+    return null;
   }
 
-  window.__homePanelSpotifyEnsure = window.__homePanelSpotifyRobustEnsure;
-  return window.__homePanelSpotifyRobustEnsure();
+  ensureContextRepeat();
+  const control = playerControl();
+  if (buttonShowsPlaying(control)) {
+    report(true);
+    return true;
+  }
+
+  report(false);
+  const button = visible(control) ? control : playlistPlayButton();
+  return point(button);
 })()
 )JS";
 
@@ -160,7 +137,6 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
 (() => {
   const showUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
   const showPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
-  const mode = 'podcast';
   const playbackRate = 3.0;
   const report = playing => {
     if (window.chrome && window.chrome.webview) {
@@ -169,24 +145,47 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
     }
   };
   const visible = element => {
-    if (!element || element.disabled) return false;
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true') return false;
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
            style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
   };
   const labelOf = element =>
-      ((element && element.getAttribute('aria-label')) || '').toLowerCase();
+      ((element && (element.getAttribute('aria-label') ||
+                    element.getAttribute('title'))) || '')
+          .replace(/\s+/g, ' ').trim().toLowerCase();
   const buttonShowsPlaying = button => {
     const label = labelOf(button);
     return label.includes('pause') || label.includes('一時停止');
   };
-  const mediaElement = () => {
-    const items = Array.from(document.querySelectorAll('audio, video'));
-    return items.find(item => !item.paused && !item.ended) || items[0] || null;
+  const playerControl = () => {
+    const primary = document.querySelector(
+        'button[data-testid="control-button-playpause"]');
+    if (visible(primary)) return primary;
+    return Array.from(document.querySelectorAll('button, [role="button"]'))
+        .find(button => {
+          if (!visible(button)) return false;
+          const label = labelOf(button);
+          return label === 'play' || label === 'pause' ||
+                 label === '再生' || label === '一時停止';
+        }) || null;
   };
-  const playerControl = () =>
-      document.querySelector('button[data-testid="control-button-playpause"]');
+  const playButtonIn = root => {
+    if (!root) return null;
+    const primary = Array.from(root.querySelectorAll(
+        'button[data-testid="play-button"]')).find(visible);
+    if (primary) return primary;
+    return Array.from(root.querySelectorAll('button, [role="button"]'))
+        .find(button => {
+          if (!visible(button)) return false;
+          const label = labelOf(button);
+          if (/speed|速度/.test(label)) return false;
+          return label === 'play' || label === '再生' ||
+                 label.startsWith('play ') || label.endsWith('を再生');
+        }) || null;
+  };
   const latestEpisodeButton = () => {
     const links = Array.from(document.querySelectorAll('a[href*="/episode/"]'))
         .filter(visible);
@@ -195,11 +194,22 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
       const container = latest.closest(
           '[data-testid="episode-item"], [data-testid="episode-row"], '
           + '[role="row"], li') || latest.parentElement?.parentElement;
-      const button = container?.querySelector('button[data-testid="play-button"]');
+      const button = playButtonIn(container);
       if (visible(button)) return button;
     }
-    return Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]')).find(visible) || null;
+    return playButtonIn(document);
+  };
+  const point = element => {
+    if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    return [
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+    ];
   };
   const repeatState = button => {
     if (!button) return 'unknown';
@@ -208,12 +218,12 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
     if (checked === 'mixed') return 'one';
     if (checked === 'false') return 'off';
     const label = labelOf(button);
-    if (label.includes('enable repeat one') ||
-        label.includes('1曲リピートをオン') ||
-        label.includes('1曲リピートを有効')) return 'context';
     if (label.includes('disable repeat') ||
         label.includes('リピートをオフ') ||
         label.includes('リピートを無効')) return 'one';
+    if (label.includes('enable repeat one') ||
+        label.includes('1曲リピートをオン') ||
+        label.includes('1曲リピートを有効')) return 'context';
     if (label.includes('enable repeat') ||
         label.includes('リピートをオン') ||
         label.includes('リピートを有効')) return 'off';
@@ -225,13 +235,12 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
     if (!visible(repeat)) return;
     const state = repeatState(repeat);
     if (state === 'off' || state === 'unknown') return;
-    try { repeat.click(); } catch (_) {}
+    try { repeat.click(); } catch (_) { return; }
     if (state === 'context') {
       window.setTimeout(() => {
         const current = document.querySelector(
             'button[data-testid="control-button-repeat"]');
-        if (!visible(current)) return;
-        if (repeatState(current) === 'one') {
+        if (visible(current) && repeatState(current) === 'one') {
           try { current.click(); } catch (_) {}
         }
       }, 250);
@@ -242,94 +251,43 @@ constexpr wchar_t kSpotifyRobustPodcastScript[] = LR"JS(
       try {
         media.defaultPlaybackRate = playbackRate;
         if (media.playbackRate !== playbackRate) media.playbackRate = playbackRate;
-      } catch (_) {
-      }
+      } catch (_) {}
     });
   };
 
-  if (window.__homePanelSpotifyRobustMode !== mode ||
-      typeof window.__homePanelSpotifyRobustEnsure !== 'function') {
-    window.__homePanelSpotifyRobustMode = mode;
-    window.__homePanelSpotifyRobustState = {
-      media: null,
-      time: NaN,
-      stalled: 0,
-    };
-    window.__homePanelSpotifyRobustEnsure = () => {
-      if (location.hostname !== 'open.spotify.com') {
-        report(false);
-        return false;
-      }
-      const onShow = location.pathname.endsWith(showPath);
-      const onEpisode = location.pathname.includes('/episode/');
-      if (!onShow && !onEpisode) {
-        report(false);
-        return false;
-      }
-      ensureRate();
-      ensureRepeatOff();
-      const state = window.__homePanelSpotifyRobustState;
-      const media = mediaElement();
-      const control = playerControl();
-      let playing = false;
-
-      if (media) {
-        const current = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
-        const ready = !media.paused && !media.ended && media.readyState >= 2;
-        if (ready) {
-          if (media !== state.media || !Number.isFinite(state.time) ||
-              !Number.isFinite(current) || Math.abs(current - state.time) >= 0.5) {
-            state.stalled = 0;
-          } else {
-            ++state.stalled;
-          }
-          playing = state.stalled < 2;
-        } else {
-          state.stalled = 2;
-        }
-        state.media = media;
-        state.time = current;
-      } else {
-        state.media = null;
-        state.time = NaN;
-        state.stalled = 0;
-        playing = buttonShowsPlaying(control);
-      }
-
-      if (media && media.ended && onEpisode) {
-        report(false);
-        location.replace(showUrl);
-        return false;
-      }
-      if (!playing && media && !media.ended) {
-        try {
-          const promise = media.play();
-          if (promise && typeof promise.then === 'function') {
-            promise.then(() => {
-              ensureRate();
-              report(true);
-            }).catch(() => report(false));
-            return false;
-          }
-        } catch (_) {
-        }
-      }
-      if (!playing) {
-        let button = null;
-        if (onShow && (!media || media.ended)) button = latestEpisodeButton();
-        if (!visible(button) && visible(control)) button = control;
-        if (!visible(button) && onShow) button = latestEpisodeButton();
-        if (visible(button) && !buttonShowsPlaying(button)) {
-          try { button.click(); } catch (_) {}
-        }
-      }
-      report(playing || buttonShowsPlaying(playerControl()));
-      return playing;
-    };
+  if (location.hostname !== 'open.spotify.com') {
+    report(false);
+    return null;
+  }
+  const onShow = location.pathname.endsWith(showPath);
+  const onEpisode = location.pathname.includes('/episode/');
+  if (!onShow && !onEpisode) {
+    report(false);
+    return null;
   }
 
-  window.__homePanelSpotifyEnsure = window.__homePanelSpotifyRobustEnsure;
-  return window.__homePanelSpotifyRobustEnsure();
+  ensureRate();
+  ensureRepeatOff();
+  const media = Array.from(document.querySelectorAll('audio, video'))
+      .find(item => item && item.ended) || null;
+  if (media && media.ended && onEpisode) {
+    report(false);
+    location.replace(showUrl);
+    return null;
+  }
+
+  const control = playerControl();
+  if (buttonShowsPlaying(control)) {
+    report(true);
+    return true;
+  }
+
+  report(false);
+  let button = null;
+  if (onShow) button = latestEpisodeButton();
+  if (!visible(button) && visible(control)) button = control;
+  if (!visible(button)) button = playButtonIn(document);
+  return point(button);
 })()
 )JS";
 
@@ -342,11 +300,20 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return StartsWithInsensitive(source, L"https://open.spotify.com/");
 }
 
+LONG SpotifyAbsoluteMouseCoordinate(int value, int origin, int span) noexcept {
+  if (span <= 1) return 0;
+  long long scaled =
+      (static_cast<long long>(value - origin) * 65535LL) / (span - 1);
+  scaled = std::max(0LL, std::min(65535LL, scaled));
+  return static_cast<LONG>(scaled);
+}
+
 }  // namespace
 
 void SpotifyWebViews::StopLegacySchedulers() noexcept {
   for (Slot& slot : slots_) {
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
+    KillTimer(slot.hostWindow, kSpotifyStartupTimer);
     KillTimer(slot.hostWindow, kSpotifyModeSwitchTimer);
     if (slot.index == 0) {
       KillTimer(slot.hostWindow, kSpotifyModeTimer);
@@ -398,6 +365,26 @@ bool SpotifyWebViews::SlotMatchesDesiredMode(const Slot& slot) const noexcept {
       std::wstring::npos;
 }
 
+void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
+      slot.controller || slot.webview) {
+    slot.controllerCreating = false;
+    slot.controllerCreateTick = 0;
+    return;
+  }
+
+  const ULONGLONG now = GetTickCount64();
+  if (slot.controllerCreating && slot.controllerCreateTick != 0 &&
+      now - slot.controllerCreateTick < kSpotifyRobustControllerRetryMs) {
+    return;
+  }
+
+  KillTimer(slot.hostWindow, kSpotifyStartupTimer);
+  slot.controllerCreating = true;
+  slot.controllerCreateTick = now;
+  CreateController(slot);
+}
+
 void SpotifyWebViews::NavigateSlotRobustly(Slot& slot) noexcept {
   if (!slot.webview) return;
   const ULONGLONG now = GetTickCount64();
@@ -407,12 +394,89 @@ void SpotifyWebViews::NavigateSlotRobustly(Slot& slot) noexcept {
   }
   slot.lastModeNavigateTick = now;
   slot.unhealthyChecks = 0;
-  slot.reconcileInFlight = false;
+  slot.playing = false;
   SetSpotifyOutputMuted(slot.webview);
   slot.webview->ExecuteScript(kSpotifyClearLegacyEnsureScript, nullptr);
+  RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(
       podcastMode_ ? kSpotifyPodcastUrl : kSpotifyPlaylistUrl);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
+}
+
+bool SpotifyWebViews::ParseNormalizedPoint(
+    LPCWSTR json, int* x, int* y) noexcept {
+  if (!json || !x || !y) return false;
+  try {
+    const std::wstring value(json);
+    if (value.size() < 5 || value.front() != L'[') return false;
+    const size_t comma = value.find(L',');
+    const size_t close = value.find(
+        L']', comma == std::wstring::npos ? 0 : comma + 1);
+    if (comma == std::wstring::npos || close == std::wstring::npos) return false;
+    const int parsedX = std::stoi(value.substr(1, comma - 1));
+    const int parsedY = std::stoi(value.substr(comma + 1, close - comma - 1));
+    if (parsedX < 0 || parsedX > 10000 || parsedY < 0 || parsedY > 10000) {
+      return false;
+    }
+    *x = parsedX;
+    *y = parsedY;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+void SpotifyWebViews::ClickSlotNormalizedPoint(
+    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+
+  slot.playing = false;
+  RecomputeForeground();
+
+  RECT client{};
+  if (!GetClientRect(slot.hostWindow, &client)) return;
+  const LONG width = client.right - client.left;
+  const LONG height = client.bottom - client.top;
+  if (width <= 1 || height <= 1) return;
+
+  POINT target{};
+  target.x = client.left + static_cast<LONG>(
+      (static_cast<long long>(width) * xTenThousandths) / 10000LL);
+  target.y = client.top + static_cast<LONG>(
+      (static_cast<long long>(height) * yTenThousandths) / 10000LL);
+  target.x = std::max(client.left, std::min(client.right - 1, target.x));
+  target.y = std::max(client.top, std::min(client.bottom - 1, target.y));
+  if (!ClientToScreen(slot.hostWindow, &target)) return;
+
+  const int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+  if (virtualWidth <= 1 || virtualHeight <= 1) return;
+
+  auto setMove = [&](INPUT* input, const POINT& point) noexcept {
+    input->type = INPUT_MOUSE;
+    input->mi.dx = SpotifyAbsoluteMouseCoordinate(
+        point.x, virtualLeft, virtualWidth);
+    input->mi.dy = SpotifyAbsoluteMouseCoordinate(
+        point.y, virtualTop, virtualHeight);
+    input->mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
+                        MOUSEEVENTF_VIRTUALDESK;
+  };
+
+  INPUT inputs[4]{};
+  setMove(&inputs[0], target);
+  inputs[1].type = INPUT_MOUSE;
+  inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+  inputs[2].type = INPUT_MOUSE;
+  inputs[2].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+  POINT previous{};
+  UINT count = 3;
+  if (GetCursorPos(&previous)) {
+    setMove(&inputs[3], previous);
+    count = 4;
+  }
+  SendInput(count, inputs, sizeof(INPUT));
 }
 
 void SpotifyWebViews::ReconcileDesiredMode() noexcept {
@@ -422,16 +486,12 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
 
   if (!slot.webview) {
-    if (!slot.controller) {
-      const ULONGLONG now = GetTickCount64();
-      if (slot.lastModeNavigateTick == 0 ||
-          now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs) {
-        slot.lastModeNavigateTick = now;
-        CreateController(slot);
-      }
-    }
+    BeginControllerCreate(slot);
     return;
   }
+  slot.controllerCreating = false;
+  slot.controllerCreateTick = 0;
+
   if (SlotIsLoginPage(slot)) {
     slot.unhealthyChecks = 0;
     return;
@@ -443,12 +503,6 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
 
   slot.lastModeNavigateTick = 0;
   if (slot.reconcileInFlight) return;
-  if (slot.playing) {
-    slot.unhealthyChecks = 0;
-  } else if (++slot.unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
-    NavigateSlotRobustly(slot);
-    return;
-  }
 
   slot.reconcileInFlight = true;
   const bool requestedPodcastMode = podcastMode_;
@@ -460,23 +514,49 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
   const HRESULT started = slot.webview->ExecuteScript(
       script,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedPodcastMode](HRESULT result, LPCWSTR)
+          [this, alive, target, requestedPodcastMode](HRESULT result, LPCWSTR json)
               -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             target->reconcileInFlight = false;
             if (!started_ || requestedPodcastMode != podcastMode_) return S_OK;
+
             if (FAILED(result)) {
               target->playing = false;
-              ++target->unhealthyChecks;
-              RecomputeForeground();
+              if (++target->unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+                NavigateSlotRobustly(*target);
+              } else {
+                RecomputeForeground();
+              }
+              return S_OK;
             }
+
+            if (json && std::wstring_view(json) == L"true") {
+              target->playing = true;
+              target->unhealthyChecks = 0;
+              RecomputeForeground();
+              return S_OK;
+            }
+
+            int x = 0;
+            int y = 0;
+            const bool hasPoint = ParseNormalizedPoint(json, &x, &y);
+            target->playing = false;
+            if (++target->unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+              NavigateSlotRobustly(*target);
+              return S_OK;
+            }
+            RecomputeForeground();
+            if (hasPoint) ClickSlotNormalizedPoint(*target, x, y);
             return S_OK;
           }).Get());
   if (FAILED(started)) {
     slot.reconcileInFlight = false;
     slot.playing = false;
-    ++slot.unhealthyChecks;
-    RecomputeForeground();
+    if (++slot.unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+      NavigateSlotRobustly(slot);
+    } else {
+      RecomputeForeground();
+    }
   }
 }
 
@@ -487,17 +567,19 @@ void SpotifyWebViews::SetPodcastMode(bool podcastMode) noexcept {
   if (!robustSchedulerStarted_) {
     robustSchedulerStarted_ = true;
     reconcileIndex_ = 0;
-    for (Slot& slot : slots_) {
-      if (slot.index == 0 || !slot.hostWindow || !IsWindow(slot.hostWindow) ||
-          slot.controller || slot.webview) {
-        continue;
-      }
-      KillTimer(slot.hostWindow, kSpotifyStartupTimer);
-      const UINT delay = static_cast<UINT>(slot.index) *
-          kSpotifyRobustStartupStaggerMs;
-      if (SetTimer(slot.hostWindow, kSpotifyStartupTimer, delay, nullptr) == 0) {
-        CreateController(slot);
-      }
+
+    // Start() already requested slot 0 synchronously. Mark that one request as
+    // in-flight, then let the reconciler own creation of slots 1-5. This avoids
+    // the legacy startup timers and the reconciler creating the same controller
+    // concurrently on slower machines.
+    Slot& first = slots_[0];
+    if (!first.controller && !first.webview) {
+      first.controllerCreating = true;
+      first.controllerCreateTick = GetTickCount64();
+    }
+    for (size_t i = 1; i < slots_.size(); ++i) {
+      slots_[i].controllerCreating = false;
+      slots_[i].controllerCreateTick = 0;
     }
   }
   ArmRobustScheduler();
@@ -509,13 +591,12 @@ void SpotifyWebViews::SetPodcastMode(bool podcastMode) noexcept {
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
       slot.unhealthyChecks = 0;
-      slot.reconcileInFlight = false;
+      slot.playing = false;
       if (slot.webview) {
         slot.webview->ExecuteScript(kSpotifyClearLegacyEnsureScript, nullptr);
       }
     }
+    RecomputeForeground();
   }
   ReconcileDesiredMode();
 }
-
-}  // namespace hp
