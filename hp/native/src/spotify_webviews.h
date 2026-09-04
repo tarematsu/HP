@@ -31,7 +31,9 @@ class SpotifyWebViews final {
     EventRegistrationToken webMessageReceivedToken{};
     EventRegistrationToken webResourceRequestedToken{};
     ULONGLONG lastModeNavigateTick = 0;
+    ULONGLONG controllerCreateTick = 0;
     int unhealthyChecks = 0;
+    bool controllerCreating = false;
     bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
@@ -42,6 +44,7 @@ class SpotifyWebViews final {
   static void CALLBACK ReconcileTimerProc(
       HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
+  static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
 
   bool EnsureHostClass() noexcept;
   bool CreateHost(Slot& slot) noexcept;
@@ -55,9 +58,12 @@ class SpotifyWebViews final {
   void StopLegacySchedulers() noexcept;
   void ArmRobustScheduler() noexcept;
   void ReconcileDesiredMode() noexcept;
+  void BeginControllerCreate(Slot& slot) noexcept;
   bool SlotMatchesDesiredMode(const Slot& slot) const noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
   void NavigateSlotRobustly(Slot& slot) noexcept;
+  void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
+                                int yTenThousandths) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
