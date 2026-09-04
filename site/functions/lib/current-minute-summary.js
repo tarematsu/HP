@@ -19,14 +19,15 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
     f.reported_current_stream_count AS stream_value,
     h.current_handle AS host_handle,
     strftime('%Y-%m-%d',f.minute_at/1000,'unixepoch') AS period_key
-  FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time
+  FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc
   LEFT JOIN sh_minute_fact_context_v2 c ON c.fact_id=f.id
   LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
   LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id_override,s.host_id)
   LEFT JOIN sh_total_member_daily_latest d
     ON d.channel_id=f.channel_id
     AND d.day_at=(f.minute_at/86400000)*86400000
-  WHERE f.channel_id=(SELECT channel_id FROM latest_channel)
+  WHERE f.source_code=1
+    AND f.channel_id=(SELECT channel_id FROM latest_channel)
     AND f.minute_at>=? AND f.minute_at<?
 ), ranked AS (
   SELECT prepared.*,
