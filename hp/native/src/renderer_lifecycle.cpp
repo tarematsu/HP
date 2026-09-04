@@ -29,8 +29,11 @@ void PrepareParentWindow(HWND window) {
 }
 }  // namespace
 
-void SetSpotifyMediaPhase(bool podcastMode) noexcept {
-  if (gSpotifyWebViews) gSpotifyWebViews->SetPodcastMode(podcastMode);
+void SetSpotifyMediaPhase(bool tverPhase) noexcept {
+  // The 30-minute YouTube window owns the one-shot TALKABOUT playback. When
+  // TVer begins, force every Spotify slot back to the playlist even if the
+  // episode has not finished yet.
+  if (gSpotifyWebViews) gSpotifyWebViews->SetPodcastMode(!tverPhase);
 }
 
 Renderer::Renderer(HWND window, int width, int height)
@@ -89,8 +92,8 @@ void Renderer::Initialize() {
     if (!gSpotifyWebViews) {
       gSpotifyWebViews = std::make_unique<SpotifyWebViews>(window_, dataDir_);
     }
-    // Spotify remains active in power-saving mode. Its six WebViews continue
-    // playback while the media panel owns the shared one-hour phase cadence.
+    // Spotify remains active in power-saving mode. The media panel starts in
+    // YouTube, so false (not TVer) starts one TALKABOUT pass immediately.
     gSpotifyWebViews->Start();
     SetSpotifyMediaPhase(false);
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
