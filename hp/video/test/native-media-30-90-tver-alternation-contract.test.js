@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const composition = readFileSync(
+  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+  'utf8',
+);
+const mediaPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  'utf8',
+);
+
+test('effective media cadence is YouTube 30 minutes then TVer 90 minutes', () => {
+  assert.match(composition, /kNativeMediaYoutubePhaseOverrideMs = 30U \* 60U \* 1000U/);
+  assert.match(composition, /kNativeMediaTverPhaseOverrideMs = 90U \* 60U \* 1000U/);
+  assert.match(
+    composition,
+    /NativeMediaPhaseIntervalMs\(bool tver\)[\s\S]*kNativeMediaTverPhaseOverrideMs[\s\S]*kNativeMediaYoutubePhaseOverrideMs/,
+  );
+  assert.match(
+    composition,
+    /timerId\) == kNativeMediaPhaseTimer[\s\S]*NativeMediaPhaseIntervalMs\(phase_ == Phase::Tver\)/,
+  );
+  assert.match(
+    composition,
+    /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/,
+  );
+});
+
+test('phase overlay is rewritten to the effective 30/90 minute boundary', () => {
+  assert.match(composition, /CaptureNativeMediaPhaseOverlay\(phase_ == Phase::Tver\)/);
+  assert.match(composition, /gNativeMediaPhaseOverlayText/);
+  assert.match(composition, /__homePanelMediaPhaseTime/);
+  assert.match(composition, /RewriteNativeMediaExecuteScript/);
+  assert.match(
+    composition,
+    /#define ExecuteScript\(script, callback\)[\s\S]*RewriteNativeMediaExecuteScript/,
+  );
+});
+
+test('TVer alternates Sakura Meets and Death Youth Game after completed episodes', () => {
+  assert.match(composition, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
+  assert.match(composition, /https:\/\/tver\.jp\/series\/srkzm5wbvp/);
+  assert.match(composition, /gNativeMediaTverUseDeathGame = false/);
+  assert.match(composition, /ResolveNativeMediaNavigateUrl/);
+  assert.match(
+    composition,
+    /gNativeMediaTverUseDeathGame \? kNativeMediaDeathGameSeriesUrl[\s\S]*kNativeMediaSakuraMeetsSeriesUrl/,
+  );
+  assert.match(
+    composition,
+    /AdvanceNativeMediaTverSeries\(\) noexcept[\s\S]*gNativeMediaTverUseDeathGame = !gNativeMediaTverUseDeathGame/,
+  );
+  assert.match(
+    composition,
+    /#define Navigate\(url\) Navigate\(ResolveNativeMediaNavigateUrl\(\(url\)\)\)/,
+  );
+  assert.match(
+    composition,
+    /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AdvanceNativeMediaTverSeries\(\)/,
+  );
+});
+
+test('TVer alternation keeps cleanup, low quality, 1.75x, and controller recreation', () => {
+  assert.match(mediaPanel, /const playbackRate = 1\.75/);
+  assert.match(mediaPanel, /qualityName\(element\) === '低'/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE/);
+  assert.match(mediaPanel, /profile2->ClearBrowsingData\(/);
+  assert.match(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+  );
+});
