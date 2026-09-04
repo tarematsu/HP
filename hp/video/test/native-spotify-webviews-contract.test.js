@@ -68,7 +68,7 @@ test('Spotify player pages reduce decorative work without hiding foreground surf
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('YouTube starts one TALKABOUT pass and TVer forces playlist mode at the 30-minute boundary', () => {
+test('YouTube starts one TALKABOUT pass and TVer forces Lonesome rabbit at the 30-minute boundary', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(
     rendererPanels,
@@ -134,21 +134,30 @@ test('controller creation has one owner after startup and cannot pile up on a sl
   assert.doesNotMatch(spotifyPhaseSync, /kSpotifyRobustStartupStaggerMs/);
 });
 
-test('music phase uses a trusted native click when Spotify needs user activation', () => {
-  assert.match(spotify, /5DQCO4Hv3MbVYHgyXEfx8g/);
+test('music phase targets Lonesome rabbit and enforces repeat one with trusted native recovery', () => {
+  assert.match(spotify, /2f2Ik9JeinFVWZuFb3i35b/);
+  assert.match(
+    spotify,
+    /continue=https%3A%2F%2Fopen\.spotify\.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b/,
+  );
+  assert.match(spotify, /__homePanelLonesomeRabbitLoop/);
+  assert.match(spotify, /ensureRepeatOne/);
+  assert.match(spotify, /getAttribute\('aria-checked'\) === 'mixed'/);
   assert.match(spotifyPhaseSync, /kSpotifyRobustMusicScript/);
+  assert.match(spotifyPhaseSync, /\/album\/2f2Ik9JeinFVWZuFb3i35b/);
   assert.match(spotifyPhaseSync, /control-button-playpause/);
   assert.match(spotifyPhaseSync, /button\[data-testid="play-button"\]/);
   assert.match(spotifyPhaseSync, /const point = element =>/);
   assert.match(spotifyPhaseSync, /return point\(button\)/);
-  assert.match(spotifyPhaseSync, /ensureContextRepeat/);
+  assert.match(spotifyPhaseSync, /ensureRepeatOne/);
   assert.match(spotifyPhaseSync, /repeatState/);
   assert.match(spotifyPhaseSync, /checked === 'true'.*'context'/s);
   assert.match(spotifyPhaseSync, /checked === 'mixed'.*'one'/s);
-  assert.doesNotMatch(spotify, /307SI8AgVvBbNTkNrETKHW/);
+  assert.doesNotMatch(spotify, /5DQCO4Hv3MbVYHgyXEfx8g/);
+  assert.doesNotMatch(spotifyPhaseSync, /5DQCO4Hv3MbVYHgyXEfx8g/);
 });
 
-test('TALKABOUT is one-shot per YouTube window and each finished slot immediately returns to playlist', () => {
+test('TALKABOUT is one-shot per YouTube window and each finished slot immediately returns to Lonesome rabbit', () => {
   assert.match(spotify, /2ZQy2mlwQodabAILwZ02Ed/);
   assert.match(spotifyHeader, /bool podcastCompleted = false/);
   assert.match(spotifyHeader, /bool SlotWantsPodcast\(const Slot& slot\) const noexcept/);
@@ -173,6 +182,10 @@ test('TALKABOUT is one-shot per YouTube window and each finished slot immediatel
   assert.match(
     spotifyPhaseSync,
     /SlotWantsPodcast\(slot\) \? kSpotifyPodcastUrl : kSpotifyPlaylistUrl/,
+  );
+  assert.match(
+    spotify,
+    /kSpotifyPlaylistUrl\[\][\s\S]*open\.spotify\.com\/album\/2f2Ik9JeinFVWZuFb3i35b/,
   );
 });
 
