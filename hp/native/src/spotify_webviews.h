@@ -14,7 +14,7 @@ class SpotifyWebViews final {
   void Start() noexcept;
   void Resize() noexcept;
   void Shutdown() noexcept;
-  void SetPodcastMode(bool podcastMode) noexcept;
+  void SetPodcastMode(bool podcastWindowActive) noexcept;
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -37,6 +37,7 @@ class SpotifyWebViews final {
     bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
+    bool podcastCompleted = false;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -59,6 +60,7 @@ class SpotifyWebViews final {
   void ArmRobustScheduler() noexcept;
   void ReconcileDesiredMode() noexcept;
   void BeginControllerCreate(Slot& slot) noexcept;
+  bool SlotWantsPodcast(const Slot& slot) const noexcept;
   bool SlotMatchesDesiredMode(const Slot& slot) const noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
   void NavigateSlotRobustly(Slot& slot) noexcept;
@@ -82,6 +84,9 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
 };
 
-void SetSpotifyMediaPhase(bool podcastMode) noexcept;
+// tverPhase=false means the 30-minute YouTube window has started: play one
+// TALKABOUT episode, then fall back to the playlist. tverPhase=true forces the
+// playlist for the whole TVer window.
+void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
