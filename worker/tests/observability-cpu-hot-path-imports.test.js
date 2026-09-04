@@ -14,6 +14,10 @@ const runtimeEntry = readFileSync(
   new URL('../src/runtime-orchestrator-entry.js', import.meta.url),
   'utf8',
 );
+const runtimeStateRead = readFileSync(
+  new URL('../src/minute-facts-runtime-state-read.js', import.meta.url),
+  'utf8',
+);
 const pagesResponseFetch = readFileSync(
   new URL('../src/pages-response-fetch-entry.js', import.meta.url),
   'utf8',
@@ -92,11 +96,23 @@ test('runtime keeps queue and serving graphs lazy without a scheduled graph', ()
   assert.doesNotMatch(runtimeEntry, /ingest-channel-optimized-entry/);
 });
 
+test('runtime health read avoids the full runtime-state failure graph', () => {
+  assert.match(runtimeEntry, /from '\.\/minute-facts-runtime-state-read\.js'/);
+  assert.doesNotMatch(runtimeEntry, /import\('\.\/minute-facts-runtime-state\.js'\)/);
+  assert.match(runtimeStateRead, /SELECT \* FROM sh_minute_fact_runtime_state ORDER BY task_name/);
+  assert.doesNotMatch(runtimeStateRead, /collector-failure|sanitizeFailureDetail/);
+});
+
 test('serving-only Pages module does not import generation or publication graphs', () => {
   assert.match(pagesResponseFetch, /runPagesResponseFetch/);
   assert.match(pagesResponseFetch, /loadMaterializedR2Response/);
   assert.match(pagesResponseFetch, /loadMaterializedResponse/);
   assert.doesNotMatch(pagesResponseFetch, /pages-read-model-dispatch|track-history-publication|dashboard\.js|PAGES_READ_MODEL_QUEUE/);
+});
+
+test('cached Pages reads do not clone response bodies before returning them', () => {
+  assert.equal((pagesResponseFetch.match(/\.clone\(\)/g) || []).length, 1);
+  assert.match(pagesResponseFetch, /cache\.put\(key, response\.clone\(\)\)/);
 });
 
 test('minute enrichment is queue-only and does not preload Pages generation', () => {
