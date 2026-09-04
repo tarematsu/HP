@@ -1,4 +1,3 @@
-import './fetch-guard.js';
 import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseMaximumAge,

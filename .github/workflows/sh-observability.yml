@@ -40,10 +40,6 @@ permissions:
   issues: write
   statuses: write
 
-concurrency:
-  group: cloudflare-observability-unified-${{ github.event.workflow_run.head_sha || github.sha }}
-  cancel-in-progress: true
-
 jobs:
   classify:
     name: Select safe diagnostic trigger

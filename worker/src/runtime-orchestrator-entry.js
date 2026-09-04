@@ -1,5 +1,3 @@
-import './fetch-guard.js';
-
 import { budgetedLiveCompleteMessage } from './minute-live-complete-message.js';
 import { readMinuteFactRuntimeStateList } from './minute-facts-runtime-state-read.js';
 
@@ -10,6 +8,7 @@ const ENRICHMENT_QUEUE_NAMES = new Set([
   'stationhead-track-metadata',
 ]);
 
+let fetchGuardPromise;
 let enrichmentModulePromise;
 let pagesResponseModulePromise;
 let runtimeQueueModulePromise;
@@ -66,6 +65,11 @@ export function lightweightLiveBudgetKind(batch, env) {
 
 export function lightweightLiveCompleteBatch(batch, env) {
   return lightweightLiveBudgetKind(batch, env) === 'complete';
+}
+
+function loadFetchGuard() {
+  fetchGuardPromise ||= import('./fetch-guard.js');
+  return fetchGuardPromise;
 }
 
 function loadEnrichmentModule() {
@@ -125,6 +129,7 @@ async function runLightweightLiveQueue(kind, batch, env, dependencies) {
 }
 
 export async function runCoreQueue(batch, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
+  await loadFetchGuard();
   const queueName = String(batch?.queue || '');
   if (ENRICHMENT_QUEUE_NAMES.has(queueName)) {
     const run = dependencies.runEnrichmentQueue
