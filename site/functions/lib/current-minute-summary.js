@@ -3,8 +3,10 @@
 // classify millions of old minutes as "today" during a repair import.
 //
 // Keep the current daily series on the same active channel as the dashboard.
-// Minute Facts are unique by (channel_id, minute_at), so this also preserves the
-// invariant that one channel can contribute at most 1,440 samples to a UTC day.
+// Minute Facts are unique by (channel_id, minute_at), so one bounded scan can
+// contribute at most 1,440 samples. Materialize that scan once and derive the
+// aggregate, edge values, and primary host from the temporary result instead of
+// re-ranking the D1 rows several times.
 export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   SELECT channel_id
   FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
@@ -18,15 +20,13 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
     AND day_at=?1
   ORDER BY last_observed_at DESC,host_key ASC
   LIMIT 1
-), prepared AS (
-  SELECT f.id AS id,
+), prepared AS MATERIALIZED (
+  SELECT f.id,
     f.minute_at AS observed_at,
-    f.listener_count AS listener_count,
-    COALESCE((SELECT last_total_member_count FROM latest_daily_member),f.total_member_count)
-      AS total_member_count,
+    f.listener_count,
+    f.total_member_count,
     f.reported_current_stream_count AS stream_value,
-    h.current_handle AS host_handle,
-    strftime('%Y-%m-%d',f.minute_at/1000,'unixepoch') AS period_key
+    h.current_handle AS host_handle
   FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc
   LEFT JOIN sh_minute_fact_context_v2 c ON c.fact_id=f.id
   LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
@@ -34,50 +34,38 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   WHERE f.source_code=1
     AND f.channel_id=(SELECT channel_id FROM latest_channel)
     AND f.minute_at>=?1 AND f.minute_at<?2
-), ranked AS (
-  SELECT prepared.*,
-    ROW_NUMBER() OVER (
-      PARTITION BY period_key
-      ORDER BY (stream_value IS NULL) ASC,observed_at ASC,id ASC
-    ) AS stream_first_rank,
-    ROW_NUMBER() OVER (
-      PARTITION BY period_key
-      ORDER BY (stream_value IS NULL) ASC,observed_at DESC,id DESC
-    ) AS stream_last_rank,
-    ROW_NUMBER() OVER (
-      PARTITION BY period_key
-      ORDER BY (total_member_count IS NULL) ASC,observed_at ASC,id ASC
-    ) AS member_first_rank,
-    ROW_NUMBER() OVER (
-      PARTITION BY period_key
-      ORDER BY (total_member_count IS NULL) ASC,observed_at DESC,id DESC
-    ) AS member_last_rank
-  FROM prepared
-), aggregated AS (
-  SELECT period_key,MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
+), stats AS (
+  SELECT MIN(observed_at) AS period_start,MAX(observed_at) AS period_end,
     COUNT(*) AS sample_count,COUNT(listener_count) AS reliable_sample_count,
     AVG(listener_count) AS listener_avg,
     MIN(listener_count) AS listener_min,MAX(listener_count) AS listener_max,
-    MAX(CASE WHEN stream_first_rank=1 THEN stream_value END) AS stream_start,
-    MAX(CASE WHEN stream_last_rank=1 THEN stream_value END) AS stream_end,
-    MAX(CASE WHEN member_first_rank=1 THEN total_member_count END) AS member_start,
-    MAX(CASE WHEN member_last_rank=1 THEN total_member_count END) AS member_end
-  FROM ranked GROUP BY period_key
-), host_counts AS (
-  SELECT period_key,host_handle,COUNT(*) AS host_samples FROM prepared
-  WHERE host_handle IS NOT NULL AND host_handle<>'' GROUP BY period_key,host_handle
-), primary_hosts AS (
-  SELECT period_key,host_handle FROM (
-    SELECT period_key,host_handle,ROW_NUMBER() OVER (
-      PARTITION BY period_key ORDER BY host_samples DESC,host_handle ASC
-    ) AS host_rank FROM host_counts
-  ) WHERE host_rank=1
+    MIN(CASE WHEN stream_value IS NOT NULL THEN observed_at END) AS stream_start_at,
+    MAX(CASE WHEN stream_value IS NOT NULL THEN observed_at END) AS stream_end_at,
+    MIN(CASE WHEN total_member_count IS NOT NULL THEN observed_at END) AS member_start_at,
+    MAX(CASE WHEN total_member_count IS NOT NULL THEN observed_at END) AS member_end_at
+  FROM prepared
+), primary_host AS (
+  SELECT host_handle
+  FROM prepared
+  WHERE host_handle IS NOT NULL AND host_handle<>''
+  GROUP BY host_handle
+  ORDER BY COUNT(*) DESC,host_handle ASC
+  LIMIT 1
 )
-SELECT aggregated.period_key,aggregated.period_start,aggregated.period_end,
-  aggregated.sample_count,aggregated.reliable_sample_count,
-  aggregated.listener_avg,aggregated.listener_min,aggregated.listener_max,
-  aggregated.stream_start,aggregated.stream_end,
-  aggregated.member_start,aggregated.member_end,
-  primary_hosts.host_handle AS primary_host
-FROM aggregated LEFT JOIN primary_hosts ON primary_hosts.period_key=aggregated.period_key
-ORDER BY aggregated.period_key ASC LIMIT ?3`;
+SELECT strftime('%Y-%m-%d',?1/1000,'unixepoch') AS period_key,
+  stats.period_start,stats.period_end,stats.sample_count,stats.reliable_sample_count,
+  stats.listener_avg,stats.listener_min,stats.listener_max,
+  (SELECT stream_value FROM prepared
+    WHERE observed_at=stats.stream_start_at LIMIT 1) AS stream_start,
+  (SELECT stream_value FROM prepared
+    WHERE observed_at=stats.stream_end_at LIMIT 1) AS stream_end,
+  COALESCE((SELECT last_total_member_count FROM latest_daily_member),
+    (SELECT total_member_count FROM prepared
+      WHERE observed_at=stats.member_start_at LIMIT 1)) AS member_start,
+  COALESCE((SELECT last_total_member_count FROM latest_daily_member),
+    (SELECT total_member_count FROM prepared
+      WHERE observed_at=stats.member_end_at LIMIT 1)) AS member_end,
+  (SELECT host_handle FROM primary_host) AS primary_host
+FROM stats
+WHERE stats.sample_count>0
+LIMIT ?3`;
