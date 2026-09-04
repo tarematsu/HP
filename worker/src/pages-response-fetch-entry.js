@@ -45,12 +45,11 @@ function materializedStaleMaximumAge(env, freshMaximumAge) {
 }
 
 function staleMaterializedResponse(response) {
-  const clone = response.clone();
-  const headers = new Headers(clone.headers);
+  const headers = new Headers(response.headers);
   headers.set('x-materialized-stale', '1');
-  return new Response(clone.body, {
-    status: clone.status,
-    statusText: clone.statusText,
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
     headers,
   });
 }
@@ -60,10 +59,13 @@ function freshMaterializedResponse(response, now, maximumAge) {
   const age = Number(maximumAge);
   if (!Number.isFinite(updatedAt) || updatedAt < 0) return null;
   if (Number.isFinite(age) && age >= 0 && now - updatedAt > age) return null;
-  const clone = response.clone();
-  const headers = new Headers(clone.headers);
+  const headers = new Headers(response.headers);
   headers.set('x-api-source', 'edge-cache');
-  return new Response(clone.body, { status: clone.status, headers });
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 async function loadEdgeCachedResponse(cache, key, now, maximumAge) {

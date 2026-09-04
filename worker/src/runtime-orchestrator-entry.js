@@ -1,6 +1,7 @@
 import './fetch-guard.js';
 
 import { budgetedLiveCompleteMessage } from './minute-live-complete-message.js';
+import { readMinuteFactRuntimeStateList } from './minute-facts-runtime-state-read.js';
 
 const EMPTY_DEPENDENCIES = Object.freeze({});
 const LIVE_DERIVE_QUEUE_NAME = 'stationhead-minute-live-derive';
@@ -139,8 +140,7 @@ export async function runCoreQueue(batch, env, ctx, dependencies = EMPTY_DEPENDE
 export async function runCoreFetch(request, env, ctx, dependencies = EMPTY_DEPENDENCIES) {
   const url = new URL(request.url);
   if (request.method === 'GET' && url.pathname === '/internal/minute-runtime-state') {
-    const read = dependencies.readMinuteRuntimeState
-      || (await import('./minute-facts-runtime-state.js')).readMinuteFactRuntimeState;
+    const read = dependencies.readMinuteRuntimeState || readMinuteFactRuntimeStateList;
     const tasks = await read(env);
     return Response.json({
       ok: Array.isArray(tasks),
