@@ -44,7 +44,9 @@ function materializedStaleMaximumAge(env, freshMaximumAge) {
 }
 
 function responseIsStale(response, now, maximumAge) {
-  const updatedAt = Number(response?.headers?.get('x-materialized-at'));
+  const rawUpdatedAt = response?.headers?.get('x-materialized-at');
+  if (rawUpdatedAt == null || rawUpdatedAt === '') return false;
+  const updatedAt = Number(rawUpdatedAt);
   const age = Number(maximumAge);
   return Number.isFinite(updatedAt)
     && updatedAt >= 0
