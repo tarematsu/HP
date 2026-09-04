@@ -220,7 +220,7 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 #define ExecuteScript(script, callback)                                         \
   ExecuteScript(RewriteNativeMediaExecuteScript((script)).c_str(), (callback))
 #define get_CoreWebView2(out)                                                    \
-  get_CoreWebView2(out); RegisterNativeMediaAudioWebView(webview_)
+  get_CoreWebView2(out); RegisterNativeMediaAudioWebView(webview_.Get())
 #include "renderer_panels/media_section.inc"
 #undef get_CoreWebView2
 #undef ExecuteScript
