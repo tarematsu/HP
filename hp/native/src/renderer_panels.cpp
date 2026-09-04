@@ -27,11 +27,87 @@
 #include "renderer_panels/environment_sections.inc"
 
 namespace {
+constexpr UINT kNativeMediaYoutubePhaseOverrideMs = 30U * 60U * 1000U;
+constexpr UINT kNativeMediaTverPhaseOverrideMs = 90U * 60U * 1000U;
+constexpr wchar_t kNativeMediaSakuraMeetsSeriesUrl[] =
+    L"https://tver.jp/series/srx97ftk3w";
+constexpr wchar_t kNativeMediaDeathGameSeriesUrl[] =
+    L"https://tver.jp/series/srkzm5wbvp";
 constexpr UINT kNativeMediaTverWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTverWakeAttempts = 10U;
 HWND gNativeMediaTverWakeWindow = nullptr;
 UINT gNativeMediaTverWakeCount = 0;
 UINT gNativeMediaTverSteadyIntervalMs = 2000U;
+bool gNativeMediaTverUseDeathGame = false;
+std::wstring gNativeMediaPhaseOverlayText;
+
+UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
+  return tver ? kNativeMediaTverPhaseOverrideMs
+              : kNativeMediaYoutubePhaseOverrideMs;
+}
+
+std::wstring NativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexcept {
+  SYSTEMTIME utc{};
+  SYSTEMTIME local{};
+  if (!FileTimeToSystemTime(&utcFileTime, &utc) ||
+      !SystemTimeToTzSpecificLocalTime(nullptr, &utc, &local)) {
+    return L"--:--";
+  }
+  std::wstring value = L"00:00";
+  value[0] = static_cast<wchar_t>(L'0' + local.wHour / 10);
+  value[1] = static_cast<wchar_t>(L'0' + local.wHour % 10);
+  value[3] = static_cast<wchar_t>(L'0' + local.wMinute / 10);
+  value[4] = static_cast<wchar_t>(L'0' + local.wMinute % 10);
+  return value;
+}
+
+void CaptureNativeMediaPhaseOverlay(bool tver) noexcept {
+  FILETIME startUtc{};
+  GetSystemTimeAsFileTime(&startUtc);
+  ULARGE_INTEGER endTicks{};
+  endTicks.LowPart = startUtc.dwLowDateTime;
+  endTicks.HighPart = startUtc.dwHighDateTime;
+  endTicks.QuadPart +=
+      static_cast<ULONGLONG>(NativeMediaPhaseIntervalMs(tver)) * 10000ULL;
+  FILETIME endUtc{};
+  endUtc.dwLowDateTime = endTicks.LowPart;
+  endUtc.dwHighDateTime = endTicks.HighPart;
+  gNativeMediaPhaseOverlayText = tver ? L"TVer " : L"YouTube ";
+  gNativeMediaPhaseOverlayText += NativeMediaLocalHourMinute(startUtc);
+  gNativeMediaPhaseOverlayText += L"–";
+  gNativeMediaPhaseOverlayText += NativeMediaLocalHourMinute(endUtc);
+}
+
+std::wstring RewriteNativeMediaExecuteScript(const wchar_t* script) {
+  if (!script) return {};
+  std::wstring value(script);
+  if (gNativeMediaPhaseOverlayText.empty() ||
+      value.find(L"__homePanelMediaPhaseTime") == std::wstring::npos) {
+    return value;
+  }
+  constexpr std::wstring_view marker = L"  const text = '";
+  const size_t begin = value.find(marker);
+  if (begin == std::wstring::npos) return value;
+  const size_t textBegin = begin + marker.size();
+  const size_t end = value.find(L"';", textBegin);
+  if (end == std::wstring::npos) return value;
+  value.replace(textBegin, end - textBegin, gNativeMediaPhaseOverlayText);
+  return value;
+}
+
+const wchar_t* ResolveNativeMediaNavigateUrl(const wchar_t* url) noexcept {
+  if (!url) return url;
+  if (wcscmp(url, kNativeMediaSakuraMeetsSeriesUrl) != 0 &&
+      wcscmp(url, kNativeMediaDeathGameSeriesUrl) != 0) {
+    return url;
+  }
+  return gNativeMediaTverUseDeathGame ? kNativeMediaDeathGameSeriesUrl
+                                      : kNativeMediaSakuraMeetsSeriesUrl;
+}
+
+void AdvanceNativeMediaTverSeries() noexcept {
+  gNativeMediaTverUseDeathGame = !gNativeMediaTverUseDeathGame;
+}
 
 LONG NativeMediaPointerAbsolute(int value, int origin, int span) noexcept {
   if (span <= 1) return 0;
@@ -95,17 +171,32 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 }
 }  // namespace
 
-// The media panel is the single one-hour clock. Whenever it arms its phase
-// timer, apply that exact phase to Spotify; all other media timers are untouched.
+// The media panel runs YouTube for 30 minutes and TVer for 90 minutes. Spotify
+// follows the same phase boundary. TVer keeps the existing cleanup/recreate flow,
+// but each completed episode advances Sakura Meets <-> Death (Youth) Game.
 // TVer additionally gets a short burst of trusted native mouse movement after
 // navigation so its player controls become visible before the fullscreen probe.
 #define SetTimer(hwnd, timerId, interval, callback)                              \
   (((timerId) == kNativeMediaPhaseTimer                                         \
-        ? (SetSpotifyMediaPhase(phase_ == Phase::Tver), 0)                     \
+        ? (CaptureNativeMediaPhaseOverlay(phase_ == Phase::Tver),              \
+           SetSpotifyMediaPhase(phase_ == Phase::Tver), 0)                     \
         : 0),                                                                   \
    ((timerId) == kNativeMediaTverWatchdogTimer                                  \
         ? ArmNativeMediaTverWakeTimer((hwnd), (timerId), (interval))           \
-        : ::SetTimer((hwnd), (timerId), (interval), (callback))))
+        : ::SetTimer(                                                           \
+              (hwnd), (timerId),                                                \
+              ((timerId) == kNativeMediaPhaseTimer                             \
+                   ? NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)         \
+                   : (interval)),                                               \
+              (callback))))
+#define Navigate(url) Navigate(ResolveNativeMediaNavigateUrl((url)))
+#define ClearBrowsingData(dataKinds, handler)                                   \
+  ClearBrowsingData((AdvanceNativeMediaTverSeries(), (dataKinds)), (handler))
+#define ExecuteScript(script, callback)                                         \
+  ExecuteScript(RewriteNativeMediaExecuteScript((script)).c_str(), (callback))
 #include "renderer_panels/media_section.inc"
+#undef ExecuteScript
+#undef ClearBrowsingData
+#undef Navigate
 #undef SetTimer
 #include "renderer_panels/data_sections.inc"
