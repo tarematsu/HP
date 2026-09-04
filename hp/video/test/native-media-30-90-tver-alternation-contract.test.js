@@ -39,7 +39,7 @@ test('phase overlay is rewritten to the effective 30/90 minute boundary', () => 
   );
 });
 
-test('TVer alternates Sakura Meets and Death Youth Game after completed episodes', () => {
+test('TVer alternates Sakura Meets and Death Youth Game after completed items', () => {
   assert.match(composition, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(composition, /https:\/\/tver\.jp\/series\/srkzm5wbvp/);
   assert.match(composition, /gNativeMediaTverUseDeathGame = false/);
@@ -62,9 +62,46 @@ test('TVer alternates Sakura Meets and Death Youth Game after completed episodes
   );
 });
 
+test('Death Youth Game selects its preview before broadcast and treats the short preview as complete', () => {
+  assert.match(composition, /kNativeMediaTverLoopOverrideScript/);
+  assert.match(composition, /deathGameSeriesPath = '\/series\/srkzm5wbvp'/);
+  assert.match(composition, /seriesPathKey = '__homePanelTverSeriesPath'/);
+  assert.match(composition, /seriesPath === deathGameSeriesPath/);
+  assert.match(composition, /予告\|\\bPR\\b\|ティザー\|teaser\|trailer/i);
+  assert.match(composition, /previewMode = storedSeriesPath\(\) === deathGameSeriesPath/);
+  assert.match(composition, /completedPreview = state\.previewMode/);
+  assert.match(composition, /state\.maxDuration >= 10 && state\.maxTime >= 5/);
+  assert.match(composition, /video\.ended && \(completedPreview \|\| completedEpisode\)/);
+  assert.match(
+    composition,
+    /__homePanelSakuraMeetsLoopTimer[\s\S]*return kNativeMediaTverLoopOverrideScript/,
+  );
+});
+
+test('TVer fullscreen uses trusted native input then requestFullscreen when the button is hidden', () => {
+  assert.match(composition, /kNativeMediaTverWatchdogOverrideScript/);
+  assert.match(
+    composition,
+    /fullscreenButton \? point\(fullscreenButton\) : \(video \? point\(video\) : null\)/,
+  );
+  assert.match(composition, /kNativeMediaTverForceFullscreenAfterClickScript/);
+  assert.match(composition, /window\.setTimeout\(async \(\) =>/);
+  assert.match(composition, /target\.requestFullscreen \|\| target\.webkitRequestFullscreen/);
+  assert.match(composition, /NativeMediaSendInputWithTverFullscreen/);
+  assert.match(composition, /const UINT sent = ::SendInput\(count, inputs, inputSize\)/);
+  assert.match(
+    composition,
+    /webview->ExecuteScript\(kNativeMediaTverForceFullscreenAfterClickScript, nullptr\)/,
+  );
+  assert.match(
+    composition,
+    /#define SendInput\(count, inputs, inputSize\)[\s\S]*phase_ == Phase::Tver[\s\S]*webview_\.Get\(\)/,
+  );
+});
+
 test('TVer alternation keeps cleanup, low quality, 1.75x, and controller recreation', () => {
-  assert.match(mediaPanel, /const playbackRate = 1\.75/);
-  assert.match(mediaPanel, /qualityName\(element\) === '低'/);
+  assert.match(composition, /const playbackRate = 1\.75/);
+  assert.match(composition, /qualityName\(element\) === '低'/);
   assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES/);
   assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE/);
   assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE/);
