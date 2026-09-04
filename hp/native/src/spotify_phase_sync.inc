@@ -12,6 +12,7 @@ constexpr wchar_t kSpotifyClearLegacyEnsureScript[] = LR"JS(
   window.__homePanelSpotifyEnsure = null;
   window.__homePanelSpotifyRobustMode = 'switching';
   window.__homePanelSakuraPlaylistLoop = false;
+  window.__homePanelLonesomeRabbitLoop = false;
   window.__homePanelSakuraTalkAboutPlayback = false;
   window.__homePanelSpotifyPodcastOneShot = null;
 })()
@@ -19,7 +20,7 @@ constexpr wchar_t kSpotifyClearLegacyEnsureScript[] = LR"JS(
 
 constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
 (() => {
-  const playlistPath = '/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
+  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
   const report = playing => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
@@ -54,7 +55,7 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
                  label === '再生' || label === '一時停止';
         }) || null;
   };
-  const playlistPlayButton = () => {
+  const targetPlayButton = () => {
     const primary = Array.from(document.querySelectorAll(
         'button[data-testid="play-button"]')).find(visible);
     if (primary) return primary;
@@ -97,18 +98,18 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
         label.includes('リピートを有効')) return 'off';
     return 'unknown';
   };
-  const ensureContextRepeat = () => {
+  const ensureRepeatOne = () => {
     const repeat = document.querySelector(
         'button[data-testid="control-button-repeat"]');
     if (!visible(repeat)) return;
     const state = repeatState(repeat);
-    if (state === 'context' || state === 'unknown') return;
+    if (state === 'one' || state === 'unknown') return;
     try { repeat.click(); } catch (_) { return; }
-    if (state === 'one') {
+    if (state === 'off') {
       window.setTimeout(() => {
         const current = document.querySelector(
             'button[data-testid="control-button-repeat"]');
-        if (visible(current) && repeatState(current) === 'off') {
+        if (visible(current) && repeatState(current) === 'context') {
           try { current.click(); } catch (_) {}
         }
       }, 250);
@@ -116,12 +117,12 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
   };
 
   if (location.hostname !== 'open.spotify.com' ||
-      !location.pathname.endsWith(playlistPath)) {
+      !location.pathname.endsWith(targetPath)) {
     report(false);
     return null;
   }
 
-  ensureContextRepeat();
+  ensureRepeatOne();
   const control = playerControl();
   if (buttonShowsPlaying(control)) {
     report(true);
@@ -129,7 +130,7 @@ constexpr wchar_t kSpotifyRobustMusicScript[] = LR"JS(
   }
 
   report(false);
-  const button = visible(control) ? control : playlistPlayButton();
+  const button = visible(control) ? control : targetPlayButton();
   return point(button);
 })()
 )JS";
@@ -384,7 +385,7 @@ bool SpotifyWebViews::SlotMatchesDesiredMode(const Slot& slot) const noexcept {
     return source.find(L"/show/2ZQy2mlwQodabAILwZ02Ed") != std::wstring::npos ||
            source.find(L"/episode/") != std::wstring::npos;
   }
-  return source.find(L"/playlist/5DQCO4Hv3MbVYHgyXEfx8g") !=
+  return source.find(L"/album/2f2Ik9JeinFVWZuFb3i35b") !=
       std::wstring::npos;
 }
 
@@ -635,7 +636,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     RecomputeForeground();
 
     // TVer begins exactly at the end of the 30-minute YouTube window. Force all
-    // already-created Spotify slots to the playlist immediately instead of
+    // already-created Spotify slots to Lonesome rabbit immediately instead of
     // waiting for the serialized reconciler to visit them one-by-one.
     if (!podcastWindowActive) {
       for (Slot& slot : slots_) {

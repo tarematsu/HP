@@ -5,11 +5,11 @@ namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
 constexpr wchar_t kSpotifyPlaylistUrl[] =
-    L"https://open.spotify.com/playlist/5DQCO4Hv3MbVYHgyXEfx8g";
+    L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
-    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fplaylist%2F5DQCO4Hv3MbVYHgyXEfx8g";
+    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fshow%2F2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
@@ -53,10 +53,10 @@ constexpr wchar_t kSpotifyLightweightScript[] = LR"JS(
 
 constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
 (() => {
-  if (window.__homePanelSakuraPlaylistLoop) return;
-  window.__homePanelSakuraPlaylistLoop = true;
-  const playlistUrl = 'https://open.spotify.com/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
-  const playlistPath = '/playlist/5DQCO4Hv3MbVYHgyXEfx8g';
+  if (window.__homePanelLonesomeRabbitLoop) return;
+  window.__homePanelLonesomeRabbitLoop = true;
+  const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
+  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
   const stallLimit = 2;
   let lastMedia = null;
   let lastTime = NaN;
@@ -94,18 +94,22 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
     const items = Array.from(document.querySelectorAll('audio, video'));
     return items.find(item => !item.paused && !item.ended) || items[0] || null;
   };
-  const ensureRepeatContext = () => {
+  const ensureRepeatOne = () => {
     const repeat = document.querySelector(
         'button[data-testid="control-button-repeat"]');
-    if (!repeat || repeat.getAttribute('aria-checked') === 'true') return;
+    if (!repeat) return;
+    const state = repeat.getAttribute('aria-checked');
+    if (state === 'mixed') return;
     repeat.click();
-    window.setTimeout(() => {
-      const current = document.querySelector(
-          'button[data-testid="control-button-repeat"]');
-      if (current && current.getAttribute('aria-checked') !== 'true') {
-        current.click();
-      }
-    }, 300);
+    if (state === 'false') {
+      window.setTimeout(() => {
+        const current = document.querySelector(
+            'button[data-testid="control-button-repeat"]');
+        if (current && current.getAttribute('aria-checked') === 'true') {
+          current.click();
+        }
+      }, 300);
+    }
   };
   const samplePlayback = () => {
     const media = mediaElement();
@@ -157,9 +161,9 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
       report(false);
       return;
     }
-    if (!location.pathname.endsWith(playlistPath)) {
+    if (!location.pathname.endsWith(targetPath)) {
       report(false);
-      location.replace(playlistUrl);
+      location.replace(targetUrl);
       return;
     }
     if (!targetStarted) {
@@ -178,7 +182,7 @@ constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
       }
       targetStarted = true;
     }
-    ensureRepeatContext();
+    ensureRepeatOne();
     const mediaPlaying = samplePlayback();
     const button = playbackButton();
     const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
