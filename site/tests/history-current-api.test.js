@@ -8,8 +8,9 @@ const NOW = Date.UTC(2026, 6, 30, 1, 23, 45);
 function dailyDatabase(assertions) {
   return {
     prepare(sql) {
-      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_time/);
+      assert.match(sql, /FROM sh_minute_facts f INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
       assert.match(sql, /FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute/);
+      assert.match(sql, /WHERE f\.source_code=1/);
       assert.match(sql, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
       assert.match(sql, /f\.minute_at>=\? AND f\.minute_at<\?/);
       assert.match(sql, /f\.minute_at AS observed_at/);

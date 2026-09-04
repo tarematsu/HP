@@ -37,6 +37,8 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   );
   CREATE INDEX idx_sh_minute_facts_time
     ON sh_minute_facts(minute_at ASC,id ASC);
+  CREATE INDEX idx_sh_minute_facts_source_channel_minute_desc
+    ON sh_minute_facts(source_code,channel_id,minute_at DESC,id DESC);
   CREATE INDEX idx_sh_minute_facts_live_minute
     ON sh_minute_facts(source_code,minute_at DESC,id DESC);
   CREATE TABLE sh_minute_fact_context_v2(
@@ -77,15 +79,19 @@ test('current daily history seeks canonical minute_at and stays on the latest li
   assert.equal(row.member_end, 802);
   assert.equal(row.primary_host, 'buddies');
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at AS observed_at/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_time/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_source_channel_minute_desc/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /INDEXED BY idx_sh_minute_facts_live_minute/);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /WHERE f\.source_code=1/);
   assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.channel_id=\(SELECT channel_id FROM latest_channel\)/);
-  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /WHERE f\.channel_id=.*f\.minute_at>=\? AND f\.minute_at<\?/s);
+  assert.match(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /f\.minute_at>=\? AND f\.minute_at<\?/);
   assert.doesNotMatch(CURRENT_DAILY_MINUTE_SUMMARY_SQL, /idx_sh_minute_facts_observed_id|sh_channel_snapshots/);
   const plan = db.prepare(`EXPLAIN QUERY PLAN ${CURRENT_DAILY_MINUTE_SUMMARY_SQL}`)
     .all(start, start + 86_400_000, 10)
     .map((item) => item.detail).join('\n');
-  assert.match(plan, /idx_sh_minute_facts_time \(minute_at>\? AND minute_at<\?\)/);
+  assert.match(
+    plan,
+    /idx_sh_minute_facts_source_channel_minute_desc \(source_code=\? AND channel_id=\? AND minute_at>\? AND minute_at<\?\)/,
+  );
   assert.match(plan, /idx_sh_minute_facts_live_minute/);
 });
 
