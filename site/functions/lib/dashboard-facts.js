@@ -46,21 +46,33 @@ function rollupHistorySql(whereClause) {
   return `WITH latest_channel AS (
     SELECT channel_id FROM sh_minute_facts INDEXED BY idx_sh_minute_facts_live_minute
     WHERE source_code=1 ORDER BY minute_at DESC,id DESC LIMIT 1
+  ), history AS MATERIALIZED (
+    SELECT r.observed_at,r.listener_count,r.online_member_count,
+      r.total_member_count,r.total_listens,r.comment_velocity,
+      (r.observed_at/86400000)*86400000 AS day_at
+    FROM sh_dashboard_history_5m r
+    WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
+      AND ${whereClause}
+    ORDER BY r.observed_at ASC
+    LIMIT 300
+  ), history_days AS MATERIALIZED (
+    SELECT DISTINCT day_at FROM history
+  ), daily_members AS MATERIALIZED (
+    SELECT days.day_at,
+      (SELECT d.last_total_member_count
+       FROM sh_total_member_daily d INDEXED BY idx_sh_total_member_daily_latest
+       WHERE d.channel_id=(SELECT channel_id FROM latest_channel)
+         AND d.day_at=days.day_at
+       ORDER BY d.last_observed_at DESC,d.host_key ASC
+       LIMIT 1) AS last_total_member_count
+    FROM history_days days
   )
-  SELECT r.observed_at,r.listener_count,r.online_member_count,
-    COALESCE((
-      SELECT d.last_total_member_count
-      FROM sh_total_member_daily d
-      WHERE d.channel_id=r.channel_id
-        AND d.day_at=(r.observed_at/86400000)*86400000
-      ORDER BY d.last_observed_at DESC,d.host_key ASC
-      LIMIT 1
-    ),r.total_member_count) AS total_member_count,
-    r.total_listens,r.comment_velocity
-  FROM sh_dashboard_history_5m r
-  WHERE r.channel_id=(SELECT channel_id FROM latest_channel)
-    AND ${whereClause}
-  ORDER BY r.observed_at ASC
+  SELECT h.observed_at,h.listener_count,h.online_member_count,
+    COALESCE(d.last_total_member_count,h.total_member_count) AS total_member_count,
+    h.total_listens,h.comment_velocity
+  FROM history h
+  LEFT JOIN daily_members d ON d.day_at=h.day_at
+  ORDER BY h.observed_at ASC
   LIMIT 300`;
 }
 
