@@ -16,6 +16,7 @@ const metadataConsolidationScript = resolve(workerRoot, 'scripts/consolidate-tra
 const databaseName = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const BINDING = 'OTHER_DB';
 const APPLE_MUSIC_COMPATIBILITY_TABLE = 'sh_host_queue_items';
+const LEGACY_TRACK_METADATA_TABLE = 'sh_track_metadata';
 
 // Runtime writes the operational tables and Pages reads the public projections.
 // Provisioning updates only those two explicit owners.
@@ -81,6 +82,13 @@ function schemaObjects(names) {
     WHERE name IN (${sqlList(names)}) ORDER BY name`);
 }
 
+function hasSchemaObject(name, type = null) {
+  return schemaObjects([name]).some((row) => (
+    String(row?.name || '') === name
+    && (type == null || String(row?.type || '') === type)
+  ));
+}
+
 function removeAppleMusicCompatibilityColumn() {
   const columns = new Set(remoteRows(`PRAGMA table_info(${APPLE_MUSIC_COMPATIBILITY_TABLE})`)
     .map((row) => String(row?.name || '')));
@@ -93,6 +101,15 @@ function removeAppleMusicCompatibilityColumn() {
 }
 
 function consolidateLegacyTrackMetadata() {
+  if (!hasSchemaObject(LEGACY_TRACK_METADATA_TABLE, 'table')) {
+    console.log(JSON.stringify({
+      ok: true,
+      skipped: true,
+      operation: 'track-metadata-consolidation',
+      reason: 'source-table-retired',
+    }));
+    return;
+  }
   execFileSync(process.execPath, [metadataConsolidationScript], {
     cwd: workerRoot,
     env: {
@@ -116,7 +133,7 @@ function verifySchema() {
 
   const retired = schemaObjects(OTHER_RETIRED_OBJECTS).map((row) => String(row.name));
   if (retired.length) {
-    const metadataHint = retired.includes('sh_track_metadata')
+    const metadataHint = retired.includes(LEGACY_TRACK_METADATA_TABLE)
       ? ' Track metadata consolidation did not remove the legacy OTHER_DB table.'
       : '';
     throw new Error(`OTHER_DB schema verification failed; retired objects remain: ${retired.join(', ')}.${metadataHint}`);
