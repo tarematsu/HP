@@ -14,6 +14,10 @@ const runtimeEntry = readFileSync(
   new URL('../src/runtime-orchestrator-entry.js', import.meta.url),
   'utf8',
 );
+const deployedRuntimeEntry = readFileSync(
+  new URL('../src/runtime-orchestrator-deployed-entry.js', import.meta.url),
+  'utf8',
+);
 const runtimeStateRead = readFileSync(
   new URL('../src/minute-facts-runtime-state-read.js', import.meta.url),
   'utf8',
@@ -75,6 +79,15 @@ test('core queue routes recurring live stages before loading the shared runtime 
   assert.doesNotMatch(liveCompleteMessage, /COMPLETE_LIVE_MINUTE_FACT_JOB_SQL/);
   assert.match(runtimeEntry, /lightweightLiveBudgetKind/);
   assert.match(runtimeEntry, /if \(liveKind\) return runLightweightLiveQueue/);
+});
+
+test('runtime HTTP path does not initialize queue-only fetch guards or attribution', () => {
+  assert.doesNotMatch(runtimeEntry, /^import '\.\/fetch-guard\.js';/m);
+  assert.match(runtimeEntry, /fetchGuardPromise \|\|= import\('\.\/fetch-guard\.js'\)/);
+  assert.match(runtimeEntry, /runCoreQueue[\s\S]*?await loadFetchGuard\(\)/);
+  assert.doesNotMatch(pagesResponseFetch, /fetch-guard\.js/);
+  assert.doesNotMatch(deployedRuntimeEntry, /from '\.\/queue-attribution\.js'/);
+  assert.match(deployedRuntimeEntry, /import\('\.\/queue-attribution\.js'\)/);
 });
 
 test('live trigger uses the narrow lease boundary instead of loading derive and inbox graphs', () => {
