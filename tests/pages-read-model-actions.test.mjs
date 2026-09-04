@@ -77,7 +77,8 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(d1Adapter, /'--remote', '--yes', '--json'/);
   assert.match(runner, /r2', 'object', 'put'/);
   assert.match(r2Store, /pages-response\/actions-v2/);
-  assert.match(r2Store, /LEGACY_ACTIONS_RESPONSE_KEY_PREFIX/);
+  assert.doesNotMatch(r2Store, /pages-response\/actions-v1|LEGACY_ACTIONS_RESPONSE_KEY_PREFIX/);
+  assert.match(r2Store, /TRACK_HISTORY_MODEL_KEY/);
   assert.match(r2Store, /x-api-source', 'actions-r2'/);
 });
 
