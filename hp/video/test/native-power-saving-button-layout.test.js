@@ -47,10 +47,10 @@ test('mute button controls only the YouTube/TVer WebView through native WebView2
   assert.match(composition, /ComPtr<ICoreWebView2_8> gNativeMediaAudioWebView/);
   assert.match(composition, /put_IsMuted\(gNativeMediaMuted \? TRUE : FALSE\)/);
   assert.match(composition, /put_IsMuted\(muted \? TRUE : FALSE\)/);
-  assert.match(composition, /RegisterNativeMediaAudioWebView\(webview_\)/);
+  assert.match(composition, /RegisterNativeMediaAudioWebView\(webview_\.Get\(\)\)/);
   assert.match(
     composition,
-    /#define get_CoreWebView2\(out\)[\s\S]*RegisterNativeMediaAudioWebView\(webview_\)[\s\S]*#include "renderer_panels\/media_section\.inc"/,
+    /#define get_CoreWebView2\(out\)[\s\S]*RegisterNativeMediaAudioWebView\(webview_\.Get\(\)\)[\s\S]*#include "renderer_panels\/media_section\.inc"/,
   );
 });
 
