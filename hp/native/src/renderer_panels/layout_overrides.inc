@@ -112,8 +112,8 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
   RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 170)}; \
   RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 650)}; \
-  RECT hpWasteRect{hpClockContent.left, hpTimeRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 820)}; \
-  RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 830), hpClockContent.right, hpClockContent.bottom}; \
+  RECT hpWasteRect{hpClockContent.left, hpTimeRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 780)}; \
+  RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 790), hpClockContent.right, hpClockContent.bottom}; \
   HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetMuted); \
   DrawTextInRect((dc), DateText(hpNow), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
@@ -129,9 +129,9 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
-  const int hpPowerButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
-  const int hpPowerButtonGap = std::max(6, SpanX(hpStatusRect, 20)); \
-  const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpPowerButtonWidth - hpPowerButtonGap); \
+  const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
+  const int hpControlButtonGap = std::max(6, SpanX(hpStatusRect, 20)); \
+  const LONG hpStatusTextRight = std::max<LONG>(hpStatusRect.left + 1, hpStatusRect.right - hpControlButtonWidth - hpControlButtonGap); \
   RECT hpVersionRect = hpStatusRect; hpVersionRect.right = hpStatusTextRight; \
   SelectObject((dc), TierFont(FontTier::Small)); \
   SetTextColor((dc), kWidgetMuted); \
