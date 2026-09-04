@@ -11,11 +11,19 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   WHERE source_code=1
   ORDER BY minute_at DESC,id DESC
   LIMIT 1
+), latest_daily_member AS (
+  SELECT last_total_member_count
+  FROM sh_total_member_daily INDEXED BY idx_sh_total_member_daily_latest
+  WHERE channel_id=(SELECT channel_id FROM latest_channel)
+    AND day_at=?1
+  ORDER BY last_observed_at DESC,host_key ASC
+  LIMIT 1
 ), prepared AS (
   SELECT f.id AS id,
     f.minute_at AS observed_at,
     f.listener_count AS listener_count,
-    COALESCE(d.last_total_member_count,f.total_member_count) AS total_member_count,
+    COALESCE((SELECT last_total_member_count FROM latest_daily_member),f.total_member_count)
+      AS total_member_count,
     f.reported_current_stream_count AS stream_value,
     h.current_handle AS host_handle,
     strftime('%Y-%m-%d',f.minute_at/1000,'unixepoch') AS period_key
@@ -23,12 +31,9 @@ export const CURRENT_DAILY_MINUTE_SUMMARY_SQL = `WITH latest_channel AS (
   LEFT JOIN sh_minute_fact_context_v2 c ON c.fact_id=f.id
   LEFT JOIN sh_broadcast_sessions s ON s.id=f.broadcast_session_id
   LEFT JOIN sh_hosts h ON h.id=COALESCE(c.host_id_override,s.host_id)
-  LEFT JOIN sh_total_member_daily_latest d
-    ON d.channel_id=f.channel_id
-    AND d.day_at=(f.minute_at/86400000)*86400000
   WHERE f.source_code=1
     AND f.channel_id=(SELECT channel_id FROM latest_channel)
-    AND f.minute_at>=? AND f.minute_at<?
+    AND f.minute_at>=?1 AND f.minute_at<?2
 ), ranked AS (
   SELECT prepared.*,
     ROW_NUMBER() OVER (
@@ -75,4 +80,4 @@ SELECT aggregated.period_key,aggregated.period_start,aggregated.period_end,
   aggregated.member_start,aggregated.member_end,
   primary_hosts.host_handle AS primary_host
 FROM aggregated LEFT JOIN primary_hosts ON primary_hosts.period_key=aggregated.period_key
-ORDER BY aggregated.period_key ASC LIMIT ?`;
+ORDER BY aggregated.period_key ASC LIMIT ?3`;
