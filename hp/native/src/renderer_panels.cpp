@@ -506,7 +506,7 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
   get_Profile((AdvanceNativeMediaTverSeries(), (out)))
 #define ClearBrowsingData(dataKinds, handler)                                   \
   AddRef() > 0                                                                  \
-      ? (profile2->Release(), CompleteTverRestart(), S_OK)                     \
+      ? ((void)(dataKinds), profile2->Release(), CompleteTverRestart(), S_OK)  \
       : E_FAIL
 #define ExecuteScript(script, callback)                                         \
   ExecuteScript(RewriteNativeMediaExecuteScript((script)).c_str(), (callback))
