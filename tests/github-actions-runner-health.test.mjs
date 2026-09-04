@@ -194,16 +194,19 @@ test('runner health publisher fits a replacement into a near-limit issue body', 
   assert.ok(body.length <= 65_000);
 });
 
-test('all status writers share a non-cancelling issue lock', () => {
+test('lightweight status writers share a non-cancelling issue lock', () => {
   const workflows = [
     read('.github/workflows/publish-github-actions-runner-health.yml'),
     read('.github/workflows/publish-github-deployment-health.yml'),
-    read('.github/workflows/sh-observability.yml'),
   ];
   for (const workflow of workflows) {
     assert.match(workflow, /group: cloudflare-observability-status-issue/);
     assert.match(workflow, /cancel-in-progress: false/);
   }
+
+  const observability = read('.github/workflows/sh-observability.yml');
+  assert.doesNotMatch(observability, /group: cloudflare-observability-status-issue/);
+  assert.doesNotMatch(observability, /cancel-in-progress:/);
 });
 
 test('lightweight workflow refreshes after operational workflows and synchronizes system status', () => {
