@@ -34,18 +34,21 @@ class PowerSavingController {
   void OpenMvStartupInputPass();
   void CloseMvStartupInputPass();
   void ApplyMode(bool enabled);
+  void ApplyMediaMute(bool enabled) noexcept;
   void ApplyMinimumBrightness() noexcept;
   void RestoreBrightness() noexcept;
   void RefreshMinimumBrightness() noexcept;
   void LayoutOverlay();
   void PaintOverlay(HWND window);
-  RECT ParentButtonRect() const;
-  RECT LocalButtonRect() const;
+  RECT ParentControlStackRect() const;
+  RECT LocalPowerButtonRect() const;
+  RECT LocalMuteButtonRect() const;
 
   HHOOK hook_ = nullptr;
   HWND parent_ = nullptr;
   HWND overlay_ = nullptr;
   bool powerSaving_ = false;
+  bool mediaMuted_ = false;
   bool mvStartupInputPass_ = false;
   bool scheduleInitialized_ = false;
   int64_t nextScheduleBoundaryAt_ = 0;
