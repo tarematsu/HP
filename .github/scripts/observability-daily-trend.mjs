@@ -203,6 +203,13 @@ function previousMetricSnapshots(previousIssueBody, metricLabel) {
     }));
 }
 
+function selectHighWatermarkCandidate(candidates) {
+  return [...(candidates || [])].sort((left, right) => (
+    right.previous.actual - left.previous.actual
+    || right.previousTimestamp - left.previousTimestamp
+  ))[0] || null;
+}
+
 export function calculateDailyMetricTrend({
   metricLabel,
   currentSummary = '',
@@ -219,27 +226,25 @@ export function calculateDailyMetricTrend({
     .map((previous) => {
       const previousTimestamp = Date.parse(previous.generatedAt);
       const elapsedSeconds = Math.round((currentTimestamp - previousTimestamp) / 1000);
-      const delta = current.actual - previous.actual;
-      return { previous, previousTimestamp, elapsedSeconds, delta };
+      return { previous, previousTimestamp, elapsedSeconds };
     })
-    .filter(({ previous, previousTimestamp, elapsedSeconds, delta }) => (
+    .filter(({ previous, previousTimestamp, elapsedSeconds }) => (
       Number.isFinite(previousTimestamp)
       && previous.date === current.date
       && elapsedSeconds >= minimum
       && elapsedSeconds <= MAX_TREND_SECONDS
-      && delta >= 0
-    ))
-    .sort((left, right) => right.previousTimestamp - left.previousTimestamp);
+    ));
 
-  const selected = candidates[0];
+  const selected = selectHighWatermarkCandidate(candidates);
   if (!selected) return null;
 
+  const delta = Math.max(0, current.actual - selected.previous.actual);
   return {
     current,
     previous: selected.previous,
     elapsedSeconds: selected.elapsedSeconds,
-    delta: selected.delta,
-    recentProjected24h: Math.ceil((selected.delta * DAY_SECONDS) / selected.elapsedSeconds),
+    delta,
+    recentProjected24h: Math.ceil((delta * DAY_SECONDS) / selected.elapsedSeconds),
   };
 }
 
@@ -348,5 +353,5 @@ export function renderDailyD1SnapshotPace({
 |---|---:|---:|---:|---:|---:|---|
 ${rows}
 
-_Alert and containment classification use the newest comparable snapshot at least 20 minutes old._`;
+_Alert and containment classification use the highest comparable same-day cumulative snapshot, with the newest snapshot winning ties._`;
 }

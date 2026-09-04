@@ -133,7 +133,7 @@ test('containment fails closed when only a 17-minute comparison exists', () => {
   assert.match(triage, /Recent D1 rows read pace \| \*\*UNKNOWN\*\*/);
 });
 
-test('alert and containment select the newest history snapshot at least 20 minutes old', () => {
+test('alert and containment select the highest comparable same-day cumulative snapshot', () => {
   const generatedAt = '2026-07-27T13:30:00.000Z';
   const currentSummary = dailySummary({ rowsRead: 10_004_000, rowsWritten: 42_000 });
   const history = historyBlock([
@@ -175,7 +175,7 @@ test('alert and containment select the newest history snapshot at least 20 minut
     generatedAt,
   });
   assert.match(display, /\| D1 rows read \| \+1,500 \| 17m \| 127,059\/day/);
-  assert.match(display, /Alert and containment classification use the newest comparable snapshot at least 20 minutes old/);
+  assert.match(display, /highest comparable same-day cumulative snapshot/);
 
   const triage = buildObservabilityTriage({
     outcomes,
@@ -187,6 +187,77 @@ test('alert and containment select the newest history snapshot at least 20 minut
   assert.match(triage, /CONTAINED — 1 historical signal remains/);
   assert.match(triage, /recent pace 144,000\/day vs 5,000,000\/day limit/);
   assert.match(triage, /Recent D1 rows read pace \| \*\*OK\*\*/);
+});
+
+test('analytics rollback does not get counted again when cumulative usage rebounds', () => {
+  const generatedAt = '2026-07-27T13:30:00.000Z';
+  const currentSummary = dailySummary({ rowsRead: 10_004_000, rowsWritten: 42_000 });
+  const history = historyBlock([
+    {
+      generatedAt: '2026-07-27T12:50:00.000Z',
+      date: '2026-07-27',
+      rowsRead: 10_000_000,
+      rowsWritten: 41_000,
+    },
+    {
+      generatedAt: '2026-07-27T13:00:00.000Z',
+      date: '2026-07-27',
+      rowsRead: 10_003_000,
+      rowsWritten: 41_800,
+    },
+  ]);
+  const previousIssueBody = previousIssue({
+    generatedAt: '2026-07-27T13:10:00.000Z',
+    rowsRead: 10_001_000,
+    rowsWritten: 41_500,
+    history,
+  });
+
+  const paces = classifyDailyD1SnapshotPaces({
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
+  assert.equal(paces.rowsRead?.previous.actual, 10_003_000);
+  assert.equal(paces.rowsRead?.elapsedSeconds, 30 * 60);
+  assert.equal(paces.rowsRead?.delta, 1_000);
+  assert.equal(paces.rowsRead?.recentProjected24h, 48_000);
+
+  const display = renderDailyD1SnapshotPace({
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
+  assert.match(display, /\| D1 rows read \| \+1,000 \| 30m \| 48,000\/day/);
+});
+
+test('current analytics rollback produces zero new usage until the high watermark is exceeded', () => {
+  const generatedAt = '2026-07-27T13:30:00.000Z';
+  const currentSummary = dailySummary({ rowsRead: 10_002_000, rowsWritten: 42_000 });
+  const history = historyBlock([
+    {
+      generatedAt: '2026-07-27T13:00:00.000Z',
+      date: '2026-07-27',
+      rowsRead: 10_003_000,
+      rowsWritten: 41_800,
+    },
+  ]);
+  const previousIssueBody = previousIssue({
+    generatedAt: '2026-07-27T13:10:00.000Z',
+    rowsRead: 10_001_000,
+    rowsWritten: 41_500,
+    history,
+  });
+
+  const paces = classifyDailyD1SnapshotPaces({
+    currentSummary,
+    previousIssueBody,
+    generatedAt,
+  });
+  assert.equal(paces.rowsRead?.previous.actual, 10_003_000);
+  assert.equal(paces.rowsRead?.delta, 0);
+  assert.equal(paces.rowsRead?.recentProjected24h, 0);
+  assert.equal(paces.rowsRead?.state, 'healthy');
 });
 
 test('history is persisted in the issue body and bounded to eight snapshots', () => {
