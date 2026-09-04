@@ -142,7 +142,8 @@ test('music phase targets Lonesome rabbit and enforces repeat one with trusted n
   );
   assert.match(spotify, /__homePanelLonesomeRabbitLoop/);
   assert.match(spotify, /ensureRepeatOne/);
-  assert.match(spotify, /getAttribute\('aria-checked'\) === 'mixed'/);
+  assert.match(spotify, /const state = repeat\.getAttribute\('aria-checked'\)/);
+  assert.match(spotify, /state === 'mixed'/);
   assert.match(spotifyPhaseSync, /kSpotifyRobustMusicScript/);
   assert.match(spotifyPhaseSync, /\/album\/2f2Ik9JeinFVWZuFb3i35b/);
   assert.match(spotifyPhaseSync, /control-button-playpause/);
