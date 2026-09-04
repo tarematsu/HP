@@ -4,6 +4,7 @@
 #include "stationhead_native_stats.h"
 #include "stationhead_play_summary.h"
 #endif
+#include "native_media_audio.h"
 #include "shared_webview_environment.h"
 #include "spotify_webviews.h"
 #include "version.h"
@@ -25,6 +26,30 @@
 #undef SplitSidebarSections
 
 #include "renderer_panels/environment_sections.inc"
+
+namespace {
+ComPtr<ICoreWebView2_8> gNativeMediaAudioWebView;
+bool gNativeMediaMuted = false;
+
+void RegisterNativeMediaAudioWebView(ICoreWebView2* webview) noexcept {
+  gNativeMediaAudioWebView.Reset();
+  if (!webview) return;
+  ComPtr<ICoreWebView2_8> audioWebView;
+  if (FAILED(webview->QueryInterface(IID_PPV_ARGS(&audioWebView))) ||
+      !audioWebView) {
+    return;
+  }
+  gNativeMediaAudioWebView = audioWebView;
+  gNativeMediaAudioWebView->put_IsMuted(gNativeMediaMuted ? TRUE : FALSE);
+}
+}  // namespace
+
+void SetNativeMediaPanelMuted(bool muted) noexcept {
+  gNativeMediaMuted = muted;
+  if (gNativeMediaAudioWebView) {
+    gNativeMediaAudioWebView->put_IsMuted(muted ? TRUE : FALSE);
+  }
+}
 
 namespace {
 constexpr UINT kNativeMediaYoutubePhaseOverrideMs = 30U * 60U * 1000U;
@@ -194,7 +219,10 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
   ClearBrowsingData((AdvanceNativeMediaTverSeries(), (dataKinds)), (handler))
 #define ExecuteScript(script, callback)                                         \
   ExecuteScript(RewriteNativeMediaExecuteScript((script)).c_str(), (callback))
+#define get_CoreWebView2(out)                                                    \
+  get_CoreWebView2(out); RegisterNativeMediaAudioWebView(webview_)
 #include "renderer_panels/media_section.inc"
+#undef get_CoreWebView2
 #undef ExecuteScript
 #undef ClearBrowsingData
 #undef Navigate
