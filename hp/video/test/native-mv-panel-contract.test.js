@@ -73,7 +73,7 @@ test('media cycle alternates YouTube and TVer every hour by recreating only the 
   assert.doesNotMatch(composition, /SetSpotifyAmazonPodcastMode/);
 });
 
-test('YouTube and TVer keep phase start/end times visible for the whole hour', () => {
+test('YouTube and TVer keep phase start/end times visible for the whole hour with a borderless translucent gray label', () => {
   assert.match(mediaPanel, /FormatNativeMediaLocalHourMinute/);
   assert.match(
     mediaPanel,
@@ -90,8 +90,11 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour', (
   assert.match(mediaPanel, /__homePanelMediaPhaseTime/);
   assert.match(mediaPanel, /phase_ == Phase::YouTube \? L"YouTube " : L"TVer "/);
   assert.match(mediaPanel, /top:8px;right:8px;z-index:2147483647/);
-  assert.match(mediaPanel, /background:rgba\(96,96,96,\.62\)/);
+  assert.match(mediaPanel, /padding:0;border:0;border-radius:0;background:transparent/);
+  assert.match(mediaPanel, /color:rgba\(176,176,176,\.58\)/);
   assert.match(mediaPanel, /font:600 12px\/1\.2/);
+  assert.match(mediaPanel, /cursor:none !important/);
+  assert.match(mediaPanel, /windowClass\.hCursor = nullptr/);
   assert.match(mediaPanel, /document\.querySelector\('#movie_player'\)/);
   assert.match(mediaPanel, /window\.__homePanelMediaPhaseClockTimer/);
   assert.match(mediaPanel, /window\.setInterval\(mount, 1000\)/);
@@ -152,7 +155,7 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   );
 });
 
-test('TVer opens Sakura Meets latest episode at 1.75x, low quality, and fullscreen', () => {
+test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality in-page, and independently recovers fullscreen', () => {
   assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
   assert.match(mediaPanel, /最新話\|最新回/);
@@ -163,12 +166,15 @@ test('TVer opens Sakura Meets latest episode at 1.75x, low quality, and fullscre
   assert.match(mediaPanel, /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300/);
   assert.match(mediaPanel, /location\.replace\(seriesUrl\)/);
   assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(mediaPanel, /qualityChoices/);
+  assert.match(mediaPanel, /qualityLabels\.size >= 3/);
+  assert.match(mediaPanel, /qualityName\(element\) === '低'/);
+  assert.match(mediaPanel, /lowOption\.click\(\)/);
+  assert.match(mediaPanel, /currentQuality\.click\(\)/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogTimer = 0x4D560007/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogMs = 2U \* 1000U/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogScript/);
-  assert.match(mediaPanel, /lowQualitySet/);
-  assert.match(mediaPanel, /低画質/);
-  assert.match(mediaPanel, /画質設定/);
+  assert.match(mediaPanel, /new MouseEvent\('mousemove'/);
   assert.match(mediaPanel, /document\.fullscreenElement/);
   assert.match(mediaPanel, /全画面/);
   assert.match(mediaPanel, /BeginTverPlaybackMonitor\(\)/);
