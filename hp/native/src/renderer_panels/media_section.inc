@@ -229,7 +229,13 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
     const path = location.pathname;
     let state = window.__homePanelSakuraMeetsState;
     if (!state || state.path !== path) {
-      state = { path, maxDuration: 0, maxTime: 0, lowQualitySet: false };
+      state = {
+        path,
+        maxDuration: 0,
+        maxTime: 0,
+        lowQualitySet: false,
+        restartRequested: false,
+      };
       window.__homePanelSakuraMeetsState = state;
     }
     const videos = Array.from(document.querySelectorAll('video'));
@@ -244,7 +250,7 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
         state.maxTime = Math.max(state.maxTime, video.currentTime);
       }
       if (video.ended && state.maxDuration >= 600 && state.maxTime >= 300) {
-        location.replace(seriesUrl);
+        state.restartRequested = true;
         return;
       }
       video.muted = false;
@@ -325,6 +331,8 @@ constexpr wchar_t kNativeMediaTverWatchdogScript[] = LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp' ||
       !location.pathname.startsWith('/episodes/')) return null;
+  const state = window.__homePanelSakuraMeetsState;
+  if (state && state.restartRequested) return 'restart';
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visible = element => {
     if (!element || element.disabled ||
@@ -476,6 +484,7 @@ class NativeMediaPanelHost final {
 
   void Shutdown() noexcept {
     alive_->store(false, std::memory_order_release);
+    tverRestarting_ = false;
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
@@ -736,6 +745,7 @@ class NativeMediaPanelHost final {
 
   void SwitchToYouTube() noexcept {
     phase_ = Phase::YouTube;
+    tverRestarting_ = false;
     CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
@@ -748,6 +758,7 @@ class NativeMediaPanelHost final {
 
   void SwitchToTver() noexcept {
     phase_ = Phase::Tver;
+    tverRestarting_ = false;
     CapturePhaseTimes();
     failed_ = false;
     StopYoutubeMonitors();
@@ -857,18 +868,59 @@ class NativeMediaPanelHost final {
   }
 
   void BeginTverPlaybackMonitor() noexcept {
-    if (!hostWindow_ || !IsWindow(hostWindow_)) return;
+    if (!hostWindow_ || !IsWindow(hostWindow_) || tverRestarting_) return;
     tverWatchdogInFlight_ = false;
     KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
     SetTimer(hostWindow_, kNativeMediaTverWatchdogTimer,
              kNativeMediaTverWatchdogMs, nullptr);
     ProbeTverWatchdog();
   }
+
   void StopTverPlaybackMonitor() noexcept {
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
     }
     tverWatchdogInFlight_ = false;
+  }
+
+  void CompleteTverRestart() noexcept {
+    if (!tverRestarting_) return;
+    tverRestarting_ = false;
+    if (phase_ != Phase::Tver || !hostWindow_ || !IsWindow(hostWindow_)) return;
+    StopNavigationRetry();
+    CloseController();
+    CreateControllerForCurrentPhase();
+  }
+
+  void RestartTverAfterPlayback() noexcept {
+    if (phase_ != Phase::Tver || !webview_ || tverRestarting_) return;
+    tverRestarting_ = true;
+    StopTverPlaybackMonitor();
+
+    ComPtr<ICoreWebView2_13> webview13;
+    ComPtr<ICoreWebView2Profile> profile;
+    ComPtr<ICoreWebView2Profile2> profile2;
+    if (FAILED(webview_.As(&webview13)) || !webview13 ||
+        FAILED(webview13->get_Profile(&profile)) || !profile ||
+        FAILED(profile.As(&profile2)) || !profile2) {
+      CompleteTverRestart();
+      return;
+    }
+
+    const auto dataKinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
+        COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
+        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE);
+    const auto alive = alive_;
+    const HRESULT started = profile2->ClearBrowsingData(
+        dataKinds,
+        Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+            [this, alive](HRESULT) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire)) return S_OK;
+              CompleteTverRestart();
+              return S_OK;
+            }).Get());
+    if (FAILED(started)) CompleteTverRestart();
   }
 
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
@@ -969,7 +1021,7 @@ class NativeMediaPanelHost final {
 
   void ProbeTverWatchdog() noexcept {
     if (phase_ != Phase::Tver || !webview_ || tverWatchdogInFlight_ ||
-        !IsTverPage()) return;
+        tverRestarting_ || !IsTverPage()) return;
     tverWatchdogInFlight_ = true;
     const auto alive = alive_;
     const HRESULT started = webview_->ExecuteScript(
@@ -979,6 +1031,11 @@ class NativeMediaPanelHost final {
               if (!alive->load(std::memory_order_acquire)) return S_OK;
               tverWatchdogInFlight_ = false;
               if (phase_ != Phase::Tver || !IsTverPage()) return S_OK;
+              if (SUCCEEDED(result) && json &&
+                  std::wstring_view(json) == L"\"restart\"") {
+                RestartTverAfterPlayback();
+                return S_OK;
+              }
               int x = 0;
               int y = 0;
               if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
@@ -1043,6 +1100,7 @@ class NativeMediaPanelHost final {
 
   void Fail() noexcept {
     failed_ = true;
+    tverRestarting_ = false;
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
@@ -1070,6 +1128,7 @@ class NativeMediaPanelHost final {
   bool playbackHealthProbeInFlight_ = false;
   bool youtubeWatchdogInFlight_ = false;
   bool tverWatchdogInFlight_ = false;
+  bool tverRestarting_ = false;
   bool failed_ = false;
 };
 

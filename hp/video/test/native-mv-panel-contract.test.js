@@ -155,7 +155,7 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   );
 });
 
-test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality in-page, and independently recovers fullscreen', () => {
+test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and independently recovers fullscreen', () => {
   assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
   assert.match(mediaPanel, /最新話\|最新回/);
@@ -163,8 +163,6 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality in-p
   assert.match(mediaPanel, /const playbackRate = 1\.75/);
   assert.match(mediaPanel, /video\.defaultPlaybackRate = playbackRate/);
   assert.match(mediaPanel, /video\.playbackRate = playbackRate/);
-  assert.match(mediaPanel, /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300/);
-  assert.match(mediaPanel, /location\.replace\(seriesUrl\)/);
   assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
   assert.match(mediaPanel, /qualityChoices/);
   assert.match(mediaPanel, /qualityLabels\.size >= 3/);
@@ -182,6 +180,31 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality in-p
   assert.match(
     mediaPanel,
     /timerId == kNativeMediaTverWatchdogTimer[\s\S]*ProbeTverWatchdog\(\)/,
+  );
+});
+
+test('TVer episode completion clears cookies and caches before recreating its WebView controller', () => {
+  assert.match(
+    mediaPanel,
+    /video\.ended && state\.maxDuration >= 600 && state\.maxTime >= 300[\s\S]*state\.restartRequested = true/,
+  );
+  assert.match(mediaPanel, /state && state\.restartRequested\) return 'restart'/);
+  assert.match(mediaPanel, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
+  assert.match(mediaPanel, /RestartTverAfterPlayback\(\)/);
+  assert.match(mediaPanel, /ICoreWebView2_13/);
+  assert.match(mediaPanel, /get_Profile\(&profile\)/);
+  assert.match(mediaPanel, /ICoreWebView2Profile2/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE/);
+  assert.match(mediaPanel, /COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE/);
+  assert.match(mediaPanel, /profile2->ClearBrowsingData\(/);
+  assert.match(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*ArmPhaseTimer\(\)/,
   );
 });
 
