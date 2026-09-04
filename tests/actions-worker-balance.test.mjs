@@ -12,7 +12,7 @@ const scheduledWorkerActions = [
 ];
 
 function assertVerifiedNpmCache(workflow, path) {
-  assert.match(workflow, /uses: actions\/setup-node@v4/, path);
+  assert.match(workflow, /uses: actions\/setup-node@v7/, path);
   assert.match(workflow, /cache: npm/, path);
   assert.match(workflow, /cache-dependency-path: worker\/package-lock\.json/, path);
   assert.match(workflow, /npm ci --prefer-offline --no-audit --no-fund/, path);
@@ -39,7 +39,7 @@ test('minute rebuild keeps package-manager caching without restoring node_module
   const rebuild = database.match(
     /  minute-facts-local-rebuild:([\s\S]*?)\n  payload-purge:/,
   )?.[1] || '';
-  assert.match(rebuild, /uses: actions\/setup-node@v4/);
+  assert.match(rebuild, /uses: actions\/setup-node@v7/);
   assert.match(rebuild, /cache: npm/);
   assert.match(rebuild, /cache-dependency-path: worker\/package-lock\.json/);
   assert.match(rebuild, /npm ci --no-audit --no-fund/);
