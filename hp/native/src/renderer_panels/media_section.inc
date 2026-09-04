@@ -208,7 +208,12 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
   };
   const labelOf = element => normalize(
       (element.getAttribute('aria-label') || '') + ' ' +
+      (element.getAttribute('title') || '') + ' ' +
       (element.textContent || ''));
+  const qualityName = element => labelOf(element)
+      .replace(/[（(](?:選択中|設定中)[）)]/g, '')
+      .replace(/画質$/, '')
+      .trim();
 
   const openLatestEpisode = () => {
     const links = Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
@@ -224,7 +229,7 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
     const path = location.pathname;
     let state = window.__homePanelSakuraMeetsState;
     if (!state || state.path !== path) {
-      state = { path, maxDuration: 0, maxTime: 0 };
+      state = { path, maxDuration: 0, maxTime: 0, lowQualitySet: false };
       window.__homePanelSakuraMeetsState = state;
     }
     const videos = Array.from(document.querySelectorAll('video'));
@@ -246,8 +251,36 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
       if (video.volume === 0) video.volume = 1;
     }
 
-    const buttons = Array.from(document.querySelectorAll('button, [role="button"]'))
-        .filter(isDisplayed);
+    const controls = Array.from(document.querySelectorAll(
+        'button, [role="button"], [role="menuitem"], [role="radio"], '
+        + '[role="option"], li')).filter(isDisplayed);
+    const qualityChoices = controls.filter(element =>
+        /^(自動|高|中|低)$/.test(qualityName(element)));
+    const qualityLabels = new Set(qualityChoices.map(qualityName));
+    const lowOption = qualityChoices.find(element => qualityName(element) === '低') || null;
+    const lowSelected = lowOption && (
+        lowOption.getAttribute('aria-checked') === 'true' ||
+        lowOption.getAttribute('aria-selected') === 'true' ||
+        lowOption.getAttribute('data-state') === 'checked' ||
+        /選択中|設定中/.test(labelOf(lowOption)));
+    if (qualityLabels.size >= 3 && lowOption) {
+      if (!lowSelected) {
+        try { lowOption.click(); } catch (_) {}
+      }
+      state.lowQualitySet = true;
+    } else {
+      const currentQuality = qualityChoices.find(element =>
+          /^(自動|高|中)$/.test(qualityName(element))) || null;
+      if (currentQuality) {
+        state.lowQualitySet = false;
+        try { currentQuality.click(); } catch (_) {}
+      } else if (lowOption) {
+        state.lowQualitySet = true;
+      }
+    }
+
+    const buttons = controls.filter(element =>
+        element.matches('button, [role="button"]'));
     const playButton = buttons.find(button => {
       const label = labelOf(button).toLowerCase();
       return label === '再生' || label === '再生する' ||
@@ -318,54 +351,21 @@ constexpr wchar_t kNativeMediaTverWatchdogScript[] = LR"JS(
           ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
     ];
   };
-  const controls = Array.from(document.querySelectorAll(
-      'button, [role="button"], [role="menuitem"], [role="radio"], '
-      + '[role="option"], li'));
-  const state = window.__homePanelTverPlayerPrefs ||
-      (window.__homePanelTverPlayerPrefs = {
-        lowQualitySet: false,
-        lowClickPending: false,
-      });
-  const selected = element =>
-      element.getAttribute('aria-checked') === 'true' ||
-      element.getAttribute('aria-selected') === 'true' ||
-      element.getAttribute('data-state') === 'checked' ||
-      /選択中|設定中/.test(labelOf(element));
-  const lowOption = controls.find(element => {
-    if (!visible(element)) return false;
-    const label = labelOf(element);
-    return label === '低' || label === '低画質' ||
-           /^低(?:\s|$)/.test(label) || /低画質/.test(label);
-  }) || null;
 
-  if (!state.lowQualitySet) {
-    if (state.lowClickPending && !lowOption) {
-      state.lowQualitySet = true;
-      state.lowClickPending = false;
-    } else if (lowOption) {
-      if (selected(lowOption)) {
-        state.lowQualitySet = true;
-        state.lowClickPending = false;
-      } else {
-        state.lowClickPending = true;
-        return point(lowOption);
-      }
-    }
-    if (!state.lowQualitySet) {
-      const quality = controls.find(element =>
-          visible(element) && /(^|\s)画質($|\s)|画質設定/.test(labelOf(element)));
-      if (quality) return point(quality);
-      const settings = controls.find(element => {
-        if (!visible(element)) return false;
-        const label = labelOf(element).toLowerCase();
-        return label === '設定' || label.includes('プレイヤー設定') ||
-               label === 'settings' || label.includes('setting');
-      });
-      if (settings) return point(settings);
-      return null;
+  const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
+  if (video) {
+    try {
+      const rect = video.getBoundingClientRect();
+      video.dispatchEvent(new MouseEvent('mousemove', {
+        bubbles: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }));
+    } catch (_) {
     }
   }
 
+  const controls = Array.from(document.querySelectorAll('button, [role="button"]'));
   const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
       controls.some(element => {
         if (!visible(element)) return false;
@@ -509,6 +509,7 @@ class NativeMediaPanelHost final {
     std::wstring script = LR"JS(
 (() => {
   const id = '__homePanelMediaPhaseTime';
+  const cursorStyleId = '__homePanelMediaCursorStyle';
   const text = ')JS";
     script += phase_ == Phase::YouTube ? L"YouTube " : L"TVer ";
     script += phaseStartText_;
@@ -516,6 +517,13 @@ class NativeMediaPanelHost final {
     script += phaseEndText_;
     script += LR"JS(';
   const mount = () => {
+    const styleRoot = document.head || document.documentElement;
+    if (styleRoot && !document.getElementById(cursorStyleId)) {
+      const cursorStyle = document.createElement('style');
+      cursorStyle.id = cursorStyleId;
+      cursorStyle.textContent = '* { cursor:none !important; }';
+      styleRoot.appendChild(cursorStyle);
+    }
     const player = document.querySelector('#movie_player');
     const root = player || document.body || document.documentElement;
     if (!root) return;
@@ -528,8 +536,8 @@ class NativeMediaPanelHost final {
     badge.style.cssText =
         (player ? 'position:absolute;' : 'position:fixed;') +
         'top:8px;right:8px;z-index:2147483647;' +
-        'padding:4px 6px;border-radius:4px;background:rgba(96,96,96,.62);' +
-        'color:#fff;font:600 12px/1.2 "Segoe UI",sans-serif;' +
+        'padding:0;border:0;border-radius:0;background:transparent;' +
+        'color:rgba(176,176,176,.58);font:600 12px/1.2 "Segoe UI",sans-serif;' +
         'letter-spacing:.2px;white-space:nowrap;pointer-events:none;';
     if (badge.parentElement !== root) root.appendChild(badge);
   };
@@ -856,7 +864,6 @@ class NativeMediaPanelHost final {
              kNativeMediaTverWatchdogMs, nullptr);
     ProbeTverWatchdog();
   }
-
   void StopTverPlaybackMonitor() noexcept {
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaTverWatchdogTimer);
@@ -1114,7 +1121,7 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
     windowClass.lpfnWndProc = NativeMediaPanelWndProc;
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = kNativeMvPanelHostClass;
-    windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    windowClass.hCursor = nullptr;
     windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     SetLastError(ERROR_SUCCESS);
     registered = RegisterClassW(&windowClass) != 0 ||
