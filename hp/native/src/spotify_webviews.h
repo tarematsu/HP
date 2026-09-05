@@ -128,10 +128,10 @@ class SpotifyWebViews final {
 };
 
 // tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00 and
-// TALKABOUT at 04:00. From 20:00 the four-minute music rotation is
+// TALKABOUT at 04:00. From 20:00 the three-minute music rotation is
 // Lonesome rabbit -> BitterBlue -> random C -> random D -> Lonesome rabbit.
 // C/D are a distinct pair drawn from the built-in >=2-minute Sakurazaka46
-// catalog for each 16-minute rotation cycle. Six accounts are offset by
+// catalog for each 12-minute rotation cycle. Six accounts are offset by
 // 40 seconds so only one Spotify WebView performs heavy work at a time.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
