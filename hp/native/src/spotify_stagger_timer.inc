@@ -6,7 +6,7 @@ constexpr UINT_PTR kSpotifyLegacyModeSwitchTimerId = 3;
 constexpr UINT_PTR kSpotifyRobustTimerId = 0x53505243;
 constexpr UINT kSpotifyLegacyStartupStepMs = 400U;
 constexpr UINT kSpotifyLegacyModeSwitchStepMs = 10U * 1000U;
-constexpr UINT kSpotifySerializedSlotStepMs = 3U * 60U * 1000U;
+constexpr UINT kSpotifySerializedSlotStepMs = 40U * 1000U;
 
 UINT_PTR SpotifyStaggeredSetTimer(
     HWND hwnd, UINT_PTR timerId, UINT interval, TIMERPROC callback) noexcept {
