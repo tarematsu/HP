@@ -1,1 +1,0 @@
-Spotify random catalog URLs are pinned in spotify_timed_sequence.inc and covered by native-spotify-three-minute-stagger.test.js.
