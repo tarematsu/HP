@@ -62,7 +62,7 @@ test('TVer alternates Sakura Meets and Death Youth Game after completed items', 
   );
 });
 
-test('Death Youth Game selects its preview and reliably latches short-preview completion', () => {
+test('Death Youth Game keeps completion latching after switching from preview to episode', () => {
   assert.match(composition, /kNativeMediaTverLoopOverrideScript/);
   assert.match(composition, /deathGameSeriesPath = '\/series\/srkzm5wbvp'/);
   assert.match(composition, /seriesPathKey = '__homePanelTverSeriesPath'/);
