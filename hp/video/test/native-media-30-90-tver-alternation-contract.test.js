@@ -114,6 +114,25 @@ test('TVer fullscreen uses trusted native input then requestFullscreen when the 
   );
 });
 
+test('TVer short ad clips are left at normal speed and excluded from recovery/fullscreen clicks', () => {
+  assert.match(
+    composition,
+    /const isAdvertisementVideo = video =>[\s\S]*video\.duration > 0 && video\.duration < 300/,
+  );
+  assert.match(
+    composition,
+    /if \(isAdvertisementVideo\(video\)\) \{[\s\S]*video\.defaultPlaybackRate = 1[\s\S]*video\.playbackRate = 1[\s\S]*return;/,
+  );
+  assert.match(
+    composition,
+    /kNativeMediaTverWatchdogOverrideScript[\s\S]*video\.duration > 0 && video\.duration < 300\) return null/,
+  );
+  assert.match(
+    composition,
+    /kNativeMediaTverForceFullscreenAfterClickScript[\s\S]*video\.duration > 0 && video\.duration < 300\) return;/,
+  );
+});
+
 test('TVer alternation keeps low quality and 1.75x while effective restart skips browsing-data deletion', () => {
   assert.match(composition, /const playbackRate = 1\.75/);
   assert.match(composition, /qualityName\(element\) === '低'/);
