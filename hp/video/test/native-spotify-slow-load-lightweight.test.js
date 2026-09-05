@@ -69,15 +69,19 @@ test('healthy Lonesome rabbit slots only run a full DOM check about once per min
   assert.match(guard, /TALKABOUT stays on the[\s\S]*normal cadence/);
 });
 
-test('only unhealthy Spotify hosts stay expanded while healthy hosts collapse to 1x1', () => {
+test('only the active unhealthy Spotify host stays expanded while all others collapse to 1x1', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
+  assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /DeferSpotifyHostWindowPos/);
   assert.match(header, /SetSpotifyHostWindowPos/);
   assert.match(wrapper, /#define DeferWindowPos/);
   assert.match(wrapper, /#define SetWindowPos/);
   assert.match(guard, /slot && slot->playing && width > 1 && height > 1/);
-  assert.match(guard, /width = 1;\s*height = 1;\s*insertAfter = HWND_BOTTOM/);
+  assert.match(guard, /void ParkSpotifyHost\(/);
+  assert.match(guard, /\*width = 1;\s*\*height = 1;\s*\*insertAfter = HWND_BOTTOM/);
+  assert.match(guard, /slot->index != activeIndex[\s\S]*ParkSpotifyHost/);
   assert.match(guard, /void SpotifyWebViews::RefreshSpotifyHostLayout\(\) noexcept/);
   assert.match(guard, /if \(!slots_\[i\]\.playing\) mask \|= \(1u << i\)/);
+  assert.match(guard, /hostLayoutActiveSlot_ == activeIndex/);
   assert.match(guard, /PlaceHosts\(mask != 0\)/);
 });
