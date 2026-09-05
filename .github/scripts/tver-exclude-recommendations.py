@@ -11,6 +11,10 @@ src.write_text(text, encoding='utf-8')
 
 test = Path('hp/video/test/native-tver-all-episodes-contract.test.js')
 t = test.read_text(encoding='utf-8')
+old_filter = "  assert.match(composition, /\\.filter\\(link => link\\.href\\)/);\n"
+if old_filter not in t:
+    raise SystemExit('obsolete href-only assertion not found')
+t = t.replace(old_filter, '', 1)
 old_t = "  assert.match(composition, /Array\\.from\\(new Set\\(/);\n"
 new_t = """  assert.match(composition, /const isCurrentSeriesEpisodeLink = link =>/);\n  assert.match(composition, /normalize\\(element\\.textContent\\) === 'あなたにおすすめ'/);\n  assert.match(composition, /link\\.compareDocumentPosition\\(recommendationHeading\\)/);\n  assert.match(composition, /Node\\.DOCUMENT_POSITION_FOLLOWING/);\n  assert.match(composition, /\\.filter\\(isCurrentSeriesEpisodeLink\\)/);\n  assert.match(composition, /Array\\.from\\(new Set\\(/);\n"""
 if old_t not in t:
