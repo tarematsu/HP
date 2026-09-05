@@ -100,6 +100,28 @@ std::wstring BuildSpotifyTimedEndObserverScript(
 }
 }  // namespace
 
+void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
+  if (!slot.webview) return;
+  constexpr wchar_t script[] = LR"JS(
+(() => {
+  document.querySelectorAll('audio, video').forEach(media => {
+    try { media.pause(); } catch (_) {}
+  });
+  const button = document.querySelector(
+      'button[data-testid="control-button-playpause"]');
+  if (button) {
+    const label = ((button.getAttribute('aria-label') || button.title || ''))
+        .toLowerCase();
+    if (label.includes('pause') || label.includes('一時停止')) {
+      try { button.click(); } catch (_) {}
+    }
+  }
+  return true;
+})()
+)JS";
+  slot.webview->ExecuteScript(script, nullptr);
+}
+
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
   switch (slot.timedRotationPosition % 4U) {
@@ -131,14 +153,14 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   slot.timedRotationActive = true;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
-  EnsureTimedRandomPair(slot.timedRotationCycle);
+  EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
   slot.timedRandomCIndex = timedRandomCIndex_;
   slot.timedRandomDIndex = timedRandomDIndex_;
   slot.timedStepStartTick = now;
   ApplyTimedRotationTarget(slot);
   timedPrioritySlotIndex_ = slot.index;
   timedPriorityUntilTick_ = now + kSpotifyTimedPriorityHoldMs;
-  NavigateTimedSlot(slot);
+  NavigateActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::AdvanceTimedRotationSlot(
@@ -148,7 +170,7 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
       static_cast<unsigned char>((slot.timedRotationPosition + 1U) % 4U);
   if (slot.timedRotationPosition == 0U) {
     ++slot.timedRotationCycle;
-    EnsureTimedRandomPair(slot.timedRotationCycle);
+    EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
     slot.timedRandomCIndex = timedRandomCIndex_;
     slot.timedRandomDIndex = timedRandomDIndex_;
   }
@@ -160,15 +182,19 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   staggerSlotStartTick_ = now;
   staggerSlotValidated_ = false;
   RefreshSpotifyHostLayout();
-  NavigateTimedSlot(slot);
+  NavigateActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
+  const bool recentBridge =
+      !slot.timedRotationActive &&
+      slot.timedTarget == TimedSpotifyTarget::CatalogTrack &&
+      IsRecentCatalogIndex(slot.timedCatalogIndex);
   if (!slot.webview ||
       slot.timedTarget == TimedSpotifyTarget::TalkAbout ||
       slot.timedTarget == TimedSpotifyTarget::None ||
       (!slot.timedRotationActive &&
-       slot.timedTarget != TimedSpotifyTarget::BitterBlue)) {
+       slot.timedTarget != TimedSpotifyTarget::BitterBlue && !recentBridge)) {
     return;
   }
 
@@ -196,10 +222,22 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
               const ULONGLONG now = GetTickCount64();
               if (!target->timedRotationActive) {
+                bool completed = false;
                 if (target->timedTarget == TimedSpotifyTarget::BitterBlue) {
                   target->timedPreludeCompleted = true;
+                  completed = true;
+                } else if (
+                    target->timedTarget == TimedSpotifyTarget::CatalogTrack &&
+                    IsRecentCatalogIndex(target->timedCatalogIndex)) {
+                  target->timedBridgeCompleted = true;
+                  completed = true;
+                }
+                if (completed) {
+                  target->timedCompletionPendingTick = 0;
                   target->playing = true;
                   target->unhealthyChecks = 0;
+                  target->timedUnhealthySinceTick = 0;
+                  StopTimedOneShotPlayback(*target);
                   RecomputeForeground();
                 }
                 return S_OK;
@@ -237,10 +275,19 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
       targetTitle = L"lonesome rabbit";
       break;
     case TimedSpotifyTarget::CatalogTrack: {
+      if (IsRecentCatalogIndex(slot.timedCatalogIndex)) {
+        const SpotifyRecentCatalogTrack* track =
+            RecentTimedCatalogTrack(slot.timedCatalogIndex);
+        if (!track) return;
+        targetPath = track->trackPath;
+        targetTitle = track->title;
+        break;
+      }
       const SpotifyTimedCatalogTrack* track =
           TimedCatalogTrack(slot.timedCatalogIndex);
       if (!track) return;
       targetPath = track->path;
+      targetTitle = track->title;
       break;
     }
     case TimedSpotifyTarget::TalkAbout:
