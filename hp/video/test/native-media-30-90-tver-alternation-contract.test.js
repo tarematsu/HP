@@ -81,6 +81,8 @@ test('Death Youth Game keeps completion latching after switching from preview to
     composition,
     /__homePanelSakuraMeetsLoopTimer[\s\S]*return kNativeMediaTverLoopOverrideScript/,
   );
+  assert.match(composition, /window\.setInterval\(ensure, 4000\)/);
+  assert.match(composition, /gNativeMediaTverSteadyIntervalMs = 4000U/);
 });
 
 test('TVer survey modal is dismissed by its close button', () => {
@@ -114,7 +116,7 @@ test('TVer fullscreen uses trusted native input then requestFullscreen when the 
   );
 });
 
-test('TVer alternation keeps low quality and 1.75x while effective restart skips browsing-data deletion', () => {
+test('TVer alternation keeps low quality and 1.75x while effective restart reuses the controller', () => {
   assert.match(composition, /const playbackRate = 1\.75/);
   assert.match(composition, /qualityName\(element\) === '低'/);
   assert.match(
@@ -129,6 +131,14 @@ test('TVer alternation keeps low quality and 1.75x while effective restart skips
   assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
-    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+    /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void RestartTverAfterPlayback/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*void RestartTverAfterPlayback/,
   );
 });
