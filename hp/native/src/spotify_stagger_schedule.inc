@@ -54,22 +54,18 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG elapsed = now - youtubeCycleStartTick_;
   const size_t scheduledIndex = static_cast<size_t>(
       (elapsed / kSpotifyTimedSlotOffsetMs) % slots_.size());
-  size_t selectedIndex = scheduledIndex;
 
-  // A just-finished song temporarily gets the large recovery viewport so its
-  // next target can start immediately instead of waiting for the normal
-  // six-account owner round to come back around.
-  if (timedPrioritySlotIndex_ < slots_.size() &&
-      now < timedPriorityUntilTick_) {
-    selectedIndex = timedPrioritySlotIndex_;
-  } else {
+  const bool priorityActive =
+      timedPrioritySlotIndex_ < slots_.size() &&
+      now < timedPriorityUntilTick_;
+  if (!priorityActive) {
     timedPrioritySlotIndex_ = kAccountCount;
     timedPriorityUntilTick_ = 0;
   }
 
   // Authentication is the only foreground Spotify state. Give an account up to
   // three minutes to finish manual login; otherwise the normal 40-second clock
-  // (or a just-finished song's temporary priority) owns the recovery viewport.
+  // owns the viewport, except for a just-finished song's short recovery priority.
   staggerSlotIndex_ %= slots_.size();
   const bool currentAuthentication =
       slots_[staggerSlotIndex_].webview &&
@@ -77,8 +73,15 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const bool holdAuthentication =
       currentAuthentication &&
       now - staggerSlotStartTick_ < kSpotifyAuthenticationHoldMs;
-  if (!holdAuthentication && staggerSlotIndex_ != selectedIndex) {
-    staggerSlotIndex_ = selectedIndex;
+
+  if (!holdAuthentication && priorityActive &&
+      staggerSlotIndex_ != timedPrioritySlotIndex_) {
+    staggerSlotIndex_ = timedPrioritySlotIndex_;
+    staggerSlotStartTick_ = now;
+    staggerSlotValidated_ = false;
+    RefreshSpotifyHostLayout();
+  } else if (!holdAuthentication && staggerSlotIndex_ != scheduledIndex) {
+    staggerSlotIndex_ = scheduledIndex;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
     RefreshSpotifyHostLayout();
