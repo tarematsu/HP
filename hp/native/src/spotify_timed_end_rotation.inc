@@ -129,11 +129,11 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
       slot.timedTarget = TimedSpotifyTarget::LonesomeRabbit;
       break;
     case 1:
-      slot.timedTarget = TimedSpotifyTarget::BitterBlue;
-      break;
-    case 2:
       slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
       slot.timedCatalogIndex = slot.timedRandomCIndex;
+      break;
+    case 2:
+      slot.timedTarget = TimedSpotifyTarget::BitterBlue;
       break;
     default:
       slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
