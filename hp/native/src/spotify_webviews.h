@@ -107,7 +107,7 @@ class SpotifyWebViews final {
 
 // tverPhase=false means the one-hour YouTube window has started: play one
 // TALKABOUT episode, then fall back to Lonesome rabbit. tverPhase=true starts
-// the one-hour TVer window; Spotify slots transition serially at 10-minute
+// the one-hour TVer window; Spotify slots transition serially at 3-minute
 // offsets so all six WebViews are never recovered at the same time.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
