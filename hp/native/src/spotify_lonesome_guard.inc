@@ -1,45 +1,29 @@
 namespace hp {
 namespace {
 
+constexpr size_t kSpotifyHealthyMusicFullCheckRounds = 5;
+
 constexpr wchar_t kSpotifyUltraLightPreamble[] = LR"JS(
 (() => {
   const id = '__homePanelSpotifyUltraLight';
-  const stripDecorations = () => {
-    if (!document.getElementById(id)) {
-      const style = document.createElement('style');
-      style.id = id;
-      style.textContent = `
-        *, *::before, *::after {
-          animation: none !important;
-          transition: none !important;
-          scroll-behavior: auto !important;
-          background-image: none !important;
-          box-shadow: none !important;
-          filter: none !important;
-          backdrop-filter: none !important;
-        }
-        img, picture, video, canvas {
-          display: none !important;
-        }
-      `;
-      (document.head || document.documentElement).appendChild(style);
+  if (document.getElementById(id)) return;
+  const style = document.createElement('style');
+  style.id = id;
+  style.textContent = `
+    *, *::before, *::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+      background-image: none !important;
+      box-shadow: none !important;
+      filter: none !important;
+      backdrop-filter: none !important;
     }
-    document.querySelectorAll('img').forEach(image => {
-      try {
-        image.removeAttribute('srcset');
-        image.removeAttribute('sizes');
-        image.loading = 'lazy';
-        image.decoding = 'async';
-      } catch (_) {}
-    });
-  };
-
-  stripDecorations();
-  if (!window.__homePanelSpotifyUltraLightObserver && document.documentElement) {
-    const observer = new MutationObserver(stripDecorations);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-    window.__homePanelSpotifyUltraLightObserver = observer;
-  }
+    img, picture, video, canvas {
+      display: none !important;
+    }
+  `;
+  (document.head || document.documentElement).appendChild(style);
 })()
 )JS";
 
@@ -208,17 +192,84 @@ constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
 })()
 )JS";
 
-const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept {
+}  // namespace
+
+HDWP SpotifyWebViews::DeferSpotifyHostWindowPos(
+    HDWP batch, HWND hwnd, HWND insertAfter, int x, int y,
+    int width, int height, UINT flags) noexcept {
+  auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  if (slot && slot->playing && width > 1 && height > 1) {
+    RECT parentClient{};
+    HWND parent = GetParent(hwnd);
+    if (parent && GetClientRect(parent, &parentClient)) {
+      x = parentClient.left + static_cast<int>(slot->index);
+      y = parentClient.top;
+    }
+    width = 1;
+    height = 1;
+    insertAfter = HWND_BOTTOM;
+  }
+  return ::DeferWindowPos(batch, hwnd, insertAfter, x, y, width, height, flags);
+}
+
+BOOL SpotifyWebViews::SetSpotifyHostWindowPos(
+    HWND hwnd, HWND insertAfter, int x, int y,
+    int width, int height, UINT flags) noexcept {
+  auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+  if (slot && slot->playing && width > 1 && height > 1) {
+    RECT parentClient{};
+    HWND parent = GetParent(hwnd);
+    if (parent && GetClientRect(parent, &parentClient)) {
+      x = parentClient.left + static_cast<int>(slot->index);
+      y = parentClient.top;
+    }
+    width = 1;
+    height = 1;
+    insertAfter = HWND_BOTTOM;
+  }
+  return ::SetWindowPos(hwnd, insertAfter, x, y, width, height, flags);
+}
+
+void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
+  unsigned mask = 0;
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    if (!slots_[i].playing) mask |= (1u << i);
+  }
+  if (hostLayoutMask_ == mask) return;
+  hostLayoutMask_ = mask;
+  PlaceHosts(mask != 0);
+}
+
+const wchar_t* SpotifyWebViews::RewriteSpotifyPhaseExecuteScript(
+    const wchar_t* script) noexcept {
   if (!script) return script;
+
+  RefreshSpotifyHostLayout();
+
   const std::wstring_view value(script);
-  const wchar_t* selected = script;
-  if (value.find(L"/album/2f2Ik9JeinFVWZuFb3i35b") != std::wstring_view::npos &&
-      value.find(L"ensureRepeatOne") != std::wstring_view::npos) {
-    selected = kSpotifyLonesomeRabbitGuardScript;
+  const bool isMusicPass =
+      value.find(L"/album/2f2Ik9JeinFVWZuFb3i35b") != std::wstring_view::npos &&
+      value.find(L"ensureRepeatOne") != std::wstring_view::npos;
+
+  // A healthy Lonesome rabbit slot only needs a full DOM verification once
+  // every five six-slot rounds: 5 * 6 * 2s ~= 60s. TALKABOUT stays on the
+  // normal cadence so episode completion is still detected promptly.
+  if (isMusicPass && !slots_.empty() && reconcileIndex_ != 0) {
+    const size_t dispatched = reconcileIndex_ - 1;
+    const size_t slotIndex = dispatched % slots_.size();
+    const size_t round = dispatched / slots_.size();
+    if (round != 0 && slots_[slotIndex].playing &&
+        (round % kSpotifyHealthyMusicFullCheckRounds) != 0) {
+      return L"true";
+    }
   }
 
-  // Every robust Spotify pass also strips image-heavy decorative rendering.
-  // Keeping this in the reconciler covers both Lonesome rabbit and TALKABOUT.
+  const wchar_t* selected = script;
+  if (isMusicPass) selected = kSpotifyLonesomeRabbitGuardScript;
+
+  // Every full robust Spotify pass strips image-heavy decorative rendering.
+  // Pure CSS applies to future SPA nodes automatically, so no MutationObserver
+  // or repeated full-DOM image scan is needed.
   thread_local std::wstring rewritten;
   rewritten.assign(kSpotifyUltraLightPreamble);
   rewritten.push_back(L'\n');
@@ -226,5 +277,4 @@ const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept 
   return rewritten.c_str();
 }
 
-}  // namespace
 }  // namespace hp

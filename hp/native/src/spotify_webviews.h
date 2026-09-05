@@ -46,6 +46,12 @@ class SpotifyWebViews final {
       HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
+  static HDWP DeferSpotifyHostWindowPos(
+      HDWP batch, HWND hwnd, HWND insertAfter, int x, int y,
+      int width, int height, UINT flags) noexcept;
+  static BOOL SetSpotifyHostWindowPos(
+      HWND hwnd, HWND insertAfter, int x, int y,
+      int width, int height, UINT flags) noexcept;
 
   bool EnsureHostClass() noexcept;
   bool CreateHost(Slot& slot) noexcept;
@@ -66,6 +72,8 @@ class SpotifyWebViews final {
   void NavigateSlotRobustly(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
+  const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept;
+  void RefreshSpotifyHostLayout() noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -78,6 +86,7 @@ class SpotifyWebViews final {
       std::make_shared<std::atomic<bool>>(true);
   size_t playbackWatchdogIndex_ = 0;
   size_t reconcileIndex_ = 0;
+  unsigned hostLayoutMask_ = ~0u;
   bool started_ = false;
   bool foreground_ = true;
   bool podcastMode_ = false;
@@ -85,8 +94,8 @@ class SpotifyWebViews final {
 };
 
 // tverPhase=false means the 30-minute YouTube window has started: play one
-// TALKABOUT episode, then fall back to the playlist. tverPhase=true forces the
-// playlist for the whole TVer window.
+// TALKABOUT episode, then fall back to Lonesome rabbit. tverPhase=true forces
+// Lonesome rabbit for the whole TVer window.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
