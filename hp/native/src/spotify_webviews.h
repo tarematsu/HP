@@ -41,16 +41,27 @@ class SpotifyWebViews final {
     EventRegistrationToken navigationCompletedToken{};
     EventRegistrationToken webMessageReceivedToken{};
     EventRegistrationToken webResourceRequestedToken{};
+    EventRegistrationToken timedEndMessageReceivedToken{};
+    ICoreWebView2* timedEndHandlerWebview = nullptr;
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG lastTimedRotationWave = ~0ULL;
+    ULONGLONG timedRotationCycle = 0;
+    ULONGLONG timedStepStartTick = 0;
+    ULONGLONG timedCompletionPendingTick = 0;
+    ULONGLONG timedUnhealthySinceTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
+    size_t timedRandomCIndex = kNoTimedCatalogIndex;
+    size_t timedRandomDIndex = kNoTimedCatalogIndex;
     int unhealthyChecks = 0;
+    unsigned char timedRotationPosition = 0;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
     bool podcastCompleted = false;
+    bool timedRotationActive = false;
+    bool timedPreludeCompleted = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
@@ -96,6 +107,10 @@ class SpotifyWebViews final {
   void ReconcileTimedSlot(Slot& slot) noexcept;
   size_t PickTimedRandomCatalogIndex(size_t avoidIndex) noexcept;
   void EnsureTimedRandomPair(ULONGLONG rotationCycle) noexcept;
+  void ApplyTimedRotationTarget(Slot& slot) noexcept;
+  void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
+  void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
+  void ArmTimedEndObserver(Slot& slot) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -111,8 +126,10 @@ class SpotifyWebViews final {
   size_t playbackWatchdogIndex_ = 0;
   size_t reconcileIndex_ = 0;
   size_t staggerSlotIndex_ = 0;
+  size_t timedPrioritySlotIndex_ = kAccountCount;
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG youtubeCycleStartTick_ = 0;
+  ULONGLONG timedPriorityUntilTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG timedRandomPairCycle_ = ~0ULL;
   size_t timedRandomCIndex_ = kNoTimedCatalogIndex;
@@ -128,11 +145,13 @@ class SpotifyWebViews final {
 };
 
 // tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00 and
-// TALKABOUT at 04:00. From 20:00 the three-minute music rotation is
-// Lonesome rabbit -> BitterBlue -> random C -> random D -> Lonesome rabbit.
+// TALKABOUT at 04:00. From 20:00 the music rotation advances on real playback
+// completion: Lonesome rabbit -> BitterBlue -> random C -> random D -> A....
+// A three-minute watchdog is used only when playback is unhealthy or Spotify
+// remains in a post-track/ad waiting state; healthy long songs are not cut off.
 // C/D are a distinct pair drawn from the built-in >=2-minute Sakurazaka46
-// catalog for each 12-minute rotation cycle. Six accounts are offset by
-// 40 seconds so only one Spotify WebView performs heavy work at a time.
+// catalog for each completed A-B-C-D cycle. Six accounts remain offset by
+// 40 seconds for normal heavy recovery work.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
