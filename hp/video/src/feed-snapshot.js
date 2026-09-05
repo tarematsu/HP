@@ -135,9 +135,12 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
   };
 
   const existing = await bucket.head(SNAPSHOT_KEY);
+  const snapshotDay = snapshot.generatedAt.slice(0, 10);
+  const existingDay = String(existing?.customMetadata?.generatedAt || '').slice(0, 10);
   const unchanged = existing?.customMetadata?.contentHash === snapshot.contentHash
     && Number(existing?.customMetadata?.rowCount) === snapshot.items.length
-    && Number(existing?.customMetadata?.schemaVersion) === SNAPSHOT_SCHEMA_VERSION;
+    && Number(existing?.customMetadata?.schemaVersion) === SNAPSHOT_SCHEMA_VERSION
+    && existingDay === snapshotDay;
   if (!unchanged) {
     await bucket.put(SNAPSHOT_KEY, JSON.stringify(snapshot), {
       httpMetadata: {
