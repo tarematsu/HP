@@ -11,14 +11,25 @@ const ended = readFileSync(
   'utf8',
 );
 
-test('all six timed Spotify windows get a lightweight serialized stall probe', () => {
+test('all six active Spotify windows get a lightweight serialized stall probe', () => {
   assert.match(schedule, /kSpotifyBackgroundPlaybackProbeScript/);
   assert.match(schedule, /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/);
   assert.match(schedule, /__homePanelSpotifyBackgroundProbe/);
   assert.match(schedule, /Math\.abs\(currentTime - state\.time\) < 0\.25/);
   assert.match(schedule, /return 'stalled'/);
+  assert.match(schedule, /probe\.timedTarget != TimedSpotifyTarget::None/);
+  assert.match(schedule, /completedPrelude/);
+  assert.match(schedule, /completedBridge/);
   assert.match(schedule, /timedPrioritySlotIndex_ = target->index/);
   assert.match(schedule, /detectedAt \+ kSpotifyTimedPriorityHoldMs/);
+});
+
+test('recovery priority is a maximum hold and clears as soon as playback is healthy', () => {
+  assert.match(
+    schedule,
+    /candidate\.playing[\s\S]*timedPrioritySlotIndex_ == candidate\.index[\s\S]*timedPrioritySlotIndex_ = kAccountCount[\s\S]*timedPriorityUntilTick_ = 0/,
+  );
+  assert.match(schedule, /maximum hold/);
 });
 
 test('a confirmed target-track ended event advances immediately', () => {
