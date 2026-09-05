@@ -254,21 +254,41 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     try { sessionStorage.removeItem(episodeQueueKey(seriesPath)); } catch (_) {}
   };
 
-  const isCurrentSeriesEpisodeLink = link => {
-    if (!link || !link.href) return false;
-    const recommendationHeading = Array.from(document.querySelectorAll(
-        'h1, h2, h3, h4, h5, h6, [role="heading"]')).find(element =>
-          normalize(element.textContent) === 'あなたにおすすめ');
-    if (!recommendationHeading) return true;
-    return Boolean(link.compareDocumentPosition(recommendationHeading) &
-        Node.DOCUMENT_POSITION_FOLLOWING);
+  const findSeriesEpisodeContainer = () => {
+    const headingSelector = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
+    const headings = Array.from(document.querySelectorAll(headingSelector));
+    const episodeHeading = headings.find(element =>
+      /^(?:配信中の)?エピソード(?:一覧)?(?:\s*\(\d+\)|\s*\d+件)?$/.test(
+          normalize(element.textContent)));
+    if (!episodeHeading) return null;
+
+    const foreignSectionHeading =
+        /^(?:あなたにおすすめ|おすすめ|関連番組|関連動画|ランキング)$/;
+    let container = episodeHeading.parentElement;
+    while (container && container !== document.body) {
+      const links = Array.from(
+          container.querySelectorAll('a[href*="/episodes/"]')).filter(
+            link => link.href);
+      if (links.length) {
+        const hasForeignSection = Array.from(
+            container.querySelectorAll(headingSelector)).some(element =>
+              element !== episodeHeading &&
+              foreignSectionHeading.test(normalize(element.textContent)));
+        if (!hasForeignSection) return container;
+      }
+      container = container.parentElement;
+    }
+    return null;
   };
 
   const openPreferredEpisode = () => {
     const seriesPath = location.pathname;
     rememberSeriesPath(seriesPath);
-    const links = Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
-        .filter(isCurrentSeriesEpisodeLink);
+    const container = findSeriesEpisodeContainer();
+    if (!container) return;
+    const links = Array.from(
+        container.querySelectorAll('a[href*="/episodes/"]')).filter(
+          link => link.href);
     const hrefs = Array.from(new Set(
         links.map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
     if (!hrefs.length) return;
