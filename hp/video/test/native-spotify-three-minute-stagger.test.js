@@ -41,7 +41,7 @@ test('YouTube hour keeps BitterBlue and TALKABOUT prelude then starts A-B-C-D at
     header,
     /TimedSpotifyTarget[\s\S]*BitterBlue[\s\S]*TalkAbout[\s\S]*LonesomeRabbit[\s\S]*CatalogTrack/,
   );
-  assert.match(schedule, /kSpotifyTimedWaveMs = 4ULL \* 60ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyTimedWaveMs = 3ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyTimedTalkAboutStartMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyTimedRotationStartMs = 20ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /slotLocalElapsed < kSpotifyTimedTalkAboutStartMs[\s\S]*TimedSpotifyTarget::BitterBlue/);
@@ -53,7 +53,7 @@ test('YouTube hour keeps BitterBlue and TALKABOUT prelude then starts A-B-C-D at
   assert.match(schedule, /default:[\s\S]*CatalogTrack[\s\S]*timedRandomDIndex_/);
 });
 
-test('C and D are redrawn as a distinct pair once per 16-minute rotation cycle', () => {
+test('C and D are redrawn as a distinct pair once per 12-minute rotation cycle', () => {
   assert.match(header, /timedRandomPairCycle_ = ~0ULL/);
   assert.match(header, /timedRandomCIndex_ = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomDIndex_ = kNoTimedCatalogIndex/);
@@ -99,7 +99,7 @@ test('built-in random catalog contains verified Spotify track URLs and excludes 
   assert.doesNotMatch(catalogSection, /2f2Ik9JeinFVWZuFb3i35b/);
 });
 
-test('every four-minute wave performs a fresh Spotify access and direct tracks use exact-path playback checks', () => {
+test('every three-minute wave performs a fresh Spotify access and direct tracks use exact-path playback checks', () => {
   assert.match(schedule, /rotationWaveChanged/);
   assert.match(schedule, /slot\.lastTimedRotationWave = rotationWave[\s\S]*NavigateTimedSlot\(slot\)/);
   assert.match(timed, /kSpotifyTimedTrackScriptTemplate/);
