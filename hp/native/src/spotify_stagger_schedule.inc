@@ -99,37 +99,61 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG slotLocalElapsed = elapsed - slotOffset;
 
   if (slotLocalElapsed < kSpotifyTimedRotationStartMs) {
-    TimedSpotifyTarget desired = TimedSpotifyTarget::LonesomeRabbit;
+    TimedSpotifyTarget desired = TimedSpotifyTarget::None;
+    size_t desiredCatalogIndex = kNoTimedCatalogIndex;
+
     if (podcastMode_ && slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
       // YouTube 00:00 + account offset: fixed B once.
       desired = TimedSpotifyTarget::BitterBlue;
     } else if (podcastMode_ && !slot.podcastCompleted) {
       // YouTube 04:00 + account offset: one TALKABOUT pass.
       desired = TimedSpotifyTarget::TalkAbout;
-    }
-
-    const bool targetChanged = slot.timedTarget != desired;
-    if (targetChanged) {
-      slot.timedTarget = desired;
-      slot.timedCatalogIndex = kNoTimedCatalogIndex;
-      slot.lastModeNavigateTick = 0;
-      slot.unhealthyChecks = 0;
-      slot.timedPreludeCompleted = false;
-      NavigateTimedSlot(slot);
-    }
-
-    if (slot.timedTarget == TimedSpotifyTarget::BitterBlue) {
-      ArmTimedEndObserver(slot);
-    }
-
-    // BitterBlue is a one-shot prelude. Once its end observer has seen it finish,
-    // leave Spotify alone until the 04:00 TALKABOUT boundary instead of replaying.
-    if (slot.timedTarget == TimedSpotifyTarget::BitterBlue &&
-        slot.timedPreludeCompleted) {
+    } else if (podcastMode_ && !slot.timedBridgeCompleted) {
+      // TALKABOUT finished early: play one recent Sakurazaka46 song as a bridge
+      // instead of falling back to Lonesome rabbit before the formal 20:00 A.
+      if (!IsRecentCatalogIndex(timedBridgeCatalogIndex_)) {
+        timedBridgeCatalogIndex_ = PickRecentCatalogIndex(
+            kNoTimedCatalogIndex, kNoTimedCatalogIndex);
+      }
+      desired = TimedSpotifyTarget::CatalogTrack;
+      desiredCatalogIndex = timedBridgeCatalogIndex_;
+    } else {
+      // B and the bridge are one-shots. Once finished, leave Spotify alone until
+      // the next explicit boundary rather than replaying either song.
       return;
     }
 
-    ReconcileTimedSlot(slot);
+    const bool catalogChanged =
+        desired == TimedSpotifyTarget::CatalogTrack &&
+        slot.timedCatalogIndex != desiredCatalogIndex;
+    const bool targetChanged = slot.timedTarget != desired || catalogChanged;
+    if (targetChanged) {
+      slot.timedTarget = desired;
+      slot.timedCatalogIndex = desiredCatalogIndex;
+      slot.lastModeNavigateTick = 0;
+      slot.unhealthyChecks = 0;
+      if (desired == TimedSpotifyTarget::BitterBlue) {
+        slot.timedPreludeCompleted = false;
+      }
+      NavigateActiveTimedSlot(slot);
+    } else if (desired != TimedSpotifyTarget::CatalogTrack) {
+      slot.timedCatalogIndex = kNoTimedCatalogIndex;
+    }
+
+    const bool recentBridge =
+        slot.timedTarget == TimedSpotifyTarget::CatalogTrack &&
+        IsRecentCatalogIndex(slot.timedCatalogIndex);
+    if (slot.timedTarget == TimedSpotifyTarget::BitterBlue || recentBridge) {
+      ArmTimedEndObserver(slot);
+    }
+
+    if ((slot.timedTarget == TimedSpotifyTarget::BitterBlue &&
+         slot.timedPreludeCompleted) ||
+        (recentBridge && slot.timedBridgeCompleted)) {
+      return;
+    }
+
+    ReconcileActiveTimedSlot(slot);
     return;
   }
 
@@ -146,7 +170,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   // /track/ appears. Skip recovery clicks here so the ad is not interrupted.
   if (slot.timedCompletionPendingTick != 0) return;
 
-  ReconcileTimedSlot(slot);
+  ReconcileActiveTimedSlot(slot);
 }
 
 void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
@@ -181,8 +205,9 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   podcastMode_ = podcastWindowActive;
   if (modeChanged && podcastWindowActive) {
     // A new YouTube hour is the master clock. B starts at 00:00, TALKABOUT at
-    // 04:00, and A starts at 20:00. After that, each real song ending advances
-    // A -> B -> C -> D -> A; C/D are redrawn on each completed four-song cycle.
+    // 04:00, then one recent-song bridge may fill the gap. A starts at 20:00.
+    // After that each real song ending advances A -> B -> C -> D -> A, with C/D
+    // redrawn from the 2025-2026 pool on each completed four-song cycle.
     youtubeCycleStartTick_ = now;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
@@ -190,6 +215,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     timedPrioritySlotIndex_ = kAccountCount;
     timedPriorityUntilTick_ = 0;
     timedRandomPairCycle_ = ~0ULL;
+    timedBridgeCatalogIndex_ = kNoTimedCatalogIndex;
     timedRandomCIndex_ = kNoTimedCatalogIndex;
     timedRandomDIndex_ = kNoTimedCatalogIndex;
     for (Slot& slot : slots_) {
@@ -208,6 +234,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
       slot.timedRandomDIndex = kNoTimedCatalogIndex;
       slot.timedRotationActive = false;
       slot.timedPreludeCompleted = false;
+      slot.timedBridgeCompleted = false;
     }
   }
 
