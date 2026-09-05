@@ -67,6 +67,17 @@ std::wstring BuildSpotifyTimedEndObserverScript(
       state.media.add(media);
       media.addEventListener('ended', () => {
         if (!state.started || state.endedPosted || state.waitingPosted) return;
+        // When Spotify still identifies the just-ended media as our target,
+        // completion is unambiguous: advance immediately instead of waiting for
+        // autoplay to expose another track. This covers accounts where Spotify
+        // simply stops at the end of a direct track.
+        if (matchesTarget(currentTrack())) {
+          state.endedPosted = true;
+          post('spotify:timed-ended');
+          return;
+        }
+        // An ended media element can also be an ad/intermediate clip. In that
+        // ambiguous case wait until a different real /track/ becomes visible.
         state.waitingPosted = true;
         post('spotify:timed-waiting');
       }, { passive: true });
