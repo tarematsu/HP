@@ -3,6 +3,51 @@ constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
+
+constexpr wchar_t kSpotifyBackgroundPlaybackProbeScript[] = LR"JS(
+(() => {
+  const mediaItems = Array.from(document.querySelectorAll('audio, video'));
+  const activeMedia = mediaItems.find(media =>
+      media && !media.paused && !media.ended && media.readyState >= 2) || null;
+  const fallbackMedia = mediaItems.find(media => media && !media.ended) ||
+      mediaItems[0] || null;
+  const media = activeMedia || fallbackMedia;
+  const control = document.querySelector(
+      'button[data-testid="control-button-playpause"]');
+  const label = ((control &&
+      (control.getAttribute('aria-label') || control.title)) || '')
+      .toLowerCase();
+  const controlPlaying =
+      label.includes('pause') || label.includes('一時停止');
+
+  if (!media) return control ? (controlPlaying ? 'playing' : 'stalled') : 'unknown';
+
+  const now = Date.now();
+  const currentTime = Number.isFinite(media.currentTime)
+      ? media.currentTime : Number.NaN;
+  const source = media.currentSrc || media.src || '';
+  const state = window.__homePanelSpotifyBackgroundProbe ||
+      (window.__homePanelSpotifyBackgroundProbe = {
+        source: '',
+        time: Number.NaN,
+        at: 0
+      });
+  const active = !media.paused && !media.ended && media.readyState >= 2;
+  let progressing = active;
+  if (active && state.source === source &&
+      Number.isFinite(state.time) && Number.isFinite(currentTime) &&
+      now - state.at >= 4000 && Math.abs(currentTime - state.time) < 0.25) {
+    progressing = false;
+  }
+  state.source = source;
+  state.time = currentTime;
+  state.at = now;
+
+  if (progressing) return 'playing';
+  if (!active && controlPlaying && !Number.isFinite(currentTime)) return 'playing';
+  return 'stalled';
+})()
+)JS";
 }  // namespace
 
 void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
@@ -23,10 +68,70 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
+  // Probe one already-running account per 2-second scheduler tick. This stays
+  // lightweight (each of the six windows is sampled about every 12 seconds) but
+  // prevents a background slot whose audio has frozen from remaining logically
+  // playing forever just because it is not the current 40-second recovery slot.
+  Slot& probe = slots_[playbackWatchdogIndex_++ % slots_.size()];
+  if (probe.timedRotationActive && probe.webview && !probe.reconcileInFlight &&
+      probe.timedCompletionPendingTick == 0 && !SlotIsLoginPage(probe) &&
+      (probe.lastModeNavigateTick == 0 ||
+       now - probe.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs)) {
+    Slot* const target = &probe;
+    const TimedSpotifyTarget requestedTarget = probe.timedTarget;
+    const size_t requestedCatalogIndex = probe.timedCatalogIndex;
+    const auto alive = alive_;
+    probe.webview->ExecuteScript(
+        kSpotifyBackgroundPlaybackProbeScript,
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, alive, target, requestedTarget, requestedCatalogIndex](
+                HRESULT result, LPCWSTR json) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) || FAILED(result) ||
+                  !started_ || !json || requestedTarget != target->timedTarget ||
+                  (requestedTarget == TimedSpotifyTarget::CatalogTrack &&
+                   requestedCatalogIndex != target->timedCatalogIndex)) {
+                return S_OK;
+              }
+
+              const std::wstring_view value(json);
+              if (value == L"\"playing\"") {
+                if (!target->playing || target->timedUnhealthySinceTick != 0) {
+                  target->playing = true;
+                  target->timedUnhealthySinceTick = 0;
+                  RecomputeForeground();
+                }
+                return S_OK;
+              }
+              if (value != L"\"stalled\"") return S_OK;
+
+              const ULONGLONG detectedAt = GetTickCount64();
+              target->playing = false;
+              if (target->timedUnhealthySinceTick == 0) {
+                target->timedUnhealthySinceTick = detectedAt;
+              }
+
+              // Do not let several stalled accounts steal the viewport from one
+              // another every two seconds. Give the first detected account one
+              // normal 40-second recovery turn, then the next stalled probe can
+              // claim priority if it is still needed.
+              const bool canClaimPriority =
+                  timedPrioritySlotIndex_ >= slots_.size() ||
+                  detectedAt >= timedPriorityUntilTick_ ||
+                  timedPrioritySlotIndex_ == target->index;
+              if (canClaimPriority) {
+                timedPrioritySlotIndex_ = target->index;
+                timedPriorityUntilTick_ =
+                    detectedAt + kSpotifyTimedPriorityHoldMs;
+              }
+              RecomputeForeground();
+              return S_OK;
+            }).Get());
+  }
+
   // The three-minute value is now a failure watchdog, not a song-length cap.
   // Healthy songs may run for their full duration. A slot advances only after
-  // its end observer confirms the next real track, or after it has remained
-  // unhealthy / stuck in a post-track/ad waiting state for three minutes.
+  // its end observer confirms completion, or after it has remained unhealthy /
+  // stuck in an ambiguous post-track/ad waiting state for three minutes.
   for (Slot& candidate : slots_) {
     if (!candidate.timedRotationActive) continue;
 
@@ -65,7 +170,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   // Authentication is the only foreground Spotify state. Give an account up to
   // three minutes to finish manual login; otherwise the normal 40-second clock
-  // owns the viewport, except for a just-finished song's short recovery priority.
+  // owns the viewport, except for a just-finished/stalled song's recovery turn.
   staggerSlotIndex_ %= slots_.size();
   const bool currentAuthentication =
       slots_[staggerSlotIndex_].webview &&
@@ -165,9 +270,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   ArmTimedEndObserver(slot);
 
-  // An ended media element may be followed by a Spotify ad. The observer marks
-  // this waiting state but deliberately does not navigate until another real
-  // /track/ appears. Skip recovery clicks here so the ad is not interrupted.
+  // Only an ambiguous ended media/ad state waits here. A confirmed target-track
+  // ended event advances immediately in the observer.
   if (slot.timedCompletionPendingTick != 0) return;
 
   ReconcileActiveTimedSlot(slot);
