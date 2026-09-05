@@ -1,0 +1,26 @@
+name: TVer exclude recommendations
+on:
+  push:
+    branches:
+      - fix/tver-exclude-recommendations
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python .github/scripts/tver-exclude-recommendations.py
+      - name: Run TVer tests
+        run: node --test hp/video/test/native-media-30-90-tver-alternation-contract.test.js hp/video/test/native-mv-panel-contract.test.js hp/video/test/native-tver-all-episodes-contract.test.js
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add hp/native/src/renderer_panels.cpp hp/video/test/native-tver-all-episodes-contract.test.js
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "fix: exclude TVer recommendation episodes"
+          git push
