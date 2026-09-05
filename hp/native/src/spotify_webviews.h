@@ -18,15 +18,15 @@ class SpotifyWebViews final {
   static void CALLBACK StaggeredReconcileTimerProc(
       HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
 
- private:
-  static constexpr size_t kAccountCount = 6;
-
   enum class TimedSpotifyTarget : unsigned char {
     None,
     BitterBlue,
     TalkAbout,
     LonesomeRabbit,
   };
+
+ private:
+  static constexpr size_t kAccountCount = 6;
 
   struct Slot {
     SpotifyWebViews* owner = nullptr;
