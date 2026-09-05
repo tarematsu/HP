@@ -10,7 +10,9 @@ void ParkSpotifyHost(
   RECT parentClient{};
   HWND parent = GetParent(hwnd);
   if (parent && GetClientRect(parent, &parentClient)) {
-    *x = parentClient.left + static_cast<int>(slotIndex);
+    // Keep even the 1x1 parked surface completely outside the visible client
+    // area. The controller stays visible so Spotify playback is not suspended.
+    *x = parentClient.right + 8 + static_cast<int>(slotIndex);
     *y = parentClient.top;
   }
   *width = 1;
@@ -18,7 +20,7 @@ void ParkSpotifyHost(
   *insertAfter = HWND_BOTTOM;
 }
 
-void ExpandSpotifyRecoveryHost(
+void ExpandSpotifyAuthenticationHost(
     HWND hwnd, int* x, int* y,
     int* width, int* height, HWND* insertAfter) noexcept {
   RECT parentClient{};
@@ -27,8 +29,6 @@ void ExpandSpotifyRecoveryHost(
   const int clientWidth = std::max(1L, parentClient.right - parentClient.left);
   const int clientHeight = std::max(1L, parentClient.bottom - parentClient.top);
 
-  // Only one serialized slot is operated at a time, so give it substantially
-  // more room than one of the former six side-by-side phone columns.
   const int activeWidth = std::max(1, clientWidth * 3 / 5);
   const int activeHeight = std::max(1, clientHeight * 9 / 10);
   *x = parentClient.left + (clientWidth - activeWidth) / 2;
@@ -36,6 +36,26 @@ void ExpandSpotifyRecoveryHost(
   *width = activeWidth;
   *height = activeHeight;
   *insertAfter = HWND_TOP;
+}
+
+void PrepareSpotifyBackgroundRecoveryHost(
+    HWND hwnd, int* x, int* y,
+    int* width, int* height, HWND* insertAfter) noexcept {
+  RECT parentClient{};
+  HWND parent = GetParent(hwnd);
+  if (!parent || !GetClientRect(parent, &parentClient)) return;
+  const int clientWidth = std::max(1L, parentClient.right - parentClient.left);
+  const int clientHeight = std::max(1L, parentClient.bottom - parentClient.top);
+
+  // Recovery still needs a normal-sized CSS viewport for Spotify's responsive
+  // controls and trusted CDP coordinates, but it never needs to be visible.
+  const int activeWidth = std::max(1, clientWidth * 3 / 5);
+  const int activeHeight = std::max(1, clientHeight * 9 / 10);
+  *x = parentClient.right + 32;
+  *y = parentClient.top + (clientHeight - activeHeight) / 2;
+  *width = activeWidth;
+  *height = activeHeight;
+  *insertAfter = HWND_BOTTOM;
 }
 
 constexpr wchar_t kSpotifyUltraLightPreamble[] = LR"JS(
@@ -232,17 +252,23 @@ HDWP SpotifyWebViews::DeferSpotifyHostWindowPos(
     HDWP batch, HWND hwnd, HWND insertAfter, int x, int y,
     int width, int height, UINT flags) noexcept {
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-  if (slot && slot->playing && width > 1 && height > 1) {
-    ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
-  } else if (slot && width > 1 && height > 1) {
-    const auto* owner = slot->owner;
+  if (slot) {
+    auto* owner = slot->owner;
     const size_t activeIndex = owner && !owner->slots_.empty()
         ? owner->staggerSlotIndex_ % owner->slots_.size()
         : slot->index;
-    if (slot->index != activeIndex) {
-      ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+    const bool active = slot->index == activeIndex;
+    const bool authentication =
+        active && owner && owner->SlotIsLoginPage(*slot);
+    if (authentication) {
+      ExpandSpotifyAuthenticationHost(
+          hwnd, &x, &y, &width, &height, &insertAfter);
+    } else if (active && !slot->playing) {
+      PrepareSpotifyBackgroundRecoveryHost(
+          hwnd, &x, &y, &width, &height, &insertAfter);
     } else {
-      ExpandSpotifyRecoveryHost(hwnd, &x, &y, &width, &height, &insertAfter);
+      ParkSpotifyHost(
+          hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
     }
   }
   return ::DeferWindowPos(batch, hwnd, insertAfter, x, y, width, height, flags);
@@ -252,17 +278,23 @@ BOOL SpotifyWebViews::SetSpotifyHostWindowPos(
     HWND hwnd, HWND insertAfter, int x, int y,
     int width, int height, UINT flags) noexcept {
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
-  if (slot && slot->playing && width > 1 && height > 1) {
-    ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
-  } else if (slot && width > 1 && height > 1) {
-    const auto* owner = slot->owner;
+  if (slot) {
+    auto* owner = slot->owner;
     const size_t activeIndex = owner && !owner->slots_.empty()
         ? owner->staggerSlotIndex_ % owner->slots_.size()
         : slot->index;
-    if (slot->index != activeIndex) {
-      ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+    const bool active = slot->index == activeIndex;
+    const bool authentication =
+        active && owner && owner->SlotIsLoginPage(*slot);
+    if (authentication) {
+      ExpandSpotifyAuthenticationHost(
+          hwnd, &x, &y, &width, &height, &insertAfter);
+    } else if (active && !slot->playing) {
+      PrepareSpotifyBackgroundRecoveryHost(
+          hwnd, &x, &y, &width, &height, &insertAfter);
     } else {
-      ExpandSpotifyRecoveryHost(hwnd, &x, &y, &width, &height, &insertAfter);
+      ParkSpotifyHost(
+          hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
     }
   }
   return ::SetWindowPos(hwnd, insertAfter, x, y, width, height, flags);
@@ -276,6 +308,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   const size_t activeIndex = slots_.empty()
       ? kAccountCount
       : staggerSlotIndex_ % slots_.size();
+  const bool authenticationVisible =
+      activeIndex < slots_.size() && SlotIsLoginPage(slots_[activeIndex]);
 
   if (activeIndex < slots_.size() && slots_[activeIndex].controller) {
     double zoom = 1.0;
@@ -285,10 +319,14 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
     }
   }
 
-  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == activeIndex) return;
+  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == activeIndex &&
+      hostLayoutAuthenticationVisible_ == authenticationVisible) {
+    return;
+  }
   hostLayoutMask_ = mask;
   hostLayoutActiveSlot_ = activeIndex;
-  PlaceHosts(mask != 0);
+  hostLayoutAuthenticationVisible_ = authenticationVisible;
+  PlaceHosts(mask != 0 || authenticationVisible);
 }
 
 const wchar_t* SpotifyWebViews::RewriteSpotifyPhaseExecuteScript(

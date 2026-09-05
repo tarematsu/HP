@@ -19,16 +19,18 @@ const header = readFileSync(
   'utf8',
 );
 
-test('serialized Spotify recovery shows only the active slot in a larger centered viewport', () => {
+test('serialized Spotify shows only authentication and performs normal recovery offscreen', () => {
   assert.match(guard, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
   assert.match(guard, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(guard, /staggerSlotIndex_ % owner->slots_\.size\(\)/);
-  assert.match(guard, /slot->index != activeIndex[\s\S]*ParkSpotifyHost/);
-  assert.match(guard, /ExpandSpotifyRecoveryHost/);
-  assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
+  assert.match(guard, /const bool authentication =[\s\S]*SlotIsLoginPage\(\*slot\)/);
+  assert.match(guard, /ExpandSpotifyAuthenticationHost/);
+  assert.match(guard, /PrepareSpotifyBackgroundRecoveryHost/);
+  assert.match(guard, /\*x = parentClient\.right \+ 32/);
+  assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
 });
 
-test('the active Spotify WebView uses 80 percent page zoom', () => {
+test('the active Spotify WebView uses 80 percent page zoom in foreground or background', () => {
   assert.match(guard, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(guard, /controller->get_ZoomFactor\(&zoom\)/);
   assert.match(guard, /controller->put_ZoomFactor\(kSpotifySerializedRecoveryZoom\)/);
@@ -41,7 +43,7 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('advancing the ten-minute owner refreshes which single host is expanded', () => {
+test('advancing the ten-minute owner refreshes which slot is prepared', () => {
   const advances = schedule.match(
     /staggerSlotIndex_ = \(staggerSlotIndex_ \+ 1\) % slots_\.size\(\);[\s\S]{0,180}?RefreshSpotifyHostLayout\(\);/g,
   ) || [];
@@ -53,4 +55,13 @@ test('each serialized tick refreshes layout before returning early for a login p
     schedule,
     /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\)/,
   );
+});
+
+test('login state participates in layout cache so a redirect can surface authentication immediately', () => {
+  assert.match(guard, /const bool authenticationVisible =[\s\S]*SlotIsLoginPage\(slots_\[activeIndex\]\)/);
+  assert.match(
+    guard,
+    /hostLayoutAuthenticationVisible_ == authenticationVisible[\s\S]*return;/,
+  );
+  assert.match(guard, /hostLayoutAuthenticationVisible_ = authenticationVisible/);
 });

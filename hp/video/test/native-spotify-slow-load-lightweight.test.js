@@ -69,19 +69,22 @@ test('healthy Lonesome rabbit slots only run a full DOM check about once per min
   assert.match(guard, /TALKABOUT stays on the[\s\S]*normal cadence/);
 });
 
-test('only the active unhealthy Spotify host stays expanded while all others collapse to 1x1', () => {
+test('only authentication is foreground while recovery keeps a large offscreen viewport', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
+  assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
   assert.match(header, /DeferSpotifyHostWindowPos/);
   assert.match(header, /SetSpotifyHostWindowPos/);
   assert.match(wrapper, /#define DeferWindowPos/);
   assert.match(wrapper, /#define SetWindowPos/);
-  assert.match(guard, /slot && slot->playing && width > 1 && height > 1/);
   assert.match(guard, /void ParkSpotifyHost\(/);
   assert.match(guard, /\*width = 1;\s*\*height = 1;\s*\*insertAfter = HWND_BOTTOM/);
-  assert.match(guard, /slot->index != activeIndex[\s\S]*ParkSpotifyHost/);
-  assert.match(guard, /void SpotifyWebViews::RefreshSpotifyHostLayout\(\) noexcept/);
-  assert.match(guard, /if \(!slots_\[i\]\.playing\) mask \|= \(1u << i\)/);
-  assert.match(guard, /hostLayoutActiveSlot_ == activeIndex/);
-  assert.match(guard, /PlaceHosts\(mask != 0\)/);
+  assert.match(guard, /void ExpandSpotifyAuthenticationHost\(/);
+  assert.match(guard, /void PrepareSpotifyBackgroundRecoveryHost\(/);
+  assert.match(guard, /\*x = parentClient\.right \+ 32/);
+  assert.match(guard, /\*insertAfter = HWND_BOTTOM/);
+  assert.match(guard, /const bool authentication =[\s\S]*SlotIsLoginPage\(\*slot\)/);
+  assert.match(guard, /if \(authentication\)[\s\S]*ExpandSpotifyAuthenticationHost/);
+  assert.match(guard, /else if \(active && !slot->playing\)[\s\S]*PrepareSpotifyBackgroundRecoveryHost/);
+  assert.match(guard, /hostLayoutAuthenticationVisible_ == authenticationVisible/);
 });
