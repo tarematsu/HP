@@ -12,8 +12,12 @@
 #undef DeferWindowPos
 
 #include "spotify_lonesome_guard.inc"
+#include "spotify_viewport_recovery.inc"
 #define ExecuteScript(script, callback)                                         \
-  ExecuteScript(RewriteSpotifyPhaseExecuteScript((script)), (callback))
+  ExecuteScript(                                                                \
+      RewriteSpotifyViewportRecoveryScript(                                     \
+          RewriteSpotifyPhaseExecuteScript((script))),                          \
+      (callback))
 #define RecomputeForeground() RecomputeForegroundAndRefreshSpotifyHostLayout()
 #define SendInput(count, inputs, inputSize)                                     \
   ((void)(count), (void)(inputs), (void)(inputSize),                            \
