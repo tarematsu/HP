@@ -164,9 +164,11 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
-  if (!slot.webview || !slot.timedRotationActive ||
+  if (!slot.webview ||
       slot.timedTarget == TimedSpotifyTarget::TalkAbout ||
-      slot.timedTarget == TimedSpotifyTarget::None) {
+      slot.timedTarget == TimedSpotifyTarget::None ||
+      (!slot.timedRotationActive &&
+       slot.timedTarget != TimedSpotifyTarget::BitterBlue)) {
     return;
   }
 
