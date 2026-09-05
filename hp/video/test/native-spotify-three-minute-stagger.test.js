@@ -137,7 +137,10 @@ test('a just-finished song gets temporary recovery priority so the next target c
   assert.match(header, /timedPriorityUntilTick_ = 0/);
   assert.match(ended, /kSpotifyTimedPriorityHoldMs = 40ULL \* 1000ULL/);
   assert.match(ended, /timedPrioritySlotIndex_ = slot\.index/);
-  assert.match(schedule, /now < timedPriorityUntilTick_[\s\S]*scheduledIndex = timedPrioritySlotIndex_/);
+  assert.match(
+    schedule,
+    /priorityActive[\s\S]*staggerSlotIndex_ != timedPrioritySlotIndex_[\s\S]*staggerSlotIndex_ = timedPrioritySlotIndex_/,
+  );
 });
 
 test('timed playback still owns autoplay and does not use repeat-one', () => {
