@@ -44,7 +44,7 @@ test('Spotify fallback startup staggering keeps the 40-second six-account clock'
   );
 });
 
-test('YouTube hour keeps B and TALKABOUT, uses a recent-song bridge, then starts A at minute 20', () => {
+test('YouTube hour keeps BitterBlue and TALKABOUT, uses a recent-song bridge, then starts A at minute 20', () => {
   assert.match(header, /youtubeCycleStartTick_ = 0/);
   assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
   assert.match(header, /timedBridgeCompleted = false/);
@@ -56,10 +56,16 @@ test('YouTube hour keeps B and TALKABOUT, uses a recent-song bridge, then starts
   );
   assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
   assert.match(ended, /timedRotationPosition = 0/);
-  assert.match(ended, /case 0:[\s\S]*LonesomeRabbit/);
-  assert.match(ended, /case 1:[\s\S]*BitterBlue/);
-  assert.match(ended, /case 2:[\s\S]*timedRandomCIndex/);
-  assert.match(ended, /default:[\s\S]*timedRandomDIndex/);
+  assert.match(ended, /case 0:[\s\S]*LonesomeRabbit[\s\S]*break;/);
+  assert.match(
+    ended,
+    /case 1:[\s\S]*TimedSpotifyTarget::CatalogTrack[\s\S]*timedRandomCIndex[\s\S]*break;/,
+  );
+  assert.match(ended, /case 2:[\s\S]*TimedSpotifyTarget::BitterBlue[\s\S]*break;/);
+  assert.match(
+    ended,
+    /default:[\s\S]*TimedSpotifyTarget::CatalogTrack[\s\S]*timedRandomDIndex[\s\S]*break;/,
+  );
 });
 
 test('bridge is a one-shot recent song and does not replay Lonesome before minute 20', () => {
@@ -103,7 +109,7 @@ test('three minutes is only an unhealthy/waiting watchdog and does not cut healt
   );
 });
 
-test('C and D are distinct recent songs and avoid the current hour bridge', () => {
+test('B and D are distinct recent songs and avoid the current hour bridge', () => {
   assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomCIndex = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomDIndex = kNoTimedCatalogIndex/);
@@ -118,7 +124,7 @@ test('C and D are distinct recent songs and avoid the current hour bridge', () =
   assert.doesNotMatch(ended, /EnsureTimedRandomPair\(/);
 });
 
-test('recent random pool contains every 2025-2026 new group song except fixed A/B', () => {
+test('recent random pool contains every 2025-2026 new group song except fixed A/C', () => {
   assert.match(recent, /std::array<SpotifyRecentCatalogTrack, 35>/);
   const expectedTitles = [
     'UDAGAWA GENERATION',
