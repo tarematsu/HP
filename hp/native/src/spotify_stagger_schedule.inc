@@ -1,6 +1,6 @@
 namespace {
 constexpr ULONGLONG kSpotifySerializedSlotHoldMs =
-    10ULL * 60ULL * 1000ULL;
+    3ULL * 60ULL * 1000ULL;
 }  // namespace
 
 void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
@@ -33,7 +33,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       now - staggerSlotStartTick_ >= kSpotifySerializedSlotHoldMs;
 
   // A login page requires user interaction. Keep it as the only active slot for
-  // its ten-minute turn, then allow the remaining accounts to make progress.
+  // its three-minute turn, then allow the remaining accounts to make progress.
   if (slot.webview && SlotIsLoginPage(slot)) {
     if (holdElapsed) {
       staggerSlotIndex_ = (staggerSlotIndex_ + 1) % slots_.size();
@@ -45,7 +45,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
 
   // Once this slot has passed the robust Lonesome/TALKABOUT check, leave it
-  // alone until its ten-minute ownership window expires. If WebView reports a
+  // alone until its three-minute ownership window expires. If WebView reports a
   // playback failure meanwhile, playing becomes false and recovery resumes on
   // this same slot rather than overlapping work on another account.
   if (staggerSlotValidated_ && slot.playing && !slot.reconcileInFlight) {
@@ -77,7 +77,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     staggerSlotValidated_ = false;
 
     // Start() already requested slot 0. Park slots 1-5 at 1x1 until each gets
-    // its own ten-minute turn so controller creation and Spotify page loading do
+    // its own three-minute turn so controller creation and Spotify page loading do
     // not pile up on a slow tablet.
     Slot& first = slots_[0];
     if (!first.controller && !first.webview) {
@@ -97,8 +97,8 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   if (modeChanged) {
     // Do not clear or navigate all six WebViews at the media boundary. Slot 0
     // switches now; the other accounts retain their current playback until
-    // their 10-minute offset arrives. Each account therefore gets a full hour
-    // in each mode, phase-shifted by ten minutes from its neighbour.
+    // their three-minute offset arrives. Each account therefore gets a full hour
+    // in each mode, phase-shifted by three minutes from its neighbour.
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
