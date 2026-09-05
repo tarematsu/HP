@@ -1,6 +1,5 @@
 namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyTimedWaveMs = 3ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
@@ -24,13 +23,52 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
+  // The three-minute value is now a failure watchdog, not a song-length cap.
+  // Healthy songs may run for their full duration. A slot advances only after
+  // its end observer confirms the next real track, or after it has remained
+  // unhealthy / stuck waiting after an end for three continuous minutes.
+  for (Slot& candidate : slots_) {
+    if (!candidate.timedRotationActive) continue;
+
+    bool watchdogExpired = false;
+    if (candidate.timedCompletionPendingTick != 0) {
+      watchdogExpired =
+          now - candidate.timedCompletionPendingTick >=
+          kSpotifyTimedFailureWatchdogMs;
+    } else if (candidate.playing) {
+      candidate.timedUnhealthySinceTick = 0;
+    } else if (candidate.timedUnhealthySinceTick == 0) {
+      candidate.timedUnhealthySinceTick = now;
+    } else {
+      watchdogExpired =
+          now - candidate.timedUnhealthySinceTick >=
+          kSpotifyTimedFailureWatchdogMs;
+    }
+
+    if (watchdogExpired) {
+      AdvanceTimedRotationSlot(candidate, now);
+      break;
+    }
+  }
+
   const ULONGLONG elapsed = now - youtubeCycleStartTick_;
-  const size_t scheduledIndex = static_cast<size_t>(
+  size_t scheduledIndex = static_cast<size_t>(
       (elapsed / kSpotifyTimedSlotOffsetMs) % slots_.size());
+
+  // A just-finished song temporarily gets the large recovery viewport so its
+  // next target can start immediately instead of waiting for the normal
+  // six-account owner round to come back around.
+  if (timedPrioritySlotIndex_ < slots_.size() &&
+      now < timedPriorityUntilTick_) {
+    scheduledIndex = timedPrioritySlotIndex_;
+  } else {
+    timedPrioritySlotIndex_ = kAccountCount;
+    timedPriorityUntilTick_ = 0;
+  }
 
   // Authentication is the only foreground Spotify state. Give an account up to
   // three minutes to finish manual login; otherwise the normal 40-second clock
-  // decides which account owns the recovery viewport.
+  // (or a just-finished song's temporary priority) owns the recovery viewport.
   staggerSlotIndex_ %= slots_.size();
   const bool currentAuthentication =
       slots_[staggerSlotIndex_].webview &&
@@ -56,72 +94,49 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
   const ULONGLONG slotLocalElapsed = elapsed - slotOffset;
 
-  TimedSpotifyTarget desired = TimedSpotifyTarget::LonesomeRabbit;
-  size_t desiredCatalogIndex = kNoTimedCatalogIndex;
-  ULONGLONG rotationWave = ~0ULL;
-
-  if (podcastMode_ && slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
-    // YouTube 00:00 + account offset: fixed B.
-    desired = TimedSpotifyTarget::BitterBlue;
-  } else if (podcastMode_ &&
-             slotLocalElapsed < kSpotifyTimedRotationStartMs &&
-             !slot.podcastCompleted) {
-    // YouTube 04:00 + account offset: one TALKABOUT pass.
-    desired = TimedSpotifyTarget::TalkAbout;
-  } else if (slotLocalElapsed >= kSpotifyTimedRotationStartMs) {
-    // From 20:00 onward every account follows A -> B -> C -> D at three-minute
-    // intervals. One C/D pair is shared by all six accounts for that 12-minute
-    // cycle; accounts still access it 40 seconds apart.
-    const ULONGLONG rotationElapsed =
-        slotLocalElapsed - kSpotifyTimedRotationStartMs;
-    rotationWave = rotationElapsed / kSpotifyTimedWaveMs;
-    const unsigned position = static_cast<unsigned>(rotationWave % 4ULL);
-    const ULONGLONG rotationCycle = rotationWave / 4ULL;
-    EnsureTimedRandomPair(rotationCycle);
-
-    switch (position) {
-      case 0:
-        desired = TimedSpotifyTarget::LonesomeRabbit;
-        break;
-      case 1:
-        desired = TimedSpotifyTarget::BitterBlue;
-        break;
-      case 2:
-        desired = TimedSpotifyTarget::CatalogTrack;
-        desiredCatalogIndex = timedRandomCIndex_;
-        break;
-      default:
-        desired = TimedSpotifyTarget::CatalogTrack;
-        desiredCatalogIndex = timedRandomDIndex_;
-        break;
+  if (slotLocalElapsed < kSpotifyTimedRotationStartMs) {
+    TimedSpotifyTarget desired = TimedSpotifyTarget::LonesomeRabbit;
+    if (podcastMode_ && slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
+      // YouTube 00:00 + account offset: fixed B once.
+      desired = TimedSpotifyTarget::BitterBlue;
+    } else if (podcastMode_ && !slot.podcastCompleted) {
+      // YouTube 04:00 + account offset: one TALKABOUT pass.
+      desired = TimedSpotifyTarget::TalkAbout;
     }
+
+    const bool targetChanged = slot.timedTarget != desired;
+    if (targetChanged) {
+      slot.timedTarget = desired;
+      slot.timedCatalogIndex = kNoTimedCatalogIndex;
+      slot.lastModeNavigateTick = 0;
+      slot.unhealthyChecks = 0;
+      slot.timedPreludeCompleted = false;
+      NavigateTimedSlot(slot);
+    }
+
+    // BitterBlue is a one-shot prelude. Once its end observer has seen it finish,
+    // leave Spotify alone until the 04:00 TALKABOUT boundary instead of replaying.
+    if (slot.timedTarget == TimedSpotifyTarget::BitterBlue &&
+        slot.timedPreludeCompleted) {
+      return;
+    }
+
+    ReconcileTimedSlot(slot);
+    return;
   }
 
-  const bool catalogChanged =
-      desired == TimedSpotifyTarget::CatalogTrack &&
-      slot.timedCatalogIndex != desiredCatalogIndex;
-  const bool targetChanged = slot.timedTarget != desired || catalogChanged;
-  const bool rotationWaveChanged =
-      rotationWave != ~0ULL && slot.lastTimedRotationWave != rotationWave;
-
-  if (targetChanged) {
-    slot.timedTarget = desired;
-    slot.timedCatalogIndex = desiredCatalogIndex;
-    slot.lastModeNavigateTick = 0;
-    slot.unhealthyChecks = 0;
-  } else if (desired != TimedSpotifyTarget::CatalogTrack) {
-    slot.timedCatalogIndex = kNoTimedCatalogIndex;
+  if (!slot.timedRotationActive) {
+    // 20:00 + account offset starts A. From here on, actual playback completion
+    // drives B/C/D/A rather than wall-clock three-minute boundaries.
+    InitializeTimedRotationSlot(slot, now);
   }
 
-  // The wave number is the authority for periodic access. This forces a fresh
-  // Spotify navigation exactly on each 3-minute boundary even when TALKABOUT
-  // ended early and the slot was already sitting on Lonesome rabbit at 20:00.
-  if (rotationWaveChanged) {
-    slot.lastTimedRotationWave = rotationWave;
-    NavigateTimedSlot(slot);
-  } else if (targetChanged) {
-    NavigateTimedSlot(slot);
-  }
+  ArmTimedEndObserver(slot);
+
+  // An ended media element may be followed by a Spotify ad. The observer marks
+  // this waiting state but deliberately does not navigate until another real
+  // /track/ appears. Skip recovery clicks here so the ad is not interrupted.
+  if (slot.timedCompletionPendingTick != 0) return;
 
   ReconcileTimedSlot(slot);
 }
@@ -158,12 +173,14 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   podcastMode_ = podcastWindowActive;
   if (modeChanged && podcastWindowActive) {
     // A new YouTube hour is the master clock. B starts at 00:00, TALKABOUT at
-    // 04:00, and the A-B-C-D rotation starts at 20:00. C/D are redrawn for the
-    // first 12-minute rotation and again whenever the rotation cycle advances.
+    // 04:00, and A starts at 20:00. After that, each real song ending advances
+    // A -> B -> C -> D -> A; C/D are redrawn on each completed four-song cycle.
     youtubeCycleStartTick_ = now;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
+    timedPrioritySlotIndex_ = kAccountCount;
+    timedPriorityUntilTick_ = 0;
     timedRandomPairCycle_ = ~0ULL;
     timedRandomCIndex_ = kNoTimedCatalogIndex;
     timedRandomDIndex_ = kNoTimedCatalogIndex;
@@ -174,11 +191,20 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
       slot.timedTarget = TimedSpotifyTarget::None;
       slot.timedCatalogIndex = kNoTimedCatalogIndex;
       slot.lastTimedRotationWave = ~0ULL;
+      slot.timedRotationCycle = 0;
+      slot.timedRotationPosition = 0;
+      slot.timedStepStartTick = 0;
+      slot.timedCompletionPendingTick = 0;
+      slot.timedUnhealthySinceTick = 0;
+      slot.timedRandomCIndex = kNoTimedCatalogIndex;
+      slot.timedRandomDIndex = kNoTimedCatalogIndex;
+      slot.timedRotationActive = false;
+      slot.timedPreludeCompleted = false;
     }
   }
 
-  // TVer does not reset the YouTube master clock. The A-B-C-D sequence therefore
-  // keeps running through the TVer hour until the next YouTube hour resets it.
+  // TVer does not reset the YouTube master clock. Any A-B-C-D sequence already
+  // running continues to advance from actual song endings through the TVer hour.
   RecomputeForeground();
   RunStaggeredReconcile();
 }
