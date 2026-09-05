@@ -15,6 +15,8 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetPodcastMode(bool podcastWindowActive) noexcept;
+  static void CALLBACK StaggeredReconcileTimerProc(
+      HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -81,6 +83,8 @@ class SpotifyWebViews final {
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
   void CloseSlot(Slot& slot) noexcept;
+  void SetPodcastModeImmediate(bool podcastWindowActive) noexcept;
+  void RunStaggeredReconcile() noexcept;
 
   HWND parentWindow_ = nullptr;
   fs::path userDataFolder_;
@@ -89,6 +93,9 @@ class SpotifyWebViews final {
       std::make_shared<std::atomic<bool>>(true);
   size_t playbackWatchdogIndex_ = 0;
   size_t reconcileIndex_ = 0;
+  size_t staggerSlotIndex_ = 0;
+  ULONGLONG staggerSlotStartTick_ = 0;
+  bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   bool started_ = false;
   bool foreground_ = true;
@@ -96,9 +103,10 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
 };
 
-// tverPhase=false means the 30-minute YouTube window has started: play one
-// TALKABOUT episode, then fall back to Lonesome rabbit. tverPhase=true forces
-// Lonesome rabbit for the whole TVer window.
+// tverPhase=false means the one-hour YouTube window has started: play one
+// TALKABOUT episode, then fall back to Lonesome rabbit. tverPhase=true starts
+// the one-hour TVer window; Spotify slots transition serially at 10-minute
+// offsets so all six WebViews are never recovered at the same time.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
