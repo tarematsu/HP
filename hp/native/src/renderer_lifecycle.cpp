@@ -30,9 +30,9 @@ void PrepareParentWindow(HWND window) {
 }  // namespace
 
 void SetSpotifyMediaPhase(bool tverPhase) noexcept {
-  // The 30-minute YouTube window owns the one-shot TALKABOUT playback. When
-  // TVer begins, force every Spotify slot back to the playlist even if the
-  // episode has not finished yet.
+  // YouTube starts the Spotify master cycle. Switching to TVer only disables
+  // the YouTube-only prelude/podcast mode; an A-B-C-D rotation already running
+  // keeps advancing from real track completions and is not reset or stopped.
   if (gSpotifyWebViews) gSpotifyWebViews->SetPodcastMode(!tverPhase);
 }
 
