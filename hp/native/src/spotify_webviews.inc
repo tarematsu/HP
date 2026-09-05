@@ -46,6 +46,7 @@ inline const wchar_t* RewriteSpotifyLegacyAutoplayScript(
 }  // namespace hp
 
 #include "spotify_timed_sequence.inc"
+#include "spotify_recent_catalog.inc"
 
 namespace hp {
 #include "spotify_timed_end_rotation.inc"
