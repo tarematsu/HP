@@ -75,8 +75,12 @@ test('TVer queues every public series item and keeps completion latching', () =>
   assert.match(composition, /state\.endCandidateAt = Date\.now\(\)/);
   assert.match(composition, /video\.currentTime < 3[\s\S]*state\.endCandidateAt = 0/);
   assert.doesNotMatch(composition, /isMainEpisodeLink/);
-  assert.match(composition, /const isCurrentSeriesEpisodeLink = link =>/);
-  assert.match(composition, /\.filter\(isCurrentSeriesEpisodeLink\)/);
+  assert.match(composition, /const findSeriesEpisodeContainer = \(\) =>/);
+  assert.match(composition, /if \(!episodeHeading\) return null/);
+  assert.match(composition, /あなたにおすすめ\|おすすめ\|関連番組\|関連動画\|ランキング/);
+  assert.match(composition, /if \(!container\) return/);
+  assert.match(composition, /container\.querySelectorAll\('a\[href\*=\"\/episodes\/\"\]'\)/);
+  assert.doesNotMatch(composition, /if \(!recommendationHeading\) return true/);
   assert.match(composition, /completedItem = state\.maxDuration >= 5/);
   assert.match(composition, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
   assert.match(composition, /stableEndDelayMs = state\.maxDuration < 600 \? 8000 : 2500/);

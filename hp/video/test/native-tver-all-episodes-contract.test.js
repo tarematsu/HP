@@ -11,11 +11,12 @@ test('TVer cycles every published series item before switching series', () => {
   assert.match(composition, /episodeQueueKey = seriesPath/);
   assert.match(composition, /__homePanelTverEpisodeQueue:/);
   assert.doesNotMatch(composition, /isMainEpisodeLink/);
-  assert.match(composition, /const isCurrentSeriesEpisodeLink = link =>/);
-  assert.match(composition, /normalize\(element\.textContent\) === 'あなたにおすすめ'/);
-  assert.match(composition, /link\.compareDocumentPosition\(recommendationHeading\)/);
-  assert.match(composition, /Node\.DOCUMENT_POSITION_FOLLOWING/);
-  assert.match(composition, /\.filter\(isCurrentSeriesEpisodeLink\)/);
+  assert.match(composition, /const findSeriesEpisodeContainer = \(\) =>/);
+  assert.match(composition, /if \(!episodeHeading\) return null/);
+  assert.match(composition, /あなたにおすすめ\|おすすめ\|関連番組\|関連動画\|ランキング/);
+  assert.match(composition, /if \(!container\) return/);
+  assert.match(composition, /container\.querySelectorAll\('a\[href\*=\"\/episodes\/\"\]'\)/);
+  assert.doesNotMatch(composition, /if \(!recommendationHeading\) return true/);
   assert.match(composition, /Array\.from\(new Set\(/);
   assert.match(composition, /writeEpisodeQueue\(seriesPath, hrefs, 0\)/);
   assert.match(composition, /const advanceEpisodeOrSeries = \(\) =>/);
