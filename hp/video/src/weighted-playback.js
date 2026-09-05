@@ -10,7 +10,8 @@ const MAX_CURSOR_KEY = 2_147_483_646;
 export const FRESHNESS_WEIGHTS = Object.freeze([
   { maxAgeDays: 7, weight: 5 },
   { maxAgeDays: 30, weight: 3 },
-  { maxAgeDays: 90, weight: 2 }
+  { maxAgeDays: 90, weight: 2 },
+  { maxAgeDays: 180, weight: 1 }
 ]);
 
 function mix32(value) {
@@ -36,7 +37,7 @@ export function freshnessWeight(firstSeenAt, nowMs = Date.now()) {
   for (const bucket of FRESHNESS_WEIGHTS) {
     if (ageDays <= bucket.maxAgeDays) return bucket.weight;
   }
-  return 1;
+  return 0.5;
 }
 
 export function seededPlaybackUnit(videoId, seed) {
