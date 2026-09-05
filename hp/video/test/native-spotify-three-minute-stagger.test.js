@@ -22,10 +22,14 @@ const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
   'utf8',
 );
+const ended = readFileSync(
+  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
+  'utf8',
+);
 
-test('Spotify fallback startup staggering matches the 40-second six-account clock', () => {
+test('Spotify fallback startup staggering keeps the 40-second six-account clock', () => {
   assert.match(wrapper, /#include "spotify_stagger_timer\.inc"/);
-  assert.match(wrapper, /#define SetTimer\(hwnd, timerId, interval, callback\)/);
+  assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
   assert.match(timer, /kSpotifySerializedSlotStepMs = 40U \* 1000U/);
   assert.match(timer, /StaggeredReconcileTimerProc/);
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
@@ -35,34 +39,63 @@ test('Spotify fallback startup staggering matches the 40-second six-account cloc
   );
 });
 
-test('YouTube hour keeps BitterBlue and TALKABOUT prelude then starts A-B-C-D at minute 20', () => {
+test('YouTube hour keeps BitterBlue and TALKABOUT prelude then starts A at minute 20', () => {
   assert.match(header, /youtubeCycleStartTick_ = 0/);
   assert.match(
     header,
     /TimedSpotifyTarget[\s\S]*BitterBlue[\s\S]*TalkAbout[\s\S]*LonesomeRabbit[\s\S]*CatalogTrack/,
   );
-  assert.match(schedule, /kSpotifyTimedWaveMs = 3ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyTimedTalkAboutStartMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyTimedRotationStartMs = 20ULL \* 60ULL \* 1000ULL/);
-  assert.match(schedule, /slotLocalElapsed < kSpotifyTimedTalkAboutStartMs[\s\S]*TimedSpotifyTarget::BitterBlue/);
-  assert.match(schedule, /slotLocalElapsed < kSpotifyTimedRotationStartMs[\s\S]*TimedSpotifyTarget::TalkAbout/);
-  assert.match(schedule, /const unsigned position = static_cast<unsigned>\(rotationWave % 4ULL\)/);
-  assert.match(schedule, /case 0:[\s\S]*LonesomeRabbit/);
-  assert.match(schedule, /case 1:[\s\S]*BitterBlue/);
-  assert.match(schedule, /case 2:[\s\S]*CatalogTrack[\s\S]*timedRandomCIndex_/);
-  assert.match(schedule, /default:[\s\S]*CatalogTrack[\s\S]*timedRandomDIndex_/);
+  assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
+  assert.match(ended, /timedRotationPosition = 0/);
+  assert.match(ended, /case 0:[\s\S]*LonesomeRabbit/);
+  assert.match(ended, /case 1:[\s\S]*BitterBlue/);
+  assert.match(ended, /case 2:[\s\S]*timedRandomCIndex/);
+  assert.match(ended, /default:[\s\S]*timedRandomDIndex/);
 });
 
-test('C and D are redrawn as a distinct pair once per 12-minute rotation cycle', () => {
+test('A-B-C-D advances from actual track completion instead of fixed three-minute boundaries', () => {
+  assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs/);
+  assert.doesNotMatch(schedule, /rotationWave = rotationElapsed/);
+  assert.match(ended, /media\.addEventListener\('ended'/);
+  assert.match(ended, /spotify:timed-waiting/);
+  assert.match(ended, /spotify:timed-ended/);
+  assert.match(ended, /AdvanceTimedRotationSlot\(\*target, now\)/);
+  assert.match(ended, /timedRotationPosition \+ 1U/);
+  assert.match(schedule, /ArmTimedEndObserver\(slot\)/);
+});
+
+test('Spotify ads are waited through before the next sequence track is opened', () => {
+  assert.match(
+    ended,
+    /Ads do not expose another \/track\/ context[\s\S]*track\.path[\s\S]*spotify:timed-ended/,
+  );
+  assert.match(schedule, /timedCompletionPendingTick != 0\) return/);
+  assert.match(schedule, /post-track\/ad waiting state/);
+});
+
+test('three minutes is only an unhealthy/waiting watchdog and does not cut healthy long songs', () => {
+  assert.match(ended, /kSpotifyTimedFailureWatchdogMs = 3ULL \* 60ULL \* 1000ULL/);
+  assert.match(schedule, /candidate\.timedCompletionPendingTick != 0/);
+  assert.match(schedule, /else if \(candidate\.playing\)[\s\S]*timedUnhealthySinceTick = 0/);
+  assert.match(
+    schedule,
+    /timedUnhealthySinceTick[\s\S]*kSpotifyTimedFailureWatchdogMs[\s\S]*AdvanceTimedRotationSlot/,
+  );
+});
+
+test('C and D remain a distinct random pair for each completed A-B-C-D cycle', () => {
   assert.match(header, /timedRandomPairCycle_ = ~0ULL/);
-  assert.match(header, /timedRandomCIndex_ = kNoTimedCatalogIndex/);
-  assert.match(header, /timedRandomDIndex_ = kNoTimedCatalogIndex/);
+  assert.match(header, /timedRandomCIndex = kNoTimedCatalogIndex/);
+  assert.match(header, /timedRandomDIndex = kNoTimedCatalogIndex/);
   assert.match(timed, /void SpotifyWebViews::EnsureTimedRandomPair\(ULONGLONG rotationCycle\) noexcept/);
   assert.match(timed, /timedRandomCIndex_ = PickTimedRandomCatalogIndex\(kNoTimedCatalogIndex\)/);
   assert.match(timed, /timedRandomDIndex_ = PickTimedRandomCatalogIndex\(timedRandomCIndex_\)/);
-  assert.match(timed, /timedRandomCIndex_ != timedRandomDIndex_/);
-  assert.match(schedule, /const ULONGLONG rotationCycle = rotationWave \/ 4ULL/);
-  assert.match(schedule, /EnsureTimedRandomPair\(rotationCycle\)/);
+  assert.match(ended, /\+\+slot\.timedRotationCycle/);
+  assert.match(ended, /EnsureTimedRandomPair\(slot\.timedRotationCycle\)/);
+  assert.match(ended, /slot\.timedRandomCIndex = timedRandomCIndex_/);
+  assert.match(ended, /slot\.timedRandomDIndex = timedRandomDIndex_/);
 });
 
 test('built-in random catalog contains verified Spotify track URLs and excludes fixed A/B', () => {
@@ -99,17 +132,15 @@ test('built-in random catalog contains verified Spotify track URLs and excludes 
   assert.doesNotMatch(catalogSection, /2f2Ik9JeinFVWZuFb3i35b/);
 });
 
-test('every three-minute wave performs a fresh Spotify access and direct tracks use exact-path playback checks', () => {
-  assert.match(schedule, /rotationWaveChanged/);
-  assert.match(schedule, /slot\.lastTimedRotationWave = rotationWave[\s\S]*NavigateTimedSlot\(slot\)/);
-  assert.match(timed, /kSpotifyTimedTrackScriptTemplate/);
-  assert.match(timed, /const targetPath = '__TARGET_PATH__'/);
-  assert.match(timed, /new URL\(link\.href, location\.href\)\.pathname === targetPath/);
-  assert.match(timed, /BuildTimedTrackScript\(track->path\)/);
-  assert.match(timed, /slot\.webview->Navigate\(url\)/);
+test('a just-finished song gets temporary recovery priority so the next target can start promptly', () => {
+  assert.match(header, /timedPrioritySlotIndex_ = kAccountCount/);
+  assert.match(header, /timedPriorityUntilTick_ = 0/);
+  assert.match(ended, /kSpotifyTimedPriorityHoldMs = 40ULL \* 1000ULL/);
+  assert.match(ended, /timedPrioritySlotIndex_ = slot\.index/);
+  assert.match(schedule, /now < timedPriorityUntilTick_[\s\S]*scheduledIndex = timedPrioritySlotIndex_/);
 });
 
-test('timed playback owns autoplay and does not use repeat-one', () => {
+test('timed playback still owns autoplay and does not use repeat-one', () => {
   assert.match(wrapper, /RewriteSpotifyLegacyAutoplayScript/);
   assert.match(wrapper, /#include "spotify_timed_sequence\.inc"/);
   assert.match(timed, /5EjWZuODqEPQ9eq7XCmITh/);
@@ -118,7 +149,7 @@ test('timed playback owns autoplay and does not use repeat-one', () => {
   assert.doesNotMatch(timed, /ensureRepeatOne|repeatState|control-button-repeat/);
 });
 
-test('TALKABOUT remains one-shot and returns to Lonesome before the minute-20 rotation if it finishes early', () => {
+test('TALKABOUT remains one-shot and can return to Lonesome before minute 20', () => {
   assert.match(timed, /const playbackRate = 3\.0/);
   assert.match(timed, /__homePanelSpotifyTimedPodcastOneShot/);
   assert.match(timed, /media\.addEventListener\('ended'/);
@@ -127,10 +158,9 @@ test('TALKABOUT remains one-shot and returns to Lonesome before the minute-20 ro
     timed,
     /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*podcastCompleted = true[\s\S]*timedTarget = TimedSpotifyTarget::LonesomeRabbit[\s\S]*NavigateTimedSlot\(\*target\)/,
   );
-  assert.match(schedule, /rotationWave != ~0ULL && slot\.lastTimedRotationWave != rotationWave/);
 });
 
-test('TVer keeps the same A-B-C-D master clock and does not navigate all six slots together', () => {
+test('TVer keeps the same completion-driven A-B-C-D sequence', () => {
   assert.match(wrapper, /#define SetPodcastMode SetPodcastModeImmediate/);
   assert.match(schedule, /TVer does not reset the YouTube master clock/);
   assert.doesNotMatch(
