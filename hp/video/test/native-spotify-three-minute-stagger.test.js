@@ -19,23 +19,23 @@ const schedule = readFileSync(
   'utf8',
 );
 
-test('Spotify startup and fallback mode timers are effectively staggered by ten minutes', () => {
+test('Spotify startup and fallback mode timers are effectively staggered by three minutes', () => {
   assert.match(wrapper, /#include "spotify_stagger_timer\.inc"/);
   assert.match(wrapper, /#define SetTimer\(hwnd, timerId, interval, callback\)/);
-  assert.match(timer, /kSpotifySerializedSlotStepMs = 10U \* 60U \* 1000U/);
+  assert.match(timer, /kSpotifySerializedSlotStepMs = 3U \* 60U \* 1000U/);
   assert.match(timer, /kSpotifyLegacyStartupTimerId = 1/);
   assert.match(timer, /kSpotifyLegacyModeSwitchTimerId = 3/);
   assert.match(timer, /interval \/ kSpotifyLegacyStartupStepMs/);
   assert.match(timer, /interval \/ kSpotifyLegacyModeSwitchStepMs/);
 });
 
-test('robust Spotify scheduler processes only one slot for each ten-minute ownership window', () => {
+test('robust Spotify scheduler processes only one slot for each three-minute ownership window', () => {
   assert.match(header, /StaggeredReconcileTimerProc/);
   assert.match(header, /staggerSlotIndex_ = 0/);
   assert.match(header, /staggerSlotStartTick_ = 0/);
   assert.match(timer, /kSpotifyRobustTimerId = 0x53505243/);
   assert.match(timer, /StaggeredReconcileTimerProc/);
-  assert.match(schedule, /kSpotifySerializedSlotHoldMs =\s*10ULL \* 60ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySerializedSlotHoldMs =\s*3ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /Slot& slot = slots_\[staggerSlotIndex_\]/);
   assert.match(schedule, /reconcileIndex_ = staggerSlotIndex_/);
   assert.match(schedule, /staggerSlotIndex_ = \(staggerSlotIndex_ \+ 1\) % slots_\.size\(\)/);
