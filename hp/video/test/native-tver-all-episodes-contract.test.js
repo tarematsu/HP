@@ -7,21 +7,26 @@ const composition = readFileSync(
   'utf8',
 );
 
-test('TVer cycles every published main episode before switching series', () => {
+test('TVer cycles every published series item before switching series', () => {
   assert.match(composition, /episodeQueueKey = seriesPath/);
   assert.match(composition, /__homePanelTverEpisodeQueue:/);
-  assert.match(
-    composition,
-    /放課後トーク\|予告\|\\bPR\\b\|ティザー\|teaser\|trailer\|ダイジェスト\|番宣\|告知/i,
-  );
+  assert.doesNotMatch(composition, /isMainEpisodeLink/);
+  assert.match(composition, /\.filter\(link => link\.href\)/);
   assert.match(composition, /Array\.from\(new Set\(/);
   assert.match(composition, /writeEpisodeQueue\(seriesPath, hrefs, 0\)/);
   assert.match(composition, /const advanceEpisodeOrSeries = \(\) =>/);
   assert.match(composition, /nextIndex < queue\.hrefs\.length/);
   assert.match(composition, /location\.replace\(queue\.hrefs\[nextIndex\]\)/);
   assert.match(composition, /clearEpisodeQueue\(seriesPath\)/);
+});
+
+test('TVer short items wait out ad transitions before advancing', () => {
+  assert.match(composition, /completedItem = state\.maxDuration >= 5/);
+  assert.match(composition, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
+  assert.match(composition, /stableEndDelayMs = state\.maxDuration < 600 \? 8000 : 2500/);
+  assert.match(composition, /Date\.now\(\) - state\.endCandidateAt >= stableEndDelayMs/);
   assert.match(
     composition,
-    /stableEnd && \(completedPreview \|\| completedEpisode\)[\s\S]*advanceEpisodeOrSeries\(\)[\s\S]*state\.restartRequested = true/,
+    /stableEnd && completedItem[\s\S]*advanceEpisodeOrSeries\(\)[\s\S]*state\.restartRequested = true/,
   );
 });

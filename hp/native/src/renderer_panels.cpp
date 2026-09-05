@@ -217,9 +217,6 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
 
   const episodeQueueKey = seriesPath =>
       '__homePanelTverEpisodeQueue:' + seriesPath;
-  const isMainEpisodeLink = link =>
-      !/(放課後トーク|予告|\bPR\b|ティザー|teaser|trailer|ダイジェスト|番宣|告知)/i
-          .test(labelOf(link));
   const normalizeEpisodeHref = href => {
     try {
       const url = new URL(href, location.href);
@@ -261,7 +258,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     const seriesPath = location.pathname;
     rememberSeriesPath(seriesPath);
     const links = Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
-        .filter(link => link.href && isMainEpisodeLink(link));
+        .filter(link => link.href);
     const hrefs = Array.from(new Set(
         links.map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
     if (!hrefs.length) return;
@@ -339,13 +336,12 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
         // An ad or intermediate clip ended and playback immediately continued.
         state.endCandidateAt = 0;
       }
-      const completedPreview = state.previewMode &&
-          state.maxDuration >= 10 && state.maxTime >= 5;
-      const completedEpisode = !state.previewMode &&
-          state.maxDuration >= 600 && state.maxTime >= 300;
+      const completedItem = state.maxDuration >= 5 &&
+          state.maxTime >= Math.max(3, state.maxDuration - 10);
+      const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
       const stableEnd = state.endCandidateAt > 0 &&
-          Date.now() - state.endCandidateAt >= 2500;
-      if (stableEnd && (completedPreview || completedEpisode)) {
+          Date.now() - state.endCandidateAt >= stableEndDelayMs;
+      if (stableEnd && completedItem) {
         if (advanceEpisodeOrSeries()) return;
         state.restartRequested = true;
         return;
