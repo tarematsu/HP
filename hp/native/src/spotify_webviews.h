@@ -162,11 +162,13 @@ class SpotifyWebViews final {
 // TALKABOUT at 04:00. After TALKABOUT, one random 2025-2026 Sakurazaka46 song
 // bridges the gap without replaying Lonesome rabbit. From 20:00 the music
 // rotation advances on real playback completion:
-// Lonesome rabbit -> BitterBlue -> random C -> random D -> A....
+// Lonesome rabbit -> random B -> BitterBlue -> random D -> A....
+// Switching to TVer does not reset or stop that rotation; it continues through
+// the TVer hour until the next YouTube phase starts a fresh master cycle.
 // A three-minute watchdog is used only when playback is unhealthy or Spotify
 // remains in a post-track/ad waiting state; healthy long songs are not cut off.
-// Bridge/C/D are drawn from songs newly released in 2025-2026, excluding fixed
-// A/B; C and D are distinct and also avoid that hour's bridge. Six accounts
+// Bridge/B/D are drawn from songs newly released in 2025-2026, excluding fixed
+// A/C; B and D are distinct and also avoid that hour's bridge. Six accounts
 // remain offset by 40 seconds for normal heavy recovery work.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
