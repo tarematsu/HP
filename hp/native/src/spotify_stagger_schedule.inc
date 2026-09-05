@@ -26,7 +26,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   // The three-minute value is now a failure watchdog, not a song-length cap.
   // Healthy songs may run for their full duration. A slot advances only after
   // its end observer confirms the next real track, or after it has remained
-  // unhealthy / stuck waiting after an end for three continuous minutes.
+  // unhealthy / stuck in a post-track/ad waiting state for three minutes.
   for (Slot& candidate : slots_) {
     if (!candidate.timedRotationActive) continue;
 
@@ -52,15 +52,16 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
 
   const ULONGLONG elapsed = now - youtubeCycleStartTick_;
-  size_t scheduledIndex = static_cast<size_t>(
+  const size_t scheduledIndex = static_cast<size_t>(
       (elapsed / kSpotifyTimedSlotOffsetMs) % slots_.size());
+  size_t selectedIndex = scheduledIndex;
 
   // A just-finished song temporarily gets the large recovery viewport so its
   // next target can start immediately instead of waiting for the normal
   // six-account owner round to come back around.
   if (timedPrioritySlotIndex_ < slots_.size() &&
       now < timedPriorityUntilTick_) {
-    scheduledIndex = timedPrioritySlotIndex_;
+    selectedIndex = timedPrioritySlotIndex_;
   } else {
     timedPrioritySlotIndex_ = kAccountCount;
     timedPriorityUntilTick_ = 0;
@@ -76,8 +77,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const bool holdAuthentication =
       currentAuthentication &&
       now - staggerSlotStartTick_ < kSpotifyAuthenticationHoldMs;
-  if (!holdAuthentication && staggerSlotIndex_ != scheduledIndex) {
-    staggerSlotIndex_ = scheduledIndex;
+  if (!holdAuthentication && staggerSlotIndex_ != selectedIndex) {
+    staggerSlotIndex_ = selectedIndex;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
     RefreshSpotifyHostLayout();
