@@ -99,7 +99,11 @@ export async function readFeedSnapshotPage(db, options) {
   const candidates = orientation === 'both'
     ? snapshot.items
     : snapshot.items.filter((item) => item.orientation === orientation);
-  const page = buildWeightedPlaybackPage(candidates, options);
+  const snapshotTime = Date.parse(snapshot.generatedAt);
+  const page = buildWeightedPlaybackPage(candidates, {
+    ...options,
+    nowMs: Number.isFinite(snapshotTime) ? snapshotTime : Date.now()
+  });
   return {
     items: page.rows.map((item) => ({ id: item.id, mediaUrl: item.mediaUrl })),
     nextCursor: page.nextCursor
