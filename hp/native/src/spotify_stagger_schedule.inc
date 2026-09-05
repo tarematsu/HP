@@ -1,6 +1,6 @@
 namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyTimedWaveMs = 4ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedWaveMs = 3ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
@@ -69,8 +69,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     // YouTube 04:00 + account offset: one TALKABOUT pass.
     desired = TimedSpotifyTarget::TalkAbout;
   } else if (slotLocalElapsed >= kSpotifyTimedRotationStartMs) {
-    // From 20:00 onward every account follows A -> B -> C -> D at four-minute
-    // intervals. One C/D pair is shared by all six accounts for that 16-minute
+    // From 20:00 onward every account follows A -> B -> C -> D at three-minute
+    // intervals. One C/D pair is shared by all six accounts for that 12-minute
     // cycle; accounts still access it 40 seconds apart.
     const ULONGLONG rotationElapsed =
         slotLocalElapsed - kSpotifyTimedRotationStartMs;
@@ -114,7 +114,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   }
 
   // The wave number is the authority for periodic access. This forces a fresh
-  // Spotify navigation exactly on each 4-minute boundary even when TALKABOUT
+  // Spotify navigation exactly on each 3-minute boundary even when TALKABOUT
   // ended early and the slot was already sitting on Lonesome rabbit at 20:00.
   if (rotationWaveChanged) {
     slot.lastTimedRotationWave = rotationWave;
@@ -159,7 +159,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   if (modeChanged && podcastWindowActive) {
     // A new YouTube hour is the master clock. B starts at 00:00, TALKABOUT at
     // 04:00, and the A-B-C-D rotation starts at 20:00. C/D are redrawn for the
-    // first 16-minute rotation and again whenever the rotation cycle advances.
+    // first 12-minute rotation and again whenever the rotation cycle advances.
     youtubeCycleStartTick_ = now;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
