@@ -43,8 +43,11 @@ inline const wchar_t* RewriteSpotifyLegacyAutoplayScript(
 #include "spotify_phase_sync.inc"
 #undef SetPodcastMode
 #undef SendInput
+}  // namespace hp
 
 #include "spotify_timed_sequence.inc"
+
+namespace hp {
 #include "spotify_stagger_schedule.inc"
 
 #undef RecomputeForeground
