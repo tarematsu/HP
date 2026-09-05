@@ -1,5 +1,5 @@
 import { maybeCleanupCollectionRuns } from './d1-compaction.js';
-import { publishFeedSnapshot, refreshFeedSnapshot } from './feed-snapshot.js';
+import { refreshFeedSnapshot } from './feed-snapshot.js';
 import { rebuildPlaybackFeed } from './playback-feed-sync.js';
 
 const COORDINATOR_NAME = 'global';
@@ -24,15 +24,13 @@ export async function synchronizeCompactedFeed(
   options = {}
 ) {
   const db = env.DB || env;
-  const publishSnapshot = env?.DB && env?.DATA_BUCKET
-    ? (rows, hash, generatedAt) => publishFeedSnapshot(env, rows, hash, generatedAt)
-    : undefined;
-  return rebuildPlaybackFeed(db, capturedAt, {
+  const count = await rebuildPlaybackFeed(db, capturedAt, {
     replaceItems: replacementItems(options),
     mergeItems: Array.isArray(options.mergeItems) ? options.mergeItems : undefined,
-    lock: options.lock,
-    publishSnapshot
+    lock: options.lock
   });
+  if (env?.DB && env?.DATA_BUCKET) await refreshFeedSnapshot(env, capturedAt);
+  return count;
 }
 
 export async function finalizeCompactedFeedLocally(

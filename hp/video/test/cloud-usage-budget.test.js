@@ -71,7 +71,7 @@ test('each hot coordination workload has an independent Durable Object', () => {
   assert.match(feedCoordinator, /video-feed-stage/);
   assert.match(feedCoordinator, /video-feed-refresh/);
   assert.match(feedCoordinator, /video-liveness-run/);
-  assert.match(feedSnapshot, /SNAPSHOT_KEY = 'video\/playback-feed\/v1\.json'/);
+  assert.match(feedSnapshot, /SNAPSHOT_KEY = 'video\/active-playback\/v1\.json'/);
 });
 
 test('Durable Object migrations remain append-only', () => {

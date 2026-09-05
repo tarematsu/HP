@@ -18,19 +18,12 @@ function createDb(rows) {
     prepare(sql) {
       const normalized = sql.replace(/\s+/g, ' ').trim();
       return {
-        args: [],
-        bind(...args) {
-          this.args = args;
-          return this;
-        },
         async all() {
           db.sql.push(normalized);
-          const [afterVideoId, limit] = this.args.map(Number);
           return {
             results: rows
-              .filter((row) => row.status === 'active' && row.id > afterVideoId)
-              .slice(0, limit)
-              .map(({ id, mediaUrl }) => ({ id, mediaUrl }))
+              .filter((row) => row.status === 'active')
+              .map(({ id, mediaUrl, firstSeenAt }) => ({ id, mediaUrl, firstSeenAt }))
           };
         }
       };
@@ -39,10 +32,15 @@ function createDb(rows) {
   return db;
 }
 
-test('all-active paging exhausts more than the former 2000-video cap without duplicates', async () => {
+function firstSeenAt(daysAgo = 1) {
+  return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+}
+
+test('all-active weighted paging exhausts more than 2000 stored videos without duplicates', async () => {
   const rows = Array.from({ length: 2105 }, (_, index) => ({
     id: index + 1,
     mediaUrl: mediaUrl(index + 1),
+    firstSeenAt: firstSeenAt(index % 220),
     status: 'active'
   }));
   const db = createDb(rows);
@@ -53,6 +51,7 @@ test('all-active paging exhausts more than the former 2000-video cap without dup
     const page = await readAllActivePlaybackCursorPage(db, {
       orientation: 'both',
       cursor,
+      seed: 12345,
       limit: 100
     });
     ids.push(...page.items.map((item) => item.id));
@@ -61,70 +60,55 @@ test('all-active paging exhausts more than the former 2000-video cap without dup
 
   assert.equal(ids.length, 2105);
   assert.equal(new Set(ids).size, 2105);
-  assert.equal(ids[0], 1);
-  assert.equal(ids.at(-1), 2105);
   assert.ok(db.sql.every((sql) => sql.includes("video.status = 'active'")));
   assert.ok(db.sql.every((sql) => !sql.includes('ranking_entries')));
+  assert.ok(db.sql.every((sql) => !sql.includes('LIMIT')));
   assert.ok(db.sql.every((sql) => !sql.includes('OFFSET')));
 });
 
-test('orientation paging advances across non-matching active videos without skipping matches', async () => {
+test('orientation filters apply across the complete active-video set', async () => {
   const rows = [
     ...Array.from({ length: 201 }, (_, index) => ({
       id: index + 1,
       mediaUrl: mediaUrl(index + 1, 'horizontal'),
+      firstSeenAt: firstSeenAt(1),
       status: 'active'
     })),
-    { id: 202, mediaUrl: mediaUrl(202, 'vertical'), status: 'active' },
-    { id: 203, mediaUrl: mediaUrl(203, 'vertical'), status: 'hidden' }
+    { id: 202, mediaUrl: mediaUrl(202, 'vertical'), firstSeenAt: firstSeenAt(1), status: 'active' },
+    { id: 203, mediaUrl: mediaUrl(203, 'vertical'), firstSeenAt: firstSeenAt(1), status: 'hidden' }
   ];
   const db = createDb(rows);
 
-  const first = await readAllActivePlaybackCursorPage(db, {
+  const page = await readAllActivePlaybackCursorPage(db, {
     orientation: 'vertical',
     cursor: 'start',
+    seed: 77,
     limit: 100
   });
-  assert.deepEqual(first.items, []);
-  assert.equal(first.nextCursor, '100');
-
-  const second = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'vertical',
-    cursor: first.nextCursor,
-    limit: 100
-  });
-  assert.deepEqual(second.items, []);
-  assert.equal(second.nextCursor, '200');
-
-  const third = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'vertical',
-    cursor: second.nextCursor,
-    limit: 100
-  });
-  assert.deepEqual(third.items.map((item) => item.id), [202]);
-  assert.equal(third.nextCursor, null);
+  assert.deepEqual(page.items.map((item) => item.id), [202]);
+  assert.equal(page.nextCursor, null);
 });
 
 test('resolution profiles filter by short edge without additional D1 writes', async () => {
   const rows = [
-    { id: 1, mediaUrl: mediaUrl(1, 'vertical', 720), status: 'active' },
-    { id: 2, mediaUrl: mediaUrl(2, 'vertical', 1080), status: 'active' },
-    { id: 3, mediaUrl: mediaUrl(3, 'horizontal', 720), status: 'active' },
-    { id: 4, mediaUrl: mediaUrl(4, 'horizontal', 1080), status: 'active' }
+    { id: 1, mediaUrl: mediaUrl(1, 'vertical', 720), firstSeenAt: firstSeenAt(1), status: 'active' },
+    { id: 2, mediaUrl: mediaUrl(2, 'vertical', 1080), firstSeenAt: firstSeenAt(1), status: 'active' },
+    { id: 3, mediaUrl: mediaUrl(3, 'horizontal', 720), firstSeenAt: firstSeenAt(1), status: 'active' },
+    { id: 4, mediaUrl: mediaUrl(4, 'horizontal', 1080), firstSeenAt: firstSeenAt(1), status: 'active' }
   ];
   const db = createDb(rows);
 
   const vertical720 = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'vertical-720', cursor: 'start', limit: 100
+    orientation: 'vertical-720', cursor: 'start', seed: 1, limit: 100
   });
   const vertical1080 = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'vertical-1080', cursor: 'start', limit: 100
+    orientation: 'vertical-1080', cursor: 'start', seed: 1, limit: 100
   });
   const horizontal720 = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'horizontal-720', cursor: 'start', limit: 100
+    orientation: 'horizontal-720', cursor: 'start', seed: 1, limit: 100
   });
   const horizontal1080 = await readAllActivePlaybackCursorPage(db, {
-    orientation: 'horizontal-1080', cursor: 'start', limit: 100
+    orientation: 'horizontal-1080', cursor: 'start', seed: 1, limit: 100
   });
 
   assert.deepEqual(vertical720.items.map((item) => item.id), [1]);

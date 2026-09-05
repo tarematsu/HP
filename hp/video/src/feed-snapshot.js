@@ -1,13 +1,15 @@
-import { feedContentHash, writeFeedState } from './d1-compaction.js';
-import { PLAYBACK_FEED_LIMIT } from './feed-limits.js';
-import { inferVideoOrientation } from './video-orientation.js';
+import { feedContentHash } from './d1-compaction.js';
+import {
+  inferVideoOrientation,
+  matchesVideoOrientationFilter
+} from './video-orientation.js';
 import { runtimeEnvForDb } from './runtime-env.js';
 import { buildWeightedPlaybackPage } from './weighted-playback.js';
 
-const SNAPSHOT_KEY = 'video/playback-feed/v2.json';
-const SNAPSHOT_SCHEMA_VERSION = 2;
+const SNAPSHOT_KEY = 'video/active-playback/v1.json';
+const SNAPSHOT_SCHEMA_VERSION = 3;
 const SNAPSHOT_CACHE_TTL_MS = 5 * 60_000;
-const SNAPSHOT_CACHE_URL = 'https://homepanel.internal/video/playback-feed/v2.json';
+const SNAPSHOT_CACHE_URL = 'https://homepanel.internal/video/active-playback/v1.json';
 const SNAPSHOT_CACHES = new WeakMap();
 
 function validItem(value) {
@@ -72,7 +74,7 @@ async function readSnapshot(bucket) {
   const object = await bucket.get(SNAPSHOT_KEY);
   if (!object) return null;
   const snapshot = parseSnapshot(await object.json());
-  if (!snapshot) throw new Error('R2 playback feed snapshot is invalid');
+  if (!snapshot) throw new Error('R2 active playback snapshot is invalid');
   SNAPSHOT_CACHES.set(bucket, { snapshot, expiresAt: now + SNAPSHOT_CACHE_TTL_MS });
   void cacheSnapshot(snapshot);
   return snapshot;
@@ -86,7 +88,7 @@ export async function readFeedSnapshotPage(db, options) {
   try {
     snapshot = await readSnapshot(bucket);
   } catch (error) {
-    console.error('r2-playback-feed-read-failed', {
+    console.error('r2-active-playback-read-failed', {
       error: String(error?.message || error)
     });
     return null;
@@ -98,7 +100,7 @@ export async function readFeedSnapshotPage(db, options) {
   const orientation = String(options.orientation || 'both');
   const candidates = orientation === 'both'
     ? snapshot.items
-    : snapshot.items.filter((item) => item.orientation === orientation);
+    : snapshot.items.filter((item) => matchesVideoOrientationFilter(item.mediaUrl, orientation));
   const snapshotTime = Date.parse(snapshot.generatedAt);
   const page = buildWeightedPlaybackPage(candidates, {
     ...options,
@@ -166,20 +168,16 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
 export async function refreshFeedSnapshot(env, generatedAt = new Date().toISOString()) {
   if (!env?.DB) return 0;
   const result = await env.DB.prepare(
-    `SELECT ranking.video_id AS videoId,
+    `SELECT video.id AS videoId,
             video.media_url AS mediaUrl,
             video.first_seen_at AS firstSeenAt
-       FROM ranking_entries AS ranking
-       INNER JOIN videos AS video ON video.id = ranking.video_id
-      WHERE ranking.period = '24h'
-        AND video.status = 'active'
-      ORDER BY ranking.rank, ranking.video_id
-      LIMIT ?`
-  ).bind(PLAYBACK_FEED_LIMIT).all();
+       FROM videos AS video
+      WHERE video.status = 'active'
+      ORDER BY video.id`
+  ).all();
   const rows = result?.results || [];
   const hash = await feedContentHash(rows);
   await publishFeedSnapshot(env, rows, hash, generatedAt);
-  await writeFeedState(env.DB, hash, rows.length, generatedAt);
   return rows.length;
 }
 
