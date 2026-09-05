@@ -101,6 +101,25 @@ if old_end not in text:
 text = text.replace(old_end, new_end, 1)
 path.write_text(text, encoding='utf-8')
 
+legacy_test_path = Path('hp/video/test/native-media-30-90-tver-alternation-contract.test.js')
+legacy_test = legacy_test_path.read_text(encoding='utf-8')
+legacy_test = legacy_test.replace(
+    "test('Death Youth Game keeps completion latching after switching from preview to episode', () => {",
+    "test('TVer queues public main episodes and keeps completion latching', () => {",
+    1,
+)
+old_assertions = r'''  assert.match(composition, /seriesPath === deathGameSeriesPath/);
+  assert.match(composition, /予告\|\\bPR\\b\|ティザー\|teaser\|trailer/i);
+'''
+new_assertions = r'''  assert.match(composition, /episodeQueueKey = seriesPath/);
+  assert.match(composition, /__homePanelTverEpisodeQueue:/);
+  assert.match(composition, /const advanceEpisodeOrSeries = \(\) =>/);
+'''
+if old_assertions not in legacy_test:
+    raise SystemExit('legacy TVer selection assertions not found')
+legacy_test = legacy_test.replace(old_assertions, new_assertions, 1)
+legacy_test_path.write_text(legacy_test, encoding='utf-8')
+
 test_path = Path('hp/video/test/native-tver-all-episodes-contract.test.js')
 test_path.write_text(r'''import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
