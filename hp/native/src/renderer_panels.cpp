@@ -85,6 +85,9 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
       (element.getAttribute('aria-label') || '') + ' ' +
       (element.getAttribute('title') || '') + ' ' +
       (element.textContent || ''));
+  const isAdvertisementVideo = video =>
+      !!video && Number.isFinite(video.duration) &&
+      video.duration > 0 && video.duration < 300;
   const dismissSurvey = () => {
     const buttons = Array.from(document.querySelectorAll(
         'button, [role="button"], a')).filter(isDisplayed);
@@ -160,6 +163,17 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     }
     const videos = Array.from(document.querySelectorAll('video'));
     const video = videos.find(isDisplayed) || videos[0] || null;
+    if (isAdvertisementVideo(video)) {
+      // TVer ads use short standalone video items. Undo only our speed override,
+      // then leave the ad player completely alone until the episode returns.
+      try {
+        video.defaultPlaybackRate = 1;
+        if (video.playbackRate !== 1) video.playbackRate = 1;
+      } catch (_) {
+      }
+      state.endCandidateAt = 0;
+      return;
+    }
     if (video) {
       video.defaultPlaybackRate = playbackRate;
       if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate;
@@ -323,6 +337,8 @@ constexpr wchar_t kNativeMediaTverWatchdogOverrideScript[] = LR"JS(
   if (surveyClose) return point(surveyClose);
 
   const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
+  if (video && Number.isFinite(video.duration) &&
+      video.duration > 0 && video.duration < 300) return null;
   const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
       controls.some(element => {
         if (!visible(element)) return false;
@@ -359,6 +375,8 @@ constexpr wchar_t kNativeMediaTverForceFullscreenAfterClickScript[] = LR"JS(
       const videos = Array.from(document.querySelectorAll('video'));
       const video = videos.find(visible) || videos[0] || null;
       if (!video) return;
+      if (Number.isFinite(video.duration) &&
+          video.duration > 0 && video.duration < 300) return;
       const candidates = [video, video.parentElement].filter(Boolean);
       for (const target of candidates) {
         const request = target.requestFullscreen || target.webkitRequestFullscreen;
