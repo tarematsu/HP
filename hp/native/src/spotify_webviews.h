@@ -98,6 +98,7 @@ class SpotifyWebViews final {
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
+  bool hostLayoutAuthenticationVisible_ = false;
   bool started_ = false;
   bool foreground_ = true;
   bool podcastMode_ = false;
