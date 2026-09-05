@@ -110,8 +110,11 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     if (!links.length) return;
     let target = null;
     if (seriesPath === deathGameSeriesPath) {
+      const isPreview = link =>
+          /予告|\bPR\b|ティザー|teaser|trailer/i.test(labelOf(link));
       target = links.find(link =>
-          /予告|\bPR\b|ティザー|teaser|trailer/i.test(labelOf(link))) || links[0];
+          /第[1１]話|#\s*1\b/.test(labelOf(link)) && !isPreview(link)) ||
+          links.find(link => !isPreview(link)) || links[0];
     } else {
       target = links.find(link => /最新話|最新回/.test(labelOf(link))) ||
           links.find(link => !/(放課後トーク|予告|\bPR\b)/i.test(labelOf(link))) ||
@@ -122,7 +125,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
 
   const ensureEpisodePlayback = () => {
     const path = location.pathname;
-    const previewMode = storedSeriesPath() === deathGameSeriesPath;
+    const previewMode = false;
     let state = window.__homePanelSakuraMeetsState;
     if (!state || state.path !== path || state.previewMode !== previewMode) {
       state = {
