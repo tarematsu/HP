@@ -709,4 +709,4 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 #undef get_Profile
 #undef Navigate
 #undef SetTimer
-#include "renderer_panels/data_sections.inc"}
+#include "renderer_panels/data_sections.inc"
