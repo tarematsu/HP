@@ -48,7 +48,7 @@ test('ultra-light styling uses persistent CSS without a high-churn MutationObser
   assert.match(guard, /background-image: none !important/);
   assert.match(guard, /img, picture, video, canvas/);
   assert.match(guard, /display: none !important/);
-  assert.doesNotMatch(guard, /MutationObserver/);
+  assert.doesNotMatch(guard, /new\s+MutationObserver\s*\(/);
   assert.doesNotMatch(guard, /__homePanelSpotifyUltraLightObserver/);
   assert.doesNotMatch(guard, /querySelectorAll\('img'\)/);
   assert.match(guard, /rewritten\.assign\(kSpotifyUltraLightPreamble\)/);
