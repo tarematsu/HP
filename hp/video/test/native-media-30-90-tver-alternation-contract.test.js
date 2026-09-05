@@ -83,6 +83,16 @@ test('Death Youth Game keeps completion latching after switching from preview to
   );
 });
 
+test('TVer survey modal is dismissed by its close button', () => {
+  assert.match(composition, /const dismissSurvey = \(\) =>/);
+  assert.match(composition, /label !== '閉じる' && label !== 'close'/);
+  assert.match(composition, /\/アンケート\/\.test\(text\)/);
+  assert.match(composition, /\/回答する\/\.test\(text\)/);
+  assert.match(composition, /if \(location\.hostname === 'tver\.jp'\) dismissSurvey\(\)/);
+  assert.match(composition, /const surveyClose = controls\.find/);
+  assert.match(composition, /if \(surveyClose\) return point\(surveyClose\)/);
+});
+
 test('TVer fullscreen uses trusted native input then requestFullscreen when the button is hidden', () => {
   assert.match(composition, /kNativeMediaTverWatchdogOverrideScript/);
   assert.match(

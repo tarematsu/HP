@@ -55,11 +55,11 @@ test('40-second owner selection refreshes the prepared recovery slot', () => {
   );
 });
 
-test('authentication can remain foreground for up to three minutes without changing normal 40-second timing', () => {
-  assert.match(schedule, /kSpotifyAuthenticationHoldMs = 3ULL \* 60ULL \* 1000ULL/);
+test('authentication gets one normal 40-second turn instead of blocking the other five accounts for minutes', () => {
+  assert.match(schedule, /kSpotifyAuthenticationHoldMs = kSpotifyTimedSlotOffsetMs/);
   assert.match(schedule, /const bool currentAuthentication =[\s\S]*SlotIsLoginPage/);
   assert.match(schedule, /const bool holdAuthentication =[\s\S]*kSpotifyAuthenticationHoldMs/);
-  assert.match(schedule, /if \(!holdAuthentication && staggerSlotIndex_ != scheduledIndex\)/);
+  assert.match(schedule, /logged-out account must not block recovery/);
 });
 
 test('each timed tick refreshes layout before returning early for a login page', () => {
