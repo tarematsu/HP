@@ -254,11 +254,21 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     try { sessionStorage.removeItem(episodeQueueKey(seriesPath)); } catch (_) {}
   };
 
+  const isCurrentSeriesEpisodeLink = link => {
+    if (!link || !link.href) return false;
+    const recommendationHeading = Array.from(document.querySelectorAll(
+        'h1, h2, h3, h4, h5, h6, [role="heading"]')).find(element =>
+          normalize(element.textContent) === 'あなたにおすすめ');
+    if (!recommendationHeading) return true;
+    return Boolean(link.compareDocumentPosition(recommendationHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING);
+  };
+
   const openPreferredEpisode = () => {
     const seriesPath = location.pathname;
     rememberSeriesPath(seriesPath);
     const links = Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
-        .filter(link => link.href);
+        .filter(isCurrentSeriesEpisodeLink);
     const hrefs = Array.from(new Set(
         links.map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
     if (!hrefs.length) return;
