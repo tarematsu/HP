@@ -52,8 +52,8 @@ void SetNativeMediaPanelMuted(bool muted) noexcept {
 }
 
 namespace {
-constexpr UINT kNativeMediaYoutubePhaseOverrideMs = 30U * 60U * 1000U;
-constexpr UINT kNativeMediaTverPhaseOverrideMs = 90U * 60U * 1000U;
+constexpr UINT kNativeMediaYoutubePhaseOverrideMs = 60U * 60U * 1000U;
+constexpr UINT kNativeMediaTverPhaseOverrideMs = 60U * 60U * 1000U;
 constexpr wchar_t kNativeMediaSakuraMeetsSeriesUrl[] =
     L"https://tver.jp/series/srx97ftk3w";
 constexpr wchar_t kNativeMediaDeathGameSeriesUrl[] =
@@ -482,7 +482,7 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 }
 }  // namespace
 
-// The media panel runs YouTube for 30 minutes and TVer for 90 minutes. Spotify
+// The media panel runs YouTube for 60 minutes and TVer for 60 minutes. Spotify
 // follows the same phase boundary. Each completed TVer item advances Sakura Meets
 // <-> Death (Youth) Game and recreates only the TVer WebView controller. Until
 // Death Game starts broadcasting, its series slot selects the available preview.
