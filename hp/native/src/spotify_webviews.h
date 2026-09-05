@@ -23,10 +23,12 @@ class SpotifyWebViews final {
     BitterBlue,
     TalkAbout,
     LonesomeRabbit,
+    CatalogTrack,
   };
 
  private:
   static constexpr size_t kAccountCount = 6;
+  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
   struct Slot {
     SpotifyWebViews* owner = nullptr;
@@ -41,7 +43,8 @@ class SpotifyWebViews final {
     EventRegistrationToken webResourceRequestedToken{};
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
-    ULONGLONG lastTimedLonesomeWave = ~0ULL;
+    ULONGLONG lastTimedRotationWave = ~0ULL;
+    size_t timedCatalogIndex = kNoTimedCatalogIndex;
     int unhealthyChecks = 0;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -91,6 +94,8 @@ class SpotifyWebViews final {
   bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
   void NavigateTimedSlot(Slot& slot) noexcept;
   void ReconcileTimedSlot(Slot& slot) noexcept;
+  size_t PickTimedRandomCatalogIndex(size_t avoidIndex) noexcept;
+  void EnsureTimedRandomPair(ULONGLONG rotationCycle) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -108,6 +113,10 @@ class SpotifyWebViews final {
   size_t staggerSlotIndex_ = 0;
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG youtubeCycleStartTick_ = 0;
+  ULONGLONG timedRandomState_ = 0;
+  ULONGLONG timedRandomPairCycle_ = ~0ULL;
+  size_t timedRandomCIndex_ = kNoTimedCatalogIndex;
+  size_t timedRandomDIndex_ = kNoTimedCatalogIndex;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -118,11 +127,12 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
 };
 
-// tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00,
-// TALKABOUT at 04:00, then Lonesome rabbit from 20:00. Lonesome rabbit is
-// reopened every four minutes. Six accounts are offset by 40 seconds so only
-// one Spotify WebView performs heavy work at a time. TVer keeps the Lonesome
-// four-minute schedule running until the next YouTube hour resets the sequence.
+// tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00 and
+// TALKABOUT at 04:00. From 20:00 the four-minute music rotation is
+// Lonesome rabbit -> BitterBlue -> random C -> random D -> Lonesome rabbit.
+// C/D are a distinct pair drawn from the built-in >=2-minute Sakurazaka46
+// catalog for each 16-minute rotation cycle. Six accounts are offset by
+// 40 seconds so only one Spotify WebView performs heavy work at a time.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp

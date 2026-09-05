@@ -1,6 +1,12 @@
 namespace hp {
 namespace {
 
+struct SpotifyTimedCatalogTrack {
+  const wchar_t* title;
+  const wchar_t* url;
+  const wchar_t* path;
+};
+
 constexpr wchar_t kSpotifyBitterBlueUrl[] =
     L"https://open.spotify.com/track/5EjWZuODqEPQ9eq7XCmITh";
 constexpr wchar_t kSpotifyBitterBluePath[] =
@@ -10,9 +16,81 @@ constexpr wchar_t kSpotifyLonesomeRabbitPath[] =
 constexpr wchar_t kSpotifyTalkAboutShowPath[] =
     L"/show/2ZQy2mlwQodabAILwZ02Ed";
 
-constexpr wchar_t kSpotifyTimedBitterBlueScript[] = LR"JS(
+// C/D候補。Spotify上で櫻坂46の通常楽曲かつ2分以上であることを確認した
+// URLだけをビルドへ固定する。A=Lonesome rabbit、B=放課後BitterBlueは除外。
+constexpr std::array<SpotifyTimedCatalogTrack, 20> kSpotifyRandomCatalogTracks = {{
+    {L"UDAGAWA GENERATION",
+     L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F",
+     L"/track/4ljk3qMzdU81kWzxcNix3F"},
+    {L"I want tomorrow to come",
+     L"https://open.spotify.com/track/6ujztecmohAyiBzd21jKZF",
+     L"/track/6ujztecmohAyiBzd21jKZF"},
+    {L"自業自得",
+     L"https://open.spotify.com/track/55owiSiQaWM2YHedWobsmd",
+     L"/track/55owiSiQaWM2YHedWobsmd"},
+    {L"承認欲求",
+     L"https://open.spotify.com/track/3kAccmfdpknDrdDNgEfWi3",
+     L"/track/3kAccmfdpknDrdDNgEfWi3"},
+    {L"桜月",
+     L"https://open.spotify.com/track/65qUpiboIWUHS2xilfsS5d",
+     L"/track/65qUpiboIWUHS2xilfsS5d"},
+    {L"Anthem time",
+     L"https://open.spotify.com/track/5NAhakYBfDrnPwclaAqKQT",
+     L"/track/5NAhakYBfDrnPwclaAqKQT"},
+    {L"We got your back",
+     L"https://open.spotify.com/track/2ze5Hu3eRRe6HxJTfuZaA0",
+     L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
+    {L"The growing up train",
+     L"https://open.spotify.com/track/49cxVtrML7Xo63UFaaJrUR",
+     L"/track/49cxVtrML7Xo63UFaaJrUR"},
+    {L"Unhappy birthday構文",
+     L"https://open.spotify.com/track/6JlqZHeCFdV6cl9DtSZhR2",
+     L"/track/6JlqZHeCFdV6cl9DtSZhR2"},
+    {L"狼たちよ",
+     L"https://open.spotify.com/track/4IfRFec7SNKOWw1HzpiqHQ",
+     L"/track/4IfRFec7SNKOWw1HzpiqHQ"},
+    {L"やるしかないじゃん",
+     L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU",
+     L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
+    {L"恋は向いてない",
+     L"https://open.spotify.com/track/44sj7vChwZRYQ0Oz9AFyP2",
+     L"/track/44sj7vChwZRYQ0Oz9AFyP2"},
+    {L"BAN",
+     L"https://open.spotify.com/track/563WCw6gfsUCKlLTGYU4p4",
+     L"/track/563WCw6gfsUCKlLTGYU4p4"},
+    {L"Nobody's fault",
+     L"https://open.spotify.com/track/7mOPqaJicc6WdPCZqumP4e",
+     L"/track/7mOPqaJicc6WdPCZqumP4e"},
+    {L"五月雨よ",
+     L"https://open.spotify.com/track/34CdKBveafYqBSzDDmUwRI",
+     L"/track/34CdKBveafYqBSzDDmUwRI"},
+    {L"無言の宇宙",
+     L"https://open.spotify.com/track/78ancRAao1sxvMTv1E3hs3",
+     L"/track/78ancRAao1sxvMTv1E3hs3"},
+    {L"泣かせて Hold me tight!",
+     L"https://open.spotify.com/track/31vLfN5bNOpasgULiqSbLx",
+     L"/track/31vLfN5bNOpasgULiqSbLx"},
+    {L"19歳のガレット",
+     L"https://open.spotify.com/track/3Ule6qlH6klo2T3y1Zlgtt",
+     L"/track/3Ule6qlH6klo2T3y1Zlgtt"},
+    {L"TOKYO SNOW",
+     L"https://open.spotify.com/track/307SI8AgVvBbNTkNrETKHW",
+     L"/track/307SI8AgVvBbNTkNrETKHW"},
+    {L"Start over!",
+     L"https://open.spotify.com/track/0lIgXSxKgRUjF0SiN19MmJ",
+     L"/track/0lIgXSxKgRUjF0SiN19MmJ"},
+}};
+
+static_assert(kSpotifyRandomCatalogTracks.size() >= 2);
+
+const SpotifyTimedCatalogTrack* TimedCatalogTrack(size_t index) noexcept {
+  if (index >= kSpotifyRandomCatalogTracks.size()) return nullptr;
+  return &kSpotifyRandomCatalogTracks[index];
+}
+
+constexpr wchar_t kSpotifyTimedTrackScriptTemplate[] = LR"JS(
 (() => {
-  const targetPath = '/track/5EjWZuODqEPQ9eq7XCmITh';
+  const targetPath = '__TARGET_PATH__';
   const report = playing => {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(
@@ -55,6 +133,7 @@ constexpr wchar_t kSpotifyTimedBitterBlueScript[] = LR"JS(
         .find(button => {
           if (!visible(button)) return false;
           const label = labelOf(button);
+          if (/speed|速度/.test(label)) return false;
           return label === 'play' || label === '再生' ||
                  label.startsWith('play ') || label.endsWith('を再生');
         }) || null;
@@ -89,7 +168,8 @@ constexpr wchar_t kSpotifyTimedBitterBlueScript[] = LR"JS(
 
   const control = playerControl();
   const targetButton = targetPlayButton();
-  if (buttonShowsPlaying(control) && nowPlayingTarget()) {
+  if ((buttonShowsPlaying(control) && nowPlayingTarget()) ||
+      buttonShowsPlaying(targetButton)) {
     report(true);
     return true;
   }
@@ -98,6 +178,16 @@ constexpr wchar_t kSpotifyTimedBitterBlueScript[] = LR"JS(
   return point(visible(targetButton) ? targetButton : control);
 })()
 )JS";
+
+std::wstring BuildTimedTrackScript(std::wstring_view targetPath) {
+  std::wstring script(kSpotifyTimedTrackScriptTemplate);
+  constexpr std::wstring_view marker = L"__TARGET_PATH__";
+  const size_t pos = script.find(marker);
+  if (pos != std::wstring::npos) {
+    script.replace(pos, marker.size(), targetPath.data(), targetPath.size());
+  }
+  return script;
+}
 
 constexpr wchar_t kSpotifyTimedLonesomeScript[] = LR"JS(
 (() => {
@@ -160,21 +250,19 @@ constexpr wchar_t kSpotifyTimedLonesomeScript[] = LR"JS(
           '[data-testid="tracklist-row"], [role="row"], li, [aria-rowindex]') ||
           targetLink.parentElement?.parentElement;
       if (row) {
-        const rowButtons = Array.from(row.querySelectorAll(
+        const buttons = Array.from(row.querySelectorAll(
             'button[data-testid="play-button"], button, [role="button"]'));
-        const rowPlay = rowButtons.find(button => {
+        const target = buttons.find(button => {
           if (!visible(button)) return false;
           const label = labelOf(button);
           return label === 'play' || label === '再生' ||
-                 label.includes(targetTitle) || label.includes('lonesome rabbit');
+                 label.includes(targetTitle);
         });
-        if (rowPlay) return rowPlay;
+        if (target) return target;
       }
     }
-    const primary = Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]')).find(visible);
-    if (primary) return primary;
-    return null;
+    return Array.from(document.querySelectorAll(
+        'button[data-testid="play-button"]')).find(visible) || null;
   };
   const point = element => {
     if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
@@ -358,7 +446,9 @@ constexpr wchar_t kSpotifyTimedTalkAboutScript[] = LR"JS(
 })()
 )JS";
 
-const wchar_t* TimedSpotifyUrl(SpotifyWebViews::TimedSpotifyTarget target) noexcept {
+const wchar_t* TimedSpotifyUrl(
+    SpotifyWebViews::TimedSpotifyTarget target,
+    size_t catalogIndex) noexcept {
   switch (target) {
     case SpotifyWebViews::TimedSpotifyTarget::BitterBlue:
       return kSpotifyBitterBlueUrl;
@@ -366,6 +456,10 @@ const wchar_t* TimedSpotifyUrl(SpotifyWebViews::TimedSpotifyTarget target) noexc
       return kSpotifyPodcastUrl;
     case SpotifyWebViews::TimedSpotifyTarget::LonesomeRabbit:
       return kSpotifyPlaylistUrl;
+    case SpotifyWebViews::TimedSpotifyTarget::CatalogTrack: {
+      const SpotifyTimedCatalogTrack* track = TimedCatalogTrack(catalogIndex);
+      return track ? track->url : nullptr;
+    }
     case SpotifyWebViews::TimedSpotifyTarget::None:
       return nullptr;
   }
@@ -373,6 +467,47 @@ const wchar_t* TimedSpotifyUrl(SpotifyWebViews::TimedSpotifyTarget target) noexc
 }
 
 }  // namespace
+
+size_t SpotifyWebViews::PickTimedRandomCatalogIndex(size_t avoidIndex) noexcept {
+  if (timedRandomState_ == 0) {
+    LARGE_INTEGER counter{};
+    QueryPerformanceCounter(&counter);
+    timedRandomState_ =
+        GetTickCount64() ^ static_cast<ULONGLONG>(counter.QuadPart) ^
+        static_cast<ULONGLONG>(reinterpret_cast<ULONG_PTR>(this));
+    if (timedRandomState_ == 0) {
+      timedRandomState_ = 0x9E3779B97F4A7C15ULL;
+    }
+  }
+
+  ULONGLONG x = timedRandomState_;
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  timedRandomState_ = x;
+  const ULONGLONG mixed = x * 2685821657736338717ULL;
+  const size_t count = kSpotifyRandomCatalogTracks.size();
+  size_t index = static_cast<size_t>(mixed % count);
+  if (avoidIndex < count && index == avoidIndex) {
+    const size_t offset =
+        1 + static_cast<size_t>((mixed >> 32) % (count - 1));
+    index = (avoidIndex + offset) % count;
+  }
+  return index;
+}
+
+void SpotifyWebViews::EnsureTimedRandomPair(ULONGLONG rotationCycle) noexcept {
+  if (timedRandomPairCycle_ == rotationCycle &&
+      timedRandomCIndex_ < kSpotifyRandomCatalogTracks.size() &&
+      timedRandomDIndex_ < kSpotifyRandomCatalogTracks.size() &&
+      timedRandomCIndex_ != timedRandomDIndex_) {
+    return;
+  }
+
+  timedRandomCIndex_ = PickTimedRandomCatalogIndex(kNoTimedCatalogIndex);
+  timedRandomDIndex_ = PickTimedRandomCatalogIndex(timedRandomCIndex_);
+  timedRandomPairCycle_ = rotationCycle;
+}
 
 bool SpotifyWebViews::SlotMatchesTimedTarget(const Slot& slot) const noexcept {
   if (!slot.webview || slot.timedTarget == TimedSpotifyTarget::None) return false;
@@ -390,6 +525,11 @@ bool SpotifyWebViews::SlotMatchesTimedTarget(const Slot& slot) const noexcept {
              source.find(L"/episode/") != std::wstring::npos;
     case TimedSpotifyTarget::LonesomeRabbit:
       return source.find(kSpotifyLonesomeRabbitPath) != std::wstring::npos;
+    case TimedSpotifyTarget::CatalogTrack: {
+      const SpotifyTimedCatalogTrack* track =
+          TimedCatalogTrack(slot.timedCatalogIndex);
+      return track && source.find(track->path) != std::wstring::npos;
+    }
     case TimedSpotifyTarget::None:
       return false;
   }
@@ -398,7 +538,7 @@ bool SpotifyWebViews::SlotMatchesTimedTarget(const Slot& slot) const noexcept {
 
 void SpotifyWebViews::NavigateTimedSlot(Slot& slot) noexcept {
   if (!slot.webview) return;
-  const wchar_t* url = TimedSpotifyUrl(slot.timedTarget);
+  const wchar_t* url = TimedSpotifyUrl(slot.timedTarget, slot.timedCatalogIndex);
   if (!url) return;
 
   slot.lastModeNavigateTick = GetTickCount64();
@@ -437,10 +577,12 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
   slot.lastModeNavigateTick = 0;
   if (slot.reconcileInFlight) return;
 
+  std::wstring dynamicTrackScript;
   const wchar_t* script = nullptr;
   switch (slot.timedTarget) {
     case TimedSpotifyTarget::BitterBlue:
-      script = kSpotifyTimedBitterBlueScript;
+      dynamicTrackScript = BuildTimedTrackScript(kSpotifyBitterBluePath);
+      script = dynamicTrackScript.c_str();
       break;
     case TimedSpotifyTarget::TalkAbout:
       script = kSpotifyTimedTalkAboutScript;
@@ -448,22 +590,35 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
     case TimedSpotifyTarget::LonesomeRabbit:
       script = kSpotifyTimedLonesomeScript;
       break;
+    case TimedSpotifyTarget::CatalogTrack: {
+      const SpotifyTimedCatalogTrack* track =
+          TimedCatalogTrack(slot.timedCatalogIndex);
+      if (!track) return;
+      dynamicTrackScript = BuildTimedTrackScript(track->path);
+      script = dynamicTrackScript.c_str();
+      break;
+    }
     case TimedSpotifyTarget::None:
       return;
   }
 
   slot.reconcileInFlight = true;
   const TimedSpotifyTarget requestedTarget = slot.timedTarget;
+  const size_t requestedCatalogIndex = slot.timedCatalogIndex;
   Slot* const target = &slot;
   const auto alive = alive_;
   const HRESULT started = slot.webview->ExecuteScript(
       script,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedTarget](HRESULT result, LPCWSTR json)
-              -> HRESULT {
+          [this, alive, target, requestedTarget, requestedCatalogIndex](
+              HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             target->reconcileInFlight = false;
-            if (!started_ || requestedTarget != target->timedTarget) return S_OK;
+            if (!started_ || requestedTarget != target->timedTarget ||
+                (requestedTarget == TimedSpotifyTarget::CatalogTrack &&
+                 requestedCatalogIndex != target->timedCatalogIndex)) {
+              return S_OK;
+            }
 
             if (FAILED(result)) {
               target->playing = false;
@@ -479,7 +634,8 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
                 std::wstring_view(json) == L"\"completed\"") {
               target->podcastCompleted = true;
               target->timedTarget = TimedSpotifyTarget::LonesomeRabbit;
-              target->lastTimedLonesomeWave = ~0ULL;
+              target->timedCatalogIndex = kNoTimedCatalogIndex;
+              target->lastTimedRotationWave = ~0ULL;
               target->playing = false;
               target->unhealthyChecks = 0;
               target->lastModeNavigateTick = 0;
