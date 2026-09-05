@@ -215,25 +215,81 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     try { sessionStorage.setItem(seriesPathKey, path); } catch (_) {}
   };
 
+  const episodeQueueKey = seriesPath =>
+      '__homePanelTverEpisodeQueue:' + seriesPath;
+  const isMainEpisodeLink = link =>
+      !/(放課後トーク|予告|\bPR\b|ティザー|teaser|trailer|ダイジェスト|番宣|告知)/i
+          .test(labelOf(link));
+  const normalizeEpisodeHref = href => {
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin ||
+          !url.pathname.startsWith('/episodes/')) return '';
+      url.hash = '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  };
+  const readEpisodeQueue = seriesPath => {
+    try {
+      const value = JSON.parse(
+          sessionStorage.getItem(episodeQueueKey(seriesPath)) || 'null');
+      if (!value || !Array.isArray(value.hrefs)) {
+        return { hrefs: [], index: -1 };
+      }
+      return {
+        hrefs: value.hrefs.filter(href => typeof href === 'string'),
+        index: Number.isInteger(value.index) ? value.index : -1,
+      };
+    } catch (_) {
+      return { hrefs: [], index: -1 };
+    }
+  };
+  const writeEpisodeQueue = (seriesPath, hrefs, index) => {
+    try {
+      sessionStorage.setItem(
+          episodeQueueKey(seriesPath), JSON.stringify({ hrefs, index }));
+    } catch (_) {
+    }
+  };
+  const clearEpisodeQueue = seriesPath => {
+    try { sessionStorage.removeItem(episodeQueueKey(seriesPath)); } catch (_) {}
+  };
+
   const openPreferredEpisode = () => {
     const seriesPath = location.pathname;
     rememberSeriesPath(seriesPath);
     const links = Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
-        .filter(link => link.href && isDisplayed(link));
-    if (!links.length) return;
-    let target = null;
-    if (seriesPath === deathGameSeriesPath) {
-      const isPreview = link =>
-          /予告|\bPR\b|ティザー|teaser|trailer/i.test(labelOf(link));
-      target = links.find(link =>
-          /第[1１]話|#\s*1\b/.test(labelOf(link)) && !isPreview(link)) ||
-          links.find(link => !isPreview(link)) || links[0];
-    } else {
-      target = links.find(link => /最新話|最新回/.test(labelOf(link))) ||
-          links.find(link => !/(放課後トーク|予告|\bPR\b)/i.test(labelOf(link))) ||
-          links[0];
+        .filter(link => link.href && isMainEpisodeLink(link));
+    const hrefs = Array.from(new Set(
+        links.map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
+    if (!hrefs.length) return;
+    writeEpisodeQueue(seriesPath, hrefs, 0);
+    location.replace(hrefs[0]);
+  };
+
+  const advanceEpisodeOrSeries = () => {
+    const seriesPath = storedSeriesPath();
+    const queue = readEpisodeQueue(seriesPath);
+    if (!queue.hrefs.length) return false;
+    const currentIndex = queue.hrefs.findIndex(href => {
+      try {
+        return new URL(href, location.href).pathname === location.pathname;
+      } catch (_) {
+        return false;
+      }
+    });
+    const baseIndex = currentIndex >= 0 ? currentIndex : queue.index;
+    const nextIndex = baseIndex + 1;
+    if (nextIndex >= 0 && nextIndex < queue.hrefs.length) {
+      writeEpisodeQueue(seriesPath, queue.hrefs, nextIndex);
+      window.__homePanelSakuraMeetsState = null;
+      location.replace(queue.hrefs[nextIndex]);
+      return true;
     }
-    if (target && target.href) location.replace(target.href);
+    clearEpisodeQueue(seriesPath);
+    return false;
   };
 
   const ensureEpisodePlayback = () => {
@@ -290,6 +346,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
       const stableEnd = state.endCandidateAt > 0 &&
           Date.now() - state.endCandidateAt >= 2500;
       if (stableEnd && (completedPreview || completedEpisode)) {
+        if (advanceEpisodeOrSeries()) return;
         state.restartRequested = true;
         return;
       }
