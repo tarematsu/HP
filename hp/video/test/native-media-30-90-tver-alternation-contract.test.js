@@ -11,9 +11,9 @@ const mediaPanel = readFileSync(
   'utf8',
 );
 
-test('effective media cadence is YouTube 30 minutes then TVer 90 minutes', () => {
-  assert.match(composition, /kNativeMediaYoutubePhaseOverrideMs = 30U \* 60U \* 1000U/);
-  assert.match(composition, /kNativeMediaTverPhaseOverrideMs = 90U \* 60U \* 1000U/);
+test('effective media cadence is YouTube 60 minutes then TVer 60 minutes', () => {
+  assert.match(composition, /kNativeMediaYoutubePhaseOverrideMs = 60U \* 60U \* 1000U/);
+  assert.match(composition, /kNativeMediaTverPhaseOverrideMs = 60U \* 60U \* 1000U/);
   assert.match(
     composition,
     /NativeMediaPhaseIntervalMs\(bool tver\)[\s\S]*kNativeMediaTverPhaseOverrideMs[\s\S]*kNativeMediaYoutubePhaseOverrideMs/,
@@ -28,7 +28,7 @@ test('effective media cadence is YouTube 30 minutes then TVer 90 minutes', () =>
   );
 });
 
-test('phase overlay is rewritten to the effective 30/90 minute boundary', () => {
+test('phase overlay is rewritten to the effective 60/60 minute boundary', () => {
   assert.match(composition, /CaptureNativeMediaPhaseOverlay\(phase_ == Phase::Tver\)/);
   assert.match(composition, /gNativeMediaPhaseOverlayText/);
   assert.match(composition, /__homePanelMediaPhaseTime/);
