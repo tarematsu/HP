@@ -62,7 +62,7 @@ constexpr UINT kNativeMediaTverWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTverWakeAttempts = 10U;
 HWND gNativeMediaTverWakeWindow = nullptr;
 UINT gNativeMediaTverWakeCount = 0;
-UINT gNativeMediaTverSteadyIntervalMs = 2000U;
+UINT gNativeMediaTverSteadyIntervalMs = 4000U;
 bool gNativeMediaTverUseDeathGame = false;
 std::wstring gNativeMediaPhaseOverlayText;
 
@@ -266,7 +266,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     }
   };
   ensure();
-  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 2000);
+  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 4000);
 })()
 )JS";
 
@@ -525,10 +525,11 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 
 // The media panel runs YouTube for 60 minutes and TVer for 60 minutes. Spotify
 // follows the same phase boundary. Each completed TVer item advances Sakura Meets
-// <-> Death (Youth) Game and recreates only the TVer WebView controller. Until
-// Death Game starts broadcasting, its series slot selects the available preview.
-// TVer also uses a trusted native click followed by requestFullscreen so hidden
-// or unlabeled fullscreen controls cannot leave the player stuck inline.
+// <-> Death (Youth) Game while the same media WebView controller is reused and
+// only navigated to the next target. Until Death Game starts broadcasting, its
+// series slot selects the available preview. TVer also uses a trusted native
+// click followed by requestFullscreen so hidden or unlabeled fullscreen controls
+// cannot leave the player stuck inline.
 #define SetTimer(hwnd, timerId, interval, callback)                              \
   (((timerId) == kNativeMediaPhaseTimer                                         \
         ? (CaptureNativeMediaPhaseOverlay(phase_ == Phase::Tver),              \
