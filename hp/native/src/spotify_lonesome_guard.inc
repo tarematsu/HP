@@ -76,7 +76,8 @@ constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
       const title = normalize(element && element.textContent).toLowerCase();
       if (title) return title;
     }
-    return '';
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    return normalize(metadata && metadata.title).toLowerCase();
   };
   const targetPlayButton = () => {
     const links = Array.from(document.querySelectorAll('a[href*="/track/"]'));
@@ -139,22 +140,16 @@ constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
         label.includes('リピートを有効')) return 'off';
     return 'unknown';
   };
-  const ensureRepeatOne = () => {
+  const repeatAction = () => {
     const repeat = document.querySelector(
         'button[data-testid="control-button-repeat"]');
-    if (!visible(repeat)) return;
+    if (!visible(repeat)) return null;
     const state = repeatState(repeat);
-    if (state === 'one' || state === 'unknown') return;
-    try { repeat.click(); } catch (_) { return; }
-    if (state === 'off') {
-      window.setTimeout(() => {
-        const current = document.querySelector(
-            'button[data-testid="control-button-repeat"]');
-        if (visible(current) && repeatState(current) === 'context') {
-          try { current.click(); } catch (_) {}
-        }
-      }, 250);
-    }
+    if (state === 'one') return true;
+    if (state === 'unknown') return null;
+    // Return the repeat control to native code instead of using element.click().
+    // The existing trusted SendInput path advances off -> context -> repeat-one.
+    return point(repeat);
   };
 
   if (location.hostname !== 'open.spotify.com' ||
@@ -181,7 +176,11 @@ constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
 
   if (buttonShowsPlaying(control) &&
       (currentTitle === targetTitle || buttonShowsPlaying(targetButton))) {
-    ensureRepeatOne();
+    const repeat = repeatAction();
+    if (repeat !== true) {
+      report(false);
+      return repeat;
+    }
     report(true);
     return true;
   }
