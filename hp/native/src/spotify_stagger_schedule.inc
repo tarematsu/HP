@@ -33,6 +33,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       staggerSlotIndex_ = (staggerSlotIndex_ + 1) % slots_.size();
       staggerSlotStartTick_ = now;
       staggerSlotValidated_ = false;
+      RefreshSpotifyHostLayout();
     }
     return;
   }
@@ -46,6 +47,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       staggerSlotIndex_ = (staggerSlotIndex_ + 1) % slots_.size();
       staggerSlotStartTick_ = now;
       staggerSlotValidated_ = false;
+      RefreshSpotifyHostLayout();
     }
     return;
   }
