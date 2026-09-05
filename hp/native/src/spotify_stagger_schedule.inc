@@ -23,6 +23,12 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
 
+  // NavigationStarting lives in the base implementation and can change playing
+  // without going through the robust RecomputeForeground macro. Refresh here so
+  // a newly active login/player page cannot remain parked at 1x1 just because a
+  // stale non-active slot already kept the global foreground flag true.
+  RefreshSpotifyHostLayout();
+
   const bool holdElapsed =
       now - staggerSlotStartTick_ >= kSpotifySerializedSlotHoldMs;
 
