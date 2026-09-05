@@ -47,3 +47,10 @@ test('advancing the ten-minute owner refreshes which single host is expanded', (
   ) || [];
   assert.equal(advances.length, 2);
 });
+
+test('each serialized tick refreshes layout before returning early for a login page', () => {
+  assert.match(
+    schedule,
+    /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\)/,
+  );
+});
