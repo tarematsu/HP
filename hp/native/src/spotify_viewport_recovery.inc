@@ -68,7 +68,7 @@ bool ReplaceSpotifyScriptFragment(
     std::wstring_view replacement) {
   const size_t pos = value.find(needle);
   if (pos == std::wstring::npos) return false;
-  value.replace(pos, needle.size(), replacement);
+  value.replace(pos, needle.size(), replacement.data(), replacement.size());
   return true;
 }
 
