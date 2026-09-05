@@ -21,10 +21,13 @@ test('freshness buckets give newer videos stronger weights', () => {
   assert.equal(freshnessWeight(daysAgo(31), NOW), 2);
   assert.equal(freshnessWeight(daysAgo(90), NOW), 2);
   assert.equal(freshnessWeight(daysAgo(91), NOW), 1);
+  assert.equal(freshnessWeight(daysAgo(180), NOW), 1);
+  assert.equal(freshnessWeight(daysAgo(181), NOW), 0.5);
+  assert.equal(freshnessWeight(daysAgo(365), NOW), 0.5);
   assert.equal(freshnessWeight('', NOW), 1);
 });
 
-test('five-times freshness weight wins about five out of six pairwise draws', () => {
+test('five-times freshness weight strongly favors new videos while old videos remain selectable', () => {
   let newerWins = 0;
   let olderWins = 0;
   for (let seed = 1; seed <= 10_000; seed += 1) {
@@ -33,8 +36,8 @@ test('five-times freshness weight wins about five out of six pairwise draws', ()
     if (newer < older) newerWins += 1;
     else olderWins += 1;
   }
-  assert.ok(newerWins > 8_000, `expected strong new-video bias, got ${newerWins}`);
-  assert.ok(olderWins > 1_000, `expected old videos to remain selectable, got ${olderWins}`);
+  assert.ok(newerWins > 8_800, `expected strong new-video bias, got ${newerWins}`);
+  assert.ok(olderWins > 500, `expected old videos to remain selectable, got ${olderWins}`);
 });
 
 test('weighted paging is deterministic for a seed and has no duplicates', () => {
