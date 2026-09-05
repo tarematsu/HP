@@ -1,34 +1,14 @@
 import { feedContentHash, writeFeedState } from './d1-compaction.js';
 import { PLAYBACK_FEED_LIMIT } from './feed-limits.js';
-import { collectPlaybackCursorPage } from './playback-cursor.js';
 import { inferVideoOrientation } from './video-orientation.js';
 import { runtimeEnvForDb } from './runtime-env.js';
+import { buildWeightedPlaybackPage } from './weighted-playback.js';
 
-const SNAPSHOT_KEY = 'video/playback-feed/v1.json';
-const SNAPSHOT_SCHEMA_VERSION = 1;
+const SNAPSHOT_KEY = 'video/playback-feed/v2.json';
+const SNAPSHOT_SCHEMA_VERSION = 2;
 const SNAPSHOT_CACHE_TTL_MS = 5 * 60_000;
-const SNAPSHOT_CACHE_URL = 'https://homepanel.internal/video/playback-feed/v1.json';
-const SHUFFLE_MODULUS = 2_147_483_647;
-const SHUFFLE_MULTIPLIER = 1_103_515_245n;
-const SHUFFLE_MODULUS_BIGINT = 2_147_483_647n;
+const SNAPSHOT_CACHE_URL = 'https://homepanel.internal/video/playback-feed/v2.json';
 const SNAPSHOT_CACHES = new WeakMap();
-
-function videoShuffleKey(videoId) {
-  let value;
-  try {
-    value = BigInt(videoId);
-  } catch {
-    value = 0n;
-  }
-  const normalized = ((value % SHUFFLE_MODULUS_BIGINT) + SHUFFLE_MODULUS_BIGINT)
-    % SHUFFLE_MODULUS_BIGINT;
-  return Number((normalized * SHUFFLE_MULTIPLIER) % SHUFFLE_MODULUS_BIGINT);
-}
-
-function seedShufflePivot(seed) {
-  const shift = (Number(seed) * 12_345) % SHUFFLE_MODULUS;
-  return shift === 0 ? 0 : SHUFFLE_MODULUS - shift;
-}
 
 function validItem(value) {
   return value
@@ -36,7 +16,7 @@ function validItem(value) {
     && Number.isSafeInteger(Number(value.id))
     && Number(value.id) > 0
     && typeof value.mediaUrl === 'string'
-    && Number.isSafeInteger(Number(value.shuffleKey))
+    && typeof value.firstSeenAt === 'string'
     && ['vertical', 'horizontal', 'square', 'unknown'].includes(String(value.orientation));
 }
 
@@ -51,7 +31,7 @@ function parseSnapshot(value) {
     items: value.items.map((item) => ({
       id: Number(item.id),
       mediaUrl: item.mediaUrl,
-      shuffleKey: Number(item.shuffleKey),
+      firstSeenAt: String(item.firstSeenAt || ''),
       orientation: String(item.orientation)
     }))
   };
@@ -98,24 +78,6 @@ async function readSnapshot(bucket) {
   return snapshot;
 }
 
-function rowAfterCursor(item, cursor) {
-  if (!cursor) return true;
-  return item.shuffleKey > cursor.shuffleKey
-    || (item.shuffleKey === cursor.shuffleKey && item.id > cursor.videoId);
-}
-
-function phaseRows(items, phase, pivot, cursor, requested, orientation) {
-  const rows = [];
-  for (const item of items) {
-    if (phase === 0 ? item.shuffleKey < pivot : item.shuffleKey >= pivot) continue;
-    if (!rowAfterCursor(item, cursor)) continue;
-    if (orientation !== 'both' && item.orientation !== orientation) continue;
-    rows.push(item);
-    if (rows.length >= requested) break;
-  }
-  return rows;
-}
-
 export async function readFeedSnapshotPage(db, options) {
   const env = runtimeEnvForDb(db);
   const bucket = env?.DATA_BUCKET;
@@ -133,20 +95,11 @@ export async function readFeedSnapshotPage(db, options) {
 
   const limit = Math.max(0, Number(options.limit) || 0);
   if (!limit) return { items: [], nextCursor: null };
-  const pivot = seedShufflePivot(options.seed);
   const orientation = String(options.orientation || 'both');
-  const page = await collectPlaybackCursorPage(
-    limit,
-    options.cursor,
-    async (phase, cursor, requested) => phaseRows(
-      snapshot.items,
-      phase,
-      pivot,
-      cursor,
-      requested,
-      orientation
-    )
-  );
+  const candidates = orientation === 'both'
+    ? snapshot.items
+    : snapshot.items.filter((item) => item.orientation === orientation);
+  const page = buildWeightedPlaybackPage(candidates, options);
   return {
     items: page.rows.map((item) => ({ id: item.id, mediaUrl: item.mediaUrl })),
     nextCursor: page.nextCursor
@@ -166,11 +119,10 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
     items.push({
       id,
       mediaUrl,
-      shuffleKey: videoShuffleKey(id),
+      firstSeenAt: String(row?.firstSeenAt || ''),
       orientation: inferVideoOrientation(mediaUrl)
     });
   }
-  items.sort((left, right) => left.shuffleKey - right.shuffleKey || left.id - right.id);
   const snapshot = {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     contentHash: String(contentHash || ''),
@@ -180,7 +132,8 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
 
   const existing = await bucket.head(SNAPSHOT_KEY);
   const unchanged = existing?.customMetadata?.contentHash === snapshot.contentHash
-    && Number(existing?.customMetadata?.rowCount) === snapshot.items.length;
+    && Number(existing?.customMetadata?.rowCount) === snapshot.items.length
+    && Number(existing?.customMetadata?.schemaVersion) === SNAPSHOT_SCHEMA_VERSION;
   if (!unchanged) {
     await bucket.put(SNAPSHOT_KEY, JSON.stringify(snapshot), {
       httpMetadata: {
@@ -190,7 +143,8 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
       customMetadata: {
         contentHash: snapshot.contentHash,
         rowCount: String(snapshot.items.length),
-        generatedAt: snapshot.generatedAt
+        generatedAt: snapshot.generatedAt,
+        schemaVersion: String(SNAPSHOT_SCHEMA_VERSION)
       }
     });
   }
@@ -205,7 +159,9 @@ export async function publishFeedSnapshot(env, rows, contentHash, generatedAt) {
 export async function refreshFeedSnapshot(env, generatedAt = new Date().toISOString()) {
   if (!env?.DB) return 0;
   const result = await env.DB.prepare(
-    `SELECT ranking.video_id AS videoId, video.media_url AS mediaUrl
+    `SELECT ranking.video_id AS videoId,
+            video.media_url AS mediaUrl,
+            video.first_seen_at AS firstSeenAt
        FROM ranking_entries AS ranking
        INNER JOIN videos AS video ON video.id = ranking.video_id
       WHERE ranking.period = '24h'
