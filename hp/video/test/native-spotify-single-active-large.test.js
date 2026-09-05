@@ -43,17 +43,29 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('advancing the three-minute owner refreshes which slot is prepared', () => {
-  const advances = schedule.match(
-    /staggerSlotIndex_ = \(staggerSlotIndex_ \+ 1\) % slots_\.size\(\);[\s\S]{0,180}?RefreshSpotifyHostLayout\(\);/g,
-  ) || [];
-  assert.equal(advances.length, 2);
-});
-
-test('each serialized tick refreshes layout before returning early for a login page', () => {
+test('40-second owner selection refreshes the prepared recovery slot', () => {
+  assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
   assert.match(
     schedule,
-    /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\)/,
+    /const size_t scheduledIndex =[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs[\s\S]*% slots_\.size\(\)/,
+  );
+  assert.match(
+    schedule,
+    /staggerSlotIndex_ != scheduledIndex[\s\S]*staggerSlotIndex_ = scheduledIndex[\s\S]*RefreshSpotifyHostLayout\(\)/,
+  );
+});
+
+test('authentication can remain foreground for up to three minutes without changing normal 40-second timing', () => {
+  assert.match(schedule, /kSpotifyAuthenticationHoldMs = 3ULL \* 60ULL \* 1000ULL/);
+  assert.match(schedule, /const bool currentAuthentication =[\s\S]*SlotIsLoginPage/);
+  assert.match(schedule, /const bool holdAuthentication =[\s\S]*kSpotifyAuthenticationHoldMs/);
+  assert.match(schedule, /if \(!holdAuthentication && staggerSlotIndex_ != scheduledIndex\)/);
+});
+
+test('each timed tick refreshes layout before returning early for a login page', () => {
+  assert.match(
+    schedule,
+    /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
   );
 });
 

@@ -1,6 +1,24 @@
 namespace {
-constexpr ULONGLONG kSpotifySerializedSlotHoldMs =
-    3ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedWaveMs = 4ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedLonesomeStartMs = 20ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
+
+hp::SpotifyWebViews::TimedSpotifyTarget SpotifyTimedTargetFor(
+    bool youtubePhase, bool talkAboutCompleted,
+    ULONGLONG slotLocalElapsed) noexcept {
+  using Target = hp::SpotifyWebViews::TimedSpotifyTarget;
+  if (!youtubePhase) return Target::LonesomeRabbit;
+  if (slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
+    return Target::BitterBlue;
+  }
+  if (slotLocalElapsed < kSpotifyTimedLonesomeStartMs &&
+      !talkAboutCompleted) {
+    return Target::TalkAbout;
+  }
+  return Target::LonesomeRabbit;
+}
 }  // namespace
 
 void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
@@ -18,50 +36,69 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (!started_ || slots_.empty()) return;
 
   const ULONGLONG now = GetTickCount64();
+  if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
+
+  const ULONGLONG elapsed = now - youtubeCycleStartTick_;
+  const size_t scheduledIndex = static_cast<size_t>(
+      (elapsed / kSpotifyTimedSlotOffsetMs) % slots_.size());
+
+  // Authentication is the only foreground Spotify state. Give an account up to
+  // three minutes to finish manual login; otherwise the normal 40-second clock
+  // decides which account owns the recovery viewport.
   staggerSlotIndex_ %= slots_.size();
+  const bool currentAuthentication =
+      slots_[staggerSlotIndex_].webview &&
+      SlotIsLoginPage(slots_[staggerSlotIndex_]);
+  const bool holdAuthentication =
+      currentAuthentication &&
+      now - staggerSlotStartTick_ < kSpotifyAuthenticationHoldMs;
+  if (!holdAuthentication && staggerSlotIndex_ != scheduledIndex) {
+    staggerSlotIndex_ = scheduledIndex;
+    staggerSlotStartTick_ = now;
+    staggerSlotValidated_ = false;
+    RefreshSpotifyHostLayout();
+  }
+
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
-
-  // NavigationStarting lives in the base implementation and can change playing
-  // without going through the robust RecomputeForeground macro. Refresh here so
-  // a newly active login/player page cannot remain parked at 1x1 just because a
-  // stale non-active slot already kept the global foreground flag true.
   RefreshSpotifyHostLayout();
 
-  const bool holdElapsed =
-      now - staggerSlotStartTick_ >= kSpotifySerializedSlotHoldMs;
+  if (slot.webview && SlotIsLoginPage(slot)) return;
 
-  // A login page requires user interaction. Keep it as the only active slot for
-  // its three-minute turn, then allow the remaining accounts to make progress.
-  if (slot.webview && SlotIsLoginPage(slot)) {
-    if (holdElapsed) {
-      staggerSlotIndex_ = (staggerSlotIndex_ + 1) % slots_.size();
-      staggerSlotStartTick_ = now;
-      staggerSlotValidated_ = false;
-      RefreshSpotifyHostLayout();
-    }
-    return;
+  const ULONGLONG slotOffset =
+      static_cast<ULONGLONG>(slot.index) * kSpotifyTimedSlotOffsetMs;
+  if (elapsed < slotOffset) return;
+  const ULONGLONG slotLocalElapsed = elapsed - slotOffset;
+
+  const TimedSpotifyTarget desired = SpotifyTimedTargetFor(
+      podcastMode_, slot.podcastCompleted, slotLocalElapsed);
+  const bool targetChanged = slot.timedTarget != desired;
+  if (targetChanged) {
+    slot.timedTarget = desired;
+    slot.lastModeNavigateTick = 0;
+    slot.unhealthyChecks = 0;
   }
 
-  // Once this slot has passed the robust Lonesome/TALKABOUT check, leave it
-  // alone until its three-minute ownership window expires. If WebView reports a
-  // playback failure meanwhile, playing becomes false and recovery resumes on
-  // this same slot rather than overlapping work on another account.
-  if (staggerSlotValidated_ && slot.playing && !slot.reconcileInFlight) {
-    if (holdElapsed) {
-      staggerSlotIndex_ = (staggerSlotIndex_ + 1) % slots_.size();
-      staggerSlotStartTick_ = now;
-      staggerSlotValidated_ = false;
-      RefreshSpotifyHostLayout();
-    }
-    return;
+  // Once Lonesome rabbit is the scheduled target, force a fresh album access at
+  // the start of every four-minute per-account wave. TALKABOUT that finishes
+  // early returns to Lonesome immediately but waits for the 20-minute boundary
+  // before joining this periodic refresh clock.
+  const bool periodicLonesome =
+      desired == TimedSpotifyTarget::LonesomeRabbit &&
+      (!podcastMode_ || slotLocalElapsed >= kSpotifyTimedLonesomeStartMs);
+  const ULONGLONG wave = slotLocalElapsed / kSpotifyTimedWaveMs;
+  const bool lonesomeWaveChanged =
+      periodicLonesome && slot.lastTimedLonesomeWave != wave;
+
+  if (lonesomeWaveChanged) {
+    slot.lastTimedLonesomeWave = wave;
+    NavigateTimedSlot(slot);
+  } else if (targetChanged) {
+    NavigateTimedSlot(slot);
   }
 
-  if (slot.reconcileInFlight) return;
-  reconcileIndex_ = staggerSlotIndex_;
-  ReconcileDesiredMode();
-  staggerSlotValidated_ = true;
+  ReconcileTimedSlot(slot);
 }
 
 void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
@@ -74,11 +111,11 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     reconcileIndex_ = 0;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
+    youtubeCycleStartTick_ = now;
     staggerSlotValidated_ = false;
 
-    // Start() already requested slot 0. Park slots 1-5 at 1x1 until each gets
-    // its own three-minute turn so controller creation and Spotify page loading do
-    // not pile up on a slow tablet.
+    // Start() already requested slot 0. The remaining controllers are created
+    // only when their 40-second offsets become active, keeping heavy loads apart.
     Slot& first = slots_[0];
     if (!first.controller && !first.webview) {
       first.controllerCreating = true;
@@ -94,22 +131,26 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
 
   const bool modeChanged = podcastMode_ != podcastWindowActive;
   podcastMode_ = podcastWindowActive;
-  if (modeChanged) {
-    // Do not clear or navigate all six WebViews at the media boundary. Slot 0
-    // switches now; the other accounts retain their current playback until
-    // their three-minute offset arrives. Each account therefore gets a full hour
-    // in each mode, phase-shifted by three minutes from its neighbour.
+  if (modeChanged && podcastWindowActive) {
+    // A new YouTube hour is the master clock: each account starts BitterBlue at
+    // 00:00 + index*40s, TALKABOUT at 04:00 + index*40s, and Lonesome rabbit at
+    // 20:00 + index*40s. The next YouTube hour resets this sequence again.
+    youtubeCycleStartTick_ = now;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
       slot.unhealthyChecks = 0;
-      slot.podcastCompleted = !podcastWindowActive;
-      if (!slot.webview && slot.index != 0) slot.playing = true;
+      slot.podcastCompleted = false;
+      slot.timedTarget = TimedSpotifyTarget::None;
+      slot.lastTimedLonesomeWave = ~0ULL;
     }
   }
 
+  // TVer does not reset the YouTube master clock. Since 60 minutes is divisible
+  // by four, the existing Lonesome wave continues at 60:00, 64:00, ... while
+  // still preserving the same 40-second separation between the six accounts.
   RecomputeForeground();
   RunStaggeredReconcile();
 }
