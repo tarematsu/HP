@@ -22,6 +22,10 @@ const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
   'utf8',
 );
+const recent = readFileSync(
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
+  'utf8',
+);
 const ended = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
@@ -29,6 +33,7 @@ const ended = readFileSync(
 
 test('Spotify fallback startup staggering keeps the 40-second six-account clock', () => {
   assert.match(wrapper, /#include "spotify_stagger_timer\.inc"/);
+  assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
   assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
   assert.match(timer, /kSpotifySerializedSlotStepMs = 40U \* 1000U/);
   assert.match(timer, /StaggeredReconcileTimerProc/);
@@ -39,20 +44,33 @@ test('Spotify fallback startup staggering keeps the 40-second six-account clock'
   );
 });
 
-test('YouTube hour keeps BitterBlue and TALKABOUT prelude then starts A at minute 20', () => {
+test('YouTube hour keeps B and TALKABOUT, uses a recent-song bridge, then starts A at minute 20', () => {
   assert.match(header, /youtubeCycleStartTick_ = 0/);
-  assert.match(
-    header,
-    /TimedSpotifyTarget[\s\S]*BitterBlue[\s\S]*TalkAbout[\s\S]*LonesomeRabbit[\s\S]*CatalogTrack/,
-  );
+  assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
+  assert.match(header, /timedBridgeCompleted = false/);
   assert.match(schedule, /kSpotifyTimedTalkAboutStartMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyTimedRotationStartMs = 20ULL \* 60ULL \* 1000ULL/);
+  assert.match(
+    schedule,
+    /!slot\.podcastCompleted[\s\S]*TimedSpotifyTarget::TalkAbout[\s\S]*!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex[\s\S]*TimedSpotifyTarget::CatalogTrack/,
+  );
   assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
   assert.match(ended, /timedRotationPosition = 0/);
   assert.match(ended, /case 0:[\s\S]*LonesomeRabbit/);
   assert.match(ended, /case 1:[\s\S]*BitterBlue/);
   assert.match(ended, /case 2:[\s\S]*timedRandomCIndex/);
   assert.match(ended, /default:[\s\S]*timedRandomDIndex/);
+});
+
+test('bridge is a one-shot recent song and does not replay Lonesome before minute 20', () => {
+  assert.match(schedule, /instead of falling back to Lonesome rabbit before the formal 20:00 A/);
+  assert.match(schedule, /recentBridge[\s\S]*ArmTimedEndObserver\(slot\)/);
+  assert.match(
+    ended,
+    /TimedSpotifyTarget::CatalogTrack[\s\S]*IsRecentCatalogIndex\(target->timedCatalogIndex\)[\s\S]*timedBridgeCompleted = true/,
+  );
+  assert.match(ended, /StopTimedOneShotPlayback\(\*target\)/);
+  assert.match(schedule, /recentBridge && slot\.timedBridgeCompleted/);
 });
 
 test('A-B-C-D advances from actual track completion instead of fixed three-minute boundaries', () => {
@@ -66,7 +84,7 @@ test('A-B-C-D advances from actual track completion instead of fixed three-minut
   assert.match(schedule, /ArmTimedEndObserver\(slot\)/);
 });
 
-test('Spotify ads are waited through before the next sequence track is opened', () => {
+test('Spotify ads are waited through before the next formal rotation track is opened', () => {
   assert.match(
     ended,
     /Ads do not expose another \/track\/ context[\s\S]*track\.path[\s\S]*spotify:timed-ended/,
@@ -85,51 +103,91 @@ test('three minutes is only an unhealthy/waiting watchdog and does not cut healt
   );
 });
 
-test('C and D remain a distinct random pair for each completed A-B-C-D cycle', () => {
-  assert.match(header, /timedRandomPairCycle_ = ~0ULL/);
+test('C and D are distinct recent songs and avoid the current hour bridge', () => {
+  assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomCIndex = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomDIndex = kNoTimedCatalogIndex/);
-  assert.match(timed, /void SpotifyWebViews::EnsureTimedRandomPair\(ULONGLONG rotationCycle\) noexcept/);
-  assert.match(timed, /timedRandomCIndex_ = PickTimedRandomCatalogIndex\(kNoTimedCatalogIndex\)/);
-  assert.match(timed, /timedRandomDIndex_ = PickTimedRandomCatalogIndex\(timedRandomCIndex_\)/);
-  assert.match(ended, /\+\+slot\.timedRotationCycle/);
-  assert.match(ended, /EnsureTimedRandomPair\(slot\.timedRotationCycle\)/);
-  assert.match(ended, /slot\.timedRandomCIndex = timedRandomCIndex_/);
-  assert.match(ended, /slot\.timedRandomDIndex = timedRandomDIndex_/);
+  assert.match(
+    recent,
+    /void SpotifyWebViews::EnsureRecentRandomPair\([\s\S]*size_t avoidIndex\) noexcept/,
+  );
+  assert.match(recent, /timedRandomCIndex_ != timedRandomDIndex_/);
+  assert.match(recent, /timedRandomCIndex_ != avoidIndex/);
+  assert.match(recent, /timedRandomDIndex_ != avoidIndex/);
+  assert.match(ended, /EnsureRecentRandomPair\(slot\.timedRotationCycle, timedBridgeCatalogIndex_\)/);
+  assert.doesNotMatch(ended, /EnsureTimedRandomPair\(/);
 });
 
-test('built-in random catalog contains verified Spotify track URLs and excludes fixed A/B', () => {
-  assert.match(timed, /std::array<SpotifyTimedCatalogTrack, 20>/);
-  for (const id of [
-    '4ljk3qMzdU81kWzxcNix3F',
-    '6ujztecmohAyiBzd21jKZF',
-    '55owiSiQaWM2YHedWobsmd',
-    '3kAccmfdpknDrdDNgEfWi3',
-    '65qUpiboIWUHS2xilfsS5d',
-    '5NAhakYBfDrnPwclaAqKQT',
-    '2ze5Hu3eRRe6HxJTfuZaA0',
-    '49cxVtrML7Xo63UFaaJrUR',
-    '6JlqZHeCFdV6cl9DtSZhR2',
-    '4IfRFec7SNKOWw1HzpiqHQ',
-    '6GF0ZgT8wlksWrlLTfGmlU',
-    '44sj7vChwZRYQ0Oz9AFyP2',
-    '563WCw6gfsUCKlLTGYU4p4',
-    '7mOPqaJicc6WdPCZqumP4e',
-    '34CdKBveafYqBSzDDmUwRI',
-    '78ancRAao1sxvMTv1E3hs3',
-    '31vLfN5bNOpasgULiqSbLx',
-    '3Ule6qlH6klo2T3y1Zlgtt',
-    '307SI8AgVvBbNTkNrETKHW',
-    '0lIgXSxKgRUjF0SiN19MmJ',
-  ]) {
-    assert.match(timed, new RegExp(id));
+test('recent random pool contains every 2025-2026 new group song except fixed A/B', () => {
+  assert.match(recent, /std::array<SpotifyRecentCatalogTrack, 35>/);
+  const expectedTitles = [
+    'UDAGAWA GENERATION',
+    'Nightmare症候群',
+    'Nothing special',
+    '紋白蝶が確か飛んでた',
+    '行かないで',
+    'ULTRAVIOLET',
+    'やるしかないじゃん',
+    'Addiction',
+    'Make or Break',
+    '死んだふり',
+    '港区パセリ',
+    '恋愛無双',
+    '真夏の大統領',
+    '君のことを想いながら',
+    'ノンアルコール',
+    'Unhappy birthday構文',
+    'Alter ego',
+    '木枯らしは泣かない',
+    '青空が見えるまで',
+    'I will be',
+    'Buddies (English Version)',
+    '夜空で一番輝いてる星の名前を僕は知らない',
+    'The growing up train',
+    '光源',
+    'ドライフルーツ',
+    'キスが苦い',
+    'くらげらしく',
+    'Sunny side up',
+    '僕は向いてない',
+    'What\'s \\"KAZOKU\\"?',
+    'コインランドリー',
+    'We got your back',
+    '狼たちよ',
+    '各駅停車',
+    '恵まれ過ぎて',
+  ];
+  for (const title of expectedTitles) {
+    assert.ok(recent.includes(title), `missing recent Sakurazaka song: ${title}`);
   }
-  const catalogSection = timed.slice(
-    timed.indexOf('kSpotifyRandomCatalogTracks'),
-    timed.indexOf('static_assert'),
+
+  const catalogSection = recent.slice(
+    recent.indexOf('kSpotifyRecentCatalogTracks = {{'),
+    recent.indexOf('static_assert(kSpotifyRecentCatalogTracks.size() == 35)'),
   );
+  assert.doesNotMatch(catalogSection, /L"Lonesome rabbit"/);
   assert.doesNotMatch(catalogSection, /5EjWZuODqEPQ9eq7XCmITh/);
-  assert.doesNotMatch(catalogSection, /2f2Ik9JeinFVWZuFb3i35b/);
+  assert.doesNotMatch(catalogSection, /愛MUST BE/);
+  assert.doesNotMatch(catalogSection, /OFF VOCAL|Interlude|Remix/);
+});
+
+test('recent catalog can open direct tracks or exact titled rows on verified album pages', () => {
+  for (const id of [
+    '3teo9NiJLwhorFf3EE9WCh',
+    '19SC6o3wULkC8QIKV0YKIb',
+    '5beJvSa1ZMvGtChLMkT60i',
+    '04gmidhz5KYYOEqfTJXNmE',
+  ]) {
+    assert.match(recent, new RegExp(id));
+  }
+  assert.match(recent, /BuildRecentTrackScript/);
+  assert.match(recent, /targetTitle/);
+  assert.match(recent, /targetLink/);
+  assert.match(recent, /scrollIntoView/);
+  assert.match(recent, /NavigateRecentTimedSlot/);
+  assert.match(recent, /ReconcileRecentTimedSlot/);
+  assert.match(recent, /NavigateActiveTimedSlot/);
+  assert.match(recent, /ReconcileActiveTimedSlot/);
 });
 
 test('a just-finished song gets temporary recovery priority so the next target can start promptly', () => {
@@ -146,20 +204,22 @@ test('a just-finished song gets temporary recovery priority so the next target c
 test('timed playback still owns autoplay and does not use repeat-one', () => {
   assert.match(wrapper, /RewriteSpotifyLegacyAutoplayScript/);
   assert.match(wrapper, /#include "spotify_timed_sequence\.inc"/);
+  assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
   assert.match(timed, /5EjWZuODqEPQ9eq7XCmITh/);
   assert.match(timed, /2ZQy2mlwQodabAILwZ02Ed/);
   assert.match(timed, /2f2Ik9JeinFVWZuFb3i35b/);
   assert.doesNotMatch(timed, /ensureRepeatOne|repeatState|control-button-repeat/);
 });
 
-test('TALKABOUT remains one-shot and can return to Lonesome before minute 20', () => {
+test('TALKABOUT remains one-shot and the scheduler replaces its old handoff with the recent bridge', () => {
   assert.match(timed, /const playbackRate = 3\.0/);
   assert.match(timed, /__homePanelSpotifyTimedPodcastOneShot/);
   assert.match(timed, /media\.addEventListener\('ended'/);
   assert.match(timed, /return 'completed'/);
+  assert.match(timed, /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*podcastCompleted = true/);
   assert.match(
-    timed,
-    /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*podcastCompleted = true[\s\S]*timedTarget = TimedSpotifyTarget::LonesomeRabbit[\s\S]*NavigateTimedSlot\(\*target\)/,
+    schedule,
+    /!slot\.podcastCompleted[\s\S]*TalkAbout[\s\S]*!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex/,
   );
 });
 
