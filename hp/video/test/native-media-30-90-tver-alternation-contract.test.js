@@ -62,12 +62,13 @@ test('TVer alternates Sakura Meets and Death Youth Game after completed items', 
   );
 });
 
-test('Death Youth Game keeps completion latching after switching from preview to episode', () => {
+test('TVer queues public main episodes and keeps completion latching', () => {
   assert.match(composition, /kNativeMediaTverLoopOverrideScript/);
   assert.match(composition, /deathGameSeriesPath = '\/series\/srkzm5wbvp'/);
   assert.match(composition, /seriesPathKey = '__homePanelTverSeriesPath'/);
-  assert.match(composition, /seriesPath === deathGameSeriesPath/);
-  assert.match(composition, /予告\|\\bPR\\b\|ティザー\|teaser\|trailer/i);
+  assert.match(composition, /episodeQueueKey = seriesPath/);
+  assert.match(composition, /__homePanelTverEpisodeQueue:/);
+  assert.match(composition, /const advanceEpisodeOrSeries = \(\) =>/);
   assert.match(composition, /const previewMode = false/);
   assert.match(composition, /endCandidateAt: 0/);
   assert.match(composition, /addEventListener\('ended'/);
