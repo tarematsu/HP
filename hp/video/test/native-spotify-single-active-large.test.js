@@ -43,7 +43,7 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('advancing the ten-minute owner refreshes which slot is prepared', () => {
+test('advancing the three-minute owner refreshes which slot is prepared', () => {
   const advances = schedule.match(
     /staggerSlotIndex_ = \(staggerSlotIndex_ \+ 1\) % slots_\.size\(\);[\s\S]{0,180}?RefreshSpotifyHostLayout\(\);/g,
   ) || [];
