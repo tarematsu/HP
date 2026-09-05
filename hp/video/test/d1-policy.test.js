@@ -52,7 +52,7 @@ test('compacted finalization serializes through the video Durable Object and pub
   assert.match(compactedFeed, /video-feed-refresh/);
   assert.match(compactedFeed, /lock: false/);
   assert.match(compactedFeed, /publishFeedSnapshot/);
-  assert.match(feedSnapshot, /video\/playback-feed\/v1\.json/);
+  assert.match(feedSnapshot, /video\/playback-feed\/v2\.json/);
   assert.match(feedSnapshot, /DATA_BUCKET|bucket/);
 });
 
