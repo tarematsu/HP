@@ -48,6 +48,7 @@ inline const wchar_t* RewriteSpotifyLegacyAutoplayScript(
 #include "spotify_timed_sequence.inc"
 
 namespace hp {
+#include "spotify_timed_end_rotation.inc"
 #include "spotify_stagger_schedule.inc"
 
 #undef RecomputeForeground
