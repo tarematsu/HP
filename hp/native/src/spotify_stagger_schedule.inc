@@ -2,7 +2,7 @@ namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAuthenticationHoldMs = kSpotifyTimedSlotOffsetMs;
 
 constexpr wchar_t kSpotifyBackgroundPlaybackProbeScript[] = LR"JS(
 (() => {
@@ -68,13 +68,21 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
-  // Probe one already-running account per 2-second scheduler tick. This stays
-  // lightweight (each of the six windows is sampled about every 12 seconds) but
-  // prevents a background slot whose audio has frozen from remaining logically
-  // playing forever just because it is not the current 40-second recovery slot.
+  // Probe one active account per 2-second scheduler tick. This stays lightweight
+  // (each of the six windows is sampled about every 12 seconds) and also covers
+  // BitterBlue/TALKABOUT/the bridge before the formal 20:00 rotation begins.
   Slot& probe = slots_[playbackWatchdogIndex_++ % slots_.size()];
-  if (probe.timedRotationActive && probe.webview && !probe.reconcileInFlight &&
-      probe.timedCompletionPendingTick == 0 && !SlotIsLoginPage(probe) &&
+  const bool completedPrelude =
+      probe.timedTarget == TimedSpotifyTarget::BitterBlue &&
+      probe.timedPreludeCompleted;
+  const bool completedBridge =
+      probe.timedTarget == TimedSpotifyTarget::CatalogTrack &&
+      IsRecentCatalogIndex(probe.timedCatalogIndex) &&
+      probe.timedBridgeCompleted;
+  if (probe.timedTarget != TimedSpotifyTarget::None &&
+      !completedPrelude && !completedBridge && probe.webview &&
+      !probe.reconcileInFlight && probe.timedCompletionPendingTick == 0 &&
+      !SlotIsLoginPage(probe) &&
       (probe.lastModeNavigateTick == 0 ||
        now - probe.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs)) {
     Slot* const target = &probe;
@@ -110,10 +118,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
                 target->timedUnhealthySinceTick = detectedAt;
               }
 
-              // Do not let several stalled accounts steal the viewport from one
-              // another every two seconds. Give the first detected account one
-              // normal 40-second recovery turn, then the next stalled probe can
-              // claim priority if it is still needed.
+              // Only one stalled account owns recovery at a time. The 40-second
+              // value is a maximum hold; normal playback releases priority on the
+              // next scheduler tick so another stalled account can recover sooner.
               const bool canClaimPriority =
                   timedPrioritySlotIndex_ >= slots_.size() ||
                   detectedAt >= timedPriorityUntilTick_ ||
@@ -142,6 +149,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
           kSpotifyTimedFailureWatchdogMs;
     } else if (candidate.playing) {
       candidate.timedUnhealthySinceTick = 0;
+      if (timedPrioritySlotIndex_ == candidate.index) {
+        timedPrioritySlotIndex_ = kAccountCount;
+        timedPriorityUntilTick_ = 0;
+      }
     } else if (candidate.timedUnhealthySinceTick == 0) {
       candidate.timedUnhealthySinceTick = now;
     } else {
@@ -168,9 +179,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     timedPriorityUntilTick_ = 0;
   }
 
-  // Authentication is the only foreground Spotify state. Give an account up to
-  // three minutes to finish manual login; otherwise the normal 40-second clock
-  // owns the viewport, except for a just-finished/stalled song's recovery turn.
+  // Authentication is the only foreground Spotify state, but it gets just one
+  // normal 40-second turn. A logged-out account must not block recovery of the
+  // other five accounts for minutes.
   staggerSlotIndex_ %= slots_.size();
   const bool currentAuthentication =
       slots_[staggerSlotIndex_].webview &&
