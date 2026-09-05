@@ -1,6 +1,48 @@
 namespace hp {
 namespace {
 
+constexpr wchar_t kSpotifyUltraLightPreamble[] = LR"JS(
+(() => {
+  const id = '__homePanelSpotifyUltraLight';
+  const stripDecorations = () => {
+    if (!document.getElementById(id)) {
+      const style = document.createElement('style');
+      style.id = id;
+      style.textContent = `
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+          scroll-behavior: auto !important;
+          background-image: none !important;
+          box-shadow: none !important;
+          filter: none !important;
+          backdrop-filter: none !important;
+        }
+        img, picture, video, canvas {
+          display: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+    document.querySelectorAll('img').forEach(image => {
+      try {
+        image.removeAttribute('srcset');
+        image.removeAttribute('sizes');
+        image.loading = 'lazy';
+        image.decoding = 'async';
+      } catch (_) {}
+    });
+  };
+
+  stripDecorations();
+  if (!window.__homePanelSpotifyUltraLightObserver && document.documentElement) {
+    const observer = new MutationObserver(stripDecorations);
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    window.__homePanelSpotifyUltraLightObserver = observer;
+  }
+})()
+)JS";
+
 constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
 (() => {
   const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
@@ -169,11 +211,19 @@ constexpr wchar_t kSpotifyLonesomeRabbitGuardScript[] = LR"JS(
 const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept {
   if (!script) return script;
   const std::wstring_view value(script);
+  const wchar_t* selected = script;
   if (value.find(L"/album/2f2Ik9JeinFVWZuFb3i35b") != std::wstring_view::npos &&
       value.find(L"ensureRepeatOne") != std::wstring_view::npos) {
-    return kSpotifyLonesomeRabbitGuardScript;
+    selected = kSpotifyLonesomeRabbitGuardScript;
   }
-  return script;
+
+  // Every robust Spotify pass also strips image-heavy decorative rendering.
+  // Keeping this in the reconciler covers both Lonesome rabbit and TALKABOUT.
+  thread_local std::wstring rewritten;
+  rewritten.assign(kSpotifyUltraLightPreamble);
+  rewritten.push_back(L'\n');
+  rewritten.append(selected);
+  return rewritten.c_str();
 }
 
 }  // namespace

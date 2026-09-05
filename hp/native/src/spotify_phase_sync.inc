@@ -6,6 +6,11 @@ constexpr UINT kSpotifyRobustReconcileTickMs = 2U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr int kSpotifyRobustUnhealthyLimit = 3;
+// Six slots are reconciled serially, so one slot is sampled about every 12s.
+// Require roughly six minutes with no usable playback control before a reload.
+constexpr int kSpotifyRobustSlowLoadMultiplier = 10;
+constexpr int kSpotifyRobustReloadThreshold =
+    kSpotifyRobustUnhealthyLimit * kSpotifyRobustSlowLoadMultiplier;
 
 constexpr wchar_t kSpotifyClearLegacyEnsureScript[] = LR"JS(
 (() => {
@@ -548,7 +553,7 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
 
             if (FAILED(result)) {
               target->playing = false;
-              if (++target->unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+              if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
                 NavigateSlotRobustly(*target);
               } else {
                 RecomputeForeground();
@@ -577,18 +582,26 @@ void SpotifyWebViews::ReconcileDesiredMode() noexcept {
             int y = 0;
             const bool hasPoint = ParseNormalizedPoint(json, &x, &y);
             target->playing = false;
-            if (++target->unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+            if (hasPoint) {
+              // A usable play control means the page is loaded enough to recover
+              // without destroying its progress. Keep trusted-clicking it instead
+              // of treating slow playback startup as a reason to navigate again.
+              target->unhealthyChecks = 0;
+              RecomputeForeground();
+              ClickSlotNormalizedPoint(*target, x, y);
+              return S_OK;
+            }
+            if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
               NavigateSlotRobustly(*target);
               return S_OK;
             }
             RecomputeForeground();
-            if (hasPoint) ClickSlotNormalizedPoint(*target, x, y);
             return S_OK;
           }).Get());
   if (FAILED(started)) {
     slot.reconcileInFlight = false;
     slot.playing = false;
-    if (++slot.unhealthyChecks >= kSpotifyRobustUnhealthyLimit) {
+    if (++slot.unhealthyChecks >= kSpotifyRobustReloadThreshold) {
       NavigateSlotRobustly(slot);
     } else {
       RecomputeForeground();
