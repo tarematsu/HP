@@ -118,6 +118,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       NavigateTimedSlot(slot);
     }
 
+    if (slot.timedTarget == TimedSpotifyTarget::BitterBlue) {
+      ArmTimedEndObserver(slot);
+    }
+
     // BitterBlue is a one-shot prelude. Once its end observer has seen it finish,
     // leave Spotify alone until the 04:00 TALKABOUT boundary instead of replaying.
     if (slot.timedTarget == TimedSpotifyTarget::BitterBlue &&
