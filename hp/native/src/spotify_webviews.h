@@ -26,9 +26,11 @@ class SpotifyWebViews final {
     CatalogTrack,
   };
 
+  // Tagged recent-catalog helpers are implemented outside the class body.
+  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
+
  private:
   static constexpr size_t kAccountCount = 6;
-  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
   struct Slot {
     SpotifyWebViews* owner = nullptr;
@@ -62,6 +64,7 @@ class SpotifyWebViews final {
     bool podcastCompleted = false;
     bool timedRotationActive = false;
     bool timedPreludeCompleted = false;
+    bool timedBridgeCompleted = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
@@ -107,10 +110,20 @@ class SpotifyWebViews final {
   void ReconcileTimedSlot(Slot& slot) noexcept;
   size_t PickTimedRandomCatalogIndex(size_t avoidIndex) noexcept;
   void EnsureTimedRandomPair(ULONGLONG rotationCycle) noexcept;
+  size_t PickRecentCatalogIndex(size_t avoidIndex,
+                                size_t secondAvoidIndex) noexcept;
+  void EnsureRecentRandomPair(ULONGLONG rotationCycle,
+                              size_t avoidIndex) noexcept;
+  bool SlotMatchesRecentTimedTarget(const Slot& slot) const noexcept;
+  void NavigateRecentTimedSlot(Slot& slot) noexcept;
+  void ReconcileRecentTimedSlot(Slot& slot) noexcept;
+  void NavigateActiveTimedSlot(Slot& slot) noexcept;
+  void ReconcileActiveTimedSlot(Slot& slot) noexcept;
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
+  void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -132,6 +145,7 @@ class SpotifyWebViews final {
   ULONGLONG timedPriorityUntilTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG timedRandomPairCycle_ = ~0ULL;
+  size_t timedBridgeCatalogIndex_ = kNoTimedCatalogIndex;
   size_t timedRandomCIndex_ = kNoTimedCatalogIndex;
   size_t timedRandomDIndex_ = kNoTimedCatalogIndex;
   bool staggerSlotValidated_ = false;
@@ -145,13 +159,15 @@ class SpotifyWebViews final {
 };
 
 // tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00 and
-// TALKABOUT at 04:00. From 20:00 the music rotation advances on real playback
-// completion: Lonesome rabbit -> BitterBlue -> random C -> random D -> A....
+// TALKABOUT at 04:00. After TALKABOUT, one random 2025-2026 Sakurazaka46 song
+// bridges the gap without replaying Lonesome rabbit. From 20:00 the music
+// rotation advances on real playback completion:
+// Lonesome rabbit -> BitterBlue -> random C -> random D -> A....
 // A three-minute watchdog is used only when playback is unhealthy or Spotify
 // remains in a post-track/ad waiting state; healthy long songs are not cut off.
-// C/D are a distinct pair drawn from the built-in >=2-minute Sakurazaka46
-// catalog for each completed A-B-C-D cycle. Six accounts remain offset by
-// 40 seconds for normal heavy recovery work.
+// Bridge/C/D are drawn from songs newly released in 2025-2026, excluding fixed
+// A/B; C and D are distinct and also avoid that hour's bridge. Six accounts
+// remain offset by 40 seconds for normal heavy recovery work.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
