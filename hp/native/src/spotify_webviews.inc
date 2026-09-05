@@ -11,6 +11,14 @@
 #include "spotify_lonesome_guard.inc"
 #define ExecuteScript(script, callback)                                         \
   ExecuteScript(RewriteSpotifyPhaseExecuteScript((script)), (callback))
+#define RecomputeForeground() RecomputeForegroundAndRefreshSpotifyHostLayout()
+#define SendInput(count, inputs, inputSize)                                     \
+  ((void)(count), (void)(inputs), (void)(inputSize),                            \
+   DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths))
 #include "spotify_phase_sync.inc"
+#undef SendInput
+#undef RecomputeForeground
 #undef ExecuteScript
+
+#include "spotify_background_click.inc"
 }  // namespace hp
