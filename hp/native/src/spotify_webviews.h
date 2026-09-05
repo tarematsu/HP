@@ -72,8 +72,11 @@ class SpotifyWebViews final {
   void NavigateSlotRobustly(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
+  UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
+                                    int yTenThousandths) noexcept;
   const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
+  void RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
