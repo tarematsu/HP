@@ -62,9 +62,103 @@ constexpr UINT kNativeMediaTverWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTverWakeAttempts = 10U;
 HWND gNativeMediaTverWakeWindow = nullptr;
 UINT gNativeMediaTverWakeCount = 0;
-UINT gNativeMediaTverSteadyIntervalMs = 2000U;
+UINT gNativeMediaTverSteadyIntervalMs = 4000U;
 bool gNativeMediaTverUseDeathGame = false;
 std::wstring gNativeMediaPhaseOverlayText;
+
+constexpr wchar_t kNativeMediaYoutubeWatchdogOverrideScript[] = LR"JS(
+(() => {
+  const player = document.querySelector('#movie_player');
+  if (!player) return null;
+  const isVisible = element => {
+    if (!element) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           rect.width > 0 && rect.height > 0;
+  };
+  const video = document.querySelector('video');
+  const error = document.querySelector(
+      '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
+      + 'yt-player-error-message-renderer, ytd-player-error-message-renderer');
+  if ((video && video.error) || player.classList.contains('ytp-error') ||
+      isVisible(error)) {
+    location.replace('https://www.youtube.com/playlist?list=PLMWqSdpIVl30');
+    return null;
+  }
+
+  try {
+    const quality = typeof player.getPlaybackQuality === 'function'
+        ? player.getPlaybackQuality() : '';
+    const needsQuality = (quality && quality !== 'large') ||
+        (!quality && !window.__homePanelYoutubeQualityInitialized);
+    if (needsQuality) {
+      if (typeof player.setPlaybackQualityRange === 'function') {
+        player.setPlaybackQualityRange('large', 'large');
+      }
+      if (typeof player.setPlaybackQuality === 'function') {
+        player.setPlaybackQuality('large');
+      }
+      window.__homePanelYoutubeQualityInitialized = true;
+    }
+  } catch (_) {
+  }
+
+  if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+  const isClickable = element => {
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true' ||
+        element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+
+  const captionsButton = player.querySelector('.ytp-subtitles-button');
+  if (captionsButton && captionsButton.getAttribute('aria-pressed') === 'true') {
+    try {
+      captionsButton.click();
+      window.__homePanelYoutubeCaptionsDisabled = true;
+    } catch (_) {
+    }
+  } else if (!window.__homePanelYoutubeCaptionsDisabled) {
+    try {
+      if (typeof player.setOption === 'function') {
+        player.setOption('captions', 'track', {});
+        window.__homePanelYoutubeCaptionsDisabled = true;
+      }
+    } catch (_) {
+    }
+  }
+
+  const selectors = [
+    '.ytp-ad-skip-button',
+    '.ytp-ad-skip-button-modern',
+    '.ytp-skip-ad-button',
+    '.videoAdUiSkipButton',
+    '.ytp-ad-skip-button-slot button',
+    '.ytp-ad-skip-button-container button'
+  ];
+  let target = Array.from(player.querySelectorAll(selectors.join(',')))
+      .find(isClickable) || null;
+  if (!target) {
+    const fullscreen = document.fullscreenElement ||
+        player.classList.contains('ytp-fullscreen');
+    if (fullscreen) return null;
+    target = player.querySelector('.ytp-fullscreen-button');
+    if (!isClickable(target)) return null;
+  }
+
+  const rect = target.getBoundingClientRect();
+  return [
+    Math.max(0, Math.min(10000, Math.round(
+        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+    Math.max(0, Math.min(10000, Math.round(
+        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+  ];
+})()
+)JS";
 
 constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
 (() => {
@@ -160,6 +254,10 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     }
     const videos = Array.from(document.querySelectorAll('video'));
     const video = videos.find(isDisplayed) || videos[0] || null;
+    if (state.video !== video) {
+      state.video = video;
+      state.lowQualitySet = false;
+    }
     if (video) {
       video.defaultPlaybackRate = playbackRate;
       if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate;
@@ -198,6 +296,10 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
       video.muted = false;
       if (video.volume === 0) video.volume = 1;
     }
+
+    const stablePlayback = video && !video.paused && !video.ended &&
+        state.lowQualitySet;
+    if (stablePlayback) return;
 
     const controls = Array.from(document.querySelectorAll(
         'button, [role="button"], [role="menuitem"], [role="radio"], '
@@ -266,7 +368,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     }
   };
   ensure();
-  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 2000);
+  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 4000);
 })()
 )JS";
 
@@ -433,6 +535,44 @@ std::wstring RewriteNativeMediaExecuteScript(const wchar_t* script) {
       value.find(L"fullscreenButton") != std::wstring::npos) {
     return kNativeMediaTverWatchdogOverrideScript;
   }
+  if (value.find(L"setPlaybackQualityRange('large', 'large')") !=
+          std::wstring::npos &&
+      value.find(L"yt-player-error-message-renderer") != std::wstring::npos) {
+    // Health/error handling and 480p maintenance live in the watchdog now.
+    return L"false";
+  }
+  if (value.find(L".ytp-ad-skip-button") != std::wstring::npos &&
+      value.find(L".ytp-fullscreen-button") != std::wstring::npos) {
+    return kNativeMediaYoutubeWatchdogOverrideScript;
+  }
+  if (value.find(L"homepanel-youtube-clean-player") != std::wstring::npos &&
+      value.find(L"すべて再生") != std::wstring::npos) {
+    const size_t opening = value.find(L"(() => {");
+    if (opening != std::wstring::npos) {
+      const size_t lineEnd = value.find(L'\n', opening);
+      if (lineEnd != std::wstring::npos) {
+        value.insert(
+            lineEnd + 1,
+            L"  const probeState = window.__homePanelPlayAllProbeState || "
+            L"(window.__homePanelPlayAllProbeState = { attempts: 0, at: 0 });\n"
+            L"  const now = Date.now();\n"
+            L"  if (now - probeState.at > 5000) probeState.attempts = 0;\n"
+            L"  probeState.at = now;\n"
+            L"  probeState.attempts += 1;\n");
+      }
+    }
+    constexpr std::wstring_view missingTarget =
+        L"  if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) return null;";
+    const size_t missing = value.find(missingTarget);
+    if (missing != std::wstring::npos) {
+      value.replace(
+          missing, missingTarget.size(),
+          L"  if (!target || window.innerWidth <= 0 || window.innerHeight <= 0) {\n"
+          L"    return probeState.attempts >= 10 ? [5850, 4250] : null;\n"
+          L"  }");
+    }
+    return value;
+  }
   if (gNativeMediaPhaseOverlayText.empty() ||
       value.find(L"__homePanelMediaPhaseTime") == std::wstring::npos) {
     return value;
@@ -525,23 +665,28 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 
 // The media panel runs YouTube for 60 minutes and TVer for 60 minutes. Spotify
 // follows the same phase boundary. Each completed TVer item advances Sakura Meets
-// <-> Death (Youth) Game and recreates only the TVer WebView controller. Until
-// Death Game starts broadcasting, its series slot selects the available preview.
-// TVer also uses a trusted native click followed by requestFullscreen so hidden
-// or unlabeled fullscreen controls cannot leave the player stuck inline.
+// <-> Death (Youth) Game while the same media WebView controller is reused and
+// only navigated to the next target. Until Death Game starts broadcasting, its
+// series slot selects the available preview. TVer also uses a trusted native
+// click followed by requestFullscreen so hidden or unlabeled fullscreen controls
+// cannot leave the player stuck inline.
 #define SetTimer(hwnd, timerId, interval, callback)                              \
   (((timerId) == kNativeMediaPhaseTimer                                         \
         ? (CaptureNativeMediaPhaseOverlay(phase_ == Phase::Tver),              \
            SetSpotifyMediaPhase(phase_ == Phase::Tver), 0)                     \
         : 0),                                                                   \
-   ((timerId) == kNativeMediaTverWatchdogTimer                                  \
-        ? ArmNativeMediaTverWakeTimer((hwnd), (timerId), (interval))           \
-        : ::SetTimer(                                                           \
-              (hwnd), (timerId),                                                \
-              ((timerId) == kNativeMediaPhaseTimer                             \
-                   ? NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)         \
-                   : (interval)),                                               \
-              (callback))))
+   ((timerId) == kNativeMediaPlaybackHealthTimer                                \
+        ? static_cast<UINT_PTR>(1)                                              \
+        : ((timerId) == kNativeMediaTverWatchdogTimer                           \
+               ? ArmNativeMediaTverWakeTimer((hwnd), (timerId), (interval))    \
+               : ::SetTimer(                                                    \
+                     (hwnd), (timerId),                                         \
+                     ((timerId) == kNativeMediaPhaseTimer                       \
+                          ? NativeMediaPhaseIntervalMs(phase_ == Phase::Tver)   \
+                          : ((timerId) == kNativeMediaPlayAllTimer               \
+                                 ? 1000U                                        \
+                                 : (interval))),                                \
+                     (callback)))))
 #define Navigate(url) Navigate(ResolveNativeMediaNavigateUrl((url)))
 #define get_Profile(out)                                                        \
   get_Profile((AdvanceNativeMediaTverSeries(), (out)))

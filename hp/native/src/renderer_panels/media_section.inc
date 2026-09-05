@@ -4,8 +4,7 @@ constexpr wchar_t kNativeMediaYoutubeUrl[] =
     L"https://www.youtube.com/playlist?list=PLMWqSdpIVl30";
 constexpr wchar_t kNativeMediaTverUrl[] =
     L"https://tver.jp/series/srx97ftk3w";
-constexpr wchar_t kNativeMediaYoutubeProfile[] = L"media-youtube";
-constexpr wchar_t kNativeMediaTverProfile[] = L"media-tver";
+constexpr wchar_t kNativeMediaProfile[] = L"media-youtube";
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
 constexpr UINT_PTR kNativeMediaPlaybackHealthTimer = 0x4D560004;
@@ -18,7 +17,7 @@ constexpr UINT kNativeMediaPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogMinMs = 2U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogMaxMs = 10U * 1000U;
-constexpr UINT kNativeMediaTverWatchdogMs = 2U * 1000U;
+constexpr UINT kNativeMediaTverWatchdogMs = 4U * 1000U;
 constexpr int kNativeMediaPlayAllRetryLimit = 20;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
@@ -323,7 +322,7 @@ constexpr wchar_t kNativeMediaTverLoopScript[] = LR"JS(
     }
   };
   ensure();
-  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 2000);
+  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 4000);
 })()
 )JS";
 
@@ -551,10 +550,6 @@ class NativeMediaPanelHost final {
     if (badge.parentElement !== root) root.appendChild(badge);
   };
   mount();
-  if (window.__homePanelMediaPhaseClockTimer) {
-    window.clearInterval(window.__homePanelMediaPhaseClockTimer);
-  }
-  window.__homePanelMediaPhaseClockTimer = window.setInterval(mount, 1000);
 })()
 )JS";
     return script;
@@ -567,9 +562,7 @@ class NativeMediaPanelHost final {
   }
 
   const wchar_t* CurrentProfileName() const noexcept {
-    return phase_ == Phase::YouTube
-        ? kNativeMediaYoutubeProfile
-        : kNativeMediaTverProfile;
+    return kNativeMediaProfile;
   }
 
   void CloseController() noexcept {
@@ -751,8 +744,7 @@ class NativeMediaPanelHost final {
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
-    CloseController();
-    CreateControllerForCurrentPhase();
+    NavigateCurrentPhase();
     ArmPhaseTimer();
   }
 
@@ -764,8 +756,7 @@ class NativeMediaPanelHost final {
     StopYoutubeMonitors();
     StopTverPlaybackMonitor();
     StopNavigationRetry();
-    CloseController();
-    CreateControllerForCurrentPhase();
+    NavigateCurrentPhase();
     ArmPhaseTimer();
   }
 
@@ -888,15 +879,13 @@ class NativeMediaPanelHost final {
     tverRestarting_ = false;
     if (phase_ != Phase::Tver || !hostWindow_ || !IsWindow(hostWindow_)) return;
     StopNavigationRetry();
-    CloseController();
-    CreateControllerForCurrentPhase();
+    NavigateCurrentPhase();
   }
 
   void RestartTverAfterPlayback() noexcept {
     if (phase_ != Phase::Tver || !webview_ || tverRestarting_) return;
     tverRestarting_ = true;
     StopTverPlaybackMonitor();
-
     ComPtr<ICoreWebView2_13> webview13;
     ComPtr<ICoreWebView2Profile> profile;
     ComPtr<ICoreWebView2Profile2> profile2;
