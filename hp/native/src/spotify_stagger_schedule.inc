@@ -2,23 +2,8 @@ namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedWaveMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyTimedLonesomeStartMs = 20ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 3ULL * 60ULL * 1000ULL;
-
-hp::SpotifyWebViews::TimedSpotifyTarget SpotifyTimedTargetFor(
-    bool youtubePhase, bool talkAboutCompleted,
-    ULONGLONG slotLocalElapsed) noexcept {
-  using Target = hp::SpotifyWebViews::TimedSpotifyTarget;
-  if (!youtubePhase) return Target::LonesomeRabbit;
-  if (slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
-    return Target::BitterBlue;
-  }
-  if (slotLocalElapsed < kSpotifyTimedLonesomeStartMs &&
-      !talkAboutCompleted) {
-    return Target::TalkAbout;
-  }
-  return Target::LonesomeRabbit;
-}
 }  // namespace
 
 void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
@@ -71,28 +56,68 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
   const ULONGLONG slotLocalElapsed = elapsed - slotOffset;
 
-  const TimedSpotifyTarget desired = SpotifyTimedTargetFor(
-      podcastMode_, slot.podcastCompleted, slotLocalElapsed);
-  const bool targetChanged = slot.timedTarget != desired;
-  if (targetChanged) {
-    slot.timedTarget = desired;
-    slot.lastModeNavigateTick = 0;
-    slot.unhealthyChecks = 0;
+  TimedSpotifyTarget desired = TimedSpotifyTarget::LonesomeRabbit;
+  size_t desiredCatalogIndex = kNoTimedCatalogIndex;
+  ULONGLONG rotationWave = ~0ULL;
+
+  if (podcastMode_ && slotLocalElapsed < kSpotifyTimedTalkAboutStartMs) {
+    // YouTube 00:00 + account offset: fixed B.
+    desired = TimedSpotifyTarget::BitterBlue;
+  } else if (podcastMode_ &&
+             slotLocalElapsed < kSpotifyTimedRotationStartMs &&
+             !slot.podcastCompleted) {
+    // YouTube 04:00 + account offset: one TALKABOUT pass.
+    desired = TimedSpotifyTarget::TalkAbout;
+  } else if (slotLocalElapsed >= kSpotifyTimedRotationStartMs) {
+    // From 20:00 onward every account follows A -> B -> C -> D at four-minute
+    // intervals. One C/D pair is shared by all six accounts for that 16-minute
+    // cycle; accounts still access it 40 seconds apart.
+    const ULONGLONG rotationElapsed =
+        slotLocalElapsed - kSpotifyTimedRotationStartMs;
+    rotationWave = rotationElapsed / kSpotifyTimedWaveMs;
+    const unsigned position = static_cast<unsigned>(rotationWave % 4ULL);
+    const ULONGLONG rotationCycle = rotationWave / 4ULL;
+    EnsureTimedRandomPair(rotationCycle);
+
+    switch (position) {
+      case 0:
+        desired = TimedSpotifyTarget::LonesomeRabbit;
+        break;
+      case 1:
+        desired = TimedSpotifyTarget::BitterBlue;
+        break;
+      case 2:
+        desired = TimedSpotifyTarget::CatalogTrack;
+        desiredCatalogIndex = timedRandomCIndex_;
+        break;
+      default:
+        desired = TimedSpotifyTarget::CatalogTrack;
+        desiredCatalogIndex = timedRandomDIndex_;
+        break;
+    }
   }
 
-  // Once Lonesome rabbit is the scheduled target, force a fresh album access at
-  // the start of every four-minute per-account wave. TALKABOUT that finishes
-  // early returns to Lonesome immediately but waits for the 20-minute boundary
-  // before joining this periodic refresh clock.
-  const bool periodicLonesome =
-      desired == TimedSpotifyTarget::LonesomeRabbit &&
-      (!podcastMode_ || slotLocalElapsed >= kSpotifyTimedLonesomeStartMs);
-  const ULONGLONG wave = slotLocalElapsed / kSpotifyTimedWaveMs;
-  const bool lonesomeWaveChanged =
-      periodicLonesome && slot.lastTimedLonesomeWave != wave;
+  const bool catalogChanged =
+      desired == TimedSpotifyTarget::CatalogTrack &&
+      slot.timedCatalogIndex != desiredCatalogIndex;
+  const bool targetChanged = slot.timedTarget != desired || catalogChanged;
+  const bool rotationWaveChanged =
+      rotationWave != ~0ULL && slot.lastTimedRotationWave != rotationWave;
 
-  if (lonesomeWaveChanged) {
-    slot.lastTimedLonesomeWave = wave;
+  if (targetChanged) {
+    slot.timedTarget = desired;
+    slot.timedCatalogIndex = desiredCatalogIndex;
+    slot.lastModeNavigateTick = 0;
+    slot.unhealthyChecks = 0;
+  } else if (desired != TimedSpotifyTarget::CatalogTrack) {
+    slot.timedCatalogIndex = kNoTimedCatalogIndex;
+  }
+
+  // The wave number is the authority for periodic access. This forces a fresh
+  // Spotify navigation exactly on each 4-minute boundary even when TALKABOUT
+  // ended early and the slot was already sitting on Lonesome rabbit at 20:00.
+  if (rotationWaveChanged) {
+    slot.lastTimedRotationWave = rotationWave;
     NavigateTimedSlot(slot);
   } else if (targetChanged) {
     NavigateTimedSlot(slot);
@@ -132,25 +157,28 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   const bool modeChanged = podcastMode_ != podcastWindowActive;
   podcastMode_ = podcastWindowActive;
   if (modeChanged && podcastWindowActive) {
-    // A new YouTube hour is the master clock: each account starts BitterBlue at
-    // 00:00 + index*40s, TALKABOUT at 04:00 + index*40s, and Lonesome rabbit at
-    // 20:00 + index*40s. The next YouTube hour resets this sequence again.
+    // A new YouTube hour is the master clock. B starts at 00:00, TALKABOUT at
+    // 04:00, and the A-B-C-D rotation starts at 20:00. C/D are redrawn for the
+    // first 16-minute rotation and again whenever the rotation cycle advances.
     youtubeCycleStartTick_ = now;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
+    timedRandomPairCycle_ = ~0ULL;
+    timedRandomCIndex_ = kNoTimedCatalogIndex;
+    timedRandomDIndex_ = kNoTimedCatalogIndex;
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
       slot.unhealthyChecks = 0;
       slot.podcastCompleted = false;
       slot.timedTarget = TimedSpotifyTarget::None;
-      slot.lastTimedLonesomeWave = ~0ULL;
+      slot.timedCatalogIndex = kNoTimedCatalogIndex;
+      slot.lastTimedRotationWave = ~0ULL;
     }
   }
 
-  // TVer does not reset the YouTube master clock. Since 60 minutes is divisible
-  // by four, the existing Lonesome wave continues at 60:00, 64:00, ... while
-  // still preserving the same 40-second separation between the six accounts.
+  // TVer does not reset the YouTube master clock. The A-B-C-D sequence therefore
+  // keeps running through the TVer hour until the next YouTube hour resets it.
   RecomputeForeground();
   RunStaggeredReconcile();
 }
