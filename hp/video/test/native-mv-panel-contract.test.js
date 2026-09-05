@@ -35,12 +35,12 @@ test('native dashboard keeps one active media controller on the shared WebView2 
   assert.doesNotMatch(mediaPanel, /environment_->CreateCoreWebView2Controller\(/);
 });
 
-test('YouTube and TVer use separate named login profiles while sharing the process family', () => {
-  assert.match(mediaPanel, /kNativeMediaYoutubeProfile\[\] = L"media-youtube"/);
-  assert.match(mediaPanel, /kNativeMediaTverProfile\[\] = L"media-tver"/);
+test('YouTube and TVer reuse the existing YouTube login profile and one controller', () => {
+  assert.match(mediaPanel, /kNativeMediaProfile\[\] = L"media-youtube"/);
+  assert.doesNotMatch(mediaPanel, /kNativeMediaTverProfile/);
   assert.match(
     mediaPanel,
-    /CurrentProfileName\(\)[\s\S]*Phase::YouTube[\s\S]*kNativeMediaYoutubeProfile[\s\S]*kNativeMediaTverProfile/,
+    /CurrentProfileName\(\) const noexcept \{[\s\S]*return kNativeMediaProfile;/,
   );
   assert.match(mediaPanel, /CreateCoreWebView2ControllerOptions/);
   assert.match(mediaPanel, /put_ProfileName\(CurrentProfileName\(\)\)/);
@@ -51,7 +51,7 @@ test('YouTube and TVer use separate named login profiles while sharing the proce
   );
 });
 
-test('media cycle alternates YouTube and TVer every hour by recreating only the active profile controller', () => {
+test('media cycle alternates YouTube and TVer every hour by navigating the same controller', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaPanel, /enum class Phase \{ YouTube, Tver \}/);
   assert.match(
@@ -60,11 +60,19 @@ test('media cycle alternates YouTube and TVer every hour by recreating only the 
   );
   assert.match(
     mediaPanel,
-    /void SwitchToYouTube\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*ArmPhaseTimer\(\)/,
+    /void SwitchToYouTube\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);[\s\S]*ArmPhaseTimer\(\);/,
   );
   assert.match(
     mediaPanel,
-    /void SwitchToTver\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*ArmPhaseTimer\(\)/,
+    /void SwitchToTver\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);[\s\S]*ArmPhaseTimer\(\);/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /void SwitchToYouTube\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void SwitchToTver/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /void SwitchToTver\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void NavigateCurrentPhase/,
   );
   assert.match(mediaPanel, /uint64_t controllerGeneration_ = 0/);
   assert.match(mediaPanel, /bool controllerCreating_ = false/);
@@ -73,7 +81,7 @@ test('media cycle alternates YouTube and TVer every hour by recreating only the 
   assert.doesNotMatch(composition, /SetSpotifyAmazonPodcastMode/);
 });
 
-test('YouTube and TVer keep phase start/end times visible for the whole hour with a borderless translucent gray label', () => {
+test('YouTube and TVer keep phase start/end times visible without a permanent one-second DOM timer', () => {
   assert.match(mediaPanel, /FormatNativeMediaLocalHourMinute/);
   assert.match(
     mediaPanel,
@@ -81,11 +89,11 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour wit
   );
   assert.match(
     mediaPanel,
-    /SwitchToYouTube\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+    /SwitchToYouTube\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*NavigateCurrentPhase\(\)/,
   );
   assert.match(
     mediaPanel,
-    /SwitchToTver\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+    /SwitchToTver\(\) noexcept[\s\S]*CapturePhaseTimes\(\)[\s\S]*NavigateCurrentPhase\(\)/,
   );
   assert.match(mediaPanel, /__homePanelMediaPhaseTime/);
   assert.match(mediaPanel, /phase_ == Phase::YouTube \? L"YouTube " : L"TVer "/);
@@ -96,8 +104,8 @@ test('YouTube and TVer keep phase start/end times visible for the whole hour wit
   assert.match(mediaPanel, /cursor:none !important/);
   assert.match(mediaPanel, /windowClass\.hCursor = nullptr/);
   assert.match(mediaPanel, /document\.querySelector\('#movie_player'\)/);
-  assert.match(mediaPanel, /window\.__homePanelMediaPhaseClockTimer/);
-  assert.match(mediaPanel, /window\.setInterval\(mount, 1000\)/);
+  assert.doesNotMatch(mediaPanel, /__homePanelMediaPhaseClockTimer/);
+  assert.doesNotMatch(mediaPanel, /setInterval\(mount, 1000\)/);
   assert.match(
     mediaPanel,
     /add_NavigationCompleted[\s\S]*ShowPhaseOverlay\(\)/,
@@ -155,7 +163,7 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   );
 });
 
-test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and independently recovers fullscreen', () => {
+test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and uses four-second recovery checks', () => {
   assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
   assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
   assert.match(mediaPanel, /最新話\|最新回/);
@@ -163,14 +171,14 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and
   assert.match(mediaPanel, /const playbackRate = 1\.75/);
   assert.match(mediaPanel, /video\.defaultPlaybackRate = playbackRate/);
   assert.match(mediaPanel, /video\.playbackRate = playbackRate/);
-  assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(mediaPanel, /window\.setInterval\(ensure, 4000\)/);
   assert.match(mediaPanel, /qualityChoices/);
   assert.match(mediaPanel, /qualityLabels\.size >= 3/);
   assert.match(mediaPanel, /qualityName\(element\) === '低'/);
   assert.match(mediaPanel, /lowOption\.click\(\)/);
   assert.match(mediaPanel, /currentQuality\.click\(\)/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogTimer = 0x4D560007/);
-  assert.match(mediaPanel, /kNativeMediaTverWatchdogMs = 2U \* 1000U/);
+  assert.match(mediaPanel, /kNativeMediaTverWatchdogMs = 4U \* 1000U/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogScript/);
   assert.match(mediaPanel, /new MouseEvent\('mousemove'/);
   assert.match(mediaPanel, /document\.fullscreenElement/);
@@ -183,7 +191,7 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and
   );
 });
 
-test('effective TVer completion path recreates the controller without deleting cookies or caches', () => {
+test('effective TVer completion path reuses the controller without deleting cookies or caches', () => {
   assert.match(mediaPanel, /state && state\.restartRequested\) return 'restart'/);
   assert.match(mediaPanel, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
   assert.match(mediaPanel, /RestartTverAfterPlayback\(\)/);
@@ -203,7 +211,15 @@ test('effective TVer completion path recreates the controller without deleting c
   assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
-    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*CreateControllerForCurrentPhase\(\)/,
+    /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void RestartTverAfterPlayback/,
+  );
+  assert.doesNotMatch(
+    mediaPanel,
+    /CompleteTverRestart\(\) noexcept[\s\S]*CreateControllerForCurrentPhase\(\)[\s\S]*void RestartTverAfterPlayback/,
   );
   assert.doesNotMatch(
     mediaPanel,
