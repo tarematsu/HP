@@ -1,5 +1,3 @@
-import { shuffleFeedItems } from './feed-shuffle.js';
-
 export const PLAYBACK_BAG_VERSION = 1;
 
 function itemId(value) {
@@ -42,12 +40,32 @@ export function parsePlaybackBag(raw) {
   };
 }
 
+function preserveServerOrder(items, previousLastPlayedId, skipAttempts) {
+  const ordered = [...(items || [])];
+  if (previousLastPlayedId === null || previousLastPlayedId === undefined || ordered.length <= 1) {
+    return ordered;
+  }
+
+  const previousIndex = ordered.findIndex(
+    (item) => String(item?.id) === String(previousLastPlayedId)
+  );
+  if (previousIndex < 0) return ordered;
+
+  const [previousItem] = ordered.splice(previousIndex, 1);
+  const insertionIndex = Math.min(
+    Math.max(1, Math.trunc(Number(skipAttempts) || 0)),
+    ordered.length
+  );
+  ordered.splice(insertionIndex, 0, previousItem);
+  return ordered;
+}
+
 export function createPlaybackBag(items, seed, previousLastPlayedId = null, skipAttempts = 0) {
-  const shuffled = shuffleFeedItems(items, seed, previousLastPlayedId, skipAttempts);
+  const ordered = preserveServerOrder(items, previousLastPlayedId, skipAttempts);
   return {
     version: PLAYBACK_BAG_VERSION,
     seed: Number(seed),
-    remainingIds: shuffled.map(itemId).filter(Boolean),
+    remainingIds: ordered.map(itemId).filter(Boolean),
     lastPlayedId: itemId(previousLastPlayedId)
   };
 }
