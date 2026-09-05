@@ -17,10 +17,23 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const int height = client.bottom - client.top;
     if (width <= 1 || height <= 1) return 0;
 
-    const double x =
-        (static_cast<double>(width) * xTenThousandths) / 10000.0;
-    const double y =
-        (static_cast<double>(height) * yTenThousandths) / 10000.0;
+    // CDP Input.dispatchMouseEvent consumes CSS viewport coordinates. WebView2
+    // ZoomFactor changes the CSS viewport size without changing the host bounds,
+    // so compensate here or a 80% zoom would shift trusted clicks up/left.
+    double zoom = 1.0;
+    if (slot.controller) {
+      double controllerZoom = 1.0;
+      if (SUCCEEDED(slot.controller->get_ZoomFactor(&controllerZoom)) &&
+          controllerZoom > 0.05) {
+        zoom = controllerZoom;
+      }
+    }
+    const double cssWidth = static_cast<double>(width) / zoom;
+    const double cssHeight = static_cast<double>(height) / zoom;
+    const double rawX = cssWidth * xTenThousandths / 10000.0;
+    const double rawY = cssHeight * yTenThousandths / 10000.0;
+    const double x = std::max(0.0, std::min(cssWidth - 1.0, rawX));
+    const double y = std::max(0.0, std::min(cssHeight - 1.0, rawY));
 
     const std::wstring pressed =
         L"{\"type\":\"mousePressed\",\"x\":" + std::to_wstring(x) +
