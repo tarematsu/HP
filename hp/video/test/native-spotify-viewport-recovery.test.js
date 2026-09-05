@@ -10,6 +10,14 @@ const wrapper = readFileSync(
   new URL('../../native/src/spotify_webviews.inc', import.meta.url),
   'utf8',
 );
+const phaseSync = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
+const lonesomeGuard = readFileSync(
+  new URL('../../native/src/spotify_lonesome_guard.inc', import.meta.url),
+  'utf8',
+);
 
 test('Spotify recovery scrolls offscreen controls into the WebView before returning a click point', () => {
   assert.match(viewportRecovery, /element\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
@@ -22,8 +30,8 @@ test('Spotify recovery scrolls offscreen controls into the WebView before return
 test('TALKABOUT latest episode and Lonesome rabbit track rows are revealed before trusted recovery clicks', () => {
   assert.match(viewportRecovery, /latest\.scrollIntoView/);
   assert.match(viewportRecovery, /targetLink\.scrollIntoView/);
-  assert.match(viewportRecovery, /kSpotifyLatestEpisodeNeedle/);
-  assert.match(viewportRecovery, /kSpotifyTargetTrackNeedle/);
+  assert.match(phaseSync, /const latest = links\[0\];\s*const container = latest\.closest/);
+  assert.match(lonesomeGuard, /if \(targetLink\) \{\s*const row = targetLink\.closest/);
 });
 
 test('viewport repair runs after the existing Spotify mode rewrite', () => {
@@ -32,4 +40,6 @@ test('viewport repair runs after the existing Spotify mode rewrite', () => {
     wrapper,
     /RewriteSpotifyViewportRecoveryScript\([\s\S]*RewriteSpotifyPhaseExecuteScript\(\(script\)\)/,
   );
+  assert.match(phaseSync, /const point = element => \{[\s\S]*const rect = element\.getBoundingClientRect\(\);[\s\S]*return \[/);
+  assert.match(lonesomeGuard, /const point = element => \{[\s\S]*const rect = element\.getBoundingClientRect\(\);[\s\S]*return \[/);
 });
