@@ -85,6 +85,25 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
       (element.getAttribute('aria-label') || '') + ' ' +
       (element.getAttribute('title') || '') + ' ' +
       (element.textContent || ''));
+  const dismissSurvey = () => {
+    const buttons = Array.from(document.querySelectorAll(
+        'button, [role="button"], a')).filter(isDisplayed);
+    for (const button of buttons) {
+      const label = labelOf(button).toLowerCase();
+      if (label !== '閉じる' && label !== 'close') continue;
+      let scope = button;
+      for (let depth = 0; scope && depth < 8;
+           ++depth, scope = scope.parentElement) {
+        const text = normalize(scope.textContent);
+        if (/アンケート/.test(text) &&
+            (/回答する/.test(text) || /誕生年|誕生月|性別/.test(text))) {
+          try { button.click(); } catch (_) {}
+          return true;
+        }
+      }
+    }
+    return false;
+  };
   const qualityName = element => labelOf(element)
       .replace(/[（(](?:選択中|設定中)[）)]/g, '')
       .replace(/画質$/, '')
@@ -233,6 +252,7 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
 
   const ensure = () => {
     try {
+      if (location.hostname === 'tver.jp') dismissSurvey();
       if (location.hostname !== 'tver.jp') {
         location.replace('https://tver.jp' + storedSeriesPath());
       } else if (location.pathname.startsWith('/series/')) {
@@ -283,8 +303,26 @@ constexpr wchar_t kNativeMediaTverWatchdogOverrideScript[] = LR"JS(
     ];
   };
 
+  const controls = Array.from(document.querySelectorAll(
+      'button, [role="button"], a'));
+  const surveyClose = controls.find(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    if (label !== '閉じる' && label !== 'close') return false;
+    let scope = element;
+    for (let depth = 0; scope && depth < 8;
+         ++depth, scope = scope.parentElement) {
+      const text = normalize(scope.textContent);
+      if (/アンケート/.test(text) &&
+          (/回答する/.test(text) || /誕生年|誕生月|性別/.test(text))) {
+        return true;
+      }
+    }
+    return false;
+  });
+  if (surveyClose) return point(surveyClose);
+
   const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
-  const controls = Array.from(document.querySelectorAll('button, [role="button"]'));
   const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
       controls.some(element => {
         if (!visible(element)) return false;
