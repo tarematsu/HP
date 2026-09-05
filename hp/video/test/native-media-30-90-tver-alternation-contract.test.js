@@ -75,7 +75,8 @@ test('TVer queues every public series item and keeps completion latching', () =>
   assert.match(composition, /state\.endCandidateAt = Date\.now\(\)/);
   assert.match(composition, /video\.currentTime < 3[\s\S]*state\.endCandidateAt = 0/);
   assert.doesNotMatch(composition, /isMainEpisodeLink/);
-  assert.match(composition, /\.filter\(link => link\.href\)/);
+  assert.match(composition, /const isCurrentSeriesEpisodeLink = link =>/);
+  assert.match(composition, /\.filter\(isCurrentSeriesEpisodeLink\)/);
   assert.match(composition, /completedItem = state\.maxDuration >= 5/);
   assert.match(composition, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
   assert.match(composition, /stableEndDelayMs = state\.maxDuration < 600 \? 8000 : 2500/);
