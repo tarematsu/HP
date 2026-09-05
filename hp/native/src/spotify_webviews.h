@@ -21,6 +21,13 @@ class SpotifyWebViews final {
  private:
   static constexpr size_t kAccountCount = 6;
 
+  enum class TimedSpotifyTarget : unsigned char {
+    None,
+    BitterBlue,
+    TalkAbout,
+    LonesomeRabbit,
+  };
+
   struct Slot {
     SpotifyWebViews* owner = nullptr;
     size_t index = 0;
@@ -34,12 +41,14 @@ class SpotifyWebViews final {
     EventRegistrationToken webResourceRequestedToken{};
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
+    ULONGLONG lastTimedLonesomeWave = ~0ULL;
     int unhealthyChecks = 0;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
     bool podcastCompleted = false;
+    TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
   static LRESULT CALLBACK HostWndProc(
@@ -79,6 +88,9 @@ class SpotifyWebViews final {
   const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
   void RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept;
+  bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
+  void NavigateTimedSlot(Slot& slot) noexcept;
+  void ReconcileTimedSlot(Slot& slot) noexcept;
   void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
@@ -95,6 +107,7 @@ class SpotifyWebViews final {
   size_t reconcileIndex_ = 0;
   size_t staggerSlotIndex_ = 0;
   ULONGLONG staggerSlotStartTick_ = 0;
+  ULONGLONG youtubeCycleStartTick_ = 0;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -105,10 +118,11 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
 };
 
-// tverPhase=false means the one-hour YouTube window has started: play one
-// TALKABOUT episode, then fall back to Lonesome rabbit. tverPhase=true starts
-// the one-hour TVer window; Spotify slots transition serially at 3-minute
-// offsets so all six WebViews are never recovered at the same time.
+// tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00,
+// TALKABOUT at 04:00, then Lonesome rabbit from 20:00. Lonesome rabbit is
+// reopened every four minutes. Six accounts are offset by 40 seconds so only
+// one Spotify WebView performs heavy work at a time. TVer keeps the Lonesome
+// four-minute schedule running until the next YouTube hour resets the sequence.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
