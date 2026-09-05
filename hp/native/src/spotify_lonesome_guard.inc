@@ -2,6 +2,41 @@ namespace hp {
 namespace {
 
 constexpr size_t kSpotifyHealthyMusicFullCheckRounds = 5;
+constexpr double kSpotifySerializedRecoveryZoom = 0.80;
+
+void ParkSpotifyHost(
+    HWND hwnd, size_t slotIndex, int* x, int* y,
+    int* width, int* height, HWND* insertAfter) noexcept {
+  RECT parentClient{};
+  HWND parent = GetParent(hwnd);
+  if (parent && GetClientRect(parent, &parentClient)) {
+    *x = parentClient.left + static_cast<int>(slotIndex);
+    *y = parentClient.top;
+  }
+  *width = 1;
+  *height = 1;
+  *insertAfter = HWND_BOTTOM;
+}
+
+void ExpandSpotifyRecoveryHost(
+    HWND hwnd, int* x, int* y,
+    int* width, int* height, HWND* insertAfter) noexcept {
+  RECT parentClient{};
+  HWND parent = GetParent(hwnd);
+  if (!parent || !GetClientRect(parent, &parentClient)) return;
+  const int clientWidth = std::max(1L, parentClient.right - parentClient.left);
+  const int clientHeight = std::max(1L, parentClient.bottom - parentClient.top);
+
+  // Only one serialized slot is operated at a time, so give it substantially
+  // more room than one of the former six side-by-side phone columns.
+  const int activeWidth = std::max(1, clientWidth * 3 / 5);
+  const int activeHeight = std::max(1, clientHeight * 9 / 10);
+  *x = parentClient.left + (clientWidth - activeWidth) / 2;
+  *y = parentClient.top + (clientHeight - activeHeight) / 2;
+  *width = activeWidth;
+  *height = activeHeight;
+  *insertAfter = HWND_TOP;
+}
 
 constexpr wchar_t kSpotifyUltraLightPreamble[] = LR"JS(
 (() => {
@@ -198,15 +233,17 @@ HDWP SpotifyWebViews::DeferSpotifyHostWindowPos(
     int width, int height, UINT flags) noexcept {
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
   if (slot && slot->playing && width > 1 && height > 1) {
-    RECT parentClient{};
-    HWND parent = GetParent(hwnd);
-    if (parent && GetClientRect(parent, &parentClient)) {
-      x = parentClient.left + static_cast<int>(slot->index);
-      y = parentClient.top;
+    ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+  } else if (slot && width > 1 && height > 1) {
+    const auto* owner = slot->owner;
+    const size_t activeIndex = owner && !owner->slots_.empty()
+        ? owner->staggerSlotIndex_ % owner->slots_.size()
+        : slot->index;
+    if (slot->index != activeIndex) {
+      ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+    } else {
+      ExpandSpotifyRecoveryHost(hwnd, &x, &y, &width, &height, &insertAfter);
     }
-    width = 1;
-    height = 1;
-    insertAfter = HWND_BOTTOM;
   }
   return ::DeferWindowPos(batch, hwnd, insertAfter, x, y, width, height, flags);
 }
@@ -216,15 +253,17 @@ BOOL SpotifyWebViews::SetSpotifyHostWindowPos(
     int width, int height, UINT flags) noexcept {
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
   if (slot && slot->playing && width > 1 && height > 1) {
-    RECT parentClient{};
-    HWND parent = GetParent(hwnd);
-    if (parent && GetClientRect(parent, &parentClient)) {
-      x = parentClient.left + static_cast<int>(slot->index);
-      y = parentClient.top;
+    ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+  } else if (slot && width > 1 && height > 1) {
+    const auto* owner = slot->owner;
+    const size_t activeIndex = owner && !owner->slots_.empty()
+        ? owner->staggerSlotIndex_ % owner->slots_.size()
+        : slot->index;
+    if (slot->index != activeIndex) {
+      ParkSpotifyHost(hwnd, slot->index, &x, &y, &width, &height, &insertAfter);
+    } else {
+      ExpandSpotifyRecoveryHost(hwnd, &x, &y, &width, &height, &insertAfter);
     }
-    width = 1;
-    height = 1;
-    insertAfter = HWND_BOTTOM;
   }
   return ::SetWindowPos(hwnd, insertAfter, x, y, width, height, flags);
 }
@@ -234,8 +273,21 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   for (size_t i = 0; i < slots_.size(); ++i) {
     if (!slots_[i].playing) mask |= (1u << i);
   }
-  if (hostLayoutMask_ == mask) return;
+  const size_t activeIndex = slots_.empty()
+      ? kAccountCount
+      : staggerSlotIndex_ % slots_.size();
+
+  if (activeIndex < slots_.size() && slots_[activeIndex].controller) {
+    double zoom = 1.0;
+    if (FAILED(slots_[activeIndex].controller->get_ZoomFactor(&zoom)) ||
+        zoom < 0.799 || zoom > 0.801) {
+      slots_[activeIndex].controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
+    }
+  }
+
+  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == activeIndex) return;
   hostLayoutMask_ = mask;
+  hostLayoutActiveSlot_ = activeIndex;
   PlaceHosts(mask != 0);
 }
 
