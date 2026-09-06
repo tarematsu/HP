@@ -38,13 +38,21 @@ test('featured ranking reads keep the channel/date/rank expression index', () =>
   );
 });
 
-test('OTHER_DB metadata advances to the Sakurazaka minute raw migration', () => {
-  const migrationPath = 'database/other-migrations/016_sakurazaka46jp_raw_collection.sql';
+test('OTHER_DB metadata advances through raw collection to raw-derived track metadata', () => {
+  const rawMigration = readFileSync(
+    'database/other-migrations/016_sakurazaka46jp_raw_collection.sql',
+    'utf8',
+  );
+  const migrationPath = 'database/other-migrations/017_sakurazaka_raw_derived_metadata.sql';
   const migration = readFileSync(migrationPath, 'utf8');
   const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.equal(metadata.schema, migrationPath);
-  assert.match(migration, /sh_sakurazaka46jp_main/);
-  assert.match(migration, /sh_sakurazaka46jp_chat/);
+  assert.match(rawMigration, /sh_sakurazaka46jp_main/);
+  assert.match(rawMigration, /sh_sakurazaka46jp_chat/);
+  assert.match(migration, /ADD COLUMN title TEXT/);
+  assert.match(migration, /ADD COLUMN artist TEXT/);
+  assert.match(migration, /ADD COLUMN album_name TEXT/);
+  assert.match(migration, /ADD COLUMN thumbnail_url TEXT/);
 });
 
 test('remote provisioning and local smoke tests share the schema contract', () => {
