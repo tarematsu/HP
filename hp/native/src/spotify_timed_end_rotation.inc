@@ -1,6 +1,68 @@
 namespace hp {
 namespace {
 constexpr ULONGLONG kSpotifySimplePendingRecoveryMs = 3ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
+
+// Track-start detection stays event driven. It only reports when the current
+// Spotify metadata/track matches the native target, so advertisement playback
+// does not start the four-minute song deadline.
+constexpr wchar_t kSpotifyStaticTimedStartObserverScript[] = LR"JS(
+(() => {
+  if (window.__homePanelSpotifyTimedStartObserverInstalled) return true;
+  window.__homePanelSpotifyTimedStartObserverInstalled = true;
+
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const currentTrack = () => {
+    const selectors = [
+      '[data-testid="now-playing-widget"] a[href*="/track/"]',
+      '[data-testid="context-item-link"][href*="/track/"]'
+    ];
+    for (const selector of selectors) {
+      const link = document.querySelector(selector);
+      if (!link) continue;
+      try {
+        const path = new URL(link.href, location.href).pathname;
+        if (!path.startsWith('/track/')) continue;
+        return { path, title: normalize(link.textContent) };
+      } catch (_) {}
+    }
+    return { path: '', title: '' };
+  };
+  const reportTargetStarted = () => {
+    const target = window.__homePanelSpotifyNativeTarget;
+    if (!target || target.kind !== 'music' || !target.title) return;
+
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    const mediaTitle = normalize(metadata && metadata.title);
+    let matches = false;
+    if (mediaTitle) {
+      matches = mediaTitle === target.title;
+    } else {
+      const track = currentTrack();
+      matches = target.trackPath
+          ? track.path === target.trackPath
+          : track.title === target.title;
+    }
+    if (!matches) return;
+
+    try {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage('spotify:timed-started');
+      }
+    } catch (_) {}
+  };
+
+  document.addEventListener('play', event => {
+    if (!(event.target instanceof HTMLMediaElement)) return;
+    setTimeout(reportTargetStarted, 250);
+  }, true);
+
+  const alreadyPlaying = Array.from(document.querySelectorAll('audio, video'))
+      .some(media => !media.paused && !media.ended);
+  if (alreadyPlaying) setTimeout(reportTargetStarted, 0);
+  return true;
+})()
+)JS";
 }  // namespace
 
 void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
@@ -31,6 +93,7 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
   slot.timedCompletionPendingTick = 0;
+  slot.timedPlaybackStartTick = 0;
   slot.timedPreludeCompleted = false;
 }
 
@@ -69,6 +132,22 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   NavigateActiveTimedSlot(slot);
 }
 
+bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
+  // This is six native timestamp comparisons on the existing 2-second scheduler;
+  // it performs no DOM query and does not reactivate the old six-window probe.
+  for (Slot& slot : slots_) {
+    if (!slot.timedRotationActive || slot.timedPlaybackStartTick == 0 ||
+        now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
+      continue;
+    }
+    slot.timedPlaybackStartTick = 0;
+    slot.timedCompletionPendingTick = 0;
+    AdvanceTimedRotationSlot(slot, now);
+    return true;
+  }
+  return false;
+}
+
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
   const bool recentBridge =
       !slot.timedRotationActive &&
@@ -97,14 +176,24 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   !rawMessage) {
                 return S_OK;
               }
+              const bool started =
+                  wcscmp(rawMessage, L"spotify:timed-started") == 0;
               const bool waiting =
                   wcscmp(rawMessage, L"spotify:timed-waiting") == 0;
               const bool ended =
                   wcscmp(rawMessage, L"spotify:timed-ended") == 0;
               CoTaskMemFree(rawMessage);
-              if (!waiting && !ended) return S_OK;
+              if (!started && !waiting && !ended) return S_OK;
 
               const ULONGLONG now = GetTickCount64();
+              if (started) {
+                if (target->timedRotationActive &&
+                    target->timedPlaybackStartTick == 0) {
+                  target->timedPlaybackStartTick = now;
+                }
+                return S_OK;
+              }
+
               if (waiting) {
                 if (target->timedCompletionPendingTick == 0) {
                   target->timedCompletionPendingTick = now;
@@ -115,6 +204,13 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
+              if (target->timedRotationActive &&
+                  target->timedPlaybackStartTick == 0) {
+                // A queued end from the previous target must not skip the fresh
+                // target after a forced deadline advance.
+                return S_OK;
+              }
+              target->timedPlaybackStartTick = 0;
               target->timedCompletionPendingTick = 0;
               if (!target->timedRotationActive) {
                 bool completed = false;
@@ -147,6 +243,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
   }
 
   PostSpotifyTargetDescriptorForSlot(slot);
+  slot.webview->ExecuteScript(kSpotifyStaticTimedStartObserverScript, nullptr);
   slot.webview->ExecuteScript(kSpotifyStaticEndObserverScript, nullptr);
 }
 
