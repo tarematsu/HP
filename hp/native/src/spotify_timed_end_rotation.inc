@@ -1,33 +1,17 @@
+namespace hp {
 namespace {
-constexpr ULONGLONG kSpotifyTimedFailureWatchdogMs = 3ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyTimedPriorityHoldMs = 40ULL * 1000ULL;
+constexpr ULONGLONG kSpotifySimplePendingRecoveryMs = 3ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 
-std::wstring BuildSpotifyTimedEndObserverScript(
-    std::wstring_view targetPath, std::wstring_view targetTitle) {
-  std::wstring script = LR"JS(
+// Track-start detection stays event driven. It only reports when the current
+// Spotify metadata/track matches the native target, so advertisement playback
+// does not start the four-minute song deadline.
+constexpr wchar_t kSpotifyStaticTimedStartObserverScript[] = LR"JS(
 (() => {
-  const targetPath = ')JS";
-  script.append(targetPath);
-  script += LR"JS(';
-  const targetTitle = ')JS";
-  script.append(targetTitle);
-  script += LR"JS('.toLowerCase();
-  const key = targetPath || ('title:' + targetTitle);
-  const previous = window.__homePanelTimedEndObserver;
-  if (previous && previous.key === key && previous.check) {
-    previous.check();
-    return true;
-  }
-  if (previous && previous.timer) clearInterval(previous.timer);
+  if (window.__homePanelSpotifyTimedStartObserverInstalled) return true;
+  window.__homePanelSpotifyTimedStartObserverInstalled = true;
 
-  const post = message => {
-    try {
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(message);
-      }
-    } catch (_) {}
-  };
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const currentTrack = () => {
     const selectors = [
       '[data-testid="now-playing-widget"] a[href*="/track/"]',
@@ -39,98 +23,58 @@ std::wstring BuildSpotifyTimedEndObserverScript(
       try {
         const path = new URL(link.href, location.href).pathname;
         if (!path.startsWith('/track/')) continue;
-        return {
-          path,
-          title: normalize(link.textContent).toLowerCase()
-        };
+        return { path, title: normalize(link.textContent) };
       } catch (_) {}
     }
     return { path: '', title: '' };
   };
-  const matchesTarget = track => targetPath
-      ? track.path === targetPath
-      : !!track.path && track.title === targetTitle;
+  const reportTargetStarted = () => {
+    const target = window.__homePanelSpotifyNativeTarget;
+    if (!target || target.kind !== 'music' || !target.title) return;
 
-  const state = {
-    key,
-    started: false,
-    targetTrackPath: '',
-    waitingPosted: false,
-    endedPosted: false,
-    media: new WeakSet(),
-    timer: 0,
-    check: null
-  };
-  const bindMedia = () => {
-    document.querySelectorAll('audio, video').forEach(media => {
-      if (state.media.has(media)) return;
-      state.media.add(media);
-      media.addEventListener('ended', () => {
-        if (!state.started || state.endedPosted || state.waitingPosted) return;
-        // When Spotify still identifies the just-ended media as our target,
-        // completion is unambiguous: advance immediately instead of waiting for
-        // autoplay to expose another track. This covers accounts where Spotify
-        // simply stops at the end of a direct track.
-        if (matchesTarget(currentTrack())) {
-          state.endedPosted = true;
-          post('spotify:timed-ended');
-          return;
-        }
-        // An ended media element can also be an ad/intermediate clip. In that
-        // ambiguous case wait until a different real /track/ becomes visible.
-        state.waitingPosted = true;
-        post('spotify:timed-waiting');
-      }, { passive: true });
-    });
-  };
-  state.check = () => {
-    bindMedia();
-    const track = currentTrack();
-    if (matchesTarget(track)) {
-      state.started = true;
-      if (track.path) state.targetTrackPath = track.path;
-      return;
+    // MediaSession follows the media item and is therefore the safest identity
+    // while an advertisement is playing. If it is temporarily unavailable, fall
+    // back to the visible /track/ identity. A few finite retries cover metadata
+    // lag without restoring a permanent polling loop.
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    const mediaTitle = normalize(metadata && metadata.title);
+    let matches = false;
+    if (mediaTitle) {
+      matches = mediaTitle === target.title;
+    } else {
+      const track = currentTrack();
+      matches = target.trackPath
+          ? track.path === target.trackPath
+          : track.title === target.title;
     }
-    if (!state.started || state.endedPosted) return;
+    if (!matches) return;
 
-    // Ads do not expose another /track/ context. Wait through them, then advance
-    // only after Spotify exposes the next real track. This avoids fighting ads.
-    if (track.path &&
-        (!state.targetTrackPath || track.path !== state.targetTrackPath)) {
-      state.endedPosted = true;
-      post('spotify:timed-ended');
-    }
+    try {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage('spotify:timed-started');
+      }
+    } catch (_) {}
   };
-  state.timer = setInterval(state.check, 750);
-  window.__homePanelTimedEndObserver = state;
-  state.check();
+  const scheduleStartChecks = delays => {
+    delays.forEach(delay => setTimeout(reportTargetStarted, delay));
+  };
+
+  document.addEventListener('play', event => {
+    if (!(event.target instanceof HTMLMediaElement)) return;
+    scheduleStartChecks([250, 1000, 2500]);
+  }, true);
+
+  const alreadyPlaying = Array.from(document.querySelectorAll('audio, video'))
+      .some(media => !media.paused && !media.ended);
+  if (alreadyPlaying) scheduleStartChecks([0, 500, 1500]);
   return true;
 })()
 )JS";
-  return script;
-}
 }  // namespace
 
 void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
   if (!slot.webview) return;
-  constexpr wchar_t script[] = LR"JS(
-(() => {
-  document.querySelectorAll('audio, video').forEach(media => {
-    try { media.pause(); } catch (_) {}
-  });
-  const button = document.querySelector(
-      'button[data-testid="control-button-playpause"]');
-  if (button) {
-    const label = ((button.getAttribute('aria-label') || button.title || ''))
-        .toLowerCase();
-    if (label.includes('pause') || label.includes('一時停止')) {
-      try { button.click(); } catch (_) {}
-    }
-  }
-  return true;
-})()
-)JS";
-  slot.webview->ExecuteScript(script, nullptr);
+  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
 }
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
@@ -154,8 +98,9 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.playing = false;
   slot.unhealthyChecks = 0;
   slot.lastModeNavigateTick = 0;
+  slot.lastTimedReconcileTick = 0;
   slot.timedCompletionPendingTick = 0;
-  slot.timedUnhealthySinceTick = 0;
+  slot.timedPlaybackStartTick = 0;
   slot.timedPreludeCompleted = false;
 }
 
@@ -167,10 +112,11 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
   slot.timedRandomCIndex = timedRandomCIndex_;
   slot.timedRandomDIndex = timedRandomDIndex_;
-  slot.timedStepStartTick = now;
   ApplyTimedRotationTarget(slot);
-  timedPrioritySlotIndex_ = slot.index;
-  timedPriorityUntilTick_ = now + kSpotifyTimedPriorityHoldMs;
+  staggerSlotIndex_ = slot.index;
+  staggerSlotStartTick_ = now;
+  staggerSlotValidated_ = false;
+  RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
 }
 
@@ -185,15 +131,28 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     slot.timedRandomCIndex = timedRandomCIndex_;
     slot.timedRandomDIndex = timedRandomDIndex_;
   }
-  slot.timedStepStartTick = now;
   ApplyTimedRotationTarget(slot);
-  timedPrioritySlotIndex_ = slot.index;
-  timedPriorityUntilTick_ = now + kSpotifyTimedPriorityHoldMs;
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
   staggerSlotValidated_ = false;
   RefreshSpotifyHostLayout();
   NavigateActiveTimedSlot(slot);
+}
+
+bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
+  // This is six native timestamp comparisons on the existing 2-second scheduler;
+  // it performs no DOM query and does not reactivate the old six-window probe.
+  for (Slot& slot : slots_) {
+    if (!slot.timedRotationActive || slot.timedPlaybackStartTick == 0 ||
+        now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
+      continue;
+    }
+    slot.timedPlaybackStartTick = 0;
+    slot.timedCompletionPendingTick = 0;
+    AdvanceTimedRotationSlot(slot, now);
+    return true;
+  }
+  return false;
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
@@ -224,14 +183,45 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   !rawMessage) {
                 return S_OK;
               }
+              const bool started =
+                  wcscmp(rawMessage, L"spotify:timed-started") == 0;
               const bool waiting =
                   wcscmp(rawMessage, L"spotify:timed-waiting") == 0;
               const bool ended =
                   wcscmp(rawMessage, L"spotify:timed-ended") == 0;
               CoTaskMemFree(rawMessage);
-              if (!waiting && !ended) return S_OK;
+              if (!started && !waiting && !ended) return S_OK;
 
               const ULONGLONG now = GetTickCount64();
+              if (started) {
+                if (target->timedRotationActive &&
+                    target->timedPlaybackStartTick == 0) {
+                  target->timedPlaybackStartTick = now;
+                }
+                return S_OK;
+              }
+
+              if (waiting) {
+                if (target->timedCompletionPendingTick == 0) {
+                  target->timedCompletionPendingTick = now;
+                }
+                target->playing = true;
+                target->unhealthyChecks = 0;
+                RecomputeForeground();
+                return S_OK;
+              }
+
+              if (target->timedRotationActive &&
+                  target->timedPlaybackStartTick == 0 &&
+                  target->lastModeNavigateTick != 0) {
+                // Ignore only an end message that can still belong to the page
+                // we just navigated away from. Once the new target has reconciled
+                // (lastModeNavigateTick == 0), a valid ended event remains a
+                // completion fallback even if the start message was missed.
+                return S_OK;
+              }
+              target->timedPlaybackStartTick = 0;
+              target->timedCompletionPendingTick = 0;
               if (!target->timedRotationActive) {
                 bool completed = false;
                 if (target->timedTarget == TimedSpotifyTarget::BitterBlue) {
@@ -244,28 +234,14 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   completed = true;
                 }
                 if (completed) {
-                  target->timedCompletionPendingTick = 0;
                   target->playing = true;
                   target->unhealthyChecks = 0;
-                  target->timedUnhealthySinceTick = 0;
                   StopTimedOneShotPlayback(*target);
                   RecomputeForeground();
                 }
                 return S_OK;
               }
 
-              if (waiting) {
-                if (target->timedCompletionPendingTick == 0) {
-                  target->timedCompletionPendingTick = now;
-                }
-                target->playing = true;
-                target->unhealthyChecks = 0;
-                target->timedUnhealthySinceTick = 0;
-                RecomputeForeground();
-                return S_OK;
-              }
-
-              target->timedCompletionPendingTick = 0;
               AdvanceTimedRotationSlot(*target, now);
               return S_OK;
             }).Get(),
@@ -276,37 +252,9 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
     }
   }
 
-  std::wstring_view targetPath;
-  std::wstring_view targetTitle;
-  switch (slot.timedTarget) {
-    case TimedSpotifyTarget::BitterBlue:
-      targetPath = kSpotifyBitterBluePath;
-      break;
-    case TimedSpotifyTarget::LonesomeRabbit:
-      targetTitle = L"lonesome rabbit";
-      break;
-    case TimedSpotifyTarget::CatalogTrack: {
-      if (IsRecentCatalogIndex(slot.timedCatalogIndex)) {
-        const SpotifyRecentCatalogTrack* track =
-            RecentTimedCatalogTrack(slot.timedCatalogIndex);
-        if (!track) return;
-        targetPath = track->trackPath;
-        targetTitle = track->title;
-        break;
-      }
-      const SpotifyTimedCatalogTrack* track =
-          TimedCatalogTrack(slot.timedCatalogIndex);
-      if (!track) return;
-      targetPath = track->path;
-      targetTitle = track->title;
-      break;
-    }
-    case TimedSpotifyTarget::TalkAbout:
-    case TimedSpotifyTarget::None:
-      return;
-  }
-
-  const std::wstring script =
-      BuildSpotifyTimedEndObserverScript(targetPath, targetTitle);
-  slot.webview->ExecuteScript(script.c_str(), nullptr);
+  PostSpotifyTargetDescriptorForSlot(slot);
+  slot.webview->ExecuteScript(kSpotifyStaticTimedStartObserverScript, nullptr);
+  slot.webview->ExecuteScript(kSpotifyStaticEndObserverScript, nullptr);
 }
+
+}  // namespace hp

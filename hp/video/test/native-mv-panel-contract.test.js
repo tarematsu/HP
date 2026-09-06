@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const mediaPanel = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+  'utf8',
+);
+const tverStatic = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url),
   'utf8',
 );
 const nativeWindows = readFileSync(
@@ -163,26 +167,24 @@ test('YouTube transition title and fullscreen quick actions stay visually hidden
   );
 });
 
-test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and uses four-second recovery checks', () => {
-  assert.match(mediaPanel, /https:\/\/tver\.jp\/series\/srx97ftk3w/);
-  assert.match(mediaPanel, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
-  assert.match(mediaPanel, /最新話\|最新回/);
-  assert.match(mediaPanel, /放課後トーク\|予告/);
-  assert.match(mediaPanel, /const playbackRate = 1\.75/);
-  assert.match(mediaPanel, /video\.defaultPlaybackRate = playbackRate/);
-  assert.match(mediaPanel, /video\.playbackRate = playbackRate/);
-  assert.match(mediaPanel, /window\.setInterval\(ensure, 4000\)/);
-  assert.match(mediaPanel, /qualityChoices/);
-  assert.match(mediaPanel, /qualityLabels\.size >= 3/);
-  assert.match(mediaPanel, /qualityName\(element\) === '低'/);
-  assert.match(mediaPanel, /lowOption\.click\(\)/);
-  assert.match(mediaPanel, /currentQuality\.click\(\)/);
+test('effective TVer script queues published items at 1.75x, enforces low quality, and uses four-second recovery', () => {
+  assert.match(tverStatic, /sakuraSeriesPath = '\/series\/srx97ftk3w'/);
+  assert.match(tverStatic, /querySelectorAll\('a\[href\*="\/episodes\/"\]'\)/);
+  assert.match(tverStatic, /const findSeriesEpisodeContainer = \(\) =>/);
+  assert.match(tverStatic, /const playbackRate = 1\.75/);
+  assert.match(tverStatic, /video\.defaultPlaybackRate = playbackRate/);
+  assert.match(tverStatic, /video\.playbackRate = playbackRate/);
+  assert.match(tverStatic, /window\.setInterval\(ensure, 4000\)/);
+  assert.match(tverStatic, /qualityChoices/);
+  assert.match(tverStatic, /qualityLabels\.size >= 3/);
+  assert.match(tverStatic, /qualityName\(element\) === '低'/);
+  assert.match(tverStatic, /lowOption\.click\(\)/);
+  assert.match(tverStatic, /currentQuality\.click\(\)/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogTimer = 0x4D560007/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogMs = 4U \* 1000U/);
-  assert.match(mediaPanel, /kNativeMediaTverWatchdogScript/);
-  assert.match(mediaPanel, /new MouseEvent\('mousemove'/);
-  assert.match(mediaPanel, /document\.fullscreenElement/);
-  assert.match(mediaPanel, /全画面/);
+  assert.match(tverStatic, /kNativeMediaTverWatchdogStaticScript/);
+  assert.match(tverStatic, /document\.fullscreenElement/);
+  assert.match(tverStatic, /全画面/);
   assert.match(mediaPanel, /BeginTverPlaybackMonitor\(\)/);
   assert.match(mediaPanel, /ProbeTverWatchdog\(\)/);
   assert.match(
@@ -191,28 +193,19 @@ test('TVer opens Sakura Meets latest episode at 1.75x, enforces low quality, and
   );
 });
 
-test('effective TVer completion path reuses the controller without deleting cookies or caches', () => {
-  assert.match(mediaPanel, /state && state\.restartRequested\) return 'restart'/);
+test('effective TVer completion path is direct and keeps the controller/profile intact', () => {
+  assert.match(tverStatic, /state && state\.restartRequested\) return 'restart'/);
   assert.match(mediaPanel, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
-  assert.match(mediaPanel, /RestartTverAfterPlayback\(\)/);
   assert.match(
-    composition,
-    /#define get_Profile\(out\)[\s\S]*AdvanceNativeMediaTverSeries\(\)/,
+    mediaPanel,
+    /RestartTverAfterPlayback\(\) noexcept[\s\S]*StopTverPlaybackMonitor\(\);[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
-  assert.match(
-    composition,
-    /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AddRef\(\) > 0[\s\S]*profile2->Release\(\)[\s\S]*CompleteTverRestart\(\)/,
-  );
-  const clearOverrideStart = composition.indexOf('#define ClearBrowsingData');
-  const executeOverrideStart = composition.indexOf('#define ExecuteScript');
-  assert.notEqual(clearOverrideStart, -1);
-  assert.notEqual(executeOverrideStart, -1);
-  const clearOverride = composition.slice(clearOverrideStart, executeOverrideStart);
-  assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
   );
+  assert.doesNotMatch(mediaPanel, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
+  assert.doesNotMatch(composition, /#define get_Profile|#define ClearBrowsingData/);
   assert.doesNotMatch(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void RestartTverAfterPlayback/,

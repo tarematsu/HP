@@ -7,7 +7,7 @@ const mediaSection = readFileSync(
   'utf8',
 );
 const mediaEntry = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
 const fixture = JSON.parse(readFileSync(

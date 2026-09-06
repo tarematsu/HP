@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const entry = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
 const panel = readFileSync(

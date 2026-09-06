@@ -10,361 +10,7 @@ constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
-constexpr wchar_t kSpotifyPodcastLoginUrl[] =
-    L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Fshow%2F2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
-constexpr UINT_PTR kSpotifyStartupTimer = 1;
-constexpr UINT_PTR kSpotifyModeTimer = 2;
-constexpr UINT_PTR kSpotifyModeSwitchTimer = 3;
-constexpr UINT_PTR kSpotifyPlaybackWatchdogTimer = 4;
-constexpr UINT kSpotifyStartupStaggerMs = 400;
-constexpr UINT kSpotifyMusicPhaseMs = 60U * 60U * 1000U;
-constexpr UINT kSpotifyPodcastPhaseMs = 60U * 60U * 1000U;
-constexpr UINT kSpotifyModeStaggerMs = 10U * 1000U;
-constexpr UINT kSpotifyPlaybackWatchdogTickMs = 2U * 1000U;
-constexpr int kSpotifyBackgroundExtent = 1;
-constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
-    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
-
-constexpr wchar_t kSpotifyWatchdogScript[] = LR"JS(
-(() => {
-  if (typeof window.__homePanelSpotifyEnsure === 'function') {
-    window.__homePanelSpotifyEnsure();
-  }
-})()
-)JS";
-
-constexpr wchar_t kSpotifyLightweightScript[] = LR"JS(
-(() => {
-  const id = '__homePanelSpotifyLightweight';
-  if (document.getElementById(id)) return;
-  const style = document.createElement('style');
-  style.id = id;
-  style.textContent = `
-    *, *::before, *::after {
-      animation: none !important;
-      transition: none !important;
-      scroll-behavior: auto !important;
-    }
-  `;
-  (document.head || document.documentElement).appendChild(style);
-})()
-)JS";
-
-constexpr wchar_t kSpotifyPlaybackScript[] = LR"JS(
-(() => {
-  if (window.__homePanelLonesomeRabbitLoop) return;
-  window.__homePanelLonesomeRabbitLoop = true;
-  const targetUrl = 'https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b';
-  const targetPath = '/album/2f2Ik9JeinFVWZuFb3i35b';
-  const stallLimit = 2;
-  let lastMedia = null;
-  let lastTime = NaN;
-  let stalledChecks = 0;
-  let lastReported = null;
-  let targetStarted = false;
-
-  const report = playing => {
-    if (lastReported === playing) return;
-    lastReported = playing;
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage(
-          playing ? 'spotify:playing' : 'spotify:not-playing');
-    }
-  };
-  const visible = element => {
-    if (!element || element.disabled) return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           rect.width > 0 && rect.height > 0;
-  };
-  const buttonShowsPlaying = button => {
-    if (!button) return false;
-    const label = (button.getAttribute('aria-label') || '').toLowerCase();
-    return label.includes('pause') || label.includes('一時停止');
-  };
-  const playbackButton = () =>
-      document.querySelector('button[data-testid="control-button-playpause"]') ||
-      document.querySelector('button[data-testid="play-button"]');
-  const targetPlayButton = () =>
-      Array.from(document.querySelectorAll(
-          'button[data-testid="play-button"]')).find(visible) || null;
-  const mediaElement = () => {
-    const items = Array.from(document.querySelectorAll('audio, video'));
-    return items.find(item => !item.paused && !item.ended) || items[0] || null;
-  };
-  const ensureRepeatOne = () => {
-    const repeat = document.querySelector(
-        'button[data-testid="control-button-repeat"]');
-    if (!repeat) return;
-    const state = repeat.getAttribute('aria-checked');
-    if (state === 'mixed') return;
-    repeat.click();
-    if (state === 'false') {
-      window.setTimeout(() => {
-        const current = document.querySelector(
-            'button[data-testid="control-button-repeat"]');
-        if (current && current.getAttribute('aria-checked') === 'true') {
-          current.click();
-        }
-      }, 300);
-    }
-  };
-  const samplePlayback = () => {
-    const media = mediaElement();
-    if (!media) {
-      lastMedia = null;
-      lastTime = NaN;
-      stalledChecks = 0;
-      return null;
-    }
-    const currentTime = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
-    const ready = !media.paused && !media.ended && media.readyState >= 2;
-    if (!ready) {
-      lastMedia = media;
-      lastTime = currentTime;
-      stalledChecks = stallLimit;
-      return false;
-    }
-    if (media !== lastMedia || !Number.isFinite(lastTime) ||
-        !Number.isFinite(currentTime)) {
-      lastMedia = media;
-      lastTime = currentTime;
-      stalledChecks = 0;
-      return true;
-    }
-    if (Math.abs(currentTime - lastTime) >= 0.5) {
-      stalledChecks = 0;
-    } else {
-      ++stalledChecks;
-    }
-    lastMedia = media;
-    lastTime = currentTime;
-    return stalledChecks < stallLimit;
-  };
-  const recoverPlayback = () => {
-    const media = mediaElement();
-    if (media && !media.ended) {
-      try {
-        const promise = media.play();
-        if (promise && typeof promise.catch === 'function') promise.catch(() => {});
-      } catch (_) {
-      }
-    }
-    const button = playbackButton();
-    if (!visible(button) || buttonShowsPlaying(button)) return;
-    button.click();
-  };
-  const ensure = () => {
-    if (location.hostname !== 'open.spotify.com') {
-      report(false);
-      return;
-    }
-    if (!location.pathname.endsWith(targetPath)) {
-      report(false);
-      location.replace(targetUrl);
-      return;
-    }
-    if (!targetStarted) {
-      const target = targetPlayButton();
-      if (!target) {
-        report(false);
-        return;
-      }
-      if (!buttonShowsPlaying(target)) {
-        target.click();
-        lastMedia = null;
-        lastTime = NaN;
-        stalledChecks = 0;
-        report(false);
-        return;
-      }
-      targetStarted = true;
-    }
-    ensureRepeatOne();
-    const mediaPlaying = samplePlayback();
-    const button = playbackButton();
-    const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
-    if (!playing) recoverPlayback();
-    report(playing);
-  };
-
-  window.__homePanelSpotifyEnsure = ensure;
-  ensure();
-})();
-)JS";
-
-constexpr wchar_t kSpotifyPodcastPlaybackScript[] = LR"JS(
-(() => {
-  if (window.__homePanelSakuraTalkAboutPlayback) return;
-  window.__homePanelSakuraTalkAboutPlayback = true;
-  const showUrl = 'https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed';
-  const showPath = '/show/2ZQy2mlwQodabAILwZ02Ed';
-  const playbackRate = 3.0;
-  const stallLimit = 2;
-  let lastMedia = null;
-  let lastTime = NaN;
-  let stalledChecks = 0;
-  let lastReported = null;
-
-  const report = playing => {
-    if (lastReported === playing) return;
-    lastReported = playing;
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage(
-          playing ? 'spotify:playing' : 'spotify:not-playing');
-    }
-  };
-  const visible = element => {
-    if (!element || element.disabled) return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           rect.width > 0 && rect.height > 0;
-  };
-  const buttonShowsPlaying = button => {
-    if (!button) return false;
-    const label = (button.getAttribute('aria-label') || '').toLowerCase();
-    return label.includes('pause') || label.includes('一時停止');
-  };
-  const playerControl = () =>
-      document.querySelector('button[data-testid="control-button-playpause"]');
-  const mediaElement = () => {
-    const items = Array.from(document.querySelectorAll('audio, video'));
-    return items.find(item => !item.paused && !item.ended) || items[0] || null;
-  };
-  const ensurePlaybackRate = () => {
-    document.querySelectorAll('audio, video').forEach(media => {
-      try {
-        media.defaultPlaybackRate = playbackRate;
-        if (media.playbackRate !== playbackRate) media.playbackRate = playbackRate;
-      } catch (_) {
-      }
-    });
-  };
-  const disableRepeat = () => {
-    const repeat = document.querySelector(
-        'button[data-testid="control-button-repeat"]');
-    if (!repeat) return;
-    const state = repeat.getAttribute('aria-checked');
-    if (state === 'true' || state === 'mixed') repeat.click();
-  };
-  const latestEpisodeButton = () => {
-    const links = Array.from(document.querySelectorAll('a[href*="/episode/"]'))
-        .filter(visible);
-    if (links.length) {
-      const latest = links[0];
-      const container = latest.closest(
-          '[data-testid="episode-item"], [data-testid="episode-row"], '
-          + '[role="row"], li') || latest.parentElement?.parentElement;
-      const button = container?.querySelector('button[data-testid="play-button"]');
-      if (visible(button)) return button;
-    }
-    return Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]')).find(visible) || null;
-  };
-  const recoveryButton = onShow => playerControl() ||
-      (onShow ? latestEpisodeButton() :
-          Array.from(document.querySelectorAll(
-              'button[data-testid="play-button"]')).find(visible) || null);
-  const samplePlayback = () => {
-    const media = mediaElement();
-    if (!media) {
-      lastMedia = null;
-      lastTime = NaN;
-      stalledChecks = 0;
-      return null;
-    }
-    const currentTime = Number.isFinite(media.currentTime) ? media.currentTime : NaN;
-    const ready = !media.paused && !media.ended && media.readyState >= 2;
-    if (!ready) {
-      lastMedia = media;
-      lastTime = currentTime;
-      stalledChecks = stallLimit;
-      return false;
-    }
-    if (media !== lastMedia || !Number.isFinite(lastTime) ||
-        !Number.isFinite(currentTime)) {
-      lastMedia = media;
-      lastTime = currentTime;
-      stalledChecks = 0;
-      return true;
-    }
-    if (Math.abs(currentTime - lastTime) >= 0.5) {
-      stalledChecks = 0;
-    } else {
-      ++stalledChecks;
-    }
-    lastMedia = media;
-    lastTime = currentTime;
-    return stalledChecks < stallLimit;
-  };
-  const recoverPlayback = onShow => {
-    const media = mediaElement();
-    if (media && !media.ended) {
-      try {
-        const promise = media.play();
-        if (promise && typeof promise.catch === 'function') promise.catch(() => {});
-      } catch (_) {
-      }
-    }
-    const button = recoveryButton(onShow);
-    if (!visible(button) || buttonShowsPlaying(button)) return;
-    button.click();
-  };
-  const ensure = () => {
-    if (location.hostname !== 'open.spotify.com') {
-      report(false);
-      return;
-    }
-    const onShow = location.pathname.endsWith(showPath);
-    const onEpisode = location.pathname.startsWith('/episode/');
-    if (!onShow && !onEpisode) {
-      report(false);
-      location.replace(showUrl);
-      return;
-    }
-    ensurePlaybackRate();
-    disableRepeat();
-    const mediaPlaying = samplePlayback();
-    const button = recoveryButton(onShow);
-    const playing = mediaPlaying === null ? buttonShowsPlaying(button) : mediaPlaying;
-    if (!playing) recoverPlayback(onShow);
-    report(playing);
-  };
-
-  window.__homePanelSpotifyEnsure = ensure;
-  ensure();
-})();
-)JS";
-
-std::wstring BuildSpotifyPanelLabelScript(size_t index) {
-  if (index >= kSpotifyPanelNames.size()) return {};
-  std::wstring script = LR"JS(
-(() => {
-  const mount = () => {
-    if (document.getElementById('__homePanelSpotifyAccount')) return;
-    const badge = document.createElement('div');
-    badge.id = '__homePanelSpotifyAccount';
-    badge.textContent = ')JS";
-  script.append(kSpotifyPanelNames[index]);
-  script += LR"JS(';
-    badge.style.cssText =
-        'position:fixed;left:8px;top:8px;z-index:2147483647;' +
-        'padding:4px 7px;border-radius:4px;background:rgba(0,0,0,.78);' +
-        'color:#fff;font:600 14px/1.2 "Segoe UI",sans-serif;pointer-events:none;';
-    (document.body || document.documentElement).appendChild(badge);
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mount, { once: true });
-  } else {
-    mount();
-  }
-})();
-)JS";
-  return script;
-}
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
@@ -431,32 +77,40 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
   started_ = true;
-  foreground_ = true;
   podcastMode_ = false;
-  playbackWatchdogIndex_ = 0;
+  robustSchedulerStarted_ = false;
+  staggerSlotIndex_ = 0;
+  staggerSlotStartTick_ = 0;
+  youtubeCycleStartTick_ = 0;
+  staggerSlotValidated_ = false;
+  hostLayoutMask_ = ~0u;
+  hostLayoutActiveSlot_ = kAccountCount;
+  hostLayoutAuthenticationVisible_ = false;
   alive_->store(true, std::memory_order_release);
 
-  for (size_t i = 0; i < slots_.size(); ++i) {
-    Slot& slot = slots_[i];
+  for (Slot& slot : slots_) {
     slot.playing = false;
     slot.playerPage = false;
+    slot.controllerCreating = false;
+    slot.controllerCreateTick = 0;
     if (!CreateHost(slot)) continue;
-    if (i == 0) {
-      CreateController(slot);
-      continue;
-    }
-    const UINT delay = static_cast<UINT>(i) * kSpotifyStartupStaggerMs;
-    if (SetTimer(slot.hostWindow, kSpotifyStartupTimer, delay, nullptr) == 0) {
-      CreateController(slot);
-    }
   }
-  ArmModeTimer();
-  ArmPlaybackWatchdog();
+
+  // Controller creation is serialized. Slot 0 starts immediately; the single
+  // stagger scheduler creates slots 1-5 when their 40-second turn arrives.
+  if (!slots_.empty() && slots_[0].hostWindow) {
+    CreateController(slots_[0]);
+  }
   Resize();
 }
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
-  if (!slot.hostWindow || !IsWindow(slot.hostWindow) || slot.controller) return;
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
+      slot.controller || slot.webview) {
+    return;
+  }
+  slot.controllerCreating = true;
+  slot.controllerCreateTick = GetTickCount64();
   const auto alive = alive_;
   Slot* const target = &slot;
   try {
@@ -464,8 +118,11 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
         userDataFolder_, false, false,
         [this, alive, target](HRESULT result,
                               ICoreWebView2Environment* environment) {
-          if (!alive->load(std::memory_order_acquire) || FAILED(result) ||
-              !environment || !target->hostWindow || !IsWindow(target->hostWindow)) {
+          if (!alive->load(std::memory_order_acquire)) return;
+          if (FAILED(result) || !environment || !target->hostWindow ||
+              !IsWindow(target->hostWindow)) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
             return;
           }
           target->environment = environment;
@@ -473,11 +130,15 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
           ComPtr<ICoreWebView2Environment10> environment10;
           if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
               !environment10) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
             return;
           }
           ComPtr<ICoreWebView2ControllerOptions> options;
           if (FAILED(environment10->CreateCoreWebView2ControllerOptions(&options)) ||
               !options) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
             return;
           }
           const std::wstring profileName =
@@ -485,6 +146,8 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
               std::to_wstring(target->index + 1);
           if (FAILED(options->put_ProfileName(profileName.c_str())) ||
               FAILED(options->put_IsInPrivateModeEnabled(FALSE))) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
             return;
           }
 
@@ -497,6 +160,8 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                       if (controller) controller->Close();
                       return S_OK;
                     }
+                    target->controllerCreating = false;
+                    target->controllerCreateTick = 0;
                     if (FAILED(controllerResult) || !controller ||
                         !target->hostWindow || !IsWindow(target->hostWindow)) {
                       if (controller) controller->Close();
@@ -513,10 +178,17 @@ void SpotifyWebViews::CreateController(Slot& slot) noexcept {
                     return S_OK;
                   });
 
-          environment10->CreateCoreWebView2ControllerWithOptions(
-              target->hostWindow, options.Get(), ready.Get());
+          const HRESULT createResult =
+              environment10->CreateCoreWebView2ControllerWithOptions(
+                  target->hostWindow, options.Get(), ready.Get());
+          if (FAILED(createResult)) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
+          }
         });
   } catch (...) {
+    slot.controllerCreating = false;
+    slot.controllerCreateTick = 0;
   }
 }
 
@@ -605,27 +277,30 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 RecomputeForeground();
                 return S_OK;
               }
-              bool playerPage = false;
+
               LPWSTR rawUri = nullptr;
+              bool playerPage = false;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
                 playerPage = IsSpotifyPlayerUri(rawUri);
-                target->playing = false;
-                target->playerPage = playerPage;
                 CoTaskMemFree(rawUri);
-                RecomputeForeground();
               }
-              const std::wstring labelScript =
-                  BuildSpotifyPanelLabelScript(target->index);
-              if (!labelScript.empty()) {
-                sender->ExecuteScript(labelScript.c_str(), nullptr);
-              }
-              if (playerPage) {
-                sender->ExecuteScript(kSpotifyLightweightScript, nullptr);
-                sender->ExecuteScript(
-                    podcastMode_ ? kSpotifyPodcastPlaybackScript
-                                 : kSpotifyPlaybackScript,
-                    nullptr);
-              }
+              target->playing = false;
+              target->playerPage = playerPage;
+              RecomputeForeground();
+              if (!playerPage) return S_OK;
+
+              const HRESULT bootstrap = sender->ExecuteScript(
+                  kSpotifyStaticPageBootstrapScript,
+                  Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+                      [this, alive, target](HRESULT result, LPCWSTR) -> HRESULT {
+                        if (!alive->load(std::memory_order_acquire) ||
+                            FAILED(result) || !started_ || !target->webview) {
+                          return S_OK;
+                        }
+                        PostSpotifyPageContext(*target);
+                        return S_OK;
+                      }).Get());
+              if (FAILED(bootstrap)) target->playing = false;
               return S_OK;
             }).Get(),
         &slot.navigationCompletedToken);
@@ -645,6 +320,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
                 CoTaskMemFree(rawUri);
               }
               if (!playerPage) return S_OK;
+
               LPWSTR rawMessage = nullptr;
               if (FAILED(args->TryGetWebMessageAsString(&rawMessage)) || !rawMessage) {
                 return S_OK;
@@ -668,11 +344,10 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
     RECT client{};
     GetClientRect(slot.hostWindow, &client);
     slot.controller->put_Bounds(client);
-    // Keep the controller visible even when its host is reduced to 1x1. Hiding
-    // the controller can trigger browser background throttling and stop Spotify.
+    // Keeping WebView2 visible avoids background suspension. The HWND itself is
+    // parked outside the dashboard when this slot does not own recovery.
     slot.controller->put_IsVisible(TRUE);
-    slot.webview->Navigate(podcastMode_ ? kSpotifyPodcastLoginUrl
-                                       : kSpotifyLoginUrl);
+    slot.webview->Navigate(kSpotifyLoginUrl);
   } catch (...) {
   }
 }
@@ -684,118 +359,69 @@ bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
          !StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
-void SpotifyWebViews::ArmModeTimer() noexcept {
-  if (slots_.empty()) return;
-  HWND host = slots_[0].hostWindow;
-  if (!host || !IsWindow(host)) return;
-  KillTimer(host, kSpotifyModeTimer);
-  const UINT duration =
-      podcastMode_ ? kSpotifyPodcastPhaseMs : kSpotifyMusicPhaseMs;
-  SetTimer(host, kSpotifyModeTimer, duration, nullptr);
-}
-
-void SpotifyWebViews::ArmPlaybackWatchdog() noexcept {
-  if (slots_.empty()) return;
-  HWND host = slots_[0].hostWindow;
-  if (!host || !IsWindow(host)) return;
-  KillTimer(host, kSpotifyPlaybackWatchdogTimer);
-  SetTimer(host, kSpotifyPlaybackWatchdogTimer,
-           kSpotifyPlaybackWatchdogTickMs, nullptr);
-}
-
-void SpotifyWebViews::RunPlaybackWatchdog() noexcept {
-  if (!started_ || slots_.empty()) return;
-  const size_t index = playbackWatchdogIndex_++ % slots_.size();
-  Slot& slot = slots_[index];
-  if (!slot.playerPage || !slot.webview) return;
-  slot.webview->ExecuteScript(kSpotifyWatchdogScript, nullptr);
-}
-
-void SpotifyWebViews::ToggleMode() noexcept {
-  if (!started_) return;
-  podcastMode_ = !podcastMode_;
-  for (Slot& slot : slots_) {
-    if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
-    KillTimer(slot.hostWindow, kSpotifyModeSwitchTimer);
-    if (slot.index == 0) {
-      NavigateSlotToCurrentMode(slot);
-      continue;
-    }
-    const UINT delay = static_cast<UINT>(slot.index) * kSpotifyModeStaggerMs;
-    if (SetTimer(slot.hostWindow, kSpotifyModeSwitchTimer, delay, nullptr) == 0) {
-      NavigateSlotToCurrentMode(slot);
-    }
-  }
-  RecomputeForeground();
-  ArmModeTimer();
-}
-
-void SpotifyWebViews::NavigateSlotToCurrentMode(Slot& slot) noexcept {
-  slot.playing = false;
-  if (slot.webview) {
-    SetSpotifyOutputMuted(slot.webview);
-    slot.webview->Navigate(podcastMode_ ? kSpotifyPodcastUrl : kSpotifyPlaylistUrl);
-  }
-}
-
 void SpotifyWebViews::RecomputeForeground() noexcept {
-  bool foreground = false;
-  for (const Slot& slot : slots_) foreground = foreground || !slot.playing;
-  SetForeground(foreground);
+  RefreshSpotifyHostLayout();
 }
 
-void SpotifyWebViews::SetForeground(bool foreground) noexcept {
-  if (foreground_ == foreground) return;
-  foreground_ = foreground;
-  PlaceHosts(foreground);
+void SpotifyWebViews::Resize() noexcept {
+  hostLayoutMask_ = ~0u;
+  hostLayoutActiveSlot_ = kAccountCount;
+  hostLayoutAuthenticationVisible_ = false;
+  RefreshSpotifyHostLayout();
 }
 
-void SpotifyWebViews::Resize() noexcept { PlaceHosts(foreground_); }
+void SpotifyWebViews::PlaceHosts() noexcept {
+  if (!parentWindow_ || !IsWindow(parentWindow_) || slots_.empty()) return;
 
-void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
-  if (!parentWindow_ || !IsWindow(parentWindow_)) return;
   RECT client{};
-  GetClientRect(parentWindow_, &client);
+  if (!GetClientRect(parentWindow_, &client)) return;
   const int clientWidth = std::max(1L, client.right - client.left);
   const int clientHeight = std::max(1L, client.bottom - client.top);
-  const int maxColumnWidth =
-      std::max(1, clientWidth / static_cast<int>(kAccountCount));
-  const int phoneWidth =
-      std::max(1, std::min(maxColumnWidth, clientHeight * 9 / 20));
-  const int phoneHeight =
-      std::max(1, std::min(clientHeight, phoneWidth * 20 / 9));
-  const int groupWidth = phoneWidth * static_cast<int>(kAccountCount);
-  const int startX = client.left + (clientWidth - groupWidth) / 2;
-  const int top = client.top + (clientHeight - phoneHeight) / 2;
+  const int activeWidth = std::max(1, clientWidth * 3 / 5);
+  const int activeHeight = std::max(1, clientHeight * 9 / 10);
+  const int activeIndex = static_cast<int>(staggerSlotIndex_ % slots_.size());
 
-  HDWP batch = BeginDeferWindowPos(static_cast<int>(kAccountCount));
+  HDWP batch = BeginDeferWindowPos(static_cast<int>(slots_.size()));
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
     if (slot.controller) slot.controller->put_IsVisible(TRUE);
 
-    const int x = foreground
-        ? startX + static_cast<int>(i) * phoneWidth
-        : client.left + static_cast<int>(i);
-    const int y = foreground ? top : client.top;
-    const int width = foreground ? phoneWidth : kSpotifyBackgroundExtent;
-    const int height = foreground ? phoneHeight : kSpotifyBackgroundExtent;
+    const bool active = static_cast<int>(i) == activeIndex;
+    const bool authentication = active && SlotIsLoginPage(slot);
+    const bool recovery = active && !authentication && !slot.playing;
+
+    int x = client.right + 8 + static_cast<int>(i);
+    int y = client.top;
+    int width = 1;
+    int height = 1;
+    HWND insertAfter = HWND_BOTTOM;
+    if (authentication) {
+      x = client.left + (clientWidth - activeWidth) / 2;
+      y = client.top + (clientHeight - activeHeight) / 2;
+      width = activeWidth;
+      height = activeHeight;
+      insertAfter = HWND_TOP;
+    } else if (recovery) {
+      // Give only the current owner a normal CSS viewport, but keep it offscreen.
+      x = client.right + 32;
+      y = client.top + (clientHeight - activeHeight) / 2;
+      width = activeWidth;
+      height = activeHeight;
+    }
+
     ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
+    const UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
     if (batch) {
-      batch = DeferWindowPos(
-          batch, slot.hostWindow, foreground ? HWND_TOP : HWND_BOTTOM,
-          x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+      batch = DeferWindowPos(batch, slot.hostWindow, insertAfter,
+                             x, y, width, height, flags);
     } else {
-      SetWindowPos(slot.hostWindow, foreground ? HWND_TOP : HWND_BOTTOM,
-                   x, y, width, height, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+      SetWindowPos(slot.hostWindow, insertAfter,
+                   x, y, width, height, flags);
     }
   }
   if (batch) EndDeferWindowPos(batch);
 
-  // A controller that spent time on a 1x1 host can keep a stale
-  // composition surface after the host is expanded again. Do not rely
-  // only on WM_SIZE: synchronize WebView2 bounds and parent position
-  // after the whole six-window batch has reached its final geometry.
   for (Slot& slot : slots_) {
     if (!slot.hostWindow || !IsWindow(slot.hostWindow) || !slot.controller) {
       continue;
@@ -805,18 +431,12 @@ void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
     slot.controller->put_Bounds(bounds);
     slot.controller->NotifyParentWindowPositionChanged();
     slot.controller->put_IsVisible(TRUE);
-    InvalidateRect(slot.hostWindow, nullptr, FALSE);
   }
 }
 
 void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
-  if (slot.hostWindow && IsWindow(slot.hostWindow)) {
-    KillTimer(slot.hostWindow, kSpotifyStartupTimer);
-    KillTimer(slot.hostWindow, kSpotifyModeSwitchTimer);
-    if (slot.index == 0) {
-      KillTimer(slot.hostWindow, kSpotifyModeTimer);
-      KillTimer(slot.hostWindow, kSpotifyPlaybackWatchdogTimer);
-    }
+  if (slot.index == 0 && slot.hostWindow && IsWindow(slot.hostWindow)) {
+    KillTimer(slot.hostWindow, kSpotifyRobustReconcileTimer);
   }
   if (slot.webview) {
     if (slot.navigationStartingToken.value != 0) {
@@ -831,17 +451,25 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
     if (slot.webResourceRequestedToken.value != 0) {
       slot.webview->remove_WebResourceRequested(slot.webResourceRequestedToken);
     }
+    if (slot.timedEndMessageReceivedToken.value != 0) {
+      slot.webview->remove_WebMessageReceived(slot.timedEndMessageReceivedToken);
+    }
   }
   slot.navigationStartingToken = {};
   slot.navigationCompletedToken = {};
   slot.webMessageReceivedToken = {};
   slot.webResourceRequestedToken = {};
+  slot.timedEndMessageReceivedToken = {};
+  slot.timedEndHandlerWebview = nullptr;
   slot.webview.Reset();
   if (slot.controller) slot.controller->Close();
   slot.controller.Reset();
   slot.environment.Reset();
   if (slot.hostWindow && IsWindow(slot.hostWindow)) DestroyWindow(slot.hostWindow);
   slot.hostWindow = nullptr;
+  slot.controllerCreating = false;
+  slot.controllerCreateTick = 0;
+  slot.reconcileInFlight = false;
   slot.playing = false;
   slot.playerPage = false;
 }
@@ -851,9 +479,11 @@ void SpotifyWebViews::Shutdown() noexcept {
   started_ = false;
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  playbackWatchdogIndex_ = 0;
-  foreground_ = true;
   podcastMode_ = false;
+  robustSchedulerStarted_ = false;
+  staggerSlotIndex_ = 0;
+  staggerSlotStartTick_ = 0;
+  youtubeCycleStartTick_ = 0;
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(
@@ -865,25 +495,6 @@ LRESULT CALLBACK SpotifyWebViews::HostWndProc(
     SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(slot));
   }
   if (slot) {
-    if (message == WM_TIMER && wparam == kSpotifyStartupTimer) {
-      KillTimer(hwnd, kSpotifyStartupTimer);
-      if (slot->owner) slot->owner->CreateController(*slot);
-      return 0;
-    }
-    if (message == WM_TIMER && wparam == kSpotifyModeTimer && slot->index == 0) {
-      if (slot->owner) slot->owner->ToggleMode();
-      return 0;
-    }
-    if (message == WM_TIMER && wparam == kSpotifyModeSwitchTimer) {
-      KillTimer(hwnd, kSpotifyModeSwitchTimer);
-      if (slot->owner) slot->owner->NavigateSlotToCurrentMode(*slot);
-      return 0;
-    }
-    if (message == WM_TIMER && wparam == kSpotifyPlaybackWatchdogTimer &&
-        slot->index == 0) {
-      if (slot->owner) slot->owner->RunPlaybackWatchdog();
-      return 0;
-    }
     if (message == WM_SIZE && slot->controller) {
       RECT client{};
       GetClientRect(hwnd, &client);

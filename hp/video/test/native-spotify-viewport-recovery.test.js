@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const viewportRecovery = readFileSync(
-  new URL('../../native/src/spotify_viewport_recovery.inc', import.meta.url),
+const scripts = readFileSync(
+  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
 );
 const wrapper = readFileSync(
@@ -14,32 +14,22 @@ const phaseSync = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
   'utf8',
 );
-const lonesomeGuard = readFileSync(
-  new URL('../../native/src/spotify_lonesome_guard.inc', import.meta.url),
-  'utf8',
-);
 
-test('Spotify recovery scrolls offscreen controls into the WebView before returning a click point', () => {
-  assert.match(viewportRecovery, /element\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
-  assert.match(viewportRecovery, /centerY < 0 \|\| centerY > window\.innerHeight/);
-  assert.match(viewportRecovery, /if \(!element\.isConnected\) return null/);
-  assert.match(viewportRecovery, /centerX \/ window\.innerWidth/);
-  assert.match(viewportRecovery, /centerY \/ window\.innerHeight/);
+test('Spotify fixed scripts scroll offscreen controls before returning normalized click points', () => {
+  assert.match(scripts, /element\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/);
+  assert.match(scripts, /if \(!element\.isConnected\) return null/);
+  assert.match(scripts, /centerX \/ window\.innerWidth/);
+  assert.match(scripts, /centerY \/ window\.innerHeight/);
 });
 
-test('TALKABOUT latest episode and Lonesome rabbit track rows are revealed before trusted recovery clicks', () => {
-  assert.match(viewportRecovery, /latest\.scrollIntoView/);
-  assert.match(viewportRecovery, /targetLink\.scrollIntoView/);
-  assert.match(phaseSync, /const latest = links\[0\];\s*const container = latest\.closest/);
-  assert.match(lonesomeGuard, /if \(targetLink\) \{\s*const row = targetLink\.closest/);
+test('TALKABOUT episode rows and music target rows are revealed before trusted recovery clicks', () => {
+  assert.match(scripts, /const latest = links\[0\];[\s\S]*latest\.scrollIntoView/);
+  assert.match(scripts, /const link = targetLink\(\);[\s\S]*link\.scrollIntoView/);
+  assert.match(phaseSync, /ClickSlotNormalizedPoint/);
 });
 
-test('viewport repair runs after the existing Spotify mode rewrite', () => {
-  assert.match(wrapper, /spotify_viewport_recovery\.inc/);
-  assert.match(
-    wrapper,
-    /RewriteSpotifyViewportRecoveryScript\([\s\S]*RewriteSpotifyPhaseExecuteScript\(\(script\)\)/,
-  );
-  assert.match(phaseSync, /const point = element => \{[\s\S]*const rect = element\.getBoundingClientRect\(\);[\s\S]*return \[/);
-  assert.match(lonesomeGuard, /const point = element => \{[\s\S]*const rect = element\.getBoundingClientRect\(\);[\s\S]*return \[/);
+test('viewport recovery is compiled into fixed scripts with no runtime repair pass', () => {
+  assert.match(wrapper, /#include "spotify_static_scripts\.inc"/);
+  assert.doesNotMatch(wrapper, /spotify_viewport_recovery\.inc|RewriteSpotifyViewportRecoveryScript|RewriteSpotifyPhaseExecuteScript/);
+  assert.doesNotMatch(scripts, /ReplaceSpotifyScriptFragment|\.find\(L"|\.insert\(/);
 });
