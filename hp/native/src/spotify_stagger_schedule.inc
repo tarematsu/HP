@@ -3,6 +3,8 @@ constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = kSpotifyTimedSlotOffsetMs;
+constexpr ULONGLONG kSpotifyTimedReconcileMinIntervalMs = 8ULL * 1000ULL;
+constexpr int kSpotifyBackgroundStallConfirmations = 2;
 
 constexpr wchar_t kSpotifyBackgroundPlaybackProbeScript[] = LR"JS(
 (() => {
@@ -68,9 +70,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
-  // Probe one active account per 2-second scheduler tick. This stays lightweight
-  // (each of the six windows is sampled about every 12 seconds) and also covers
-  // BitterBlue/TALKABOUT/the bridge before the formal 20:00 rotation begins.
+  // Probe one account per scheduler tick. A low-end device may deliver the timer
+  // late, so native recovery requires two independent stalled samples instead of
+  // treating one delayed WebView/DOM response as a real playback failure.
   Slot& probe = slots_[playbackWatchdogIndex_++ % slots_.size()];
   const bool completedPrelude =
       probe.timedTarget == TimedSpotifyTarget::BitterBlue &&
@@ -103,6 +105,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
               const std::wstring_view value(json);
               if (value == L"\"playing\"") {
+                target->backgroundStallChecks = 0;
                 if (!target->playing || target->timedUnhealthySinceTick != 0) {
                   target->playing = true;
                   target->timedUnhealthySinceTick = 0;
@@ -110,7 +113,19 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
                 }
                 return S_OK;
               }
-              if (value != L"\"stalled\"") return S_OK;
+              if (value != L"\"stalled\"") {
+                target->backgroundStallChecks = 0;
+                return S_OK;
+              }
+
+              if (target->backgroundStallChecks <
+                  kSpotifyBackgroundStallConfirmations) {
+                ++target->backgroundStallChecks;
+              }
+              if (target->backgroundStallChecks <
+                  kSpotifyBackgroundStallConfirmations) {
+                return S_OK;
+              }
 
               const ULONGLONG detectedAt = GetTickCount64();
               target->playing = false;
@@ -118,9 +133,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
                 target->timedUnhealthySinceTick = detectedAt;
               }
 
-              // Only one stalled account owns recovery at a time. The 40-second
+              // Only a confirmed stalled account owns recovery. The 40-second
               // value is a maximum hold; normal playback releases priority on the
-              // next scheduler tick so another stalled account can recover sooner.
+              // next healthy sample so another account can recover sooner.
               const bool canClaimPriority =
                   timedPrioritySlotIndex_ >= slots_.size() ||
                   detectedAt >= timedPriorityUntilTick_ ||
@@ -135,10 +150,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
             }).Get());
   }
 
-  // The three-minute value is now a failure watchdog, not a song-length cap.
-  // Healthy songs may run for their full duration. A slot advances only after
-  // its end observer confirms completion, or after it has remained unhealthy /
-  // stuck in an ambiguous post-track/ad waiting state for three minutes.
+  // The three-minute value is a failure watchdog, not a song-length cap. Start
+  // it only after two explicit stalled samples (or an ambiguous ended/ad state),
+  // so slow rendering or a delayed UI thread cannot silently skip a target song.
   for (Slot& candidate : slots_) {
     if (!candidate.timedRotationActive) continue;
 
@@ -148,17 +162,23 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
           now - candidate.timedCompletionPendingTick >=
           kSpotifyTimedFailureWatchdogMs;
     } else if (candidate.playing) {
+      candidate.backgroundStallChecks = 0;
       candidate.timedUnhealthySinceTick = 0;
       if (timedPrioritySlotIndex_ == candidate.index) {
         timedPrioritySlotIndex_ = kAccountCount;
         timedPriorityUntilTick_ = 0;
       }
-    } else if (candidate.timedUnhealthySinceTick == 0) {
-      candidate.timedUnhealthySinceTick = now;
+    } else if (candidate.backgroundStallChecks >=
+               kSpotifyBackgroundStallConfirmations) {
+      if (candidate.timedUnhealthySinceTick == 0) {
+        candidate.timedUnhealthySinceTick = now;
+      } else {
+        watchdogExpired =
+            now - candidate.timedUnhealthySinceTick >=
+            kSpotifyTimedFailureWatchdogMs;
+      }
     } else {
-      watchdogExpired =
-          now - candidate.timedUnhealthySinceTick >=
-          kSpotifyTimedFailureWatchdogMs;
+      candidate.timedUnhealthySinceTick = 0;
     }
 
     if (watchdogExpired) {
@@ -247,7 +267,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       slot.timedTarget = desired;
       slot.timedCatalogIndex = desiredCatalogIndex;
       slot.lastModeNavigateTick = 0;
+      slot.lastTimedReconcileTick = 0;
+      slot.lastTimedObserverArmTick = 0;
       slot.unhealthyChecks = 0;
+      slot.backgroundStallChecks = 0;
+      slot.timedUnhealthySinceTick = 0;
       if (desired == TimedSpotifyTarget::BitterBlue) {
         slot.timedPreludeCompleted = false;
       }
@@ -269,7 +293,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       return;
     }
 
-    ReconcileActiveTimedSlot(slot);
+    if (slot.lastTimedReconcileTick == 0 ||
+        now - slot.lastTimedReconcileTick >= kSpotifyTimedReconcileMinIntervalMs) {
+      slot.lastTimedReconcileTick = now;
+      ReconcileActiveTimedSlot(slot);
+    }
     return;
   }
 
@@ -285,7 +313,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   // ended event advances immediately in the observer.
   if (slot.timedCompletionPendingTick != 0) return;
 
-  ReconcileActiveTimedSlot(slot);
+  if (slot.lastTimedReconcileTick == 0 ||
+      now - slot.lastTimedReconcileTick >= kSpotifyTimedReconcileMinIntervalMs) {
+    slot.lastTimedReconcileTick = now;
+    ReconcileActiveTimedSlot(slot);
+  }
 }
 
 void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
@@ -335,7 +367,10 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     timedRandomDIndex_ = kNoTimedCatalogIndex;
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
+      slot.lastTimedReconcileTick = 0;
+      slot.lastTimedObserverArmTick = 0;
       slot.unhealthyChecks = 0;
+      slot.backgroundStallChecks = 0;
       slot.podcastCompleted = false;
       slot.timedTarget = TimedSpotifyTarget::None;
       slot.timedCatalogIndex = kNoTimedCatalogIndex;
