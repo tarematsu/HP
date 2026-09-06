@@ -62,6 +62,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     RefreshSpotifyHostLayout();
   }
 
+  // SimpleSpotifyScheduledIndex is designed to return 0..5, but keep the bound
+  // explicit here so both runtime safety and MSVC static analysis can prove the
+  // std::array access is valid if the scheduling logic changes later.
+  if (staggerSlotIndex_ >= slots_.size()) return;
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
   RefreshSpotifyHostLayout();
