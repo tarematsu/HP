@@ -32,16 +32,16 @@ constexpr wchar_t kSpotifyStaticTimedStartObserverScript[] = LR"JS(
     const target = window.__homePanelSpotifyNativeTarget;
     if (!target || target.kind !== 'music' || !target.title) return;
 
-    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    const mediaTitle = normalize(metadata && metadata.title);
-    let matches = false;
-    if (mediaTitle) {
-      matches = mediaTitle === target.title;
-    } else {
-      const track = currentTrack();
-      matches = target.trackPath
-          ? track.path === target.trackPath
-          : track.title === target.title;
+    // Prefer the real /track/ DOM identity when it is available. MediaSession
+    // metadata can briefly lag behind a track transition, so it is a fallback,
+    // not an exclusive source of truth.
+    const track = currentTrack();
+    let matches = target.trackPath
+        ? track.path === target.trackPath
+        : track.title === target.title;
+    if (!matches) {
+      const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+      matches = normalize(metadata && metadata.title) === target.title;
     }
     if (!matches) return;
 
@@ -205,9 +205,12 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               if (target->timedRotationActive &&
-                  target->timedPlaybackStartTick == 0) {
-                // A queued end from the previous target must not skip the fresh
-                // target after a forced deadline advance.
+                  target->timedPlaybackStartTick == 0 &&
+                  target->lastModeNavigateTick != 0) {
+                // Ignore only an end message that can still belong to the page
+                // we just navigated away from. Once the new target has reconciled
+                // (lastModeNavigateTick == 0), a valid ended event remains a
+                // completion fallback even if the start message was missed.
                 return S_OK;
               }
               target->timedPlaybackStartTick = 0;
