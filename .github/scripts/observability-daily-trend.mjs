@@ -91,10 +91,16 @@ function durationLabel(seconds) {
 
 function paceAssessment(trend) {
   const ratio = trend.recentProjected24h / trend.current.limit;
+  const dailyBudgetExceeded = trend.current.actual >= trend.current.limit
+    || trend.current.projected >= trend.current.limit;
   return {
     ratio,
     percent: ratio * 100,
-    state: ratio >= 1 ? 'failure' : ratio >= PACE_WARNING_RATIO ? 'degraded' : 'healthy',
+    state: ratio >= 1
+      ? (dailyBudgetExceeded ? 'failure' : 'degraded')
+      : ratio >= PACE_WARNING_RATIO
+        ? 'degraded'
+        : 'healthy',
   };
 }
 
