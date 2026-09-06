@@ -34,8 +34,4 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   PlaceHosts(mask != 0 || authenticationVisible);
 }
 
-void SpotifyWebViews::RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept {
-  RecomputeForeground();
-}
-
 }  // namespace hp
