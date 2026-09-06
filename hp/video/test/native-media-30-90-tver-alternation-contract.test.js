@@ -37,14 +37,8 @@ test('media scripts are fixed static literals without runtime rewriting or dupli
   assert.match(tverStatic, /kNativeMediaTverLoopStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverWatchdogStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverForceFullscreenAdSafeScript\[\]/);
-  assert.match(
-    mediaPanel,
-    /kNativeMediaTverLoopScript =\s*kNativeMediaTverLoopStaticScript/,
-  );
-  assert.match(
-    mediaPanel,
-    /kNativeMediaTverWatchdogScript =\s*kNativeMediaTverWatchdogStaticScript/,
-  );
+  assert.match(mediaPanel, /kNativeMediaTverLoopScript =\s*kNativeMediaTverLoopStaticScript/);
+  assert.match(mediaPanel, /kNativeMediaTverWatchdogScript =\s*kNativeMediaTverWatchdogStaticScript/);
   assert.doesNotMatch(mediaWrapper, /ResolveNativeMediaStaticScript/);
   assert.doesNotMatch(mediaWrapper, /#define ExecuteScript/);
   assert.doesNotMatch(composition, /RewriteNativeMediaExecuteScript/);
@@ -67,10 +61,7 @@ test('TVer alternates Sakura Meets and Death Youth Game after a completed queue'
     composition,
     /AdvanceNativeMediaTverSeries\(\) noexcept[\s\S]*gNativeMediaTverUseDeathGame = !gNativeMediaTverUseDeathGame/,
   );
-  assert.match(
-    composition,
-    /#define Navigate\(url\) Navigate\(ResolveNativeMediaNavigateUrl\(\(url\)\)\)/,
-  );
+  assert.match(composition, /#define Navigate\(url\) Navigate\(ResolveNativeMediaNavigateUrl\(\(url\)\)\)/);
   assert.match(
     mediaPanel,
     /RestartTverAfterPlayback\(\) noexcept[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
@@ -112,13 +103,17 @@ test('TVer ads stay at native speed and suspend program/fullscreen controls', ()
   assert.match(tverStatic, /isTverAdvertisementActive/);
   assert.match(tverStatic, /aria-label\*=\"広告\"/);
   assert.match(tverStatic, /duration >= 5 && duration <= 65/);
-  assert.match(tverStatic, /const adVideoChanged = state\.adVideo !== video/);
+  assert.match(tverStatic, /const mediaIdentity = video =>/);
+  assert.match(tverStatic, /const adMediaChanged = state\.adVideo !== video \|\| state\.adIdentity !== identity/);
   assert.match(tverStatic, /state\.adActive = true/);
+  assert.match(tverStatic, /state\.adIdentity = identity/);
+  assert.match(tverStatic, /state\.adIdentity && identity && state\.adIdentity !== identity/);
   assert.match(tverStatic, /window\.__homePanelTverAdActive = true/);
   assert.match(tverStatic, /video\.defaultPlaybackRate = 1\.0/);
   assert.match(tverStatic, /video\.playbackRate !== 1\.0/);
   assert.match(tverStatic, /document\.exitFullscreen/);
   assert.match(tverStatic, /state\.adActive = false/);
+  assert.match(tverStatic, /state\.adIdentity = ''/);
   assert.match(tverStatic, /state\.maxDuration = 0/);
   assert.match(tverStatic, /state\.maxTime = 0/);
   assert.match(tverStatic, /state\.playbackSettingsApplied = false/);
@@ -127,10 +122,7 @@ test('TVer ads stay at native speed and suspend program/fullscreen controls', ()
     tverStatic,
     /\(state && state\.adActive\) \|\| window\.__homePanelTverAdActive[\s\S]*return null/,
   );
-  assert.match(
-    trustedInput,
-    /ExecuteScript\(\s*kNativeMediaTverForceFullscreenAdSafeScript/,
-  );
+  assert.match(trustedInput, /ExecuteScript\(\s*kNativeMediaTverForceFullscreenAdSafeScript/);
 });
 
 test('TVer program settings are reapplied only when media state becomes dirty', () => {
