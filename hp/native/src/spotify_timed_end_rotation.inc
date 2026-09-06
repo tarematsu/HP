@@ -32,16 +32,20 @@ constexpr wchar_t kSpotifyStaticTimedStartObserverScript[] = LR"JS(
     const target = window.__homePanelSpotifyNativeTarget;
     if (!target || target.kind !== 'music' || !target.title) return;
 
-    // Prefer the real /track/ DOM identity when it is available. MediaSession
-    // metadata can briefly lag behind a track transition, so it is a fallback,
-    // not an exclusive source of truth.
-    const track = currentTrack();
-    let matches = target.trackPath
-        ? track.path === target.trackPath
-        : track.title === target.title;
-    if (!matches) {
-      const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-      matches = normalize(metadata && metadata.title) === target.title;
+    // MediaSession follows the media item and is therefore the safest identity
+    // while an advertisement is playing. If it is temporarily unavailable, fall
+    // back to the visible /track/ identity. A few finite retries cover metadata
+    // lag without restoring a permanent polling loop.
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    const mediaTitle = normalize(metadata && metadata.title);
+    let matches = false;
+    if (mediaTitle) {
+      matches = mediaTitle === target.title;
+    } else {
+      const track = currentTrack();
+      matches = target.trackPath
+          ? track.path === target.trackPath
+          : track.title === target.title;
     }
     if (!matches) return;
 
@@ -51,15 +55,18 @@ constexpr wchar_t kSpotifyStaticTimedStartObserverScript[] = LR"JS(
       }
     } catch (_) {}
   };
+  const scheduleStartChecks = delays => {
+    delays.forEach(delay => setTimeout(reportTargetStarted, delay));
+  };
 
   document.addEventListener('play', event => {
     if (!(event.target instanceof HTMLMediaElement)) return;
-    setTimeout(reportTargetStarted, 250);
+    scheduleStartChecks([250, 1000, 2500]);
   }, true);
 
   const alreadyPlaying = Array.from(document.querySelectorAll('audio, video'))
       .some(media => !media.paused && !media.ended);
-  if (alreadyPlaying) setTimeout(reportTargetStarted, 0);
+  if (alreadyPlaying) scheduleStartChecks([0, 500, 1500]);
   return true;
 })()
 )JS";
