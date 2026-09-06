@@ -1,5 +1,7 @@
 const MIN_TREND_SECONDS = 10 * 60;
 const MIN_PACE_ALERT_SECONDS = 20 * 60;
+const PACE_ALERT_SCHEDULER_JITTER_SECONDS = 60;
+const MIN_PACE_SAMPLE_SECONDS = MIN_PACE_ALERT_SECONDS - PACE_ALERT_SCHEDULER_JITTER_SECONDS;
 const MAX_TREND_SECONDS = 2 * 60 * 60;
 const DAY_SECONDS = 24 * 60 * 60;
 const PACE_WARNING_RATIO = 0.8;
@@ -265,7 +267,8 @@ export function classifyDailyMetricPace({
     currentSummary,
     previousIssueBody,
     generatedAt,
-    minimumElapsedSeconds: MIN_PACE_ALERT_SECONDS,
+    // Keep the 20-minute target while tolerating up to one minute of scheduler jitter.
+    minimumElapsedSeconds: MIN_PACE_SAMPLE_SECONDS,
   });
   if (!trend) return null;
 
@@ -303,7 +306,7 @@ export function classifyDailyRowsReadTrend({
     currentSummary,
     previousIssueBody,
     generatedAt,
-    minimumElapsedSeconds: MIN_PACE_ALERT_SECONDS,
+    minimumElapsedSeconds: MIN_PACE_SAMPLE_SECONDS,
   });
   if (!trend || trend.current.violationSource !== 'actual' || trend.current.actual < trend.current.limit) return null;
 
