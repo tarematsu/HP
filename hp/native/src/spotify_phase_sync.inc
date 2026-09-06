@@ -92,7 +92,7 @@ void SpotifyWebViews::ClickSlotNormalizedPoint(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
   slot.playing = false;
-  RecomputeForegroundAndRefreshSpotifyHostLayout();
+  RefreshSpotifyHostLayout();
   DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
 }
 
