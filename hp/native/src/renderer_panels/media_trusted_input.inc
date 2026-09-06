@@ -1,6 +1,6 @@
 // WebView2 pointer input used while the dashboard HWND is hidden by power saving.
-// The native media panel itself stays alive, so sending CDP input directly to the
-// WebView avoids relying on the real Windows cursor or a visible top-level window.
+// The native media panel stays alive, so input is dispatched directly to WebView2
+// without moving the real Windows cursor or depending on a visible top-level HWND.
 namespace {
 constexpr UINT kNativeMediaTrustedWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTrustedWakeAttempts = 10U;
@@ -70,8 +70,7 @@ bool NativeMediaDecodeAbsolutePoint(
 UINT NativeMediaDispatchTrustedInput(
     bool tver, ICoreWebView2* webview, HWND hostWindow, UINT count,
     LPINPUT inputs, int inputSize) noexcept {
-  (void)inputSize;
-  if (!webview) return 0;
+  if (!webview || inputSize != static_cast<int>(sizeof(INPUT))) return 0;
   POINT point{};
   if (!NativeMediaDecodeAbsolutePoint(hostWindow, count, inputs, &point)) return 0;
   try {
@@ -93,7 +92,7 @@ UINT NativeMediaDispatchTrustedInput(
                       [view, tver](HRESULT releaseResult, LPCWSTR) -> HRESULT {
                         if (tver && SUCCEEDED(releaseResult) && view) {
                           view->ExecuteScript(
-                              NativeMediaTverForceFullscreenAdSafeScript(),
+                              kNativeMediaTverForceFullscreenAdSafeScript,
                               nullptr);
                         }
                         return S_OK;
@@ -143,10 +142,5 @@ UINT_PTR ArmNativeMediaTrustedWakeTimer(
   gNativeMediaTrustedSteadyIntervalMs = steadyIntervalMs;
   return ::SetTimer(hwnd, timerId, kNativeMediaTrustedWakeIntervalMs,
                     NativeMediaTrustedWakeTimerProc);
-}
-
-UINT_PTR NativeMediaDirectSetTimer(
-    HWND hwnd, UINT_PTR timerId, UINT interval, TIMERPROC callback) noexcept {
-  return ::SetTimer(hwnd, timerId, interval, callback);
 }
 }  // namespace
