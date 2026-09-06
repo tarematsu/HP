@@ -10,7 +10,7 @@ const OWNED = [
   'official-news-reconcile.js',
   'stream-goal-prediction.js',
   'snapshot-retention.js',
-  'sakurazaka-monitor.js',
+  'sakurazaka-raw-materializer.js',
 ];
 
 test('OTHER_DB-owned modules do not fall back to an ambiguous env.DB binding', () => {
