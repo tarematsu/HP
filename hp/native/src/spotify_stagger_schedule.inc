@@ -209,10 +209,8 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
       slot.podcastCompleted = false;
       slot.timedTarget = TimedSpotifyTarget::None;
       slot.timedCatalogIndex = kNoTimedCatalogIndex;
-      slot.lastTimedRotationWave = ~0ULL;
       slot.timedRotationCycle = 0;
       slot.timedRotationPosition = 0;
-      slot.timedStepStartTick = 0;
       slot.timedCompletionPendingTick = 0;
       slot.timedRandomCIndex = kNoTimedCatalogIndex;
       slot.timedRandomDIndex = kNoTimedCatalogIndex;
