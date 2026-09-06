@@ -318,6 +318,8 @@ constexpr wchar_t kNativeMediaTverLoopOverrideScript[] = LR"JS(
     clearEpisodeQueue(seriesPath);
     return false;
   };
+)JS"
+LR"JS(
 
   const ensureEpisodePlayback = () => {
     const path = location.pathname;
