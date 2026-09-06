@@ -561,14 +561,88 @@ constexpr wchar_t kNativeMediaTverForceFullscreenAfterClickScript[] = LR"JS(
 })()
 )JS";
 
-UINT NativeMediaSendInputWithTverFullscreen(
-    bool tver, ICoreWebView2* webview, UINT count, LPINPUT inputs,
-    int inputSize) noexcept {
-  const UINT sent = ::SendInput(count, inputs, inputSize);
-  if (tver && sent > 0 && webview) {
-    webview->ExecuteScript(kNativeMediaTverForceFullscreenAfterClickScript, nullptr);
+bool DecodeNativeMediaAbsolutePoint(
+    HWND hostWindow, UINT count, LPINPUT inputs, POINT* point) noexcept {
+  if (!hostWindow || !IsWindow(hostWindow) || !inputs || !point || count < 1 ||
+      inputs[0].type != INPUT_MOUSE ||
+      (inputs[0].mi.dwFlags & MOUSEEVENTF_ABSOLUTE) == 0) {
+    return false;
   }
-  return sent;
+  const int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+  const int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+  const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+  if (virtualWidth <= 1 || virtualHeight <= 1) return false;
+  POINT clientPoint{
+      virtualLeft + static_cast<LONG>(
+          (static_cast<long long>(inputs[0].mi.dx) * (virtualWidth - 1)) /
+          65535LL),
+      virtualTop + static_cast<LONG>(
+          (static_cast<long long>(inputs[0].mi.dy) * (virtualHeight - 1)) /
+          65535LL)};
+  if (!ScreenToClient(hostWindow, &clientPoint)) return false;
+  RECT client{};
+  if (!GetClientRect(hostWindow, &client) || client.right <= client.left ||
+      client.bottom <= client.top) {
+    return false;
+  }
+  clientPoint.x = std::max(client.left, std::min(client.right - 1, clientPoint.x));
+  clientPoint.y = std::max(client.top, std::min(client.bottom - 1, clientPoint.y));
+  *point = clientPoint;
+  return true;
+}
+
+std::wstring NativeMediaMouseEventParams(
+    const wchar_t* type, LONG x, LONG y, bool pressed) {
+  std::wstring params = L"{\"type\":\"";
+  params += type;
+  params += L"\",\"x\":" + std::to_wstring(x) +
+            L",\"y\":" + std::to_wstring(y);
+  if (pressed) {
+    params += L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1";
+  } else if (std::wstring_view(type) == L"mouseReleased") {
+    params += L",\"button\":\"left\",\"buttons\":0,\"clickCount\":1";
+  }
+  params += L"}";
+  return params;
+}
+
+UINT NativeMediaDispatchTrustedClick(
+    bool tver, ICoreWebView2* webview, HWND hostWindow, UINT count,
+    LPINPUT inputs, int inputSize) noexcept {
+  (void)inputSize;
+  if (!webview) return 0;
+  POINT point{};
+  if (!DecodeNativeMediaAbsolutePoint(hostWindow, count, inputs, &point)) return 0;
+
+  ComPtr<ICoreWebView2> view = webview;
+  const std::wstring moved =
+      NativeMediaMouseEventParams(L"mouseMoved", point.x, point.y, false);
+  view->CallDevToolsProtocolMethod(
+      L"Input.dispatchMouseEvent", moved.c_str(), nullptr);
+
+  const std::wstring pressed =
+      NativeMediaMouseEventParams(L"mousePressed", point.x, point.y, true);
+  const HRESULT dispatched = view->CallDevToolsProtocolMethod(
+      L"Input.dispatchMouseEvent", pressed.c_str(),
+      Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+          [view, tver, x = point.x, y = point.y](HRESULT result, LPCWSTR) -> HRESULT {
+            if (FAILED(result)) return S_OK;
+            const std::wstring released =
+                NativeMediaMouseEventParams(L"mouseReleased", x, y, false);
+            view->CallDevToolsProtocolMethod(
+                L"Input.dispatchMouseEvent", released.c_str(),
+                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                    [view, tver](HRESULT releaseResult, LPCWSTR) -> HRESULT {
+                      if (tver && SUCCEEDED(releaseResult)) {
+                        view->ExecuteScript(
+                            kNativeMediaTverForceFullscreenAfterClickScript, nullptr);
+                      }
+                      return S_OK;
+                    }).Get());
+            return S_OK;
+          }).Get());
+  return SUCCEEDED(dispatched) ? count : 0;
 }
 
 UINT NativeMediaPhaseIntervalMs(bool tver) noexcept {
@@ -684,16 +758,8 @@ void AdvanceNativeMediaTverSeries() noexcept {
   gNativeMediaTverUseDeathGame = !gNativeMediaTverUseDeathGame;
 }
 
-LONG NativeMediaPointerAbsolute(int value, int origin, int span) noexcept {
-  if (span <= 1) return 0;
-  long long scaled =
-      (static_cast<long long>(value - origin) * 65535LL) / (span - 1);
-  scaled = std::max(0LL, std::min(65535LL, scaled));
-  return static_cast<LONG>(scaled);
-}
-
 void WakeNativeMediaTverControls(HWND hwnd) noexcept {
-  if (!hwnd || !IsWindow(hwnd)) return;
+  if (!hwnd || !IsWindow(hwnd) || !gNativeMediaAudioWebView) return;
   RECT client{};
   if (!GetClientRect(hwnd, &client)) return;
   const LONG width = client.right - client.left;
@@ -702,24 +768,13 @@ void WakeNativeMediaTverControls(HWND hwnd) noexcept {
 
   const UINT attempt = gNativeMediaTverWakeCount++;
   const LONG yPercent = 35L + static_cast<LONG>(attempt % 3U) * 10L;
-  POINT target{
-      client.left + width / 2,
-      client.top + static_cast<LONG>((static_cast<long long>(height) * yPercent) / 100LL)};
-  if (!ClientToScreen(hwnd, &target)) return;
-
-  const int virtualLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
-  const int virtualTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
-  const int virtualWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-  const int virtualHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-  if (virtualWidth <= 1 || virtualHeight <= 1) return;
-
-  INPUT input{};
-  input.type = INPUT_MOUSE;
-  input.mi.dx = NativeMediaPointerAbsolute(target.x, virtualLeft, virtualWidth);
-  input.mi.dy = NativeMediaPointerAbsolute(target.y, virtualTop, virtualHeight);
-  input.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE |
-                     MOUSEEVENTF_VIRTUALDESK;
-  SendInput(1, &input, sizeof(INPUT));
+  const LONG x = width / 2;
+  const LONG y = static_cast<LONG>(
+      (static_cast<long long>(height) * yPercent) / 100LL);
+  const std::wstring moved =
+      NativeMediaMouseEventParams(L"mouseMoved", x, y, false);
+  gNativeMediaAudioWebView->CallDevToolsProtocolMethod(
+      L"Input.dispatchMouseEvent", moved.c_str(), nullptr);
 }
 
 void CALLBACK NativeMediaTverWakeTimerProc(
@@ -749,10 +804,9 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 // The media panel runs YouTube for 60 minutes and TVer for 60 minutes. Spotify
 // follows the same phase boundary. Each completed TVer item advances Sakura Meets
 // <-> Death (Youth) Game while the same media WebView controller is reused and
-// only navigated to the next target. Until Death Game starts broadcasting, its
-// series slot selects the available preview. TVer also uses a trusted native
-// click followed by requestFullscreen so hidden or unlabeled fullscreen controls
-// cannot leave the player stuck inline.
+// only navigated to the next target. YouTube/TVer recovery clicks are dispatched
+// directly inside WebView2, so they keep working while the dashboard HWND is
+// hidden for power saving and never move the real mouse cursor.
 #define SetTimer(hwnd, timerId, interval, callback)                              \
   (((timerId) == kNativeMediaPhaseTimer                                         \
         ? (CaptureNativeMediaPhaseOverlay(phase_ == Phase::Tver),              \
@@ -782,8 +836,9 @@ UINT_PTR ArmNativeMediaTverWakeTimer(
 #define get_CoreWebView2(out)                                                    \
   get_CoreWebView2(out); RegisterNativeMediaAudioWebView(webview_.Get())
 #define SendInput(count, inputs, inputSize)                                      \
-  NativeMediaSendInputWithTverFullscreen(                                       \
-      phase_ == Phase::Tver, webview_.Get(), (count), (inputs), (inputSize))
+  NativeMediaDispatchTrustedClick(                                              \
+      phase_ == Phase::Tver, webview_.Get(), hostWindow_,                       \
+      (count), (inputs), (inputSize))
 #include "renderer_panels/media_section.inc"
 #undef SendInput
 #undef get_CoreWebView2
