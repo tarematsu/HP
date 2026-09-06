@@ -46,9 +46,7 @@ class SpotifyWebViews final {
     ICoreWebView2* timedEndHandlerWebview = nullptr;
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
-    ULONGLONG lastTimedRotationWave = ~0ULL;
     ULONGLONG timedRotationCycle = 0;
-    ULONGLONG timedStepStartTick = 0;
     ULONGLONG timedCompletionPendingTick = 0;
     ULONGLONG lastTimedReconcileTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
@@ -90,8 +88,6 @@ class SpotifyWebViews final {
   bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
   void NavigateTimedSlot(Slot& slot) noexcept;
   void ReconcileTimedSlot(Slot& slot) noexcept;
-  size_t PickTimedRandomCatalogIndex(size_t avoidIndex) noexcept;
-  void EnsureTimedRandomPair(ULONGLONG rotationCycle) noexcept;
   size_t PickRecentCatalogIndex(size_t avoidIndex,
                                 size_t secondAvoidIndex) noexcept;
   void EnsureRecentRandomPair(ULONGLONG rotationCycle,
@@ -106,9 +102,8 @@ class SpotifyWebViews final {
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
-  void SetForeground(bool foreground) noexcept;
   void RecomputeForeground() noexcept;
-  void PlaceHosts(bool foreground) noexcept;
+  void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
   void RunStaggeredReconcile() noexcept;
 
@@ -130,7 +125,6 @@ class SpotifyWebViews final {
   size_t hostLayoutActiveSlot_ = kAccountCount;
   bool hostLayoutAuthenticationVisible_ = false;
   bool started_ = false;
-  bool foreground_ = true;
   bool podcastMode_ = false;
   bool robustSchedulerStarted_ = false;
 };
