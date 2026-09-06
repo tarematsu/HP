@@ -50,7 +50,7 @@ test('YouTube hour keeps BitterBlue and TALKABOUT, recent bridge, then starts ro
   assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
 });
 
-test('A-B-C-D order advances only from completion events', () => {
+test('A-B-C-D advances immediately on ended or after four minutes of actual track playback', () => {
   assert.match(rotation, /case 0:[\s\S]*LonesomeRabbit[\s\S]*break;/);
   assert.match(rotation, /case 1:[\s\S]*CatalogTrack[\s\S]*timedRandomCIndex/);
   assert.match(rotation, /case 2:[\s\S]*BitterBlue[\s\S]*break;/);
@@ -59,6 +59,22 @@ test('A-B-C-D order advances only from completion events', () => {
   assert.match(scripts, /spotify:timed-ended/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
   assert.match(rotation, /timedRotationPosition \+ 1U/);
+
+  assert.match(header, /timedPlaybackStartTick = 0/);
+  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+  assert.match(rotation, /spotify:timed-started/);
+  assert.match(rotation, /mediaTitle === target\.title/);
+  assert.match(
+    rotation,
+    /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/,
+  );
+  assert.match(rotation, /bool SpotifyWebViews::AdvanceExpiredTimedRotation/);
+  assert.match(
+    rotation,
+    /now - slot\.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs/,
+  );
+  assert.match(schedule, /AdvanceExpiredTimedRotation\(now\)/);
+  assert.doesNotMatch(rotation, /setInterval\(/);
   assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs|rotationWave/);
 });
 
