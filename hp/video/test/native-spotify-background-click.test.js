@@ -10,27 +10,30 @@ const helper = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url),
   'utf8',
 );
+const phaseSync = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
 );
 
-test('Spotify recovery clicks are dispatched inside WebView2 instead of the OS foreground window', () => {
-  assert.match(wrapper, /#define SendInput\(count, inputs, inputSize\)/);
-  assert.match(wrapper, /DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\)/);
+test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
+  assert.match(wrapper, /#include "spotify_background_click\.inc"/);
+  assert.doesNotMatch(wrapper, /#define SendInput|#define ExecuteScript/);
   assert.match(helper, /CallDevToolsProtocolMethod\(/);
   assert.match(helper, /L"Input\.dispatchMouseEvent"/);
   assert.match(helper, /mousePressed/);
   assert.match(helper, /mouseReleased/);
-  assert.doesNotMatch(helper, /SetForegroundWindow/);
-  assert.doesNotMatch(helper, /SendInput/);
+  assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('each recovering Spotify slot is expanded even when another slot already keeps global foreground true', () => {
-  assert.match(header, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
-  assert.match(wrapper, /#define RecomputeForeground\(\) RecomputeForegroundAndRefreshSpotifyHostLayout\(\)/);
+test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
   assert.match(
-    helper,
-    /RecomputeForeground\(\);[\s\S]*RefreshSpotifyHostLayout\(\);/,
+    phaseSync,
+    /slot\.playing = false;\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
   );
+  assert.doesNotMatch(header, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
+  assert.doesNotMatch(helper, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
 });
