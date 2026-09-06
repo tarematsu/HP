@@ -31,13 +31,21 @@ test('TVer fullscreen recovery is dirty-state driven', () => {
 });
 
 test('TVer ads restore native speed and release HomePanel fullscreen at the boundary', () => {
-  assert.match(tverStatic, /const adVideoChanged = state\.adVideo !== video/);
-  assert.match(tverStatic, /if \(!state\.adActive \|\| adVideoChanged\)/);
+  assert.match(tverStatic, /const adMediaChanged = state\.adVideo !== video \|\| state\.adIdentity !== identity/);
+  assert.match(tverStatic, /if \(!state\.adActive \|\| adMediaChanged\)/);
   assert.match(tverStatic, /video\.defaultPlaybackRate = 1\.0/);
   assert.match(tverStatic, /video\.playbackRate = 1\.0/);
   assert.match(tverStatic, /document\.exitFullscreen/);
   assert.match(tverStatic, /state\.playbackSettingsApplied = false/);
   assert.match(tverStatic, /state\.fullscreenDirty = true/);
+});
+
+test('TVer ad state ends when the media identity changes', () => {
+  assert.match(tverStatic, /const mediaIdentity = video =>/);
+  assert.match(tverStatic, /video\.currentSrc \|\| video\.src/);
+  assert.match(tverStatic, /state\.adIdentity && identity && state\.adIdentity !== identity/);
+  assert.match(tverStatic, /state\.adIdentity = identity/);
+  assert.match(tverStatic, /state\.adIdentity = ''/);
 });
 
 test('TVer static script contains no runtime source rewriting helpers', () => {
