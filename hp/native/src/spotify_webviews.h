@@ -26,7 +26,6 @@ class SpotifyWebViews final {
     CatalogTrack,
   };
 
-  // Tagged recent-catalog helpers are implemented outside the class body.
   static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
  private:
@@ -51,14 +50,11 @@ class SpotifyWebViews final {
     ULONGLONG timedRotationCycle = 0;
     ULONGLONG timedStepStartTick = 0;
     ULONGLONG timedCompletionPendingTick = 0;
-    ULONGLONG timedUnhealthySinceTick = 0;
     ULONGLONG lastTimedReconcileTick = 0;
-    ULONGLONG lastTimedObserverArmTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
     size_t timedRandomDIndex = kNoTimedCatalogIndex;
     int unhealthyChecks = 0;
-    int backgroundStallChecks = 0;
     unsigned char timedRotationPosition = 0;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -142,10 +138,8 @@ class SpotifyWebViews final {
   size_t playbackWatchdogIndex_ = 0;
   size_t reconcileIndex_ = 0;
   size_t staggerSlotIndex_ = 0;
-  size_t timedPrioritySlotIndex_ = kAccountCount;
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG youtubeCycleStartTick_ = 0;
-  ULONGLONG timedPriorityUntilTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG timedRandomPairCycle_ = ~0ULL;
   size_t timedBridgeCatalogIndex_ = kNoTimedCatalogIndex;
@@ -161,18 +155,14 @@ class SpotifyWebViews final {
   bool robustSchedulerStarted_ = false;
 };
 
-// tverPhase=false starts a YouTube-hour schedule: BitterBlue at 00:00 and
-// TALKABOUT at 04:00. After TALKABOUT, one random 2025-2026 Sakurazaka46 song
-// bridges the gap without replaying Lonesome rabbit. From 20:00 the music
-// rotation advances on real playback completion:
-// Lonesome rabbit -> random B -> BitterBlue -> random D -> A....
-// Switching to TVer does not reset or stop that rotation; it continues through
-// the TVer hour until the next YouTube phase starts a fresh master cycle.
-// A three-minute watchdog is used only when playback is confirmed unhealthy or
-// remains in a post-track/ad waiting state; healthy/slow-rendering songs are not
-// cut off. Bridge/B/D are drawn from songs newly released in 2025-2026,
-// excluding fixed A/C; B and D are distinct and also avoid that hour's bridge.
-// Six accounts remain offset by 40 seconds for normal heavy recovery work.
+// tverPhase=false starts the YouTube-hour schedule: BitterBlue at 00:00,
+// TALKABOUT at 04:00, one recent-song bridge, then from 20:00 the completion-
+// driven Lonesome rabbit -> random B -> BitterBlue -> random D rotation.
+// The six accounts keep their initial 40-second offsets. After startup, only one
+// WebView at a time gets a recovery-sized viewport and the owner rotates every
+// 15 seconds. There is no parallel background stall scanner. Track completion is
+// event-driven; an ambiguous ad/end state waits and retries the same target rather
+// than skipping it. TVer does not reset an already-running rotation.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
