@@ -193,28 +193,19 @@ test('effective TVer script queues published items at 1.75x, enforces low qualit
   );
 });
 
-test('effective TVer completion path reuses the controller without deleting cookies or caches', () => {
+test('effective TVer completion path is direct and keeps the controller/profile intact', () => {
   assert.match(tverStatic, /state && state\.restartRequested\) return 'restart'/);
   assert.match(mediaPanel, /std::wstring_view\(json\) == L"\\\"restart\\\""/);
-  assert.match(mediaPanel, /RestartTverAfterPlayback\(\)/);
   assert.match(
-    composition,
-    /#define get_Profile\(out\)[\s\S]*AdvanceNativeMediaTverSeries\(\)/,
+    mediaPanel,
+    /RestartTverAfterPlayback\(\) noexcept[\s\S]*StopTverPlaybackMonitor\(\);[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
-  assert.match(
-    composition,
-    /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AddRef\(\) > 0[\s\S]*profile2->Release\(\)[\s\S]*CompleteTverRestart\(\)/,
-  );
-  const clearOverrideStart = composition.indexOf('#define ClearBrowsingData');
-  const clearOverrideEnd = composition.indexOf('#define get_CoreWebView2');
-  assert.notEqual(clearOverrideStart, -1);
-  assert.notEqual(clearOverrideEnd, -1);
-  const clearOverride = composition.slice(clearOverrideStart, clearOverrideEnd);
-  assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
   );
+  assert.doesNotMatch(mediaPanel, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
+  assert.doesNotMatch(composition, /#define get_Profile|#define ClearBrowsingData/);
   assert.doesNotMatch(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void RestartTverAfterPlayback/,
