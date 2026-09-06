@@ -14,5 +14,5 @@ test('TVer Sakura Meets playback is kept at 1.75x after media element changes', 
     mediaPanel,
     /if \(video\.playbackRate !== playbackRate\) video\.playbackRate = playbackRate/,
   );
-  assert.match(mediaPanel, /window\.setInterval\(ensure, 2000\)/);
+  assert.match(mediaPanel, /window\.setInterval\(ensure, 4000\)/);
 });
