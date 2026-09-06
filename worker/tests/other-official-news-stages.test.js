@@ -152,7 +152,7 @@ test('every station finalization queues raw materialization before reconcile or 
     });
     assert.equal(result.next_stage, 'raw-materialize');
     assert.equal(sent[0].stage, 'raw-materialize');
-    assert.equal(sent[0].after_news_check, afterNewsCheck);
+    assert.equal(sent[0].after_news_check, afterNewsCheck ? true : undefined);
   }
 });
 
