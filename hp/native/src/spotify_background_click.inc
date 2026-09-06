@@ -1,11 +1,3 @@
-void SpotifyWebViews::RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept {
-  RecomputeForeground();
-  // Global foreground state can already be true because another Spotify slot
-  // is recovering. Force a per-slot layout refresh as well so the target slot
-  // is expanded before a recovery click is dispatched.
-  RefreshSpotifyHostLayout();
-}
-
 UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   try {
