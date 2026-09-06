@@ -18,6 +18,7 @@ const rotation = readFileSync(
 test('runtime uses one simple scheduler instead of parallel background probing', () => {
   assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
+  assert.match(schedule, /There is no second background watchdog/);
   assert.doesNotMatch(schedule, /BackgroundPlaybackProbe|playbackWatchdogIndex_/);
 });
 
