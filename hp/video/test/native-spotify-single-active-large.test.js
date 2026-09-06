@@ -11,7 +11,7 @@ const click = readFileSync(
   'utf8',
 );
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
   'utf8',
 );
 const header = readFileSync(
@@ -43,26 +43,28 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('40-second owner selection refreshes the prepared recovery slot', () => {
+test('initial account starts remain 40 seconds apart then recovery rotates every 15 seconds', () => {
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 15ULL \* 1000ULL/);
   assert.match(
     schedule,
-    /const size_t scheduledIndex =[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs[\s\S]*% slots_\.size\(\)/,
+    /elapsed < kSpotifyInitialSerialWindowMs[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs/,
   );
   assert.match(
     schedule,
-    /staggerSlotIndex_ != scheduledIndex[\s\S]*staggerSlotIndex_ = scheduledIndex[\s\S]*RefreshSpotifyHostLayout\(\)/,
+    /elapsed - kSpotifyInitialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/,
   );
 });
 
-test('authentication gets one normal 40-second turn instead of blocking the other five accounts for minutes', () => {
-  assert.match(schedule, /kSpotifyAuthenticationHoldMs = kSpotifyTimedSlotOffsetMs/);
+test('authentication gets at most one 40-second hold instead of blocking other accounts', () => {
+  assert.match(schedule, /kSpotifyAuthenticationHoldMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /const bool currentAuthentication =[\s\S]*SlotIsLoginPage/);
   assert.match(schedule, /const bool holdAuthentication =[\s\S]*kSpotifyAuthenticationHoldMs/);
-  assert.match(schedule, /logged-out account must not block recovery/);
+  assert.match(schedule, /!holdAuthentication && !holdRecovery/);
 });
 
-test('each timed tick refreshes layout before returning early for a login page', () => {
+test('each simple scheduler tick refreshes layout before returning for login', () => {
   assert.match(
     schedule,
     /Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*if \(slot\.webview && SlotIsLoginPage\(slot\)\) return;/,
