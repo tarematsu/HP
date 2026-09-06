@@ -7,19 +7,17 @@ const wrapper = readFileSync(
   'utf8',
 );
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
   'utf8',
 );
 const rotation = readFileSync(
-  new URL('../../native/src/spotify_simple_rotation.inc', import.meta.url),
+  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
 );
 
-test('runtime uses the simple scheduler instead of parallel background probing', () => {
-  assert.match(wrapper, /#include "spotify_simple_rotation\.inc"/);
-  assert.match(wrapper, /#include "spotify_simple_schedule\.inc"/);
-  assert.doesNotMatch(wrapper, /spotify_timed_end_rotation\.inc/);
-  assert.doesNotMatch(wrapper, /spotify_stagger_schedule\.inc/);
+test('runtime uses one simple scheduler instead of parallel background probing', () => {
+  assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
+  assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.doesNotMatch(schedule, /BackgroundPlaybackProbe|playbackWatchdogIndex_/);
 });
 
