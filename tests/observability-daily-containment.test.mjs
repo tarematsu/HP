@@ -229,6 +229,24 @@ test('current runaway pace remains an active daily-usage incident', () => {
   assert.doesNotMatch(triage, /Historical daily D1 breach/);
 });
 
+test('pace classification tolerates one minute of scheduler jitter around the 20-minute target', () => {
+  const accepted = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody: previousIssue({ generatedAt: '2026-07-27T13:09:12.647Z' }),
+    generatedAt,
+  });
+  assert.equal(accepted.rowsRead?.elapsedSeconds, 1_170);
+  assert.equal(accepted.rowsWritten?.elapsedSeconds, 1_170);
+
+  const rejected = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody: previousIssue({ generatedAt: '2026-07-27T13:09:43.647Z' }),
+    generatedAt,
+  });
+  assert.equal(rejected.rowsRead, null);
+  assert.equal(rejected.rowsWritten, null);
+});
+
 test('trend classification fails closed across UTC dates or short samples', () => {
   assert.equal(classifyDailyRowsReadTrend({
     currentSummary: summaries.daily,
