@@ -117,18 +117,22 @@ test('TVer survey modal is dismissed by its close button', () => {
   assert.match(composition, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
-test('TVer ads run at native settings without HomePanel playback or fullscreen interference', () => {
+test('TVer ads run at native speed without repeated playback or fullscreen interference', () => {
   assert.match(tverAdGuard, /isTverAdvertisementActive/);
   assert.match(tverAdGuard, /aria-label\*=\"広告\"/);
   assert.match(tverAdGuard, /duration >= 5 && duration <= 65/);
+  assert.match(tverAdGuard, /const adVideoChanged = state\.adVideo !== video/);
+  assert.match(tverAdGuard, /if \(!state\.adActive \|\| adVideoChanged\)/);
   assert.match(tverAdGuard, /state\.adActive = true/);
   assert.match(tverAdGuard, /window\.__homePanelTverAdActive = true/);
   assert.match(tverAdGuard, /video\.defaultPlaybackRate = 1\.0/);
   assert.match(tverAdGuard, /video\.playbackRate !== 1\.0/);
-  assert.match(tverAdGuard, /document\.exitFullscreen \|\| document\.webkitExitFullscreen/);
+  assert.doesNotMatch(tverAdGuard, /document\.exitFullscreen/);
   assert.match(tverAdGuard, /state\.adActive = false/);
   assert.match(tverAdGuard, /state\.maxDuration = 0/);
   assert.match(tverAdGuard, /state\.maxTime = 0/);
+  assert.match(tverAdGuard, /state\.playbackSettingsApplied = false/);
+  assert.match(tverAdGuard, /state\.fullscreenDirty = true/);
   assert.match(tverAdGuard, /state && state\.adActive/);
   assert.match(tverAdGuard, /return null/);
   assert.match(tverAdGuard, /NativeMediaTverForceFullscreenAdSafeScript/);
@@ -136,6 +140,18 @@ test('TVer ads run at native settings without HomePanel playback or fullscreen i
     trustedInput,
     /ExecuteScript\(\s*NativeMediaTverForceFullscreenAdSafeScript\(\)/,
   );
+});
+
+test('TVer main-content speed and fullscreen are reapplied only when state becomes dirty', () => {
+  assert.match(tverAdGuard, /playbackSettingsApplied/);
+  assert.match(tverAdGuard, /if \(!state\.playbackSettingsApplied\)/);
+  assert.match(tverAdGuard, /state\.playbackSettingsApplied = true/);
+  assert.match(tverAdGuard, /addEventListener\('ratechange'/);
+  assert.match(tverAdGuard, /fullscreenDirty/);
+  assert.match(tverAdGuard, /addEventListener\('fullscreenchange'/);
+  assert.match(tverAdGuard, /state && state\.fullscreenDirty === false/);
+  assert.match(tverAdGuard, /if \(state\) state\.fullscreenDirty = false/);
+  assert.match(tverAdGuard, /ReplaceNativeMediaSnippet/);
 });
 
 test('hidden YouTube and TVer use trusted WebView2 input without moving the OS cursor', () => {
