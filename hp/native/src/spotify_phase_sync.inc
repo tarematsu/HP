@@ -7,13 +7,22 @@ constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr int kSpotifyRobustReloadThreshold = 30;
 
+bool SpotifyUrlStartsWith(std::wstring_view value,
+                          std::wstring_view prefix) noexcept {
+  if (value.size() < prefix.size()) return false;
+  for (size_t i = 0; i < prefix.size(); ++i) {
+    if (towlower(value[i]) != towlower(prefix[i])) return false;
+  }
+  return true;
+}
+
 bool IsSpotifyLoginSource(std::wstring_view source) noexcept {
-  return StartsWithInsensitive(source, L"https://accounts.spotify.com/") ||
-         StartsWithInsensitive(source, L"https://open.spotify.com/login");
+  return SpotifyUrlStartsWith(source, L"https://accounts.spotify.com/") ||
+         SpotifyUrlStartsWith(source, L"https://open.spotify.com/login");
 }
 
 bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
-  return StartsWithInsensitive(source, L"https://open.spotify.com/");
+  return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
 }
 
 }  // namespace
