@@ -25,15 +25,15 @@ function handleFromEnv(env) {
   return String(env?.SOLO_BROADCAST_HANDLE || DEFAULT_HANDLE).trim().toLowerCase() || DEFAULT_HANDLE;
 }
 
-function parseRawJson(value, label) {
+function parseRawJson(value, label, { allowArray = false } = {}) {
   let parsed;
   try {
     parsed = JSON.parse(String(value || ''));
   } catch (error) {
     throw new Error(`${label} raw JSON parse failed: ${String(error?.message || error)}`);
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${label} raw JSON root is not an object`);
+  if (!parsed || typeof parsed !== 'object' || (!allowArray && Array.isArray(parsed))) {
+    throw new Error(`${label} raw JSON root has an unsupported shape`);
   }
   return parsed;
 }
@@ -132,15 +132,17 @@ async function openRawSession(env, handle, station, main, observedAt) {
 
 async function closeRawSession(env, session, station, main, observedAt, reason) {
   const profile = profileFromStation(station, handleFromEnv(env));
+  const status = session?.status === 'provisional' ? 'cancelled' : 'ended';
   await writeEvent(env, 'solo_session_close', {
     session_id: Number(session.id),
     ended_at: observedAt,
-    status: 'ended',
+    status,
     end_reason: reason,
     total_listens_end: finite(main?.total_listens ?? station?.total_listens),
     followers_end: profile?.followers ?? null,
     total_streams_end: profile?.total_streams ?? null,
   }, observedAt);
+  return status;
 }
 
 async function inactiveConfirmed(env, minute, count) {
@@ -194,33 +196,47 @@ async function saveStationMinute(env, sessionId, handle, station, main, queue, o
   }, observedAt);
 }
 
-async function saveTrackPresentation(env, sessionId, queue) {
+async function saveTrackMetadataMinute(env, sessionId, queue, observedAt) {
   if (!queue?.tracks?.length) return 0;
-  const statements = queue.tracks.map((track) => env.OTHER_DB.prepare(`UPDATE sh_host_queue_items SET
-      apple_music_id=COALESCE(?,apple_music_id),
-      title=COALESCE(?,title),artist=COALESCE(?,artist),album_name=COALESCE(?,album_name),
-      thumbnail_url=COALESCE(?,thumbnail_url),bite_count=COALESCE(?,bite_count)
-    WHERE session_id=? AND position=?
-      AND COALESCE(queue_id,-1)=COALESCE(?,-1)
-      AND ((queue_start_time=? ) OR (queue_start_time IS NULL AND ? IS NULL))`)
+  const statements = queue.tracks.map((track) => env.OTHER_DB.prepare(`INSERT INTO sh_sakurazaka46jp_track_metadata (
+      session_id,observed_at,station_id,queue_id,queue_start_time,position,
+      queue_track_id,stationhead_track_id,spotify_id,apple_music_id,deezer_id,isrc,
+      duration_ms,preview_url,bite_count,title,artist,album_name,thumbnail_url
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    ON CONFLICT(session_id,observed_at,position) DO UPDATE SET
+      station_id=excluded.station_id,queue_id=excluded.queue_id,
+      queue_start_time=excluded.queue_start_time,queue_track_id=excluded.queue_track_id,
+      stationhead_track_id=excluded.stationhead_track_id,spotify_id=excluded.spotify_id,
+      apple_music_id=excluded.apple_music_id,deezer_id=excluded.deezer_id,isrc=excluded.isrc,
+      duration_ms=excluded.duration_ms,preview_url=excluded.preview_url,
+      bite_count=excluded.bite_count,title=excluded.title,artist=excluded.artist,
+      album_name=excluded.album_name,thumbnail_url=excluded.thumbnail_url`)
     .bind(
+      sessionId,
+      observedAt,
+      queue.station_id,
+      queue.queue_id,
+      queue.start_time,
+      track.position,
+      track.queue_track_id,
+      track.stationhead_track_id,
+      track.spotify_id,
       track.apple_music_id,
+      track.deezer_id,
+      track.isrc,
+      track.duration_ms,
+      track.preview_url,
+      track.bite_count,
       track.title,
       track.artist,
       track.album_name,
       track.thumbnail_url,
-      track.bite_count,
-      sessionId,
-      track.position,
-      queue.queue_id,
-      queue.start_time,
-      queue.start_time,
     ));
   try {
     await env.OTHER_DB.batch(statements);
     return statements.length;
   } catch (error) {
-    if (/no such column/i.test(String(error?.message || ''))) {
+    if (/no such table/i.test(String(error?.message || ''))) {
       console.warn(JSON.stringify({
         event: 'sakurazaka_raw_track_metadata_schema_pending',
         error: String(error?.message || error).slice(0, 300),
@@ -239,13 +255,13 @@ async function saveQueueMinute(env, sessionId, queue, observedAt) {
     queue_hash: hash,
     ...queue,
   }, observedAt);
-  const metadata = await saveTrackPresentation(env, sessionId, queue);
+  const metadata = await saveTrackMetadataMinute(env, sessionId, queue, observedAt);
   return { saved: true, metadata };
 }
 
 async function saveChatMinute(env, sessionId, stationId, chat, observedAt) {
   if (!chat?.raw_json) return { saved: false, accepted: 0 };
-  const payload = parseRawJson(chat.raw_json, 'Sakurazaka chat');
+  const payload = parseRawJson(chat.raw_json, 'Sakurazaka chat', { allowArray: true });
   const comments = normalizeComments(payload, stationId);
   const result = await writeEvent(env, 'solo_comments', {
     session_id: sessionId,
@@ -322,8 +338,7 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
   } else {
     const endPolls = positive(env.OFFICIAL_NEWS_END_CONFIRM_POLLS, 2);
     if (await inactiveConfirmed(env, minute, endPolls)) {
-      await closeRawSession(env, session, station, main, observedAt, 'not_broadcasting');
-      session.status = 'ended';
+      session.status = await closeRawSession(env, session, station, main, observedAt, 'not_broadcasting');
     }
   }
 
