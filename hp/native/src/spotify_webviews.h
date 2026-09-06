@@ -84,7 +84,6 @@ class SpotifyWebViews final {
   void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
-  void RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept;
   bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
   void NavigateTimedSlot(Slot& slot) noexcept;
   void ReconcileTimedSlot(Slot& slot) noexcept;
