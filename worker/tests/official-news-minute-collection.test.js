@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { scheduleTimes } from '../src/official-news-html.js';
@@ -52,19 +52,52 @@ test('main and chat save stages persist response text without Worker JSON proces
   assert.match(chat, /sh_sakurazaka46jp_chat/);
 });
 
-test('authentication, raw saves, D1 decode, chat save, and finalization are separate Queue stages', () => {
+test('raw-derived materialization is a separate Queue stage after every collected minute', () => {
   const source = readFileSync(new URL('../src/other-official-news-stages.js', import.meta.url), 'utf8');
-  for (const stage of ['station-auth', 'station-main', 'station-decode', 'station-chat', 'station-finalize']) {
+  for (const stage of [
+    'station-auth', 'station-main', 'station-decode', 'station-chat',
+    'station-finalize', 'raw-materialize',
+  ]) {
     assert.match(source, new RegExp(`['"]${stage}['"]`));
+  }
+  assert.match(source, /runStationFinalize[\s\S]*sendStage\(env, 'raw-materialize'/);
+});
+
+test('raw materializer reads saved raw only and performs no Stationhead fetch', () => {
+  const source = readFileSync(new URL('../src/sakurazaka-raw-materializer.js', import.meta.url), 'utf8');
+  assert.match(source, /FROM sh_sakurazaka46jp_main/);
+  assert.match(source, /FROM sh_sakurazaka46jp_chat/);
+  assert.match(source, /solo_station_snapshot/);
+  assert.match(source, /solo_queue/);
+  assert.match(source, /solo_comments/);
+  assert.doesNotMatch(source, /\bfetch\s*\(|stationRequest|\/guest|chatHistory\?/);
+  assert.equal(existsSync(new URL('../src/sakurazaka-monitor.js', import.meta.url)), false);
+});
+
+test('raw-derived queue normalization preserves Buddies-equivalent track fields', () => {
+  const source = readFileSync(new URL('../src/cloud-host-monitor-normalize.js', import.meta.url), 'utf8');
+  for (const field of [
+    'spotify_id', 'apple_music_id', 'deezer_id', 'isrc', 'duration_ms', 'preview_url',
+    'bite_count', 'title', 'artist', 'album_name', 'thumbnail_url',
+  ]) {
+    assert.match(source, new RegExp(`\\b${field}\\b`));
   }
 });
 
-test('HP migration 016 owns minute raw tables', () => {
-  const migration = readFileSync(
+test('HP migrations own minute raw tables and derived track metadata', () => {
+  const rawMigration = readFileSync(
     new URL('../../database/other-migrations/016_sakurazaka46jp_raw_collection.sql', import.meta.url),
     'utf8',
   );
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_main/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat/);
-  assert.match(migration, /raw_json TEXT NOT NULL/);
+  assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_main/);
+  assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat/);
+  assert.match(rawMigration, /raw_json TEXT NOT NULL/);
+
+  const derivedMigration = readFileSync(
+    new URL('../../database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', import.meta.url),
+    'utf8',
+  );
+  for (const column of ['title', 'artist', 'album_name', 'thumbnail_url']) {
+    assert.match(derivedMigration, new RegExp(`ADD COLUMN ${column} TEXT`));
+  }
 });
