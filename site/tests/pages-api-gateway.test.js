@@ -106,15 +106,21 @@ function otherDb() {
               active_count: 1,
             };
           }
-          if (sql.includes('sh_cloud_host_monitor_state')) {
-            assert.equal(this.args[0], 'solo:sakurazaka46jp');
+          if (sql.includes('FROM sh_sakurazaka46jp_main')) {
             return {
-              phase: 'idle',
-              session_id: null,
-              station_id: null,
-              last_success_at: NOW - 60_000,
-              last_error: null,
-              updated_at: NOW - 60_000,
+              observed_at: NOW - 60_000,
+              station_id: 777,
+              is_broadcasting: 1,
+            };
+          }
+          if (sql.includes('FROM sh_host_broadcast_sessions')) {
+            assert.equal(this.args[0], 'sakurazaka46jp');
+            return {
+              id: 7,
+              status: 'active',
+              station_id: 777,
+              last_observed_at: NOW - 60_000,
+              ended_at: null,
             };
           }
           throw new Error(`unexpected health SQL: ${sql}`);
@@ -162,6 +168,7 @@ test('unified Pages health combines all health components behind one URL', async
   assert.deepEqual(payload.components.minute.tasks.map(({ task_name: task }) => task), ACTIVE_MINUTE_TASKS);
   assert.equal(payload.components.runtime.ok, true);
   assert.equal(payload.components.sakurazaka46jp.official_news.upcoming_count, 2);
+  assert.equal(payload.components.sakurazaka46jp.raw_materializer.session_status, 'active');
 
   const response = await withFixedNow(() => healthRequest({
     request: new Request('https://example.com/api/health'),
@@ -203,7 +210,8 @@ test('minute, runtime, and Sakurazaka health preserve component semantics', asyn
 
   const sakurazaka = await readSakurazakaHealth(env, NOW);
   assert.equal(sakurazaka.ok, true);
-  assert.equal(sakurazaka.solo_monitor.phase, 'idle');
+  assert.equal(sakurazaka.raw_materializer.session_status, 'active');
+  assert.equal(sakurazaka.raw_materializer.raw_age_ms, 60_000);
 });
 
 test('minute backlog policy ignores retired sync state and prevents hypersensitive config drift', async () => {
