@@ -37,3 +37,7 @@
       (count), (inputs), (inputSize))
 
 #include "media_section_base.inc"
+
+#undef SendInput
+#undef SetTimer
+#undef ExecuteScript
