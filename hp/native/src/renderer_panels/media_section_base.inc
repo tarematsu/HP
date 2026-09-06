@@ -694,30 +694,8 @@ class NativeMediaPanelHost final {
     if (phase_ != Phase::Tver || !webview_ || tverRestarting_) return;
     tverRestarting_ = true;
     StopTverPlaybackMonitor();
-    ComPtr<ICoreWebView2_13> webview13;
-    ComPtr<ICoreWebView2Profile> profile;
-    ComPtr<ICoreWebView2Profile2> profile2;
-    if (FAILED(webview_.As(&webview13)) || !webview13 ||
-        FAILED(webview13->get_Profile(&profile)) || !profile ||
-        FAILED(profile.As(&profile2)) || !profile2) {
-      CompleteTverRestart();
-      return;
-    }
-
-    const auto dataKinds = static_cast<COREWEBVIEW2_BROWSING_DATA_KINDS>(
-        COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE |
-        COREWEBVIEW2_BROWSING_DATA_KINDS_CACHE_STORAGE);
-    const auto alive = alive_;
-    const HRESULT started = profile2->ClearBrowsingData(
-        dataKinds,
-        Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
-            [this, alive](HRESULT) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
-              CompleteTverRestart();
-              return S_OK;
-            }).Get());
-    if (FAILED(started)) CompleteTverRestart();
+    AdvanceNativeMediaTverSeries();
+    CompleteTverRestart();
   }
 
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept {
