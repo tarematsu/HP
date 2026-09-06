@@ -35,15 +35,8 @@ test('main response decoding is delegated to D1 JSON functions', () => {
 test('main and chat save stages persist response text without Worker JSON processing', () => {
   const source = readFileSync(new URL('../src/official-news-probe.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /response\.json\(/);
-
-  const main = source.slice(
-    source.indexOf('export async function collectStationMain'),
-    source.indexOf('export async function decodeStationMain'),
-  );
-  const chat = source.slice(
-    source.indexOf('export async function collectStationChat'),
-    source.indexOf('function probeStatement'),
-  );
+  const main = source.slice(source.indexOf('export async function collectStationMain'), source.indexOf('export async function decodeStationMain'));
+  const chat = source.slice(source.indexOf('export async function collectStationChat'), source.indexOf('function probeStatement'));
   assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|json_(?:valid|extract)/);
   assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|json_(?:valid|extract)/);
   assert.match(main, /rawText/);
@@ -54,10 +47,7 @@ test('main and chat save stages persist response text without Worker JSON proces
 
 test('raw-derived materialization is a separate Queue stage after every collected minute', () => {
   const source = readFileSync(new URL('../src/other-official-news-stages.js', import.meta.url), 'utf8');
-  for (const stage of [
-    'station-auth', 'station-main', 'station-decode', 'station-chat',
-    'station-finalize', 'raw-materialize',
-  ]) {
+  for (const stage of ['station-auth', 'station-main', 'station-decode', 'station-chat', 'station-finalize', 'raw-materialize']) {
     assert.match(source, new RegExp(`['"]${stage}['"]`));
   }
   assert.match(source, /runStationFinalize[\s\S]*sendStage\(env, 'raw-materialize'/);
@@ -76,28 +66,22 @@ test('raw materializer reads saved raw only and performs no Stationhead fetch', 
 
 test('raw-derived queue normalization preserves Buddies-equivalent track fields', () => {
   const source = readFileSync(new URL('../src/cloud-host-monitor-normalize.js', import.meta.url), 'utf8');
-  for (const field of [
-    'spotify_id', 'apple_music_id', 'deezer_id', 'isrc', 'duration_ms', 'preview_url',
-    'bite_count', 'title', 'artist', 'album_name', 'thumbnail_url',
-  ]) {
+  for (const field of ['spotify_id', 'apple_music_id', 'deezer_id', 'isrc', 'duration_ms', 'preview_url', 'bite_count', 'title', 'artist', 'album_name', 'thumbnail_url']) {
     assert.match(source, new RegExp(`\\b${field}\\b`));
   }
 });
 
-test('HP migrations own minute raw tables and derived track metadata', () => {
-  const rawMigration = readFileSync(
-    new URL('../../database/other-migrations/016_sakurazaka46jp_raw_collection.sql', import.meta.url),
-    'utf8',
-  );
+test('HP migrations own minute raw tables and repeatable per-minute derived track metadata', () => {
+  const rawMigration = readFileSync(new URL('../../database/other-migrations/016_sakurazaka46jp_raw_collection.sql', import.meta.url), 'utf8');
   assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_main/);
   assert.match(rawMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat/);
   assert.match(rawMigration, /raw_json TEXT NOT NULL/);
 
-  const derivedMigration = readFileSync(
-    new URL('../../database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', import.meta.url),
-    'utf8',
-  );
-  for (const column of ['title', 'artist', 'album_name', 'thumbnail_url']) {
-    assert.match(derivedMigration, new RegExp(`ADD COLUMN ${column} TEXT`));
+  const derivedMigration = readFileSync(new URL('../../database/other-migrations/017_sakurazaka_raw_derived_metadata.sql', import.meta.url), 'utf8');
+  assert.match(derivedMigration, /CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_track_metadata/);
+  assert.match(derivedMigration, /PRIMARY KEY\(session_id, observed_at, position\)/);
+  for (const column of ['bite_count', 'title', 'artist', 'album_name', 'thumbnail_url']) {
+    assert.match(derivedMigration, new RegExp(`\\b${column}\\b`));
   }
+  assert.doesNotMatch(derivedMigration, /ALTER TABLE/);
 });
