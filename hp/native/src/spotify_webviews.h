@@ -69,39 +69,22 @@ class SpotifyWebViews final {
 
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
-  static void CALLBACK ReconcileTimerProc(
-      HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
-  static HDWP DeferSpotifyHostWindowPos(
-      HDWP batch, HWND hwnd, HWND insertAfter, int x, int y,
-      int width, int height, UINT flags) noexcept;
-  static BOOL SetSpotifyHostWindowPos(
-      HWND hwnd, HWND insertAfter, int x, int y,
-      int width, int height, UINT flags) noexcept;
 
   bool EnsureHostClass() noexcept;
   bool CreateHost(Slot& slot) noexcept;
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
-  void ArmModeTimer() noexcept;
-  void ArmPlaybackWatchdog() noexcept;
-  void RunPlaybackWatchdog() noexcept;
-  void ToggleMode() noexcept;
-  void NavigateSlotToCurrentMode(Slot& slot) noexcept;
-  void StopLegacySchedulers() noexcept;
   void ArmRobustScheduler() noexcept;
-  void ReconcileDesiredMode() noexcept;
   void BeginControllerCreate(Slot& slot) noexcept;
-  bool SlotWantsPodcast(const Slot& slot) const noexcept;
-  bool SlotMatchesDesiredMode(const Slot& slot) const noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
-  void NavigateSlotRobustly(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
                                     int yTenThousandths) noexcept;
-  const wchar_t* RewriteSpotifyPhaseExecuteScript(const wchar_t* script) noexcept;
+  void PostSpotifyPageContext(Slot& slot) noexcept;
+  void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
   void RecomputeForegroundAndRefreshSpotifyHostLayout() noexcept;
   bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
@@ -127,7 +110,6 @@ class SpotifyWebViews final {
   void RecomputeForeground() noexcept;
   void PlaceHosts(bool foreground) noexcept;
   void CloseSlot(Slot& slot) noexcept;
-  void SetPodcastModeImmediate(bool podcastWindowActive) noexcept;
   void RunStaggeredReconcile() noexcept;
 
   HWND parentWindow_ = nullptr;
@@ -135,8 +117,6 @@ class SpotifyWebViews final {
   std::array<Slot, kAccountCount> slots_{};
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
-  size_t playbackWatchdogIndex_ = 0;
-  size_t reconcileIndex_ = 0;
   size_t staggerSlotIndex_ = 0;
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG youtubeCycleStartTick_ = 0;
