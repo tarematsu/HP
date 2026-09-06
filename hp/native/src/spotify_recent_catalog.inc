@@ -30,12 +30,10 @@ constexpr wchar_t kSpotifyLonesomeKazokuAlbumPath[] =
     L"/album/04gmidhz5KYYOEqfTJXNmE";
 
 // 2025-2026 に新規リリースされた櫻坂46の通常歌唱曲から、固定Aの
-// Lonesome rabbit と固定Bの放課後BitterBlueを除いた候補。2026-09-06
-// 時点で未発売の16th『愛MUST BE』は含めない。既発曲の再収録、
-// Interlude、OFF VOCAL、Remixも対象外。
+// Lonesome rabbit と固定Cの放課後BitterBlueを除いた候補。可変値は
+// JavaScriptへ埋め込まず、WebView2 messageで静的スクリプトへ渡す。
 constexpr std::array<SpotifyRecentCatalogTrack, 35>
     kSpotifyRecentCatalogTracks = {{
-    // 2025 11th: UDAGAWA GENERATION (7)
     {L"UDAGAWA GENERATION",
      L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F",
      L"/track/4ljk3qMzdU81kWzxcNix3F",
@@ -64,14 +62,10 @@ constexpr std::array<SpotifyRecentCatalogTrack, 35>
      L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU",
      L"/track/6GF0ZgT8wlksWrlLTfGmlU",
      L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
-
-    // 2025 2nd Album: new song only (1)
     {L"Addiction",
      L"https://open.spotify.com/track/4HCPWhwMu93z1jnpxw5OGM",
      L"/track/4HCPWhwMu93z1jnpxw5OGM",
      L"/track/4HCPWhwMu93z1jnpxw5OGM"},
-
-    // 2025 12th: Make or Break (7)
     {L"Make or Break", kSpotifyMakeOrBreakAlbumUrl,
      kSpotifyMakeOrBreakAlbumPath, L""},
     {L"死んだふり", kSpotifyMakeOrBreakAlbumUrl,
@@ -86,8 +80,6 @@ constexpr std::array<SpotifyRecentCatalogTrack, 35>
      kSpotifyMakeOrBreakAlbumPath, L""},
     {L"ノンアルコール", kSpotifyMakeOrBreakAlbumUrl,
      kSpotifyMakeOrBreakAlbumPath, L""},
-
-    // 2025 13th: Unhappy birthday構文 (7)
     {L"Unhappy birthday構文", kSpotifyUnhappyBirthdayAlbumUrl,
      kSpotifyUnhappyBirthdayAlbumPath, L""},
     {L"Alter ego", kSpotifyUnhappyBirthdayAlbumUrl,
@@ -102,8 +94,6 @@ constexpr std::array<SpotifyRecentCatalogTrack, 35>
      kSpotifyUnhappyBirthdayAlbumPath, L""},
     {L"夜空で一番輝いてる星の名前を僕は知らない",
      kSpotifyUnhappyBirthdayAlbumUrl, kSpotifyUnhappyBirthdayAlbumPath, L""},
-
-    // 2026 14th: The growing up train (7)
     {L"The growing up train", kSpotifyGrowingUpTrainAlbumUrl,
      kSpotifyGrowingUpTrainAlbumPath, L""},
     {L"光源", kSpotifyGrowingUpTrainAlbumUrl,
@@ -118,8 +108,6 @@ constexpr std::array<SpotifyRecentCatalogTrack, 35>
      kSpotifyGrowingUpTrainAlbumPath, L""},
     {L"僕は向いてない", kSpotifyGrowingUpTrainAlbumUrl,
      kSpotifyGrowingUpTrainAlbumPath, L""},
-
-    // 2026 15th: Lonesome rabbit / What's "KAZOKU"? (Aを除く6)
     {L"What's \"KAZOKU\"?", kSpotifyLonesomeKazokuAlbumUrl,
      kSpotifyLonesomeKazokuAlbumPath, L""},
     {L"コインランドリー", kSpotifyLonesomeKazokuAlbumUrl,
@@ -156,161 +144,6 @@ const SpotifyRecentCatalogTrack* RecentTimedCatalogTrack(size_t value) noexcept 
   return &kSpotifyRecentCatalogTracks[index];
 }
 
-std::wstring EscapeRecentScriptLiteral(std::wstring_view value) {
-  std::wstring escaped;
-  escaped.reserve(value.size() + 8);
-  for (const wchar_t ch : value) {
-    if (ch == L'\\' || ch == L'\'') escaped.push_back(L'\\');
-    escaped.push_back(ch);
-  }
-  return escaped;
-}
-
-std::wstring BuildRecentTrackScript(const SpotifyRecentCatalogTrack& track) {
-  const std::wstring pagePath = EscapeRecentScriptLiteral(track.pagePath);
-  const std::wstring trackPath = EscapeRecentScriptLiteral(track.trackPath);
-  const std::wstring title = EscapeRecentScriptLiteral(track.title);
-  std::wstring script = LR"JS(
-(() => {
-  const pagePath = ')JS";
-  script += pagePath;
-  script += LR"JS(';
-  const targetPath = ')JS";
-  script += trackPath;
-  script += LR"JS(';
-  const targetTitle = ')JS";
-  script += title;
-  script += LR"JS('.toLowerCase();
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const visible = element => {
-    if (!element || element.disabled ||
-        element.getAttribute('aria-disabled') === 'true') return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
-  };
-  const labelOf = element => normalize(
-      (element && (element.getAttribute('aria-label') ||
-                   element.getAttribute('title'))) || '').toLowerCase();
-  const buttonShowsPlaying = button => {
-    const label = labelOf(button);
-    return label.includes('pause') || label.includes('一時停止');
-  };
-  const currentTrack = () => {
-    const selectors = [
-      '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="context-item-link"][href*="/track/"]'
-    ];
-    for (const selector of selectors) {
-      const link = document.querySelector(selector);
-      if (!link) continue;
-      try {
-        const path = new URL(link.href, location.href).pathname;
-        if (!path.startsWith('/track/')) continue;
-        const text = normalize(link.textContent).toLowerCase();
-        return { path, title: text };
-      } catch (_) {}
-    }
-    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    return {
-      path: '',
-      title: normalize(metadata && metadata.title).toLowerCase()
-    };
-  };
-  const targetMatches = track => targetPath
-      ? track.path === targetPath
-      : track.title === targetTitle;
-  const playerControl = () => {
-    const primary = document.querySelector(
-        'button[data-testid="control-button-playpause"]');
-    if (visible(primary)) return primary;
-    return Array.from(document.querySelectorAll('button, [role="button"]'))
-        .find(button => {
-          if (!visible(button)) return false;
-          const label = labelOf(button);
-          return label === 'play' || label === 'pause' ||
-                 label === '再生' || label === '一時停止';
-        }) || null;
-  };
-  const targetLink = () => Array.from(
-      document.querySelectorAll('a[href*="/track/"]')).find(link => {
-        try {
-          const path = new URL(link.href, location.href).pathname;
-          if (targetPath && path === targetPath) return true;
-          return !targetPath &&
-              normalize(link.textContent).toLowerCase() === targetTitle;
-        } catch (_) { return false; }
-      }) || null;
-  const targetPlayButton = () => {
-    const link = targetLink();
-    if (link) {
-      const row = link.closest(
-          '[data-testid="tracklist-row"], [role="row"], li, [aria-rowindex]') ||
-          link.parentElement?.parentElement;
-      if (row) {
-        const buttons = Array.from(row.querySelectorAll(
-            'button[data-testid="play-button"], button, [role="button"]'));
-        const button = buttons.find(candidate => {
-          if (!visible(candidate)) return false;
-          const label = labelOf(candidate);
-          return label === 'play' || label === '再生' ||
-                 label === 'pause' || label === '一時停止' ||
-                 label.includes(targetTitle);
-        });
-        if (button) return button;
-      }
-    }
-    return Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]')).find(visible) || null;
-  };
-  const point = element => {
-    if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
-      return null;
-    }
-    try { element.scrollIntoView({ block: 'center', inline: 'nearest' }); }
-    catch (_) {}
-    const rect = element.getBoundingClientRect();
-    if (rect.bottom <= 0 || rect.right <= 0 ||
-        rect.top >= window.innerHeight || rect.left >= window.innerWidth) {
-      return null;
-    }
-    return [
-      Math.max(0, Math.min(10000, Math.round(
-          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-      Math.max(0, Math.min(10000, Math.round(
-          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-    ];
-  };
-  const report = playing => {
-    if (window.chrome && window.chrome.webview) {
-      window.chrome.webview.postMessage(
-          playing ? 'spotify:playing' : 'spotify:not-playing');
-    }
-  };
-
-  if (location.hostname !== 'open.spotify.com' ||
-      location.pathname !== pagePath) {
-    report(false);
-    return null;
-  }
-
-  const current = currentTrack();
-  const control = playerControl();
-  const button = targetPlayButton();
-  if ((targetMatches(current) && buttonShowsPlaying(control)) ||
-      buttonShowsPlaying(button)) {
-    report(true);
-    return true;
-  }
-
-  report(false);
-  if (targetMatches(current) && visible(control)) return point(control);
-  return point(button);
-})()
-)JS";
-  return script;
-}
 }  // namespace
 
 size_t SpotifyWebViews::PickRecentCatalogIndex(
@@ -339,11 +172,9 @@ size_t SpotifyWebViews::PickRecentCatalogIndex(
     if (encoded != avoidIndex && encoded != secondAvoidIndex) return encoded;
   }
 
-  size_t index = 0;
-  while (index < count) {
+  for (size_t index = 0; index < count; ++index) {
     const size_t encoded = EncodeRecentCatalogIndex(index);
     if (encoded != avoidIndex && encoded != secondAvoidIndex) return encoded;
-    ++index;
   }
   return kNoTimedCatalogIndex;
 }
@@ -391,7 +222,6 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   slot.unhealthyChecks = 0;
   slot.playing = false;
   SetSpotifyOutputMuted(slot.webview);
-  slot.webview->ExecuteScript(kSpotifyClearLegacyEnsureScript, nullptr);
   RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(track->url);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
@@ -428,13 +258,13 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
   slot.lastModeNavigateTick = 0;
   if (slot.reconcileInFlight) return;
 
-  const std::wstring script = BuildRecentTrackScript(*track);
+  PostSpotifyTargetDescriptorForSlot(slot);
   slot.reconcileInFlight = true;
   const size_t requestedCatalogIndex = slot.timedCatalogIndex;
   Slot* const target = &slot;
   const auto alive = alive_;
   const HRESULT started = slot.webview->ExecuteScript(
-      script.c_str(),
+      kSpotifyStaticTrackReconcileScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
           [this, alive, target, requestedCatalogIndex](
               HRESULT result, LPCWSTR json) -> HRESULT {
@@ -509,6 +339,57 @@ void SpotifyWebViews::ReconcileActiveTimedSlot(Slot& slot) noexcept {
     return;
   }
   ReconcileTimedSlot(slot);
+}
+
+void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
+  if (!slot.webview) return;
+
+  std::wstring_view pagePath;
+  std::wstring_view trackPath;
+  std::wstring_view title;
+  std::wstring_view kind = L"none";
+
+  switch (slot.timedTarget) {
+    case TimedSpotifyTarget::BitterBlue:
+      pagePath = kSpotifyBitterBluePath;
+      trackPath = kSpotifyBitterBluePath;
+      title = kSpotifyBitterBlueTitle;
+      kind = L"music";
+      break;
+    case TimedSpotifyTarget::TalkAbout:
+      pagePath = kSpotifyTalkAboutShowPath;
+      kind = L"podcast";
+      break;
+    case TimedSpotifyTarget::LonesomeRabbit:
+      pagePath = kSpotifyLonesomeRabbitPath;
+      title = kSpotifyLonesomeRabbitTitle;
+      kind = L"music";
+      break;
+    case TimedSpotifyTarget::CatalogTrack: {
+      const SpotifyRecentCatalogTrack* track =
+          RecentTimedCatalogTrack(slot.timedCatalogIndex);
+      if (track) {
+        pagePath = track->pagePath;
+        trackPath = track->trackPath;
+        title = track->title;
+        kind = L"music";
+      }
+      break;
+    }
+    case TimedSpotifyTarget::None:
+      break;
+  }
+
+  std::wstring message = L"spotify:target";
+  const auto appendField = [&message](std::wstring_view value) {
+    message.push_back(kSpotifyMessageSeparator);
+    message.append(value);
+  };
+  appendField(pagePath);
+  appendField(trackPath);
+  appendField(title);
+  appendField(kind);
+  slot.webview->PostWebMessageAsString(message.c_str());
 }
 
 }  // namespace hp
