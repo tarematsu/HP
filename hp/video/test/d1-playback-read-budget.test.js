@@ -42,3 +42,13 @@ test('complete playback uses all active saved videos without a 2000-video cap', 
   assert.doesNotMatch(snapshotSource, /PLAYBACK_FEED_LIMIT/);
   assert.doesNotMatch(snapshotSource, /LIMIT \?/);
 });
+
+test('R2 outage fallback snapshots D1 once and reuses the full active set across cursor pages', () => {
+  assert.match(activePlaybackSource, /FALLBACK_CACHE_TTL_MS = 5 \* 60_000/);
+  assert.match(activePlaybackSource, /d1-fallback-v1\.json/);
+  assert.match(activePlaybackSource, /fallbackRowsCaches = new WeakMap\(\)/);
+  assert.match(activePlaybackSource, /readSharedFallbackSnapshot\(\)/);
+  assert.match(activePlaybackSource, /writeSharedFallbackSnapshot\(snapshot\)/);
+  assert.match(activePlaybackSource, /readFallbackSnapshot\(db\)/);
+  assert.match(activePlaybackSource, /fallbackRowsCaches\.delete\(db\)/);
+});
