@@ -77,7 +77,6 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
   started_ = true;
-  foreground_ = true;
   podcastMode_ = false;
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
@@ -361,14 +360,6 @@ bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
-  bool foreground = false;
-  for (const Slot& slot : slots_) foreground = foreground || !slot.playing;
-  foreground_ = foreground;
-  RefreshSpotifyHostLayout();
-}
-
-void SpotifyWebViews::SetForeground(bool foreground) noexcept {
-  foreground_ = foreground;
   RefreshSpotifyHostLayout();
 }
 
@@ -379,8 +370,7 @@ void SpotifyWebViews::Resize() noexcept {
   RefreshSpotifyHostLayout();
 }
 
-void SpotifyWebViews::PlaceHosts(bool foreground) noexcept {
-  (void)foreground;
+void SpotifyWebViews::PlaceHosts() noexcept {
   if (!parentWindow_ || !IsWindow(parentWindow_) || slots_.empty()) return;
 
   RECT client{};
@@ -489,7 +479,6 @@ void SpotifyWebViews::Shutdown() noexcept {
   started_ = false;
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  foreground_ = true;
   podcastMode_ = false;
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
