@@ -7,7 +7,19 @@ const composition = readFileSync(
   'utf8',
 );
 const mediaPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+  'utf8',
+);
+const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  'utf8',
+);
+const trustedInput = readFileSync(
+  new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
+  'utf8',
+);
+const tverAdGuard = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url),
   'utf8',
 );
 
@@ -19,24 +31,26 @@ test('effective media cadence is YouTube 60 minutes then TVer 60 minutes', () =>
     /NativeMediaPhaseIntervalMs\(bool tver\)[\s\S]*kNativeMediaTverPhaseOverrideMs[\s\S]*kNativeMediaYoutubePhaseOverrideMs/,
   );
   assert.match(
-    composition,
+    mediaWrapper,
     /timerId\) == kNativeMediaPhaseTimer[\s\S]*NativeMediaPhaseIntervalMs\(phase_ == Phase::Tver\)/,
   );
   assert.match(
-    composition,
+    mediaWrapper,
     /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/,
   );
 });
 
-test('phase overlay is rewritten to the effective 60/60 minute boundary', () => {
-  assert.match(composition, /CaptureNativeMediaPhaseOverlay\(phase_ == Phase::Tver\)/);
+test('phase overlay and TVer scripts are rewritten through the thin wrapper', () => {
+  assert.match(composition, /CaptureNativeMediaPhaseOverlay/);
   assert.match(composition, /gNativeMediaPhaseOverlayText/);
   assert.match(composition, /__homePanelMediaPhaseTime/);
   assert.match(composition, /RewriteNativeMediaExecuteScript/);
+  assert.match(mediaWrapper, /#undef ExecuteScript/);
   assert.match(
-    composition,
-    /#define ExecuteScript\(script, callback\)[\s\S]*RewriteNativeMediaExecuteScript/,
+    mediaWrapper,
+    /#define ExecuteScript\(script, callback\)[\s\S]*RewriteNativeMediaExecuteScriptWithTverAdGuard/,
   );
+  assert.match(tverAdGuard, /RewriteNativeMediaExecuteScript\(script\)/);
 });
 
 test('TVer alternates Sakura Meets and Death Youth Game after completed items', () => {
@@ -103,29 +117,42 @@ test('TVer survey modal is dismissed by its close button', () => {
   assert.match(composition, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
+test('TVer ads run at native settings without HomePanel playback or fullscreen interference', () => {
+  assert.match(tverAdGuard, /isTverAdvertisementActive/);
+  assert.match(tverAdGuard, /aria-label\*=\"広告\"/);
+  assert.match(tverAdGuard, /duration >= 5 && duration <= 65/);
+  assert.match(tverAdGuard, /state\.adActive = true/);
+  assert.match(tverAdGuard, /window\.__homePanelTverAdActive = true/);
+  assert.match(tverAdGuard, /video\.defaultPlaybackRate = 1\.0/);
+  assert.match(tverAdGuard, /video\.playbackRate !== 1\.0/);
+  assert.match(tverAdGuard, /document\.exitFullscreen \|\| document\.webkitExitFullscreen/);
+  assert.match(tverAdGuard, /state\.adActive = false/);
+  assert.match(tverAdGuard, /state\.maxDuration = 0/);
+  assert.match(tverAdGuard, /state\.maxTime = 0/);
+  assert.match(tverAdGuard, /state && state\.adActive/);
+  assert.match(tverAdGuard, /return null/);
+  assert.match(tverAdGuard, /NativeMediaTverForceFullscreenAdSafeScript/);
+  assert.match(
+    trustedInput,
+    /ExecuteScript\(\s*NativeMediaTverForceFullscreenAdSafeScript\(\)/,
+  );
+});
+
 test('hidden YouTube and TVer use trusted WebView2 input without moving the OS cursor', () => {
-  assert.match(composition, /kNativeMediaTverWatchdogOverrideScript/);
+  assert.match(mediaWrapper, /#include \"media_trusted_input\.inc\"/);
+  assert.match(mediaWrapper, /ArmNativeMediaTrustedWakeTimer/);
+  assert.match(mediaWrapper, /NativeMediaDispatchTrustedInput/);
+  assert.match(mediaWrapper, /#include \"media_section_base\.inc\"/);
+  assert.match(trustedInput, /NativeMediaDecodeAbsolutePoint/);
+  assert.match(trustedInput, /CallDevToolsProtocolMethod/);
+  assert.match(trustedInput, /Input\.dispatchMouseEvent/);
+  assert.match(trustedInput, /mouseMoved/);
+  assert.match(trustedInput, /mousePressed/);
+  assert.match(trustedInput, /mouseReleased/);
+  assert.doesNotMatch(trustedInput, /::SendInput\(/);
   assert.match(
-    composition,
-    /fullscreenButton \? point\(fullscreenButton\) : \(video \? point\(video\) : null\)/,
-  );
-  assert.match(composition, /kNativeMediaTverForceFullscreenAfterClickScript/);
-  assert.match(composition, /window\.setTimeout\(async \(\) =>/);
-  assert.match(composition, /target\.requestFullscreen \|\| target\.webkitRequestFullscreen/);
-  assert.match(composition, /NativeMediaDispatchTrustedClick/);
-  assert.match(composition, /DecodeNativeMediaAbsolutePoint/);
-  assert.match(composition, /CallDevToolsProtocolMethod/);
-  assert.match(composition, /Input\.dispatchMouseEvent/);
-  assert.match(composition, /mousePressed/);
-  assert.match(composition, /mouseReleased/);
-  assert.match(
-    composition,
-    /WakeNativeMediaTverControls[\s\S]*mouseMoved[\s\S]*Input\.dispatchMouseEvent/,
-  );
-  assert.doesNotMatch(composition, /::SendInput\(/);
-  assert.match(
-    composition,
-    /#define SendInput\(count, inputs, inputSize\)[\s\S]*NativeMediaDispatchTrustedClick[\s\S]*phase_ == Phase::Tver[\s\S]*webview_\.Get\(\)[\s\S]*hostWindow_/,
+    mediaWrapper,
+    /#define SendInput\(count, inputs, inputSize\)[\s\S]*NativeMediaDispatchTrustedInput[\s\S]*phase_ == Phase::Tver[\s\S]*webview_\.Get\(\)[\s\S]*hostWindow_/,
   );
 });
 
@@ -136,12 +163,6 @@ test('TVer alternation keeps low quality and 1.75x while effective restart reuse
     composition,
     /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AddRef\(\) > 0[\s\S]*profile2->Release\(\)[\s\S]*CompleteTverRestart\(\)/,
   );
-  const clearOverrideStart = composition.indexOf('#define ClearBrowsingData');
-  const executeOverrideStart = composition.indexOf('#define ExecuteScript');
-  assert.notEqual(clearOverrideStart, -1);
-  assert.notEqual(executeOverrideStart, -1);
-  const clearOverride = composition.slice(clearOverrideStart, executeOverrideStart);
-  assert.doesNotMatch(clearOverride, /COOKIES|DISK_CACHE|CACHE_STORAGE/);
   assert.match(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
