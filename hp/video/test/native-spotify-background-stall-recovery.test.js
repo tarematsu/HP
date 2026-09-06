@@ -2,72 +2,63 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+const wrapper = readFileSync(
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
+  'utf8',
+);
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
   'utf8',
 );
-const ended = readFileSync(
-  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
-  'utf8',
-);
-const header = readFileSync(
-  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+const rotation = readFileSync(
+  new URL('../../native/src/spotify_simple_rotation.inc', import.meta.url),
   'utf8',
 );
 
-test('all six active Spotify windows get a lightweight serialized stall probe', () => {
-  assert.match(schedule, /kSpotifyBackgroundPlaybackProbeScript/);
-  assert.match(schedule, /playbackWatchdogIndex_\+\+ % slots_\.size\(\)/);
-  assert.match(schedule, /__homePanelSpotifyBackgroundProbe/);
-  assert.match(schedule, /Math\.abs\(currentTime - state\.time\) < 0\.25/);
-  assert.match(schedule, /return 'stalled'/);
-  assert.match(schedule, /probe\.timedTarget != TimedSpotifyTarget::None/);
-  assert.match(schedule, /completedPrelude/);
-  assert.match(schedule, /completedBridge/);
-  assert.match(schedule, /timedPrioritySlotIndex_ = target->index/);
-  assert.match(schedule, /detectedAt \+ kSpotifyTimedPriorityHoldMs/);
+test('runtime uses the simple scheduler instead of parallel background probing', () => {
+  assert.match(wrapper, /#include "spotify_simple_rotation\.inc"/);
+  assert.match(wrapper, /#include "spotify_simple_schedule\.inc"/);
+  assert.doesNotMatch(wrapper, /spotify_timed_end_rotation\.inc/);
+  assert.doesNotMatch(wrapper, /spotify_stagger_schedule\.inc/);
+  assert.doesNotMatch(schedule, /BackgroundPlaybackProbe|playbackWatchdogIndex_/);
 });
 
-test('slow devices require repeated stalls before foreground recovery', () => {
-  assert.match(schedule, /kSpotifyBackgroundStallConfirmations = 2/);
-  assert.match(header, /int backgroundStallChecks = 0/);
-  assert.match(
-    schedule,
-    /backgroundStallChecks <[\s\S]*kSpotifyBackgroundStallConfirmations[\s\S]*\+\+target->backgroundStallChecks/,
-  );
-  assert.match(
-    schedule,
-    /backgroundStallChecks >=[\s\S]*kSpotifyBackgroundStallConfirmations[\s\S]*timedUnhealthySinceTick/,
-  );
+test('only one recovery-sized Spotify owner is selected at a time', () => {
+  assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 15ULL \* 1000ULL/);
+  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
+  assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
+  assert.match(schedule, /holdRecovery/);
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
 });
 
-test('heavy timed reconcile and fallback end polling are throttled', () => {
-  assert.match(schedule, /kSpotifyTimedReconcileMinIntervalMs = 8ULL \* 1000ULL/);
-  assert.match(header, /ULONGLONG lastTimedReconcileTick = 0/);
-  assert.match(header, /ULONGLONG lastTimedObserverArmTick = 0/);
-  assert.match(ended, /kSpotifyTimedObserverRearmMs = 10ULL \* 1000ULL/);
-  assert.match(ended, /setInterval\(state\.check, 2500\)/);
+test('slow responsive layout is allowed to settle before DOM recovery', () => {
+  assert.match(schedule, /kSpotifySimpleLayoutSettleMs = 2ULL \* 1000ULL/);
+  assert.match(
+    schedule,
+    /!slot\.playing[\s\S]*now - staggerSlotStartTick_ < kSpotifySimpleLayoutSettleMs[\s\S]*return;/,
+  );
+  assert.match(schedule, /kSpotifySimpleRetryMs = 4ULL \* 1000ULL/);
+  assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
+});
+
+test('track completion is event driven with no permanent DOM polling loop', () => {
+  assert.match(rotation, /media\.addEventListener\('ended'/);
+  assert.match(rotation, /media\.addEventListener\('play'/);
+  assert.doesNotMatch(rotation, /setInterval\(/);
+  assert.match(rotation, /setTimeout\(state\.bind, 2000\)/);
+  assert.match(rotation, /setTimeout\(state\.bind, 5000\)/);
+  assert.match(rotation, /setTimeout\(state\.waitForNext, 2500\)/);
+});
+
+test('ambiguous ad or end state retries the same target instead of skipping it', () => {
+  assert.match(rotation, /spotify:timed-waiting/);
+  assert.match(schedule, /kSpotifySimplePendingRecoveryMs/);
+  assert.match(schedule, /slot\.timedCompletionPendingTick = 0/);
+  assert.match(schedule, /slot\.lastTimedReconcileTick = 0/);
   assert.doesNotMatch(
-    ended,
-    /previous && previous\.key === key && previous\.check[\s\S]*previous\.check\(\)/,
-  );
-});
-
-test('recovery priority is a maximum hold and clears as soon as playback is healthy', () => {
-  assert.match(
     schedule,
-    /candidate\.playing[\s\S]*timedPrioritySlotIndex_ == candidate\.index[\s\S]*timedPrioritySlotIndex_ = kAccountCount[\s\S]*timedPriorityUntilTick_ = 0/,
+    /timedCompletionPendingTick[\s\S]*AdvanceTimedRotationSlot/,
   );
-  assert.match(schedule, /maximum hold/);
-});
-
-test('a confirmed target-track ended event advances immediately', () => {
-  assert.match(
-    ended,
-    /media\.addEventListener\('ended'[\s\S]*matchesTarget\(currentTrack\(\)\)[\s\S]*spotify:timed-ended/,
-  );
-  assert.match(
-    ended,
-    /An ended media element can also be an ad\/intermediate clip[\s\S]*spotify:timed-waiting/,
-  );
+  assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
 });
