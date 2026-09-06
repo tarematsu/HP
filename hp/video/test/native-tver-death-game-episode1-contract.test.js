@@ -7,10 +7,10 @@ const composition = readFileSync(
   'utf8',
 );
 
-test('Death Youth Game prefers episode 1 over preview or PR', () => {
-  assert.match(composition, /seriesPath === deathGameSeriesPath/);
-  assert.match(composition, /const isPreview = link/);
-  assert.match(composition, /links\.find\(link => !isPreview\(link\)\)/);
-  assert.match(composition, /const previewMode = false/);
-  assert.match(composition, /completedEpisode = !state\.previewMode/);
+test('Death Youth Game follows the published series-item queue', () => {
+  assert.match(composition, /deathGameSeriesPath = '\/series\/srkzm5wbvp'/);
+  assert.match(composition, /rememberSeriesPath\(seriesPath\)/);
+  assert.match(composition, /writeEpisodeQueue\(seriesPath, hrefs, 0\)/);
+  assert.match(composition, /location\.replace\(hrefs\[0\]\)/);
+  assert.doesNotMatch(composition, /const isPreview = link/);
 });
