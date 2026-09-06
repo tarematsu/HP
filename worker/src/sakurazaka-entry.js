@@ -5,25 +5,55 @@ import {
   processOfficialNewsStage,
 } from './other-official-news-stages.js';
 import { queueAttributedEnv } from './queue-attribution.js';
-import { officialNewsProbeDue, scheduledTimestamp } from './sakurazaka-support.js';
-import { ensureSakurazakaSession } from './sakurazaka-auth.js';
-import { runSakurazakaMonitor } from './sakurazaka-monitor.js';
+import {
+  officialNewsCheckDue,
+  officialNewsProbeDue,
+  scheduledTimestamp,
+} from './sakurazaka-support.js';
 
-export const SAKURAZAKA_CRON = '*/5 * * * *';
+export const SAKURAZAKA_CRON = '* * * * *';
 export const SAKURAZAKA_CYCLE_MESSAGE = 'sakurazaka-cycle';
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 
-function cycleBody(scheduledAt) {
+function soloMonitorDue(now) {
+  return new Date(now).getUTCMinutes() % 5 === 0;
+}
+
+function cycleBody(scheduledAt, newsCheckDue, stationProbeDue, soloDue) {
   return {
     message_type: SAKURAZAKA_CYCLE_MESSAGE,
     message_version: 1,
     scheduled_at: scheduledAt,
+    news_check_due: newsCheckDue,
+    station_probe_due: stationProbeDue,
+    solo_monitor_due: soloDue,
   };
 }
 
-function officialListDue(now) {
-  return new Date(now).getUTCMinutes() === 20;
+function stageBody(stage, scheduledAt, extra = null) {
+  return {
+    message_type: OFFICIAL_NEWS_STAGE_MESSAGE,
+    message_version: 1,
+    stage,
+    scheduled_at: scheduledAt,
+    ...(extra || {}),
+  };
+}
+
+async function dueWork(env, scheduledAt, dependencies = {}) {
+  const checkDue = dependencies.officialNewsCheckDue || officialNewsCheckDue;
+  const probeDue = dependencies.officialNewsProbeDue || officialNewsProbeDue;
+  const soloDueFn = dependencies.soloMonitorDue || soloMonitorDue;
+  const [newsCheckDue, stationProbeDue] = await Promise.all([
+    checkDue(env, scheduledAt),
+    probeDue(env, scheduledAt),
+  ]);
+  return {
+    newsCheckDue: Boolean(newsCheckDue),
+    stationProbeDue: Boolean(stationProbeDue),
+    soloDue: Boolean(soloDueFn(scheduledAt)),
+  };
 }
 
 async function send(queue, body) {
@@ -31,24 +61,67 @@ async function send(queue, body) {
   await queue.send(body, JSON_QUEUE_SEND_OPTIONS);
 }
 
-export async function runSakurazakaScheduled(controller, env) {
+async function dispatchDueStages(env, scheduledAt, due) {
+  if (due.stationProbeDue) {
+    await send(env?.SAKURAZAKA_QUEUE, stageBody('station-auth', scheduledAt, {
+      after_news_check: due.newsCheckDue,
+      after_solo_monitor: due.soloDue,
+    }));
+    return ['station-auth'];
+  }
+  if (due.newsCheckDue) {
+    await send(env?.SAKURAZAKA_QUEUE, stageBody('probe', scheduledAt, {
+      after_solo_monitor: due.soloDue,
+    }));
+    return ['probe'];
+  }
+  if (due.soloDue) {
+    await send(env?.SAKURAZAKA_QUEUE, stageBody('solo-monitor', scheduledAt));
+    return ['solo-monitor'];
+  }
+  return [];
+}
+
+export async function runSakurazakaScheduled(controller, env, dependencies = {}) {
   const cron = String(controller?.cron || '');
   if (cron !== SAKURAZAKA_CRON) return { skipped: true, reason: 'unsupported-cron', cron };
   const scheduledAt = scheduledTimestamp(controller);
   const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
-  await send(activeEnv?.SAKURAZAKA_QUEUE, cycleBody(scheduledAt));
-  return { dispatched: true, scheduled_at: scheduledAt };
+  const due = await dueWork(activeEnv, scheduledAt, dependencies);
+  if (!due.newsCheckDue && !due.stationProbeDue && !due.soloDue) {
+    return { skipped: true, reason: 'no-due-work', scheduled_at: scheduledAt };
+  }
+  const stages = await dispatchDueStages(activeEnv, scheduledAt, due);
+  return {
+    dispatched: true,
+    dispatched_stages: stages,
+    scheduled_at: scheduledAt,
+    news_check_due: due.newsCheckDue,
+    station_probe_due: due.stationProbeDue,
+    solo_monitor_due: due.soloDue,
+    news_check_after_collection: due.newsCheckDue && due.stationProbeDue,
+  };
 }
 
-async function runCycle(env, scheduledAt) {
-  await ensureSakurazakaSession(env);
-  const due = await officialNewsProbeDue(env, scheduledAt);
-  if (officialListDue(scheduledAt) || due) {
-    const result = await processOfficialNewsStage(env, { stage: 'probe', scheduledAt });
-    return { task: 'official-news', ...result };
-  }
-  const result = await runSakurazakaMonitor(env, scheduledAt);
-  return { task: 'solo-monitor', ...result };
+async function runCycle(env, body) {
+  const scheduledAt = Number(body.scheduled_at);
+  const explicitDue = typeof body.news_check_due === 'boolean'
+    && typeof body.station_probe_due === 'boolean';
+  const due = explicitDue
+    ? {
+      newsCheckDue: body.news_check_due,
+      stationProbeDue: body.station_probe_due,
+      soloDue: typeof body.solo_monitor_due === 'boolean'
+        ? body.solo_monitor_due
+        : soloMonitorDue(scheduledAt),
+    }
+    : await dueWork(env, scheduledAt);
+  const stages = await dispatchDueStages(env, scheduledAt, due);
+  return {
+    task: 'dispatch',
+    stages,
+    legacy_cycle: cycleBody(scheduledAt, due.newsCheckDue, due.stationProbeDue, due.soloDue),
+  };
 }
 
 async function processMessage(message, env) {
@@ -57,10 +130,9 @@ async function processMessage(message, env) {
   if (body.message_type === SAKURAZAKA_CYCLE_MESSAGE) {
     const scheduledAt = Number(body.scheduled_at);
     if (!Number.isFinite(scheduledAt)) throw new Error('Sakurazaka cycle timestamp is invalid');
-    return runCycle(env, scheduledAt);
+    return runCycle(env, body);
   }
   if (body.message_type === OFFICIAL_NEWS_STAGE_MESSAGE) {
-    await ensureSakurazakaSession(env);
     const task = officialNewsStageTask(body);
     return { task: 'official-news', ...(await processOfficialNewsStage(env, task)) };
   }

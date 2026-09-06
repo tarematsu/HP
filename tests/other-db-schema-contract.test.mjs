@@ -11,8 +11,10 @@ import {
   normalizedIsrc,
 } from '../worker/scripts/track-metadata-consolidation-lib.mjs';
 
-test('OTHER_DB schema contract retains rankings and rejects duplicate metadata', () => {
+test('OTHER_DB schema contract retains rankings, raw Sakurazaka collection, and rejects duplicate metadata', () => {
   assert.ok(OTHER_REQUIRED_TABLES.includes('sh_channel_rankings'));
+  assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_main'));
+  assert.ok(OTHER_REQUIRED_TABLES.includes('sh_sakurazaka46jp_chat'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_track_metadata'));
   assert.ok(OTHER_RETIRED_OBJECTS.includes('sh_playback_channel_current'));
   assert.deepEqual(OTHER_RETIRED_MIGRATIONS, [
@@ -27,15 +29,22 @@ test('active ranking schema is separated from the retired legacy archive migrati
   assert.doesNotMatch(migration, /sh_legacy_snapshots/);
 });
 
-test('featured ranking reads use the channel/date/rank expression index', () => {
+test('featured ranking reads keep the channel/date/rank expression index', () => {
   const migrationPath = 'database/other-migrations/015_channel_rankings_featured_index.sql';
   const migration = readFileSync(migrationPath, 'utf8');
-  const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.match(
     migration,
     /ON sh_channel_rankings\(lower\(channel_name\), ranking_date, rank\)/,
   );
+});
+
+test('OTHER_DB metadata advances to the Sakurazaka minute raw migration', () => {
+  const migrationPath = 'database/other-migrations/016_sakurazaka46jp_raw_collection.sql';
+  const migration = readFileSync(migrationPath, 'utf8');
+  const metadata = JSON.parse(readFileSync('database/other-db.json', 'utf8'));
   assert.equal(metadata.schema, migrationPath);
+  assert.match(migration, /sh_sakurazaka46jp_main/);
+  assert.match(migration, /sh_sakurazaka46jp_chat/);
 });
 
 test('remote provisioning and local smoke tests share the schema contract', () => {

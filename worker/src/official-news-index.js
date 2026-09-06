@@ -25,11 +25,14 @@ export {
   officialNewsHealth,
 } from './official-news-health.js';
 export {
+  DECODE_STATION_MAIN_SQL,
   OFFICIAL_PROBE_CONTEXT_SQL,
-  compactProbePayload,
+  collectStationChat,
+  collectStationMain,
+  decodeStationMain,
+  finalizeStationProbe,
   loadOfficialProbeContext,
-  officialCommentWriteCounts,
-  officialCommentsToWrite,
+  loadOfficialSession,
   probeAnnouncements,
   runOfficialNewsMonitor,
 } from './official-news-probe.js';

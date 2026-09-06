@@ -9,6 +9,8 @@ export const OTHER_REQUIRED_TABLES = Object.freeze([
   'sh_official_news_announcements',
   'sh_official_news_station_probes',
   'sh_official_news_comments',
+  'sh_sakurazaka46jp_main',
+  'sh_sakurazaka46jp_chat',
   'sh_host_broadcast_sessions',
   'sh_host_station_snapshots',
   'sh_host_queue_snapshots',

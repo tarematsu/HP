@@ -24,13 +24,11 @@ function messageStage(stage, extra = {}) {
   };
 }
 
-test('legacy probe stage performs only the list scan and queues the first detail', async () => {
+test('news probe performs only the list scan and queues the first detail', async () => {
   const sent = [];
   const result = await processOfficialNewsStage({}, {
-    stage: 'probe',
-    scheduledAt: BASE,
-    candidates: [],
-    candidateIndex: 0,
+    stage: 'probe', scheduledAt: BASE, candidates: [], candidateIndex: 0,
+    afterNewsCheck: false, afterSoloMonitor: false,
   }, {
     config: () => ({ marker: 'config' }),
     list: async (_env, config, now) => {
@@ -40,8 +38,6 @@ test('legacy probe stage performs only the list scan and queues the first detail
     },
     send: async (message) => sent.push(message),
   });
-
-  assert.equal(result.stage, 'probe');
   assert.equal(result.next_stage, 'news-detail');
   assert.equal(result.candidates, 2);
   assert.equal(sent[0].stage, 'news-detail');
@@ -49,41 +45,29 @@ test('legacy probe stage performs only the list scan and queues the first detail
   assert.deepEqual(sent[0].candidates, CANDIDATES);
 });
 
-test('not-due list result goes directly to station probe without recording completion', async () => {
-  const sent = [];
-  const result = await processOfficialNewsStage({}, {
-    stage: 'probe',
-    scheduledAt: BASE,
-  }, {
-    config: () => ({}),
-    list: async () => ({ skipped: true, failed: false, reason: 'not-due', candidates: [] }),
-    send: async (message) => sent.push(message),
-  });
-  assert.equal(result.next_stage, 'station-probe');
-  assert.equal(sent[0].stage, 'station-probe');
+test('not-due and failed news checks reconcile instead of starting Stationhead collection', async () => {
+  for (const value of [
+    { skipped: true, failed: false, reason: 'not-due', candidates: [] },
+    { skipped: true, failed: true, reason: 'official_news_list_failed' },
+  ]) {
+    const sent = [];
+    const result = await processOfficialNewsStage({}, {
+      stage: 'probe', scheduledAt: BASE, afterNewsCheck: false, afterSoloMonitor: false,
+    }, {
+      config: () => ({}),
+      list: async () => value,
+      send: async (message) => sent.push(message),
+    });
+    assert.equal(result.next_stage, 'reconcile');
+    assert.equal(sent[0].stage, 'reconcile');
+  }
 });
 
-test('list failure continues to station probe but never marks a successful check', async () => {
+test('detail stage processes candidates one at a time and preserves deferred solo work', async () => {
   const sent = [];
   const result = await processOfficialNewsStage({}, {
-    stage: 'probe',
-    scheduledAt: BASE,
-  }, {
-    config: () => ({}),
-    list: async () => ({ skipped: true, failed: true, reason: 'official_news_list_failed' }),
-    send: async (message) => sent.push(message),
-  });
-  assert.equal(result.next_stage, 'station-probe');
-  assert.equal(sent[0].stage, 'station-probe');
-});
-
-test('detail stage processes one candidate and queues the next candidate', async () => {
-  const sent = [];
-  const result = await processOfficialNewsStage({}, {
-    stage: 'news-detail',
-    scheduledAt: BASE,
-    candidates: CANDIDATES,
-    candidateIndex: 0,
+    stage: 'news-detail', scheduledAt: BASE, candidates: CANDIDATES, candidateIndex: 0,
+    afterNewsCheck: false, afterSoloMonitor: true,
   }, {
     config: () => ({}),
     detail: async (_env, _config, now, candidate) => {
@@ -94,101 +78,132 @@ test('detail stage processes one candidate and queues the next candidate', async
     send: async (message) => sent.push(message),
   });
   assert.equal(result.next_stage, 'news-detail');
-  assert.equal(result.saved, 1);
   assert.equal(sent[0].candidate_index, 1);
-  assert.deepEqual(sent[0].candidates, CANDIDATES);
+  assert.equal(sent[0].after_solo_monitor, true);
 });
 
-test('final detail queues check completion', async () => {
+test('station authentication is isolated and preserves deferred news and solo work', async () => {
   const sent = [];
+  const calls = [];
   const result = await processOfficialNewsStage({}, {
-    stage: 'news-detail',
-    scheduledAt: BASE,
-    candidates: CANDIDATES,
-    candidateIndex: 1,
+    stage: 'station-auth', scheduledAt: BASE, afterNewsCheck: true, afterSoloMonitor: true,
   }, {
-    config: () => ({}),
-    detail: async () => ({ skipped: true, failed: false, reason: 'not-stationhead', saved: 0 }),
+    auth: async () => calls.push('auth'),
     send: async (message) => sent.push(message),
   });
-  assert.equal(result.next_stage, 'news-complete');
-  assert.equal(sent[0].stage, 'news-complete');
+  assert.deepEqual(calls, ['auth']);
+  assert.equal(result.next_stage, 'station-main');
+  assert.equal(sent[0].stage, 'station-main');
+  assert.equal(sent[0].after_news_check, true);
+  assert.equal(sent[0].after_solo_monitor, true);
 });
 
-test('detail failure skips completion and continues to station probe', async () => {
+test('station main raw save queues a separate D1 decode invocation', async () => {
   const sent = [];
   const result = await processOfficialNewsStage({}, {
-    stage: 'news-detail',
-    scheduledAt: BASE,
-    candidates: CANDIDATES,
-    candidateIndex: 0,
+    stage: 'station-main', scheduledAt: BASE, afterNewsCheck: true, afterSoloMonitor: true,
   }, {
     config: () => ({}),
-    detail: async () => ({ skipped: true, failed: true, reason: 'official_news_detail_failed' }),
+    main: async () => ({ skipped: false }),
     send: async (message) => sent.push(message),
   });
-  assert.equal(result.next_stage, 'station-probe');
-  assert.equal(sent[0].stage, 'station-probe');
+  assert.equal(result.next_stage, 'station-decode');
+  assert.equal(sent[0].stage, 'station-decode');
+  assert.equal(sent[0].after_news_check, true);
+  assert.equal(sent[0].after_solo_monitor, true);
 });
 
-test('check completion records success before station probe', async () => {
-  const order = [];
-  const result = await processOfficialNewsStage({}, {
-    stage: 'news-complete',
-    scheduledAt: BASE,
-  }, {
-    complete: async (_env, now) => {
-      order.push(['complete', now]);
-      return { skipped: false };
-    },
-    send: async (message) => order.push(['send', message.stage]),
-  });
-  assert.equal(result.next_stage, 'station-probe');
-  assert.deepEqual(order, [['complete', BASE], ['send', 'station-probe']]);
+test('decoded station routes active and inactive collection independently', async () => {
+  for (const [active, stage] of [[true, 'station-chat'], [false, 'station-finalize']]) {
+    const sent = [];
+    const result = await processOfficialNewsStage({}, {
+      stage: 'station-decode', scheduledAt: BASE, afterNewsCheck: true, afterSoloMonitor: false,
+    }, {
+      config: () => ({}),
+      decode: async () => ({ active, station_id: 123 }),
+      send: async (message) => sent.push(message),
+    });
+    assert.equal(result.next_stage, stage);
+    assert.equal(sent[0].stage, stage);
+    assert.equal(sent[0].after_news_check, true);
+  }
 });
 
-test('station probe is independent and queues reconciliation', async () => {
+test('raw chat save queues finalization without analyzing chat JSON', async () => {
   const sent = [];
   const result = await processOfficialNewsStage({}, {
-    stage: 'station-probe',
-    scheduledAt: BASE,
+    stage: 'station-chat', scheduledAt: BASE, afterNewsCheck: false, afterSoloMonitor: false,
   }, {
     config: () => ({}),
-    probe: async () => ({ skipped: false }),
+    chat: async () => ({ skipped: false }),
     send: async (message) => sent.push(message),
   });
-  assert.equal(result.stage, 'station-probe');
-  assert.equal(result.next_stage, 'reconcile');
-  assert.equal(sent[0].stage, 'reconcile');
+  assert.equal(result.next_stage, 'station-finalize');
+  assert.equal(sent[0].stage, 'station-finalize');
 });
 
-test('official-news reconciliation is an independent stage', async () => {
+test('station finalization reconciles normally or starts deferred news check', async () => {
+  for (const [afterNewsCheck, stage] of [[false, 'reconcile'], [true, 'probe']]) {
+    const sent = [];
+    const result = await processOfficialNewsStage({}, {
+      stage: 'station-finalize', scheduledAt: BASE, afterNewsCheck, afterSoloMonitor: true,
+    }, {
+      config: () => ({}),
+      finalize: async () => ({ skipped: false, active: true }),
+      send: async (message) => sent.push(message),
+    });
+    assert.equal(result.next_stage, stage);
+    assert.equal(sent[0].stage, stage);
+    assert.equal(sent[0].after_solo_monitor, true);
+  }
+});
+
+test('reconciliation hands off to preserved five-minute solo monitoring when requested', async () => {
+  const sent = [];
+  const result = await processOfficialNewsStage({ marker: true }, {
+    stage: 'reconcile', scheduledAt: BASE, afterNewsCheck: false, afterSoloMonitor: true,
+  }, {
+    reconcile: async () => ({ skipped: false }),
+    send: async (message) => sent.push(message),
+  });
+  assert.equal(result.pending, true);
+  assert.equal(result.next_stage, 'solo-monitor');
+  assert.equal(sent[0].stage, 'solo-monitor');
+});
+
+test('solo monitor runs authentication and the existing normalized monitor in its own Queue invocation', async () => {
   const calls = [];
   const result = await processOfficialNewsStage({ marker: true }, {
-    stage: 'reconcile',
-    scheduledAt: BASE,
+    stage: 'solo-monitor', scheduledAt: BASE, afterNewsCheck: false, afterSoloMonitor: false,
   }, {
-    reconcile: async (env, now) => calls.push([env, now]),
+    auth: async () => calls.push('auth'),
+    soloMonitor: async (env, now) => {
+      calls.push(['monitor', env.marker, now]);
+      return { skipped: false };
+    },
   });
-  assert.equal(result.stage, 'reconcile');
   assert.equal(result.pending, false);
-  assert.equal(calls[0][0].marker, true);
-  assert.equal(calls[0][1], BASE);
+  assert.deepEqual(calls, ['auth', ['monitor', true, BASE]]);
 });
 
-test('task validation bounds candidate payloads and preserves rollout stages', () => {
+test('task validation preserves raw collection and deferred solo flags', () => {
   assert.deepEqual(officialNewsStageTask(messageStage('probe')), {
     stage: 'probe', scheduledAt: BASE, candidates: [], candidateIndex: 0,
+    afterNewsCheck: false, afterSoloMonitor: false,
   });
-  assert.deepEqual(officialNewsStageTask(messageStage('news-detail', {
-    candidates: CANDIDATES,
-    candidate_index: 1,
-  })), {
-    stage: 'news-detail', scheduledAt: BASE, candidates: CANDIDATES, candidateIndex: 1,
-  });
-  assert.equal(officialNewsStageTask(messageStage('news-complete')).stage, 'news-complete');
-  assert.equal(officialNewsStageTask(messageStage('station-probe')).stage, 'station-probe');
-  assert.equal(officialNewsStageTask(messageStage('reconcile')).stage, 'reconcile');
+  const task = officialNewsStageTask(messageStage('station-auth', {
+    after_news_check: true,
+    after_solo_monitor: true,
+  }));
+  assert.equal(task.afterNewsCheck, true);
+  assert.equal(task.afterSoloMonitor, true);
+  assert.equal(officialNewsStageTask(messageStage('station-probe')).stage, 'station-main');
+  for (const stage of [
+    'station-auth', 'station-main', 'station-decode', 'station-chat',
+    'station-finalize', 'reconcile', 'solo-monitor',
+  ]) {
+    assert.equal(officialNewsStageTask(messageStage(stage)).stage, stage);
+  }
 
   const source = readFileSync(new URL('../src/sakurazaka-entry.js', import.meta.url), 'utf8');
   assert.match(source, /body\.message_type === OFFICIAL_NEWS_STAGE_MESSAGE/);

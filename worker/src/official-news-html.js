@@ -62,17 +62,46 @@ export function jstTimestamp(year, month, day, hour, minute) {
   return Date.UTC(year, month - 1, day + extraDays, normalizedHour - 9, minute);
 }
 
-export function scheduleTimes(text, fallbackYear) {
+function addJapaneseHourTimes(values, source, fallbackYear) {
+  const full = /(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s*[（(][^）)]*[）)])?\s*(\d{1,2})時(?:\s*(\d{1,2})分)?(?:\s*頃)?/g;
+  let match;
+  while ((match = full.exec(source))) {
+    const [year, month, day, hour] = match.slice(1, 5).map(Number);
+    values.add(jstTimestamp(year, month, day, hour, Number(match[5] || 0)));
+  }
+
+  const partial = /(?<![年\d])(\d{1,2})月\s*(\d{1,2})日(?:\s*[（(][^）)]*[）)])?\s*(\d{1,2})時(?:\s*(\d{1,2})分)?(?:\s*頃)?/g;
+  while ((match = partial.exec(source))) {
+    const [month, day, hour] = match.slice(1, 4).map(Number);
+    values.add(jstTimestamp(fallbackYear, month, day, hour, Number(match[4] || 0)));
+  }
+}
+
+function addFallbackDateTimes(values, source, fallbackDate) {
+  if (values.size || !/^20\d{2}-\d{2}-\d{2}$/.test(String(fallbackDate || ''))) return;
+  const [year, month, day] = fallbackDate.split('-').map(Number);
+  const standalone = /(?<![\d月日])(\d{1,2})時(?:\s*(\d{1,2})分)?(?:\s*頃)?/g;
+  let match;
+  while ((match = standalone.exec(source))) {
+    values.add(jstTimestamp(year, month, day, Number(match[1]), Number(match[2] || 0)));
+  }
+}
+
+export function scheduleTimes(text, fallbackYear, fallbackDate = null) {
+  const source = String(text || '');
   const values = new Set();
   const full = /(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日(?:\s*[（(][^）)]*[）)])?\s*(\d{1,2})\s*[:：]\s*(\d{2})/g;
   let match;
-  while ((match = full.exec(text))) values.add(jstTimestamp(...match.slice(1, 6).map(Number)));
+  while ((match = full.exec(source))) values.add(jstTimestamp(...match.slice(1, 6).map(Number)));
 
   const partial = /(?<!\d)(\d{1,2})月\s*(\d{1,2})日(?:\s*[（(][^）)]*[）)])?\s*(\d{1,2})\s*[:：]\s*(\d{2})/g;
-  while ((match = partial.exec(text))) {
+  while ((match = partial.exec(source))) {
     const [month, day, hour, minute] = match.slice(1, 5).map(Number);
     values.add(jstTimestamp(fallbackYear, month, day, hour, minute));
   }
+
+  addJapaneseHourTimes(values, source, fallbackYear);
+  addFallbackDateTimes(values, source, fallbackDate);
   return [...values].filter(Number.isFinite).sort((a, b) => a - b);
 }
 

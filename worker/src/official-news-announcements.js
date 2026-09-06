@@ -116,7 +116,7 @@ export async function checkOfficialNews(env, cfg, now) {
 
       const date = publishedDate(text);
       const year = Number(date?.slice(0, 4)) || new Date(now + 9 * 3600000).getUTCFullYear();
-      const times = scheduleTimes(text, year);
+      const times = scheduleTimes(text, year, date);
       const article = {
         ...link,
         title,

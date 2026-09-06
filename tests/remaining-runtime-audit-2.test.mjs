@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { requestWithParsedJson } from '../site/functions/lib/parsed-request.js';
 import { saveStationSnapshot } from '../site/functions/lib/host-ingest.js';
 import {
+  DECODE_STATION_MAIN_SQL,
   OFFICIAL_HEALTH_SQL,
   loadOfficialHealthState,
   loadOfficialProbeContext,
-  officialCommentWriteCounts,
-  officialCommentsToWrite,
 } from '../worker/src/official-news-index.js';
 
 test('parsed request wrapper reuses one consumed JSON body', async () => {
@@ -131,24 +131,19 @@ test('official health state combines monitor and announcement counts in one quer
   assert.equal(state.active_count, 1);
 });
 
-test('official comments serialize each comment once instead of once per announcement', () => {
-  const announcements = [{ id: 10 }, { id: 20 }, { id: 30 }];
-  const comments = [
-    { commentId: 1, raw: { text: 'one' } },
-    { commentId: 2, raw: { text: 'two' } },
-  ];
-  const originalStringify = JSON.stringify;
-  let stringifyCalls = 0;
-  JSON.stringify = (...args) => {
-    stringifyCalls += 1;
-    return originalStringify(...args);
-  };
-  try {
-    const rows = officialCommentsToWrite(announcements, comments, []);
-    assert.equal(rows.length, 6);
-    assert.equal(stringifyCalls, comments.length);
-    assert.deepEqual([...officialCommentWriteCounts(rows).entries()], [[10, 2], [20, 2], [30, 2]]);
-  } finally {
-    JSON.stringify = originalStringify;
-  }
+test('official raw collection delegates JSON decoding to D1 instead of Worker code', () => {
+  assert.match(DECODE_STATION_MAIN_SQL, /json_valid\(raw_json\)/);
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(raw_json/);
+
+  const source = readFileSync(new URL('../worker/src/official-news-probe.js', import.meta.url), 'utf8');
+  const main = source.slice(
+    source.indexOf('export async function collectStationMain'),
+    source.indexOf('export async function decodeStationMain'),
+  );
+  const chat = source.slice(
+    source.indexOf('export async function collectStationChat'),
+    source.indexOf('function probeStatement'),
+  );
+  assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|response\.json/);
+  assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|response\.json/);
 });

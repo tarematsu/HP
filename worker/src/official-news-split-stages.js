@@ -3,7 +3,13 @@ import {
   monitorState,
   saveMonitorState,
 } from './official-news-announcements.js';
-import { probeAnnouncements } from './official-news-probe.js';
+import {
+  collectStationChat,
+  collectStationMain,
+  decodeStationMain,
+  finalizeStationProbe,
+  probeAnnouncements,
+} from './official-news-probe.js';
 import { finite } from './official-news-utils.js';
 
 async function recordStageFailure(env, now, error, dependencies) {
@@ -21,7 +27,12 @@ async function recordStageFailure(env, now, error, dependencies) {
     stage: dependencies.stage,
     error: message,
   }));
-  return { skipped: true, reason: `${dependencies.stage}-failed` };
+  return { skipped: true, failed: true, reason: `${dependencies.stage}-failed` };
+}
+
+async function runStage(env, cfg, now, dependencies, fallback) {
+  const action = dependencies.action || fallback;
+  return action(env, cfg, now);
 }
 
 export async function runOfficialNewsCheckOnly(env, cfg, now, dependencies = {}) {
@@ -34,12 +45,23 @@ export async function runOfficialNewsCheckOnly(env, cfg, now, dependencies = {})
   }
 }
 
+export async function runOfficialNewsMainOnly(env, cfg, now, dependencies = {}) {
+  return runStage(env, cfg, now, dependencies, collectStationMain);
+}
+
+export async function runOfficialNewsDecodeOnly(env, cfg, now, dependencies = {}) {
+  return runStage(env, cfg, now, dependencies, decodeStationMain);
+}
+
+export async function runOfficialNewsChatOnly(env, cfg, now, dependencies = {}) {
+  return runStage(env, cfg, now, dependencies, collectStationChat);
+}
+
+export async function runOfficialNewsFinalizeOnly(env, cfg, now, dependencies = {}) {
+  return runStage(env, cfg, now, dependencies, finalizeStationProbe);
+}
+
 export async function runOfficialNewsProbeOnly(env, cfg, now, dependencies = {}) {
   const probe = dependencies.probeAnnouncements || probeAnnouncements;
-  try {
-    await probe(env, cfg, now);
-    return { skipped: false, reason: null };
-  } catch (error) {
-    return recordStageFailure(env, now, error, { ...dependencies, stage: 'probe' });
-  }
+  return probe(env, cfg, now);
 }

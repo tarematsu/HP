@@ -97,7 +97,7 @@ export async function runOfficialNewsDetailStage(env, cfg, now, candidate, depen
 
     const date = parsePublishedDate(text);
     const year = Number(date?.slice(0, 4)) || new Date(now + 9 * 3600000).getUTCFullYear();
-    const times = parseScheduleTimes(text, year);
+    const times = parseScheduleTimes(text, year, date);
     const article = {
       ...candidate,
       title,
