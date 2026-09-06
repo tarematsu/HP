@@ -1,6 +1,7 @@
 namespace {
 constexpr ULONGLONG kSpotifyTimedFailureWatchdogMs = 3ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedPriorityHoldMs = 40ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyTimedObserverRearmMs = 10ULL * 1000ULL;
 
 std::wstring BuildSpotifyTimedEndObserverScript(
     std::wstring_view targetPath, std::wstring_view targetTitle) {
@@ -14,8 +15,7 @@ std::wstring BuildSpotifyTimedEndObserverScript(
   script += LR"JS('.toLowerCase();
   const key = targetPath || ('title:' + targetTitle);
   const previous = window.__homePanelTimedEndObserver;
-  if (previous && previous.key === key && previous.check) {
-    previous.check();
+  if (previous && previous.key === key) {
     return true;
   }
   if (previous && previous.timer) clearInterval(previous.timer);
@@ -101,7 +101,9 @@ std::wstring BuildSpotifyTimedEndObserverScript(
       post('spotify:timed-ended');
     }
   };
-  state.timer = setInterval(state.check, 750);
+  // Media 'ended' is event-driven. This slower poll exists only as a fallback for
+  // Spotify SPA/ad transitions, cutting background DOM work on low-end tablets.
+  state.timer = setInterval(state.check, 2500);
   window.__homePanelTimedEndObserver = state;
   state.check();
   return true;
@@ -153,7 +155,10 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   }
   slot.playing = false;
   slot.unhealthyChecks = 0;
+  slot.backgroundStallChecks = 0;
   slot.lastModeNavigateTick = 0;
+  slot.lastTimedReconcileTick = 0;
+  slot.lastTimedObserverArmTick = 0;
   slot.timedCompletionPendingTick = 0;
   slot.timedUnhealthySinceTick = 0;
   slot.timedPreludeCompleted = false;
@@ -247,6 +252,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   target->timedCompletionPendingTick = 0;
                   target->playing = true;
                   target->unhealthyChecks = 0;
+                  target->backgroundStallChecks = 0;
                   target->timedUnhealthySinceTick = 0;
                   StopTimedOneShotPlayback(*target);
                   RecomputeForeground();
@@ -260,6 +266,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 }
                 target->playing = true;
                 target->unhealthyChecks = 0;
+                target->backgroundStallChecks = 0;
                 target->timedUnhealthySinceTick = 0;
                 RecomputeForeground();
                 return S_OK;
@@ -274,6 +281,12 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
       slot.timedEndMessageReceivedToken = token;
       slot.timedEndHandlerWebview = slot.webview.Get();
     }
+  }
+
+  const ULONGLONG now = GetTickCount64();
+  if (slot.lastTimedObserverArmTick != 0 &&
+      now - slot.lastTimedObserverArmTick < kSpotifyTimedObserverRearmMs) {
+    return;
   }
 
   std::wstring_view targetPath;
@@ -308,5 +321,7 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
   const std::wstring script =
       BuildSpotifyTimedEndObserverScript(targetPath, targetTitle);
-  slot.webview->ExecuteScript(script.c_str(), nullptr);
+  slot.lastTimedObserverArmTick = now;
+  const HRESULT started = slot.webview->ExecuteScript(script.c_str(), nullptr);
+  if (FAILED(started)) slot.lastTimedObserverArmTick = 0;
 }
