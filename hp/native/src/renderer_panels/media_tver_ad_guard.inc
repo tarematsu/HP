@@ -25,6 +25,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
       .replace(/[（(](?:選択中|設定中)[）)]/g, '')
       .replace(/画質$/, '')
       .trim();
+
   const storedSeriesPath = () => {
     try {
       const stored = sessionStorage.getItem(seriesPathKey);
@@ -37,9 +38,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     if (path !== sakuraSeriesPath && path !== deathGameSeriesPath) return;
     try { sessionStorage.setItem(seriesPathKey, path); } catch (_) {}
   };
-
-  const episodeQueueKey = seriesPath =>
-      '__homePanelTverEpisodeQueue:' + seriesPath;
+  const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
   const normalizeEpisodeHref = href => {
     try {
       const url = new URL(href, location.href);
@@ -55,9 +54,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     try {
       const value = JSON.parse(
           sessionStorage.getItem(episodeQueueKey(seriesPath)) || 'null');
-      if (!value || !Array.isArray(value.hrefs)) {
-        return { hrefs: [], index: -1 };
-      }
+      if (!value || !Array.isArray(value.hrefs)) return { hrefs: [], index: -1 };
       return {
         hrefs: value.hrefs.filter(href => typeof href === 'string'),
         index: Number.isInteger(value.index) ? value.index : -1,
@@ -84,54 +81,43 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
       /^(?:配信中の)?エピソード(?:一覧)?(?:\s*\(\d+\)|\s*\d+件)?$/.test(
           normalize(element.textContent)));
     if (!episodeHeading) return null;
-
     const foreignSectionHeading =
         /^(?:あなたにおすすめ|おすすめ|関連番組|関連動画|ランキング)$/;
     let container = episodeHeading.parentElement;
     while (container && container !== document.body) {
       const links = Array.from(
-          container.querySelectorAll('a[href*="/episodes/"]')).filter(
-            link => link.href);
+          container.querySelectorAll('a[href*="/episodes/"]')).filter(link => link.href);
       if (links.length) {
-        const hasForeignSection = Array.from(
-            container.querySelectorAll(headingSelector)).some(element =>
-              element !== episodeHeading &&
-              foreignSectionHeading.test(normalize(element.textContent)));
-        if (!hasForeignSection) return container;
+        const foreign = Array.from(container.querySelectorAll(headingSelector)).some(
+            element => element !== episodeHeading &&
+                foreignSectionHeading.test(normalize(element.textContent)));
+        if (!foreign) return container;
       }
       container = container.parentElement;
     }
     return null;
   };
-
   const openPreferredEpisode = () => {
     const seriesPath = location.pathname;
     rememberSeriesPath(seriesPath);
     const container = findSeriesEpisodeContainer();
     if (!container) return;
-    const links = Array.from(
-        container.querySelectorAll('a[href*="/episodes/"]')).filter(
-          link => link.href);
-    const hrefs = Array.from(new Set(
-        links.map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
+    const hrefs = Array.from(new Set(Array.from(
+        container.querySelectorAll('a[href*="/episodes/"]'))
+        .map(link => normalizeEpisodeHref(link.href)).filter(Boolean)));
     if (!hrefs.length) return;
     writeEpisodeQueue(seriesPath, hrefs, 0);
     location.replace(hrefs[0]);
   };
-
   const advanceEpisodeOrSeries = () => {
     const seriesPath = storedSeriesPath();
     const queue = readEpisodeQueue(seriesPath);
     if (!queue.hrefs.length) return false;
     const currentIndex = queue.hrefs.findIndex(href => {
-      try {
-        return new URL(href, location.href).pathname === location.pathname;
-      } catch (_) {
-        return false;
-      }
+      try { return new URL(href, location.href).pathname === location.pathname; }
+      catch (_) { return false; }
     });
-    const baseIndex = currentIndex >= 0 ? currentIndex : queue.index;
-    const nextIndex = baseIndex + 1;
+    const nextIndex = (currentIndex >= 0 ? currentIndex : queue.index) + 1;
     if (nextIndex >= 0 && nextIndex < queue.hrefs.length) {
       writeEpisodeQueue(seriesPath, queue.hrefs, nextIndex);
       window.__homePanelSakuraMeetsState = null;
@@ -144,6 +130,14 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
 )JS"
     LR"JS(
 
+  const mediaIdentity = video => {
+    if (!video) return '';
+    const source = normalize(video.currentSrc || video.src || '');
+    const duration = Number.isFinite(video.duration) && video.duration > 0
+        ? Math.round(video.duration * 10) / 10 : 0;
+    if (source) return source + '|' + duration;
+    return duration > 0 ? 'duration:' + duration : '';
+  };
   const isTverAdvertisementActive = (video, state) => {
     const overlapsVideo = element => {
       if (!video || !isDisplayed(element)) return false;
@@ -175,11 +169,18 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     const duration = Number.isFinite(video.duration) ? video.duration : 0;
     const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
     const shortAdLength = duration >= 5 && duration <= 65;
-    if (state.adActive && state.adVideo === video && shortAdLength) {
-      if (!video.ended) return true;
-      if (!state.adEndedAt) state.adEndedAt = Date.now();
-      if (Date.now() - state.adEndedAt < 8000) return true;
+    const identity = mediaIdentity(video);
+    if (state.adActive) {
+      if (state.adVideo !== video) return false;
+      if (state.adIdentity && identity && state.adIdentity !== identity) return false;
+      if (shortAdLength && !video.ended) return true;
+      if (video.ended) {
+        if (!state.adEndedAt) state.adEndedAt = Date.now();
+        if (Date.now() - state.adEndedAt < 4000) return true;
+      }
+      return false;
     }
+
     const replacementVideo = state.video && state.video !== video &&
         state.maxTime >= 5 && shortAdLength;
     const sameVideoReset = state.video === video && state.maxTime >= 10 &&
@@ -203,6 +204,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
         restartRequested: false,
         adActive: false,
         adVideo: null,
+        adIdentity: '',
         adEndedAt: 0,
       };
       window.__homePanelSakuraMeetsState = state;
@@ -225,10 +227,12 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     const video = videos.find(isDisplayed) || videos[0] || null;
     const advertisementActive = isTverAdvertisementActive(video, state);
     if (advertisementActive) {
-      const adVideoChanged = state.adVideo !== video;
-      if (!state.adActive || adVideoChanged) {
+      const identity = mediaIdentity(video);
+      const adMediaChanged = state.adVideo !== video || state.adIdentity !== identity;
+      if (!state.adActive || adMediaChanged) {
         state.adActive = true;
         state.adVideo = video || null;
+        state.adIdentity = identity;
         state.adEndedAt = 0;
         state.endCandidateAt = 0;
         state.lowQualitySet = false;
@@ -261,6 +265,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     if (state.adActive) {
       state.adActive = false;
       state.adVideo = null;
+      state.adIdentity = '';
       state.adEndedAt = 0;
       state.video = null;
       state.maxDuration = 0;
@@ -322,9 +327,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
           }
         });
       }
-      if (video.ended && !state.endCandidateAt) {
-        state.endCandidateAt = Date.now();
-      }
+      if (video.ended && !state.endCandidateAt) state.endCandidateAt = Date.now();
       if (state.endCandidateAt && !video.ended && !video.paused &&
           Number.isFinite(video.currentTime) && video.currentTime < 3) {
         state.endCandidateAt = 0;
@@ -378,8 +381,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     const playButton = buttons.find(button => {
       const label = labelOf(button).toLowerCase();
       return label === '再生' || label === '再生する' ||
-             label === '動画を再生' || label === 'play' ||
-             label === 'play video';
+             label === '動画を再生' || label === 'play' || label === 'play video';
     });
     if (video && video.paused && !video.ended) {
       if (playButton) playButton.click();
@@ -459,9 +461,7 @@ constexpr wchar_t kNativeMediaTverWatchdogStaticScript[] = LR"JS(
          ++depth, scope = scope.parentElement) {
       const text = normalize(scope.textContent);
       if (/アンケート/.test(text) &&
-          (/回答する/.test(text) || /誕生年|誕生月|性別/.test(text))) {
-        return true;
-      }
+          (/回答する/.test(text) || /誕生年|誕生月|性別/.test(text))) return true;
     }
     return false;
   });
@@ -502,9 +502,7 @@ constexpr wchar_t kNativeMediaTverForceFullscreenAdSafeScript[] = LR"JS(
     window.__homePanelTverFullscreenPending = false;
     try {
       const activeState = window.__homePanelSakuraMeetsState;
-      if ((activeState && activeState.adActive) || window.__homePanelTverAdActive) {
-        return;
-      }
+      if ((activeState && activeState.adActive) || window.__homePanelTverAdActive) return;
       if (document.fullscreenElement || document.webkitFullscreenElement ||
           document.msFullscreenElement) return;
       const visible = element => {
