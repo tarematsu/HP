@@ -6,12 +6,16 @@ const phaseSync = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
   'utf8',
 );
-const guard = readFileSync(
-  new URL('../../native/src/spotify_lonesome_guard.inc', import.meta.url),
+const scripts = readFileSync(
+  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
 );
-const wrapper = readFileSync(
-  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
+const spotify = readFileSync(
+  new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
+  'utf8',
+);
+const layout = readFileSync(
+  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
 const header = readFileSync(
@@ -19,72 +23,42 @@ const header = readFileSync(
   'utf8',
 );
 
-test('slow six-window startup does not reload after only three failed playback probes', () => {
-  assert.match(phaseSync, /kSpotifyRobustUnhealthyLimit = 3/);
-  assert.match(phaseSync, /kSpotifyRobustSlowLoadMultiplier = 10/);
-  assert.match(
-    phaseSync,
-    /kSpotifyRobustReloadThreshold\s*=\s*[\s\S]*kSpotifyRobustUnhealthyLimit \* kSpotifyRobustSlowLoadMultiplier/,
-  );
-  assert.match(
-    phaseSync,
-    /\+\+target->unhealthyChecks >= kSpotifyRobustReloadThreshold/,
-  );
-  assert.match(
-    phaseSync,
-    /\+\+slot\.unhealthyChecks >= kSpotifyRobustReloadThreshold/,
-  );
+test('slow six-window recovery requires many failed owner checks before reload', () => {
+  assert.match(phaseSync, /kSpotifyRobustReloadThreshold = 30/);
+  assert.match(phaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
 });
 
-test('a usable Spotify play control keeps recovery on trusted clicks instead of reloading the page', () => {
-  assert.match(
-    phaseSync,
-    /if \(hasPoint\) \{[\s\S]*target->unhealthyChecks = 0;[\s\S]*ClickSlotNormalizedPoint\(\*target, x, y\);[\s\S]*return S_OK;/,
-  );
+test('usable Spotify controls are recovered through normalized trusted points', () => {
+  assert.match(phaseSync, /ParseNormalizedPoint/);
+  assert.match(phaseSync, /ClickSlotNormalizedPoint/);
+  assert.match(phaseSync, /RefreshSpotifyHostLayout\(\)/);
 });
 
-test('ultra-light styling uses persistent CSS without a high-churn MutationObserver', () => {
-  assert.match(guard, /kSpotifyUltraLightPreamble/);
-  assert.match(guard, /background-image: none !important/);
-  assert.match(guard, /img, picture, video, canvas/);
-  assert.match(guard, /display: none !important/);
-  assert.doesNotMatch(guard, /new\s+MutationObserver\s*\(/);
-  assert.doesNotMatch(guard, /__homePanelSpotifyUltraLightObserver/);
-  assert.doesNotMatch(guard, /querySelectorAll\('img'\)/);
-  assert.match(guard, /rewritten\.assign\(kSpotifyUltraLightPreamble\)/);
-  assert.match(guard, /rewritten\.append\(selected\)/);
-  assert.doesNotMatch(guard, /audio\s*\{/);
+test('ultra-light styling is fixed CSS without runtime source rewriting or MutationObserver churn', () => {
+  assert.match(scripts, /kSpotifyStaticPageBootstrapScript/);
+  assert.match(scripts, /background-image: none !important/);
+  assert.match(scripts, /img, picture, video, canvas/);
+  assert.match(scripts, /display: none !important/);
+  assert.doesNotMatch(scripts, /new\s+MutationObserver\s*\(/);
+  assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment|thread_local std::wstring/);
 });
 
-test('healthy Lonesome rabbit slots only run a full DOM check about once per minute', () => {
-  assert.match(guard, /kSpotifyHealthyMusicFullCheckRounds = 5/);
-  assert.match(guard, /const bool isMusicPass/);
-  assert.match(guard, /const size_t dispatched = reconcileIndex_ - 1/);
-  assert.match(guard, /const size_t slotIndex = dispatched % slots_\.size\(\)/);
-  assert.match(guard, /const size_t round = dispatched \/ slots_\.size\(\)/);
-  assert.match(
-    guard,
-    /slots_\[slotIndex\]\.playing[\s\S]*round % kSpotifyHealthyMusicFullCheckRounds[\s\S]*return L"true"/,
-  );
-  assert.match(guard, /TALKABOUT stays on the[\s\S]*normal cadence/);
+test('healthy slots are not continuously scanned by a second watchdog', () => {
+  assert.doesNotMatch(header, /playbackWatchdogIndex_|reconcileIndex_/);
+  assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
+  assert.doesNotMatch(scripts, /setInterval\(/);
 });
 
-test('only authentication is foreground while recovery keeps a large offscreen viewport', () => {
+test('only authentication is visible while recovery keeps one large offscreen owner viewport', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
-  assert.match(header, /DeferSpotifyHostWindowPos/);
-  assert.match(header, /SetSpotifyHostWindowPos/);
-  assert.match(wrapper, /#define DeferWindowPos/);
-  assert.match(wrapper, /#define SetWindowPos/);
-  assert.match(guard, /void ParkSpotifyHost\(/);
-  assert.match(guard, /\*width = 1;\s*\*height = 1;\s*\*insertAfter = HWND_BOTTOM/);
-  assert.match(guard, /void ExpandSpotifyAuthenticationHost\(/);
-  assert.match(guard, /void PrepareSpotifyBackgroundRecoveryHost\(/);
-  assert.match(guard, /\*x = parentClient\.right \+ 32/);
-  assert.match(guard, /\*insertAfter = HWND_BOTTOM/);
-  assert.match(guard, /const bool authentication =[\s\S]*SlotIsLoginPage\(\*slot\)/);
-  assert.match(guard, /if \(authentication\)[\s\S]*ExpandSpotifyAuthenticationHost/);
-  assert.match(guard, /else if \(active && !slot->playing\)[\s\S]*PrepareSpotifyBackgroundRecoveryHost/);
-  assert.match(guard, /hostLayoutAuthenticationVisible_ == authenticationVisible/);
+  assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
+  assert.match(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
+  assert.match(spotify, /const bool recovery = active && !authentication && !slot\.playing/);
+  assert.match(spotify, /x = client\.right \+ 32/);
+  assert.match(spotify, /insertAfter = HWND_TOP/);
 });
