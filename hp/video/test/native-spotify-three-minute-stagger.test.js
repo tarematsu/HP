@@ -15,7 +15,7 @@ const timer = readFileSync(
   'utf8',
 );
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
   'utf8',
 );
 const timed = readFileSync(
@@ -26,25 +26,22 @@ const recent = readFileSync(
   new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
   'utf8',
 );
-const ended = readFileSync(
-  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
+const rotation = readFileSync(
+  new URL('../../native/src/spotify_simple_rotation.inc', import.meta.url),
   'utf8',
 );
 
-test('Spotify fallback startup staggering keeps the 40-second six-account clock', () => {
+test('Spotify startup keeps the original 40-second six-account offsets', () => {
   assert.match(wrapper, /#include "spotify_stagger_timer\.inc"/);
-  assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
-  assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
+  assert.match(wrapper, /#include "spotify_simple_rotation\.inc"/);
+  assert.match(wrapper, /#include "spotify_simple_schedule\.inc"/);
   assert.match(timer, /kSpotifySerializedSlotStepMs = 40U \* 1000U/);
   assert.match(timer, /StaggeredReconcileTimerProc/);
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(
-    schedule,
-    /elapsed \/ kSpotifyTimedSlotOffsetMs\) % slots_\.size\(\)/,
-  );
+  assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
 });
 
-test('YouTube hour keeps BitterBlue and TALKABOUT, uses a recent-song bridge, then starts A at minute 20', () => {
+test('YouTube hour keeps BitterBlue and TALKABOUT, recent bridge, then starts A at minute 20', () => {
   assert.match(header, /youtubeCycleStartTick_ = 0/);
   assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
   assert.match(header, /timedBridgeCompleted = false/);
@@ -55,58 +52,64 @@ test('YouTube hour keeps BitterBlue and TALKABOUT, uses a recent-song bridge, th
     /!slot\.podcastCompleted[\s\S]*TimedSpotifyTarget::TalkAbout[\s\S]*!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex[\s\S]*TimedSpotifyTarget::CatalogTrack/,
   );
   assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
-  assert.match(ended, /timedRotationPosition = 0/);
-  assert.match(ended, /case 0:[\s\S]*LonesomeRabbit[\s\S]*break;/);
+});
+
+test('A-B-C-D target order is unchanged and advances only from completion', () => {
+  assert.match(rotation, /timedRotationPosition = 0/);
+  assert.match(rotation, /case 0:[\s\S]*LonesomeRabbit[\s\S]*break;/);
   assert.match(
-    ended,
+    rotation,
     /case 1:[\s\S]*TimedSpotifyTarget::CatalogTrack[\s\S]*timedRandomCIndex[\s\S]*break;/,
   );
-  assert.match(ended, /case 2:[\s\S]*TimedSpotifyTarget::BitterBlue[\s\S]*break;/);
+  assert.match(rotation, /case 2:[\s\S]*TimedSpotifyTarget::BitterBlue[\s\S]*break;/);
   assert.match(
-    ended,
+    rotation,
     /default:[\s\S]*TimedSpotifyTarget::CatalogTrack[\s\S]*timedRandomDIndex[\s\S]*break;/,
   );
+  assert.match(rotation, /media\.addEventListener\('ended'/);
+  assert.match(rotation, /spotify:timed-ended/);
+  assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
+  assert.match(rotation, /timedRotationPosition \+ 1U/);
+  assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs|rotationWave/);
 });
 
-test('bridge is a one-shot recent song and does not replay Lonesome before minute 20', () => {
-  assert.match(schedule, /instead of falling back to Lonesome rabbit before the formal 20:00 A/);
-  assert.match(schedule, /recentBridge[\s\S]*ArmTimedEndObserver\(slot\)/);
-  assert.match(
-    ended,
-    /TimedSpotifyTarget::CatalogTrack[\s\S]*IsRecentCatalogIndex\(target->timedCatalogIndex\)[\s\S]*timedBridgeCompleted = true/,
-  );
-  assert.match(ended, /StopTimedOneShotPlayback\(\*target\)/);
-  assert.match(schedule, /recentBridge && slot\.timedBridgeCompleted/);
-});
-
-test('A-B-C-D advances from actual track completion instead of fixed three-minute boundaries', () => {
-  assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs/);
-  assert.doesNotMatch(schedule, /rotationWave = rotationElapsed/);
-  assert.match(ended, /media\.addEventListener\('ended'/);
-  assert.match(ended, /spotify:timed-waiting/);
-  assert.match(ended, /spotify:timed-ended/);
-  assert.match(ended, /AdvanceTimedRotationSlot\(\*target, now\)/);
-  assert.match(ended, /timedRotationPosition \+ 1U/);
-  assert.match(schedule, /ArmTimedEndObserver\(slot\)/);
-});
-
-test('Spotify ads are waited through before the next formal rotation track is opened', () => {
-  assert.match(
-    ended,
-    /Ads do not expose another \/track\/ context[\s\S]*track\.path[\s\S]*spotify:timed-ended/,
-  );
-  assert.match(schedule, /timedCompletionPendingTick != 0\) return/);
-  assert.match(schedule, /post-track\/ad waiting state/);
-});
-
-test('three minutes is only an unhealthy/waiting watchdog and does not cut healthy long songs', () => {
-  assert.match(ended, /kSpotifyTimedFailureWatchdogMs = 3ULL \* 60ULL \* 1000ULL/);
-  assert.match(schedule, /candidate\.timedCompletionPendingTick != 0/);
-  assert.match(schedule, /else if \(candidate\.playing\)[\s\S]*timedUnhealthySinceTick = 0/);
+test('bridge is a one-shot recent song before formal minute-20 rotation', () => {
   assert.match(
     schedule,
-    /timedUnhealthySinceTick[\s\S]*kSpotifyTimedFailureWatchdogMs[\s\S]*AdvanceTimedRotationSlot/,
+    /!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex[\s\S]*desired = TimedSpotifyTarget::CatalogTrack/,
   );
+  assert.match(
+    rotation,
+    /TimedSpotifyTarget::CatalogTrack[\s\S]*IsRecentCatalogIndex\(target->timedCatalogIndex\)[\s\S]*timedBridgeCompleted = true/,
+  );
+  assert.match(rotation, /StopTimedOneShotPlayback\(\*target\)/);
+});
+
+test('ads are waited through without a permanent polling loop', () => {
+  assert.match(rotation, /spotify:timed-waiting/);
+  assert.match(rotation, /state\.waitForNext/);
+  assert.match(rotation, /setTimeout\(state\.waitForNext, 2500\)/);
+  assert.doesNotMatch(rotation, /setInterval\(/);
+  assert.match(schedule, /timedCompletionPendingTick != 0/);
+});
+
+test('three-minute ambiguity timeout retries the same target instead of skipping a song', () => {
+  assert.match(rotation, /kSpotifySimplePendingRecoveryMs = 3ULL \* 60ULL \* 1000ULL/);
+  assert.match(schedule, /now - slot\.timedCompletionPendingTick < kSpotifySimplePendingRecoveryMs/);
+  assert.match(schedule, /slot\.timedCompletionPendingTick = 0/);
+  assert.match(schedule, /slot\.lastTimedReconcileTick = 0/);
+  assert.doesNotMatch(
+    schedule,
+    /timedCompletionPendingTick[\s\S]*AdvanceTimedRotationSlot/,
+  );
+});
+
+test('finished target keeps the same slot briefly for simple next-track recovery', () => {
+  assert.match(rotation, /staggerSlotIndex_ = slot\.index/);
+  assert.match(rotation, /staggerSlotStartTick_ = now/);
+  assert.match(rotation, /staggerSlotValidated_ = false/);
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
+  assert.match(schedule, /const bool holdRecovery/);
 });
 
 test('B and D are distinct recent songs and avoid the current hour bridge', () => {
@@ -120,48 +123,23 @@ test('B and D are distinct recent songs and avoid the current hour bridge', () =
   assert.match(recent, /timedRandomCIndex_ != timedRandomDIndex_/);
   assert.match(recent, /timedRandomCIndex_ != avoidIndex/);
   assert.match(recent, /timedRandomDIndex_ != avoidIndex/);
-  assert.match(ended, /EnsureRecentRandomPair\(slot\.timedRotationCycle, timedBridgeCatalogIndex_\)/);
-  assert.doesNotMatch(ended, /EnsureTimedRandomPair\(/);
+  assert.match(rotation, /EnsureRecentRandomPair\(slot\.timedRotationCycle, timedBridgeCatalogIndex_\)/);
+  assert.doesNotMatch(rotation, /EnsureTimedRandomPair\(/);
 });
 
 test('recent random pool contains every 2025-2026 new group song except fixed A/C', () => {
   assert.match(recent, /std::array<SpotifyRecentCatalogTrack, 35>/);
   const expectedTitles = [
-    'UDAGAWA GENERATION',
-    'Nightmare症候群',
-    'Nothing special',
-    '紋白蝶が確か飛んでた',
-    '行かないで',
-    'ULTRAVIOLET',
-    'やるしかないじゃん',
-    'Addiction',
-    'Make or Break',
-    '死んだふり',
-    '港区パセリ',
-    '恋愛無双',
-    '真夏の大統領',
-    '君のことを想いながら',
-    'ノンアルコール',
-    'Unhappy birthday構文',
-    'Alter ego',
-    '木枯らしは泣かない',
-    '青空が見えるまで',
-    'I will be',
-    'Buddies (English Version)',
-    '夜空で一番輝いてる星の名前を僕は知らない',
-    'The growing up train',
-    '光源',
-    'ドライフルーツ',
-    'キスが苦い',
-    'くらげらしく',
-    'Sunny side up',
-    '僕は向いてない',
-    'What\'s \\"KAZOKU\\"?',
-    'コインランドリー',
-    'We got your back',
-    '狼たちよ',
-    '各駅停車',
-    '恵まれ過ぎて',
+    'UDAGAWA GENERATION', 'Nightmare症候群', 'Nothing special',
+    '紋白蝶が確か飛んでた', '行かないで', 'ULTRAVIOLET', 'やるしかないじゃん',
+    'Addiction', 'Make or Break', '死んだふり', '港区パセリ', '恋愛無双',
+    '真夏の大統領', '君のことを想いながら', 'ノンアルコール',
+    'Unhappy birthday構文', 'Alter ego', '木枯らしは泣かない',
+    '青空が見えるまで', 'I will be', 'Buddies (English Version)',
+    '夜空で一番輝いてる星の名前を僕は知らない', 'The growing up train',
+    '光源', 'ドライフルーツ', 'キスが苦い', 'くらげらしく', 'Sunny side up',
+    '僕は向いてない', 'What\'s \\"KAZOKU\\"?', 'コインランドリー',
+    'We got your back', '狼たちよ', '各駅停車', '恵まれ過ぎて',
   ];
   for (const title of expectedTitles) {
     assert.ok(recent.includes(title), `missing recent Sakurazaka song: ${title}`);
@@ -196,18 +174,7 @@ test('recent catalog can open direct tracks or exact titled rows on verified alb
   assert.match(recent, /ReconcileActiveTimedSlot/);
 });
 
-test('a just-finished song gets temporary recovery priority so the next target can start promptly', () => {
-  assert.match(header, /timedPrioritySlotIndex_ = kAccountCount/);
-  assert.match(header, /timedPriorityUntilTick_ = 0/);
-  assert.match(ended, /kSpotifyTimedPriorityHoldMs = 40ULL \* 1000ULL/);
-  assert.match(ended, /timedPrioritySlotIndex_ = slot\.index/);
-  assert.match(
-    schedule,
-    /priorityActive[\s\S]*staggerSlotIndex_ != timedPrioritySlotIndex_[\s\S]*staggerSlotIndex_ = timedPrioritySlotIndex_/,
-  );
-});
-
-test('timed playback still owns autoplay and does not use repeat-one', () => {
+test('timed playback owns autoplay and does not use repeat-one', () => {
   assert.match(wrapper, /RewriteSpotifyLegacyAutoplayScript/);
   assert.match(wrapper, /#include "spotify_timed_sequence\.inc"/);
   assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
@@ -217,7 +184,7 @@ test('timed playback still owns autoplay and does not use repeat-one', () => {
   assert.doesNotMatch(timed, /ensureRepeatOne|repeatState|control-button-repeat/);
 });
 
-test('TALKABOUT remains one-shot and the scheduler replaces its old handoff with the recent bridge', () => {
+test('TALKABOUT remains one-shot and scheduler hands it to the recent bridge', () => {
   assert.match(timed, /const playbackRate = 3\.0/);
   assert.match(timed, /__homePanelSpotifyTimedPodcastOneShot/);
   assert.match(timed, /media\.addEventListener\('ended'/);
@@ -231,7 +198,7 @@ test('TALKABOUT remains one-shot and the scheduler replaces its old handoff with
 
 test('TVer keeps the same completion-driven A-B-C-D sequence', () => {
   assert.match(wrapper, /#define SetPodcastMode SetPodcastModeImmediate/);
-  assert.match(schedule, /TVer does not reset the YouTube master clock/);
+  assert.match(schedule, /TVer leaves the current completion-driven rotation untouched/);
   assert.doesNotMatch(
     schedule,
     /for \(Slot& slot : slots_\) \{[\s\S]*slot\.webview->Navigate/,
