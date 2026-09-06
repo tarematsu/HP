@@ -24,6 +24,7 @@ test('dashboard asset dependency chain uses one explicit deployment version', ()
     assetVersion(html, 'dashboard-metrics.js'),
     assetVersion(entry, 'dashboard-header.js'),
     assetVersion(entry, 'dashboard-tabs.js'),
+    assetVersion(entry, 'dashboard-fetch-cache.js'),
     assetVersion(entry, 'dashboard-daily-summaries.js'),
     assetVersion(entry, 'dashboard-client.js'),
     assetVersion(header, 'dashboard-fixes.css'),

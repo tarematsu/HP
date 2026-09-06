@@ -139,7 +139,7 @@ test('snapshot pace renders D1 reads and writes with usage percentages', () => {
   assert.match(pace, /\| D1 rows written \| \+759 \| 41m \| 26,486\/day \| 100,000\/day \| 26\.5% \| within limit \|/);
 });
 
-test('snapshot burn classification marks 80 percent as watch and 100 percent as failure', () => {
+test('snapshot burn classification warns on transient pace and fails on an actual daily-budget breach', () => {
   const warning = classifyDailyD1SnapshotPaces({
     currentSummary: dailySummary(227_545_050, 406_087_050, '2026-07-27', 38_500, 58_000),
     previousIssueBody: previousIssue(),
@@ -148,16 +148,23 @@ test('snapshot burn classification marks 80 percent as watch and 100 percent as 
   assert.equal(warning.rowsWritten?.state, 'degraded');
   assert.equal(warning.rowsWritten?.recentProjected24h, 83_748);
 
-  const failure = classifyDailyD1SnapshotPaces({
+  const burst = classifyDailyD1SnapshotPaces({
     currentSummary: dailySummary(227_545_050, 406_087_050, '2026-07-27', 39_100, 60_000),
     previousIssueBody: previousIssue(),
     generatedAt,
   });
+  assert.equal(burst.rowsWritten?.state, 'degraded');
+  assert.equal(burst.rowsWritten?.recentProjected24h, 104_685);
+
+  const failure = classifyDailyD1SnapshotPaces({
+    currentSummary: dailySummary(227_545_050, 406_087_050, '2026-07-27', 101_000, 110_000),
+    previousIssueBody: previousIssue(),
+    generatedAt,
+  });
   assert.equal(failure.rowsWritten?.state, 'failure');
-  assert.equal(failure.rowsWritten?.recentProjected24h, 104_685);
 });
 
-test('recent write burst is active while a historical read breach remains contained', () => {
+test('recent write burst stays a warning while a historical read breach remains contained', () => {
   const burstSummaries = {
     ...summaries,
     daily: dailySummary(227_545_050, 406_087_050, '2026-07-27', 39_100, 60_000),
@@ -169,14 +176,13 @@ test('recent write burst is active while a historical read breach remains contai
     previousIssueBody: previousIssue(),
     generatedAt,
   });
-  assert.match(triage, /ACTION REQUIRED — 1 active signal; 1 contained historical signal/);
-  assert.match(triage, /Recent D1 write pace/);
-  assert.match(triage, /recent pace 104,685\/day, 104\.7% of 100,000\/day limit/);
+  assert.match(triage, /CONTAINED — 1 historical signal remains until the UTC counter resets/);
+  assert.doesNotMatch(triage, /Recent D1 write pace/);
   assert.match(triage, /Historical daily D1 breach/);
-  assert.match(triage, /\| Recent D1 rows written pace \| \*\*FAIL\*\*/);
+  assert.match(triage, /\| Recent D1 rows written pace \| \*\*WARN\*\*/);
 });
 
-test('recent write burst fails overall status before the UTC projection catches up', () => {
+test('recent write burst does not fail overall status before the UTC projection catches up', () => {
   const burstSummaries = {
     ...summaries,
     daily: dailySummary(1_000, 2_000, '2026-07-27', 39_100, 60_000, 'OK'),
@@ -192,9 +198,10 @@ test('recent write burst fails overall status before the UTC projection catches 
     activeDeployments: deployments,
     previousIssueBody: previousIssue(),
   });
-  assert.match(body, /\*\*Cloudflare status:\*\* failure/);
-  assert.match(body, /ACTION REQUIRED — 1 active signal/);
-  assert.match(body, /Recent D1 write pace/);
+  assert.match(body, /\*\*Cloudflare status:\*\* success/);
+  assert.match(body, /HEALTHY — no active observability incidents were detected/);
+  assert.match(body, /\| Recent D1 rows written pace \| \*\*WARN\*\*/);
+  assert.doesNotMatch(body, /ACTION REQUIRED/);
 });
 
 test('current runaway pace remains an active daily-usage incident', () => {
@@ -220,6 +227,24 @@ test('current runaway pace remains an active daily-usage incident', () => {
   assert.match(triage, /ACTION REQUIRED — 1 active signal/);
   assert.match(triage, /Projected daily usage/);
   assert.doesNotMatch(triage, /Historical daily D1 breach/);
+});
+
+test('pace classification tolerates one minute of scheduler jitter around the 20-minute target', () => {
+  const accepted = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody: previousIssue({ generatedAt: '2026-07-27T13:09:12.647Z' }),
+    generatedAt,
+  });
+  assert.equal(accepted.rowsRead?.elapsedSeconds, 1_170);
+  assert.equal(accepted.rowsWritten?.elapsedSeconds, 1_170);
+
+  const rejected = classifyDailyD1SnapshotPaces({
+    currentSummary: summaries.daily,
+    previousIssueBody: previousIssue({ generatedAt: '2026-07-27T13:09:43.647Z' }),
+    generatedAt,
+  });
+  assert.equal(rejected.rowsRead, null);
+  assert.equal(rejected.rowsWritten, null);
 });
 
 test('trend classification fails closed across UTC dates or short samples', () => {
