@@ -15,7 +15,7 @@ const timer = readFileSync(
   'utf8',
 );
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
   'utf8',
 );
 const timed = readFileSync(
@@ -27,14 +27,14 @@ const recent = readFileSync(
   'utf8',
 );
 const rotation = readFileSync(
-  new URL('../../native/src/spotify_simple_rotation.inc', import.meta.url),
+  new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
 );
 
 test('Spotify startup keeps the original 40-second six-account offsets', () => {
   assert.match(wrapper, /#include "spotify_stagger_timer\.inc"/);
-  assert.match(wrapper, /#include "spotify_simple_rotation\.inc"/);
-  assert.match(wrapper, /#include "spotify_simple_schedule\.inc"/);
+  assert.match(wrapper, /#include "spotify_timed_end_rotation\.inc"/);
+  assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.match(timer, /kSpotifySerializedSlotStepMs = 40U \* 1000U/);
   assert.match(timer, /StaggeredReconcileTimerProc/);
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
