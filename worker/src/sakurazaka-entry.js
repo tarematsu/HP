@@ -16,18 +16,13 @@ export const SAKURAZAKA_CYCLE_MESSAGE = 'sakurazaka-cycle';
 const JSON_QUEUE_SEND_OPTIONS = Object.freeze({ contentType: 'json' });
 const RETRY_60_SECONDS = Object.freeze({ delaySeconds: 60 });
 
-function soloMonitorDue(now) {
-  return new Date(now).getUTCMinutes() % 5 === 0;
-}
-
-function cycleBody(scheduledAt, newsCheckDue, stationProbeDue, soloDue) {
+function cycleBody(scheduledAt, newsCheckDue, stationProbeDue) {
   return {
     message_type: SAKURAZAKA_CYCLE_MESSAGE,
     message_version: 1,
     scheduled_at: scheduledAt,
     news_check_due: newsCheckDue,
     station_probe_due: stationProbeDue,
-    solo_monitor_due: soloDue,
   };
 }
 
@@ -44,7 +39,6 @@ function stageBody(stage, scheduledAt, extra = null) {
 async function dueWork(env, scheduledAt, dependencies = {}) {
   const checkDue = dependencies.officialNewsCheckDue || officialNewsCheckDue;
   const probeDue = dependencies.officialNewsProbeDue || officialNewsProbeDue;
-  const soloDueFn = dependencies.soloMonitorDue || soloMonitorDue;
   const [newsCheckDue, stationProbeDue] = await Promise.all([
     checkDue(env, scheduledAt),
     probeDue(env, scheduledAt),
@@ -52,7 +46,6 @@ async function dueWork(env, scheduledAt, dependencies = {}) {
   return {
     newsCheckDue: Boolean(newsCheckDue),
     stationProbeDue: Boolean(stationProbeDue),
-    soloDue: Boolean(soloDueFn(scheduledAt)),
   };
 }
 
@@ -65,19 +58,12 @@ async function dispatchDueStages(env, scheduledAt, due) {
   if (due.stationProbeDue) {
     await send(env?.SAKURAZAKA_QUEUE, stageBody('station-auth', scheduledAt, {
       after_news_check: due.newsCheckDue,
-      after_solo_monitor: due.soloDue,
     }));
     return ['station-auth'];
   }
   if (due.newsCheckDue) {
-    await send(env?.SAKURAZAKA_QUEUE, stageBody('probe', scheduledAt, {
-      after_solo_monitor: due.soloDue,
-    }));
+    await send(env?.SAKURAZAKA_QUEUE, stageBody('probe', scheduledAt));
     return ['probe'];
-  }
-  if (due.soloDue) {
-    await send(env?.SAKURAZAKA_QUEUE, stageBody('solo-monitor', scheduledAt));
-    return ['solo-monitor'];
   }
   return [];
 }
@@ -88,7 +74,7 @@ export async function runSakurazakaScheduled(controller, env, dependencies = {})
   const scheduledAt = scheduledTimestamp(controller);
   const activeEnv = queueAttributedEnv(env, 'sh-sakurazaka46jp');
   const due = await dueWork(activeEnv, scheduledAt, dependencies);
-  if (!due.newsCheckDue && !due.stationProbeDue && !due.soloDue) {
+  if (!due.newsCheckDue && !due.stationProbeDue) {
     return { skipped: true, reason: 'no-due-work', scheduled_at: scheduledAt };
   }
   const stages = await dispatchDueStages(activeEnv, scheduledAt, due);
@@ -98,7 +84,6 @@ export async function runSakurazakaScheduled(controller, env, dependencies = {})
     scheduled_at: scheduledAt,
     news_check_due: due.newsCheckDue,
     station_probe_due: due.stationProbeDue,
-    solo_monitor_due: due.soloDue,
     news_check_after_collection: due.newsCheckDue && due.stationProbeDue,
   };
 }
@@ -111,16 +96,13 @@ async function runCycle(env, body) {
     ? {
       newsCheckDue: body.news_check_due,
       stationProbeDue: body.station_probe_due,
-      soloDue: typeof body.solo_monitor_due === 'boolean'
-        ? body.solo_monitor_due
-        : soloMonitorDue(scheduledAt),
     }
     : await dueWork(env, scheduledAt);
   const stages = await dispatchDueStages(env, scheduledAt, due);
   return {
     task: 'dispatch',
     stages,
-    legacy_cycle: cycleBody(scheduledAt, due.newsCheckDue, due.stationProbeDue, due.soloDue),
+    legacy_cycle: cycleBody(scheduledAt, due.newsCheckDue, due.stationProbeDue),
   };
 }
 
@@ -181,21 +163,27 @@ function healthComponent(result, component, degraded) {
 }
 
 export async function sakurazakaHealth(env) {
-  const monitorId = `solo:${env?.SOLO_BROADCAST_HANDLE || 'sakurazaka46jp'}`;
-  const [monitorResult, newsResult] = await Promise.allSettled([
-    readHealthState(env?.OTHER_DB, `SELECT phase,last_success_at,last_error,updated_at
-      FROM sh_cloud_host_monitor_state WHERE id=? LIMIT 1`, [monitorId]),
+  const handle = String(env?.SOLO_BROADCAST_HANDLE || 'sakurazaka46jp').trim().toLowerCase();
+  const [rawResult, derivedResult, newsResult] = await Promise.allSettled([
+    readHealthState(env?.OTHER_DB, `SELECT observed_at,station_id,is_broadcasting
+      FROM sh_sakurazaka46jp_main ORDER BY observed_at DESC LIMIT 1`),
+    readHealthState(env?.OTHER_DB, `SELECT id,status,station_id,last_observed_at
+      FROM sh_host_broadcast_sessions
+      WHERE source_scope='sakurazaka46jp_solo' AND handle=?
+      ORDER BY started_at DESC,id DESC LIMIT 1`, [handle]),
     readHealthState(env?.OTHER_DB, `SELECT last_check_at,last_success_at,last_error,updated_at
       FROM sh_official_news_monitor_state WHERE id='official-news' LIMIT 1`),
   ]);
   const degraded = [];
-  const monitor = healthComponent(monitorResult, 'monitor', degraded);
+  const raw = healthComponent(rawResult, 'raw_collection', degraded);
+  const derived = healthComponent(derivedResult, 'raw_materializer', degraded);
   const news = healthComponent(newsResult, 'official_news', degraded);
   const ok = degraded.length === 0;
   return Response.json({
     ok,
     worker: 'sh-sakurazaka46jp',
-    monitor,
+    raw_collection: raw,
+    raw_materializer: derived,
     official_news: news,
     ...(degraded.length ? { degraded_components: degraded } : {}),
   }, {
