@@ -11,12 +11,17 @@ export const OFFICIAL_NEWS_STATE_ID = 'official-news';
 export const finite = finiteNumber;
 export { timedFetch };
 
+function nonNegative(value, fallback) {
+  const number = Math.trunc(Number(value));
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
 export function officialNewsConfig(env) {
   return {
-    checkIntervalMs: positive(env.OFFICIAL_NEWS_CHECK_INTERVAL_MS, 30 * 60 * 1000),
-    earlyWindowMs: positive(env.OFFICIAL_NEWS_EARLY_WINDOW_MS, 5 * 60 * 1000),
+    checkIntervalMs: positive(env.OFFICIAL_NEWS_CHECK_INTERVAL_MS, 60 * 60 * 1000),
+    earlyWindowMs: nonNegative(env.OFFICIAL_NEWS_EARLY_WINDOW_MS, 0),
     lateWindowMs: positive(env.OFFICIAL_NEWS_LATE_WINDOW_MS, 90 * 60 * 1000),
-    endConfirmPolls: positive(env.OFFICIAL_NEWS_END_CONFIRM_POLLS, 5),
+    endConfirmPolls: positive(env.OFFICIAL_NEWS_END_CONFIRM_POLLS, 2),
     articleLimit: Math.min(positive(env.OFFICIAL_NEWS_ARTICLE_LIMIT, 20), 40),
     bodyScanCount: Math.min(positive(env.OFFICIAL_NEWS_BODY_SCAN_COUNT, 5), 10),
     handle: env.OFFICIAL_NEWS_STATIONHEAD_HANDLE || env.OFFICIAL_NEWS_SH_HANDLE || 'sakurazaka46jp',

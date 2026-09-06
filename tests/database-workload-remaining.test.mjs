@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import {
   queueItemsToWrite,
@@ -12,7 +13,7 @@ import {
   resetSakurazakaSeriesCache,
 } from '../site/functions/api/sakurazaka46jp.js';
 import { cachedSnapshotCount, resetSnapshotCountCache } from '../site/functions/api/health.js';
-import { compactProbePayload, officialCommentsToWrite } from '../worker/src/official-news-index.js';
+import { DECODE_STATION_MAIN_SQL } from '../worker/src/official-news-index.js';
 
 test('unchanged queue items only write when their stored state changes', () => {
   const observedAt = 10_000_000;
@@ -84,18 +85,29 @@ test('snapshot health count keeps D1 work request-scoped', async () => {
   assert.equal(calls, 2);
 });
 
-test('official news only writes changed announcement comments', () => {
-  const announcements = [{ id: 10 }, { id: 20 }];
-  const comments = [{ commentId: 1, raw: { text: 'same' } }, { commentId: 2, raw: { text: 'new' } }];
-  const rows = officialCommentsToWrite(announcements, comments, [{ announcement_id: 10, comment_id: 1, raw_json: '{"text":"same"}' }, { announcement_id: 20, comment_id: 1, raw_json: '{"text":"same"}' }]);
-  assert.deepEqual(rows.map((row) => `${row.announcementId}:${row.comment.commentId}`), ['10:2', '20:2']);
+test('Sakurazaka raw save stages do not parse or stringify upstream payloads', () => {
+  const source = readFileSync(new URL('../worker/src/official-news-probe.js', import.meta.url), 'utf8');
+  const main = source.slice(
+    source.indexOf('export async function collectStationMain'),
+    source.indexOf('export async function decodeStationMain'),
+  );
+  const chat = source.slice(
+    source.indexOf('export async function collectStationChat'),
+    source.indexOf('function probeStatement'),
+  );
+  assert.match(main, /response\.text|stationTextRequest/);
+  assert.match(chat, /stationTextRequest/);
+  assert.doesNotMatch(main, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
+  assert.doesNotMatch(chat, /JSON\.(?:parse|stringify)|response\.json|json_(?:valid|extract)/);
+  assert.match(DECODE_STATION_MAIN_SQL, /json_extract\(/);
 });
 
-test('official probe payload excludes full station and queue bodies', () => {
-  const station = { id: 123, is_broadcasting: true, listener_count: 50, huge_unused_field: 'x'.repeat(10000), queue: { id: 9, start_time: 1000, queue_tracks: Array.from({ length: 100 }, (_, index) => ({ id: index, raw: 'x'.repeat(100) })) } };
-  const compact = compactProbePayload(station);
-  assert.ok(compact.rawJson.length < 1000);
-  assert.ok(compact.queueJson.length < 200);
-  assert.equal(JSON.parse(compact.queueJson).track_count, 100);
-  assert.equal(JSON.parse(compact.rawJson).huge_unused_field, undefined);
+test('Sakurazaka chat table stores only raw response text and minute identity', () => {
+  const migration = readFileSync(new URL(
+    '../database/other-migrations/016_sakurazaka46jp_raw_collection.sql',
+    import.meta.url,
+  ), 'utf8');
+  const chat = migration.slice(migration.indexOf('CREATE TABLE IF NOT EXISTS sh_sakurazaka46jp_chat'));
+  assert.match(chat, /raw_json TEXT NOT NULL/);
+  assert.doesNotMatch(chat, /comment_count|latest_comment_id|oldest_comment_id|text\s+TEXT/);
 });

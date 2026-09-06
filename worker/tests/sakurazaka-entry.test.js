@@ -3,49 +3,109 @@ import test from 'node:test';
 
 import {
   SAKURAZAKA_CRON,
-  SAKURAZAKA_CYCLE_MESSAGE,
   runSakurazakaScheduled,
 } from '../src/sakurazaka-entry.js';
+import { OFFICIAL_NEWS_STAGE_MESSAGE } from '../src/other-official-news-stages.js';
 
-test('Sakurazaka cron dispatches one attributed compact task to its dedicated queue', async () => {
+const SCHEDULED_AT = 1_700_000_000_000;
+
+function dueDependencies(newsCheckDue, stationProbeDue, soloDue = false) {
+  return {
+    officialNewsCheckDue: async () => newsCheckDue,
+    officialNewsProbeDue: async () => stationProbeDue,
+    soloMonitorDue: () => soloDue,
+  };
+}
+
+function queue(sent) {
+  return {
+    async send(body, options) {
+      sent.push({ body, options });
+    },
+  };
+}
+
+test('Sakurazaka minute cron prioritizes raw collection', async () => {
   const sent = [];
   const result = await runSakurazakaScheduled({
     cron: SAKURAZAKA_CRON,
-    scheduledTime: 1_700_000_000_000,
+    scheduledTime: SCHEDULED_AT,
   }, {
-    SAKURAZAKA_QUEUE: {
-      async send(body, options) {
-        sent.push({ body, options });
-      },
-    },
-  });
+    SAKURAZAKA_QUEUE: queue(sent),
+  }, dueDependencies(false, true, false));
 
-  assert.deepEqual(result, { dispatched: true, scheduled_at: 1_700_000_000_000 });
-  assert.deepEqual(sent, [{
-    body: {
-      message_type: SAKURAZAKA_CYCLE_MESSAGE,
-      message_version: 1,
-      scheduled_at: 1_700_000_000_000,
-      producer_worker: 'sh-sakurazaka46jp',
-      operation_name: 'sakurazaka-cycle',
-    },
-    options: { contentType: 'json' },
-  }]);
+  assert.equal(SAKURAZAKA_CRON, '* * * * *');
+  assert.equal(result.dispatched, true);
+  assert.deepEqual(result.dispatched_stages, ['station-auth']);
+  assert.equal(result.station_probe_due, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body.message_type, OFFICIAL_NEWS_STAGE_MESSAGE);
+  assert.equal(sent[0].body.stage, 'station-auth');
+  assert.equal(sent[0].body.after_news_check, false);
+  assert.equal(sent[0].body.after_solo_monitor, false);
+  assert.equal(sent[0].body.producer_worker, 'sh-sakurazaka46jp');
 });
 
-test('Sakurazaka entry rejects unrelated cron expressions without dispatch', async () => {
+test('raw collection stays ahead of simultaneous news and solo work', async () => {
+  const sent = [];
+  const result = await runSakurazakaScheduled({
+    cron: SAKURAZAKA_CRON,
+    scheduledTime: SCHEDULED_AT,
+  }, {
+    SAKURAZAKA_QUEUE: queue(sent),
+  }, dueDependencies(true, true, true));
+
+  assert.deepEqual(result.dispatched_stages, ['station-auth']);
+  assert.equal(result.news_check_after_collection, true);
+  assert.equal(result.solo_monitor_due, true);
+  assert.equal(sent[0].body.stage, 'station-auth');
+  assert.equal(sent[0].body.after_news_check, true);
+  assert.equal(sent[0].body.after_solo_monitor, true);
+});
+
+test('five-minute solo monitoring remains available when no raw/news work is due', async () => {
+  const sent = [];
+  const result = await runSakurazakaScheduled({
+    cron: SAKURAZAKA_CRON,
+    scheduledTime: SCHEDULED_AT,
+  }, {
+    SAKURAZAKA_QUEUE: queue(sent),
+  }, dueDependencies(false, false, true));
+
+  assert.deepEqual(result.dispatched_stages, ['solo-monitor']);
+  assert.equal(sent[0].body.stage, 'solo-monitor');
+});
+
+test('Sakurazaka cron does not enqueue work when raw, news, and solo work are all idle', async () => {
   let sent = false;
   const result = await runSakurazakaScheduled({
-    cron: '* * * * *',
-    scheduledTime: 1_700_000_000_000,
+    cron: SAKURAZAKA_CRON,
+    scheduledTime: SCHEDULED_AT,
   }, {
     SAKURAZAKA_QUEUE: { async send() { sent = true; } },
+  }, dueDependencies(false, false, false));
+
+  assert.equal(sent, false);
+  assert.deepEqual(result, {
+    skipped: true,
+    reason: 'no-due-work',
+    scheduled_at: SCHEDULED_AT,
   });
+});
+
+test('Sakurazaka entry rejects the retired five-minute cron expression', async () => {
+  let sent = false;
+  const result = await runSakurazakaScheduled({
+    cron: '*/5 * * * *',
+    scheduledTime: SCHEDULED_AT,
+  }, {
+    SAKURAZAKA_QUEUE: { async send() { sent = true; } },
+  }, dueDependencies(true, true, true));
 
   assert.equal(sent, false);
   assert.deepEqual(result, {
     skipped: true,
     reason: 'unsupported-cron',
-    cron: '* * * * *',
+    cron: '*/5 * * * *',
   });
 });
