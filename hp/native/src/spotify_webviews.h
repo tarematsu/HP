@@ -158,11 +158,11 @@ class SpotifyWebViews final {
 // tverPhase=false starts the YouTube-hour schedule: BitterBlue at 00:00,
 // TALKABOUT at 04:00, one recent-song bridge, then from 20:00 the completion-
 // driven Lonesome rabbit -> random B -> BitterBlue -> random D rotation.
-// The six accounts keep their initial 40-second offsets. After startup, only one
-// WebView at a time gets a recovery-sized viewport and the owner rotates every
-// 15 seconds. There is no parallel background stall scanner. Track completion is
-// event-driven; an ambiguous ad/end state waits and retries the same target rather
-// than skipping it. TVer does not reset an already-running rotation.
+// Initial account starts remain 40 seconds apart. Afterwards exactly one WebView
+// at a time owns the recovery viewport, rotating every 15 seconds. Track-end
+// handling is event driven, so there is no parallel six-window stall scanner or
+// permanent DOM polling loop. Ambiguous ad/end states retry the same target after
+// a bounded wait instead of skipping it. TVer keeps the running rotation intact.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
