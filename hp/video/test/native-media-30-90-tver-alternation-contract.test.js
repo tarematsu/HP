@@ -103,7 +103,7 @@ test('TVer survey modal is dismissed by its close button', () => {
   assert.match(composition, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
-test('TVer fullscreen uses trusted native input then requestFullscreen when the button is hidden', () => {
+test('hidden YouTube and TVer use trusted WebView2 input without moving the OS cursor', () => {
   assert.match(composition, /kNativeMediaTverWatchdogOverrideScript/);
   assert.match(
     composition,
@@ -112,15 +112,20 @@ test('TVer fullscreen uses trusted native input then requestFullscreen when the 
   assert.match(composition, /kNativeMediaTverForceFullscreenAfterClickScript/);
   assert.match(composition, /window\.setTimeout\(async \(\) =>/);
   assert.match(composition, /target\.requestFullscreen \|\| target\.webkitRequestFullscreen/);
-  assert.match(composition, /NativeMediaSendInputWithTverFullscreen/);
-  assert.match(composition, /const UINT sent = ::SendInput\(count, inputs, inputSize\)/);
+  assert.match(composition, /NativeMediaDispatchTrustedClick/);
+  assert.match(composition, /DecodeNativeMediaAbsolutePoint/);
+  assert.match(composition, /CallDevToolsProtocolMethod/);
+  assert.match(composition, /Input\.dispatchMouseEvent/);
+  assert.match(composition, /mousePressed/);
+  assert.match(composition, /mouseReleased/);
   assert.match(
     composition,
-    /webview->ExecuteScript\(kNativeMediaTverForceFullscreenAfterClickScript, nullptr\)/,
+    /WakeNativeMediaTverControls[\s\S]*mouseMoved[\s\S]*Input\.dispatchMouseEvent/,
   );
+  assert.doesNotMatch(composition, /::SendInput\(/);
   assert.match(
     composition,
-    /#define SendInput\(count, inputs, inputSize\)[\s\S]*phase_ == Phase::Tver[\s\S]*webview_\.Get\(\)/,
+    /#define SendInput\(count, inputs, inputSize\)[\s\S]*NativeMediaDispatchTrustedClick[\s\S]*phase_ == Phase::Tver[\s\S]*webview_\.Get\(\)[\s\S]*hostWindow_/,
   );
 });
 
