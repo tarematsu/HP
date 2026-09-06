@@ -1,5 +1,7 @@
 (() => {
   const nativeFetch = window.fetch.bind(window);
+  const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
+  const PERSISTED_CACHE_MAX_AGE_MS = 6 * 60 * 60_000;
   const HIDDEN_CACHE_MAX_AGE_MS = 120_000;
   const state = {
     latestObservedAt: 0,
@@ -34,6 +36,16 @@
 
   function hasUsableQueue() {
     return Array.isArray(state.queue) && state.queue.length > 0;
+  }
+
+  function latestObservedAt(payload) {
+    const historyTail = state.history.at(-1);
+    return Math.max(
+      0,
+      Number(payload?.latest_observed_at || 0),
+      Number(payload?.latest?.observed_at || 0),
+      Number(historyTail?.observed_at || 0),
+    );
   }
 
   function sameGoal(payload) {
@@ -87,15 +99,38 @@
       mergeGoalPredictions(payload);
     }
 
-    state.latestObservedAt = Math.max(
-      state.latestObservedAt,
-      Number(payload.latest_observed_at || payload.latest?.observed_at || 0),
-    );
+    state.latestObservedAt = Math.max(state.latestObservedAt, latestObservedAt(payload));
     if (payload.queue_revision && hasUsableQueue()) state.queueRevision = String(payload.queue_revision);
     if (!hasUsableQueue()) state.queueRevision = '';
     state.lastPayload = structuredClone(payload);
     state.cachedAt = Date.now();
     return payload;
+  }
+
+  function restorePersistedState() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(DASHBOARD_CACHE_KEY) || 'null');
+      const savedAt = Number(cached?.savedAt || 0);
+      const payload = cached?.payload;
+      if (!payload?.ok || !savedAt || Date.now() - savedAt > PERSISTED_CACHE_MAX_AGE_MS) return;
+      state.history = mergeHistory([], payload.history);
+      state.queue = Array.isArray(payload.queue) ? payload.queue : [];
+      state.queueStatus = payload.queue_status || null;
+      state.latestObservedAt = latestObservedAt(payload);
+      state.queueRevision = payload.queue_revision && hasUsableQueue()
+        ? String(payload.queue_revision)
+        : '';
+      state.lastPayload = structuredClone({
+        ...payload,
+        history: state.history,
+        queue: state.queue,
+      });
+      // Preserve the original save time so an old persisted response is not
+      // mistaken for a fresh hidden-tab network response.
+      state.cachedAt = savedAt;
+    } catch {
+      localStorage.removeItem(DASHBOARD_CACHE_KEY);
+    }
   }
 
   function cachedResponse() {
@@ -108,6 +143,8 @@
       },
     });
   }
+
+  restorePersistedState();
 
   window.fetch = async (input, init = {}) => {
     const url = dashboardUrl(input);
