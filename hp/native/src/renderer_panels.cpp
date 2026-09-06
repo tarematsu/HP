@@ -73,21 +73,13 @@ void AdvanceNativeMediaTverSeries() noexcept {
 }
 }  // namespace
 
-// The media panel itself owns cadence, static playback scripts and trusted input.
-// This composition layer only supplies the TVer series alternation and shared
-// media-audio registration hooks required by the surrounding renderer.
+// The media panel owns cadence, static playback scripts, series advancement and
+// trusted input. This composition layer only resolves the active TVer series URL
+// and registers the shared media-audio WebView.
 #define Navigate(url) Navigate(ResolveNativeMediaNavigateUrl((url)))
-#define get_Profile(out)                                                        \
-  get_Profile((AdvanceNativeMediaTverSeries(), (out)))
-#define ClearBrowsingData(dataKinds, handler)                                   \
-  AddRef() > 0                                                                  \
-      ? ((void)(dataKinds), profile2->Release(), CompleteTverRestart(), S_OK)  \
-      : E_FAIL
 #define get_CoreWebView2(out)                                                    \
   get_CoreWebView2(out); RegisterNativeMediaAudioWebView(webview_.Get())
 #include "renderer_panels/media_section.inc"
 #undef get_CoreWebView2
-#undef ClearBrowsingData
-#undef get_Profile
 #undef Navigate
 #include "renderer_panels/data_sections.inc"
