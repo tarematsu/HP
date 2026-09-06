@@ -63,8 +63,10 @@ test('A-B-C-D advances immediately on ended or after four minutes of actual trac
   assert.match(header, /timedPlaybackStartTick = 0/);
   assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(rotation, /spotify:timed-started/);
-  assert.match(rotation, /target\.trackPath[\s\S]*track\.path === target\.trackPath/);
-  assert.match(rotation, /normalize\(metadata && metadata\.title\) === target\.title/);
+  assert.match(rotation, /const mediaTitle = normalize\(metadata && metadata\.title\)/);
+  assert.match(rotation, /if \(mediaTitle\)[\s\S]*mediaTitle === target\.title[\s\S]*else[\s\S]*track\.path === target\.trackPath/);
+  assert.match(rotation, /scheduleStartChecks\(\[250, 1000, 2500\]\)/);
+  assert.match(rotation, /scheduleStartChecks\(\[0, 500, 1500\]\)/);
   assert.match(
     rotation,
     /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/,
@@ -89,6 +91,14 @@ test('stale ended is blocked only during new-target navigation, then valid ended
     rotation,
     /timedRotationActive &&\s*target->timedPlaybackStartTick == 0\) \{\s*return S_OK/,
   );
+});
+
+test('slow navigation re-arms observers on owner-only recovery attempts', () => {
+  assert.match(
+    schedule,
+    /slot\.lastTimedReconcileTick = now;[\s\S]*ArmTimedEndObserver\(slot\);[\s\S]*ReconcileActiveTimedSlot\(slot\)/,
+  );
+  assert.match(schedule, /slot\.timedTarget != TimedSpotifyTarget::TalkAbout/);
 });
 
 test('bridge is a one-shot recent song before the formal rotation', () => {
