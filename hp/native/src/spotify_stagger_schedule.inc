@@ -27,7 +27,6 @@ void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
   }
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
   if (!slot || !slot->owner || slot->index != 0) return;
-  slot->owner->StopLegacySchedulers();
   slot->owner->RunStaggeredReconcile();
 }
 
@@ -172,21 +171,16 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   if (!started_ || slots_.empty()) return;
 
-  StopLegacySchedulers();
   const ULONGLONG now = GetTickCount64();
   if (!robustSchedulerStarted_) {
     robustSchedulerStarted_ = true;
-    reconcileIndex_ = 0;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = now;
     youtubeCycleStartTick_ = now;
     staggerSlotValidated_ = false;
 
-    Slot& first = slots_[0];
-    if (!first.controller && !first.webview) {
-      first.controllerCreating = true;
-      first.controllerCreateTick = now;
-    }
+    // Slot 0 was started synchronously by Start(). The remaining slots are
+    // created only when their serialized ownership turn arrives.
     for (size_t i = 1; i < slots_.size(); ++i) {
       slots_[i].controllerCreating = false;
       slots_[i].controllerCreateTick = 0;
