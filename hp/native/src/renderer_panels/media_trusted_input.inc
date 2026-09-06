@@ -93,7 +93,7 @@ UINT NativeMediaDispatchTrustedInput(
                       [view, tver](HRESULT releaseResult, LPCWSTR) -> HRESULT {
                         if (tver && SUCCEEDED(releaseResult) && view) {
                           view->ExecuteScript(
-                              kNativeMediaTverForceFullscreenAfterClickScript,
+                              NativeMediaTverForceFullscreenAdSafeScript(),
                               nullptr);
                         }
                         return S_OK;
