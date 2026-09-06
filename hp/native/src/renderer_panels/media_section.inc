@@ -1,9 +1,16 @@
 // Thin media-panel wrapper: keep the established media implementation intact,
 // but replace OS-level pointer input with WebView2 CDP input. This is required
-// while power-saving mode hides the dashboard HWND.
+// while power-saving mode hides the dashboard HWND. TVer ad boundaries are
+// patched at runtime so ad playback is not modified by HomePanel controls.
+#undef ExecuteScript
 #undef SetTimer
 #undef SendInput
+#include "media_tver_ad_guard.inc"
 #include "media_trusted_input.inc"
+
+#define ExecuteScript(script, callback)                                         \
+  ExecuteScript(RewriteNativeMediaExecuteScriptWithTverAdGuard((script)).c_str(), \
+                (callback))
 
 #define SetTimer(hwnd, timerId, interval, callback)                              \
   (((timerId) == kNativeMediaPhaseTimer                                         \
