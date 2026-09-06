@@ -42,7 +42,6 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
   slot.timedRandomCIndex = timedRandomCIndex_;
   slot.timedRandomDIndex = timedRandomDIndex_;
-  slot.timedStepStartTick = now;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -62,7 +61,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     slot.timedRandomCIndex = timedRandomCIndex_;
     slot.timedRandomDIndex = timedRandomDIndex_;
   }
-  slot.timedStepStartTick = now;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
