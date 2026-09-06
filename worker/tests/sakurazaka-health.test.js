@@ -3,10 +3,14 @@ import test from 'node:test';
 
 import sakurazakaWorker, { sakurazakaHealth } from '../src/sakurazaka-entry.js';
 
-function healthDatabase({ monitor = null, news = null, fail = '' } = {}) {
+function healthDatabase({ raw = null, derived = null, news = null, fail = '' } = {}) {
   return {
     prepare(sql) {
-      const component = sql.includes('sh_cloud_host_monitor_state') ? 'monitor' : 'official_news';
+      const component = sql.includes('sh_sakurazaka46jp_main')
+        ? 'raw_collection'
+        : sql.includes('sh_host_broadcast_sessions')
+          ? 'raw_materializer'
+          : 'official_news';
       let bindings = [];
       const statement = {
         bind(...values) {
@@ -15,10 +19,11 @@ function healthDatabase({ monitor = null, news = null, fail = '' } = {}) {
         },
         async first() {
           if (fail === component) throw new Error(`${component} database unavailable`);
-          if (component === 'monitor') {
-            assert.deepEqual(bindings, ['solo:custom-handle']);
-            return monitor;
+          if (component === 'raw_materializer') {
+            assert.deepEqual(bindings, ['custom-handle']);
+            return derived;
           }
+          if (component === 'raw_collection') return raw;
           return news;
         },
       };
@@ -27,11 +32,12 @@ function healthDatabase({ monitor = null, news = null, fail = '' } = {}) {
   };
 }
 
-test('Sakurazaka health reports both successful D1 components', async () => {
+test('Sakurazaka health reports raw collection, raw materializer, and official news state', async () => {
   const response = await sakurazakaWorker.fetch(new Request('https://worker.example/health'), {
     SOLO_BROADCAST_HANDLE: 'custom-handle',
     OTHER_DB: healthDatabase({
-      monitor: { phase: 'live', last_success_at: 10 },
+      raw: { observed_at: 10, station_id: 777, is_broadcasting: 1 },
+      derived: { id: 7, status: 'active', station_id: 777, last_observed_at: 10 },
       news: { last_check_at: 20, last_success_at: 20 },
     }),
   });
@@ -40,19 +46,21 @@ test('Sakurazaka health reports both successful D1 components', async () => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   assert.equal(body.ok, true);
-  assert.deepEqual(body.monitor, { phase: 'live', last_success_at: 10 });
+  assert.deepEqual(body.raw_collection, { observed_at: 10, station_id: 777, is_broadcasting: 1 });
+  assert.deepEqual(body.raw_materializer, { id: 7, status: 'active', station_id: 777, last_observed_at: 10 });
   assert.deepEqual(body.official_news, { last_check_at: 20, last_success_at: 20 });
   assert.equal(body.degraded_components, undefined);
 });
 
-test('Sakurazaka health preserves partial state and returns 503 on one D1 failure', async () => {
+test('Sakurazaka health preserves raw-derived partial state and returns 503 on one D1 failure', async () => {
   const originalError = console.error;
   console.error = () => {};
   try {
     const response = await sakurazakaHealth({
       SOLO_BROADCAST_HANDLE: 'custom-handle',
       OTHER_DB: healthDatabase({
-        monitor: { phase: 'idle', last_success_at: 30 },
+        raw: { observed_at: 30, station_id: 777, is_broadcasting: 0 },
+        derived: { id: 7, status: 'ended', station_id: 777, last_observed_at: 30 },
         fail: 'official_news',
       }),
     });
@@ -60,7 +68,8 @@ test('Sakurazaka health preserves partial state and returns 503 on one D1 failur
 
     assert.equal(response.status, 503);
     assert.equal(body.ok, false);
-    assert.deepEqual(body.monitor, { phase: 'idle', last_success_at: 30 });
+    assert.deepEqual(body.raw_collection, { observed_at: 30, station_id: 777, is_broadcasting: 0 });
+    assert.deepEqual(body.raw_materializer, { id: 7, status: 'ended', station_id: 777, last_observed_at: 30 });
     assert.equal(body.official_news, null);
     assert.deepEqual(body.degraded_components, ['official_news']);
   } finally {
@@ -77,9 +86,10 @@ test('Sakurazaka health fails closed when OTHER_DB is missing', async () => {
 
     assert.equal(response.status, 503);
     assert.equal(body.ok, false);
-    assert.equal(body.monitor, null);
+    assert.equal(body.raw_collection, null);
+    assert.equal(body.raw_materializer, null);
     assert.equal(body.official_news, null);
-    assert.deepEqual(body.degraded_components, ['monitor', 'official_news']);
+    assert.deepEqual(body.degraded_components, ['raw_collection', 'raw_materializer', 'official_news']);
   } finally {
     console.error = originalError;
   }
