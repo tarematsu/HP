@@ -48,6 +48,7 @@ class SpotifyWebViews final {
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
     ULONGLONG timedCompletionPendingTick = 0;
+    ULONGLONG timedPlaybackStartTick = 0;
     ULONGLONG lastTimedReconcileTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
@@ -99,6 +100,7 @@ class SpotifyWebViews final {
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
+  bool AdvanceExpiredTimedRotation(ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
@@ -133,9 +135,10 @@ class SpotifyWebViews final {
 // driven Lonesome rabbit -> random B -> BitterBlue -> random D rotation.
 // Initial account starts remain 40 seconds apart. Afterwards exactly one WebView
 // at a time owns the recovery viewport, rotating every 15 seconds. Track-end
-// handling is event driven, so there is no parallel six-window stall scanner or
-// permanent DOM polling loop. Ambiguous ad/end states retry the same target after
-// a bounded wait instead of skipping it. TVer keeps the running rotation intact.
+// handling is event driven, with a native four-minute deadline measured from the
+// target song's actual play event. There is no parallel six-window DOM scanner or
+// permanent DOM polling loop. Ambiguous ad/end states retry the same target until
+// completion or the four-minute playback deadline. TVer keeps the rotation intact.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
