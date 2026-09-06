@@ -64,6 +64,12 @@ test('authentication gets at most one 40-second hold instead of blocking other a
   assert.match(schedule, /!holdAuthentication && !holdRecovery/);
 });
 
+test('recovery also has a bounded hold so one slow account cannot monopolize the viewport', () => {
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
+  assert.match(schedule, /const bool holdRecovery/);
+  assert.match(schedule, /!holdAuthentication && !holdRecovery/);
+});
+
 test('each simple scheduler tick refreshes layout before returning for login', () => {
   assert.match(
     schedule,
