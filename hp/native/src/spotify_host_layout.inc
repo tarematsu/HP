@@ -31,7 +31,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   hostLayoutMask_ = mask;
   hostLayoutActiveSlot_ = activeIndex;
   hostLayoutAuthenticationVisible_ = authenticationVisible;
-  PlaceHosts(mask != 0 || authenticationVisible);
+  PlaceHosts();
 }
 
 }  // namespace hp
