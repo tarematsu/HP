@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readAllActivePlaybackCursorPage } from '../src/active-playback-feed.js';
+import {
+  invalidateAllActivePlaybackCache,
+  readAllActivePlaybackCursorPage
+} from '../src/active-playback-feed.js';
 
 function mediaUrl(id, orientation = 'horizontal', resolution = 720) {
   const shortEdge = resolution >= 1080 ? 1080 : 720;
@@ -36,7 +39,7 @@ function firstSeenAt(daysAgo = 1) {
   return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
 }
 
-test('all-active weighted paging exhausts more than 2000 stored videos without duplicates', async () => {
+test('all-active weighted paging exhausts more than 2000 stored videos with one D1 read', async () => {
   const rows = Array.from({ length: 2105 }, (_, index) => ({
     id: index + 1,
     mediaUrl: mediaUrl(index + 1),
@@ -60,10 +63,33 @@ test('all-active weighted paging exhausts more than 2000 stored videos without d
 
   assert.equal(ids.length, 2105);
   assert.equal(new Set(ids).size, 2105);
+  assert.equal(db.sql.length, 1);
   assert.ok(db.sql.every((sql) => sql.includes("video.status = 'active'")));
   assert.ok(db.sql.every((sql) => !sql.includes('ranking_entries')));
   assert.ok(db.sql.every((sql) => !sql.includes('LIMIT')));
   assert.ok(db.sql.every((sql) => !sql.includes('OFFSET')));
+});
+
+test('fallback cache invalidation forces one fresh D1 snapshot read', async () => {
+  const rows = [
+    { id: 1, mediaUrl: mediaUrl(1), firstSeenAt: firstSeenAt(1), status: 'active' },
+    { id: 2, mediaUrl: mediaUrl(2), firstSeenAt: firstSeenAt(10), status: 'active' }
+  ];
+  const db = createDb(rows);
+
+  await readAllActivePlaybackCursorPage(db, {
+    orientation: 'both', cursor: 'start', seed: 7, limit: 1
+  });
+  await readAllActivePlaybackCursorPage(db, {
+    orientation: 'both', cursor: 'start', seed: 7, limit: 1
+  });
+  assert.equal(db.sql.length, 1);
+
+  invalidateAllActivePlaybackCache(db);
+  await readAllActivePlaybackCursorPage(db, {
+    orientation: 'both', cursor: 'start', seed: 7, limit: 1
+  });
+  assert.equal(db.sql.length, 2);
 });
 
 test('orientation filters apply across the complete active-video set', async () => {
@@ -115,5 +141,6 @@ test('resolution profiles filter by short edge without additional D1 writes', as
   assert.deepEqual(vertical1080.items.map((item) => item.id), [2]);
   assert.deepEqual(horizontal720.items.map((item) => item.id), [3]);
   assert.deepEqual(horizontal1080.items.map((item) => item.id), [4]);
+  assert.equal(db.sql.length, 1);
   assert.ok(db.sql.every((sql) => sql.startsWith('SELECT')));
 });
