@@ -46,13 +46,18 @@ test('individual admin collectors merge collected candidates and finalize once',
   assert.doesNotMatch(worker, /json\(await runAndRecord/);
 });
 
-test('compacted finalization serializes through the video Durable Object and publishes R2', () => {
+test('compacted finalization refreshes an all-active R2 playback snapshot', () => {
   assert.match(compactedFeed, /video-feed-finalize/);
   assert.match(compactedFeed, /video-feed-stage/);
   assert.match(compactedFeed, /video-feed-refresh/);
   assert.match(compactedFeed, /lock: false/);
-  assert.match(compactedFeed, /publishFeedSnapshot/);
-  assert.match(feedSnapshot, /video\/playback-feed\/v2\.json/);
+  assert.match(compactedFeed, /refreshFeedSnapshot\(env, capturedAt\)/);
+  assert.doesNotMatch(compactedFeed, /publishFeedSnapshot/);
+  assert.match(feedSnapshot, /video\/active-playback\/v1\.json/);
+  assert.match(feedSnapshot, /FROM videos AS video/);
+  assert.match(feedSnapshot, /video\.status = 'active'/);
+  assert.doesNotMatch(feedSnapshot, /ranking_entries/);
+  assert.doesNotMatch(feedSnapshot, /PLAYBACK_FEED_LIMIT/);
   assert.match(feedSnapshot, /DATA_BUCKET|bucket/);
 });
 

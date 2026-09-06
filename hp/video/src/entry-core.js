@@ -2,7 +2,10 @@ import {
   readCollectionCaptureDetails,
   readCollectionCaptureSummaries
 } from './collection-capture.js';
-import { readAllActivePlaybackCursorPage } from './active-playback-feed.js';
+import {
+  invalidateAllActivePlaybackCache,
+  readAllActivePlaybackCursorPage
+} from './active-playback-feed.js';
 import { withSecurityHeaders } from './security-headers.js';
 import { blockPlaybackMedia } from './video-blocklist.js';
 import { runLivenessMonitor } from './liveness-monitor.js';
@@ -10,14 +13,6 @@ import { LIVENESS_CRON } from './liveness-schedule.js';
 import { runManualImport } from './manual-import.js';
 import { readManualImportJob } from './manual-import-jobs.js';
 import { consumeManualImportBatch } from './manual-import-queue.js';
-import {
-  invalidateOrientationPlaybackCache,
-  readOrientationPlaybackCursorPage
-} from './oriented-playback-feed.js';
-import {
-  invalidatePlaybackCache,
-  readSeededPlaybackCursorPage
-} from './playback-feed.js';
 import {
   parseStatusListLimit,
   readPlaybackExclusionStatus,
@@ -128,11 +123,10 @@ function invalidatePlaybackResponseCache(db) {
   if (db && (typeof db === 'object' || typeof db === 'function')) playbackCaches.delete(db);
 }
 
-function invalidateCaches(db, options = {}) {
+function invalidateCaches(db) {
   invalidateStatusCache(db);
   invalidatePlaybackResponseCache(db);
-  invalidatePlaybackCache(db);
-  invalidateOrientationPlaybackCache(db, options);
+  invalidateAllActivePlaybackCache(db);
 }
 
 function invalidateAfterCollectionGroup(db, results) {
@@ -149,10 +143,7 @@ function invalidateAfterLiveness(db, result) {
   if (deadCount <= 0 && revivedCount <= 0) return;
 
   invalidatePlaybackResponseCache(db);
-  invalidatePlaybackCache(db);
-  invalidateOrientationPlaybackCache(db, {
-    resetMetadata: revivedCount > 0
-  });
+  invalidateAllActivePlaybackCache(db);
 }
 
 function responseFromSnapshot(snapshot) {
@@ -213,17 +204,13 @@ function trimPlaybackCache(cache) {
 
 async function cachedPlaybackPage(env, options) {
   const cache = playbackCacheFor(env.DB);
-  const key = `${options.scope}:${options.orientation}:${options.seed}:${options.cursor}:${options.limit}`;
+  const key = `${options.orientation}:${options.seed}:${options.cursor}:${options.limit}`;
   const now = Date.now();
   const existing = cache.get(key);
   if (existing?.page && existing.expiresAt > now) return existing.page;
   if (existing?.pending) return existing.pending;
 
-  const pending = options.scope === 'all'
-    ? readAllActivePlaybackCursorPage(env.DB, options)
-    : options.orientation === 'both'
-      ? readSeededPlaybackCursorPage(env.DB, options)
-      : readOrientationPlaybackCursorPage(env.DB, options);
+  const pending = readAllActivePlaybackCursorPage(env.DB, options);
   cache.set(key, { pending, expiresAt: now + PLAYBACK_CACHE_TTL_MS });
 
   try {
@@ -244,13 +231,12 @@ async function playbackResponse(url, env) {
   const cursor = url.searchParams.get('cursor') || 'start';
   const seed = intParam(url.searchParams.get('seed'), 1, 1, 2_147_483_646);
   const orientation = normalizeVideoOrientationFilter(url.searchParams.get('orientation'));
-  const scope = url.searchParams.get('scope') === 'all' ? 'all' : 'ranked';
-  const page = await cachedPlaybackPage(env, { limit, cursor, seed, orientation, scope });
+  const page = await cachedPlaybackPage(env, { limit, cursor, seed, orientation });
   return json({
     ok: true,
     seed,
     orientation,
-    scope,
+    scope: 'all',
     items: page.items,
     nextCursor: page.nextCursor
   }, { headers: { 'cache-control': 'private, no-store' } });

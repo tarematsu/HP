@@ -16,6 +16,18 @@ test('playback bag contains every item exactly once', () => {
   assert.deepEqual([...bag.remainingIds].sort(), items.map((item) => String(item.id)).sort());
 });
 
+test('playback bag preserves the weighted order returned by the server', () => {
+  const items = [{ id: 9 }, { id: 3 }, { id: 12 }, { id: 1 }];
+  const bag = createPlaybackBag(items, 77);
+  assert.deepEqual(bag.remainingIds, ['9', '3', '12', '1']);
+});
+
+test('previously played video is moved away from the first position without reshuffling others', () => {
+  const items = [{ id: 9 }, { id: 3 }, { id: 12 }, { id: 1 }];
+  const bag = createPlaybackBag(items, 77, 9, 2);
+  assert.deepEqual(bag.remainingIds, ['3', '12', '9', '1']);
+});
+
 test('restored bag keeps saved order and ignores videos added mid-round', () => {
   const bag = {
     version: 1,
