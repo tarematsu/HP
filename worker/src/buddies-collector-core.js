@@ -81,6 +81,17 @@ export async function runBuddiesCollectorScheduled(
   const now = dependencies.now || Date.now;
   const scheduledAt = Number(controller?.scheduledTime) || now();
   const activeEnv = rawCollectorEnv(env);
+
+  // Keep minute derive recovery independent from the collector lease. A long or
+  // overlapping collection must not suppress the bounded five-minute backlog
+  // dispatch, otherwise pending minute facts can age past the health threshold.
+  const minuteLiveRecovery = await dispatchMinuteLiveRecovery(
+    activeEnv,
+    scheduledAt,
+    ctx,
+    dependencies,
+  );
+
   const holderId = dependencies.holderId || collectorRunId(scheduledAt);
   const claim = dependencies.claimPrimaryRunLock || claimPrimaryRunLock;
   const release = dependencies.releasePrimaryRunLock || releasePrimaryRunLock;
@@ -92,6 +103,7 @@ export async function runBuddiesCollectorScheduled(
       skipped: true,
       reason: 'collector-run-already-active',
       scheduled_at: scheduledAt,
+      ...(minuteLiveRecovery ? { minute_live_recovery: minuteLiveRecovery } : {}),
     };
   }
 
@@ -104,12 +116,6 @@ export async function runBuddiesCollectorScheduled(
     const collection = await collect(activeEnv, collectionDependencies);
     await clearRecordedFailure(clear, activeEnv);
     await release(activeEnv, holderId, now());
-    const minuteLiveRecovery = await dispatchMinuteLiveRecovery(
-      activeEnv,
-      scheduledAt,
-      ctx,
-      dependencies,
-    );
     return {
       collected: true,
       scheduled_at: scheduledAt,

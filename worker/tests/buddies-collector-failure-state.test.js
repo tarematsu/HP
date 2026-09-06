@@ -18,7 +18,7 @@ test('live minute recovery dispatch is due only once per five-minute window', ()
   assert.equal(minuteLiveRecoveryDispatchDue(Number.NaN), false);
 });
 
-test('successful buddies collection clears and releases before bounded live recovery', async () => {
+test('bounded live recovery runs before buddies collection acquires its lease', async () => {
   const calls = [];
   const result = await runBuddiesCollectorScheduled(controller, {}, null, {
     now: () => SCHEDULED_AT + 100,
@@ -46,10 +46,34 @@ test('successful buddies collection clears and releases before bounded live reco
     },
   });
 
-  assert.deepEqual(calls, ['claim', 'collect', 'clear', 'release', 'recover']);
+  assert.deepEqual(calls, ['recover', 'claim', 'collect', 'clear', 'release']);
   assert.equal(result.collected, true);
   assert.equal(result.payload_bytes, 123);
   assert.deepEqual(result.minute_live_recovery, { dispatched: 2 });
+});
+
+test('collector lease contention does not suppress bounded live recovery', async () => {
+  const calls = [];
+  const result = await runBuddiesCollectorScheduled(controller, {}, null, {
+    now: () => SCHEDULED_AT + 100,
+    holderId: 'holder-busy',
+    async claimPrimaryRunLock() {
+      calls.push('claim');
+      return false;
+    },
+    async collectRawChannel() {
+      calls.push('collect');
+    },
+    async dispatchPendingMinuteFacts() {
+      calls.push('recover');
+      return { dispatched: 5 };
+    },
+  });
+
+  assert.deepEqual(calls, ['recover', 'claim']);
+  assert.equal(result.skipped, true);
+  assert.equal(result.reason, 'collector-run-already-active');
+  assert.deepEqual(result.minute_live_recovery, { dispatched: 5 });
 });
 
 test('successful collection skips recovery outside the five-minute boundary', async () => {
@@ -71,7 +95,7 @@ test('successful collection skips recovery outside the five-minute boundary', as
   assert.equal(result.minute_live_recovery, undefined);
 });
 
-test('failed buddies collection records a sanitized diagnosis and preserves lease TTL behavior', async () => {
+test('failed buddies collection still dispatches bounded recovery before recording failure', async () => {
   const calls = [];
   let recorded = null;
   const originalError = console.error;
@@ -105,6 +129,7 @@ test('failed buddies collection records a sanitized diagnosis and preserves leas
         },
         async dispatchPendingMinuteFacts() {
           calls.push('recover');
+          return { dispatched: 1 };
         },
       }),
       /secret-token-value/,
@@ -113,7 +138,7 @@ test('failed buddies collection records a sanitized diagnosis and preserves leas
     console.error = originalError;
   }
 
-  assert.deepEqual(calls, ['claim', 'collect', 'record']);
+  assert.deepEqual(calls, ['recover', 'claim', 'collect', 'record']);
   assert.equal(recorded.stage, 'collector_unknown');
   assert.equal(recorded.source, 'cron');
   assert.equal(recorded.at, SCHEDULED_AT);

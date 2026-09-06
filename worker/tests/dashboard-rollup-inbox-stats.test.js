@@ -44,6 +44,10 @@ function database() {
       last_observed_at INTEGER NOT NULL,
       last_total_member_count INTEGER
     );
+    CREATE INDEX idx_sh_total_member_daily_latest
+      ON sh_total_member_daily(
+        channel_id,day_at,last_observed_at DESC,host_key,last_total_member_count
+      );
     CREATE TABLE sh_minute_fact_jobs(
       id INTEGER PRIMARY KEY,
       minute_at INTEGER NOT NULL,
