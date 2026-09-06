@@ -4,7 +4,7 @@ let authModulePromise;
 let checkModulePromise;
 let splitModulePromise;
 let reconcileModulePromise;
-let soloModulePromise;
+let rawMaterializerModulePromise;
 let utilsModulePromise;
 
 function loadAuthModule() {
@@ -27,9 +27,9 @@ function loadReconcileModule() {
   return reconcileModulePromise;
 }
 
-function loadSoloModule() {
-  soloModulePromise ||= import('./sakurazaka-monitor.js');
-  return soloModulePromise;
+function loadRawMaterializerModule() {
+  rawMaterializerModulePromise ||= import('./sakurazaka-raw-materializer.js');
+  return rawMaterializerModulePromise;
 }
 
 function loadUtilsModule() {
@@ -40,7 +40,6 @@ function loadUtilsModule() {
 function continuationExtra(task, extra = null) {
   const value = { ...(extra || {}) };
   if (task.afterNewsCheck) value.after_news_check = true;
-  if (task.afterSoloMonitor) value.after_solo_monitor = true;
   return Object.keys(value).length ? value : null;
 }
 
@@ -195,15 +194,32 @@ async function runStationChat(env, task, dependencies) {
 async function runStationFinalize(env, task, dependencies) {
   const finalize = dependencies.finalize || (await loadSplitModule()).runOfficialNewsFinalizeOnly;
   const result = await finalize(env, await stageConfig(env, dependencies), task.scheduledAt);
-  const nextStage = task.afterNewsCheck ? 'probe' : 'reconcile';
-  await sendStage(env, nextStage, task.scheduledAt, dependencies, continuationExtra(task));
+  await sendStage(env, 'raw-materialize', task.scheduledAt, dependencies, continuationExtra(task));
   return {
     stage: 'station-finalize',
+    pending: true,
+    next_stage: 'raw-materialize',
+    skipped: result?.skipped === true,
+    reason: result?.reason ?? null,
+    active: result?.active === true,
+  };
+}
+
+async function runRawMaterialize(env, task, dependencies) {
+  const materialize = dependencies.rawMaterialize
+    || (await loadRawMaterializerModule()).materializeSakurazakaRawMinute;
+  const result = await materialize(env, task.scheduledAt);
+  const nextStage = task.afterNewsCheck ? 'probe' : 'reconcile';
+  await sendStage(env, nextStage, task.scheduledAt, dependencies);
+  return {
+    stage: 'raw-materialize',
     pending: true,
     next_stage: nextStage,
     skipped: result?.skipped === true,
     reason: result?.reason ?? null,
     active: result?.active === true,
+    session_id: result?.session_id ?? null,
+    station_id: result?.station_id ?? null,
   };
 }
 
@@ -211,31 +227,8 @@ async function runReconcile(env, task, dependencies) {
   const reconcile = dependencies.reconcile
     || (await loadReconcileModule()).reconcileOfficialAnnouncements;
   const result = await reconcile(env, task.scheduledAt);
-  if (task.afterSoloMonitor) {
-    await sendStage(env, 'solo-monitor', task.scheduledAt, dependencies);
-    return {
-      stage: 'reconcile',
-      pending: true,
-      next_stage: 'solo-monitor',
-      skipped: result?.skipped === true,
-      reason: result?.reason ?? null,
-    };
-  }
   return {
     stage: 'reconcile',
-    pending: false,
-    skipped: result?.skipped === true,
-    reason: result?.reason ?? null,
-  };
-}
-
-async function runSoloMonitor(env, task, dependencies) {
-  const auth = dependencies.auth || (await loadAuthModule()).ensureSakurazakaSession;
-  const monitor = dependencies.soloMonitor || (await loadSoloModule()).runSakurazakaMonitor;
-  await auth(env);
-  const result = await monitor(env, task.scheduledAt);
-  return {
-    stage: 'solo-monitor',
     pending: false,
     skipped: result?.skipped === true,
     reason: result?.reason ?? null,
@@ -265,19 +258,18 @@ export function officialNewsStageTask(body) {
   else if (body.stage === 'station-decode') stage = 'station-decode';
   else if (body.stage === 'station-chat') stage = 'station-chat';
   else if (body.stage === 'station-finalize') stage = 'station-finalize';
-  else if (body.stage === 'solo-monitor') stage = 'solo-monitor';
+  else if (body.stage === 'raw-materialize' || body.stage === 'solo-monitor') stage = 'raw-materialize';
   else if (body.stage === 'reconcile') stage = 'reconcile';
   const candidates = Array.isArray(body.candidates)
     ? body.candidates.slice(0, 40).map(compactCandidate).filter((item) => item.newsId && item.href)
     : [];
   const candidateIndex = Math.max(0, Math.trunc(Number(body.candidate_index) || 0));
   const afterNewsCheck = body.after_news_check === true;
-  const afterSoloMonitor = body.after_solo_monitor === true;
-  return { stage, scheduledAt, candidates, candidateIndex, afterNewsCheck, afterSoloMonitor };
+  return { stage, scheduledAt, candidates, candidateIndex, afterNewsCheck };
 }
 
 export async function processOfficialNewsStage(env, task, dependencies = {}) {
-  if (task.stage === 'solo-monitor') return runSoloMonitor(env, task, dependencies);
+  if (task.stage === 'raw-materialize') return runRawMaterialize(env, task, dependencies);
   if (task.stage === 'reconcile') return runReconcile(env, task, dependencies);
   if (task.stage === 'station-finalize') return runStationFinalize(env, task, dependencies);
   if (task.stage === 'station-chat') return runStationChat(env, task, dependencies);
