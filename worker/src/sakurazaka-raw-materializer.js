@@ -162,6 +162,10 @@ async function saveProfile(env, sessionId, station, handle, observedAt) {
     session_id: sessionId,
     source_scope: SOURCE_SCOPE,
   }, observedAt);
+  await env.OTHER_DB.prepare(`UPDATE sh_host_broadcast_sessions SET
+      followers_end=COALESCE(?,followers_end),
+      total_streams_end=COALESCE(?,total_streams_end)
+    WHERE id=?`).bind(profile.followers, profile.total_streams, sessionId).run();
   return true;
 }
 
@@ -190,15 +194,53 @@ async function saveStationMinute(env, sessionId, handle, station, main, queue, o
   }, observedAt);
 }
 
+async function saveTrackPresentation(env, sessionId, queue) {
+  if (!queue?.tracks?.length) return 0;
+  const statements = queue.tracks.map((track) => env.OTHER_DB.prepare(`UPDATE sh_host_queue_items SET
+      apple_music_id=COALESCE(?,apple_music_id),
+      title=COALESCE(?,title),artist=COALESCE(?,artist),album_name=COALESCE(?,album_name),
+      thumbnail_url=COALESCE(?,thumbnail_url),bite_count=COALESCE(?,bite_count)
+    WHERE session_id=? AND position=?
+      AND COALESCE(queue_id,-1)=COALESCE(?,-1)
+      AND ((queue_start_time=? ) OR (queue_start_time IS NULL AND ? IS NULL))`)
+    .bind(
+      track.apple_music_id,
+      track.title,
+      track.artist,
+      track.album_name,
+      track.thumbnail_url,
+      track.bite_count,
+      sessionId,
+      track.position,
+      queue.queue_id,
+      queue.start_time,
+      queue.start_time,
+    ));
+  try {
+    await env.OTHER_DB.batch(statements);
+    return statements.length;
+  } catch (error) {
+    if (/no such column/i.test(String(error?.message || ''))) {
+      console.warn(JSON.stringify({
+        event: 'sakurazaka_raw_track_metadata_schema_pending',
+        error: String(error?.message || error).slice(0, 300),
+      }));
+      return 0;
+    }
+    throw error;
+  }
+}
+
 async function saveQueueMinute(env, sessionId, queue, observedAt) {
-  if (!queue) return false;
+  if (!queue) return { saved: false, metadata: 0 };
   const hash = await queueHash(queue);
   await writeEvent(env, 'solo_queue', {
     session_id: sessionId,
     queue_hash: hash,
     ...queue,
   }, observedAt);
-  return true;
+  const metadata = await saveTrackPresentation(env, sessionId, queue);
+  return { saved: true, metadata };
 }
 
 async function saveChatMinute(env, sessionId, stationId, chat, observedAt) {
@@ -253,10 +295,13 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
   await saveStationMinute(env, Number(session.id), handle, station, main, queue, observedAt);
 
   let queueSaved = false;
+  let trackMetadataWritten = 0;
   let commentsAccepted = 0;
   let profileSaved = false;
   if (active) {
-    queueSaved = await saveQueueMinute(env, Number(session.id), queue, observedAt);
+    const queueResult = await saveQueueMinute(env, Number(session.id), queue, observedAt);
+    queueSaved = queueResult.saved;
+    trackMetadataWritten = queueResult.metadata;
     const chatResult = await saveChatMinute(
       env,
       Number(session.id),
@@ -290,6 +335,7 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
     active,
     session_status: session.status,
     queue_saved: queueSaved,
+    track_metadata_written: trackMetadataWritten,
     comments_accepted: commentsAccepted,
     profile_saved: profileSaved,
   }));
@@ -302,6 +348,7 @@ export async function materializeSakurazakaRawMinute(env, now = Date.now()) {
     active,
     session_status: session.status,
     queue_saved: queueSaved,
+    track_metadata_written: trackMetadataWritten,
     comments_accepted: commentsAccepted,
     profile_saved: profileSaved,
   };
