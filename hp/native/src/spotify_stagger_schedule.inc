@@ -162,18 +162,18 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     return;
   }
 
-  if (!staggerSlotValidated_ &&
-      slot.timedTarget != TimedSpotifyTarget::TalkAbout) {
-    ArmTimedEndObserver(slot);
-  }
-
   // Healthy slots receive one verification per ownership turn. A slot that still
   // needs recovery may retry every four seconds, but only while it owns the one
-  // recovery viewport. No other Spotify WebView gets DOM work on this tick.
+  // recovery viewport. Re-arm the idempotent completion/start observers on each
+  // recovery attempt so a slow navigation cannot leave them attached only to the
+  // page being replaced. No other Spotify WebView gets DOM work on this tick.
   if (!staggerSlotValidated_ || !slot.playing) {
     if (slot.lastTimedReconcileTick == 0 ||
         now - slot.lastTimedReconcileTick >= kSpotifySimpleRetryMs) {
       slot.lastTimedReconcileTick = now;
+      if (slot.timedTarget != TimedSpotifyTarget::TalkAbout) {
+        ArmTimedEndObserver(slot);
+      }
       staggerSlotValidated_ = true;
       ReconcileActiveTimedSlot(slot);
     }
