@@ -18,8 +18,8 @@ const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
   'utf8',
 );
-const rendererPanels = readFileSync(
-  new URL('../../native/src/renderer_panels.cpp', import.meta.url),
+const mediaWrapper = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
 const mediaPanel = readFileSync(
@@ -68,10 +68,10 @@ test('Spotify player pages reduce decorative work without hiding foreground surf
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_MEDIA/);
 });
 
-test('YouTube starts one TALKABOUT pass and TVer forces Lonesome rabbit at the 30-minute boundary', () => {
+test('YouTube starts one TALKABOUT pass and TVer forces Lonesome rabbit at the phase boundary', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(
-    rendererPanels,
+    mediaWrapper,
     /timerId\) == kNativeMediaPhaseTimer[\s\S]*SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/,
   );
   assert.match(spotifyHeader, /void SetPodcastMode\(bool podcastWindowActive\) noexcept/);
