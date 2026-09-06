@@ -33,23 +33,25 @@ test('media cadence is statically 60 minutes per YouTube/TVer phase', () => {
   assert.doesNotMatch(mediaWrapper, /NativeMediaPhaseIntervalMs/);
 });
 
-test('media scripts are fixed static literals without runtime rewriting', () => {
+test('media scripts are fixed static literals without runtime rewriting or duplicate TVer implementations', () => {
   assert.match(tverStatic, /kNativeMediaTverLoopStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverWatchdogStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverForceFullscreenAdSafeScript\[\]/);
-  assert.match(mediaWrapper, /ResolveNativeMediaStaticScript/);
   assert.match(
-    mediaWrapper,
-    /script == kNativeMediaTverLoopScript[\s\S]*return kNativeMediaTverLoopStaticScript/,
+    mediaPanel,
+    /kNativeMediaTverLoopScript =\s*kNativeMediaTverLoopStaticScript/,
   );
   assert.match(
-    mediaWrapper,
-    /script == kNativeMediaTverWatchdogScript[\s\S]*return kNativeMediaTverWatchdogStaticScript/,
+    mediaPanel,
+    /kNativeMediaTverWatchdogScript =\s*kNativeMediaTverWatchdogStaticScript/,
   );
+  assert.doesNotMatch(mediaWrapper, /ResolveNativeMediaStaticScript/);
+  assert.doesNotMatch(mediaWrapper, /#define ExecuteScript/);
   assert.doesNotMatch(composition, /RewriteNativeMediaExecuteScript/);
   assert.doesNotMatch(mediaWrapper, /RewriteNativeMediaExecuteScript/);
   assert.doesNotMatch(tverStatic, /InsertNativeMediaSnippet|ReplaceNativeMediaSnippet/);
   assert.doesNotMatch(tverStatic, /\.find\(L"|\.insert\(|\.replace\(/);
+  assert.doesNotMatch(mediaPanel, /const openLatestEpisode =/);
 });
 
 test('TVer alternates Sakura Meets and Death Youth Game after a completed queue', () => {
