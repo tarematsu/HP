@@ -11,7 +11,7 @@ const click = readFileSync(
   'utf8',
 );
 const schedule = readFileSync(
-  new URL('../../native/src/spotify_simple_schedule.inc', import.meta.url),
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
   'utf8',
 );
 const header = readFileSync(
