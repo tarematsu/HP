@@ -9,6 +9,7 @@ const RECOVERY = 'sh-buddies-recovery';
 const COLLECTOR = 'sh-buddies-collector';
 const RUNTIME = 'sh-runtime-orchestrator';
 const ALL_WORKERS = [SAKURAZAKA, RECOVERY, COLLECTOR, RUNTIME];
+const BUDDIES_RUNTIME_WORKERS = [RECOVERY, COLLECTOR, RUNTIME];
 
 function select(paths = [], args = []) {
   return JSON.parse(execFileSync(process.execPath, [selector, ...args], {
@@ -23,12 +24,9 @@ test('domain modules select every Worker whose bundle imports them', () => {
     'site/functions/lib/d1-lean-ingest.js',
     'site/functions/lib/d1-optimized-ingest.js',
   ]) {
-    assert.deepEqual(select([path]).workers, ALL_WORKERS, path);
+    assert.deepEqual(select([path]).workers, BUDDIES_RUNTIME_WORKERS, path);
   }
-  assert.deepEqual(
-    select(['worker/src/persist-structure-stages.js']).workers,
-    [RECOVERY, COLLECTOR],
-  );
+  assert.deepEqual(select(['worker/src/persist-structure-stages.js']).workers, [RECOVERY, COLLECTOR]);
   for (const path of [
     'worker/src/minute-enrichment-playback-stages.js',
     'worker/src/track-metadata-entry.js',
@@ -40,7 +38,7 @@ test('domain modules select every Worker whose bundle imports them', () => {
   }
   assert.deepEqual(select(['worker/src/buddies-collector-entry.js']).workers, [COLLECTOR]);
   assert.deepEqual(select(['worker/src/buddies-recovery-entry.js']).workers, [RECOVERY]);
-  assert.deepEqual(select(['worker/src/sakurazaka-monitor.js']).workers, [SAKURAZAKA]);
+  assert.deepEqual(select(['worker/src/sakurazaka-raw-materializer.js']).workers, [SAKURAZAKA]);
 });
 
 test('Actions-only offline modules do not redeploy Workers', () => {
