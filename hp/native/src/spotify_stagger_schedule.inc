@@ -36,6 +36,12 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG now = GetTickCount64();
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
+
+  // The four-minute guard compares six native timestamps only. It does not
+  // perform DOM work and can therefore run on the existing two-second timer
+  // without bringing back the old six-window background probe.
+  if (AdvanceExpiredTimedRotation(now)) return;
+
   const ULONGLONG elapsed = now - youtubeCycleStartTick_;
 
   // One WebView owns the recovery-sized viewport at a time. The first six starts
@@ -106,6 +112,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       slot.unhealthyChecks = 0;
       slot.playing = false;
       slot.timedCompletionPendingTick = 0;
+      slot.timedPlaybackStartTick = 0;
       staggerSlotIndex_ = slot.index;
       staggerSlotStartTick_ = now;
       staggerSlotValidated_ = false;
@@ -136,7 +143,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   // A waiting state means an ended media item may have been an ad. Never skip a
   // formal A/B/C/D target because the machine was slow: after three minutes just
-  // clear the ambiguity and retry the same target.
+  // clear the ambiguity and retry the same target, unless its four-minute actual
+  // song-playback deadline has already advanced it.
   if (slot.timedCompletionPendingTick != 0) {
     if (now - slot.timedCompletionPendingTick < kSpotifySimplePendingRecoveryMs) {
       return;
@@ -216,6 +224,7 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
       slot.timedRotationCycle = 0;
       slot.timedRotationPosition = 0;
       slot.timedCompletionPendingTick = 0;
+      slot.timedPlaybackStartTick = 0;
       slot.timedRandomCIndex = kNoTimedCatalogIndex;
       slot.timedRandomDIndex = kNoTimedCatalogIndex;
       slot.timedRotationActive = false;
