@@ -72,8 +72,8 @@ test('TVer alternates Sakura Meets and Death Youth Game after a completed queue'
     /#define Navigate\(url\) Navigate\(ResolveNativeMediaNavigateUrl\(\(url\)\)\)/,
   );
   assert.match(
-    composition,
-    /#define get_Profile\(out\)[\s\S]*AdvanceNativeMediaTverSeries\(\)/,
+    mediaPanel,
+    /RestartTverAfterPlayback\(\) noexcept[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
 });
 
@@ -173,17 +173,19 @@ test('YouTube health and watchdog remain separate static responsibilities', () =
   assert.doesNotMatch(composition, /kNativeMediaYoutubeWatchdogOverrideScript/);
 });
 
-test('TVer restart reuses the existing controller', () => {
+test('TVer restart is a direct same-controller navigation without profile/cache work', () => {
   assert.match(tverStatic, /const playbackRate = 1\.75/);
   assert.match(tverStatic, /qualityName\(element\) === '低'/);
   assert.match(
-    composition,
-    /#define ClearBrowsingData\(dataKinds, handler\)[\s\S]*AddRef\(\) > 0[\s\S]*profile2->Release\(\)[\s\S]*CompleteTverRestart\(\)/,
+    mediaPanel,
+    /RestartTverAfterPlayback\(\) noexcept[\s\S]*StopTverPlaybackMonitor\(\);[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
   assert.match(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
   );
+  assert.doesNotMatch(mediaPanel, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
+  assert.doesNotMatch(composition, /#define ClearBrowsingData|#define get_Profile/);
   assert.doesNotMatch(
     mediaPanel,
     /CompleteTverRestart\(\) noexcept[\s\S]*CloseController\(\)[\s\S]*void RestartTverAfterPlayback/,
