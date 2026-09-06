@@ -52,10 +52,13 @@ class SpotifyWebViews final {
     ULONGLONG timedStepStartTick = 0;
     ULONGLONG timedCompletionPendingTick = 0;
     ULONGLONG timedUnhealthySinceTick = 0;
+    ULONGLONG lastTimedReconcileTick = 0;
+    ULONGLONG lastTimedObserverArmTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
     size_t timedRandomDIndex = kNoTimedCatalogIndex;
     int unhealthyChecks = 0;
+    int backgroundStallChecks = 0;
     unsigned char timedRotationPosition = 0;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -165,11 +168,11 @@ class SpotifyWebViews final {
 // Lonesome rabbit -> random B -> BitterBlue -> random D -> A....
 // Switching to TVer does not reset or stop that rotation; it continues through
 // the TVer hour until the next YouTube phase starts a fresh master cycle.
-// A three-minute watchdog is used only when playback is unhealthy or Spotify
-// remains in a post-track/ad waiting state; healthy long songs are not cut off.
-// Bridge/B/D are drawn from songs newly released in 2025-2026, excluding fixed
-// A/C; B and D are distinct and also avoid that hour's bridge. Six accounts
-// remain offset by 40 seconds for normal heavy recovery work.
+// A three-minute watchdog is used only when playback is confirmed unhealthy or
+// remains in a post-track/ad waiting state; healthy/slow-rendering songs are not
+// cut off. Bridge/B/D are drawn from songs newly released in 2025-2026,
+// excluding fixed A/C; B and D are distinct and also avoid that hour's bridge.
+// Six accounts remain offset by 40 seconds for normal heavy recovery work.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 
 }  // namespace hp
