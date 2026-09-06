@@ -6,6 +6,11 @@ export function finite(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function text(value, maximum = 2_048) {
+  const parsed = String(value ?? '').trim();
+  return parsed ? parsed.slice(0, maximum) : null;
+}
+
 export function identity(station) {
   const broadcast = station?.broadcast || {};
   const host = broadcast?.broadcasters?.find((item) => item?.is_host)
@@ -50,16 +55,29 @@ export function normalizeQueue(station, observedAt) {
   const items = queue.queue_tracks || queue.tracks || [];
   const tracks = items.map((item, position) => {
     const track = item?.track || item;
+    const artist = track?.artist || track?.artists?.[0] || {};
+    const album = track?.album || {};
     return {
       position,
       queue_track_id: finite(item?.id),
       stationhead_track_id: finite(track?.id),
       spotify_id: track?.spotify_id ?? null,
+      apple_music_id: track?.apple_music_id ?? null,
       deezer_id: track?.deezer_id ?? null,
       isrc: track?.isrc ?? null,
       duration_ms: finite(track?.duration),
       preview_url: track?.preview ?? null,
       bite_count: finite(track?.bite_count ?? track?.biteCount ?? track?.likes ?? track?.like_count),
+      title: text(track?.title ?? track?.name, 500),
+      artist: text(typeof artist === 'string' ? artist : (artist?.name ?? track?.artist_name), 500),
+      album_name: text(album?.name ?? track?.album_name, 500),
+      thumbnail_url: text(
+        track?.thumbnail_url ?? track?.image_url ?? track?.artwork_url ?? track?.album_art_url
+          ?? album?.thumbnail_url ?? album?.image_url ?? album?.artwork_url
+          ?? album?.images?.[0]?.url
+          ?? item?.thumbnail_url ?? item?.image_url ?? item?.artwork_url ?? item?.album_art_url,
+        2_048,
+      ),
     };
   });
 
@@ -103,7 +121,16 @@ export async function queueHash(queue) {
       track.queue_track_id,
       track.stationhead_track_id,
       track.spotify_id,
+      track.apple_music_id,
+      track.deezer_id,
+      track.isrc,
       track.duration_ms,
+      track.preview_url,
+      track.bite_count,
+      track.title,
+      track.artist,
+      track.album_name,
+      track.thumbnail_url,
     ]),
   });
 }
