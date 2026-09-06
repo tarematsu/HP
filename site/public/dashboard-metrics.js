@@ -1,5 +1,6 @@
 import './dashboard-header.js?v=20260731.1';
 import './dashboard-tabs.js?v=20260731.1';
+import './dashboard-fetch-cache.js?v=20260731.1';
 import { renderDashboardDailySummaries } from './dashboard-daily-summaries.js?v=20260731.1';
 
 const DASHBOARD_CACHE_KEY = 'sh.dashboard.v3';
