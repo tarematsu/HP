@@ -5,8 +5,8 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
+#include "media_tver_native_series_resolver.inc"
 #include "media_tver_series_dom_policy.inc"
-#include "media_tver_series_api_policy.inc"
 #include "media_tver_series_policy.inc"
 #include "media_tver_playback_policy.inc"
 #include "media_trusted_input.inc"
@@ -15,8 +15,10 @@
 
 namespace {
 constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
+constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
 const wchar_t* ResolveNativeMediaPolicyScript(
-    const wchar_t* script, ICoreWebView2* webview) noexcept;
+    const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
 }  // namespace
 
 #define SetTimer(hwnd, timerId, interval, callback)                              \
@@ -38,7 +40,8 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       (count), (inputs), (inputSize))
 
 #define ExecuteScript(script, handler)                                          \
-  ExecuteScript(ResolveNativeMediaPolicyScript((script), webview_.Get()),       \
+  ExecuteScript(ResolveNativeMediaPolicyScript(                                 \
+                    (script), webview_.Get(), hostWindow_, alive_),             \
                 (handler))
 
 #include "media_section_base.inc"
@@ -58,10 +61,24 @@ bool NativeMediaWebViewSourceContains(
   return value.find(needle) != std::wstring::npos;
 }
 
+bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
+  const auto seriesId = NativeMediaTverSeriesIdFromWebView(webview);
+  if (!seriesId) return false;
+  auto& state = NativeMediaTverSeriesResolver();
+  std::lock_guard lock(state.mutex);
+  return state.webviewIdentity == webview && state.seriesId == *seriesId &&
+         state.navigationPending;
+}
+
 const wchar_t* ResolveNativeMediaPolicyScript(
-    const wchar_t* script, ICoreWebView2* webview) noexcept {
+    const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   if (script == kNativeMediaTverWatchdogScript) {
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/series/")) {
+      PrepareNativeMediaTverSeriesResolution(webview, hostWindow, alive);
+      if (NativeMediaTverNavigationPendingFor(webview)) {
+        return kNativeMediaTverNavigationPendingScript;
+      }
       return NativeMediaTverSeriesWatchdogPolicyScript();
     }
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {

@@ -1,24 +1,11 @@
-// TVer series policy orchestration. DOM selection and API resolution are kept
-// as independent fixed modules; this layer composes them once and defines the
-// fallback order between those responsibilities.
+// TVer series-page WebView orchestration. DOM interaction stays in the WebView;
+// TVer API discovery is owned by the native resolver and runs independently.
 namespace {
 constexpr wchar_t kNativeMediaTverSeriesWatchdogRouterScript[] = LR"JS(
 (() => {
   const domWatchdog = window.__homePanelTverSeriesDomWatchdog;
-  const apiWatchdog = window.__homePanelTverSeriesApiWatchdog;
-  if (typeof domWatchdog !== 'function' || typeof apiWatchdog !== 'function') {
-    return null;
-  }
-
-  const domResult = domWatchdog(false);
-  if (domResult !== '__homePanelTverUseSeriesApi') return domResult;
-
-  const apiResult = apiWatchdog();
-  if (apiResult !== '__homePanelTverUseDomFallback') return apiResult;
-
-  // The API resolver is in its failure backoff window. Only then use the
-  // rendered action fallback retained from #744.
-  return domWatchdog(true);
+  if (typeof domWatchdog !== 'function') return null;
+  return domWatchdog();
 })()
 )JS";
 
@@ -27,11 +14,8 @@ const wchar_t* NativeMediaTverSeriesWatchdogPolicyScript() noexcept {
     std::wstring value;
     value.reserve(
         std::size(kNativeMediaTverSeriesDomPolicyModuleScript) +
-        std::size(kNativeMediaTverSeriesApiPolicyModuleScript) +
-        std::size(kNativeMediaTverSeriesWatchdogRouterScript) + 5U);
+        std::size(kNativeMediaTverSeriesWatchdogRouterScript) + 3U);
     value += kNativeMediaTverSeriesDomPolicyModuleScript;
-    value += L";\n";
-    value += kNativeMediaTverSeriesApiPolicyModuleScript;
     value += L";\n";
     value += kNativeMediaTverSeriesWatchdogRouterScript;
     return value;
