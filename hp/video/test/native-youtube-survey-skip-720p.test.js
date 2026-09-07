@@ -15,6 +15,23 @@ const trustedInput = readFileSync(
   'utf8',
 );
 
+test('YouTube playlist startup accepts Play all variants and first-item fallback', () => {
+  assert.match(policy, /すべて再生/);
+  assert.match(policy, /全て再生/);
+  assert.match(policy, /play all/i);
+  assert.match(policy, /ytd-playlist-video-renderer a#thumbnail/);
+  assert.match(
+    composition,
+    /script == kNativeMediaPlayAllScript[\s\S]*kNativeMediaYoutubePlayAllPolicyScript/,
+  );
+});
+
+test('YouTube watchdog recovers a paused watch page with a trusted play click', () => {
+  assert.match(policy, /video && video\.paused && !video\.ended/);
+  assert.match(policy, /player\.querySelector\('\.ytp-play-button'\)/);
+  assert.match(trustedInput, /Input\.dispatchMouseEvent/);
+});
+
 test('five-choice YouTube surveys choose the first option then submit', () => {
   assert.match(policy, /surveyRoots/);
   assert.match(policy, /options\.length < 5/);
