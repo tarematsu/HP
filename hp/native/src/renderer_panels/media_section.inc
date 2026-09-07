@@ -36,6 +36,9 @@ const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept;
 
 namespace {
 const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept {
+  if (script == kNativeMediaPlayAllScript) {
+    return kNativeMediaYoutubePlayAllPolicyScript;
+  }
   if (script == kNativeMediaYoutubeWatchdogScript) {
     return kNativeMediaYoutubeWatchdogPolicyScript;
   }
