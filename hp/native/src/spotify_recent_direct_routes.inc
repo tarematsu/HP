@@ -1,0 +1,58 @@
+struct SpotifyRecentDirectRoute {
+  const wchar_t* url;
+  const wchar_t* path;
+};
+
+constexpr std::array<SpotifyRecentDirectRoute, 35>
+    kSpotifyRecentDirectRoutes = {{
+    {L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F",
+     L"/track/4ljk3qMzdU81kWzxcNix3F"},
+    {L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL",
+     L"/track/2hi8kIoKC8tRMDajdkoYFL"},
+    {L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6",
+     L"/track/2kiCcs4rC55nlHQ1djMTt6"},
+    {L"https://open.spotify.com/track/6VIY7OFy8g5ZyLSgQEi8lV",
+     L"/track/6VIY7OFy8g5ZyLSgQEi8lV"},
+    {L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84",
+     L"/track/3HdmFZGqZLNiCAfiNj4N84"},
+    {L"https://open.spotify.com/track/145bvRRC27wMYn9GNtTg57",
+     L"/track/145bvRRC27wMYn9GNtTg57"},
+    {L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU",
+     L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
+    {L"https://open.spotify.com/track/4HCPWhwMu93z1jnpxw5OGM",
+     L"/track/4HCPWhwMu93z1jnpxw5OGM"},
+    {L"https://open.spotify.com/track/7vvZ1QHTdkoEXBiOBdxdIo",
+     L"/track/7vvZ1QHTdkoEXBiOBdxdIo"},
+    {L"https://open.spotify.com/track/6QmAwjzLQy6SjUyvGzSCG4",
+     L"/track/6QmAwjzLQy6SjUyvGzSCG4"},
+    {L"https://open.spotify.com/track/3SOOYBTDQBUe9vkavji2ZI",
+     L"/track/3SOOYBTDQBUe9vkavji2ZI"},
+    {L"https://open.spotify.com/track/5vRGSkQiKlJudkJ2vUKIOe",
+     L"/track/5vRGSkQiKlJudkJ2vUKIOe"},
+    {L"https://open.spotify.com/track/4YUoggoqC3KIxts61kmlqw",
+     L"/track/4YUoggoqC3KIxts61kmlqw"},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+    {nullptr, nullptr},
+}};
+
+static_assert(kSpotifyRecentDirectRoutes.size() == 35);
