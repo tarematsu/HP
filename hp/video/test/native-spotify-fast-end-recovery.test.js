@@ -18,6 +18,18 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
 );
+const scripts = readFileSync(
+  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
+  'utf8',
+);
+const timed = readFileSync(
+  new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
+  'utf8',
+);
+const recent = readFileSync(
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
+  'utf8',
+);
 
 test('one delegated observer covers current and dynamically created media', () => {
   assert.match(wrapper, /#include "spotify_fast_end_observer\.inc"/);
@@ -35,6 +47,33 @@ test('confirmed target media starts the deadline and ends immediately', () => {
   assert.match(observer, /state\.targetMedia !== media/);
   assert.match(observer, /post\('spotify:timed-ended'\)/);
   assert.doesNotMatch(observer, /spotify:timed-waiting|waitForNext/);
+});
+
+test('target changes and ended gaps cannot play an item from the old queue', () => {
+  assert.match(
+    scripts,
+    /if \(changed\) \{[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*media\.pause\(\)/,
+  );
+  assert.match(
+    observer,
+    /target\.kind === 'music' && state\.endedPosted[\s\S]*event\.target\.pause\(\)/,
+  );
+  assert.match(
+    observer,
+    /state\.endedPosted = true;[\s\S]*candidate\.pause\(\)[\s\S]*post\('spotify:timed-ended'\)/,
+  );
+  assert.match(
+    timed,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(url\)/,
+  );
+  assert.match(
+    recent,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(url\)/,
+  );
+  assert.match(
+    recent,
+    /case TimedSpotifyTarget::LonesomeRabbit:[\s\S]*trackPath = kSpotifyLonesomeRabbitPath/,
+  );
 });
 
 test('pause, waiting, and stalled recover only after playback stays stopped', () => {
