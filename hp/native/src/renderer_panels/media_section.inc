@@ -4,6 +4,7 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
+#include "media_tver_start_policy.inc"
 #include "media_trusted_input.inc"
 #include "media_youtube_policy.inc"
 
@@ -36,6 +37,9 @@ const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept;
 
 namespace {
 const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept {
+  if (script == kNativeMediaTverWatchdogScript) {
+    return kNativeMediaTverWatchdogPolicyScript;
+  }
   if (script == kNativeMediaPlayAllScript) {
     return kNativeMediaYoutubePlayAllPolicyScript;
   }
