@@ -62,3 +62,16 @@ test('only authentication is visible while recovery keeps one large offscreen ow
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /insertAfter = HWND_TOP/);
 });
+
+test('login checks use cached navigation state instead of repeated COM source reads', () => {
+  assert.match(header, /bool loginPage = false/);
+  assert.match(
+    phaseSync,
+    /SlotIsLoginPage\(const Slot& slot\)[\s\S]*return slot\.webview && slot\.loginPage;/,
+  );
+  const loginCheck = phaseSync.slice(
+    phaseSync.indexOf('bool SpotifyWebViews::SlotIsLoginPage'),
+    phaseSync.indexOf('void SpotifyWebViews::BeginControllerCreate'),
+  );
+  assert.doesNotMatch(loginCheck, /get_Source|CoTaskMemFree/);
+});

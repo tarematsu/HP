@@ -270,11 +270,30 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
     }
   }
 
-  PostSpotifyTargetDescriptorForSlot(slot);
-  slot.webview->ExecuteScript(kSpotifyStaticTimedStartObserverScript, nullptr);
-  // kSpotifyStaticEndObserverScript remains compiled for compatibility tests and
-  // older sessions, but new sessions use the target-media observer below.
-  slot.webview->ExecuteScript(kSpotifyFastEndObserverScript, nullptr);
+  if (slot.timedObserverReady || slot.timedObserverInstallInFlight) return;
+
+  slot.timedObserverInstallInFlight = true;
+  Slot* const observerTarget = &slot;
+  ComPtr<ICoreWebView2> observerView = slot.webview;
+  const auto observerAlive = alive_;
+  const HRESULT installStarted = observerView->ExecuteScript(
+      kSpotifyFastEndObserverScript,
+      Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+          [observerAlive, observerTarget, observerView](
+              HRESULT result, LPCWSTR json) -> HRESULT {
+            if (!observerAlive->load(std::memory_order_acquire) ||
+                observerTarget->webview.Get() != observerView.Get()) {
+              return S_OK;
+            }
+            observerTarget->timedObserverInstallInFlight = false;
+            observerTarget->timedObserverReady =
+                SUCCEEDED(result) && json &&
+                std::wstring_view(json) == L"true";
+            return S_OK;
+          }).Get());
+  if (FAILED(installStarted)) {
+    slot.timedObserverInstallInFlight = false;
+  }
 }
 
 }  // namespace hp

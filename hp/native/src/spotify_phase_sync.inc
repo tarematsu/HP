@@ -16,11 +16,6 @@ bool SpotifyUrlStartsWith(std::wstring_view value,
   return true;
 }
 
-bool IsSpotifyLoginSource(std::wstring_view source) noexcept {
-  return SpotifyUrlStartsWith(source, L"https://accounts.spotify.com/") ||
-         SpotifyUrlStartsWith(source, L"https://open.spotify.com/login");
-}
-
 bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
   return SpotifyUrlStartsWith(source, L"https://open.spotify.com/");
 }
@@ -38,12 +33,7 @@ void SpotifyWebViews::ArmRobustScheduler() noexcept {
 }
 
 bool SpotifyWebViews::SlotIsLoginPage(const Slot& slot) const noexcept {
-  if (!slot.webview) return false;
-  LPWSTR rawSource = nullptr;
-  if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
-  const std::wstring source(rawSource);
-  CoTaskMemFree(rawSource);
-  return IsSpotifyLoginSource(source);
+  return slot.webview && slot.loginPage;
 }
 
 void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {

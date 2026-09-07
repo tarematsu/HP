@@ -30,6 +30,10 @@ const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
 );
+const observer = readFileSync(
+  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+  'utf8',
+);
 
 test('Spotify startup keeps 40-second six-account offsets with one direct scheduler', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
@@ -62,11 +66,10 @@ test('A-B-C-D advances immediately on ended or after four minutes of actual trac
 
   assert.match(header, /timedPlaybackStartTick = 0/);
   assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
-  assert.match(rotation, /spotify:timed-started/);
-  assert.match(rotation, /const mediaTitle = normalize\(metadata && metadata\.title\)/);
-  assert.match(rotation, /if \(mediaTitle\)[\s\S]*mediaTitle === target\.title[\s\S]*else[\s\S]*track\.path === target\.trackPath/);
-  assert.match(rotation, /scheduleStartChecks\(\[250, 1000, 2500\]\)/);
-  assert.match(rotation, /scheduleStartChecks\(\[0, 500, 1500\]\)/);
+  assert.match(observer, /spotify:timed-started/);
+  assert.match(observer, /navigator\.mediaSession/);
+  assert.match(observer, /matchesTarget\(target, currentTrack\(\)\)/);
+  assert.match(observer, /\[0, 250, 1000, 2500\]/);
   assert.match(
     rotation,
     /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/,

@@ -60,6 +60,9 @@ class SpotifyWebViews final {
     bool reconcileInFlight = false;
     bool playing = false;
     bool playerPage = false;
+    bool loginPage = false;
+    bool timedObserverReady = false;
+    bool timedObserverInstallInFlight = false;
     bool podcastCompleted = false;
     bool timedRotationActive = false;
     bool timedPreludeCompleted = false;
@@ -70,6 +73,7 @@ class SpotifyWebViews final {
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
+  static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
 
   bool EnsureHostClass() noexcept;
