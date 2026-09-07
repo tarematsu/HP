@@ -490,6 +490,12 @@ class NativeMediaPanelHost final {
               }).Get(),
           &newWindowToken_);
 
+      // Install before YouTube paints so its title, controls and transient
+      // overlays never flash over the video. Controls remain in the DOM for
+      // the trusted-input watchdog (play, ad skip and fullscreen recovery).
+      webview_->AddScriptToExecuteOnDocumentCreated(
+          kNativeMediaYoutubeCleanPlayerScript, nullptr);
+
       const auto alive = alive_;
       webview_->add_NavigationCompleted(
           Callback<ICoreWebView2NavigationCompletedEventHandler>(
@@ -506,6 +512,12 @@ class NativeMediaPanelHost final {
                 }
                 failed_ = false;
                 StopNavigationRetry();
+                if (phase_ == Phase::YouTube) {
+                  // Also cover a document that completed while registration was
+                  // still asynchronous.
+                  webview_->ExecuteScript(
+                      kNativeMediaYoutubeCleanPlayerScript, nullptr);
+                }
                 if (phase_ == Phase::Tver && IsTverPage()) {
                   StopYoutubeMonitors();
                   webview_->ExecuteScript(kNativeMediaTverLoopScript, nullptr);
