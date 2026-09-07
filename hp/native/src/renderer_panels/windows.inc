@@ -1,6 +1,14 @@
 namespace {
 bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
                          const RECT& bounds) noexcept;
+
+UINT NativePanelTickDelayToNextSecond() noexcept {
+  SYSTEMTIME now{};
+  GetLocalTime(&now);
+  return std::max<UINT>(
+      USER_TIMER_MINIMUM,
+      kNativePanelTickMs - static_cast<UINT>(now.wMilliseconds));
+}
 }
 
 const std::array<Renderer::NativePanelSlot, 3>& Renderer::NativePanelSlots() {
@@ -119,7 +127,8 @@ bool Renderer::EnsureNativeStaticWindows() {
     ApplyNativeStaticBounds();
     if (nativeDashboardVisible_ && nativeMainWindow_ && IsWindow(nativeMainWindow_)) {
       nativePanelTimerActive_ =
-          SetTimer(nativeMainWindow_, kNativePanelTickTimer, kNativePanelTickMs, nullptr) != 0;
+          SetTimer(nativeMainWindow_, kNativePanelTickTimer,
+                   NativePanelTickDelayToNextSecond(), nullptr) != 0;
     } else {
       nativePanelTimerActive_ = false;
     }
@@ -217,6 +226,9 @@ LRESULT Renderer::HandleNativeStaticMessage(HWND hwnd, UINT message, WPARAM wpar
       case WM_TIMER:
         if (wparam == kNativePanelTickTimer && hwnd == nativeMainWindow_) {
           TickNativePanels(UnixMillis(), true);
+          nativePanelTimerActive_ =
+              SetTimer(hwnd, kNativePanelTickTimer,
+                       NativePanelTickDelayToNextSecond(), nullptr) != 0;
           return 0;
         }
         break;
