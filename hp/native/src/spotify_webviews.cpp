@@ -323,13 +323,7 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!alive->load(std::memory_order_acquire) || !sender || !args) {
                 return S_OK;
               }
-              LPWSTR rawUri = nullptr;
-              bool playerPage = false;
-              if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
-                playerPage = IsSpotifyPlayerUri(rawUri);
-                CoTaskMemFree(rawUri);
-              }
-              if (!playerPage) return S_OK;
+              if (!target->playerPage) return S_OK;
 
               LPWSTR rawMessage = nullptr;
               if (FAILED(args->TryGetWebMessageAsString(&rawMessage)) || !rawMessage) {
