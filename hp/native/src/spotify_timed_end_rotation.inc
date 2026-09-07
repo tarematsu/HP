@@ -189,8 +189,10 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                   wcscmp(rawMessage, L"spotify:timed-waiting") == 0;
               const bool ended =
                   wcscmp(rawMessage, L"spotify:timed-ended") == 0;
+              const bool stopped =
+                  wcscmp(rawMessage, L"spotify:not-playing") == 0;
               CoTaskMemFree(rawMessage);
-              if (!started && !waiting && !ended) return S_OK;
+              if (!started && !waiting && !ended && !stopped) return S_OK;
 
               const ULONGLONG now = GetTickCount64();
               if (started) {
@@ -201,7 +203,23 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
                 return S_OK;
               }
 
+              if (stopped) {
+                // Pause/stall notifications are event driven. Promote only this
+                // slot to the single recovery viewport; the next existing timer
+                // tick can reconcile it without scanning the other five WebViews.
+                target->playing = false;
+                target->lastTimedReconcileTick = 0;
+                target->unhealthyChecks = 0;
+                staggerSlotIndex_ = target->index;
+                staggerSlotStartTick_ = now >= 2000ULL ? now - 2000ULL : now;
+                staggerSlotValidated_ = false;
+                RecomputeForeground();
+                return S_OK;
+              }
+
               if (waiting) {
+                // Legacy observer compatibility only. New sessions use the fast
+                // target-media observer and do not enter this ambiguity state.
                 if (target->timedCompletionPendingTick == 0) {
                   target->timedCompletionPendingTick = now;
                 }
@@ -254,7 +272,9 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.webview->ExecuteScript(kSpotifyStaticTimedStartObserverScript, nullptr);
-  slot.webview->ExecuteScript(kSpotifyStaticEndObserverScript, nullptr);
+  // kSpotifyStaticEndObserverScript remains compiled for compatibility tests and
+  // older sessions, but new sessions use the target-media observer below.
+  slot.webview->ExecuteScript(kSpotifyFastEndObserverScript, nullptr);
 }
 
 }  // namespace hp

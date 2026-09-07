@@ -8,6 +8,8 @@ struct SpotifyRecentCatalogTrack {
   const wchar_t* trackPath;
 };
 
+#include "spotify_recent_direct_routes.inc"
+
 constexpr size_t kSpotifyRecentCatalogTag =
     size_t{1} << (sizeof(size_t) * 8U - 1U);
 constexpr size_t kSpotifyRecentCatalogMask = ~kSpotifyRecentCatalogTag;
@@ -137,6 +139,16 @@ size_t DecodeRecentCatalogIndex(size_t value) noexcept {
   return value & kSpotifyRecentCatalogMask;
 }
 
+const SpotifyRecentDirectRoute* RecentTimedCatalogDirectRoute(
+    size_t value) noexcept {
+  if (!IsRecentCatalogIndex(value)) return nullptr;
+  const size_t index = DecodeRecentCatalogIndex(value);
+  if (index >= kSpotifyRecentDirectRoutes.size()) return nullptr;
+  const SpotifyRecentDirectRoute& route = kSpotifyRecentDirectRoutes[index];
+  if (!route.url || !route.path) return nullptr;
+  return &route;
+}
+
 const SpotifyRecentCatalogTrack* RecentTimedCatalogTrack(size_t value) noexcept {
   if (!IsRecentCatalogIndex(value)) return nullptr;
   const size_t index = DecodeRecentCatalogIndex(value);
@@ -204,12 +216,15 @@ bool SpotifyWebViews::SlotMatchesRecentTimedTarget(
   const SpotifyRecentCatalogTrack* track =
       RecentTimedCatalogTrack(slot.timedCatalogIndex);
   if (!track) return false;
+  const SpotifyRecentDirectRoute* route =
+      RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
+  const wchar_t* pagePath = route ? route->path : track->pagePath;
   LPWSTR rawSource = nullptr;
   if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   return IsSpotifyOpenSource(source) &&
-         source.find(track->pagePath) != std::wstring::npos;
+         source.find(pagePath) != std::wstring::npos;
 }
 
 void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
@@ -217,13 +232,16 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   const SpotifyRecentCatalogTrack* track =
       RecentTimedCatalogTrack(slot.timedCatalogIndex);
   if (!track) return;
+  const SpotifyRecentDirectRoute* route =
+      RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
+  const wchar_t* url = route ? route->url : track->url;
 
   slot.lastModeNavigateTick = GetTickCount64();
   slot.unhealthyChecks = 0;
   slot.playing = false;
   SetSpotifyOutputMuted(slot.webview);
   RecomputeForeground();
-  const HRESULT result = slot.webview->Navigate(track->url);
+  const HRESULT result = slot.webview->Navigate(url);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
 }
 
@@ -369,8 +387,10 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
       const SpotifyRecentCatalogTrack* track =
           RecentTimedCatalogTrack(slot.timedCatalogIndex);
       if (track) {
-        pagePath = track->pagePath;
-        trackPath = track->trackPath;
+        const SpotifyRecentDirectRoute* route =
+            RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
+        pagePath = route ? route->path : track->pagePath;
+        trackPath = route ? route->path : track->trackPath;
         title = track->title;
         kind = L"music";
       }

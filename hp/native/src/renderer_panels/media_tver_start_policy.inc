@@ -3,7 +3,8 @@
 // provides trusted-input recovery for surveys, series navigation, playback
 // start/restart, and fullscreen entry.
 namespace {
-constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
+constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] =
+    LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp') return null;
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
@@ -88,7 +89,8 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }
     return false;
   };
-
+)JS"
+    LR"JS(
   const seriesEpisodeLinks = () => {
     const headings = Array.from(document.querySelectorAll(headingSelector));
     const anchorHeading = headings.find(element => {
@@ -182,7 +184,8 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }
     return null;
   }
-
+)JS"
+    LR"JS(
   if (!location.pathname.startsWith('/episodes/')) return null;
   const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
