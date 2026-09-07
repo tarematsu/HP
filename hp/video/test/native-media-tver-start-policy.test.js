@@ -11,7 +11,7 @@ const policy = readFileSync(
   'utf8',
 );
 
-test('TVer series page uses the trusted watchdog to open the newest episode', () => {
+test('TVer series page opens the newest episode without viewport-dependent clicking', () => {
   assert.match(wrapper, /#include \"media_tver_start_policy\.inc\"/);
   assert.match(
     wrapper,
@@ -20,12 +20,13 @@ test('TVer series page uses the trusted watchdog to open the newest episode', ()
   assert.match(policy, /location\.pathname\.startsWith\('\/series\/'\)/);
   assert.match(policy, /a\[href\*=\"\/episodes\/\"\]/);
   assert.match(policy, /最新話\|最新エピソード\|最新\|NEW/);
-  assert.match(policy, /latest\.scrollIntoView/);
   assert.match(policy, /__homePanelTverEpisodeQueue:/);
   assert.match(policy, /const latestIndex = Math\.max\(0, links\.indexOf\(latest\)\)/);
   assert.match(policy, /JSON\.stringify\(\{ hrefs, index: latestIndex \}\)/);
-  assert.doesNotMatch(policy, /JSON\.stringify\(\{ hrefs, index: 0 \}\)/);
-  assert.match(policy, /return point\(latest\)/);
+  assert.match(policy, /const latestHref = latest\.__homePanelNormalizedEpisodeHref/);
+  assert.match(policy, /location\.replace\(latestHref\)/);
+  assert.doesNotMatch(policy, /latest\.scrollIntoView/);
+  assert.doesNotMatch(policy, /return point\(latest\)/);
 });
 
 test('TVer survey close is available before and after episode navigation', () => {
@@ -40,10 +41,22 @@ test('TVer survey close is available before and after episode navigation', () =>
   assert.match(policy, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
+test('stopped TVer episodes prioritize a trusted play click before fullscreen', () => {
+  const pausedIndex = policy.indexOf('video.paused && !video.ended');
+  const fullscreenIndex = policy.indexOf('state && state.fullscreenDirty === false');
+  assert.ok(pausedIndex >= 0);
+  assert.ok(fullscreenIndex > pausedIndex);
+  assert.match(policy, /const playButton = controls\.find/);
+  assert.match(policy, /再生/);
+  assert.match(policy, /play(?: video)?/);
+  assert.match(policy, /if \(playButton\) return point\(playButton\)/);
+  assert.match(policy, /if \(video\) return point\(video\)/);
+});
+
 test('episode-page ad and fullscreen guards remain intact in the startup policy', () => {
   assert.match(policy, /state && state\.restartRequested/);
   assert.match(policy, /state && state\.adActive/);
   assert.match(policy, /window\.__homePanelTverAdActive/);
   assert.match(policy, /state && state\.fullscreenDirty === false/);
-  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : \(video \? point\(video\) : null\)/);
+  assert.match(policy, /fullscreenButton \? point\(fullscreenButton\) : null/);
 });
