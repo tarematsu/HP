@@ -6,8 +6,10 @@ constexpr wchar_t kSpotifyBitterBlueUrl[] =
 constexpr wchar_t kSpotifyBitterBluePath[] =
     L"/track/5EjWZuODqEPQ9eq7XCmITh";
 constexpr wchar_t kSpotifyBitterBlueTitle[] = L"放課後BitterBlue";
+constexpr wchar_t kSpotifyLonesomeRabbitUrl[] =
+    L"https://open.spotify.com/track/6Vy6hCA2CZwZalGqaX6Sew";
 constexpr wchar_t kSpotifyLonesomeRabbitPath[] =
-    L"/album/2f2Ik9JeinFVWZuFb3i35b";
+    L"/track/6Vy6hCA2CZwZalGqaX6Sew";
 constexpr wchar_t kSpotifyLonesomeRabbitTitle[] = L"lonesome rabbit";
 constexpr wchar_t kSpotifyTalkAboutShowPath[] =
     L"/show/2ZQy2mlwQodabAILwZ02Ed";
@@ -20,7 +22,7 @@ const wchar_t* TimedSpotifyUrl(
     case SpotifyWebViews::TimedSpotifyTarget::TalkAbout:
       return kSpotifyPodcastUrl;
     case SpotifyWebViews::TimedSpotifyTarget::LonesomeRabbit:
-      return kSpotifyPlaylistUrl;
+      return kSpotifyLonesomeRabbitUrl;
     case SpotifyWebViews::TimedSpotifyTarget::CatalogTrack:
     case SpotifyWebViews::TimedSpotifyTarget::None:
       return nullptr;
