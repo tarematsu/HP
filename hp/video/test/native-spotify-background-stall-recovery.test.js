@@ -18,6 +18,10 @@ const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
 );
+const observer = readFileSync(
+  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+  'utf8',
+);
 
 test('runtime uses one simple scheduler instead of parallel background probing', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
@@ -45,21 +49,24 @@ test('slow responsive layout settles before owner-only DOM recovery', () => {
 });
 
 test('track completion is event driven from one fixed observer script', () => {
-  assert.match(rotation, /kSpotifyStaticEndObserverScript/);
-  assert.match(scripts, /kSpotifyStaticEndObserverScript\[\]/);
-  assert.match(scripts, /media\.addEventListener\('ended'/);
-  assert.match(scripts, /media\.addEventListener\('play'/);
-  assert.match(scripts, /setTimeout\(state\.waitForNext, 2500\)/);
-  assert.doesNotMatch(scripts, /setInterval\(/);
+  assert.match(rotation, /kSpotifyFastEndObserverScript/);
+  assert.match(observer, /__homePanelSpotifyMediaObserverInstalled/);
+  assert.match(observer, /document\.addEventListener\('ended'/);
+  assert.match(observer, /document\.addEventListener\('play'/);
+  assert.match(observer, /post\('spotify:timed-ended'\)/);
+  assert.doesNotMatch(observer, /setInterval\(/);
   assert.doesNotMatch(rotation, /BuildSpotify.*ObserverScript|std::wstring script/);
 });
 
-test('ambiguous ad or end state retries the same target instead of skipping it', () => {
-  assert.match(scripts, /spotify:timed-waiting/);
-  assert.match(rotation, /spotify:timed-waiting/);
-  assert.match(schedule, /kSpotifySimplePendingRecoveryMs/);
-  assert.match(schedule, /slot\.timedCompletionPendingTick = 0/);
-  assert.match(schedule, /slot\.lastTimedReconcileTick = 0/);
-  assert.doesNotMatch(schedule, /timedCompletionPendingTick[\s\S]*AdvanceTimedRotationSlot/);
+test('advertisements cannot complete or start a requested song', () => {
+  assert.match(
+    observer,
+    /!matchesTarget\(target, currentTrack\(\)\)[\s\S]*state\.started = false;[\s\S]*state\.targetMedia = null;/,
+  );
+  assert.match(
+    observer,
+    /!state\.started \|\| state\.endedPosted[\s\S]*state\.targetMedia !== media/,
+  );
+  assert.match(observer, /post\('spotify:timed-started'\)/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
 });
