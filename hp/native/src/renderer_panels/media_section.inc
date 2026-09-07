@@ -7,6 +7,7 @@
 #include "media_tver_start_policy.inc"
 #include "media_trusted_input.inc"
 #include "media_youtube_policy.inc"
+#include "media_youtube_playall_reliable.inc"
 
 namespace {
 const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept;
@@ -41,7 +42,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept {
     return kNativeMediaTverWatchdogPolicyScript;
   }
   if (script == kNativeMediaPlayAllScript) {
-    return kNativeMediaYoutubePlayAllPolicyScript;
+    return kNativeMediaYoutubeReliablePlayAllScript;
   }
   if (script == kNativeMediaYoutubeWatchdogScript) {
     return kNativeMediaYoutubeWatchdogPolicyScript;
