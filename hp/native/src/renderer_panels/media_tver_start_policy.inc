@@ -76,6 +76,19 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
       /(?:エピソード|配信中|最新話|最新エピソード|見逃し配信)/;
   const headingSelector = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
 
+  const isInsideForeignSection = element => {
+    let scope = element ? element.closest('article, li, section') : null;
+    for (let depth = 0; scope && depth < 6;
+         ++depth, scope = scope.parentElement &&
+             scope.parentElement.closest('article, li, section')) {
+      const heading = scope.querySelector(headingSelector);
+      if (heading && foreignHeading.test(normalize(heading.textContent))) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const seriesEpisodeLinks = () => {
     const headings = Array.from(document.querySelectorAll(headingSelector));
     const anchorHeading = headings.find(element => {
@@ -102,16 +115,20 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     // to be inside the visible viewport; DOM presence is enough for navigation.
     const root = document.querySelector('main') || document.body;
     if (!root) return [];
-    return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link => {
-      if (!link.href) return false;
-      let scope = link.parentElement;
-      for (let depth = 0; scope && depth < 6;
-           ++depth, scope = scope.parentElement) {
-        const heading = scope.querySelector(headingSelector);
-        if (heading && foreignHeading.test(normalize(heading.textContent))) return false;
-      }
-      return true;
-    });
+    return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link =>
+      !!link.href && !isInsideForeignSection(link));
+  };
+
+  const seriesEpisodeAction = () => {
+    const root = document.querySelector('main') || document.body;
+    if (!root) return null;
+    const candidates = Array.from(root.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]'));
+    return candidates.find(element => {
+      if (isInsideForeignSection(element)) return false;
+      const label = labelOf(element);
+      return /(?:エピソードを再生|最新話を再生|最新エピソードを再生|本編を再生)/.test(label);
+    }) || null;
   };
 
   if (location.pathname.startsWith('/series/')) {
@@ -124,7 +141,23 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
       link.__homePanelNormalizedEpisodeHref = href;
       return true;
     });
-    if (!links.length) return null;
+    if (!links.length) {
+      const action = seriesEpisodeAction();
+      if (!action) return null;
+      try {
+        sessionStorage.setItem('__homePanelTverSeriesPath', location.pathname);
+        sessionStorage.removeItem(
+            '__homePanelTverEpisodeQueue:' + location.pathname);
+      } catch (_) {
+      }
+      // TVer can render episode selection as a button without an /episodes/
+      // anchor. Prefer a trusted host click when the action is on-screen, then
+      // fall back to DOM activation for off-screen/virtualized layouts.
+      const actionPoint = point(action);
+      if (actionPoint) return actionPoint;
+      try { action.click(); } catch (_) {}
+      return null;
+    }
 
     const latest = links.find(link => {
       const card = link.closest('article, li, section, div') || link;

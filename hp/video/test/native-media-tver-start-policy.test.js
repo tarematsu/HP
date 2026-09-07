@@ -29,6 +29,25 @@ test('TVer series page opens the newest episode without viewport-dependent click
   assert.doesNotMatch(policy, /return point\(latest\)/);
 });
 
+test('TVer series page falls back to an episode action when no episode links are rendered', () => {
+  assert.match(policy, /const seriesEpisodeAction = \(\) =>/);
+  assert.match(
+    policy,
+    /エピソードを再生\|最新話を再生\|最新エピソードを再生\|本編を再生/,
+  );
+  assert.match(policy, /if \(!links\.length\) \{[\s\S]*const action = seriesEpisodeAction\(\)/);
+  assert.match(policy, /sessionStorage\.removeItem\([\s\S]*__homePanelTverEpisodeQueue:/);
+  assert.match(policy, /const actionPoint = point\(action\)/);
+  assert.match(policy, /if \(actionPoint\) return actionPoint/);
+  assert.match(policy, /try \{ action\.click\(\); \} catch \(_\) \{\}/);
+});
+
+test('TVer series episode fallback rejects recommendation and ranking sections', () => {
+  assert.match(policy, /const isInsideForeignSection = element =>/);
+  assert.match(policy, /あなたにおすすめ\|おすすめ\|関連番組\|関連動画\|ランキング/);
+  assert.match(policy, /if \(isInsideForeignSection\(element\)\) return false/);
+});
+
 test('TVer survey close is available before and after episode navigation', () => {
   const surveyIndex = policy.indexOf('const surveyClose = controls.find');
   const seriesIndex = policy.indexOf("location.pathname.startsWith('/series/')");
