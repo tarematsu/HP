@@ -13,6 +13,10 @@ import {
   materializeVariant,
   runPagesReadModelActions,
 } from '../worker/scripts/run-pages-read-model-actions.mjs';
+import {
+  BUDGET_SAFE_VARIANTS,
+  REUSE_ONLY_VARIANTS,
+} from '../worker/scripts/refresh-pages-dashboard-actions.mjs';
 
 const workflow = readFileSync(new URL('../.github/workflows/run-pages-read-model-rebuild.yml', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('../worker/scripts/run-pages-read-model-actions.mjs', import.meta.url), 'utf8');
@@ -188,6 +192,69 @@ test('unchanged historical input reuses the existing body without rerendering', 
   assert.equal(uploaded.key, 'history:daily');
   assert.equal(uploaded.envelope.body, existing.body);
   assert.equal(uploaded.envelope.updated_at, DAY);
+});
+
+test('reuse-only refresh never rerenders a changed historical model', async () => {
+  let handlerCalls = 0;
+  let uploadCalls = 0;
+  const result = await materializeVariant({
+    key: 'history:daily',
+    url: '/api/history?mode=daily',
+  }, { OTHER_DB: {} }, DAY, {
+    reuseOnly: true,
+    rendererRevision: 'renderer-1',
+    loadExistingEnvelope: async () => ({
+      version: 1,
+      source_revision: 'old-source',
+      renderer_revision: 'renderer-1',
+      body: '{"ok":true,"rows":[]}',
+    }),
+    loadSourceRevision: async () => 'new-source',
+    responseHandler: async () => {
+      handlerCalls += 1;
+      throw new Error('reuse-only mode must not rerender');
+    },
+    uploadEnvelope() {
+      uploadCalls += 1;
+      return 'pages-response/test.json';
+    },
+  });
+
+  assert.equal(handlerCalls, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(result.rendered, false);
+  assert.equal(result.changed, true);
+  assert.equal(result.deferred, true);
+  assert.equal(result.defer_reason, 'source-revision-changed');
+  assert.equal(result.object_key, null);
+});
+
+test('budget deferral refreshes dashboard normally and only reuses historical models', async () => {
+  assert.deepEqual(BUDGET_SAFE_VARIANTS.map(({ key }) => key), allMaterializedVariants());
+  assert.deepEqual(
+    REUSE_ONLY_VARIANTS.map(({ key }) => key),
+    allMaterializedVariants().filter((key) => key !== 'dashboard'),
+  );
+
+  const calls = [];
+  await runPagesReadModelActions({
+    startedAt: DAY + 19 * MINUTE,
+    deadlineMs: DAY + 30 * MINUTE,
+    now: () => DAY + 19 * MINUTE,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    variants: BUDGET_SAFE_VARIANTS,
+    dueKeys: BUDGET_SAFE_VARIANTS.map(({ key }) => key),
+    reuseOnlyKeys: REUSE_ONLY_VARIANTS.map(({ key }) => key),
+    materializeVariant: async (variant, _env, _now, dependencies) => {
+      calls.push({ key: variant.key, reuseOnly: dependencies.reuseOnly === true });
+      return { key: variant.key };
+    },
+  });
+
+  assert.deepEqual(calls, allMaterializedVariants().map((key) => ({
+    key,
+    reuseOnly: key !== 'dashboard',
+  })));
 });
 
 test('renderer changes force a fresh read model even when source rows are unchanged', async () => {
