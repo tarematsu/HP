@@ -1,6 +1,60 @@
 // YouTube playback policy kept outside the large media host implementation so
-// survey handling, ad skipping and quality selection stay independently testable.
+// startup playback, survey handling, ad skipping and quality selection stay
+// independently testable.
 namespace {
+constexpr wchar_t kNativeMediaYoutubePlayAllPolicyScript[] = LR"JS(
+(() => {
+  if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+  const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const isClickable = element => {
+    if (!element || element.disabled ||
+        element.getAttribute('aria-disabled') === 'true' ||
+        element.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+  };
+  const point = element => {
+    if (!isClickable(element)) return null;
+    const rect = element.getBoundingClientRect();
+    return [
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+      Math.max(0, Math.min(10000, Math.round(
+          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+    ];
+  };
+  const textOf = element => normalize([
+    element?.getAttribute?.('aria-label'),
+    element?.getAttribute?.('title'),
+    element?.textContent
+  ].filter(Boolean).join(' '));
+
+  // Prefer the playlist's explicit Play all control. YouTube changes the exact
+  // element type and Japanese label periodically, so detect semantics rather
+  // than one hard-coded selector/label pair.
+  const candidates = Array.from(document.querySelectorAll(
+      'button, a, tp-yt-paper-button, [role="button"]'));
+  let target = candidates.find(element => {
+    if (!isClickable(element)) return false;
+    const text = textOf(element);
+    return /^(すべて再生(?:する)?|全て再生(?:する)?)(?:\s|$)/.test(text) ||
+           /^play all(?:\s|$)/i.test(text);
+  }) || null;
+
+  // If the Play all control is absent in a YouTube layout experiment, opening
+  // the first playlist video is equivalent for this dedicated playlist view.
+  if (!target) {
+    target = Array.from(document.querySelectorAll(
+        'ytd-playlist-video-renderer a#thumbnail, '
+        + 'ytd-playlist-video-renderer a#video-title'))
+        .find(isClickable) || null;
+  }
+  return point(target);
+})()
+)JS";
+
 constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
 (() => {
   const player = document.querySelector('#movie_player');
@@ -111,6 +165,15 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
         null;
   }
   if (target) return point(target);
+
+  // Recover startup/autoplay failures. The playlist click may have navigated to
+  // the watch page while playback remained paused; only click when the media
+  // element itself reports paused so this can never toggle a playing video off.
+  const video = player.querySelector('video');
+  if (video && video.paused && !video.ended) {
+    target = player.querySelector('.ytp-play-button');
+    if (isClickable(target)) return point(target);
+  }
 
   const fullscreen = document.fullscreenElement ||
       player.classList.contains('ytp-fullscreen');
