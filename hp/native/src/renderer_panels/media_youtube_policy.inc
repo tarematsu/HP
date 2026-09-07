@@ -13,7 +13,8 @@ constexpr wchar_t kNativeMediaYoutubePlayAllPolicyScript[] = LR"JS(
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+           style.opacity !== '0' && style.pointerEvents !== 'none' &&
+           rect.width > 0 && rect.height > 0;
   };
   const point = element => {
     if (!isClickable(element)) return null;
@@ -68,7 +69,8 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+           style.opacity !== '0' && style.pointerEvents !== 'none' &&
+           rect.width > 0 && rect.height > 0;
   };
   const point = element => {
     if (!isClickable(element)) return null;
@@ -144,8 +146,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     } catch (_) {}
   }
 
-  // Prefer explicit selectors, then fall back to visible text because YouTube
-  // regularly changes the skip button's class name while keeping its label.
+  // Prefer current known classes and aria-labels, then fall back to semantics.
+  // The click itself is performed by the native trusted-input path so YouTube's
+  // event.isTrusted checks cannot turn this into a no-op DOM click.
   const selectors = [
     '.ytp-ad-skip-button',
     '.ytp-ad-skip-button-modern',
@@ -153,18 +156,28 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     '.videoAdUiSkipButton',
     '.ytp-ad-skip-button-slot button',
     '.ytp-ad-skip-button-container button',
-    'button[class*="ytp-ad-skip"]'
+    'button[class*="ytp-ad-skip"]',
+    'button[aria-label*="Skip ad" i]',
+    'button[aria-label*="Skip ads" i]',
+    'button[aria-label*="広告をスキップ"]',
+    'button[aria-label*="スキップ"]'
   ];
-  let target = Array.from(document.querySelectorAll(selectors.join(',')))
+  let target = Array.from(player.querySelectorAll(selectors.join(',')))
       .find(isClickable) || null;
   if (!target) {
-    const skipPattern = /(広告をスキップ|広告を飛ばす|skip ad|skip ads)/i;
+    const skipPattern = /(広告をスキップ|広告を飛ばす|skip\s+ad(?:s)?)/i;
     target = Array.from(player.querySelectorAll(
         'button, tp-yt-paper-button, [role="button"]'))
         .find(element => isClickable(element) && skipPattern.test(textOf(element))) ||
         null;
   }
   if (target) return point(target);
+
+  const adShowing = player.classList.contains('ad-showing') ||
+      !!player.querySelector(
+          '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, '
+          + '.video-ads.ytp-ad-module');
+  if (adShowing) return null;
 
   // Recover startup/autoplay failures. The playlist click may have navigated to
   // the watch page while playback remained paused; only click when the media
