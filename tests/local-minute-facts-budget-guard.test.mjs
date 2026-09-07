@@ -9,9 +9,9 @@ const workflow = readFileSync(
   'utf8',
 );
 
-test('local minute facts rebuild is fail-closed behind the shared D1 Actions budget guard', () => {
+test('local minute facts rebuild reserves D1 read headroom for higher-priority read models', () => {
   assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'/);
+  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3000000'/);
   assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
   assert.match(workflow, /name: Check D1 Actions read and write budgets\n        id: d1-budget\n        run: node \.\.\/scripts\/cloudflare-d1-write-guard\.mjs/);
   assert.match(workflow, /allowed: \$\{\{ steps\.d1-budget\.outputs\.allowed \}\}/);
