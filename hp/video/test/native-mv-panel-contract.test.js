@@ -6,6 +6,10 @@ const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
+const youtubePolicy = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
+  'utf8',
+);
 const tverStatic = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_ad_guard.inc', import.meta.url),
   'utf8',
@@ -152,18 +156,25 @@ test('YouTube keeps playlist autoplay, 480p, captions off, ad skip, and fullscre
   assert.match(mediaPanel, /content-visibility: hidden/);
 });
 
-test('YouTube transition title and fullscreen quick actions stay visually hidden', () => {
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-title/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-quick-actions/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-overlay-top-left/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-overlay-bottom-right/);
-  assert.match(mediaPanel, /yt-player-overlay-video-details-renderer/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid-stills-container/);
-  assert.match(mediaPanel, /\.html5-video-player \.ytp-fullscreen-grid-expand-button/);
-  assert.match(
-    mediaPanel,
-    /\.ytp-fullscreen-grid-expand-button,[\s\S]*\.ytp-caption-window-container \{[\s\S]*display: none !important;/,
+test('YouTube renders only video while keeping hidden controls operable', () => {
+  assert.match(mediaPanel, /kNativeMediaYoutubeCleanPlayerScript/);
+  assert.match(mediaPanel, /AddScriptToExecuteOnDocumentCreated\([\s\S]*kNativeMediaYoutubeCleanPlayerScript/);
+  assert.match(youtubePolicy, /#movie_player > :not\(\.html5-video-container\)/);
+  assert.match(youtubePolicy, /#movie_player \.html5-video-container > :not\(video\)/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-title/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-chrome-bottom/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-fullscreen-quick-actions/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-overlay-top-left/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-overlay-bottom-right/);
+  assert.match(youtubePolicy, /yt-player-overlay-video-details-renderer/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-pause-overlay/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-ce-element/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-watermark/);
+  assert.match(youtubePolicy, /#movie_player \.ytp-caption-window-container/);
+  assert.match(youtubePolicy, /opacity: 0 !important/);
+  assert.doesNotMatch(
+    youtubePolicy,
+    /#movie_player > :not\(\.html5-video-container\)[\s\S]{0,900}pointer-events: none/,
   );
 });
 
