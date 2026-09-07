@@ -240,6 +240,8 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   slot.unhealthyChecks = 0;
   slot.playing = false;
   SetSpotifyOutputMuted(slot.webview);
+  PostSpotifyTargetDescriptorForSlot(slot);
+  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(url);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
@@ -380,6 +382,7 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
       break;
     case TimedSpotifyTarget::LonesomeRabbit:
       pagePath = kSpotifyLonesomeRabbitPath;
+      trackPath = kSpotifyLonesomeRabbitPath;
       title = kSpotifyLonesomeRabbitTitle;
       kind = L"music";
       break;

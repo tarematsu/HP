@@ -72,6 +72,12 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
           previous.kind !== next.kind;
       window.__homePanelSpotifyNativeTarget = next;
       if (changed) {
+        // Cut the old queue before a new direct-track target is reconciled.
+        // Spotify may otherwise autoplay the next item from the previous
+        // context during navigation, producing an unintended play between A-D.
+        document.querySelectorAll('audio, video').forEach(media => {
+          try { media.pause(); } catch (_) {}
+        });
         window.__homePanelSpotifyStaticEndObserver = null;
         if (next.kind !== 'podcast') {
           window.__homePanelSpotifyPodcastOneShot = null;
@@ -150,9 +156,10 @@ constexpr wchar_t kSpotifyStaticTrackReconcileScript[] = LR"JS(
       title: normalize(metadata && metadata.title).toLowerCase()
     };
   };
-  const targetMatches = track => target.trackPath
-      ? track.path === target.trackPath
-      : !!target.title && track.title === target.title;
+  const targetMatches = track => {
+    if (target.trackPath && track.path) return track.path === target.trackPath;
+    return !!target.title && track.title === target.title;
+  };
   const targetLink = () => Array.from(
       document.querySelectorAll('a[href*="/track/"]')).find(link => {
         try {

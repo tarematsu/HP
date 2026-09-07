@@ -2,6 +2,56 @@
 // startup playback, survey handling, ad skipping and quality selection stay
 // independently testable.
 namespace {
+constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
+(() => {
+  if (location.hostname !== 'www.youtube.com' &&
+      location.hostname !== 'youtube.com') return false;
+
+  const mount = () => {
+    const root = document.head || document.documentElement;
+    if (!root || document.getElementById('homepanel-youtube-clean-player')) {
+      return;
+    }
+    const style = document.createElement('style');
+    style.id = 'homepanel-youtube-clean-player';
+    style.textContent = `
+      #movie_player > :not(.html5-video-container),
+      #movie_player .html5-video-container > :not(video),
+      #movie_player .ytp-chrome-top,
+      #movie_player .ytp-chrome-bottom,
+      #movie_player .ytp-gradient-top,
+      #movie_player .ytp-gradient-bottom,
+      #movie_player .ytp-title,
+      #movie_player .ytp-fullscreen-quick-actions,
+      #movie_player .ytp-overlay-top-left,
+      #movie_player .ytp-overlay-bottom-right,
+      #movie_player yt-player-overlay-video-details-renderer,
+      #movie_player .ytp-pause-overlay,
+      #movie_player .ytp-ce-element,
+      #movie_player .ytp-cards-button,
+      #movie_player .ytp-paid-content-overlay,
+      #movie_player .ytp-watermark,
+      #movie_player .annotation,
+      #movie_player .ytp-fullscreen-grid,
+      #movie_player .ytp-fullscreen-grid-stills-container,
+      #movie_player .ytp-fullscreen-grid-expand-button,
+      #movie_player .ytp-caption-window-container {
+        opacity: 0 !important;
+        transition: none !important;
+        animation: none !important;
+      }
+    `;
+    root.appendChild(style);
+  };
+
+  mount();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount, { once: true });
+  }
+  return true;
+})()
+)JS";
+
 constexpr wchar_t kNativeMediaYoutubePlayAllPolicyScript[] = LR"JS(
 (() => {
   if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;

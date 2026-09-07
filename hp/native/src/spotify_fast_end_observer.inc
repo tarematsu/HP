@@ -63,9 +63,10 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     }
     return { path: '', title: '' };
   };
-  const matchesTarget = (target, track) =>
-      (!!target.trackPath && track.path === target.trackPath) ||
-      (!!target.title && track.title === normalize(target.title));
+  const matchesTarget = (target, track) => {
+    if (target.trackPath && track.path) return track.path === target.trackPath;
+    return !!target.title && track.title === normalize(target.title);
+  };
   const isMedia = value => value instanceof HTMLMediaElement;
 
   const confirmStarted = media => {
@@ -130,6 +131,14 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
+    const target = syncTarget();
+    if (target && target.kind === 'music' && state.endedPosted) {
+      // Spotify can start the previous context's next queued song immediately
+      // after ended. Hold that gap silent until native code publishes the next
+      // A-D target; syncTarget then resets this latch for the intended song.
+      try { event.target.pause(); } catch (_) {}
+      return;
+    }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     scheduleStartChecks(event.target);
@@ -158,6 +167,9 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     state.endedPosted = true;
+    document.querySelectorAll('audio, video').forEach(candidate => {
+      try { candidate.pause(); } catch (_) {}
+    });
     post('spotify:timed-ended');
   }, true);
 
