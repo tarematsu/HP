@@ -86,7 +86,9 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
         const renderer = node.playlistVideoRenderer ||
             node.playlistPanelVideoRenderer || null;
         if (renderer && navigateVideoId(renderer.videoId)) return null;
-        for (const value of Object.values(node)) {
+        const values = Object.values(node);
+        for (let index = values.length - 1; index >= 0; --index) {
+          const value = values[index];
           if (value && typeof value === 'object') stack.push(value);
         }
       }
