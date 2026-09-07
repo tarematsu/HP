@@ -166,13 +166,16 @@ test('recent catalog passes target data to one fixed reconcile script', () => {
   assert.doesNotMatch(recent, /BuildRecentTrackScript|EscapeRecentScriptLiteral/);
 });
 
-test('timed playback is static and does not use repeat-one or runtime source rewriting', () => {
+test('timed playback is static and opens fixed songs by direct track URL', () => {
   assert.match(wrapper, /#include "spotify_static_scripts\.inc"/);
   assert.match(wrapper, /#include "spotify_timed_sequence\.inc"/);
   assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
   assert.match(timed, /5EjWZuODqEPQ9eq7XCmITh/);
   assert.match(timed, /2ZQy2mlwQodabAILwZ02Ed/);
-  assert.match(timed, /2f2Ik9JeinFVWZuFb3i35b/);
+  assert.match(timed, /6Vy6hCA2CZwZalGqaX6Sew/);
+  assert.match(timed, /kSpotifyLonesomeRabbitUrl[\s\S]*open\.spotify\.com\/track\/6Vy6hCA2CZwZalGqaX6Sew/);
+  assert.match(timed, /case SpotifyWebViews::TimedSpotifyTarget::LonesomeRabbit:[\s\S]*return kSpotifyLonesomeRabbitUrl/);
+  assert.doesNotMatch(timed, /LonesomeRabbit[\s\S]{0,160}kSpotifyPlaylistUrl/);
   assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript/);
   assert.doesNotMatch(timed, /BuildTimedTrackScript|ensureRepeatOne|control-button-repeat/);
 });
