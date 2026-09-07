@@ -38,12 +38,7 @@ void SpotifyWebViews::ArmRobustScheduler() noexcept {
 }
 
 bool SpotifyWebViews::SlotIsLoginPage(const Slot& slot) const noexcept {
-  if (!slot.webview) return false;
-  LPWSTR rawSource = nullptr;
-  if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
-  const std::wstring source(rawSource);
-  CoTaskMemFree(rawSource);
-  return IsSpotifyLoginSource(source);
+  return slot.webview && slot.loginPage;
 }
 
 void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
