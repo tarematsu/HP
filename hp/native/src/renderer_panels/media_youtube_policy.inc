@@ -72,6 +72,13 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
            style.opacity !== '0' && style.pointerEvents !== 'none' &&
            rect.width > 0 && rect.height > 0;
   };
+  const isVisible = element => {
+    if (!element) return false;
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== 'none' && style.visibility !== 'hidden' &&
+           style.opacity !== '0' && rect.width > 0 && rect.height > 0;
+  };
   const point = element => {
     if (!isClickable(element)) return null;
     const rect = element.getBoundingClientRect();
@@ -173,10 +180,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
   if (target) return point(target);
 
-  const adShowing = player.classList.contains('ad-showing') ||
-      !!player.querySelector(
-          '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout, '
-          + '.video-ads.ytp-ad-module');
+  const adOverlay = player.querySelector(
+      '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout');
+  const adShowing = player.classList.contains('ad-showing') || isVisible(adOverlay);
   if (adShowing) return null;
 
   // Recover startup/autoplay failures. The playlist click may have navigated to
