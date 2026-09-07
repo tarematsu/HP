@@ -33,13 +33,14 @@ test('media cadence is statically 60 minutes per YouTube/TVer phase', () => {
   assert.doesNotMatch(mediaWrapper, /NativeMediaPhaseIntervalMs/);
 });
 
-test('media scripts are fixed static literals without C++ runtime rewriting or duplicate TVer implementations', () => {
+test('media scripts remain fixed static literals while policy routing avoids C++ source rewriting', () => {
   assert.match(tverStatic, /kNativeMediaTverLoopStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverWatchdogStaticScript\[\]/);
   assert.match(tverStatic, /kNativeMediaTverForceFullscreenAdSafeScript\[\]/);
   assert.match(mediaPanel, /kNativeMediaTverLoopScript =\s*kNativeMediaTverLoopStaticScript/);
   assert.match(mediaPanel, /kNativeMediaTverWatchdogScript =\s*kNativeMediaTverWatchdogStaticScript/);
-  assert.doesNotMatch(mediaWrapper, /ResolveNativeMediaStaticScript|#define ExecuteScript/);
+  assert.match(mediaWrapper, /ResolveNativeMediaPolicyScript/);
+  assert.doesNotMatch(mediaWrapper, /ResolveNativeMediaStaticScript/);
   assert.doesNotMatch(composition, /RewriteNativeMediaExecuteScript/);
   assert.doesNotMatch(tverStatic, /InsertNativeMediaSnippet|ReplaceNativeMediaSnippet|std::wstring rewritten|\.find\(L"|\.insert\(/);
   // JavaScript's ordinary String.replace is allowed inside a fixed literal; only
