@@ -6,6 +6,10 @@ const policy = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
   'utf8',
 );
+const reliablePlayAll = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url),
+  'utf8',
+);
 const composition = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
@@ -15,14 +19,18 @@ const trustedInput = readFileSync(
   'utf8',
 );
 
-test('YouTube playlist startup accepts Play all variants and first-item fallback', () => {
-  assert.match(policy, /すべて再生/);
-  assert.match(policy, /全て再生/);
-  assert.match(policy, /play all/i);
-  assert.match(policy, /ytd-playlist-video-renderer a#thumbnail/);
+test('YouTube playlist startup bypasses fragile Play all coordinates', () => {
+  assert.match(reliablePlayAll, /ytd-playlist-video-renderer a#thumbnail/);
+  assert.match(reliablePlayAll, /url\.searchParams\.set\('list', playlistId\)/);
+  assert.match(reliablePlayAll, /location\.assign\(href\)/);
+  assert.match(reliablePlayAll, /すべて再生/);
+  assert.match(reliablePlayAll, /全て再生/);
+  assert.match(reliablePlayAll, /play all/i);
+  assert.match(reliablePlayAll, /playAll\.click\(\)/);
+  assert.match(reliablePlayAll, /return null/);
   assert.match(
     composition,
-    /script == kNativeMediaPlayAllScript[\s\S]*kNativeMediaYoutubePlayAllPolicyScript/,
+    /script == kNativeMediaPlayAllScript[\s\S]*kNativeMediaYoutubeReliablePlayAllScript/,
   );
 });
 
@@ -56,6 +64,7 @@ test('YouTube playback quality is pinned to the 720p quality level', () => {
 
 test('media host substitutes legacy YouTube scripts with the current policy', () => {
   assert.match(composition, /#include "media_youtube_policy\.inc"/);
+  assert.match(composition, /#include "media_youtube_playall_reliable\.inc"/);
   assert.match(composition, /ResolveNativeMediaPolicyScript/);
   assert.match(
     composition,
