@@ -122,14 +122,14 @@ test('music and podcast targets are passed as data to shared static reconcile sc
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
 
-test('trusted recovery uses CDP and never moves the OS mouse', () => {
+test('trusted recovery uses CDP hover then click and never moves the OS mouse', () => {
   assert.match(header, /ParseNormalizedPoint/);
   assert.match(header, /ClickSlotNormalizedPoint/);
   assert.match(phaseSync, /RefreshSpotifyHostLayout\(\)/);
   assert.match(phaseSync, /DispatchSpotifyDevToolsClick/);
   assert.match(click, /Input\.dispatchMouseEvent/);
-  assert.match(click, /mousePressed/);
-  assert.match(click, /mouseReleased/);
+  assert.match(click, /mouseMoved/);
+  assert.match(click, /mouseMoved[\s\S]*mousePressed[\s\S]*mouseReleased/);
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
