@@ -91,6 +91,9 @@ void SpotifyWebViews::Start() noexcept {
   for (Slot& slot : slots_) {
     slot.playing = false;
     slot.playerPage = false;
+    slot.loginPage = false;
+    slot.timedObserverReady = false;
+    slot.timedObserverInstallInFlight = false;
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
     if (!CreateHost(slot)) continue;
@@ -251,9 +254,13 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
               target->playing = false;
               target->playerPage = false;
+              target->loginPage = false;
+              target->timedObserverReady = false;
+              target->timedObserverInstallInFlight = false;
               LPWSTR rawUri = nullptr;
               if (SUCCEEDED(args->get_Uri(&rawUri)) && rawUri) {
                 target->playerPage = IsSpotifyPlayerUri(rawUri);
+                target->loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
               RecomputeForeground();
@@ -280,12 +287,15 @@ void SpotifyWebViews::Configure(Slot& slot) noexcept {
 
               LPWSTR rawUri = nullptr;
               bool playerPage = false;
+              bool loginPage = false;
               if (SUCCEEDED(sender->get_Source(&rawUri)) && rawUri) {
                 playerPage = IsSpotifyPlayerUri(rawUri);
+                loginPage = IsSpotifyLoginUri(rawUri);
                 CoTaskMemFree(rawUri);
               }
               target->playing = false;
               target->playerPage = playerPage;
+              target->loginPage = loginPage;
               RecomputeForeground();
               if (!playerPage) return S_OK;
 
@@ -357,6 +367,13 @@ bool SpotifyWebViews::IsSpotifyPlayerUri(const wchar_t* uri) noexcept {
   const std::wstring_view value(uri);
   return StartsWithInsensitive(value, L"https://open.spotify.com/") &&
          !StartsWithInsensitive(value, L"https://open.spotify.com/login");
+}
+
+bool SpotifyWebViews::IsSpotifyLoginUri(const wchar_t* uri) noexcept {
+  if (!uri) return false;
+  const std::wstring_view value(uri);
+  return StartsWithInsensitive(value, L"https://accounts.spotify.com/") ||
+         StartsWithInsensitive(value, L"https://open.spotify.com/login");
 }
 
 void SpotifyWebViews::RecomputeForeground() noexcept {
@@ -472,6 +489,9 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.reconcileInFlight = false;
   slot.playing = false;
   slot.playerPage = false;
+  slot.loginPage = false;
+  slot.timedObserverReady = false;
+  slot.timedObserverInstallInFlight = false;
 }
 
 void SpotifyWebViews::Shutdown() noexcept {
