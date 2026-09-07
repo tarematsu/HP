@@ -14,6 +14,10 @@ const composition = readFileSync(
   new URL('../../native/src/renderer_panels.cpp', import.meta.url),
   'utf8',
 );
+const spotifyHeader = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+  'utf8',
+);
 const layout = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',
@@ -41,16 +45,19 @@ test('compact overlay clips the complete two-button control stack', () => {
   assert.match(source, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
-test('mute button controls only the YouTube/TVer WebView through native WebView2 mute', () => {
+test('mute button blocks media networking and Spotify instead of only muting audio', () => {
   assert.match(source, /ApplyMediaMute\(!controller->mediaMuted_\)/);
   assert.match(source, /SetNativeMediaPanelMuted\(enabled\)/);
-  assert.match(composition, /ComPtr<ICoreWebView2_8> gNativeMediaAudioWebView/);
-  assert.match(composition, /put_IsMuted\(gNativeMediaMuted \? TRUE : FALSE\)/);
-  assert.match(composition, /put_IsMuted\(muted \? TRUE : FALSE\)/);
-  assert.match(composition, /RegisterNativeMediaAudioWebView\(webview_\.Get\(\)\)/);
+  assert.match(composition, /gNativeMediaNetworkBlocked/);
+  assert.match(composition, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL/);
+  assert.match(composition, /CreateWebResourceResponse\([\s\S]*503, L"Media Blocked"/);
+  assert.match(composition, /kNativeMediaPlaybackBlockScript/);
+  assert.match(composition, /gNativeMediaNetworkWebView->Stop\(\)/);
+  assert.match(composition, /SetSpotifyMediaNetworkBlocked\(muted\)/);
+  assert.match(spotifyHeader, /void SetSpotifyMediaNetworkBlocked\(bool blocked\) noexcept/);
   assert.match(
     composition,
-    /#define get_CoreWebView2\(out\)[\s\S]*RegisterNativeMediaAudioWebView\(webview_\.Get\(\)\)[\s\S]*#include "renderer_panels\/media_section\.inc"/,
+    /RegisterNativeMediaAudioWebView\(webview_\.Get\(\), environment_\.Get\(\)\)/,
   );
 });
 
