@@ -27,23 +27,40 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const double x = std::max(0.0, std::min(cssWidth - 1.0, rawX));
     const double y = std::max(0.0, std::min(cssHeight - 1.0, rawY));
 
-    const std::wstring pressed =
-        L"{\"type\":\"mousePressed\",\"x\":" + std::to_wstring(x) +
-        L",\"y\":" + std::to_wstring(y) +
-        L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1}";
+    // Spotify reveals/replaces row play controls on hover. The old native
+    // SendInput path always moved the pointer before pressing; preserve that
+    // semantic with CDP so a normalized point cannot press the pre-hover row
+    // number/overlay instead of the play button.
+    const std::wstring moved =
+        L"{\"type\":\"mouseMoved\",\"x\":" + std::to_wstring(x) +
+        L",\"y\":" + std::to_wstring(y) + L"}";
 
     ComPtr<ICoreWebView2> view = slot.webview;
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
-        L"Input.dispatchMouseEvent", pressed.c_str(),
+        L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [view, x, y](HRESULT pressedResult, LPCWSTR) -> HRESULT {
-              if (FAILED(pressedResult) || !view) return S_OK;
-              const std::wstring released =
-                  L"{\"type\":\"mouseReleased\",\"x\":" +
+            [view, x, y](HRESULT movedResult, LPCWSTR) -> HRESULT {
+              if (FAILED(movedResult) || !view) return S_OK;
+
+              const std::wstring pressed =
+                  L"{\"type\":\"mousePressed\",\"x\":" +
                   std::to_wstring(x) + L",\"y\":" + std::to_wstring(y) +
-                  L",\"button\":\"left\",\"buttons\":0,\"clickCount\":1}";
+                  L",\"button\":\"left\",\"buttons\":1,\"clickCount\":1}";
               view->CallDevToolsProtocolMethod(
-                  L"Input.dispatchMouseEvent", released.c_str(), nullptr);
+                  L"Input.dispatchMouseEvent", pressed.c_str(),
+                  Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                      [view, x, y](HRESULT pressedResult, LPCWSTR) -> HRESULT {
+                        if (FAILED(pressedResult) || !view) return S_OK;
+                        const std::wstring released =
+                            L"{\"type\":\"mouseReleased\",\"x\":" +
+                            std::to_wstring(x) + L",\"y\":" +
+                            std::to_wstring(y) +
+                            L",\"button\":\"left\",\"buttons\":0,"
+                            L"\"clickCount\":1}";
+                        view->CallDevToolsProtocolMethod(
+                            L"Input.dispatchMouseEvent", released.c_str(), nullptr);
+                        return S_OK;
+                      }).Get());
               return S_OK;
             }).Get());
     return SUCCEEDED(dispatched) ? 1U : 0U;
