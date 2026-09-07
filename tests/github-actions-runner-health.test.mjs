@@ -151,6 +151,9 @@ test('current runner target set covers operational workflows and excludes redund
   assert.equal(byWorkflow.has('refresh-cloudflare-observability.yml'), false);
   assert.equal(byWorkflow.get('run-pages-read-model-rebuild.yml').cadenceMinutes, 30);
   assert.ok(byWorkflow.get('run-pages-read-model-rebuild.yml').staleAfterMinutes >= 60);
+  assert.equal(byWorkflow.get('run-runtime-offline-maintenance.yml').ignoreExpectedWorkflowRunSkips, true);
+  assert.equal(byWorkflow.get('run-track-metadata-repair.yml').ignoreExpectedWorkflowRunSkips, true);
+  assert.equal(byWorkflow.get('run-local-minute-facts-rebuild.yml').ignoreExpectedWorkflowRunSkips, true);
   assert.equal(new Set(ACTIONS_RUNNER_TARGETS.map((entry) => entry.workflow)).size, ACTIONS_RUNNER_TARGETS.length);
 });
 
