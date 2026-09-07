@@ -15,6 +15,7 @@ class SpotifyWebViews final {
   void Resize() noexcept;
   void Shutdown() noexcept;
   void SetPodcastMode(bool podcastWindowActive) noexcept;
+  void SetNetworkBlocked(bool blocked) noexcept;
   static void CALLBACK StaggeredReconcileTimerProc(
       HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
 
@@ -128,6 +129,7 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool podcastMode_ = false;
   bool robustSchedulerStarted_ = false;
+  bool networkBlocked_ = false;
 };
 
 // tverPhase=false starts the YouTube-hour schedule: BitterBlue at 00:00,
@@ -140,5 +142,6 @@ class SpotifyWebViews final {
 // permanent DOM polling loop. Ambiguous ad/end states retry the same target until
 // completion or the four-minute playback deadline. TVer keeps the rotation intact.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
+void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
 }  // namespace hp

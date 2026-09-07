@@ -1,0 +1,51 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+
+const bundle = readFileSync(
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
+  'utf8',
+);
+const layout = readFileSync(
+  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
+  'utf8',
+);
+const authBadge = readFileSync(
+  new URL('../../native/src/spotify_auth_badge.inc', import.meta.url),
+  'utf8',
+);
+const staticScripts = readFileSync(
+  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
+  'utf8',
+);
+
+test('unfinished Spotify authentication keeps visual foreground ownership', () => {
+  assert.match(
+    layout,
+    /foregroundAuthenticationIndex[\s\S]*SlotIsLoginPage\(slots_\[i\]\)/,
+  );
+  assert.match(
+    layout,
+    /SetWindowPos\(slot\.hostWindow, HWND_TOP,[\s\S]*SWP_NOACTIVATE \| SWP_SHOWWINDOW\)/,
+  );
+  assert.match(
+    layout,
+    /hostLayoutAuthenticationVisible_ == authenticationVisible[\s\S]*maintainAuthenticationForeground\(\);[\s\S]*return;/,
+  );
+  assert.match(
+    layout,
+    /PlaceHosts\(\);\s*maintainAuthenticationForeground\(\);/,
+  );
+});
+
+test('authentication page receives the established six-window account label', () => {
+  assert.match(bundle, /#include "spotify_auth_badge\.inc"/);
+  assert.match(authBadge, /kSpotifyAuthenticationBadgeBootstrapScript/);
+  assert.match(authBadge, /fields\[0\] === 'spotify:account'/);
+  assert.match(layout, /ExecuteScript\(\s*kSpotifyAuthenticationBadgeBootstrapScript/);
+  assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
+  assert.match(
+    staticScripts,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
+  );
+});
