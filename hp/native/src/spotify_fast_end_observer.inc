@@ -84,6 +84,12 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
         setTimeout(() => {
           if (!isCurrent() || !state.started || state.endedPosted ||
               state.targetMedia !== media || media.ended || !media.paused) return;
+          const anotherPlaying = Array.from(document.querySelectorAll('audio, video'))
+              .some(candidate => candidate !== media &&
+                  !candidate.paused && !candidate.ended);
+          if (anotherPlaying) return;
+          const identity = currentTrack();
+          if ((identity.path || identity.title) && !matchesTarget(identity)) return;
           post('spotify:not-playing');
         }, 600);
       }, { passive: true });
