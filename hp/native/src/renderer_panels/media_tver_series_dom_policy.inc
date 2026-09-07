@@ -3,7 +3,7 @@
 namespace {
 constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
 (() => {
-  window.__homePanelTverSeriesDomWatchdog = allowActionFallback => {
+  window.__homePanelTverSeriesDomWatchdog = () => {
     if (location.hostname !== 'tver.jp' ||
         !location.pathname.startsWith('/series/')) return null;
 
@@ -143,8 +143,6 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
       if (latestHref) location.replace(latestHref);
       return null;
     }
-
-    if (!allowActionFallback) return '__homePanelTverUseSeriesApi';
 
     const root = document.querySelector('main') || document.body;
     if (!root) return null;
