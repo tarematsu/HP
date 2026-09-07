@@ -5,6 +5,7 @@
 #include "spotify_auth_badge.inc"
 #include "spotify_phase_sync.inc"
 #include "spotify_webviews.cpp"
+#include "spotify_network_block.inc"
 #include "spotify_host_layout.inc"
 #include "spotify_timed_sequence.inc"
 #include "spotify_recent_catalog.inc"
