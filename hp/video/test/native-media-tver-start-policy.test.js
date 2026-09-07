@@ -22,6 +22,9 @@ test('TVer series page uses the trusted watchdog to open the newest episode', ()
   assert.match(policy, /最新話\|最新エピソード\|最新\|NEW/);
   assert.match(policy, /latest\.scrollIntoView/);
   assert.match(policy, /__homePanelTverEpisodeQueue:/);
+  assert.match(policy, /const latestIndex = Math\.max\(0, links\.indexOf\(latest\)\)/);
+  assert.match(policy, /JSON\.stringify\(\{ hrefs, index: latestIndex \}\)/);
+  assert.doesNotMatch(policy, /JSON\.stringify\(\{ hrefs, index: 0 \}\)/);
   assert.match(policy, /return point\(latest\)/);
 });
 
