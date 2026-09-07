@@ -98,7 +98,8 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }
 
     // Fallback for TVer markup changes: stay inside <main> and reject cards that
-    // live inside an explicitly recommended/ranking section.
+    // live inside an explicitly recommended/ranking section. Links do not need
+    // to be inside the visible viewport; DOM presence is enough for navigation.
     const root = document.querySelector('main') || document.body;
     if (!root) return [];
     return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link => {
@@ -131,6 +132,7 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }) || links[0];
     const hrefs = links.map(link => link.__homePanelNormalizedEpisodeHref);
     const latestIndex = Math.max(0, links.indexOf(latest));
+    const latestHref = latest.__homePanelNormalizedEpisodeHref || hrefs[latestIndex] || '';
     try {
       sessionStorage.setItem(
           '__homePanelTverSeriesPath', location.pathname);
@@ -139,11 +141,13 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
           JSON.stringify({ hrefs, index: latestIndex }));
     } catch (_) {
     }
-    try {
-      latest.scrollIntoView({ block: 'center', inline: 'center' });
-    } catch (_) {
+    // Series links do not require a user gesture. Navigate directly so a narrow
+    // or hidden WebView never depends on scrollIntoView or click coordinates.
+    if (latestHref) {
+      location.replace(latestHref);
+      return null;
     }
-    return point(latest);
+    return null;
   }
 
   if (!location.pathname.startsWith('/episodes/')) return null;
