@@ -68,6 +68,8 @@ void SpotifyWebViews::NavigateTimedSlot(Slot& slot) noexcept {
   slot.unhealthyChecks = 0;
   slot.playing = false;
   SetSpotifyOutputMuted(slot.webview);
+  PostSpotifyTargetDescriptorForSlot(slot);
+  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(url);
   if (FAILED(result)) slot.lastModeNavigateTick = 0;
