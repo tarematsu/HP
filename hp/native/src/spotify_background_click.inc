@@ -27,10 +27,10 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const double x = std::max(0.0, std::min(cssWidth - 1.0, rawX));
     const double y = std::max(0.0, std::min(cssHeight - 1.0, rawY));
 
-    // Spotify reveals/replaces row play controls on hover. The old native
-    // SendInput path always moved the pointer before pressing; preserve that
-    // semantic with CDP so a normalized point cannot press the pre-hover row
-    // number/overlay instead of the play button.
+    // Spotify reveals/replaces row play controls on hover. The previous native
+    // pointer path moved to the target before pressing; preserve that semantic
+    // with CDP so a normalized point cannot press the pre-hover row number or
+    // overlay instead of the play button.
     const std::wstring moved =
         L"{\"type\":\"mouseMoved\",\"x\":" + std::to_wstring(x) +
         L",\"y\":" + std::to_wstring(y) + L"}";
