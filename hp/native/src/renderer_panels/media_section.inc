@@ -5,7 +5,6 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
-#include "media_tver_native_series_resolver.inc"
 #include "media_tver_series_dom_policy.inc"
 #include "media_tver_series_policy.inc"
 #include "media_tver_playback_policy.inc"
@@ -40,8 +39,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       (count), (inputs), (inputSize))
 
 #define ExecuteScript(script, handler)                                          \
-  ExecuteScript(ResolveNativeMediaPolicyScript(                                 \
-                    (script), webview_.Get(), hostWindow_, alive_),             \
+  ExecuteScript(ResolveNativeMediaPolicyScript((script), webview_.Get(), hostWindow_, alive_), \
                 (handler))
 
 #include "media_section_base.inc"
@@ -49,6 +47,11 @@ const wchar_t* ResolveNativeMediaPolicyScript(
 #undef ExecuteScript
 #undef SendInput
 #undef SetTimer
+
+// Native TVer discovery needs the timer IDs declared by media_section_base.inc,
+// while the base host only needs the resolver declaration above. Keep the API
+// implementation on this side of the composition boundary.
+#include "media_tver_native_series_resolver.inc"
 
 namespace {
 bool NativeMediaWebViewSourceContains(
