@@ -1,7 +1,7 @@
 // TVer startup watchdog policy. The legacy static loop still owns playback,
 // ad handling, quality, queue advancement, and fullscreen state. This policy
-// only makes the trusted-input watchdog useful before an episode has opened:
-// close surveys on any TVer page and click the current series' newest episode.
+// provides trusted-input recovery for surveys, series navigation, playback
+// start/restart, and fullscreen entry.
 namespace {
 constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
 (() => {
@@ -150,9 +150,28 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
   const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
   if ((state && state.adActive) || window.__homePanelTverAdActive) return null;
-  if (state && state.fullscreenDirty === false) return null;
 
   const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
+  const playButton = controls.find(element => {
+    if (!visible(element) || !element.matches('button, [role="button"]')) return false;
+    const label = labelOf(element).toLowerCase();
+    if (/(?:一時停止|pause)/i.test(label)) return false;
+    return /(?:^|\s)(?:動画を)?再生(?:する)?(?:\s|$)/.test(label) ||
+           /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
+  }) || null;
+
+  // Programmatic element.click()/video.play() can be rejected because TVer
+  // requires a real user gesture. Always recover a stopped episode through the
+  // host's trusted CDP click before attempting fullscreen.
+  if (!video || (video.paused && !video.ended)) {
+    if (playButton) return point(playButton);
+    if (video) return point(video);
+    return null;
+  }
+
+  // Fullscreen is secondary to playback. If playback later stalls while already
+  // fullscreen, the paused branch above still gets a chance to restart it.
+  if (state && state.fullscreenDirty === false) return null;
   const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement || controls.some(element => {
         if (!visible(element)) return false;
@@ -170,7 +189,7 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
     return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
   });
-  return fullscreenButton ? point(fullscreenButton) : (video ? point(video) : null);
+  return fullscreenButton ? point(fullscreenButton) : null;
 })()
 )JS";
 }  // namespace
