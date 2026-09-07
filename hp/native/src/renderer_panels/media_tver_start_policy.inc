@@ -1,9 +1,10 @@
 // TVer startup watchdog policy. The legacy static loop still owns playback,
 // ad handling, quality, queue advancement, and fullscreen state. This policy
-// only makes the trusted-input watchdog useful before an episode has opened:
-// close surveys on any TVer page and click the current series' newest episode.
+// provides trusted-input recovery for surveys, series navigation, playback
+// start/restart, and fullscreen entry.
 namespace {
-constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
+constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] =
+    LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp') return null;
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
@@ -76,6 +77,20 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
       /(?:エピソード|配信中|最新話|最新エピソード|見逃し配信)/;
   const headingSelector = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
 
+  const isInsideForeignSection = element => {
+    let scope = element ? element.closest('article, li, section') : null;
+    for (let depth = 0; scope && depth < 6;
+         ++depth, scope = scope.parentElement &&
+             scope.parentElement.closest('article, li, section')) {
+      const heading = scope.querySelector(headingSelector);
+      if (heading && foreignHeading.test(normalize(heading.textContent))) {
+        return true;
+      }
+    }
+    return false;
+  };
+)JS"
+    LR"JS(
   const seriesEpisodeLinks = () => {
     const headings = Array.from(document.querySelectorAll(headingSelector));
     const anchorHeading = headings.find(element => {
@@ -98,19 +113,24 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }
 
     // Fallback for TVer markup changes: stay inside <main> and reject cards that
-    // live inside an explicitly recommended/ranking section.
+    // live inside an explicitly recommended/ranking section. Links do not need
+    // to be inside the visible viewport; DOM presence is enough for navigation.
     const root = document.querySelector('main') || document.body;
     if (!root) return [];
-    return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link => {
-      if (!link.href) return false;
-      let scope = link.parentElement;
-      for (let depth = 0; scope && depth < 6;
-           ++depth, scope = scope.parentElement) {
-        const heading = scope.querySelector(headingSelector);
-        if (heading && foreignHeading.test(normalize(heading.textContent))) return false;
-      }
-      return true;
-    });
+    return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link =>
+      !!link.href && !isInsideForeignSection(link));
+  };
+
+  const seriesEpisodeAction = () => {
+    const root = document.querySelector('main') || document.body;
+    if (!root) return null;
+    const candidates = Array.from(root.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]'));
+    return candidates.find(element => {
+      if (isInsideForeignSection(element)) return false;
+      const label = labelOf(element);
+      return /(?:エピソードを再生|最新話を再生|最新エピソードを再生|本編を再生)/.test(label);
+    }) || null;
   };
 
   if (location.pathname.startsWith('/series/')) {
@@ -123,7 +143,23 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
       link.__homePanelNormalizedEpisodeHref = href;
       return true;
     });
-    if (!links.length) return null;
+    if (!links.length) {
+      const action = seriesEpisodeAction();
+      if (!action) return null;
+      try {
+        sessionStorage.setItem('__homePanelTverSeriesPath', location.pathname);
+        sessionStorage.removeItem(
+            '__homePanelTverEpisodeQueue:' + location.pathname);
+      } catch (_) {
+      }
+      // TVer can render episode selection as a button without an /episodes/
+      // anchor. Prefer a trusted host click when the action is on-screen, then
+      // fall back to DOM activation for off-screen/virtualized layouts.
+      const actionPoint = point(action);
+      if (actionPoint) return actionPoint;
+      try { action.click(); } catch (_) {}
+      return null;
+    }
 
     const latest = links.find(link => {
       const card = link.closest('article, li, section, div') || link;
@@ -131,6 +167,7 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     }) || links[0];
     const hrefs = links.map(link => link.__homePanelNormalizedEpisodeHref);
     const latestIndex = Math.max(0, links.indexOf(latest));
+    const latestHref = latest.__homePanelNormalizedEpisodeHref || hrefs[latestIndex] || '';
     try {
       sessionStorage.setItem(
           '__homePanelTverSeriesPath', location.pathname);
@@ -139,20 +176,42 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
           JSON.stringify({ hrefs, index: latestIndex }));
     } catch (_) {
     }
-    try {
-      latest.scrollIntoView({ block: 'center', inline: 'center' });
-    } catch (_) {
+    // Series links do not require a user gesture. Navigate directly so a narrow
+    // or hidden WebView never depends on scrollIntoView or click coordinates.
+    if (latestHref) {
+      location.replace(latestHref);
+      return null;
     }
-    return point(latest);
+    return null;
   }
-
+)JS"
+    LR"JS(
   if (!location.pathname.startsWith('/episodes/')) return null;
   const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
   if ((state && state.adActive) || window.__homePanelTverAdActive) return null;
-  if (state && state.fullscreenDirty === false) return null;
 
   const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
+  const playButton = controls.find(element => {
+    if (!visible(element) || !element.matches('button, [role="button"]')) return false;
+    const label = labelOf(element).toLowerCase();
+    if (/(?:一時停止|pause)/i.test(label)) return false;
+    return /(?:^|\s)(?:動画を)?再生(?:する)?(?:\s|$)/.test(label) ||
+           /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
+  }) || null;
+
+  // Programmatic element.click()/video.play() can be rejected because TVer
+  // requires a real user gesture. Always recover a stopped episode through the
+  // host's trusted CDP click before attempting fullscreen.
+  if (!video || (video.paused && !video.ended)) {
+    if (playButton) return point(playButton);
+    if (video) return point(video);
+    return null;
+  }
+
+  // Fullscreen is secondary to playback. If playback later stalls while already
+  // fullscreen, the paused branch above still gets a chance to restart it.
+  if (state && state.fullscreenDirty === false) return null;
   const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
       document.msFullscreenElement || controls.some(element => {
         if (!visible(element)) return false;
@@ -170,7 +229,7 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
     if (/終了|解除/.test(label) || label.includes('exit fullscreen')) return false;
     return /全画面|フルスクリーン/.test(label) || label.includes('fullscreen');
   });
-  return fullscreenButton ? point(fullscreenButton) : (video ? point(video) : null);
+  return fullscreenButton ? point(fullscreenButton) : null;
 })()
 )JS";
 }  // namespace
