@@ -267,6 +267,29 @@ export async function materializeVariant(variant, env, now, dependencies = {}) {
       renderer_revision: rendererRevision,
       rendered: false,
       changed: false,
+      deferred: false,
+    };
+  }
+
+  if (dependencies.reuseOnly === true) {
+    const sourceChanged = Boolean(existing && sourceRevision !== existing.source_revision);
+    const rendererChanged = Boolean(existing && rendererRevision !== existing.renderer_revision);
+    return {
+      key: variant.key,
+      bytes: typeof existing?.body === 'string' ? existing.body.length : 0,
+      object_key: null,
+      source_revision: sourceRevision,
+      renderer_revision: rendererRevision,
+      rendered: false,
+      changed: !existing || sourceChanged || rendererChanged,
+      deferred: true,
+      defer_reason: !existing
+        ? 'missing-existing-envelope'
+        : sourceChanged
+          ? 'source-revision-changed'
+          : rendererChanged
+            ? 'renderer-revision-changed'
+            : 'existing-envelope-not-reusable',
     };
   }
 
@@ -347,12 +370,18 @@ export async function runPagesReadModelActions(options = {}) {
   const forceAll = options.forceAll ?? enabled(process.env.PAGES_READ_MODEL_FORCE_ALL);
   const dueKeys = new Set(options.dueKeys || dueVariantKeys(startedAt, { forceAll }));
   const published = [];
+  const reuseOnlyKeys = new Set(options.reuseOnlyKeys || []);
 
   for (const variant of variants.filter((item) => dueKeys.has(item.key))) {
     if (Number(clock()) >= deadlineMs) {
       throw new Error('Pages variant materialization exceeded the Actions deadline');
     }
-    published.push(await renderVariant(variant, env, startedAt));
+    published.push(await renderVariant(
+      variant,
+      env,
+      startedAt,
+      reuseOnlyKeys.has(variant.key) ? { reuseOnly: true } : {},
+    ));
   }
 
   return {

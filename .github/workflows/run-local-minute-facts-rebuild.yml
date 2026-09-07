@@ -35,7 +35,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_BUILDS_API_TOKEN || secrets.CF_API_TOKEN }}
       D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'
-      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'
+      # Reserve 500k daily rows for higher-priority read-model publication.
+      D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3000000'
       D1_ACTIONS_READ_PROJECTION_MINUTES: '60'
     outputs:
       allowed: ${{ steps.d1-budget.outputs.allowed }}

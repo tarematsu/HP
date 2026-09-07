@@ -46,9 +46,9 @@ test('offline runtime maintenance runs frequently and after reliable workflow co
   assert.match(runner, /runOfflineMinuteRebuilds/);
 });
 
-test('offline runtime maintenance is protected by actual and projected D1 budgets', () => {
+test('offline runtime maintenance leaves reserved D1 read headroom for read models', () => {
   assert.match(workflow, /D1_ACTIONS_WRITE_ROWS_PER_HOUR_LIMIT: '4000'/);
-  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '3500000'/);
+  assert.match(workflow, /D1_ACTIONS_READ_ROWS_PER_DAY_LIMIT: '2750000'/);
   assert.match(workflow, /D1_ACTIONS_READ_PROJECTION_MINUTES: '60'/);
   assert.match(workflow, /id: d1-budget/);
   assert.match(workflow, /RUNTIME_MAINTENANCE_D1_ALLOWED/);

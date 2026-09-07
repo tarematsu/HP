@@ -52,7 +52,7 @@ test('workflow keeps independent scheduled opportunities without Worker queues',
   assert.match(workflow, /cron: '26,56 \* \* \* \*'/);
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
-  assert.match(workflow, /Refresh budget-safe read models during D1 budget deferral/);
+  assert.match(workflow, /Refresh dashboard and reusable history models during D1 budget deferral/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /cancel-in-progress: true/);

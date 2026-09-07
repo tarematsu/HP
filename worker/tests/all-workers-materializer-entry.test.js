@@ -39,7 +39,7 @@ test('Pages summary materialization is owned by the bounded independent Actions 
   assert.match(workflow, /ref: \$\{\{ github\.sha \}\}/);
   assert.match(workflow, /timeout-minutes: 15/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
-  assert.match(workflow, /Refresh budget-safe read models during D1 budget deferral/);
+  assert.match(workflow, /Refresh dashboard and reusable history models during D1 budget deferral/);
   assert.match(workflow, /cancel-in-progress: true/);
   assert.match(runner, /PAGES_READ_MODEL_DEADLINE_MS/);
   assert.match(runner, /pagesActionsR2ResponseKey/);
