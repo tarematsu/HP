@@ -63,14 +63,18 @@ constexpr std::array<SpotifyRecentDirectRoute, 35>
      L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
     {L"https://open.spotify.com/track/11KKagWroMV5UXbK50hZxZ",
      L"/track/11KKagWroMV5UXbK50hZxZ"},
-    {nullptr, nullptr},
-    {nullptr, nullptr},
+    {L"https://open.spotify.com/track/33liCluqUasE65nMv3KLLm",
+     L"/track/33liCluqUasE65nMv3KLLm"},
+    {L"https://open.spotify.com/track/5QnQ7m9OxSoFeSPSz8grqX",
+     L"/track/5QnQ7m9OxSoFeSPSz8grqX"},
     {L"https://open.spotify.com/track/2ze5Hu3eRRe6HxJTfuZaA0",
      L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
     {L"https://open.spotify.com/track/4IfRFec7SNKOWw1HzpiqHQ",
      L"/track/4IfRFec7SNKOWw1HzpiqHQ"},
-    {nullptr, nullptr},
-    {nullptr, nullptr},
+    {L"https://open.spotify.com/track/2CMSkSwIfnNQR7bTNFFeB5",
+     L"/track/2CMSkSwIfnNQR7bTNFFeB5"},
+    {L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG",
+     L"/track/2meBhRDzQpf0ltQH11HbWG"},
 }};
 
 static_assert(kSpotifyRecentDirectRoutes.size() == 35);
