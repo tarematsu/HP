@@ -71,7 +71,8 @@ constexpr std::array<SpotifyRecentDirectRoute, 35>
      L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
     {L"https://open.spotify.com/track/4IfRFec7SNKOWw1HzpiqHQ",
      L"/track/4IfRFec7SNKOWw1HzpiqHQ"},
-    {nullptr, nullptr},
+    {L"https://open.spotify.com/track/2CMSkSwIfnNQR7bTNFFeB5",
+     L"/track/2CMSkSwIfnNQR7bTNFFeB5"},
     {nullptr, nullptr},
 }};
 
