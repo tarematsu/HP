@@ -51,7 +51,7 @@ test('five-choice YouTube surveys choose the first option then submit', () => {
 test('YouTube ad skip recognizes both selectors and visible skip labels', () => {
   assert.match(policy, /\.ytp-ad-skip-button-modern/);
   assert.match(policy, /button\[class\*="ytp-ad-skip"\]/);
-  assert.match(policy, /広告をスキップ\|広告を飛ばす\|skip ad\|skip ads/);
+  assert.match(policy, /広告をスキップ\|広告を飛ばす\|skip\\s\+ad/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(trustedInput, /::SendInput/);
 });

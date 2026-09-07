@@ -10,6 +10,7 @@
 #include "media_youtube_playall_reliable.inc"
 
 namespace {
+constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
 const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept;
 }  // namespace
 
@@ -19,12 +20,16 @@ const wchar_t* ResolveNativeMediaPolicyScript(const wchar_t* script) noexcept;
         : 0),                                                                   \
    ((timerId) == kNativeMediaTverWatchdogTimer                                  \
         ? ArmNativeMediaTrustedWakeTimer(                                       \
-              (hwnd), webview_.Get(), (timerId), (interval))                   \
-        : ::SetTimer((hwnd), (timerId), (interval), (callback))))
+              (hwnd), webview_.Get(), controller_.Get(),                       \
+              (timerId), (interval))                                            \
+        : ((timerId) == kNativeMediaYoutubeWatchdogTimer                        \
+              ? ::SetTimer((hwnd), (timerId),                                   \
+                           kNativeMediaYoutubeControlWatchdogMs, (callback))     \
+              : ::SetTimer((hwnd), (timerId), (interval), (callback)))))
 
 #define SendInput(count, inputs, inputSize)                                     \
   NativeMediaDispatchTrustedInput(                                              \
-      phase_ == Phase::Tver, webview_.Get(), hostWindow_,                       \
+      phase_ == Phase::Tver, webview_.Get(), controller_.Get(), hostWindow_,   \
       (count), (inputs), (inputSize))
 
 #define ExecuteScript(script, handler)                                          \

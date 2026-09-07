@@ -6,6 +6,7 @@ constexpr UINT kNativeMediaTrustedWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTrustedWakeAttempts = 10U;
 HWND gNativeMediaTrustedWakeWindow = nullptr;
 ComPtr<ICoreWebView2> gNativeMediaTrustedWakeWebView;
+ComPtr<ICoreWebView2Controller> gNativeMediaTrustedWakeController;
 UINT gNativeMediaTrustedWakeCount = 0;
 UINT gNativeMediaTrustedSteadyIntervalMs = 4000U;
 
@@ -22,6 +23,42 @@ std::wstring NativeMediaTrustedMouseParams(
   }
   params += L"}";
   return params;
+}
+
+double NativeMediaTrustedCssScale(
+    ICoreWebView2Controller* controller, HWND hostWindow) noexcept {
+  double rasterizationScale = 1.0;
+  bool haveRasterizationScale = false;
+  try {
+    ComPtr<ICoreWebView2Controller> controllerView = controller;
+    ComPtr<ICoreWebView2Controller3> controller3;
+    if (controllerView && SUCCEEDED(controllerView.As(&controller3)) &&
+        controller3) {
+      double candidate = 1.0;
+      if (SUCCEEDED(controller3->get_RasterizationScale(&candidate)) &&
+          candidate > 0.01) {
+        rasterizationScale = candidate;
+        haveRasterizationScale = true;
+      }
+    }
+  } catch (...) {
+  }
+  if (!haveRasterizationScale && hostWindow && IsWindow(hostWindow)) {
+    const UINT dpi = GetDpiForWindow(hostWindow);
+    if (dpi > 0) rasterizationScale = static_cast<double>(dpi) / 96.0;
+  }
+
+  double zoomFactor = 1.0;
+  try {
+    if (controller) {
+      double candidate = 1.0;
+      if (SUCCEEDED(controller->get_ZoomFactor(&candidate)) && candidate > 0.01) {
+        zoomFactor = candidate;
+      }
+    }
+  } catch (...) {
+  }
+  return std::max(0.01, rasterizationScale * zoomFactor);
 }
 
 void NativeMediaDispatchTrustedMove(
@@ -68,33 +105,45 @@ bool NativeMediaDecodeAbsolutePoint(
 }
 
 UINT NativeMediaDispatchTrustedInput(
-    bool tver, ICoreWebView2* webview, HWND hostWindow, UINT count,
-    LPINPUT inputs, int inputSize) noexcept {
+    bool tver, ICoreWebView2* webview, ICoreWebView2Controller* controller,
+    HWND hostWindow, UINT count, LPINPUT inputs, int inputSize) noexcept {
   if (!webview || inputSize != static_cast<int>(sizeof(INPUT))) return 0;
   POINT point{};
   if (!NativeMediaDecodeAbsolutePoint(hostWindow, count, inputs, &point)) return 0;
   try {
     ComPtr<ICoreWebView2> view = webview;
-    NativeMediaDispatchTrustedMove(view.Get(), point.x, point.y);
-    const std::wstring pressed = NativeMediaTrustedMouseParams(
-        L"mousePressed", point.x, point.y, true);
+    const double cssScale = NativeMediaTrustedCssScale(controller, hostWindow);
+    const double x = static_cast<double>(point.x) / cssScale;
+    const double y = static_cast<double>(point.y) / cssScale;
+    const std::wstring moved =
+        NativeMediaTrustedMouseParams(L"mouseMoved", x, y, false);
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
-        L"Input.dispatchMouseEvent", pressed.c_str(),
+        L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [view, tver, x = point.x, y = point.y](
-                HRESULT pressedResult, LPCWSTR) -> HRESULT {
-              if (FAILED(pressedResult) || !view) return S_OK;
-              const std::wstring released = NativeMediaTrustedMouseParams(
-                  L"mouseReleased", x, y, false);
+            [view, tver, x, y](HRESULT moveResult, LPCWSTR) -> HRESULT {
+              if (FAILED(moveResult) || !view) return S_OK;
+              const std::wstring pressed =
+                  NativeMediaTrustedMouseParams(L"mousePressed", x, y, true);
               view->CallDevToolsProtocolMethod(
-                  L"Input.dispatchMouseEvent", released.c_str(),
+                  L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [view, tver](HRESULT releaseResult, LPCWSTR) -> HRESULT {
-                        if (tver && SUCCEEDED(releaseResult) && view) {
-                          view->ExecuteScript(
-                              kNativeMediaTverForceFullscreenAdSafeScript,
-                              nullptr);
-                        }
+                      [view, tver, x, y](
+                          HRESULT pressedResult, LPCWSTR) -> HRESULT {
+                        if (FAILED(pressedResult) || !view) return S_OK;
+                        const std::wstring released = NativeMediaTrustedMouseParams(
+                            L"mouseReleased", x, y, false);
+                        view->CallDevToolsProtocolMethod(
+                            L"Input.dispatchMouseEvent", released.c_str(),
+                            Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                [view, tver](HRESULT releaseResult,
+                                             LPCWSTR) -> HRESULT {
+                                  if (tver && SUCCEEDED(releaseResult) && view) {
+                                    view->ExecuteScript(
+                                        kNativeMediaTverForceFullscreenAdSafeScript,
+                                        nullptr);
+                                  }
+                                  return S_OK;
+                                }).Get());
                         return S_OK;
                       }).Get());
               return S_OK;
@@ -105,7 +154,9 @@ UINT NativeMediaDispatchTrustedInput(
   }
 }
 
-void NativeMediaTrustedWake(HWND hwnd, ICoreWebView2* webview) noexcept {
+void NativeMediaTrustedWake(
+    HWND hwnd, ICoreWebView2* webview,
+    ICoreWebView2Controller* controller) noexcept {
   if (!hwnd || !IsWindow(hwnd) || !webview) return;
   RECT client{};
   if (!GetClientRect(hwnd, &client)) return;
@@ -113,9 +164,10 @@ void NativeMediaTrustedWake(HWND hwnd, ICoreWebView2* webview) noexcept {
   const LONG height = client.bottom - client.top;
   if (width <= 0 || height <= 0) return;
   const UINT attempt = gNativeMediaTrustedWakeCount++;
-  const double x = static_cast<double>(width) / 2.0;
+  const double cssScale = NativeMediaTrustedCssScale(controller, hwnd);
+  const double x = static_cast<double>(width) / 2.0 / cssScale;
   const double y = static_cast<double>(height) *
-      static_cast<double>(35U + (attempt % 3U) * 10U) / 100.0;
+      static_cast<double>(35U + (attempt % 3U) * 10U) / 100.0 / cssScale;
   NativeMediaDispatchTrustedMove(webview, x, y);
 }
 
@@ -124,7 +176,9 @@ void CALLBACK NativeMediaTrustedWakeTimerProc(
   if (hwnd && IsWindow(hwnd) && gNativeMediaTrustedWakeWindow == hwnd &&
       gNativeMediaTrustedWakeWebView &&
       gNativeMediaTrustedWakeCount < kNativeMediaTrustedWakeAttempts) {
-    NativeMediaTrustedWake(hwnd, gNativeMediaTrustedWakeWebView.Get());
+    NativeMediaTrustedWake(
+        hwnd, gNativeMediaTrustedWakeWebView.Get(),
+        gNativeMediaTrustedWakeController.Get());
   }
   if (!hwnd || !IsWindow(hwnd)) return;
   PostMessageW(hwnd, WM_TIMER, timerId, 0);
@@ -134,10 +188,11 @@ void CALLBACK NativeMediaTrustedWakeTimerProc(
 }
 
 UINT_PTR ArmNativeMediaTrustedWakeTimer(
-    HWND hwnd, ICoreWebView2* webview, UINT_PTR timerId,
-    UINT steadyIntervalMs) noexcept {
+    HWND hwnd, ICoreWebView2* webview, ICoreWebView2Controller* controller,
+    UINT_PTR timerId, UINT steadyIntervalMs) noexcept {
   gNativeMediaTrustedWakeWindow = hwnd;
   gNativeMediaTrustedWakeWebView = webview;
+  gNativeMediaTrustedWakeController = controller;
   gNativeMediaTrustedWakeCount = 0;
   gNativeMediaTrustedSteadyIntervalMs = steadyIntervalMs;
   return ::SetTimer(hwnd, timerId, kNativeMediaTrustedWakeIntervalMs,
