@@ -130,12 +130,13 @@ constexpr wchar_t kNativeMediaTverWatchdogPolicyScript[] = LR"JS(
       return /(?:最新話|最新エピソード|最新|NEW)/i.test(labelOf(card));
     }) || links[0];
     const hrefs = links.map(link => link.__homePanelNormalizedEpisodeHref);
+    const latestIndex = Math.max(0, links.indexOf(latest));
     try {
       sessionStorage.setItem(
           '__homePanelTverSeriesPath', location.pathname);
       sessionStorage.setItem(
           '__homePanelTverEpisodeQueue:' + location.pathname,
-          JSON.stringify({ hrefs, index: 0 }));
+          JSON.stringify({ hrefs, index: latestIndex }));
     } catch (_) {
     }
     try {
