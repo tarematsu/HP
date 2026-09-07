@@ -45,6 +45,7 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     cadenceMinutes: 30,
     staleAfterMinutes: 75,
     stalledAfterMinutes: 25,
+    ignoreExpectedWorkflowRunSkips: true,
   }),
   Object.freeze({
     name: 'Local minute facts rebuild',
@@ -52,6 +53,7 @@ export const ACTIONS_RUNNER_TARGETS = Object.freeze([
     cadenceMinutes: 15,
     staleAfterMinutes: 60,
     stalledAfterMinutes: 25,
+    ignoreExpectedWorkflowRunSkips: true,
   }),
   Object.freeze({
     name: 'Unified Cloudflare observability',
