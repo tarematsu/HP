@@ -110,10 +110,10 @@ void Renderer::Initialize() {
     // Spotify remains active in power-saving mode unless the explicit mute
     // control has hard-blocked media networking.
     gSpotifyWebViews->Start();
+    SetSpotifyMediaPhase(false);
     if (gSpotifyMediaNetworkBlocked) {
       gSpotifyWebViews->SetNetworkBlocked(true);
     }
-    SetSpotifyMediaPhase(false);
 #if 0  // Stationhead dashboard queue/status polling is no longer started.
     StartNativePlaybackBridge();
 #endif
