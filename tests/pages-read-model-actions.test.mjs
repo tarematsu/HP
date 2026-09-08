@@ -64,6 +64,10 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
   assert.match(workflow, /PAGES_READ_MODEL_RETRY_OVERDUE: 'true'/);
+  assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
+  assert.match(workflow, /steps\.d1-write-budget\.outputs\.read_allowed != 'true'/);
+  assert.doesNotMatch(workflow, /steps\.d1-write-budget\.outputs\.allowed == 'true'/);
+  assert.doesNotMatch(workflow, /steps\.d1-write-budget\.outputs\.allowed != 'true'/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
