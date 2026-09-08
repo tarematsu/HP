@@ -77,8 +77,9 @@ const MINUTE_DAILY_ROWS_CTE = `WITH daily_minute_rows AS MATERIALIZED (
     f.reported_current_stream_count AS current_stream_count,
     h.current_handle AS host_handle
   FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time
-  LEFT JOIN sh_minute_fact_context AS c ON c.fact_id=f.id
-  LEFT JOIN sh_hosts AS h ON h.id=c.host_id
+  LEFT JOIN sh_minute_fact_context_v2 AS c ON c.fact_id=f.id
+  LEFT JOIN sh_broadcast_sessions AS session ON session.id=f.broadcast_session_id
+  LEFT JOIN sh_hosts AS h ON h.id=COALESCE(c.host_id_override,session.host_id)
   LEFT JOIN sh_total_member_daily_latest AS d
     ON d.channel_id=f.channel_id
     AND d.day_at=(f.minute_at/86400000)*86400000

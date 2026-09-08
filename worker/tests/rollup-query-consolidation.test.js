@@ -49,6 +49,10 @@ test('normal daily maintenance seeks the canonical minute range directly', () =>
   assert.match(cte, /FROM sh_minute_facts AS f INDEXED BY idx_sh_minute_facts_time/);
   assert.match(cte, /WHERE f\.minute_at>=\?1 AND f\.minute_at<\?2/);
   assert.match(cte, /selected_rows AS MATERIALIZED/);
+  assert.match(cte, /LEFT JOIN sh_minute_fact_context_v2 AS c ON c\.fact_id=f\.id/);
+  assert.match(cte, /LEFT JOIN sh_broadcast_sessions AS session ON session\.id=f\.broadcast_session_id/);
+  assert.match(cte, /COALESCE\(c\.host_id_override,session\.host_id\)/);
+  assert.doesNotMatch(cte, /sh_minute_fact_context AS c/);
   assert.doesNotMatch(cte, /sh_channel_snapshots/);
 
   const summary = section('const MINUTE_DAILY_SUMMARY_SQL', 'const SUMMARY_BOUNDARIES_SQL');
