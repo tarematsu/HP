@@ -82,24 +82,24 @@ jobs:
             echo "- Hourly writes: ${{ steps.d1-write-budget.outputs.rows_written }} / ${{ steps.d1-write-budget.outputs.limit }}"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Record D1 budget deferral
-        if: steps.d1-write-budget.outputs.allowed != 'true'
+        if: steps.d1-write-budget.outputs.read_allowed != 'true'
         shell: bash
         run: |
           if [[ "${{ steps.d1-write-budget.outputs.reason }}" == 'telemetry-unavailable' ]]; then
             echo "Deferring D1-heavy read-model generation because usage telemetry is unavailable. Existing KV/R2 responses remain active; dashboard refresh and reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
           else
-            echo "Deferring D1-heavy read-model generation because usage is above the Actions budget (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}; ${{ steps.d1-write-budget.outputs.rows_written }}/${{ steps.d1-write-budget.outputs.limit }} hourly writes). Existing KV/R2 responses remain active; dashboard refresh and reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
+            echo "Deferring D1-heavy read-model generation because the D1 read budget is unavailable or exceeded (${{ steps.d1-write-budget.outputs.rows_read }} actual / ${{ steps.d1-write-budget.outputs.projected_rows_read }} projected UTC-day reads, limit ${{ steps.d1-write-budget.outputs.read_limit }}). Existing KV/R2 responses remain active; dashboard refresh and reuse-only history freshness checks will still run." | tee pages-read-model-actions.log
           fi
       - name: Install Worker dependencies
         run: npm ci --prefer-offline --no-audit --no-fund
       - name: Refresh dashboard and reusable history models during D1 budget deferral
-        if: steps.d1-write-budget.outputs.allowed != 'true'
+        if: steps.d1-write-budget.outputs.read_allowed != 'true'
         shell: bash
         run: |
           set -o pipefail
           node scripts/refresh-pages-dashboard-actions.mjs 2>&1 | tee -a pages-read-model-actions.log
       - name: Publish due pages read models
-        if: steps.d1-write-budget.outputs.allowed == 'true'
+        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         shell: bash
         run: |
           set -o pipefail
@@ -113,5 +113,5 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Verify serving database
-        if: steps.d1-write-budget.outputs.allowed == 'true'
+        if: steps.d1-write-budget.outputs.read_allowed == 'true'
         run: node scripts/verify-facts-live.mjs
