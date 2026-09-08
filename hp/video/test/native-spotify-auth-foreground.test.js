@@ -10,6 +10,10 @@ const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
+const placement = readFileSync(
+  new URL('../../native/src/spotify_webviews_core_part4.inc', import.meta.url),
+  'utf8',
+);
 const authBadge = readFileSync(
   new URL('../../native/src/spotify_auth_badge.inc', import.meta.url),
   'utf8',
@@ -19,7 +23,7 @@ const staticScripts = readFileSync(
   'utf8',
 );
 
-test('unfinished Spotify authentication keeps visual foreground ownership', () => {
+test('unfinished Spotify authentication keeps visual foreground ownership without owning playback recovery', () => {
   assert.match(
     layout,
     /foregroundAuthenticationIndex[\s\S]*SlotIsLoginPage\(slots_\[i\]\)/,
@@ -30,11 +34,19 @@ test('unfinished Spotify authentication keeps visual foreground ownership', () =
   );
   assert.match(
     layout,
-    /hostLayoutAuthenticationVisible_ == authenticationVisible[\s\S]*maintainAuthenticationForeground\(\);[\s\S]*return;/,
+    /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*maintainAuthenticationForeground\(\);[\s\S]*return;/,
   );
   assert.match(
     layout,
-    /PlaceHosts\(\);\s*maintainAuthenticationForeground\(\);/,
+    /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;\s*PlaceHosts\(\);\s*maintainAuthenticationForeground\(\);/,
+  );
+  assert.match(
+    placement,
+    /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\);/,
+  );
+  assert.match(
+    placement,
+    /const bool recovery =\s*active && !authentication && SlotStateNeedsRecovery\(slot\.state\);/,
   );
 });
 
