@@ -15,7 +15,7 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
     const style = document.createElement('style');
     style.id = 'homepanel-youtube-clean-player';
     style.textContent = `
-      #movie_player > :not(.html5-video-container),
+      #movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),
       #movie_player .html5-video-container > :not(video),
       #movie_player .ytp-chrome-top,
       #movie_player .ytp-chrome-bottom,
@@ -39,6 +39,31 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
         opacity: 0 !important;
         transition: none !important;
         animation: none !important;
+      }
+
+      /* Never let clean-player opacity on an ad-control ancestor make the
+         manual Skip Ad affordance disappear. Normal playback remains clean. */
+      #movie_player.ad-showing *,
+      #movie_player.ad-interrupting * {
+        opacity: 1 !important;
+      }
+
+      /* Ad controls are functional UI. Keep the skip affordance visible so a
+         user can always take over if automatic trusted input misses a layout. */
+      #movie_player .ytp-ad-skip-button,
+      #movie_player .ytp-ad-skip-button-modern,
+      #movie_player .ytp-skip-ad-button,
+      #movie_player .videoAdUiSkipButton,
+      #movie_player .ytp-ad-skip-button-slot,
+      #movie_player .ytp-ad-skip-button-container,
+      #movie_player [class*="ytp-ad-skip"],
+      #movie_player [aria-label*="Skip ad" i],
+      #movie_player [aria-label*="Skip ads" i],
+      #movie_player [aria-label*="広告をスキップ"],
+      #movie_player [aria-label*="広告を飛ばす"] {
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
       }
     `;
     root.appendChild(style);
@@ -201,28 +226,35 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
 
   // Prefer current known classes and aria-labels, then fall back to semantics.
-  // The clean-player CSS deliberately keeps controls in layout but makes them
-  // transparent. Skip Ad is a narrowly identified trusted action, so opacity
-  // must not suppress its coordinate lookup.
+  // Skip Ad remains visible to the user, but trusted input still tolerates
+  // transient opacity during YouTube's own control animation.
   const selectors = [
     '.ytp-ad-skip-button',
     '.ytp-ad-skip-button-modern',
     '.ytp-skip-ad-button',
     '.videoAdUiSkipButton',
     '.ytp-ad-skip-button-slot button',
+    '.ytp-ad-skip-button-slot [role="button"]',
     '.ytp-ad-skip-button-container button',
+    '.ytp-ad-skip-button-container [role="button"]',
     'button[class*="ytp-ad-skip"]',
+    '[class*="ytp-ad-skip"][role="button"]',
     'button[aria-label*="Skip ad" i]',
     'button[aria-label*="Skip ads" i]',
     'button[aria-label*="広告をスキップ"]',
-    'button[aria-label*="スキップ"]'
+    'button[aria-label*="スキップ"]',
+    '[aria-label*="Skip ad" i]',
+    '[aria-label*="Skip ads" i]',
+    '[aria-label*="広告をスキップ"]',
+    '[aria-label*="広告を飛ばす"]'
   ];
   let target = Array.from(player.querySelectorAll(selectors.join(',')))
       .find(element => isClickable(element, true)) || null;
   if (!target) {
     const skipPattern = /(広告をスキップ|広告を飛ばす|skip\s+ad(?:s)?)/i;
     target = Array.from(player.querySelectorAll(
-        'button, tp-yt-paper-button, [role="button"]'))
+        'button, tp-yt-paper-button, [role="button"], '
+        + '.ytp-ad-skip-button-slot, .ytp-ad-skip-button-container'))
         .find(element => isClickable(element, true) &&
             skipPattern.test(textOf(element))) || null;
   }
