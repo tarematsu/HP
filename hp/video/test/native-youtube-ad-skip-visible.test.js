@@ -15,8 +15,11 @@ assert.ok(cleanStart >= 0 && watchdogStart > cleanStart && healthStart > watchdo
 const clean = policy.slice(cleanStart, watchdogStart);
 const watchdog = policy.slice(watchdogStart, healthStart);
 
-test('YouTube clean-player does not hide the whole player chrome including ad skip ancestors', () => {
+test('YouTube clean-player exposes ad skip UI without restoring normal playback chrome', () => {
   assert.equal(clean.includes('#movie_player > :not(.html5-video-container),'), false);
+  assert.ok(clean.includes(
+    '#movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),',
+  ));
   assert.ok(clean.includes('#movie_player .ytp-ad-skip-button-container,'));
   assert.ok(clean.includes('#movie_player [aria-label*="広告をスキップ"]'));
   assert.ok(clean.includes('opacity: 1 !important;'));
