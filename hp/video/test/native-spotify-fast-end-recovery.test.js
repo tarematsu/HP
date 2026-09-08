@@ -41,12 +41,21 @@ test('one delegated observer covers current and dynamically created media', () =
   assert.doesNotMatch(observer, /MutationObserver|setInterval/);
 });
 
-test('confirmed target media starts the deadline and ends immediately', () => {
+test('confirmed target media starts the deadline and ends immediately with its generation', () => {
   assert.match(observer, /state\.targetMedia = media/);
   assert.match(observer, /post\('spotify:timed-started'\)/);
   assert.match(observer, /state\.targetMedia !== media/);
   assert.match(observer, /post\('spotify:timed-ended'\)/);
+  assert.match(observer, /message \+ '\\u001f' \+ generation\(\)/);
+  assert.match(rotation, /eventGeneration != target->targetGeneration/);
   assert.doesNotMatch(observer, /spotify:timed-waiting|waitForNext/);
+});
+
+test('direct track path is preferred over MediaSession title when both exist', () => {
+  const domIdentity = observer.indexOf('for (const selector of [');
+  const mediaSession = observer.indexOf('navigator.mediaSession');
+  assert.ok(domIdentity >= 0 && mediaSession > domIdentity);
+  assert.match(observer, /if \(target\.trackPath && track\.path\)[\s\S]*track\.path === target\.trackPath/);
 });
 
 test('target changes and ended gaps cannot play an item from the old queue', () => {
@@ -68,7 +77,7 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
   );
   assert.match(
     recent,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(url\)/,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(track->url\)/,
   );
   assert.match(
     recent,
@@ -87,7 +96,7 @@ test('pause, waiting, and stalled recover only after playback stays stopped', ()
   assert.match(rotation, /staggerSlotIndex_ = target->index/);
 });
 
-test('observer injection is retried only until one install succeeds', () => {
+test('observer injection is retried only until one install succeeds and old start observer is gone', () => {
   assert.match(header, /bool timedObserverReady = false/);
   assert.match(header, /bool timedObserverInstallInFlight = false/);
   assert.match(
@@ -95,10 +104,7 @@ test('observer injection is retried only until one install succeeds', () => {
     /if \(slot\.timedObserverReady \|\| slot\.timedObserverInstallInFlight\) return;/,
   );
   assert.match(rotation, /observerTarget->timedObserverReady =[\s\S]*SUCCEEDED\(result\)/);
-  assert.doesNotMatch(
-    rotation,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticTimedStartObserverScript/,
-  );
+  assert.doesNotMatch(rotation, /kSpotifyStaticTimedStartObserverScript/);
 });
 
 test('four-minute actual-play deadline remains a native fallback', () => {

@@ -2,10 +2,13 @@ namespace hp {
 namespace {
 
 constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
-constexpr UINT kSpotifyRobustReconcileTickMs = 2U * 1000U;
+constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
+constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
-constexpr int kSpotifyRobustReloadThreshold = 30;
+constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAdaptiveSteadyStartMs = 20ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -22,13 +25,82 @@ bool IsSpotifyOpenSource(std::wstring_view source) noexcept {
 
 }  // namespace
 
+bool SpotifyWebViews::SlotStateIsHealthy(SlotState state) noexcept {
+  return state == SlotState::Playing || state == SlotState::Completed;
+}
+
+bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
+  return state == SlotState::NotCreated || state == SlotState::Navigating ||
+         state == SlotState::WaitingTarget || state == SlotState::Recovering;
+}
+
+void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
+  slot.state = state;
+  if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
+      state == SlotState::Navigating || state == SlotState::Playing ||
+      state == SlotState::Completed) {
+    slot.unhealthySinceTick = 0;
+  }
+}
+
+void SpotifyWebViews::MarkSlotRecovering(
+    Slot& slot, ULONGLONG now) noexcept {
+  slot.state = SlotState::Recovering;
+  if (slot.unhealthySinceTick == 0) slot.unhealthySinceTick = now;
+}
+
+bool SpotifyWebViews::ShouldRenavigateUnhealthySlot(
+    const Slot& slot, ULONGLONG now) const noexcept {
+  return slot.unhealthySinceTick != 0 &&
+         now - slot.unhealthySinceTick >= kSpotifyUnhealthyRenavigateMs &&
+         (slot.lastModeNavigateTick == 0 ||
+          now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs);
+}
+
+void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
+  ++slot.targetGeneration;
+  if (slot.targetGeneration == 0) ++slot.targetGeneration;
+}
+
+UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
+    ULONGLONG now) const noexcept {
+  if (!robustSchedulerStarted_) return kSpotifyRobustUrgentTickMs;
+
+  ULONGLONG nextDeadlineMs = kSpotifyRobustHealthyTickMs;
+  for (const Slot& slot : slots_) {
+    const bool relevantRecovery =
+        SlotStateNeedsRecovery(slot.state) &&
+        (slot.timedTarget != TimedSpotifyTarget::None ||
+         slot.loginPage || slot.controllerCreating);
+    if (relevantRecovery) return kSpotifyRobustUrgentTickMs;
+
+    if (slot.timedPlaybackStartTick != 0) {
+      const ULONGLONG age = now - slot.timedPlaybackStartTick;
+      if (age >= kSpotifyAdaptiveTrackDeadlineMs) {
+        return kSpotifyRobustUrgentTickMs;
+      }
+      nextDeadlineMs = std::min(
+          nextDeadlineMs, kSpotifyAdaptiveTrackDeadlineMs - age);
+    }
+  }
+
+  if (youtubeCycleStartTick_ == 0 ||
+      now - youtubeCycleStartTick_ < kSpotifyAdaptiveSteadyStartMs) {
+    return kSpotifyRobustUrgentTickMs;
+  }
+
+  return static_cast<UINT>(std::max<ULONGLONG>(
+      1000ULL, std::min<ULONGLONG>(
+          kSpotifyRobustHealthyTickMs, nextDeadlineMs)));
+}
+
 void SpotifyWebViews::ArmRobustScheduler() noexcept {
   if (slots_.empty()) return;
   HWND host = slots_[0].hostWindow;
   if (!host || !IsWindow(host)) return;
   KillTimer(host, kSpotifyRobustReconcileTimer);
-  ::SetTimer(host, kSpotifyRobustReconcileTimer,
-             kSpotifyRobustReconcileTickMs,
+  const UINT delay = NextRobustSchedulerDelayMs(GetTickCount64());
+  ::SetTimer(host, kSpotifyRobustReconcileTimer, delay,
              &SpotifyWebViews::StaggeredReconcileTimerProc);
 }
 
@@ -50,6 +122,7 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
     return;
   }
 
+  SetSlotState(slot, SlotState::NotCreated);
   slot.controllerCreating = true;
   slot.controllerCreateTick = now;
   CreateController(slot);
@@ -81,7 +154,7 @@ bool SpotifyWebViews::ParseNormalizedPoint(
 void SpotifyWebViews::ClickSlotNormalizedPoint(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
-  slot.playing = false;
+  SetSlotState(slot, SlotState::WaitingTarget);
   RefreshSpotifyHostLayout();
   DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
 }

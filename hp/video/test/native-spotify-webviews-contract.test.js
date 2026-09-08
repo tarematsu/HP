@@ -2,8 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const spotify = readFileSync(
-  new URL('../../native/src/spotify_webviews.cpp', import.meta.url), 'utf8');
+const spotify = [
+  'spotify_webviews.cpp',
+  'spotify_webviews_core_part1.inc',
+  'spotify_webviews_core_part2.inc',
+  'spotify_webviews_core_part3.inc',
+  'spotify_webviews_core_part4.inc',
+].map(name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
 const wrapper = readFileSync(
@@ -46,7 +52,7 @@ test('one Spotify owner gets recovery geometry while other visible controllers a
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(spotify, /int width = 1;\s*int height = 1/);
   assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
-  assert.match(spotify, /const bool recovery = active && !authentication && !slot\.playing/);
+  assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
@@ -58,9 +64,9 @@ test('Spotify browser behavior comes from fixed scripts and data messages, not s
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
   assert.match(scripts, /kSpotifyStaticTrackReconcileScript\[\]/);
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript\[\]/);
-  assert.match(scripts, /kSpotifyStaticEndObserverScript\[\]/);
   assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
   assert.match(scripts, /spotify:target/);
+  assert.match(recent, /spotify:generation/);
   assert.match(recent, /PostWebMessageAsString\(message\.c_str\(\)\)/);
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
   assert.doesNotMatch(recent, /BuildRecentTrackScript|EscapeRecentScriptLiteral/);
@@ -87,13 +93,15 @@ test('YouTube phase starts the Spotify cycle and TVer leaves an active A-B-C-D r
   assert.doesNotMatch(schedule, /SetPodcastModeImmediate|StopLegacySchedulers/);
 });
 
-test('one direct robust scheduler serializes all six Spotify windows', () => {
+test('one adaptive scheduler serializes all six Spotify windows', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
-  assert.match(phaseSync, /kSpotifyRobustReconcileTickMs = 2U \* 1000U/);
-  assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer/);
-  assert.match(phaseSync, /StaggeredReconcileTimerProc/);
+  assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
+  assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 15ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
+  assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
   assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
 });
@@ -140,14 +148,19 @@ test('all six Spotify WebViews remain natively muted', () => {
   assert.doesNotMatch(spotify, /put_IsMuted\(FALSE\)/);
 });
 
-test('layout is driven directly by per-slot playback messages', () => {
-  assert.match(header, /bool playing = false/);
-  assert.match(spotify, /put_IsWebMessageEnabled\(TRUE\)/);
-  assert.match(spotify, /spotify:playing/);
-  assert.match(spotify, /spotify:not-playing/);
-  assert.match(spotify, /target->playing = playing/);
-  assert.match(spotify, /RecomputeForeground\(\)/);
-  assert.doesNotMatch(header, /foreground_/);
+test('slot lifecycle uses one explicit state machine rather than an overloaded playing flag', () => {
+  for (const state of [
+    'NotCreated', 'Authenticating', 'Navigating', 'WaitingTarget',
+    'Playing', 'Recovering', 'Completed',
+  ]) {
+    assert.match(header, new RegExp(`\\b${state}\\b`));
+  }
+  assert.doesNotMatch(header, /bool playing = false/);
+  assert.match(header, /SlotState state = SlotState::NotCreated/);
+  assert.match(phaseSync, /SetSlotState/);
+  assert.match(phaseSync, /MarkSlotRecovering/);
+  assert.match(phaseSync, /unhealthySinceTick/);
+  assert.match(layout, /SlotStateIsHealthy/);
 });
 
 test('Spotify lifetime is independent of dashboard power-saving visibility', () => {

@@ -12,7 +12,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   unsigned mask = 0;
   size_t foregroundAuthenticationIndex = slots_.size();
   for (size_t i = 0; i < slots_.size(); ++i) {
-    if (!slots_[i].playing) mask |= (1u << i);
+    if (!SlotStateIsHealthy(slots_[i].state)) mask |= (1u << i);
     if (foregroundAuthenticationIndex == slots_.size() && slots_[i].webview &&
         SlotIsLoginPage(slots_[i])) {
       foregroundAuthenticationIndex = i;
@@ -51,8 +51,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
         const int y = client.top + (clientHeight - height) / 2;
 
         // Authentication keeps visual ownership until its source leaves the
-        // Spotify login surface. The recovery scheduler may continue rotating
-        // behind it, but it cannot park or cover the unfinished auth window.
+        // Spotify login surface. Recovery can continue behind it but cannot
+        // park or cover the unfinished auth window.
         SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW);
         if (slot.controller) {
@@ -75,11 +75,10 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
             Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
                 [this, alive, target](HRESULT result, LPCWSTR) -> HRESULT {
                   if (!alive->load(std::memory_order_acquire) || FAILED(result) ||
-                      !started_ || !target->webview || !SlotIsLoginPage(*target)) {
+                      !started_ || !target->webview ||
+                      !SlotIsLoginPage(*target)) {
                     return S_OK;
                   }
-                  // Reuse the established account-name source so auth shows the
-                  // same amazon/yuukiar/ten/nagi/hinata/ozeki label as playback.
                   PostSpotifyPageContext(*target);
                   return S_OK;
                 }).Get());

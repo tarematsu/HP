@@ -42,22 +42,23 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.controllerCreateTick = 0;
     slot.lastModeNavigateTick = 0;
     slot.lastTimedReconcileTick = 0;
-    slot.unhealthyChecks = 0;
-    slot.playing = false;
+    slot.unhealthySinceTick = 0;
+    slot.state = SlotState::NotCreated;
     slot.playerPage = false;
+    slot.loginPage = false;
     slot.podcastCompleted = false;
     slot.timedTarget = TimedSpotifyTarget::None;
     slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-    slot.timedCompletionPendingTick = 0;
-    slot.timedPlaybackStartTick = 0;
+      slot.timedPlaybackStartTick = 0;
     slot.timedRandomCIndex = kNoTimedCatalogIndex;
     slot.timedRandomDIndex = kNoTimedCatalogIndex;
     slot.timedRotationActive = false;
     slot.timedPreludeCompleted = false;
     slot.timedBridgeCompleted = false;
     slot.reconcileInFlight = false;
+    slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;
   }
 

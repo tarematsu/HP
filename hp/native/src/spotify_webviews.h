@@ -32,6 +32,16 @@ class SpotifyWebViews final {
  private:
   static constexpr size_t kAccountCount = 6;
 
+  enum class SlotState : unsigned char {
+    NotCreated,
+    Authenticating,
+    Navigating,
+    WaitingTarget,
+    Playing,
+    Recovering,
+    Completed,
+  };
+
   struct Slot {
     SpotifyWebViews* owner = nullptr;
     size_t index = 0;
@@ -48,17 +58,17 @@ class SpotifyWebViews final {
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
-    ULONGLONG timedCompletionPendingTick = 0;
     ULONGLONG timedPlaybackStartTick = 0;
     ULONGLONG lastTimedReconcileTick = 0;
+    ULONGLONG unhealthySinceTick = 0;
+    ULONGLONG targetGeneration = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
     size_t timedRandomDIndex = kNoTimedCatalogIndex;
-    int unhealthyChecks = 0;
     unsigned char timedRotationPosition = 0;
+    SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
-    bool playing = false;
     bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
@@ -75,14 +85,22 @@ class SpotifyWebViews final {
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
   static bool IsSpotifyLoginUri(const wchar_t* uri) noexcept;
   static bool ParseNormalizedPoint(LPCWSTR json, int* x, int* y) noexcept;
+  static bool SlotStateIsHealthy(SlotState state) noexcept;
+  static bool SlotStateNeedsRecovery(SlotState state) noexcept;
 
   bool EnsureHostClass() noexcept;
   bool CreateHost(Slot& slot) noexcept;
   void CreateController(Slot& slot) noexcept;
   void Configure(Slot& slot) noexcept;
   void ArmRobustScheduler() noexcept;
+  UINT NextRobustSchedulerDelayMs(ULONGLONG now) const noexcept;
   void BeginControllerCreate(Slot& slot) noexcept;
   bool SlotIsLoginPage(const Slot& slot) const noexcept;
+  void SetSlotState(Slot& slot, SlotState state) noexcept;
+  void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
+  bool ShouldRenavigateUnhealthySlot(
+      const Slot& slot, ULONGLONG now) const noexcept;
+  void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
   UINT DispatchSpotifyDevToolsClick(Slot& slot, int xTenThousandths,
@@ -139,12 +157,10 @@ class SpotifyWebViews final {
 // tverPhase=false starts the YouTube-hour schedule: BitterBlue at 00:00,
 // TALKABOUT at 04:00, one recent-song bridge, then from 20:00 the completion-
 // driven Lonesome rabbit -> random B -> BitterBlue -> random D rotation.
-// Initial account starts remain 40 seconds apart. Afterwards exactly one WebView
-// at a time owns the recovery viewport, rotating every 15 seconds. Track-end
-// handling is event driven, with a native four-minute deadline measured from the
-// target song's actual play event. There is no parallel six-window DOM scanner or
-// permanent DOM polling loop. Ambiguous ad/end states retry the same target until
-// completion or the four-minute playback deadline. TVer keeps the rotation intact.
+// Initial account starts remain 40 seconds apart. Recovery is event-driven and
+// serialized to one WebView. Healthy rotation uses an adaptive native timer;
+// target-end messages carry a generation so stale events cannot advance a newer
+// target. The four-minute deadline begins only after the intended track starts.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

@@ -1,0 +1,171 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
+import vm from 'node:vm';
+
+const observerSource = readFileSync(
+  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+  'utf8',
+);
+
+function productionObserverScript() {
+  const prefix = 'constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(\n';
+  const start = observerSource.indexOf(prefix);
+  assert.notEqual(start, -1, 'production observer raw string not found');
+  const bodyStart = start + prefix.length;
+  const end = observerSource.indexOf('\n)JS";', bodyStart);
+  assert.notEqual(end, -1, 'production observer raw string terminator not found');
+  return observerSource.slice(bodyStart, end);
+}
+
+class FakeMedia {
+  paused = true;
+  ended = false;
+  currentTime = 0;
+  pauseCalls = 0;
+
+  pause() {
+    this.paused = true;
+    this.pauseCalls += 1;
+  }
+}
+
+function createHarness() {
+  const documentListeners = new Map();
+  const webviewListeners = [];
+  const messages = [];
+  const timers = new Map();
+  let nextTimer = 1;
+  let currentTrack = null;
+
+  const media = new FakeMedia();
+  const window = {
+    __homePanelSpotifyNativeTarget: {
+      pagePath: '/track/A',
+      trackPath: '/track/A',
+      title: 'Target A',
+      kind: 'music',
+    },
+    chrome: {
+      webview: {
+        postMessage(message) {
+          messages.push(message);
+        },
+        addEventListener(type, handler) {
+          if (type === 'message') webviewListeners.push(handler);
+        },
+      },
+    },
+  };
+  const document = {
+    addEventListener(type, handler) {
+      if (!documentListeners.has(type)) documentListeners.set(type, []);
+      documentListeners.get(type).push(handler);
+    },
+    querySelector() {
+      return currentTrack;
+    },
+    querySelectorAll(selector) {
+      return selector === 'audio, video' ? [media] : [];
+    },
+  };
+  const navigator = { mediaSession: { metadata: { title: '' } } };
+
+  const context = vm.createContext({
+    window,
+    document,
+    navigator,
+    HTMLMediaElement: FakeMedia,
+    location: { href: 'https://open.spotify.com/track/A' },
+    URL,
+    Number,
+    Array,
+    String,
+    setTimeout(fn) {
+      const id = nextTimer++;
+      timers.set(id, fn);
+      return id;
+    },
+    clearTimeout(id) {
+      timers.delete(id);
+    },
+  });
+  vm.runInContext(productionObserverScript(), context);
+
+  const dispatch = (type, target = media) => {
+    for (const handler of documentListeners.get(type) || []) {
+      handler({ target });
+    }
+  };
+  const hostMessage = data => {
+    for (const handler of webviewListeners) handler({ data });
+  };
+  const setTrack = (path, title) => {
+    currentTrack = path ? {
+      href: `https://open.spotify.com${path}`,
+      textContent: title,
+    } : null;
+  };
+
+  return {
+    window,
+    navigator,
+    media,
+    messages,
+    dispatch,
+    hostMessage,
+    setTrack,
+  };
+}
+
+test('production observer rejects an ad/title false-positive and prefers direct Track ID', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f7');
+
+  // Even if MediaSession still carries the target title, a visible different
+  // /track/ path is authoritative and must not start the four-minute deadline.
+  h.setTrack('/track/B', 'Different Track');
+  h.navigator.mediaSession.metadata.title = 'Target A';
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.deepEqual(h.messages, []);
+
+  h.setTrack('/track/A', 'Target A');
+  h.dispatch('playing');
+  assert.deepEqual(h.messages, ['spotify:timed-started\x1f7']);
+});
+
+test('production observer ends immediately, blocks the old queue, then starts the new generation', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f7');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f7');
+
+  h.media.ended = true;
+  h.dispatch('ended');
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f7');
+  const pausedAfterEnd = h.media.pauseCalls;
+
+  // Spotify may try to launch the previous context's next queued song.
+  h.media.ended = false;
+  h.media.paused = false;
+  h.dispatch('play');
+  assert.equal(h.media.pauseCalls, pausedAfterEnd + 1);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-started')).length, 1);
+
+  // The page bootstrap updates the target before the observer sees this message.
+  h.window.__homePanelSpotifyNativeTarget = {
+    pagePath: '/track/C',
+    trackPath: '/track/C',
+    title: 'Target C',
+    kind: 'music',
+  };
+  h.hostMessage('spotify:target\x1f/track/C\x1f/track/C\x1fTarget C\x1fmusic');
+  h.hostMessage('spotify:generation\x1f8');
+  h.setTrack('/track/C', 'Target C');
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
+});

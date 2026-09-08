@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const spotify = readFileSync(
-  new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
-  'utf8',
-);
+const spotify = [
+  'spotify_webviews.cpp',
+  'spotify_webviews_core_part1.inc',
+  'spotify_webviews_core_part2.inc',
+  'spotify_webviews_core_part3.inc',
+  'spotify_webviews_core_part4.inc',
+].map(name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
@@ -28,7 +32,7 @@ test('serialized Spotify shows only authentication and performs normal recovery 
   assert.match(spotify, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(spotify, /const bool active = static_cast<int>\(i\) == activeIndex/);
   assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
-  assert.match(spotify, /const bool recovery = active && !authentication && !slot\.playing/);
+  assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
 });
@@ -46,10 +50,10 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
   assert.match(click, /Input\.dispatchMouseEvent/);
 });
 
-test('initial account starts remain 40 seconds apart then recovery rotates every 15 seconds', () => {
+test('initial account starts remain 40 seconds apart then healthy verification rotates every 20 seconds', () => {
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 15ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /elapsed < kSpotifyInitialSerialWindowMs[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs/);
   assert.match(schedule, /elapsed - kSpotifyInitialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/);
 });
@@ -64,6 +68,7 @@ test('authentication gets at most one 40-second hold instead of blocking other a
 test('recovery also has a bounded hold so one slow account cannot monopolize the viewport', () => {
   assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
   assert.match(schedule, /const bool holdRecovery/);
+  assert.match(schedule, /SlotStateNeedsRecovery\(current\.state\)/);
   assert.match(schedule, /!holdAuthentication && !holdRecovery/);
 });
 

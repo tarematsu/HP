@@ -1,14 +1,19 @@
 namespace hp {
 namespace {
 
-// One delegated observer per Spotify document covers media elements created after
-// navigation without rescanning the DOM or reinjecting observers on every retry.
+// One delegated observer per Spotify document covers media created after
+// navigation. It prefers the direct /track/ identity, falls back to MediaSession
+// title only while the DOM identity is unavailable, and tags every native event
+// with the current target generation.
 constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverInstalled) return true;
   window.__homePanelSpotifyMediaObserverInstalled = true;
+  window.__homePanelSpotifyGeneration =
+      window.__homePanelSpotifyGeneration || '0';
 
-  const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const normalize = value =>
+      (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
   const state = {
     key: '',
     started: false,
@@ -18,15 +23,23 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     targetMedia: null,
     stallTimer: 0
   };
+  const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
     try {
       if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(message);
+        window.chrome.webview.postMessage(
+            message + '\u001f' + generation());
       }
     } catch (_) {}
   };
   const targetKey = target => target
-      ? [target.pagePath, target.trackPath, normalize(target.title), target.kind].join('|')
+      ? [
+          target.pagePath,
+          target.trackPath,
+          normalize(target.title),
+          target.kind,
+          generation()
+        ].join('|')
       : '';
   const syncTarget = () => {
     const target = window.__homePanelSpotifyNativeTarget;
@@ -43,11 +56,23 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     }
     return target;
   };
-  const currentTrack = () => {
-    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
-    const mediaTitle = normalize(metadata && metadata.title);
-    if (mediaTitle) return { path: '', title: mediaTitle };
 
+  if (window.chrome && window.chrome.webview) {
+    window.chrome.webview.addEventListener('message', event => {
+      if (typeof event.data !== 'string') return;
+      const fields = event.data.split('\u001f');
+      if (fields[0] === 'spotify:generation') {
+        window.__homePanelSpotifyGeneration = fields[1] || '0';
+        syncTarget();
+      } else if (fields[0] === 'spotify:target') {
+        // The page bootstrap is registered before this observer and has already
+        // replaced __homePanelSpotifyNativeTarget when this listener runs.
+        syncTarget();
+      }
+    });
+  }
+
+  const currentTrack = () => {
     for (const selector of [
       '[data-testid="now-playing-widget"] a[href*="/track/"]',
       '[data-testid="context-item-link"][href*="/track/"]'
@@ -61,10 +86,18 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
         }
       } catch (_) {}
     }
-    return { path: '', title: '' };
+
+    const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
+    return {
+      path: '',
+      title: normalize(metadata && metadata.title)
+    };
   };
   const matchesTarget = (target, track) => {
-    if (target.trackPath && track.path) return track.path === target.trackPath;
+    if (!target) return false;
+    if (target.trackPath && track.path) {
+      return track.path === target.trackPath;
+    }
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
@@ -93,7 +126,7 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     return true;
   };
   const scheduleStartChecks = media => {
-    [0, 250, 1000, 2500].forEach(delay => {
+    [0, 250, 1000, 2500, 5000].forEach(delay => {
       setTimeout(() => confirmStarted(media), delay);
     });
   };
@@ -133,9 +166,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     if (!isMedia(event.target)) return;
     const target = syncTarget();
     if (target && target.kind === 'music' && state.endedPosted) {
-      // Spotify can start the previous context's next queued song immediately
-      // after ended. Hold that gap silent until native code publishes the next
-      // A-D target; syncTarget then resets this latch for the intended song.
+      // Spotify can start the previous context's queued next song after ended.
+      // Keep it stopped until native publishes the next target/generation.
       try { event.target.pause(); } catch (_) {}
       return;
     }

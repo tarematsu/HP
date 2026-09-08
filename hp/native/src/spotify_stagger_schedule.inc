@@ -4,7 +4,9 @@ constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyInitialSerialWindowMs = 6ULL * 40ULL * 1000ULL;
-constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 15ULL * 1000ULL;
+// One healthy slot is verified per turn. With the adaptive 20-second scheduler
+// this is one lightweight verification per account roughly every two minutes.
+constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 12ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleLayoutSettleMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleRetryMs = 4ULL * 1000ULL;
@@ -27,7 +29,12 @@ void CALLBACK SpotifyWebViews::StaggeredReconcileTimerProc(
   }
   auto* slot = reinterpret_cast<Slot*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
   if (!slot || !slot->owner || slot->index != 0) return;
-  slot->owner->RunStaggeredReconcile();
+  SpotifyWebViews* const owner = slot->owner;
+  owner->RunStaggeredReconcile();
+  // SetTimer is intentionally re-armed after each pass so healthy operation can
+  // sleep at the adaptive cadence while a recovery event immediately returns it
+  // to the two-second cadence.
+  owner->ArmRobustScheduler();
 }
 
 void SpotifyWebViews::RunStaggeredReconcile() noexcept {
@@ -37,16 +44,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
-  // The four-minute guard compares six native timestamps only. It does not
-  // perform DOM work and can therefore run on the existing two-second timer
-  // without bringing back the old six-window background probe.
   if (AdvanceExpiredTimedRotation(now)) return;
 
   const ULONGLONG elapsed = now - youtubeCycleStartTick_;
 
-  // One WebView owns the recovery-sized viewport at a time. The first six starts
-  // keep the original 40-second offsets; afterwards the owner rotates every 15s.
-  // There is no second background watchdog running against the other five slots.
   staggerSlotIndex_ %= slots_.size();
   Slot& current = slots_[staggerSlotIndex_];
   const bool currentAuthentication =
@@ -56,7 +57,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       now - staggerSlotStartTick_ < kSpotifyAuthenticationHoldMs;
   const bool holdRecovery =
       !currentAuthentication && current.timedTarget != TimedSpotifyTarget::None &&
-      !current.playing &&
+      SlotStateNeedsRecovery(current.state) &&
       now - staggerSlotStartTick_ < kSpotifySimpleRecoveryHoldMs;
   const size_t scheduledIndex = SimpleSpotifyScheduledIndex(elapsed);
 
@@ -68,9 +69,6 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     RefreshSpotifyHostLayout();
   }
 
-  // SimpleSpotifyScheduledIndex is designed to return 0..5, but keep the bound
-  // explicit here so both runtime safety and MSVC static analysis can prove the
-  // std::array access is valid if the scheduling logic changes later.
   if (staggerSlotIndex_ >= slots_.size()) return;
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
@@ -107,11 +105,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     if (slot.timedTarget != desired || catalogChanged) {
       slot.timedTarget = desired;
       slot.timedCatalogIndex = desiredCatalogIndex;
+      BumpSpotifyTargetGeneration(slot);
       slot.lastModeNavigateTick = 0;
       slot.lastTimedReconcileTick = 0;
-      slot.unhealthyChecks = 0;
-      slot.playing = false;
-      slot.timedCompletionPendingTick = 0;
+      slot.unhealthySinceTick = 0;
+      SetSlotState(slot, SlotState::WaitingTarget);
       slot.timedPlaybackStartTick = 0;
       staggerSlotIndex_ = slot.index;
       staggerSlotStartTick_ = now;
@@ -120,7 +118,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
         slot.timedPreludeCompleted = false;
       }
       RefreshSpotifyHostLayout();
-      NavigateActiveTimedSlot(slot);
+      if (!slot.webview) {
+        BeginControllerCreate(slot);
+      } else {
+        NavigateActiveTimedSlot(slot);
+      }
       return;
     }
 
@@ -134,40 +136,26 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     if ((slot.timedTarget == TimedSpotifyTarget::BitterBlue &&
          slot.timedPreludeCompleted) ||
         (recentBridge && slot.timedBridgeCompleted)) {
+      SetSlotState(slot, SlotState::Completed);
       return;
     }
   } else if (!slot.timedRotationActive) {
+    if (!slot.webview) {
+      BeginControllerCreate(slot);
+      return;
+    }
     InitializeTimedRotationSlot(slot, now);
     return;
   }
 
-  // A waiting state means an ended media item may have been an ad. Never skip a
-  // formal A/B/C/D target because the machine was slow: after three minutes just
-  // clear the ambiguity and retry the same target, unless its four-minute actual
-  // song-playback deadline has already advanced it.
-  if (slot.timedCompletionPendingTick != 0) {
-    if (now - slot.timedCompletionPendingTick < kSpotifySimplePendingRecoveryMs) {
-      return;
-    }
-    slot.timedCompletionPendingTick = 0;
-    slot.playing = false;
-    slot.lastTimedReconcileTick = 0;
-    staggerSlotValidated_ = false;
-  }
-
-  // Give a newly expanded offscreen viewport two seconds to reflow before any
-  // DOM query/click. This avoids racing Spotify's responsive layout on slow CPUs.
-  if (!slot.playing &&
+  if (SlotStateNeedsRecovery(slot.state) &&
       now - staggerSlotStartTick_ < kSpotifySimpleLayoutSettleMs) {
     return;
   }
 
-  // Healthy slots receive one verification per ownership turn. A slot that still
-  // needs recovery may retry every four seconds, but only while it owns the one
-  // recovery viewport. Re-arm the idempotent completion/start observers on each
-  // recovery attempt so a slow navigation cannot leave them attached only to the
-  // page being replaced. No other Spotify WebView gets DOM work on this tick.
-  if (!staggerSlotValidated_ || !slot.playing) {
+  // Healthy accounts get one verification on their ownership turn. Recovery is
+  // event-driven and retries only the affected account every four seconds.
+  if (!staggerSlotValidated_ || SlotStateNeedsRecovery(slot.state)) {
     if (slot.lastTimedReconcileTick == 0 ||
         now - slot.lastTimedReconcileTick >= kSpotifySimpleRetryMs) {
       slot.lastTimedReconcileTick = now;
@@ -191,12 +179,12 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     youtubeCycleStartTick_ = now;
     staggerSlotValidated_ = false;
 
-    // Slot 0 was started synchronously by Start(). The remaining slots are
-    // created only when their serialized ownership turn arrives.
     for (size_t i = 1; i < slots_.size(); ++i) {
       slots_[i].controllerCreating = false;
       slots_[i].controllerCreateTick = 0;
-      if (!slots_[i].webview) slots_[i].playing = true;
+      if (!slots_[i].webview) {
+        SetSlotState(slots_[i], SlotState::NotCreated);
+      }
     }
   }
   ArmRobustScheduler();
@@ -216,20 +204,22 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     for (Slot& slot : slots_) {
       slot.lastModeNavigateTick = 0;
       slot.lastTimedReconcileTick = 0;
-      slot.unhealthyChecks = 0;
-      slot.playing = false;
+      slot.unhealthySinceTick = 0;
       slot.podcastCompleted = false;
       slot.timedTarget = TimedSpotifyTarget::None;
       slot.timedCatalogIndex = kNoTimedCatalogIndex;
       slot.timedRotationCycle = 0;
       slot.timedRotationPosition = 0;
-      slot.timedCompletionPendingTick = 0;
       slot.timedPlaybackStartTick = 0;
       slot.timedRandomCIndex = kNoTimedCatalogIndex;
       slot.timedRandomDIndex = kNoTimedCatalogIndex;
       slot.timedRotationActive = false;
       slot.timedPreludeCompleted = false;
       slot.timedBridgeCompleted = false;
+      BumpSpotifyTargetGeneration(slot);
+      SetSlotState(slot, slot.webview
+          ? SlotState::WaitingTarget
+          : SlotState::NotCreated);
     }
   }
 
@@ -237,4 +227,5 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
   // YouTube phase is the only place that resets the master clock and sequence.
   RecomputeForeground();
   RunStaggeredReconcile();
+  ArmRobustScheduler();
 }
