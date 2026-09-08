@@ -139,6 +139,19 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
           ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
     ];
   };
+  const guardedPoint = (element, action, cooldownMs) => {
+    const resolved = point(element);
+    if (!resolved) return null;
+    const now = Date.now();
+    const state = window.__homePanelYoutubeTrustedActionState ||
+        (window.__homePanelYoutubeTrustedActionState = { action: '', at: 0 });
+    if (state.action === action && now - Number(state.at || 0) < cooldownMs) {
+      return null;
+    }
+    state.action = action;
+    state.at = now;
+    return resolved;
+  };
   const textOf = element => normalize([
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('title'),
@@ -228,7 +241,7 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
         .find(element => isClickable(element) && skipPattern.test(textOf(element))) ||
         null;
   }
-  if (target) return point(target);
+  if (target) return guardedPoint(target, 'skip-ad', 750);
 
   const adOverlay = player.querySelector(
       '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout');
@@ -241,19 +254,31 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   const video = player.querySelector('video');
   if (video && video.paused && !video.ended) {
     target = player.querySelector('.ytp-play-button');
-    if (isClickable(target)) return point(target);
+    if (isClickable(target)) return guardedPoint(target, 'play', 2000);
   }
 
   const fullscreen = document.fullscreenElement ||
       player.classList.contains('ytp-fullscreen');
   if (fullscreen) return null;
   target = player.querySelector('.ytp-fullscreen-button');
-  return point(target);
+  return guardedPoint(target, 'fullscreen', 2500);
 })()
 )JS";
 
 constexpr wchar_t kNativeMediaYoutubeHealthPolicyScript[] = LR"JS(
 (() => {
+  // The reliable playlist probe is supposed to stay active until /watch. The
+  // legacy host still has a ten-second fixed-coordinate fallback; if that path
+  // leaves us on /playlist, report it as unhealthy so the host reloads and
+  // restarts the reliable probe instead of remaining stuck indefinitely.
+  if ((location.hostname === 'www.youtube.com' ||
+       location.hostname === 'youtube.com') &&
+      location.pathname.startsWith('/playlist')) {
+    const startupState = window.__homePanelYoutubePlaylistStartupState;
+    const since = Number(startupState?.since || 0);
+    if (since > 0 && Date.now() - since >= 8000) return true;
+  }
+
   const player = document.querySelector('#movie_player');
   if (player) {
     try {

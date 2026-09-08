@@ -12,6 +12,11 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const playlistId = new URL(location.href).searchParams.get('list') || '';
+  const startupState = window.__homePanelYoutubePlaylistStartupState ||
+      (window.__homePanelYoutubePlaylistStartupState = {
+        since: Date.now(),
+        initialDataScanAt: 0,
+      });
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
@@ -35,6 +40,18 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
       return '';
     }
   };
+  const navigateVideoId = videoId => {
+    if (!videoId || typeof videoId !== 'string') return false;
+    try {
+      const url = new URL('/watch', location.origin);
+      url.searchParams.set('v', videoId);
+      if (playlistId) url.searchParams.set('list', playlistId);
+      location.assign(url.href);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
 
   // The playlist item link is materially more stable than the Play all button.
   // Starting item 1 with the same list parameter has the same playback result.
@@ -51,9 +68,36 @@ constexpr wchar_t kNativeMediaYoutubeReliablePlayAllScript[] = LR"JS(
     }
   }
 
+  // On slower machines Polymer can take several seconds to materialize the
+  // playlist DOM even though ytInitialData already contains the playlist item.
+  // Scan that bootstrap data at most once every 1.5 seconds and navigate by
+  // video id so startup does not depend on layout/viewport timing.
+  const now = Date.now();
+  if (window.ytInitialData &&
+      now - Number(startupState.initialDataScanAt || 0) >= 1500) {
+    startupState.initialDataScanAt = now;
+    try {
+      const stack = [window.ytInitialData];
+      let visited = 0;
+      while (stack.length && visited < 5000) {
+        const node = stack.pop();
+        ++visited;
+        if (!node || typeof node !== 'object') continue;
+        const renderer = node.playlistVideoRenderer ||
+            node.playlistPanelVideoRenderer || null;
+        if (renderer && navigateVideoId(renderer.videoId)) return null;
+        const values = Object.values(node);
+        for (let index = values.length - 1; index >= 0; --index) {
+          const value = values[index];
+          if (value && typeof value === 'object') stack.push(value);
+        }
+      }
+    } catch (_) {}
+  }
+
   // During very early rendering the item list may not exist yet. Nudge the
   // semantic Play all control if it is already present, but never treat finding
-  // its coordinates as success; the native probe keeps retrying until /watch.
+  // it as success; the native probe keeps retrying until /watch.
   const textOf = element => normalize([
     element?.getAttribute?.('aria-label'),
     element?.getAttribute?.('title'),

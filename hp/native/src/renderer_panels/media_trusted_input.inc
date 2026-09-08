@@ -4,11 +4,37 @@
 namespace {
 constexpr UINT kNativeMediaTrustedWakeIntervalMs = 350U;
 constexpr UINT kNativeMediaTrustedWakeAttempts = 10U;
+constexpr ULONGLONG kNativeMediaTrustedClickStaleMs = 3000ULL;
 HWND gNativeMediaTrustedWakeWindow = nullptr;
 ComPtr<ICoreWebView2> gNativeMediaTrustedWakeWebView;
 ComPtr<ICoreWebView2Controller> gNativeMediaTrustedWakeController;
 UINT gNativeMediaTrustedWakeCount = 0;
 UINT gNativeMediaTrustedSteadyIntervalMs = 4000U;
+std::atomic<ULONGLONG> gNativeMediaTrustedClickStartedAt{0};
+
+ULONGLONG NativeMediaAcquireTrustedClick() noexcept {
+  ULONGLONG now = GetTickCount64();
+  if (now == 0) now = 1;
+  ULONGLONG observed =
+      gNativeMediaTrustedClickStartedAt.load(std::memory_order_acquire);
+  for (;;) {
+    if (observed != 0 && now - observed < kNativeMediaTrustedClickStaleMs) {
+      return 0;
+    }
+    if (gNativeMediaTrustedClickStartedAt.compare_exchange_weak(
+            observed, now, std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return now;
+    }
+  }
+}
+
+void NativeMediaReleaseTrustedClick(ULONGLONG token) noexcept {
+  if (token == 0) return;
+  ULONGLONG expected = token;
+  gNativeMediaTrustedClickStartedAt.compare_exchange_strong(
+      expected, 0, std::memory_order_acq_rel, std::memory_order_acquire);
+}
 
 std::wstring NativeMediaTrustedMouseParams(
     const wchar_t* type, double x, double y, bool pressed) {
@@ -110,6 +136,8 @@ UINT NativeMediaDispatchTrustedInput(
   if (!webview || inputSize != static_cast<int>(sizeof(INPUT))) return 0;
   POINT point{};
   if (!NativeMediaDecodeAbsolutePoint(hostWindow, count, inputs, &point)) return 0;
+  const ULONGLONG clickToken = NativeMediaAcquireTrustedClick();
+  if (clickToken == 0) return 0;
   try {
     ComPtr<ICoreWebView2> view = webview;
     const double cssScale = NativeMediaTrustedCssScale(controller, hostWindow);
@@ -120,36 +148,54 @@ UINT NativeMediaDispatchTrustedInput(
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
         L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [view, tver, x, y](HRESULT moveResult, LPCWSTR) -> HRESULT {
-              if (FAILED(moveResult) || !view) return S_OK;
+            [view, tver, x, y, clickToken](
+                HRESULT moveResult, LPCWSTR) -> HRESULT {
+              if (FAILED(moveResult) || !view) {
+                NativeMediaReleaseTrustedClick(clickToken);
+                return S_OK;
+              }
               const std::wstring pressed =
                   NativeMediaTrustedMouseParams(L"mousePressed", x, y, true);
-              view->CallDevToolsProtocolMethod(
+              const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [view, tver, x, y](
+                      [view, tver, x, y, clickToken](
                           HRESULT pressedResult, LPCWSTR) -> HRESULT {
-                        if (FAILED(pressedResult) || !view) return S_OK;
+                        if (FAILED(pressedResult) || !view) {
+                          NativeMediaReleaseTrustedClick(clickToken);
+                          return S_OK;
+                        }
                         const std::wstring released = NativeMediaTrustedMouseParams(
                             L"mouseReleased", x, y, false);
-                        view->CallDevToolsProtocolMethod(
-                            L"Input.dispatchMouseEvent", released.c_str(),
-                            Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                [view, tver](HRESULT releaseResult,
-                                             LPCWSTR) -> HRESULT {
-                                  if (tver && SUCCEEDED(releaseResult) && view) {
-                                    view->ExecuteScript(
-                                        kNativeMediaTverForceFullscreenAdSafeScript,
-                                        nullptr);
-                                  }
-                                  return S_OK;
-                                }).Get());
+                        const HRESULT releaseDispatched =
+                            view->CallDevToolsProtocolMethod(
+                                L"Input.dispatchMouseEvent", released.c_str(),
+                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                    [view, tver, clickToken](
+                                        HRESULT releaseResult,
+                                        LPCWSTR) -> HRESULT {
+                                      NativeMediaReleaseTrustedClick(clickToken);
+                                      if (tver && SUCCEEDED(releaseResult) && view) {
+                                        view->ExecuteScript(
+                                            kNativeMediaTverForceFullscreenAdSafeScript,
+                                            nullptr);
+                                      }
+                                      return S_OK;
+                                    }).Get());
+                        if (FAILED(releaseDispatched)) {
+                          NativeMediaReleaseTrustedClick(clickToken);
+                        }
                         return S_OK;
                       }).Get());
+              if (FAILED(pressDispatched)) {
+                NativeMediaReleaseTrustedClick(clickToken);
+              }
               return S_OK;
             }).Get());
+    if (FAILED(dispatched)) NativeMediaReleaseTrustedClick(clickToken);
     return SUCCEEDED(dispatched) ? count : 0;
   } catch (...) {
+    NativeMediaReleaseTrustedClick(clickToken);
     return 0;
   }
 }
