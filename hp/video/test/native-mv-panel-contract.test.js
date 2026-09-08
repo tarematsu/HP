@@ -156,10 +156,13 @@ test('YouTube keeps playlist autoplay, 480p, captions off, ad skip, and fullscre
   assert.match(mediaPanel, /content-visibility: hidden/);
 });
 
-test('YouTube renders only video while keeping hidden controls operable', () => {
+test('YouTube renders only video during content while keeping ad controls operable', () => {
   assert.match(mediaPanel, /kNativeMediaYoutubeCleanPlayerScript/);
   assert.match(mediaPanel, /AddScriptToExecuteOnDocumentCreated\([\s\S]*kNativeMediaYoutubeCleanPlayerScript/);
-  assert.match(youtubePolicy, /#movie_player > :not\(\.html5-video-container\)/);
+  assert.match(
+    youtubePolicy,
+    /#movie_player:not\(\.ad-showing\):not\(\.ad-interrupting\) > :not\(\.html5-video-container\)/,
+  );
   assert.match(youtubePolicy, /#movie_player \.html5-video-container > :not\(video\)/);
   assert.match(youtubePolicy, /#movie_player \.ytp-title/);
   assert.match(youtubePolicy, /#movie_player \.ytp-chrome-bottom/);
@@ -171,7 +174,10 @@ test('YouTube renders only video while keeping hidden controls operable', () => 
   assert.match(youtubePolicy, /#movie_player \.ytp-ce-element/);
   assert.match(youtubePolicy, /#movie_player \.ytp-watermark/);
   assert.match(youtubePolicy, /#movie_player \.ytp-caption-window-container/);
+  assert.match(youtubePolicy, /#movie_player\.ad-showing \*,/);
+  assert.match(youtubePolicy, /#movie_player\.ad-interrupting \* \{/);
   assert.match(youtubePolicy, /opacity: 0 !important/);
+  assert.match(youtubePolicy, /opacity: 1 !important/);
   assert.doesNotMatch(
     youtubePolicy,
     /#movie_player > :not\(\.html5-video-container\)[\s\S]{0,900}pointer-events: none/,
