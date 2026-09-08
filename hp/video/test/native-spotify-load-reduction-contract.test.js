@@ -2,22 +2,18 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const spotify = readFileSync(
-  new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
-  'utf8',
-);
-const spotifyHeader = readFileSync(
-  new URL('../../native/src/spotify_webviews.h', import.meta.url),
-  'utf8',
-);
-const schedule = readFileSync(
-  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
-  'utf8',
-);
-const scripts = readFileSync(
-  new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
-  'utf8',
-);
+const sourcePart = (name) => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8');
+const spotify = [
+  'spotify_webviews.cpp',
+  'spotify_webviews_core_part1.inc',
+  'spotify_webviews_core_part2.inc',
+  'spotify_webviews_core_part3.inc',
+  'spotify_webviews_core_part4.inc',
+].map(sourcePart).join('\n');
+const spotifyHeader = sourcePart('spotify_webviews.h');
+const schedule = sourcePart('spotify_stagger_schedule.inc');
+const scripts = sourcePart('spotify_static_scripts.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
@@ -27,14 +23,16 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
-test('only the recovery owner gets a large viewport while other controllers stay alive at 1x1', () => {
+test('all playback controllers keep a stable offscreen viewport while only the recovery owner gets a large viewport', () => {
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
-  assert.match(spotify, /int width = 1;\s*int height = 1/);
-  assert.match(spotify, /const bool recovery = active && !authentication && !slot\.playing/);
-  assert.match(spotify, /x = client\.right \+ 32/);
+  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(spotify, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
+  assert.match(spotify, /const bool recovery = active && !authentication && SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /width = activeWidth;\s*height = activeHeight/);
-  assert.doesNotMatch(spotify, /SW_HIDE|controller->Close\(\)[\s\S]{0,120}!slot\.playing/);
+  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
+  assert.doesNotMatch(spotify, /SW_HIDE|controller->Close\(\)[\s\S]{0,120}SlotStateNeedsRecovery/);
   assert.match(
     spotify,
     /if \(batch\) EndDeferWindowPos\(batch\);[\s\S]*GetClientRect\(slot\.hostWindow, &bounds\);[\s\S]*put_Bounds\(bounds\);[\s\S]*NotifyParentWindowPositionChanged\(\)/,

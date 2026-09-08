@@ -37,6 +37,13 @@ test('serialized Spotify shows only authentication and performs normal recovery 
   assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
 });
 
+test('inactive Spotify playback hosts never collapse to 1x1', () => {
+  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(spotify, /static_cast<int>\(i\) \*[\s\S]*kSpotifyParkedPlaybackWidth \+ kSpotifyParkedPlaybackGap/);
+  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
+});
+
 test('the active Spotify WebView uses 80 percent page zoom in foreground or background', () => {
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(layout, /controller->get_ZoomFactor\(&zoom\)/);

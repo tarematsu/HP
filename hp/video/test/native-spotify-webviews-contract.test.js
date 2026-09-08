@@ -47,10 +47,13 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
 });
 
-test('one Spotify owner gets recovery geometry while other visible controllers are parked at 1x1', () => {
+test('one Spotify owner gets recovery geometry while all six playback hosts keep stable offscreen viewports', () => {
   assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(spotify, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
+  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
   assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
   assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
