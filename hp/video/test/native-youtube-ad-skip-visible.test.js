@@ -20,6 +20,8 @@ test('YouTube clean-player exposes ad skip UI without restoring normal playback 
   assert.ok(clean.includes(
     '#movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),',
   ));
+  assert.ok(clean.includes('#movie_player.ad-showing *,'));
+  assert.ok(clean.includes('#movie_player.ad-interrupting * {'));
   assert.ok(clean.includes('#movie_player .ytp-ad-skip-button-container,'));
   assert.ok(clean.includes('#movie_player [aria-label*="広告をスキップ"]'));
   assert.ok(clean.includes('opacity: 1 !important;'));
@@ -27,10 +29,11 @@ test('YouTube clean-player exposes ad skip UI without restoring normal playback 
   assert.ok(clean.includes('pointer-events: auto !important;'));
 });
 
-test('YouTube watchdog accepts current button, role-button, and aria-label skip layouts', () => {
+test('YouTube watchdog accepts current and legacy skip layouts', () => {
   assert.ok(watchdog.includes('.ytp-ad-skip-button-slot [role="button"]'));
   assert.ok(watchdog.includes('.ytp-ad-skip-button-container [role="button"]'));
   assert.ok(watchdog.includes('[class*="ytp-ad-skip"][role="button"]'));
+  assert.ok(watchdog.includes('button[aria-label*="スキップ"]'));
   assert.ok(watchdog.includes('[aria-label*="Skip ad" i]'));
   assert.ok(watchdog.includes('[aria-label*="広告を飛ばす"]'));
   assert.ok(watchdog.includes("guardedPoint(target, 'skip-ad', 750, true)"));
