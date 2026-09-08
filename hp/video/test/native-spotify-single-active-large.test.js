@@ -27,14 +27,17 @@ const header = readFileSync(
   'utf8',
 );
 
-test('serialized Spotify shows only authentication and performs normal recovery offscreen', () => {
+test('serialized Spotify shows authentication while normal recovery remains offscreen', () => {
   assert.match(spotify, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
   assert.match(spotify, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(spotify, /const bool active = static_cast<int>\(i\) == activeIndex/);
-  assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
+  assert.match(
+    spotify,
+    /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
+  );
   assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
-  assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
+  assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
 });
 
 test('inactive Spotify playback hosts never collapse to 1x1', () => {
@@ -65,18 +68,21 @@ test('initial account starts remain 40 seconds apart then healthy verification r
   assert.match(schedule, /elapsed - kSpotifyInitialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/);
 });
 
-test('authentication gets at most one 40-second hold instead of blocking other accounts', () => {
-  assert.match(schedule, /kSpotifyAuthenticationHoldMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /const bool currentAuthentication =[\s\S]*SlotIsLoginPage/);
-  assert.match(schedule, /const bool holdAuthentication =[\s\S]*kSpotifyAuthenticationHoldMs/);
-  assert.match(schedule, /!holdAuthentication && !holdRecovery/);
+test('authentication foreground never extends scheduler ownership', () => {
+  assert.doesNotMatch(schedule, /kSpotifyAuthenticationHoldMs|holdAuthentication/);
+  assert.match(schedule, /const bool holdRecovery/);
+  assert.match(
+    schedule,
+    /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/,
+  );
+  assert.match(schedule, /Login is a presentation concern, not scheduler ownership/);
 });
 
-test('recovery also has a bounded hold so one slow account cannot monopolize the viewport', () => {
+test('recovery has a bounded hold so one slow account cannot monopolize the viewport', () => {
   assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
   assert.match(schedule, /const bool holdRecovery/);
   assert.match(schedule, /SlotStateNeedsRecovery\(current\.state\)/);
-  assert.match(schedule, /!holdAuthentication && !holdRecovery/);
+  assert.match(schedule, /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/);
 });
 
 test('each scheduler ownership pass refreshes layout before returning for login', () => {
@@ -86,8 +92,14 @@ test('each scheduler ownership pass refreshes layout before returning for login'
   );
 });
 
-test('login state participates in layout cache so redirect can surface authentication immediately', () => {
-  assert.match(layout, /const bool authenticationVisible =[\s\S]*SlotIsLoginPage\(slots_\[activeIndex\]\)/);
-  assert.match(layout, /hostLayoutAuthenticationVisible_ == authenticationVisible[\s\S]*return;/);
-  assert.match(layout, /hostLayoutAuthenticationVisible_ = authenticationVisible/);
+test('the exact login slot participates in layout cache so auth handoff parks the old host', () => {
+  assert.match(
+    layout,
+    /foregroundAuthenticationIndex[\s\S]*SlotIsLoginPage\(slots_\[i\]\)/,
+  );
+  assert.match(
+    layout,
+    /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*return;/,
+  );
+  assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
 });
