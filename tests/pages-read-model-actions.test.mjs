@@ -209,6 +209,67 @@ test('materialized summaries exclude the current period from the R2 body', async
   assert.equal(result.storage_source, 'other.sh_daily_summary');
 });
 
+test('dashboard materialization coalesces burst runs without extending freshness', async () => {
+  let handlerCalls = 0;
+  let uploadCalls = 0;
+  const result = await materializeVariant({
+    key: 'dashboard',
+    url: '/api/dashboard',
+  }, { MINUTE_DB: {}, OTHER_DB: {} }, DAY, {
+    rendererRevision: 'renderer-1',
+    loadExistingEnvelope: async () => ({
+      version: 1,
+      status: 200,
+      headers: { 'content-type': 'application/json; charset=utf-8' },
+      updated_at: DAY - 2 * MINUTE,
+      renderer_revision: 'renderer-1',
+      body: '{"ok":true}',
+    }),
+    loadSourceRevision: async () => null,
+    responseHandler: async () => {
+      handlerCalls += 1;
+      return async () => new Response('{"ok":true}');
+    },
+    uploadEnvelope() {
+      uploadCalls += 1;
+      return 'pages-response/test.json';
+    },
+  });
+
+  assert.equal(handlerCalls, 0);
+  assert.equal(uploadCalls, 0);
+  assert.equal(result.rendered, false);
+  assert.equal(result.skipped, true);
+  assert.equal(result.skip_reason, 'minimum-refresh-interval');
+  assert.equal(result.object_key, null);
+});
+
+test('dashboard materialization refreshes after the minimum interval', async () => {
+  let handlerCalls = 0;
+  const result = await materializeVariant({
+    key: 'dashboard',
+    url: '/api/dashboard',
+  }, { MINUTE_DB: {}, OTHER_DB: {} }, DAY, {
+    rendererRevision: 'renderer-1',
+    loadExistingEnvelope: async () => ({
+      version: 1,
+      updated_at: DAY - 6 * MINUTE,
+      renderer_revision: 'renderer-1',
+      body: '{"ok":true}',
+    }),
+    loadSourceRevision: async () => null,
+    responseHandler: async () => {
+      handlerCalls += 1;
+      return async () => new Response('{"ok":true,"history":[]}', {
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+    uploadEnvelope() { return 'pages-response/test.json'; },
+  });
+  assert.equal(handlerCalls, 1);
+  assert.equal(result.rendered, true);
+});
+
 test('unchanged historical input reuses the existing body without rerendering', async () => {
   const existing = {
     version: 1,
