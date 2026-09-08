@@ -23,6 +23,7 @@ const otherDatabase = process.env.OTHER_DATABASE_NAME || 'stationhead-other';
 const responseBucket = process.env.PAGES_RESPONSE_BUCKET || 'sh-pages-responses';
 const WORKFLOW_INTERVAL_MINUTES = 30;
 const HISTORY_REFRESH_PHASE_MINUTES = 26;
+const DASHBOARD_MIN_REFRESH_MS = 5 * 60_000;
 const COMMON_RENDERER_PATHS = Object.freeze([
   'worker/scripts/run-pages-read-model-actions.mjs',
 ]);
@@ -268,6 +269,28 @@ export async function materializeVariant(variant, env, now, dependencies = {}) {
   const existing = await loadExisting(variant.key);
   const sourceRevision = await loadRevision(variant, env, now);
   const cadenceSeconds = materializedResponseCadenceSeconds(variant.key);
+
+  const existingUpdatedAt = Number(existing?.updated_at);
+  if (variant.key === 'dashboard'
+      && Number(existing?.version) === 1
+      && typeof existing?.body === 'string'
+      && existing.renderer_revision === rendererRevision
+      && Number.isFinite(existingUpdatedAt)
+      && existingUpdatedAt > 0
+      && Number(now) - existingUpdatedAt < DASHBOARD_MIN_REFRESH_MS) {
+    return {
+      key: variant.key,
+      bytes: existing.body.length,
+      object_key: null,
+      source_revision: sourceRevision,
+      renderer_revision: rendererRevision,
+      rendered: false,
+      changed: false,
+      deferred: false,
+      skipped: true,
+      skip_reason: 'minimum-refresh-interval',
+    };
+  }
 
   if (sourceRevision && reusableEnvelope(existing, sourceRevision, rendererRevision)) {
     const envelope = {

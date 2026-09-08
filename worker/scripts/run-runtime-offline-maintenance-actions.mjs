@@ -11,6 +11,7 @@ import { createWranglerRemoteD1 } from './remote-d1-adapter.mjs';
 const workerRoot = resolve(import.meta.dirname, '..');
 const wranglerScript = resolve(workerRoot, 'node_modules/wrangler/bin/wrangler.js');
 const RUNTIME_MAINTENANCE_COLLECTOR_ID = 'other-cron';
+const RUNTIME_MAINTENANCE_MIN_INTERVAL_MS = 10 * 60_000;
 const databases = {
   buddies: process.env.BUDDIES_DATABASE_NAME || 'stationhead-buddies',
   minute: process.env.FACTS_DATABASE_NAME || 'stationhead-minute',
@@ -114,6 +115,23 @@ function inboxRecoveryOptions(options, startedAt) {
   };
 }
 
+async function loadMaintenanceStatus(db) {
+  if (!db?.prepare) return null;
+  const statement = db.prepare(`SELECT status,last_attempt_at,last_success_at
+    FROM sh_collector_status WHERE collector_id=? LIMIT 1`).bind(RUNTIME_MAINTENANCE_COLLECTOR_ID);
+  if (typeof statement?.first !== 'function') return null;
+  return statement.first();
+}
+
+function recentSuccessfulMaintenance(row, startedAt, minimumIntervalMs) {
+  const successAt = Number(row?.last_success_at);
+  return String(row?.status || '') === 'ok'
+    && Number.isFinite(successAt)
+    && successAt > 0
+    && startedAt - successAt >= 0
+    && startedAt - successAt < minimumIntervalMs;
+}
+
 async function writeMaintenanceStatus(db, {
   status,
   attemptAt,
@@ -174,6 +192,26 @@ export async function runRuntimeOfflineMaintenanceActions(options = {}) {
   const runRollup = options.runRollup || runRollupMaintenance;
   const runRebuilds = options.runRebuilds || runOfflineMinuteRebuilds;
   const runRetention = options.runRetention || pruneOldSnapshots;
+  const minimumIntervalMs = positiveInteger(
+    options.minimumIntervalMs ?? process.env.RUNTIME_MAINTENANCE_MIN_INTERVAL_MS,
+    RUNTIME_MAINTENANCE_MIN_INTERVAL_MS,
+    0,
+    30 * 60_000,
+  );
+  const readMaintenanceStatus = options.loadMaintenanceStatus || loadMaintenanceStatus;
+  if (minimumIntervalMs > 0 && options.force !== true) {
+    const previous = await readMaintenanceStatus(env.OTHER_DB);
+    if (recentSuccessfulMaintenance(previous, startedAt, minimumIntervalMs)) {
+      return {
+        ok: true,
+        skipped: true,
+        event: 'runtime_offline_maintenance_actions_coalesced',
+        reason: 'recent-success',
+        elapsed_ms: 0,
+        last_success_preserved: true,
+      };
+    }
+  }
   const ensureTime = () => {
     if (Number(clock()) >= deadline) {
       throw new Error('runtime offline maintenance deadline exceeded');
