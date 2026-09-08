@@ -42,8 +42,15 @@ const wchar_t* ResolveNativeMediaPolicyScript(
   ExecuteScript(ResolveNativeMediaPolicyScript((script), webview_.Get(), hostWindow_, alive_), \
                 (handler))
 
+// The base host already retries failed top-level navigations after three
+// seconds. Keep WebView2's built-in network error document out of the visible
+// media panel while that retry is armed; otherwise users briefly see
+// "このページは表示できません" even though recovery is already in progress.
+#define put_IsBuiltInErrorPageEnabled(value) put_IsBuiltInErrorPageEnabled(FALSE)
+
 #include "media_section_base.inc"
 
+#undef put_IsBuiltInErrorPageEnabled
 #undef ExecuteScript
 #undef SendInput
 #undef SetTimer
