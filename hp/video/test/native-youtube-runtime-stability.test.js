@@ -35,7 +35,7 @@ test('a playlist that survives the legacy fixed-coordinate fallback is reloaded'
 
 test('repeated YouTube toggle actions have per-action settle windows', () => {
   assert.match(youtubePolicy, /const guardedPoint =/);
-  assert.match(youtubePolicy, /guardedPoint\(target, 'skip-ad', 750\)/);
+  assert.match(youtubePolicy, /guardedPoint\(target, 'skip-ad', 750, true\)/);
   assert.match(youtubePolicy, /guardedPoint\(target, 'play', 2000\)/);
   assert.match(youtubePolicy, /guardedPoint\(target, 'fullscreen', 2500, true\)/);
 });
