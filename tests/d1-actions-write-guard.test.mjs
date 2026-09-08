@@ -88,7 +88,7 @@ test('read-model workflow gates Actions generation while KV and R2 keep serving'
   assert.match(workflow, /Summarize D1 budget decision/);
   assert.match(workflow, /outputs\.reason/);
   assert.match(workflow, /telemetry-unavailable/);
-  assert.match(workflow, /if: steps\.d1-write-budget\.outputs\.allowed == 'true'/);
+  assert.match(workflow, /if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'/);
   assert.match(workflow, /Existing KV\/R2 responses remain active/);
   assert.doesNotMatch(workflow, /worker.*retry|retry.*worker/i);
 });
