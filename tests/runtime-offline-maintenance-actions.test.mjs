@@ -61,6 +61,37 @@ test('offline runtime maintenance leaves reserved D1 read headroom for read mode
   );
 });
 
+test('recent successful maintenance coalesces duplicate chained runs before any writes', async () => {
+  const writes = [];
+  const calls = [];
+  const now = 1_000_000;
+  const result = await runRuntimeOfflineMaintenanceActions({
+    now: () => now,
+    env: { BUDDIES_DB: {}, MINUTE_DB: {}, OTHER_DB: statusDatabase(writes) },
+    loadMaintenanceStatus: async () => ({
+      status: 'ok',
+      last_attempt_at: now - 60_000,
+      last_success_at: now - 60_000,
+    }),
+    runInboxRecovery: async () => { calls.push('inbox'); },
+    runPrediction: async () => { calls.push('prediction'); },
+    runRollup: async () => { calls.push('rollup'); },
+    runRebuilds: async () => { calls.push('rebuilds'); },
+    runRetention: async () => { calls.push('retention'); },
+  });
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(writes, []);
+  assert.deepEqual(result, {
+    ok: true,
+    skipped: true,
+    event: 'runtime_offline_maintenance_actions_coalesced',
+    reason: 'recent-success',
+    elapsed_ms: 0,
+    last_success_preserved: true,
+  });
+});
+
 test('Actions reconciles the minute inbox before other database maintenance', async () => {
   const calls = [];
   const writes = [];
