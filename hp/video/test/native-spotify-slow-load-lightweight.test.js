@@ -10,10 +10,14 @@ const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url),
   'utf8',
 );
-const spotify = readFileSync(
-  new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
-  'utf8',
-);
+const spotify = [
+  'spotify_webviews.cpp',
+  'spotify_webviews_core_part1.inc',
+  'spotify_webviews_core_part2.inc',
+  'spotify_webviews_core_part3.inc',
+  'spotify_webviews_core_part4.inc',
+].map(name => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
@@ -23,10 +27,13 @@ const header = readFileSync(
   'utf8',
 );
 
-test('slow six-window recovery requires many failed owner checks before reload', () => {
-  assert.match(phaseSync, /kSpotifyRobustReloadThreshold = 30/);
+test('slow six-window recovery is time based instead of retry-count based', () => {
+  assert.match(phaseSync, /kSpotifyUnhealthyRenavigateMs = 60ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
+  assert.match(phaseSync, /ShouldRenavigateUnhealthySlot/);
+  assert.doesNotMatch(phaseSync, /kSpotifyRobustReloadThreshold|unhealthyChecks/);
+  assert.doesNotMatch(header, /unhealthyChecks/);
 });
 
 test('usable Spotify controls are recovered through normalized trusted points', () => {
@@ -50,15 +57,17 @@ test('healthy slots are not continuously scanned by a second watchdog', () => {
   assert.doesNotMatch(scripts, /setInterval\(/);
 });
 
-test('only authentication is visible while recovery keeps one large offscreen owner viewport', () => {
+test('only authentication is visible while all playback hosts retain stable offscreen viewports', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
   assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
   assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
-  assert.match(spotify, /const bool recovery = active && !authentication && !slot\.playing/);
+  assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /insertAfter = HWND_TOP/);
 });

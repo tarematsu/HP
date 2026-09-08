@@ -32,7 +32,7 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
 test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
   assert.match(
     phaseSync,
-    /slot\.playing = false;\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
   );
   assert.doesNotMatch(header, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
   assert.doesNotMatch(helper, /RecomputeForegroundAndRefreshSpotifyHostLayout/);

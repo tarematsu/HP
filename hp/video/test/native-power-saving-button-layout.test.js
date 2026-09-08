@@ -22,10 +22,14 @@ const spotifyNetwork = readFileSync(
   new URL('../../native/src/spotify_network_block.inc', import.meta.url),
   'utf8',
 );
-const spotifyWebviews = readFileSync(
-  new URL('../../native/src/spotify_webviews.cpp', import.meta.url),
-  'utf8',
-);
+const spotifyWebviews = [
+  'spotify_webviews.cpp',
+  'spotify_webviews_core_part1.inc',
+  'spotify_webviews_core_part2.inc',
+  'spotify_webviews_core_part3.inc',
+  'spotify_webviews_core_part4.inc',
+].map((name) => readFileSync(
+  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(
   new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
   'utf8',

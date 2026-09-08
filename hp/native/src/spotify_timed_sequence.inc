@@ -49,7 +49,6 @@ bool SpotifyWebViews::SlotMatchesTimedTarget(const Slot& slot) const noexcept {
     case TimedSpotifyTarget::LonesomeRabbit:
       return source.find(kSpotifyLonesomeRabbitPath) != std::wstring::npos;
     case TimedSpotifyTarget::CatalogTrack:
-      // CatalogTrack is owned by spotify_recent_catalog.inc.
       return false;
     case TimedSpotifyTarget::None:
       return false;
@@ -65,14 +64,17 @@ void SpotifyWebViews::NavigateTimedSlot(Slot& slot) noexcept {
   if (!url) return;
 
   slot.lastModeNavigateTick = GetTickCount64();
-  slot.unhealthyChecks = 0;
-  slot.playing = false;
+  SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
   const HRESULT result = slot.webview->Navigate(url);
-  if (FAILED(result)) slot.lastModeNavigateTick = 0;
+  if (FAILED(result)) {
+    slot.lastModeNavigateTick = 0;
+    MarkSlotRecovering(slot, GetTickCount64());
+  }
+  ArmRobustScheduler();
 }
 
 void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
@@ -85,13 +87,13 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
   slot.controllerCreateTick = 0;
 
   if (SlotIsLoginPage(slot) || slot.timedTarget == TimedSpotifyTarget::None) {
-    slot.unhealthyChecks = 0;
     return;
   }
   if (slot.timedTarget == TimedSpotifyTarget::CatalogTrack) return;
 
   if (!SlotMatchesTimedTarget(slot)) {
     const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
     if (slot.lastModeNavigateTick == 0 ||
         now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs) {
       NavigateTimedSlot(slot);
@@ -109,23 +111,29 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
 
   slot.reconcileInFlight = true;
   const TimedSpotifyTarget requestedTarget = slot.timedTarget;
+  const ULONGLONG requestedGeneration = slot.targetGeneration;
   Slot* const target = &slot;
   const auto alive = alive_;
   const HRESULT started = slot.webview->ExecuteScript(
       script,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedTarget](
+          [this, alive, target, requestedTarget, requestedGeneration](
               HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             target->reconcileInFlight = false;
-            if (!started_ || requestedTarget != target->timedTarget) return S_OK;
+            if (!started_ || requestedTarget != target->timedTarget ||
+                requestedGeneration != target->targetGeneration) {
+              return S_OK;
+            }
 
+            const ULONGLONG now = GetTickCount64();
             if (FAILED(result)) {
-              target->playing = false;
-              if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+              MarkSlotRecovering(*target, now);
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
                 NavigateTimedSlot(*target);
               } else {
                 RecomputeForeground();
+                ArmRobustScheduler();
               }
               return S_OK;
             }
@@ -135,47 +143,57 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
               target->podcastCompleted = true;
               target->timedTarget = TimedSpotifyTarget::None;
               target->timedCatalogIndex = kNoTimedCatalogIndex;
-              target->playing = true;
-              target->unhealthyChecks = 0;
+              BumpSpotifyTargetGeneration(*target);
+              SetSlotState(*target, SlotState::Completed);
               target->lastModeNavigateTick = 0;
               target->lastTimedReconcileTick = 0;
               RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              target->playing = true;
-              target->unhealthyChecks = 0;
+              SetSlotState(*target, SlotState::Playing);
               RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             int x = 0;
             int y = 0;
             const bool hasPoint = ParseNormalizedPoint(json, &x, &y);
-            target->playing = false;
             if (hasPoint) {
-              target->unhealthyChecks = 0;
-              RecomputeForeground();
-              ClickSlotNormalizedPoint(*target, x, y);
+              if (target->unhealthySinceTick == 0) {
+                target->unhealthySinceTick = now;
+              }
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
+                NavigateTimedSlot(*target);
+              } else {
+                ClickSlotNormalizedPoint(*target, x, y);
+                ArmRobustScheduler();
+              }
               return S_OK;
             }
 
-            if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+            MarkSlotRecovering(*target, now);
+            if (ShouldRenavigateUnhealthySlot(*target, now)) {
               NavigateTimedSlot(*target);
             } else {
               RecomputeForeground();
+              ArmRobustScheduler();
             }
             return S_OK;
           }).Get());
 
   if (FAILED(started)) {
     slot.reconcileInFlight = false;
-    slot.playing = false;
-    if (++slot.unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+    const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
+    if (ShouldRenavigateUnhealthySlot(slot, now)) {
       NavigateTimedSlot(slot);
     } else {
       RecomputeForeground();
+      ArmRobustScheduler();
     }
   }
 }

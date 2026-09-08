@@ -4,124 +4,53 @@ namespace {
 struct SpotifyRecentCatalogTrack {
   const wchar_t* title;
   const wchar_t* url;
-  const wchar_t* pagePath;
-  const wchar_t* trackPath;
+  const wchar_t* path;
 };
-
-#include "spotify_recent_direct_routes.inc"
 
 constexpr size_t kSpotifyRecentCatalogTag =
     size_t{1} << (sizeof(size_t) * 8U - 1U);
 constexpr size_t kSpotifyRecentCatalogMask = ~kSpotifyRecentCatalogTag;
 
-constexpr wchar_t kSpotifyMakeOrBreakAlbumUrl[] =
-    L"https://open.spotify.com/album/3teo9NiJLwhorFf3EE9WCh";
-constexpr wchar_t kSpotifyMakeOrBreakAlbumPath[] =
-    L"/album/3teo9NiJLwhorFf3EE9WCh";
-constexpr wchar_t kSpotifyUnhappyBirthdayAlbumUrl[] =
-    L"https://open.spotify.com/album/19SC6o3wULkC8QIKV0YKIb";
-constexpr wchar_t kSpotifyUnhappyBirthdayAlbumPath[] =
-    L"/album/19SC6o3wULkC8QIKV0YKIb";
-constexpr wchar_t kSpotifyGrowingUpTrainAlbumUrl[] =
-    L"https://open.spotify.com/album/5beJvSa1ZMvGtChLMkT60i";
-constexpr wchar_t kSpotifyGrowingUpTrainAlbumPath[] =
-    L"/album/5beJvSa1ZMvGtChLMkT60i";
-constexpr wchar_t kSpotifyLonesomeKazokuAlbumUrl[] =
-    L"https://open.spotify.com/album/04gmidhz5KYYOEqfTJXNmE";
-constexpr wchar_t kSpotifyLonesomeKazokuAlbumPath[] =
-    L"/album/04gmidhz5KYYOEqfTJXNmE";
-
-// 2025-2026 に新規リリースされた櫻坂46の通常歌唱曲から、固定Aの
-// Lonesome rabbit と固定Cの放課後BitterBlueを除いた候補。可変値は
-// JavaScriptへ埋め込まず、WebView2 messageで静的スクリプトへ渡す。
+// One source of truth: every candidate carries its title and direct Track URL
+// together, so adding/reordering tracks cannot desynchronize a parallel route
+// table. Fixed A/C songs are intentionally excluded.
 constexpr std::array<SpotifyRecentCatalogTrack, 35>
     kSpotifyRecentCatalogTracks = {{
-    {L"UDAGAWA GENERATION",
-     L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F",
-     L"/track/4ljk3qMzdU81kWzxcNix3F",
-     L"/track/4ljk3qMzdU81kWzxcNix3F"},
-    {L"Nightmare症候群",
-     L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL",
-     L"/track/2hi8kIoKC8tRMDajdkoYFL",
-     L"/track/2hi8kIoKC8tRMDajdkoYFL"},
-    {L"Nothing special",
-     L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6",
-     L"/track/2kiCcs4rC55nlHQ1djMTt6",
-     L"/track/2kiCcs4rC55nlHQ1djMTt6"},
-    {L"紋白蝶が確か飛んでた",
-     L"https://open.spotify.com/track/6VIY7OFy8g5ZyLSgQEi8lV",
-     L"/track/6VIY7OFy8g5ZyLSgQEi8lV",
-     L"/track/6VIY7OFy8g5ZyLSgQEi8lV"},
-    {L"行かないで",
-     L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84",
-     L"/track/3HdmFZGqZLNiCAfiNj4N84",
-     L"/track/3HdmFZGqZLNiCAfiNj4N84"},
-    {L"ULTRAVIOLET",
-     L"https://open.spotify.com/track/145bvRRC27wMYn9GNtTg57",
-     L"/track/145bvRRC27wMYn9GNtTg57",
-     L"/track/145bvRRC27wMYn9GNtTg57"},
-    {L"やるしかないじゃん",
-     L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU",
-     L"/track/6GF0ZgT8wlksWrlLTfGmlU",
-     L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
-    {L"Addiction",
-     L"https://open.spotify.com/track/4HCPWhwMu93z1jnpxw5OGM",
-     L"/track/4HCPWhwMu93z1jnpxw5OGM",
-     L"/track/4HCPWhwMu93z1jnpxw5OGM"},
-    {L"Make or Break", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"死んだふり", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"港区パセリ", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"恋愛無双", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"真夏の大統領", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"君のことを想いながら", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"ノンアルコール", kSpotifyMakeOrBreakAlbumUrl,
-     kSpotifyMakeOrBreakAlbumPath, L""},
-    {L"Unhappy birthday構文", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"Alter ego", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"木枯らしは泣かない", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"青空が見えるまで", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"I will be", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"Buddies (English Version)", kSpotifyUnhappyBirthdayAlbumUrl,
-     kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"夜空で一番輝いてる星の名前を僕は知らない",
-     kSpotifyUnhappyBirthdayAlbumUrl, kSpotifyUnhappyBirthdayAlbumPath, L""},
-    {L"The growing up train", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"光源", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"ドライフルーツ", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"キスが苦い", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"くらげらしく", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"Sunny side up", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"僕は向いてない", kSpotifyGrowingUpTrainAlbumUrl,
-     kSpotifyGrowingUpTrainAlbumPath, L""},
-    {L"What's \"KAZOKU\"?", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
-    {L"コインランドリー", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
-    {L"We got your back", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
-    {L"狼たちよ", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
-    {L"各駅停車", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
-    {L"恵まれ過ぎて", kSpotifyLonesomeKazokuAlbumUrl,
-     kSpotifyLonesomeKazokuAlbumPath, L""},
+    {L"UDAGAWA GENERATION", L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F", L"/track/4ljk3qMzdU81kWzxcNix3F"},
+    {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
+    {L"Nothing special", L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6", L"/track/2kiCcs4rC55nlHQ1djMTt6"},
+    {L"紋白蝶が確か飛んでた", L"https://open.spotify.com/track/6VIY7OFy8g5ZyLSgQEi8lV", L"/track/6VIY7OFy8g5ZyLSgQEi8lV"},
+    {L"行かないで", L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84", L"/track/3HdmFZGqZLNiCAfiNj4N84"},
+    {L"ULTRAVIOLET", L"https://open.spotify.com/track/145bvRRC27wMYn9GNtTg57", L"/track/145bvRRC27wMYn9GNtTg57"},
+    {L"やるしかないじゃん", L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU", L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
+    {L"Addiction", L"https://open.spotify.com/track/4HCPWhwMu93z1jnpxw5OGM", L"/track/4HCPWhwMu93z1jnpxw5OGM"},
+    {L"Make or Break", L"https://open.spotify.com/track/7vvZ1QHTdkoEXBiOBdxdIo", L"/track/7vvZ1QHTdkoEXBiOBdxdIo"},
+    {L"死んだふり", L"https://open.spotify.com/track/6QmAwjzLQy6SjUyvGzSCG4", L"/track/6QmAwjzLQy6SjUyvGzSCG4"},
+    {L"港区パセリ", L"https://open.spotify.com/track/3SOOYBTDQBUe9vkavji2ZI", L"/track/3SOOYBTDQBUe9vkavji2ZI"},
+    {L"恋愛無双", L"https://open.spotify.com/track/5vRGSkQiKlJudkJ2vUKIOe", L"/track/5vRGSkQiKlJudkJ2vUKIOe"},
+    {L"真夏の大統領", L"https://open.spotify.com/track/4YUoggoqC3KIxts61kmlqw", L"/track/4YUoggoqC3KIxts61kmlqw"},
+    {L"君のことを想いながら", L"https://open.spotify.com/track/6ZOaQShLJdbZYvPoi1xOdE", L"/track/6ZOaQShLJdbZYvPoi1xOdE"},
+    {L"ノンアルコール", L"https://open.spotify.com/track/0yv01vKbOmS1UMS9XyN5ar", L"/track/0yv01vKbOmS1UMS9XyN5ar"},
+    {L"Unhappy birthday構文", L"https://open.spotify.com/track/6O3XAkrjMG1T4x8jvdpbrp", L"/track/6O3XAkrjMG1T4x8jvdpbrp"},
+    {L"Alter ego", L"https://open.spotify.com/track/4J2JsdELLCewlR7kISsw70", L"/track/4J2JsdELLCewlR7kISsw70"},
+    {L"木枯らしは泣かない", L"https://open.spotify.com/track/6jxiPZV3Aopxbi33i09uFQ", L"/track/6jxiPZV3Aopxbi33i09uFQ"},
+    {L"青空が見えるまで", L"https://open.spotify.com/track/12YgUwcZKUCnYWccet8qJq", L"/track/12YgUwcZKUCnYWccet8qJq"},
+    {L"I will be", L"https://open.spotify.com/track/4AZXBU2rt8yCcEA1pttXLB", L"/track/4AZXBU2rt8yCcEA1pttXLB"},
+    {L"Buddies (English Version)", L"https://open.spotify.com/track/6ncW1pJ5bHOum76AL2P08a", L"/track/6ncW1pJ5bHOum76AL2P08a"},
+    {L"夜空で一番輝いてる星の名前を僕は知らない", L"https://open.spotify.com/track/6whOTYjcMh396LLbqig8jq", L"/track/6whOTYjcMh396LLbqig8jq"},
+    {L"The growing up train", L"https://open.spotify.com/track/49cxVtrML7Xo63UFaaJrUR", L"/track/49cxVtrML7Xo63UFaaJrUR"},
+    {L"光源", L"https://open.spotify.com/track/2MPm0NrgPoMr6ee7je9afe", L"/track/2MPm0NrgPoMr6ee7je9afe"},
+    {L"ドライフルーツ", L"https://open.spotify.com/track/5DrxCKjopmd7UL1pJWqBHK", L"/track/5DrxCKjopmd7UL1pJWqBHK"},
+    {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
+    {L"くらげらしく", L"https://open.spotify.com/track/6J8Vaiow1E75EQs9RnMfZp", L"/track/6J8Vaiow1E75EQs9RnMfZp"},
+    {L"Sunny side up", L"https://open.spotify.com/track/5xUQGRuP4LPk4ESl1xbmFs", L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
+    {L"僕は向いてない", L"https://open.spotify.com/track/11KKagWroMV5UXbK50hZxZ", L"/track/11KKagWroMV5UXbK50hZxZ"},
+    {L"What's \"KAZOKU\"?", L"https://open.spotify.com/track/33liCluqUasE65nMv3KLLm", L"/track/33liCluqUasE65nMv3KLLm"},
+    {L"コインランドリー", L"https://open.spotify.com/track/5QnQ7m9OxSoFeSPSz8grqX", L"/track/5QnQ7m9OxSoFeSPSz8grqX"},
+    {L"We got your back", L"https://open.spotify.com/track/2ze5Hu3eRRe6HxJTfuZaA0", L"/track/2ze5Hu3eRRe6HxJTfuZaA0"},
+    {L"狼たちよ", L"https://open.spotify.com/track/4IfRFec7SNKOWw1HzpiqHQ", L"/track/4IfRFec7SNKOWw1HzpiqHQ"},
+    {L"各駅停車", L"https://open.spotify.com/track/2CMSkSwIfnNQR7bTNFFeB5", L"/track/2CMSkSwIfnNQR7bTNFFeB5"},
+    {L"恵まれ過ぎて", L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG", L"/track/2meBhRDzQpf0ltQH11HbWG"},
 }};
 
 static_assert(kSpotifyRecentCatalogTracks.size() == 35);
@@ -137,16 +66,6 @@ size_t EncodeRecentCatalogIndex(size_t index) noexcept {
 
 size_t DecodeRecentCatalogIndex(size_t value) noexcept {
   return value & kSpotifyRecentCatalogMask;
-}
-
-const SpotifyRecentDirectRoute* RecentTimedCatalogDirectRoute(
-    size_t value) noexcept {
-  if (!IsRecentCatalogIndex(value)) return nullptr;
-  const size_t index = DecodeRecentCatalogIndex(value);
-  if (index >= kSpotifyRecentDirectRoutes.size()) return nullptr;
-  const SpotifyRecentDirectRoute& route = kSpotifyRecentDirectRoutes[index];
-  if (!route.url || !route.path) return nullptr;
-  return &route;
 }
 
 const SpotifyRecentCatalogTrack* RecentTimedCatalogTrack(size_t value) noexcept {
@@ -216,15 +135,12 @@ bool SpotifyWebViews::SlotMatchesRecentTimedTarget(
   const SpotifyRecentCatalogTrack* track =
       RecentTimedCatalogTrack(slot.timedCatalogIndex);
   if (!track) return false;
-  const SpotifyRecentDirectRoute* route =
-      RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
-  const wchar_t* pagePath = route ? route->path : track->pagePath;
   LPWSTR rawSource = nullptr;
   if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   return IsSpotifyOpenSource(source) &&
-         source.find(pagePath) != std::wstring::npos;
+         source.find(track->path) != std::wstring::npos;
 }
 
 void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
@@ -232,19 +148,19 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   const SpotifyRecentCatalogTrack* track =
       RecentTimedCatalogTrack(slot.timedCatalogIndex);
   if (!track) return;
-  const SpotifyRecentDirectRoute* route =
-      RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
-  const wchar_t* url = route ? route->url : track->url;
 
   slot.lastModeNavigateTick = GetTickCount64();
-  slot.unhealthyChecks = 0;
-  slot.playing = false;
+  SetSlotState(slot, SlotState::Navigating);
   SetSpotifyOutputMuted(slot.webview);
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
-  const HRESULT result = slot.webview->Navigate(url);
-  if (FAILED(result)) slot.lastModeNavigateTick = 0;
+  const HRESULT result = slot.webview->Navigate(track->url);
+  if (FAILED(result)) {
+    slot.lastModeNavigateTick = 0;
+    MarkSlotRecovering(slot, GetTickCount64());
+  }
+  ArmRobustScheduler();
 }
 
 void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
@@ -258,7 +174,6 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
 
   if (SlotIsLoginPage(slot) ||
       slot.timedTarget != TimedSpotifyTarget::CatalogTrack) {
-    slot.unhealthyChecks = 0;
     return;
   }
 
@@ -268,6 +183,7 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
 
   if (!SlotMatchesRecentTimedTarget(slot)) {
     const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
     if (slot.lastModeNavigateTick == 0 ||
         now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs) {
       NavigateRecentTimedSlot(slot);
@@ -281,64 +197,77 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.reconcileInFlight = true;
   const size_t requestedCatalogIndex = slot.timedCatalogIndex;
+  const ULONGLONG requestedGeneration = slot.targetGeneration;
   Slot* const target = &slot;
   const auto alive = alive_;
   const HRESULT started = slot.webview->ExecuteScript(
       kSpotifyStaticTrackReconcileScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedCatalogIndex](
+          [this, alive, target, requestedCatalogIndex, requestedGeneration](
               HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             target->reconcileInFlight = false;
             if (!started_ ||
                 target->timedTarget != TimedSpotifyTarget::CatalogTrack ||
-                requestedCatalogIndex != target->timedCatalogIndex) {
+                requestedCatalogIndex != target->timedCatalogIndex ||
+                requestedGeneration != target->targetGeneration) {
               return S_OK;
             }
 
+            const ULONGLONG now = GetTickCount64();
             if (FAILED(result)) {
-              target->playing = false;
-              if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+              MarkSlotRecovering(*target, now);
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
                 NavigateRecentTimedSlot(*target);
               } else {
                 RecomputeForeground();
+                ArmRobustScheduler();
               }
               return S_OK;
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              target->playing = true;
-              target->unhealthyChecks = 0;
+              SetSlotState(*target, SlotState::Playing);
               RecomputeForeground();
+              ArmRobustScheduler();
               return S_OK;
             }
 
             int x = 0;
             int y = 0;
             const bool hasPoint = ParseNormalizedPoint(json, &x, &y);
-            target->playing = false;
             if (hasPoint) {
-              target->unhealthyChecks = 0;
-              RecomputeForeground();
-              ClickSlotNormalizedPoint(*target, x, y);
+              if (target->unhealthySinceTick == 0) {
+                target->unhealthySinceTick = now;
+              }
+              if (ShouldRenavigateUnhealthySlot(*target, now)) {
+                NavigateRecentTimedSlot(*target);
+              } else {
+                ClickSlotNormalizedPoint(*target, x, y);
+                ArmRobustScheduler();
+              }
               return S_OK;
             }
 
-            if (++target->unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+            MarkSlotRecovering(*target, now);
+            if (ShouldRenavigateUnhealthySlot(*target, now)) {
               NavigateRecentTimedSlot(*target);
             } else {
               RecomputeForeground();
+              ArmRobustScheduler();
             }
             return S_OK;
           }).Get());
 
   if (FAILED(started)) {
     slot.reconcileInFlight = false;
-    slot.playing = false;
-    if (++slot.unhealthyChecks >= kSpotifyRobustReloadThreshold) {
+    const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
+    if (ShouldRenavigateUnhealthySlot(slot, now)) {
       NavigateRecentTimedSlot(slot);
     } else {
       RecomputeForeground();
+      ArmRobustScheduler();
     }
   }
 }
@@ -390,10 +319,8 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
       const SpotifyRecentCatalogTrack* track =
           RecentTimedCatalogTrack(slot.timedCatalogIndex);
       if (track) {
-        const SpotifyRecentDirectRoute* route =
-            RecentTimedCatalogDirectRoute(slot.timedCatalogIndex);
-        pagePath = route ? route->path : track->pagePath;
-        trackPath = route ? route->path : track->trackPath;
+        pagePath = track->path;
+        trackPath = track->path;
         title = track->title;
         kind = L"music";
       }
@@ -413,6 +340,14 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   appendField(title);
   appendField(kind);
   slot.webview->PostWebMessageAsString(message.c_str());
+
+  // The target is published first so the page bootstrap immediately pauses the
+  // old queue. The generation follows in the same native turn and is attached to
+  // all observer events from the new target.
+  std::wstring generationMessage = L"spotify:generation";
+  generationMessage.push_back(kSpotifyMessageSeparator);
+  generationMessage.append(std::to_wstring(slot.targetGeneration));
+  slot.webview->PostWebMessageAsString(generationMessage.c_str());
 }
 
 }  // namespace hp
