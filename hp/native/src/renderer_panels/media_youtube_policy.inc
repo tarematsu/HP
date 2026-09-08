@@ -15,6 +15,7 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
     const style = document.createElement('style');
     style.id = 'homepanel-youtube-clean-player';
     style.textContent = `
+      #movie_player:not(.ad-showing):not(.ad-interrupting) > :not(.html5-video-container),
       #movie_player .html5-video-container > :not(video),
       #movie_player .ytp-chrome-top,
       #movie_player .ytp-chrome-bottom,
