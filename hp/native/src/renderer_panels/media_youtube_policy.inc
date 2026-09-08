@@ -200,17 +200,6 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     return point(submit);
   }
 
-  const captionsButton = player.querySelector('.ytp-subtitles-button');
-  if (captionsButton && captionsButton.getAttribute('aria-pressed') === 'true') {
-    try { captionsButton.click(); } catch (_) {}
-  } else {
-    try {
-      if (typeof player.setOption === 'function') {
-        player.setOption('captions', 'track', {});
-      }
-    } catch (_) {}
-  }
-
   // Prefer current known classes and aria-labels, then fall back to semantics.
   // The click itself is performed by the native trusted-input path so YouTube's
   // event.isTrusted checks cannot turn this into a no-op DOM click.
@@ -238,12 +227,23 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
   if (target) return guardedPoint(target, 'skip-ad', 750);
 
-  // The clean-player CSS makes every overlay transparent while leaving it in
-  // layout for trusted input. Layout visibility therefore cannot distinguish a
-  // dormant ad overlay from a real ad; use YouTube's playback state classes.
+  // Treat ads as an isolated playback state. Apart from survey/skip actions,
+  // never mutate player state while YouTube owns ad playback: caption toggles,
+  // play recovery and fullscreen clicks can otherwise race an ad transition.
   const adShowing = player.classList.contains('ad-showing') ||
       player.classList.contains('ad-interrupting');
   if (adShowing) return null;
+
+  const captionsButton = player.querySelector('.ytp-subtitles-button');
+  if (captionsButton && captionsButton.getAttribute('aria-pressed') === 'true') {
+    try { captionsButton.click(); } catch (_) {}
+  } else {
+    try {
+      if (typeof player.setOption === 'function') {
+        player.setOption('captions', 'track', {});
+      }
+    } catch (_) {}
+  }
 
   // Recover startup/autoplay failures. The playlist click may have navigated to
   // the watch page while playback remained paused; only click when the media
@@ -280,7 +280,13 @@ constexpr wchar_t kNativeMediaYoutubeHealthPolicyScript[] = LR"JS(
   }
 
   const player = document.querySelector('#movie_player');
-  if (player) {
+  const adShowing = player &&
+      (player.classList.contains('ad-showing') ||
+       player.classList.contains('ad-interrupting'));
+  // 720p is a content-video preference, not an ad recovery action. Reapplying
+  // playback quality APIs during an ad can force a stream transition/rebuffer,
+  // which looks like repeated pause/resume on slower WebView2 devices.
+  if (player && !adShowing) {
     try {
       if (typeof player.setPlaybackQualityRange === 'function') {
         player.setPlaybackQualityRange('hd720', 'hd720');
