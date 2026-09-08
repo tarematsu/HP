@@ -60,13 +60,18 @@ test('healthy slots are not continuously scanned by a second watchdog', () => {
 test('only authentication is visible while all playback hosts retain stable offscreen viewports', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
-  assert.match(header, /hostLayoutAuthenticationVisible_ = false/);
+  assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
   assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+  assert.match(layout, /foregroundAuthenticationIndex/);
+  assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
   assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
-  assert.match(spotify, /const bool authentication = active && SlotIsLoginPage\(slot\)/);
+  assert.match(
+    spotify,
+    /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
+  );
   assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /insertAfter = HWND_TOP/);

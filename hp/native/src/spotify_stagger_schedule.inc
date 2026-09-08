@@ -2,7 +2,6 @@ namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAuthenticationHoldMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyInitialSerialWindowMs = 6ULL * 40ULL * 1000ULL;
 // One healthy slot is verified per turn. With the adaptive 20-second scheduler
 // this is one lightweight verification per account roughly every two minutes.
@@ -50,19 +49,16 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
 
   staggerSlotIndex_ %= slots_.size();
   Slot& current = slots_[staggerSlotIndex_];
-  const bool currentAuthentication =
-      current.webview && SlotIsLoginPage(current);
-  const bool holdAuthentication =
-      currentAuthentication &&
-      now - staggerSlotStartTick_ < kSpotifyAuthenticationHoldMs;
   const bool holdRecovery =
-      !currentAuthentication && current.timedTarget != TimedSpotifyTarget::None &&
+      current.timedTarget != TimedSpotifyTarget::None &&
       SlotStateNeedsRecovery(current.state) &&
       now - staggerSlotStartTick_ < kSpotifySimpleRecoveryHoldMs;
   const size_t scheduledIndex = SimpleSpotifyScheduledIndex(elapsed);
 
-  if (!holdAuthentication && !holdRecovery &&
-      staggerSlotIndex_ != scheduledIndex) {
+  // Login is a presentation concern, not scheduler ownership. A login surface
+  // stays foreground through RefreshSpotifyHostLayout(), while the normal turn
+  // schedule and event-driven recovery for the other five accounts continue.
+  if (!holdRecovery && staggerSlotIndex_ != scheduledIndex) {
     staggerSlotIndex_ = scheduledIndex;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
@@ -73,6 +69,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
   RefreshSpotifyHostLayout();
+  // An auth-owned turn performs no playback DOM work. The visible auth window
+  // remains independent, and observer/timer events from other slots stay live.
   if (slot.webview && SlotIsLoginPage(slot)) return;
 
   const ULONGLONG slotOffset =

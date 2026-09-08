@@ -18,7 +18,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     staggerSlotValidated_ = false;
     hostLayoutMask_ = ~0u;
     hostLayoutActiveSlot_ = kAccountCount;
-    hostLayoutAuthenticationVisible_ = false;
+    hostLayoutAuthenticationSlot_ = kAccountCount;
     return;
   }
 
@@ -35,7 +35,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
-  hostLayoutAuthenticationVisible_ = false;
+  hostLayoutAuthenticationSlot_ = kAccountCount;
 
   for (Slot& slot : slots_) {
     slot.controllerCreating = false;
@@ -51,7 +51,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
-      slot.timedPlaybackStartTick = 0;
+    slot.timedPlaybackStartTick = 0;
     slot.timedRandomCIndex = kNoTimedCatalogIndex;
     slot.timedRandomDIndex = kNoTimedCatalogIndex;
     slot.timedRotationActive = false;

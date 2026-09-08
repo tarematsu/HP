@@ -119,7 +119,7 @@ void SpotifyWebViews::RecomputeForeground() noexcept {
 void SpotifyWebViews::Resize() noexcept {
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
-  hostLayoutAuthenticationVisible_ = false;
+  hostLayoutAuthenticationSlot_ = kAccountCount;
   RefreshSpotifyHostLayout();
 }
 

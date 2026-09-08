@@ -18,8 +18,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
       foregroundAuthenticationIndex = i;
     }
   }
-  const bool authenticationVisible =
-      activeIndex < slots_.size() && SlotIsLoginPage(slots_[activeIndex]);
 
   if (activeIndex < slots_.size() && slots_[activeIndex].controller) {
     double zoom = 1.0;
@@ -50,9 +48,8 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
         const int x = client.left + (clientWidth - width) / 2;
         const int y = client.top + (clientHeight - height) / 2;
 
-        // Authentication keeps visual ownership until its source leaves the
-        // Spotify login surface. Recovery can continue behind it but cannot
-        // park or cover the unfinished auth window.
+        // Authentication owns only the visible surface. Playback and recovery
+        // scheduling for the other accounts continue independently behind it.
         SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
                      SWP_NOACTIVATE | SWP_SHOWWINDOW);
         if (slot.controller) {
@@ -84,14 +81,17 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                 }).Get());
       };
 
+  // Cache the actual authentication owner rather than a visibility boolean.
+  // If auth moves from one account to another, this forces PlaceHosts() to park
+  // the old host before the new login surface is brought to the foreground.
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == activeIndex &&
-      hostLayoutAuthenticationVisible_ == authenticationVisible) {
+      hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
     maintainAuthenticationForeground();
     return;
   }
   hostLayoutMask_ = mask;
   hostLayoutActiveSlot_ = activeIndex;
-  hostLayoutAuthenticationVisible_ = authenticationVisible;
+  hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;
   PlaceHosts();
   maintainAuthenticationForeground();
 }

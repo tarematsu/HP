@@ -19,7 +19,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     if (slot.controller) slot.controller->put_IsVisible(TRUE);
 
     const bool active = static_cast<int>(i) == activeIndex;
-    const bool authentication = active && SlotIsLoginPage(slot);
+    const bool authentication =
+        i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
     const bool recovery =
         active && !authentication && SlotStateNeedsRecovery(slot.state);
 
