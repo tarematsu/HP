@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   MATERIALIZED_API_VARIANTS,
   materializedResponseCadenceSeconds,
+  materializedResponseMaximumAge,
 } from '../../site/functions/lib/api-contract.js';
 import { SUMMARY_TABLES } from '../../site/functions/lib/history-summary.js';
 import { currentPeriodKey } from '../../site/functions/lib/period-completeness.js';
@@ -158,6 +159,21 @@ function loadExistingEnvelope(modelKey) {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+export async function overdueVariantKeys(variants, now, dependencies = {}) {
+  const loadExisting = dependencies.loadExistingEnvelope || loadExistingEnvelope;
+  const overdue = new Set();
+  for (const variant of variants) {
+    if (variant.key === 'dashboard') continue;
+    const existing = await loadExisting(variant.key);
+    const updatedAt = Number(existing?.updated_at);
+    const maxAge = materializedResponseMaximumAge(variant.key);
+    if (!Number.isFinite(updatedAt) || updatedAt <= 0 || Number(now) - updatedAt >= maxAge) {
+      overdue.add(variant.key);
+    }
+  }
+  return overdue;
 }
 
 function revisionValue(prefix, row, fields) {
@@ -369,6 +385,14 @@ export async function runPagesReadModelActions(options = {}) {
   const variants = options.variants || MATERIALIZED_API_VARIANTS;
   const forceAll = options.forceAll ?? enabled(process.env.PAGES_READ_MODEL_FORCE_ALL);
   const dueKeys = new Set(options.dueKeys || dueVariantKeys(startedAt, { forceAll }));
+  const retryOverdue = options.retryOverdue
+    ?? enabled(process.env.PAGES_READ_MODEL_RETRY_OVERDUE);
+  if (!forceAll && retryOverdue && options.dueKeys == null) {
+    const overdueKeys = await overdueVariantKeys(variants, startedAt, {
+      loadExistingEnvelope: options.loadExistingEnvelope,
+    });
+    for (const key of overdueKeys) dueKeys.add(key);
+  }
   const published = [];
   const reuseOnlyKeys = new Set(options.reuseOnlyKeys || []);
 

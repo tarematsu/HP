@@ -11,6 +11,7 @@ import { loadMaterializedSummary } from '../site/functions/lib/materialized-hist
 import {
   dueVariantKeys,
   materializeVariant,
+  overdueVariantKeys,
   runPagesReadModelActions,
 } from '../worker/scripts/run-pages-read-model-actions.mjs';
 import {
@@ -62,6 +63,7 @@ test('pages read models run independently before runtime maintenance', () => {
   assert.match(workflow, /timeout-minutes: 15/);
   assert.match(workflow, /PAGES_RESPONSE_BUCKET/);
   assert.match(workflow, /PAGES_READ_MODEL_FORCE_ALL/);
+  assert.match(workflow, /PAGES_READ_MODEL_RETRY_OVERDUE: 'true'/);
   assert.doesNotMatch(workflow, /PAGES_READ_MODEL_MAX_STEPS|Rebuild track history/);
   assert.match(workflow, /Publish due pages read models/);
   assert.match(workflow, /run-pages-read-model-actions\.mjs/);
@@ -128,6 +130,54 @@ test('manual and main-push rebuilds can force every bounded model immediately', 
     [...dueVariantKeys(DAY + 19 * MINUTE, { forceAll: true })],
     allMaterializedVariants(),
   );
+});
+
+
+test('overdue historical models are retried without making every model due', async () => {
+  const variants = [
+    { key: 'dashboard' },
+    { key: 'history:daily' },
+    { key: 'history:weekly' },
+    { key: 'host-history:summary' },
+  ];
+  const updatedAt = new Map([
+    ['history:daily', DAY - 7 * 60 * MINUTE],
+    ['history:weekly', DAY - 60 * MINUTE],
+    ['host-history:summary', DAY - 25 * 60 * MINUTE],
+  ]);
+  const loaded = [];
+  const overdue = await overdueVariantKeys(variants, DAY, {
+    loadExistingEnvelope: async (key) => {
+      loaded.push(key);
+      return { updated_at: updatedAt.get(key) };
+    },
+  });
+
+  assert.deepEqual(loaded, ['history:daily', 'history:weekly', 'host-history:summary']);
+  assert.deepEqual([...overdue], ['history:daily', 'host-history:summary']);
+});
+
+test('normal runner adds only overdue models to the cadence set', async () => {
+  const published = [];
+  const result = await runPagesReadModelActions({
+    startedAt: DAY + 56 * MINUTE,
+    deadlineMs: DAY + 70 * MINUTE,
+    now: () => DAY + 56 * MINUTE,
+    retryOverdue: true,
+    env: { MINUTE_DB: {}, DB: {}, BUDDIES_DB: {}, OTHER_DB: {} },
+    loadExistingEnvelope: async (key) => ({
+      updated_at: key === 'history:daily'
+        ? DAY - 7 * 60 * MINUTE
+        : DAY + 55 * MINUTE,
+    }),
+    materializeVariant: async (variant) => {
+      published.push(variant.key);
+      return { key: variant.key };
+    },
+  });
+
+  assert.deepEqual(published, ['dashboard', 'history:daily']);
+  assert.deepEqual(result.published.map(({ key }) => key), ['dashboard', 'history:daily']);
 });
 
 test('materialized summaries exclude the current period from the R2 body', async () => {
