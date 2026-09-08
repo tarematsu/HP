@@ -376,26 +376,10 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
       }
     }
 
-    const buttons = controls.filter(element =>
-        element.matches('button, [role="button"]'));
-    const playButton = buttons.find(button => {
-      const label = labelOf(button).toLowerCase();
-      return label === '再生' || label === '再生する' ||
-             label === '動画を再生' || label === 'play' || label === 'play video';
-    });
-    if (video && video.paused && !video.ended) {
-      if (playButton) playButton.click();
-      try {
-        const promise = video.play();
-        if (promise && typeof promise.catch === 'function') {
-          promise.catch(() => { if (playButton) playButton.click(); });
-        }
-      } catch (_) {
-        if (playButton) playButton.click();
-      }
-    } else if (!video && playButton) {
-      playButton.click();
-    }
+    // Playback recovery has exactly one owner: the native trusted-input
+    // watchdog. This four-second loop only maintains media settings/state.
+    // Issuing click()/play() here as well can turn a successful recovery into
+    // a pause when the independently scheduled watchdog click arrives later.
   };
 
   const ensure = () => {
