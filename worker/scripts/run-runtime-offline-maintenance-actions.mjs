@@ -124,12 +124,16 @@ async function loadMaintenanceStatus(db) {
 }
 
 function recentSuccessfulMaintenance(row, startedAt, minimumIntervalMs) {
+  if (String(row?.status || '') !== 'ok') return false;
+  const attemptAt = Number(row?.last_attempt_at);
   const successAt = Number(row?.last_success_at);
-  return String(row?.status || '') === 'ok'
-    && Number.isFinite(successAt)
-    && successAt > 0
-    && startedAt - successAt >= 0
-    && startedAt - successAt < minimumIntervalMs;
+  const completedAt = Math.max(
+    Number.isFinite(attemptAt) && attemptAt > 0 ? attemptAt : 0,
+    Number.isFinite(successAt) && successAt > 0 ? successAt : 0,
+  );
+  return completedAt > 0
+    && startedAt - completedAt >= 0
+    && startedAt - completedAt < minimumIntervalMs;
 }
 
 async function writeMaintenanceStatus(db, {
