@@ -41,6 +41,13 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
         animation: none !important;
       }
 
+      /* Never let clean-player opacity on an ad-control ancestor make the
+         manual Skip Ad affordance disappear. Normal playback remains clean. */
+      #movie_player.ad-showing *,
+      #movie_player.ad-interrupting * {
+        opacity: 1 !important;
+      }
+
       /* Ad controls are functional UI. Keep the skip affordance visible so a
          user can always take over if automatic trusted input misses a layout. */
       #movie_player .ytp-ad-skip-button,
@@ -232,6 +239,10 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     '.ytp-ad-skip-button-container [role="button"]',
     'button[class*="ytp-ad-skip"]',
     '[class*="ytp-ad-skip"][role="button"]',
+    'button[aria-label*="Skip ad" i]',
+    'button[aria-label*="Skip ads" i]',
+    'button[aria-label*="広告をスキップ"]',
+    'button[aria-label*="スキップ"]',
     '[aria-label*="Skip ad" i]',
     '[aria-label*="Skip ads" i]',
     '[aria-label*="広告をスキップ"]',
