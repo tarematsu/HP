@@ -14,7 +14,7 @@ const watchdog = policy.slice(watchdogStart, healthStart);
 const health = policy.slice(healthStart);
 
 test('YouTube ads only allow survey and skip actions before the ad guard', () => {
-  const skip = watchdog.indexOf("guardedPoint(target, 'skip-ad', 750)");
+  const skip = watchdog.indexOf("guardedPoint(target, 'skip-ad', 750, true)");
   const adGuard = watchdog.indexOf('if (adShowing) return null;');
   const captions = watchdog.indexOf("player.querySelector('.ytp-subtitles-button')");
   const playRecovery = watchdog.indexOf('video.paused && !video.ended');
@@ -24,6 +24,15 @@ test('YouTube ads only allow survey and skip actions before the ad guard', () =>
   assert.ok(adGuard >= 0 && adGuard < captions);
   assert.ok(adGuard < playRecovery);
   assert.ok(adGuard < fullscreen);
+});
+
+test('hidden YouTube ad skip controls remain eligible for trusted clicks', () => {
+  assert.match(watchdog, /\.find\(element => isClickable\(element, true\)\) \|\| null/);
+  assert.match(
+    watchdog,
+    /\.find\(element => isClickable\(element, true\) &&[\s\S]*skipPattern\.test\(textOf\(element\)\)\)/,
+  );
+  assert.match(watchdog, /guardedPoint\(target, 'skip-ad', 750, true\)/);
 });
 
 test('YouTube health does not force playback quality while an ad is active', () => {
