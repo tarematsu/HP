@@ -112,25 +112,19 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   if (!player || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const isClickable = element => {
+  const isClickable = (element, allowTransparent = false) => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
         element.getAttribute('aria-hidden') === 'true') return false;
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.opacity !== '0' && style.pointerEvents !== 'none' &&
+           (allowTransparent || style.opacity !== '0') &&
+           style.pointerEvents !== 'none' &&
            rect.width > 0 && rect.height > 0;
   };
-  const isVisible = element => {
-    if (!element) return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.opacity !== '0' && rect.width > 0 && rect.height > 0;
-  };
-  const point = element => {
-    if (!isClickable(element)) return null;
+  const point = (element, allowTransparent = false) => {
+    if (!isClickable(element, allowTransparent)) return null;
     const rect = element.getBoundingClientRect();
     return [
       Math.max(0, Math.min(10000, Math.round(
@@ -139,8 +133,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
           ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
     ];
   };
-  const guardedPoint = (element, action, cooldownMs) => {
-    const resolved = point(element);
+  const guardedPoint = (
+      element, action, cooldownMs, allowTransparent = false) => {
+    const resolved = point(element, allowTransparent);
     if (!resolved) return null;
     const now = Date.now();
     const state = window.__homePanelYoutubeTrustedActionState ||
@@ -243,9 +238,11 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
   if (target) return guardedPoint(target, 'skip-ad', 750);
 
-  const adOverlay = player.querySelector(
-      '.ytp-ad-player-overlay, .ytp-ad-player-overlay-layout');
-  const adShowing = player.classList.contains('ad-showing') || isVisible(adOverlay);
+  // The clean-player CSS makes every overlay transparent while leaving it in
+  // layout for trusted input. Layout visibility therefore cannot distinguish a
+  // dormant ad overlay from a real ad; use YouTube's playback state classes.
+  const adShowing = player.classList.contains('ad-showing') ||
+      player.classList.contains('ad-interrupting');
   if (adShowing) return null;
 
   // Recover startup/autoplay failures. The playlist click may have navigated to
@@ -261,7 +258,10 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
       player.classList.contains('ytp-fullscreen');
   if (fullscreen) return null;
   target = player.querySelector('.ytp-fullscreen-button');
-  return guardedPoint(target, 'fullscreen', 2500);
+  // Autohide and the clean-player policy both make chrome transparent. Its
+  // bounds and pointer target remain valid, so allow only this action through
+  // the opacity guard.
+  return guardedPoint(target, 'fullscreen', 2500, true);
 })()
 )JS";
 

@@ -37,7 +37,20 @@ test('repeated YouTube toggle actions have per-action settle windows', () => {
   assert.match(youtubePolicy, /const guardedPoint =/);
   assert.match(youtubePolicy, /guardedPoint\(target, 'skip-ad', 750\)/);
   assert.match(youtubePolicy, /guardedPoint\(target, 'play', 2000\)/);
-  assert.match(youtubePolicy, /guardedPoint\(target, 'fullscreen', 2500\)/);
+  assert.match(youtubePolicy, /guardedPoint\(target, 'fullscreen', 2500, true\)/);
+});
+
+test('transparent clean-player chrome does not block fullscreen recovery', () => {
+  assert.match(
+    youtubePolicy,
+    /const isClickable = \(element, allowTransparent = false\) =>/,
+  );
+  assert.match(
+    youtubePolicy,
+    /guardedPoint\(target, 'fullscreen', 2500, true\)/,
+  );
+  assert.match(youtubePolicy, /classList\.contains\('ad-interrupting'\)/);
+  assert.doesNotMatch(youtubePolicy, /isVisible\(adOverlay\)/);
 });
 
 test('trusted CDP clicks are serialized and stale locks recover', () => {
