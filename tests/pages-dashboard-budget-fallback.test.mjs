@@ -30,11 +30,11 @@ test('D1 budget deferral refreshes dashboard and only reuses unchanged history',
   assert.match(workflow, /name: Refresh dashboard and reusable history models during D1 budget deferral/);
   assert.match(
     workflow,
-    /if: steps\.d1-write-budget\.outputs\.allowed != 'true'[\s\S]*node scripts\/refresh-pages-dashboard-actions\.mjs/,
+    /if: steps\.d1-write-budget\.outputs\.read_allowed != 'true'[\s\S]*node scripts\/refresh-pages-dashboard-actions\.mjs/,
   );
   assert.match(
     workflow,
-    /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.allowed == 'true'/,
+    /name: Publish due pages read models\n        if: steps\.d1-write-budget\.outputs\.read_allowed == 'true'/,
   );
   assert.match(workflow, /dashboard refresh and reuse-only history freshness checks will still run\./);
   assert.match(workflow, /site\/functions\/lib\/materialized-history\.js/);
