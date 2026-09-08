@@ -201,8 +201,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
 
   // Prefer current known classes and aria-labels, then fall back to semantics.
-  // The click itself is performed by the native trusted-input path so YouTube's
-  // event.isTrusted checks cannot turn this into a no-op DOM click.
+  // The clean-player CSS deliberately keeps controls in layout but makes them
+  // transparent. Skip Ad is a narrowly identified trusted action, so opacity
+  // must not suppress its coordinate lookup.
   const selectors = [
     '.ytp-ad-skip-button',
     '.ytp-ad-skip-button-modern',
@@ -217,15 +218,15 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     'button[aria-label*="スキップ"]'
   ];
   let target = Array.from(player.querySelectorAll(selectors.join(',')))
-      .find(isClickable) || null;
+      .find(element => isClickable(element, true)) || null;
   if (!target) {
     const skipPattern = /(広告をスキップ|広告を飛ばす|skip\s+ad(?:s)?)/i;
     target = Array.from(player.querySelectorAll(
         'button, tp-yt-paper-button, [role="button"]'))
-        .find(element => isClickable(element) && skipPattern.test(textOf(element))) ||
-        null;
+        .find(element => isClickable(element, true) &&
+            skipPattern.test(textOf(element))) || null;
   }
-  if (target) return guardedPoint(target, 'skip-ad', 750);
+  if (target) return guardedPoint(target, 'skip-ad', 750, true);
 
   // Treat ads as an isolated playback state. Apart from survey/skip actions,
   // never mutate player state while YouTube owns ad playback: caption toggles,
