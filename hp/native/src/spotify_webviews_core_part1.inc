@@ -85,7 +85,7 @@ void SpotifyWebViews::Start() noexcept {
   staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
-  hostLayoutAuthenticationVisible_ = false;
+  hostLayoutAuthenticationSlot_ = kAccountCount;
   alive_->store(true, std::memory_order_release);
 
   for (Slot& slot : slots_) {
