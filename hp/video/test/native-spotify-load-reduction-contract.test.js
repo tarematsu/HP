@@ -29,7 +29,7 @@ test('all playback controllers keep a stable offscreen viewport while only the r
   assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
   assert.match(spotify, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
-  assert.match(spotify, /const bool recovery = active && !authentication && SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(spotify, /const bool recovery =\s*active && !authentication && SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /width = activeWidth;\s*height = activeHeight/);
   assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
   assert.doesNotMatch(spotify, /SW_HIDE|controller->Close\(\)[\s\S]{0,120}SlotStateNeedsRecovery/);
