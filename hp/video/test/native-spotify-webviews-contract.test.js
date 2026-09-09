@@ -39,11 +39,13 @@ const mediaWrapper = readFileSync(
 const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 
-test('five Spotify accounts share the WebView2 environment while using isolated profiles', () => {
-  assert.match(header, /kAccountCount = 5/);
-  assert.match(scripts, /std::array<std::wstring_view, 5> kSpotifyPanelNames/);
-  assert.match(scripts, /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/);
-  assert.doesNotMatch(scripts, /ozeki/);
+test('six Spotify accounts share the WebView2 environment while using isolated profiles', () => {
+  assert.match(header, /kAccountCount = 6/);
+  assert.match(scripts, /std::array<std::wstring_view, 6> kSpotifyPanelNames/);
+  assert.match(
+    scripts,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
+  );
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaPanel, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -118,7 +120,7 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
-test('one adaptive scheduler serializes all five Spotify windows', () => {
+test('one adaptive scheduler serializes all six Spotify windows', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
@@ -169,7 +171,7 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
-test('all five Spotify WebViews remain natively muted', () => {
+test('all six Spotify WebViews remain natively muted', () => {
   assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);

@@ -8,6 +8,7 @@ const observerModules = [
   ['spotify_media_observer_events.inc', 'kSpotifyMediaObserverEventsScript'],
   ['spotify_media_observer_heartbeat.inc', 'kSpotifyMediaObserverHeartbeatScript'],
 ].map(([file, symbol]) => ({
+  file,
   symbol,
   source: readFileSync(new URL(`../../native/src/${file}`, import.meta.url), 'utf8'),
 }));
@@ -125,6 +126,11 @@ function createHarness() {
       textContent: title,
     } : null;
   };
+  const runTimers = () => {
+    const pending = [...timers.values()];
+    timers.clear();
+    for (const fn of pending) fn();
+  };
   const runHeartbeat = () => {
     const heartbeat = [...intervals.values()].find(({ delay }) => delay === 10000);
     assert.ok(heartbeat, '10-second media heartbeat not installed');
@@ -139,11 +145,29 @@ function createHarness() {
     dispatch,
     hostMessage,
     setTrack,
+    runTimers,
     runHeartbeat,
   };
 }
 
-test('production observer rejects an ad/title false-positive and prefers direct Track ID', () => {
+test('target identity and wrong-track rejection have one runtime owner', () => {
+  const runtime = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_runtime.inc').source;
+  const events = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_events.inc').source;
+  const heartbeat = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_heartbeat.inc').source;
+
+  assert.match(runtime, /const enforceTarget = media =>/);
+  assert.match(runtime, /const scheduleTargetChecks = media =>/);
+  assert.doesNotMatch(runtime + events + heartbeat,
+    /rejectWrongTrack|scheduleIdentityCheck|confirmStarted|scheduleStartChecks/);
+  assert.match(events, /scheduleTargetChecks\(event\.target\)/);
+  assert.match(events, /enforceTarget\(event\.target\)/);
+  assert.match(heartbeat, /enforceTarget\(media\)/);
+});
+
+test('production observer prefers direct Track ID over title fallback', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
 
@@ -152,6 +176,7 @@ test('production observer rejects an ad/title false-positive and prefers direct 
   h.media.paused = false;
   h.dispatch('playing');
   assert.deepEqual(h.messages, []);
+  assert.equal(h.media.pauseCalls, 0);
 
   h.setTrack('/track/A', 'Target A');
   h.dispatch('playing');
@@ -189,6 +214,58 @@ test('production observer ends immediately, blocks the old queue, then starts th
   h.media.paused = false;
   h.dispatch('playing');
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
+});
+
+test('shared target checks stop a recommendation and request native recovery once', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f11');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f11');
+
+  h.setTrack('/track/RECOMMENDED', 'Recommended Song');
+  h.media.paused = false;
+  h.dispatch('loadedmetadata');
+  assert.equal(h.media.pauseCalls, 0);
+  h.runTimers();
+
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.paused, true);
+  assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f11');
+  assert.equal(h.messages.filter(m => m === 'spotify:not-playing\x1f11').length, 1);
+});
+
+test('shared target checks tolerate stale UI until the requested identity appears', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f12');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  h.setTrack('/track/STALE', 'Stale UI');
+  h.dispatch('loadedmetadata');
+  h.setTrack('/track/A', 'Target A');
+  h.runTimers();
+
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
+});
+
+test('heartbeat fallback stops a recommendation if source-change events are missed', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f13');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.media.currentTime = 8;
+  h.dispatch('playing');
+
+  h.setTrack('/track/RECOMMENDED', 'Recommended Song');
+  h.media.paused = false;
+  h.runHeartbeat();
+
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f13');
 });
 
 test('production observer detects a silent media-clock freeze after two heartbeat misses', () => {
