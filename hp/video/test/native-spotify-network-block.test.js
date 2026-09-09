@@ -14,6 +14,10 @@ const lifecycle = readFileSync(
   new URL('../../native/src/renderer_lifecycle.cpp', import.meta.url),
   'utf8',
 );
+const schedule = readFileSync(
+  new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url),
+  'utf8',
+);
 
 test('Spotify network block destroys all six WebView/controller slots', () => {
   assert.match(header, /void SetNetworkBlocked\(bool blocked\) noexcept/);
@@ -39,5 +43,16 @@ test('global media mute gate preserves desired phase while Spotify is offline', 
   assert.match(
     lifecycle,
     /SetSpotifyMediaNetworkBlocked\(bool blocked\)[\s\S]*SetNetworkBlocked\(blocked\)[\s\S]*SetPodcastMode\(!gSpotifyTverPhase\)/,
+  );
+});
+
+test('unmute during TVer restores A-B-C-D rotation without a new 20-minute wait', () => {
+  assert.match(
+    schedule,
+    /if \(!podcastMode_ && !slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\);/,
+  );
+  assert.match(
+    schedule,
+    /network[\s\S]*rebuild[\s\S]*restores rotation|WebViews were rebuilt while TVer is active/,
   );
 });
