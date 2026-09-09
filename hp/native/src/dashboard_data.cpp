@@ -8,9 +8,6 @@ using winrt::Windows::Data::Json::JsonArray;
 using winrt::Windows::Data::Json::JsonObject;
 using winrt::Windows::Data::Json::JsonValueType;
 
-constexpr uint64_t kFnvOffset = 14695981039346656037ull;
-constexpr uint64_t kFnvPrime = 1099511628211ull;
-
 std::string StringifyUtf8(const JsonObject& object) {
   const winrt::hstring text = object.Stringify();
   if (text.empty()) return {};
@@ -26,25 +23,25 @@ std::string StringifyUtf8(const JsonObject& object) {
   return output;
 }
 
-void AppendRevisionObject(uint64_t& hash, const JsonObject& object) {
-  const std::string text = StringifyUtf8(object);
-  for (const unsigned char byte : text) {
-    hash ^= byte;
-    hash *= kFnvPrime;
+uint64_t SourceRevision(const JsonObject& object) {
+  const double rawVersion = json::Number(object, L"__version", -1);
+  if (std::isfinite(rawVersion) && rawVersion >= 0 &&
+      rawVersion <= static_cast<double>(std::numeric_limits<uint64_t>::max() >> 2)) {
+    const std::wstring status = json::Text(object, L"__status", L"ok");
+    const uint64_t statusCode = status == L"ok" ? 0 :
+        status == L"stale" ? 1 : status == L"error" ? 2 : 3;
+    return (static_cast<uint64_t>(rawVersion) << 2) | statusCode;
   }
-  hash ^= 0;
-  hash *= kFnvPrime;
-}
 
-uint64_t SectionRevision(const JsonObject& object) {
+  // Compatibility fallback for old cached dashboard files that predate
+  // source-level __version metadata. Normal cloud payloads never take this path.
   return Fnv1a64(StringifyUtf8(object));
 }
 
-uint64_t SectionRevision(const JsonObject& first, const JsonObject& second) {
-  uint64_t hash = kFnvOffset;
-  AppendRevisionObject(hash, first);
-  AppendRevisionObject(hash, second);
-  return hash;
+bool CanReuseSection(const DashboardSnapshot* previous,
+                     uint64_t DashboardSectionRevisions::* member,
+                     uint64_t revision) {
+  return previous && previous->loaded && previous->revisions.*member == revision;
 }
 
 double NumberOrNaN(const JsonObject& object, const wchar_t* name) {
@@ -79,7 +76,8 @@ std::wstring DeviceState(const JsonObject& item) {
 }  // namespace
 
 bool ParseDashboardSnapshot(
-    const std::string& text, DashboardSnapshot& output, std::wstring* error) {
+    const std::string& text, DashboardSnapshot& output, std::wstring* error,
+    const DashboardSnapshot* previous) {
   try {
     if (text.empty()) {
       if (error) *error = L"dashboard.json is empty";
@@ -91,30 +89,35 @@ bool ParseDashboardSnapshot(
     next.loaded = true;
 
     const JsonObject weather = json::Object(root, L"weather");
-    next.revisions.weather = SectionRevision(weather);
+    next.revisions.weather = SourceRevision(weather);
     const std::wstring weatherStatus = json::Text(weather, L"__status", L"ok");
     next.weatherOutage = weatherStatus != L"ok";
-    const JsonObject hourly = json::Object(weather, L"hourly");
-    const double startHourValue = json::Number(weather, L"startHour", 22);
-    const int startHour = std::isfinite(startHourValue) && startHourValue >= 0 && startHourValue < 24
-        ? static_cast<int>(startHourValue)
-        : 22;
-    next.weatherHours.reserve(12);
-    for (int offset = 0; offset < 12; ++offset) {
-      try {
-        const int hour = (startHour + offset) % 24;
-        const std::wstring key = std::to_wstring(hour);
-        if (!hourly.HasKey(key.c_str())) continue;
-        const auto value = hourly.GetNamedValue(key.c_str());
-        if (value.ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = value.GetObject();
-        next.weatherHours.push_back({
-            hour,
-            json::Text(item, L"icon"),
-            NumberOrNaN(item, L"temp"),
-            NumberOrNaN(item, L"rainMm"),
-        });
-      } catch (...) {
+    if (CanReuseSection(previous, &DashboardSectionRevisions::weather,
+                        next.revisions.weather)) {
+      next.weatherHours = previous->weatherHours;
+    } else {
+      const JsonObject hourly = json::Object(weather, L"hourly");
+      const double startHourValue = json::Number(weather, L"startHour", 22);
+      const int startHour = std::isfinite(startHourValue) && startHourValue >= 0 && startHourValue < 24
+          ? static_cast<int>(startHourValue)
+          : 22;
+      next.weatherHours.reserve(12);
+      for (int offset = 0; offset < 12; ++offset) {
+        try {
+          const int hour = (startHour + offset) % 24;
+          const std::wstring key = std::to_wstring(hour);
+          if (!hourly.HasKey(key.c_str())) continue;
+          const auto value = hourly.GetNamedValue(key.c_str());
+          if (value.ValueType() != JsonValueType::Object) continue;
+          const JsonObject item = value.GetObject();
+          next.weatherHours.push_back({
+              hour,
+              json::Text(item, L"icon"),
+              NumberOrNaN(item, L"temp"),
+              NumberOrNaN(item, L"rainMm"),
+          });
+        } catch (...) {
+        }
       }
     }
 
@@ -124,53 +127,68 @@ bool ParseDashboardSnapshot(
     // older call sites remain harmless while using no dynamic News storage.
 
     const JsonObject octopus = json::Object(root, L"octopus");
-    next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
-    next.projectedUsage =
-        NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
-    const JsonObject comparison = json::Object(octopus, L"comparison");
-    next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週");
-    next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週");
+    next.revisions.octopus = SourceRevision(octopus);
+    if (CanReuseSection(previous, &DashboardSectionRevisions::octopus,
+                        next.revisions.octopus)) {
+      next.lastMonthUsage = previous->lastMonthUsage;
+      next.projectedUsage = previous->projectedUsage;
+      next.currentEnergyLabel = previous->currentEnergyLabel;
+      next.previousEnergyLabel = previous->previousEnergyLabel;
+      next.octopusProfile = previous->octopusProfile;
+    } else {
+      next.lastMonthUsage = NumberOrNaN(json::Object(octopus, L"lastMonth"), L"usage");
+      next.projectedUsage =
+          NumberOrNaN(json::Object(octopus, L"thisMonth"), L"projectedUsage");
+      const JsonObject comparison = json::Object(octopus, L"comparison");
+      next.currentEnergyLabel = json::Text(comparison, L"currentLabel", L"今週");
+      next.previousEnergyLabel = json::Text(comparison, L"previousLabel", L"先週");
 
-    const JsonArray profile = json::Array(octopus, L"profile");
-    next.octopusProfile.reserve(7);
-    for (uint32_t index = 0;
-         index < profile.Size() && next.octopusProfile.size() < 7; ++index) {
-      try {
-        const auto value = profile.GetAt(index);
-        if (value.ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = value.GetObject();
-        const std::wstring day = json::Text(item, L"day");
-        if (day.empty()) continue;
-        const bool currentComplete = json::Boolean(item, L"currentComplete");
-        const bool previousComplete = json::Boolean(item, L"previousComplete");
-        double currentTotal = NumberOrNaN(item, L"currentTotal");
-        double previousTotal = NumberOrNaN(item, L"previousTotal");
-        if (!currentComplete) currentTotal = std::numeric_limits<double>::quiet_NaN();
-        if (!previousComplete) previousTotal = std::numeric_limits<double>::quiet_NaN();
-        next.octopusProfile.push_back(OctopusProfileData{
-            day, currentTotal, previousTotal, currentComplete, previousComplete});
-      } catch (...) {
+      const JsonArray profile = json::Array(octopus, L"profile");
+      next.octopusProfile.reserve(7);
+      for (uint32_t index = 0;
+           index < profile.Size() && next.octopusProfile.size() < 7; ++index) {
+        try {
+          const auto value = profile.GetAt(index);
+          if (value.ValueType() != JsonValueType::Object) continue;
+          const JsonObject item = value.GetObject();
+          const std::wstring day = json::Text(item, L"day");
+          if (day.empty()) continue;
+          const bool currentComplete = json::Boolean(item, L"currentComplete");
+          const bool previousComplete = json::Boolean(item, L"previousComplete");
+          double currentTotal = NumberOrNaN(item, L"currentTotal");
+          double previousTotal = NumberOrNaN(item, L"previousTotal");
+          if (!currentComplete) currentTotal = std::numeric_limits<double>::quiet_NaN();
+          if (!previousComplete) previousTotal = std::numeric_limits<double>::quiet_NaN();
+          next.octopusProfile.push_back(OctopusProfileData{
+              day, currentTotal, previousTotal, currentComplete, previousComplete});
+        } catch (...) {
+        }
       }
     }
 
     const JsonObject switchbot = json::Object(root, L"switchbot");
-    next.revisions.energy = SectionRevision(octopus, switchbot);
-    const JsonArray devices = json::Array(switchbot, L"devices");
-    next.switchBotDevices.reserve(8);
-    for (uint32_t index = 0;
-         index < devices.Size() && next.switchBotDevices.size() < 8; ++index) {
-      try {
-        const auto value = devices.GetAt(index);
-        if (value.ValueType() != JsonValueType::Object) continue;
-        const JsonObject item = value.GetObject();
-        const std::wstring type = json::Text(item, L"deviceType");
-        if (type.find(L"Plug") == std::wstring::npos) continue;
-        next.switchBotDevices.push_back({
-            json::Text(item, L"deviceName",
-                       json::Text(item, L"deviceId", L"SwitchBot")),
-            DeviceState(item),
-        });
-      } catch (...) {
+    next.revisions.switchbot = SourceRevision(switchbot);
+    if (CanReuseSection(previous, &DashboardSectionRevisions::switchbot,
+                        next.revisions.switchbot)) {
+      next.switchBotDevices = previous->switchBotDevices;
+    } else {
+      const JsonArray devices = json::Array(switchbot, L"devices");
+      next.switchBotDevices.reserve(8);
+      for (uint32_t index = 0;
+           index < devices.Size() && next.switchBotDevices.size() < 8; ++index) {
+        try {
+          const auto value = devices.GetAt(index);
+          if (value.ValueType() != JsonValueType::Object) continue;
+          const JsonObject item = value.GetObject();
+          const std::wstring type = json::Text(item, L"deviceType");
+          if (type.find(L"Plug") == std::wstring::npos) continue;
+          next.switchBotDevices.push_back({
+              json::Text(item, L"deviceName",
+                         json::Text(item, L"deviceId", L"SwitchBot")),
+              DeviceState(item),
+          });
+        } catch (...) {
+        }
       }
     }
 
