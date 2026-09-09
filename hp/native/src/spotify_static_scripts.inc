@@ -2,8 +2,8 @@ namespace hp {
 namespace {
 
 constexpr wchar_t kSpotifyMessageSeparator = L'\x1f';
-constexpr std::array<std::wstring_view, 6> kSpotifyPanelNames = {
-    L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"};
+constexpr std::array<std::wstring_view, 5> kSpotifyPanelNames = {
+    L"amazon", L"ten", L"nagi", L"hinata", L"ozeki"};
 
 constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 (() => {
