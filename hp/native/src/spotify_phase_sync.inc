@@ -137,8 +137,8 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
   }
 
-  if (youtubeCycleStartTick_ != 0 && now >= youtubeCycleStartTick_) {
-    const ULONGLONG elapsed = now - youtubeCycleStartTick_;
+  if (scheduleStartTick_ != 0 && now >= scheduleStartTick_) {
+    const ULONGLONG elapsed = now - scheduleStartTick_;
     for (size_t i = 1; i < slots_.size(); ++i) {
       const ULONGLONG boundary =
           static_cast<ULONGLONG>(i) * kSpotifyInitialSlotOffsetMs;
