@@ -18,6 +18,7 @@
               target->timedObserverInstallStartedTick = 0;
               target->playerPage = false;
               target->loginPage = false;
+              target->authenticationBadgeTick = 0;
               target->timedObserverReady = false;
               target->timedObserverInstallInFlight = false;
               LPWSTR rawUri = nullptr;
