@@ -73,10 +73,11 @@ test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
 
 test('initial account starts remain 40 seconds apart then healthy verification rotates every 20 seconds', () => {
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
-  assert.match(schedule, /elapsed < kSpotifyInitialSerialWindowMs[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs/);
-  assert.match(schedule, /elapsed - kSpotifyInitialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/);
+  assert.match(schedule, /elapsed < initialSerialWindowMs[\s\S]*elapsed \/ kSpotifyTimedSlotOffsetMs/);
+  assert.match(schedule, /elapsed - initialSerialWindowMs[\s\S]*kSpotifySimpleSteadyTurnMs/);
+  assert.match(schedule, /% accountCount/);
 });
 
 test('authentication foreground never extends scheduler ownership', () => {

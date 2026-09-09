@@ -19,14 +19,14 @@ const schedule = readFileSync(
   'utf8',
 );
 
-test('Spotify network block destroys all six WebView/controller slots', () => {
+test('Spotify network block destroys all configured WebView/controller slots', () => {
   assert.match(header, /void SetNetworkBlocked\(bool blocked\) noexcept/);
   assert.match(header, /bool networkBlocked_ = false/);
   assert.match(network, /alive_->store\(false, std::memory_order_release\)/);
   assert.match(network, /for \(Slot& slot : slots_\) CloseSlot\(slot\)/);
 });
 
-test('Spotify unmute uses a fresh async generation and recreates the six hosts', () => {
+test('Spotify unmute uses a fresh async generation and recreates every configured host', () => {
   assert.match(network, /alive_ = std::make_shared<std::atomic<bool>>\(true\)/);
   assert.match(network, /for \(Slot& slot : slots_\)[\s\S]*CreateHost\(slot\)/);
   assert.match(network, /CreateController\(slots_\[0\]\)/);

@@ -31,7 +31,7 @@ const header = readFileSync(
   'utf8',
 );
 
-test('slow six-window recovery is time based instead of retry-count based', () => {
+test('slow multi-window recovery is time based instead of retry-count based', () => {
   assert.match(phaseSync, /kSpotifyUnhealthyRenavigateMs = 30ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
@@ -72,7 +72,7 @@ test('healthy slots are not continuously scanned by a second native watchdog', (
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
 });
 
-test('healthy ownership handoff does not relayout all six playback hosts', () => {
+test('healthy ownership handoff does not relayout all playback hosts', () => {
   assert.match(
     layout,
     /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
