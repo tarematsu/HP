@@ -7,6 +7,12 @@ constexpr int kSpotifyParkedPlaybackHeight = 180;
 constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
+constexpr ULONGLONG kSpotifyAuthenticationBadgeRefreshMs = 30ULL * 1000ULL;
+
+bool SpotifyHostRectEqual(const RECT& left, const RECT& right) noexcept {
+  return left.left == right.left && left.top == right.top &&
+         left.right == right.right && left.bottom == right.bottom;
+}
 
 }  // namespace
 
@@ -20,11 +26,9 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   const int activeWidth = std::max(1, clientWidth * 3 / 5);
   const int activeHeight = std::max(1, clientHeight * 9 / 10);
 
-  HDWP batch = BeginDeferWindowPos(static_cast<int>(slots_.size()));
   for (size_t i = 0; i < slots_.size(); ++i) {
     Slot& slot = slots_[i];
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
-    if (slot.controller) slot.controller->put_IsVisible(TRUE);
 
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
@@ -54,27 +58,43 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = std::max(activeHeight, kSpotifyRecoveryInteractionHeight);
     }
 
-    ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
-    const UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
-    if (batch) {
-      batch = DeferWindowPos(batch, slot.hostWindow, insertAfter,
-                             x, y, width, height, flags);
-    } else {
-      SetWindowPos(slot.hostWindow, insertAfter,
-                   x, y, width, height, flags);
-    }
-  }
-  if (batch) EndDeferWindowPos(batch);
+    const RECT desired{x, y, x + width, y + height};
+    const bool placementChanged =
+        !slot.hostLayoutApplied ||
+        !SpotifyHostRectEqual(slot.hostLayoutRect, desired) ||
+        slot.hostLayoutInsertAfter != insertAfter;
+    const bool controllerChanged =
+        slot.hostLayoutController != slot.controller.Get();
 
-  for (Slot& slot : slots_) {
-    if (!slot.hostWindow || !IsWindow(slot.hostWindow) || !slot.controller) {
+    if (placementChanged) {
+      ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
+      if (SetWindowPos(slot.hostWindow, insertAfter,
+                       x, y, width, height,
+                       SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
+        slot.hostLayoutRect = desired;
+        slot.hostLayoutInsertAfter = insertAfter;
+        slot.hostLayoutApplied = true;
+      }
+    }
+
+    if (!slot.controller) {
+      slot.hostLayoutController = nullptr;
       continue;
     }
-    RECT bounds{};
-    GetClientRect(slot.hostWindow, &bounds);
-    slot.controller->put_Bounds(bounds);
-    slot.controller->NotifyParentWindowPositionChanged();
-    slot.controller->put_IsVisible(TRUE);
+
+    // WM_SIZE owns normal bounds propagation after a real resize. Only a newly
+    // attached controller needs an explicit initial bounds push here. Position
+    // changes still need the lightweight parent-position notification.
+    if (controllerChanged) {
+      RECT bounds{};
+      GetClientRect(slot.hostWindow, &bounds);
+      slot.controller->put_Bounds(bounds);
+      slot.controller->put_IsVisible(TRUE);
+      slot.hostLayoutController = slot.controller.Get();
+    }
+    if (placementChanged || controllerChanged) {
+      slot.controller->NotifyParentWindowPositionChanged();
+    }
   }
 }
 
@@ -108,7 +128,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   }
 
   const auto maintainAuthenticationForeground =
-      [this, foregroundAuthenticationIndex](bool refreshGeometry) noexcept {
+      [this, foregroundAuthenticationIndex](bool layoutChanged) noexcept {
         if (foregroundAuthenticationIndex >= slots_.size() || !parentWindow_ ||
             !IsWindow(parentWindow_)) {
           return;
@@ -119,35 +139,30 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           return;
         }
 
-        if (refreshGeometry) {
-          RECT client{};
-          if (!GetClientRect(parentWindow_, &client)) return;
-          const int clientWidth = std::max(1L, client.right - client.left);
-          const int clientHeight = std::max(1L, client.bottom - client.top);
-          const int width = std::max(1, clientWidth * 3 / 5);
-          const int height = std::max(1, clientHeight * 9 / 10);
-          const int x = client.left + (clientWidth - width) / 2;
-          const int y = client.top + (clientHeight - height) / 2;
-
-          SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
-                       SWP_NOACTIVATE | SWP_SHOWWINDOW);
-          if (slot.controller) {
-            double zoom = 1.0;
-            if (FAILED(slot.controller->get_ZoomFactor(&zoom)) ||
-                zoom < 0.799 || zoom > 0.801) {
-              slot.controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
-            }
-            RECT bounds{};
-            GetClientRect(slot.hostWindow, &bounds);
-            slot.controller->put_Bounds(bounds);
-            slot.controller->NotifyParentWindowPositionChanged();
-            slot.controller->put_IsVisible(TRUE);
-          }
-        } else {
+        // PlaceHosts already applies geometry and HWND_TOP on a layout change.
+        // On steady scheduler passes only refresh z-order, not geometry or all
+        // WebView2 bounds, so one login surface cannot stall the six-window set.
+        if (!layoutChanged) {
           SetWindowPos(slot.hostWindow, HWND_TOP, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
         }
+
+        if (layoutChanged && slot.controller) {
+          double zoom = 1.0;
+          if (FAILED(slot.controller->get_ZoomFactor(&zoom)) ||
+              zoom < 0.799 || zoom > 0.801) {
+            slot.controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
+          }
+        }
+
+        const ULONGLONG now = GetTickCount64();
+        if (!layoutChanged && slot.authenticationBadgeTick != 0 &&
+            now - slot.authenticationBadgeTick <
+                kSpotifyAuthenticationBadgeRefreshMs) {
+          return;
+        }
+        slot.authenticationBadgeTick = now;
 
         const auto alive = alive_;
         Slot* const target = &slot;
@@ -158,6 +173,10 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                   if (!alive->load(std::memory_order_acquire) || FAILED(result) ||
                       !started_ || !target->webview ||
                       !SlotIsLoginPage(*target)) {
+                    if (alive->load(std::memory_order_acquire) && started_ &&
+                        target->webview && SlotIsLoginPage(*target)) {
+                      target->authenticationBadgeTick = 0;
+                    }
                     return S_OK;
                   }
                   PostSpotifyPageContext(*target);
