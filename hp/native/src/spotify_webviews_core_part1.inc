@@ -86,19 +86,57 @@ void SpotifyWebViews::Start() noexcept {
   hostLayoutAuthenticationSlot_ = kAccountCount;
   alive_->store(true, std::memory_order_release);
 
-  if (!EnsureHostClass()) return;
   for (Slot& slot : slots_) {
     slot.state = SlotState::NotCreated;
-    slot.controllerCreating = false;
-    slot.controllerCreateTick = 0;
-    slot.reconcileInFlight = false;
-    slot.reconcileStartedTick = 0;
+    slot.unhealthySinceTick = 0;
+    slot.targetGeneration = 0;
     slot.playerPage = false;
     slot.loginPage = false;
     slot.timedObserverReady = false;
     slot.timedObserverInstallInFlight = false;
+    slot.controllerCreating = false;
+    slot.controllerCreateTick = 0;
     if (!CreateHost(slot)) continue;
   }
-  PlaceHosts();
-  CreateController(slots_[0]);
+
+  // Controller creation is serialized. Slot 0 starts immediately; the single
+  // scheduler creates slots 1-5 when their 40-second turn arrives.
+  if (!slots_.empty() && slots_[0].hostWindow) {
+    CreateController(slots_[0]);
+  }
+  Resize();
 }
+
+void SpotifyWebViews::CreateController(Slot& slot) noexcept {
+  if (!slot.hostWindow || !IsWindow(slot.hostWindow) ||
+      slot.controller || slot.webview) {
+    return;
+  }
+  SetSlotState(slot, SlotState::NotCreated);
+  slot.controllerCreating = true;
+  slot.controllerCreateTick = GetTickCount64();
+  const auto alive = alive_;
+  Slot* const target = &slot;
+  try {
+    SharedWebViewEnvironment::Instance().Acquire(
+        userDataFolder_, false, false,
+        [this, alive, target](HRESULT result,
+                              ICoreWebView2Environment* environment) {
+          if (!alive->load(std::memory_order_acquire)) return;
+          if (FAILED(result) || !environment || !target->hostWindow ||
+              !IsWindow(target->hostWindow)) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
+            MarkSlotRecovering(*target, GetTickCount64());
+            return;
+          }
+          target->environment = environment;
+
+          ComPtr<ICoreWebView2Environment10> environment10;
+          if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) ||
+              !environment10) {
+            target->controllerCreating = false;
+            target->controllerCreateTick = 0;
+            MarkSlotRecovering(*target, GetTickCount64());
+            return;
+          }
