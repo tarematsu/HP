@@ -44,16 +44,17 @@ test('TVer playback policy dismisses a survey before touching the player', () =>
   assert.match(policy, /if \(surveyClose\) return point\(surveyClose\)/);
 });
 
-test('stopped TVer episodes prioritize a trusted play click before fullscreen', () => {
-  const pausedIndex = policy.indexOf('video.paused && !video.ended');
+test('paused TVer episodes recover idempotently before fullscreen', () => {
+  const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
   const fullscreenIndex = policy.indexOf('state && state.fullscreenDirty === false');
   assert.ok(pausedIndex >= 0);
   assert.ok(fullscreenIndex > pausedIndex);
   assert.match(policy, /const playButton = controls\.find/);
-  assert.match(policy, /再生/);
-  assert.match(policy, /play(?: video)?/);
-  assert.match(policy, /if \(playButton\) return point\(playButton\)/);
-  assert.match(policy, /if \(video\) return point\(video\)/);
+  assert.match(policy, /const pending = video\.play\(\)/);
+  assert.match(policy, /video\.__homePanelTverResumeBlocked/);
+  assert.match(policy, /return playButton \? point\(playButton\) : null/);
+  assert.doesNotMatch(policy, /return point\(video\)/);
+  assert.doesNotMatch(policy, /video\.pause\(/);
 });
 
 test('episode-page restart, ad, and fullscreen guards remain intact', () => {
