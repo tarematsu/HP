@@ -18,6 +18,10 @@ const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
 );
+const core = readFileSync(
+  new URL('../../native/src/spotify_webviews_core_part4.inc', import.meta.url),
+  'utf8',
+);
 
 test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.match(wrapper, /#include "spotify_background_click\.inc"/);
@@ -28,21 +32,40 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
 });
 
-test('Spotify trusted click is single-flight with bounded stale recovery', () => {
+test('Spotify trusted click uses one target-scoped eight-second gate', () => {
   assert.match(header, /ULONGLONG trustedClickGeneration = 0/);
-  assert.match(header, /ULONGLONG trustedClickStartTick = 0/);
-  assert.match(header, /bool trustedClickInFlight = false/);
-  assert.match(helper, /kSpotifyTrustedClickStaleMs = 8ULL \* 1000ULL/);
-  assert.match(helper, /if \(slot\.trustedClickInFlight\)/);
-  assert.match(helper, /return 0;/);
-  assert.match(helper, /\+\+slot\.trustedClickGeneration/);
-  assert.match(helper, /const ULONGLONG clickGeneration = slot\.trustedClickGeneration/);
-  assert.match(helper, /target->trustedClickGeneration != clickGeneration/);
-  assert.match(helper, /slot\.trustedClickInFlight = true/);
+  assert.match(header, /ULONGLONG trustedClickTargetGeneration = 0/);
+  assert.match(header, /ULONGLONG trustedClickBlockedUntilTick = 0/);
+  assert.doesNotMatch(header, /trustedClickInFlight|trustedClickStartTick/);
+  assert.match(helper, /kSpotifyTrustedClickGateMs = 8ULL \* 1000ULL/);
   assert.match(
     helper,
-    /mouseReleased[\s\S]*target->trustedClickGeneration !=[\s\S]*clickGeneration[\s\S]*target->trustedClickInFlight = false;[\s\S]*target->trustedClickStartTick = 0;/,
+    /slot\.trustedClickTargetGeneration == targetGeneration[\s\S]*now < slot\.trustedClickBlockedUntilTick[\s\S]*return 0;/,
   );
+  assert.match(helper, /\+\+slot\.trustedClickGeneration/);
+  assert.match(helper, /slot\.trustedClickTargetGeneration = targetGeneration/);
+  assert.match(
+    helper,
+    /slot\.trustedClickBlockedUntilTick = now \+ kSpotifyTrustedClickGateMs/,
+  );
+  assert.match(
+    helper,
+    /target->trustedClickGeneration != clickGeneration[\s\S]*target->targetGeneration != targetGeneration[\s\S]*target->webview\.Get\(\) != view\.Get\(\)/,
+  );
+  assert.doesNotMatch(helper, /trustedClickInFlight|trustedClickStartTick/);
+});
+
+test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
+  assert.match(
+    helper,
+    /target->targetGeneration != targetGeneration/,
+  );
+  assert.match(
+    helper,
+    /target->webview\.Get\(\) != view\.Get\(\)/,
+  );
+  assert.match(core, /slot\.trustedClickTargetGeneration = 0/);
+  assert.match(core, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
 test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
