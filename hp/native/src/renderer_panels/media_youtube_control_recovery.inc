@@ -1,14 +1,23 @@
 // YouTube watchdog policy.
 //
-// This file decides WHICH control should be acted on. Stable trusted input,
-// cooldowns, coordinate pinning and Fullscreen API activation live in
-// media_youtube_trusted_action.inc.
+// One adaptive watchdog owns health, quality and trusted control recovery.
+// Stable trusted input, cooldowns, coordinate pinning and Fullscreen API
+// activation live in media_youtube_trusted_action.inc.
 namespace {
 constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
 (() => {
   const player = document.querySelector('#movie_player');
   const trusted = window.__homePanelYoutubeTrustedAction;
   if (!player || !trusted) return null;
+
+  const video = player.querySelector('video');
+  const visibleError = Array.from(document.querySelectorAll(
+      '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
+      + 'yt-player-error-message-renderer, ytd-player-error-message-renderer'))
+      .some(element => trusted.valid(element));
+  if ((video && video.error) || player.classList.contains('ytp-error') || visibleError) {
+    return 'reload';
+  }
 
   // Surveys cover the ad controls, so resolve them before ad-skip discovery.
   const submitPattern = /^(送信|回答を送信|submit|send)$/i;
@@ -67,8 +76,20 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
   }
   if (adShowing && target) return trusted.arm(target, 'skip-ad', 600);
 
-  // An unskippable ad must never fall through to play/fullscreen recovery.
-  if (adShowing) return null;
+  // An unskippable ad must never fall through to content recovery or quality
+  // changes. Re-check soon through the adaptive native cadence instead.
+  if (adShowing) return 'recovery';
+
+  try {
+    const preferredQuality = 'large';
+    if (typeof player.setPlaybackQualityRange === 'function') {
+      player.setPlaybackQualityRange(preferredQuality, preferredQuality);
+    }
+    if (typeof player.setPlaybackQuality === 'function') {
+      player.setPlaybackQuality(preferredQuality);
+    }
+  } catch (_) {
+  }
 
   const captions = player.querySelector('.ytp-subtitles-button');
   if (captions && captions.getAttribute('aria-pressed') === 'true') {
@@ -79,7 +100,6 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     } catch (_) {}
   }
 
-  const video = player.querySelector('video');
   if (video && video.paused && !video.ended) {
     try {
       const pending = video.play();
@@ -87,6 +107,7 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
     } catch (_) {}
     const play = player.querySelector('.ytp-play-button');
     if (trusted.valid(play)) return trusted.arm(play, 'play', 1500);
+    return 'recovery';
   }
 
   if (trusted.fullscreen()) return null;
