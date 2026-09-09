@@ -11,6 +11,11 @@ namespace hp {
 
 class Renderer;
 
+inline int64_t operator+(
+    const MonotonicElapsedTimestamp& timestamp, int intervalMs) noexcept {
+  return timestamp + static_cast<int64_t>(intervalMs);
+}
+
 class StationheadFallbackRevisionGate {
  public:
   StationheadFallbackRevisionGate& operator=(uint64_t healthyRevision) noexcept {
