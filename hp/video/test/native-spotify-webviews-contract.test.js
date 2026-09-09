@@ -106,14 +106,16 @@ test('Spotify player pages reduce decorative work without blocking audio/media r
   assert.doesNotMatch(spotify, /COREWEBVIEW2_WEB_RESOURCE_CONTEXT_SCRIPT/);
 });
 
-test('YouTube phase starts the Spotify cycle and TVer leaves an active A-B-C-D rotation intact', () => {
+test('YouTube/TVer phase notification cannot mutate Spotify playback state', () => {
   assert.match(mediaPanel, /kNativeMediaPhaseMs = 60U \* 60U \* 1000U/);
   assert.match(mediaWrapper, /SetSpotifyMediaPhase\(phase_ == Phase::Tver\)/);
-  assert.match(header, /void SetPodcastMode\(bool podcastWindowActive\) noexcept/);
-  assert.match(header, /void SetSpotifyMediaPhase\(bool tverPhase\) noexcept/);
-  assert.match(lifecycle, /gSpotifyWebViews->SetPodcastMode\(!tverPhase\)/);
-  assert.match(lifecycle, /gSpotifyWebViews->Start\(\);\s*SetSpotifyMediaPhase\(false\);/);
-  assert.match(schedule, /TVer leaves the current completion-driven rotation untouched/);
+  assert.match(
+    lifecycle,
+    /void SetSpotifyMediaPhase\(bool\) noexcept \{[\s\S]*Spotify intentionally ignores YouTube\/TVer phase changes/,
+  );
+  assert.doesNotMatch(lifecycle + header + schedule, /gSpotifyTverPhase|SetPodcastMode|podcastMode_/);
+  assert.match(spotify, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
+  assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
 test('one adaptive scheduler serializes all five Spotify windows', () => {
