@@ -1,6 +1,9 @@
 import { fetchJson } from "./http";
-import { emptyRadarFrameScore, compareRadarFrameScores, mergeRadarFrameScores, scoreRadarPng, type RadarFrameScore, type RadarPixelArea } from "./radar_intensity";
-import { prewarmRadarBundle } from "./radar_bundle_prewarm";
+import {
+  renderRepresentativeRadarFrame,
+  type BrowserRadarCandidate,
+  type BrowserRadarTile,
+} from "./radar_browser_frame";
 import { radarTileTargetForPath, signedRadarTilePath } from "./radar_tile";
 import type { Env, SourceResult } from "./sources";
 
@@ -9,26 +12,23 @@ const DEFAULT_RADAR_ZOOM = 10;
 const RADAR_SELECTION_MAX_ZOOM = 8;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
-const RADAR_FRAME_INTERVAL_MS = 1_000;
-const RADAR_FRAME_PREFIX = "radar/frames/";
-const RADAR_SCORE_FETCH_CONCURRENCY = 4;
-// The former viewport was 480x320 logical pixels. Keep only its centered 40%
-// so the cloud bundle never signs, prewarms, downloads, or ships outer tiles
-// that the compact native radar panel cannot display.
+const RADAR_FRAME_PREFIX = "radar/frames/representative/";
+const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
 const RADAR_SOURCE_WIDTH = 192;
 const RADAR_SOURCE_HEIGHT = 128;
-const RADAR_OUTPUT_WIDTH = 1920;
-const RADAR_OUTPUT_HEIGHT = 1280;
+const RADAR_OUTPUT_WIDTH = 768;
+const RADAR_OUTPUT_HEIGHT = 512;
+const RADAR_STATUS_FETCH_CONCURRENCY = 4;
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
-const RADAR_FRAME_PATH = /^\/v1\/radar\/frame\/([a-z0-9-]{1,96})\/(\d{14})\.webp$/;
+const RADAR_FRAME_PATH = /^\/v1\/radar\/frame\/representative\/(\d{14})\/(\d{14})\.png$/;
+const RADAR_CLEAR_FRAME_PATH = "/v1/radar/frame/representative/clear.png";
+const RADAR_LEGACY_FRAME_PATH = /^\/v1\/radar\/frame\/([a-z0-9-]{1,96})\/(\d{14})\.webp$/;
 const JMA_OBSERVED_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json";
 const JMA_FORECAST_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json";
 
 export type RadarTimeEntry = { basetime: string; validtime: string; elements?: string[] };
 type RadarTileLayout = { x: number; y: number; destX: number; destY: number };
-type RadarCandidateTile = RadarTileLayout & { pathname: string };
-type RadarCandidateFrame = { entry: RadarTimeEntry; tiles: RadarCandidateTile[] };
-type RadarCandidateResult = { complete: boolean; score: RadarFrameScore };
+type CandidatePresence = "clear" | "rain" | "unknown";
 
 function jmaTimestampToMillis(value: string): number {
   if (value.length !== 14) return 0;
@@ -114,20 +114,30 @@ function envNumber(value: string | undefined, fallback: number, minimum: number,
   return Math.max(minimum, Math.min(maximum, parsed));
 }
 
-function frameKey(variant: string, validTime: string): string {
-  return `${RADAR_FRAME_PREFIX}${variant}/${validTime}.webp`;
+function publicWorkerUrl(env: Env): string {
+  const configured = env.HOMEPANEL_PUBLIC_URL?.trim() ?? "";
+  if (!configured) throw new Error("HOMEPANEL_PUBLIC_URL is required for radar cloud composition");
+  const url = new URL(configured);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("HOMEPANEL_PUBLIC_URL must be HTTP(S)");
+  }
+  return `${url.protocol}//${url.host}`;
 }
 
 function radarTilePath(entry: RadarTimeEntry, zoom: number, tile: RadarTileLayout): string {
   return `/v1/radar/tile/jma/${entry.basetime}/${entry.validtime}/${zoom}/${tile.x}/${tile.y}.png`;
 }
 
-function visibleTileArea(tile: RadarTileLayout, width: number, height: number): RadarPixelArea | null {
-  const left = Math.max(0, -tile.destX);
-  const top = Math.max(0, -tile.destY);
-  const right = Math.min(256, width - tile.destX);
-  const bottom = Math.min(256, height - tile.destY);
-  return right > left && bottom > top ? { left, top, right, bottom } : null;
+function representativeFrameKey(baseTime: string, validTime: string): string {
+  return `${RADAR_FRAME_PREFIX}${baseTime}-${validTime}.png`;
+}
+
+function clearFrameKey(): string {
+  return `${RADAR_FRAME_PREFIX}clear.png`;
+}
+
+function representativeFramePath(baseTime: string, validTime: string): string {
+  return `/v1/radar/frame/representative/${baseTime}/${validTime}.png`;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -137,11 +147,10 @@ async function mapWithConcurrency<T, R>(
 ): Promise<R[]> {
   const results = new Array<R>(values.length);
   let nextIndex = 0;
-  const workerCount = Math.min(values.length, Math.max(1, Math.trunc(concurrency)));
-  await Promise.all(Array.from({ length: workerCount }, async () => {
+  const workers = Math.min(values.length, Math.max(1, Math.trunc(concurrency)));
+  await Promise.all(Array.from({ length: workers }, async () => {
     for (;;) {
-      const index = nextIndex;
-      nextIndex += 1;
+      const index = nextIndex++;
       if (index >= values.length) return;
       results[index] = await operation(values[index]!, index);
     }
@@ -149,79 +158,91 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-async function scoreRadarTile(pathname: string, area: RadarPixelArea): Promise<RadarFrameScore | null> {
-  const target = radarTileTargetForPath(pathname);
-  if (!target) return null;
-  try {
-    const response = await fetch(target.upstream, {
-      headers: { "User-Agent": "HomePanel-Cloud/2.6" },
-      cf: { cacheEverything: true, cacheTtl: target.ttl },
-    });
-    if (response.status === 404) {
+async function candidatePresence(
+  entry: RadarTimeEntry,
+  layout: readonly RadarTileLayout[],
+  zoom: number,
+): Promise<CandidatePresence> {
+  const statuses = await mapWithConcurrency(layout, RADAR_STATUS_FETCH_CONCURRENCY, async tile => {
+    const target = radarTileTargetForPath(radarTilePath(entry, zoom, tile));
+    if (!target) return "unknown" as const;
+    try {
+      const response = await fetch(target.upstream, {
+        headers: { "User-Agent": "HomePanel-Cloud/2.6" },
+        cf: { cacheEverything: true, cacheTtl: target.ttl },
+      });
       await response.body?.cancel();
-      return emptyRadarFrameScore();
+      if (response.status === 404) return "clear" as const;
+      if (response.ok) return "rain" as const;
+      return "unknown" as const;
+    } catch {
+      return "unknown" as const;
     }
-    if (!response.ok) {
-      await response.body?.cancel();
-      return null;
-    }
-    return await scoreRadarPng(new Uint8Array(await response.arrayBuffer()), area);
-  } catch (error) {
-    console.warn("radar selection tile analysis failed", error instanceof Error ? error.message : String(error));
-    return null;
-  }
+  });
+  if (statuses.some(status => status === "rain")) return "rain";
+  if (statuses.every(status => status === "clear")) return "clear";
+  return "unknown";
 }
 
-async function scoreRadarCandidates(
-  candidates: readonly RadarCandidateFrame[],
-  sourceWidth: number,
-  sourceHeight: number,
-): Promise<RadarCandidateResult[]> {
-  const work: Array<{ frameIndex: number; tile: RadarCandidateTile; area: RadarPixelArea }> = [];
-  for (let frameIndex = 0; frameIndex < candidates.length; frameIndex += 1) {
-    for (const tile of candidates[frameIndex]!.tiles) {
-      const area = visibleTileArea(tile, sourceWidth, sourceHeight);
-      if (area) work.push({ frameIndex, tile, area });
-    }
-  }
-  const tileScores = await mapWithConcurrency(work, RADAR_SCORE_FETCH_CONCURRENCY, item => (
-    scoreRadarTile(item.tile.pathname, item.area)
-  ));
-  const byFrame: Array<Array<RadarFrameScore | null>> = Array.from(
-    { length: candidates.length },
-    () => [],
-  );
-  for (let index = 0; index < work.length; index += 1) {
-    byFrame[work[index]!.frameIndex]!.push(tileScores[index] ?? null);
-  }
-  return byFrame.map((scores, index) => {
-    const expected = candidates[index]!.tiles.length;
-    if (scores.length !== expected || scores.some(score => score === null)) {
-      return { complete: false, score: emptyRadarFrameScore() };
-    }
-    return {
-      complete: true,
-      score: mergeRadarFrameScores(scores as RadarFrameScore[]),
-    };
+async function signedBrowserTiles(
+  env: Env,
+  entry: RadarTimeEntry,
+  zoom: number,
+  layout: readonly RadarTileLayout[],
+  expires: number,
+): Promise<BrowserRadarTile[]> {
+  return Promise.all(layout.map(async tile => ({
+    destX: tile.destX,
+    destY: tile.destY,
+    url: await signedRadarTilePath(env, radarTilePath(entry, zoom, tile), expires),
+  })));
+}
+
+async function writeRepresentativeFrame(
+  env: Env,
+  key: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
+  await env.UPDATE_BUCKET.put(key, bytes, {
+    httpMetadata: { contentType: "image/png" },
   });
 }
 
-function bestCandidateIndex(results: readonly RadarCandidateResult[]): number {
-  let best = 0;
-  for (let index = 1; index < results.length; index += 1) {
-    if (compareRadarFrameScores(results[index]!.score, results[best]!.score) > 0) best = index;
-  }
-  return best;
+async function ensureClearFrame(
+  env: Env,
+  renderRequest: Parameters<typeof renderRepresentativeRadarFrame>[1],
+): Promise<void> {
+  if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
+  const existing = await env.UPDATE_BUCKET.head(clearFrameKey());
+  if (existing) return;
+  const rendered = await renderRepresentativeRadarFrame(env, {
+    ...renderRequest,
+    candidates: [],
+    forcedIndex: 0,
+    displayTiles: async () => [],
+  });
+  await writeRepresentativeFrame(env, clearFrameKey(), rendered.png);
 }
 
 export async function radarFrameResponse(pathname: string, env: Env): Promise<Response> {
-  const match = pathname.match(RADAR_FRAME_PATH);
-  if (!match || !env.UPDATE_BUCKET) return new Response(null, { status: 404 });
-  const object = await env.UPDATE_BUCKET.get(frameKey(match[1]!, match[2]!));
+  if (!env.UPDATE_BUCKET) return new Response(null, { status: 404 });
+  let key = "";
+  const representative = pathname.match(RADAR_FRAME_PATH);
+  if (representative) {
+    key = representativeFrameKey(representative[1]!, representative[2]!);
+  } else if (pathname === RADAR_CLEAR_FRAME_PATH) {
+    key = clearFrameKey();
+  } else {
+    const legacy = pathname.match(RADAR_LEGACY_FRAME_PATH);
+    if (!legacy) return new Response(null, { status: 404 });
+    key = `${RADAR_LEGACY_FRAME_PREFIX}${legacy[1]}/${legacy[2]}.webp`;
+  }
+  const object = await env.UPDATE_BUCKET.get(key);
   if (!object?.body) return new Response(null, { status: 404 });
   const headers = new Headers();
   object.writeHttpMetadata(headers);
-  headers.set("Content-Type", "image/webp");
+  if (!headers.has("Content-Type")) headers.set("Content-Type", pathname.endsWith(".png") ? "image/png" : "image/webp");
   headers.set("Cache-Control", "private, max-age=10800, immutable");
   if (object.httpEtag) headers.set("ETag", object.httpEtag);
   return new Response(object.body, { headers });
@@ -234,23 +255,26 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   ]);
   const entries = selectRadarForecastEntries(observed, forecast);
   if (entries.length < 2) throw new Error("JMA current-to-60-minute forecast frames are unavailable");
+  if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
+
   const currentAt = jmaTimestampToMillis(entries[0]!.validtime);
-  const width = RADAR_SOURCE_WIDTH;
-  const height = RADAR_SOURCE_HEIGHT;
   const zoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
   const center = {
     lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),
     lon: envNumber(env.RADAR_CENTER_LON, DEFAULT_RADAR_CENTER.lon, -180, 180),
   };
-
-  // Rank every 5-minute frame using lower-zoom JMA tiles. At the default z10
-  // display this reduces the scoring viewport from 192x128 to 48x32 pixels at
-  // z8 and normally needs one tile per frame, keeping Worker CPU/subrequests
-  // suitable for the free tier while preserving the same geographic extent.
+  const publicUrl = publicWorkerUrl(env);
+  const displayLayout = radarTileLayout(
+    center.lat,
+    center.lon,
+    zoom,
+    RADAR_SOURCE_WIDTH,
+    RADAR_SOURCE_HEIGHT,
+  );
   const selectionZoom = Math.min(zoom, RADAR_SELECTION_MAX_ZOOM);
   const selectionScale = 2 ** (zoom - selectionZoom);
-  const selectionWidth = Math.max(1, Math.ceil(width / selectionScale));
-  const selectionHeight = Math.max(1, Math.ceil(height / selectionScale));
+  const selectionWidth = Math.max(1, Math.ceil(RADAR_SOURCE_WIDTH / selectionScale));
+  const selectionHeight = Math.max(1, Math.ceil(RADAR_SOURCE_HEIGHT / selectionScale));
   const selectionLayout = radarTileLayout(
     center.lat,
     center.lon,
@@ -258,60 +282,98 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     selectionWidth,
     selectionHeight,
   );
-  const candidates: RadarCandidateFrame[] = entries.map(entry => ({
-    entry,
-    tiles: selectionLayout.map(tile => ({
-      ...tile,
-      pathname: radarTilePath(entry, selectionZoom, tile),
-    })),
-  }));
-  const candidateResults = await scoreRadarCandidates(candidates, selectionWidth, selectionHeight);
-  const allComplete = candidateResults.length === candidates.length
-      && candidateResults.every(result => result.complete);
-  const selectedIndex = allComplete ? bestCandidateIndex(candidateResults) : 0;
-  const selectedEntry = entries[selectedIndex]!;
-  const selectedScore = candidateResults[selectedIndex]?.score ?? emptyRadarFrameScore();
-  const noRainForecast = allComplete && selectedScore.rainSamples === 0;
 
-  const displayLayout = radarTileLayout(center.lat, center.lon, zoom, width, height);
+  // A 404 from JMA means an empty transparent tile. This cheap status pass
+  // avoids spending Browser Run minutes when the whole forecast window is dry.
+  const presence = await mapWithConcurrency(entries, RADAR_STATUS_FETCH_CONCURRENCY, entry => (
+    candidatePresence(entry, selectionLayout, selectionZoom)
+  ));
+  const possible = entries.map((_, index) => index).filter(index => presence[index] !== "clear");
+  const noRainForecast = possible.length === 0;
   const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
-  const tiles = noRainForecast ? [] : await Promise.all(displayLayout.map(async tile => {
-    const pathname = radarTilePath(selectedEntry, zoom, tile);
-    return { ...tile, url: await signedRadarTilePath(env, pathname, expires) };
-  }));
+
+  const baseRenderRequest = {
+    publicUrl,
+    candidates: [] as BrowserRadarCandidate[],
+    displayTiles: async (_selectedIndex: number) => [] as BrowserRadarTile[],
+    selectionWidth,
+    selectionHeight,
+    outputWidth: RADAR_OUTPUT_WIDTH,
+    outputHeight: RADAR_OUTPUT_HEIGHT,
+    sourceWidth: RADAR_SOURCE_WIDTH,
+    sourceHeight: RADAR_SOURCE_HEIGHT,
+  };
+
+  let selectedIndex = 0;
+  let selectionStrategy = "dry-window-v1";
+  let rainSamples = 0;
+  let intensityPoints = 0;
+  let maxIntensityRank = 0;
+  let score = 0;
+  let framePath = RADAR_CLEAR_FRAME_PATH;
+
+  if (noRainForecast) {
+    await ensureClearFrame(env, baseRenderRequest);
+  } else {
+    const candidates = await Promise.all(possible.map(async index => ({
+      index,
+      tiles: await signedBrowserTiles(env, entries[index]!, selectionZoom, selectionLayout, expires),
+    })));
+    const forcedIndex = possible.length === 1 && presence[possible[0]!] === "rain"
+      ? possible[0]
+      : undefined;
+    const rendered = await renderRepresentativeRadarFrame(env, {
+      ...baseRenderRequest,
+      candidates,
+      ...(forcedIndex === undefined ? {} : { forcedIndex }),
+      displayTiles: index => signedBrowserTiles(env, entries[index]!, zoom, displayLayout, expires),
+    });
+    selectedIndex = rendered.selectedIndex;
+    rainSamples = rendered.rainSamples;
+    intensityPoints = rendered.intensityPoints;
+    maxIntensityRank = rendered.maxIntensityRank;
+    score = rendered.score;
+    selectionStrategy = forcedIndex === undefined
+      ? "browser-weighted-coverage-intensity-v1"
+      : "single-rainy-frame-v1";
+    const selectedEntry = entries[selectedIndex]!;
+    const key = representativeFrameKey(selectedEntry.basetime, selectedEntry.validtime);
+    await writeRepresentativeFrame(env, key, rendered.png);
+    framePath = representativeFramePath(selectedEntry.basetime, selectedEntry.validtime);
+  }
+
+  const selectedEntry = entries[selectedIndex]!;
   const frame = {
     baseTime: selectedEntry.basetime,
     validTime: selectedEntry.validtime,
     validAt: jmaTimestampToMillis(selectedEntry.validtime),
-    tiles,
+    tiles: [{ url: framePath, destX: 0, destY: 0 }],
   };
-  const bundleUrl = tiles.length ? `/v1/radar/bundle/${selectedEntry.basetime}.hpb` : "";
   const payload = {
-    provider: "JMA current-to-60-minute radar forecast; representative frame selected in cloud",
-    precomposed: false,
-    bundleUrl,
-    width,
-    height,
+    provider: "JMA current-to-60-minute radar forecast; one cloud-composited representative frame",
+    precomposed: true,
+    bundleUrl: "",
+    width: RADAR_OUTPUT_WIDTH,
+    height: RADAR_OUTPUT_HEIGHT,
     outputWidth: RADAR_OUTPUT_WIDTH,
     outputHeight: RADAR_OUTPUT_HEIGHT,
     center,
     zoom,
     forecastWindowMs: RADAR_FORECAST_WINDOW_MS,
-    frameIntervalMs: RADAR_FRAME_INTERVAL_MS,
     noRainForecast,
     selection: {
-      strategy: allComplete ? "weighted-coverage-intensity-v1" : "fallback-current-v1",
+      strategy: selectionStrategy,
       scoringZoom: selectionZoom,
       candidateCount: entries.length,
-      rainSamples: selectedScore.rainSamples,
-      intensityPoints: selectedScore.intensityPoints,
-      maxIntensityRank: selectedScore.maxIntensityRank,
-      score: selectedScore.score,
+      evaluatedCandidateCount: possible.length,
+      rainSamples,
+      intensityPoints,
+      maxIntensityRank,
+      score,
     },
     frames: [frame],
     legend: RADAR_LEGEND,
   };
-  if (tiles.length) await prewarmRadarBundle(env, payload, entries[0]!.basetime);
   return {
     source: "radar",
     payload,
