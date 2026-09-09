@@ -1,12 +1,12 @@
-// Low-peak TVer episode loop. Series-page discovery remains in the existing
-// static loop; episode pages use this bounded player-local policy instead of
-// scanning the entire document for ads and controls every four seconds.
+// Low-peak TVer episode policy. Playback state is maintained from DOM/media
+// events; the native watchdog is only a low-frequency trusted-input fallback.
 namespace {
 constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp' ||
       !location.pathname.startsWith('/episodes/')) return null;
-  if (window.__homePanelSakuraMeetsLoopTimer) return true;
+  if (window.__homePanelTverEpisodePolicyInstalled) return true;
+  window.__homePanelTverEpisodePolicyInstalled = true;
 
   const playbackRate = 1.75;
   const seriesPathKey = '__homePanelTverSeriesPath';
@@ -49,7 +49,6 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
     return source ? source + '|' + duration
                   : (duration > 0 ? 'duration:' + duration : '');
   };
-  const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
   const storedSeriesPath = () => {
     try {
       const path = sessionStorage.getItem(seriesPathKey) || '';
@@ -58,6 +57,7 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
       return '/series/srx97ftk3w';
     }
   };
+  const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
   const advanceEpisodeOrSeries = () => {
     const seriesPath = storedSeriesPath();
     try {
@@ -70,10 +70,7 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
       });
       const nextIndex = (currentIndex >= 0 ? currentIndex : queue.index) + 1;
       if (nextIndex >= 0 && nextIndex < queue.hrefs.length) {
-        sessionStorage.setItem(key, JSON.stringify({
-          hrefs: queue.hrefs,
-          index: nextIndex,
-        }));
+        sessionStorage.setItem(key, JSON.stringify({ hrefs: queue.hrefs, index: nextIndex }));
         location.replace(queue.hrefs[nextIndex]);
         return true;
       }
@@ -82,14 +79,11 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
     }
     return false;
   };
-)JS"
-LR"JS(
 
   const explicitAdMarker = video => {
     const root = playerRootFor(video);
-    if (!root || !video) return false;
     const videoRect = visibleRect(video);
-    if (!videoRect) return false;
+    if (!root || !videoRect) return false;
     const selectors = [
       '[aria-label*="広告"]', '[title*="広告"]',
       '[aria-label*="CM"]', '[title*="CM"]',
@@ -116,9 +110,6 @@ LR"JS(
     const currentTime = Number.isFinite(video.currentTime) ? video.currentTime : 0;
     const shortAdLength = duration >= 5 && duration <= 65;
     const identity = mediaIdentity(video);
-
-    // Continue a known ad from media facts first. This avoids any DOM selector
-    // work on most ad watchdog passes.
     if (state.adActive) {
       if (state.adVideo !== video) return false;
       if (state.adIdentity && identity && state.adIdentity !== identity) return false;
@@ -129,23 +120,62 @@ LR"JS(
       }
       return explicitAdMarker(video);
     }
-
     const replacementVideo = state.video && state.video !== video &&
         state.maxTime >= 5 && shortAdLength;
     const sameVideoReset = state.video === video && state.maxTime >= 10 &&
         shortAdLength && currentTime < 5 && video.playbackRate <= 1.05;
-    if (replacementVideo || sameVideoReset) return true;
-    return explicitAdMarker(video);
+    return replacementVideo || sameVideoReset || explicitAdMarker(video);
+  };
+
+  let ensureTimer = 0;
+  const scheduleEnsure = (delay = 250) => {
+    if (ensureTimer) return;
+    ensureTimer = window.setTimeout(() => {
+      ensureTimer = 0;
+      ensure();
+    }, delay);
+  };
+
+  const bindVideoEvents = (video, state) => {
+    if (!video || video.__homePanelTverEventState === state) return;
+    video.__homePanelTverEventState = state;
+    video.addEventListener('timeupdate', () => {
+      if (window.__homePanelSakuraMeetsState !== state) return;
+      if (Number.isFinite(video.currentTime)) {
+        state.maxTime = Math.max(state.maxTime, video.currentTime);
+      }
+      if (Number.isFinite(video.duration)) {
+        state.maxDuration = Math.max(state.maxDuration, video.duration);
+      }
+    });
+    video.addEventListener('ratechange', () => {
+      if (window.__homePanelSakuraMeetsState !== state || state.adActive ||
+          window.__homePanelTverAdActive) return;
+      if (video.playbackRate !== playbackRate) {
+        try {
+          video.defaultPlaybackRate = playbackRate;
+          video.playbackRate = playbackRate;
+        } catch (_) {}
+      }
+    });
+    video.addEventListener('ended', () => {
+      if (window.__homePanelSakuraMeetsState !== state || state.adActive) return;
+      state.endCandidateAt = Date.now();
+      const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
+      window.setTimeout(scheduleEnsure, stableEndDelayMs + 100);
+    });
+    for (const eventName of ['play', 'pause', 'loadedmetadata', 'emptied']) {
+      video.addEventListener(eventName, scheduleEnsure);
+    }
   };
 
   const ensure = () => {
     try {
-      const path = location.pathname;
-      if (!path.startsWith('/episodes/')) return;
+      if (!location.pathname.startsWith('/episodes/')) return;
       let state = window.__homePanelSakuraMeetsState;
-      if (!state || state.path !== path) {
+      if (!state || state.path !== location.pathname) {
         state = {
-          path,
+          path: location.pathname,
           video: null,
           maxDuration: 0,
           maxTime: 0,
@@ -162,20 +192,8 @@ LR"JS(
         window.__homePanelSakuraMeetsState = state;
       }
 
-      if (!window.__homePanelTverFullscreenTrackerBound) {
-        const markFullscreenState = () => {
-          const activeState = window.__homePanelSakuraMeetsState;
-          if (!activeState) return;
-          const fullscreen = document.fullscreenElement ||
-              document.webkitFullscreenElement || document.msFullscreenElement;
-          activeState.fullscreenDirty = !fullscreen;
-        };
-        document.addEventListener('fullscreenchange', markFullscreenState);
-        document.addEventListener('webkitfullscreenchange', markFullscreenState);
-        window.__homePanelTverFullscreenTrackerBound = true;
-      }
-
       const video = currentVideo();
+      bindVideoEvents(video, state);
       const advertisementActive = detectAd(video, state);
       if (advertisementActive) {
         const identity = mediaIdentity(video);
@@ -194,22 +212,10 @@ LR"JS(
               if (video.playbackRate !== 1.0) video.playbackRate = 1.0;
             } catch (_) {}
           }
-          try {
-            const fullscreen = document.fullscreenElement ||
-                document.webkitFullscreenElement || document.msFullscreenElement;
-            const exitFullscreen = document.exitFullscreen ||
-                document.webkitExitFullscreen || document.msExitFullscreen;
-            if (fullscreen && typeof exitFullscreen === 'function') {
-              const result = exitFullscreen.call(document);
-              if (result && typeof result.catch === 'function') result.catch(() => {});
-            }
-          } catch (_) {}
         }
         window.__homePanelTverAdActive = true;
         return;
       }
-)JS"
-LR"JS(
 
       if (state.adActive) {
         state.adActive = false;
@@ -234,21 +240,8 @@ LR"JS(
         state.fullscreenDirty = true;
       }
       if (!video) return;
+      bindVideoEvents(video, state);
 
-      if (video.__homePanelTverRateGuardState !== state) {
-        video.__homePanelTverRateGuardState = state;
-        video.addEventListener('ratechange', () => {
-          const activeState = window.__homePanelSakuraMeetsState;
-          if (activeState !== state || activeState.adActive ||
-              window.__homePanelTverAdActive) return;
-          if (video.playbackRate !== playbackRate) {
-            try {
-              video.defaultPlaybackRate = playbackRate;
-              video.playbackRate = playbackRate;
-            } catch (_) {}
-          }
-        });
-      }
       if (!state.playbackSettingsApplied) {
         try {
           video.defaultPlaybackRate = playbackRate;
@@ -258,25 +251,17 @@ LR"JS(
         } catch (_) {}
         state.playbackSettingsApplied = true;
       }
-
       if (Number.isFinite(video.duration)) {
         state.maxDuration = Math.max(state.maxDuration, video.duration);
       }
       if (Number.isFinite(video.currentTime)) {
         state.maxTime = Math.max(state.maxTime, video.currentTime);
       }
-      if (video.__homePanelTverEndState !== state) {
-        video.__homePanelTverEndState = state;
-        video.addEventListener('ended', () => {
-          if (window.__homePanelSakuraMeetsState === state && !state.adActive) {
-            state.endCandidateAt = Date.now();
-          }
-        });
-      }
-      if (video.ended && !state.endCandidateAt) state.endCandidateAt = Date.now();
-      if (state.endCandidateAt && !video.ended && !video.paused &&
-          Number.isFinite(video.currentTime) && video.currentTime < 3) {
-        state.endCandidateAt = 0;
+
+      if (video.ended && !state.endCandidateAt) {
+        state.endCandidateAt = Date.now();
+        const stableEndDelayMs = state.maxDuration < 600 ? 8000 : 2500;
+        window.setTimeout(scheduleEnsure, stableEndDelayMs + 100);
       }
       const completedItem = state.maxDuration >= 5 &&
           state.maxTime >= Math.max(3, state.maxDuration - 10);
@@ -288,11 +273,7 @@ LR"JS(
         state.restartRequested = true;
         return;
       }
-)JS"
-LR"JS(
 
-      // Quality discovery is player-local and one-shot. Once low quality is set,
-      // healthy passes do not enumerate controls at all.
       if (!state.lowQualitySet) {
         const root = playerRootFor(video);
         if (root) {
@@ -325,8 +306,15 @@ LR"JS(
     }
   };
 
+  const root = document.documentElement || document.body;
+  if (root && typeof MutationObserver === 'function') {
+    const observer = new MutationObserver(scheduleEnsure);
+    observer.observe(root, { childList: true, subtree: true });
+    window.__homePanelTverEpisodeObserver = observer;
+  }
+  document.addEventListener('fullscreenchange', scheduleEnsure, true);
+  document.addEventListener('webkitfullscreenchange', scheduleEnsure, true);
   ensure();
-  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 4000);
   return true;
 })()
 )JS";
