@@ -91,10 +91,11 @@ bool NativeMediaWebViewSourceContains(
   return value.find(needle) != std::wstring::npos;
 }
 
-void NativeMediaEnsureYoutubeTrustedAction(ICoreWebView2* webview) noexcept {
-  // A WebView survives YouTube SPA navigations, while the document/global can
-  // change. Bootstrap once per observed source instead of re-sending the helper
-  // on every one-second watchdog tick.
+void NativeMediaEnsureYoutubeTrustedAction(
+    ICoreWebView2* webview, bool force = false) noexcept {
+  // The helper belongs to the current JavaScript document. Cache by WebView and
+  // URL for the one-second watchdog, but force reinjection from the clean-player
+  // NavigationCompleted path so a same-URL document reload cannot lose it.
   static ICoreWebView2* installedWebview = nullptr;
   static std::wstring installedSource;
   if (!webview) return;
@@ -103,7 +104,7 @@ void NativeMediaEnsureYoutubeTrustedAction(ICoreWebView2* webview) noexcept {
   if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
-  if (installedWebview == webview && installedSource == source) return;
+  if (!force && installedWebview == webview && installedSource == source) return;
 
   const HRESULT started = webview->ExecuteScript(
       kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr);
@@ -167,6 +168,10 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       std::wstring_view(script).find(L"__homePanelMediaPhaseTime") !=
           std::wstring_view::npos) {
     return kNativeMediaPhaseOverlaySuppressionScript;
+  }
+  if (script == kNativeMediaYoutubeCleanPlayerScript) {
+    NativeMediaEnsureYoutubeTrustedAction(webview, true);
+    return script;
   }
   if (script == kNativeMediaTverLoopScript &&
       NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
