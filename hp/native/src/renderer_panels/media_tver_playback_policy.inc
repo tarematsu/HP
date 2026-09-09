@@ -11,6 +11,7 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
   const pendingEpisodeKey = seriesPath =>
       '__homePanelTverAcceptNextEpisode:' + seriesPath;
+  const guardedEpisodePathKey = '__homePanelTverGuardedEpisodePath';
   const normalizeEpisodeHref = href => {
     try {
       const url = new URL(href, location.href);
@@ -23,6 +24,11 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     }
   };
   const guardSeriesEpisode = () => {
+    // A successful guard is document-local. The queue cannot legitimately drop
+    // the current episode without a navigation, so avoid reparsing JSON every
+    // four-second watchdog pass on the steady path.
+    if (window[guardedEpisodePathKey] === location.pathname) return true;
+
     let seriesPath = '';
     try { seriesPath = sessionStorage.getItem(seriesPathKey) || ''; }
     catch (_) {}
@@ -45,7 +51,10 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
         try { return new URL(href).pathname === location.pathname; }
         catch (_) { return false; }
       });
-      if (currentAllowed) return true;
+      if (currentAllowed) {
+        window[guardedEpisodePathKey] = location.pathname;
+        return true;
+      }
       location.replace('https://tver.jp' + seriesPath);
       return false;
     }
@@ -63,6 +72,7 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
             key, JSON.stringify({ hrefs: [currentHref], index: 0 }));
       } catch (_) {
       }
+      window[guardedEpisodePathKey] = location.pathname;
       return true;
     }
 
@@ -72,25 +82,26 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   if (!guardSeriesEpisode()) return null;
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const visible = element => {
+  const visibleRect = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
-        element.getAttribute('aria-hidden') === 'true') return false;
+        element.getAttribute('aria-hidden') === 'true') return null;
     const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' ||
+        style.pointerEvents === 'none') return null;
     const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
+    return rect.width > 0 && rect.height > 0 ? rect : null;
   };
+  const visible = element => !!visibleRect(element);
   const labelOf = element => normalize(
       (element.getAttribute('aria-label') || '') + ' ' +
       (element.getAttribute('title') || '') + ' ' +
       (element.getAttribute('data-testid') || '') + ' ' +
       (element.textContent || ''));
   const point = element => {
-    if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
-      return null;
-    }
-    const rect = element.getBoundingClientRect();
+    if (window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+    const rect = visibleRect(element);
+    if (!rect) return null;
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     if (centerX < 0 || centerX > window.innerWidth ||
@@ -101,34 +112,61 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     ];
   };
 
-  const controls = Array.from(document.querySelectorAll(
-      'button, [role="button"], a, [aria-label], [title]'));
-
-  // A survey can cover the player and must be dismissed before any playback
-  // recovery or fullscreen action is attempted.
-  const surveyClose = controls.find(element => {
-    if (!visible(element)) return false;
-    const label = labelOf(element);
-    if (!/(?:閉じる|とじる|close|dismiss)/i.test(label)) return false;
-    let scope = element;
-    for (let depth = 0; scope && depth < 10;
-         ++depth, scope = scope.parentElement) {
-      if (/(?:アンケート|ご回答|回答する|誕生年|誕生月|性別)/.test(
-          normalize(scope.textContent))) return true;
+  // Survey detection is intentionally bounded to modal/survey roots. The old
+  // policy enumerated every button/link on the TVer document every four seconds,
+  // which produced visible CPU peaks on low-end devices.
+  const surveyRoots = Array.from(document.querySelectorAll(
+      '[role="dialog"], [aria-modal="true"], [data-testid*="survey" i], '
+      + '[class*="survey" i], [class*="questionnaire" i]'));
+  const surveyClose = (() => {
+    for (const root of surveyRoots) {
+      if (!/(?:アンケート|ご回答|回答する|誕生年|誕生月|性別)/.test(
+          normalize(root.textContent))) continue;
+      const candidates = root.querySelectorAll(
+          'button, [role="button"], a, [aria-label], [title]');
+      for (const element of candidates) {
+        if (!visible(element)) continue;
+        if (/(?:閉じる|とじる|close|dismiss)/i.test(labelOf(element))) {
+          return element;
+        }
+      }
     }
-    const dialog = element.closest('[role="dialog"], [aria-modal="true"]');
-    return !!dialog &&
-        /(?:アンケート|ご回答|回答する|誕生年|誕生月|性別)/.test(
-            normalize(dialog.textContent));
-  });
+    return null;
+  })();
   if (surveyClose) return point(surveyClose);
 
   const state = window.__homePanelSakuraMeetsState;
   if (state && state.restartRequested) return 'restart';
   if ((state && state.adActive) || window.__homePanelTverAdActive) return null;
 
-  const video = Array.from(document.querySelectorAll('video')).find(visible) || null;
-  const playButton = controls.find(element => {
+  let video = null;
+  for (const candidate of document.querySelectorAll('video')) {
+    if (visible(candidate)) {
+      video = candidate;
+      break;
+    }
+    if (!video) video = candidate;
+  }
+
+  const playerRootFor = media => {
+    if (!media) return document.body || document.documentElement;
+    let root = media.parentElement;
+    let best = root || media;
+    for (let depth = 0; root && root !== document.body && depth < 5; ++depth) {
+      best = root;
+      root = root.parentElement;
+    }
+    return best || document.body || document.documentElement;
+  };
+  let cachedPlayerControls = null;
+  const playerControls = () => {
+    if (cachedPlayerControls) return cachedPlayerControls;
+    const root = playerRootFor(video);
+    cachedPlayerControls = Array.from(root.querySelectorAll(
+        'button, [role="button"], a, [aria-label], [title]'));
+    return cachedPlayerControls;
+  };
+  const findPlayButton = () => playerControls().find(element => {
     if (!visible(element) || !element.matches('button, [role="button"]')) return false;
     const label = labelOf(element).toLowerCase();
     if (/(?:一時停止|pause)/i.test(label)) return false;
@@ -137,13 +175,16 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   }) || null;
 
   // Recovery is idempotent first: play() can only move a paused video toward
-  // playback. If TVer/browser policy rejects that request, spend one trusted
-  // click on an explicit Play control on the next watchdog pass. Never click the
-  // video surface because it toggles play/pause and races with TVer's own resume.
-  if (!video) return playButton ? point(playButton) : null;
+  // playback. Only build the player-control list after a rejected play() or when
+  // no video exists, keeping the common healthy pass small.
+  if (!video) {
+    const playButton = findPlayButton();
+    return playButton ? point(playButton) : null;
+  }
   if (video.paused && !video.ended) {
     if (video.__homePanelTverResumeBlocked) {
       video.__homePanelTverResumeBlocked = false;
+      const playButton = findPlayButton();
       return playButton ? point(playButton) : null;
     }
     try {
@@ -163,16 +204,23 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   video.__homePanelTverResumeBlocked = false;
 
   // Playback recovery takes precedence over fullscreen. Once stable playback is
-  // confirmed, enter fullscreen only when the legacy loop marks it dirty.
+  // confirmed, a clean fullscreen state exits before any player-control scan.
   if (state && state.fullscreenDirty === false) return null;
-  const fullscreen = document.fullscreenElement || document.webkitFullscreenElement ||
-      document.msFullscreenElement || controls.some(element => {
-        if (!visible(element)) return false;
-        const label = labelOf(element).toLowerCase();
-        return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
-               label.includes('exit fullscreen');
-      });
-  if (fullscreen) {
+  const browserFullscreen = document.fullscreenElement ||
+      document.webkitFullscreenElement || document.msFullscreenElement;
+  if (browserFullscreen) {
+    if (state) state.fullscreenDirty = false;
+    return null;
+  }
+
+  const controls = playerControls();
+  const exitFullscreenControl = controls.some(element => {
+    if (!visible(element)) return false;
+    const label = labelOf(element).toLowerCase();
+    return /全画面を終了|全画面解除|フルスクリーンを終了/.test(label) ||
+           label.includes('exit fullscreen');
+  });
+  if (exitFullscreenControl) {
     if (state) state.fullscreenDirty = false;
     return null;
   }
