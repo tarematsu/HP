@@ -2,9 +2,9 @@ namespace hp {
 namespace {
 
 // One delegated observer per Spotify document covers media created after
-// navigation. It prefers the direct /track/ identity, falls back to MediaSession
-// title only while the DOM identity is unavailable, and tags every native event
-// with the current target generation.
+// navigation. It prefers the direct /track/ identity from the actual player UI,
+// falls back to MediaSession title only while that identity is unavailable, and
+// tags every native event with the current target generation.
 constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverInstalled) return true;
@@ -75,7 +75,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
   const currentTrack = () => {
     for (const selector of [
       '[data-testid="now-playing-widget"] a[href*="/track/"]',
-      '[data-testid="context-item-link"][href*="/track/"]'
+      '[data-testid="now-playing-bar"] [data-testid="context-item-link"][href*="/track/"]',
+      'footer [data-testid="context-item-link"][href*="/track/"]'
     ]) {
       const link = document.querySelector(selector);
       if (!link) continue;
