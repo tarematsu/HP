@@ -30,7 +30,7 @@ class SpotifyWebViews final {
   static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
  private:
-  static constexpr size_t kAccountCount = 6;
+  static constexpr size_t kAccountCount = 5;
 
   enum class SlotState : unsigned char {
     NotCreated,
