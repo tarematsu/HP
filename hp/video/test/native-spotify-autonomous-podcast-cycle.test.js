@@ -30,12 +30,16 @@ test('each account inserts exactly one TALKABOUT episode after every ten ABCD cy
   assert.match(rotation, /timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL/);
   assert.match(rotation, /BeginPodcastBreak\(slot, now\);[\s\S]*return;/);
   assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
-  assert.match(timed, /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/);
+  assert.match(
+    timed,
+    /target->timedTarget != TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+  );
   assert.match(rotation, /CompletePodcastBreak[\s\S]*ApplyTimedRotationTarget\(slot\)/);
 });
 
-test('music keeps four-minute deadline while podcast break is exempt', () => {
-  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+test('music keeps one shared four-minute deadline while podcast break is exempt', () => {
+  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
+  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
   assert.match(rotation, /BeginPodcastBreak[\s\S]*timedPlaybackStartTick = 0/);
   assert.match(rotation, /podcastBreakActive \|\|[\s\S]*timedPlaybackStartTick == 0/);
 });
