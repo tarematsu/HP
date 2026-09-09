@@ -62,6 +62,7 @@ class SpotifyWebViews final {
     ULONGLONG lastTimedReconcileTick = 0;
     ULONGLONG unhealthySinceTick = 0;
     ULONGLONG targetGeneration = 0;
+    ULONGLONG trustedClickStartTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
     size_t timedRandomDIndex = kNoTimedCatalogIndex;
@@ -69,6 +70,7 @@ class SpotifyWebViews final {
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
+    bool trustedClickInFlight = false;
     bool playerPage = false;
     bool loginPage = false;
     bool timedObserverReady = false;
