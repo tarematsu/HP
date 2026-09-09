@@ -56,10 +56,27 @@ test('YouTube ad skip recognizes both selectors and visible skip labels', () => 
   assert.doesNotMatch(trustedInput, /::SendInput/);
 });
 
-test('YouTube playback quality is pinned to the 720p quality level', () => {
-  assert.match(policy, /setPlaybackQualityRange\('hd720', 'hd720'\)/);
-  assert.match(policy, /setPlaybackQuality\('hd720'\)/);
-  assert.doesNotMatch(policy, /setPlaybackQuality\('large'\)/);
+test('YouTube clean player exposes Skip Ad without restoring unrelated ad chrome', () => {
+  assert.doesNotMatch(policy, /#movie_player\.ad-showing \*/);
+  assert.doesNotMatch(policy, /#movie_player\.ad-interrupting \*/);
+  assert.match(policy, /#movie_player \.ytp-ad-skip-button-modern/);
+  assert.match(policy, /#movie_player \.ytp-share-button/);
+  assert.match(policy, /#movie_player \.ytp-tooltip/);
+  assert.match(policy, /ytd-unified-share-panel-renderer/);
+  assert.match(
+    policy,
+    /tp-yt-paper-dialog:has\(ytd-unified-share-panel-renderer\)/,
+  );
+});
+
+test('YouTube playback quality is pinned to the 480p quality level', () => {
+  assert.match(policy, /const preferredQuality = 'large'/);
+  assert.match(
+    policy,
+    /setPlaybackQualityRange\(preferredQuality, preferredQuality\)/,
+  );
+  assert.match(policy, /setPlaybackQuality\(preferredQuality\)/);
+  assert.doesNotMatch(policy, /hd720/);
 });
 
 test('media host substitutes legacy YouTube scripts with the current policy', () => {
