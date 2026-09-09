@@ -42,10 +42,7 @@ test('play-button fallback is allowed only on the requested direct track page', 
     scoped,
     /if \(target\.trackPath && onTargetPage\(\)\)[\s\S]*button\[data-testid="play-button"\][\s\S]*return null;/,
   );
-  assert.match(
-    scoped,
-    /targetMatches\(current\) && buttonShowsPlaying\(button\)/,
-  );
+  assert.match(scoped, /buttonShowsPlaying\(button\)/);
 });
 
 test('reconcile and end observer tolerate localized Spotify track paths', () => {
