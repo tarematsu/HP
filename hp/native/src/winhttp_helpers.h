@@ -19,6 +19,104 @@ inline std::wstring QueryHeaderValue(HINTERNET request, DWORD query) {
   return value;
 }
 
+struct NetworkClockState {
+  std::mutex mutex;
+  bool synchronized = false;
+  int64_t anchorUnixMs = 0;
+  ULONGLONG anchorTickMs = 0;
+};
+
+inline NetworkClockState& GlobalNetworkClockState() noexcept {
+  static NetworkClockState state;
+  return state;
+}
+
+inline bool UnixMillisFromUtcSystemTime(const SYSTEMTIME& utc, int64_t* output) noexcept {
+  if (!output) return false;
+  FILETIME fileTime{};
+  if (!SystemTimeToFileTime(&utc, &fileTime)) return false;
+  ULARGE_INTEGER ticks{};
+  ticks.LowPart = fileTime.dwLowDateTime;
+  ticks.HighPart = fileTime.dwHighDateTime;
+  constexpr uint64_t kUnixEpochFileTime = 116'444'736'000'000'000ULL;
+  if (ticks.QuadPart < kUnixEpochFileTime) return false;
+  *output = static_cast<int64_t>((ticks.QuadPart - kUnixEpochFileTime) / 10'000ULL);
+  return true;
+}
+
+inline bool UtcSystemTimeFromUnixMillis(int64_t unixMs, SYSTEMTIME* output) noexcept {
+  if (!output || unixMs < 0) return false;
+  constexpr uint64_t kUnixEpochFileTime = 116'444'736'000'000'000ULL;
+  constexpr uint64_t kTicksPerMillisecond = 10'000ULL;
+  const uint64_t value = static_cast<uint64_t>(unixMs);
+  if (value > (std::numeric_limits<uint64_t>::max() - kUnixEpochFileTime) /
+                  kTicksPerMillisecond) {
+    return false;
+  }
+  ULARGE_INTEGER ticks{};
+  ticks.QuadPart = kUnixEpochFileTime + value * kTicksPerMillisecond;
+  FILETIME fileTime{};
+  fileTime.dwLowDateTime = ticks.LowPart;
+  fileTime.dwHighDateTime = ticks.HighPart;
+  return FileTimeToSystemTime(&fileTime, output) != FALSE;
+}
+
+inline bool SynchronizeNetworkClockFromHttpResponse(HINTERNET request) noexcept {
+  if (!request) return false;
+  SYSTEMTIME serverUtc{};
+  DWORD size = sizeof(serverUtc);
+  if (!WinHttpQueryHeaders(
+          request, WINHTTP_QUERY_DATE | WINHTTP_QUERY_FLAG_SYSTEMTIME,
+          WINHTTP_HEADER_NAME_BY_INDEX, &serverUtc, &size,
+          WINHTTP_NO_HEADER_INDEX)) {
+    return false;
+  }
+  int64_t serverUnixMs = 0;
+  if (!UnixMillisFromUtcSystemTime(serverUtc, &serverUnixMs)) return false;
+
+  // HTTP Date has one-second resolution. Anchor at the middle of that second,
+  // then advance only with the monotonic uptime counter. Windows wall-clock and
+  // timezone changes therefore cannot move the dashboard clock.
+  NetworkClockState& state = GlobalNetworkClockState();
+  std::lock_guard lock(state.mutex);
+  state.anchorUnixMs = serverUnixMs + 500;
+  state.anchorTickMs = GetTickCount64();
+  state.synchronized = true;
+  return true;
+}
+
+inline bool NetworkClockUnixMillis(int64_t* output) noexcept {
+  if (!output) return false;
+  NetworkClockState& state = GlobalNetworkClockState();
+  std::lock_guard lock(state.mutex);
+  if (!state.synchronized) return false;
+  const ULONGLONG nowTick = GetTickCount64();
+  const ULONGLONG elapsed = nowTick - state.anchorTickMs;
+  if (elapsed > static_cast<ULONGLONG>(std::numeric_limits<int64_t>::max()) ||
+      state.anchorUnixMs > std::numeric_limits<int64_t>::max() -
+                               static_cast<int64_t>(elapsed)) {
+    return false;
+  }
+  *output = state.anchorUnixMs + static_cast<int64_t>(elapsed);
+  return true;
+}
+
+inline bool NetworkClockJstNow(SYSTEMTIME* output) noexcept {
+  if (!output) return false;
+  int64_t utcMs = 0;
+  if (!NetworkClockUnixMillis(&utcMs)) return false;
+  constexpr int64_t kJstOffsetMs = 9LL * 60 * 60 * 1000;
+  if (utcMs > std::numeric_limits<int64_t>::max() - kJstOffsetMs) return false;
+  return UtcSystemTimeFromUnixMillis(utcMs + kJstOffsetMs, output);
+}
+
+inline UINT NetworkClockDelayToNextSecond() noexcept {
+  int64_t nowMs = 0;
+  if (!NetworkClockUnixMillis(&nowMs)) return 250;
+  const UINT milliseconds = static_cast<UINT>(nowMs % 1000);
+  return std::max<UINT>(USER_TIMER_MINIMUM, 1000U - milliseconds);
+}
+
 struct WinHttpHandle {
   HINTERNET value = nullptr;
   WinHttpHandle() = default;
