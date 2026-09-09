@@ -26,7 +26,9 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     endedPosted: false,
     recoveryPosted: false,
     targetMedia: null,
-    stallTimer: 0
+    stallTimer: 0,
+    heartbeatTime: -1,
+    heartbeatMisses: 0
   };
   const generation = () => String(window.__homePanelSpotifyGeneration || '0');
   const post = message => {
@@ -58,6 +60,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
       state.recoveryPosted = false;
       state.targetMedia = null;
       state.stallTimer = 0;
+      state.heartbeatTime = -1;
+      state.heartbeatMisses = 0;
     }
     return target;
   };
@@ -107,6 +111,21 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
+  const requestRecovery = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || !state.started ||
+        state.endedPosted || state.recoveryPosted ||
+        state.targetMedia !== media || media.ended) {
+      return false;
+    }
+    const identity = currentTrack();
+    if ((identity.path || identity.title) && !matchesTarget(target, identity)) {
+      return false;
+    }
+    state.recoveryPosted = true;
+    post('spotify:not-playing');
+    return true;
+  };
 
   const confirmStarted = media => {
     const target = syncTarget();
@@ -117,6 +136,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     if (!matchesTarget(target, currentTrack())) {
       state.started = false;
       state.targetMedia = null;
+      state.heartbeatTime = -1;
+      state.heartbeatMisses = 0;
       return false;
     }
 
@@ -125,6 +146,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     state.started = true;
     state.recoveryPosted = false;
     state.targetMedia = media;
+    state.heartbeatTime = Number(media.currentTime) || 0;
+    state.heartbeatMisses = 0;
     if (!state.startPosted) {
       state.startPosted = true;
       post('spotify:timed-started');
@@ -154,17 +177,15 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
           state.targetMedia !== media || media.ended) {
         return;
       }
-      if (requirePaused ? !media.paused
-                        : (Number(media.currentTime) || 0) > startTime + 0.05) {
+      const currentTime = Number(media.currentTime) || 0;
+      if (requirePaused ? !media.paused : currentTime > startTime + 0.05) {
+        if (!requirePaused) {
+          state.heartbeatTime = currentTime;
+          state.heartbeatMisses = 0;
+        }
         return;
       }
-      const identity = currentTrack();
-      if ((identity.path || identity.title) &&
-          !matchesTarget(currentTarget, identity)) {
-        return;
-      }
-      state.recoveryPosted = true;
-      post('spotify:not-playing');
+      requestRecovery(media);
     }, delay);
   };
 
@@ -179,6 +200,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     }
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
+    state.heartbeatTime = Number(event.target.currentTime) || 0;
+    state.heartbeatMisses = 0;
     scheduleStartChecks(event.target);
   }, true);
   document.addEventListener('playing', event => {
@@ -210,6 +233,35 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     });
     post('spotify:timed-ended');
   }, true);
+
+  // Spotify/Chromium can occasionally leave the control surface showing Pause
+  // while the actual media clock is no longer advancing. Event-only recovery
+  // cannot see that state. Sample the target media clock cheaply every 10s and
+  // require two consecutive misses before asking native code to recover it.
+  setInterval(() => {
+    const target = syncTarget();
+    const media = state.targetMedia;
+    if (!target || target.kind !== 'music' || !state.started ||
+        state.endedPosted || state.recoveryPosted || !isMedia(media) ||
+        media.ended) {
+      return;
+    }
+    if (media.paused) {
+      requestRecovery(media);
+      return;
+    }
+
+    const currentTime = Number(media.currentTime) || 0;
+    if (state.heartbeatTime < 0 ||
+        currentTime > state.heartbeatTime + 0.05) {
+      state.heartbeatTime = currentTime;
+      state.heartbeatMisses = 0;
+      return;
+    }
+
+    ++state.heartbeatMisses;
+    if (state.heartbeatMisses >= 2) requestRecovery(media);
+  }, 10000);
 
   document.querySelectorAll('audio, video').forEach(media => {
     if (!media.paused && !media.ended) scheduleStartChecks(media);
