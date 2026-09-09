@@ -8,7 +8,10 @@ constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =
     L"https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2Falbum%2F2f2Ik9JeinFVWZuFb3i35b";
-constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-";
+// v2 intentionally starts every configured account with a fresh named profile
+// once. Keep this namespace stable after the reauthentication rollout so later
+// launches reuse the newly authenticated sessions instead of resetting again.
+constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
@@ -100,7 +103,7 @@ void SpotifyWebViews::Start() noexcept {
   }
 
   // Controller creation is serialized. Slot 0 starts immediately; the single
-  // scheduler creates slots 1-5 when their 40-second turn arrives.
+  // scheduler creates slots 1-4 when their 40-second turn arrives.
   if (!slots_.empty() && slots_[0].hostWindow) {
     CreateController(slots_[0]);
   }
