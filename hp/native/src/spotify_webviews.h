@@ -62,6 +62,7 @@ class SpotifyWebViews final {
     ULONGLONG lastTimedReconcileTick = 0;
     ULONGLONG unhealthySinceTick = 0;
     ULONGLONG targetGeneration = 0;
+    ULONGLONG trustedClickGeneration = 0;
     ULONGLONG trustedClickStartTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
