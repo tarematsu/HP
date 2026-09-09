@@ -25,21 +25,50 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
-test('all playback controllers keep a stable offscreen viewport while only the recovery owner gets a large viewport', () => {
-  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(layout, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+test('Spotify host geometry is pushed only when placement or controller identity changes', () => {
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
   assert.match(layout, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
   assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(layout, /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/);
   assert.match(layout, /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/);
+  assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
+  assert.match(spotifyHeader, /RECT hostLayoutRect\{\}/);
+  assert.match(spotifyHeader, /bool hostLayoutApplied = false/);
+  assert.match(layout, /const bool placementChanged =/);
+  assert.match(layout, /const bool controllerChanged =/);
+  assert.match(layout, /if \(placementChanged\)[\s\S]*SetWindowPos\(slot\.hostWindow/);
+  assert.match(
+    layout,
+    /if \(controllerChanged\)[\s\S]*put_Bounds\(bounds\)[\s\S]*put_IsVisible\(TRUE\)/,
+  );
+  assert.match(
+    layout,
+    /if \(placementChanged \|\| controllerChanged\)[\s\S]*NotifyParentWindowPositionChanged\(\)/,
+  );
+  assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
   assert.doesNotMatch(layout, /const bool active =/);
   assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
   assert.doesNotMatch(layout, /SW_HIDE/);
+});
+
+test('Spotify authentication presentation does not execute badge JavaScript every scheduler pass', () => {
+  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
+  assert.match(layout, /kSpotifyAuthenticationBadgeRefreshMs = 30ULL \* 1000ULL/);
   assert.match(
     layout,
-    /if \(batch\) EndDeferWindowPos\(batch\);[\s\S]*GetClientRect\(slot\.hostWindow, &bounds\);[\s\S]*put_Bounds\(bounds\);[\s\S]*NotifyParentWindowPositionChanged\(\)/,
+    /!layoutChanged && slot\.authenticationBadgeTick != 0[\s\S]*now - slot\.authenticationBadgeTick <[\s\S]*kSpotifyAuthenticationBadgeRefreshMs/,
+  );
+  assert.match(layout, /slot\.authenticationBadgeTick = now/);
+  assert.match(spotify, /target->authenticationBadgeTick = 0/);
+});
+
+test('each Spotify scheduler turn performs at most one host layout refresh', () => {
+  const refreshes = schedule.match(/RefreshSpotifyHostLayout\(\);/g) || [];
+  assert.equal(refreshes.length, 1);
+  assert.match(
+    schedule,
+    /staggerSlotIndex_ = scheduledIndex;[\s\S]*Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
 });
 
