@@ -6,21 +6,18 @@ namespace hp {
 namespace {
 constexpr int64_t kAirGraphWindowMs = 24LL * 60 * 60 * 1000;
 
-struct NativeHistoryRevisionCache {
+struct StationheadRevisionCache {
   const Renderer* owner = nullptr;
-  uint64_t air = 0;
-  uint64_t stationhead = 0;
-  uint64_t stationheadNativeStats = 0;
+  uint64_t history = 0;
+  uint64_t nativeStats = 0;
 };
 
-NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
-  static NativeHistoryRevisionCache cache;
+StationheadRevisionCache& StationheadRevisionsFor(const Renderer* owner) {
+  static StationheadRevisionCache cache;
   if (cache.owner != owner) {
     cache.owner = owner;
-    cache.air = std::numeric_limits<uint64_t>::max();
-    cache.stationhead = std::numeric_limits<uint64_t>::max();
-    cache.stationheadNativeStats =
-        GlobalStationheadNativeStatsStore().Revision();
+    cache.history = std::numeric_limits<uint64_t>::max();
+    cache.nativeStats = GlobalStationheadNativeStatsStore().Revision();
   }
   return cache;
 }
@@ -76,90 +73,51 @@ void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
   nativeAirGraph_ = std::move(next);
 }
 
-void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
-  NativeHistoryRevisionCache& historyRevisions = HistoryRevisionCacheFor(this);
-  const bool sensorsChanged = nativeSensors_ != state.sensors;
-  const bool historyChanged = historyRevisions.air != state.airHistoryRevision;
-  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
-  const bool stationheadHistoryChanged =
-      historyRevisions.stationhead != state.stationheadPlayHistoryRevision;
-  const bool weatherChanged =
-      renderedDashboardRevisions_.weather != dashboardRevisions_.weather;
-  const bool octopusChanged =
-      renderedDashboardRevisions_.octopus != dashboardRevisions_.octopus;
-  const bool switchbotChanged =
-      renderedDashboardRevisions_.switchbot != dashboardRevisions_.switchbot;
+void Renderer::UpdateSensors(const SensorSnapshot& sensors) {
+  if (nativeSensors_ == sensors) return;
+  nativeSensors_ = sensors;
+  if (!nativeDashboardVisible_ || !EnsureNativeStaticWindows()) return;
+  InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
+}
 
-  if (sensorsChanged) nativeSensors_ = state.sensors;
-  if (historyChanged) {
-    nativeAirHistory_ = state.airHistory;
-    historyRevisions.air = state.airHistoryRevision;
-    if (nativeDashboardVisible_) {
-      RebuildNativeAirGraph(UnixMillis());
-    } else {
-      nativeAirGraph_ = {};
-    }
+void Renderer::UpdateAirHistory(const std::vector<AirHistorySample>& history) {
+  if (nativeAirHistory_ == history) return;
+  nativeAirHistory_ = history;
+  if (!nativeDashboardVisible_) {
+    nativeAirGraph_ = {};
+    return;
   }
-  if (sensorsChanged || historyChanged) ++nativeAirRenderRevision_;
-  if (stationheadHistoryChanged) {
+  RebuildNativeAirGraph(UnixMillis());
+  if (!EnsureNativeStaticWindows()) return;
+  InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
+}
+
+void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
+  // Stationhead is disabled in the current build, but keep its rendering path
+  // intact without making active sensor/dashboard updates pass through it.
+  StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
+  const bool stationheadChanged = nativeStationhead_ != state.stationhead;
+  const bool historyChanged =
+      revisions.history != state.stationheadPlayHistoryRevision;
+
+  if (historyChanged) {
     nativeStationheadPlayHistory_ = state.stationheadPlayHistory;
-    historyRevisions.stationhead = state.stationheadPlayHistoryRevision;
+    revisions.history = state.stationheadPlayHistoryRevision;
   }
   if (stationheadChanged) nativeStationhead_ = state.stationhead;
-  if (weatherChanged) {
-    renderedDashboardRevisions_.weather = dashboardRevisions_.weather;
-  }
-  if (octopusChanged) {
-    renderedDashboardRevisions_.octopus = dashboardRevisions_.octopus;
-  }
-  if (switchbotChanged) {
-    renderedDashboardRevisions_.switchbot = dashboardRevisions_.switchbot;
-  }
 
-  if (!nativeDashboardVisible_) return;
+  if (!nativeDashboardVisible_ || (!stationheadChanged && !historyChanged)) return;
   if (!EnsureNativeStaticWindows()) return;
-  if (sensorsChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
-  }
-  if (historyChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
-  }
-  if (weatherChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
-  }
-  if (octopusChanged) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
-  } else if (switchbotChanged) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::EnergySwitchBot);
-  }
-  if (stationheadChanged || stationheadHistoryChanged) {
-    InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
-  }
+  InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
 }
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
 
-  NativeHistoryRevisionCache& revisions = HistoryRevisionCacheFor(this);
-  const uint64_t nativeStatsRevision =
-      GlobalStationheadNativeStatsStore().Revision();
-  const bool nativeStatsChanged =
-      revisions.stationheadNativeStats != nativeStatsRevision;
-  if (nativeStatsChanged) {
-    revisions.stationheadNativeStats = nativeStatsRevision;
-  }
-
-  const int64_t airCutoff = nowMs - kAirGraphWindowMs;
-  const bool airGraphExpired = !nativeAirGraph_.samples.empty() &&
-      nativeAirGraph_.samples.front().timestamp < airCutoff;
-  if (airGraphExpired) {
-    RebuildNativeAirGraph(nowMs);
-    ++nativeAirRenderRevision_;
-    if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
-        IsWindowVisible(nativeSideWindow_)) {
-      InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
-    }
-  }
+  StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
+  const uint64_t nativeStatsRevision = GlobalStationheadNativeStatsStore().Revision();
+  const bool nativeStatsChanged = revisions.nativeStats != nativeStatsRevision;
+  if (nativeStatsChanged) revisions.nativeStats = nativeStatsRevision;
 
   SYSTEMTIME localTime{};
   const bool previousClockReady = nativeClockReady_;
