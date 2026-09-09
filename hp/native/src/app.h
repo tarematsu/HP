@@ -131,7 +131,11 @@ class App {
   std::unique_ptr<SensorHub> sensors_;
   AppStationheadHandle stationhead_;
   AppSecondaryStationheadHandle secondaryStationhead_;
+  // Dormant Stationhead compatibility state. Active native panels update the
+  // renderer directly instead of publishing this aggregate object.
   RenderState renderState_;
+  std::vector<AirHistorySample> airHistory_;
+  std::wstring toastText_;
   std::atomic<bool> telemetryBusy_{false};
   std::atomic<bool> updateBusy_{false};
   std::thread telemetryThread_;
@@ -139,7 +143,7 @@ class App {
   int exitCode_ = 0;
   int startupShowCommand_ = SW_SHOW;
   // Startup fallbacks are elapsed-time decisions. Keep their UTC assignments
-  // for existing telemetry/news timestamps, but calculate all differences from
+  // for existing telemetry timestamps, but calculate all differences from
   // GetTickCount64() so an OS clock correction cannot expose the dashboard too
   // early or postpone it indefinitely.
   MonotonicElapsedTimestamp startupAt_;
@@ -165,9 +169,6 @@ class App {
   int64_t lastStationheadPlayHistorySavedAt_ = 0;
   int64_t toastUntil_ = 0;
   int64_t nextAppTickAt_ = 0;
-  int newsIndex_ = 0;
-  int newsCount_ = 0;
-  int64_t lastNewsRotateAt_ = 0;
   bool airHistoryDirty_ = false;
   bool stationheadPlayHistoryDirty_ = false;
   bool renderStateDirty_ = true;
