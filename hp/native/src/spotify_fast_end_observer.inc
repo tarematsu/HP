@@ -1,11 +1,10 @@
 namespace hp {
 namespace {
 
-// One delegated observer per Spotify document covers media created after
-// navigation. It prefers the direct /track/ identity from the actual player UI,
-// falls back to MediaSession title only while that identity is unavailable, and
-// tags every native event with the current target generation.
-constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
+// Keep the injected observer in two raw literals. MSVC limits one wide string
+// literal to roughly 8K characters, while ExecuteScript itself accepts the
+// combined script without that source-level restriction.
+constexpr wchar_t kSpotifyFastEndObserverScriptPart1[] = LR"JS(
 (() => {
   if (window.__homePanelSpotifyMediaObserverInstalled) return true;
   window.__homePanelSpotifyMediaObserverInstalled = true;
@@ -74,8 +73,6 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
         window.__homePanelSpotifyGeneration = fields[1] || '0';
         syncTarget();
       } else if (fields[0] === 'spotify:target') {
-        // The page bootstrap is registered before this observer and has already
-        // replaced __homePanelSpotifyNativeTarget when this listener runs.
         syncTarget();
       }
     });
@@ -96,7 +93,6 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
         }
       } catch (_) {}
     }
-
     const metadata = navigator.mediaSession && navigator.mediaSession.metadata;
     return {
       path: '',
@@ -126,7 +122,9 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     post('spotify:not-playing');
     return true;
   };
+)JS";
 
+constexpr wchar_t kSpotifyFastEndObserverScriptPart2[] = LR"JS(
   const confirmStarted = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
@@ -193,8 +191,6 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     if (!isMedia(event.target)) return;
     const target = syncTarget();
     if (target && target.kind === 'music' && state.endedPosted) {
-      // Spotify can start the previous context's queued next song after ended.
-      // Keep it stopped until native publishes the next target/generation.
       try { event.target.pause(); } catch (_) {}
       return;
     }
@@ -234,10 +230,8 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
     post('spotify:timed-ended');
   }, true);
 
-  // Spotify/Chromium can occasionally leave the control surface showing Pause
-  // while the actual media clock is no longer advancing. Event-only recovery
-  // cannot see that state. Sample the target media clock cheaply every 10s and
-  // require two consecutive misses before asking native code to recover it.
+  // Pause chrome alone is not a health signal. Verify the target media clock
+  // every 10 seconds and recover after two consecutive non-advancing samples.
   setInterval(() => {
     const target = syncTarget();
     const media = state.targetMedia;
@@ -250,7 +244,6 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
       requestRecovery(media);
       return;
     }
-
     const currentTime = Number(media.currentTime) || 0;
     if (state.heartbeatTime < 0 ||
         currentTime > state.heartbeatTime + 0.05) {
@@ -258,7 +251,6 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
       state.heartbeatMisses = 0;
       return;
     }
-
     ++state.heartbeatMisses;
     if (state.heartbeatMisses >= 2) requestRecovery(media);
   }, 10000);
@@ -269,6 +261,12 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
   return true;
 })()
 )JS";
+
+std::wstring BuildSpotifyFastEndObserverScript() {
+  std::wstring script(kSpotifyFastEndObserverScriptPart1);
+  script.append(kSpotifyFastEndObserverScriptPart2);
+  return script;
+}
 
 }  // namespace
 }  // namespace hp
