@@ -11,7 +11,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   runtime.eventsInstalled = true;
 
   const { state, post, syncTarget, isMedia, confirmStarted,
-          scheduleStartChecks, scheduleRecovery } = runtime;
+          scheduleStartChecks, scheduleIdentityCheck, scheduleRecovery } = runtime;
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
@@ -25,11 +25,21 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     state.heartbeatTime = Number(event.target.currentTime) || 0;
     state.heartbeatMisses = 0;
     scheduleStartChecks(event.target);
+    scheduleIdentityCheck(event.target);
   }, true);
 
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
     confirmStarted(event.target);
+    scheduleIdentityCheck(event.target);
+  }, true);
+
+  // Spotify often reuses one media element when it advances into its own
+  // recommendation queue. Revalidate shortly after source metadata changes;
+  // the short delay lets the now-playing identity settle before enforcement.
+  document.addEventListener('loadedmetadata', event => {
+    if (!isMedia(event.target) || event.target.paused || event.target.ended) return;
+    scheduleIdentityCheck(event.target);
   }, true);
 
   document.addEventListener('pause', event => {
@@ -61,7 +71,10 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
-    if (!media.paused && !media.ended) scheduleStartChecks(media);
+    if (!media.paused && !media.ended) {
+      scheduleStartChecks(media);
+      scheduleIdentityCheck(media);
+    }
   });
   return true;
 })()
