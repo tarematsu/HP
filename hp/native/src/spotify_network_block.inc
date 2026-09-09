@@ -28,9 +28,6 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   staggerSlotStartTick_ = 0;
   scheduleStartTick_ = 0;
   timedRandomState_ = 0;
-  timedRandomPairCycle_ = ~0ULL;
-  timedRandomCIndex_ = kNoTimedCatalogIndex;
-  timedRandomDIndex_ = kNoTimedCatalogIndex;
   staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
@@ -50,8 +47,13 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedPlaybackStartTick = 0;
-    slot.timedRandomCIndex = kNoTimedCatalogIndex;
-    slot.timedRandomDIndex = kNoTimedCatalogIndex;
+    slot.timedRandomFIndex = kNoTimedCatalogIndex;
+    slot.timedMiddleOrder = {
+        TimedSpotifyTarget::BitterBlue,
+        TimedSpotifyTarget::Monshirocho,
+        TimedSpotifyTarget::Munen,
+        TimedSpotifyTarget::OnMyWay,
+    };
     slot.timedRotationActive = false;
     slot.podcastBreakActive = false;
     slot.reconcileInFlight = false;

@@ -116,7 +116,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
 
   // Spotify playback no longer depends on the YouTube/TVer phase. Once an
-  // account reaches its serialized start turn, it owns an autonomous A-B-C-D
+  // account reaches its serialized start turn, it owns an autonomous six-song
   // rotation for the rest of its lifetime (apart from explicit media mute).
   if (!slot.timedRotationActive) {
     if (!slot.webview) {

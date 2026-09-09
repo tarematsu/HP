@@ -25,6 +25,9 @@ class SpotifyWebViews final {
   enum class TimedSpotifyTarget : unsigned char {
     None,
     BitterBlue,
+    Monshirocho,
+    Munen,
+    OnMyWay,
     TalkAbout,
     LonesomeRabbit,
     CatalogTrack,
@@ -77,8 +80,13 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG authenticationBadgeTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
-    size_t timedRandomCIndex = kNoTimedCatalogIndex;
-    size_t timedRandomDIndex = kNoTimedCatalogIndex;
+    size_t timedRandomFIndex = kNoTimedCatalogIndex;
+    std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
+        TimedSpotifyTarget::BitterBlue,
+        TimedSpotifyTarget::Monshirocho,
+        TimedSpotifyTarget::Munen,
+        TimedSpotifyTarget::OnMyWay,
+    };
     unsigned char timedRotationPosition = 0;
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
@@ -132,10 +140,10 @@ class SpotifyWebViews final {
   bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
   void NavigatePodcastSlot(Slot& slot) noexcept;
   void ReconcilePodcastSlot(Slot& slot) noexcept;
+  ULONGLONG NextTimedRandom() noexcept;
   size_t PickRecentCatalogIndex(size_t avoidIndex,
                                 size_t secondAvoidIndex) noexcept;
-  void EnsureRecentRandomPair(ULONGLONG rotationCycle,
-                              size_t avoidIndex) noexcept;
+  void PrepareTimedRotationCycle(Slot& slot) noexcept;
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
   void NavigateMusicTarget(Slot& slot) noexcept;
@@ -165,9 +173,6 @@ class SpotifyWebViews final {
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
-  ULONGLONG timedRandomPairCycle_ = ~0ULL;
-  size_t timedRandomCIndex_ = kNoTimedCatalogIndex;
-  size_t timedRandomDIndex_ = kNoTimedCatalogIndex;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -178,10 +183,11 @@ class SpotifyWebViews final {
 };
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
-// starts 40 seconds apart, then loops A-B-C-D with a native four-minute hard
-// deadline per music target. After every ten completed A-B-C-D cycles, that
-// account plays one TALKABOUT episode at 3x and resumes from A. Browser events
-// can advance music targets earlier but never postpone their hard deadline.
+// starts 40 seconds apart, then loops A, a shuffled B-E block, and F with a
+// native four-minute hard deadline per music target. After every ten completed
+// six-song cycles, that account plays one TALKABOUT episode at 3x and resumes
+// from A. Browser events can advance music targets earlier but never postpone
+// their hard deadline.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

@@ -7,17 +7,17 @@ const catalog = readFileSync(
   'utf8',
 );
 
-test('all 35 recent catalog entries carry their direct Spotify track route in one table', () => {
+test('all 34 recent catalog entries carry their direct Spotify track route in one table', () => {
   assert.doesNotMatch(catalog, /spotify_recent_direct_routes\.inc/);
   const section = catalog.slice(
     catalog.indexOf('kSpotifyRecentCatalogTracks = {{'),
-    catalog.indexOf('static_assert(kSpotifyRecentCatalogTracks.size() == 35)'),
+    catalog.indexOf('static_assert(kSpotifyRecentCatalogTracks.size() == 34)'),
   );
   assert.equal(
     (section.match(/https:\/\/open\.spotify\.com\/track\//g) || []).length,
-    35,
+    34,
   );
-  assert.equal((section.match(/L"\/track\//g) || []).length, 35);
+  assert.equal((section.match(/L"\/track\//g) || []).length, 34);
 
   for (const id of [
     '33liCluqUasE65nMv3KLLm',

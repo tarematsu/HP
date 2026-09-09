@@ -103,8 +103,13 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedRotationCycle = 0;
     slot.timedRotationPosition = 0;
     slot.timedPlaybackStartTick = 0;
-    slot.timedRandomCIndex = kNoTimedCatalogIndex;
-    slot.timedRandomDIndex = kNoTimedCatalogIndex;
+    slot.timedRandomFIndex = kNoTimedCatalogIndex;
+    slot.timedMiddleOrder = {
+        TimedSpotifyTarget::BitterBlue,
+        TimedSpotifyTarget::Monshirocho,
+        TimedSpotifyTarget::Munen,
+        TimedSpotifyTarget::OnMyWay,
+    };
     slot.timedRotationActive = false;
     slot.podcastBreakActive = false;
     if (!CreateHost(slot)) continue;
