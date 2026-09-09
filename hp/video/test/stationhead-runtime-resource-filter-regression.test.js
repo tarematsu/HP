@@ -49,13 +49,24 @@ test('resource filter reduction is the final resource PCH layer', () => {
   );
 });
 
+test('shared media environments stay out of Chromium occlusion backgrounding', () => {
+  const argumentsBuilder = section(
+    environmentSource,
+    'std::wstring BuildWebView2Arguments(',
+    'void InvokeEnvironmentCompletionNoexcept(',
+  );
+  assert.match(environmentSource, /kSharedWebView2LifecycleArguments/);
+  assert.match(environmentSource, /--disable-backgrounding-occluded-windows/);
+  assert.match(argumentsBuilder, /std::wstring arguments = kSharedWebView2LifecycleArguments/);
+  assert.match(argumentsBuilder, /if \(!blockImages && !blockFonts\) return arguments;/);
+});
+
 test('Blink rejects image loading and cached image decoding before navigation', () => {
   const argumentsBuilder = section(
     environmentSource,
     'std::wstring BuildWebView2Arguments(',
     'void InvokeEnvironmentCompletionNoexcept(',
   );
-  assert.match(argumentsBuilder, /if \(!blockImages && !blockFonts\) return \{\};/);
   assert.match(argumentsBuilder, /kStationheadWebView2Arguments/);
   assert.match(argumentsBuilder, /imagesEnabled=false,loadsImagesAutomatically=false/);
   assert.match(argumentsBuilder, /downloadableBinaryFontsEnabled=false/);
