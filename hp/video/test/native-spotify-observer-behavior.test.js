@@ -125,6 +125,11 @@ function createHarness() {
       textContent: title,
     } : null;
   };
+  const runTimers = () => {
+    const pending = [...timers.values()];
+    timers.clear();
+    for (const fn of pending) fn();
+  };
   const runHeartbeat = () => {
     const heartbeat = [...intervals.values()].find(({ delay }) => delay === 10000);
     assert.ok(heartbeat, '10-second media heartbeat not installed');
@@ -139,6 +144,7 @@ function createHarness() {
     dispatch,
     hostMessage,
     setTrack,
+    runTimers,
     runHeartbeat,
   };
 }
@@ -189,6 +195,57 @@ test('production observer ends immediately, blocks the old queue, then starts th
   h.media.paused = false;
   h.dispatch('playing');
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
+});
+
+test('Spotify recommendation is paused and recovery is requested after identity settles', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f11');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f11');
+
+  h.setTrack('/track/RECOMMENDED', 'Recommended Song');
+  h.media.paused = false;
+  h.dispatch('loadedmetadata');
+  assert.equal(h.media.pauseCalls, 0);
+  h.runTimers();
+
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.media.paused, true);
+  assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f11');
+});
+
+test('identity debounce does not stop the target when Spotify metadata catches up', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f12');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  h.setTrack('/track/STALE', 'Stale UI');
+  h.dispatch('loadedmetadata');
+  h.setTrack('/track/A', 'Target A');
+  h.runTimers();
+
+  assert.equal(h.media.pauseCalls, 0);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
+});
+
+test('heartbeat fallback also stops a recommendation if source-change events are missed', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f13');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.media.currentTime = 8;
+  h.dispatch('playing');
+
+  h.setTrack('/track/RECOMMENDED', 'Recommended Song');
+  h.media.paused = false;
+  h.runHeartbeat();
+
+  assert.equal(h.media.pauseCalls, 1);
+  assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f13');
 });
 
 test('production observer detects a silent media-clock freeze after two heartbeat misses', () => {
