@@ -178,6 +178,7 @@ set(HOMEPANEL_STATIONHEAD_SOURCES
 )
 
 set(HOMEPANEL_RENDERER_SOURCES
+  src/radar_cache_migration.cpp
   src/renderer_lifecycle.cpp
   src/renderer_dashboard.cpp
   src/renderer_panel_state.cpp
