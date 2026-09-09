@@ -1,9 +1,10 @@
 namespace hp {
 namespace {
 
-// Active music reconcile script. Unlike the legacy fixed script, current-track
-// identity is read only from the now-playing surface before MediaSession fallback;
-// arbitrary track-list rows must never be mistaken for the track being played.
+// Active music reconcile script. Current-track identity is read only from the
+// now-playing surface before MediaSession fallback. Track-list rows may be used
+// to locate the requested target, but an unrelated global play button is never
+// treated as that target.
 constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
@@ -21,6 +22,15 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   }
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+  const sameTrackPath = (value, expected) => {
+    if (!value || !expected) return false;
+    return value === expected ||
+        (expected.startsWith('/track/') && value.endsWith(expected));
+  };
+  const onTargetPage = () =>
+      location.pathname === target.pagePath ||
+      (target.pagePath.startsWith('/track/') &&
+       location.pathname.endsWith(target.pagePath));
   const visible = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true') return false;
@@ -59,7 +69,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
       if (!link) continue;
       try {
         const path = new URL(link.href, location.href).pathname;
-        if (!path.startsWith('/track/')) continue;
+        if (!path.includes('/track/')) continue;
         return {
           path,
           title: normalize(link.textContent).toLowerCase()
@@ -73,14 +83,16 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
     };
   };
   const targetMatches = track => {
-    if (target.trackPath && track.path) return track.path === target.trackPath;
+    if (target.trackPath && track.path) {
+      return sameTrackPath(track.path, target.trackPath);
+    }
     return !!target.title && track.title === target.title;
   };
   const targetLink = () => Array.from(
       document.querySelectorAll('a[href*="/track/"]')).find(link => {
         try {
           const path = new URL(link.href, location.href).pathname;
-          if (target.trackPath && path === target.trackPath) return true;
+          if (target.trackPath && sameTrackPath(path, target.trackPath)) return true;
           return !target.trackPath && !!target.title &&
               normalize(link.textContent).toLowerCase() === target.title;
         } catch (_) { return false; }
@@ -106,8 +118,15 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
         if (button) return button;
       }
     }
-    return Array.from(document.querySelectorAll(
-        'button[data-testid="play-button"]')).find(visible) || null;
+
+    // A direct track page can render its main play control without a target
+    // track link. Only permit this fallback while the document itself is the
+    // requested track; never choose the first play button from an arbitrary page.
+    if (target.trackPath && onTargetPage()) {
+      return Array.from(document.querySelectorAll(
+          'button[data-testid="play-button"]')).find(visible) || null;
+    }
+    return null;
   };
   const point = element => {
     if (!visible(element) || window.innerWidth <= 0 || window.innerHeight <= 0) {
@@ -129,8 +148,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
     ];
   };
 
-  if (location.hostname !== 'open.spotify.com' ||
-      location.pathname !== target.pagePath) {
+  if (location.hostname !== 'open.spotify.com' || !onTargetPage()) {
     report(false);
     return null;
   }
@@ -139,7 +157,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const control = playerControl();
   const button = targetPlayButton();
   if ((targetMatches(current) && buttonShowsPlaying(control)) ||
-      buttonShowsPlaying(button)) {
+      (targetMatches(current) && buttonShowsPlaying(button))) {
     report(true);
     return true;
   }
