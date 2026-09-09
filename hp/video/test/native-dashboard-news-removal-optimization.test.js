@@ -239,30 +239,24 @@ test('logger keeps one stream open and avoids filesystem metadata checks per lin
   assert.doesNotMatch(writeFunction, /fs::exists|fs::file_size|std::ofstream output\(/);
 });
 
-test('static radar waits for updates instead of polling every five seconds', () => {
-  assert.match(radarUi, /RadarAnimationIntervalFromSignature/);
-  assert.match(radarUi, /if \(animationIntervalMs > 0\)[\s\S]*wait_for[\s\S]*else \{\s*radarComposeWake_\.wait/s);
-  assert.match(radarUi, /frames\.Size\(\) > 1 \? frameIntervalMs : 0/);
-  assert.match(radarUi, /L"\|animate:" << animationIntervalMs/);
+test('single radar waits only for cloud update notifications', () => {
+  assert.match(radarUi, /radarComposeWake_\.wait\(waitLock/);
+  assert.match(radarUi, /radarComposePending_/);
+  assert.doesNotMatch(radarUi, /wait_for\s*\(/);
+  assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
 });
 
-test('animated radar avoids per-frame disk snapshot serialization', () => {
-  assert.match(
-    radarUi,
-    /if \(animationIntervalMs == 0 && !signature\.empty\(\) &&\s*SaveBitmapAsBmp/s,
-  );
-  assert.match(
-    radarUi,
-    /if \(animationIntervalMs == 0 && !signature\.empty\(\) &&\s*file::MatchesText/s,
-  );
+test('single radar performs no local frame snapshot serialization', () => {
+  assert.match(radarUi, /DecodeImageFileToBitmap/);
+  assert.match(radarUi, /radarFrameBitmap_ = decoded/);
+  assert.doesNotMatch(radarUi, /SaveBitmapAsBmp|radar-frame\.bmp|radar-frame\.signature/);
 });
 
-test('radar updates invalidate only the relocated radar section and reuse a source DC', () => {
+test('radar updates invalidate only the relocated radar section', () => {
   assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\);/);
   assert.doesNotMatch(radarUi, /InvalidateRadarWindow\(nativeRadarWindow_\);/);
   assert.doesNotMatch(radarUi, /InvalidateAllNativePanels\(\)/);
-  assert.match(radarUi, /thread_local CachedRadarSourceDc cached/);
-  assert.doesNotMatch(radarUi, /void BlendBitmap[\s\S]*DeleteDC\(sourceDc\)/);
+  assert.doesNotMatch(radarUi, /CachedRadarSourceDc|BlendBitmap|CreateCompatibleDC/);
 });
 
 test('native image caches use reduced LRU entry limits', () => {
