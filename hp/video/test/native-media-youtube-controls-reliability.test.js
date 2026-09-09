@@ -6,6 +6,10 @@ const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
+const mediaPanel = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+  'utf8',
+);
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
   'utf8',
@@ -21,6 +25,33 @@ test('YouTube control watchdog checks once per second without changing base cade
     wrapper,
     /kNativeMediaYoutubeWatchdogTimer[\s\S]*kNativeMediaYoutubeControlWatchdogMs/,
   );
+});
+
+test('YouTube watchdog self-heals a lost ExecuteScript callback', () => {
+  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogTimeoutMs = 5ULL \* 1000ULL/);
+  assert.match(mediaPanel, /uint64_t youtubeWatchdogRequestGeneration_ = 0/);
+  assert.match(mediaPanel, /ULONGLONG youtubeWatchdogStartedTick_ = 0/);
+  assert.match(
+    mediaPanel,
+    /youtubeWatchdogInFlight_[\s\S]*youtubeWatchdogStartedTick_[\s\S]*kNativeMediaYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
+  );
+  assert.match(
+    mediaPanel,
+    /requestGeneration != youtubeWatchdogRequestGeneration_[\s\S]*webview_\.Get\(\) != requestView\.Get\(\)/,
+  );
+  assert.match(
+    mediaPanel,
+    /InvalidateYoutubeWatchdog\(\) noexcept[\s\S]*\+\+youtubeWatchdogRequestGeneration_[\s\S]*youtubeWatchdogInFlight_ = false[\s\S]*youtubeWatchdogStartedTick_ = 0/,
+  );
+});
+
+test('YouTube watchdog remains active when SPA navigation drops the playlist query', () => {
+  const start = mediaPanel.indexOf('bool IsYoutubeWatchPage() noexcept');
+  const end = mediaPanel.indexOf('bool IsTverPage()', start);
+  assert.ok(start >= 0 && end > start);
+  const watchPage = mediaPanel.slice(start, end);
+  assert.match(watchPage, /SourceContains\(L"youtube\.com\/watch"\)/);
+  assert.doesNotMatch(watchPage, /list=PLMWqSdpIVl30/);
 });
 
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
