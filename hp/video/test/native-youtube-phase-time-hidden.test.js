@@ -26,7 +26,11 @@ test('YouTube and TVer suppress the phase-time badge while preserving cursor hid
   const phaseGuardStart = wrapper.indexOf(
     'std::wstring_view(script).find(L"__homePanelMediaPhaseTime")',
   );
-  const tverRoutingStart = wrapper.indexOf('if (script == kNativeMediaTverWatchdogScript)');
+  const resolverStart = wrapper.indexOf('const wchar_t* ResolveNativeMediaPolicyScript(');
+  const tverRoutingStart = wrapper.indexOf(
+    'if (script == kNativeMediaTverWatchdogScript)',
+    resolverStart + 1,
+  );
   assert.ok(phaseGuardStart >= 0 && tverRoutingStart > phaseGuardStart);
   const phaseGuard = wrapper.slice(phaseGuardStart, tverRoutingStart);
   assert.doesNotMatch(phaseGuard, /youtube\.com|tver\.jp/);
