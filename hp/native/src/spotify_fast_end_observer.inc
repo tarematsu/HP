@@ -14,6 +14,11 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
 
   const normalize = value =>
       (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const sameTrackPath = (value, expected) => {
+    if (!value || !expected) return false;
+    return value === expected ||
+        (expected.startsWith('/track/') && value.endsWith(expected));
+  };
   const state = {
     key: '',
     started: false,
@@ -82,7 +87,7 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
       if (!link) continue;
       try {
         const path = new URL(link.href, location.href).pathname;
-        if (path.startsWith('/track/')) {
+        if (path.includes('/track/')) {
           return { path, title: normalize(link.textContent) };
         }
       } catch (_) {}
@@ -97,7 +102,7 @@ constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(
   const matchesTarget = (target, track) => {
     if (!target) return false;
     if (target.trackPath && track.path) {
-      return track.path === target.trackPath;
+      return sameTrackPath(track.path, target.trackPath);
     }
     return !!target.title && track.title === normalize(target.title);
   };
