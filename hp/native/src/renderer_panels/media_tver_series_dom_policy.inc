@@ -8,6 +8,8 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
         !location.pathname.startsWith('/series/')) return null;
 
     const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+    const pendingEpisodeKey = seriesPath =>
+        '__homePanelTverAcceptNextEpisode:' + seriesPath;
     const visible = element => {
       if (!element || element.disabled ||
           element.getAttribute('aria-disabled') === 'true' ||
@@ -92,26 +94,22 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
         const text = normalize(element.textContent);
         return episodeHeading.test(text) && !foreignHeading.test(text);
       }) || null;
-      if (anchorHeading) {
-        let container = anchorHeading.parentElement;
-        while (container && container !== document.body) {
-          const links = Array.from(
-              container.querySelectorAll('a[href*="/episodes/"]'))
-              .filter(link => link.href);
-          if (links.length) {
-            const hasForeignSection = Array.from(
-                container.querySelectorAll(headingSelector)).some(element =>
-              element !== anchorHeading &&
-              foreignHeading.test(normalize(element.textContent)));
-            if (!hasForeignSection) return links;
-          }
-          container = container.parentElement;
+      if (!anchorHeading) return [];
+      let container = anchorHeading.parentElement;
+      while (container && container !== document.body) {
+        const links = Array.from(
+            container.querySelectorAll('a[href*="/episodes/"]'))
+            .filter(link => link.href);
+        if (links.length) {
+          const hasForeignSection = Array.from(
+              container.querySelectorAll(headingSelector)).some(element =>
+            element !== anchorHeading &&
+            foreignHeading.test(normalize(element.textContent)));
+          if (!hasForeignSection) return links;
         }
+        container = container.parentElement;
       }
-      const root = document.querySelector('main') || document.body;
-      if (!root) return [];
-      return Array.from(root.querySelectorAll('a[href*="/episodes/"]')).filter(link =>
-        !!link.href && !isInsideForeignSection(link));
+      return [];
     };
 
     const rawLinks = seriesEpisodeLinks();
@@ -135,6 +133,7 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
           hrefs[latestIndex] || '';
       try {
         sessionStorage.setItem('__homePanelTverSeriesPath', location.pathname);
+        sessionStorage.removeItem(pendingEpisodeKey(location.pathname));
         sessionStorage.setItem(
             '__homePanelTverEpisodeQueue:' + location.pathname,
             JSON.stringify({ hrefs, index: latestIndex }));
@@ -157,6 +156,7 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
       sessionStorage.setItem('__homePanelTverSeriesPath', location.pathname);
       sessionStorage.removeItem(
           '__homePanelTverEpisodeQueue:' + location.pathname);
+      sessionStorage.setItem(pendingEpisodeKey(location.pathname), '1');
     } catch (_) {
     }
 

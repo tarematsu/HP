@@ -7,6 +7,70 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
   if (location.hostname !== 'tver.jp' ||
       !location.pathname.startsWith('/episodes/')) return null;
 
+  const seriesPathKey = '__homePanelTverSeriesPath';
+  const episodeQueueKey = seriesPath => '__homePanelTverEpisodeQueue:' + seriesPath;
+  const pendingEpisodeKey = seriesPath =>
+      '__homePanelTverAcceptNextEpisode:' + seriesPath;
+  const normalizeEpisodeHref = href => {
+    try {
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin ||
+          !url.pathname.startsWith('/episodes/')) return '';
+      url.hash = '';
+      return url.href;
+    } catch (_) {
+      return '';
+    }
+  };
+  const guardSeriesEpisode = () => {
+    let seriesPath = '';
+    try { seriesPath = sessionStorage.getItem(seriesPathKey) || ''; }
+    catch (_) {}
+    if (!/^\/series\/[a-zA-Z0-9]+$/.test(seriesPath)) {
+      location.replace('https://tver.jp/series/srx97ftk3w');
+      return false;
+    }
+
+    const key = episodeQueueKey(seriesPath);
+    const pendingKey = pendingEpisodeKey(seriesPath);
+    let queue = null;
+    try { queue = JSON.parse(sessionStorage.getItem(key) || 'null'); }
+    catch (_) {}
+    const hrefs = queue && Array.isArray(queue.hrefs)
+        ? queue.hrefs.map(normalizeEpisodeHref).filter(Boolean)
+        : [];
+    if (hrefs.length) {
+      try { sessionStorage.removeItem(pendingKey); } catch (_) {}
+      const currentAllowed = hrefs.some(href => {
+        try { return new URL(href).pathname === location.pathname; }
+        catch (_) { return false; }
+      });
+      if (currentAllowed) return true;
+      location.replace('https://tver.jp' + seriesPath);
+      return false;
+    }
+
+    let acceptNextEpisode = false;
+    try {
+      acceptNextEpisode = sessionStorage.getItem(pendingKey) === '1';
+      sessionStorage.removeItem(pendingKey);
+    } catch (_) {
+    }
+    const currentHref = normalizeEpisodeHref(location.href);
+    if (acceptNextEpisode && currentHref) {
+      try {
+        sessionStorage.setItem(
+            key, JSON.stringify({ hrefs: [currentHref], index: 0 }));
+      } catch (_) {
+      }
+      return true;
+    }
+
+    location.replace('https://tver.jp' + seriesPath);
+    return false;
+  };
+  if (!guardSeriesEpisode()) return null;
+
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visible = element => {
     if (!element || element.disabled ||
