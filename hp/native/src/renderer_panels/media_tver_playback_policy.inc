@@ -80,6 +80,8 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     return false;
   };
   if (!guardSeriesEpisode()) return null;
+)JS"
+LR"JS(
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
   const visibleRect = element => {
@@ -173,6 +175,8 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
     return /(?:^|\s)(?:動画を)?再生(?:する)?(?:\s|$)/.test(label) ||
            /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
   }) || null;
+)JS"
+LR"JS(
 
   // Recovery is idempotent first: play() can only move a paused video toward
   // playback. Only build the player-control list after a rejected play() or when
