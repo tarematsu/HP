@@ -7,33 +7,18 @@ constexpr wchar_t kNativeMediaTverUrl[] =
 constexpr wchar_t kNativeMediaProfile[] = L"media-youtube";
 constexpr UINT_PTR kNativeMediaPhaseTimer = 0x4D560001;
 constexpr UINT_PTR kNativeMediaPlayAllTimer = 0x4D560002;
-constexpr UINT_PTR kNativeMediaPlaybackHealthTimer = 0x4D560004;
 constexpr UINT_PTR kNativeMediaNavigationRetryTimer = 0x4D560005;
 constexpr UINT_PTR kNativeMediaYoutubeWatchdogTimer = 0x4D560006;
 constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaPlayAllRetryMs = 500U;
-constexpr UINT kNativeMediaPlaybackHealthMs = 10U * 1000U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
-constexpr UINT kNativeMediaYoutubeWatchdogMinMs = 2U * 1000U;
-constexpr UINT kNativeMediaYoutubeWatchdogMaxMs = 10U * 1000U;
-constexpr UINT kNativeMediaTverWatchdogMs = 4U * 1000U;
+constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 10U * 1000U;
+constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
+constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr int kNativeMediaPlayAllRetryLimit = 20;
 constexpr int kNativeMediaFallbackPlayAllXTenThousandths = 5850;
 constexpr int kNativeMediaFallbackPlayAllYTenThousandths = 4250;
-
-UINT NextNativeMediaYoutubeWatchdogMs() noexcept {
-  LARGE_INTEGER counter{};
-  QueryPerformanceCounter(&counter);
-  const ULONGLONG mixed = GetTickCount64() ^
-      static_cast<ULONGLONG>(counter.QuadPart);
-  constexpr UINT secondCount =
-      (kNativeMediaYoutubeWatchdogMaxMs - kNativeMediaYoutubeWatchdogMinMs) /
-          1000U +
-      1U;
-  return kNativeMediaYoutubeWatchdogMinMs +
-         static_cast<UINT>(mixed % secondCount) * 1000U;
-}
 
 std::wstring FormatNativeMediaLocalHourMinute(const FILETIME& utcFileTime) noexcept {
   SYSTEMTIME utc{};
@@ -111,6 +96,22 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogScript[] = LR"JS(
 (() => {
   const player = document.querySelector('#movie_player');
   if (!player || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
+  try {
+    if (typeof player.setPlaybackQualityRange === 'function') {
+      player.setPlaybackQualityRange('large', 'large');
+    }
+    if (typeof player.setPlaybackQuality === 'function') {
+      player.setPlaybackQuality('large');
+    }
+  } catch (_) {
+  }
+  const video = document.querySelector('video');
+  const explicitError = player.classList.contains('ytp-error') ||
+      document.querySelector(
+          '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
+          + 'yt-player-error-message-renderer, ytd-player-error-message-renderer');
+  if ((video && video.error) || explicitError) return 'reload';
+
   const isClickable = element => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
@@ -161,34 +162,6 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogScript[] = LR"JS(
     Math.max(0, Math.min(10000, Math.round(
         ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
   ];
-})()
-)JS";
-
-constexpr wchar_t kNativeMediaYoutubeHealthScript[] = LR"JS(
-(() => {
-  const player = document.querySelector('#movie_player');
-  if (player) {
-    try {
-      if (typeof player.setPlaybackQualityRange === 'function') {
-        player.setPlaybackQualityRange('large', 'large');
-      }
-      if (typeof player.setPlaybackQuality === 'function') {
-        player.setPlaybackQuality('large');
-      }
-    } catch (_) {
-    }
-  }
-  const video = document.querySelector('video');
-  if (video && video.error) return true;
-  if (player && player.classList.contains('ytp-error')) return true;
-  const error = document.querySelector(
-      '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
-      + 'yt-player-error-message-renderer, ytd-player-error-message-renderer');
-  if (!error) return false;
-  const style = window.getComputedStyle(error);
-  const rect = error.getBoundingClientRect();
-  return style.display !== 'none' && style.visibility !== 'hidden' &&
-         rect.width > 0 && rect.height > 0;
 })()
 )JS";
 
@@ -249,10 +222,6 @@ class NativeMediaPanelHost final {
       ProbePlayAll();
       return true;
     }
-    if (timerId == kNativeMediaPlaybackHealthTimer) {
-      ProbeYoutubeHealth();
-      return true;
-    }
     if (timerId == kNativeMediaNavigationRetryTimer) {
       StopNavigationRetry();
       NavigateCurrentPhase();
@@ -261,7 +230,7 @@ class NativeMediaPanelHost final {
     if (timerId == kNativeMediaYoutubeWatchdogTimer) {
       if (hostWindow_ && IsWindow(hostWindow_)) {
         SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-                 NextNativeMediaYoutubeWatchdogMs(), nullptr);
+                 kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
       }
       ProbeYoutubeWatchdog();
       return true;
@@ -652,24 +621,17 @@ class NativeMediaPanelHost final {
 
   void BeginYoutubePlaybackMonitors() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
-    playbackHealthProbeInFlight_ = false;
     youtubeWatchdogInFlight_ = false;
-    KillTimer(hostWindow_, kNativeMediaPlaybackHealthTimer);
     KillTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer);
-    SetTimer(hostWindow_, kNativeMediaPlaybackHealthTimer,
-             kNativeMediaPlaybackHealthMs, nullptr);
     SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
-             NextNativeMediaYoutubeWatchdogMs(), nullptr);
-    ProbeYoutubeHealth();
+             kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
     ProbeYoutubeWatchdog();
   }
 
   void StopYoutubePlaybackMonitors() noexcept {
     if (hostWindow_ && IsWindow(hostWindow_)) {
-      KillTimer(hostWindow_, kNativeMediaPlaybackHealthTimer);
       KillTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer);
     }
-    playbackHealthProbeInFlight_ = false;
     youtubeWatchdogInFlight_ = false;
   }
 
@@ -764,26 +726,6 @@ class NativeMediaPanelHost final {
     if (FAILED(started)) playAllProbeInFlight_ = false;
   }
 
-  void ProbeYoutubeHealth() noexcept {
-    if (phase_ != Phase::YouTube || !webview_ ||
-        playbackHealthProbeInFlight_) return;
-    playbackHealthProbeInFlight_ = true;
-    const auto alive = alive_;
-    const HRESULT started = webview_->ExecuteScript(
-        kNativeMediaYoutubeHealthScript,
-        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
-              playbackHealthProbeInFlight_ = false;
-              if (phase_ == Phase::YouTube && SUCCEEDED(result) && json &&
-                  std::wstring_view(json) == L"true") {
-                ReloadYoutubePlaylist();
-              }
-              return S_OK;
-            }).Get());
-    if (FAILED(started)) playbackHealthProbeInFlight_ = false;
-  }
-
   void ProbeYoutubeWatchdog() noexcept {
     if (phase_ != Phase::YouTube || !webview_ || youtubeWatchdogInFlight_ ||
         !IsYoutubeWatchPage()) return;
@@ -796,10 +738,19 @@ class NativeMediaPanelHost final {
               if (!alive->load(std::memory_order_acquire)) return S_OK;
               youtubeWatchdogInFlight_ = false;
               if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
+              if (SUCCEEDED(result) && json &&
+                  std::wstring_view(json) == L"\"reload\"") {
+                ReloadYoutubePlaylist();
+                return S_OK;
+              }
               int x = 0;
               int y = 0;
               if (SUCCEEDED(result) && ParseNormalizedPoint(json, &x, &y)) {
                 ClickNormalizedPoint(x, y);
+                if (hostWindow_ && IsWindow(hostWindow_)) {
+                  SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+                           kNativeMediaYoutubeWatchdogRecoveryMs, nullptr);
+                }
               }
               return S_OK;
             }).Get());
@@ -912,7 +863,6 @@ class NativeMediaPanelHost final {
   int playAllProbeAttempts_ = 0;
   bool controllerCreating_ = false;
   bool playAllProbeInFlight_ = false;
-  bool playbackHealthProbeInFlight_ = false;
   bool youtubeWatchdogInFlight_ = false;
   bool tverWatchdogInFlight_ = false;
   bool tverRestarting_ = false;
