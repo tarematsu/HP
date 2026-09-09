@@ -52,7 +52,11 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  slot.timedPlaybackStartTick = 0;
+  // Hard upper bound: arm the native clock before any Spotify navigation,
+  // DOM lookup, MediaSession metadata, or playback observer can fail. Browser
+  // signals may advance the rotation earlier, but they can never postpone this
+  // four-minute deadline.
+  slot.timedPlaybackStartTick = GetTickCount64();
   slot.timedPreludeCompleted = false;
 }
 
@@ -92,15 +96,14 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
 }
 
 bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
-  // Only six native timestamps are compared. DOM work remains event/recovery
-  // driven, while this provides the four-minute actual-track fallback.
+  // Six native timestamps are enough to enforce the hard upper bound. DOM and
+  // media events remain useful for early completion and recovery only.
   for (Slot& slot : slots_) {
     if (!slot.timedRotationActive || slot.timedPlaybackStartTick == 0 ||
         now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
       continue;
     }
-    slot.timedPlaybackStartTick = 0;
-      AdvanceTimedRotationSlot(slot, now);
+    AdvanceTimedRotationSlot(slot, now);
     return true;
   }
   return false;
@@ -157,10 +160,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               if (started) {
                 SetSlotState(*target, SlotState::Playing);
                 target->unhealthySinceTick = 0;
-                if (target->timedRotationActive &&
-                    target->timedPlaybackStartTick == 0) {
-                  target->timedPlaybackStartTick = now;
-                }
                 RecomputeForeground();
                 ArmRobustScheduler();
                 return S_OK;

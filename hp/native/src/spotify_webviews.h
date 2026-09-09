@@ -163,7 +163,9 @@ class SpotifyWebViews final {
 // Initial account starts remain 40 seconds apart. Recovery is event-driven and
 // serialized to one WebView. Healthy rotation uses an adaptive native timer;
 // target-end messages carry a generation so stale events cannot advance a newer
-// target. The four-minute deadline begins only after the intended track starts.
+// target. Each A-B-C-D target arms its four-minute native hard deadline before
+// Spotify navigation or playback detection; browser events can only advance it
+// earlier, never postpone the deadline.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

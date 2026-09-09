@@ -71,13 +71,18 @@ test('current-track identity is scoped to player UI before MediaSession fallback
   );
 });
 
-test('rotation fallback starts when native positively confirms Playing even if observer metadata is unavailable', () => {
+test('rotation hard deadline is armed before browser playback state is known', () => {
+  assert.match(
+    rotation,
+    /ApplyTimedRotationTarget\(Slot& slot\)[\s\S]*slot\.timedPlaybackStartTick = GetTickCount64\(\)/,
+  );
+  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(
     phase,
-    /state == SlotState::Playing && slot\.timedRotationActive &&\s*slot\.timedPlaybackStartTick == 0/,
+    /slot\.timedPlaybackStartTick != 0[\s\S]*kSpotifyAdaptiveTrackDeadlineMs - age/,
   );
-  assert.match(phase, /slot\.timedPlaybackStartTick = GetTickCount64\(\)/);
-  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+  assert.doesNotMatch(phase, /timedPlaybackStartTick = GetTickCount64\(\)/);
+  assert.doesNotMatch(rotation, /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/);
 });
 
 test('advertisements cannot complete or start a requested song', () => {
