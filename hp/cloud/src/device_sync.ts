@@ -39,6 +39,11 @@ function requestedVersion(value: unknown): number {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : -1;
 }
 
+function optionalRequestedVersion(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  return requestedVersion(value);
+}
+
 export async function readDeviceSyncManifest(env: Env): Promise<DeviceSyncManifestRow> {
   const row = await env.DB.prepare(
     `SELECT manifest.dashboard_version,
@@ -116,8 +121,8 @@ export async function buildDeviceSyncPayloadForDevice(
     dashboard: requestedVersion(clientVersions.dashboard),
     radar: requestedVersion(clientVersions.radar),
     switchbot: requestedVersion(clientVersions.switchbot),
-    stationhead: requestedVersion(clientVersions.stationhead),
-    stationheadHealth: requestedVersion(clientVersions.stationheadHealth),
+    stationhead: optionalRequestedVersion(clientVersions.stationhead),
+    stationheadHealth: optionalRequestedVersion(clientVersions.stationheadHealth),
     config: requestedVersion(clientVersions.config),
   };
   const now = Date.now();
@@ -161,8 +166,14 @@ export async function buildDeviceSyncPayloadForDevice(
   if (dashboardChanged) for (const source of DASHBOARD_SOURCE_NAMES) payloadSources.add(source);
   if (radarVersion !== requested.radar) payloadSources.add("radar");
   if (switchbotVersion !== requested.switchbot) payloadSources.add("switchbot");
-  if (stationheadVersion !== requested.stationhead) payloadSources.add("stationhead");
-  if (stationheadHealthVersion !== requested.stationheadHealth) payloadSources.add("stationhead_health");
+  if (requested.stationhead !== null &&
+      stationheadVersion !== requested.stationhead) {
+    payloadSources.add("stationhead");
+  }
+  if (requested.stationheadHealth !== null &&
+      stationheadHealthVersion !== requested.stationheadHealth) {
+    payloadSources.add("stationhead_health");
+  }
 
   const states: Record<string, StateRow> = {};
   if (payloadSources.size) {
@@ -182,9 +193,13 @@ export async function buildDeviceSyncPayloadForDevice(
   const switchbotState = states.switchbot;
   if (switchbotState && switchbotVersion !== requested.switchbot) response.switchbot = switchbotState.payload;
   const stationheadState = states.stationhead;
-  if (stationheadState && stationheadVersion !== requested.stationhead) response.stationhead = stationheadState.payload;
+  if (stationheadState && requested.stationhead !== null &&
+      stationheadVersion !== requested.stationhead) {
+    response.stationhead = stationheadState.payload;
+  }
   const stationheadHealthState = states.stationhead_health;
-  if (stationheadHealthState && stationheadHealthVersion !== requested.stationheadHealth) {
+  if (stationheadHealthState && requested.stationheadHealth !== null &&
+      stationheadHealthVersion !== requested.stationheadHealth) {
     response.stationheadHealth = JSON.stringify(stationheadHealthPayload(stationheadHealthState));
   }
 
@@ -209,8 +224,10 @@ export async function buildDeviceSyncPayload(request: Request, env: Env): Promis
     dashboard: params.get("dashboardVersion"),
     radar: params.get("radarVersion"),
     switchbot: params.get("switchbotVersion"),
-    stationhead: params.get("stationheadVersion"),
-    stationheadHealth: params.get("stationheadHealthVersion"),
+    stationhead: params.has("stationheadVersion") ? params.get("stationheadVersion") : null,
+    stationheadHealth: params.has("stationheadHealthVersion")
+      ? params.get("stationheadHealthVersion")
+      : null,
     config: params.get("configVersion"),
   });
 }
