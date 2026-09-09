@@ -10,6 +10,49 @@
 #include "version.h"
 #include "winhttp_helpers.h"
 #include "renderer_panels/primitives.inc"
+
+namespace {
+void StretchRadarIntoLowPeak(
+    HDC destDc, const RECT& destRect, HBITMAP radarBitmap) noexcept {
+  const int destWidth = static_cast<int>(destRect.right - destRect.left);
+  const int destHeight = static_cast<int>(destRect.bottom - destRect.top);
+  if (!radarBitmap || destWidth <= 0 || destHeight <= 0) return;
+
+  const double scale = std::max(
+      static_cast<double>(destWidth) / kRadarCanvasWidth,
+      static_cast<double>(destHeight) / kRadarCanvasHeight);
+  const int sourceWidth = std::clamp(
+      static_cast<int>(std::lround(destWidth / scale)), 1, kRadarCanvasWidth);
+  const int sourceHeight = std::clamp(
+      static_cast<int>(std::lround(destHeight / scale)), 1, kRadarCanvasHeight);
+  const int sourceLeft = (kRadarCanvasWidth - sourceWidth) / 2;
+  const int sourceTop = (kRadarCanvasHeight - sourceHeight) / 2;
+
+  // Reuse the existing thread-local source DC instead of allocating/deleting a
+  // compatible DC on every WM_PAINT. COLORONCOLOR avoids HALFTONE's expensive
+  // per-pixel filtering; radar pixels are already composited at 1920x1280.
+  HDC sourceDc = SourceMemoryDc(destDc);
+  if (!sourceDc) return;
+  HGDIOBJ previous = SelectObject(sourceDc, radarBitmap);
+  if (!previous || previous == HGDI_ERROR) return;
+  SetStretchBltMode(destDc, COLORONCOLOR);
+  if (sourceWidth == destWidth && sourceHeight == destHeight) {
+    BitBlt(destDc, destRect.left, destRect.top, destWidth, destHeight,
+           sourceDc, sourceLeft, sourceTop, SRCCOPY);
+  } else {
+    StretchBlt(destDc, destRect.left, destRect.top, destWidth, destHeight,
+               sourceDc, sourceLeft, sourceTop, sourceWidth, sourceHeight,
+               SRCCOPY);
+  }
+  SelectObject(sourceDc, previous);
+}
+}  // namespace
+
+// The large radar bitmap is painted by windows.inc and media_section.inc. Keep
+// their existing call sites but route this translation unit through the cheaper
+// renderer above.
+#define StretchRadarInto StretchRadarIntoLowPeak
+
 #include "renderer_panels/layout_overrides.inc"
 #include "renderer_panels/waste_calendar_section.inc"
 
@@ -194,3 +237,4 @@ void SetNativeMediaPanelMuted(bool muted) noexcept {
 }
 
 #include "renderer_panels/data_sections.inc"
+#undef StretchRadarInto

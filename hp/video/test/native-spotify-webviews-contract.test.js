@@ -56,7 +56,7 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
 });
 
-test('authentication and recovery geometry are owned by the layout module', () => {
+test('authentication and recovery geometry are owned by the low-peak layout module', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
@@ -72,10 +72,16 @@ test('authentication and recovery geometry are owned by the layout module', () =
     layout,
     /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
   );
-  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(layout, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+  assert.match(layout, /const bool placementChanged = positionChanged \|\| sizeChanged \|\| zOrderChanged/);
+  assert.match(layout, /if \(placementChanged\)/);
+  assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
+  assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
+  assert.doesNotMatch(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
   assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
   assert.doesNotMatch(spotify, /kSpotifyParkedPlaybackWidth|kSpotifyRecoveryInteractionWidth/);
+  // Controller visibility is initialized once during Configure(), not replayed
+  // by every layout reconciliation.
+  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
 });
 
 test('Spotify browser behavior uses scoped music reconcile and responsibility-split observer modules', () => {

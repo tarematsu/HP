@@ -9,6 +9,7 @@ const wrapper = readFileSync(
 
 test('TVer watchdog routing selects page-specific policies by WebView source', () => {
   assert.match(wrapper, /#include \"media_tver_native_series_resolver\.inc\"/);
+  assert.match(wrapper, /#include \"media_tver_episode_loop_policy\.inc\"/);
   assert.match(wrapper, /#include \"media_tver_series_dom_policy\.inc\"/);
   assert.match(wrapper, /#include \"media_tver_series_policy\.inc\"/);
   assert.match(wrapper, /#include \"media_tver_playback_policy\.inc\"/);
@@ -22,6 +23,7 @@ test('TVer watchdog routing selects page-specific policies by WebView source', (
   assert.match(wrapper, /return NativeMediaTverSeriesWatchdogPolicyScript\(\)/);
   assert.match(wrapper, /tver\.jp\/episodes\//);
   assert.match(wrapper, /return kNativeMediaTverPlaybackWatchdogPolicyScript/);
+  assert.match(wrapper, /return kNativeMediaTverEpisodeLoopPolicyScript/);
   assert.match(wrapper, /return kNativeMediaTverWatchdogStaticScript/);
 });
 
@@ -43,16 +45,24 @@ test('TVer native resolution receives host lifetime without moving API work into
   assert.match(wrapper, /const std::shared_ptr<std::atomic<bool>>& alive/);
 });
 
-test('TVer page routing reads source only for the TVer watchdog branch', () => {
-  const tverBranch = wrapper.indexOf('script == kNativeMediaTverWatchdogScript');
-  const sourceLookup = wrapper.indexOf('NativeMediaWebViewSourceContains(webview');
+test('TVer source reads are confined to TVer loop/watchdog routing before YouTube branches', () => {
+  const loopBranch = wrapper.indexOf('script == kNativeMediaTverLoopScript');
+  const watchdogBranch = wrapper.indexOf('script == kNativeMediaTverWatchdogScript');
   const youtubeBranch = wrapper.indexOf('script == kNativeMediaPlayAllScript');
-  assert.ok(tverBranch >= 0);
-  assert.ok(sourceLookup > tverBranch);
-  assert.ok(youtubeBranch > sourceLookup);
+  const sourceLookups = [...wrapper.matchAll(/NativeMediaWebViewSourceContains\(webview/g)]
+    .map(match => match.index);
+  assert.ok(loopBranch >= 0);
+  assert.ok(watchdogBranch > loopBranch);
+  assert.ok(youtubeBranch > watchdogBranch);
+  assert.ok(sourceLookups.length >= 3);
+  assert.ok(sourceLookups.every(index => index > loopBranch && index < youtubeBranch));
 });
 
-test('TVer policy routing does not alter the legacy loop or YouTube routing', () => {
+test('TVer episode loop routing changes only TVer episode pages and preserves YouTube routing', () => {
+  assert.match(
+    wrapper,
+    /script == kNativeMediaTverLoopScript &&[\s\S]*tver\.jp\/episodes\/[\s\S]*return kNativeMediaTverEpisodeLoopPolicyScript/,
+  );
   assert.match(wrapper, /script == kNativeMediaPlayAllScript/);
   assert.match(wrapper, /return kNativeMediaYoutubeReliablePlayAllScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);

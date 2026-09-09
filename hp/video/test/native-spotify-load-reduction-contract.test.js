@@ -25,21 +25,57 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
-test('all playback controllers keep a stable offscreen viewport while only the recovery owner gets a large viewport', () => {
-  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(layout, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+test('Spotify layout updates only the dimensions that actually changed', () => {
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(layout, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
-  assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
-  assert.match(layout, /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/);
-  assert.match(layout, /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/);
-  assert.doesNotMatch(layout, /const bool active =/);
-  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
-  assert.doesNotMatch(layout, /SW_HIDE/);
+  assert.match(layout, /const bool positionChanged =/);
+  assert.match(layout, /const bool sizeChanged =/);
+  assert.match(layout, /const bool zOrderChanged =/);
+  assert.match(layout, /if \(!positionChanged\) flags \|= SWP_NOMOVE/);
+  assert.match(layout, /if \(!sizeChanged\) flags \|= SWP_NOSIZE/);
+  assert.match(layout, /if \(!zOrderChanged\) flags \|= SWP_NOZORDER/);
+  assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
+  assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
+  assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
+});
+
+test('Spotify layout avoids redundant controller COM calls', () => {
+  assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
+  assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
+  assert.match(layout, /const bool controllerChanged =/);
+  assert.match(layout, /Configure\(\) already pushed initial bounds\/visibility/);
+  assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_Bounds/);
+  assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_IsVisible/);
   assert.match(
     layout,
-    /if \(batch\) EndDeferWindowPos\(batch\);[\s\S]*GetClientRect\(slot\.hostWindow, &bounds\);[\s\S]*put_Bounds\(bounds\);[\s\S]*NotifyParentWindowPositionChanged\(\)/,
+    /if \(positionChanged \|\| controllerChanged\)[\s\S]*NotifyParentWindowPositionChanged\(\)/,
+  );
+  assert.doesNotMatch(layout, /get_ZoomFactor\(/);
+  assert.match(layout, /hostLayoutReducedZoomApplied != reducedZoom/);
+});
+
+test('Spotify authentication badge bootstrap runs once per navigation generation', () => {
+  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
+  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
+  assert.match(layout, /slot\.authenticationBadgeTick = 1/);
+  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeRefreshMs/);
+  assert.match(spotify, /target->authenticationBadgeTick = 0/);
+});
+
+test('steady authentication layout repairs z-order only when it is actually lost', () => {
+  assert.match(
+    layout,
+    /!layoutChanged && GetWindow\(slot\.hostWindow, GW_HWNDPREV\) != nullptr/,
+  );
+  assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/);
+});
+
+test('each Spotify scheduler turn performs at most one host layout refresh', () => {
+  const refreshes = schedule.match(/RefreshSpotifyHostLayout\(\);/g) || [];
+  assert.equal(refreshes.length, 1);
+  assert.match(
+    schedule,
+    /staggerSlotIndex_ = scheduledIndex;[\s\S]*Slot& slot = slots_\[staggerSlotIndex_\];[\s\S]*RefreshSpotifyHostLayout\(\);/,
   );
 });
 

@@ -26,8 +26,11 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     layout,
-    /SetWindowPos\(slot\.hostWindow, HWND_TOP,[\s\S]*SWP_NOACTIVATE \| SWP_SHOWWINDOW\)/,
+    /if \(authentication\)[\s\S]*insertAfter = HWND_TOP;/,
   );
+  assert.match(layout, /if \(placementChanged\)/);
+  assert.match(layout, /UINT flags = SWP_NOACTIVATE \| SWP_SHOWWINDOW/);
+  assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
   assert.match(
     layout,
     /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*maintainAuthenticationForeground\(false\);[\s\S]*return;/,
@@ -47,10 +50,19 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
 });
 
-test('authentication page receives the established six-window account label', () => {
+test('authentication foreground repair is conditional instead of running every scheduler pass', () => {
+  assert.match(
+    layout,
+    /!layoutChanged && GetWindow\(slot\.hostWindow, GW_HWNDPREV\) != nullptr/,
+  );
+  assert.doesNotMatch(layout, /maintainAuthenticationForeground[\s\S]{0,800}SetWindowPos\(slot\.hostWindow, HWND_TOP[\s\S]{0,200}else/);
+});
+
+test('authentication page receives the established six-window account label once per document', () => {
   assert.match(bundle, /#include "spotify_auth_badge\.inc"/);
   assert.match(authBadge, /kSpotifyAuthenticationBadgeBootstrapScript/);
   assert.match(authBadge, /fields\[0\] === 'spotify:account'/);
+  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
   assert.match(layout, /ExecuteScript\(\s*kSpotifyAuthenticationBadgeBootstrapScript/);
   assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
   assert.match(

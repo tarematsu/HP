@@ -5,6 +5,7 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
+#include "media_tver_episode_loop_policy.inc"
 #include "media_tver_series_dom_policy.inc"
 #include "media_tver_series_policy.inc"
 #include "media_tver_playback_policy.inc"
@@ -142,6 +143,10 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       std::wstring_view(script).find(L"__homePanelMediaPhaseTime") !=
           std::wstring_view::npos) {
     return kNativeMediaPhaseOverlaySuppressionScript;
+  }
+  if (script == kNativeMediaTverLoopScript &&
+      NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
+    return kNativeMediaTverEpisodeLoopPolicyScript;
   }
   if (script == kNativeMediaTverWatchdogScript) {
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/series/")) {

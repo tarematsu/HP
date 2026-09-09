@@ -27,19 +27,21 @@ test('YouTube and TVer suppress the phase-time badge while preserving cursor hid
     'std::wstring_view(script).find(L"__homePanelMediaPhaseTime")',
   );
   const resolverStart = wrapper.indexOf('const wchar_t* ResolveNativeMediaPolicyScript(');
-  const tverRoutingStart = wrapper.indexOf(
-    'if (script == kNativeMediaTverWatchdogScript)',
+  const firstPlaybackRouting = wrapper.indexOf(
+    'if (script == kNativeMediaTverLoopScript',
     resolverStart + 1,
   );
-  assert.ok(phaseGuardStart >= 0 && tverRoutingStart > phaseGuardStart);
-  const phaseGuard = wrapper.slice(phaseGuardStart, tverRoutingStart);
+  assert.ok(phaseGuardStart >= 0 && firstPlaybackRouting > phaseGuardStart);
+  const phaseGuard = wrapper.slice(phaseGuardStart, firstPlaybackRouting);
   assert.doesNotMatch(phaseGuard, /youtube\.com|tver\.jp/);
 });
 
 test('phase-time suppression is independent from YouTube/TVer playback routing', () => {
+  assert.match(wrapper, /script == kNativeMediaTverLoopScript/);
   assert.match(wrapper, /script == kNativeMediaTverWatchdogScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);
   assert.match(wrapper, /return kNativeMediaYoutubeWatchdogPolicyScript/);
+  assert.match(wrapper, /return kNativeMediaTverEpisodeLoopPolicyScript/);
   assert.match(wrapper, /return kNativeMediaTverPlaybackWatchdogPolicyScript/);
   assert.match(wrapper, /return script;/);
 });
