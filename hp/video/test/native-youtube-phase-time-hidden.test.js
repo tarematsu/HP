@@ -40,7 +40,7 @@ test('phase-time suppression is independent from YouTube/TVer playback routing',
   assert.match(wrapper, /script == kNativeMediaTverLoopScript/);
   assert.match(wrapper, /script == kNativeMediaTverWatchdogScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);
-  assert.match(wrapper, /return kNativeMediaYoutubeWatchdogPolicyScript/);
+  assert.match(wrapper, /return kNativeMediaYoutubeControlRecoveryScript/);
   assert.match(wrapper, /return kNativeMediaTverEpisodeLoopPolicyScript/);
   assert.match(wrapper, /return kNativeMediaTverPlaybackWatchdogPolicyScript/);
   assert.match(wrapper, /return script;/);
