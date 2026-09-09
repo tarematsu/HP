@@ -32,21 +32,15 @@ void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
-  switch (slot.timedRotationPosition % 4U) {
-    case 0:
-      slot.timedTarget = TimedSpotifyTarget::LonesomeRabbit;
-      break;
-    case 1:
-      slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
-      slot.timedCatalogIndex = slot.timedRandomCIndex;
-      break;
-    case 2:
-      slot.timedTarget = TimedSpotifyTarget::BitterBlue;
-      break;
-    default:
-      slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
-      slot.timedCatalogIndex = slot.timedRandomDIndex;
-      break;
+  const unsigned char position =
+      static_cast<unsigned char>(slot.timedRotationPosition % 6U);
+  if (position == 0U) {
+    slot.timedTarget = TimedSpotifyTarget::LonesomeRabbit;
+  } else if (position <= 4U) {
+    slot.timedTarget = slot.timedMiddleOrder[static_cast<size_t>(position - 1U)];
+  } else {
+    slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
+    slot.timedCatalogIndex = slot.timedRandomFIndex;
   }
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
@@ -66,9 +60,7 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   slot.podcastBreakActive = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
-  EnsureRecentRandomPair(slot.timedRotationCycle, kNoTimedCatalogIndex);
-  slot.timedRandomCIndex = timedRandomCIndex_;
-  slot.timedRandomDIndex = timedRandomDIndex_;
+  PrepareTimedRotationCycle(slot);
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -101,7 +93,7 @@ void SpotifyWebViews::CompletePodcastBreak(
   if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
-  // timedRotationPosition is already 0 because the preceding D completion
+  // timedRotationPosition is already 0 because the preceding F completion
   // closed the tenth cycle. Resume directly at A without incrementing the cycle
   // a second time.
   ApplyTimedRotationTarget(slot);
@@ -116,12 +108,10 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
   slot.timedRotationPosition =
-      static_cast<unsigned char>((slot.timedRotationPosition + 1U) % 4U);
+      static_cast<unsigned char>((slot.timedRotationPosition + 1U) % 6U);
   if (slot.timedRotationPosition == 0U) {
     ++slot.timedRotationCycle;
-    EnsureRecentRandomPair(slot.timedRotationCycle, kNoTimedCatalogIndex);
-    slot.timedRandomCIndex = timedRandomCIndex_;
-    slot.timedRandomDIndex = timedRandomDIndex_;
+    PrepareTimedRotationCycle(slot);
     if (slot.timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL) {
       BeginPodcastBreak(slot, now);
       return;
