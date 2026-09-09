@@ -1,5 +1,6 @@
 #include "web_renderer.h"
 #include "stationhead_native_stats.h"
+#include "winhttp_helpers.h"
 
 namespace hp {
 namespace {
@@ -136,17 +137,20 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   }
 
   SYSTEMTIME localTime{};
-  GetLocalTime(&localTime);
-  const int clockDayKey = static_cast<int>(localTime.wYear) * 10'000 +
-      static_cast<int>(localTime.wMonth) * 100 + static_cast<int>(localTime.wDay);
-  const bool clockDayChanged = clockDayKey != nativeClockDayKey_;
-  const int64_t clockSecondKey =
-      (((static_cast<int64_t>(clockDayKey) * 24 + localTime.wHour) * 60 +
-        localTime.wMinute) * 60 + localTime.wSecond);
+  const bool clockReady = NetworkClockJstNow(&localTime);
+  const int clockDayKey = clockReady
+      ? static_cast<int>(localTime.wYear) * 10'000 +
+            static_cast<int>(localTime.wMonth) * 100 + static_cast<int>(localTime.wDay)
+      : 0;
+  const bool clockDayChanged = clockReady && clockDayKey != nativeClockDayKey_;
+  const int64_t clockSecondKey = clockReady
+      ? (((static_cast<int64_t>(clockDayKey) * 24 + localTime.wHour) * 60 +
+          localTime.wMinute) * 60 + localTime.wSecond)
+      : -1;
   const int64_t previousClockSecondKey = nativeClockSecondKey_;
   const bool clockSecondChanged = clockSecondKey != previousClockSecondKey;
   const bool clockMinuteChanged = previousClockSecondKey < 0 ||
-      clockSecondKey / 60 != previousClockSecondKey / 60;
+      (clockReady && clockSecondKey / 60 != previousClockSecondKey / 60);
   nativeClockDayKey_ = clockDayKey;
   nativeClockSecondKey_ = clockSecondKey;
 
