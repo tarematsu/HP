@@ -6,7 +6,8 @@ constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
 constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyInitialSlotOffsetMs = 40ULL * 1000ULL;
 
@@ -57,6 +58,40 @@ bool SpotifyWebViews::ShouldRenavigateUnhealthySlot(
           now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs);
 }
 
+bool SpotifyWebViews::ExpireStaleAsyncWork(
+    Slot& slot, ULONGLONG now) noexcept {
+  bool expired = false;
+  if (slot.reconcileInFlight && slot.reconcileStartedTick != 0 &&
+      now - slot.reconcileStartedTick >= kSpotifyAsyncOperationTimeoutMs) {
+    ++slot.reconcileRequestGeneration;
+    if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
+    slot.reconcileInFlight = false;
+    slot.reconcileStartedTick = 0;
+    expired = true;
+  }
+  if (slot.timedObserverInstallInFlight &&
+      slot.timedObserverInstallStartedTick != 0 &&
+      now - slot.timedObserverInstallStartedTick >=
+          kSpotifyAsyncOperationTimeoutMs) {
+    ++slot.timedObserverInstallGeneration;
+    if (slot.timedObserverInstallGeneration == 0) {
+      ++slot.timedObserverInstallGeneration;
+    }
+    slot.timedObserverInstallInFlight = false;
+    slot.timedObserverInstallStartedTick = 0;
+    slot.timedObserverReady = false;
+    expired = true;
+  }
+  if (!expired) return false;
+
+  MarkSlotRecovering(slot, now);
+  slot.lastTimedReconcileTick = 0;
+  staggerSlotIndex_ = slot.index;
+  staggerSlotStartTick_ = now;
+  staggerSlotValidated_ = false;
+  return true;
+}
+
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
@@ -73,6 +108,24 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
         (slot.timedTarget != TimedSpotifyTarget::None ||
          slot.loginPage || slot.controllerCreating);
     if (relevantRecovery) return kSpotifyRobustUrgentTickMs;
+
+    if (slot.reconcileInFlight && slot.reconcileStartedTick != 0) {
+      const ULONGLONG age = now - slot.reconcileStartedTick;
+      if (age >= kSpotifyAsyncOperationTimeoutMs) {
+        return kSpotifyRobustUrgentTickMs;
+      }
+      nextDeadlineMs = std::min(
+          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
+    }
+    if (slot.timedObserverInstallInFlight &&
+        slot.timedObserverInstallStartedTick != 0) {
+      const ULONGLONG age = now - slot.timedObserverInstallStartedTick;
+      if (age >= kSpotifyAsyncOperationTimeoutMs) {
+        return kSpotifyRobustUrgentTickMs;
+      }
+      nextDeadlineMs = std::min(
+          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
+    }
 
     if (slot.timedPlaybackStartTick != 0) {
       const ULONGLONG age = now - slot.timedPlaybackStartTick;
@@ -163,8 +216,27 @@ bool SpotifyWebViews::ParseNormalizedPoint(
 void SpotifyWebViews::ClickSlotNormalizedPoint(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+
+  // Normal parked surfaces are playback-only. If a reconcile found a button
+  // while the slot was still parked, expanding the responsive Spotify page
+  // invalidates that coordinate. Promote the slot to recovery ownership first,
+  // wait for the normal layout-settle pass, then re-run DOM lookup and click the
+  // newly calculated point from that stable interaction viewport.
+  const bool recoveryViewportReady =
+      hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
+  if (!recoveryViewportReady) {
+    const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
+    slot.lastTimedReconcileTick = 0;
+    staggerSlotIndex_ = slot.index;
+    staggerSlotStartTick_ = now;
+    staggerSlotValidated_ = false;
+    RefreshSpotifyHostLayout();
+    ArmRobustScheduler();
+    return;
+  }
+
   SetSlotState(slot, SlotState::WaitingTarget);
-  RefreshSpotifyHostLayout();
   DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
 }
 
