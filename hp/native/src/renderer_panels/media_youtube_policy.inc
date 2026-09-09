@@ -150,10 +150,13 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   if (!player || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
 
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
-  const isClickable = (element, allowTransparent = false) => {
+  const isClickable = (
+      element, allowTransparent = false, allowAriaHidden = false) => {
     if (!element || element.disabled ||
         element.getAttribute('aria-disabled') === 'true' ||
-        element.getAttribute('aria-hidden') === 'true') return false;
+        (!allowAriaHidden && element.getAttribute('aria-hidden') === 'true')) {
+      return false;
+    }
     const style = window.getComputedStyle(element);
     const rect = element.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' &&
@@ -161,8 +164,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
            style.pointerEvents !== 'none' &&
            rect.width > 0 && rect.height > 0;
   };
-  const point = (element, allowTransparent = false) => {
-    if (!isClickable(element, allowTransparent)) return null;
+  const point = (
+      element, allowTransparent = false, allowAriaHidden = false) => {
+    if (!isClickable(element, allowTransparent, allowAriaHidden)) return null;
     const rect = element.getBoundingClientRect();
     return [
       Math.max(0, Math.min(10000, Math.round(
@@ -172,8 +176,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     ];
   };
   const guardedPoint = (
-      element, action, cooldownMs, allowTransparent = false) => {
-    const resolved = point(element, allowTransparent);
+      element, action, cooldownMs, allowTransparent = false,
+      allowAriaHidden = false) => {
+    const resolved = point(element, allowTransparent, allowAriaHidden);
     if (!resolved) return null;
     const now = Date.now();
     const state = window.__homePanelYoutubeTrustedActionState ||
@@ -239,8 +244,9 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   }
 
   // Prefer current known classes and aria-labels, then fall back to semantics.
-  // Skip Ad remains visible to the user, but trusted input still tolerates
-  // transient opacity during YouTube's own control animation.
+  // Skip Ad remains visible to the user, and trusted input tolerates YouTube's
+  // transient opacity/aria-hidden autohide state as long as the control still
+  // has a real box and pointer target.
   const selectors = [
     '.ytp-ad-skip-button',
     '.ytp-ad-skip-button-modern',
@@ -262,16 +268,16 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
     '[aria-label*="広告を飛ばす"]'
   ];
   let target = Array.from(player.querySelectorAll(selectors.join(',')))
-      .find(element => isClickable(element, true)) || null;
+      .find(element => isClickable(element, true, true)) || null;
   if (!target) {
     const skipPattern = /(広告をスキップ|広告を飛ばす|skip\s+ad(?:s)?)/i;
     target = Array.from(player.querySelectorAll(
         'button, tp-yt-paper-button, [role="button"], '
         + '.ytp-ad-skip-button-slot, .ytp-ad-skip-button-container'))
-        .find(element => isClickable(element, true) &&
+        .find(element => isClickable(element, true, true) &&
             skipPattern.test(textOf(element))) || null;
   }
-  if (target) return guardedPoint(target, 'skip-ad', 750, true);
+  if (target) return guardedPoint(target, 'skip-ad', 750, true, true);
 
   // Treat ads as an isolated playback state. Apart from survey/skip actions,
   // never mutate player state while YouTube owns ad playback: caption toggles,
@@ -303,11 +309,14 @@ constexpr wchar_t kNativeMediaYoutubeWatchdogPolicyScript[] = LR"JS(
   const fullscreen = document.fullscreenElement ||
       player.classList.contains('ytp-fullscreen');
   if (fullscreen) return null;
-  target = player.querySelector('.ytp-fullscreen-button');
-  // Autohide and the clean-player policy both make chrome transparent. Its
-  // bounds and pointer target remain valid, so allow only this action through
-  // the opacity guard.
-  return guardedPoint(target, 'fullscreen', 2500, true);
+  target = player.querySelector(
+      '.ytp-fullscreen-button, button[aria-label*="Full screen" i], '
+      + 'button[title*="Full screen" i], button[aria-label*="全画面"], '
+      + 'button[title*="全画面"]');
+  // The clean-player policy intentionally leaves chrome transparent and
+  // YouTube autohide may also mark it aria-hidden. CDP trusted input can still
+  // click the real control while its box/pointer target remain valid.
+  return guardedPoint(target, 'fullscreen', 2500, true, true);
 })()
 )JS";
 
