@@ -33,7 +33,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }, true);
 
   // Spotify may reuse one media element when its internal queue changes source.
-  // The shared target checks retry identity until the now-playing surface settles.
+  // Reuse the same target checks rather than owning a second identity policy.
   document.addEventListener('loadedmetadata', event => {
     if (!isMedia(event.target) || event.target.ended) return;
     scheduleTargetChecks(event.target);
