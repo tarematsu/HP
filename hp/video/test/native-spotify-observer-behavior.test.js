@@ -167,7 +167,7 @@ test('target identity and wrong-track rejection have one runtime owner', () => {
   assert.match(heartbeat, /enforceTarget\(media\)/);
 });
 
-test('production observer rejects an ad/title false-positive and prefers direct Track ID', () => {
+test('production observer prefers direct Track ID over title fallback', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
 
@@ -216,7 +216,7 @@ test('production observer ends immediately, blocks the old queue, then starts th
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
 });
 
-test('shared target checks stop a Spotify recommendation and request native recovery once', () => {
+test('shared target checks stop a recommendation and request native recovery once', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f11');
   h.setTrack('/track/A', 'Target A');
