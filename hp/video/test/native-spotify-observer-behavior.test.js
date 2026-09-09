@@ -33,6 +33,7 @@ class FakeMedia {
   paused = true;
   ended = false;
   currentTime = 0;
+  duration = Number.NaN;
   pauseCalls = 0;
 
   pause() {
@@ -163,7 +164,7 @@ test('target identity and wrong-track rejection have one runtime owner', () => {
   assert.doesNotMatch(runtime + events + heartbeat,
     /rejectWrongTrack|scheduleIdentityCheck|confirmStarted|scheduleStartChecks/);
   assert.match(events, /scheduleTargetChecks\(event\.target\)/);
-  assert.match(events, /enforceTarget\(event\.target\)/);
+  assert.match(events, /enforceTarget\(media\)/);
   assert.match(heartbeat, /enforceTarget\(media\)/);
 });
 
@@ -214,6 +215,30 @@ test('production observer ends immediately, blocks the old queue, then starts th
   h.media.paused = false;
   h.dispatch('playing');
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
+});
+
+test('production observer advances before Spotify autoplay can start a recommendation', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f14');
+  h.setTrack('/track/A', 'Target A');
+  h.media.duration = 180;
+  h.media.currentTime = 178.9;
+  h.media.paused = false;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f14');
+
+  h.dispatch('timeupdate');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 0);
+
+  h.media.currentTime = 179.3;
+  h.dispatch('timeupdate');
+  assert.equal(h.media.paused, true);
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
+
+  h.media.ended = true;
+  h.dispatch('ended');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
 });
 
 test('shared target checks stop a recommendation and request native recovery once', () => {
