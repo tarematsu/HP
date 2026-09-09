@@ -7,11 +7,19 @@ constexpr int kSpotifyParkedPlaybackHeight = 180;
 constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
-constexpr ULONGLONG kSpotifyAuthenticationBadgeRefreshMs = 30ULL * 1000ULL;
 
 bool SpotifyHostRectEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top &&
          left.right == right.right && left.bottom == right.bottom;
+}
+
+bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
+  return left.left == right.left && left.top == right.top;
+}
+
+bool SpotifyHostSizeEqual(const RECT& left, const RECT& right) noexcept {
+  return left.right - left.left == right.right - right.left &&
+         left.bottom - left.top == right.bottom - right.top;
 }
 
 }  // namespace
@@ -59,18 +67,25 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     }
 
     const RECT desired{x, y, x + width, y + height};
-    const bool placementChanged =
+    const bool positionChanged =
         !slot.hostLayoutApplied ||
-        !SpotifyHostRectEqual(slot.hostLayoutRect, desired) ||
-        slot.hostLayoutInsertAfter != insertAfter;
+        !SpotifyHostPositionEqual(slot.hostLayoutRect, desired);
+    const bool sizeChanged =
+        !slot.hostLayoutApplied ||
+        !SpotifyHostSizeEqual(slot.hostLayoutRect, desired);
+    const bool zOrderChanged =
+        !slot.hostLayoutApplied || slot.hostLayoutInsertAfter != insertAfter;
+    const bool placementChanged = positionChanged || sizeChanged || zOrderChanged;
     const bool controllerChanged =
         slot.hostLayoutController != slot.controller.Get();
 
     if (placementChanged) {
-      ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
+      UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
+      if (!positionChanged) flags |= SWP_NOMOVE;
+      if (!sizeChanged) flags |= SWP_NOSIZE;
+      if (!zOrderChanged) flags |= SWP_NOZORDER;
       if (SetWindowPos(slot.hostWindow, insertAfter,
-                       x, y, width, height,
-                       SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
+                       x, y, width, height, flags)) {
         slot.hostLayoutRect = desired;
         slot.hostLayoutInsertAfter = insertAfter;
         slot.hostLayoutApplied = true;
@@ -79,20 +94,30 @@ void SpotifyWebViews::PlaceHosts() noexcept {
 
     if (!slot.controller) {
       slot.hostLayoutController = nullptr;
+      slot.hostLayoutReducedZoomApplied = false;
       continue;
     }
 
-    // WM_SIZE owns normal bounds propagation after a real resize. Only a newly
-    // attached controller needs an explicit initial bounds push here. Position
-    // changes still need the lightweight parent-position notification.
     if (controllerChanged) {
-      RECT bounds{};
-      GetClientRect(slot.hostWindow, &bounds);
-      slot.controller->put_Bounds(bounds);
-      slot.controller->put_IsVisible(TRUE);
+      // Configure() already pushed initial bounds/visibility. Layout only needs
+      // to remember the new controller and notify it of the parent position.
       slot.hostLayoutController = slot.controller.Get();
+      slot.hostLayoutReducedZoomApplied = false;
     }
-    if (placementChanged || controllerChanged) {
+
+    const bool reducedZoom = authentication || recovery;
+    if (slot.hostLayoutReducedZoomApplied != reducedZoom) {
+      const HRESULT zoomResult = slot.controller->put_ZoomFactor(
+          reducedZoom ? kSpotifySerializedRecoveryZoom : 1.0);
+      if (SUCCEEDED(zoomResult)) {
+        slot.hostLayoutReducedZoomApplied = reducedZoom;
+      }
+    }
+
+    // A pure resize is already propagated by WM_SIZE. WebView2 only needs the
+    // parent-position notification when the HWND actually moved or a controller
+    // was newly attached.
+    if (positionChanged || controllerChanged) {
       slot.controller->NotifyParentWindowPositionChanged();
     }
   }
@@ -118,15 +143,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
     }
   }
 
-  if (recoveryIndex < slots_.size() && slots_[recoveryIndex].controller) {
-    double zoom = 1.0;
-    if (FAILED(slots_[recoveryIndex].controller->get_ZoomFactor(&zoom)) ||
-        zoom < 0.799 || zoom > 0.801) {
-      slots_[recoveryIndex].controller->put_ZoomFactor(
-          kSpotifySerializedRecoveryZoom);
-    }
-  }
-
   const auto maintainAuthenticationForeground =
       [this, foregroundAuthenticationIndex](bool layoutChanged) noexcept {
         if (foregroundAuthenticationIndex >= slots_.size() || !parentWindow_ ||
@@ -139,30 +155,19 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           return;
         }
 
-        // PlaceHosts already applies geometry and HWND_TOP on a layout change.
-        // On steady scheduler passes only refresh z-order, not geometry or all
-        // WebView2 bounds, so one login surface cannot stall the six-window set.
-        if (!layoutChanged) {
+        // Only repair z-order when another child actually moved above the auth
+        // surface. A steady scheduler pass therefore costs no SetWindowPos call.
+        if (!layoutChanged && GetWindow(slot.hostWindow, GW_HWNDPREV) != nullptr) {
           SetWindowPos(slot.hostWindow, HWND_TOP, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
         }
 
-        if (layoutChanged && slot.controller) {
-          double zoom = 1.0;
-          if (FAILED(slot.controller->get_ZoomFactor(&zoom)) ||
-              zoom < 0.799 || zoom > 0.801) {
-            slot.controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
-          }
-        }
-
-        const ULONGLONG now = GetTickCount64();
-        if (!layoutChanged && slot.authenticationBadgeTick != 0 &&
-            now - slot.authenticationBadgeTick <
-                kSpotifyAuthenticationBadgeRefreshMs) {
-          return;
-        }
-        slot.authenticationBadgeTick = now;
+        // The bridge is document-scoped and the account label is immutable for
+        // the slot. Bootstrap once per navigation generation; retry only after a
+        // failed ExecuteScript instead of polling it every scheduler pass.
+        if (slot.authenticationBadgeTick != 0) return;
+        slot.authenticationBadgeTick = 1;
 
         const auto alive = alive_;
         Slot* const target = &slot;
