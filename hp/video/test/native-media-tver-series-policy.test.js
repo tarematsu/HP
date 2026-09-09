@@ -49,6 +49,15 @@ test('TVer series DOM policy opens the newest rendered episode without viewport 
   assert.doesNotMatch(domPolicy, /return point\(latest\)/);
 });
 
+test('TVer series DOM policy fails closed instead of scanning page-wide episode links', () => {
+  assert.match(domPolicy, /if \(!anchorHeading\) return \[\];/);
+  assert.match(domPolicy, /container = container\.parentElement;[\s\S]*return \[\];/);
+  assert.doesNotMatch(
+    domPolicy,
+    /return Array\.from\(root\.querySelectorAll\('a\[href\*=\"\/episodes\/\"\]'\)\)/,
+  );
+});
+
 test('TVer series DOM policy retains the trusted action fallback', () => {
   assert.match(domPolicy, /エピソードを再生\|最新話を再生\|最新エピソードを再生\|本編を再生/);
   assert.match(
@@ -59,6 +68,8 @@ test('TVer series DOM policy retains the trusted action fallback', () => {
   assert.match(domPolicy, /if \(actionPoint\) return actionPoint/);
   assert.match(domPolicy, /try \{ action\.click\(\); \} catch \(_\) \{\}/);
   assert.match(domPolicy, /あなたにおすすめ\|おすすめ\|関連番組\|関連動画\|ランキング/);
+  assert.match(domPolicy, /__homePanelTverAcceptNextEpisode:/);
+  assert.match(domPolicy, /sessionStorage\.setItem\(pendingEpisodeKey\(location\.pathname\), '1'\)/);
 });
 
 test('TVer series DOM policy dismisses a blocking survey before episode selection', () => {
