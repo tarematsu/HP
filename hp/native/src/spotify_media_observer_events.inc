@@ -10,7 +10,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   if (runtime.eventsInstalled) return true;
   runtime.eventsInstalled = true;
 
-  const { state, syncTarget, isMedia, confirmStarted,
+  const { state, post, syncTarget, isMedia, confirmStarted,
           scheduleStartChecks, scheduleRecovery } = runtime;
 
   document.addEventListener('play', event => {
@@ -57,13 +57,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     document.querySelectorAll('audio, video').forEach(candidate => {
       try { candidate.pause(); } catch (_) {}
     });
-    try {
-      if (window.chrome && window.chrome.webview) {
-        window.chrome.webview.postMessage(
-            'spotify:timed-ended\u001f' +
-            String(window.__homePanelSpotifyGeneration || '0'));
-      }
-    } catch (_) {}
+    post('spotify:timed-ended');
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
