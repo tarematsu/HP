@@ -55,7 +55,7 @@ test('authentication page receives the established five-window account label', (
   assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
   assert.match(
     staticScripts,
-    /L"amazon", L"ten", L"nagi", L"hinata", L"ozeki"/,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/,
   );
-  assert.doesNotMatch(staticScripts, /yuukiar/);
+  assert.doesNotMatch(staticScripts, /ozeki/);
 });
