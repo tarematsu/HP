@@ -51,6 +51,20 @@ test('inactive Spotify playback hosts never collapse to 1x1', () => {
   assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
 });
 
+test('recovery interaction never depends on the compact Spotify breakpoint', () => {
+  assert.match(spotify, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(spotify, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.match(
+    spotify,
+    /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/,
+  );
+  assert.match(
+    spotify,
+    /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/,
+  );
+  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
+});
+
 test('only a recovering Spotify WebView uses 80 percent page zoom for trusted interaction', () => {
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(layout, /recoveryIndex < slots_\.size\(\)/);
@@ -83,8 +97,8 @@ test('authentication foreground never extends scheduler ownership', () => {
   assert.match(schedule, /Login is a presentation concern, not scheduler ownership/);
 });
 
-test('recovery has a bounded hold so one slow account cannot monopolize the viewport', () => {
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
+test('recovery has a bounded hold long enough for async timeout and retry', () => {
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
   assert.match(schedule, /const bool holdRecovery/);
   assert.match(schedule, /SlotStateNeedsRecovery\(current\.state\)/);
   assert.match(schedule, /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/);
