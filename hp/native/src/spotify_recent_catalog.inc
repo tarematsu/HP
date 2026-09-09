@@ -127,27 +127,45 @@ void SpotifyWebViews::EnsureRecentRandomPair(
   timedRandomPairCycle_ = rotationCycle;
 }
 
-bool SpotifyWebViews::SlotMatchesRecentTimedTarget(
+SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
     const Slot& slot) const noexcept {
-  if (!slot.webview || slot.timedTarget != TimedSpotifyTarget::CatalogTrack) {
-    return false;
+  switch (slot.timedTarget) {
+    case TimedSpotifyTarget::BitterBlue:
+      return {kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl,
+              kSpotifyBitterBluePath};
+    case TimedSpotifyTarget::LonesomeRabbit:
+      return {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
+              kSpotifyLonesomeRabbitPath};
+    case TimedSpotifyTarget::CatalogTrack: {
+      const SpotifyRecentCatalogTrack* track =
+          RecentTimedCatalogTrack(slot.timedCatalogIndex);
+      return track ? MusicTargetDescriptor{track->title, track->url, track->path}
+                   : MusicTargetDescriptor{};
+    }
+    case TimedSpotifyTarget::TalkAbout:
+    case TimedSpotifyTarget::None:
+      return {};
   }
-  const SpotifyRecentCatalogTrack* track =
-      RecentTimedCatalogTrack(slot.timedCatalogIndex);
-  if (!track) return false;
+  return {};
+}
+
+bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
+  if (!slot.webview) return false;
+  const MusicTargetDescriptor target = ResolveMusicTarget(slot);
+  if (!target.path) return false;
+
   LPWSTR rawSource = nullptr;
   if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   return IsSpotifyOpenSource(source) &&
-         source.find(track->path) != std::wstring::npos;
+         source.find(target.path) != std::wstring::npos;
 }
 
-void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
+void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
   if (!slot.webview) return;
-  const SpotifyRecentCatalogTrack* track =
-      RecentTimedCatalogTrack(slot.timedCatalogIndex);
-  if (!track) return;
+  const MusicTargetDescriptor target = ResolveMusicTarget(slot);
+  if (!target.url) return;
 
   slot.lastModeNavigateTick = GetTickCount64();
   SetSlotState(slot, SlotState::Navigating);
@@ -155,7 +173,7 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
-  const HRESULT result = slot.webview->Navigate(track->url);
+  const HRESULT result = slot.webview->Navigate(target.url);
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());
@@ -163,7 +181,7 @@ void SpotifyWebViews::NavigateRecentTimedSlot(Slot& slot) noexcept {
   ArmRobustScheduler();
 }
 
-void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
+void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
   if (!slot.webview) {
     BeginControllerCreate(slot);
@@ -172,21 +190,14 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
   slot.controllerCreating = false;
   slot.controllerCreateTick = 0;
 
-  if (SlotIsLoginPage(slot) ||
-      slot.timedTarget != TimedSpotifyTarget::CatalogTrack) {
-    return;
-  }
+  if (SlotIsLoginPage(slot) || !ResolveMusicTarget(slot).url) return;
 
-  const SpotifyRecentCatalogTrack* track =
-      RecentTimedCatalogTrack(slot.timedCatalogIndex);
-  if (!track) return;
-
-  if (!SlotMatchesRecentTimedTarget(slot)) {
+  if (!SlotMatchesMusicTarget(slot)) {
     const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
     if (slot.lastModeNavigateTick == 0 ||
         now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs) {
-      NavigateRecentTimedSlot(slot);
+      NavigateMusicTarget(slot);
     }
     return;
   }
@@ -200,7 +211,6 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
   const ULONGLONG reconcileRequestGeneration = slot.reconcileRequestGeneration;
   slot.reconcileInFlight = true;
   slot.reconcileStartedTick = GetTickCount64();
-  const size_t requestedCatalogIndex = slot.timedCatalogIndex;
   const ULONGLONG requestedGeneration = slot.targetGeneration;
   Slot* const target = &slot;
   ComPtr<ICoreWebView2> requestedView = slot.webview;
@@ -208,9 +218,8 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
   const HRESULT started = requestedView->ExecuteScript(
       kSpotifyStaticTrackReconcileScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedView, requestedCatalogIndex,
-           requestedGeneration, reconcileRequestGeneration](
-              HRESULT result, LPCWSTR json) -> HRESULT {
+          [this, alive, target, requestedView, requestedGeneration,
+           reconcileRequestGeneration](HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
             if (target->reconcileRequestGeneration != reconcileRequestGeneration ||
                 target->webview.Get() != requestedView.Get()) {
@@ -218,10 +227,8 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
             }
             target->reconcileInFlight = false;
             target->reconcileStartedTick = 0;
-            if (!started_ ||
-                target->timedTarget != TimedSpotifyTarget::CatalogTrack ||
-                requestedCatalogIndex != target->timedCatalogIndex ||
-                requestedGeneration != target->targetGeneration) {
+            if (!started_ || requestedGeneration != target->targetGeneration ||
+                !ResolveMusicTarget(*target).url) {
               return S_OK;
             }
 
@@ -229,7 +236,7 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
             if (FAILED(result)) {
               MarkSlotRecovering(*target, now);
               if (ShouldRenavigateUnhealthySlot(*target, now)) {
-                NavigateRecentTimedSlot(*target);
+                NavigateMusicTarget(*target);
               } else {
                 RecomputeForeground();
                 ArmRobustScheduler();
@@ -246,13 +253,10 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
 
             int x = 0;
             int y = 0;
-            const bool hasPoint = ParseNormalizedPoint(json, &x, &y);
-            if (hasPoint) {
-              if (target->unhealthySinceTick == 0) {
-                target->unhealthySinceTick = now;
-              }
+            if (ParseNormalizedPoint(json, &x, &y)) {
+              if (target->unhealthySinceTick == 0) target->unhealthySinceTick = now;
               if (ShouldRenavigateUnhealthySlot(*target, now)) {
-                NavigateRecentTimedSlot(*target);
+                NavigateMusicTarget(*target);
               } else {
                 ClickSlotNormalizedPoint(*target, x, y);
                 ArmRobustScheduler();
@@ -262,7 +266,7 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
 
             MarkSlotRecovering(*target, now);
             if (ShouldRenavigateUnhealthySlot(*target, now)) {
-              NavigateRecentTimedSlot(*target);
+              NavigateMusicTarget(*target);
             } else {
               RecomputeForeground();
               ArmRobustScheduler();
@@ -279,7 +283,7 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
     const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
     if (ShouldRenavigateUnhealthySlot(slot, now)) {
-      NavigateRecentTimedSlot(slot);
+      NavigateMusicTarget(slot);
     } else {
       RecomputeForeground();
       ArmRobustScheduler();
@@ -288,21 +292,19 @@ void SpotifyWebViews::ReconcileRecentTimedSlot(Slot& slot) noexcept {
 }
 
 void SpotifyWebViews::NavigateActiveTimedSlot(Slot& slot) noexcept {
-  if (slot.timedTarget == TimedSpotifyTarget::CatalogTrack &&
-      IsRecentCatalogIndex(slot.timedCatalogIndex)) {
-    NavigateRecentTimedSlot(slot);
+  if (slot.timedTarget == TimedSpotifyTarget::TalkAbout) {
+    NavigatePodcastSlot(slot);
     return;
   }
-  NavigateTimedSlot(slot);
+  NavigateMusicTarget(slot);
 }
 
 void SpotifyWebViews::ReconcileActiveTimedSlot(Slot& slot) noexcept {
-  if (slot.timedTarget == TimedSpotifyTarget::CatalogTrack &&
-      IsRecentCatalogIndex(slot.timedCatalogIndex)) {
-    ReconcileRecentTimedSlot(slot);
+  if (slot.timedTarget == TimedSpotifyTarget::TalkAbout) {
+    ReconcilePodcastSlot(slot);
     return;
   }
-  ReconcileTimedSlot(slot);
+  ReconcileMusicTarget(slot);
 }
 
 void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
@@ -313,36 +315,17 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   std::wstring_view title;
   std::wstring_view kind = L"none";
 
-  switch (slot.timedTarget) {
-    case TimedSpotifyTarget::BitterBlue:
-      pagePath = kSpotifyBitterBluePath;
-      trackPath = kSpotifyBitterBluePath;
-      title = kSpotifyBitterBlueTitle;
+  if (slot.timedTarget == TimedSpotifyTarget::TalkAbout) {
+    pagePath = kSpotifyTalkAboutShowPath;
+    kind = L"podcast";
+  } else {
+    const MusicTargetDescriptor target = ResolveMusicTarget(slot);
+    if (target.path) {
+      pagePath = target.path;
+      trackPath = target.path;
+      title = target.title ? target.title : L"";
       kind = L"music";
-      break;
-    case TimedSpotifyTarget::TalkAbout:
-      pagePath = kSpotifyTalkAboutShowPath;
-      kind = L"podcast";
-      break;
-    case TimedSpotifyTarget::LonesomeRabbit:
-      pagePath = kSpotifyLonesomeRabbitPath;
-      trackPath = kSpotifyLonesomeRabbitPath;
-      title = kSpotifyLonesomeRabbitTitle;
-      kind = L"music";
-      break;
-    case TimedSpotifyTarget::CatalogTrack: {
-      const SpotifyRecentCatalogTrack* track =
-          RecentTimedCatalogTrack(slot.timedCatalogIndex);
-      if (track) {
-        pagePath = track->path;
-        trackPath = track->path;
-        title = track->title;
-        kind = L"music";
-      }
-      break;
     }
-    case TimedSpotifyTarget::None:
-      break;
   }
 
   std::wstring message = L"spotify:target";
