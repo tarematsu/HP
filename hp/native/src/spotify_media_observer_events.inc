@@ -32,11 +32,21 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     enforceTarget(event.target);
   }, true);
 
-  // Spotify may reuse one media element when its internal queue changes source.
-  // Reuse the same target checks rather than owning a second identity policy.
-  document.addEventListener('loadedmetadata', event => {
-    if (!isMedia(event.target) || event.target.ended) return;
-    scheduleTargetChecks(event.target);
+  // Spotify can reuse one media element while changing its internal queue. A
+  // recommended/autoplay track therefore does not always emit a fresh play or
+  // playing event. durationchange gives us an early transition signal, while
+  // timeupdate keeps identity enforcement tied to the browser's own playback
+  // cadence instead of adding another high-frequency polling timer.
+  for (const eventName of ['loadedmetadata', 'durationchange']) {
+    document.addEventListener(eventName, event => {
+      if (!isMedia(event.target) || event.target.ended) return;
+      scheduleTargetChecks(event.target);
+    }, true);
+  }
+
+  document.addEventListener('timeupdate', event => {
+    if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
+    enforceTarget(event.target);
   }, true);
 
   document.addEventListener('pause', event => {
