@@ -36,14 +36,6 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
-  if (state == SlotState::Playing && slot.timedRotationActive &&
-      slot.timedPlaybackStartTick == 0) {
-    // The DOM reconcile path can positively identify a playing target even if
-    // Spotify's media observer temporarily cannot resolve the current Track ID.
-    // Start the same four-minute fail-safe here so A-B-C-D cannot stall forever
-    // solely because player metadata changed upstream.
-    slot.timedPlaybackStartTick = GetTickCount64();
-  }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Navigating || state == SlotState::Playing ||
       state == SlotState::Completed) {
