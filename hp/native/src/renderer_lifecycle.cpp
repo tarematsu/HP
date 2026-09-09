@@ -11,7 +11,6 @@ constexpr UINT kNativePanelTickMs = 1'000;
 constexpr ULONG kNativePanelTimerToleranceMs = 100;
 std::unique_ptr<SpotifyWebViews> gSpotifyWebViews;
 bool gSpotifyMediaNetworkBlocked = false;
-bool gSpotifyTverPhase = false;
 
 HBRUSH DashboardBackgroundBrush() noexcept {
   static HBRUSH background = CreateSolidBrush(kNativeDashboardBackground);
@@ -31,14 +30,10 @@ void PrepareParentWindow(HWND window) {
 }
 }  // namespace
 
-void SetSpotifyMediaPhase(bool tverPhase) noexcept {
-  gSpotifyTverPhase = tverPhase;
-  // YouTube starts the Spotify master cycle. Switching to TVer only disables
-  // the YouTube-only prelude/podcast mode; an A-B-C-D rotation already running
-  // keeps advancing from real track completions and is not reset or stopped.
-  if (gSpotifyWebViews && !gSpotifyMediaNetworkBlocked) {
-    gSpotifyWebViews->SetPodcastMode(!tverPhase);
-  }
+void SetSpotifyMediaPhase(bool) noexcept {
+  // Legacy media-panel notification retained only to keep the composition
+  // boundary stable. Spotify intentionally ignores YouTube/TVer phase changes;
+  // its scheduler, rotation and podcast breaks are fully autonomous.
 }
 
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
@@ -46,9 +41,6 @@ void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept {
   gSpotifyMediaNetworkBlocked = blocked;
   if (!gSpotifyWebViews) return;
   gSpotifyWebViews->SetNetworkBlocked(blocked);
-  if (!blocked) {
-    gSpotifyWebViews->SetPodcastMode(!gSpotifyTverPhase);
-  }
 }
 
 Renderer::Renderer(HWND window, int width, int height)
@@ -110,7 +102,6 @@ void Renderer::Initialize() {
     // Spotify remains active in power-saving mode unless the explicit mute
     // control has hard-blocked media networking.
     gSpotifyWebViews->Start();
-    SetSpotifyMediaPhase(false);
     if (gSpotifyMediaNetworkBlocked) {
       gSpotifyWebViews->SetNetworkBlocked(true);
     }
