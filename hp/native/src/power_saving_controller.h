@@ -1,7 +1,22 @@
 #pragma once
 #include "common.h"
+#include <commctrl.h>
+
+#ifdef _MSC_VER
+#pragma comment(lib, "Comctl32.lib")
+#endif
 
 namespace hp {
+
+inline BOOL SetWindowSubclass(
+    HWND window, SUBCLASSPROC proc, UINT_PTR id, DWORD_PTR data) noexcept {
+  SetLastError(ERROR_SUCCESS);
+  const BOOL installed = ::SetWindowSubclass(window, proc, id, data);
+  if (!installed && GetLastError() == ERROR_SUCCESS) {
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+  }
+  return installed;
+}
 
 class PowerSavingController {
  public:
