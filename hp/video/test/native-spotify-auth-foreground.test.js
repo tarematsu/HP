@@ -47,7 +47,7 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
 });
 
-test('authentication page receives the established five-window account label', () => {
+test('authentication page receives the established six-window account label', () => {
   assert.match(bundle, /#include "spotify_auth_badge\.inc"/);
   assert.match(authBadge, /kSpotifyAuthenticationBadgeBootstrapScript/);
   assert.match(authBadge, /fields\[0\] === 'spotify:account'/);
@@ -55,7 +55,6 @@ test('authentication page receives the established five-window account label', (
   assert.match(layout, /PostSpotifyPageContext\(\*target\)/);
   assert.match(
     staticScripts,
-    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/,
+    /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
   );
-  assert.doesNotMatch(staticScripts, /ozeki/);
 });
