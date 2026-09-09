@@ -157,7 +157,7 @@ constexpr wchar_t kSpotifyScopedTrackReconcileScript[] = LR"JS(
   const control = playerControl();
   const button = targetPlayButton();
   if ((targetMatches(current) && buttonShowsPlaying(control)) ||
-      (targetMatches(current) && buttonShowsPlaying(button))) {
+      buttonShowsPlaying(button)) {
     report(true);
     return true;
   }
