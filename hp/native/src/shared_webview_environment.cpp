@@ -4,6 +4,13 @@
 namespace hp {
 namespace {
 
+// Native media surfaces intentionally remain alive while parked outside the
+// dashboard or hidden by power-saving UI. Apply only the Chromium occlusion
+// lifecycle exception to every shared environment; full-resource surfaces such
+// as YouTube otherwise keep stock browser/resource behavior.
+constexpr wchar_t kSharedWebView2LifecycleArguments[] =
+    L"--disable-backgrounding-occluded-windows";
+
 constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--disable-breakpad "
@@ -14,17 +21,18 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
     // cache is enabled during a live controller session and is explicitly reset
     // when each playback controller is created or recreated.
-    L"--disable-backgrounding-occluded-windows "
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  // A full-resource surface such as YouTube should behave like stock WebView2.
-  // Do not leak Stationhead's autoplay or lightweight Chromium switches into
-  // that environment; playlist/view telemetry should see the normal browser
-  // execution policy.
-  if (!blockImages && !blockFonts) return {};
+  std::wstring arguments = kSharedWebView2LifecycleArguments;
 
-  std::wstring arguments = kStationheadWebView2Arguments;
+  // A full-resource surface such as YouTube keeps stock WebView2 resource and
+  // autoplay policy. The one shared lifecycle flag only prevents Windows
+  // occlusion from backgrounding an intentionally live native media surface.
+  if (!blockImages && !blockFonts) return arguments;
+
+  arguments += L" ";
+  arguments += kStationheadWebView2Arguments;
   arguments += L" --blink-settings=";
   bool needsSeparator = false;
   if (blockImages) {
