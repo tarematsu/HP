@@ -111,11 +111,13 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   const requestRecovery = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || state.endedPosted ||
-        state.recoveryPosted || !isMedia(media) || media.ended) {
+        !isMedia(media) || media.ended) {
       return false;
     }
     if (rejectWrongTrack(media)) return true;
-    if (!state.started || state.targetMedia !== media) return false;
+    if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
+      return false;
+    }
     state.recoveryPosted = true;
     post('spotify:not-playing');
     return true;
