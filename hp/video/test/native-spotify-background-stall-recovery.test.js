@@ -82,7 +82,7 @@ test('lost ExecuteScript callbacks expire instead of wedging a slot forever', ()
   assert.match(header, /ULONGLONG timedObserverInstallGeneration = 0/);
   assert.match(header, /ULONGLONG timedObserverInstallStartedTick = 0/);
   assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
-  assert.match(phase, /ExpireStaleAsyncWork\(Slot& slot, ULONGLONG now\)/);
+  assert.match(phase, /ExpireStaleAsyncWork\(\s*Slot& slot, ULONGLONG now\)/);
   assert.match(schedule, /ExpireStaleAsyncWork\(candidate, now\)/);
   assert.match(timed, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
   assert.match(recent, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
