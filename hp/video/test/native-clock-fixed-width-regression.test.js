@@ -17,10 +17,10 @@ test('clock time keeps a stable width when narrow digits are displayed', () => {
   assert.match(layout, /separatorCellWidth = std::max\(1, digitCellWidth \* 45 \/ 100\)/);
   assert.match(
     layout,
-    /DrawFixedWidthClockTime\(\(dc\), TimeText\(hpNow\), hpTimeRect\)/,
+    /DrawFixedWidthClockTime\(\(dc\), nativeClockTimeText_, hpTimeRect\)/,
   );
   assert.doesNotMatch(
     layout,
-    /DrawTextInRect\(\(dc\), TimeText\(hpNow\), hpTimeRect/,
+    /DrawTextInRect\(\(dc\), nativeClockTimeText_, hpTimeRect/,
   );
 });

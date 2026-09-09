@@ -10,6 +10,10 @@ const dataSections = readFileSync(
   new URL('../../native/src/renderer_panels/data_sections.inc', import.meta.url),
   'utf8',
 );
+const layout = readFileSync(
+  new URL('../../native/src/renderer_panels/layout_overrides.inc', import.meta.url),
+  'utf8',
+);
 
 function functionBody(source, signature) {
   const start = source.indexOf(signature);
@@ -50,11 +54,11 @@ test('Plug Mini footer filters non-plug devices and renders four plugs as a two-
     dataSections,
     /const size_t plugDeviceCount = std::min<size_t>\(4, nativeDashboard_\.switchBotDevices\.size\(\)\);/,
   );
-  assert.match(dataSections, /const int plugRowCount = plugDeviceCount > 2 \? 2 : 1;/);
+  assert.match(layout, /const int plugRowCount = boundedCount > 2 \? 2 : 1;/);
   assert.match(dataSections, /const int plugRow = static_cast<int>\(i \/ 2\);/);
   assert.match(dataSections, /const int plugColumn = static_cast<int>\(i % 2\);/);
   assert.match(
-    dataSections,
+    layout,
     /plugLineHeight \* plugRowCount \+ plugRowGap \* \(plugRowCount - 1\)/,
   );
 });

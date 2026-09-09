@@ -24,6 +24,21 @@ NativeHistoryRevisionCache& HistoryRevisionCacheFor(const Renderer* owner) {
   }
   return cache;
 }
+
+std::wstring ClockDateText(const SYSTEMTIME& now) {
+  static constexpr const wchar_t* kWeekdays[] = {
+      L"日", L"月", L"火", L"水", L"木", L"金", L"土"};
+  wchar_t text[64]{};
+  swprintf_s(text, L"%04u年%u月%u日 (%s)", now.wYear, now.wMonth, now.wDay,
+             kWeekdays[now.wDayOfWeek % 7]);
+  return text;
+}
+
+std::wstring ClockTimeText(const SYSTEMTIME& now) {
+  wchar_t text[16]{};
+  swprintf_s(text, L"%02u:%02u:%02u", now.wHour, now.wMinute, now.wSecond);
+  return text;
+}
 }  // namespace
 
 void Renderer::RebuildNativeAirGraph(int64_t nowMs) {
@@ -70,8 +85,10 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
       historyRevisions.stationhead != state.stationheadPlayHistoryRevision;
   const bool weatherChanged =
       renderedDashboardRevisions_.weather != dashboardRevisions_.weather;
-  const bool energyChanged =
-      renderedDashboardRevisions_.energy != dashboardRevisions_.energy;
+  const bool octopusChanged =
+      renderedDashboardRevisions_.octopus != dashboardRevisions_.octopus;
+  const bool switchbotChanged =
+      renderedDashboardRevisions_.switchbot != dashboardRevisions_.switchbot;
 
   if (sensorsChanged) nativeSensors_ = state.sensors;
   if (historyChanged) {
@@ -92,20 +109,28 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   if (weatherChanged) {
     renderedDashboardRevisions_.weather = dashboardRevisions_.weather;
   }
-  if (energyChanged) {
-    renderedDashboardRevisions_.energy = dashboardRevisions_.energy;
+  if (octopusChanged) {
+    renderedDashboardRevisions_.octopus = dashboardRevisions_.octopus;
+  }
+  if (switchbotChanged) {
+    renderedDashboardRevisions_.switchbot = dashboardRevisions_.switchbot;
   }
 
   if (!nativeDashboardVisible_) return;
   if (!EnsureNativeStaticWindows()) return;
-  if (sensorsChanged || historyChanged) {
-    InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
+  if (sensorsChanged) {
+    InvalidatePanelSection(nativeSideWindow_, PanelSection::AirStats);
+  }
+  if (historyChanged) {
+    InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
   }
   if (weatherChanged) {
     InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
   }
-  if (energyChanged) {
+  if (octopusChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
+  } else if (switchbotChanged) {
+    InvalidatePanelSection(nativeMainWindow_, PanelSection::EnergySwitchBot);
   }
   if (stationheadChanged || stationheadHistoryChanged) {
     InvalidatePanelSection(nativeMainWindow_, PanelSection::Music);
@@ -132,11 +157,12 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
     ++nativeAirRenderRevision_;
     if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
         IsWindowVisible(nativeSideWindow_)) {
-      InvalidatePanelSection(nativeSideWindow_, PanelSection::Air);
+      InvalidatePanelSection(nativeSideWindow_, PanelSection::AirGraph);
     }
   }
 
   SYSTEMTIME localTime{};
+  const bool previousClockReady = nativeClockReady_;
   const bool clockReady = NetworkClockJstNow(&localTime);
   const int clockDayKey = clockReady
       ? static_cast<int>(localTime.wYear) * 10'000 +
@@ -151,14 +177,29 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
   const bool clockSecondChanged = clockSecondKey != previousClockSecondKey;
   const bool clockMinuteChanged = previousClockSecondKey < 0 ||
       (clockReady && clockSecondKey / 60 != previousClockSecondKey / 60);
+  const bool clockReadyChanged = clockReady != previousClockReady;
+
+  if (clockReady) {
+    nativeClockNow_ = localTime;
+    if (clockDayChanged || clockReadyChanged || nativeClockDateText_.empty()) {
+      nativeClockDateText_ = ClockDateText(localTime);
+    }
+    if (clockSecondChanged || clockReadyChanged) {
+      nativeClockTimeText_ = ClockTimeText(localTime);
+    }
+  } else if (clockReadyChanged) {
+    nativeClockDateText_ = L"時刻同期中";
+    nativeClockTimeText_ = L"--:--:--";
+  }
+  nativeClockReady_ = clockReady;
   nativeClockDayKey_ = clockDayKey;
   nativeClockSecondKey_ = clockSecondKey;
 
   if (nativeSideWindow_ && IsWindow(nativeSideWindow_) &&
-      IsWindowVisible(nativeSideWindow_) && clockSecondChanged) {
+      IsWindowVisible(nativeSideWindow_) && (clockSecondChanged || clockReadyChanged)) {
     InvalidatePanelSection(
         nativeSideWindow_,
-        clockDayChanged || clockMinuteChanged
+        clockDayChanged || clockMinuteChanged || clockReadyChanged
             ? PanelSection::Clock
             : PanelSection::ClockTime);
   }

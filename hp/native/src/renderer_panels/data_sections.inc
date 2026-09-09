@@ -40,12 +40,9 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  const size_t plugDeviceCount = std::min<size_t>(4, nativeDashboard_.switchBotDevices.size());
-  const int plugLineHeight = std::clamp(SpanY(body, 110), 12, 22);
-  const int plugRowGap = std::max(1, SpanY(body, 10));
-  const int plugRowCount = plugDeviceCount > 2 ? 2 : 1;
-  const int plugHeight =
-      plugLineHeight * plugRowCount + plugRowGap * (plugRowCount - 1);
+  const RECT plugRect = EnergySwitchBotRectFromCard(
+      card, nativeDashboard_.switchBotDevices.size());
+  const int plugHeight = std::max(1L, plugRect.bottom - plugRect.top);
   RECT chart{body.left, body.top + summaryHeight + SpanY(body, 40),
              body.right, body.bottom - plugHeight - SpanY(body, 25)};
   if (chart.bottom > chart.top + 30 && !nativeDashboard_.octopusProfile.empty()) {
@@ -210,9 +207,19 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
   }
 
-  SelectObject(dc, TierFont(FontTier::Small));
+  SelectObject(dc, previousFont);
+}
+
+void Renderer::DrawEnergySwitchBotSection(HDC dc, const RECT& card) {
+  const RECT body = CardContentRect(card);
+  const size_t plugDeviceCount = std::min<size_t>(4, nativeDashboard_.switchBotDevices.size());
+  const int plugLineHeight = std::clamp(SpanY(body, 110), 12, 22);
+  const int plugRowGap = std::max(1, SpanY(body, 10));
+  const RECT plugRect = EnergySwitchBotRectFromCard(
+      card, nativeDashboard_.switchBotDevices.size());
+
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   SetTextColor(dc, kWidgetSubtle);
-  RECT plugRect{body.left, body.bottom - plugHeight, body.right, body.bottom};
   if (plugDeviceCount == 0) {
     DrawTextInRect(dc, L"Plug Mini情報なし", plugRect,
                    DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER);

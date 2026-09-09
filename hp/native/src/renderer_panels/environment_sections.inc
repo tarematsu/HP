@@ -55,45 +55,55 @@ void Renderer::DrawClockSection(HDC dc, const RECT& card) {
 
 void Renderer::DrawAirSection(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
-  const RECT content = CardContentRect(card);
-  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  const RECT body = content;
+  const RECT body = CardContentRect(card);
+  const RECT statsRect = RearrangedAirStatsRectFromCard(card);
+  const RECT plot = RearrangedAirGraphRectFromCard(card);
+  RECT clip{};
+  GetClipBox(dc, &clip);
+  RECT overlap{};
+  const bool drawStats = IntersectRect(&overlap, &clip, &statsRect) != FALSE;
+  const bool drawGraph = IntersectRect(&overlap, &clip, &plot) != FALSE;
 
-  const bool connected = nativeSensors_.co2Connected;
-  struct AirStat {
-    std::wstring label;
-    std::wstring value;
-    COLORREF color;
-  };
-  const std::array<AirStat, 3> stats{{
-      {L"CO2", connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm",
-       connected ? kWidgetGreen : kWidgetMuted},
-      {L"温度", connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃",
-       connected ? kWidgetText : kWidgetMuted},
-      {L"湿度", connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%",
-       kWidgetMuted},
-  }};
-  const int statsHeight = SpanY(body, 270);
-  const int statsGap = std::max(4, SpanX(body, 30));
-  const int cardWidth = (static_cast<int>(body.right - body.left) - statsGap * 2) / 3;
-  for (int i = 0; i < 3; ++i) {
-    const int left = body.left + i * (cardWidth + statsGap);
-    RECT labelRect{left, body.top, left + cardWidth, body.top + statsHeight * 40 / 100};
-    SetTextColor(dc, kWidgetSubtle);
-    SelectObject(dc, TierFont(FontTier::Small));
-    DrawTextInRect(dc, stats[i].label, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-    RECT valueRect{left, labelRect.bottom, left + cardWidth, body.top + statsHeight};
-    SetTextColor(dc, stats[i].color);
-    SelectObject(dc, TierFont(FontTier::Medium));
-    DrawTextInRect(dc, stats[i].value, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+  if (drawStats) {
+    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+    const bool connected = nativeSensors_.co2Connected;
+    struct AirStat {
+      std::wstring label;
+      std::wstring value;
+      COLORREF color;
+    };
+    const std::array<AirStat, 3> stats{{
+        {L"CO2", connected ? std::to_wstring(nativeSensors_.co2) + L" ppm" : L"--- ppm",
+         connected ? kWidgetGreen : kWidgetMuted},
+        {L"温度", connected ? Fixed(nativeSensors_.temperatureCorrected, 1) + L"℃" : L"--.-℃",
+         connected ? kWidgetText : kWidgetMuted},
+        {L"湿度", connected ? Fixed(nativeSensors_.humidityCorrected, 0) + L"%" : L"--%",
+         kWidgetMuted},
+    }};
+    const int statsHeight = SpanY(body, 270);
+    const int statsGap = std::max(4, SpanX(body, 30));
+    const int cardWidth = (static_cast<int>(body.right - body.left) - statsGap * 2) / 3;
+    for (int i = 0; i < 3; ++i) {
+      const int left = body.left + i * (cardWidth + statsGap);
+      RECT labelRect{left, body.top, left + cardWidth, body.top + statsHeight * 40 / 100};
+      SetTextColor(dc, kWidgetSubtle);
+      SelectObject(dc, TierFont(FontTier::Small));
+      DrawTextInRect(dc, stats[i].label, labelRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+      RECT valueRect{left, labelRect.bottom, left + cardWidth, body.top + statsHeight};
+      SetTextColor(dc, stats[i].color);
+      SelectObject(dc, TierFont(FontTier::Medium));
+      DrawTextInRect(dc, stats[i].value, valueRect, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    }
+    SelectObject(dc, previousFont);
   }
 
+  if (!drawGraph) return;
+
+  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
   constexpr int64_t kWindowMs = 24LL * 60 * 60 * 1000;
   const auto& samples = nativeAirGraph_.samples;
   const int64_t cutoff = nativeAirGraph_.cutoff;
 
-  const int plotTop = body.top + statsHeight + SpanY(body, 60);
-  const RECT plot{body.left, plotTop, body.right, body.bottom};
   if (plot.right > plot.left + 4 && plot.bottom > plot.top + 4) {
     HPEN gridPen = CreatePen(PS_SOLID, 1, kWidgetTrack);
     HGDIOBJ previousPen = SelectObject(dc, gridPen);

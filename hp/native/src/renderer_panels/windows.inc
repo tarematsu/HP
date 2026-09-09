@@ -171,6 +171,12 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
       case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.clock); break;
       case PanelSection::Weather: rect = sections.weather; break;
       case PanelSection::Air: rect = sections.controls; break;
+      case PanelSection::AirStats:
+        rect = RearrangedAirStatsRectFromCard(sections.controls);
+        break;
+      case PanelSection::AirGraph:
+        rect = RearrangedAirGraphRectFromCard(sections.controls);
+        break;
       case PanelSection::Controls: rect = sections.controls; break;
       default: break;
     }
@@ -182,6 +188,10 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
         rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.music)));
         break;
       case PanelSection::Energy: rect = sections.air; break;
+      case PanelSection::EnergySwitchBot:
+        rect = EnergySwitchBotRectFromCard(
+            sections.air, nativeDashboard_.switchBotDevices.size());
+        break;
       default: break;
     }
   }
@@ -193,6 +203,10 @@ void Renderer::DestroyNativeStaticWindows() {
     KillTimer(nativeMainWindow_, kNativePanelTickTimer);
   }
   nativePanelTimerActive_ = false;
+  nativeClockReady_ = false;
+  nativeClockNow_ = {};
+  nativeClockDateText_ = L"時刻同期中";
+  nativeClockTimeText_ = L"--:--:--";
   nativeClockDayKey_ = 0;
   nativeClockSecondKey_ = -1;
   nativePlaybackTickState_ = {};
@@ -303,7 +317,8 @@ void Renderer::PaintNativeMain(HWND hwnd) {
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
     DrawCachedPanelSection(scope.dc, sections.air, PanelSection::Energy,
-                           dashboardRevisions_.energy, &Renderer::DrawEnergySection);
+                           dashboardRevisions_.octopus, &Renderer::DrawEnergySection);
+    DrawEnergySwitchBotSection(scope.dc, sections.air);
   }
 }
 
