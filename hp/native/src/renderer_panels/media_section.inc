@@ -11,6 +11,7 @@
 #include "media_tver_playback_policy.inc"
 #include "media_trusted_input.inc"
 #include "media_youtube_policy.inc"
+#include "media_youtube_trusted_action.inc"
 #include "media_youtube_control_recovery.inc"
 #include "media_youtube_playall_reliable.inc"
 
@@ -90,6 +91,28 @@ bool NativeMediaWebViewSourceContains(
   return value.find(needle) != std::wstring::npos;
 }
 
+void NativeMediaEnsureYoutubeTrustedAction(ICoreWebView2* webview) noexcept {
+  // A WebView survives YouTube SPA navigations, while the document/global can
+  // change. Bootstrap once per observed source instead of re-sending the helper
+  // on every one-second watchdog tick.
+  static ICoreWebView2* installedWebview = nullptr;
+  static std::wstring installedSource;
+  if (!webview) return;
+
+  LPWSTR rawSource = nullptr;
+  if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return;
+  const std::wstring source(rawSource);
+  CoTaskMemFree(rawSource);
+  if (installedWebview == webview && installedSource == source) return;
+
+  const HRESULT started = webview->ExecuteScript(
+      kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr);
+  if (SUCCEEDED(started)) {
+    installedWebview = webview;
+    installedSource = source;
+  }
+}
+
 bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
   static ICoreWebView2* observedWebview = nullptr;
   static std::wstring observedSeriesId;
@@ -166,6 +189,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaYoutubeReliablePlayAllScript;
   }
   if (script == kNativeMediaYoutubeWatchdogScript) {
+    NativeMediaEnsureYoutubeTrustedAction(webview);
     return kNativeMediaYoutubeControlRecoveryScript;
   }
   if (script == kNativeMediaYoutubeHealthScript) {
