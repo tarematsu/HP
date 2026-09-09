@@ -209,20 +209,30 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
 
   if (slot.timedObserverReady || slot.timedObserverInstallInFlight) return;
 
+  ++slot.timedObserverInstallGeneration;
+  if (slot.timedObserverInstallGeneration == 0) {
+    ++slot.timedObserverInstallGeneration;
+  }
+  const ULONGLONG observerInstallGeneration =
+      slot.timedObserverInstallGeneration;
   slot.timedObserverInstallInFlight = true;
+  slot.timedObserverInstallStartedTick = GetTickCount64();
   Slot* const observerTarget = &slot;
   ComPtr<ICoreWebView2> observerView = slot.webview;
   const auto observerAlive = alive_;
   const HRESULT installStarted = observerView->ExecuteScript(
       kSpotifyFastEndObserverScript,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, observerAlive, observerTarget, observerView](
-              HRESULT result, LPCWSTR json) -> HRESULT {
+          [this, observerAlive, observerTarget, observerView,
+           observerInstallGeneration](HRESULT result, LPCWSTR json) -> HRESULT {
             if (!observerAlive->load(std::memory_order_acquire) ||
+                observerTarget->timedObserverInstallGeneration !=
+                    observerInstallGeneration ||
                 observerTarget->webview.Get() != observerView.Get()) {
               return S_OK;
             }
             observerTarget->timedObserverInstallInFlight = false;
+            observerTarget->timedObserverInstallStartedTick = 0;
             observerTarget->timedObserverReady =
                 SUCCEEDED(result) && json &&
                 std::wstring_view(json) == L"true";
@@ -233,7 +243,11 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
             return S_OK;
           }).Get());
   if (FAILED(installStarted)) {
-    slot.timedObserverInstallInFlight = false;
+    if (slot.timedObserverInstallGeneration == observerInstallGeneration &&
+        slot.webview.Get() == observerView.Get()) {
+      slot.timedObserverInstallInFlight = false;
+      slot.timedObserverInstallStartedTick = 0;
+    }
     MarkSlotRecovering(slot, GetTickCount64());
     ArmRobustScheduler();
   }
