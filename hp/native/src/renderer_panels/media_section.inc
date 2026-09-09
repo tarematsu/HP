@@ -11,6 +11,7 @@
 #include "media_tver_playback_policy.inc"
 #include "media_trusted_input.inc"
 #include "media_youtube_policy.inc"
+#include "media_youtube_control_recovery.inc"
 #include "media_youtube_playall_reliable.inc"
 
 namespace {
@@ -165,7 +166,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaYoutubeReliablePlayAllScript;
   }
   if (script == kNativeMediaYoutubeWatchdogScript) {
-    return kNativeMediaYoutubeWatchdogPolicyScript;
+    return kNativeMediaYoutubeControlRecoveryScript;
   }
   if (script == kNativeMediaYoutubeHealthScript) {
     return kNativeMediaYoutubeHealthPolicyScript;

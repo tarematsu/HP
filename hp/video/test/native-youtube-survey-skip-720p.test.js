@@ -6,6 +6,10 @@ const policy = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_policy.inc', import.meta.url),
   'utf8',
 );
+const recovery = readFileSync(
+  new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url),
+  'utf8',
+);
 const reliablePlayAll = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_playall_reliable.inc', import.meta.url),
   'utf8',
@@ -34,26 +38,37 @@ test('YouTube playlist startup bypasses fragile Play all coordinates', () => {
   );
 });
 
-test('YouTube watchdog recovers a paused watch page with a trusted play click', () => {
-  assert.match(policy, /video && video\.paused && !video\.ended/);
-  assert.match(policy, /player\.querySelector\('\.ytp-play-button'\)/);
+test('YouTube watchdog recovers a paused watch page without depending on visible chrome', () => {
+  assert.match(recovery, /video && video\.paused && !video\.ended/);
+  assert.match(recovery, /video\.play\(\)/);
+  assert.match(recovery, /player\.querySelector\('\.ytp-play-button'\)/);
+  assert.match(recovery, /prepareTrustedTarget/);
+  assert.match(recovery, /pointer-events', 'auto', 'important'/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
-test('five-choice YouTube surveys choose the first option then submit', () => {
-  assert.match(policy, /surveyRoots/);
-  assert.match(policy, /options\.length < 5/);
-  assert.match(policy, /state\.step === 0[\s\S]*return point\(options\[0\]\)/);
-  assert.match(policy, /state\.step = 0;\s*return point\(submit\)/);
-  assert.match(policy, /送信\|回答を送信\|submit\|send/);
+test('YouTube surveys choose the first available option then submit', () => {
+  assert.match(recovery, /surveyRoots/);
+  assert.match(recovery, /state\.step === 0[\s\S]*guardedPoint\(options\[0\], 'survey-option'/);
+  assert.match(recovery, /state\.step = 0;\s*return guardedPoint\(submit, 'survey-submit'/);
+  assert.match(recovery, /送信\|回答を送信\|submit\|send/);
 });
 
-test('YouTube ad skip recognizes both selectors and visible skip labels', () => {
-  assert.match(policy, /\.ytp-ad-skip-button-modern/);
-  assert.match(policy, /button\[class\*="ytp-ad-skip"\]/);
-  assert.match(policy, /広告をスキップ\|広告を飛ばす\|skip\\s\+ad/);
+test('YouTube ad skip recognizes selectors and semantic labels even when chrome is hidden', () => {
+  assert.match(recovery, /\.ytp-ad-skip-button-modern/);
+  assert.match(recovery, /button\[class\*="ytp-ad-skip"\]/);
+  assert.match(recovery, /広告をスキップ\|広告を飛ばす/);
+  assert.match(recovery, /skip\\s\*ad/);
+  assert.match(recovery, /guardedPoint\(target, 'skip-ad', 600\)/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(trustedInput, /::SendInput/);
+});
+
+test('YouTube fullscreen recovery accepts hidden canonical and semantic controls', () => {
+  assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
+  assert.match(recovery, /全画面\|fullscreen\|full screen/i);
+  assert.match(recovery, /guardedPoint\(target, 'fullscreen', 1200\)/);
+  assert.match(recovery, /document\.fullscreenElement/);
 });
 
 test('YouTube clean player exposes Skip Ad without restoring unrelated ad chrome', () => {
@@ -79,13 +94,14 @@ test('YouTube playback quality is pinned to the 480p quality level', () => {
   assert.doesNotMatch(policy, /hd720/);
 });
 
-test('media host substitutes legacy YouTube scripts with the current policy', () => {
+test('media host routes watchdog to the trusted control recovery policy', () => {
   assert.match(composition, /#include "media_youtube_policy\.inc"/);
+  assert.match(composition, /#include "media_youtube_control_recovery\.inc"/);
   assert.match(composition, /#include "media_youtube_playall_reliable\.inc"/);
   assert.match(composition, /ResolveNativeMediaPolicyScript/);
   assert.match(
     composition,
-    /script == kNativeMediaYoutubeWatchdogScript[\s\S]*kNativeMediaYoutubeWatchdogPolicyScript/,
+    /script == kNativeMediaYoutubeWatchdogScript[\s\S]*kNativeMediaYoutubeControlRecoveryScript/,
   );
   assert.match(
     composition,

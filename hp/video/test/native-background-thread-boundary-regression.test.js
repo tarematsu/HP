@@ -69,11 +69,15 @@ test('radar compose retry always balances its COM apartment', () => {
   const apartment = section(
     radar,
     'struct ScopedRadarComApartment',
-    'struct RadarCompositionSurface',
+    'std::optional<fs::path> RepresentativeRadarFramePath',
   );
   assert.match(apartment, /CoInitializeEx\(nullptr, COINIT_MULTITHREADED\)/);
   assert.match(apartment, /if \(SUCCEEDED\(result\)\) CoUninitialize\(\)/);
-  const loop = section(radar, 'void Renderer::RadarComposeLoop()', 'void Renderer::ComposeRadarFrame()');
+  const loop = section(
+    radar,
+    'void Renderer::RadarComposeLoop()',
+    'void Renderer::ComposeRadarFrame()',
+  );
   assert.match(loop, /ScopedRadarComApartment apartment/);
   assert.doesNotMatch(loop, /const HRESULT apartment/);
 });
@@ -113,42 +117,24 @@ test('Cloud network watcher cannot leak an exception through std::thread', () =>
   assert.match(watcher, /catch \(\.\.\.\)/);
 });
 
-test('radar composition owns its bitmap and memory DC until publication', () => {
-  const surface = section(
-    radar,
-    'struct RadarCompositionSurface',
-    'HDC RadarSourceDc(',
-  );
-  assert.match(surface, /~RadarCompositionSurface\(\) \{\s*Reset\(\);/);
-  assert.match(surface, /previous\s*&&\s*previous\s*!=\s*HGDI_ERROR/);
-  assert.match(surface, /void FinishDrawing\(\) noexcept/);
-  assert.match(surface, /DeleteDC\(dc\)/);
-  assert.match(surface, /DeleteObject\(bitmap\)/);
-  assert.match(surface, /HBITMAP Release\(\) noexcept/);
-
+test('radar decode owns the new bitmap until atomic publication', () => {
   const compose = section(
     radar,
     'void Renderer::ComposeRadarFrame()',
     '}  // namespace hp',
   );
-  assert.match(compose, /RadarCompositionSurface surface/);
-  assert.match(compose, /if \(!surface\.Initialize\(info, &pixels\)\) return/);
-  assert.match(compose, /surface\.FinishDrawing\(\)/);
-  assert.match(compose, /SaveBitmapAsBmp\(surface\.bitmap/);
-  assert.match(compose, /HBITMAP composed = surface\.Release\(\)/);
-  assert.ok(
-    compose.indexOf('surface.FinishDrawing()') < compose.indexOf('SaveBitmapAsBmp(surface.bitmap'),
-    'bitmap must be deselected before GetDIBits-based persistence',
-  );
+  assert.match(compose, /HBITMAP decoded = DecodeImageFileToBitmap/);
+  assert.match(compose, /if \(!decoded\) return/);
+  assert.match(compose, /HBITMAP previous = nullptr/);
+  assert.match(compose, /std::lock_guard lock\(radarFrameMutex_\)/);
+  assert.match(compose, /radarFrameBitmap_ = decoded/);
+  assert.match(compose, /if \(previous\) DeleteObject\(previous\)/);
+  assert.match(compose, /DeleteObject\(decoded\);\s*return;/);
 });
 
-test('radar bitmap blending rejects failed GDI selections', () => {
-  const blend = section(radar, 'void BlendBitmap(', '}  // namespace');
-  assert.match(blend, /HGDIOBJ previous = SelectObject\(sourceDc, bitmap\)/);
-  assert.match(blend, /if \(!previous \|\| previous == HGDI_ERROR\) return/);
-  assert.ok(
-    blend.indexOf('if (!previous || previous == HGDI_ERROR) return') <
-      blend.indexOf('AlphaBlend('),
-    'AlphaBlend must not run after SelectObject failure',
-  );
+test('single-frame radar has no local blend surface or per-tile GDI path', () => {
+  assert.doesNotMatch(radar, /struct RadarCompositionSurface/);
+  assert.doesNotMatch(radar, /void BlendBitmap\(/);
+  assert.doesNotMatch(radar, /AlphaBlend\(/);
+  assert.doesNotMatch(radar, /CreateCompatibleDC\(/);
 });
