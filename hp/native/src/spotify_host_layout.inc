@@ -8,11 +8,6 @@ constexpr int kSpotifyParkedPlaybackGap = 8;
 constexpr int kSpotifyRecoveryInteractionWidth = 720;
 constexpr int kSpotifyRecoveryInteractionHeight = 480;
 
-bool SpotifyHostRectEqual(const RECT& left, const RECT& right) noexcept {
-  return left.left == right.left && left.top == right.top &&
-         left.right == right.right && left.bottom == right.bottom;
-}
-
 bool SpotifyHostPositionEqual(const RECT& left, const RECT& right) noexcept {
   return left.left == right.left && left.top == right.top;
 }
@@ -171,7 +166,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
 
         const auto alive = alive_;
         Slot* const target = &slot;
-        slot.webview->ExecuteScript(
+        const HRESULT started = slot.webview->ExecuteScript(
             kSpotifyAuthenticationBadgeBootstrapScript,
             Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
                 [this, alive, target](HRESULT result, LPCWSTR) -> HRESULT {
@@ -187,6 +182,7 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                   PostSpotifyPageContext(*target);
                   return S_OK;
                 }).Get());
+        if (FAILED(started)) slot.authenticationBadgeTick = 0;
       };
 
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
