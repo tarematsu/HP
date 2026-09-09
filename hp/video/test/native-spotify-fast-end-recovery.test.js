@@ -55,7 +55,11 @@ test('direct track path is preferred over MediaSession title when both exist', (
   const domIdentity = observer.indexOf('for (const selector of [');
   const mediaSession = observer.indexOf('navigator.mediaSession');
   assert.ok(domIdentity >= 0 && mediaSession > domIdentity);
-  assert.match(observer, /if \(target\.trackPath && track\.path\)[\s\S]*track\.path === target\.trackPath/);
+  assert.match(observer, /if \(target\.trackPath && track\.path\)/);
+  assert.match(observer, /return sameTrackPath\(track\.path, target\.trackPath\)/);
+  assert.match(observer, /const sameTrackPath =/);
+  assert.match(observer, /value === expected/);
+  assert.match(observer, /value\.endsWith\(expected\)/);
 });
 
 test('target changes and ended gaps cannot play an item from the old queue', () => {
