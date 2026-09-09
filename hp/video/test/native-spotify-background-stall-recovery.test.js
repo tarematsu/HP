@@ -109,9 +109,10 @@ test('rotation hard deadline is armed before browser playback state is known', (
 });
 
 test('advertisements cannot complete or start a requested song', () => {
+  assert.match(runtime, /const enforceTarget = media =>/);
   assert.match(
     runtime,
-    /!matchesTarget\(target, currentTrack\(\)\)[\s\S]*state\.started = false;[\s\S]*state\.targetMedia = null;/,
+    /const identity = currentTrack\(\);[\s\S]*!matchesTarget\(target, identity\)[\s\S]*state\.started = false;[\s\S]*state\.targetMedia = null;/,
   );
   assert.match(
     events,

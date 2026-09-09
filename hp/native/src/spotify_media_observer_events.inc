@@ -10,8 +10,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   if (runtime.eventsInstalled) return true;
   runtime.eventsInstalled = true;
 
-  const { state, post, syncTarget, isMedia, confirmStarted,
-          scheduleStartChecks, scheduleRecovery } = runtime;
+  const { state, post, syncTarget, isMedia, enforceTarget,
+          scheduleTargetChecks, scheduleRecovery } = runtime;
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
@@ -24,12 +24,19 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     state.stallTimer = 0;
     state.heartbeatTime = Number(event.target.currentTime) || 0;
     state.heartbeatMisses = 0;
-    scheduleStartChecks(event.target);
+    scheduleTargetChecks(event.target);
   }, true);
 
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
-    confirmStarted(event.target);
+    enforceTarget(event.target);
+  }, true);
+
+  // Spotify may reuse one media element when its internal queue changes source.
+  // Reuse the same target checks rather than owning a second identity policy.
+  document.addEventListener('loadedmetadata', event => {
+    if (!isMedia(event.target) || event.target.ended) return;
+    scheduleTargetChecks(event.target);
   }, true);
 
   document.addEventListener('pause', event => {
@@ -61,7 +68,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
-    if (!media.paused && !media.ended) scheduleStartChecks(media);
+    if (!media.paused && !media.ended) scheduleTargetChecks(media);
   });
   return true;
 })()

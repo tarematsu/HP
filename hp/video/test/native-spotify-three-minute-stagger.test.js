@@ -58,7 +58,8 @@ test('A-B-C-D advances immediately on ended or no later than four minutes after 
   assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(runtime, /spotify:timed-started/);
   assert.match(runtime, /navigator\.mediaSession/);
-  assert.match(runtime, /matchesTarget\(target, currentTrack\(\)\)/);
+  assert.match(runtime, /const enforceTarget = media =>/);
+  assert.match(runtime, /!matchesTarget\(target, identity\)/);
   assert.match(runtime, /\[0, 250, 1000, 2500, 5000\]/);
   assert.match(
     rotation,
@@ -89,7 +90,9 @@ test('slow navigation re-arms observers on owner-only recovery attempts', () => 
 });
 
 test('ads neither start nor complete the requested track and legacy ambiguity state is gone', () => {
-  assert.match(runtime, /!matchesTarget\(target, currentTrack\(\)\)/);
+  assert.match(runtime, /const enforceTarget = media =>/);
+  assert.match(runtime, /!matchesTarget\(target, identity\)/);
+  assert.match(runtime, /if \(!state\.startPosted\) return 'unknown'/);
   assert.match(events, /!state\.started \|\| state\.endedPosted/);
   assert.doesNotMatch(runtime + events, /spotify:timed-waiting|waitForNext/);
   assert.doesNotMatch(rotation, /kSpotifySimplePendingRecoveryMs|timedCompletionPendingTick/);
