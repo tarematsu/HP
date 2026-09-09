@@ -47,6 +47,12 @@ bool HasPngSignature(const fs::path& path) noexcept {
   }
 }
 
+bool NativeStationheadSyncEnabled() noexcept {
+  // Keep all Stationhead code in-tree, but do not request or materialize its
+  // cloud payloads while the native Stationhead runtime is disabled.
+  return false;
+}
+
 int64_t HealthNumber(const JsonObject& root, const wchar_t* name) {
   try {
     const double value = root.GetNamedNumber(name, -1);
@@ -156,6 +162,40 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(const std::vector<uint8_t>&
   };
 
   JsonObject root = JsonObject::Parse(Utf8BytesToWide(body));
+  const bool precomposed = root.GetNamedBoolean(L"precomposed", false);
+  if (precomposed) {
+    const int width = static_cast<int>(root.GetNamedNumber(L"width", 0));
+    const int height = static_cast<int>(root.GetNamedNumber(L"height", 0));
+    const JsonArray frames = root.GetNamedArray(L"frames", JsonArray{});
+    if (width != 1920 || height != 1280 || frames.Size() != 1 ||
+        frames.GetAt(0).ValueType() != JsonValueType::Object) {
+      throw std::runtime_error("precomposed radar payload shape invalid");
+    }
+    const JsonObject frame = frames.GetAt(0).GetObject();
+    const JsonArray tiles = frame.GetNamedArray(L"tiles", JsonArray{});
+    if (tiles.Size() != 1 || tiles.GetAt(0).ValueType() != JsonValueType::Object) {
+      throw std::runtime_error("precomposed radar frame must contain one image");
+    }
+    const JsonObject tile = tiles.GetAt(0).GetObject();
+    const std::wstring url = tile.GetNamedString(L"url", L"").c_str();
+    if (url.empty() || url.front() != L'/') {
+      throw std::runtime_error("precomposed radar frame URL must be relative");
+    }
+    const auto response = Request(L"GET", url, deviceToken_);
+    if (response.status != 200 || !HasPngSignature(response.body)) {
+      throw std::runtime_error(
+          "precomposed radar frame unavailable: HTTP " +
+          std::to_string(response.status));
+    }
+    const fs::path target = localPathFor(url);
+    if (!AtomicWriteBytes(target, response.body) || !HasPngSignature(target)) {
+      throw std::runtime_error("precomposed radar frame cache write failed");
+    }
+    tile.SetNamedValue(L"url", JsonValue::CreateStringValue(localUrlFor(url)));
+    const std::string text = WideToUtf8(root.Stringify().c_str());
+    return {text.begin(), text.end()};
+  }
+
   std::set<std::wstring> retained;
   const std::wstring bundleUrl = root.GetNamedString(L"bundleUrl", L"").c_str();
   if (!bundleUrl.empty() && bundleUrl.front() == L'/') {
@@ -218,40 +258,24 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(const std::vector<uint8_t>&
     }
   }
 
-  const bool precomposed = root.GetNamedBoolean(L"precomposed", false);
   const auto localizeTile = [&](JsonObject item) {
     const std::wstring url = item.GetNamedString(L"url", L"").c_str();
-    if (url.empty() || url.front() != L'/') {
-      if (precomposed) throw std::runtime_error("precomposed radar tile URL must be relative");
-      return;
-    }
+    if (url.empty() || url.front() != L'/') return;
     const fs::path target = localPathFor(url);
     retained.insert(target.wstring());
     std::error_code error;
-    if (precomposed || !fs::exists(target, error) || fs::file_size(target, error) == 0) {
+    if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
-      if (response.status != 200 || response.body.empty() ||
-          (precomposed && !HasPngSignature(response.body))) {
-        if (precomposed) {
-          throw std::runtime_error(
-              "precomposed radar frame unavailable: HTTP " +
-              std::to_string(response.status));
-        }
+      if (response.status != 200 || response.body.empty()) {
         log_.Warn(L"Radar tile cache fetch failed; using remote tile URL: HTTP " +
                   std::to_wstring(response.status));
         item.SetNamedValue(L"url", JsonValue::CreateStringValue(remoteUrlFor(url)));
         return;
       }
       if (!AtomicWriteBytes(target, response.body)) {
-        if (precomposed) {
-          throw std::runtime_error("precomposed radar frame cache write failed");
-        }
         log_.Warn(L"Radar tile cache write failed; using remote tile URL");
         item.SetNamedValue(L"url", JsonValue::CreateStringValue(remoteUrlFor(url)));
         return;
-      }
-      if (precomposed && !HasPngSignature(target)) {
-        throw std::runtime_error("precomposed radar frame cache validation failed");
       }
     }
     item.SetNamedValue(L"url", JsonValue::CreateStringValue(localUrlFor(url)));
@@ -306,6 +330,7 @@ void CloudClient::Synchronize() {
   if (config_.cloudflareBaseUrl.empty()) throw std::runtime_error("cloudflareBaseUrl is empty");
   if (deviceToken_.empty()) throw std::runtime_error("device token missing");
 
+  const bool stationheadSyncEnabled = NativeStationheadSyncEnabled();
   const fs::path dashboardPath = dataDir_ / L"dashboard.json";
   const fs::path radarPath = dataDir_ / L"radar.json";
   const fs::path switchbotPath = dataDir_ / L"switchbot.json";
@@ -325,16 +350,6 @@ void CloudClient::Synchronize() {
         !HasPngSignature(representativeRadarPath)) {
       return -1;
     }
-    try {
-      std::ifstream input(radarPath, std::ios::binary);
-      std::string text((std::istreambuf_iterator<char>(input)), {});
-      if (text.find("https://data.homepanel/radar-cache/v1/radar/frame/representative/latest.png") ==
-          std::string::npos) {
-        return -1;
-      }
-    } catch (...) {
-      return -1;
-    }
     return radarVersion_;
   };
 
@@ -345,9 +360,12 @@ void CloudClient::Synchronize() {
   path += L"&radarVersion=" + std::to_wstring(requestedRadarVersion());
   path += L"&switchbotVersion=" + std::to_wstring(
       presenceFallbackActive_ ? -1 : requestedVersion(switchbotPath, switchbotVersion_));
-  path += L"&stationheadVersion=" + std::to_wstring(requestedVersion(stationheadPath, stationheadVersion_));
-  path += L"&stationheadHealthVersion=" +
-      std::to_wstring(requestedVersion(stationheadHealthPath, stationheadHealthVersion_));
+  if (stationheadSyncEnabled) {
+    path += L"&stationheadVersion=" +
+        std::to_wstring(requestedVersion(stationheadPath, stationheadVersion_));
+    path += L"&stationheadHealthVersion=" +
+        std::to_wstring(requestedVersion(stationheadHealthPath, stationheadHealthVersion_));
+  }
   path += L"&configVersion=" + std::to_wstring(requestedVersion(deviceConfigPath, deviceConfigVersion_));
 
   const auto response = Request(L"GET", path, deviceToken_);
@@ -358,8 +376,12 @@ void CloudClient::Synchronize() {
   const int nextDashboard = VersionOr(versions, L"dashboard", dashboardVersion_);
   const int nextRadar = VersionOr(versions, L"radar", radarVersion_);
   const int nextSwitchbot = VersionOr(versions, L"switchbot", switchbotVersion_);
-  const int nextStationhead = VersionOr(versions, L"stationhead", stationheadVersion_);
-  const int nextStationheadHealth = VersionOr(versions, L"stationheadHealth", stationheadHealthVersion_);
+  const int nextStationhead = stationheadSyncEnabled
+      ? VersionOr(versions, L"stationhead", stationheadVersion_)
+      : stationheadVersion_;
+  const int nextStationheadHealth = stationheadSyncEnabled
+      ? VersionOr(versions, L"stationheadHealth", stationheadHealthVersion_)
+      : stationheadHealthVersion_;
   const int nextConfig = VersionOr(versions, L"config", deviceConfigVersion_);
 
   bool dashboardApplied = false;
@@ -395,14 +417,16 @@ void CloudClient::Synchronize() {
     presenceFallbackActive_ = false;
     PostMessageW(window_, WM_HP_SWITCHBOT_UPDATED, 0, 0);
   }
-  if (auto payload = StringPayload(root, L"stationhead")) {
-    if (!AtomicWriteBytes(stationheadPath, *payload)) throw std::runtime_error("Stationhead cache write failed");
-    stationheadApplied = true;
-    PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
-  }
-  if (auto payload = StringPayload(root, L"stationheadHealth")) {
-    if (!AtomicWriteBytes(stationheadHealthPath, *payload)) throw std::runtime_error("Stationhead health cache write failed");
-    stationheadHealthApplied = true;
+  if (stationheadSyncEnabled) {
+    if (auto payload = StringPayload(root, L"stationhead")) {
+      if (!AtomicWriteBytes(stationheadPath, *payload)) throw std::runtime_error("Stationhead cache write failed");
+      stationheadApplied = true;
+      PostMessageW(window_, WM_HP_STATIONHEAD_CHANGED, 0, 0);
+    }
+    if (auto payload = StringPayload(root, L"stationheadHealth")) {
+      if (!AtomicWriteBytes(stationheadHealthPath, *payload)) throw std::runtime_error("Stationhead health cache write failed");
+      stationheadHealthApplied = true;
+    }
   }
   if (auto payload = StringPayload(root, L"deviceConfig")) {
     if (!AtomicWriteBytes(deviceConfigPath, *payload)) throw std::runtime_error("device config cache write failed");
@@ -434,9 +458,14 @@ void CloudClient::Synchronize() {
   const int acceptedDashboard = acceptedVersion(L"dashboard", dashboardVersion_, nextDashboard, dashboardApplied);
   const int acceptedRadar = acceptedVersion(L"radar", radarVersion_, nextRadar, radarApplied);
   const int acceptedSwitchbot = acceptedVersion(L"switchbot", switchbotVersion_, nextSwitchbot, switchbotApplied);
-  const int acceptedStationhead = acceptedVersion(L"stationhead", stationheadVersion_, nextStationhead, stationheadApplied);
-  const int acceptedStationheadHealth = acceptedVersion(
-      L"stationhead health", stationheadHealthVersion_, nextStationheadHealth, stationheadHealthApplied);
+  const int acceptedStationhead = stationheadSyncEnabled
+      ? acceptedVersion(L"stationhead", stationheadVersion_, nextStationhead, stationheadApplied)
+      : stationheadVersion_;
+  const int acceptedStationheadHealth = stationheadSyncEnabled
+      ? acceptedVersion(
+          L"stationhead health", stationheadHealthVersion_, nextStationheadHealth,
+          stationheadHealthApplied)
+      : stationheadHealthVersion_;
   const int acceptedConfig = acceptedVersion(L"device config", deviceConfigVersion_, nextConfig, configApplied);
 
   if (dashboardVersion_ != acceptedDashboard || radarVersion_ != acceptedRadar ||
@@ -452,24 +481,25 @@ void CloudClient::Synchronize() {
   }
   if (cacheMetadataDirty_) SaveCacheMetadata();
 
-  // Recomputed every cycle (not only when stationheadHealthApplied) so the "N minutes ago"
-  // text in StationheadHealthSummary keeps advancing even while the underlying status is
-  // unchanged and the cloud sync response omits a fresh stationheadHealth payload.
-  std::wstring nextHealthText;
-  try {
-    std::ifstream input(stationheadHealthPath, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(input)), {});
-    nextHealthText = text.empty()
-        ? L"Stationhead収集: 確認中"
-        : StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(text)));
-  } catch (const std::exception& error) {
-    log_.Warn(L"Stationhead health read failed without interrupting dashboard sync: " + Utf8ToWide(error.what()));
-    nextHealthText = L"Stationhead収集: 状態取得失敗";
-  } catch (...) {
-    log_.Warn(L"Stationhead health read failed without interrupting dashboard sync");
-    nextHealthText = L"Stationhead収集: 状態取得失敗";
+  if (stationheadSyncEnabled) {
+    // Recomputed every cycle only while Stationhead is active so the age text
+    // advances without forcing a new server payload.
+    std::wstring nextHealthText;
+    try {
+      std::ifstream input(stationheadHealthPath, std::ios::binary);
+      std::string text((std::istreambuf_iterator<char>(input)), {});
+      nextHealthText = text.empty()
+          ? L"Stationhead収集: 確認中"
+          : StationheadHealthSummary(JsonObject::Parse(Utf8ToWide(text)));
+    } catch (const std::exception& error) {
+      log_.Warn(L"Stationhead health read failed without interrupting dashboard sync: " + Utf8ToWide(error.what()));
+      nextHealthText = L"Stationhead収集: 状態取得失敗";
+    } catch (...) {
+      log_.Warn(L"Stationhead health read failed without interrupting dashboard sync");
+      nextHealthText = L"Stationhead収集: 状態取得失敗";
+    }
+    UpdateStationheadHealthText(std::move(nextHealthText));
   }
-  UpdateStationheadHealthText(std::move(nextHealthText));
   {
     std::lock_guard lock(stateMutex_);
     lastSuccess_ = IsoLocalNow();
