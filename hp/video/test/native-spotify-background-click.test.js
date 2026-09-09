@@ -24,9 +24,21 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
   assert.doesNotMatch(wrapper, /#define SendInput|#define ExecuteScript/);
   assert.match(helper, /CallDevToolsProtocolMethod\(/);
   assert.match(helper, /L"Input\.dispatchMouseEvent"/);
-  assert.match(helper, /mousePressed/);
-  assert.match(helper, /mouseReleased/);
+  assert.match(helper, /mouseMoved[\s\S]*mousePressed[\s\S]*mouseReleased/);
   assert.doesNotMatch(helper, /SetForegroundWindow|SendInput|MOUSEEVENTF_/);
+});
+
+test('Spotify trusted click is single-flight with bounded stale recovery', () => {
+  assert.match(header, /ULONGLONG trustedClickStartTick = 0/);
+  assert.match(header, /bool trustedClickInFlight = false/);
+  assert.match(helper, /kSpotifyTrustedClickStaleMs = 8ULL \* 1000ULL/);
+  assert.match(helper, /if \(slot\.trustedClickInFlight\)/);
+  assert.match(helper, /return 0;/);
+  assert.match(helper, /slot\.trustedClickInFlight = true/);
+  assert.match(
+    helper,
+    /mouseReleased[\s\S]*target->trustedClickInFlight = false;[\s\S]*target->trustedClickStartTick = 0;/,
+  );
 });
 
 test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
