@@ -28,7 +28,7 @@ const header = readFileSync(
 );
 
 test('slow six-window recovery is time based instead of retry-count based', () => {
-  assert.match(phaseSync, /kSpotifyUnhealthyRenavigateMs = 60ULL \* 1000ULL/);
+  assert.match(phaseSync, /kSpotifyUnhealthyRenavigateMs = 30ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustNavigateRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /kSpotifyRobustControllerRetryMs = 20ULL \* 1000ULL/);
   assert.match(phaseSync, /ShouldRenavigateUnhealthySlot/);
@@ -95,6 +95,8 @@ test('only authentication is visible while all playback hosts retain stable offs
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(spotify, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(spotify, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
   assert.match(
     spotify,
