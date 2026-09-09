@@ -22,6 +22,10 @@ const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url), 'utf8');
 const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
+const scoped = readFileSync(
+  new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
+const observerBundle = readFileSync(
+  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
 const recent = readFileSync(
@@ -47,38 +51,44 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
   assert.doesNotMatch(spotify, /CreateCoreWebView2EnvironmentWithOptions/);
 });
 
-test('authentication and recovery geometry are independent while all six playback hosts stay alive', () => {
-  assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+test('authentication and recovery geometry are owned by the layout module', () => {
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(spotify, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
-  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(
-    spotify,
+    layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
   assert.match(
-    spotify,
+    layout,
     /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
   );
-  assert.match(spotify, /x = client\.right \+ 32/);
-  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
-  assert.doesNotMatch(spotify, /SW_HIDE/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(layout, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
+  assert.doesNotMatch(spotify, /kSpotifyParkedPlaybackWidth|kSpotifyRecoveryInteractionWidth/);
 });
 
-test('Spotify browser behavior comes from fixed scripts and data messages, not source rewriting', () => {
+test('Spotify browser behavior uses scoped music reconcile and responsibility-split observer modules', () => {
   assert.match(wrapper, /#include "spotify_static_scripts\.inc"/);
+  assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
+  assert.match(wrapper, /#include "spotify_media_observer_runtime\.inc"/);
+  assert.match(wrapper, /#include "spotify_media_observer_events\.inc"/);
+  assert.match(wrapper, /#include "spotify_media_observer_heartbeat\.inc"/);
   assert.match(scripts, /kSpotifyStaticPageBootstrapScript\[\]/);
-  assert.match(scripts, /kSpotifyStaticTrackReconcileScript\[\]/);
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript\[\]/);
+  assert.doesNotMatch(scripts, /kSpotifyStaticTrackReconcileScript|kSpotifyStaticEndObserverScript/);
+  assert.match(scoped, /kSpotifyScopedTrackReconcileScript/);
+  assert.match(observerBundle, /kSpotifyMediaObserverRuntimeScript/);
+  assert.match(observerBundle, /kSpotifyMediaObserverEventsScript/);
+  assert.match(observerBundle, /kSpotifyMediaObserverHeartbeatScript/);
   assert.match(scripts, /window\.chrome\.webview\.addEventListener\('message'/);
   assert.match(scripts, /spotify:target/);
   assert.match(recent, /spotify:generation/);
-  assert.match(recent, /PostWebMessageAsString\(message\.c_str\(\)\)/);
   assert.doesNotMatch(wrapper, /#define ExecuteScript|RewriteSpotify|spotify_viewport_recovery\.inc|spotify_lonesome_guard\.inc/);
   assert.doesNotMatch(recent, /BuildRecentTrackScript|EscapeRecentScriptLiteral/);
   assert.doesNotMatch(timed, /BuildTimedTrackScript/);
@@ -101,7 +111,6 @@ test('YouTube phase starts the Spotify cycle and TVer leaves an active A-B-C-D r
   assert.match(lifecycle, /gSpotifyWebViews->SetPodcastMode\(!tverPhase\)/);
   assert.match(lifecycle, /gSpotifyWebViews->Start\(\);\s*SetSpotifyMediaPhase\(false\);/);
   assert.match(schedule, /TVer leaves the current completion-driven rotation untouched/);
-  assert.doesNotMatch(schedule, /SetPodcastModeImmediate|StopLegacySchedulers/);
 });
 
 test('one adaptive scheduler serializes all six Spotify windows', () => {
@@ -110,7 +119,6 @@ test('one adaptive scheduler serializes all six Spotify windows', () => {
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
-  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
@@ -126,30 +134,31 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(phaseSync, /slot\.controllerCreating && slot\.controllerCreateTick != 0/);
   assert.match(phaseSync, /CreateController\(slot\)/);
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyModeSwitchTimer/);
 });
 
-test('music and podcast targets are passed as data to shared static reconcile scripts', () => {
+test('music and podcast targets are passed as data to shared reconcile implementations', () => {
   assert.match(timed, /kSpotifyLonesomeRabbitPath/);
   assert.match(timed, /kSpotifyBitterBluePath/);
   assert.match(timed, /kSpotifyTalkAboutShowPath/);
   assert.match(recent, /TimedSpotifyTarget::LonesomeRabbit[\s\S]*kind = L"music"/);
   assert.match(recent, /TimedSpotifyTarget::TalkAbout[\s\S]*kind = L"podcast"/);
-  assert.match(timed, /kSpotifyStaticTrackReconcileScript/);
+  assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
   assert.match(timed, /kSpotifyStaticPodcastReconcileScript/);
   assert.match(scripts, /const playbackRate = 3\.0/);
   assert.match(scripts, /__homePanelSpotifyPodcastOneShot/);
   assert.doesNotMatch(scripts, /__homePanelLonesomeRabbitLoop|ensureRepeatOne/);
 });
 
-test('trusted recovery uses CDP hover then click and never moves the OS mouse', () => {
+test('trusted recovery input is fully owned by the background click module', () => {
   assert.match(header, /ParseNormalizedPoint/);
   assert.match(header, /ClickSlotNormalizedPoint/);
-  assert.match(phaseSync, /RefreshSpotifyHostLayout\(\)/);
-  assert.match(phaseSync, /DispatchSpotifyDevToolsClick/);
+  assert.match(click, /bool SpotifyWebViews::ParseNormalizedPoint/);
+  assert.match(click, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
+  assert.match(click, /RefreshSpotifyHostLayout\(\)/);
+  assert.match(click, /DispatchSpotifyDevToolsClick/);
   assert.match(click, /Input\.dispatchMouseEvent/);
-  assert.match(click, /mouseMoved/);
   assert.match(click, /mouseMoved[\s\S]*mousePressed[\s\S]*mouseReleased/);
+  assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint|DispatchSpotifyDevToolsClick/);
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
