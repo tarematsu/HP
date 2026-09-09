@@ -151,15 +151,7 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
 
             if (requestedTarget == TimedSpotifyTarget::TalkAbout && json &&
                 std::wstring_view(json) == L"\"completed\"") {
-              target->podcastCompleted = true;
-              target->timedTarget = TimedSpotifyTarget::None;
-              target->timedCatalogIndex = kNoTimedCatalogIndex;
-              BumpSpotifyTargetGeneration(*target);
-              SetSlotState(*target, SlotState::Completed);
-              target->lastModeNavigateTick = 0;
-              target->lastTimedReconcileTick = 0;
-              RecomputeForeground();
-              ArmRobustScheduler();
+              CompletePodcastBreak(*target, now);
               return S_OK;
             }
 

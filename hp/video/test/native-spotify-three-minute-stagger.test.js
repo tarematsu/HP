@@ -6,6 +6,8 @@ const wrapper = readFileSync(
   new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url), 'utf8');
+const core1 = readFileSync(
+  new URL('../../native/src/spotify_webviews_core_part1.inc', import.meta.url), 'utf8');
 const schedule = readFileSync(
   new URL('../../native/src/spotify_stagger_schedule.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
@@ -33,15 +35,14 @@ test('Spotify startup keeps 40-second account offsets with one direct scheduler'
   assert.match(schedule, /StaggeredReconcileTimerProc/);
 });
 
-test('YouTube hour keeps BitterBlue and TALKABOUT, recent bridge, then starts rotation at minute 20', () => {
-  assert.match(header, /youtubeCycleStartTick_ = 0/);
-  assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
-  assert.match(header, /timedBridgeCompleted = false/);
-  assert.match(schedule, /kSpotifyTimedTalkAboutStartMs = 4ULL \* 60ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifyTimedRotationStartMs = 20ULL \* 60ULL \* 1000ULL/);
-  assert.match(schedule, /!slot\.podcastCompleted[\s\S]*TimedSpotifyTarget::TalkAbout/);
-  assert.match(schedule, /!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex/);
-  assert.match(schedule, /InitializeTimedRotationSlot\(slot, now\)/);
+test('Spotify schedule starts autonomously and has no YouTube/TVer prelude mode', () => {
+  assert.match(header, /scheduleStartTick_ = 0/);
+  assert.match(header, /void StartAutonomousSchedule\(ULONGLONG now\) noexcept/);
+  assert.match(core1, /StartAutonomousSchedule\(GetTickCount64\(\)\)/);
+  assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
+  assert.match(schedule, /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\)/);
+  assert.doesNotMatch(header + schedule, /podcastMode_|SetPodcastMode|youtubeCycleStartTick_/);
+  assert.doesNotMatch(schedule, /kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs|timedBridgeCompleted/);
 });
 
 test('A-B-C-D advances immediately on ended or no later than four minutes after target selection', () => {
@@ -87,13 +88,6 @@ test('slow navigation re-arms observers on owner-only recovery attempts', () => 
   assert.match(schedule, /slot\.timedTarget != TimedSpotifyTarget::TalkAbout/);
 });
 
-test('bridge is a one-shot recent song before the formal rotation', () => {
-  assert.match(schedule, /!slot\.timedBridgeCompleted[\s\S]*PickRecentCatalogIndex/);
-  assert.match(rotation, /IsRecentCatalogIndex\(target->timedCatalogIndex\)[\s\S]*timedBridgeCompleted = true/);
-  assert.match(rotation, /StopTimedOneShotPlayback\(\*target\)/);
-  assert.match(rotation, /kSpotifyStaticStopPlaybackScript/);
-});
-
 test('ads neither start nor complete the requested track and legacy ambiguity state is gone', () => {
   assert.match(runtime, /!matchesTarget\(target, currentTrack\(\)\)/);
   assert.match(events, /!state\.started \|\| state\.endedPosted/);
@@ -103,15 +97,15 @@ test('ads neither start nor complete the requested track and legacy ambiguity st
   assert.doesNotMatch(header, /timedCompletionPendingTick/);
 });
 
-test('B and D are distinct recent songs and avoid the current-hour bridge', () => {
-  assert.match(header, /timedBridgeCatalogIndex_ = kNoTimedCatalogIndex/);
+test('B and D are distinct recent songs with no obsolete bridge dependency', () => {
   assert.match(header, /timedRandomCIndex = kNoTimedCatalogIndex/);
   assert.match(header, /timedRandomDIndex = kNoTimedCatalogIndex/);
   assert.match(recent, /void SpotifyWebViews::EnsureRecentRandomPair/);
   assert.match(recent, /timedRandomCIndex_ != timedRandomDIndex_/);
   assert.match(recent, /timedRandomCIndex_ != avoidIndex/);
   assert.match(recent, /timedRandomDIndex_ != avoidIndex/);
-  assert.match(rotation, /EnsureRecentRandomPair\(slot\.timedRotationCycle, timedBridgeCatalogIndex_\)/);
+  assert.match(rotation, /EnsureRecentRandomPair\(slot\.timedRotationCycle, kNoTimedCatalogIndex\)/);
+  assert.doesNotMatch(header + schedule + rotation, /timedBridgeCatalogIndex_|timedBridgeCompleted/);
   assert.doesNotMatch(header, /PickTimedRandomCatalogIndex|EnsureTimedRandomPair/);
 });
 
@@ -159,18 +153,25 @@ test('timed playback opens fixed songs by direct track URL without script rewrit
   assert.doesNotMatch(timed, /BuildTimedTrackScript|ensureRepeatOne|control-button-repeat/);
 });
 
-test('TALKABOUT remains one-shot and scheduler hands completion to the recent bridge', () => {
+test('TALKABOUT is inserted once after every ten complete A-B-C-D cycles', () => {
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript/);
   assert.match(scripts, /const playbackRate = 3\.0/);
   assert.match(scripts, /__homePanelSpotifyPodcastOneShot/);
   assert.match(scripts, /media\.addEventListener\('ended'/);
   assert.match(scripts, /return 'completed'/);
-  assert.match(timed, /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*podcastCompleted = true/);
-  assert.match(schedule, /!slot\.podcastCompleted[\s\S]*TalkAbout[\s\S]*!slot\.timedBridgeCompleted/);
+  assert.match(header, /bool podcastBreakActive = false/);
+  assert.match(rotation, /kSpotifyPodcastBreakEveryCycles = 10ULL/);
+  assert.match(rotation, /\+\+slot\.timedRotationCycle/);
+  assert.match(rotation, /timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL/);
+  assert.match(rotation, /BeginPodcastBreak\(slot, now\)/);
+  assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
+  assert.match(timed, /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/);
+  assert.match(rotation, /CompletePodcastBreak[\s\S]*ApplyTimedRotationTarget\(slot\)[\s\S]*NavigateActiveTimedSlot\(slot\)/);
+  assert.match(rotation, /podcastBreakActive[\s\S]*timedPlaybackStartTick = 0/);
 });
 
-test('TVer keeps the same completion-driven rotation without a mode macro or mass navigation', () => {
+test('YouTube/TVer phase cannot mutate Spotify rotation state', () => {
   assert.doesNotMatch(wrapper, /#define SetPodcastMode/);
-  assert.match(schedule, /TVer leaves the current completion-driven rotation untouched/);
-  assert.doesNotMatch(schedule, /for \(Slot& slot : slots_\) \{[\s\S]*slot\.webview->Navigate/);
+  assert.doesNotMatch(header + schedule, /SetPodcastMode|podcastMode_|gSpotifyTverPhase|youtubeCycleStartTick_/);
+  assert.doesNotMatch(schedule, /SetSpotifyMediaPhase|phase_ == Phase::Tver|kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs/);
 });

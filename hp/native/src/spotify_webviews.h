@@ -14,7 +14,6 @@ class SpotifyWebViews final {
   void Start() noexcept;
   void Resize() noexcept;
   void Shutdown() noexcept;
-  void SetPodcastMode(bool podcastWindowActive) noexcept;
   void SetNetworkBlocked(bool blocked) noexcept;
   static void CALLBACK StaggeredReconcileTimerProc(
       HWND hwnd, UINT message, UINT_PTR timerId, DWORD tickCount);
@@ -80,10 +79,8 @@ class SpotifyWebViews final {
     bool loginPage = false;
     bool timedObserverReady = false;
     bool timedObserverInstallInFlight = false;
-    bool podcastCompleted = false;
     bool timedRotationActive = false;
-    bool timedPreludeCompleted = false;
-    bool timedBridgeCompleted = false;
+    bool podcastBreakActive = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
@@ -131,12 +128,15 @@ class SpotifyWebViews final {
   void ApplyTimedRotationTarget(Slot& slot) noexcept;
   void InitializeTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
+  void BeginPodcastBreak(Slot& slot, ULONGLONG now) noexcept;
+  void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   bool AdvanceExpiredTimedRotation(ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
   void RecomputeForeground() noexcept;
   void PlaceHosts() noexcept;
   void CloseSlot(Slot& slot) noexcept;
+  void StartAutonomousSchedule(ULONGLONG now) noexcept;
   void RunStaggeredReconcile() noexcept;
 
   HWND parentWindow_ = nullptr;
@@ -146,10 +146,9 @@ class SpotifyWebViews final {
       std::make_shared<std::atomic<bool>>(true);
   size_t staggerSlotIndex_ = 0;
   ULONGLONG staggerSlotStartTick_ = 0;
-  ULONGLONG youtubeCycleStartTick_ = 0;
+  ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG timedRandomPairCycle_ = ~0ULL;
-  size_t timedBridgeCatalogIndex_ = kNoTimedCatalogIndex;
   size_t timedRandomCIndex_ = kNoTimedCatalogIndex;
   size_t timedRandomDIndex_ = kNoTimedCatalogIndex;
   bool staggerSlotValidated_ = false;
@@ -157,20 +156,15 @@ class SpotifyWebViews final {
   size_t hostLayoutActiveSlot_ = kAccountCount;
   size_t hostLayoutAuthenticationSlot_ = kAccountCount;
   bool started_ = false;
-  bool podcastMode_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
 };
 
-// tverPhase=false starts the YouTube-hour schedule: BitterBlue at 00:00,
-// TALKABOUT at 04:00, one recent-song bridge, then from 20:00 the completion-
-// driven Lonesome rabbit -> random B -> BitterBlue -> random D rotation.
-// Initial account starts remain 40 seconds apart. Recovery is event-driven and
-// serialized to one WebView. Healthy rotation uses an adaptive native timer;
-// target-end messages carry a generation so stale events cannot advance a newer
-// target. Each A-B-C-D target arms its four-minute native hard deadline before
-// Spotify navigation or playback detection; browser events can only advance it
-// earlier, never postpone the deadline.
+// Spotify runs independently from the YouTube/TVer media phase. Each account
+// starts 40 seconds apart, then loops A-B-C-D with a native four-minute hard
+// deadline per music target. After every ten completed A-B-C-D cycles, that
+// account plays one TALKABOUT episode at 3x and resumes from A. Browser events
+// can advance music targets earlier but never postpone their hard deadline.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

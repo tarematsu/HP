@@ -14,7 +14,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     robustSchedulerStarted_ = false;
     staggerSlotIndex_ = 0;
     staggerSlotStartTick_ = 0;
-    youtubeCycleStartTick_ = 0;
+    scheduleStartTick_ = 0;
     staggerSlotValidated_ = false;
     hostLayoutMask_ = ~0u;
     hostLayoutActiveSlot_ = kAccountCount;
@@ -26,10 +26,9 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = 0;
-  youtubeCycleStartTick_ = 0;
+  scheduleStartTick_ = 0;
   timedRandomState_ = 0;
   timedRandomPairCycle_ = ~0ULL;
-  timedBridgeCatalogIndex_ = kNoTimedCatalogIndex;
   timedRandomCIndex_ = kNoTimedCatalogIndex;
   timedRandomDIndex_ = kNoTimedCatalogIndex;
   staggerSlotValidated_ = false;
@@ -46,7 +45,6 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.state = SlotState::NotCreated;
     slot.playerPage = false;
     slot.loginPage = false;
-    slot.podcastCompleted = false;
     slot.timedTarget = TimedSpotifyTarget::None;
     slot.timedCatalogIndex = kNoTimedCatalogIndex;
     slot.timedRotationCycle = 0;
@@ -55,8 +53,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     slot.timedRandomCIndex = kNoTimedCatalogIndex;
     slot.timedRandomDIndex = kNoTimedCatalogIndex;
     slot.timedRotationActive = false;
-    slot.timedPreludeCompleted = false;
-    slot.timedBridgeCompleted = false;
+    slot.podcastBreakActive = false;
     slot.reconcileInFlight = false;
     slot.targetGeneration = 0;
     if (!CreateHost(slot)) continue;
@@ -66,6 +63,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
     CreateController(slots_[0]);
   }
   Resize();
+  StartAutonomousSchedule(GetTickCount64());
 }
 
 }  // namespace hp

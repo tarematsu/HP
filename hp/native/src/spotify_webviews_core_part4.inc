@@ -57,11 +57,10 @@ void SpotifyWebViews::Shutdown() noexcept {
   started_ = false;
   alive_->store(false, std::memory_order_release);
   for (Slot& slot : slots_) CloseSlot(slot);
-  podcastMode_ = false;
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = 0;
-  youtubeCycleStartTick_ = 0;
+  scheduleStartTick_ = 0;
 }
 
 LRESULT CALLBACK SpotifyWebViews::HostWndProc(
