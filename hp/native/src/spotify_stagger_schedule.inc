@@ -78,6 +78,19 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
   const ULONGLONG slotLocalElapsed = elapsed - slotOffset;
 
+  // If the WebViews were rebuilt while TVer is active, the previous rotation
+  // state is necessarily gone. Do not wait for a fresh 20-minute YouTube prelude
+  // clock before resuming: rebuild the completion-driven rotation immediately,
+  // still one account at a time through the normal serialized ownership turns.
+  if (!podcastMode_ && !slot.timedRotationActive) {
+    if (!slot.webview) {
+      BeginControllerCreate(slot);
+      return;
+    }
+    InitializeTimedRotationSlot(slot, now);
+    return;
+  }
+
   if (slotLocalElapsed < kSpotifyTimedRotationStartMs) {
     TimedSpotifyTarget desired = TimedSpotifyTarget::None;
     size_t desiredCatalogIndex = kNoTimedCatalogIndex;
@@ -221,8 +234,9 @@ void SpotifyWebViews::SetPodcastMode(bool podcastWindowActive) noexcept {
     }
   }
 
-  // TVer leaves the current completion-driven rotation untouched. The next
-  // YouTube phase is the only place that resets the master clock and sequence.
+  // TVer leaves the current completion-driven rotation untouched. If a network
+  // rebuild removed that state, RunStaggeredReconcile() restores rotation on the
+  // normal serialized turns instead of waiting through another 20-minute prelude.
   RecomputeForeground();
   RunStaggeredReconcile();
   ArmRobustScheduler();
