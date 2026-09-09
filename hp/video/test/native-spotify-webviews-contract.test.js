@@ -120,14 +120,15 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
   assert.match(schedule, /void SpotifyWebViews::StartAutonomousSchedule/);
 });
 
-test('one adaptive scheduler serializes all six Spotify windows', () => {
+test('one adaptive scheduler serializes all six Spotify windows with one shared startup offset', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /% accountCount/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
@@ -145,12 +146,19 @@ test('controller creation is serialized and bounded on slow machines', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
 });
 
-test('music and podcast targets are passed as data to shared reconcile implementations', () => {
+test('all music targets are normalized to one descriptor while podcast stays separate', () => {
   assert.match(timed, /kSpotifyLonesomeRabbitPath/);
   assert.match(timed, /kSpotifyBitterBluePath/);
   assert.match(timed, /kSpotifyTalkAboutShowPath/);
-  assert.match(recent, /TimedSpotifyTarget::LonesomeRabbit[\s\S]*kind = L"music"/);
-  assert.match(recent, /TimedSpotifyTarget::TalkAbout[\s\S]*kind = L"podcast"/);
+  assert.match(header, /struct MusicTargetDescriptor/);
+  assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(recent, /case TimedSpotifyTarget::LonesomeRabbit/);
+  assert.match(recent, /case TimedSpotifyTarget::BitterBlue/);
+  assert.match(recent, /case TimedSpotifyTarget::CatalogTrack/);
+  assert.match(recent, /void SpotifyWebViews::ReconcileMusicTarget/);
+  assert.match(timed, /void SpotifyWebViews::ReconcilePodcastSlot/);
+  assert.match(recent, /kind = L"music"/);
+  assert.match(recent, /kind = L"podcast"/);
   assert.match(wrapper, /#define kSpotifyStaticTrackReconcileScript kSpotifyScopedTrackReconcileScript/);
   assert.match(timed, /kSpotifyStaticPodcastReconcileScript/);
   assert.match(scripts, /const playbackRate = 3\.0/);
