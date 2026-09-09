@@ -25,6 +25,12 @@ test('TVer playback policy rejects episodes outside the stored series queue', ()
   assert.match(policy, /if \(!guardSeriesEpisode\(\)\) return null/);
 });
 
+test('TVer accepted episode guard is cached for the document lifetime', () => {
+  assert.match(policy, /guardedEpisodePathKey = '__homePanelTverGuardedEpisodePath'/);
+  assert.match(policy, /window\[guardedEpisodePathKey\] === location\.pathname/);
+  assert.match(policy, /window\[guardedEpisodePathKey\] = location\.pathname/);
+});
+
 test('TVer action fallback accepts exactly one episode and seeds a one-item queue', () => {
   assert.match(policy, /acceptNextEpisode = sessionStorage\.getItem\(pendingKey\) === '1'/);
   assert.match(policy, /sessionStorage\.removeItem\(pendingKey\)/);
@@ -32,29 +38,46 @@ test('TVer action fallback accepts exactly one episode and seeds a one-item queu
   assert.match(policy, /if \(acceptNextEpisode && currentHref\)/);
 });
 
-test('TVer playback policy dismisses a survey before touching the player', () => {
+test('TVer survey scan stays inside modal or survey roots', () => {
   const guardIndex = policy.indexOf('if (!guardSeriesEpisode()) return null');
-  const surveyIndex = policy.indexOf('const surveyClose = controls.find');
+  const surveyIndex = policy.indexOf('const surveyRoots = Array.from');
   const stateIndex = policy.indexOf('const state = window.__homePanelSakuraMeetsState');
   assert.ok(guardIndex >= 0);
   assert.ok(surveyIndex > guardIndex);
   assert.ok(stateIndex > surveyIndex);
+  assert.match(policy, /\[role="dialog"\], \[aria-modal="true"\]/);
+  assert.match(policy, /root\.querySelectorAll\(/);
   assert.match(policy, /閉じる\|とじる\|close\|dismiss/);
   assert.match(policy, /アンケート\|ご回答\|回答する\|誕生年\|誕生月\|性別/);
   assert.match(policy, /if \(surveyClose\) return point\(surveyClose\)/);
+  assert.doesNotMatch(
+    policy,
+    /const controls = Array\.from\(document\.querySelectorAll\(\s*'button, \[role="button"\], a, \[aria-label\], \[title\]'/,
+  );
 });
 
-test('paused TVer episodes recover idempotently before fullscreen', () => {
+test('paused TVer episodes recover idempotently before building control lists', () => {
   const pausedIndex = policy.indexOf('if (video.paused && !video.ended)');
   const fullscreenIndex = policy.indexOf('state && state.fullscreenDirty === false');
   assert.ok(pausedIndex >= 0);
   assert.ok(fullscreenIndex > pausedIndex);
-  assert.match(policy, /const playButton = controls\.find/);
+  assert.match(policy, /const findPlayButton = \(\) => playerControls\(\)\.find/);
   assert.match(policy, /const pending = video\.play\(\)/);
   assert.match(policy, /video\.__homePanelTverResumeBlocked/);
-  assert.match(policy, /return playButton \? point\(playButton\) : null/);
+  assert.match(policy, /const playButton = findPlayButton\(\)/);
   assert.doesNotMatch(policy, /return point\(video\)/);
   assert.doesNotMatch(policy, /video\.pause\(/);
+});
+
+test('healthy TVer playback exits before a player-wide control scan', () => {
+  const cleanFullscreenIndex = policy.indexOf(
+    'if (state && state.fullscreenDirty === false) return null',
+  );
+  const controlsIndex = policy.indexOf('const controls = playerControls()');
+  assert.ok(cleanFullscreenIndex >= 0);
+  assert.ok(controlsIndex > cleanFullscreenIndex);
+  assert.match(policy, /depth < 5/);
+  assert.match(policy, /root\.querySelectorAll\(/);
 });
 
 test('episode-page restart, ad, and fullscreen guards remain intact', () => {
