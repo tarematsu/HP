@@ -35,6 +35,7 @@ function createHarness() {
   const webviewListeners = [];
   const messages = [];
   const timers = new Map();
+  const intervals = new Map();
   let nextTimer = 1;
   let currentTrack = null;
 
@@ -89,6 +90,14 @@ function createHarness() {
     clearTimeout(id) {
       timers.delete(id);
     },
+    setInterval(fn, delay) {
+      const id = nextTimer++;
+      intervals.set(id, { fn, delay });
+      return id;
+    },
+    clearInterval(id) {
+      intervals.delete(id);
+    },
   });
   vm.runInContext(productionObserverScript(), context);
 
@@ -106,6 +115,11 @@ function createHarness() {
       textContent: title,
     } : null;
   };
+  const runHeartbeat = () => {
+    const heartbeat = [...intervals.values()].find(({ delay }) => delay === 10000);
+    assert.ok(heartbeat, '10-second media heartbeat not installed');
+    heartbeat.fn();
+  };
 
   return {
     window,
@@ -115,6 +129,7 @@ function createHarness() {
     dispatch,
     hostMessage,
     setTrack,
+    runHeartbeat,
   };
 }
 
@@ -168,4 +183,36 @@ test('production observer ends immediately, blocks the old queue, then starts th
   h.media.paused = false;
   h.dispatch('playing');
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
+});
+
+test('production observer detects a silent media-clock freeze after two heartbeat misses', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f9');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.media.currentTime = 12;
+  h.dispatch('playing');
+  assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f9');
+
+  h.runHeartbeat();
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
+  h.runHeartbeat();
+  assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f9');
+});
+
+test('production heartbeat stays healthy while media currentTime advances', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f10');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.media.currentTime = 20;
+  h.dispatch('playing');
+
+  h.media.currentTime = 25;
+  h.runHeartbeat();
+  h.media.currentTime = 30;
+  h.runHeartbeat();
+  h.media.currentTime = 35;
+  h.runHeartbeat();
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
