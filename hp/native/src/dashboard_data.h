@@ -26,7 +26,8 @@ struct SwitchBotDeviceData {
 
 struct DashboardSectionRevisions {
   uint64_t weather = 0;
-  uint64_t energy = 0;
+  uint64_t octopus = 0;
+  uint64_t switchbot = 0;
 };
 
 struct DashboardSnapshot {
@@ -42,12 +43,13 @@ struct DashboardSnapshot {
   std::vector<OctopusProfileData> octopusProfile;
   std::vector<SwitchBotDeviceData> switchBotDevices;
 
-  // Stable per-section content revisions let the renderer invalidate only the
-  // panels whose source data changed, rather than repainting the whole dashboard.
+  // Source-version-backed revisions let unchanged native sections reuse their
+  // already-materialized data without stringifying or hashing whole JSON objects.
   DashboardSectionRevisions revisions;
 };
 
 bool ParseDashboardSnapshot(const std::string& text, DashboardSnapshot& output,
-                            std::wstring* error = nullptr);
+                            std::wstring* error = nullptr,
+                            const DashboardSnapshot* previous = nullptr);
 
 }  // namespace hp
