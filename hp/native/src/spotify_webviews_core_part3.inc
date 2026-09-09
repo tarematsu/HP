@@ -1,10 +1,21 @@
                                   ICoreWebView2NavigationStartingEventArgs* args)
                 -> HRESULT {
               if (!alive->load(std::memory_order_acquire) || !args) return S_OK;
-              // Navigation creates a new document generation. Any observer or
-              // reconcile message still arriving from the previous document is
-              // rejected until the new page receives this generation.
+              // Navigation creates a new document generation. Any observer,
+              // reconcile result, or trusted click still arriving from the
+              // previous document must not mutate the new one.
               BumpSpotifyTargetGeneration(*target);
+              ++target->reconcileRequestGeneration;
+              if (target->reconcileRequestGeneration == 0) {
+                ++target->reconcileRequestGeneration;
+              }
+              target->reconcileInFlight = false;
+              target->reconcileStartedTick = 0;
+              ++target->timedObserverInstallGeneration;
+              if (target->timedObserverInstallGeneration == 0) {
+                ++target->timedObserverInstallGeneration;
+              }
+              target->timedObserverInstallStartedTick = 0;
               target->playerPage = false;
               target->loginPage = false;
               target->timedObserverReady = false;
