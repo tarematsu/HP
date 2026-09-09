@@ -2,7 +2,6 @@ namespace {
 constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedTalkAboutStartMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyTimedRotationStartMs = 20ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyInitialSerialWindowMs = 6ULL * 40ULL * 1000ULL;
 // One healthy slot is verified per turn. With the adaptive 20-second scheduler
 // this is one lightweight verification per account roughly every two minutes.
 constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 20ULL * 1000ULL;
@@ -12,14 +11,19 @@ constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 36ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleLayoutSettleMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleRetryMs = 4ULL * 1000ULL;
 
-size_t SimpleSpotifyScheduledIndex(ULONGLONG elapsed) noexcept {
-  if (elapsed < kSpotifyInitialSerialWindowMs) {
-    return static_cast<size_t>(
-        std::min<ULONGLONG>(5ULL, elapsed / kSpotifyTimedSlotOffsetMs));
+size_t SimpleSpotifyScheduledIndex(
+    ULONGLONG elapsed, size_t accountCount) noexcept {
+  if (accountCount == 0) return 0;
+  const ULONGLONG initialSerialWindowMs =
+      static_cast<ULONGLONG>(accountCount) * kSpotifyTimedSlotOffsetMs;
+  if (elapsed < initialSerialWindowMs) {
+    return static_cast<size_t>(std::min<ULONGLONG>(
+        static_cast<ULONGLONG>(accountCount - 1),
+        elapsed / kSpotifyTimedSlotOffsetMs));
   }
   return static_cast<size_t>(
-      ((elapsed - kSpotifyInitialSerialWindowMs) /
-       kSpotifySimpleSteadyTurnMs) % 6ULL);
+      ((elapsed - initialSerialWindowMs) /
+       kSpotifySimpleSteadyTurnMs) % accountCount);
 }
 }  // namespace
 
@@ -66,11 +70,12 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
       current.timedTarget != TimedSpotifyTarget::None &&
       SlotStateNeedsRecovery(current.state) &&
       now - staggerSlotStartTick_ < kSpotifySimpleRecoveryHoldMs;
-  const size_t scheduledIndex = SimpleSpotifyScheduledIndex(elapsed);
+  const size_t scheduledIndex =
+      SimpleSpotifyScheduledIndex(elapsed, slots_.size());
 
   // Login is a presentation concern, not scheduler ownership. A login surface
   // stays foreground through RefreshSpotifyHostLayout(), while the normal turn
-  // schedule and event-driven recovery for the other five accounts continue.
+  // schedule and event-driven recovery for the other accounts continue.
   if (!holdRecovery && staggerSlotIndex_ != scheduledIndex) {
     staggerSlotIndex_ = scheduledIndex;
     staggerSlotStartTick_ = now;
