@@ -7,7 +7,6 @@ constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAdaptiveSteadyStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
@@ -84,11 +83,9 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
   }
 
-  if (youtubeCycleStartTick_ == 0 ||
-      now - youtubeCycleStartTick_ < kSpotifyAdaptiveSteadyStartMs) {
-    return kSpotifyRobustUrgentTickMs;
-  }
-
+  // Healthy playback does not need a two-second warm-up period. Initial slot
+  // creation remains aligned by the 40-second ownership schedule, while only an
+  // actual recovery or an imminent four-minute deadline uses the urgent cadence.
   return static_cast<UINT>(std::max<ULONGLONG>(
       1000ULL, std::min<ULONGLONG>(
           kSpotifyRobustHealthyTickMs, nextDeadlineMs)));
