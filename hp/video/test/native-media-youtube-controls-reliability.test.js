@@ -84,6 +84,22 @@ test('YouTube skip detection covers current class and aria-label variants', () =
   assert.match(youtubePolicy, /button\[aria-label\*=\"スキップ\"\]/);
   assert.match(youtubePolicy, /player\.classList\.contains\('ad-showing'\)/);
   assert.match(youtubePolicy, /if \(adShowing\) return null/);
+  assert.match(youtubePolicy, /isClickable\(element, true, true\)/);
+  assert.match(youtubePolicy, /guardedPoint\(target, 'skip-ad', 750, true, true\)/);
+});
+
+test('YouTube hidden fullscreen control remains eligible for trusted CDP input', () => {
+  assert.match(youtubePolicy, /allowAriaHidden = false/);
+  assert.match(
+    youtubePolicy,
+    /!allowAriaHidden && element\.getAttribute\('aria-hidden'\) === 'true'/,
+  );
+  assert.match(youtubePolicy, /button\[aria-label\*=\"Full screen\" i\]/);
+  assert.match(youtubePolicy, /button\[aria-label\*=\"全画面\"\]/);
+  assert.match(
+    youtubePolicy,
+    /guardedPoint\(target, 'fullscreen', 2500, true, true\)/,
+  );
 });
 
 test('YouTube playback recovery still prioritizes play before fullscreen', () => {
