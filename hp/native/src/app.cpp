@@ -1,14 +1,14 @@
 #include "app.h"
 #include "web_renderer.h"
 #include "cloud_config.h"
+#include "power_saving_controller.h"
 #include "version.h"
 
 namespace hp {
 namespace {
 constexpr wchar_t kWindowClass[] = L"HomePanelNativeWindow";
-constexpr UINT_PTR kCentralTimer = 1;
 constexpr uint32_t kFastTickMs = 2000;
-constexpr uint32_t kMaxIdleTickMs = 30'000;
+constexpr uint32_t kMaxAppTimerMs = 24U * 60U * 60U * 1000U;
 constexpr int64_t kDashboardStartupFallbackMs = 30'000;
 constexpr int64_t kDashboardAudioStabilityMs = 1'500;
 
@@ -46,9 +46,9 @@ static_assert(!CanReuseStationheadSnapshots(true, true, true, true, true, false)
 
 uint32_t NextDelayFromDeadline(int64_t now, int64_t deadline, uint32_t fallbackMs) {
   if (deadline <= 0) return fallbackMs;
-  if (deadline <= now) return kFastTickMs;
+  if (deadline <= now) return 1;
   const int64_t delta = deadline - now;
-  return static_cast<uint32_t>(std::clamp<int64_t>(delta, kFastTickMs, fallbackMs));
+  return static_cast<uint32_t>(std::clamp<int64_t>(delta, 1, fallbackMs));
 }
 
 }
@@ -131,6 +131,7 @@ void App::CreateMainWindow(int showCommand) {
     const DWORD error = GetLastError();
     throw std::runtime_error("CreateWindowEx failed (" + std::to_string(error) + ")");
   }
+  PowerSavingController::AttachCurrent(window_);
   startupShowCommand_ = showCommand == SW_HIDE ? SW_SHOW : showCommand;
 }
 
@@ -288,6 +289,7 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
 
 void App::StopServices() {
   if (window_) KillTimer(window_, kCentralTimer);
+  nextAppTickAt_ = 0;
 #if 0  // Stationhead disabled.
   if (secondaryStationhead_) secondaryStationhead_->Stop();
   if (stationhead_) stationhead_->Stop();
@@ -388,8 +390,9 @@ void App::Tick() {
 
   StartDeferredServices(now, renderState_.stationhead);
 
-  if (cloudStarted_ &&
-      now - lastTelemetryAt_ >= static_cast<int64_t>(config_.telemetryMinutes) * 60'000) {
+  const int64_t telemetryIntervalMs =
+      static_cast<int64_t>(std::max(1, config_.telemetryMinutes)) * 60'000;
+  if (cloudStarted_ && now - lastTelemetryAt_ >= telemetryIntervalMs) {
     lastTelemetryAt_ = now;
     SendTelemetryAsync();
   }
@@ -397,12 +400,22 @@ void App::Tick() {
     toastUntil_ = 0;
     toastText_.clear();
   }
-  if (rendererStarted_) renderer_->TickNativePanels(now);
 #if 0  // Stationhead disabled.
   UpdateStationheadPlaybackFallback(now);
 #endif
 
-  uint32_t nextTickMs = kMaxIdleTickMs;
+  uint32_t nextTickMs = kMaxAppTimerMs;
+  if (!startupUpdateScheduled_ && cloudStarted_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(now, startupAt_ + 60'000, kMaxAppTimerMs));
+  }
+  if (cloudStarted_) {
+    nextTickMs = std::min(
+        nextTickMs,
+        NextDelayFromDeadline(
+            now, lastTelemetryAt_ + telemetryIntervalMs, kMaxAppTimerMs));
+  }
 #if 0  // Stationhead wake deadlines are disabled.
   const bool stationheadNeedsFastTick =
       !rendererStarted_ ||
@@ -413,26 +426,26 @@ void App::Tick() {
   } else {
     nextTickMs = std::min(
         nextTickMs,
-        NextDelayFromDeadline(now, stationhead_->NextWakeAt(), kMaxIdleTickMs));
+        NextDelayFromDeadline(now, stationhead_->NextWakeAt(), kMaxAppTimerMs));
     if (secondaryStarted_ && secondaryStationhead_) {
       nextTickMs = std::min(
           nextTickMs,
           NextDelayFromDeadline(
-              now, secondaryStationhead_->NextWakeAt(), kMaxIdleTickMs));
+              now, secondaryStationhead_->NextWakeAt(), kMaxAppTimerMs));
     }
   }
 #endif
   if (toastUntil_ > 0) {
     nextTickMs = std::min(
         nextTickMs,
-        NextDelayFromDeadline(now, toastUntil_, kMaxIdleTickMs));
+        NextDelayFromDeadline(now, toastUntil_, kMaxAppTimerMs));
   }
 #if 0  // Stationhead playback-a fallback polling is disabled.
   if (!config_.stationhead.fallbackUrl.empty()) {
     nextTickMs = std::min(
         nextTickMs,
         NextDelayFromDeadline(
-            now, renderer_->NativePlaybackNextWakeAt(now), kMaxIdleTickMs));
+            now, renderer_->NativePlaybackNextWakeAt(now), kMaxAppTimerMs));
   }
 #endif
   ScheduleNextTick(nextTickMs);
@@ -448,6 +461,10 @@ void App::Draw() {
 void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
   toastText_ = std::move(message);
   toastUntil_ = durationMs > 0 ? UnixMillis() + durationMs : 0;
+  if (durationMs > 0) {
+    ScheduleNextTick(static_cast<uint32_t>(std::clamp<int64_t>(
+        durationMs, 1, kMaxAppTimerMs)));
+  }
   if (invalidate) InvalidateAll();
 }
 
@@ -571,10 +588,20 @@ void App::ApplyScheduledStationheadAudioProfile(bool primaryAudible) noexcept {
 void App::ScheduleNextTick(uint32_t milliseconds) {
   if (!window_) return;
   const uint32_t clamped = std::max<uint32_t>(1, milliseconds);
-  if (nextAppTickAt_ == static_cast<int64_t>(clamped)) return;
+  const uint64_t nowTick = GetTickCount64();
+  const uint64_t dueTick = nowTick > static_cast<uint64_t>(INT64_MAX) - clamped
+      ? static_cast<uint64_t>(INT64_MAX)
+      : nowTick + clamped;
+  if (nextAppTickAt_ > 0 &&
+      static_cast<uint64_t>(nextAppTickAt_) <= dueTick) {
+    return;
+  }
   KillTimer(window_, kCentralTimer);
-  SetTimer(window_, kCentralTimer, clamped, nullptr);
-  nextAppTickAt_ = clamped;
+  if (SetTimer(window_, kCentralTimer, clamped, nullptr) != 0) {
+    nextAppTickAt_ = static_cast<int64_t>(dueTick);
+  } else {
+    nextAppTickAt_ = 0;
+  }
 }
 
 void App::InvalidateAll() {
