@@ -14,6 +14,7 @@ const spotify = [
 const spotifyHeader = sourcePart('spotify_webviews.h');
 const schedule = sourcePart('spotify_stagger_schedule.inc');
 const scripts = sourcePart('spotify_static_scripts.inc');
+const layout = sourcePart('spotify_host_layout.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
@@ -24,18 +25,19 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
 });
 
 test('all playback controllers keep a stable offscreen viewport while only the recovery owner gets a large viewport', () => {
-  assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
-  assert.match(spotify, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
-  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(spotify, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
-  assert.match(spotify, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
-  assert.match(spotify, /width = activeWidth;\s*height = activeHeight/);
-  assert.doesNotMatch(spotify, /const bool active =/);
-  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
-  assert.doesNotMatch(spotify, /SW_HIDE|controller->Close\(\)[\s\S]{0,120}SlotStateNeedsRecovery/);
+  assert.match(layout, /slot\.controller->put_IsVisible\(TRUE\)/);
+  assert.match(layout, /ShowWindow\(slot\.hostWindow, SW_SHOWNOACTIVATE\)/);
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
+  assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(layout, /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/);
+  assert.match(layout, /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/);
+  assert.doesNotMatch(layout, /const bool active =/);
+  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
+  assert.doesNotMatch(layout, /SW_HIDE/);
   assert.match(
-    spotify,
+    layout,
     /if \(batch\) EndDeferWindowPos\(batch\);[\s\S]*GetClientRect\(slot\.hostWindow, &bounds\);[\s\S]*put_Bounds\(bounds\);[\s\S]*NotifyParentWindowPositionChanged\(\)/,
   );
 });
