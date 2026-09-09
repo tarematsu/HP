@@ -139,8 +139,6 @@ void App::StartServices() {
   if (!renderer_->LoadDashboard(dataDir_ / L"dashboard.json")) {
     logger_->Warn(L"No valid dashboard cache; local layers will remain available");
   }
-  newsCount_ = renderer_->NewsCount();
-  newsIndex_ = 0;
 
 #if 0  // Stationhead disabled: MV panel is the only media playback surface.
   // A and B share one WebView2 user-data folder and browser environment, while
@@ -157,7 +155,6 @@ void App::StartServices() {
 #endif
 
   startupAt_ = UnixMillis();
-  lastNewsRotateAt_ = newsCount_ > 1 ? static_cast<int64_t>(startupAt_) : 0;
 
   renderer_->Initialize();
   rendererStarted_ = true;
@@ -166,7 +163,6 @@ void App::StartServices() {
     renderer_->Resize(client.right - client.left, client.bottom - client.top);
   }
   LayoutWorkspace();
-  PublishRenderStateNow();
   renderer_->TickNativePanels(startupAt_);
   logger_->Info(L"Native dashboard started before main window display");
 
@@ -198,14 +194,14 @@ void App::StartServices() {
 #if 0  // Stationhead play-count history is dormant with Stationhead disabled.
   LoadStationheadPlayHistory();
 #endif
-  renderState_.sensors = sensors_->Snapshot();
-  UpdateAirHistory(renderState_.sensors);
+  const SensorSnapshot sensors = sensors_->Snapshot();
+  renderer_->UpdateSensors(sensors);
+  UpdateAirHistory(sensors);
 #if 0  // Stationhead render state is intentionally left at its default value.
   renderState_.stationhead = stationhead_->Status();
+  PublishRenderStateNow();
 #endif
-  renderState_.appVersion = kVersion;
   lastTelemetryAt_ = startupAt_;
-  MarkRenderStateDirty();
   InvalidateAll();
 }
 
@@ -270,7 +266,9 @@ void App::StartDeferredServices(int64_t now, const StationheadStatus&) {
     renderer_->Initialize();
     rendererStarted_ = true;
     LayoutWorkspace();
+#if 0  // Stationhead compatibility state is published only when that path is active.
     PublishRenderStateNow();
+#endif
     renderer_->TickNativePanels(now);
     InvalidateAll();
     logger_->Warn(L"Native dashboard started by deferred recovery");
@@ -385,6 +383,7 @@ void App::Tick() {
   const StationheadStatus& stationheadStatus = renderState_.stationhead;
   UpdateStationheadPlayHistory(stationheadStatus);
   ApplyStationheadWindowPlacement(stationheadStatus, secondaryStatus);
+  PublishRenderState();
 #endif
 
   StartDeferredServices(now, renderState_.stationhead);
@@ -396,16 +395,8 @@ void App::Tick() {
   }
   if (toastUntil_ && now >= toastUntil_) {
     toastUntil_ = 0;
-    renderState_.toast.clear();
-    PublishRenderStateNow();
+    toastText_.clear();
   }
-  if (newsCount_ > 1 && lastNewsRotateAt_ > 0 && now - lastNewsRotateAt_ >= 30'000) {
-    lastNewsRotateAt_ = now;
-    newsIndex_ = (newsIndex_ + 1) % newsCount_;
-    renderState_.newsIndex = newsIndex_;
-    PublishRenderStateNow();
-  }
-  PublishRenderState();
   if (rendererStarted_) renderer_->TickNativePanels(now);
 #if 0  // Stationhead disabled.
   UpdateStationheadPlaybackFallback(now);
@@ -436,12 +427,6 @@ void App::Tick() {
         nextTickMs,
         NextDelayFromDeadline(now, toastUntil_, kMaxIdleTickMs));
   }
-  if (newsCount_ > 1 && lastNewsRotateAt_ > 0) {
-    nextTickMs = std::min(
-        nextTickMs,
-        NextDelayFromDeadline(
-            now, lastNewsRotateAt_ + 30'000, kMaxIdleTickMs));
-  }
 #if 0  // Stationhead playback-a fallback polling is disabled.
   if (!config_.stationhead.fallbackUrl.empty()) {
     nextTickMs = std::min(
@@ -456,18 +441,14 @@ void App::Tick() {
 void App::Draw() {
   PAINTSTRUCT paint{};
   BeginPaint(window_, &paint);
-  if (renderer_ && rendererStarted_) {
-    PublishRenderState();
-    renderer_->Render();
-  }
+  if (renderer_ && rendererStarted_) renderer_->Render();
   EndPaint(window_, &paint);
 }
 
 void App::ShowToast(std::wstring message, int64_t durationMs, bool invalidate) {
-  renderState_.toast = std::move(message);
+  toastText_ = std::move(message);
   toastUntil_ = durationMs > 0 ? UnixMillis() + durationMs : 0;
-  if (invalidate) PublishRenderStateNow();
-  else MarkRenderStateDirty();
+  if (invalidate) InvalidateAll();
 }
 
 bool App::UpdateRenderStationheadState(StationheadStatus nextState) {
@@ -514,8 +495,8 @@ void App::LayoutWorkspace() {
       }
       break;
   }
-#endif
   MarkRenderStateDirty();
+#endif
   InvalidateAll();
 }
 
