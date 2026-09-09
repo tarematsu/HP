@@ -42,8 +42,8 @@ const mediaPanel = readFileSync(
 test('five Spotify accounts share the WebView2 environment while using isolated profiles', () => {
   assert.match(header, /kAccountCount = 5/);
   assert.match(scripts, /std::array<std::wstring_view, 5> kSpotifyPanelNames/);
-  assert.match(scripts, /L"amazon", L"ten", L"nagi", L"hinata", L"ozeki"/);
-  assert.doesNotMatch(scripts, /yuukiar/);
+  assert.match(scripts, /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata"/);
+  assert.doesNotMatch(scripts, /ozeki/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaPanel, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -123,7 +123,7 @@ test('one adaptive scheduler serializes all five Spotify windows', () => {
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
-  assert.match(schedule, /accountCount \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
   assert.match(schedule, /% accountCount/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
