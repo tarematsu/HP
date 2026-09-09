@@ -3,11 +3,7 @@ bool EnsureNativeMvPanel(HWND parentWindow, const fs::path& dataDir,
                          const RECT& bounds) noexcept;
 
 UINT NativePanelTickDelayToNextSecond() noexcept {
-  SYSTEMTIME now{};
-  GetLocalTime(&now);
-  return std::max<UINT>(
-      USER_TIMER_MINIMUM,
-      kNativePanelTickMs - static_cast<UINT>(now.wMilliseconds));
+  return NetworkClockDelayToNextSecond();
 }
 }
 
