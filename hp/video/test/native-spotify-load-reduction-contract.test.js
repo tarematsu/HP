@@ -25,42 +25,49 @@ test('Spotify WebViews serialize startup without UI-thread blocking or legacy ti
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);
 });
 
-test('Spotify host geometry is pushed only when placement or controller identity changes', () => {
+test('Spotify layout updates only the dimensions that actually changed', () => {
   assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(layout, /int width = kSpotifyParkedPlaybackWidth;\s*int height = kSpotifyParkedPlaybackHeight/);
-  assert.match(layout, /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/);
-  assert.match(layout, /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/);
-  assert.match(layout, /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/);
-  assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
-  assert.match(spotifyHeader, /RECT hostLayoutRect\{\}/);
-  assert.match(spotifyHeader, /bool hostLayoutApplied = false/);
-  assert.match(layout, /const bool placementChanged =/);
-  assert.match(layout, /const bool controllerChanged =/);
-  assert.match(layout, /if \(placementChanged\)[\s\S]*SetWindowPos\(slot\.hostWindow/);
-  assert.match(
-    layout,
-    /if \(controllerChanged\)[\s\S]*put_Bounds\(bounds\)[\s\S]*put_IsVisible\(TRUE\)/,
-  );
-  assert.match(
-    layout,
-    /if \(placementChanged \|\| controllerChanged\)[\s\S]*NotifyParentWindowPositionChanged\(\)/,
-  );
+  assert.match(layout, /const bool positionChanged =/);
+  assert.match(layout, /const bool sizeChanged =/);
+  assert.match(layout, /const bool zOrderChanged =/);
+  assert.match(layout, /if \(!positionChanged\) flags \|= SWP_NOMOVE/);
+  assert.match(layout, /if \(!sizeChanged\) flags \|= SWP_NOSIZE/);
+  assert.match(layout, /if \(!zOrderChanged\) flags \|= SWP_NOZORDER/);
+  assert.match(layout, /SetWindowPos\(slot\.hostWindow, insertAfter/);
+  assert.doesNotMatch(layout, /ShowWindow\(slot\.hostWindow/);
   assert.doesNotMatch(layout, /BeginDeferWindowPos|EndDeferWindowPos/);
-  assert.doesNotMatch(layout, /const bool active =/);
-  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
-  assert.doesNotMatch(layout, /SW_HIDE/);
 });
 
-test('Spotify authentication presentation does not execute badge JavaScript every scheduler pass', () => {
-  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
-  assert.match(layout, /kSpotifyAuthenticationBadgeRefreshMs = 30ULL \* 1000ULL/);
+test('Spotify layout avoids redundant controller COM calls', () => {
+  assert.match(spotifyHeader, /ICoreWebView2Controller\* hostLayoutController = nullptr/);
+  assert.match(spotifyHeader, /bool hostLayoutReducedZoomApplied = false/);
+  assert.match(layout, /const bool controllerChanged =/);
+  assert.match(layout, /Configure\(\) already pushed initial bounds\/visibility/);
+  assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_Bounds/);
+  assert.doesNotMatch(layout, /controllerChanged\)[\s\S]{0,220}put_IsVisible/);
   assert.match(
     layout,
-    /!layoutChanged && slot\.authenticationBadgeTick != 0[\s\S]*now - slot\.authenticationBadgeTick <[\s\S]*kSpotifyAuthenticationBadgeRefreshMs/,
+    /if \(positionChanged \|\| controllerChanged\)[\s\S]*NotifyParentWindowPositionChanged\(\)/,
   );
-  assert.match(layout, /slot\.authenticationBadgeTick = now/);
+  assert.doesNotMatch(layout, /get_ZoomFactor\(/);
+  assert.match(layout, /hostLayoutReducedZoomApplied != reducedZoom/);
+});
+
+test('Spotify authentication badge bootstrap runs once per navigation generation', () => {
+  assert.match(spotifyHeader, /ULONGLONG authenticationBadgeTick = 0/);
+  assert.match(layout, /if \(slot\.authenticationBadgeTick != 0\) return/);
+  assert.match(layout, /slot\.authenticationBadgeTick = 1/);
+  assert.doesNotMatch(layout, /kSpotifyAuthenticationBadgeRefreshMs/);
   assert.match(spotify, /target->authenticationBadgeTick = 0/);
+});
+
+test('steady authentication layout repairs z-order only when it is actually lost', () => {
+  assert.match(
+    layout,
+    /!layoutChanged && GetWindow\(slot\.hostWindow, GW_HWNDPREV\) != nullptr/,
+  );
+  assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/);
 });
 
 test('each Spotify scheduler turn performs at most one host layout refresh', () => {
