@@ -13,7 +13,8 @@
     "mode": "smart"
   },
   "vars": {
-    "WEATHERNEWS_URL": "https://weathernews.jp/onebox/35.8524/139.4852/"
+    "WEATHERNEWS_URL": "https://weathernews.jp/onebox/35.8524/139.4852/",
+    "HOMEPANEL_PUBLIC_URL": "https://homepanel-cloud.tarematsu.workers.dev"
   },
   "assets": {
     "directory": "../video/public",

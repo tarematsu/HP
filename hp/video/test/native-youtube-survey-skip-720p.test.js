@@ -44,6 +44,7 @@ test('YouTube watchdog recovers a paused watch page without depending on visible
   assert.match(recovery, /player\.querySelector\('\.ytp-play-button'\)/);
   assert.match(recovery, /prepareTrustedTarget/);
   assert.match(recovery, /pointer-events', 'auto', 'important'/);
+  assert.match(recovery, /armTrustedAction\(playButton, 'play', 1500\)/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
 });
 
@@ -54,21 +55,29 @@ test('YouTube surveys choose the first available option then submit', () => {
   assert.match(recovery, /送信\|回答を送信\|submit\|send/);
 });
 
-test('YouTube ad skip recognizes selectors and semantic labels even when chrome is hidden', () => {
+test('YouTube ad skip uses a stable trusted landing target and never falls through to playback controls', () => {
   assert.match(recovery, /\.ytp-ad-skip-button-modern/);
   assert.match(recovery, /button\[class\*="ytp-ad-skip"\]/);
   assert.match(recovery, /広告をスキップ\|広告を飛ばす/);
   assert.match(recovery, /skip\\s\*ad/);
-  assert.match(recovery, /guardedPoint\(target, 'skip-ad', 600\)/);
+  assert.match(recovery, /adShowing && target\) return armTrustedAction\(target, 'skip-ad', 600\)/);
+  assert.match(recovery, /if \(adShowing\) return null/);
+  assert.doesNotMatch(recovery, /\[class\*="skip" i\]\)\)/);
+  assert.match(recovery, /__homePanelYoutubeTrustedActionTarget/);
+  assert.match(recovery, /event\.stopImmediatePropagation\(\)/);
+  assert.match(recovery, /return \[5000, 5000\]/);
   assert.match(trustedInput, /Input\.dispatchMouseEvent/);
   assert.doesNotMatch(trustedInput, /::SendInput/);
 });
 
-test('YouTube fullscreen recovery accepts hidden canonical and semantic controls', () => {
+test('YouTube fullscreen recovery keeps the trusted click off the moving video surface', () => {
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
   assert.match(recovery, /全画面\|fullscreen\|full screen/i);
-  assert.match(recovery, /guardedPoint\(target, 'fullscreen', 1200\)/);
+  assert.match(recovery, /return armTrustedAction\(target, 'fullscreen', 1200\)/);
   assert.match(recovery, /document\.fullscreenElement/);
+  assert.match(recovery, /position:fixed/);
+  assert.match(recovery, /inset:0/);
+  assert.match(recovery, /target\.click\(\)/);
 });
 
 test('YouTube clean player exposes Skip Ad without restoring unrelated ad chrome', () => {

@@ -24,6 +24,29 @@ std::wstring Utf8BytesToWide(const std::vector<uint8_t>& bytes) {
   return output;
 }
 
+bool HasPngSignature(const std::vector<uint8_t>& body) noexcept {
+  static constexpr uint8_t kPngSignature[] = {
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+  return body.size() >= sizeof(kPngSignature) &&
+      std::memcmp(body.data(), kPngSignature, sizeof(kPngSignature)) == 0;
+}
+
+bool HasPngSignature(const fs::path& path) noexcept {
+  try {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) return false;
+    uint8_t signature[8]{};
+    input.read(reinterpret_cast<char*>(signature), sizeof(signature));
+    if (input.gcount() != static_cast<std::streamsize>(sizeof(signature))) {
+      return false;
+    }
+    const std::vector<uint8_t> bytes(std::begin(signature), std::end(signature));
+    return HasPngSignature(bytes);
+  } catch (...) {
+    return false;
+  }
+}
+
 int64_t HealthNumber(const JsonObject& root, const wchar_t* name) {
   try {
     const double value = root.GetNamedNumber(name, -1);
@@ -198,22 +221,37 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(const std::vector<uint8_t>&
   const bool precomposed = root.GetNamedBoolean(L"precomposed", false);
   const auto localizeTile = [&](JsonObject item) {
     const std::wstring url = item.GetNamedString(L"url", L"").c_str();
-    if (url.empty() || url.front() != L'/') return;
+    if (url.empty() || url.front() != L'/') {
+      if (precomposed) throw std::runtime_error("precomposed radar tile URL must be relative");
+      return;
+    }
     const fs::path target = localPathFor(url);
     retained.insert(target.wstring());
     std::error_code error;
     if (precomposed || !fs::exists(target, error) || fs::file_size(target, error) == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
-      if (response.status != 200 || response.body.empty()) {
+      if (response.status != 200 || response.body.empty() ||
+          (precomposed && !HasPngSignature(response.body))) {
+        if (precomposed) {
+          throw std::runtime_error(
+              "precomposed radar frame unavailable: HTTP " +
+              std::to_string(response.status));
+        }
         log_.Warn(L"Radar tile cache fetch failed; using remote tile URL: HTTP " +
                   std::to_wstring(response.status));
         item.SetNamedValue(L"url", JsonValue::CreateStringValue(remoteUrlFor(url)));
         return;
       }
       if (!AtomicWriteBytes(target, response.body)) {
+        if (precomposed) {
+          throw std::runtime_error("precomposed radar frame cache write failed");
+        }
         log_.Warn(L"Radar tile cache write failed; using remote tile URL");
         item.SetNamedValue(L"url", JsonValue::CreateStringValue(remoteUrlFor(url)));
         return;
+      }
+      if (precomposed && !HasPngSignature(target)) {
+        throw std::runtime_error("precomposed radar frame cache validation failed");
       }
     }
     item.SetNamedValue(L"url", JsonValue::CreateStringValue(localUrlFor(url)));
@@ -278,12 +316,33 @@ void CloudClient::Synchronize() {
     std::error_code error;
     return fs::exists(path, error) ? version : -1;
   };
+  const fs::path representativeRadarPath = dataDir_ / L"radar-cache" /
+      L"v1" / L"radar" / L"frame" / L"representative" / L"latest.png";
+  const auto requestedRadarVersion = [&]() {
+    std::error_code error;
+    if (!fs::exists(radarPath, error) ||
+        !fs::exists(representativeRadarPath, error) ||
+        !HasPngSignature(representativeRadarPath)) {
+      return -1;
+    }
+    try {
+      std::ifstream input(radarPath, std::ios::binary);
+      std::string text((std::istreambuf_iterator<char>(input)), {});
+      if (text.find("https://data.homepanel/radar-cache/v1/radar/frame/representative/latest.png") ==
+          std::string::npos) {
+        return -1;
+      }
+    } catch (...) {
+      return -1;
+    }
+    return radarVersion_;
+  };
 
   std::wstring path = L"/v1/device/sync?deviceId=";
   path.reserve(256);
   path += config_.deviceId;
   path += L"&dashboardVersion=" + std::to_wstring(requestedVersion(dashboardPath, dashboardVersion_));
-  path += L"&radarVersion=" + std::to_wstring(requestedVersion(radarPath, radarVersion_));
+  path += L"&radarVersion=" + std::to_wstring(requestedRadarVersion());
   path += L"&switchbotVersion=" + std::to_wstring(
       presenceFallbackActive_ ? -1 : requestedVersion(switchbotPath, switchbotVersion_));
   path += L"&stationheadVersion=" + std::to_wstring(requestedVersion(stationheadPath, stationheadVersion_));
@@ -316,9 +375,19 @@ void CloudClient::Synchronize() {
     PostMessageW(window_, WM_HP_CLOUD_UPDATED, 0, 0);
   }
   if (auto payload = StringPayload(root, L"radar")) {
-    if (!AtomicWriteBytes(radarPath, LocalizeRadarTiles(*payload))) throw std::runtime_error("radar cache write failed");
-    radarApplied = true;
-    PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+    try {
+      const auto localized = LocalizeRadarTiles(*payload);
+      if (!AtomicWriteBytes(radarPath, localized)) {
+        throw std::runtime_error("radar cache write failed");
+      }
+      radarApplied = true;
+      PostMessageW(window_, WM_HP_RADAR_UPDATED, 0, 0);
+    } catch (const std::exception& error) {
+      log_.Warn(L"Radar payload withheld until representative PNG is available: " +
+                Utf8ToWide(error.what()));
+    } catch (...) {
+      log_.Warn(L"Radar payload withheld until representative PNG is available");
+    }
   }
   if (auto payload = StringPayload(root, L"switchbot")) {
     if (!AtomicWriteBytes(switchbotPath, *payload)) throw std::runtime_error("SwitchBot cache write failed");
