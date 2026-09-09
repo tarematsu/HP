@@ -30,6 +30,10 @@ const recent = readFileSync(
   new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
   'utf8',
 );
+const phase = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
 
 test('one delegated observer covers current and dynamically created media', () => {
   assert.match(wrapper, /#include "spotify_fast_end_observer\.inc"/);
@@ -38,7 +42,7 @@ test('one delegated observer covers current and dynamically created media', () =
   assert.match(observer, /document\.addEventListener\('playing'/);
   assert.match(observer, /document\.addEventListener\('ended'/);
   assert.doesNotMatch(observer, /media\.addEventListener/);
-  assert.doesNotMatch(observer, /MutationObserver|setInterval/);
+  assert.doesNotMatch(observer, /MutationObserver/);
 });
 
 test('confirmed target media starts the deadline and ends immediately with its generation', () => {
@@ -89,25 +93,34 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
   );
 });
 
-test('pause, waiting, and stalled recover only after playback stays stopped', () => {
+test('pause, waiting, stalled, and silent media-clock freezes recover playback', () => {
   assert.match(observer, /document\.addEventListener\('pause'/);
   assert.match(observer, /\['waiting', 'stalled'\]/);
   assert.match(observer, /scheduleRecovery\(event\.target, 600, true\)/);
   assert.match(observer, /scheduleRecovery\(event\.target, 2500, false\)/);
   assert.match(observer, /media\.currentTime[\s\S]*startTime \+ 0\.05/);
+  assert.match(observer, /setInterval\([\s\S]*10000\)/);
+  assert.match(observer, /heartbeatMisses >= 2/);
+  assert.match(observer, /requestRecovery\(media\)/);
   assert.match(observer, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
   assert.match(rotation, /staggerSlotIndex_ = target->index/);
 });
 
-test('observer injection is retried only until one install succeeds and old start observer is gone', () => {
+test('observer injection is generation-fenced and a lost callback expires', () => {
   assert.match(header, /bool timedObserverReady = false/);
   assert.match(header, /bool timedObserverInstallInFlight = false/);
+  assert.match(header, /ULONGLONG timedObserverInstallGeneration = 0/);
+  assert.match(header, /ULONGLONG timedObserverInstallStartedTick = 0/);
   assert.match(
     rotation,
     /if \(slot\.timedObserverReady \|\| slot\.timedObserverInstallInFlight\) return;/,
   );
-  assert.match(rotation, /observerTarget->timedObserverReady =[\s\S]*SUCCEEDED\(result\)/);
+  assert.match(rotation, /\+\+slot\.timedObserverInstallGeneration/);
+  assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
+  assert.match(rotation, /observerTarget->timedObserverInstallStartedTick = 0/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /slot\.timedObserverInstallInFlight[\s\S]*kSpotifyAsyncOperationTimeoutMs/);
   assert.doesNotMatch(rotation, /kSpotifyStaticTimedStartObserverScript/);
 });
 
