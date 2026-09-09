@@ -235,10 +235,13 @@ class Renderer {
     ClockTime,
     PlaybackProgress,
     Air,
+    AirStats,
+    AirGraph,
     Weather,
     Controls,
     Music,
-    Energy
+    Energy,
+    EnergySwitchBot
   };
 
   void InvalidatePanelSection(HWND window, PanelSection section);
@@ -251,6 +254,7 @@ class Renderer {
   void DrawControlsSection(HDC dc, const RECT& card);
   void DrawMusicSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
+  void DrawEnergySwitchBotSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
   void DrawCachedPanelSection(
       HDC dc, const RECT& card, PanelSection section, uint64_t revision,
@@ -309,6 +313,11 @@ class Renderer {
   bool powerSavingMode_ = false;
   bool nativeDashboardVisible_ = true;
   bool nativePanelTimerActive_ = false;
+  bool nativeClockReady_ = false;
+  SYSTEMTIME nativeClockNow_{};
+  std::wstring nativeClockDateText_ = L"時刻同期中";
+  std::wstring nativeClockTimeText_ = L"--:--:--";
+  std::wstring nativeClockWasteText_;
   int nativeClockDayKey_ = 0;
   int64_t nativeClockSecondKey_ = -1;
   fs::path rootDir_;
