@@ -268,5 +268,10 @@ std::wstring BuildSpotifyFastEndObserverScript() {
   return script;
 }
 
+const std::wstring kSpotifyFastEndObserverScriptStorage =
+    BuildSpotifyFastEndObserverScript();
+const wchar_t* const kSpotifyFastEndObserverScript =
+    kSpotifyFastEndObserverScriptStorage.c_str();
+
 }  // namespace
 }  // namespace hp
