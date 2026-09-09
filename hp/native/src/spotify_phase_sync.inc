@@ -8,8 +8,6 @@ constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyInitialSlotOffsetMs = 40ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -129,11 +127,11 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
 
     if (slot.timedPlaybackStartTick != 0) {
       const ULONGLONG age = now - slot.timedPlaybackStartTick;
-      if (age >= kSpotifyAdaptiveTrackDeadlineMs) {
+      if (age >= kSpotifyMusicTrackDeadlineMs) {
         return kSpotifyRobustUrgentTickMs;
       }
       nextDeadlineMs = std::min(
-          nextDeadlineMs, kSpotifyAdaptiveTrackDeadlineMs - age);
+          nextDeadlineMs, kSpotifyMusicTrackDeadlineMs - age);
     }
   }
 
@@ -141,7 +139,7 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     const ULONGLONG elapsed = now - scheduleStartTick_;
     for (size_t i = 1; i < slots_.size(); ++i) {
       const ULONGLONG boundary =
-          static_cast<ULONGLONG>(i) * kSpotifyInitialSlotOffsetMs;
+          static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs;
       if (elapsed < boundary) {
         nextDeadlineMs = std::min(nextDeadlineMs, boundary - elapsed);
         break;

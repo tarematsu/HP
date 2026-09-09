@@ -25,11 +25,11 @@ const runtime = readFileSync(
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 
-test('Spotify startup keeps 40-second account offsets with one direct scheduler', () => {
+test('Spotify startup keeps one shared 40-second account offset with one direct scheduler', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
-  assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.doesNotMatch(schedule, /% 6ULL|std::min<ULONGLONG>\(5ULL/);
   assert.match(schedule, /StaggeredReconcileTimerProc/);
@@ -45,7 +45,7 @@ test('Spotify schedule starts autonomously and has no YouTube/TVer prelude mode'
   assert.doesNotMatch(schedule, /kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs|timedBridgeCompleted/);
 });
 
-test('A-B-C-D advances immediately on ended or no later than four minutes after target selection', () => {
+test('A-B-C-D advances immediately on ended or no later than the shared four-minute deadline', () => {
   assert.match(rotation, /case 0:[\s\S]*LonesomeRabbit[\s\S]*break;/);
   assert.match(rotation, /case 1:[\s\S]*CatalogTrack[\s\S]*timedRandomCIndex/);
   assert.match(rotation, /case 2:[\s\S]*BitterBlue[\s\S]*break;/);
@@ -55,7 +55,7 @@ test('A-B-C-D advances immediately on ended or no later than four minutes after 
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
   assert.match(rotation, /timedRotationPosition \+ 1U/);
   assert.match(header, /timedPlaybackStartTick = 0/);
-  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
   assert.match(runtime, /spotify:timed-started/);
   assert.match(runtime, /navigator\.mediaSession/);
   assert.match(runtime, /const enforceTarget = media =>/);
@@ -66,10 +66,23 @@ test('A-B-C-D advances immediately on ended or no later than four minutes after 
     /ApplyTimedRotationTarget\(Slot& slot\)[\s\S]*timedPlaybackStartTick = GetTickCount64\(\)/,
   );
   assert.match(rotation, /bool SpotifyWebViews::AdvanceExpiredTimedRotation/);
-  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs/);
+  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
   assert.match(schedule, /AdvanceExpiredTimedRotation\(now\)/);
   assert.doesNotMatch(rotation, /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/);
   assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs|rotationWave/);
+});
+
+test('fixed and catalog songs share one native music descriptor and reconcile path', () => {
+  assert.match(header, /struct MusicTargetDescriptor/);
+  assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(recent, /case TimedSpotifyTarget::BitterBlue:[\s\S]*case TimedSpotifyTarget::CatalogTrack/);
+  assert.match(recent, /void SpotifyWebViews::NavigateMusicTarget/);
+  assert.match(recent, /void SpotifyWebViews::ReconcileMusicTarget/);
+  assert.match(recent, /kSpotifyStaticTrackReconcileScript/);
+  assert.doesNotMatch(
+    header + timed + recent,
+    /SlotMatchesTimedTarget|NavigateTimedSlot|ReconcileTimedSlot|SlotMatchesRecentTimedTarget|NavigateRecentTimedSlot|ReconcileRecentTimedSlot/,
+  );
 });
 
 test('stale playback events are rejected by target generation', () => {
@@ -168,7 +181,10 @@ test('TALKABOUT is inserted once after every ten complete A-B-C-D cycles', () =>
   assert.match(rotation, /timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL/);
   assert.match(rotation, /BeginPodcastBreak\(slot, now\)/);
   assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
-  assert.match(timed, /requestedTarget == TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/);
+  assert.match(
+    timed,
+    /target->timedTarget != TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+  );
   assert.match(rotation, /CompletePodcastBreak[\s\S]*ApplyTimedRotationTarget\(slot\)[\s\S]*NavigateActiveTimedSlot\(slot\)/);
   assert.match(rotation, /podcastBreakActive[\s\S]*timedPlaybackStartTick = 0/);
 });

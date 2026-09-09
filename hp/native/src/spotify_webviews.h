@@ -3,6 +3,10 @@
 
 namespace hp {
 
+inline constexpr ULONGLONG kSpotifyMusicTrackDeadlineMs =
+    4ULL * 60ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
+
 class SpotifyWebViews final {
  public:
   SpotifyWebViews(HWND parentWindow, fs::path dataDir);
@@ -84,6 +88,12 @@ class SpotifyWebViews final {
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
+  struct MusicTargetDescriptor {
+    const wchar_t* title = nullptr;
+    const wchar_t* url = nullptr;
+    const wchar_t* path = nullptr;
+  };
+
   static LRESULT CALLBACK HostWndProc(
       HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
   static bool IsSpotifyPlayerUri(const wchar_t* uri) noexcept;
@@ -113,16 +123,17 @@ class SpotifyWebViews final {
   void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
-  bool SlotMatchesTimedTarget(const Slot& slot) const noexcept;
-  void NavigateTimedSlot(Slot& slot) noexcept;
-  void ReconcileTimedSlot(Slot& slot) noexcept;
+  bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
+  void NavigatePodcastSlot(Slot& slot) noexcept;
+  void ReconcilePodcastSlot(Slot& slot) noexcept;
   size_t PickRecentCatalogIndex(size_t avoidIndex,
                                 size_t secondAvoidIndex) noexcept;
   void EnsureRecentRandomPair(ULONGLONG rotationCycle,
                               size_t avoidIndex) noexcept;
-  bool SlotMatchesRecentTimedTarget(const Slot& slot) const noexcept;
-  void NavigateRecentTimedSlot(Slot& slot) noexcept;
-  void ReconcileRecentTimedSlot(Slot& slot) noexcept;
+  MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
+  bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
+  void NavigateMusicTarget(Slot& slot) noexcept;
+  void ReconcileMusicTarget(Slot& slot) noexcept;
   void NavigateActiveTimedSlot(Slot& slot) noexcept;
   void ReconcileActiveTimedSlot(Slot& slot) noexcept;
   void ApplyTimedRotationTarget(Slot& slot) noexcept;

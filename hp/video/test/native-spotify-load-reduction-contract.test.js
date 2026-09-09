@@ -18,8 +18,8 @@ const layout = sourcePart('spotify_host_layout.inc');
 
 test('Spotify WebViews serialize startup without UI-thread blocking or legacy timer rewriting', () => {
   assert.match(spotify, /CreateController\(slots_\[0\]\)/);
-  assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(spotifyHeader, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.doesNotMatch(schedule, /% 6ULL|std::min<ULONGLONG>\(5ULL/);
   assert.doesNotMatch(spotify, /kSpotifyStartupTimer|kSpotifyStartupStaggerMs|Sleep\(/);

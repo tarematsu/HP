@@ -1,5 +1,4 @@
 namespace {
-constexpr ULONGLONG kSpotifyTimedSlotOffsetMs = 40ULL * 1000ULL;
 // One healthy slot is verified per turn. With the adaptive 20-second scheduler
 // this is one lightweight verification per account roughly every two minutes.
 constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 20ULL * 1000ULL;
@@ -13,11 +12,11 @@ size_t SimpleSpotifyScheduledIndex(
     ULONGLONG elapsed, size_t accountCount) noexcept {
   if (accountCount == 0) return 0;
   const ULONGLONG initialSerialWindowMs =
-      static_cast<ULONGLONG>(accountCount) * kSpotifyTimedSlotOffsetMs;
+      static_cast<ULONGLONG>(accountCount) * kSpotifyAccountStartOffsetMs;
   if (elapsed < initialSerialWindowMs) {
     return static_cast<size_t>(std::min<ULONGLONG>(
         static_cast<ULONGLONG>(accountCount - 1),
-        elapsed / kSpotifyTimedSlotOffsetMs));
+        elapsed / kSpotifyAccountStartOffsetMs));
   }
   return static_cast<size_t>(
       ((elapsed - initialSerialWindowMs) /
@@ -51,7 +50,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   staggerSlotValidated_ = false;
 
   // Only slot 0 is allowed to start controller creation immediately. The other
-  // accounts enter through the same 40-second serialized ownership schedule.
+  // accounts enter through the same serialized ownership schedule.
   for (size_t i = 1; i < slots_.size(); ++i) {
     slots_[i].controllerCreating = false;
     slots_[i].controllerCreateTick = 0;
@@ -112,7 +111,7 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (slot.webview && SlotIsLoginPage(slot)) return;
 
   const ULONGLONG slotOffset =
-      static_cast<ULONGLONG>(slot.index) * kSpotifyTimedSlotOffsetMs;
+      static_cast<ULONGLONG>(slot.index) * kSpotifyAccountStartOffsetMs;
   if (elapsed < slotOffset) return;
 
   // Spotify playback no longer depends on the YouTube/TVer phase. Once an

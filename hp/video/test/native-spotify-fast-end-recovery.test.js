@@ -109,11 +109,11 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
   );
   assert.match(
     timed,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(url\)/,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(kSpotifyPodcastUrl\)/,
   );
   assert.match(
     recent,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(track->url\)/,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(target\.url\)/,
   );
 });
 
@@ -145,7 +145,9 @@ test('observer injection is generation-fenced and a lost callback expires', () =
   assert.match(phase, /slot\.timedObserverInstallInFlight[\s\S]*kSpotifyAsyncOperationTimeoutMs/);
 });
 
-test('four-minute hard deadline remains native and independent of observer health', () => {
-  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+test('four-minute hard deadline remains one native constant independent of observer health', () => {
+  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
   assert.match(rotation, /AdvanceExpiredTimedRotation/);
+  assert.match(rotation, /kSpotifyMusicTrackDeadlineMs/);
+  assert.match(phase, /kSpotifyMusicTrackDeadlineMs/);
 });
