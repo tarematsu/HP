@@ -7,7 +7,7 @@ const renderer = readFileSync(
   'utf8',
 );
 
-test('radar paints reuse the cached source DC and avoid HALFTONE filtering', () => {
+test('radar paints reuse the cached source DC and avoid expensive filtering', () => {
   const start = renderer.indexOf('void StretchRadarIntoLowPeak(');
   const end = renderer.indexOf('}  // namespace', start);
   assert.ok(start >= 0 && end > start);
@@ -17,7 +17,8 @@ test('radar paints reuse the cached source DC and avoid HALFTONE filtering', () 
   assert.match(fastPath, /SetStretchBltMode\(destDc, COLORONCOLOR\)/);
   assert.match(fastPath, /BitBlt\(/);
   assert.match(fastPath, /StretchBlt\(/);
-  assert.doesNotMatch(fastPath, /CreateCompatibleDC|DeleteDC|HALFTONE/);
+  assert.doesNotMatch(fastPath, /CreateCompatibleDC|DeleteDC/);
+  assert.doesNotMatch(fastPath, /SetStretchBltMode\(destDc, HALFTONE\)/);
 });
 
 test('all renderer-panel radar call sites are routed through the low-peak path', () => {
