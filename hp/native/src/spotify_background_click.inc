@@ -1,3 +1,51 @@
+bool SpotifyWebViews::ParseNormalizedPoint(
+    LPCWSTR json, int* x, int* y) noexcept {
+  if (!json || !x || !y) return false;
+  try {
+    const std::wstring value(json);
+    if (value.size() < 5 || value.front() != L'[') return false;
+    const size_t comma = value.find(L',');
+    const size_t close = value.find(
+        L']', comma == std::wstring::npos ? 0 : comma + 1);
+    if (comma == std::wstring::npos || close == std::wstring::npos) return false;
+    const int parsedX = std::stoi(value.substr(1, comma - 1));
+    const int parsedY = std::stoi(value.substr(comma + 1, close - comma - 1));
+    if (parsedX < 0 || parsedX > 10000 || parsedY < 0 || parsedY > 10000) {
+      return false;
+    }
+    *x = parsedX;
+    *y = parsedY;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+void SpotifyWebViews::ClickSlotNormalizedPoint(
+    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
+  if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+
+  // Parked surfaces are playback-only. Expanding a responsive page invalidates
+  // coordinates measured at 320x180, so the first pass only promotes recovery
+  // ownership. The next settled reconcile obtains a fresh point before click.
+  const bool recoveryViewportReady =
+      hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
+  if (!recoveryViewportReady) {
+    const ULONGLONG now = GetTickCount64();
+    MarkSlotRecovering(slot, now);
+    slot.lastTimedReconcileTick = 0;
+    staggerSlotIndex_ = slot.index;
+    staggerSlotStartTick_ = now;
+    staggerSlotValidated_ = false;
+    RefreshSpotifyHostLayout();
+    ArmRobustScheduler();
+    return;
+  }
+
+  SetSlotState(slot, SlotState::WaitingTarget);
+  DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
+}
+
 UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
   try {
@@ -107,9 +155,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
                                       target->webview.Get() != view.Get()) {
                                     return S_OK;
                                   }
-                                  // Keep the native gate until its eight-second
-                                  // deadline. Spotify can update its play/pause UI
-                                  // without another click racing it back to pause.
                                   return S_OK;
                                 }).Get());
                         return S_OK;
