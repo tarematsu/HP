@@ -12,6 +12,23 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery } = runtime;
+  const kPreemptiveEndSeconds = 0.8;
+
+  const completeTargetPlayback = media => {
+    syncTarget();
+    if (!isMedia(media) || !state.started || state.endedPosted ||
+        state.targetMedia !== media) {
+      return false;
+    }
+    clearTimeout(state.stallTimer);
+    state.stallTimer = 0;
+    state.endedPosted = true;
+    document.querySelectorAll('audio, video').forEach(candidate => {
+      try { candidate.pause(); } catch (_) {}
+    });
+    post('spotify:timed-ended');
+    return true;
+  };
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
@@ -45,8 +62,21 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }
 
   document.addEventListener('timeupdate', event => {
-    if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
-    enforceTarget(event.target);
+    const media = event.target;
+    if (!isMedia(media) || media.ended || media.paused) return;
+    if (enforceTarget(media) !== 'playing') return;
+    if (state.endedPosted || !state.started || state.targetMedia !== media) return;
+
+    const duration = Number(media.duration);
+    const currentTime = Number(media.currentTime);
+    if (!Number.isFinite(duration) || !Number.isFinite(currentTime) ||
+        duration <= 1 || currentTime <= 0) {
+      return;
+    }
+    const remaining = duration - currentTime;
+    if (remaining >= 0 && remaining <= kPreemptiveEndSeconds) {
+      completeTargetPlayback(media);
+    }
   }, true);
 
   document.addEventListener('pause', event => {
@@ -62,19 +92,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }
 
   document.addEventListener('ended', event => {
-    const media = event.target;
-    syncTarget();
-    if (!isMedia(media) || !state.started || state.endedPosted ||
-        state.targetMedia !== media) {
-      return;
-    }
-    clearTimeout(state.stallTimer);
-    state.stallTimer = 0;
-    state.endedPosted = true;
-    document.querySelectorAll('audio, video').forEach(candidate => {
-      try { candidate.pause(); } catch (_) {}
-    });
-    post('spotify:timed-ended');
+    completeTargetPlayback(event.target);
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
