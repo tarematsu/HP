@@ -115,6 +115,16 @@ constexpr wchar_t kNativeMediaYoutubeControlRecoveryScript[] = LR"JS(
         }
         if (action === 'fullscreen') {
           if (isFullscreen()) return;
+          const requestFullscreen = player.requestFullscreen
+              || player.webkitRequestFullscreen
+              || player.webkitRequestFullScreen;
+          if (typeof requestFullscreen === 'function') {
+            const pending = requestFullscreen.call(player);
+            if (pending && typeof pending.catch === 'function') {
+              pending.catch(() => {});
+            }
+            return;
+          }
           target.click();
         }
       } catch (_) {}
