@@ -1,6 +1,5 @@
 #pragma once
 #include "common.h"
-#include "sensors.h"
 #include "sh.h"
 
 namespace hp {
@@ -27,16 +26,13 @@ struct AirHistorySample {
   bool operator==(const AirHistorySample&) const = default;
 };
 
+// Stationhead is currently disabled but its implementation is intentionally
+// retained. Active native panels bypass this compatibility state and update the
+// Renderer directly at their source event boundaries.
 struct RenderState {
-  SensorSnapshot sensors;
   StationheadStatus stationhead;
-  std::wstring appVersion;
-  std::vector<AirHistorySample> airHistory;
-  uint64_t airHistoryRevision = 0;
   std::vector<StationheadPlayHistorySample> stationheadPlayHistory;
   uint64_t stationheadPlayHistoryRevision = 0;
-  std::wstring toast;
-  int newsIndex = 0;
 };
 
 }  // namespace hp
