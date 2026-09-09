@@ -32,7 +32,8 @@ test('waste calendar summary is rendered below the clock instead of on the radar
   assert.doesNotMatch(calendar, /DrawCourse36WasteCalendarOverlay/);
   assert.doesNotMatch(calendar, /DrawCardOutlineWithWasteCalendarOverlay/);
   assert.doesNotMatch(rendererPanels, /DrawCardOutlineWithWasteCalendarOverlay/);
-  assert.match(layout, /hpWasteText = Course36ClockWasteSummary\(hpNow\)/);
+  assert.match(layout, /Course36ClockWasteSummary\(nativeClockNow_\)/);
+  assert.match(layout, /nativeClockReady_/);
   assert.match(layout, /hpWasteRect\{hpClockContent\.left, hpTimeRect\.bottom/);
   assert.match(
     layout,
