@@ -8,6 +8,7 @@ const observerModules = [
   ['spotify_media_observer_events.inc', 'kSpotifyMediaObserverEventsScript'],
   ['spotify_media_observer_heartbeat.inc', 'kSpotifyMediaObserverHeartbeatScript'],
 ].map(([file, symbol]) => ({
+  file,
   symbol,
   source: readFileSync(new URL(`../../native/src/${file}`, import.meta.url), 'utf8'),
 }));
@@ -149,6 +150,23 @@ function createHarness() {
   };
 }
 
+test('target identity and wrong-track rejection have one runtime owner', () => {
+  const runtime = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_runtime.inc').source;
+  const events = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_events.inc').source;
+  const heartbeat = observerModules.find(({ file }) =>
+    file === 'spotify_media_observer_heartbeat.inc').source;
+
+  assert.match(runtime, /const enforceTarget = media =>/);
+  assert.match(runtime, /const scheduleTargetChecks = media =>/);
+  assert.doesNotMatch(runtime + events + heartbeat,
+    /rejectWrongTrack|scheduleIdentityCheck|confirmStarted|scheduleStartChecks/);
+  assert.match(events, /scheduleTargetChecks\(event\.target\)/);
+  assert.match(events, /enforceTarget\(event\.target\)/);
+  assert.match(heartbeat, /enforceTarget\(media\)/);
+});
+
 test('production observer rejects an ad/title false-positive and prefers direct Track ID', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
@@ -158,6 +176,7 @@ test('production observer rejects an ad/title false-positive and prefers direct 
   h.media.paused = false;
   h.dispatch('playing');
   assert.deepEqual(h.messages, []);
+  assert.equal(h.media.pauseCalls, 0);
 
   h.setTrack('/track/A', 'Target A');
   h.dispatch('playing');
@@ -197,7 +216,7 @@ test('production observer ends immediately, blocks the old queue, then starts th
   assert.equal(h.messages.at(-1), 'spotify:timed-started\x1f8');
 });
 
-test('Spotify recommendation is paused and recovery is requested after identity settles', () => {
+test('shared target checks stop a Spotify recommendation and request native recovery once', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f11');
   h.setTrack('/track/A', 'Target A');
@@ -214,9 +233,10 @@ test('Spotify recommendation is paused and recovery is requested after identity 
   assert.equal(h.media.pauseCalls, 1);
   assert.equal(h.media.paused, true);
   assert.equal(h.messages.at(-1), 'spotify:not-playing\x1f11');
+  assert.equal(h.messages.filter(m => m === 'spotify:not-playing\x1f11').length, 1);
 });
 
-test('identity debounce does not stop the target when Spotify metadata catches up', () => {
+test('shared target checks tolerate stale UI until the requested identity appears', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f12');
   h.setTrack('/track/A', 'Target A');
@@ -232,7 +252,7 @@ test('identity debounce does not stop the target when Spotify metadata catches u
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
 
-test('heartbeat fallback also stops a recommendation if source-change events are missed', () => {
+test('heartbeat fallback stops a recommendation if source-change events are missed', () => {
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f13');
   h.setTrack('/track/A', 'Target A');
