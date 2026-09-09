@@ -52,7 +52,8 @@ test('runtime uses one adaptive scheduler instead of parallel background probing
 });
 
 test('only one recovery-sized Spotify owner is selected at a time', () => {
-  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
@@ -100,11 +101,12 @@ test('rotation hard deadline is armed before browser playback state is known', (
     rotation,
     /ApplyTimedRotationTarget\(Slot& slot\)[\s\S]*slot\.timedPlaybackStartTick = GetTickCount64\(\)/,
   );
-  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+  assert.match(header, /kSpotifyMusicTrackDeadlineMs =\s*4ULL \* 60ULL \* 1000ULL/);
   assert.match(
     phase,
-    /slot\.timedPlaybackStartTick != 0[\s\S]*kSpotifyAdaptiveTrackDeadlineMs - age/,
+    /slot\.timedPlaybackStartTick != 0[\s\S]*kSpotifyMusicTrackDeadlineMs - age/,
   );
+  assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs/);
   assert.doesNotMatch(phase, /timedPlaybackStartTick = GetTickCount64\(\)/);
 });
 
