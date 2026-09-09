@@ -11,6 +11,7 @@
 #include "media_tver_playback_policy.inc"
 #include "media_trusted_input.inc"
 #include "media_youtube_policy.inc"
+#include "media_youtube_trusted_action.inc"
 #include "media_youtube_control_recovery.inc"
 #include "media_youtube_playall_reliable.inc"
 
@@ -90,6 +91,29 @@ bool NativeMediaWebViewSourceContains(
   return value.find(needle) != std::wstring::npos;
 }
 
+void NativeMediaEnsureYoutubeTrustedAction(
+    ICoreWebView2* webview, bool force = false) noexcept {
+  // The helper belongs to the current JavaScript document. Cache by WebView and
+  // URL for the one-second watchdog, but force reinjection from the clean-player
+  // NavigationCompleted path so a same-URL document reload cannot lose it.
+  static ICoreWebView2* installedWebview = nullptr;
+  static std::wstring installedSource;
+  if (!webview) return;
+
+  LPWSTR rawSource = nullptr;
+  if (FAILED(webview->get_Source(&rawSource)) || !rawSource) return;
+  const std::wstring source(rawSource);
+  CoTaskMemFree(rawSource);
+  if (!force && installedWebview == webview && installedSource == source) return;
+
+  const HRESULT started = webview->ExecuteScript(
+      kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr);
+  if (SUCCEEDED(started)) {
+    installedWebview = webview;
+    installedSource = source;
+  }
+}
+
 bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
   static ICoreWebView2* observedWebview = nullptr;
   static std::wstring observedSeriesId;
@@ -145,6 +169,10 @@ const wchar_t* ResolveNativeMediaPolicyScript(
           std::wstring_view::npos) {
     return kNativeMediaPhaseOverlaySuppressionScript;
   }
+  if (script == kNativeMediaYoutubeCleanPlayerScript) {
+    NativeMediaEnsureYoutubeTrustedAction(webview, true);
+    return script;
+  }
   if (script == kNativeMediaTverLoopScript &&
       NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
     return kNativeMediaTverEpisodeLoopPolicyScript;
@@ -166,6 +194,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     return kNativeMediaYoutubeReliablePlayAllScript;
   }
   if (script == kNativeMediaYoutubeWatchdogScript) {
+    NativeMediaEnsureYoutubeTrustedAction(webview);
     return kNativeMediaYoutubeControlRecoveryScript;
   }
   if (script == kNativeMediaYoutubeHealthScript) {
