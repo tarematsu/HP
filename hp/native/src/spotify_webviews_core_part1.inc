@@ -4,8 +4,6 @@
 namespace hp {
 namespace {
 constexpr wchar_t kSpotifyHostClass[] = L"HomePanelSpotifyWebView";
-constexpr wchar_t kSpotifyPlaylistUrl[] =
-    L"https://open.spotify.com/album/2f2Ik9JeinFVWZuFb3i35b";
 constexpr wchar_t kSpotifyPodcastUrl[] =
     L"https://open.spotify.com/show/2ZQy2mlwQodabAILwZ02Ed";
 constexpr wchar_t kSpotifyLoginUrl[] =

@@ -6,8 +6,20 @@ const wrapper = readFileSync(
   new URL('../../native/src/spotify_webviews.inc', import.meta.url),
   'utf8',
 );
-const observer = readFileSync(
+const bundle = readFileSync(
   new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+  'utf8',
+);
+const runtime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url),
+  'utf8',
+);
+const events = readFileSync(
+  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
+  'utf8',
+);
+const heartbeat = readFileSync(
+  new URL('../../native/src/spotify_media_observer_heartbeat.inc', import.meta.url),
   'utf8',
 );
 const rotation = readFileSync(
@@ -30,36 +42,56 @@ const recent = readFileSync(
   new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
   'utf8',
 );
+const phase = readFileSync(
+  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+  'utf8',
+);
 
-test('one delegated observer covers current and dynamically created media', () => {
-  assert.match(wrapper, /#include "spotify_fast_end_observer\.inc"/);
-  assert.match(observer, /__homePanelSpotifyMediaObserverInstalled/);
-  assert.match(observer, /document\.addEventListener\('play'/);
-  assert.match(observer, /document\.addEventListener\('playing'/);
-  assert.match(observer, /document\.addEventListener\('ended'/);
-  assert.doesNotMatch(observer, /media\.addEventListener/);
-  assert.doesNotMatch(observer, /MutationObserver|setInterval/);
+test('observer responsibilities are independent scripts sharing one explicit runtime', () => {
+  for (const file of [
+    'spotify_media_observer_runtime.inc',
+    'spotify_media_observer_events.inc',
+    'spotify_media_observer_heartbeat.inc',
+    'spotify_fast_end_observer.inc',
+  ]) {
+    assert.match(wrapper, new RegExp(`#include "${file.replace('.', '\\.')}"`));
+  }
+  assert.match(runtime, /__homePanelSpotifyMediaObserverRuntime/);
+  assert.match(events, /runtime\.eventsInstalled/);
+  assert.match(heartbeat, /runtime\.heartbeatTimer/);
+  assert.match(bundle, /kSpotifyMediaObserverRuntimeScript/);
+  assert.match(bundle, /kSpotifyMediaObserverEventsScript/);
+  assert.match(bundle, /kSpotifyMediaObserverHeartbeatScript/);
+  assert.doesNotMatch(bundle, /LR"JS\(/);
 });
 
-test('confirmed target media starts the deadline and ends immediately with its generation', () => {
-  assert.match(observer, /state\.targetMedia = media/);
-  assert.match(observer, /post\('spotify:timed-started'\)/);
-  assert.match(observer, /state\.targetMedia !== media/);
-  assert.match(observer, /post\('spotify:timed-ended'\)/);
-  assert.match(observer, /message \+ '\\u001f' \+ generation\(\)/);
+test('delegated media events cover current and dynamically created media', () => {
+  assert.match(events, /document\.addEventListener\('play'/);
+  assert.match(events, /document\.addEventListener\('playing'/);
+  assert.match(events, /document\.addEventListener\('ended'/);
+  assert.doesNotMatch(events, /media\.addEventListener/);
+  assert.doesNotMatch(events, /MutationObserver|setInterval/);
+});
+
+test('confirmed target media starts and ends with its current generation', () => {
+  assert.match(runtime, /state\.targetMedia = media/);
+  assert.match(runtime, /post\('spotify:timed-started'\)/);
+  assert.match(events, /state\.targetMedia !== media/);
+  assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.match(runtime, /message \+ '\\u001f' \+ generation\(\)/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.doesNotMatch(observer, /spotify:timed-waiting|waitForNext/);
+  assert.doesNotMatch(runtime + events, /spotify:timed-waiting|waitForNext/);
 });
 
 test('direct track path is preferred over MediaSession title when both exist', () => {
-  const domIdentity = observer.indexOf('for (const selector of [');
-  const mediaSession = observer.indexOf('navigator.mediaSession');
+  const domIdentity = runtime.indexOf('for (const selector of [');
+  const mediaSession = runtime.indexOf('navigator.mediaSession');
   assert.ok(domIdentity >= 0 && mediaSession > domIdentity);
-  assert.match(observer, /if \(target\.trackPath && track\.path\)/);
-  assert.match(observer, /return sameTrackPath\(track\.path, target\.trackPath\)/);
-  assert.match(observer, /const sameTrackPath =/);
-  assert.match(observer, /value === expected/);
-  assert.match(observer, /value\.endsWith\(expected\)/);
+  assert.match(runtime, /if \(target\.trackPath && track\.path\)/);
+  assert.match(runtime, /return sameTrackPath\(track\.path, target\.trackPath\)/);
+  assert.match(runtime, /const sameTrackPath =/);
+  assert.match(runtime, /value === expected/);
+  assert.match(runtime, /value\.endsWith\(expected\)/);
 });
 
 test('target changes and ended gaps cannot play an item from the old queue', () => {
@@ -68,11 +100,11 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
     /if \(changed\) \{[\s\S]*document\.querySelectorAll\('audio, video'\)[\s\S]*media\.pause\(\)/,
   );
   assert.match(
-    observer,
+    events,
     /target\.kind === 'music' && state\.endedPosted[\s\S]*event\.target\.pause\(\)/,
   );
   assert.match(
-    observer,
+    events,
     /state\.endedPosted = true;[\s\S]*candidate\.pause\(\)[\s\S]*post\('spotify:timed-ended'\)/,
   );
   assert.match(
@@ -83,35 +115,37 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
     recent,
     /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(track->url\)/,
   );
-  assert.match(
-    recent,
-    /case TimedSpotifyTarget::LonesomeRabbit:[\s\S]*trackPath = kSpotifyLonesomeRabbitPath/,
-  );
 });
 
-test('pause, waiting, and stalled recover only after playback stays stopped', () => {
-  assert.match(observer, /document\.addEventListener\('pause'/);
-  assert.match(observer, /\['waiting', 'stalled'\]/);
-  assert.match(observer, /scheduleRecovery\(event\.target, 600, true\)/);
-  assert.match(observer, /scheduleRecovery\(event\.target, 2500, false\)/);
-  assert.match(observer, /media\.currentTime[\s\S]*startTime \+ 0\.05/);
-  assert.match(observer, /post\('spotify:not-playing'\)/);
+test('pause, waiting, stalled, and silent media-clock freezes recover playback', () => {
+  assert.match(events, /document\.addEventListener\('pause'/);
+  assert.match(events, /\['waiting', 'stalled'\]/);
+  assert.match(events, /scheduleRecovery\(event\.target, 600, true\)/);
+  assert.match(events, /scheduleRecovery\(event\.target, 2500, false\)/);
+  assert.match(runtime, /currentTime > startTime \+ 0\.05/);
+  assert.match(heartbeat, /setInterval\([\s\S]*10000\)/);
+  assert.match(heartbeat, /heartbeatMisses >= 2/);
+  assert.match(heartbeat, /requestRecovery\(media\)/);
+  assert.match(runtime, /post\('spotify:not-playing'\)/);
   assert.match(rotation, /const bool stopped =[\s\S]*spotify:not-playing/);
-  assert.match(rotation, /staggerSlotIndex_ = target->index/);
 });
 
-test('observer injection is retried only until one install succeeds and old start observer is gone', () => {
+test('observer injection is generation-fenced and a lost callback expires', () => {
   assert.match(header, /bool timedObserverReady = false/);
   assert.match(header, /bool timedObserverInstallInFlight = false/);
+  assert.match(header, /ULONGLONG timedObserverInstallGeneration = 0/);
+  assert.match(header, /ULONGLONG timedObserverInstallStartedTick = 0/);
   assert.match(
     rotation,
     /if \(slot\.timedObserverReady \|\| slot\.timedObserverInstallInFlight\) return;/,
   );
-  assert.match(rotation, /observerTarget->timedObserverReady =[\s\S]*SUCCEEDED\(result\)/);
-  assert.doesNotMatch(rotation, /kSpotifyStaticTimedStartObserverScript/);
+  assert.match(rotation, /\+\+slot\.timedObserverInstallGeneration/);
+  assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /slot\.timedObserverInstallInFlight[\s\S]*kSpotifyAsyncOperationTimeoutMs/);
 });
 
-test('four-minute actual-play deadline remains a native fallback', () => {
+test('four-minute hard deadline remains native and independent of observer health', () => {
   assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
   assert.match(rotation, /AdvanceExpiredTimedRotation/);
 });

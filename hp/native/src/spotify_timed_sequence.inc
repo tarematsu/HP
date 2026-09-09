@@ -109,18 +109,29 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
       ? kSpotifyStaticPodcastReconcileScript
       : kSpotifyStaticTrackReconcileScript;
 
+  ++slot.reconcileRequestGeneration;
+  if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
+  const ULONGLONG reconcileRequestGeneration = slot.reconcileRequestGeneration;
   slot.reconcileInFlight = true;
+  slot.reconcileStartedTick = GetTickCount64();
   const TimedSpotifyTarget requestedTarget = slot.timedTarget;
   const ULONGLONG requestedGeneration = slot.targetGeneration;
   Slot* const target = &slot;
+  ComPtr<ICoreWebView2> requestedView = slot.webview;
   const auto alive = alive_;
-  const HRESULT started = slot.webview->ExecuteScript(
+  const HRESULT started = requestedView->ExecuteScript(
       script,
       Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-          [this, alive, target, requestedTarget, requestedGeneration](
+          [this, alive, target, requestedView, requestedTarget,
+           requestedGeneration, reconcileRequestGeneration](
               HRESULT result, LPCWSTR json) -> HRESULT {
             if (!alive->load(std::memory_order_acquire)) return S_OK;
+            if (target->reconcileRequestGeneration != reconcileRequestGeneration ||
+                target->webview.Get() != requestedView.Get()) {
+              return S_OK;
+            }
             target->reconcileInFlight = false;
+            target->reconcileStartedTick = 0;
             if (!started_ || requestedTarget != target->timedTarget ||
                 requestedGeneration != target->targetGeneration) {
               return S_OK;
@@ -186,7 +197,11 @@ void SpotifyWebViews::ReconcileTimedSlot(Slot& slot) noexcept {
           }).Get());
 
   if (FAILED(started)) {
-    slot.reconcileInFlight = false;
+    if (slot.reconcileRequestGeneration == reconcileRequestGeneration &&
+        slot.webview.Get() == requestedView.Get()) {
+      slot.reconcileInFlight = false;
+      slot.reconcileStartedTick = 0;
+    }
     const ULONGLONG now = GetTickCount64();
     MarkSlotRecovering(slot, now);
     if (ShouldRenavigateUnhealthySlot(slot, now)) {

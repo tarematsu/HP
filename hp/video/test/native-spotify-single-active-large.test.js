@@ -2,14 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const spotify = [
-  'spotify_webviews.cpp',
-  'spotify_webviews_core_part1.inc',
-  'spotify_webviews_core_part2.inc',
-  'spotify_webviews_core_part3.inc',
-  'spotify_webviews_core_part4.inc',
-].map(name => readFileSync(
-  new URL(`../../native/src/${name}`, import.meta.url), 'utf8')).join('\n');
 const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
@@ -28,27 +20,41 @@ const header = readFileSync(
 );
 
 test('serialized Spotify shows authentication while normal recovery remains offscreen', () => {
-  assert.match(spotify, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
-  assert.match(spotify, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
+  assert.match(layout, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
+  assert.match(layout, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
   assert.match(layout, /const size_t recoveryIndex =/);
   assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(
-    spotify,
+    layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
   assert.match(
-    spotify,
+    layout,
     /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
   );
-  assert.match(spotify, /x = client\.right \+ 32/);
+  assert.match(layout, /x = client\.right \+ 32/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
 });
 
 test('inactive Spotify playback hosts never collapse to 1x1', () => {
-  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(spotify, /static_cast<int>\(i\) \*[\s\S]*kSpotifyParkedPlaybackWidth \+ kSpotifyParkedPlaybackGap/);
-  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /static_cast<int>\(i\) \*[\s\S]*kSpotifyParkedPlaybackWidth \+ kSpotifyParkedPlaybackGap/);
+  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
+});
+
+test('recovery interaction never depends on the compact Spotify breakpoint', () => {
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.match(
+    layout,
+    /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/,
+  );
+  assert.match(
+    layout,
+    /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/,
+  );
+  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
 });
 
 test('only a recovering Spotify WebView uses 80 percent page zoom for trusted interaction', () => {
@@ -83,8 +89,8 @@ test('authentication foreground never extends scheduler ownership', () => {
   assert.match(schedule, /Login is a presentation concern, not scheduler ownership/);
 });
 
-test('recovery has a bounded hold so one slow account cannot monopolize the viewport', () => {
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
+test('recovery has a bounded hold long enough for async timeout and retry', () => {
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
   assert.match(schedule, /const bool holdRecovery/);
   assert.match(schedule, /SlotStateNeedsRecovery\(current\.state\)/);
   assert.match(schedule, /if \(!holdRecovery && staggerSlotIndex_ != scheduledIndex\)/);

@@ -10,8 +10,8 @@ const scoped = readFileSync(
   new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url),
   'utf8',
 );
-const observer = readFileSync(
-  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+const observerRuntime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url),
   'utf8',
 );
 
@@ -45,9 +45,9 @@ test('play-button fallback is allowed only on the requested direct track page', 
   assert.match(scoped, /buttonShowsPlaying\(button\)/);
 });
 
-test('reconcile and end observer tolerate localized Spotify track paths', () => {
+test('reconcile and observer runtime tolerate localized Spotify track paths', () => {
   assert.match(scoped, /const sameTrackPath =/);
   assert.match(scoped, /value\.endsWith\(expected\)/);
-  assert.match(observer, /const sameTrackPath =/);
-  assert.match(observer, /value\.endsWith\(expected\)/);
+  assert.match(observerRuntime, /const sameTrackPath =/);
+  assert.match(observerRuntime, /value\.endsWith\(expected\)/);
 });

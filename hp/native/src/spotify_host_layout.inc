@@ -2,8 +2,81 @@ namespace hp {
 namespace {
 
 constexpr double kSpotifySerializedRecoveryZoom = 0.80;
+constexpr int kSpotifyParkedPlaybackWidth = 320;
+constexpr int kSpotifyParkedPlaybackHeight = 180;
+constexpr int kSpotifyParkedPlaybackGap = 8;
+constexpr int kSpotifyRecoveryInteractionWidth = 720;
+constexpr int kSpotifyRecoveryInteractionHeight = 480;
 
 }  // namespace
+
+void SpotifyWebViews::PlaceHosts() noexcept {
+  if (!parentWindow_ || !IsWindow(parentWindow_) || slots_.empty()) return;
+
+  RECT client{};
+  if (!GetClientRect(parentWindow_, &client)) return;
+  const int clientWidth = std::max(1L, client.right - client.left);
+  const int clientHeight = std::max(1L, client.bottom - client.top);
+  const int activeWidth = std::max(1, clientWidth * 3 / 5);
+  const int activeHeight = std::max(1, clientHeight * 9 / 10);
+
+  HDWP batch = BeginDeferWindowPos(static_cast<int>(slots_.size()));
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    Slot& slot = slots_[i];
+    if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
+    if (slot.controller) slot.controller->put_IsVisible(TRUE);
+
+    const bool authentication =
+        i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
+    const bool recovery =
+        i == hostLayoutActiveSlot_ && !authentication &&
+        SlotStateNeedsRecovery(slot.state);
+
+    int x = client.right + 32 + static_cast<int>(i) *
+        (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
+    int y = client.top;
+    int width = kSpotifyParkedPlaybackWidth;
+    int height = kSpotifyParkedPlaybackHeight;
+    HWND insertAfter = HWND_BOTTOM;
+    if (authentication) {
+      x = client.left + (clientWidth - activeWidth) / 2;
+      y = client.top + (clientHeight - activeHeight) / 2;
+      width = activeWidth;
+      height = activeHeight;
+      insertAfter = HWND_TOP;
+    } else if (recovery) {
+      // 0.80 recovery zoom makes these physical minimums at least a 900x600
+      // CSS viewport, avoiding Spotify's compact control layout during input.
+      x = client.right + 32 + static_cast<int>(slots_.size()) *
+          (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
+      y = client.top + (clientHeight - activeHeight) / 2;
+      width = std::max(activeWidth, kSpotifyRecoveryInteractionWidth);
+      height = std::max(activeHeight, kSpotifyRecoveryInteractionHeight);
+    }
+
+    ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
+    const UINT flags = SWP_NOACTIVATE | SWP_SHOWWINDOW;
+    if (batch) {
+      batch = DeferWindowPos(batch, slot.hostWindow, insertAfter,
+                             x, y, width, height, flags);
+    } else {
+      SetWindowPos(slot.hostWindow, insertAfter,
+                   x, y, width, height, flags);
+    }
+  }
+  if (batch) EndDeferWindowPos(batch);
+
+  for (Slot& slot : slots_) {
+    if (!slot.hostWindow || !IsWindow(slot.hostWindow) || !slot.controller) {
+      continue;
+    }
+    RECT bounds{};
+    GetClientRect(slot.hostWindow, &bounds);
+    slot.controller->put_Bounds(bounds);
+    slot.controller->NotifyParentWindowPositionChanged();
+    slot.controller->put_IsVisible(TRUE);
+  }
+}
 
 void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   if (slots_.empty()) return;
@@ -56,8 +129,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           const int x = client.left + (clientWidth - width) / 2;
           const int y = client.top + (clientHeight - height) / 2;
 
-          // Authentication owns only the visible surface. Playback and recovery
-          // scheduling for the other accounts continue independently behind it.
           SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
                        SWP_NOACTIVATE | SWP_SHOWWINDOW);
           if (slot.controller) {
@@ -73,9 +144,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
             slot.controller->put_IsVisible(TRUE);
           }
         } else {
-          // A cached layout only needs its Z-order reaffirmed. Re-sending the
-          // same Bounds/position notification every scheduler pass makes all
-          // six WebView2 composition surfaces do avoidable work.
           SetWindowPos(slot.hostWindow, HWND_TOP, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                            SWP_SHOWWINDOW);
@@ -97,9 +165,6 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                 }).Get());
       };
 
-  // hostLayoutActiveSlot_ caches the slot that actually owns an expanded
-  // recovery viewport. A healthy scheduler ownership handoff must not relayout
-  // all six stable 320x180 playback surfaces.
   if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
       hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
     maintainAuthenticationForeground(false);

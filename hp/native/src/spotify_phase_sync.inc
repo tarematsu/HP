@@ -6,7 +6,8 @@ constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
 constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyAsyncOperationTimeoutMs = 12ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyInitialSlotOffsetMs = 40ULL * 1000ULL;
 
@@ -57,6 +58,40 @@ bool SpotifyWebViews::ShouldRenavigateUnhealthySlot(
           now - slot.lastModeNavigateTick >= kSpotifyRobustNavigateRetryMs);
 }
 
+bool SpotifyWebViews::ExpireStaleAsyncWork(
+    Slot& slot, ULONGLONG now) noexcept {
+  bool expired = false;
+  if (slot.reconcileInFlight && slot.reconcileStartedTick != 0 &&
+      now - slot.reconcileStartedTick >= kSpotifyAsyncOperationTimeoutMs) {
+    ++slot.reconcileRequestGeneration;
+    if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
+    slot.reconcileInFlight = false;
+    slot.reconcileStartedTick = 0;
+    expired = true;
+  }
+  if (slot.timedObserverInstallInFlight &&
+      slot.timedObserverInstallStartedTick != 0 &&
+      now - slot.timedObserverInstallStartedTick >=
+          kSpotifyAsyncOperationTimeoutMs) {
+    ++slot.timedObserverInstallGeneration;
+    if (slot.timedObserverInstallGeneration == 0) {
+      ++slot.timedObserverInstallGeneration;
+    }
+    slot.timedObserverInstallInFlight = false;
+    slot.timedObserverInstallStartedTick = 0;
+    slot.timedObserverReady = false;
+    expired = true;
+  }
+  if (!expired) return false;
+
+  MarkSlotRecovering(slot, now);
+  slot.lastTimedReconcileTick = 0;
+  staggerSlotIndex_ = slot.index;
+  staggerSlotStartTick_ = now;
+  staggerSlotValidated_ = false;
+  return true;
+}
+
 void SpotifyWebViews::BumpSpotifyTargetGeneration(Slot& slot) noexcept {
   ++slot.targetGeneration;
   if (slot.targetGeneration == 0) ++slot.targetGeneration;
@@ -74,6 +109,24 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
          slot.loginPage || slot.controllerCreating);
     if (relevantRecovery) return kSpotifyRobustUrgentTickMs;
 
+    if (slot.reconcileInFlight && slot.reconcileStartedTick != 0) {
+      const ULONGLONG age = now - slot.reconcileStartedTick;
+      if (age >= kSpotifyAsyncOperationTimeoutMs) {
+        return kSpotifyRobustUrgentTickMs;
+      }
+      nextDeadlineMs = std::min(
+          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
+    }
+    if (slot.timedObserverInstallInFlight &&
+        slot.timedObserverInstallStartedTick != 0) {
+      const ULONGLONG age = now - slot.timedObserverInstallStartedTick;
+      if (age >= kSpotifyAsyncOperationTimeoutMs) {
+        return kSpotifyRobustUrgentTickMs;
+      }
+      nextDeadlineMs = std::min(
+          nextDeadlineMs, kSpotifyAsyncOperationTimeoutMs - age);
+    }
+
     if (slot.timedPlaybackStartTick != 0) {
       const ULONGLONG age = now - slot.timedPlaybackStartTick;
       if (age >= kSpotifyAdaptiveTrackDeadlineMs) {
@@ -84,8 +137,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
   }
 
-  // Stay on the low-frequency healthy cadence, but wake exactly for the next
-  // 40-second initial account boundary instead of polling every two seconds.
   if (youtubeCycleStartTick_ != 0 && now >= youtubeCycleStartTick_) {
     const ULONGLONG elapsed = now - youtubeCycleStartTick_;
     for (size_t i = 1; i < slots_.size(); ++i) {
@@ -135,37 +186,6 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
   slot.controllerCreating = true;
   slot.controllerCreateTick = now;
   CreateController(slot);
-}
-
-bool SpotifyWebViews::ParseNormalizedPoint(
-    LPCWSTR json, int* x, int* y) noexcept {
-  if (!json || !x || !y) return false;
-  try {
-    const std::wstring value(json);
-    if (value.size() < 5 || value.front() != L'[') return false;
-    const size_t comma = value.find(L',');
-    const size_t close = value.find(
-        L']', comma == std::wstring::npos ? 0 : comma + 1);
-    if (comma == std::wstring::npos || close == std::wstring::npos) return false;
-    const int parsedX = std::stoi(value.substr(1, comma - 1));
-    const int parsedY = std::stoi(value.substr(comma + 1, close - comma - 1));
-    if (parsedX < 0 || parsedX > 10000 || parsedY < 0 || parsedY > 10000) {
-      return false;
-    }
-    *x = parsedX;
-    *y = parsedY;
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
-void SpotifyWebViews::ClickSlotNormalizedPoint(
-    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
-  if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
-  SetSlotState(slot, SlotState::WaitingTarget);
-  RefreshSpotifyHostLayout();
-  DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
 }
 
 }  // namespace hp

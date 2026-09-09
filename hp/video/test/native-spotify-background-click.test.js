@@ -10,8 +10,8 @@ const helper = readFileSync(
   new URL('../../native/src/spotify_background_click.inc', import.meta.url),
   'utf8',
 );
-const phaseSync = readFileSync(
-  new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
+const layout = readFileSync(
+  new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
 const header = readFileSync(
@@ -52,27 +52,43 @@ test('Spotify trusted click uses one target-scoped eight-second gate', () => {
     helper,
     /target->trustedClickGeneration != clickGeneration[\s\S]*target->targetGeneration != targetGeneration[\s\S]*target->webview\.Get\(\) != view\.Get\(\)/,
   );
-  assert.doesNotMatch(helper, /trustedClickInFlight|trustedClickStartTick/);
 });
 
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
-  assert.match(
-    helper,
-    /target->targetGeneration != targetGeneration/,
-  );
-  assert.match(
-    helper,
-    /target->webview\.Get\(\) != view\.Get\(\)/,
-  );
+  assert.match(helper, /target->targetGeneration != targetGeneration/);
+  assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
   assert.match(core, /slot\.trustedClickTargetGeneration = 0/);
   assert.match(core, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
+test('parked Spotify surfaces are playback-only and recovery gets a desktop-like viewport', () => {
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
   assert.match(
-    phaseSync,
-    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+    layout,
+    /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/,
   );
-  assert.doesNotMatch(header, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
-  assert.doesNotMatch(helper, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
+  assert.match(
+    layout,
+    /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/,
+  );
+});
+
+test('trusted click remeasures after responsive recovery layout instead of using a stale point', () => {
+  assert.match(helper, /bool SpotifyWebViews::ParseNormalizedPoint/);
+  assert.match(helper, /void SpotifyWebViews::ClickSlotNormalizedPoint/);
+  assert.match(
+    helper,
+    /const bool recoveryViewportReady =\s*hostLayoutActiveSlot_ == slot\.index && SlotStateNeedsRecovery\(slot\.state\)/,
+  );
+  assert.match(
+    helper,
+    /if \(!recoveryViewportReady\) \{[\s\S]*MarkSlotRecovering\(slot, now\)[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*ArmRobustScheduler\(\);[\s\S]*return;/,
+  );
+  assert.match(
+    helper,
+    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+  );
 });

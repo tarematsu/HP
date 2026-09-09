@@ -6,7 +6,9 @@ constexpr ULONGLONG kSpotifyInitialSerialWindowMs = 6ULL * 40ULL * 1000ULL;
 // One healthy slot is verified per turn. With the adaptive 20-second scheduler
 // this is one lightweight verification per account roughly every two minutes.
 constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 20ULL * 1000ULL;
-constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 12ULL * 1000ULL;
+// A recovery owner gets enough time for one 12-second async timeout plus a
+// layout-settled retry before normal healthy-account fairness resumes.
+constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 36ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleLayoutSettleMs = 2ULL * 1000ULL;
 constexpr ULONGLONG kSpotifySimpleRetryMs = 4ULL * 1000ULL;
 
@@ -42,6 +44,17 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   const ULONGLONG now = GetTickCount64();
   if (youtubeCycleStartTick_ == 0) youtubeCycleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
+
+  // ExecuteScript completion callbacks are not a lifetime guarantee. If WebView2
+  // drops one, invalidate that request generation and immediately give the
+  // affected account serialized recovery ownership instead of leaving an
+  // in-flight boolean stuck for the lifetime of the process.
+  for (Slot& candidate : slots_) {
+    if (ExpireStaleAsyncWork(candidate, now)) {
+      RecomputeForeground();
+      break;
+    }
+  }
 
   if (AdvanceExpiredTimedRotation(now)) return;
 

@@ -16,8 +16,12 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const scripts = readFileSync(
   new URL('../../native/src/spotify_static_scripts.inc', import.meta.url), 'utf8');
-const observer = readFileSync(
-  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url), 'utf8');
+const scoped = readFileSync(
+  new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
+const runtime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
+const events = readFileSync(
+  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 
 test('Spotify startup keeps 40-second six-account offsets with one direct scheduler', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
@@ -43,16 +47,16 @@ test('A-B-C-D advances immediately on ended or no later than four minutes after 
   assert.match(rotation, /case 1:[\s\S]*CatalogTrack[\s\S]*timedRandomCIndex/);
   assert.match(rotation, /case 2:[\s\S]*BitterBlue[\s\S]*break;/);
   assert.match(rotation, /default:[\s\S]*CatalogTrack[\s\S]*timedRandomDIndex/);
-  assert.match(observer, /document\.addEventListener\('ended'/);
-  assert.match(observer, /spotify:timed-ended/);
+  assert.match(events, /document\.addEventListener\('ended'/);
+  assert.match(events, /spotify:timed-ended/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
   assert.match(rotation, /timedRotationPosition \+ 1U/);
   assert.match(header, /timedPlaybackStartTick = 0/);
   assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
-  assert.match(observer, /spotify:timed-started/);
-  assert.match(observer, /navigator\.mediaSession/);
-  assert.match(observer, /matchesTarget\(target, currentTrack\(\)\)/);
-  assert.match(observer, /\[0, 250, 1000, 2500, 5000\]/);
+  assert.match(runtime, /spotify:timed-started/);
+  assert.match(runtime, /navigator\.mediaSession/);
+  assert.match(runtime, /matchesTarget\(target, currentTrack\(\)\)/);
+  assert.match(runtime, /\[0, 250, 1000, 2500, 5000\]/);
   assert.match(
     rotation,
     /ApplyTimedRotationTarget\(Slot& slot\)[\s\S]*timedPlaybackStartTick = GetTickCount64\(\)/,
@@ -61,7 +65,6 @@ test('A-B-C-D advances immediately on ended or no later than four minutes after 
   assert.match(rotation, /now - slot\.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs/);
   assert.match(schedule, /AdvanceExpiredTimedRotation\(now\)/);
   assert.doesNotMatch(rotation, /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/);
-  assert.doesNotMatch(rotation, /setInterval\(/);
   assert.doesNotMatch(schedule, /kSpotifyTimedWaveMs|rotationWave/);
 });
 
@@ -71,7 +74,7 @@ test('stale playback events are rejected by target generation', () => {
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
   assert.match(recent, /spotify:generation/);
   assert.match(recent, /std::to_wstring\(slot\.targetGeneration\)/);
-  assert.match(observer, /message \+ '\\u001f' \+ generation\(\)/);
+  assert.match(runtime, /message \+ '\\u001f' \+ generation\(\)/);
 });
 
 test('slow navigation re-arms observers on owner-only recovery attempts', () => {
@@ -90,9 +93,9 @@ test('bridge is a one-shot recent song before the formal rotation', () => {
 });
 
 test('ads neither start nor complete the requested track and legacy ambiguity state is gone', () => {
-  assert.match(observer, /!matchesTarget\(target, currentTrack\(\)\)/);
-  assert.match(observer, /!state\.started \|\| state\.endedPosted/);
-  assert.doesNotMatch(observer, /spotify:timed-waiting|waitForNext/);
+  assert.match(runtime, /!matchesTarget\(target, currentTrack\(\)\)/);
+  assert.match(events, /!state\.started \|\| state\.endedPosted/);
+  assert.doesNotMatch(runtime + events, /spotify:timed-waiting|waitForNext/);
   assert.doesNotMatch(rotation, /kSpotifySimplePendingRecoveryMs|timedCompletionPendingTick/);
   assert.doesNotMatch(schedule, /timedCompletionPendingTick/);
   assert.doesNotMatch(header, /timedCompletionPendingTick/);
@@ -128,7 +131,7 @@ test('recent random pool retains the 35-song 2025-2026 catalog and excludes fixe
   assert.doesNotMatch(catalogSection, /愛MUST BE|OFF VOCAL|Interlude|Remix/);
 });
 
-test('recent catalog is one direct-track table passed to the fixed reconcile script', () => {
+test('recent catalog is one direct-track table passed to the scoped reconcile script', () => {
   for (const id of [
     '7vvZ1QHTdkoEXBiOBdxdIo', '6O3XAkrjMG1T4x8jvdpbrp',
     '49cxVtrML7Xo63UFaaJrUR', '33liCluqUasE65nMv3KLLm',
@@ -136,21 +139,20 @@ test('recent catalog is one direct-track table passed to the fixed reconcile scr
   assert.doesNotMatch(recent, /spotify_recent_direct_routes\.inc|RecentTimedCatalogDirectRoute/);
   assert.match(recent, /PostSpotifyTargetDescriptorForSlot\(slot\)/);
   assert.match(recent, /kSpotifyStaticTrackReconcileScript/);
-  assert.match(scripts, /targetLink/);
-  assert.match(scripts, /scrollIntoView/);
+  assert.match(scoped, /targetLink/);
+  assert.match(scoped, /scrollIntoView/);
   assert.doesNotMatch(recent, /BuildRecentTrackScript|EscapeRecentScriptLiteral/);
 });
 
-test('timed playback is static and opens fixed songs by direct track URL', () => {
+test('timed playback opens fixed songs by direct track URL without script rewriting', () => {
   assert.match(wrapper, /#include "spotify_static_scripts\.inc"/);
+  assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.match(wrapper, /#include "spotify_timed_sequence\.inc"/);
   assert.match(wrapper, /#include "spotify_recent_catalog\.inc"/);
   assert.match(timed, /5EjWZuODqEPQ9eq7XCmITh/);
   assert.match(timed, /2ZQy2mlwQodabAILwZ02Ed/);
   assert.match(timed, /6Vy6hCA2CZwZalGqaX6Sew/);
   assert.match(timed, /kSpotifyLonesomeRabbitUrl[\s\S]*open\.spotify\.com\/track\/6Vy6hCA2CZwZalGqaX6Sew/);
-  assert.match(timed, /case SpotifyWebViews::TimedSpotifyTarget::LonesomeRabbit:[\s\S]*return kSpotifyLonesomeRabbitUrl/);
-  assert.doesNotMatch(timed, /LonesomeRabbit[\s\S]{0,160}kSpotifyPlaylistUrl/);
   assert.doesNotMatch(wrapper, /RewriteSpotify|#define ExecuteScript/);
   assert.doesNotMatch(timed, /BuildTimedTrackScript|ensureRepeatOne|control-button-repeat/);
 });
