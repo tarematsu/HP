@@ -56,23 +56,42 @@ test('Spotify trusted click uses one target-scoped eight-second gate', () => {
 });
 
 test('target changes and WebView rebuilds invalidate old trusted click chains', () => {
-  assert.match(
-    helper,
-    /target->targetGeneration != targetGeneration/,
-  );
-  assert.match(
-    helper,
-    /target->webview\.Get\(\) != view\.Get\(\)/,
-  );
+  assert.match(helper, /target->targetGeneration != targetGeneration/);
+  assert.match(helper, /target->webview\.Get\(\) != view\.Get\(\)/);
   assert.match(core, /slot\.trustedClickTargetGeneration = 0/);
   assert.match(core, /slot\.trustedClickBlockedUntilTick = 0/);
 });
 
-test('trusted recovery refreshes the owner layout exactly once before dispatch', () => {
+test('parked Spotify surfaces are playback-only and recovery gets a desktop-like viewport', () => {
+  assert.match(core, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(core, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(core, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(core, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.match(
+    core,
+    /width = std::max\(activeWidth, kSpotifyRecoveryInteractionWidth\)/,
+  );
+  assert.match(
+    core,
+    /height = std::max\(activeHeight, kSpotifyRecoveryInteractionHeight\)/,
+  );
+});
+
+test('trusted click remeasures after responsive recovery layout instead of using a stale point', () => {
   assert.match(
     phaseSync,
-    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+    /const bool recoveryViewportReady =\s*hostLayoutActiveSlot_ == slot\.index && SlotStateNeedsRecovery\(slot\.state\)/,
   );
-  assert.doesNotMatch(header, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
-  assert.doesNotMatch(helper, /RecomputeForegroundAndRefreshSpotifyHostLayout/);
+  assert.match(
+    phaseSync,
+    /if \(!recoveryViewportReady\) \{[\s\S]*MarkSlotRecovering\(slot, now\)[\s\S]*RefreshSpotifyHostLayout\(\);[\s\S]*ArmRobustScheduler\(\);[\s\S]*return;/,
+  );
+  assert.match(
+    phaseSync,
+    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*DispatchSpotifyDevToolsClick\(slot, xTenThousandths, yTenThousandths\);/,
+  );
+  assert.doesNotMatch(
+    phaseSync,
+    /SetSlotState\(slot, SlotState::WaitingTarget\);\s*RefreshSpotifyHostLayout\(\);\s*DispatchSpotifyDevToolsClick/,
+  );
 });
