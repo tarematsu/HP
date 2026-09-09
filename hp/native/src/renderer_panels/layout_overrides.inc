@@ -152,9 +152,10 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
   DrawFixedWidthClockTime((dc), nativeClockTimeText_, hpTimeRect); \
+  const std::wstring hpWasteText = nativeClockReady_ ? Course36ClockWasteSummary(nativeClockNow_) : std::wstring{}; \
   SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetText); \
-  DrawTextInRect((dc), nativeClockWasteText_, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
   const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
