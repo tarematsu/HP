@@ -23,11 +23,13 @@ const runtime = readFileSync(
 const events = readFileSync(
   new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 
-test('Spotify startup keeps 40-second six-account offsets with one direct scheduler', () => {
+test('Spotify startup keeps 40-second account offsets with one direct scheduler', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_stagger_timer\.inc|#define SetTimer/);
   assert.match(schedule, /kSpotifyTimedSlotOffsetMs = 40ULL \* 1000ULL/);
-  assert.match(schedule, /kSpotifyInitialSerialWindowMs = 6ULL \* 40ULL \* 1000ULL/);
+  assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
+  assert.doesNotMatch(schedule, /% 6ULL|std::min<ULONGLONG>\(5ULL/);
   assert.match(schedule, /StaggeredReconcileTimerProc/);
 });
 
