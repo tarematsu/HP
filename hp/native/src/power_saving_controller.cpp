@@ -1,6 +1,7 @@
 #include "power_saving_controller.h"
 #include "native_media_audio.h"
 #include "web_renderer.h"
+#include <commctrl.h>
 #include <winrt/Windows.Graphics.Display.h>
 
 namespace hp {
@@ -106,37 +107,68 @@ PowerSavingController::PowerSavingController() = default;
 PowerSavingController::~PowerSavingController() { Uninstall(); }
 
 void PowerSavingController::InstallForCurrentThread() {
-  if (hook_) return;
+  if (current_ == this) return;
   if (current_ && current_ != this) {
     throw std::runtime_error("power saving controller is already installed");
   }
   current_ = this;
-  hook_ = SetWindowsHookExW(
-      WH_CALLWNDPROC, CallWndProc, nullptr, GetCurrentThreadId());
-  if (!hook_) {
-    current_ = nullptr;
-    ThrowIfFailed(
-        HRESULT_FROM_WIN32(GetLastError()), "SetWindowsHookEx power saving");
-  }
+}
+
+void PowerSavingController::AttachCurrent(HWND parent) {
+  PowerSavingController* controller = current_;
+  if (!controller || !parent || !IsMainWindow(parent)) return;
+  controller->Attach(parent);
 }
 
 void PowerSavingController::Uninstall() noexcept {
   Detach();
-  if (hook_) {
-    UnhookWindowsHookEx(hook_);
-    hook_ = nullptr;
-  }
   if (current_ == this) current_ = nullptr;
 }
 
-LRESULT CALLBACK PowerSavingController::CallWndProc(
-    int code, WPARAM wParam, LPARAM lParam) {
-  PowerSavingController* controller = current_;
-  if (code >= 0 && controller && lParam) {
-    controller->ObserveMessage(*reinterpret_cast<const CWPSTRUCT*>(lParam));
+LRESULT CALLBACK PowerSavingController::ParentSubclassProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam,
+    UINT_PTR subclassId, DWORD_PTR referenceData) {
+  auto* controller = reinterpret_cast<PowerSavingController*>(referenceData);
+  if (!controller || subclassId != kParentSubclassId) {
+    return DefSubclassProc(window, message, wParam, lParam);
   }
-  return CallNextHookEx(
-      controller ? controller->hook_ : nullptr, code, wParam, lParam);
+
+  if (message != WM_NCDESTROY) {
+    controller->ObserveParentMessage(message, wParam, lParam);
+    return DefSubclassProc(window, message, wParam, lParam);
+  }
+
+  const LRESULT result = DefSubclassProc(window, message, wParam, lParam);
+  controller->Detach();
+  return result;
+}
+
+LRESULT CALLBACK PowerSavingController::ChildSubclassProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam,
+    UINT_PTR subclassId, DWORD_PTR referenceData) {
+  auto* controller = reinterpret_cast<PowerSavingController*>(referenceData);
+  if (!controller || subclassId != kChildSubclassId) {
+    return DefSubclassProc(window, message, wParam, lParam);
+  }
+
+  if (message == WM_PARENTNOTIFY && LOWORD(wParam) == WM_CREATE) {
+    controller->AttachChildWindow(reinterpret_cast<HWND>(lParam));
+  }
+
+  if (controller->powerSaving_ && message == WM_TIMER &&
+      wParam == kObservedNativeMvAutoStartTimer && IsMvPanelWindow(window)) {
+    controller->OpenMvStartupInputPass();
+  }
+
+  if (controller->overlay_ && window != controller->overlay_ &&
+      (message == WM_SHOWWINDOW || message == WM_WINDOWPOSCHANGED)) {
+    PostMessageW(controller->overlay_, kRaiseOverlayMessage, 0, 0);
+  }
+
+  if (message == WM_NCDESTROY) {
+    RemoveWindowSubclass(window, ChildSubclassProc, kChildSubclassId);
+  }
+  return DefSubclassProc(window, message, wParam, lParam);
 }
 
 LRESULT CALLBACK PowerSavingController::OverlayWndProc(
@@ -194,58 +226,39 @@ LRESULT CALLBACK PowerSavingController::OverlayWndProc(
   return DefWindowProcW(window, message, wParam, lParam);
 }
 
-void PowerSavingController::ObserveMessage(const CWPSTRUCT& message) {
-  if (!parent_ && message.message == WM_CREATE && IsMainWindow(message.hwnd)) {
-    Attach(message.hwnd);
-    return;
-  }
+void PowerSavingController::ObserveParentMessage(
+    UINT message, WPARAM wParam, LPARAM lParam) {
   if (!parent_) return;
 
-  // The MV WebView uses this native timer only after the YouTube child frame has
-  // loaded and a center-click attempt is about to run. While scheduled power
-  // saving is active, briefly shrink the full-screen black overlay so the click
-  // can actually reach the WebView. Every retry extends the pass; once the MV
-  // timer stops after success or its bounded retry window, the overlay expands
-  // again 1.5 seconds later without waking radar composition or panel timers.
-  if (powerSaving_ && message.message == WM_TIMER &&
-      message.wParam == kObservedNativeMvAutoStartTimer &&
-      IsMvPanelWindow(message.hwnd)) {
-    OpenMvStartupInputPass();
-  }
-
-  if (message.hwnd == parent_) {
-    switch (message.message) {
-      case WM_DISPLAYCHANGE:
+  switch (message) {
+    case WM_DISPLAYCHANGE:
+      if (powerSaving_) RefreshMinimumBrightness();
+      if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
+      break;
+    case WM_SIZE:
+    case WM_WINDOWPOSCHANGED:
+    case WM_SHOWWINDOW:
+    case WM_TIMER:
+      if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
+      break;
+    case WM_TIMECHANGE:
+      CheckSchedule(true);
+      break;
+    case WM_POWERBROADCAST:
+      if (wParam == PBT_APMRESUMEAUTOMATIC ||
+          wParam == PBT_APMRESUMESUSPEND) {
+        CheckSchedule();
         if (powerSaving_) RefreshMinimumBrightness();
-        if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
-        break;
-      case WM_SIZE:
-      case WM_WINDOWPOSCHANGED:
-      case WM_SHOWWINDOW:
-      case WM_TIMER:
-        if (overlay_) PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
-        break;
-      case WM_TIMECHANGE:
-        CheckSchedule(true);
-        break;
-      case WM_POWERBROADCAST:
-        if (message.wParam == PBT_APMRESUMEAUTOMATIC ||
-            message.wParam == PBT_APMRESUMESUSPEND) {
-          CheckSchedule();
-          if (powerSaving_) RefreshMinimumBrightness();
-          LayoutOverlay();
-        }
-        break;
-      case WM_NCDESTROY:
-        Detach();
-        return;
-    }
-  }
-
-  if (overlay_ && message.hwnd != overlay_ && IsChild(parent_, message.hwnd) &&
-      (message.message == WM_CREATE || message.message == WM_SHOWWINDOW ||
-       message.message == WM_WINDOWPOSCHANGED)) {
-    PostMessageW(overlay_, kRaiseOverlayMessage, 0, 0);
+        LayoutOverlay();
+      }
+      break;
+    case WM_PARENTNOTIFY:
+      if (LOWORD(wParam) == WM_CREATE) {
+        AttachChildWindow(reinterpret_cast<HWND>(lParam));
+      }
+      break;
+    default:
+      break;
   }
 }
 
@@ -253,14 +266,55 @@ void PowerSavingController::Attach(HWND parent) {
   if (!parent || parent_ == parent) return;
   Detach();
   parent_ = parent;
-  EnsureOverlay();
-  CheckSchedule(true);
-  LayoutOverlay();
+  if (!SetWindowSubclass(
+          parent_, ParentSubclassProc, kParentSubclassId,
+          reinterpret_cast<DWORD_PTR>(this))) {
+    parent_ = nullptr;
+    ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()),
+                  "SetWindowSubclass power saving parent");
+  }
+
+  EnumChildWindows(
+      parent_,
+      [](HWND child, LPARAM value) -> BOOL {
+        auto* controller = reinterpret_cast<PowerSavingController*>(value);
+        controller->AttachChildWindow(child);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(this));
+
+  try {
+    EnsureOverlay();
+    CheckSchedule(true);
+    LayoutOverlay();
+  } catch (...) {
+    Detach();
+    throw;
+  }
+}
+
+void PowerSavingController::AttachChildWindow(HWND window) noexcept {
+  if (!parent_ || !window || window == overlay_ || !IsWindow(window)) return;
+  SetWindowSubclass(
+      window, ChildSubclassProc, kChildSubclassId,
+      reinterpret_cast<DWORD_PTR>(this));
 }
 
 void PowerSavingController::Detach() noexcept {
   RestoreBrightness();
   mvStartupInputPass_ = false;
+  if (parent_ && IsWindow(parent_)) {
+    EnumChildWindows(
+        parent_,
+        [](HWND child, LPARAM) -> BOOL {
+          RemoveWindowSubclass(
+              child, PowerSavingController::ChildSubclassProc,
+              PowerSavingController::kChildSubclassId);
+          return TRUE;
+        },
+        0);
+    RemoveWindowSubclass(parent_, ParentSubclassProc, kParentSubclassId);
+  }
   if (overlay_ && IsWindow(overlay_)) {
     KillTimer(overlay_, kScheduleTimer);
     KillTimer(overlay_, kMvStartupPassTimer);
