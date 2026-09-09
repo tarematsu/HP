@@ -109,21 +109,21 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
 #define HP_DRAW_CLOCK_WITH_STATUS(dc, card) do { \
   DrawSectionCard((dc), (card)); \
   const RECT hpClockContent = CardContentRect((card)); \
-  SYSTEMTIME hpNow{}; GetLocalTime(&hpNow); \
+  SYSTEMTIME hpNow{}; const bool hpClockReady = NetworkClockJstNow(&hpNow); \
   RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 170)}; \
   RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 650)}; \
   RECT hpWasteRect{hpClockContent.left, hpTimeRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 780)}; \
   RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 790), hpClockContent.right, hpClockContent.bottom}; \
   HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetMuted); \
-  DrawTextInRect((dc), DateText(hpNow), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), hpClockReady ? DateText(hpNow) : std::wstring(L"時刻同期中"), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   const int hpTimeHeight = std::max(1L, hpTimeRect.bottom - hpTimeRect.top); \
   const int hpTimeWidth = std::max(1L, hpTimeRect.right - hpTimeRect.left); \
   const int hpTimeFontHeight = std::clamp(std::min(hpTimeHeight * 72 / 100, hpTimeWidth * 18 / 100), 32, 88); \
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
-  DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); \
-  const std::wstring& hpWasteText = Course36ClockWasteSummary(hpNow); \
+  DrawFixedWidthClockTime((dc), hpClockReady ? TimeText(hpNow) : std::wstring(L"--:--:--"), hpTimeRect); \
+  std::wstring hpWasteText; if (hpClockReady) hpWasteText = Course36ClockWasteSummary(hpNow); \
   SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetText); \
   DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
