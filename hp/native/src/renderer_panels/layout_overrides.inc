@@ -122,7 +122,7 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
   const int hpTimeFontHeight = std::clamp(std::min(hpTimeHeight * 72 / 100, hpTimeWidth * 18 / 100), 32, 88); \
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
-  DrawFixedWidthClockTime((dc), hpClockReady ? TimeText(hpNow) : std::wstring(L"--:--:--"), hpTimeRect); \
+  if (hpClockReady) { DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); } else { DrawFixedWidthClockTime((dc), std::wstring(L"--:--:--"), hpTimeRect); } \
   std::wstring hpWasteText; if (hpClockReady) hpWasteText = Course36ClockWasteSummary(hpNow); \
   SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetText); \
