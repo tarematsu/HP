@@ -36,6 +36,15 @@ test('slow six-window recovery is time based instead of retry-count based', () =
   assert.doesNotMatch(header, /unhealthyChecks/);
 });
 
+test('healthy scheduler uses the low-frequency cadence immediately', () => {
+  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs/);
+  assert.doesNotMatch(
+    phaseSync,
+    /now - youtubeCycleStartTick_ < .*SteadyStart/,
+  );
+});
+
 test('usable Spotify controls are recovered through normalized trusted points', () => {
   assert.match(phaseSync, /ParseNormalizedPoint/);
   assert.match(phaseSync, /ClickSlotNormalizedPoint/);
@@ -57,6 +66,23 @@ test('healthy slots are not continuously scanned by a second watchdog', () => {
   assert.doesNotMatch(scripts, /setInterval\(/);
 });
 
+test('healthy ownership handoff does not relayout all six playback hosts', () => {
+  assert.match(
+    layout,
+    /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
+  );
+  assert.match(
+    layout,
+    /hostLayoutActiveSlot_ == recoveryIndex/,
+  );
+  assert.match(layout, /hostLayoutActiveSlot_ = recoveryIndex/);
+  assert.match(
+    spotify,
+    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
+  );
+  assert.doesNotMatch(spotify, /const bool active =/);
+});
+
 test('only authentication is visible while all playback hosts retain stable offscreen viewports', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
@@ -72,9 +98,14 @@ test('only authentication is visible while all playback hosts retain stable offs
     spotify,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
-  assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /insertAfter = HWND_TOP/);
+});
+
+test('cached authentication foreground avoids repeated WebView geometry notifications', () => {
+  assert.match(layout, /maintainAuthenticationForeground\(false\)/);
+  assert.match(layout, /SWP_NOMOVE \| SWP_NOSIZE/);
+  assert.match(layout, /maintainAuthenticationForeground\(true\)/);
 });
 
 test('login checks use cached navigation state instead of repeated COM source reads', () => {
