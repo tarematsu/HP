@@ -7,7 +7,7 @@ void SpotifyWebViews::SetNetworkBlocked(bool blocked) noexcept {
 
   if (blocked) {
     // Invalidate every outstanding async controller/environment callback before
-    // destroying the six WebViews. Old callbacks retain this false generation
+    // destroying the Spotify WebViews. Old callbacks retain this false generation
     // even after unmute creates a fresh shared flag.
     if (alive_) alive_->store(false, std::memory_order_release);
     for (Slot& slot : slots_) CloseSlot(slot);
