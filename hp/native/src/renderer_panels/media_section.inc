@@ -16,7 +16,7 @@ namespace {
 constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
 constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
 constexpr ULONGLONG kNativeMediaTverNavigationPendingMaxMs = 8ULL * 1000ULL;
-constexpr wchar_t kNativeMediaYoutubePhaseOverlaySuppressionScript[] = LR"JS(
+constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
 (() => {
   const badge = document.getElementById('__homePanelMediaPhaseTime');
   if (badge) badge.remove();
@@ -140,9 +140,8 @@ const wchar_t* ResolveNativeMediaPolicyScript(
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
   if (script &&
       std::wstring_view(script).find(L"__homePanelMediaPhaseTime") !=
-          std::wstring_view::npos &&
-      NativeMediaWebViewSourceContains(webview, L"youtube.com/")) {
-    return kNativeMediaYoutubePhaseOverlaySuppressionScript;
+          std::wstring_view::npos) {
+    return kNativeMediaPhaseOverlaySuppressionScript;
   }
   if (script == kNativeMediaTverWatchdogScript) {
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/series/")) {
