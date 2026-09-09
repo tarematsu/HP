@@ -99,12 +99,13 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     staggerSlotIndex_ = scheduledIndex;
     staggerSlotStartTick_ = now;
     staggerSlotValidated_ = false;
-    RefreshSpotifyHostLayout();
   }
 
   if (staggerSlotIndex_ >= slots_.size()) return;
   Slot& slot = slots_[staggerSlotIndex_];
   if (!slot.hostWindow || !IsWindow(slot.hostWindow)) return;
+  // One layout pass observes the final owner for this scheduler turn. The old
+  // path refreshed once during ownership handoff and immediately again here.
   RefreshSpotifyHostLayout();
   // An auth-owned turn performs no playback DOM work. The visible auth window
   // remains independent, and observer/timer events from other slots stay live.
