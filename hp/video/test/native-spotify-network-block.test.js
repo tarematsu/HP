@@ -54,5 +54,5 @@ test('unmute restarts autonomous A-B-C-D without a media-phase wait', () => {
     /if \(!slot\.timedRotationActive\)[\s\S]*InitializeTimedRotationSlot\(slot, now\);/,
   );
   assert.match(schedule, /StartAutonomousSchedule/);
-  assert.doesNotMatch(schedule, /20-minute|TVer|YouTube|podcastMode_/);
+  assert.doesNotMatch(schedule, /podcastMode_|SetPodcastMode|gSpotifyTverPhase|kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs/);
 });
