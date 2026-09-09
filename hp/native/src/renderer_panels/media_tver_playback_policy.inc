@@ -1,5 +1,5 @@
 // TVer episode-page policy. This script owns dismissing blocking survey UI on
-// an episode page, recovering playback with trusted input, restart signaling,
+// an episode page, recovering playback without toggle races, restart signaling,
 // and fullscreen entry. Series navigation lives in media_tver_series_policy.inc.
 namespace {
 constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
@@ -136,13 +136,31 @@ constexpr wchar_t kNativeMediaTverPlaybackWatchdogPolicyScript[] = LR"JS(
            /(?:^|\s)play(?: video)?(?:\s|$)/i.test(label);
   }) || null;
 
-  // Programmatic click()/play() can be rejected by TVer because playback needs
-  // a user gesture. The host converts the returned point into trusted CDP input.
-  if (!video || (video.paused && !video.ended)) {
-    if (playButton) return point(playButton);
-    if (video) return point(video);
+  // Recovery is idempotent first: play() can only move a paused video toward
+  // playback. If TVer/browser policy rejects that request, spend one trusted
+  // click on an explicit Play control on the next watchdog pass. Never click the
+  // video surface because it toggles play/pause and races with TVer's own resume.
+  if (!video) return playButton ? point(playButton) : null;
+  if (video.paused && !video.ended) {
+    if (video.__homePanelTverResumeBlocked) {
+      video.__homePanelTverResumeBlocked = false;
+      return playButton ? point(playButton) : null;
+    }
+    try {
+      const pending = video.play();
+      if (pending && typeof pending.catch === 'function') {
+        pending.catch(() => {
+          if (video.paused && !video.ended) {
+            video.__homePanelTverResumeBlocked = true;
+          }
+        });
+      }
+    } catch (_) {
+      video.__homePanelTverResumeBlocked = true;
+    }
     return null;
   }
+  video.__homePanelTverResumeBlocked = false;
 
   // Playback recovery takes precedence over fullscreen. Once stable playback is
   // confirmed, enter fullscreen only when the legacy loop marks it dirty.
