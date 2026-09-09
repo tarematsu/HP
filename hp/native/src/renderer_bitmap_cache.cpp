@@ -20,65 +20,11 @@ HDC BitmapMemoryDc(HDC compatibleDc) {
   return cached.value;
 }
 
-HBRUSH BitmapCacheBackgroundBrush() {
-  static HBRUSH brush = CreateSolidBrush(kNativeDashboardBackground);
-  return brush;
-}
-
 bool IsPersistentRadarBitmap(const std::wstring& key) {
   return key.rfind(L"radar-satellite#", 0) == 0 ||
          key.rfind(L"radar-map#", 0) == 0;
 }
 }  // namespace
-
-void Renderer::DrawCachedPanelSection(
-    HDC dc, const RECT& card, PanelSection section, uint64_t revision,
-    void (Renderer::*draw)(HDC, const RECT&)) {
-  const int width = std::max(1, static_cast<int>(card.right - card.left));
-  const int height = std::max(1, static_cast<int>(card.bottom - card.top));
-  PanelBitmapCache& cache = nativeSectionBitmaps_[section];
-  const bool stale = !cache.bitmap || cache.width != width || cache.height != height ||
-      cache.revision != revision || cache.layoutRevision != nativeLayoutRevision_;
-  HDC memoryDc = BitmapMemoryDc(dc);
-  if (stale) {
-    HBITMAP bitmap = CreateCompatibleBitmap(dc, width, height);
-    if (!bitmap || !memoryDc) {
-      if (bitmap) DeleteObject(bitmap);
-      (this->*draw)(dc, card);
-      return;
-    }
-    HGDIOBJ previous = SelectObject(memoryDc, bitmap);
-    if (!previous || previous == HGDI_ERROR) {
-      DeleteObject(bitmap);
-      (this->*draw)(dc, card);
-      return;
-    }
-    try {
-      const RECT local{0, 0, width, height};
-      FillRect(memoryDc, &local, BitmapCacheBackgroundBrush());
-      SetBkMode(memoryDc, TRANSPARENT);
-      (this->*draw)(memoryDc, local);
-    } catch (...) {
-      SelectObject(memoryDc, previous);
-      DeleteObject(bitmap);
-      throw;
-    }
-    SelectObject(memoryDc, previous);
-    if (cache.bitmap) DeleteObject(cache.bitmap);
-    cache = PanelBitmapCache{bitmap, width, height, revision, nativeLayoutRevision_};
-  }
-  if (!cache.bitmap || !memoryDc) {
-    (this->*draw)(dc, card);
-    return;
-  }
-  HGDIOBJ previous = SelectObject(memoryDc, cache.bitmap);
-  if (!previous || previous == HGDI_ERROR) {
-    (this->*draw)(dc, card);
-    return;
-  }
-  BitBlt(dc, card.left, card.top, width, height, memoryDc, 0, 0, SRCCOPY);
-  SelectObject(memoryDc, previous);
-}
 
 HBITMAP Renderer::NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height) {
   if (!hwnd || !dc || width <= 0 || height <= 0) return nullptr;
@@ -241,14 +187,10 @@ HBITMAP Renderer::CachedRadarBitmap(
 }
 
 void Renderer::ReleaseNativePanelSurfaces() noexcept {
-  const auto deleteBitmaps = [](auto& entries) {
-    for (auto& item : entries) {
-      if (item.second.bitmap) DeleteObject(item.second.bitmap);
-    }
-    entries.clear();
-  };
-  deleteBitmaps(nativeBackBuffers_);
-  deleteBitmaps(nativeSectionBitmaps_);
+  for (auto& item : nativeBackBuffers_) {
+    if (item.second.bitmap) DeleteObject(item.second.bitmap);
+  }
+  nativeBackBuffers_.clear();
 }
 
 void Renderer::ResetNativeBitmapCaches() noexcept {
