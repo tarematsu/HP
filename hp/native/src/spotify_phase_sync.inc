@@ -137,8 +137,6 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
   }
 
-  // Stay on the low-frequency healthy cadence, but wake exactly for the next
-  // 40-second initial account boundary instead of polling every two seconds.
   if (youtubeCycleStartTick_ != 0 && now >= youtubeCycleStartTick_) {
     const ULONGLONG elapsed = now - youtubeCycleStartTick_;
     for (size_t i = 1; i < slots_.size(); ++i) {
@@ -188,56 +186,6 @@ void SpotifyWebViews::BeginControllerCreate(Slot& slot) noexcept {
   slot.controllerCreating = true;
   slot.controllerCreateTick = now;
   CreateController(slot);
-}
-
-bool SpotifyWebViews::ParseNormalizedPoint(
-    LPCWSTR json, int* x, int* y) noexcept {
-  if (!json || !x || !y) return false;
-  try {
-    const std::wstring value(json);
-    if (value.size() < 5 || value.front() != L'[') return false;
-    const size_t comma = value.find(L',');
-    const size_t close = value.find(
-        L']', comma == std::wstring::npos ? 0 : comma + 1);
-    if (comma == std::wstring::npos || close == std::wstring::npos) return false;
-    const int parsedX = std::stoi(value.substr(1, comma - 1));
-    const int parsedY = std::stoi(value.substr(comma + 1, close - comma - 1));
-    if (parsedX < 0 || parsedX > 10000 || parsedY < 0 || parsedY > 10000) {
-      return false;
-    }
-    *x = parsedX;
-    *y = parsedY;
-    return true;
-  } catch (...) {
-    return false;
-  }
-}
-
-void SpotifyWebViews::ClickSlotNormalizedPoint(
-    Slot& slot, int xTenThousandths, int yTenThousandths) noexcept {
-  if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return;
-
-  // Normal parked surfaces are playback-only. If a reconcile found a button
-  // while the slot was still parked, expanding the responsive Spotify page
-  // invalidates that coordinate. Promote the slot to recovery ownership first,
-  // wait for the normal layout-settle pass, then re-run DOM lookup and click the
-  // newly calculated point from that stable interaction viewport.
-  const bool recoveryViewportReady =
-      hostLayoutActiveSlot_ == slot.index && SlotStateNeedsRecovery(slot.state);
-  if (!recoveryViewportReady) {
-    const ULONGLONG now = GetTickCount64();
-    MarkSlotRecovering(slot, now);
-    slot.lastTimedReconcileTick = 0;
-    staggerSlotIndex_ = slot.index;
-    staggerSlotStartTick_ = now;
-    staggerSlotValidated_ = false;
-    RefreshSpotifyHostLayout();
-    ArmRobustScheduler();
-    return;
-  }
-
-  SetSlotState(slot, SlotState::WaitingTarget);
-  DispatchSpotifyDevToolsClick(slot, xTenThousandths, yTenThousandths);
 }
 
 }  // namespace hp
