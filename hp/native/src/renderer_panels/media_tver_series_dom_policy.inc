@@ -159,6 +159,13 @@ constexpr wchar_t kNativeMediaTverSeriesDomPolicyModuleScript[] = LR"JS(
           '__homePanelTverEpisodeQueue:' + location.pathname);
     } catch (_) {
     }
+
+    // The rendered action can be below the fold in the hidden media WebView.
+    // Bring it into the viewport first so native can issue a trusted CDP click;
+    // falling straight through to HTMLElement.click() is not sufficient when
+    // TVer requires a user gesture for episode selection/playback.
+    try { action.scrollIntoView({ block: 'center', inline: 'nearest' }); }
+    catch (_) {}
     const actionPoint = point(action);
     if (actionPoint) return actionPoint;
     try { action.click(); } catch (_) {}
