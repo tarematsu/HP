@@ -11,61 +11,37 @@ const mvPanel = readFileSync(
   'utf8',
 );
 
-test('native radar detects an entirely transparent forecast and stops animation', () => {
-  assert.match(radarUi, /std::optional<RECT> RadarVisibleTileRect\(/);
-  assert.match(radarUi, /bool BitmapHasVisiblePixels\(HBITMAP bitmap, const RECT& area\)/);
-  assert.match(radarUi, /bool RadarTileLayoutCoversSource\(/);
-  assert.match(
-    radarUi,
-    /std::optional<bool> RadarTileHasRain\(\s*const RadarTile& tile, int sourceWidth, int sourceHeight\)/s,
-  );
-  assert.match(
-    radarUi,
-    /bool RadarForecastHasNoRain\(\s*const std::vector<RadarTile>& tiles, int sourceWidth, int sourceHeight\)/s,
-  );
-  assert.match(
-    radarUi,
-    /noRainForecast = !precomposed && forecastComplete &&\s*RadarForecastHasNoRain\(forecastTiles, sourceWidth, sourceHeight\);/s,
-  );
-  assert.match(radarUi, /if \(noRainForecast\) animationIntervalMs = 0;/);
-  assert.match(radarUi, /L"\|no-rain:" << \(noRainForecast \? 1 : 0\)/);
-  assert.match(radarUi, /noRainForecast \? kNoRainMessage : RadarTimeFromMillis\(validAt\)/);
+test('native radar accepts only the cloud-composited representative frame', () => {
+  assert.match(radarUi, /RepresentativeRadarFramePath/);
+  assert.match(radarUi, /json::Boolean\(root, L"precomposed"\)/);
+  assert.match(radarUi, /frames\.Size\(\) != 1/);
+  assert.match(radarUi, /tiles\.Size\(\) != 1/);
+  assert.match(radarUi, /json::Number\(tile, L"destX"\)\) != 0/);
+  assert.match(radarUi, /json::Number\(tile, L"destY"\)\) != 0/);
+  assert.match(radarUi, /\/v1\/radar\/frame\/representative\/latest\.png/);
+  assert.match(radarUi, /DecodeImageFileToBitmap\(\s*\*framePath, kRadarCanvasWidth, kRadarCanvasHeight\)/s);
 });
 
-test('clear forecast detection ignores off-panel pixels and rejects incomplete tile layouts', () => {
-  assert.match(
-    radarUi,
-    /RadarVisibleTileRect\(tile, sourceWidth, sourceHeight\)/,
-  );
-  assert.match(
-    radarUi,
-    /BitmapHasVisiblePixels\(bitmap, \*visible\)/,
-  );
-  assert.match(
-    radarUi,
-    /if \(!frameDestinations\.emplace\(destination\.x, destination\.y\)\.second\) \{\s*forecastComplete = false;/s,
-  );
-  assert.match(
-    radarUi,
-    /if \(!RadarTileLayoutCoversSource\(\s*frameDestinations, sourceWidth, sourceHeight\)\) \{\s*forecastComplete = false;/s,
-  );
-  assert.match(radarUi, /native-radar-v12/);
-  assert.doesNotMatch(radarUi, /bool BitmapHasVisiblePixels\(HBITMAP bitmap\) \{/);
+test('native radar has no legacy animation or local weather-layer composition path', () => {
+  for (const legacy of [
+    'frameIntervalMs',
+    'animationIntervalMs',
+    'selectedIndex',
+    'RadarForecastHasNoRain',
+    'RadarTileHasRain',
+    'RadarVisibleTileRect',
+    'radar-satellite.png',
+    'radar-map.png',
+    'SaveBitmapAsBmp',
+  ]) {
+    assert.equal(radarUi.includes(legacy), false, `legacy radar path remains: ${legacy}`);
+  }
+  assert.doesNotMatch(radarUi, /wait_for\s*\(/);
+  assert.match(radarUi, /radarComposeWake_\.wait\(/);
+  assert.match(radarUi, /radarTimeText_\.clear\(\)/);
 });
 
-test('native radar renders in the former MV slot and keeps the clear forecast message', () => {
-  assert.match(
-    mvPanel,
-    /const bool noRain = hasFrame && timeText == L"しばらく雨は降りません";/,
-  );
-  assert.match(
-    mvPanel,
-    /else if \(noRain\) \{[\s\S]*TierFont\(FontTier::Large\)[\s\S]*L"しばらく雨は降りません"/,
-  );
-  assert.match(
-    mvPanel,
-    /const std::wstring chipText = noRain\s*\? L"雨雲レーダー"/s,
-  );
+test('native radar still renders in the former MV slot', () => {
   assert.match(mvPanel, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
   assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\)/);
 });
