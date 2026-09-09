@@ -313,8 +313,19 @@ void Renderer::PaintNativeMain(HWND hwnd) {
     DrawMusicSection(scope.dc, sections.music);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawEnergySection(scope.dc, sections.air);
-    DrawEnergySwitchBotSection(scope.dc, sections.air);
+    const RECT switchBotRect = EnergySwitchBotRectFromCard(
+        sections.air, nativeDashboard_.switchBotDevices.size());
+    const bool switchBotOnly =
+        scope.dirty.left >= switchBotRect.left &&
+        scope.dirty.top >= switchBotRect.top &&
+        scope.dirty.right <= switchBotRect.right &&
+        scope.dirty.bottom <= switchBotRect.bottom;
+    if (!switchBotOnly) DrawEnergySection(scope.dc, sections.air);
+
+    RECT switchBotOverlap{};
+    if (IntersectRect(&switchBotOverlap, &scope.dirty, &switchBotRect)) {
+      DrawEnergySwitchBotSection(scope.dc, sections.air);
+    }
   }
 }
 
