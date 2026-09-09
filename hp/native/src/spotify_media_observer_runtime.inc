@@ -163,6 +163,7 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
 
   const runtime = {
     state,
+    post,
     syncTarget,
     isMedia,
     requestRecovery,
