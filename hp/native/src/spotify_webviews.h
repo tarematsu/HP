@@ -90,6 +90,7 @@ class SpotifyWebViews final {
     bool timedRotationActive = false;
     bool podcastBreakActive = false;
     bool hostLayoutApplied = false;
+    bool hostLayoutReducedZoomApplied = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
