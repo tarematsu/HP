@@ -149,8 +149,8 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
       : -1;
   const int64_t previousClockSecondKey = nativeClockSecondKey_;
   const bool clockSecondChanged = clockSecondKey != previousClockSecondKey;
-  const bool clockMinuteChanged = clockReady && (previousClockSecondKey < 0 ||
-      clockSecondKey / 60 != previousClockSecondKey / 60);
+  const bool clockMinuteChanged = previousClockSecondKey < 0 ||
+      (clockReady && clockSecondKey / 60 != previousClockSecondKey / 60);
   nativeClockDayKey_ = clockDayKey;
   nativeClockSecondKey_ = clockSecondKey;
 
