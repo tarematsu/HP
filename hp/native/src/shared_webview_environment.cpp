@@ -24,15 +24,12 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  std::wstring arguments = kSharedWebView2LifecycleArguments;
+  // Resource-policy arguments remain empty for full-resource surfaces such as
+  // YouTube/TVer/Spotify. The shared lifecycle argument is appended separately
+  // when the environment is created.
+  if (!blockImages && !blockFonts) return {};
 
-  // A full-resource surface such as YouTube keeps stock WebView2 resource and
-  // autoplay policy. The one shared lifecycle flag only prevents Windows
-  // occlusion from backgrounding an intentionally live native media surface.
-  if (!blockImages && !blockFonts) return arguments;
-
-  arguments += L" ";
-  arguments += kStationheadWebView2Arguments;
+  std::wstring arguments = kStationheadWebView2Arguments;
   arguments += L" --blink-settings=";
   bool needsSeparator = false;
   if (blockImages) {
@@ -161,8 +158,13 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
       return;
     }
 
-    const std::wstring webView2Arguments = BuildWebView2Arguments(
+    std::wstring webView2Arguments = kSharedWebView2LifecycleArguments;
+    const std::wstring resourceArguments = BuildWebView2Arguments(
         blockImagesForCreation, blockFontsForCreation);
+    if (!resourceArguments.empty()) {
+      webView2Arguments += L" ";
+      webView2Arguments += resourceArguments;
+    }
     ComPtr<CoreWebView2EnvironmentOptions> options =
         Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
     if (options && !webView2Arguments.empty()) {
