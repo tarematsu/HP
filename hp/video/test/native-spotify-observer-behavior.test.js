@@ -25,7 +25,7 @@ function rawScript(source, symbol) {
 function productionObserverScript() {
   return observerModules
     .map(({ source, symbol }) => rawScript(source, symbol))
-    .join('\n');
+    .join(';\n') + ';';
 }
 
 class FakeMedia {
