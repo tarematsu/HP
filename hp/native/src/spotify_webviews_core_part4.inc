@@ -109,6 +109,8 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.controllerCreating = false;
   slot.controllerCreateTick = 0;
   slot.reconcileInFlight = false;
+  slot.trustedClickInFlight = false;
+  slot.trustedClickStartTick = 0;
   slot.state = SlotState::NotCreated;
   slot.unhealthySinceTick = 0;
   slot.playerPage = false;
