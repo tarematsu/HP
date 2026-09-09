@@ -35,21 +35,18 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
       #movie_player .ytp-fullscreen-grid,
       #movie_player .ytp-fullscreen-grid-stills-container,
       #movie_player .ytp-fullscreen-grid-expand-button,
-      #movie_player .ytp-caption-window-container {
+      #movie_player .ytp-caption-window-container,
+      #movie_player .ytp-tooltip,
+      #movie_player .ytp-tooltip-text,
+      #movie_player .ytp-tooltip-bg {
         opacity: 0 !important;
         transition: none !important;
         animation: none !important;
       }
 
-      /* Never let clean-player opacity on an ad-control ancestor make the
-         manual Skip Ad affordance disappear. Normal playback remains clean. */
-      #movie_player.ad-showing *,
-      #movie_player.ad-interrupting * {
-        opacity: 1 !important;
-      }
-
-      /* Ad controls are functional UI. Keep the skip affordance visible so a
-         user can always take over if automatic trusted input misses a layout. */
+      /* Keep only the functional Skip Ad affordance visible during ads. Do not
+         globally restore all player chrome: a trusted skip hover can otherwise
+         expose unrelated controls such as Share during the ad/content handoff. */
       #movie_player .ytp-ad-skip-button,
       #movie_player .ytp-ad-skip-button-modern,
       #movie_player .ytp-skip-ad-button,
@@ -64,6 +61,22 @@ constexpr wchar_t kNativeMediaYoutubeCleanPlayerScript[] = LR"JS(
         opacity: 1 !important;
         visibility: visible !important;
         pointer-events: auto !important;
+      }
+
+      /* Share is never needed in the dedicated playback panel. Hide both the
+         player control and the share renderer so a stale hover/focus from the
+         trusted Skip Ad click cannot leave a visible "共有" surface behind. */
+      #movie_player .ytp-share-button,
+      #movie_player [aria-label="共有"],
+      #movie_player [title="共有"],
+      #movie_player [aria-label^="Share" i],
+      #movie_player [title^="Share" i],
+      ytd-unified-share-panel-renderer,
+      tp-yt-paper-dialog:has(ytd-unified-share-panel-renderer) {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
       }
     `;
     root.appendChild(style);
@@ -316,24 +329,25 @@ constexpr wchar_t kNativeMediaYoutubeHealthPolicyScript[] = LR"JS(
   const adShowing = player &&
       (player.classList.contains('ad-showing') ||
        player.classList.contains('ad-interrupting'));
-  // 720p is a content-video preference, not an ad recovery action. Reapplying
+  // 480p is a content-video preference, not an ad recovery action. Reapplying
   // playback quality APIs during an ad can force a stream transition/rebuffer,
   // which looks like repeated pause/resume on slower WebView2 devices.
   if (player && !adShowing) {
     try {
+      const preferredQuality = 'large';
       if (typeof player.setPlaybackQualityRange === 'function') {
-        player.setPlaybackQualityRange('hd720', 'hd720');
+        player.setPlaybackQualityRange(preferredQuality, preferredQuality);
       }
       if (typeof player.setPlaybackQuality === 'function') {
-        player.setPlaybackQuality('hd720');
+        player.setPlaybackQuality(preferredQuality);
       }
       if (typeof player.getAvailableQualityLevels === 'function') {
         const levels = player.getAvailableQualityLevels() || [];
-        if (levels.includes('hd720') &&
+        if (levels.includes(preferredQuality) &&
             typeof player.getPlaybackQuality === 'function' &&
-            player.getPlaybackQuality() !== 'hd720' &&
+            player.getPlaybackQuality() !== preferredQuality &&
             typeof player.setPlaybackQuality === 'function') {
-          player.setPlaybackQuality('hd720');
+          player.setPlaybackQuality(preferredQuality);
         }
       }
     } catch (_) {}

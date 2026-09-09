@@ -35,13 +35,17 @@ test('hidden YouTube ad skip controls remain eligible for trusted clicks', () =>
   assert.match(watchdog, /guardedPoint\(target, 'skip-ad', 750, true\)/);
 });
 
-test('YouTube health does not force playback quality while an ad is active', () => {
+test('YouTube health does not force 480p while an ad is active', () => {
   const adState = health.indexOf("player.classList.contains('ad-showing')");
   const contentOnly = health.indexOf('if (player && !adShowing)');
-  const qualityRange = health.indexOf("setPlaybackQualityRange('hd720', 'hd720')");
-  const quality = health.indexOf("setPlaybackQuality('hd720')");
+  const preferred = health.indexOf("const preferredQuality = 'large'");
+  const qualityRange = health.indexOf(
+    'setPlaybackQualityRange(preferredQuality, preferredQuality)',
+  );
+  const quality = health.indexOf('setPlaybackQuality(preferredQuality)');
 
   assert.ok(adState >= 0 && adState < contentOnly);
-  assert.ok(contentOnly >= 0 && contentOnly < qualityRange);
-  assert.ok(contentOnly < quality);
+  assert.ok(contentOnly >= 0 && contentOnly < preferred);
+  assert.ok(preferred < qualityRange);
+  assert.ok(preferred < quality);
 });
