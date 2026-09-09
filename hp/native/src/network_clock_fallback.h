@@ -1,6 +1,7 @@
 #pragma once
 
 #include "winhttp_helpers.h"
+#include <iterator>
 
 namespace hp {
 
