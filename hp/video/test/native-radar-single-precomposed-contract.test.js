@@ -34,7 +34,7 @@ test('native radar only decodes one 1920x1280 representative PNG', () => {
 test('legacy local radar cache is removed before CloudClient version negotiation', () => {
   assert.match(cmake, /src\/radar_cache_migration\.cpp/);
   assert.match(migration, /IsSinglePrecomposedRadarJson/);
-  assert.match(migration, /\"precomposed\":true/);
+  assert.match(migration, /text\.find\("\\"precomposed\\":true"\)/);
   assert.match(migration, /representative\/latest\.png/);
   assert.match(migration, /one cloud-composited dual-panel frame/);
   assert.match(migration, /fs::remove\(radarJson/);
