@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Detects silent stalls and provides a low-frequency fallback for target
-// identity enforcement when Spotify changes source without a useful media event.
+// Detects silent stalls and provides a low-frequency fallback when Spotify
+// changes source without a useful media event.
 constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
@@ -10,11 +10,9 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
   if (runtime.heartbeatTimer) return true;
 
   runtime.heartbeatTimer = setInterval(() => {
-    const { state, syncTarget, isMedia, rejectWrongTrack, requestRecovery } = runtime;
+    const { state, syncTarget, isMedia, enforceTarget, requestRecovery } = runtime;
     const target = syncTarget();
-    if (!target || target.kind !== 'music' || state.endedPosted) {
-      return;
-    }
+    if (!target || target.kind !== 'music' || state.endedPosted) return;
 
     const media = isMedia(state.targetMedia)
         ? state.targetMedia
@@ -22,11 +20,11 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
             .find(candidate => isMedia(candidate) &&
                 !candidate.paused && !candidate.ended) || null;
     if (!isMedia(media) || media.ended) return;
-    if (rejectWrongTrack(media)) return;
+
+    if (enforceTarget(media) === 'wrong') return;
     if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
       return;
     }
-
     if (media.paused) {
       requestRecovery(media);
       return;
