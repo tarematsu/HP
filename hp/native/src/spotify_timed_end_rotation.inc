@@ -96,8 +96,8 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
 }
 
 bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
-  // Six native timestamps are enough to enforce the hard upper bound. DOM and
-  // media events remain useful for early completion and recovery only.
+  // Per-slot native timestamps enforce the hard upper bound independently of
+  // DOM and media events, which remain useful for early completion and recovery.
   for (Slot& slot : slots_) {
     if (!slot.timedRotationActive || slot.timedPlaybackStartTick == 0 ||
         now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
