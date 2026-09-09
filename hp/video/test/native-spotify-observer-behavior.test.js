@@ -3,19 +3,29 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const observerSource = readFileSync(
-  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
-  'utf8',
-);
+const observerModules = [
+  ['spotify_media_observer_runtime.inc', 'kSpotifyMediaObserverRuntimeScript'],
+  ['spotify_media_observer_events.inc', 'kSpotifyMediaObserverEventsScript'],
+  ['spotify_media_observer_heartbeat.inc', 'kSpotifyMediaObserverHeartbeatScript'],
+].map(([file, symbol]) => ({
+  symbol,
+  source: readFileSync(new URL(`../../native/src/${file}`, import.meta.url), 'utf8'),
+}));
+
+function rawScript(source, symbol) {
+  const prefix = `constexpr wchar_t ${symbol}[] = LR"JS(\n`;
+  const start = source.indexOf(prefix);
+  assert.notEqual(start, -1, `${symbol} raw string not found`);
+  const bodyStart = start + prefix.length;
+  const end = source.indexOf('\n)JS";', bodyStart);
+  assert.notEqual(end, -1, `${symbol} raw string terminator not found`);
+  return source.slice(bodyStart, end);
+}
 
 function productionObserverScript() {
-  const prefix = 'constexpr wchar_t kSpotifyFastEndObserverScript[] = LR"JS(\n';
-  const start = observerSource.indexOf(prefix);
-  assert.notEqual(start, -1, 'production observer raw string not found');
-  const bodyStart = start + prefix.length;
-  const end = observerSource.indexOf('\n)JS";', bodyStart);
-  assert.notEqual(end, -1, 'production observer raw string terminator not found');
-  return observerSource.slice(bodyStart, end);
+  return observerModules
+    .map(({ source, symbol }) => rawScript(source, symbol))
+    .join('\n');
 }
 
 class FakeMedia {
@@ -137,8 +147,6 @@ test('production observer rejects an ad/title false-positive and prefers direct 
   const h = createHarness();
   h.hostMessage('spotify:generation\x1f7');
 
-  // Even if MediaSession still carries the target title, a visible different
-  // /track/ path is authoritative and must not start the four-minute deadline.
   h.setTrack('/track/B', 'Different Track');
   h.navigator.mediaSession.metadata.title = 'Target A';
   h.media.paused = false;
@@ -163,14 +171,12 @@ test('production observer ends immediately, blocks the old queue, then starts th
   assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f7');
   const pausedAfterEnd = h.media.pauseCalls;
 
-  // Spotify may try to launch the previous context's next queued song.
   h.media.ended = false;
   h.media.paused = false;
   h.dispatch('play');
   assert.equal(h.media.pauseCalls, pausedAfterEnd + 1);
   assert.equal(h.messages.filter(m => m.startsWith('spotify:timed-started')).length, 1);
 
-  // The page bootstrap updates the target before the observer sees this message.
   h.window.__homePanelSpotifyNativeTarget = {
     pagePath: '/track/C',
     trackPath: '/track/C',
