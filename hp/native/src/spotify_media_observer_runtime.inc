@@ -85,9 +85,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
   };
   const isMedia = value => value instanceof HTMLMediaElement;
 
-  // One invariant owns Spotify music playback: once this generation has
-  // confirmed its requested target, any identifiable different track is
-  // stopped immediately and native recovery is requested exactly once.
+  // Single playback invariant: after the requested target has been confirmed,
+  // an identifiable different track is stopped and native recovery is requested.
   const enforceTarget = media => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !target.pagePath ||
@@ -98,9 +97,8 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     const identity = currentTrack();
     if (!identity.path && !identity.title) return 'unknown';
     if (!matchesTarget(target, identity)) {
-      // Before the requested target has started, Spotify's now-playing surface
-      // may still describe the previous document. Let normal reconcile finish
-      // that startup transition instead of pausing on stale identity.
+      // During initial navigation the now-playing surface may still show the
+      // previous document. Only enforce after this generation started once.
       if (!state.startPosted) return 'unknown';
       try { if (!media.paused) media.pause(); } catch (_) {}
       state.started = false;
