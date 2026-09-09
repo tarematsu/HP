@@ -27,11 +27,14 @@ const click = readFileSync(
   'utf8',
 );
 
-test('Lonesome rabbit validation uses the scoped music reconcile implementation', () => {
+test('Lonesome rabbit validation uses the shared music descriptor and scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
-  assert.match(recent, /TimedSpotifyTarget::LonesomeRabbit/);
-  assert.match(recent, /title = kSpotifyLonesomeRabbitTitle/);
+  assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
+  assert.match(
+    recent,
+    /case TimedSpotifyTarget::LonesomeRabbit:[\s\S]*return \{kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,[\s\S]*kSpotifyLonesomeRabbitPath\};/,
+  );
   assert.match(recent, /kind = L"music"/);
   assert.match(scoped, /now-playing-widget/);
   assert.match(scoped, /now-playing-bar/);
