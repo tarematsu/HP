@@ -61,6 +61,10 @@ class SpotifyWebViews final {
     ULONGLONG timedPlaybackStartTick = 0;
     ULONGLONG lastTimedReconcileTick = 0;
     ULONGLONG unhealthySinceTick = 0;
+    ULONGLONG reconcileRequestGeneration = 0;
+    ULONGLONG reconcileStartedTick = 0;
+    ULONGLONG timedObserverInstallGeneration = 0;
+    ULONGLONG timedObserverInstallStartedTick = 0;
     ULONGLONG targetGeneration = 0;
     ULONGLONG trustedClickGeneration = 0;
     ULONGLONG trustedClickTargetGeneration = 0;
@@ -103,6 +107,7 @@ class SpotifyWebViews final {
   void MarkSlotRecovering(Slot& slot, ULONGLONG now) noexcept;
   bool ShouldRenavigateUnhealthySlot(
       const Slot& slot, ULONGLONG now) const noexcept;
+  bool ExpireStaleAsyncWork(Slot& slot, ULONGLONG now) noexcept;
   void BumpSpotifyTargetGeneration(Slot& slot) noexcept;
   void ClickSlotNormalizedPoint(Slot& slot, int xTenThousandths,
                                 int yTenThousandths) noexcept;
