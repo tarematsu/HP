@@ -23,11 +23,11 @@ test('TVer four-second loop never owns playback recovery', () => {
   assert.match(loopScript, /Playback recovery has exactly one owner/);
 });
 
-test('paused TVer playback is recovered only by the trusted-input watchdog', () => {
-  assert.match(
-    playbackPolicy,
-    /if \(!video \|\| \(video\.paused && !video\.ended\)\)/,
-  );
-  assert.match(playbackPolicy, /if \(playButton\) return point\(playButton\)/);
-  assert.match(playbackPolicy, /if \(video\) return point\(video\)/);
+test('paused TVer playback is recovered only by the episode watchdog', () => {
+  assert.match(playbackPolicy, /if \(video\.paused && !video\.ended\)/);
+  assert.match(playbackPolicy, /const pending = video\.play\(\)/);
+  assert.match(playbackPolicy, /video\.__homePanelTverResumeBlocked/);
+  assert.match(playbackPolicy, /return playButton \? point\(playButton\) : null/);
+  assert.doesNotMatch(playbackPolicy, /return point\(video\)/);
+  assert.doesNotMatch(playbackPolicy, /video\.pause\s*\(/);
 });
