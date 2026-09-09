@@ -170,14 +170,12 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
       case PanelSection::Clock: rect = sections.clock; break;
       case PanelSection::ClockTime: rect = ClockTimeRectFromCard(sections.clock); break;
       case PanelSection::Weather: rect = sections.weather; break;
-      case PanelSection::Air: rect = sections.controls; break;
       case PanelSection::AirStats:
         rect = RearrangedAirStatsRectFromCard(sections.controls);
         break;
       case PanelSection::AirGraph:
         rect = RearrangedAirGraphRectFromCard(sections.controls);
         break;
-      case PanelSection::Controls: rect = sections.controls; break;
       default: break;
     }
   } else if (window == nativeMainWindow_) {
@@ -299,8 +297,7 @@ void Renderer::PaintNativeSide(HWND hwnd) {
     DrawClockSection(scope.dc, sections.clock);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.weather)) {
-    DrawCachedPanelSection(scope.dc, sections.weather, PanelSection::Weather,
-                           dashboardRevisions_.weather, &Renderer::DrawWeatherSection);
+    DrawWeatherSection(scope.dc, sections.weather);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.controls)) {
     DrawControlsSection(scope.dc, sections.controls);
@@ -316,8 +313,7 @@ void Renderer::PaintNativeMain(HWND hwnd) {
     DrawMusicSection(scope.dc, sections.music);
   }
   if (IntersectRect(&overlap, &scope.dirty, &sections.air)) {
-    DrawCachedPanelSection(scope.dc, sections.air, PanelSection::Energy,
-                           dashboardRevisions_.octopus, &Renderer::DrawEnergySection);
+    DrawEnergySection(scope.dc, sections.air);
     DrawEnergySwitchBotSection(scope.dc, sections.air);
   }
 }
