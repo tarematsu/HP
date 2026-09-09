@@ -7,8 +7,8 @@ constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 60ULL * 1000ULL;
-constexpr ULONGLONG kSpotifyAdaptiveSteadyStartMs = 20ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyAdaptiveTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyInitialSlotOffsetMs = 40ULL * 1000ULL;
 
 bool SpotifyUrlStartsWith(std::wstring_view value,
                           std::wstring_view prefix) noexcept {
@@ -36,6 +36,14 @@ bool SpotifyWebViews::SlotStateNeedsRecovery(SlotState state) noexcept {
 
 void SpotifyWebViews::SetSlotState(Slot& slot, SlotState state) noexcept {
   slot.state = state;
+  if (state == SlotState::Playing && slot.timedRotationActive &&
+      slot.timedPlaybackStartTick == 0) {
+    // The DOM reconcile path can positively identify a playing target even if
+    // Spotify's media observer temporarily cannot resolve the current Track ID.
+    // Start the same four-minute fail-safe here so A-B-C-D cannot stall forever
+    // solely because player metadata changed upstream.
+    slot.timedPlaybackStartTick = GetTickCount64();
+  }
   if (state == SlotState::NotCreated || state == SlotState::Authenticating ||
       state == SlotState::Navigating || state == SlotState::Playing ||
       state == SlotState::Completed) {
@@ -84,9 +92,18 @@ UINT SpotifyWebViews::NextRobustSchedulerDelayMs(
     }
   }
 
-  if (youtubeCycleStartTick_ == 0 ||
-      now - youtubeCycleStartTick_ < kSpotifyAdaptiveSteadyStartMs) {
-    return kSpotifyRobustUrgentTickMs;
+  // Stay on the low-frequency healthy cadence, but wake exactly for the next
+  // 40-second initial account boundary instead of polling every two seconds.
+  if (youtubeCycleStartTick_ != 0 && now >= youtubeCycleStartTick_) {
+    const ULONGLONG elapsed = now - youtubeCycleStartTick_;
+    for (size_t i = 1; i < slots_.size(); ++i) {
+      const ULONGLONG boundary =
+          static_cast<ULONGLONG>(i) * kSpotifyInitialSlotOffsetMs;
+      if (elapsed < boundary) {
+        nextDeadlineMs = std::min(nextDeadlineMs, boundary - elapsed);
+        break;
+      }
+    }
   }
 
   return static_cast<UINT>(std::max<ULONGLONG>(

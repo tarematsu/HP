@@ -34,11 +34,15 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     layout,
-    /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*maintainAuthenticationForeground\(\);[\s\S]*return;/,
+    /hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex[\s\S]*maintainAuthenticationForeground\(false\);[\s\S]*return;/,
   );
   assert.match(
     layout,
-    /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;\s*PlaceHosts\(\);\s*maintainAuthenticationForeground\(\);/,
+    /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;\s*PlaceHosts\(\);\s*maintainAuthenticationForeground\(true\);/,
+  );
+  assert.match(
+    layout,
+    /SWP_NOMOVE \| SWP_NOSIZE \| SWP_NOACTIVATE/,
   );
   assert.match(
     placement,
@@ -46,7 +50,7 @@ test('unfinished Spotify authentication keeps visual foreground ownership withou
   );
   assert.match(
     placement,
-    /const bool recovery =\s*active && !authentication && SlotStateNeedsRecovery\(slot\.state\);/,
+    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\);/,
   );
 });
 

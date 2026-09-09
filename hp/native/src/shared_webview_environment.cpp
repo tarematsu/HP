@@ -4,6 +4,13 @@
 namespace hp {
 namespace {
 
+// Native media surfaces intentionally remain alive while parked outside the
+// dashboard or hidden by power-saving UI. Apply only the Chromium occlusion
+// lifecycle exception to every shared environment; full-resource surfaces such
+// as YouTube otherwise keep stock browser/resource behavior.
+constexpr wchar_t kSharedWebView2LifecycleArguments[] =
+    L"--disable-backgrounding-occluded-windows";
+
 constexpr wchar_t kStationheadWebView2Arguments[] =
     L"--disable-domain-reliability "
     L"--disable-breakpad "
@@ -14,14 +21,12 @@ constexpr wchar_t kStationheadWebView2Arguments[] =
     // Keep page-state restoration disabled across Stationhead navigations. HTTP
     // cache is enabled during a live controller session and is explicitly reset
     // when each playback controller is created or recreated.
-    L"--disable-backgrounding-occluded-windows "
     L"--disable-features=BackForwardCache,MediaRouter,Translate,OptimizationGuideModelDownloading,AutofillServerCommunication,HardwareSecureDecryption,HardwareSecureDecryptionExperiment";
 
 std::wstring BuildWebView2Arguments(bool blockImages, bool blockFonts) {
-  // A full-resource surface such as YouTube should behave like stock WebView2.
-  // Do not leak Stationhead's autoplay or lightweight Chromium switches into
-  // that environment; playlist/view telemetry should see the normal browser
-  // execution policy.
+  // Resource-policy arguments remain empty for full-resource surfaces such as
+  // YouTube/TVer/Spotify. The shared lifecycle argument is appended separately
+  // when the environment is created.
   if (!blockImages && !blockFonts) return {};
 
   std::wstring arguments = kStationheadWebView2Arguments;
@@ -153,8 +158,13 @@ void SharedWebViewEnvironment::Acquire(const fs::path& userDataFolder,
       return;
     }
 
-    const std::wstring webView2Arguments = BuildWebView2Arguments(
+    std::wstring webView2Arguments = kSharedWebView2LifecycleArguments;
+    const std::wstring resourceArguments = BuildWebView2Arguments(
         blockImagesForCreation, blockFontsForCreation);
+    if (!resourceArguments.empty()) {
+      webView2Arguments += L" ";
+      webView2Arguments += resourceArguments;
+    }
     ComPtr<CoreWebView2EnvironmentOptions> options =
         Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
     if (options && !webView2Arguments.empty()) {

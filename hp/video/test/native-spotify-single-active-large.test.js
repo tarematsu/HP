@@ -30,12 +30,16 @@ const header = readFileSync(
 test('serialized Spotify shows authentication while normal recovery remains offscreen', () => {
   assert.match(spotify, /activeWidth = std::max\(1, clientWidth \* 3 \/ 5\)/);
   assert.match(spotify, /activeHeight = std::max\(1, clientHeight \* 9 \/ 10\)/);
-  assert.match(spotify, /const bool active = static_cast<int>\(i\) == activeIndex/);
+  assert.match(layout, /const size_t recoveryIndex =/);
+  assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(
     spotify,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
-  assert.match(spotify, /SlotStateNeedsRecovery\(slot\.state\)/);
+  assert.match(
+    spotify,
+    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
+  );
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
 });
@@ -47,10 +51,11 @@ test('inactive Spotify playback hosts never collapse to 1x1', () => {
   assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
 });
 
-test('the active Spotify WebView uses 80 percent page zoom in foreground or background', () => {
+test('only a recovering Spotify WebView uses 80 percent page zoom for trusted interaction', () => {
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(layout, /controller->get_ZoomFactor\(&zoom\)/);
-  assert.match(layout, /controller->put_ZoomFactor\(kSpotifySerializedRecoveryZoom\)/);
+  assert.match(layout, /recoveryIndex < slots_\.size\(\)/);
+  assert.match(layout, /slots_\[recoveryIndex\]\.controller->get_ZoomFactor\(&zoom\)/);
+  assert.match(layout, /put_ZoomFactor\(\s*kSpotifySerializedRecoveryZoom\)/);
 });
 
 test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {

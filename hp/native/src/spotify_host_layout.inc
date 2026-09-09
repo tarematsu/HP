@@ -9,6 +9,12 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
   if (slots_.empty()) return;
 
   const size_t activeIndex = staggerSlotIndex_ % slots_.size();
+  const size_t recoveryIndex =
+      activeIndex < slots_.size() &&
+      SlotStateNeedsRecovery(slots_[activeIndex].state) &&
+      !SlotIsLoginPage(slots_[activeIndex])
+          ? activeIndex
+          : slots_.size();
   unsigned mask = 0;
   size_t foregroundAuthenticationIndex = slots_.size();
   for (size_t i = 0; i < slots_.size(); ++i) {
@@ -19,16 +25,17 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
     }
   }
 
-  if (activeIndex < slots_.size() && slots_[activeIndex].controller) {
+  if (recoveryIndex < slots_.size() && slots_[recoveryIndex].controller) {
     double zoom = 1.0;
-    if (FAILED(slots_[activeIndex].controller->get_ZoomFactor(&zoom)) ||
+    if (FAILED(slots_[recoveryIndex].controller->get_ZoomFactor(&zoom)) ||
         zoom < 0.799 || zoom > 0.801) {
-      slots_[activeIndex].controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
+      slots_[recoveryIndex].controller->put_ZoomFactor(
+          kSpotifySerializedRecoveryZoom);
     }
   }
 
   const auto maintainAuthenticationForeground =
-      [this, foregroundAuthenticationIndex]() noexcept {
+      [this, foregroundAuthenticationIndex](bool refreshGeometry) noexcept {
         if (foregroundAuthenticationIndex >= slots_.size() || !parentWindow_ ||
             !IsWindow(parentWindow_)) {
           return;
@@ -39,30 +46,39 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
           return;
         }
 
-        RECT client{};
-        if (!GetClientRect(parentWindow_, &client)) return;
-        const int clientWidth = std::max(1L, client.right - client.left);
-        const int clientHeight = std::max(1L, client.bottom - client.top);
-        const int width = std::max(1, clientWidth * 3 / 5);
-        const int height = std::max(1, clientHeight * 9 / 10);
-        const int x = client.left + (clientWidth - width) / 2;
-        const int y = client.top + (clientHeight - height) / 2;
+        if (refreshGeometry) {
+          RECT client{};
+          if (!GetClientRect(parentWindow_, &client)) return;
+          const int clientWidth = std::max(1L, client.right - client.left);
+          const int clientHeight = std::max(1L, client.bottom - client.top);
+          const int width = std::max(1, clientWidth * 3 / 5);
+          const int height = std::max(1, clientHeight * 9 / 10);
+          const int x = client.left + (clientWidth - width) / 2;
+          const int y = client.top + (clientHeight - height) / 2;
 
-        // Authentication owns only the visible surface. Playback and recovery
-        // scheduling for the other accounts continue independently behind it.
-        SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
-                     SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        if (slot.controller) {
-          double zoom = 1.0;
-          if (FAILED(slot.controller->get_ZoomFactor(&zoom)) ||
-              zoom < 0.799 || zoom > 0.801) {
-            slot.controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
+          // Authentication owns only the visible surface. Playback and recovery
+          // scheduling for the other accounts continue independently behind it.
+          SetWindowPos(slot.hostWindow, HWND_TOP, x, y, width, height,
+                       SWP_NOACTIVATE | SWP_SHOWWINDOW);
+          if (slot.controller) {
+            double zoom = 1.0;
+            if (FAILED(slot.controller->get_ZoomFactor(&zoom)) ||
+                zoom < 0.799 || zoom > 0.801) {
+              slot.controller->put_ZoomFactor(kSpotifySerializedRecoveryZoom);
+            }
+            RECT bounds{};
+            GetClientRect(slot.hostWindow, &bounds);
+            slot.controller->put_Bounds(bounds);
+            slot.controller->NotifyParentWindowPositionChanged();
+            slot.controller->put_IsVisible(TRUE);
           }
-          RECT bounds{};
-          GetClientRect(slot.hostWindow, &bounds);
-          slot.controller->put_Bounds(bounds);
-          slot.controller->NotifyParentWindowPositionChanged();
-          slot.controller->put_IsVisible(TRUE);
+        } else {
+          // A cached layout only needs its Z-order reaffirmed. Re-sending the
+          // same Bounds/position notification every scheduler pass makes all
+          // six WebView2 composition surfaces do avoidable work.
+          SetWindowPos(slot.hostWindow, HWND_TOP, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
+                           SWP_SHOWWINDOW);
         }
 
         const auto alive = alive_;
@@ -81,19 +97,19 @@ void SpotifyWebViews::RefreshSpotifyHostLayout() noexcept {
                 }).Get());
       };
 
-  // Cache the actual authentication owner rather than a visibility boolean.
-  // If auth moves from one account to another, this forces PlaceHosts() to park
-  // the old host before the new login surface is brought to the foreground.
-  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == activeIndex &&
+  // hostLayoutActiveSlot_ caches the slot that actually owns an expanded
+  // recovery viewport. A healthy scheduler ownership handoff must not relayout
+  // all six stable 320x180 playback surfaces.
+  if (hostLayoutMask_ == mask && hostLayoutActiveSlot_ == recoveryIndex &&
       hostLayoutAuthenticationSlot_ == foregroundAuthenticationIndex) {
-    maintainAuthenticationForeground();
+    maintainAuthenticationForeground(false);
     return;
   }
   hostLayoutMask_ = mask;
-  hostLayoutActiveSlot_ = activeIndex;
+  hostLayoutActiveSlot_ = recoveryIndex;
   hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex;
   PlaceHosts();
-  maintainAuthenticationForeground();
+  maintainAuthenticationForeground(true);
 }
 
 }  // namespace hp
