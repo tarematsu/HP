@@ -13,13 +13,12 @@ constexpr size_t kSpotifyRecentCatalogMask = ~kSpotifyRecentCatalogTag;
 
 // One source of truth: every candidate carries its title and direct Track URL
 // together, so adding/reordering tracks cannot desynchronize a parallel route
-// table. Fixed A/C songs are intentionally excluded.
-constexpr std::array<SpotifyRecentCatalogTrack, 35>
+// table. Fixed A-E songs are intentionally excluded.
+constexpr std::array<SpotifyRecentCatalogTrack, 34>
     kSpotifyRecentCatalogTracks = {{
     {L"UDAGAWA GENERATION", L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F", L"/track/4ljk3qMzdU81kWzxcNix3F"},
     {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
     {L"Nothing special", L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6", L"/track/2kiCcs4rC55nlHQ1djMTt6"},
-    {L"紋白蝶が確か飛んでた", L"https://open.spotify.com/track/6VIY7OFy8g5ZyLSgQEi8lV", L"/track/6VIY7OFy8g5ZyLSgQEi8lV"},
     {L"行かないで", L"https://open.spotify.com/track/3HdmFZGqZLNiCAfiNj4N84", L"/track/3HdmFZGqZLNiCAfiNj4N84"},
     {L"ULTRAVIOLET", L"https://open.spotify.com/track/145bvRRC27wMYn9GNtTg57", L"/track/145bvRRC27wMYn9GNtTg57"},
     {L"やるしかないじゃん", L"https://open.spotify.com/track/6GF0ZgT8wlksWrlLTfGmlU", L"/track/6GF0ZgT8wlksWrlLTfGmlU"},
@@ -53,7 +52,7 @@ constexpr std::array<SpotifyRecentCatalogTrack, 35>
     {L"恵まれ過ぎて", L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG", L"/track/2meBhRDzQpf0ltQH11HbWG"},
 }};
 
-static_assert(kSpotifyRecentCatalogTracks.size() == 35);
+static_assert(kSpotifyRecentCatalogTracks.size() == 34);
 
 bool IsRecentCatalogIndex(size_t value) noexcept {
   return value != SpotifyWebViews::kNoTimedCatalogIndex &&
@@ -77,8 +76,7 @@ const SpotifyRecentCatalogTrack* RecentTimedCatalogTrack(size_t value) noexcept 
 
 }  // namespace
 
-size_t SpotifyWebViews::PickRecentCatalogIndex(
-    size_t avoidIndex, size_t secondAvoidIndex) noexcept {
+ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
   if (timedRandomState_ == 0) {
     LARGE_INTEGER counter{};
     QueryPerformanceCounter(&counter);
@@ -90,15 +88,19 @@ size_t SpotifyWebViews::PickRecentCatalogIndex(
     }
   }
 
+  ULONGLONG x = timedRandomState_;
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  timedRandomState_ = x;
+  return x * 2685821657736338717ULL;
+}
+
+size_t SpotifyWebViews::PickRecentCatalogIndex(
+    size_t avoidIndex, size_t secondAvoidIndex) noexcept {
   const size_t count = kSpotifyRecentCatalogTracks.size();
   for (unsigned attempt = 0; attempt < 8; ++attempt) {
-    ULONGLONG x = timedRandomState_;
-    x ^= x >> 12;
-    x ^= x << 25;
-    x ^= x >> 27;
-    timedRandomState_ = x;
-    const size_t index = static_cast<size_t>(
-        (x * 2685821657736338717ULL) % count);
+    const size_t index = static_cast<size_t>(NextTimedRandom() % count);
     const size_t encoded = EncodeRecentCatalogIndex(index);
     if (encoded != avoidIndex && encoded != secondAvoidIndex) return encoded;
   }
@@ -110,21 +112,22 @@ size_t SpotifyWebViews::PickRecentCatalogIndex(
   return kNoTimedCatalogIndex;
 }
 
-void SpotifyWebViews::EnsureRecentRandomPair(
-    ULONGLONG rotationCycle, size_t avoidIndex) noexcept {
-  const bool valid =
-      IsRecentCatalogIndex(timedRandomCIndex_) &&
-      IsRecentCatalogIndex(timedRandomDIndex_) &&
-      timedRandomCIndex_ != timedRandomDIndex_ &&
-      timedRandomCIndex_ != avoidIndex &&
-      timedRandomDIndex_ != avoidIndex;
-  if (timedRandomPairCycle_ == rotationCycle && valid) return;
-
-  timedRandomCIndex_ =
-      PickRecentCatalogIndex(avoidIndex, kNoTimedCatalogIndex);
-  timedRandomDIndex_ =
-      PickRecentCatalogIndex(timedRandomCIndex_, avoidIndex);
-  timedRandomPairCycle_ = rotationCycle;
+void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
+  slot.timedMiddleOrder = {
+      TimedSpotifyTarget::BitterBlue,
+      TimedSpotifyTarget::Monshirocho,
+      TimedSpotifyTarget::Munen,
+      TimedSpotifyTarget::OnMyWay,
+  };
+  for (size_t remaining = slot.timedMiddleOrder.size(); remaining > 1;
+       --remaining) {
+    const size_t swapIndex =
+        static_cast<size_t>(NextTimedRandom() % remaining);
+    std::swap(slot.timedMiddleOrder[remaining - 1],
+              slot.timedMiddleOrder[swapIndex]);
+  }
+  slot.timedRandomFIndex =
+      PickRecentCatalogIndex(kNoTimedCatalogIndex, kNoTimedCatalogIndex);
 }
 
 SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
@@ -133,6 +136,14 @@ SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
     case TimedSpotifyTarget::BitterBlue:
       return {kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl,
               kSpotifyBitterBluePath};
+    case TimedSpotifyTarget::Monshirocho:
+      return {kSpotifyMonshirochoTitle, kSpotifyMonshirochoUrl,
+              kSpotifyMonshirochoPath};
+    case TimedSpotifyTarget::Munen:
+      return {kSpotifyMunenTitle, kSpotifyMunenUrl, kSpotifyMunenPath};
+    case TimedSpotifyTarget::OnMyWay:
+      return {kSpotifyOnMyWayTitle, kSpotifyOnMyWayUrl,
+              kSpotifyOnMyWayPath};
     case TimedSpotifyTarget::LonesomeRabbit:
       return {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
               kSpotifyLonesomeRabbitPath};
