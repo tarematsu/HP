@@ -10,8 +10,8 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   if (runtime.eventsInstalled) return true;
   runtime.eventsInstalled = true;
 
-  const { state, post, syncTarget, isMedia, confirmStarted,
-          scheduleStartChecks, scheduleIdentityCheck, scheduleRecovery } = runtime;
+  const { state, post, syncTarget, isMedia, enforceTarget,
+          scheduleTargetChecks, scheduleRecovery } = runtime;
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
@@ -24,22 +24,19 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
     state.stallTimer = 0;
     state.heartbeatTime = Number(event.target.currentTime) || 0;
     state.heartbeatMisses = 0;
-    scheduleStartChecks(event.target);
-    scheduleIdentityCheck(event.target);
+    scheduleTargetChecks(event.target);
   }, true);
 
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
-    confirmStarted(event.target);
-    scheduleIdentityCheck(event.target);
+    enforceTarget(event.target);
   }, true);
 
-  // Spotify often reuses one media element when it advances into its own
-  // recommendation queue. Revalidate shortly after source metadata changes;
-  // the short delay lets the now-playing identity settle before enforcement.
+  // Spotify may reuse one media element when its internal queue changes source.
+  // The shared target checks retry identity until the now-playing surface settles.
   document.addEventListener('loadedmetadata', event => {
-    if (!isMedia(event.target) || event.target.paused || event.target.ended) return;
-    scheduleIdentityCheck(event.target);
+    if (!isMedia(event.target) || event.target.ended) return;
+    scheduleTargetChecks(event.target);
   }, true);
 
   document.addEventListener('pause', event => {
@@ -71,10 +68,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
-    if (!media.paused && !media.ended) {
-      scheduleStartChecks(media);
-      scheduleIdentityCheck(media);
-    }
+    if (!media.paused && !media.ended) scheduleTargetChecks(media);
   });
   return true;
 })()
