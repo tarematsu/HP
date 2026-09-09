@@ -29,15 +29,19 @@ test('Spotify recovery clicks use only WebView2 CDP trusted input', () => {
 });
 
 test('Spotify trusted click is single-flight with bounded stale recovery', () => {
+  assert.match(header, /ULONGLONG trustedClickGeneration = 0/);
   assert.match(header, /ULONGLONG trustedClickStartTick = 0/);
   assert.match(header, /bool trustedClickInFlight = false/);
   assert.match(helper, /kSpotifyTrustedClickStaleMs = 8ULL \* 1000ULL/);
   assert.match(helper, /if \(slot\.trustedClickInFlight\)/);
   assert.match(helper, /return 0;/);
+  assert.match(helper, /\+\+slot\.trustedClickGeneration/);
+  assert.match(helper, /const ULONGLONG clickGeneration = slot\.trustedClickGeneration/);
+  assert.match(helper, /target->trustedClickGeneration != clickGeneration/);
   assert.match(helper, /slot\.trustedClickInFlight = true/);
   assert.match(
     helper,
-    /mouseReleased[\s\S]*target->trustedClickInFlight = false;[\s\S]*target->trustedClickStartTick = 0;/,
+    /mouseReleased[\s\S]*target->trustedClickGeneration !=[\s\S]*clickGeneration[\s\S]*target->trustedClickInFlight = false;[\s\S]*target->trustedClickStartTick = 0;/,
   );
 });
 
