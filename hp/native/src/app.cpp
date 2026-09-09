@@ -592,7 +592,7 @@ void App::ScheduleNextTick(uint32_t milliseconds) {
   const uint64_t dueTick = nowTick > static_cast<uint64_t>(INT64_MAX) - clamped
       ? static_cast<uint64_t>(INT64_MAX)
       : nowTick + clamped;
-  if (nextAppTickAt_ > 0 &&
+  if (nextAppTickAt_ > static_cast<int64_t>(nowTick) &&
       static_cast<uint64_t>(nextAppTickAt_) <= dueTick) {
     return;
   }
