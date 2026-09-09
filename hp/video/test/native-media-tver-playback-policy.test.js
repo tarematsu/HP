@@ -14,10 +14,30 @@ test('TVer playback policy is scoped to episode pages', () => {
   assert.doesNotMatch(policy, /callSeasonEpisodes/);
 });
 
+test('TVer playback policy rejects episodes outside the stored series queue', () => {
+  assert.match(policy, /seriesPathKey = '__homePanelTverSeriesPath'/);
+  assert.match(policy, /__homePanelTverEpisodeQueue:/);
+  assert.match(policy, /__homePanelTverAcceptNextEpisode:/);
+  assert.match(policy, /const guardSeriesEpisode = \(\) =>/);
+  assert.match(policy, /hrefs\.some\(href =>/);
+  assert.match(policy, /new URL\(href\)\.pathname === location\.pathname/);
+  assert.match(policy, /location\.replace\('https:\/\/tver\.jp' \+ seriesPath\)/);
+  assert.match(policy, /if \(!guardSeriesEpisode\(\)\) return null/);
+});
+
+test('TVer action fallback accepts exactly one episode and seeds a one-item queue', () => {
+  assert.match(policy, /acceptNextEpisode = sessionStorage\.getItem\(pendingKey\) === '1'/);
+  assert.match(policy, /sessionStorage\.removeItem\(pendingKey\)/);
+  assert.match(policy, /JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)/);
+  assert.match(policy, /if \(acceptNextEpisode && currentHref\)/);
+});
+
 test('TVer playback policy dismisses a survey before touching the player', () => {
+  const guardIndex = policy.indexOf('if (!guardSeriesEpisode()) return null');
   const surveyIndex = policy.indexOf('const surveyClose = controls.find');
   const stateIndex = policy.indexOf('const state = window.__homePanelSakuraMeetsState');
-  assert.ok(surveyIndex >= 0);
+  assert.ok(guardIndex >= 0);
+  assert.ok(surveyIndex > guardIndex);
   assert.ok(stateIndex > surveyIndex);
   assert.match(policy, /閉じる\|とじる\|close\|dismiss/);
   assert.match(policy, /アンケート\|ご回答\|回答する\|誕生年\|誕生月\|性別/);
