@@ -61,6 +61,25 @@ test('track completion is event driven from one generation-aware observer script
   assert.doesNotMatch(rotation, /BuildSpotify.*ObserverScript|std::wstring script/);
 });
 
+test('current-track identity is scoped to player UI before MediaSession fallback', () => {
+  assert.match(observer, /\[data-testid="now-playing-widget"\] a\[href\*="\/track\/"\]/);
+  assert.match(observer, /\[data-testid="now-playing-bar"\] \[data-testid="context-item-link"\]/);
+  assert.match(observer, /footer \[data-testid="context-item-link"\]/);
+  assert.doesNotMatch(
+    observer,
+    /^\s*'\[data-testid="context-item-link"\]\[href\*="\/track\/"\]'\s*$/m,
+  );
+});
+
+test('rotation fallback starts when native positively confirms Playing even if observer metadata is unavailable', () => {
+  assert.match(
+    phase,
+    /state == SlotState::Playing && slot\.timedRotationActive &&\s*slot\.timedPlaybackStartTick == 0/,
+  );
+  assert.match(phase, /slot\.timedPlaybackStartTick = GetTickCount64\(\)/);
+  assert.match(rotation, /kSpotifyTimedTrackDeadlineMs = 4ULL \* 60ULL \* 1000ULL/);
+});
+
 test('advertisements cannot complete or start a requested song', () => {
   assert.match(
     observer,
