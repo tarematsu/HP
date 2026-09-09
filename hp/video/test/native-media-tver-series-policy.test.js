@@ -14,6 +14,10 @@ const orchestration = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_series_policy.inc', import.meta.url),
   'utf8',
 );
+const wrapper = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  'utf8',
+);
 
 test('TVer series WebView policy owns DOM interaction only', () => {
   assert.match(orchestration, /kNativeMediaTverSeriesWatchdogRouterScript/);
@@ -47,6 +51,10 @@ test('TVer series DOM policy opens the newest rendered episode without viewport 
 
 test('TVer series DOM policy retains the trusted action fallback', () => {
   assert.match(domPolicy, /エピソードを再生\|最新話を再生\|最新エピソードを再生\|本編を再生/);
+  assert.match(
+    domPolicy,
+    /action\.scrollIntoView\(\{ block: 'center', inline: 'nearest' \}\)/,
+  );
   assert.match(domPolicy, /const actionPoint = point\(action\)/);
   assert.match(domPolicy, /if \(actionPoint\) return actionPoint/);
   assert.match(domPolicy, /try \{ action\.click\(\); \} catch \(_\) \{\}/);
@@ -97,4 +105,19 @@ test('TVer native resolver restores the existing episode queue before navigation
   assert.match(nativeResolver, /NativeMediaTverSeriesIdFromWebView\(view\.Get\(\)\)/);
   assert.match(nativeResolver, /view->Navigate\(episodeUrl\.c_str\(\)\)/);
   assert.match(nativeResolver, /MarkNativeMediaTverNavigationFailed/);
+});
+
+test('TVer accepted navigation cannot suppress series DOM recovery forever', () => {
+  assert.match(wrapper, /kNativeMediaTverNavigationPendingMaxMs = 8ULL \* 1000ULL/);
+  assert.match(wrapper, /observedGeneration != state\.generation/);
+  assert.match(
+    wrapper,
+    /if \(now - observedAt < kNativeMediaTverNavigationPendingMaxMs\) return true;/,
+  );
+  assert.match(wrapper, /state\.navigationPending = false;/);
+  assert.match(wrapper, /state\.failedAt = now;/);
+  const clearIndex = wrapper.indexOf('state.navigationPending = false;');
+  const fallbackIndex = wrapper.indexOf('return NativeMediaTverSeriesWatchdogPolicyScript();');
+  assert.ok(clearIndex >= 0);
+  assert.ok(fallbackIndex > clearIndex);
 });
