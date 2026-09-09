@@ -45,19 +45,29 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     }
 
     DashboardSnapshot snapshot;
-    if (!ParseDashboardSnapshot(text, snapshot)) return false;
+    const DashboardSnapshot* previous = nativeDashboard_.loaded ? &nativeDashboard_ : nullptr;
+    if (!ParseDashboardSnapshot(text, snapshot, nullptr, previous)) return false;
     const bool firstSnapshot = !nativeDashboard_.loaded;
     const bool weatherChanged = firstSnapshot ||
         snapshot.revisions.weather != nativeDashboard_.revisions.weather;
-    const bool energyChanged = firstSnapshot ||
-        snapshot.revisions.energy != nativeDashboard_.revisions.energy;
+    const bool octopusChanged = firstSnapshot ||
+        snapshot.revisions.octopus != nativeDashboard_.revisions.octopus;
+    const bool switchbotChanged = firstSnapshot ||
+        snapshot.revisions.switchbot != nativeDashboard_.revisions.switchbot;
+    const bool energyChanged = octopusChanged || switchbotChanged;
+    const auto plugRows = [](const DashboardSnapshot& value) {
+      return std::min<size_t>(4, value.switchBotDevices.size()) > 2 ? 2 : 1;
+    };
+    const bool plugLayoutChanged = firstSnapshot ||
+        plugRows(snapshot) != plugRows(nativeDashboard_);
     const bool contentChanged = weatherChanged || energyChanged;
 
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = contentSignature;
     dashboardSourceStamp_ = nextStamp;
     if (weatherChanged) ++dashboardRevisions_.weather;
-    if (energyChanged) ++dashboardRevisions_.energy;
+    if (octopusChanged || plugLayoutChanged) ++dashboardRevisions_.octopus;
+    if (switchbotChanged) ++dashboardRevisions_.switchbot;
     if (changed) *changed = contentChanged;
     return true;
   } catch (...) {
