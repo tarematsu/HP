@@ -2,6 +2,7 @@ namespace hp {
 namespace {
 
 constexpr ULONGLONG kSpotifyTimedTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
+constexpr ULONGLONG kSpotifyPodcastBreakEveryCycles = 10ULL;
 
 bool ParseSpotifyGenerationEvent(
     LPCWSTR rawMessage, std::wstring_view eventName,
@@ -30,6 +31,7 @@ void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
 }
 
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
+  slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
   switch (slot.timedRotationPosition % 4U) {
     case 0:
@@ -57,15 +59,15 @@ void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   // signals may advance the rotation earlier, but they can never postpone this
   // four-minute deadline.
   slot.timedPlaybackStartTick = GetTickCount64();
-  slot.timedPreludeCompleted = false;
 }
 
 void SpotifyWebViews::InitializeTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   slot.timedRotationActive = true;
+  slot.podcastBreakActive = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
-  EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
+  EnsureRecentRandomPair(slot.timedRotationCycle, kNoTimedCatalogIndex);
   slot.timedRandomCIndex = timedRandomCIndex_;
   slot.timedRandomDIndex = timedRandomDIndex_;
   ApplyTimedRotationTarget(slot);
@@ -76,16 +78,55 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   NavigateActiveTimedSlot(slot);
 }
 
-void SpotifyWebViews::AdvanceTimedRotationSlot(
+void SpotifyWebViews::BeginPodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive) return;
+  slot.podcastBreakActive = true;
+  slot.timedTarget = TimedSpotifyTarget::TalkAbout;
+  slot.timedCatalogIndex = kNoTimedCatalogIndex;
+  slot.timedPlaybackStartTick = 0;
+  slot.lastModeNavigateTick = 0;
+  slot.lastTimedReconcileTick = 0;
+  slot.unhealthySinceTick = 0;
+  BumpSpotifyTargetGeneration(slot);
+  SetSlotState(slot, SlotState::WaitingTarget);
+  staggerSlotIndex_ = slot.index;
+  staggerSlotStartTick_ = now;
+  staggerSlotValidated_ = false;
+  RefreshSpotifyHostLayout();
+  NavigateActiveTimedSlot(slot);
+}
+
+void SpotifyWebViews::CompletePodcastBreak(
+    Slot& slot, ULONGLONG now) noexcept {
+  if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
+  StopTimedOneShotPlayback(slot);
+  slot.podcastBreakActive = false;
+  // timedRotationPosition is already 0 because the preceding D completion
+  // closed the tenth cycle. Resume directly at A without incrementing the cycle
+  // a second time.
+  ApplyTimedRotationTarget(slot);
+  staggerSlotIndex_ = slot.index;
+  staggerSlotStartTick_ = now;
+  staggerSlotValidated_ = false;
+  RefreshSpotifyHostLayout();
+  NavigateActiveTimedSlot(slot);
+}
+
+void SpotifyWebViews::AdvanceTimedRotationSlot(
+    Slot& slot, ULONGLONG now) noexcept {
+  if (!slot.timedRotationActive || slot.podcastBreakActive) return;
   slot.timedRotationPosition =
       static_cast<unsigned char>((slot.timedRotationPosition + 1U) % 4U);
   if (slot.timedRotationPosition == 0U) {
     ++slot.timedRotationCycle;
-    EnsureRecentRandomPair(slot.timedRotationCycle, timedBridgeCatalogIndex_);
+    EnsureRecentRandomPair(slot.timedRotationCycle, kNoTimedCatalogIndex);
     slot.timedRandomCIndex = timedRandomCIndex_;
     slot.timedRandomDIndex = timedRandomDIndex_;
+    if (slot.timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL) {
+      BeginPodcastBreak(slot, now);
+      return;
+    }
   }
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
@@ -97,9 +138,10 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
 
 bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
   // Per-slot native timestamps enforce the hard upper bound independently of
-  // DOM and media events, which remain useful for early completion and recovery.
+  // DOM and media events. Podcast breaks deliberately have no music deadline.
   for (Slot& slot : slots_) {
-    if (!slot.timedRotationActive || slot.timedPlaybackStartTick == 0 ||
+    if (!slot.timedRotationActive || slot.podcastBreakActive ||
+        slot.timedPlaybackStartTick == 0 ||
         now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
       continue;
     }
@@ -110,15 +152,9 @@ bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
 }
 
 void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
-  const bool recentBridge =
-      !slot.timedRotationActive &&
-      slot.timedTarget == TimedSpotifyTarget::CatalogTrack &&
-      IsRecentCatalogIndex(slot.timedCatalogIndex);
-  if (!slot.webview ||
+  if (!slot.webview || !slot.timedRotationActive || slot.podcastBreakActive ||
       slot.timedTarget == TimedSpotifyTarget::TalkAbout ||
-      slot.timedTarget == TimedSpotifyTarget::None ||
-      (!slot.timedRotationActive &&
-       slot.timedTarget != TimedSpotifyTarget::BitterBlue && !recentBridge)) {
+      slot.timedTarget == TimedSpotifyTarget::None) {
     return;
   }
 
@@ -177,26 +213,9 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               }
 
               target->timedPlaybackStartTick = 0;
-              if (!target->timedRotationActive) {
-                bool completed = false;
-                if (target->timedTarget == TimedSpotifyTarget::BitterBlue) {
-                  target->timedPreludeCompleted = true;
-                  completed = true;
-                } else if (
-                    target->timedTarget == TimedSpotifyTarget::CatalogTrack &&
-                    IsRecentCatalogIndex(target->timedCatalogIndex)) {
-                  target->timedBridgeCompleted = true;
-                  completed = true;
-                }
-                if (completed) {
-                  SetSlotState(*target, SlotState::Completed);
-                  StopTimedOneShotPlayback(*target);
-                  RecomputeForeground();
-                  ArmRobustScheduler();
-                }
+              if (!target->timedRotationActive || target->podcastBreakActive) {
                 return S_OK;
               }
-
               AdvanceTimedRotationSlot(*target, now);
               return S_OK;
             }).Get(),
