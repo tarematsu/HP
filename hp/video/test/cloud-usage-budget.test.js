@@ -9,6 +9,10 @@ const updateCadenceMigration = readFileSync(
   new URL('../../cloud/migrations/202607291600_update_check_30m.sql', import.meta.url),
   'utf8',
 );
+const radarCadenceMigration = readFileSync(
+  new URL('../../cloud/migrations/202609100100_radar_browser_free_tier.sql', import.meta.url),
+  'utf8',
+);
 const adminPage = readFileSync(new URL('../../cloud/src/admin.ts', import.meta.url), 'utf8');
 const deviceExchange = readFileSync(new URL('../../cloud/src/device_exchange.ts', import.meta.url), 'utf8');
 const deviceExchangePayload = readFileSync(new URL('../../cloud/src/device_exchange_payload.ts', import.meta.url), 'utf8');
@@ -34,6 +38,7 @@ const scheduledIntervals = {
   stationhead_health: 1_800,
   news: 1_800,
   weather: 3_600,
+  radar: 1_800,
   octopus: 10_800,
   update_check: 1_800,
   cleanup: 86_400,
@@ -91,8 +96,9 @@ test('native sync and automatic update fallback are fixed at thirty minutes', ()
   assert.match(adminPage, /cloudPollSeconds:1800,telemetryMinutes:240/);
   assert.match(updateCadenceMigration, /interval_seconds = 1800/);
   assert.match(updateCadenceMigration, /unixepoch\(\) \+ 1800/);
-  assert.match(schedulerRuntime, /RUNTIME_VERSION = 7/);
+  assert.match(schedulerRuntime, /RUNTIME_VERSION = 8/);
   assert.match(schedulerRuntime, /return migrateRuntime\(state, env, stored, nowSeconds\)/);
+  assert.match(radarCadenceMigration, /interval_seconds = 1800/);
 });
 
 test('HomePanel scheduler drains due work with bounded concurrency and aligned cadence', () => {
@@ -172,7 +178,7 @@ test('modeled daily Worker and internal DO invocations stay below target', () =>
   const schedulerEnsureSignals = telemetryUploadRequests;
   const videoLivenessInvocations = runsPerDay(3600);
   const videoFeedDoRequests = 4;
-  const radarGenerationReserve = 50;
+  const radarGenerationReserve = runsPerDay(1800) + 2;
   const apiWebhookVideoReserve = 1_900;
   const modeledRequests = nativeExchangeRequests
     + deviceExchangeDoRequests

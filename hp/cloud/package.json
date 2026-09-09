@@ -16,6 +16,7 @@
     "migrate:remote": "node scripts/deploy-existing.mjs --migrate-only"
   },
   "devDependencies": {
+    "@cloudflare/puppeteer": "^1.1.0",
     "@cloudflare/vitest-pool-workers": "^0.18.0",
     "@cloudflare/workers-types": "^4.20260620.0",
     "typescript": "^5.8.3",

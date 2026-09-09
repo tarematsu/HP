@@ -22,36 +22,44 @@ const radarUi = readFileSync(
   new URL('../../native/src/renderer_radar_ui.cpp', import.meta.url),
   'utf8',
 );
+const cloudClient = readFileSync(
+  new URL('../../native/src/cloud_client_sync.cpp', import.meta.url),
+  'utf8',
+);
+const browserRadar = readFileSync(
+  new URL('../../cloud/src/radar_browser_frame.ts', import.meta.url),
+  'utf8',
+);
 const buildRadarBase = readFileSync(
   new URL('../../native/scripts/build-radar-base.ps1', import.meta.url),
   'utf8',
 );
 
-test('cloud radar signs and prewarms only the centered forty-percent viewport', () => {
-  assert.match(cloudRadar, /const RADAR_SOURCE_WIDTH = 192;/);
-  assert.match(cloudRadar, /const RADAR_SOURCE_HEIGHT = 128;/);
-  assert.match(cloudRadar, /const width = RADAR_SOURCE_WIDTH;/);
-  assert.match(cloudRadar, /const height = RADAR_SOURCE_HEIGHT;/);
-  assert.match(cloudRadar, /radarTileLayout\(center\.lat, center\.lon, zoom, width, height\)/);
-  assert.match(cloudRadar, /prewarmRadarBundle\(env, payload, entries\[0\]!\.basetime\)/);
+test('cloud radar renders a z9-equivalent 1920x1280 dual-panel image', () => {
+  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM_OFFSET = 1;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 384;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 512;/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1920;/);
+  assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 1280;/);
+  assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
+  assert.match(cloudRadar, /precomposed: true/);
+  assert.match(cloudRadar, /frames: \[frame\]/);
+  assert.match(browserRadar, /bitmap\.width \* 0\.4/);
+  assert.match(browserRadar, /bitmap\.height \* 0\.8/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_WIDTH/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_HEIGHT/);
 });
 
-test('radar playback covers current through one hour at a one-second native cadence', () => {
+test('cloud selects current-through-one-hour and terminal-forecast-minus-two-hour panels', () => {
   assert.match(cloudRadar, /const RADAR_FORECAST_WINDOW_MS = 60 \* 60 \* 1000;/);
-  assert.match(cloudRadar, /const RADAR_FRAME_INTERVAL_MS = 1_000;/);
+  assert.match(cloudRadar, /const RADAR_TERMINAL_WINDOW_MS = 2 \* 60 \* 60 \* 1000;/);
   assert.match(cloudRadar, /validAt > currentAt && validAt <= forecastEnd/);
-  assert.match(cloudRadar, /return \[current, \.\.\.future\];/);
-  assert.match(cloudRadar, /frameIntervalMs: RADAR_FRAME_INTERVAL_MS/);
-  assert.match(
-    radarUi,
-    /const int64_t frameIntervalMs = std::clamp<int64_t>\([\s\S]*json::Number\(root, L"frameIntervalMs", kDefaultRadarFrameIntervalMs\)[\s\S]*1'000, 60'000\);/,
-  );
-  assert.match(
-    radarUi,
-    /\(UnixMillis\(\) \/ frameIntervalMs\) % static_cast<int64_t>\(frames\.Size\(\)\)/,
-  );
+  assert.match(cloudRadar, /validAt >= startAt[\s\S]*validAt <= terminalAt/);
+  assert.match(cloudRadar, /"現在〜1時間"/);
+  assert.match(cloudRadar, /"予報終端±2時間"/);
+  assert.match(radarUi, /animationIntervalMs = frames\.Size\(\) > 1 \? frameIntervalMs : 0;/);
+  assert.match(cloudClient, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
+  assert.match(cloudClient, /if \(precomposed \|\| !fs::exists\(target, error\)/);
 });
 
 test('native build crops satellite and map separately before embedding', () => {

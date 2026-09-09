@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { selectRadarForecastEntries, type RadarTimeEntry } from "../src/radar_source";
+import {
+  selectRadarForecastEntries,
+  selectTerminalForecastEntries,
+  type RadarTimeEntry,
+} from "../src/radar_source";
 
 const hrpns = ["hrpns"];
 
@@ -63,5 +67,35 @@ describe("radar forecast frame selection", () => {
       "20260717102500",
       "20260717105500",
     ]);
+  });
+
+  it("uses the final short-term forecast and the preceding two-hour window", () => {
+    const rasrf = (basetime: string, validtime: string, member = "none"): RadarTimeEntry => ({
+      basetime,
+      validtime,
+      member,
+      elements: ["rasrf"],
+    });
+    const selected = selectTerminalForecastEntries([
+      rasrf("20260909120000", "20260909200000"),
+      rasrf("20260909120000", "20260910000000"),
+      rasrf("20260909120000", "20260910010000"),
+      rasrf("20260909120000", "20260910020000"),
+      rasrf("20260909120000", "20260910030000"),
+      rasrf("20260909125000", "20260909185000", "immed"),
+    ]);
+
+    expect(selected.map(frame => frame.validtime)).toEqual([
+      "20260910010000",
+      "20260910020000",
+      "20260910030000",
+    ]);
+    expect(selected.every(frame => frame.basetime === "20260909120000")).toBe(true);
+  });
+
+  it("ignores non-RASRF entries when finding the terminal forecast", () => {
+    expect(selectTerminalForecastEntries([
+      { basetime: "20260909120000", validtime: "20260910030000", elements: ["other"] },
+    ])).toEqual([]);
   });
 });

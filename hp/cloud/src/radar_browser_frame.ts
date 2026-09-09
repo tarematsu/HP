@@ -93,7 +93,7 @@ export async function renderRepresentativeRadarFrame(
         document: { createElement(tag: string): any };
         createImageBitmap(blob: Blob): Promise<any>;
       };
-      const colors = payload.colors as number[][];
+      const colors = payload.colors as readonly (readonly number[])[];
       const scorePanel = async (panel: {
         width: number;
         height: number;
@@ -248,8 +248,11 @@ export async function renderRepresentativeRadarFrame(
       const satellite = await loadRequired(payload.satelliteUrl);
       const map = await loadRequired(payload.mapUrl);
       const drawBase = (bitmap: any, panelX: number) => {
-        const cropWidth = Math.max(1, Math.floor(bitmap.width * 0.2));
-        const cropHeight = Math.max(1, Math.floor(bitmap.height * 0.4));
+        // The former full-width view used the centered 40% at z10. Each new
+        // half-width panel keeps that horizontal span and doubles the vertical
+        // span, which preserves aspect ratio at the requested z9-equivalent.
+        const cropWidth = Math.max(1, Math.floor(bitmap.width * 0.4));
+        const cropHeight = Math.max(1, Math.floor(bitmap.height * 0.8));
         const sourceX = Math.floor((bitmap.width - cropWidth) / 2);
         const sourceY = Math.floor((bitmap.height - cropHeight) / 2);
         context.drawImage(
