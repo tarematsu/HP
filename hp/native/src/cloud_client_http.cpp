@@ -1,4 +1,5 @@
 #include "cloud_client.h"
+#include "network_clock_fallback.h"
 #include "cloud_client_exchange_helpers.inc"
 #include "cloud_client_exchange.inc"
 
@@ -48,6 +49,11 @@ void CloudClient::EnsureHttpHandlesLocked() {
 
 HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring& path, const std::wstring& token,
                                    const std::wstring& etag, const std::string& body, const wchar_t* contentType) {
+  static std::once_flag clockFallbackOnce;
+  std::call_once(clockFallbackOnce, [] {
+    BootstrapNetworkClockFromPersistedOffset();
+  });
+
   if (auto compressed = TryCompressedExchange(method, path, token)) return std::move(*compressed);
 
   std::lock_guard lock(httpMutex_);
@@ -89,9 +95,11 @@ HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring
       throw std::runtime_error("WinHTTP request failed (" + std::to_string(requestError) + ")");
     }
 
-    // The dashboard clock is calibrated only from our authenticated HTTPS
-    // backend. It never reads the Windows wall clock.
+    // Online operation is anchored directly to the HTTPS Date header. Windows
+    // wall time is sampled only to persist network-minus-Windows offset for a
+    // later offline startup; it never drives the live online clock.
     SynchronizeNetworkClockFromHttpResponse(request);
+    PersistNetworkClockOffsetFromHttpResponse(request);
 
     HttpResponse output;
     DWORD statusSize = sizeof(output.status);
