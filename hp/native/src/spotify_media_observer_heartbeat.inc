@@ -12,8 +12,7 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
   runtime.heartbeatTimer = setInterval(() => {
     const { state, syncTarget, isMedia, rejectWrongTrack, requestRecovery } = runtime;
     const target = syncTarget();
-    if (!target || target.kind !== 'music' || state.endedPosted ||
-        state.recoveryPosted) {
+    if (!target || target.kind !== 'music' || state.endedPosted) {
       return;
     }
 
@@ -24,7 +23,9 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
                 !candidate.paused && !candidate.ended) || null;
     if (!isMedia(media) || media.ended) return;
     if (rejectWrongTrack(media)) return;
-    if (!state.started || state.targetMedia !== media) return;
+    if (state.recoveryPosted || !state.started || state.targetMedia !== media) {
+      return;
+    }
 
     if (media.paused) {
       requestRecovery(media);
