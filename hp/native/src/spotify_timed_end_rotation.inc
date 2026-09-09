@@ -1,7 +1,6 @@
 namespace hp {
 namespace {
 
-constexpr ULONGLONG kSpotifyTimedTrackDeadlineMs = 4ULL * 60ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyPodcastBreakEveryCycles = 10ULL;
 
 bool ParseSpotifyGenerationEvent(
@@ -142,7 +141,7 @@ bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
   for (Slot& slot : slots_) {
     if (!slot.timedRotationActive || slot.podcastBreakActive ||
         slot.timedPlaybackStartTick == 0 ||
-        now - slot.timedPlaybackStartTick < kSpotifyTimedTrackDeadlineMs) {
+        now - slot.timedPlaybackStartTick < kSpotifyMusicTrackDeadlineMs) {
       continue;
     }
     AdvanceTimedRotationSlot(slot, now);
