@@ -10,7 +10,6 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   constexpr int kSpotifyParkedPlaybackWidth = 320;
   constexpr int kSpotifyParkedPlaybackHeight = 180;
   constexpr int kSpotifyParkedPlaybackGap = 8;
-  const int activeIndex = static_cast<int>(staggerSlotIndex_ % slots_.size());
 
   HDWP batch = BeginDeferWindowPos(static_cast<int>(slots_.size()));
   for (size_t i = 0; i < slots_.size(); ++i) {
@@ -18,16 +17,16 @@ void SpotifyWebViews::PlaceHosts() noexcept {
     if (!slot.hostWindow || !IsWindow(slot.hostWindow)) continue;
     if (slot.controller) slot.controller->put_IsVisible(TRUE);
 
-    const bool active = static_cast<int>(i) == activeIndex;
     const bool authentication =
         i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage(slot);
     const bool recovery =
-        active && !authentication && SlotStateNeedsRecovery(slot.state);
+        i == hostLayoutActiveSlot_ && !authentication &&
+        SlotStateNeedsRecovery(slot.state);
 
     // A 1x1 WebView can make Chromium/Spotify treat a background player as
     // effectively occluded and suspend its media pipeline. Keep every account
-    // alive in a small, distinct offscreen viewport; only the current recovery
-    // owner is expanded for reliable responsive DOM interaction.
+    // alive in a small, distinct offscreen viewport; only a slot that currently
+    // needs recovery is expanded for reliable responsive DOM interaction.
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
     int y = client.top;
@@ -41,7 +40,7 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = activeHeight;
       insertAfter = HWND_TOP;
     } else if (recovery) {
-      // Give only the current owner a normal CSS viewport, but keep it offscreen
+      // Give only the recovery owner a normal CSS viewport, but keep it offscreen
       // beyond the six stable playback parking surfaces.
       x = client.right + 32 + static_cast<int>(slots_.size()) *
           (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
