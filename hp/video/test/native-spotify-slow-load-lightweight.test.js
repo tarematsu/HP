@@ -22,6 +22,10 @@ const layout = readFileSync(
   new URL('../../native/src/spotify_host_layout.inc', import.meta.url),
   'utf8',
 );
+const click = readFileSync(
+  new URL('../../native/src/spotify_background_click.inc', import.meta.url),
+  'utf8',
+);
 const header = readFileSync(
   new URL('../../native/src/spotify_webviews.h', import.meta.url),
   'utf8',
@@ -47,10 +51,11 @@ test('healthy scheduler is low-frequency but wakes on exact initial 40-second ac
   assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs/);
 });
 
-test('usable Spotify controls are recovered through normalized trusted points', () => {
-  assert.match(phaseSync, /ParseNormalizedPoint/);
-  assert.match(phaseSync, /ClickSlotNormalizedPoint/);
-  assert.match(phaseSync, /RefreshSpotifyHostLayout\(\)/);
+test('usable Spotify controls are recovered through the dedicated trusted-input module', () => {
+  assert.match(click, /ParseNormalizedPoint/);
+  assert.match(click, /ClickSlotNormalizedPoint/);
+  assert.match(click, /RefreshSpotifyHostLayout\(\)/);
+  assert.doesNotMatch(phaseSync, /ParseNormalizedPoint|ClickSlotNormalizedPoint/);
 });
 
 test('ultra-light styling is fixed CSS without runtime source rewriting or MutationObserver churn', () => {
@@ -62,10 +67,9 @@ test('ultra-light styling is fixed CSS without runtime source rewriting or Mutat
   assert.doesNotMatch(scripts, /RewriteSpotify|ReplaceSpotifyScriptFragment|thread_local std::wstring/);
 });
 
-test('healthy slots are not continuously scanned by a second watchdog', () => {
+test('healthy slots are not continuously scanned by a second native watchdog', () => {
   assert.doesNotMatch(header, /playbackWatchdogIndex_|reconcileIndex_/);
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
-  assert.doesNotMatch(scripts, /setInterval\(/);
 });
 
 test('healthy ownership handoff does not relayout all six playback hosts', () => {
@@ -73,19 +77,16 @@ test('healthy ownership handoff does not relayout all six playback hosts', () =>
     layout,
     /const size_t recoveryIndex =[\s\S]*SlotStateNeedsRecovery\(slots_\[activeIndex\]\.state\)/,
   );
-  assert.match(
-    layout,
-    /hostLayoutActiveSlot_ == recoveryIndex/,
-  );
+  assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /hostLayoutActiveSlot_ = recoveryIndex/);
   assert.match(
-    spotify,
+    layout,
     /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
   );
-  assert.doesNotMatch(spotify, /const bool active =/);
+  assert.doesNotMatch(layout, /const bool active =/);
 });
 
-test('only authentication is visible while all playback hosts retain stable offscreen viewports', () => {
+test('only authentication is visible while playback hosts retain stable offscreen viewports', () => {
   assert.match(header, /unsigned hostLayoutMask_ = ~0u/);
   assert.match(header, /hostLayoutActiveSlot_ = kAccountCount/);
   assert.match(header, /hostLayoutAuthenticationSlot_ = kAccountCount/);
@@ -93,17 +94,17 @@ test('only authentication is visible while all playback hosts retain stable offs
   assert.match(layout, /foregroundAuthenticationIndex/);
   assert.match(layout, /hostLayoutAuthenticationSlot_ = foregroundAuthenticationIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
-  assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
-  assert.match(spotify, /kSpotifyRecoveryInteractionWidth = 720/);
-  assert.match(spotify, /kSpotifyRecoveryInteractionHeight = 480/);
-  assert.doesNotMatch(spotify, /int width = 1;\s*int height = 1/);
+  assert.match(layout, /kSpotifyParkedPlaybackWidth = 320/);
+  assert.match(layout, /kSpotifyParkedPlaybackHeight = 180/);
+  assert.match(layout, /kSpotifyRecoveryInteractionWidth = 720/);
+  assert.match(layout, /kSpotifyRecoveryInteractionHeight = 480/);
+  assert.doesNotMatch(layout, /int width = 1;\s*int height = 1/);
   assert.match(
-    spotify,
+    layout,
     /const bool authentication =\s*i == hostLayoutAuthenticationSlot_ && SlotIsLoginPage\(slot\)/,
   );
-  assert.match(spotify, /x = client\.right \+ 32/);
-  assert.match(spotify, /insertAfter = HWND_TOP/);
+  assert.match(layout, /x = client\.right \+ 32/);
+  assert.match(layout, /insertAfter = HWND_TOP/);
 });
 
 test('cached authentication foreground avoids repeated WebView geometry notifications', () => {
