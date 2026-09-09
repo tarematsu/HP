@@ -3,17 +3,16 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
   try {
     if (!slot.webview || !slot.hostWindow || !IsWindow(slot.hostWindow)) return 0;
 
-    constexpr ULONGLONG kSpotifyTrustedClickStaleMs = 8ULL * 1000ULL;
+    // One native gate covers both in-flight suppression and the post-click
+    // cooldown. A lost callback simply ages out; a target change bypasses the
+    // old gate immediately.
+    constexpr ULONGLONG kSpotifyTrustedClickGateMs = 8ULL * 1000ULL;
     const ULONGLONG now = GetTickCount64();
-    if (slot.trustedClickInFlight) {
-      if (slot.trustedClickStartTick != 0 &&
-          now - slot.trustedClickStartTick < kSpotifyTrustedClickStaleMs) {
-        return 0;
-      }
-      // A lost CDP callback must not permanently block recovery. The new click
-      // generation below also makes every callback from this stale attempt inert.
-      slot.trustedClickInFlight = false;
-      slot.trustedClickStartTick = 0;
+    const ULONGLONG targetGeneration = slot.targetGeneration;
+    if (slot.trustedClickTargetGeneration == targetGeneration &&
+        slot.trustedClickBlockedUntilTick != 0 &&
+        now < slot.trustedClickBlockedUntilTick) {
+      return 0;
     }
 
     RECT client{};
@@ -23,8 +22,7 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     if (width <= 1 || height <= 1) return 0;
 
     // CDP Input.dispatchMouseEvent consumes CSS viewport coordinates. WebView2
-    // ZoomFactor changes the CSS viewport size without changing the host bounds,
-    // so compensate here or a 80% zoom would shift trusted clicks up/left.
+    // ZoomFactor changes the CSS viewport size without changing the host bounds.
     double zoom = 1.0;
     if (slot.controller) {
       double controllerZoom = 1.0;
@@ -40,10 +38,6 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     const double x = std::max(0.0, std::min(cssWidth - 1.0, rawX));
     const double y = std::max(0.0, std::min(cssHeight - 1.0, rawY));
 
-    // Spotify reveals/replaces row play controls on hover. Keep the complete
-    // move -> press -> release sequence single-flight per account so a delayed
-    // CDP response cannot overlap a later recovery click and toggle playback
-    // back to pause.
     const std::wstring moved =
         L"{\"type\":\"mouseMoved\",\"x\":" + std::to_wstring(x) +
         L",\"y\":" + std::to_wstring(y) + L"}";
@@ -51,23 +45,25 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
     ++slot.trustedClickGeneration;
     if (slot.trustedClickGeneration == 0) ++slot.trustedClickGeneration;
     const ULONGLONG clickGeneration = slot.trustedClickGeneration;
-    slot.trustedClickInFlight = true;
-    slot.trustedClickStartTick = now;
+    slot.trustedClickTargetGeneration = targetGeneration;
+    slot.trustedClickBlockedUntilTick = now + kSpotifyTrustedClickGateMs;
+
     Slot* const target = &slot;
     const auto alive = alive_;
     ComPtr<ICoreWebView2> view = slot.webview;
     const HRESULT dispatched = view->CallDevToolsProtocolMethod(
         L"Input.dispatchMouseEvent", moved.c_str(),
         Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-            [alive, target, view, x, y, clickGeneration](
+            [alive, target, view, x, y, clickGeneration, targetGeneration](
                 HRESULT movedResult, LPCWSTR) -> HRESULT {
               if (!alive->load(std::memory_order_acquire) ||
-                  target->trustedClickGeneration != clickGeneration) {
+                  target->trustedClickGeneration != clickGeneration ||
+                  target->targetGeneration != targetGeneration ||
+                  target->webview.Get() != view.Get()) {
                 return S_OK;
               }
               if (FAILED(movedResult) || !view) {
-                target->trustedClickInFlight = false;
-                target->trustedClickStartTick = 0;
+                target->trustedClickBlockedUntilTick = 0;
                 return S_OK;
               }
 
@@ -78,63 +74,62 @@ UINT SpotifyWebViews::DispatchSpotifyDevToolsClick(
               const HRESULT pressDispatched = view->CallDevToolsProtocolMethod(
                   L"Input.dispatchMouseEvent", pressed.c_str(),
                   Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                      [alive, target, view, x, y, clickGeneration](
-                          HRESULT pressedResult, LPCWSTR) -> HRESULT {
+                      [alive, target, view, x, y, clickGeneration,
+                       targetGeneration](HRESULT pressedResult, LPCWSTR)
+                          -> HRESULT {
                         if (!alive->load(std::memory_order_acquire) ||
-                            target->trustedClickGeneration != clickGeneration) {
+                            target->trustedClickGeneration != clickGeneration ||
+                            target->targetGeneration != targetGeneration ||
+                            target->webview.Get() != view.Get()) {
                           return S_OK;
                         }
                         if (FAILED(pressedResult) || !view) {
-                          target->trustedClickInFlight = false;
-                          target->trustedClickStartTick = 0;
+                          target->trustedClickBlockedUntilTick = 0;
                           return S_OK;
                         }
+
                         const std::wstring released =
                             L"{\"type\":\"mouseReleased\",\"x\":" +
                             std::to_wstring(x) + L",\"y\":" +
                             std::to_wstring(y) +
                             L",\"button\":\"left\",\"buttons\":0,"
                             L"\"clickCount\":1}";
-                        const HRESULT releaseDispatched =
-                            view->CallDevToolsProtocolMethod(
-                                L"Input.dispatchMouseEvent", released.c_str(),
-                                Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
-                                    [alive, target, clickGeneration](
-                                        HRESULT, LPCWSTR) -> HRESULT {
-                                      if (!alive->load(std::memory_order_acquire) ||
-                                          target->trustedClickGeneration !=
-                                              clickGeneration) {
-                                        return S_OK;
-                                      }
-                                      target->trustedClickInFlight = false;
-                                      target->trustedClickStartTick = 0;
-                                      return S_OK;
-                                    }).Get());
-                        if (FAILED(releaseDispatched) &&
-                            target->trustedClickGeneration == clickGeneration) {
-                          target->trustedClickInFlight = false;
-                          target->trustedClickStartTick = 0;
-                        }
+                        view->CallDevToolsProtocolMethod(
+                            L"Input.dispatchMouseEvent", released.c_str(),
+                            Callback<ICoreWebView2CallDevToolsProtocolMethodCompletedHandler>(
+                                [alive, target, view, clickGeneration,
+                                 targetGeneration](HRESULT, LPCWSTR) -> HRESULT {
+                                  if (!alive->load(std::memory_order_acquire) ||
+                                      target->trustedClickGeneration !=
+                                          clickGeneration ||
+                                      target->targetGeneration !=
+                                          targetGeneration ||
+                                      target->webview.Get() != view.Get()) {
+                                    return S_OK;
+                                  }
+                                  // Keep the native gate until its eight-second
+                                  // deadline. Spotify can update its play/pause UI
+                                  // without another click racing it back to pause.
+                                  return S_OK;
+                                }).Get());
                         return S_OK;
                       }).Get());
               if (FAILED(pressDispatched) &&
-                  target->trustedClickGeneration == clickGeneration) {
-                target->trustedClickInFlight = false;
-                target->trustedClickStartTick = 0;
+                  target->trustedClickGeneration == clickGeneration &&
+                  target->targetGeneration == targetGeneration) {
+                target->trustedClickBlockedUntilTick = 0;
               }
               return S_OK;
             }).Get());
     if (FAILED(dispatched)) {
-      if (slot.trustedClickGeneration == clickGeneration) {
-        slot.trustedClickInFlight = false;
-        slot.trustedClickStartTick = 0;
+      if (slot.trustedClickGeneration == clickGeneration &&
+          slot.targetGeneration == targetGeneration) {
+        slot.trustedClickBlockedUntilTick = 0;
       }
       return 0;
     }
     return 1U;
   } catch (...) {
-    slot.trustedClickInFlight = false;
-    slot.trustedClickStartTick = 0;
     return 0;
   }
 }
