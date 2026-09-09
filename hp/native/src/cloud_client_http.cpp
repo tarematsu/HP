@@ -89,6 +89,10 @@ HttpResponse CloudClient::Request(const std::wstring& method, const std::wstring
       throw std::runtime_error("WinHTTP request failed (" + std::to_string(requestError) + ")");
     }
 
+    // The dashboard clock is calibrated only from our authenticated HTTPS
+    // backend. It never reads the Windows wall clock.
+    SynchronizeNetworkClockFromHttpResponse(request);
+
     HttpResponse output;
     DWORD statusSize = sizeof(output.status);
     WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
