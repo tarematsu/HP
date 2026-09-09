@@ -11,7 +11,7 @@ constexpr wchar_t kSpotifyLoginUrl[] =
 // v2 intentionally starts every configured account with a fresh named profile
 // once. Keep this namespace stable after the reauthentication rollout so later
 // launches reuse the newly authenticated sessions instead of resetting again.
-constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-v2-";
+constexpr wchar_t kSpotifyProfilePrefix[] = L"spotify-" L"v2-";
 
 void SetSpotifyOutputMuted(const ComPtr<ICoreWebView2>& webview) noexcept {
   if (!webview) return;
