@@ -68,6 +68,36 @@ RECT RearrangedClockTimeRectFromCard(const RECT& card) {
   return timeRect;
 }
 
+RECT RearrangedAirStatsRectFromCard(const RECT& card) {
+  const RECT body = CardContentRect(card);
+  const int statsHeight = SpanY(body, 270);
+  RECT rect{body.left, body.top, body.right, body.top + statsHeight};
+  if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
+  return rect;
+}
+
+RECT RearrangedAirGraphRectFromCard(const RECT& card) {
+  const RECT body = CardContentRect(card);
+  const int statsHeight = SpanY(body, 270);
+  const int plotTop = body.top + statsHeight + SpanY(body, 60);
+  RECT rect{body.left, plotTop, body.right, body.bottom};
+  if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
+  return rect;
+}
+
+RECT EnergySwitchBotRectFromCard(const RECT& card, size_t deviceCount) {
+  const RECT body = CardContentRect(card);
+  const size_t boundedCount = std::min<size_t>(4, deviceCount);
+  const int plugLineHeight = std::clamp(SpanY(body, 110), 12, 22);
+  const int plugRowGap = std::max(1, SpanY(body, 10));
+  const int plugRowCount = boundedCount > 2 ? 2 : 1;
+  const int plugHeight =
+      plugLineHeight * plugRowCount + plugRowGap * (plugRowCount - 1);
+  RECT rect{body.left, body.bottom - plugHeight, body.right, body.bottom};
+  if (rect.bottom <= rect.top) rect.bottom = rect.top + 1;
+  return rect;
+}
+
 void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
                              const RECT& rect) {
   if (text.empty() || rect.right <= rect.left || rect.bottom <= rect.top) return;
@@ -109,24 +139,22 @@ void DrawFixedWidthClockTime(HDC dc, const std::wstring& text,
 #define HP_DRAW_CLOCK_WITH_STATUS(dc, card) do { \
   DrawSectionCard((dc), (card)); \
   const RECT hpClockContent = CardContentRect((card)); \
-  SYSTEMTIME hpNow{}; const bool hpClockReady = NetworkClockJstNow(&hpNow); \
   RECT hpDateRect{hpClockContent.left, hpClockContent.top, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 170)}; \
   RECT hpTimeRect{hpClockContent.left, hpDateRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 650)}; \
   RECT hpWasteRect{hpClockContent.left, hpTimeRect.bottom, hpClockContent.right, hpClockContent.top + SpanY(hpClockContent, 780)}; \
   RECT hpStatusRect{hpClockContent.left, hpClockContent.top + SpanY(hpClockContent, 790), hpClockContent.right, hpClockContent.bottom}; \
   HGDIOBJ hpPreviousFont = SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetMuted); \
-  DrawTextInRect((dc), hpClockReady ? DateText(hpNow) : std::wstring(L"時刻同期中"), hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), nativeClockDateText_, hpDateRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   const int hpTimeHeight = std::max(1L, hpTimeRect.bottom - hpTimeRect.top); \
   const int hpTimeWidth = std::max(1L, hpTimeRect.right - hpTimeRect.left); \
   const int hpTimeFontHeight = std::clamp(std::min(hpTimeHeight * 72 / 100, hpTimeWidth * 18 / 100), 32, 88); \
   SelectObject((dc), CachedUiFont(hpTimeFontHeight, FW_SEMIBOLD)); \
   SetTextColor((dc), kWidgetText); \
-  if (hpClockReady) { DrawFixedWidthClockTime((dc), TimeText(hpNow), hpTimeRect); } else { DrawFixedWidthClockTime((dc), std::wstring(L"--:--:--"), hpTimeRect); } \
-  std::wstring hpWasteText; if (hpClockReady) hpWasteText = Course36ClockWasteSummary(hpNow); \
+  DrawFixedWidthClockTime((dc), nativeClockTimeText_, hpTimeRect); \
   SelectObject((dc), TierFont(FontTier::Medium)); \
   SetTextColor((dc), kWidgetText); \
-  DrawTextInRect((dc), hpWasteText, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
+  DrawTextInRect((dc), nativeClockWasteText_, hpWasteRect, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_VCENTER); \
   std::wstring hpVersionText = L"アプリバージョン "; \
   hpVersionText += kVersion; \
   const int hpControlButtonWidth = std::clamp(SpanX(hpStatusRect, 300), 86, 150); \
