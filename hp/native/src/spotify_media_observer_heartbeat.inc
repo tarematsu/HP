@@ -1,8 +1,8 @@
 namespace hp {
 namespace {
 
-// Detects silent stalls where Spotify still presents a playing UI but the media
-// clock no longer advances. Event handling remains independent of this watchdog.
+// Detects silent stalls and provides a low-frequency fallback for target
+// identity enforcement when Spotify changes source without a useful media event.
 constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
 (() => {
   const runtime = window.__homePanelSpotifyMediaObserverRuntime;
@@ -10,14 +10,22 @@ constexpr wchar_t kSpotifyMediaObserverHeartbeatScript[] = LR"JS(
   if (runtime.heartbeatTimer) return true;
 
   runtime.heartbeatTimer = setInterval(() => {
-    const { state, syncTarget, isMedia, requestRecovery } = runtime;
+    const { state, syncTarget, isMedia, rejectWrongTrack, requestRecovery } = runtime;
     const target = syncTarget();
-    const media = state.targetMedia;
-    if (!target || target.kind !== 'music' || !state.started ||
-        state.endedPosted || state.recoveryPosted || !isMedia(media) ||
-        media.ended) {
+    if (!target || target.kind !== 'music' || state.endedPosted ||
+        state.recoveryPosted) {
       return;
     }
+
+    const media = isMedia(state.targetMedia)
+        ? state.targetMedia
+        : Array.from(document.querySelectorAll('audio, video'))
+            .find(candidate => isMedia(candidate) &&
+                !candidate.paused && !candidate.ended) || null;
+    if (!isMedia(media) || media.ended) return;
+    if (rejectWrongTrack(media)) return;
+    if (!state.started || state.targetMedia !== media) return;
+
     if (media.paused) {
       requestRecovery(media);
       return;
