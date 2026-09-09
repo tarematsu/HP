@@ -58,6 +58,9 @@ class SpotifyWebViews final {
     EventRegistrationToken webResourceRequestedToken{};
     EventRegistrationToken timedEndMessageReceivedToken{};
     ICoreWebView2* timedEndHandlerWebview = nullptr;
+    ICoreWebView2Controller* hostLayoutController = nullptr;
+    RECT hostLayoutRect{};
+    HWND hostLayoutInsertAfter = nullptr;
     ULONGLONG lastModeNavigateTick = 0;
     ULONGLONG controllerCreateTick = 0;
     ULONGLONG timedRotationCycle = 0;
@@ -72,6 +75,7 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickGeneration = 0;
     ULONGLONG trustedClickTargetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
+    ULONGLONG authenticationBadgeTick = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomCIndex = kNoTimedCatalogIndex;
     size_t timedRandomDIndex = kNoTimedCatalogIndex;
@@ -85,6 +89,7 @@ class SpotifyWebViews final {
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
     bool podcastBreakActive = false;
+    bool hostLayoutApplied = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
   };
 
