@@ -82,6 +82,8 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
     }
     return false;
   };
+)JS"
+LR"JS(
 
   const explicitAdMarker = video => {
     const root = playerRootFor(video);
@@ -206,6 +208,8 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
         window.__homePanelTverAdActive = true;
         return;
       }
+)JS"
+LR"JS(
 
       if (state.adActive) {
         state.adActive = false;
@@ -284,6 +288,8 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
         state.restartRequested = true;
         return;
       }
+)JS"
+LR"JS(
 
       // Quality discovery is player-local and one-shot. Once low quality is set,
       // healthy passes do not enumerate controls at all.
