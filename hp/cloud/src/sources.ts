@@ -4,6 +4,7 @@ import { fetchRadar } from "./radar_source";
 import { fetchStationhead } from "./spotify_source";
 
 export interface Env {
+  BROWSER?: Fetcher;
   DB: D1Database;
   DATA_BUCKET?: R2Bucket;
   UPDATE_BUCKET?: R2Bucket;

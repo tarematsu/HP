@@ -110,7 +110,7 @@ describe("SchedulerCoordinator Durable Object", () => {
 
     expect((await stub.fetch("https://scheduler.internal/ensure", { method: "POST" })).status).toBe(202);
     const stored = await runtime(stub);
-    expect(stored?.version).toBe(7);
+    expect(stored?.version).toBe(8);
     expect(stored?.jobs.some(job => job.name === "video_liveness")).toBe(false);
     expect(stored?.jobs.find(job => job.name === "octopus")).toMatchObject({
       intervalSeconds: 10_800,

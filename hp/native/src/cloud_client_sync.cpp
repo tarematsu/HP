@@ -195,13 +195,14 @@ std::vector<uint8_t> CloudClient::LocalizeRadarTiles(const std::vector<uint8_t>&
     }
   }
 
+  const bool precomposed = root.GetNamedBoolean(L"precomposed", false);
   const auto localizeTile = [&](JsonObject item) {
     const std::wstring url = item.GetNamedString(L"url", L"").c_str();
     if (url.empty() || url.front() != L'/') return;
     const fs::path target = localPathFor(url);
     retained.insert(target.wstring());
     std::error_code error;
-    if (!fs::exists(target, error) || fs::file_size(target, error) == 0) {
+    if (precomposed || !fs::exists(target, error) || fs::file_size(target, error) == 0) {
       const auto response = Request(L"GET", url, deviceToken_);
       if (response.status != 200 || response.body.empty()) {
         log_.Warn(L"Radar tile cache fetch failed; using remote tile URL: HTTP " +

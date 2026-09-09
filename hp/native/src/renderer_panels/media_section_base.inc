@@ -1051,23 +1051,25 @@ void Renderer::DrawMusicSection(HDC dc, const RECT& card) {
                    DT_CENTER | DT_SINGLELINE | DT_VCENTER);
     SelectObject(dc, previousFont);
   }
-  HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
-  const std::wstring chipText = noRain
-      ? L"雨雲レーダー"
-      : L"雨雲レーダー " + (timeText.empty() ? L"--:--" : timeText);
-  RECT measure{};
-  DrawTextW(dc, chipText.c_str(), -1, &measure,
-            DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
-  const int chipPadX = std::max(8, SpanX(bounds, 8));
-  const int chipPadY = std::max(4, SpanY(bounds, 8));
-  const int chipMargin = std::max(10, SpanY(bounds, 25));
-  const RECT chip{bounds.left + chipMargin, bounds.top + chipMargin,
-                  bounds.left + chipMargin + (measure.right - measure.left) + chipPadX * 2,
-                  bounds.top + chipMargin + (measure.bottom - measure.top) + chipPadY * 2};
-  FillRoundRectTranslucent(dc, chip, RGB(0, 0, 0), chip.bottom - chip.top, 150);
-  SetTextColor(dc, kWidgetText);
-  DrawTextInRect(dc, chipText, chip, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
-  SelectObject(dc, previousFont);
+  if (!hasFrame || !timeText.empty()) {
+    HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
+    const std::wstring chipText = noRain
+        ? L"雨雲レーダー"
+        : L"雨雲レーダー " + (timeText.empty() ? L"--:--" : timeText);
+    RECT measure{};
+    DrawTextW(dc, chipText.c_str(), -1, &measure,
+              DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+    const int chipPadX = std::max(8, SpanX(bounds, 8));
+    const int chipPadY = std::max(4, SpanY(bounds, 8));
+    const int chipMargin = std::max(10, SpanY(bounds, 25));
+    const RECT chip{bounds.left + chipMargin, bounds.top + chipMargin,
+                    bounds.left + chipMargin + (measure.right - measure.left) + chipPadX * 2,
+                    bounds.top + chipMargin + (measure.bottom - measure.top) + chipPadY * 2};
+    FillRoundRectTranslucent(dc, chip, RGB(0, 0, 0), chip.bottom - chip.top, 150);
+    SetTextColor(dc, kWidgetText);
+    DrawTextInRect(dc, chipText, chip, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
+    SelectObject(dc, previousFont);
+  }
   SelectClipRgn(dc, nullptr);
   DrawCardOutline(dc, bounds, radius);
 }

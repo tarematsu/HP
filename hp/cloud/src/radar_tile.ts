@@ -46,6 +46,16 @@ export function radarTileTargetForPath(pathname: string): RadarTileTarget | null
       ttl: 300,
     };
   }
+  match = pathname.match(/^\/v1\/radar\/tile\/rasrf\/(\d{14})\/(\d{14})\/(\d{1,2})\/(\d+)\/(\d+)\.png$/);
+  if (match) {
+    const [, baseTime, validTime, zoomText, xText, yText] = match;
+    const coordinates = validTileCoordinates(zoomText, xText, yText);
+    if (!coordinates || !baseTime || !validTime) return null;
+    return {
+      upstream: `https://www.jma.go.jp/bosai/jmatile/data/rasrf/${baseTime}/none/${validTime}/surf/rasrf/${coordinates.zoom}/${coordinates.x}/${coordinates.y}.png`,
+      ttl: 600,
+    };
+  }
   return null;
 }
 

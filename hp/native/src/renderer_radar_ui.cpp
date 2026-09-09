@@ -509,8 +509,10 @@ void Renderer::ComposeRadarFrame() {
       file::MatchesText(cachedSignature, signatureUtf8)) {
     HBITMAP cached = DecodeImageFileToBitmap(cachedFrame, kRadarCanvasWidth, kRadarCanvasHeight);
     if (cached) {
-      std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
-      if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
+      std::wstring timeText = precomposed
+          ? L""
+          : noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
+      if (!precomposed && timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
       HBITMAP previousFrame = nullptr;
       {
         std::lock_guard lock(radarFrameMutex_);
@@ -593,8 +595,10 @@ void Renderer::ComposeRadarFrame() {
     BlendBitmap(composeDc, mapBitmap, 0, 0, kRadarCanvasWidth, kRadarCanvasHeight);
   }
 
-  std::wstring timeText = noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
-  if (timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
+  std::wstring timeText = precomposed
+      ? L""
+      : noRainForecast ? kNoRainMessage : RadarTimeFromMillis(validAt);
+  if (!precomposed && timeText.empty()) timeText = tiles.empty() ? L"待機中" : L"--:--";
 
   // A bitmap passed to GetDIBits must not remain selected into a memory DC.
   surface.FinishDrawing();

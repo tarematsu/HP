@@ -45,4 +45,14 @@ describe("radar bundle path selection", () => {
       ttl: 300,
     });
   });
+
+  it("maps terminal short-term paths to the RASRF upstream target", () => {
+    const validTime = "20260720220000";
+    expect(radarTileTargetForPath(
+      `/v1/radar/tile/rasrf/${baseTime}/${validTime}/9/454/201.png`,
+    )).toEqual({
+      upstream: `https://www.jma.go.jp/bosai/jmatile/data/rasrf/${baseTime}/none/${validTime}/surf/rasrf/9/454/201.png`,
+      ttl: 600,
+    });
+  });
 });
