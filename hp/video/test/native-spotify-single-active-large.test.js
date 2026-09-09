@@ -57,11 +57,15 @@ test('recovery interaction never depends on the compact Spotify breakpoint', () 
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
 });
 
-test('only a recovering Spotify WebView uses 80 percent page zoom for trusted interaction', () => {
-  assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
-  assert.match(layout, /recoveryIndex < slots_\.size\(\)/);
-  assert.match(layout, /slots_\[recoveryIndex\]\.controller->get_ZoomFactor\(&zoom\)/);
-  assert.match(layout, /put_ZoomFactor\(\s*kSpotifySerializedRecoveryZoom\)/);
+test('reduced Spotify zoom is changed only when the layout mode changes', () => {
+  assert.match(header, /bool hostLayoutReducedZoomApplied = false/);
+  assert.match(layout, /const bool reducedZoom = authentication \|\| recovery/);
+  assert.match(layout, /hostLayoutReducedZoomApplied != reducedZoom/);
+  assert.match(
+    layout,
+    /put_ZoomFactor\(\s*reducedZoom \? kSpotifySerializedRecoveryZoom : 1\.0\)/,
+  );
+  assert.doesNotMatch(layout, /get_ZoomFactor\(/);
 });
 
 test('trusted CDP clicks compensate for WebView2 zoom before dispatch', () => {
