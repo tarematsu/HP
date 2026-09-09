@@ -16,6 +16,22 @@ namespace {
 constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
 constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
 constexpr ULONGLONG kNativeMediaTverNavigationPendingMaxMs = 8ULL * 1000ULL;
+constexpr wchar_t kNativeMediaYoutubePhaseOverlaySuppressionScript[] = LR"JS(
+(() => {
+  const badge = document.getElementById('__homePanelMediaPhaseTime');
+  if (badge) badge.remove();
+
+  const cursorStyleId = '__homePanelMediaCursorStyle';
+  const styleRoot = document.head || document.documentElement;
+  if (styleRoot && !document.getElementById(cursorStyleId)) {
+    const cursorStyle = document.createElement('style');
+    cursorStyle.id = cursorStyleId;
+    cursorStyle.textContent = '* { cursor:none !important; }';
+    styleRoot.appendChild(cursorStyle);
+  }
+  return null;
+})()
+)JS";
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
@@ -122,6 +138,12 @@ bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
+  if (script &&
+      std::wstring_view(script).find(L"__homePanelMediaPhaseTime") !=
+          std::wstring_view::npos &&
+      NativeMediaWebViewSourceContains(webview, L"youtube.com/")) {
+    return kNativeMediaYoutubePhaseOverlaySuppressionScript;
+  }
   if (script == kNativeMediaTverWatchdogScript) {
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/series/")) {
       PrepareNativeMediaTverSeriesResolution(webview, hostWindow, alive);
