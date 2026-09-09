@@ -70,13 +70,16 @@ test('YouTube ad skip uses a stable trusted landing target and never falls throu
   assert.doesNotMatch(trustedInput, /::SendInput/);
 });
 
-test('YouTube fullscreen recovery keeps the trusted click off the moving video surface', () => {
+test('YouTube fullscreen recovery uses the trusted click for the Fullscreen API', () => {
   assert.match(recovery, /player\.querySelector\('\.ytp-fullscreen-button'\)/);
   assert.match(recovery, /全画面\|fullscreen\|full screen/i);
   assert.match(recovery, /return armTrustedAction\(target, 'fullscreen', 1200\)/);
   assert.match(recovery, /document\.fullscreenElement/);
   assert.match(recovery, /position:fixed/);
   assert.match(recovery, /inset:0/);
+  assert.match(recovery, /player\.requestFullscreen/);
+  assert.match(recovery, /player\.webkitRequestFullscreen/);
+  assert.match(recovery, /requestFullscreen\.call\(player\)/);
   assert.match(recovery, /target\.click\(\)/);
 });
 
