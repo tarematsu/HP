@@ -15,6 +15,7 @@
 namespace {
 constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
 constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
+constexpr ULONGLONG kNativeMediaTverNavigationPendingMaxMs = 8ULL * 1000ULL;
 const wchar_t* ResolveNativeMediaPolicyScript(
     const wchar_t* script, ICoreWebView2* webview, HWND hostWindow,
     const std::shared_ptr<std::atomic<bool>>& alive) noexcept;
@@ -72,12 +73,50 @@ bool NativeMediaWebViewSourceContains(
 }
 
 bool NativeMediaTverNavigationPendingFor(ICoreWebView2* webview) noexcept {
+  static ICoreWebView2* observedWebview = nullptr;
+  static std::wstring observedSeriesId;
+  static uint64_t observedGeneration = 0;
+  static ULONGLONG observedAt = 0;
+
+  const auto resetObservation = [&]() noexcept {
+    observedWebview = nullptr;
+    observedSeriesId.clear();
+    observedGeneration = 0;
+    observedAt = 0;
+  };
+
   const auto seriesId = NativeMediaTverSeriesIdFromWebView(webview);
-  if (!seriesId) return false;
+  if (!seriesId) {
+    resetObservation();
+    return false;
+  }
   auto& state = NativeMediaTverSeriesResolver();
   std::lock_guard lock(state.mutex);
-  return state.webviewIdentity == webview && state.seriesId == *seriesId &&
-         state.navigationPending;
+  if (state.webviewIdentity != webview || state.seriesId != *seriesId ||
+      !state.navigationPending) {
+    resetObservation();
+    return false;
+  }
+
+  const ULONGLONG now = GetTickCount64();
+  if (observedWebview != webview || observedSeriesId != *seriesId ||
+      observedGeneration != state.generation || observedAt == 0) {
+    observedWebview = webview;
+    observedSeriesId = *seriesId;
+    observedGeneration = state.generation;
+    observedAt = now;
+    return true;
+  }
+  if (now - observedAt < kNativeMediaTverNavigationPendingMaxMs) return true;
+
+  // Navigate() returning S_OK only means the navigation was accepted. The page
+  // can still cancel it, redirect back to /series/, or an ExecuteScript callback
+  // can be lost. Never let that transient state suppress the rendered-page
+  // episode fallback forever.
+  state.navigationPending = false;
+  state.failedAt = now;
+  resetObservation();
+  return false;
 }
 
 const wchar_t* ResolveNativeMediaPolicyScript(
