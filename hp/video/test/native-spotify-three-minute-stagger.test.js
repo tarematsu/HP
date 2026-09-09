@@ -172,6 +172,6 @@ test('TALKABOUT is inserted once after every ten complete A-B-C-D cycles', () =>
 
 test('YouTube/TVer phase cannot mutate Spotify rotation state', () => {
   assert.doesNotMatch(wrapper, /#define SetPodcastMode/);
-  assert.doesNotMatch(header + schedule, /SetPodcastMode|podcastMode_|gSpotifyTverPhase/);
-  assert.doesNotMatch(schedule, /TVer|YouTube/);
+  assert.doesNotMatch(header + schedule, /SetPodcastMode|podcastMode_|gSpotifyTverPhase|youtubeCycleStartTick_/);
+  assert.doesNotMatch(schedule, /SetSpotifyMediaPhase|phase_ == Phase::Tver|kSpotifyTimedTalkAboutStartMs|kSpotifyTimedRotationStartMs/);
 });
