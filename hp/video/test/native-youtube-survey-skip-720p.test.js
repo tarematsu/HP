@@ -104,6 +104,11 @@ test('trusted-action mechanism and watchdog policy have separate responsibilitie
     /webview->ExecuteScript\(\s*kNativeMediaYoutubeTrustedActionBootstrapScript, nullptr\)/,
   );
   assert.match(composition, /installedWebview == webview && installedSource == source/);
+  assert.match(composition, /bool force = false/);
+  assert.match(
+    composition,
+    /script == kNativeMediaYoutubeCleanPlayerScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction\(webview, true\)/,
+  );
   assert.doesNotMatch(recovery, /position:fixed|requestFullscreen|setProperty\('left'/);
   assert.doesNotMatch(trustedAction, /surveyRoots|skipSelectors/);
   // Keep each MSVC wide raw literal comfortably below the C2026 danger zone.
