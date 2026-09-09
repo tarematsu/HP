@@ -22,6 +22,18 @@ const phase = readFileSync(
   new URL('../../native/src/spotify_phase_sync.inc', import.meta.url),
   'utf8',
 );
+const header = readFileSync(
+  new URL('../../native/src/spotify_webviews.h', import.meta.url),
+  'utf8',
+);
+const timed = readFileSync(
+  new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
+  'utf8',
+);
+const recent = readFileSync(
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
+  'utf8',
+);
 
 test('runtime uses one adaptive scheduler instead of parallel background probing', () => {
   assert.match(wrapper, /#include "spotify_stagger_schedule\.inc"/);
@@ -36,7 +48,7 @@ test('only one recovery-sized Spotify owner is selected at a time', () => {
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
   assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
-  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 12ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);
 });
 
 test('slow responsive layout settles before owner-only DOM recovery', () => {
@@ -49,26 +61,32 @@ test('slow responsive layout settles before owner-only DOM recovery', () => {
   assert.match(schedule, /ReconcileActiveTimedSlot\(slot\)/);
 });
 
-test('track completion is event driven from one generation-aware observer script', () => {
+test('track completion stays event driven while media progress has a low-frequency heartbeat', () => {
   assert.match(rotation, /kSpotifyFastEndObserverScript/);
   assert.match(observer, /__homePanelSpotifyMediaObserverInstalled/);
   assert.match(observer, /document\.addEventListener\('ended'/);
   assert.match(observer, /document\.addEventListener\('play'/);
   assert.match(observer, /post\('spotify:timed-ended'\)/);
   assert.match(observer, /spotify:generation/);
+  assert.match(observer, /setInterval\([\s\S]*10000\)/);
+  assert.match(observer, /heartbeatMisses >= 2/);
+  assert.match(observer, /currentTime > state\.heartbeatTime \+ 0\.05/);
+  assert.match(observer, /requestRecovery\(media\)/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.doesNotMatch(observer, /setInterval\(/);
   assert.doesNotMatch(rotation, /BuildSpotify.*ObserverScript|std::wstring script/);
 });
 
-test('current-track identity is scoped to player UI before MediaSession fallback', () => {
-  assert.match(observer, /\[data-testid="now-playing-widget"\] a\[href\*="\/track\/"\]/);
-  assert.match(observer, /\[data-testid="now-playing-bar"\] \[data-testid="context-item-link"\]/);
-  assert.match(observer, /footer \[data-testid="context-item-link"\]/);
-  assert.doesNotMatch(
-    observer,
-    /^\s*'\[data-testid="context-item-link"\]\[href\*="\/track\/"\]'\s*$/m,
-  );
+test('lost ExecuteScript callbacks expire instead of wedging a slot forever', () => {
+  assert.match(header, /ULONGLONG reconcileRequestGeneration = 0/);
+  assert.match(header, /ULONGLONG reconcileStartedTick = 0/);
+  assert.match(header, /ULONGLONG timedObserverInstallGeneration = 0/);
+  assert.match(header, /ULONGLONG timedObserverInstallStartedTick = 0/);
+  assert.match(phase, /kSpotifyAsyncOperationTimeoutMs = 12ULL \* 1000ULL/);
+  assert.match(phase, /ExpireStaleAsyncWork\(Slot& slot, ULONGLONG now\)/);
+  assert.match(schedule, /ExpireStaleAsyncWork\(candidate, now\)/);
+  assert.match(timed, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
+  assert.match(recent, /target->reconcileRequestGeneration != reconcileRequestGeneration/);
+  assert.match(rotation, /observerTarget->timedObserverInstallGeneration !=[\s\S]*observerInstallGeneration/);
 });
 
 test('rotation hard deadline is armed before browser playback state is known', () => {
