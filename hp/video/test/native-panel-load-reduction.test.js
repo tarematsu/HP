@@ -26,6 +26,10 @@ const panelWindows = readFileSync(
   new URL('../../native/src/renderer_panels/windows.inc', import.meta.url),
   'utf8',
 );
+const bitmapCache = readFileSync(
+  new URL('../../native/src/renderer_bitmap_cache.cpp', import.meta.url),
+  'utf8',
+);
 const environment = readFileSync(
   new URL('../../native/src/renderer_panels/environment_sections.inc', import.meta.url),
   'utf8',
@@ -52,36 +56,57 @@ test('dashboard sections use source versions and reuse unchanged materialized da
   assert.match(dashboardLoader, /ParseDashboardSnapshot\(text, snapshot, nullptr, previous\)/);
 });
 
-test('air sensor values and history graph invalidate independently', () => {
-  assert.match(rendererHeader, /AirStats,/);
-  assert.match(rendererHeader, /AirGraph,/);
+test('air sensor values and five-minute history update renderer independently', () => {
+  assert.match(rendererHeader, /void UpdateSensors\(const SensorSnapshot& sensors\);/);
+  assert.match(rendererHeader, /void UpdateAirHistory\(const std::vector<AirHistorySample>& history\);/);
   assert.match(
     panelState,
-    /if \(sensorsChanged\) \{\s*InvalidatePanelSection\(nativeSideWindow_, PanelSection::AirStats\);/s,
+    /void Renderer::UpdateSensors[\s\S]*PanelSection::AirStats/s,
   );
   assert.match(
     panelState,
-    /if \(historyChanged\) \{\s*InvalidatePanelSection\(nativeSideWindow_, PanelSection::AirGraph\);/s,
+    /void Renderer::UpdateAirHistory[\s\S]*RebuildNativeAirGraph\(UnixMillis\(\)\)[\s\S]*PanelSection::AirGraph/s,
   );
+  assert.doesNotMatch(panelState, /airGraphExpired|airCutoff/);
   assert.match(environment, /GetClipBox\(dc, &clip\)/);
   assert.match(environment, /if \(!drawGraph\) return;/);
   assert.match(panelWindows, /RearrangedAirStatsRectFromCard\(sections\.controls\)/);
   assert.match(panelWindows, /RearrangedAirGraphRectFromCard\(sections\.controls\)/);
 });
 
-test('Octopus chart cache is independent from SwitchBot live watts', () => {
-  assert.match(rendererHeader, /EnergySwitchBot/);
-  assert.match(rendererHeader, /DrawEnergySwitchBotSection/);
-  assert.match(dashboardLoader, /\+\+dashboardRevisions_\.octopus/);
-  assert.match(dashboardLoader, /\+\+dashboardRevisions_\.switchbot/);
+test('dashboard loader owns exact invalidation without a second revision layer', () => {
   assert.match(
-    panelState,
+    dashboardLoader,
+    /if \(weatherChanged\) \{\s*InvalidatePanelSection\(nativeSideWindow_, PanelSection::Weather\);/s,
+  );
+  assert.match(
+    dashboardLoader,
+    /if \(octopusChanged \|\| plugLayoutChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::Energy\);/s,
+  );
+  assert.match(
+    dashboardLoader,
     /else if \(switchbotChanged\) \{\s*InvalidatePanelSection\(nativeMainWindow_, PanelSection::EnergySwitchBot\);/s,
   );
-  assert.match(panelWindows, /dashboardRevisions_\.octopus, &Renderer::DrawEnergySection/);
+  assert.doesNotMatch(rendererHeader, /renderedDashboardRevisions_|dashboardRevisions_/);
+  assert.doesNotMatch(panelState, /weatherChanged|octopusChanged|switchbotChanged/);
+});
+
+test('SwitchBot-only paint skips Octopus chart execution', () => {
+  assert.match(rendererHeader, /EnergySwitchBot/);
+  assert.match(rendererHeader, /DrawEnergySwitchBotSection/);
+  assert.match(panelWindows, /const bool switchBotOnly =/);
+  assert.match(panelWindows, /if \(!switchBotOnly\) DrawEnergySection/);
   assert.match(panelWindows, /DrawEnergySwitchBotSection\(scope\.dc, sections\.air\)/);
   assert.match(energy, /void Renderer::DrawEnergySwitchBotSection/);
   assert.match(layout, /RECT EnergySwitchBotRectFromCard/);
+});
+
+test('section bitmap cache is removed in favor of dirty-region back buffers', () => {
+  assert.doesNotMatch(rendererHeader, /PanelBitmapCache|nativeSectionBitmaps_|DrawCachedPanelSection/);
+  assert.doesNotMatch(bitmapCache, /DrawCachedPanelSection|nativeSectionBitmaps_/);
+  assert.doesNotMatch(panelWindows, /DrawCachedPanelSection|dashboardRevisions_/);
+  assert.match(rendererHeader, /std::map<HWND, PanelBackBuffer> nativeBackBuffers_/);
+  assert.match(panelWindows, /IntersectClipRect\(dc, dirty\.left, dirty\.top, dirty\.right, dirty\.bottom\)/);
 });
 
 test('clock paint consumes cached network-clock strings', () => {
