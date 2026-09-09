@@ -39,8 +39,11 @@ const mediaWrapper = readFileSync(
 const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
 
-test('six Spotify accounts share the WebView2 environment while using isolated profiles', () => {
-  assert.match(header, /kAccountCount = 6/);
+test('five Spotify accounts share the WebView2 environment while using isolated profiles', () => {
+  assert.match(header, /kAccountCount = 5/);
+  assert.match(scripts, /std::array<std::wstring_view, 5> kSpotifyPanelNames/);
+  assert.match(scripts, /L"amazon", L"ten", L"nagi", L"hinata", L"ozeki"/);
+  assert.doesNotMatch(scripts, /yuukiar/);
   assert.match(spotify, /webview2-youtube-mv/);
   assert.match(mediaPanel, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
@@ -113,13 +116,15 @@ test('YouTube phase starts the Spotify cycle and TVer leaves an active A-B-C-D r
   assert.match(schedule, /TVer leaves the current completion-driven rotation untouched/);
 });
 
-test('one adaptive scheduler serializes all six Spotify windows', () => {
+test('one adaptive scheduler serializes all five Spotify windows', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
-  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
+  assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
+  assert.match(schedule, /accountCount \* kSpotifyTimedSlotOffsetMs/);
+  assert.match(schedule, /% accountCount/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
   assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
@@ -162,7 +167,7 @@ test('trusted recovery input is fully owned by the background click module', () 
   assert.doesNotMatch(click, /SendInput|ClientToScreen|MOUSEEVENTF_|SetForegroundWindow/);
 });
 
-test('all six Spotify WebViews remain natively muted', () => {
+test('all five Spotify WebViews remain natively muted', () => {
   assert.match(spotify, /ComPtr<ICoreWebView2_8> audio/);
   assert.match(spotify, /audio->put_IsMuted\(TRUE\)/);
   assert.match(spotify, /SetSpotifyOutputMuted\(slot\.webview\)/);
