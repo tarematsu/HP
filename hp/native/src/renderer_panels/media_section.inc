@@ -16,7 +16,6 @@
 #include "media_youtube_playall_reliable.inc"
 
 namespace {
-constexpr UINT kNativeMediaYoutubeControlWatchdogMs = 1000U;
 constexpr wchar_t kNativeMediaTverNavigationPendingScript[] = L"null";
 constexpr ULONGLONG kNativeMediaTverNavigationPendingMaxMs = 8ULL * 1000ULL;
 constexpr wchar_t kNativeMediaPhaseOverlaySuppressionScript[] = LR"JS(
@@ -48,10 +47,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
         ? ArmNativeMediaTrustedWakeTimer(                                       \
               (hwnd), webview_.Get(), controller_.Get(),                       \
               (timerId), (interval))                                            \
-        : ((timerId) == kNativeMediaYoutubeWatchdogTimer                        \
-              ? ::SetTimer((hwnd), (timerId),                                   \
-                           kNativeMediaYoutubeControlWatchdogMs, (callback))     \
-              : ::SetTimer((hwnd), (timerId), (interval), (callback)))))
+        : ::SetTimer((hwnd), (timerId), (interval), (callback))))
 
 #define SendInput(count, inputs, inputSize)                                     \
   NativeMediaDispatchTrustedInput(                                              \
@@ -94,7 +90,7 @@ bool NativeMediaWebViewSourceContains(
 void NativeMediaEnsureYoutubeTrustedAction(
     ICoreWebView2* webview, bool force = false) noexcept {
   // The helper belongs to the current JavaScript document. Cache by WebView and
-  // URL for the one-second watchdog, but force reinjection from the clean-player
+  // URL for the watchdog, but force reinjection from the clean-player
   // NavigationCompleted path so a same-URL document reload cannot lose it.
   static ICoreWebView2* installedWebview = nullptr;
   static std::wstring installedSource;
@@ -196,9 +192,6 @@ const wchar_t* ResolveNativeMediaPolicyScript(
   if (script == kNativeMediaYoutubeWatchdogScript) {
     NativeMediaEnsureYoutubeTrustedAction(webview);
     return kNativeMediaYoutubeControlRecoveryScript;
-  }
-  if (script == kNativeMediaYoutubeHealthScript) {
-    return kNativeMediaYoutubeHealthPolicyScript;
   }
   return script;
 }
