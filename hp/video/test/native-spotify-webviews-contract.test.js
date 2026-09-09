@@ -49,6 +49,8 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
 
 test('authentication and recovery geometry are independent while all six playback hosts stay alive', () => {
   assert.match(layout, /const size_t activeIndex = staggerSlotIndex_ % slots_\.size\(\)/);
+  assert.match(layout, /const size_t recoveryIndex =/);
+  assert.match(layout, /hostLayoutActiveSlot_ == recoveryIndex/);
   assert.match(layout, /kSpotifySerializedRecoveryZoom = 0\.80/);
   assert.match(spotify, /kSpotifyParkedPlaybackWidth = 320/);
   assert.match(spotify, /kSpotifyParkedPlaybackHeight = 180/);
@@ -60,7 +62,7 @@ test('authentication and recovery geometry are independent while all six playbac
   );
   assert.match(
     spotify,
-    /const bool recovery =\s*active && !authentication && SlotStateNeedsRecovery\(slot\.state\)/,
+    /const bool recovery =\s*i == hostLayoutActiveSlot_ && !authentication &&\s*SlotStateNeedsRecovery\(slot\.state\)/,
   );
   assert.match(spotify, /x = client\.right \+ 32/);
   assert.match(spotify, /slot\.controller->put_IsVisible\(TRUE\)/);
@@ -108,6 +110,7 @@ test('one adaptive scheduler serializes all six Spotify windows', () => {
   assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
+  assert.doesNotMatch(phaseSync, /kSpotifyAdaptiveSteadyStartMs/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed\)/);
   assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
