@@ -78,11 +78,10 @@ bool SpotifyWebViews::CreateHost(Slot& slot) noexcept {
 void SpotifyWebViews::Start() noexcept {
   if (started_ || !parentWindow_ || !IsWindow(parentWindow_)) return;
   started_ = true;
-  podcastMode_ = false;
   robustSchedulerStarted_ = false;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = 0;
-  youtubeCycleStartTick_ = 0;
+  scheduleStartTick_ = 0;
   staggerSlotValidated_ = false;
   hostLayoutMask_ = ~0u;
   hostLayoutActiveSlot_ = kAccountCount;
@@ -99,6 +98,15 @@ void SpotifyWebViews::Start() noexcept {
     slot.timedObserverInstallInFlight = false;
     slot.controllerCreating = false;
     slot.controllerCreateTick = 0;
+    slot.timedTarget = TimedSpotifyTarget::None;
+    slot.timedCatalogIndex = kNoTimedCatalogIndex;
+    slot.timedRotationCycle = 0;
+    slot.timedRotationPosition = 0;
+    slot.timedPlaybackStartTick = 0;
+    slot.timedRandomCIndex = kNoTimedCatalogIndex;
+    slot.timedRandomDIndex = kNoTimedCatalogIndex;
+    slot.timedRotationActive = false;
+    slot.podcastBreakActive = false;
     if (!CreateHost(slot)) continue;
   }
 
@@ -108,6 +116,7 @@ void SpotifyWebViews::Start() noexcept {
     CreateController(slots_[0]);
   }
   Resize();
+  StartAutonomousSchedule(GetTickCount64());
 }
 
 void SpotifyWebViews::CreateController(Slot& slot) noexcept {
