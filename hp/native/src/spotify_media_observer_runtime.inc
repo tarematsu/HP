@@ -84,17 +84,38 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     return !!target.title && track.title === normalize(target.title);
   };
   const isMedia = value => value instanceof HTMLMediaElement;
-  const requestRecovery = media => {
+  const rejectWrongTrack = media => {
     const target = syncTarget();
-    if (!target || target.kind !== 'music' || !state.started ||
-        state.endedPosted || state.recoveryPosted ||
-        state.targetMedia !== media || media.ended) {
+    if (!target || target.kind !== 'music' || state.endedPosted ||
+        !isMedia(media) || media.paused || media.ended) {
       return false;
     }
     const identity = currentTrack();
-    if ((identity.path || identity.title) && !matchesTarget(target, identity)) {
+    if ((!identity.path && !identity.title) || matchesTarget(target, identity)) {
       return false;
     }
+
+    // Spotify can append recommendations to its own queue. Never allow a
+    // non-target item to continue playing while native recovery catches up.
+    try { media.pause(); } catch (_) {}
+    state.started = false;
+    state.targetMedia = null;
+    state.heartbeatTime = -1;
+    state.heartbeatMisses = 0;
+    if (!state.recoveryPosted) {
+      state.recoveryPosted = true;
+      post('spotify:not-playing');
+    }
+    return true;
+  };
+  const requestRecovery = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || state.endedPosted ||
+        state.recoveryPosted || !isMedia(media) || media.ended) {
+      return false;
+    }
+    if (rejectWrongTrack(media)) return true;
+    if (!state.started || state.targetMedia !== media) return false;
     state.recoveryPosted = true;
     post('spotify:not-playing');
     return true;
@@ -131,6 +152,9 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
       setTimeout(() => confirmStarted(media), delay);
     });
   };
+  const scheduleIdentityCheck = (media, delay = 300) => {
+    setTimeout(() => rejectWrongTrack(media), delay);
+  };
   const scheduleRecovery = (media, delay, requirePaused) => {
     const target = syncTarget();
     if (!target || target.kind !== 'music' || !state.started ||
@@ -166,9 +190,11 @@ constexpr wchar_t kSpotifyMediaObserverRuntimeScript[] = LR"JS(
     post,
     syncTarget,
     isMedia,
+    rejectWrongTrack,
     requestRecovery,
     confirmStarted,
     scheduleStartChecks,
+    scheduleIdentityCheck,
     scheduleRecovery,
     eventsInstalled: false,
     heartbeatTimer: 0
