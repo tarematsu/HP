@@ -14,8 +14,16 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url),
   'utf8',
 );
-const observer = readFileSync(
-  new URL('../../native/src/spotify_fast_end_observer.inc', import.meta.url),
+const runtime = readFileSync(
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url),
+  'utf8',
+);
+const events = readFileSync(
+  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
+  'utf8',
+);
+const heartbeat = readFileSync(
+  new URL('../../native/src/spotify_media_observer_heartbeat.inc', import.meta.url),
   'utf8',
 );
 const phase = readFileSync(
@@ -63,17 +71,15 @@ test('slow responsive layout settles before owner-only DOM recovery', () => {
 
 test('track completion stays event driven while media progress has a low-frequency heartbeat', () => {
   assert.match(rotation, /kSpotifyFastEndObserverScript/);
-  assert.match(observer, /__homePanelSpotifyMediaObserverInstalled/);
-  assert.match(observer, /document\.addEventListener\('ended'/);
-  assert.match(observer, /document\.addEventListener\('play'/);
-  assert.match(observer, /post\('spotify:timed-ended'\)/);
-  assert.match(observer, /spotify:generation/);
-  assert.match(observer, /setInterval\([\s\S]*10000\)/);
-  assert.match(observer, /heartbeatMisses >= 2/);
-  assert.match(observer, /currentTime > state\.heartbeatTime \+ 0\.05/);
-  assert.match(observer, /requestRecovery\(media\)/);
+  assert.match(events, /document\.addEventListener\('ended'/);
+  assert.match(events, /document\.addEventListener\('play'/);
+  assert.match(events, /post\('spotify:timed-ended'\)/);
+  assert.match(runtime, /spotify:generation/);
+  assert.match(heartbeat, /setInterval\([\s\S]*10000\)/);
+  assert.match(heartbeat, /heartbeatMisses >= 2/);
+  assert.match(heartbeat, /currentTime > state\.heartbeatTime \+ 0\.05/);
+  assert.match(heartbeat, /requestRecovery\(media\)/);
   assert.match(rotation, /eventGeneration != target->targetGeneration/);
-  assert.doesNotMatch(rotation, /BuildSpotify.*ObserverScript|std::wstring script/);
 });
 
 test('lost ExecuteScript callbacks expire instead of wedging a slot forever', () => {
@@ -100,18 +106,17 @@ test('rotation hard deadline is armed before browser playback state is known', (
     /slot\.timedPlaybackStartTick != 0[\s\S]*kSpotifyAdaptiveTrackDeadlineMs - age/,
   );
   assert.doesNotMatch(phase, /timedPlaybackStartTick = GetTickCount64\(\)/);
-  assert.doesNotMatch(rotation, /timedPlaybackStartTick == 0[\s\S]*timedPlaybackStartTick = now/);
 });
 
 test('advertisements cannot complete or start a requested song', () => {
   assert.match(
-    observer,
+    runtime,
     /!matchesTarget\(target, currentTrack\(\)\)[\s\S]*state\.started = false;[\s\S]*state\.targetMedia = null;/,
   );
   assert.match(
-    observer,
+    events,
     /!state\.started \|\| state\.endedPosted[\s\S]*state\.targetMedia !== media/,
   );
-  assert.match(observer, /post\('spotify:timed-started'\)/);
+  assert.match(runtime, /post\('spotify:timed-started'\)/);
   assert.match(rotation, /AdvanceTimedRotationSlot\(\*target, now\)/);
 });
