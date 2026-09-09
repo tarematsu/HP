@@ -1,7 +1,7 @@
 namespace {
-// One healthy slot is verified per turn. With the adaptive 20-second scheduler
-// this is one lightweight verification per account roughly every two minutes.
-constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 20ULL * 1000ULL;
+// One healthy slot is verified per turn. With the adaptive 40-second scheduler
+// this is one lightweight verification per account roughly every four minutes.
+constexpr ULONGLONG kSpotifySimpleSteadyTurnMs = 40ULL * 1000ULL;
 // A recovery owner gets enough time for one 12-second async timeout plus a
 // layout-settled retry before normal healthy-account fairness resumes.
 constexpr ULONGLONG kSpotifySimpleRecoveryHoldMs = 36ULL * 1000ULL;
