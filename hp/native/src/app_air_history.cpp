@@ -1,4 +1,5 @@
 #include "app.h"
+#include "web_renderer.h"
 #include <winrt/Windows.Data.Json.h>
 
 namespace hp {
@@ -45,9 +46,15 @@ void App::LoadAirHistory() {
   const fs::path path = dataDir_ / L"air-history.json";
   try {
     std::ifstream input(path, std::ios::binary);
-    if (!input) return;
+    if (!input) {
+      if (renderer_) renderer_->UpdateAirHistory(airHistory_);
+      return;
+    }
     const std::string text((std::istreambuf_iterator<char>(input)), {});
-    if (text.empty()) return;
+    if (text.empty()) {
+      if (renderer_) renderer_->UpdateAirHistory(airHistory_);
+      return;
+    }
     const auto array = winrt::Windows::Data::Json::JsonArray::Parse(Utf8ToWide(text));
     std::vector<AirHistorySample> history;
     bool normalized = false;
@@ -90,11 +97,11 @@ void App::LoadAirHistory() {
       normalized = true;
       history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
     }
-    renderState_.airHistory = std::move(history);
-    ++renderState_.airHistoryRevision;
+    airHistory_ = std::move(history);
     airHistoryDirty_ = normalized;
     if (airHistoryDirty_ && SaveAirHistory()) airHistoryDirty_ = false;
     lastAirHistorySavedAt_ = airHistoryDirty_ ? 0 : now;
+    if (renderer_) renderer_->UpdateAirHistory(airHistory_);
   } catch (const std::exception& error) {
     if (logger_) logger_->Warn(L"Air history load failed: " + Utf8ToWide(error.what()));
   } catch (...) {
@@ -107,7 +114,7 @@ bool App::SaveAirHistory() const {
     std::ostringstream output;
     output << "[";
     bool first = true;
-    for (const auto& sample : renderState_.airHistory) {
+    for (const auto& sample : airHistory_) {
       if (!first) output << ",";
       first = false;
       output << "{\"t\":" << sample.timestamp
@@ -143,7 +150,7 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
     return;
   }
 
-  auto& history = renderState_.airHistory;
+  auto& history = airHistory_;
   if (!history.empty() && history.back().timestamp == sample.timestamp) return;
   if (history.empty() || history.back().timestamp < sample.timestamp) {
     history.push_back(sample);
@@ -161,7 +168,6 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
   if (history.size() > kAirHistoryMaxSamples) {
     history.erase(history.begin(), history.end() - kAirHistoryMaxSamples);
   }
-  ++renderState_.airHistoryRevision;
   airHistoryDirty_ = true;
   if (lastAirHistorySavedAt_ <= 0 ||
       now - lastAirHistorySavedAt_ >= kAirHistoryPersistIntervalMs) {
@@ -170,7 +176,7 @@ void App::UpdateAirHistory(const SensorSnapshot& sensors) {
       lastAirHistorySavedAt_ = now;
     }
   }
-  MarkRenderStateDirty();
+  if (renderer_) renderer_->UpdateAirHistory(airHistory_);
 }
 
 }  // namespace hp

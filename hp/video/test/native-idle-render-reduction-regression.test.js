@@ -18,9 +18,9 @@ const mediaSection = readFileSync(
 test('hidden dashboard defers air graph projection and window invalidation', () => {
   assert.match(
     panelState,
-    /if \(nativeDashboardVisible_\) \{[\s\S]*RebuildNativeAirGraph\(UnixMillis\(\)\);[\s\S]*\} else \{[\s\S]*nativeAirGraph_ = \{\};/,
+    /void Renderer::UpdateAirHistory[\s\S]*if \(!nativeDashboardVisible_\) \{\s*nativeAirGraph_ = \{\};\s*return;\s*\}[\s\S]*RebuildNativeAirGraph\(UnixMillis\(\)\);[\s\S]*EnsureNativeStaticWindows\(\)/,
   );
-  assert.match(panelState, /if \(!nativeDashboardVisible_\) return;[\s\S]*EnsureNativeStaticWindows\(\)/);
+  assert.doesNotMatch(panelState, /airGraphExpired|airCutoff/);
   assert.match(lifecycle, /if \(visible\) \{[\s\S]*RebuildNativeAirGraph\(UnixMillis\(\)\);[\s\S]*StartRadarCompose\(\)/);
   assert.match(lifecycle, /ResetNativeBitmapCaches\(\);[\s\S]*nativeAirGraph_ = \{\};/);
 });

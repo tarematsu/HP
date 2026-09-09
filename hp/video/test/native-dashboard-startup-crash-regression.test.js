@@ -65,33 +65,28 @@ test('dashboard initialization rolls back every partially started stage', () => 
   );
 });
 
-test('native paint setup always balances BeginPaint when construction fails', () => {
+test('native paint setup always balances BeginPaint and restores selected GDI state', () => {
   const paintScope = section(
     panelWindows,
     'Renderer::NativePanelPaintScope::NativePanelPaintScope(',
-    'Renderer::NativePanelPaintScope::~NativePanelPaintScope()',
+    'bool Renderer::EnsureNativeStaticWindows()',
   );
   assert.match(paintScope, /paintDc\s*=\s*BeginPaint\(hwnd, &paint\)/);
   assert.match(paintScope, /previousBitmap\s*==\s*HGDI_ERROR/);
   assert.match(paintScope, /catch \(\.\.\.\)/);
   assert.match(
     paintScope,
-    /catch \(\.\.\.\) \{[\s\S]*EndPaint\(hwnd, &paint\);[\s\S]*paintDc = nullptr;[\s\S]*throw;/,
+    /catch \(\.\.\.\) \{[\s\S]*SelectObject\(dc, previousBitmap\);[\s\S]*EndPaint\(hwnd, &paint\);[\s\S]*throw;/,
+  );
+  assert.match(
+    paintScope,
+    /Renderer::NativePanelPaintScope::~NativePanelPaintScope\(\)[\s\S]*SelectObject\(dc, previousBitmap\)[\s\S]*EndPaint\(hwnd, &paint\)/,
   );
 });
 
-test('panel section cache restores selected GDI objects when drawing throws', () => {
-  const cachedSection = section(
-    bitmapCache,
-    'void Renderer::DrawCachedPanelSection(',
-    'HBITMAP Renderer::NativePanelBackBuffer(',
-  );
-  assert.match(cachedSection, /previous\s*==\s*HGDI_ERROR/);
-  assert.match(cachedSection, /catch \(\.\.\.\)/);
-  assert.match(
-    cachedSection,
-    /catch \(\.\.\.\) \{\s*SelectObject\(memoryDc, previous\);\s*DeleteObject\(bitmap\);\s*throw;/,
-  );
+test('removed panel section cache cannot add a second GDI selection lifetime', () => {
+  assert.doesNotMatch(bitmapCache, /DrawCachedPanelSection|PanelBitmapCache|nativeSectionBitmaps_/);
+  assert.match(bitmapCache, /HBITMAP Renderer::NativePanelBackBuffer/);
 });
 
 test('native panel class registration failure remains retryable', () => {

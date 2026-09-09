@@ -65,10 +65,21 @@ bool Renderer::LoadDashboard(const fs::path& jsonPath, bool* changed) {
     nativeDashboard_ = std::move(snapshot);
     dashboardUtf8_ = contentSignature;
     dashboardSourceStamp_ = nextStamp;
-    if (weatherChanged) ++dashboardRevisions_.weather;
-    if (octopusChanged || plugLayoutChanged) ++dashboardRevisions_.octopus;
-    if (switchbotChanged) ++dashboardRevisions_.switchbot;
     if (changed) *changed = contentChanged;
+
+    // Dashboard ownership ends here: the loader knows exactly which source
+    // changed, so invalidate that region directly instead of publishing a
+    // second set of renderer revisions for a later comparison pass.
+    if (nativeDashboardVisible_) {
+      if (weatherChanged) {
+        InvalidatePanelSection(nativeSideWindow_, PanelSection::Weather);
+      }
+      if (octopusChanged || plugLayoutChanged) {
+        InvalidatePanelSection(nativeMainWindow_, PanelSection::Energy);
+      } else if (switchbotChanged) {
+        InvalidatePanelSection(nativeMainWindow_, PanelSection::EnergySwitchBot);
+      }
+    }
     return true;
   } catch (...) {
     return false;

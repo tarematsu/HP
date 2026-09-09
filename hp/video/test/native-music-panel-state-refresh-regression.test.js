@@ -18,7 +18,7 @@ test('Music panel refreshes for every rendered Stationhead status change', () =>
   );
   assert.match(
     panelStateSource,
-    /if \(stationheadChanged \|\| stationheadHistoryChanged\)[\s\S]*PanelSection::Music/,
+    /if \(!nativeDashboardVisible_ \|\| \(!stationheadChanged && !historyChanged\)\) return;[\s\S]*PanelSection::Music/,
   );
   assert.doesNotMatch(
     panelStateSource,

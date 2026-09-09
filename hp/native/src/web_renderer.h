@@ -2,6 +2,7 @@
 #include "common.h"
 #include "dashboard_data.h"
 #include "render_state.h"
+#include "sensors.h"
 
 namespace hp {
 
@@ -123,8 +124,10 @@ class Renderer {
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
-  int NewsCount() const { return 0; }
   void Render();
+  void UpdateSensors(const SensorSnapshot& sensors);
+  void UpdateAirHistory(const std::vector<AirHistorySample>& history);
+  // Dormant Stationhead compatibility path. Active dashboard data bypasses it.
   void UpdateState(const RenderState& state);
   void TickNativePanels(int64_t nowMs, bool timerDriven = false);
   NativePlaybackFeedStatus NativePlaybackFeedStatusFor(
@@ -159,14 +162,6 @@ class Renderer {
     HBITMAP bitmap = nullptr;
     int width = 0;
     int height = 0;
-  };
-
-  struct PanelBitmapCache {
-    HBITMAP bitmap = nullptr;
-    int width = 0;
-    int height = 0;
-    uint64_t revision = 0;
-    uint64_t layoutRevision = 0;
   };
 
   struct AirGraphProjection {
@@ -234,11 +229,9 @@ class Renderer {
     Clock,
     ClockTime,
     PlaybackProgress,
-    Air,
     AirStats,
     AirGraph,
     Weather,
-    Controls,
     Music,
     Energy,
     EnergySwitchBot
@@ -256,9 +249,6 @@ class Renderer {
   void DrawEnergySection(HDC dc, const RECT& card);
   void DrawEnergySwitchBotSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
-  void DrawCachedPanelSection(
-      HDC dc, const RECT& card, PanelSection section, uint64_t revision,
-      void (Renderer::*draw)(HDC, const RECT&));
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
   void ReleaseNativePanelBackBuffer(HWND hwnd);
   void ReleaseNativePanelSurfaces() noexcept;
@@ -303,9 +293,6 @@ class Renderer {
   std::vector<StationheadPlayHistorySample> nativeStationheadPlayHistory_;
   StationheadStatus nativeStationhead_{};
   DashboardSnapshot nativeDashboard_{};
-  DashboardSectionRevisions renderedDashboardRevisions_{};
-  uint64_t nativeAirRenderRevision_ = 0;
-  uint64_t nativeLayoutRevision_ = 1;
   int width_ = 0;
   int height_ = 0;
   RECT bounds_{};
@@ -325,7 +312,6 @@ class Renderer {
   std::atomic<bool> shuttingDown_{false};
   std::string dashboardUtf8_;
   DashboardSourceStamp dashboardSourceStamp_{};
-  DashboardSectionRevisions dashboardRevisions_{};
   uint64_t spotifySourceRevision_ = 0;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
@@ -339,7 +325,6 @@ class Renderer {
   std::map<std::wstring, BitmapCacheEntry> nativeImageBitmaps_;
   uint64_t nativeImageUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
-  std::map<PanelSection, PanelBitmapCache> nativeSectionBitmaps_;
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
   mutable std::mutex nativeMinuteFactsMutex_;

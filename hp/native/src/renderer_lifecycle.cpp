@@ -129,7 +129,6 @@ void Renderer::Resize(int width, int height) {
   if (width_ == nextWidth && height_ == nextHeight) return;
   width_ = nextWidth;
   height_ = nextHeight;
-  ++nativeLayoutRevision_;
   bounds_.right = std::max(bounds_.left + 1L, bounds_.left + width_);
   bounds_.bottom = std::max(bounds_.top + 1L, bounds_.top + height_);
   ApplyNativeStaticBounds();
@@ -139,7 +138,6 @@ void Renderer::Resize(int width, int height) {
 void Renderer::SetBounds(const RECT& bounds) {
   if (EqualRect(&bounds_, &bounds)) return;
   bounds_ = bounds;
-  ++nativeLayoutRevision_;
   width_ = std::max(1L, bounds.right - bounds.left);
   height_ = std::max(1L, bounds.bottom - bounds.top);
   ApplyNativeStaticBounds();
