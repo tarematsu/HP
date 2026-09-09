@@ -57,39 +57,33 @@ test('cloud selects current-through-one-hour and terminal-forecast-minus-two-hou
   assert.match(cloudRadar, /validAt >= startAt[\s\S]*validAt <= terminalAt/);
   assert.match(cloudRadar, /"現在〜1時間"/);
   assert.match(cloudRadar, /"予報終端±2時間"/);
-  assert.match(radarUi, /animationIntervalMs = frames\.Size\(\) > 1 \? frameIntervalMs : 0;/);
+  assert.match(radarUi, /frames\.Size\(\) != 1/);
+  assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
   assert.match(cloudClient, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
   assert.match(cloudClient, /if \(precomposed \|\| !fs::exists\(target, error\)/);
 });
 
-test('native build crops satellite and map separately before embedding', () => {
+test('native build still carries legacy base layers only as inert packaged assets', () => {
   assert.match(buildRadarBase, /\$satelliteImage\.Width \* 0\.4/);
   assert.match(buildRadarBase, /\$satelliteImage\.Height \* 0\.4/);
   assert.match(buildRadarBase, /\$cropLeft = \[int\]\[Math\]::Floor/);
   assert.match(buildRadarBase, /\$cropTop = \[int\]\[Math\]::Floor/);
   assert.match(buildRadarBase, /Write-CroppedLayer -Image \$satelliteImage/);
   assert.match(buildRadarBase, /Write-CroppedLayer -Image \$mapImage/);
-  assert.doesNotMatch(buildRadarBase, /DrawImage\(\$satelliteImage[\s\S]*DrawImage\(\$mapImage/);
 
   assert.match(cmake, /generated\/radar-satellite\.png/);
   assert.match(cmake, /generated\/radar-map\.png/);
-  assert.match(cmake, /-SatelliteOutput "\$\{HOMEPANEL_RADAR_SATELLITE\}"/);
-  assert.match(cmake, /-MapOutput "\$\{HOMEPANEL_RADAR_MAP\}"/);
   assert.match(resource, /110 RCDATA "@HOMEPANEL_RADAR_SATELLITE@"/);
   assert.match(resource, /112 RCDATA "@HOMEPANEL_RADAR_MAP@"/);
-});
-
-test('runtime keeps satellite, rain tiles, and white map as three ordered layers', () => {
   assert.match(embeddedUi, /\{110, L"radar-satellite\.png"\}/);
   assert.match(embeddedUi, /\{112, L"radar-map\.png"\}/);
-  assert.doesNotMatch(embeddedUi.match(/constexpr RuntimeAsset kRuntimeAssets\[\][\s\S]*?\};/)?.[0] ?? '', /radar-base\.png/);
+});
 
-  assert.match(radarUi, /constexpr int kRadarLayerWidth = 768;/);
-  assert.match(radarUi, /constexpr int kRadarLayerHeight = 512;/);
-  assert.match(radarUi, /uiDir \/ L"radar-satellite\.png"/);
-  assert.match(radarUi, /uiDir \/ L"radar-map\.png"/);
-  assert.match(radarUi, /CachedRadarBitmap\(\s*L"radar-satellite"/s);
-  assert.match(radarUi, /CachedRadarBitmap\(\s*L"radar-map"/s);
-  assert.match(radarUi, /BlendBitmap\(composeDc, satelliteBitmap[\s\S]*for \(const RadarTile& tile : tiles\)[\s\S]*BlendBitmap\(composeDc, tileBitmap[\s\S]*BlendBitmap\(composeDc, mapBitmap/s);
-  assert.match(radarUi, /CachedRadarBitmap\(L"radar-tile:" \+ tile\.url, tile\.path,[\s\S]*256, 256\)/);
+test('native runtime never composes satellite, rain tiles, or white map locally', () => {
+  assert.match(radarUi, /RepresentativeRadarFramePath/);
+  assert.match(radarUi, /representative\/latest\.png/);
+  assert.match(radarUi, /DecodeImageFileToBitmap/);
+  assert.doesNotMatch(radarUi, /radar-satellite\.png|radar-map\.png/);
+  assert.doesNotMatch(radarUi, /CachedRadarBitmap|RadarTile|BlendBitmap|AlphaBlend/);
+  assert.doesNotMatch(radarUi, /for \(const RadarTile& tile/);
 });
