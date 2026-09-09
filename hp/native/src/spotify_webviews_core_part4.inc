@@ -10,6 +10,8 @@ void SpotifyWebViews::PlaceHosts() noexcept {
   constexpr int kSpotifyParkedPlaybackWidth = 320;
   constexpr int kSpotifyParkedPlaybackHeight = 180;
   constexpr int kSpotifyParkedPlaybackGap = 8;
+  constexpr int kSpotifyRecoveryInteractionWidth = 720;
+  constexpr int kSpotifyRecoveryInteractionHeight = 480;
 
   HDWP batch = BeginDeferWindowPos(static_cast<int>(slots_.size()));
   for (size_t i = 0; i < slots_.size(); ++i) {
@@ -23,10 +25,10 @@ void SpotifyWebViews::PlaceHosts() noexcept {
         i == hostLayoutActiveSlot_ && !authentication &&
         SlotStateNeedsRecovery(slot.state);
 
-    // A 1x1 WebView can make Chromium/Spotify treat a background player as
-    // effectively occluded and suspend its media pipeline. Keep every account
-    // alive in a small, distinct offscreen viewport; only a slot that currently
-    // needs recovery is expanded for reliable responsive DOM interaction.
+    // Parked 320x180 surfaces are playback-only. Chromium stays visible and the
+    // six audio pipelines remain lightweight, but no trusted interaction relies
+    // on Spotify rendering controls at this responsive breakpoint. The one
+    // serialized recovery owner gets a larger offscreen desktop-like viewport.
     int x = client.right + 32 + static_cast<int>(i) *
         (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
     int y = client.top;
@@ -40,13 +42,14 @@ void SpotifyWebViews::PlaceHosts() noexcept {
       height = activeHeight;
       insertAfter = HWND_TOP;
     } else if (recovery) {
-      // Give only the recovery owner a normal CSS viewport, but keep it offscreen
-      // beyond the six stable playback parking surfaces.
+      // Zoom is 0.80 for the serialized recovery owner, so these physical
+      // minimums expose at least a 900x600 CSS viewport. That avoids Spotify's
+      // compact layout hiding or moving the target play control during recovery.
       x = client.right + 32 + static_cast<int>(slots_.size()) *
           (kSpotifyParkedPlaybackWidth + kSpotifyParkedPlaybackGap);
       y = client.top + (clientHeight - activeHeight) / 2;
-      width = activeWidth;
-      height = activeHeight;
+      width = std::max(activeWidth, kSpotifyRecoveryInteractionWidth);
+      height = std::max(activeHeight, kSpotifyRecoveryInteractionHeight);
     }
 
     ShowWindow(slot.hostWindow, SW_SHOWNOACTIVATE);
@@ -108,7 +111,15 @@ void SpotifyWebViews::CloseSlot(Slot& slot) noexcept {
   slot.hostWindow = nullptr;
   slot.controllerCreating = false;
   slot.controllerCreateTick = 0;
+  ++slot.reconcileRequestGeneration;
+  if (slot.reconcileRequestGeneration == 0) ++slot.reconcileRequestGeneration;
   slot.reconcileInFlight = false;
+  slot.reconcileStartedTick = 0;
+  ++slot.timedObserverInstallGeneration;
+  if (slot.timedObserverInstallGeneration == 0) {
+    ++slot.timedObserverInstallGeneration;
+  }
+  slot.timedObserverInstallStartedTick = 0;
   slot.trustedClickTargetGeneration = 0;
   slot.trustedClickBlockedUntilTick = 0;
   slot.state = SlotState::NotCreated;
