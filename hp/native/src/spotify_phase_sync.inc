@@ -3,7 +3,7 @@ namespace {
 
 constexpr UINT_PTR kSpotifyRobustReconcileTimer = 0x53505243;
 constexpr UINT kSpotifyRobustUrgentTickMs = 2U * 1000U;
-constexpr UINT kSpotifyRobustHealthyTickMs = 20U * 1000U;
+constexpr UINT kSpotifyRobustHealthyTickMs = 40U * 1000U;
 constexpr ULONGLONG kSpotifyRobustNavigateRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyRobustControllerRetryMs = 20ULL * 1000ULL;
 constexpr ULONGLONG kSpotifyUnhealthyRenavigateMs = 30ULL * 1000ULL;
