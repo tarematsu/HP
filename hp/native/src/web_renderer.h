@@ -2,6 +2,7 @@
 #include "common.h"
 #include "dashboard_data.h"
 #include "render_state.h"
+#include "sensors.h"
 
 namespace hp {
 
