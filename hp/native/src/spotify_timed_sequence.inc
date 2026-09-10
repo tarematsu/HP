@@ -132,6 +132,7 @@ void SpotifyWebViews::ReconcilePodcastSlot(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
+              MarkPodcastPlaybackStarted(*target, now);
               SetSlotState(*target, SlotState::Playing);
               RecomputeForeground();
               ArmRobustScheduler();
