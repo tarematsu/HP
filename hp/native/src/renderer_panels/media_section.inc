@@ -5,7 +5,6 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
-#include "media_tver_cloud_queue_refresh.inc"
 #include "media_tver_episode_loop_policy.inc"
 #include "media_tver_series_dom_policy.inc"
 #include "media_tver_series_policy.inc"
@@ -76,6 +75,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
 // while the base host only needs the resolver declaration above. Keep the API
 // implementation on this side of the composition boundary.
 #include "media_tver_native_series_resolver.inc"
+#include "media_tver_cloud_queue_refresh.inc"
 
 namespace {
 bool NativeMediaWebViewSourceContains(
@@ -183,9 +183,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       return NativeMediaTverSeriesWatchdogPolicyScript();
     }
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
-      if (webview) {
-        webview->ExecuteScript(kNativeMediaTverCloudQueueRefreshScript, nullptr);
-      }
+      PrepareNativeMediaTverCloudQueueRefresh(webview, hostWindow, alive);
       return kNativeMediaTverPlaybackWatchdogPolicyScript;
     }
     return kNativeMediaTverWatchdogStaticScript;
