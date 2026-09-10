@@ -19,7 +19,11 @@ export interface BrowserRadarRenderRequest {
   publicUrl: string;
   outputWidth: number;
   outputHeight: number;
-  panels: [BrowserRadarPanelRequest, BrowserRadarPanelRequest];
+  panels: [
+    BrowserRadarPanelRequest,
+    BrowserRadarPanelRequest,
+    BrowserRadarPanelRequest,
+  ];
 }
 
 export interface BrowserRadarPanelResult {
@@ -28,7 +32,11 @@ export interface BrowserRadarPanelResult {
 
 export interface BrowserRadarRenderResult {
   png: Uint8Array;
-  panels: [BrowserRadarPanelResult, BrowserRadarPanelResult];
+  panels: [
+    BrowserRadarPanelResult,
+    BrowserRadarPanelResult,
+    BrowserRadarPanelResult,
+  ];
 }
 
 type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
@@ -82,7 +90,7 @@ export async function renderRepresentativeRadarFrame(
       canvas.height = payload.outputHeight;
       const context = canvas.getContext("2d");
       if (!context) throw new Error("radar render context unavailable");
-      const panelWidth = Math.floor(payload.outputWidth / 2);
+      const panelWidth = Math.floor(payload.outputWidth / payload.panels.length);
 
       const loadRequired = async (url: string) => {
         const response = await fetch(url, { cache: "force-cache" });
@@ -98,8 +106,17 @@ export async function renderRepresentativeRadarFrame(
       const satellite = await loadRequired(payload.satelliteUrl);
       const map = await loadRequired(payload.mapUrl);
       const drawBase = (bitmap: any, panelX: number) => {
-        const cropWidth = Math.max(1, Math.floor(bitmap.width * 0.4));
-        const cropHeight = Math.max(1, Math.floor(bitmap.height * 0.8));
+        // Center-crop the static z10 base to the panel aspect. With three
+        // 640x1280 panels this is 640x1280, matching 160x320 rain pixels at z8.
+        const panelAspect = panelWidth / payload.outputHeight;
+        const bitmapAspect = bitmap.width / bitmap.height;
+        let cropWidth = bitmap.width;
+        let cropHeight = bitmap.height;
+        if (bitmapAspect > panelAspect) {
+          cropWidth = Math.max(1, Math.floor(bitmap.height * panelAspect));
+        } else {
+          cropHeight = Math.max(1, Math.floor(bitmap.width / panelAspect));
+        }
         const sourceX = Math.floor((bitmap.width - cropWidth) / 2);
         const sourceY = Math.floor((bitmap.height - cropHeight) / 2);
         context.drawImage(
@@ -157,7 +174,9 @@ export async function renderRepresentativeRadarFrame(
       satellite.close?.();
       map.close?.();
       context.fillStyle = "rgba(255,255,255,0.58)";
-      context.fillRect(panelWidth - 1, 0, 2, payload.outputHeight);
+      for (let divider = 1; divider < payload.panels.length; divider += 1) {
+        context.fillRect(divider * panelWidth - 1, 0, 2, payload.outputHeight);
+      }
     }, {
       outputWidth: request.outputWidth,
       outputHeight: request.outputHeight,
@@ -174,6 +193,7 @@ export async function renderRepresentativeRadarFrame(
     return {
       png: new Uint8Array(screenshot),
       panels: panelResults.map(panel => ({ validTimeText: panel.validTimeText })) as [
+        BrowserRadarPanelResult,
         BrowserRadarPanelResult,
         BrowserRadarPanelResult,
       ],
