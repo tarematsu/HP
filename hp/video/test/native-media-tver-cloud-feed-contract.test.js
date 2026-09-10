@@ -42,7 +42,7 @@ test('cloud drops episodes that expire before the next hourly refresh', () => {
   assert.match(cloudFeed, /終了予定/);
   assert.match(cloudFeed, /filterEpisodesBeforeNextRefresh/);
   assert.match(cloudFeed, /expiresAt > cutoff/);
-  assert.match(cloudFeed, /episodes: episodes\.length/);
+  assert.match(cloudFeed, /episodeCount: episodes\.length/);
 });
 
 test('native resolver prefers the cloud feed but retains the current series API resolver as fallback', () => {
