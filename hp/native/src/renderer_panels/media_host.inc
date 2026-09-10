@@ -99,6 +99,7 @@ class NativeMediaPanelHost final {
 
  private:
   enum class Phase { YouTube, Tver };
+  static constexpr ULONGLONG kYoutubeWatchdogTimeoutMs = 5ULL * 1000ULL;
 
   void CapturePhaseTimes() noexcept {
     FILETIME startUtc{};
@@ -439,9 +440,18 @@ class NativeMediaPanelHost final {
     playAllProbeInFlight_ = false;
   }
 
+  void InvalidateYoutubeWatchdog() noexcept {
+    ++youtubeWatchdogRequestGeneration_;
+    if (youtubeWatchdogRequestGeneration_ == 0) {
+      ++youtubeWatchdogRequestGeneration_;
+    }
+    youtubeWatchdogInFlight_ = false;
+    youtubeWatchdogStartedTick_ = 0;
+  }
+
   void BeginYoutubePlaybackMonitors() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
-    youtubeWatchdogInFlight_ = false;
+    InvalidateYoutubeWatchdog();
     KillTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer);
     SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
              kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
@@ -452,7 +462,7 @@ class NativeMediaPanelHost final {
     if (hostWindow_ && IsWindow(hostWindow_)) {
       KillTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer);
     }
-    youtubeWatchdogInFlight_ = false;
+    InvalidateYoutubeWatchdog();
   }
 
   void StopYoutubeMonitors() noexcept {
@@ -546,17 +556,48 @@ class NativeMediaPanelHost final {
   }
 
   void ProbeYoutubeWatchdog() noexcept {
-    if (phase_ != Phase::YouTube || !webview_ || youtubeWatchdogInFlight_ ||
-        !IsYoutubeWatchPage()) return;
+    if (phase_ != Phase::YouTube || !webview_ || !IsYoutubeWatchPage()) return;
+
+    ULONGLONG now = GetTickCount64();
+    if (now == 0) now = 1;
+    if (youtubeWatchdogInFlight_) {
+      if (youtubeWatchdogStartedTick_ != 0 &&
+          now - youtubeWatchdogStartedTick_ < kYoutubeWatchdogTimeoutMs) {
+        return;
+      }
+      InvalidateYoutubeWatchdog();
+    }
+
+    ++youtubeWatchdogRequestGeneration_;
+    if (youtubeWatchdogRequestGeneration_ == 0) {
+      ++youtubeWatchdogRequestGeneration_;
+    }
+    const uint64_t requestGeneration = youtubeWatchdogRequestGeneration_;
     youtubeWatchdogInFlight_ = true;
+    youtubeWatchdogStartedTick_ = now;
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+               static_cast<UINT>(kYoutubeWatchdogTimeoutMs), nullptr);
+    }
     const auto alive = alive_;
-    const HRESULT started = webview_->ExecuteScript(
+    ComPtr<ICoreWebView2> requestView = webview_;
+    const HRESULT started = requestView->ExecuteScript(
         kNativeMediaYoutubeWatchdogScript,
         Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [this, alive](HRESULT result, LPCWSTR json) -> HRESULT {
-              if (!alive->load(std::memory_order_acquire)) return S_OK;
+            [this, alive, requestView, requestGeneration](
+                HRESULT result, LPCWSTR json) -> HRESULT {
+              if (!alive->load(std::memory_order_acquire) ||
+                  requestGeneration != youtubeWatchdogRequestGeneration_ ||
+                  webview_.Get() != requestView.Get()) {
+                return S_OK;
+              }
               youtubeWatchdogInFlight_ = false;
+              youtubeWatchdogStartedTick_ = 0;
               if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
+              if (hostWindow_ && IsWindow(hostWindow_)) {
+                SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+                         kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
+              }
               if (SUCCEEDED(result) && json &&
                   std::wstring_view(json) == L"\"reload\"") {
                 ReloadYoutubePlaylist();
@@ -573,7 +614,12 @@ class NativeMediaPanelHost final {
               }
               return S_OK;
             }).Get());
-    if (FAILED(started)) youtubeWatchdogInFlight_ = false;
+    if (FAILED(started) &&
+        requestGeneration == youtubeWatchdogRequestGeneration_ &&
+        webview_.Get() == requestView.Get()) {
+      youtubeWatchdogInFlight_ = false;
+      youtubeWatchdogStartedTick_ = 0;
+    }
   }
 
   void ProbeTverWatchdog() noexcept {
@@ -679,6 +725,8 @@ class NativeMediaPanelHost final {
   std::wstring phaseStartText_;
   std::wstring phaseEndText_;
   uint64_t controllerGeneration_ = 0;
+  uint64_t youtubeWatchdogRequestGeneration_ = 0;
+  ULONGLONG youtubeWatchdogStartedTick_ = 0;
   int playAllProbeAttempts_ = 0;
   bool controllerCreating_ = false;
   bool playAllProbeInFlight_ = false;

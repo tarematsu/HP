@@ -34,6 +34,32 @@ test('YouTube uses one adaptive watchdog with healthy and recovery cadence', () 
   assert.doesNotMatch(base + host, /kNativeMediaYoutubeControlWatchdogMs|kNativeMediaYoutubeHealthTimer/);
 });
 
+test('YouTube watchdog self-heals lost and stale ExecuteScript callbacks', () => {
+  assert.match(host, /kYoutubeWatchdogTimeoutMs = 5ULL \* 1000ULL/);
+  assert.match(host, /uint64_t youtubeWatchdogRequestGeneration_ = 0/);
+  assert.match(host, /ULONGLONG youtubeWatchdogStartedTick_ = 0/);
+  assert.match(
+    host,
+    /youtubeWatchdogInFlight_[\s\S]*youtubeWatchdogStartedTick_[\s\S]*kYoutubeWatchdogTimeoutMs[\s\S]*InvalidateYoutubeWatchdog\(\)/,
+  );
+  assert.match(
+    host,
+    /requestGeneration != youtubeWatchdogRequestGeneration_[\s\S]*webview_\.Get\(\) != requestView\.Get\(\)/,
+  );
+  assert.match(
+    host,
+    /InvalidateYoutubeWatchdog\(\) noexcept[\s\S]*\+\+youtubeWatchdogRequestGeneration_[\s\S]*youtubeWatchdogInFlight_ = false[\s\S]*youtubeWatchdogStartedTick_ = 0/,
+  );
+  assert.match(
+    host,
+    /youtubeWatchdogStartedTick_ = now;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kYoutubeWatchdogTimeoutMs/,
+  );
+  assert.match(
+    host,
+    /youtubeWatchdogStartedTick_ = 0;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kNativeMediaYoutubeWatchdogHealthyMs/,
+  );
+});
+
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
   assert.match(trustedInput, /ICoreWebView2Controller3/);
   assert.match(trustedInput, /get_RasterizationScale/);
