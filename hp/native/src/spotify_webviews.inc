@@ -12,6 +12,7 @@
 #include "spotify_webviews.cpp"
 #include "spotify_network_block.inc"
 #include "spotify_host_layout.inc"
+#include "spotify_cloud_playlist.inc"
 
 // Keep existing call sites static while routing music reconciliation through the
 // now-playing-scoped identity implementation. Podcast reconciliation stays on
