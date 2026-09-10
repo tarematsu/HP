@@ -1,9 +1,11 @@
 // Native TVer series resolver. DOM interaction and playback remain WebView
-// responsibilities; this module only resolves TVer's series API chain with
-// WinHTTP so browser CORS/CSP cannot block episode discovery.
+// responsibilities; this module first consumes the cloud-collected Sakurazaka
+// episode feed, then falls back to the existing series API chain if unavailable.
 namespace {
 constexpr ULONGLONG kNativeMediaTverSeriesRetryMs = 15'000ULL;
 constexpr size_t kNativeMediaTverMaximumApiBytes = 2U * 1024U * 1024U;
+constexpr wchar_t kNativeMediaTverCloudFeedUrl[] =
+    L"https://homepanel-cloud.tarematsu.workers.dev/v1/native/tver-feed";
 constexpr wchar_t kNativeMediaTverUserAgent[] =
     L"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     L"(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
@@ -212,12 +214,67 @@ std::vector<std::wstring> NativeMediaTverContentIds(
   return ids;
 }
 
+std::vector<std::wstring> NativeMediaTverCloudFeedEpisodeIds(
+    const winrt::Windows::Data::Json::JsonObject& root) {
+  std::vector<std::wstring> ids;
+  try {
+    if (!root.HasKey(L"episodes") ||
+        root.GetNamedValue(L"episodes").ValueType() !=
+            winrt::Windows::Data::Json::JsonValueType::Array) {
+      return ids;
+    }
+    constexpr std::wstring_view marker = L"https://tver.jp/episodes/";
+    const auto episodes = root.GetNamedArray(L"episodes");
+    for (const auto& value : episodes) {
+      try {
+        if (value.ValueType() !=
+            winrt::Windows::Data::Json::JsonValueType::Object) {
+          continue;
+        }
+        const std::wstring url =
+            value.GetObject().GetNamedString(L"url", L"").c_str();
+        if (url.compare(0, marker.size(), marker) != 0) continue;
+        const size_t idStart = marker.size();
+        const size_t idEnd = url.find_first_of(L"/?#", idStart);
+        const std::wstring id = url.substr(
+            idStart,
+            idEnd == std::wstring::npos ? std::wstring::npos : idEnd - idStart);
+        if (!NativeMediaTverIdIsSafe(id) ||
+            std::find(ids.begin(), ids.end(), id) != ids.end()) {
+          continue;
+        }
+        ids.push_back(id);
+      } catch (...) {
+      }
+    }
+  } catch (...) {
+    ids.clear();
+  }
+  return ids;
+}
+
 NativeMediaTverSeriesResolution ResolveNativeMediaTverSeries(
     std::wstring seriesId) noexcept {
   NativeMediaTverSeriesResolution resolution;
   resolution.seriesId = std::move(seriesId);
   try {
     if (!NativeMediaTverIdIsSafe(resolution.seriesId)) return resolution;
+
+    // The cloud collector owns Sakurazaka-wide discovery. If it is unavailable,
+    // stale, malformed, or empty, preserve the previous two-series resolver below.
+    try {
+      constexpr wchar_t kCloudHeaders[] = L"Accept: application/json\r\n";
+      const auto cloudFeed = NativeMediaTverParseJson(NativeMediaTverHttpRequest(
+          L"GET", kNativeMediaTverCloudFeedUrl, kCloudHeaders));
+      resolution.episodeIds = NativeMediaTverCloudFeedEpisodeIds(cloudFeed);
+      if (!resolution.episodeIds.empty()) {
+        resolution.success = true;
+        return resolution;
+      }
+    } catch (...) {
+      resolution.episodeIds.clear();
+    }
+
     constexpr wchar_t kApiHeaders[] =
         L"x-tver-platform-type: web\r\n"
         L"Origin: https://tver.jp\r\n"
