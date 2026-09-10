@@ -69,15 +69,17 @@ test('native resolver prefers the cloud feed but retains the current series API 
 });
 
 test('native TVer refreshes an active queue from newer cloud feeds without interrupting the current episode', () => {
-  assert.match(cloudQueueRefresh, /checkIntervalMs = 30 \* 60 \* 1000/);
-  assert.match(cloudQueueRefresh, /__homePanelTverCloudFeedGeneratedAt/);
-  assert.match(cloudQueueRefresh, /generatedAtMs <= previousGeneratedAtMs/);
+  assert.match(cloudQueueRefresh, /kNativeMediaTverCloudQueueRefreshMs =\s*30ULL \* 60ULL \* 1000ULL/);
+  assert.match(cloudQueueRefresh, /NativeMediaTverHttpRequest\([\s\S]*kNativeMediaTverCloudFeedUrl/);
+  assert.match(cloudQueueRefresh, /GetNamedString\(L"generatedAt"/);
+  assert.match(cloudQueueRefresh, /result\.generatedAt <= state\.appliedGeneratedAt/);
   assert.match(cloudQueueRefresh, /slice\(0, currentIndex \+ 1\)/);
-  assert.match(cloudQueueRefresh, /const remaining = fresh\.filter\(url => !seen\.has\(url\)\)/);
+  assert.match(cloudQueueRefresh, /const remaining = \[\][\s\S]*seen\.has\(normalized\)/);
   assert.match(cloudQueueRefresh, /JSON\.stringify\(\{ hrefs, index: prefix\.length - 1 \}\)/);
+  assert.doesNotMatch(cloudQueueRefresh, /\bfetch\s*\(/);
   assert.doesNotMatch(cloudQueueRefresh, /location\.(?:replace|assign)|location\.href\s*=/);
   assert.match(
     mediaSection,
-    /tver\.jp\/episodes\/[\s\S]*ExecuteScript\(kNativeMediaTverCloudQueueRefreshScript, nullptr\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
+    /tver\.jp\/episodes\/[\s\S]*PrepareNativeMediaTverCloudQueueRefresh\(webview, hostWindow, alive\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
   );
 });
