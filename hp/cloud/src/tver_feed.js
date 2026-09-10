@@ -1,13 +1,15 @@
 import puppeteer from '@cloudflare/puppeteer';
 
 const TVER_ORIGIN = 'https://tver.jp';
-const TVER_TALENT_URL = 'https://tver.jp/talents/t04c4bf';
+const TVER_TALENT_ID = 't04c4bf';
+const TVER_TALENT_URL = `${TVER_ORIGIN}/talents/${TVER_TALENT_ID}`;
 const SAKAMICHI_DB_URL = 'https://sakamichidb.anosaka.com/tver_programs/?talent=%E6%AB%BB%E5%9D%8246&sort=custom';
 const FEED_OBJECT_KEY = 'native/tver-feed.json';
 const BROWSER_TIMEOUT_MS = 45_000;
 const MAX_NETWORK_BODIES = 32;
 const MAX_NETWORK_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_EPISODES = 200;
+const MAX_FEED_AGE_MS = 12 * 60 * 60 * 1000;
 const USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) '
   + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 
@@ -99,7 +101,7 @@ async function collectTalentEpisodes(env) {
     page.on('response', (response) => {
       if (capturedBodies >= MAX_NETWORK_BODIES) return;
       const url = response.url();
-      if (!url.startsWith(TVER_ORIGIN)) return;
+      if (!url.startsWith(TVER_ORIGIN) && !url.includes('tver.jp')) return;
       const headers = response.headers() || {};
       const contentType = String(headers['content-type'] || '');
       if (!/application\/(?:json|ld\+json)|text\/json/i.test(contentType)) return;
@@ -109,7 +111,11 @@ async function collectTalentEpisodes(env) {
       networkTasks.push(
         response.text()
           .then((text) => {
-            if (text.length <= MAX_NETWORK_BODY_BYTES) collectEpisodeCandidates(text, output);
+            if (text.length > MAX_NETWORK_BODY_BYTES) return;
+            // TVer also loads recommendation/ranking data. Only trust API payloads
+            // tied to the Sakurazaka talent identifier rather than every JSON response.
+            if (!url.includes(TVER_TALENT_ID) && !text.includes(TVER_TALENT_ID)) return;
+            collectEpisodeCandidates(text, output);
           })
           .catch(() => {})
       );
@@ -125,12 +131,24 @@ async function collectTalentEpisodes(env) {
       await delay(750);
     }
 
-    const links = await page.evaluate(() => Array.from(
-      document.querySelectorAll('a[href*="/episodes/"]'),
-      (element) => element.href || element.getAttribute('href') || ''
-    ));
+    const links = await page.evaluate(() => {
+      const excludedHeading = /^(?:あなたにおすすめ|おすすめ|関連番組|関連動画|ランキング)$/;
+      const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
+      const belongsToExcludedSection = link => {
+        let scope = link.parentElement;
+        for (let depth = 0; scope && depth < 7 && scope !== document.body; ++depth, scope = scope.parentElement) {
+          for (const child of scope.children || []) {
+            if (!child.matches?.('h1,h2,h3,h4,h5,h6,[role="heading"]')) continue;
+            if (excludedHeading.test(normalize(child.textContent))) return true;
+          }
+        }
+        return false;
+      };
+      return Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
+        .filter(link => !belongsToExcludedSection(link))
+        .map(element => element.href || element.getAttribute('href') || '');
+    });
     for (const link of links) addEpisodeUrl(output, link);
-    collectEpisodeCandidates(await page.content(), output);
     await Promise.allSettled(networkTasks);
     return [...output].slice(0, MAX_EPISODES);
   } finally {
@@ -207,27 +225,41 @@ export function shouldRefreshTverFeed(scheduledTime = Date.now()) {
   return date.getUTCMinutes() === 0 && date.getUTCHours() % 3 === 0;
 }
 
+function scheduleFeedWarmup(env, ctx) {
+  if (!ctx?.waitUntil) return;
+  ctx.waitUntil(refreshTverFeed(env).catch((error) => {
+    console.error('tver-feed-warmup-failed', error instanceof Error ? error.message : String(error));
+  }));
+}
+
 export async function tverFeedResponse(env, ctx) {
   if (!env?.DATA_BUCKET) {
     return Response.json({ ok: false, error: 'TVer feed storage unavailable' }, { status: 503 });
   }
   const object = await env.DATA_BUCKET.get(FEED_OBJECT_KEY);
   if (!object) {
-    if (ctx?.waitUntil) {
-      ctx.waitUntil(refreshTverFeed(env).catch((error) => {
-        console.error('tver-feed-warmup-failed', error instanceof Error ? error.message : String(error));
-      }));
-    }
+    scheduleFeedWarmup(env, ctx);
     return Response.json({ ok: false, error: 'TVer feed unavailable', retryable: true }, {
       status: 503,
       headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }
     });
   }
+
+  const generatedAtMs = Date.parse(object.customMetadata?.generatedAt || '');
+  const ageMs = Date.now() - generatedAtMs;
+  if (!Number.isFinite(generatedAtMs) || ageMs > MAX_FEED_AGE_MS || ageMs < -60 * 60 * 1000) {
+    scheduleFeedWarmup(env, ctx);
+    return Response.json({ ok: false, error: 'TVer feed stale', retryable: true }, {
+      status: 503,
+      headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }
+    });
+  }
+
   return new Response(object.body, {
     status: 200,
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'public, max-age=300, stale-if-error=43200',
+      'Cache-Control': 'public, max-age=300, stale-if-error=3600',
       'Access-Control-Allow-Origin': '*',
       'X-Content-Type-Options': 'nosniff'
     }
