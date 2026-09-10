@@ -107,6 +107,7 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
     events,
     /state\.endedPosted = true;[\s\S]*stopAllMedia\(\)[\s\S]*post\('spotify:timed-ended'\)/,
   );
+  assert.match(events, /const finishLeadSeconds = 2\.0;/);
   assert.match(
     events,
     /currentTime >= duration - finishLeadSeconds[\s\S]*finishTarget\(media\)/,
