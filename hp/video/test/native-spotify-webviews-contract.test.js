@@ -129,14 +129,14 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
 test('one adaptive scheduler serializes all six Spotify windows with one shared startup offset', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 40U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /% accountCount/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
   assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);
