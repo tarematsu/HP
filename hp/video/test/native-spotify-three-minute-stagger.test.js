@@ -180,23 +180,28 @@ test('timed playback opens all fixed songs by direct track URL without script re
   assert.doesNotMatch(timed, /BuildTimedTrackScript|ensureRepeatOne|control-button-repeat/);
 });
 
-test('TALKABOUT is inserted once after every ten complete six-song cycles', () => {
+test('TALKABOUT uses a restart-safe two-hour deadline instead of cycle counting', () => {
   assert.match(scripts, /kSpotifyStaticPodcastReconcileScript/);
   assert.match(scripts, /const playbackRate = 3\.0/);
   assert.match(scripts, /__homePanelSpotifyPodcastOneShot/);
   assert.match(scripts, /media\.addEventListener\('ended'/);
   assert.match(scripts, /return 'completed'/);
   assert.match(header, /bool podcastBreakActive = false/);
-  assert.match(rotation, /kSpotifyPodcastBreakEveryCycles = 10ULL/);
-  assert.match(rotation, /\+\+slot\.timedRotationCycle/);
-  assert.match(rotation, /timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL/);
+  assert.match(header, /kSpotifyPodcastIntervalMs =\s*2ULL \* 60ULL \* 60ULL \* 1000ULL/);
+  assert.match(header, /podcastDueTick = 0/);
+  assert.match(rotation, /spotify-talkabout-schedule\.txt/);
+  assert.match(rotation, /StartOverduePodcastBreak/);
+  assert.match(rotation, /MarkPodcastPlaybackStarted/);
+  assert.match(rotation, /podcastDueTick = now \+ kSpotifyPodcastIntervalMs/);
   assert.match(rotation, /BeginPodcastBreak\(slot, now\)/);
   assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
+  assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);
+  assert.doesNotMatch(rotation, /kSpotifyPodcastBreakEveryCycles|timedRotationCycle %/);
   assert.match(
     timed,
-    /target->timedTarget != TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+    /MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*SetSlotState\(\*target, SlotState::Playing\)/,
   );
-  assert.match(rotation, /CompletePodcastBreak[\s\S]*ApplyTimedRotationTarget\(slot\)[\s\S]*NavigateActiveTimedSlot\(slot\)/);
+  assert.match(rotation, /CompletePodcastBreak[\s\S]*timedRotationPosition = 0[\s\S]*ApplyTimedRotationTarget\(slot\)[\s\S]*NavigateActiveTimedSlot\(slot\)/);
   assert.match(rotation, /podcastBreakActive[\s\S]*timedPlaybackStartTick = 0/);
 });
 
