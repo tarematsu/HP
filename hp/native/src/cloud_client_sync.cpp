@@ -1,5 +1,7 @@
 // Device-state synchronization only. Radar localization and dormant
 // Stationhead health projection live in dedicated implementation files.
+#include "cloud_client_radar_cache.cpp"
+#include "cloud_client_stationhead_health.cpp"
 #include "cloud_client.h"
 #include <limits>
 #include <winrt/Windows.Data.Json.h>
