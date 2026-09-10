@@ -12,14 +12,42 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   const { state, post, syncTarget, isMedia, enforceTarget,
           scheduleTargetChecks, scheduleRecovery } = runtime;
+  const finishLeadSeconds = 0.75;
+
+  const stopMedia = media => {
+    try { if (isMedia(media) && !media.paused) media.pause(); } catch (_) {}
+  };
+  const stopAllMedia = () => {
+    document.querySelectorAll('audio, video').forEach(stopMedia);
+  };
+  const quarantineCompletedGeneration = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || !state.endedPosted ||
+        !isMedia(media)) {
+      return false;
+    }
+    stopMedia(media);
+    return true;
+  };
+  const finishTarget = media => {
+    const target = syncTarget();
+    if (!target || target.kind !== 'music' || !isMedia(media) ||
+        !state.started || state.endedPosted || state.targetMedia !== media) {
+      return false;
+    }
+    clearTimeout(state.stallTimer);
+    state.stallTimer = 0;
+    // Mark completion before pausing so the resulting pause event cannot arm
+    // recovery for the old generation.
+    state.endedPosted = true;
+    stopAllMedia();
+    post('spotify:timed-ended');
+    return true;
+  };
 
   document.addEventListener('play', event => {
     if (!isMedia(event.target)) return;
-    const target = syncTarget();
-    if (target && target.kind === 'music' && state.endedPosted) {
-      try { event.target.pause(); } catch (_) {}
-      return;
-    }
+    if (quarantineCompletedGeneration(event.target)) return;
     clearTimeout(state.stallTimer);
     state.stallTimer = 0;
     state.heartbeatTime = Number(event.target.currentTime) || 0;
@@ -29,6 +57,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
 
   document.addEventListener('playing', event => {
     if (!isMedia(event.target)) return;
+    if (quarantineCompletedGeneration(event.target)) return;
     enforceTarget(event.target);
   }, true);
 
@@ -40,13 +69,28 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   for (const eventName of ['loadedmetadata', 'durationchange']) {
     document.addEventListener(eventName, event => {
       if (!isMedia(event.target) || event.target.ended) return;
+      if (quarantineCompletedGeneration(event.target)) return;
       scheduleTargetChecks(event.target);
     }, true);
   }
 
   document.addEventListener('timeupdate', event => {
-    if (!isMedia(event.target) || event.target.ended || event.target.paused) return;
-    enforceTarget(event.target);
+    const media = event.target;
+    if (!isMedia(media) || media.ended || media.paused) return;
+    if (quarantineCompletedGeneration(media)) return;
+    if (enforceTarget(media) !== 'playing') return;
+
+    // Do not let Spotify reach the natural end of a direct-track page. Cutting
+    // the final fraction of a second prevents its autoplay queue from getting a
+    // chance to start a recommendation before native navigation reaches the
+    // next requested A-F target.
+    const duration = Number(media.duration);
+    const currentTime = Number(media.currentTime);
+    if (Number.isFinite(duration) && duration > 0 &&
+        Number.isFinite(currentTime) && currentTime >= 0 &&
+        currentTime >= duration - finishLeadSeconds) {
+      finishTarget(media);
+    }
   }, true);
 
   document.addEventListener('pause', event => {
@@ -62,19 +106,7 @@ constexpr wchar_t kSpotifyMediaObserverEventsScript[] = LR"JS(
   }
 
   document.addEventListener('ended', event => {
-    const media = event.target;
-    syncTarget();
-    if (!isMedia(media) || !state.started || state.endedPosted ||
-        state.targetMedia !== media) {
-      return;
-    }
-    clearTimeout(state.stallTimer);
-    state.stallTimer = 0;
-    state.endedPosted = true;
-    document.querySelectorAll('audio, video').forEach(candidate => {
-      try { candidate.pause(); } catch (_) {}
-    });
-    post('spotify:timed-ended');
+    finishTarget(event.target);
   }, true);
 
   document.querySelectorAll('audio, video').forEach(media => {
