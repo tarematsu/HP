@@ -167,6 +167,7 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
+  slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -205,6 +206,7 @@ void SpotifyWebViews::CompletePodcastBreak(
   // cycle and resume from its first block/track.
   slot.timedRotationPosition = 0;
   PrepareTimedRotationCycle(slot);
+  slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -223,6 +225,7 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
+    slot.timedCloudRotationRevision = cloudRotationRevision_;
     if (slot.timedCycleTracks.empty()) return;
   } else {
     if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
