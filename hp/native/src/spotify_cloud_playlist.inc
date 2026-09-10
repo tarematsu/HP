@@ -117,9 +117,9 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
         if (group.mode == RotationGroup::Mode::Random) {
           double requested = source.GetNamedNumber(L"count", 1.0);
           if (!std::isfinite(requested)) requested = 1.0;
-          group.count = std::clamp<size_t>(
-              static_cast<size_t>(std::max(0.0, std::floor(requested))),
-              size_t{0}, group.tracks.size());
+          requested = std::clamp(
+              requested, 0.0, static_cast<double>(group.tracks.size()));
+          group.count = static_cast<size_t>(std::floor(requested));
           if (group.count == 0) continue;
           maximumCycleTracks += group.count;
         } else {
@@ -147,13 +147,13 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
         cloudPodcastPath_ = showPath;
       }
 
-      const double minutesValue =
-          talkAbout.GetNamedNumber(L"intervalMinutes", 120.0);
+      double minutesValue = talkAbout.GetNamedNumber(L"intervalMinutes", 120.0);
       if (std::isfinite(minutesValue)) {
-        const int minutes = std::clamp(
-            static_cast<int>(std::llround(minutesValue)),
-            kSpotifyMinPodcastIntervalMinutes,
-            kSpotifyMaxPodcastIntervalMinutes);
+        minutesValue = std::clamp(
+            minutesValue,
+            static_cast<double>(kSpotifyMinPodcastIntervalMinutes),
+            static_cast<double>(kSpotifyMaxPodcastIntervalMinutes));
+        const int minutes = static_cast<int>(std::llround(minutesValue));
         podcastIntervalMs_ = static_cast<ULONGLONG>(minutes) * 60ULL * 1000ULL;
       }
 
