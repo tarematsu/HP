@@ -16,7 +16,9 @@ const nativeResolver = readFileSync(
 );
 
 test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserves last good feed', () => {
-  assert.match(cloudFeed, /https:\/\/tver\.jp\/talents\/t04c4bf/);
+  assert.match(cloudFeed, /TVER_ORIGIN = 'https:\/\/tver\.jp'/);
+  assert.match(cloudFeed, /TVER_TALENT_ID = 't04c4bf'/);
+  assert.match(cloudFeed, /TVER_TALENT_URL = `\$\{TVER_ORIGIN\}\/talents\/\$\{TVER_TALENT_ID\}`/);
   assert.match(cloudFeed, /sakamichidb\.anosaka\.com\/tver_programs/);
   assert.match(cloudFeed, /Promise\.allSettled/);
   assert.match(cloudFeed, /if \(!episodeUrls\.length\)[\s\S]*throw new Error/);
