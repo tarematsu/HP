@@ -58,27 +58,28 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
       }
       if (fields[0] !== 'spotify:target') return;
 
+      const requestedRate = Number(fields[5]);
       const next = {
         pagePath: fields[1] || '',
         trackPath: fields[2] || '',
         title: (fields[3] || '').replace(/\s+/g, ' ').trim().toLowerCase(),
-        kind: fields[4] || ''
+        kind: fields[4] || '',
+        playbackRate: Number.isFinite(requestedRate) && requestedRate > 0
+            ? requestedRate : 3.0
       };
       const previous = window.__homePanelSpotifyNativeTarget;
       const changed = !previous ||
           previous.pagePath !== next.pagePath ||
           previous.trackPath !== next.trackPath ||
           previous.title !== next.title ||
-          previous.kind !== next.kind;
+          previous.kind !== next.kind ||
+          previous.playbackRate !== next.playbackRate;
       window.__homePanelSpotifyNativeTarget = next;
       if (changed) {
-        // Cut the old queue before a new direct-track target is reconciled.
         document.querySelectorAll('audio, video').forEach(media => {
           try { media.pause(); } catch (_) {}
         });
-        if (next.kind !== 'podcast') {
-          window.__homePanelSpotifyPodcastOneShot = null;
-        }
+        window.__homePanelSpotifyPodcastOneShot = null;
       }
     });
   }
@@ -89,7 +90,9 @@ constexpr wchar_t kSpotifyStaticPageBootstrapScript[] = LR"JS(
 constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
 (() => {
   const target = window.__homePanelSpotifyNativeTarget;
-  const playbackRate = 3.0;
+  const requestedRate = Number(target && target.playbackRate);
+  const playbackRate = Number.isFinite(requestedRate)
+      ? Math.max(0.5, Math.min(4.0, requestedRate)) : 3.0;
   const report = playing => {
     try {
       if (window.chrome && window.chrome.webview) {
@@ -202,11 +205,11 @@ constexpr wchar_t kSpotifyStaticPodcastReconcileScript[] = LR"JS(
     try {
       if (!media.__homePanelSpotifyPodcastRateBound) {
         media.__homePanelSpotifyPodcastRateBound = true;
-        media.defaultPlaybackRate = playbackRate;
         media.addEventListener('ratechange', () => {
           if (media.playbackRate !== playbackRate) media.playbackRate = playbackRate;
         }, { passive: true });
       }
+      media.defaultPlaybackRate = playbackRate;
       if (media.playbackRate !== playbackRate) media.playbackRate = playbackRate;
     } catch (_) {}
   });
