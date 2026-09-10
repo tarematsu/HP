@@ -1,31 +1,48 @@
 // Periodically reconcile the active TVer episode queue with the cloud feed.
-// The current episode and already-played prefix are preserved; only the
-// remaining queue is replaced, so refresh never interrupts active playback.
+// Network I/O stays native so TVer's page CSP cannot block feed refreshes. The
+// current episode and already-played prefix are preserved; only the remaining
+// queue is replaced, so refresh never interrupts active playback.
 namespace {
-constexpr wchar_t kNativeMediaTverCloudQueueRefreshScript[] = LR"JS(
+constexpr ULONGLONG kNativeMediaTverCloudQueueRefreshMs =
+    30ULL * 60ULL * 1000ULL;
+
+struct NativeMediaTverCloudQueueRefreshResult {
+  std::wstring generatedAt;
+  std::vector<std::wstring> episodeIds;
+  bool success = false;
+};
+
+struct NativeMediaTverCloudQueueRefreshState {
+  std::mutex mutex;
+  ICoreWebView2* webviewIdentity = nullptr;  // Identity only; never dereferenced by worker.
+  uint64_t generation = 0;
+  ULONGLONG lastAttemptAt = 0;
+  bool inFlight = false;
+  std::optional<NativeMediaTverCloudQueueRefreshResult> ready;
+  std::wstring appliedGeneratedAt;
+};
+
+NativeMediaTverCloudQueueRefreshState& NativeMediaTverCloudQueueRefresh() {
+  static NativeMediaTverCloudQueueRefreshState state;
+  return state;
+}
+
+std::wstring NativeMediaTverBuildCloudQueueRefreshScript(
+    const NativeMediaTverCloudQueueRefreshResult& result) {
+  if (!result.success || result.episodeIds.empty()) return {};
+
+  std::wstring script = LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp' ||
       !location.pathname.startsWith('/episodes/')) return null;
-
-  const feedUrl = 'https://homepanel-cloud.tarematsu.workers.dev/v1/native/tver-feed';
-  const checkIntervalMs = 30 * 60 * 1000;
-  const checkedAtKey = '__homePanelTverCloudFeedCheckedAt';
-  const generatedAtKey = '__homePanelTverCloudFeedGeneratedAt';
-  const seriesPathKey = '__homePanelTverSeriesPath';
-  const now = Date.now();
-
-  try {
-    const checkedAt = Number(sessionStorage.getItem(checkedAtKey) || '0');
-    if (Number.isFinite(checkedAt) && checkedAt > 0 &&
-        now - checkedAt < checkIntervalMs) {
-      return null;
-    }
-    // Set before fetch so a transient failure cannot trigger a request every
-    // 30-second watchdog tick.
-    sessionStorage.setItem(checkedAtKey, String(now));
-  } catch (_) {
-    return null;
+  const fresh = [)JS";
+  for (size_t index = 0; index < result.episodeIds.size(); ++index) {
+    const auto& episodeId = result.episodeIds[index];
+    if (!NativeMediaTverIdIsSafe(episodeId)) return {};
+    if (index) script += L",";
+    script += L"'https://tver.jp/episodes/" + episodeId + L"'";
   }
+  script += LR"JS(];
 
   const normalizeEpisodeUrl = value => {
     try {
@@ -41,95 +58,187 @@ constexpr wchar_t kNativeMediaTverCloudQueueRefreshScript[] = LR"JS(
     }
   };
 
-  void fetch(feedUrl, {
-    cache: 'no-store',
-    credentials: 'omit',
-    headers: { Accept: 'application/json' },
-  })
-    .then(response => {
-      if (!response.ok) throw new Error('feed unavailable');
-      return response.json();
-    })
-    .then(feed => {
-      if (!feed || !Array.isArray(feed.episodes)) return;
-      const generatedAtMs = Date.parse(feed.generatedAt || '');
-      if (!Number.isFinite(generatedAtMs)) return;
+  let seriesPath = '';
+  try {
+    seriesPath = sessionStorage.getItem('__homePanelTverSeriesPath') || '';
+  } catch (_) {
+    return null;
+  }
+  if (!/^\/series\/[A-Za-z0-9]+$/.test(seriesPath)) return null;
 
-      let previousGeneratedAtMs = Number.NaN;
-      try {
-        previousGeneratedAtMs = Date.parse(
-          sessionStorage.getItem(generatedAtKey) || ''
-        );
-      } catch (_) {
-        return;
-      }
-      if (Number.isFinite(previousGeneratedAtMs) &&
-          generatedAtMs <= previousGeneratedAtMs) {
-        return;
-      }
+  const queueKey = '__homePanelTverEpisodeQueue:' + seriesPath;
+  let queue;
+  try {
+    queue = JSON.parse(sessionStorage.getItem(queueKey) || 'null');
+  } catch (_) {
+    return null;
+  }
+  if (!queue || !Array.isArray(queue.hrefs) || !queue.hrefs.length) return null;
 
-      const fresh = [];
-      const freshSeen = new Set();
-      for (const episode of feed.episodes) {
-        const url = normalizeEpisodeUrl(episode && episode.url);
-        if (!url || freshSeen.has(url)) continue;
-        freshSeen.add(url);
-        fresh.push(url);
-      }
-      if (!fresh.length) return;
+  const currentIndex = queue.hrefs.findIndex(href => {
+    const normalized = normalizeEpisodeUrl(href);
+    if (!normalized) return false;
+    try { return new URL(normalized).pathname === location.pathname; }
+    catch (_) { return false; }
+  });
+  if (currentIndex < 0) return null;
 
-      let seriesPath = '';
-      try {
-        seriesPath = sessionStorage.getItem(seriesPathKey) || '';
-      } catch (_) {
-        return;
-      }
-      if (!/^\/series\/[A-Za-z0-9]+$/.test(seriesPath)) return;
+  const prefix = queue.hrefs
+    .slice(0, currentIndex + 1)
+    .map(normalizeEpisodeUrl)
+    .filter(Boolean);
+  if (!prefix.length) return null;
+  try {
+    if (new URL(prefix[prefix.length - 1]).pathname !== location.pathname) {
+      return null;
+    }
+  } catch (_) {
+    return null;
+  }
 
-      const queueKey = '__homePanelTverEpisodeQueue:' + seriesPath;
-      let queue;
-      try {
-        queue = JSON.parse(sessionStorage.getItem(queueKey) || 'null');
-      } catch (_) {
-        return;
-      }
-      if (!queue || !Array.isArray(queue.hrefs) || !queue.hrefs.length) return;
-
-      const currentIndex = queue.hrefs.findIndex(href => {
-        const normalized = normalizeEpisodeUrl(href);
-        if (!normalized) return false;
-        try { return new URL(normalized).pathname === location.pathname; }
-        catch (_) { return false; }
-      });
-      if (currentIndex < 0) return;
-
-      const prefix = queue.hrefs
-        .slice(0, currentIndex + 1)
-        .map(normalizeEpisodeUrl)
-        .filter(Boolean);
-      if (!prefix.length ||
-          new URL(prefix[prefix.length - 1]).pathname !== location.pathname) {
-        return;
-      }
-
-      const seen = new Set(prefix);
-      const remaining = fresh.filter(url => !seen.has(url));
-      const hrefs = prefix.concat(remaining);
-      try {
-        sessionStorage.setItem(
-          queueKey,
-          JSON.stringify({ hrefs, index: prefix.length - 1 })
-        );
-        sessionStorage.setItem(
-          generatedAtKey,
-          new Date(generatedAtMs).toISOString()
-        );
-      } catch (_) {
-      }
-    })
-    .catch(() => {});
-
-  return null;
+  const seen = new Set(prefix);
+  const remaining = [];
+  for (const href of fresh) {
+    const normalized = normalizeEpisodeUrl(href);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    remaining.push(normalized);
+  }
+  const hrefs = prefix.concat(remaining);
+  try {
+    sessionStorage.setItem(
+      queueKey,
+      JSON.stringify({ hrefs, index: prefix.length - 1 })
+    );
+  } catch (_) {
+    return null;
+  }
+  return true;
 })()
 )JS";
+  return script;
+}
+
+void ApplyNativeMediaTverCloudQueueRefresh(
+    ICoreWebView2* webview,
+    const std::shared_ptr<std::atomic<bool>>& alive,
+    NativeMediaTverCloudQueueRefreshResult result) noexcept {
+  if (!webview || !alive || !alive->load(std::memory_order_acquire) ||
+      !result.success || result.episodeIds.empty()) {
+    return;
+  }
+
+  auto& state = NativeMediaTverCloudQueueRefresh();
+  {
+    std::lock_guard lock(state.mutex);
+    if (state.webviewIdentity != webview ||
+        (!state.appliedGeneratedAt.empty() &&
+         result.generatedAt <= state.appliedGeneratedAt)) {
+      return;
+    }
+  }
+
+  const std::wstring script = NativeMediaTverBuildCloudQueueRefreshScript(result);
+  if (script.empty()) return;
+  const HRESULT started = webview->ExecuteScript(script.c_str(), nullptr);
+
+  std::lock_guard lock(state.mutex);
+  if (state.webviewIdentity != webview) return;
+  if (SUCCEEDED(started)) {
+    if (state.appliedGeneratedAt.empty() ||
+        result.generatedAt > state.appliedGeneratedAt) {
+      state.appliedGeneratedAt = std::move(result.generatedAt);
+    }
+  } else {
+    // Keep the already-fetched result so the next watchdog can retry injection
+    // without issuing another network request.
+    state.ready = std::move(result);
+  }
+}
+
+void PrepareNativeMediaTverCloudQueueRefresh(
+    ICoreWebView2* webview, HWND hostWindow,
+    const std::shared_ptr<std::atomic<bool>>& alive) noexcept {
+  if (!webview || !hostWindow || !IsWindow(hostWindow) || !alive) return;
+
+  auto& state = NativeMediaTverCloudQueueRefresh();
+  std::optional<NativeMediaTverCloudQueueRefreshResult> ready;
+  uint64_t generation = 0;
+  bool startWorker = false;
+  {
+    std::lock_guard lock(state.mutex);
+    if (state.webviewIdentity != webview) {
+      state.webviewIdentity = webview;
+      ++state.generation;
+      state.lastAttemptAt = 0;
+      state.inFlight = false;
+      state.ready.reset();
+      state.appliedGeneratedAt.clear();
+    }
+
+    if (state.ready) {
+      ready = std::move(state.ready);
+      state.ready.reset();
+    }
+
+    ULONGLONG now = GetTickCount64();
+    if (now == 0) now = 1;
+    if (!ready && !state.inFlight &&
+        (!state.lastAttemptAt ||
+         now - state.lastAttemptAt >= kNativeMediaTverCloudQueueRefreshMs)) {
+      state.inFlight = true;
+      state.lastAttemptAt = now;
+      generation = state.generation;
+      startWorker = true;
+    }
+  }
+
+  if (ready && ready->success) {
+    ApplyNativeMediaTverCloudQueueRefresh(
+        webview, alive, std::move(*ready));
+  }
+  if (!startWorker) return;
+
+  try {
+    std::thread([generation, hostWindow, alive] {
+      NativeMediaTverComApartment apartment;
+      NativeMediaTverCloudQueueRefreshResult result;
+      if (SUCCEEDED(apartment.result)) {
+        try {
+          constexpr wchar_t kCloudHeaders[] = L"Accept: application/json\r\n";
+          const auto cloudFeed = NativeMediaTverParseJson(NativeMediaTverHttpRequest(
+              L"GET", kNativeMediaTverCloudFeedUrl, kCloudHeaders));
+          result.generatedAt =
+              cloudFeed.GetNamedString(L"generatedAt", L"").c_str();
+          result.episodeIds = NativeMediaTverCloudFeedEpisodeIds(cloudFeed);
+          result.success = !result.generatedAt.empty() &&
+              !result.episodeIds.empty();
+        } catch (...) {
+          result.success = false;
+          result.generatedAt.clear();
+          result.episodeIds.clear();
+        }
+      }
+
+      if (!alive->load(std::memory_order_acquire)) return;
+      auto& shared = NativeMediaTverCloudQueueRefresh();
+      bool postWake = false;
+      {
+        std::lock_guard lock(shared.mutex);
+        if (shared.generation != generation) return;
+        shared.inFlight = false;
+        if (result.success) {
+          shared.ready = std::move(result);
+          postWake = true;
+        }
+      }
+      if (postWake && IsWindow(hostWindow)) {
+        PostMessageW(hostWindow, WM_TIMER, kNativeMediaTverWatchdogTimer, 0);
+      }
+    }).detach();
+  } catch (...) {
+    std::lock_guard lock(state.mutex);
+    if (state.generation == generation) state.inFlight = false;
+  }
+}
 }  // namespace
