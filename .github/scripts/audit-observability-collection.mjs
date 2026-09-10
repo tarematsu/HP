@@ -104,6 +104,16 @@ export function evaluateCollectionCoverage({
     );
   }
 
+  const tverFeedFresh = /"tverFeed"\s*:\s*\{[\s\S]{0,2000}?"ok"\s*:\s*true[\s\S]{0,2000}?"status"\s*:\s*"fresh"/m.test(publicHealthSummary);
+  const tverFeedEvidence = publicHealthSummary.match(/"tverFeed"\s*:\s*\{[\s\S]{0,2000}?\n\s*\}/m)?.[0] || '';
+  add(
+    'TVer feed freshness',
+    tverFeedFresh,
+    tverFeedFresh
+      ? tverFeedEvidence || 'HomePanel Cloud health reports a fresh TVer feed.'
+      : tverFeedEvidence || 'HomePanel Cloud health is missing a fresh tverFeed diagnostic.',
+  );
+
   const unsafeFallback = /::warning title=Telemetry filter fallback::/m.test(observabilityQueryLog);
   add(
     'Persisted diagnostic filter integrity',
@@ -153,9 +163,9 @@ async function selfTest() {
   }]));
   const telemetry = REQUIRED_CLOUDFLARE_WORKERS.map((worker) => `CPU_WORKER worker=${worker} version=v1 samples=1`).join('\n');
   const liveTail = REQUIRED_CLOUDFLARE_WORKERS.map((worker) => `LIVE_TAIL_SUMMARY worker=${worker} events=0 error_like=0 max_cpu_field=null`).join('\n');
-  const publicHealth = REQUIRED_PUBLIC_HEALTH_ENDPOINTS
+  const publicHealth = `${REQUIRED_PUBLIC_HEALTH_ENDPOINTS
     .map((endpoint) => `| ${endpoint} | success | 200 OK | 10 ms |`)
-    .join('\n');
+    .join('\n')}\n{\n  "tverFeed": {\n    "ok": true,\n    "status": "fresh",\n    "lastSuccessAt": "2026-09-11T03:00:00.000Z",\n    "episodeCount": 1,\n    "sources": ["tver-talent"]\n  }\n}`;
   const healthy = evaluateCollectionCoverage({
     configured: [...REQUIRED_CLOUDFLARE_WORKERS],
     deployments: deploymentEntries,
@@ -172,12 +182,16 @@ async function selfTest() {
     observabilitySummary: workerRows,
     telemetryLog: telemetry,
     liveTailLog: liveTail.replace(/^LIVE_TAIL_SUMMARY worker=sh-runtime-orchestrator.*$/m, ''),
-    publicHealthSummary: publicHealth.replace(/^.*HomePanel Cloud health.*$/m, ''),
+    publicHealthSummary: publicHealth
+      .replace(/^.*HomePanel Cloud health.*$/m, '')
+      .replace('"ok": true', '"ok": false')
+      .replace('"status": "fresh"', '"status": "stale"'),
     observabilityQueryLog: '::warning title=Telemetry filter fallback::rejected',
   });
   assert.ok(broken.failures.some((check) => check.name === 'Configured Worker contract'));
   assert.ok(broken.failures.some((check) => check.name === 'Live tail: sh-runtime-orchestrator'));
   assert.ok(broken.failures.some((check) => check.name === 'Public health: HomePanel Cloud health'));
+  assert.ok(broken.failures.some((check) => check.name === 'TVer feed freshness'));
   assert.ok(broken.failures.some((check) => check.name === 'Persisted diagnostic filter integrity'));
   console.log('observability collection integrity self-test passed');
 }
