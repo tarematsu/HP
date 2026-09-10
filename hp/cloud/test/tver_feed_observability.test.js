@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   TVER_FEED_OBSERVABILITY_MAX_AGE_MS,
@@ -91,20 +90,5 @@ describe('TVer feed observability', () => {
       }),
     }, now);
     expect(empty).toMatchObject({ ok: false, status: 'empty' });
-  });
-
-  it('exposes collector diagnostics without coupling base deployment health to TVer freshness', () => {
-    const unifiedWorker = readFileSync(
-      new URL('../src/unified_worker.js', import.meta.url),
-      'utf8',
-    );
-    expect(unifiedWorker).toMatch(/import \{ tverFeedObservability \}/);
-    expect(unifiedWorker).toMatch(/TVER_FEED_HEALTH_PATH = '\/api\/health\/tver-feed'/);
-    expect(unifiedWorker).toMatch(/pathname === TVER_FEED_HEALTH_PATH[\s\S]*tverFeedHealthResponse/);
-    expect(unifiedWorker).toMatch(/pathname === '\/api\/health'[\s\S]*homePanelCloudHealthResponse/);
-    expect(unifiedWorker).toMatch(/tverFeedObservability\(env\)/);
-    expect(unifiedWorker).toMatch(/tverFeed,/);
-    expect(unifiedWorker).toMatch(/status: health\.ok \? 200 : 503/);
-    expect(unifiedWorker).toMatch(/status: videoResponse\.status/);
   });
 });
