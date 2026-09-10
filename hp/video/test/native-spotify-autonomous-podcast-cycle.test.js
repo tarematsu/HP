@@ -45,6 +45,10 @@ test('the next two-hour deadline is persisted only after TALKABOUT is confirmed 
     /json && std::wstring_view\(json\) == L"true"[\s\S]*MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*SetSlotState\(\*target, SlotState::Playing\)/,
   );
   assert.match(
+    timed,
+    /std::wstring_view\(json\) == L"\\"completed\\""[\s\S]*MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+  );
+  assert.match(
     rotation,
     /MarkPodcastPlaybackStarted[\s\S]*podcastDueTick = now \+ kSpotifyPodcastIntervalMs[\s\S]*SavePodcastScheduleState\(\)/,
   );
