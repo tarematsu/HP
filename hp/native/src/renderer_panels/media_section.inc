@@ -75,6 +75,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
 // while the base host only needs the resolver declaration above. Keep the API
 // implementation on this side of the composition boundary.
 #include "media_tver_native_series_resolver.inc"
+#include "media_tver_cloud_queue_refresh.inc"
 
 namespace {
 bool NativeMediaWebViewSourceContains(
@@ -182,6 +183,7 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       return NativeMediaTverSeriesWatchdogPolicyScript();
     }
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
+      PrepareNativeMediaTverCloudQueueRefresh(webview, hostWindow, alive);
       return kNativeMediaTverPlaybackWatchdogPolicyScript;
     }
     return kNativeMediaTverWatchdogStaticScript;
