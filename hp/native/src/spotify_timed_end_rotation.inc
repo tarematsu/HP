@@ -1,7 +1,8 @@
 namespace hp {
 namespace {
 
-constexpr ULONGLONG kSpotifyPodcastBreakEveryCycles = 10ULL;
+constexpr wchar_t kSpotifyPodcastScheduleFile[] =
+    L"spotify-talkabout-schedule.txt";
 
 bool ParseSpotifyGenerationEvent(
     LPCWSTR rawMessage, std::wstring_view eventName,
@@ -23,6 +24,120 @@ bool ParseSpotifyGenerationEvent(
 }
 
 }  // namespace
+
+void SpotifyWebViews::EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept {
+  if (podcastScheduleLoaded_) return;
+  podcastScheduleLoaded_ = true;
+
+  const int64_t wallNow = UnixMillis();
+  std::array<int64_t, kAccountCount> persisted{};
+  bool complete = false;
+  try {
+    std::ifstream input(userDataFolder_.parent_path() /
+                        kSpotifyPodcastScheduleFile);
+    complete = static_cast<bool>(input);
+    for (size_t i = 0; complete && i < persisted.size(); ++i) {
+      complete = static_cast<bool>(input >> persisted[i]);
+    }
+  } catch (...) {
+    complete = false;
+  }
+
+  bool dirty = !complete;
+  for (size_t i = 0; i < slots_.size(); ++i) {
+    Slot& slot = slots_[i];
+    int64_t due = complete ? persisted[i] : 0;
+    if (due <= 0) {
+      // New installations fail toward replay rather than omission. The first
+      // TALKABOUT wave starts immediately, still respecting the established
+      // 40-second account staggering.
+      due = wallNow + static_cast<int64_t>(
+          static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs);
+      dirty = true;
+    }
+
+    // A corrupt file or a backwards wall-clock adjustment must never postpone
+    // TALKABOUT by more than one interval. Runtime scheduling below uses the
+    // monotonic tick counter after this restart-safe conversion.
+    const int64_t maxFuture =
+        wallNow + static_cast<int64_t>(kSpotifyPodcastIntervalMs);
+    if (due > maxFuture) {
+      due = maxFuture;
+      dirty = true;
+    }
+
+    slot.podcastDueUnixMs = due;
+    const int64_t remainingWallMs = std::max<int64_t>(0, due - wallNow);
+    const ULONGLONG remaining = static_cast<ULONGLONG>(std::min<int64_t>(
+        remainingWallMs, static_cast<int64_t>(kSpotifyPodcastIntervalMs)));
+    slot.podcastDueTick = now + remaining;
+    slot.podcastPlaybackRecorded = false;
+  }
+
+  if (dirty) SavePodcastScheduleState();
+}
+
+void SpotifyWebViews::SavePodcastScheduleState() noexcept {
+  try {
+    const fs::path path =
+        userDataFolder_.parent_path() / kSpotifyPodcastScheduleFile;
+    std::error_code error;
+    fs::create_directories(path.parent_path(), error);
+
+    fs::path temporary = path;
+    temporary += L".tmp";
+    {
+      std::ofstream output(temporary, std::ios::trunc);
+      if (!output) return;
+      for (const Slot& slot : slots_) {
+        output << slot.podcastDueUnixMs << '\n';
+      }
+      output.flush();
+      if (!output) return;
+    }
+
+    if (!MoveFileExW(temporary.c_str(), path.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+      fs::remove(temporary, error);
+    }
+  } catch (...) {
+    // Persistence failure may cause an extra replay after restart, but must
+    // never block the in-memory two-hour deadline.
+  }
+}
+
+bool SpotifyWebViews::StartOverduePodcastBreak(ULONGLONG now) noexcept {
+  EnsurePodcastScheduleLoaded(now);
+
+  if (lastPodcastDispatchTick_ != 0 &&
+      now - lastPodcastDispatchTick_ < kSpotifyAccountStartOffsetMs) {
+    return false;
+  }
+
+  for (Slot& slot : slots_) {
+    if (!slot.timedRotationActive || slot.podcastBreakActive ||
+        slot.podcastDueTick == 0 || now < slot.podcastDueTick ||
+        !slot.webview || SlotIsLoginPage(slot)) {
+      continue;
+    }
+
+    lastPodcastDispatchTick_ = now;
+    BeginPodcastBreak(slot, now);
+    return true;
+  }
+  return false;
+}
+
+void SpotifyWebViews::MarkPodcastPlaybackStarted(
+    Slot& slot, ULONGLONG now) noexcept {
+  if (!slot.podcastBreakActive || slot.podcastPlaybackRecorded) return;
+
+  slot.podcastPlaybackRecorded = true;
+  slot.podcastDueTick = now + kSpotifyPodcastIntervalMs;
+  slot.podcastDueUnixMs =
+      UnixMillis() + static_cast<int64_t>(kSpotifyPodcastIntervalMs);
+  SavePodcastScheduleState();
+}
 
 void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
   if (!slot.webview) return;
@@ -58,6 +173,7 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   slot.timedRotationActive = true;
   slot.podcastBreakActive = false;
+  slot.podcastPlaybackRecorded = false;
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
@@ -73,6 +189,7 @@ void SpotifyWebViews::BeginPodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive) return;
   slot.podcastBreakActive = true;
+  slot.podcastPlaybackRecorded = false;
   slot.timedTarget = TimedSpotifyTarget::TalkAbout;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
   slot.timedPlaybackStartTick = 0;
@@ -93,9 +210,11 @@ void SpotifyWebViews::CompletePodcastBreak(
   if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
-  // timedRotationPosition is already 0 because the preceding F completion
-  // closed the tenth cycle. Resume directly at A without incrementing the cycle
-  // a second time.
+  slot.podcastPlaybackRecorded = false;
+  // A two-hour deadline may interrupt any A-F position. Restart from A after
+  // the one-shot podcast so the music sequence always resumes deterministically.
+  slot.timedRotationPosition = 0;
+  PrepareTimedRotationCycle(slot);
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -112,10 +231,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
   if (slot.timedRotationPosition == 0U) {
     ++slot.timedRotationCycle;
     PrepareTimedRotationCycle(slot);
-    if (slot.timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL) {
-      BeginPodcastBreak(slot, now);
-      return;
-    }
   }
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;

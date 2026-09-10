@@ -24,17 +24,36 @@ test('Spotify playback state is autonomous from YouTube/TVer phase', () => {
   assert.doesNotMatch(lifecycle, /gSpotifyTverPhase|SetPodcastMode/);
 });
 
-test('each account inserts exactly one TALKABOUT episode after every ten ABCD cycles', () => {
-  assert.match(rotation, /kSpotifyPodcastBreakEveryCycles = 10ULL/);
-  assert.match(rotation, /timedRotationPosition == 0U[\s\S]*\+\+slot\.timedRotationCycle/);
-  assert.match(rotation, /timedRotationCycle % kSpotifyPodcastBreakEveryCycles == 0ULL/);
-  assert.match(rotation, /BeginPodcastBreak\(slot, now\);[\s\S]*return;/);
-  assert.match(rotation, /slot\.timedTarget = TimedSpotifyTarget::TalkAbout/);
+test('each account gets restart-safe TALKABOUT no later than its two-hour deadline', () => {
+  assert.match(header, /kSpotifyPodcastIntervalMs =\s*2ULL \* 60ULL \* 60ULL \* 1000ULL/);
+  assert.match(header, /ULONGLONG podcastDueTick = 0/);
+  assert.match(header, /int64_t podcastDueUnixMs = 0/);
+  assert.match(rotation, /spotify-talkabout-schedule\.txt/);
+  assert.match(rotation, /EnsurePodcastScheduleLoaded/);
+  assert.match(rotation, /MoveFileExW[\s\S]*MOVEFILE_REPLACE_EXISTING/);
+  assert.match(rotation, /StartOverduePodcastBreak/);
+  assert.match(rotation, /now < slot\.podcastDueTick/);
+  assert.match(rotation, /lastPodcastDispatchTick_[\s\S]*kSpotifyAccountStartOffsetMs/);
+  assert.match(schedule, /StartOverduePodcastBreak\(now\)[\s\S]*AdvanceExpiredTimedRotation\(now\)/);
+  assert.doesNotMatch(rotation, /kSpotifyPodcastBreakEveryCycles/);
+  assert.doesNotMatch(rotation, /timedRotationCycle %/);
+});
+
+test('the next two-hour deadline is persisted only after TALKABOUT is confirmed playing', () => {
   assert.match(
     timed,
-    /target->timedTarget != TimedSpotifyTarget::TalkAbout[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+    /json && std::wstring_view\(json\) == L"true"[\s\S]*MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*SetSlotState\(\*target, SlotState::Playing\)/,
   );
-  assert.match(rotation, /CompletePodcastBreak[\s\S]*ApplyTimedRotationTarget\(slot\)/);
+  assert.match(
+    timed,
+    /std::wstring_view\(json\) == L"\\"completed\\""[\s\S]*MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*CompletePodcastBreak\(\*target, now\)/,
+  );
+  assert.match(
+    rotation,
+    /MarkPodcastPlaybackStarted[\s\S]*podcastDueTick = now \+ kSpotifyPodcastIntervalMs[\s\S]*SavePodcastScheduleState\(\)/,
+  );
+  assert.match(rotation, /due <= 0[\s\S]*kSpotifyAccountStartOffsetMs/);
+  assert.match(rotation, /CompletePodcastBreak[\s\S]*timedRotationPosition = 0[\s\S]*ApplyTimedRotationTarget\(slot\)/);
 });
 
 test('music keeps one shared four-minute deadline while podcast break is exempt', () => {

@@ -6,6 +6,8 @@ namespace hp {
 inline constexpr ULONGLONG kSpotifyMusicTrackDeadlineMs =
     4ULL * 60ULL * 1000ULL;
 inline constexpr ULONGLONG kSpotifyAccountStartOffsetMs = 40ULL * 1000ULL;
+inline constexpr ULONGLONG kSpotifyPodcastIntervalMs =
+    2ULL * 60ULL * 60ULL * 1000ULL;
 
 class SpotifyWebViews final {
  public:
@@ -79,6 +81,8 @@ class SpotifyWebViews final {
     ULONGLONG trustedClickTargetGeneration = 0;
     ULONGLONG trustedClickBlockedUntilTick = 0;
     ULONGLONG authenticationBadgeTick = 0;
+    ULONGLONG podcastDueTick = 0;
+    int64_t podcastDueUnixMs = 0;
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomFIndex = kNoTimedCatalogIndex;
     std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
@@ -97,6 +101,7 @@ class SpotifyWebViews final {
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
     bool podcastBreakActive = false;
+    bool podcastPlaybackRecorded = false;
     bool hostLayoutApplied = false;
     bool hostLayoutReducedZoomApplied = false;
     TimedSpotifyTarget timedTarget = TimedSpotifyTarget::None;
@@ -155,6 +160,10 @@ class SpotifyWebViews final {
   void AdvanceTimedRotationSlot(Slot& slot, ULONGLONG now) noexcept;
   void BeginPodcastBreak(Slot& slot, ULONGLONG now) noexcept;
   void CompletePodcastBreak(Slot& slot, ULONGLONG now) noexcept;
+  void EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept;
+  void SavePodcastScheduleState() noexcept;
+  bool StartOverduePodcastBreak(ULONGLONG now) noexcept;
+  void MarkPodcastPlaybackStarted(Slot& slot, ULONGLONG now) noexcept;
   bool AdvanceExpiredTimedRotation(ULONGLONG now) noexcept;
   void ArmTimedEndObserver(Slot& slot) noexcept;
   void StopTimedOneShotPlayback(Slot& slot) noexcept;
@@ -173,6 +182,7 @@ class SpotifyWebViews final {
   ULONGLONG staggerSlotStartTick_ = 0;
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
+  ULONGLONG lastPodcastDispatchTick_ = 0;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -180,14 +190,14 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
+  bool podcastScheduleLoaded_ = false;
 };
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
 // starts 40 seconds apart, then loops A, a shuffled B-E block, and F with a
-// native four-minute hard deadline per music target. After every ten completed
-// six-song cycles, that account plays one TALKABOUT episode at 3x and resumes
-// from A. Browser events can advance music targets earlier but never postpone
-// their hard deadline.
+// native four-minute hard deadline per music target. TALKABOUT has a separate
+// persisted two-hour deadline per account, survives app restarts, plays at 3x,
+// then restarts the music rotation from A.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

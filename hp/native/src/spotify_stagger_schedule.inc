@@ -79,6 +79,10 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
+  // TALKABOUT owns an independent restart-safe two-hour deadline. Check it
+  // before music expiry so a four-minute track watchdog can never postpone an
+  // already-due podcast break.
+  if (StartOverduePodcastBreak(now)) return;
   if (AdvanceExpiredTimedRotation(now)) return;
 
   const ULONGLONG elapsed = now - scheduleStartTick_;
