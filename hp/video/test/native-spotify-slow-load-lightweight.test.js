@@ -41,7 +41,7 @@ test('slow multi-window recovery is time based instead of retry-count based', ()
 });
 
 test('healthy scheduler is low-frequency but wakes on exact initial 40-second account boundaries', () => {
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 40U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(
     phaseSync,
