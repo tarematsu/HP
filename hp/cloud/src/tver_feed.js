@@ -54,6 +54,26 @@ export function extractTverEpisodeUrls(value) {
   return [...output];
 }
 
+function episodeIdFromTypedObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const type = String(value.type || value.content_type || value.contentType || '').toLowerCase();
+  if (type !== 'episode') return '';
+  const candidates = [
+    value.episodeId,
+    value.episode_id,
+    value.id,
+    value.content?.id,
+    value.content?.episodeId,
+    value.content?.episode_id,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && /^[A-Za-z0-9_-]{6,}$/.test(candidate)) {
+      return candidate;
+    }
+  }
+  return '';
+}
+
 function collectEpisodeIdsFromJson(value, output, depth = 0) {
   if (depth > 10 || value === null || value === undefined || output.size >= MAX_EPISODES) return;
   if (typeof value === 'string') {
@@ -65,8 +85,11 @@ function collectEpisodeIdsFromJson(value, output, depth = 0) {
     return;
   }
   if (typeof value !== 'object') return;
+
+  const typedEpisodeId = episodeIdFromTypedObject(value);
+  if (typedEpisodeId) addEpisodeUrl(output, `/episodes/${typedEpisodeId}`);
   for (const [key, child] of Object.entries(value)) {
-    if (typeof child === 'string' && /(?:episode|content)[_-]?id/i.test(key)
+    if (typeof child === 'string' && /episode[_-]?id/i.test(key)
         && /^[A-Za-z0-9_-]{6,}$/.test(child)) {
       addEpisodeUrl(output, `/episodes/${child}`);
     }
@@ -113,8 +136,9 @@ async function collectTalentEpisodes(env) {
         response.text()
           .then((text) => {
             if (text.length > MAX_NETWORK_BODY_BYTES) return;
-            // Recommendation/ranking JSON can contain unrelated episodes. Keep
-            // network extraction as a fallback and require the talent identifier.
+            // Recommendation/ranking JSON can contain unrelated content. Network
+            // extraction is only a DOM fallback, is tied to the talent id, and
+            // accepts only explicit episode URLs/episode-typed ids.
             if (!url.includes(TVER_TALENT_ID) && !text.includes(TVER_TALENT_ID)) return;
             collectEpisodeCandidates(text, networkFallback);
           })
@@ -194,17 +218,20 @@ export async function refreshTverFeed(env, dependencies = {}) {
     collectTalent(env),
     collectSakamichi(dependencies.fetchImpl || globalThis.fetch)
   ]);
-  const urls = new Set();
-  const sources = [];
-  if (results[0].status === 'fulfilled') {
-    for (const url of results[0].value) addEpisodeUrl(urls, url);
-    if (results[0].value.length) sources.push('tver-talent');
-  }
-  if (results[1].status === 'fulfilled') {
-    for (const url of results[1].value) addEpisodeUrl(urls, url);
-    if (results[1].value.length) sources.push('sakamichidb');
-  }
-  const episodeUrls = [...urls].slice(0, MAX_EPISODES);
+
+  const talentUrls = results[0].status === 'fulfilled'
+    ? results[0].value.map(normalizeTverEpisodeUrl).filter(Boolean)
+    : [];
+  const sakamichiUrls = results[1].status === 'fulfilled'
+    ? results[1].value.map(normalizeTverEpisodeUrl).filter(Boolean)
+    : [];
+  // TVer's talent page is authoritative when it yields episodes. SakamichiDB is
+  // a discovery fallback, not a union source, so stale third-party links cannot
+  // re-introduce expired items beside a healthy TVer result.
+  const selected = talentUrls.length ? talentUrls : sakamichiUrls;
+  const episodeUrls = [...new Set(selected)].slice(0, MAX_EPISODES);
+  const sources = talentUrls.length ? ['tver-talent']
+    : sakamichiUrls.length ? ['sakamichidb'] : [];
   if (!episodeUrls.length) {
     const failures = results
       .filter((result) => result.status === 'rejected')
