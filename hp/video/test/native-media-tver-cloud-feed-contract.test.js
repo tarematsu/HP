@@ -14,6 +14,14 @@ const nativeResolver = readFileSync(
   new URL('../../native/src/renderer_panels/media_tver_native_series_resolver.inc', import.meta.url),
   'utf8',
 );
+const cloudQueueRefresh = readFileSync(
+  new URL('../../native/src/renderer_panels/media_tver_cloud_queue_refresh.inc', import.meta.url),
+  'utf8',
+);
+const mediaSection = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
+  'utf8',
+);
 
 test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserves last good feed', () => {
   assert.match(cloudFeed, /TVER_ORIGIN = 'https:\/\/tver\.jp'/);
@@ -58,4 +66,18 @@ test('native resolver prefers the cloud feed but retains the current series API 
   assert.match(nativeResolver, /callSeriesSeasons/);
   assert.match(nativeResolver, /callSeasonEpisodes/);
   assert.match(nativeResolver, /sessionStorage\.setItem\('__homePanelTverEpisodeQueue:/);
+});
+
+test('native TVer refreshes an active queue from newer cloud feeds without interrupting the current episode', () => {
+  assert.match(cloudQueueRefresh, /checkIntervalMs = 30 \* 60 \* 1000/);
+  assert.match(cloudQueueRefresh, /__homePanelTverCloudFeedGeneratedAt/);
+  assert.match(cloudQueueRefresh, /generatedAtMs <= previousGeneratedAtMs/);
+  assert.match(cloudQueueRefresh, /slice\(0, currentIndex \+ 1\)/);
+  assert.match(cloudQueueRefresh, /const remaining = fresh\.filter\(url => !seen\.has\(url\)\)/);
+  assert.match(cloudQueueRefresh, /JSON\.stringify\(\{ hrefs, index: prefix\.length - 1 \}\)/);
+  assert.doesNotMatch(cloudQueueRefresh, /location\.(?:replace|assign)|location\.href\s*=/);
+  assert.match(
+    mediaSection,
+    /tver\.jp\/episodes\/[\s\S]*ExecuteScript\(kNativeMediaTverCloudQueueRefreshScript, nullptr\)[\s\S]*kNativeMediaTverPlaybackWatchdogPolicyScript/,
+  );
 });
