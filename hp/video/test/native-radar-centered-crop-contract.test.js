@@ -35,20 +35,27 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z8-equivalent 1920x1280 three-panel image', () => {
-  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM_OFFSET = 2;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 160;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 320;/);
+test('cloud radar renders a z9-equivalent 1920x1280 three-panel image', () => {
+  assert.match(cloudRadar, /const RADAR_BASE_ZOOM = 10;/);
+  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM = 9;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 320;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 640;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_WIDTH = 640;/);
+  assert.match(cloudRadar, /const RADAR_BASE_CROP_HEIGHT = 1280;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1920;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 1280;/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
   assert.match(cloudRadar, /precomposed: true/);
   assert.match(cloudRadar, /frames: \[frame\]/);
   assert.match(browserRadar, /payload\.outputWidth \/ payload\.panels\.length/);
-  assert.match(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
+  assert.match(browserRadar, /const cropWidth = panel\.baseCropWidth as number/);
+  assert.match(browserRadar, /const cropHeight = panel\.baseCropHeight as number/);
+  assert.match(browserRadar, /satellite\.width !== map\.width \|\| satellite\.height !== map\.height/);
   assert.match(browserRadar, /divider < payload\.panels\.length/);
+  assert.doesNotMatch(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_WIDTH/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_HEIGHT/);
+  assert.doesNotMatch(cloudRadar, /env\.RADAR_ZOOM|env\.RADAR_CENTER_LAT|env\.RADAR_CENTER_LON/);
 });
 
 test('cloud selects current, exact one-hour, and latest short-term panels', () => {
