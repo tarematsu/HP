@@ -10,6 +10,8 @@ const MAX_NETWORK_BODIES = 32;
 const MAX_NETWORK_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_EPISODES = 200;
 const MAX_FEED_AGE_MS = 12 * 60 * 60 * 1000;
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const USER_AGENT = 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) '
   + 'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1';
 
@@ -41,16 +43,108 @@ export function normalizeTverEpisodeUrl(value) {
   }
 }
 
-function addEpisodeUrl(output, value) {
-  const normalized = normalizeTverEpisodeUrl(value);
-  if (normalized) output.add(normalized);
+function expirationMillis(value, now = new Date()) {
+  if (value === null || value === undefined || value === '') return Number.NaN;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value < 10_000_000_000 ? value * 1000 : value;
+  }
+
+  const text = String(value).trim();
+  if (/^\d{10,13}$/.test(text)) {
+    const numeric = Number(text);
+    return text.length <= 10 ? numeric * 1000 : numeric;
+  }
+
+  const exactLabel = text.match(
+    /(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})日(?:\([^)]*\))?\s*(?:(\d{1,2})時\s*(\d{1,2})分|(\d{1,2}):(\d{2}))\s*終了予定/
+  );
+  if (exactLabel) {
+    const explicitYear = exactLabel[1] ? Number(exactLabel[1]) : null;
+    const month = Number(exactLabel[2]);
+    const day = Number(exactLabel[3]);
+    const hour = Number(exactLabel[4] || exactLabel[6]);
+    const minute = Number(exactLabel[5] || exactLabel[7]);
+    const shiftedNow = new Date(now.getTime() + JST_OFFSET_MS);
+    const currentJstYear = shiftedNow.getUTCFullYear();
+    const years = explicitYear
+      ? [explicitYear]
+      : [currentJstYear - 1, currentJstYear, currentJstYear + 1];
+    const candidates = years
+      .map((year) => {
+        const ms = Date.UTC(year, month - 1, day, hour - 9, minute, 0, 0);
+        const shifted = new Date(ms + JST_OFFSET_MS);
+        if (shifted.getUTCFullYear() !== year
+            || shifted.getUTCMonth() !== month - 1
+            || shifted.getUTCDate() !== day
+            || shifted.getUTCHours() !== hour
+            || shifted.getUTCMinutes() !== minute) {
+          return Number.NaN;
+        }
+        return ms;
+      })
+      .filter(Number.isFinite)
+      .sort((left, right) => Math.abs(left - now.getTime()) - Math.abs(right - now.getTime()));
+    if (candidates.length) return candidates[0];
+  }
+
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+export function parseTverExpiration(value, now = new Date()) {
+  const ms = expirationMillis(value, now);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : '';
+}
+
+function episodeExpirationFromObject(value, now = new Date()) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  const candidates = [
+    value.endAt,
+    value.end_at,
+    value.expiresAt,
+    value.expireAt,
+    value.availableUntil,
+    value.content?.endAt,
+    value.content?.end_at,
+    value.content?.expiresAt,
+    value.content?.expireAt,
+    value.content?.availableUntil,
+  ];
+  for (const candidate of candidates) {
+    const expiresAt = parseTverExpiration(candidate, now);
+    if (expiresAt) return expiresAt;
+  }
+  return '';
+}
+
+function addEpisodeRecord(output, value, expiresAt = '', now = new Date()) {
+  const url = normalizeTverEpisodeUrl(
+    typeof value === 'string' ? value : value?.url
+  );
+  if (!url) return;
+  const normalizedExpiry = parseTverExpiration(
+    expiresAt || (typeof value === 'object' ? value?.expiresAt || value?.endAt : ''),
+    now
+  );
+  const existing = output.get(url);
+  if (!existing) {
+    output.set(url, normalizedExpiry ? { url, expiresAt: normalizedExpiry } : { url });
+    return;
+  }
+  if (!normalizedExpiry) return;
+  if (!existing.expiresAt || Date.parse(normalizedExpiry) < Date.parse(existing.expiresAt)) {
+    output.set(url, { url, expiresAt: normalizedExpiry });
+  }
 }
 
 export function extractTverEpisodeUrls(value) {
   const output = new Set();
   const text = decodeUrlEscapes(value);
   const pattern = /(?:https?:\/\/tver\.jp)?\/episodes\/[A-Za-z0-9_-]+\/?(?:[?#][^\s"'<>]*)?/gi;
-  for (const match of text.matchAll(pattern)) addEpisodeUrl(output, match[0]);
+  for (const match of text.matchAll(pattern)) {
+    const normalized = normalizeTverEpisodeUrl(match[0]);
+    if (normalized) output.add(normalized);
+  }
   return [...output];
 }
 
@@ -74,43 +168,48 @@ function episodeIdFromTypedObject(value) {
   return '';
 }
 
-function collectEpisodeIdsFromJson(value, output, depth = 0) {
+function collectEpisodeRecordsFromJson(value, output, depth = 0, now = new Date()) {
   if (depth > 10 || value === null || value === undefined || output.size >= MAX_EPISODES) return;
   if (typeof value === 'string') {
-    for (const url of extractTverEpisodeUrls(value)) output.add(url);
+    for (const url of extractTverEpisodeUrls(value)) addEpisodeRecord(output, url, '', now);
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) collectEpisodeIdsFromJson(item, output, depth + 1);
+    for (const item of value) collectEpisodeRecordsFromJson(item, output, depth + 1, now);
     return;
   }
   if (typeof value !== 'object') return;
 
+  const expiresAt = episodeExpirationFromObject(value, now);
   const typedEpisodeId = episodeIdFromTypedObject(value);
-  if (typedEpisodeId) addEpisodeUrl(output, `/episodes/${typedEpisodeId}`);
+  if (typedEpisodeId) addEpisodeRecord(output, `/episodes/${typedEpisodeId}`, expiresAt, now);
   for (const [key, child] of Object.entries(value)) {
-    if (typeof child === 'string' && /episode[_-]?id/i.test(key)
-        && /^[A-Za-z0-9_-]{6,}$/.test(child)) {
-      addEpisodeUrl(output, `/episodes/${child}`);
+    if (typeof child === 'string') {
+      if (/episode[_-]?id/i.test(key) && /^[A-Za-z0-9_-]{6,}$/.test(child)) {
+        addEpisodeRecord(output, `/episodes/${child}`, expiresAt, now);
+      }
+      const directUrl = normalizeTverEpisodeUrl(child);
+      if (directUrl) addEpisodeRecord(output, directUrl, expiresAt, now);
     }
-    collectEpisodeIdsFromJson(child, output, depth + 1);
+    collectEpisodeRecordsFromJson(child, output, depth + 1, now);
     if (output.size >= MAX_EPISODES) return;
   }
 }
 
-function collectEpisodeCandidates(text, output) {
-  for (const url of extractTverEpisodeUrls(text)) output.add(url);
+function collectEpisodeCandidates(text, output, now = new Date()) {
+  for (const url of extractTverEpisodeUrls(text)) addEpisodeRecord(output, url, '', now);
   try {
-    collectEpisodeIdsFromJson(JSON.parse(text), output);
+    collectEpisodeRecordsFromJson(JSON.parse(text), output, 0, now);
   } catch {
   }
 }
 
 async function collectTalentEpisodes(env) {
   if (!env?.BROWSER) throw new Error('TVer feed requires the BROWSER binding');
-  const domOutput = new Set();
-  const networkFallback = new Set();
+  const domOutput = new Map();
+  const networkFallback = new Map();
   const networkTasks = [];
+  const collectedAt = new Date();
   let capturedBodies = 0;
   let browser;
   try {
@@ -140,7 +239,7 @@ async function collectTalentEpisodes(env) {
             // extraction is only a DOM fallback, is tied to the talent id, and
             // accepts only explicit episode URLs/episode-typed ids.
             if (!url.includes(TVER_TALENT_ID) && !text.includes(TVER_TALENT_ID)) return;
-            collectEpisodeCandidates(text, networkFallback);
+            collectEpisodeCandidates(text, networkFallback, collectedAt);
           })
           .catch(() => {})
       );
@@ -158,6 +257,7 @@ async function collectTalentEpisodes(env) {
 
     const links = await page.evaluate(() => {
       const excludedHeading = /^(?:あなたにおすすめ|おすすめ|関連番組|関連動画|ランキング)$/;
+      const expiryLabel = /(?:\d{4}年)?\s*\d{1,2}月\s*\d{1,2}日(?:\([^)]*\))?\s*(?:\d{1,2}時\s*\d{1,2}分|\d{1,2}:\d{2})\s*終了予定/;
       const normalize = value => (value || '').replace(/\s+/g, ' ').trim();
       const belongsToExcludedSection = link => {
         let scope = link.parentElement;
@@ -168,16 +268,35 @@ async function collectTalentEpisodes(env) {
         }
         return false;
       };
+      const expirationLabelFor = link => {
+        let scope = link;
+        for (let depth = 0; scope && depth < 6 && scope !== document.body; ++depth, scope = scope.parentElement) {
+          const match = normalize(scope.textContent).match(expiryLabel);
+          if (match) return match[0];
+        }
+        return '';
+      };
       return Array.from(document.querySelectorAll('a[href*="/episodes/"]'))
         .filter(link => !belongsToExcludedSection(link))
-        .map(element => element.href || element.getAttribute('href') || '');
+        .map(element => ({
+          url: element.href || element.getAttribute('href') || '',
+          expirationLabel: expirationLabelFor(element),
+        }));
     });
-    for (const link of links) addEpisodeUrl(domOutput, link);
-    await Promise.allSettled(networkTasks);
-    if (!domOutput.size) {
-      for (const url of networkFallback) domOutput.add(url);
+    for (const link of links) {
+      addEpisodeRecord(domOutput, link.url, link.expirationLabel, collectedAt);
     }
-    return [...domOutput].slice(0, MAX_EPISODES);
+    await Promise.allSettled(networkTasks);
+    if (domOutput.size) {
+      for (const [url, record] of networkFallback) {
+        if (domOutput.has(url) && record.expiresAt) {
+          addEpisodeRecord(domOutput, url, record.expiresAt, collectedAt);
+        }
+      }
+    } else {
+      for (const [url, record] of networkFallback) domOutput.set(url, record);
+    }
+    return [...domOutput.values()].slice(0, MAX_EPISODES);
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
@@ -199,13 +318,27 @@ async function collectSakamichiDbEpisodes(fetchImpl = globalThis.fetch) {
   return extractTverEpisodeUrls(text).slice(0, MAX_EPISODES);
 }
 
-function buildFeed(urls, sources, now = new Date()) {
+function normalizeEpisodeRecords(values, now = new Date()) {
+  const output = new Map();
+  for (const value of values || []) addEpisodeRecord(output, value, '', now);
+  return [...output.values()];
+}
+
+export function filterEpisodesBeforeNextRefresh(episodes, now = new Date()) {
+  const cutoff = now.getTime() + REFRESH_INTERVAL_MS;
+  return (episodes || []).filter((episode) => {
+    const expiresAt = expirationMillis(episode?.expiresAt, now);
+    return !Number.isFinite(expiresAt) || expiresAt > cutoff;
+  });
+}
+
+function buildFeed(episodes, sources, now = new Date()) {
   return {
     version: 1,
     generatedAt: now.toISOString(),
     sources,
-    episodeCount: urls.length,
-    episodes: urls.map((url) => ({ url }))
+    episodeCount: episodes.length,
+    episodes,
   };
 }
 
@@ -219,27 +352,27 @@ export async function refreshTverFeed(env, dependencies = {}) {
     collectSakamichi(dependencies.fetchImpl || globalThis.fetch)
   ]);
 
-  const talentUrls = results[0].status === 'fulfilled'
-    ? results[0].value.map(normalizeTverEpisodeUrl).filter(Boolean)
+  const talentEpisodes = results[0].status === 'fulfilled'
+    ? normalizeEpisodeRecords(results[0].value, now)
     : [];
-  const sakamichiUrls = results[1].status === 'fulfilled'
-    ? results[1].value.map(normalizeTverEpisodeUrl).filter(Boolean)
+  const sakamichiEpisodes = results[1].status === 'fulfilled'
+    ? normalizeEpisodeRecords(results[1].value, now)
     : [];
   // TVer's talent page is authoritative when it yields episodes. SakamichiDB is
   // a discovery fallback, not a union source, so stale third-party links cannot
   // re-introduce expired items beside a healthy TVer result.
-  const selected = talentUrls.length ? talentUrls : sakamichiUrls;
-  const episodeUrls = [...new Set(selected)].slice(0, MAX_EPISODES);
-  const sources = talentUrls.length ? ['tver-talent']
-    : sakamichiUrls.length ? ['sakamichidb'] : [];
-  if (!episodeUrls.length) {
+  const selected = talentEpisodes.length ? talentEpisodes : sakamichiEpisodes;
+  const episodes = filterEpisodesBeforeNextRefresh(selected, now).slice(0, MAX_EPISODES);
+  const sources = talentEpisodes.length ? ['tver-talent']
+    : sakamichiEpisodes.length ? ['sakamichidb'] : [];
+  if (!episodes.length) {
     const failures = results
       .filter((result) => result.status === 'rejected')
       .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
-    throw new Error(`TVer episode collection returned zero URLs${failures.length ? `: ${failures.join('; ')}` : ''}`);
+    throw new Error(`TVer episode collection returned zero playable URLs${failures.length ? `: ${failures.join('; ')}` : ''}`);
   }
 
-  const feed = buildFeed(episodeUrls, sources, now);
+  const feed = buildFeed(episodes, sources, now);
   await env.DATA_BUCKET.put(FEED_OBJECT_KEY, JSON.stringify(feed), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
     customMetadata: {

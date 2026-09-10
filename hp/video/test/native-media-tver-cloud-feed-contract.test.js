@@ -21,7 +21,7 @@ test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserv
   assert.match(cloudFeed, /TVER_TALENT_URL = `\$\{TVER_ORIGIN\}\/talents\/\$\{TVER_TALENT_ID\}`/);
   assert.match(cloudFeed, /sakamichidb\.anosaka\.com\/tver_programs/);
   assert.match(cloudFeed, /Promise\.allSettled/);
-  assert.match(cloudFeed, /if \(!episodeUrls\.length\)[\s\S]*throw new Error/);
+  assert.match(cloudFeed, /if \(!episodes\.length\)[\s\S]*throw new Error/);
   assert.match(cloudFeed, /DATA_BUCKET\.put\(FEED_OBJECT_KEY/);
   assert.match(cloudFeed, /MAX_FEED_AGE_MS = 12 \* 60 \* 60 \* 1000/);
   assert.match(cloudFeed, /ageMs > MAX_FEED_AGE_MS/);
@@ -34,6 +34,15 @@ test('cloud refresh runs every hour and feed endpoint is exposed without couplin
   assert.match(unifiedWorker, /pathname === TVER_FEED_PATH[\s\S]*tverFeedResponse\(env, ctx\)/);
   assert.match(unifiedWorker, /shouldRefreshTverFeed\(controller\?\.scheduledTime\)/);
   assert.match(unifiedWorker, /ctx\.waitUntil\(refreshTverFeed\(env\)/);
+});
+
+test('cloud drops episodes that expire before the next hourly refresh', () => {
+  assert.match(cloudFeed, /REFRESH_INTERVAL_MS = 60 \* 60 \* 1000/);
+  assert.match(cloudFeed, /value\.endAt/);
+  assert.match(cloudFeed, /終了予定/);
+  assert.match(cloudFeed, /filterEpisodesBeforeNextRefresh/);
+  assert.match(cloudFeed, /expiresAt > cutoff/);
+  assert.match(cloudFeed, /episodeCount: episodes\.length/);
 });
 
 test('native resolver prefers the cloud feed but retains the current series API resolver as fallback', () => {
