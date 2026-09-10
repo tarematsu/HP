@@ -154,28 +154,34 @@ export async function renderRepresentativeRadarFrame(
 
         const title = panel.title as string;
         const timeText = panel.validTimeText as string;
+        const chipLeft = 24;
+        const chipTop = 52;
+        const chipHorizontalPadding = 27;
+        const chipHeight = 112;
         context.font = "600 42px sans-serif";
         context.textBaseline = "middle";
         const titleWidth = context.measureText(title).width;
         context.font = "500 34px sans-serif";
         const timeWidth = context.measureText(timeText).width;
-        const chipWidth = Math.max(titleWidth, timeWidth) + 54;
-        const chipHeight = 112;
-        context.fillStyle = "rgba(0,0,0,0.62)";
+        const chipWidth = Math.min(
+          panelWidth - chipLeft * 2,
+          Math.max(titleWidth, timeWidth) + chipHorizontalPadding * 2,
+        );
+        context.fillStyle = "rgba(0,0,0,0.72)";
         context.beginPath();
-        context.roundRect(panelX + 24, 24, chipWidth, chipHeight, 22);
+        context.roundRect(panelX + chipLeft, chipTop, chipWidth, chipHeight, 22);
         context.fill();
         context.fillStyle = "white";
         context.font = "600 42px sans-serif";
-        context.fillText(title, panelX + 50, 57);
+        context.fillText(title, panelX + chipLeft + chipHorizontalPadding, chipTop + 33);
         context.font = "500 34px sans-serif";
-        context.fillText(timeText, panelX + 50, 105);
+        context.fillText(timeText, panelX + chipLeft + chipHorizontalPadding, chipTop + 81);
       }
       satellite.close?.();
       map.close?.();
-      context.fillStyle = "rgba(255,255,255,0.58)";
+      context.fillStyle = "rgba(0,0,0,0.92)";
       for (let divider = 1; divider < payload.panels.length; divider += 1) {
-        context.fillRect(divider * panelWidth - 1, 0, 2, payload.outputHeight);
+        context.fillRect(divider * panelWidth - 2, 0, 4, payload.outputHeight);
       }
     }, {
       outputWidth: request.outputWidth,
