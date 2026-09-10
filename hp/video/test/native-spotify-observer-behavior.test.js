@@ -299,3 +299,44 @@ test('production heartbeat stays healthy while media currentTime advances', () =
   h.runHeartbeat();
   assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
 });
+
+test('production observer preempts Spotify autoplay before natural track end', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f14');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.media.currentTime = 100;
+  h.media.duration = 180;
+  h.dispatch('playing');
+
+  h.media.currentTime = 179.4;
+  h.dispatch('timeupdate');
+
+  assert.equal(h.media.paused, true);
+  assert.equal(h.messages.at(-1), 'spotify:timed-ended\x1f14');
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f14').length, 1);
+});
+
+test('completed generation quarantines same-media recommendation without a new play event', () => {
+  const h = createHarness();
+  h.hostMessage('spotify:generation\x1f15');
+  h.setTrack('/track/A', 'Target A');
+  h.media.paused = false;
+  h.dispatch('playing');
+
+  h.media.ended = true;
+  h.dispatch('ended');
+  const pausedAfterEnd = h.media.pauseCalls;
+
+  h.media.ended = false;
+  h.media.paused = false;
+  h.media.currentTime = 0.2;
+  h.media.duration = 200;
+  h.setTrack('/track/RECOMMENDED', 'Recommended Song');
+  h.dispatch('timeupdate');
+
+  assert.equal(h.media.paused, true);
+  assert.equal(h.media.pauseCalls, pausedAfterEnd + 1);
+  assert.equal(h.messages.filter(m => m.startsWith('spotify:not-playing')).length, 0);
+  assert.equal(h.messages.filter(m => m === 'spotify:timed-ended\x1f15').length, 1);
+});
