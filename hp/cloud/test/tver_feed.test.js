@@ -27,7 +27,7 @@ describe('TVer cloud feed', () => {
     ]);
   });
 
-  it('stores a merged last-known-good feed only when at least one source succeeds', async () => {
+  it('uses TVer as authoritative source and preserves last-known-good on total failure', async () => {
     const writes = [];
     const env = {
       DATA_BUCKET: {
@@ -42,18 +42,30 @@ describe('TVer cloud feed', () => {
       ],
       collectSakamichi: async () => [
         'https://tver.jp/episodes/epTWO',
-        'https://tver.jp/episodes/epTHREE',
+        'https://tver.jp/episodes/epSTALE',
       ],
     });
-    expect(feed.episodeCount).toBe(3);
-    expect(feed.sources).toEqual(['tver-talent', 'sakamichidb']);
+    expect(feed.episodeCount).toBe(2);
+    expect(feed.sources).toEqual(['tver-talent']);
+    expect(feed.episodes.map((item) => item.url)).toEqual([
+      'https://tver.jp/episodes/epONE',
+      'https://tver.jp/episodes/epTWO',
+    ]);
     expect(writes).toHaveLength(1);
+
+    const fallback = await refreshTverFeed(env, {
+      collectTalent: async () => [],
+      collectSakamichi: async () => ['https://tver.jp/episodes/epBACKUP'],
+    });
+    expect(fallback.sources).toEqual(['sakamichidb']);
+    expect(fallback.episodes).toEqual([{ url: 'https://tver.jp/episodes/epBACKUP' }]);
+    expect(writes).toHaveLength(2);
 
     await expect(refreshTverFeed(env, {
       collectTalent: async () => [],
       collectSakamichi: async () => [],
     })).rejects.toThrow(/zero URLs/);
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(2);
   });
 
   it('refreshes every three UTC hours on the hourly cron', () => {
