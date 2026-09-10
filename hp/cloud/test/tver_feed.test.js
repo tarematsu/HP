@@ -68,10 +68,11 @@ describe('TVer cloud feed', () => {
     expect(writes).toHaveLength(2);
   });
 
-  it('refreshes every three UTC hours on the hourly cron', () => {
+  it('refreshes every UTC hour on the hourly cron', () => {
     expect(shouldRefreshTverFeed(Date.parse('2026-09-11T00:00:00Z'))).toBe(true);
     expect(shouldRefreshTverFeed(Date.parse('2026-09-11T03:00:00Z'))).toBe(true);
-    expect(shouldRefreshTverFeed(Date.parse('2026-09-11T04:00:00Z'))).toBe(false);
+    expect(shouldRefreshTverFeed(Date.parse('2026-09-11T04:00:00Z'))).toBe(true);
+    expect(shouldRefreshTverFeed(Date.parse('2026-09-11T04:01:00Z'))).toBe(false);
   });
 
   it('serves fresh feed data and rejects stale data so native fallback can run', async () => {
