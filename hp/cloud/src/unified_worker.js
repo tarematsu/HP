@@ -111,6 +111,46 @@ async function tverFeedHealthResponse(env) {
   });
 }
 
+async function homePanelCloudHealthResponse(request, env, ctx) {
+  const tverPromise = tverFeedObservability(env);
+  try {
+    const [videoResponse, tverFeed] = await Promise.all([
+      integratedVideoFetch(request, undefined, env, ctx),
+      tverPromise,
+    ]);
+    let videoHealth = {};
+    try {
+      videoHealth = await videoResponse.json();
+    } catch {
+    }
+    return Response.json({
+      ...videoHealth,
+      tverFeed,
+    }, {
+      status: videoResponse.status,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  } catch (error) {
+    const tverFeed = await tverPromise;
+    return Response.json({
+      ok: false,
+      service: 'homepanel-video',
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+      checkedAt: new Date().toISOString(),
+      tverFeed,
+    }, {
+      status: 503,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
@@ -138,7 +178,11 @@ export default {
       return tverFeedHealthResponse(env);
     }
 
-    if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
+    if (pathname === '/api/health') {
+      return homePanelCloudHealthResponse(request, env, ctx);
+    }
+
+    if (pathname.startsWith('/api/') && !videoApiAuthorized(request, env)) {
       return unauthorizedVideoResponse();
     }
 
