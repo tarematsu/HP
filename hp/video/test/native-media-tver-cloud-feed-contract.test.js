@@ -27,8 +27,9 @@ test('cloud collects Sakurazaka TVer episodes from dedicated sources and preserv
   assert.match(cloudFeed, /ageMs > MAX_FEED_AGE_MS/);
 });
 
-test('cloud refresh is periodic and feed endpoint is exposed without coupling it to video admin auth', () => {
-  assert.match(cloudFeed, /getUTCHours\(\) % 3 === 0/);
+test('cloud refresh runs every hour and feed endpoint is exposed without coupling it to video admin auth', () => {
+  assert.match(cloudFeed, /return date\.getUTCMinutes\(\) === 0;/);
+  assert.doesNotMatch(cloudFeed, /getUTCHours\(\) % 3/);
   assert.match(unifiedWorker, /TVER_FEED_PATH = '\/v1\/native\/tver-feed'/);
   assert.match(unifiedWorker, /pathname === TVER_FEED_PATH[\s\S]*tverFeedResponse\(env, ctx\)/);
   assert.match(unifiedWorker, /shouldRefreshTverFeed\(controller\?\.scheduledTime\)/);
