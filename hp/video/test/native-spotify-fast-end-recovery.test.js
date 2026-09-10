@@ -101,11 +101,15 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
   );
   assert.match(
     events,
-    /target\.kind === 'music' && state\.endedPosted[\s\S]*event\.target\.pause\(\)/,
+    /const quarantineCompletedGeneration = media =>[\s\S]*!state\.endedPosted[\s\S]*stopMedia\(media\)/,
   );
   assert.match(
     events,
-    /state\.endedPosted = true;[\s\S]*candidate\.pause\(\)[\s\S]*post\('spotify:timed-ended'\)/,
+    /state\.endedPosted = true;[\s\S]*stopAllMedia\(\)[\s\S]*post\('spotify:timed-ended'\)/,
+  );
+  assert.match(
+    events,
+    /currentTime >= duration - finishLeadSeconds[\s\S]*finishTarget\(media\)/,
   );
   assert.match(
     timed,
