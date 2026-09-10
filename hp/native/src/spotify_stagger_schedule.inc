@@ -43,6 +43,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
 
+  EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = now;
@@ -79,9 +80,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
-  // TALKABOUT owns an independent restart-safe two-hour deadline. Check it
-  // before music expiry so a four-minute track watchdog can never postpone an
-  // already-due podcast break.
+  // TALKABOUT owns an independent restart-safe cloud-configured deadline. It is
+  // capped at two hours and checked before music expiry so the music watchdog
+  // can never postpone an already-due podcast break.
   if (StartOverduePodcastBreak(now)) return;
   if (AdvanceExpiredTimedRotation(now)) return;
 
