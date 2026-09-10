@@ -50,6 +50,14 @@ test('YouTube watchdog self-heals lost and stale ExecuteScript callbacks', () =>
     host,
     /InvalidateYoutubeWatchdog\(\) noexcept[\s\S]*\+\+youtubeWatchdogRequestGeneration_[\s\S]*youtubeWatchdogInFlight_ = false[\s\S]*youtubeWatchdogStartedTick_ = 0/,
   );
+  assert.match(
+    host,
+    /youtubeWatchdogStartedTick_ = now;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kYoutubeWatchdogTimeoutMs/,
+  );
+  assert.match(
+    host,
+    /youtubeWatchdogStartedTick_ = 0;[\s\S]{0,400}kNativeMediaYoutubeWatchdogTimer,[\s\S]{0,200}kNativeMediaYoutubeWatchdogHealthyMs/,
+  );
 });
 
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
