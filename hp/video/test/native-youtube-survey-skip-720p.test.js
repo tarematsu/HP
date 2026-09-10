@@ -72,7 +72,7 @@ test('YouTube ad skip reaches the real verified control and never falls through 
     recovery,
     /adShowing && target\) return trusted\.arm\(target, 'skip-ad', 600\)/,
   );
-  assert.match(recovery, /if \(adShowing\) return null/);
+  assert.match(recovery, /if \(adShowing\) return 'recovery'/);
   assert.doesNotMatch(recovery, /\[class\*="skip" i\]\)\)/);
 
   assert.match(trustedAction, /Move the REAL validated control/);
@@ -145,7 +145,7 @@ test('YouTube playback quality is pinned to the 480p quality level', () => {
   assert.doesNotMatch(policy, /hd720/);
 });
 
-test('media host routes watchdog to the control policy after bootstrapping trusted actions', () => {
+test('media host routes the single watchdog to the control policy after bootstrapping trusted actions', () => {
   assert.match(composition, /#include "media_youtube_policy\.inc"/);
   assert.match(composition, /#include "media_youtube_trusted_action\.inc"/);
   assert.match(composition, /#include "media_youtube_control_recovery\.inc"/);
@@ -155,8 +155,5 @@ test('media host routes watchdog to the control policy after bootstrapping trust
     composition,
     /script == kNativeMediaYoutubeWatchdogScript[\s\S]*NativeMediaEnsureYoutubeTrustedAction\(webview\)[\s\S]*kNativeMediaYoutubeControlRecoveryScript/,
   );
-  assert.match(
-    composition,
-    /script == kNativeMediaYoutubeHealthScript[\s\S]*kNativeMediaYoutubeHealthPolicyScript/,
-  );
+  assert.doesNotMatch(composition, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
 });
