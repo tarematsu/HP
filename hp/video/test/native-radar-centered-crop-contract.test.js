@@ -22,8 +22,8 @@ const radarUi = readFileSync(
   new URL('../../native/src/renderer_radar_ui.cpp', import.meta.url),
   'utf8',
 );
-const cloudClient = readFileSync(
-  new URL('../../native/src/cloud_client_sync.cpp', import.meta.url),
+const radarCache = readFileSync(
+  new URL('../../native/src/cloud_client_radar_cache.cpp', import.meta.url),
   'utf8',
 );
 const browserRadar = readFileSync(
@@ -59,8 +59,10 @@ test('cloud selects current-through-one-hour and terminal-forecast-minus-two-hou
   assert.match(cloudRadar, /"予報終端±2時間"/);
   assert.match(radarUi, /frames\.Size\(\) != 1/);
   assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
-  assert.match(cloudClient, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
-  assert.match(cloudClient, /if \(precomposed \|\| !fs::exists\(target, error\)/);
+  assert.match(radarCache, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);
+  assert.match(radarCache, /width != 1920 \|\| height != 1280/);
+  assert.match(radarCache, /frames\.Size\(\) != 1/);
+  assert.match(radarCache, /tiles\.Size\(\) != 1/);
 });
 
 test('native build still carries legacy base layers only as inert packaged assets', () => {
