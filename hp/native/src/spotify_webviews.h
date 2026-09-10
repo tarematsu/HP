@@ -28,7 +28,17 @@ class SpotifyWebViews final {
     None,
     Music,
     TalkAbout,
+    // Legacy names are retained only so old reset/recovery paths compile while
+    // playback itself is driven exclusively by timedCycleTracks.
+    BitterBlue,
+    Monshirocho,
+    Munen,
+    OnMyWay,
+    LonesomeRabbit,
+    CatalogTrack,
   };
+
+  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -91,6 +101,15 @@ class SpotifyWebViews final {
     int64_t podcastDueUnixMs = 0;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
+    // Legacy scheduler state is no longer consulted by active playback.
+    size_t timedCatalogIndex = kNoTimedCatalogIndex;
+    size_t timedRandomFIndex = kNoTimedCatalogIndex;
+    std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
+        TimedSpotifyTarget::BitterBlue,
+        TimedSpotifyTarget::Monshirocho,
+        TimedSpotifyTarget::Munen,
+        TimedSpotifyTarget::OnMyWay,
+    };
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
