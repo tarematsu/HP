@@ -127,6 +127,9 @@ void SpotifyWebViews::ReconcilePodcastSlot(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"\"completed\"") {
+              // A short episode can finish between reconciles, so completion is
+              // also a valid proof that playback happened for this deadline.
+              MarkPodcastPlaybackStarted(*target, now);
               CompletePodcastBreak(*target, now);
               return S_OK;
             }
