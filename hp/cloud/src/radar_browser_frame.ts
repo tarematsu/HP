@@ -1,5 +1,4 @@
 import puppeteer from "@cloudflare/puppeteer";
-import { fetchJson } from "./http";
 import type { Env } from "./sources";
 
 export interface BrowserRadarTile {
@@ -54,7 +53,15 @@ function originUrl(value: string): string {
 
 async function fetchKawagoeBoundary(): Promise<unknown | null> {
   try {
-    return await fetchJson<unknown>(KAWAGOE_BOUNDARY_URL);
+    const response = await fetch(KAWAGOE_BOUNDARY_URL, {
+      headers: { "User-Agent": "HomePanel-Cloud/2.6" },
+      cf: { cacheEverything: true, cacheTtl: 86_400 },
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      return null;
+    }
+    return await response.json();
   } catch {
     return null;
   }
@@ -144,22 +151,23 @@ export async function renderRepresentativeRadarFrame(
       };
 
       const boundary = payload.boundary as any;
-      const boundaryGeometry = (() => {
-        if (!boundary || typeof boundary !== "object") return null;
+      const boundaryGeometries: any[] = (() => {
+        if (!boundary || typeof boundary !== "object") return [];
         if (boundary.type === "FeatureCollection") {
-          const feature = Array.isArray(boundary.features)
-            ? boundary.features.find((candidate: any) => candidate?.geometry)
-            : null;
-          return feature?.geometry ?? null;
+          return Array.isArray(boundary.features)
+            ? boundary.features.map((feature: any) => feature?.geometry).filter(Boolean)
+            : [];
         }
-        if (boundary.type === "Feature") return boundary.geometry ?? null;
-        return boundary;
+        if (boundary.type === "Feature") return boundary.geometry ? [boundary.geometry] : [];
+        return [boundary];
       })();
-      const boundaryPolygons: any[] = boundaryGeometry?.type === "Polygon"
-        ? [boundaryGeometry.coordinates]
-        : boundaryGeometry?.type === "MultiPolygon" && Array.isArray(boundaryGeometry.coordinates)
-          ? boundaryGeometry.coordinates
-          : [];
+      const boundaryPolygons: any[] = boundaryGeometries.flatMap((geometry: any) => (
+        geometry?.type === "Polygon"
+          ? [geometry.coordinates]
+          : geometry?.type === "MultiPolygon" && Array.isArray(geometry.coordinates)
+            ? geometry.coordinates
+            : []
+      ));
 
       const tileReference = (panel: any) => {
         const tile = panel.tiles?.[0];
