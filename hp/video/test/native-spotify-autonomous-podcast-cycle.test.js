@@ -12,6 +12,8 @@ const rotation = readFileSync(
   new URL('../../native/src/spotify_timed_end_rotation.inc', import.meta.url), 'utf8');
 const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url), 'utf8');
+const cloud = readFileSync(
+  new URL('../../native/src/spotify_cloud_playlist.inc', import.meta.url), 'utf8');
 
 test('Spotify playback state is autonomous from YouTube/TVer phase', () => {
   assert.match(header, /scheduleStartTick_ = 0/);
@@ -24,8 +26,10 @@ test('Spotify playback state is autonomous from YouTube/TVer phase', () => {
   assert.doesNotMatch(lifecycle, /gSpotifyTverPhase|SetPodcastMode/);
 });
 
-test('each account gets restart-safe TALKABOUT no later than its two-hour deadline', () => {
+test('each account gets restart-safe TALKABOUT no later than its cloud interval capped at two hours', () => {
   assert.match(header, /kSpotifyPodcastIntervalMs =\s*2ULL \* 60ULL \* 60ULL \* 1000ULL/);
+  assert.match(cloud, /kSpotifyMaxPodcastIntervalMinutes = 120/);
+  assert.match(cloud, /SpotifyPodcastIntervalMs\(\) const noexcept/);
   assert.match(header, /ULONGLONG podcastDueTick = 0/);
   assert.match(header, /int64_t podcastDueUnixMs = 0/);
   assert.match(rotation, /spotify-talkabout-schedule\.txt/);
@@ -39,7 +43,7 @@ test('each account gets restart-safe TALKABOUT no later than its two-hour deadli
   assert.doesNotMatch(rotation, /timedRotationCycle %/);
 });
 
-test('the next two-hour deadline is persisted only after TALKABOUT is confirmed playing', () => {
+test('the next deadline is persisted only after TALKABOUT is confirmed playing', () => {
   assert.match(
     timed,
     /json && std::wstring_view\(json\) == L"true"[\s\S]*MarkPodcastPlaybackStarted\(\*target, now\)[\s\S]*SetSlotState\(\*target, SlotState::Playing\)/,
@@ -50,10 +54,10 @@ test('the next two-hour deadline is persisted only after TALKABOUT is confirmed 
   );
   assert.match(
     rotation,
-    /MarkPodcastPlaybackStarted[\s\S]*podcastDueTick = now \+ kSpotifyPodcastIntervalMs[\s\S]*SavePodcastScheduleState\(\)/,
+    /MarkPodcastPlaybackStarted[\s\S]*const ULONGLONG interval = SpotifyPodcastIntervalMs\(\)[\s\S]*podcastDueTick = now \+ interval[\s\S]*SavePodcastScheduleState\(\)/,
   );
   assert.match(rotation, /due <= 0[\s\S]*kSpotifyAccountStartOffsetMs/);
-  assert.match(rotation, /CompletePodcastBreak[\s\S]*timedRotationPosition = 0[\s\S]*ApplyTimedRotationTarget\(slot\)/);
+  assert.match(rotation, /CompletePodcastBreak[\s\S]*timedRotationPosition = 0[\s\S]*PrepareTimedRotationCycle\(slot\)[\s\S]*ApplyTimedRotationTarget\(slot\)/);
 });
 
 test('music keeps one shared four-minute deadline while podcast break is exempt', () => {
