@@ -11,9 +11,8 @@ constexpr size_t kSpotifyRecentCatalogTag =
     size_t{1} << (sizeof(size_t) * 8U - 1U);
 constexpr size_t kSpotifyRecentCatalogMask = ~kSpotifyRecentCatalogTag;
 
-// One source of truth: every candidate carries its title and direct Track URL
-// together, so adding/reordering tracks cannot desynchronize a parallel route
-// table. Fixed A-E songs are intentionally excluded.
+// Built-in fail-safe catalog. cloud deviceConfig.spotify.randomPool replaces
+// this source when at least one valid direct Spotify track is supplied.
 constexpr std::array<SpotifyRecentCatalogTrack, 34>
     kSpotifyRecentCatalogTracks = {{
     {L"UDAGAWA GENERATION", L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F", L"/track/4ljk3qMzdU81kWzxcNix3F"},
@@ -98,7 +97,12 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
 
 size_t SpotifyWebViews::PickRecentCatalogIndex(
     size_t avoidIndex, size_t secondAvoidIndex) noexcept {
-  const size_t count = kSpotifyRecentCatalogTracks.size();
+  const size_t managedCount = ActiveRandomTrackCount();
+  const size_t count = managedCount != 0
+      ? managedCount
+      : kSpotifyRecentCatalogTracks.size();
+  if (count == 0) return kNoTimedCatalogIndex;
+
   for (unsigned attempt = 0; attempt < 8; ++attempt) {
     const size_t index = static_cast<size_t>(NextTimedRandom() % count);
     const size_t encoded = EncodeRecentCatalogIndex(index);
@@ -132,22 +136,59 @@ void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
 
 SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
     const Slot& slot) const noexcept {
+  const auto managed = [this](size_t index) -> MusicTargetDescriptor {
+    const ManagedTrack* track = ManagedFixedTrack(index);
+    return track ? MusicTargetDescriptor{track->title.c_str(), track->url.c_str(),
+                                         track->path.c_str()}
+                 : MusicTargetDescriptor{};
+  };
+
   switch (slot.timedTarget) {
-    case TimedSpotifyTarget::BitterBlue:
-      return {kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl,
-              kSpotifyBitterBluePath};
-    case TimedSpotifyTarget::Monshirocho:
-      return {kSpotifyMonshirochoTitle, kSpotifyMonshirochoUrl,
-              kSpotifyMonshirochoPath};
-    case TimedSpotifyTarget::Munen:
-      return {kSpotifyMunenTitle, kSpotifyMunenUrl, kSpotifyMunenPath};
-    case TimedSpotifyTarget::OnMyWay:
-      return {kSpotifyOnMyWayTitle, kSpotifyOnMyWayUrl,
-              kSpotifyOnMyWayPath};
-    case TimedSpotifyTarget::LonesomeRabbit:
-      return {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
-              kSpotifyLonesomeRabbitPath};
+    case TimedSpotifyTarget::BitterBlue: {
+      const auto target = managed(1);
+      return target.url ? target
+                        : MusicTargetDescriptor{kSpotifyBitterBlueTitle,
+                                                kSpotifyBitterBlueUrl,
+                                                kSpotifyBitterBluePath};
+    }
+    case TimedSpotifyTarget::Monshirocho: {
+      const auto target = managed(2);
+      return target.url ? target
+                        : MusicTargetDescriptor{kSpotifyMonshirochoTitle,
+                                                kSpotifyMonshirochoUrl,
+                                                kSpotifyMonshirochoPath};
+    }
+    case TimedSpotifyTarget::Munen: {
+      const auto target = managed(3);
+      return target.url ? target
+                        : MusicTargetDescriptor{kSpotifyMunenTitle,
+                                                kSpotifyMunenUrl,
+                                                kSpotifyMunenPath};
+    }
+    case TimedSpotifyTarget::OnMyWay: {
+      const auto target = managed(4);
+      return target.url ? target
+                        : MusicTargetDescriptor{kSpotifyOnMyWayTitle,
+                                                kSpotifyOnMyWayUrl,
+                                                kSpotifyOnMyWayPath};
+    }
+    case TimedSpotifyTarget::LonesomeRabbit: {
+      const auto target = managed(0);
+      return target.url ? target
+                        : MusicTargetDescriptor{kSpotifyLonesomeRabbitTitle,
+                                                kSpotifyLonesomeRabbitUrl,
+                                                kSpotifyLonesomeRabbitPath};
+    }
     case TimedSpotifyTarget::CatalogTrack: {
+      if (!IsRecentCatalogIndex(slot.timedCatalogIndex)) return {};
+      const size_t index = DecodeRecentCatalogIndex(slot.timedCatalogIndex);
+      if (ActiveRandomTrackCount() != 0) {
+        const ManagedTrack* track = ManagedRandomTrack(index);
+        return track ? MusicTargetDescriptor{track->title.c_str(),
+                                             track->url.c_str(),
+                                             track->path.c_str()}
+                     : MusicTargetDescriptor{};
+      }
       const SpotifyRecentCatalogTrack* track =
           RecentTimedCatalogTrack(slot.timedCatalogIndex);
       return track ? MusicTargetDescriptor{track->title, track->url, track->path}
@@ -325,10 +366,12 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   std::wstring_view trackPath;
   std::wstring_view title;
   std::wstring_view kind = L"none";
+  std::wstring playbackRate;
 
   if (slot.timedTarget == TimedSpotifyTarget::TalkAbout) {
-    pagePath = kSpotifyTalkAboutShowPath;
+    pagePath = SpotifyPodcastPath();
     kind = L"podcast";
+    playbackRate = std::to_wstring(SpotifyPodcastPlaybackRate());
   } else {
     const MusicTargetDescriptor target = ResolveMusicTarget(slot);
     if (target.path) {
@@ -348,6 +391,7 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   appendField(trackPath);
   appendField(title);
   appendField(kind);
+  appendField(playbackRate);
   slot.webview->PostWebMessageAsString(message.c_str());
 
   // The target is published first so the page bootstrap immediately pauses the
