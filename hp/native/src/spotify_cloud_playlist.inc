@@ -44,11 +44,13 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
   const bool fileAvailable = !timeError;
 
   if (cloudPlaylistLoaded_) {
-    if (fileAvailable && cloudPlaylistWriteTimeKnown_ &&
-        writeTime == cloudPlaylistWriteTime_) {
+    // CloudClient replaces this cache atomically. If the file is momentarily
+    // unavailable during replacement, keep the last applied Spotify settings
+    // instead of falling back and causing a spurious rotation revision.
+    if (!fileAvailable) return;
+    if (cloudPlaylistWriteTimeKnown_ && writeTime == cloudPlaylistWriteTime_) {
       return;
     }
-    if (!fileAvailable && !cloudPlaylistWriteTimeKnown_) return;
   }
 
   std::vector<RotationGroup> nextRotationGroups;
