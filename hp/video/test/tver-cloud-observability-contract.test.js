@@ -29,7 +29,7 @@ test('HomePanel health exposes TVer collector diagnostics without coupling deplo
 });
 
 test('TVer collector observability reports freshness, count, source, and last success', () => {
-  assert.match(observability, /TV ER_FEED_OBSERVABILITY_MAX_AGE_MS/ .source.replace('TV ER', 'TVER'));
+  assert.match(observability, /TVER_FEED_OBSERVABILITY_MAX_AGE_MS/);
   assert.match(observability, /90 \* 60 \* 1000/);
   assert.match(observability, /lastSuccessAt/);
   assert.match(observability, /ageSeconds/);
