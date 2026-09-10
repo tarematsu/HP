@@ -10,6 +10,10 @@ const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
   'utf8',
 );
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
+  'utf8',
+);
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
@@ -63,7 +67,7 @@ test('TVer alternates Sakura Meets and Death Youth Game after a completed queue'
   );
   assert.match(composition, /#define Navigate\(url\) Navigate\(ResolveNativeMediaNavigateUrl\(\(url\)\)\)/);
   assert.match(
-    mediaPanel,
+    mediaHost,
     /RestartTverAfterPlayback\(\) noexcept[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
 });
@@ -86,7 +90,11 @@ test('TVer queues only the series episode section and latches item completion', 
   assert.match(tverStatic, /state\.maxTime >= Math\.max\(3, state\.maxDuration - 10\)/);
   assert.match(tverStatic, /stableEndDelayMs = state\.maxDuration < 600 \? 8000 : 2500/);
   assert.match(tverStatic, /stableEnd && completedItem/);
-  assert.match(tverStatic, /window\.setInterval\(ensure, 4000\)/);
+  assert.doesNotMatch(tverStatic, /window\.setInterval\(ensure, 4000\)/);
+  assert.match(tverStatic, /new MutationObserver\(scheduleEnsure\)/);
+  assert.match(tverStatic, /observer\.observe\(root, \{ childList: true, subtree: true \}\)/);
+  assert.match(tverStatic, /window\.setTimeout\([\s\S]*ensure\(\);[\s\S]*250/);
+  assert.match(tverStatic, /'play', 'pause', 'ended', 'ratechange', 'loadedmetadata', 'emptied'/);
   assert.doesNotMatch(tverStatic, /previewMode/);
 });
 
@@ -155,13 +163,14 @@ test('hidden YouTube and TVer use one WebView2 trusted-input path', () => {
   assert.doesNotMatch(composition, /WakeNativeMediaTverControls/);
 });
 
-test('YouTube health and watchdog remain separate static responsibilities', () => {
-  assert.match(mediaPanel, /kNativeMediaYoutubeHealthScript\[\]/);
-  assert.match(mediaPanel, /setPlaybackQualityRange\('large', 'large'\)/);
+test('YouTube health and recovery are owned by one adaptive static watchdog', () => {
+  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogHealthyMs = 10U \* 1000U/);
+  assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(mediaPanel, /kNativeMediaYoutubeWatchdogScript\[\]/);
-  assert.match(mediaPanel, /\.ytp-ad-skip-button/);
-  assert.match(mediaPanel, /\.ytp-fullscreen-button/);
-  assert.match(mediaPanel, /\.ytp-subtitles-button/);
+  assert.match(mediaWrapper, /#include \"media_youtube_control_recovery\.inc\"/);
+  assert.match(mediaWrapper, /script == kNativeMediaYoutubeWatchdogScript/);
+  assert.match(mediaWrapper, /return kNativeMediaYoutubeControlRecoveryScript/);
+  assert.doesNotMatch(mediaPanel + mediaWrapper, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
   assert.doesNotMatch(composition, /kNativeMediaYoutubeWatchdogOverrideScript/);
 });
 
@@ -169,13 +178,13 @@ test('TVer restart is a direct same-controller navigation without profile/cache 
   assert.match(tverStatic, /const playbackRate = 1\.75/);
   assert.match(tverStatic, /qualityName\(element\) === '低'/);
   assert.match(
-    mediaPanel,
+    mediaHost,
     /RestartTverAfterPlayback\(\) noexcept[\s\S]*StopTverPlaybackMonitor\(\);[\s\S]*AdvanceNativeMediaTverSeries\(\);[\s\S]*CompleteTverRestart\(\);/,
   );
   assert.match(
-    mediaPanel,
+    mediaHost,
     /CompleteTverRestart\(\) noexcept[\s\S]*StopNavigationRetry\(\);[\s\S]*NavigateCurrentPhase\(\);/,
   );
-  assert.doesNotMatch(mediaPanel, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
+  assert.doesNotMatch(mediaHost, /ClearBrowsingData|COREWEBVIEW2_BROWSING_DATA_KINDS/);
   assert.doesNotMatch(composition, /#define ClearBrowsingData|#define get_Profile/);
 });
