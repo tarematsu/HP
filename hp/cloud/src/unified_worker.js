@@ -1,6 +1,7 @@
 import homePanelWorker from './worker_core.ts';
 import { requestFamily } from './unified_routes.js';
 import { refreshTverFeed, shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
+import { tverFeedObservability } from './tver_feed_observability.js';
 import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
@@ -98,6 +99,50 @@ function homePanelRuntimeEnv(env, ctx) {
   };
 }
 
+async function unifiedHealthResponse(request, env, ctx) {
+  const tverPromise = tverFeedObservability(env);
+  try {
+    const [videoResponse, tverFeed] = await Promise.all([
+      integratedVideoFetch(request, undefined, env, ctx),
+      tverPromise,
+    ]);
+    let videoHealth = {};
+    try {
+      videoHealth = await videoResponse.json();
+    } catch {
+    }
+    const ok = videoResponse.ok && videoHealth?.ok !== false && tverFeed.ok;
+    return Response.json({
+      ...videoHealth,
+      ok,
+      service: 'homepanel-cloud',
+      checkedAt: new Date().toISOString(),
+      tverFeed,
+    }, {
+      status: ok ? 200 : 503,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  } catch (error) {
+    const tverFeed = await tverPromise;
+    return Response.json({
+      ok: false,
+      service: 'homepanel-cloud',
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+      checkedAt: new Date().toISOString(),
+      tverFeed,
+    }, {
+      status: 503,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
@@ -115,7 +160,11 @@ export default {
       return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
 
-    if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
+    if (pathname === '/api/health') {
+      return unifiedHealthResponse(request, env, ctx);
+    }
+
+    if (pathname.startsWith('/api/') && !videoApiAuthorized(request, env)) {
       return unauthorizedVideoResponse();
     }
 
