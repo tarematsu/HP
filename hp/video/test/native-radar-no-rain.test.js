@@ -6,8 +6,8 @@ const radarUi = readFileSync(
   new URL('../../native/src/renderer_radar_ui.cpp', import.meta.url),
   'utf8',
 );
-const mvPanel = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+const radarSection = readFileSync(
+  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url),
   'utf8',
 );
 
@@ -42,6 +42,6 @@ test('native radar has no legacy animation or local weather-layer composition pa
 });
 
 test('native radar still renders in the former MV slot', () => {
-  assert.match(mvPanel, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
+  assert.match(radarSection, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
   assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\)/);
 });
