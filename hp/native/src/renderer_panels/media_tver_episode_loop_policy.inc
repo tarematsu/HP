@@ -1,7 +1,8 @@
 // Low-peak TVer episode policy. Playback state is maintained from DOM/media
 // events; the native watchdog is only a low-frequency trusted-input fallback.
 namespace {
-constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
+constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] =
+LR"JS(
 (() => {
   if (location.hostname !== 'tver.jp' ||
       !location.pathname.startsWith('/episodes/')) return null;
@@ -79,6 +80,8 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
     }
     return false;
   };
+)JS"
+LR"JS(
 
   const explicitAdMarker = video => {
     const root = playerRootFor(video);
@@ -168,6 +171,8 @@ constexpr wchar_t kNativeMediaTverEpisodeLoopPolicyScript[] = LR"JS(
       video.addEventListener(eventName, scheduleEnsure);
     }
   };
+)JS"
+LR"JS(
 
   const ensure = () => {
     try {
