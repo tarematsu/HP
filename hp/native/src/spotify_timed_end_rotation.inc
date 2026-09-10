@@ -216,15 +216,25 @@ void SpotifyWebViews::CompletePodcastBreak(
 void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
-  if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
-  if (slot.timedCycleTracks.empty()) return;
 
-  ++slot.timedRotationPosition;
-  if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
-    ++slot.timedRotationCycle;
+  // A cloud-sync change never cuts the currently playing song. At its next
+  // normal ended/4-minute boundary, discard the old prebuilt cycle and start
+  // the newly synchronized rotation from its first configured block.
+  if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
     slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
     if (slot.timedCycleTracks.empty()) return;
+  } else {
+    if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
+    if (slot.timedCycleTracks.empty()) return;
+
+    ++slot.timedRotationPosition;
+    if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
+      ++slot.timedRotationCycle;
+      slot.timedRotationPosition = 0;
+      PrepareTimedRotationCycle(slot);
+      if (slot.timedCycleTracks.empty()) return;
+    }
   }
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
