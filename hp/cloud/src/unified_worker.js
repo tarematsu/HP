@@ -1,5 +1,6 @@
 import homePanelWorker from './worker_core.ts';
 import { requestFamily } from './unified_routes.js';
+import { refreshTverFeed, shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
 import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
@@ -12,6 +13,7 @@ export { requestFamily } from './unified_routes.js';
 const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
 const INTERNAL_SERVICE_VALUE = 'homepanel-cloud';
 const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
+const TVER_FEED_PATH = '/v1/native/tver-feed';
 
 function cookieValue(request, name) {
   const header = request.headers.get('cookie');
@@ -99,6 +101,16 @@ function homePanelRuntimeEnv(env, ctx) {
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
+    if (pathname === TVER_FEED_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return tverFeedResponse(env, ctx);
+    }
+
     if (requestFamily(pathname) === 'homepanel') {
       return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
@@ -123,6 +135,14 @@ export default {
   },
 
   scheduled(controller, env, ctx) {
-    return videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
+    const result = videoWorker.scheduled(controller, videoRuntimeEnv(env), ctx);
+    if (shouldRefreshTverFeed(controller?.scheduledTime)) {
+      ctx.waitUntil(refreshTverFeed(env).catch((error) => {
+        console.error('tver-feed-refresh-failed', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }));
+    }
+    return result;
   }
 };
