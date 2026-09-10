@@ -575,6 +575,10 @@ class NativeMediaPanelHost final {
     const uint64_t requestGeneration = youtubeWatchdogRequestGeneration_;
     youtubeWatchdogInFlight_ = true;
     youtubeWatchdogStartedTick_ = now;
+    if (hostWindow_ && IsWindow(hostWindow_)) {
+      SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+               static_cast<UINT>(kYoutubeWatchdogTimeoutMs), nullptr);
+    }
     const auto alive = alive_;
     ComPtr<ICoreWebView2> requestView = webview_;
     const HRESULT started = requestView->ExecuteScript(
@@ -590,6 +594,10 @@ class NativeMediaPanelHost final {
               youtubeWatchdogInFlight_ = false;
               youtubeWatchdogStartedTick_ = 0;
               if (phase_ != Phase::YouTube || !IsYoutubeWatchPage()) return S_OK;
+              if (hostWindow_ && IsWindow(hostWindow_)) {
+                SetTimer(hostWindow_, kNativeMediaYoutubeWatchdogTimer,
+                         kNativeMediaYoutubeWatchdogHealthyMs, nullptr);
+              }
               if (SUCCEEDED(result) && json &&
                   std::wstring_view(json) == L"\"reload\"") {
                 ReloadYoutubePlaylist();
