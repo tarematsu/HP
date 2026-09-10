@@ -48,7 +48,9 @@ test('App timer follows real deadlines instead of a fixed five second dashboard 
   assert.match(appSource, /stationhead_->NextWakeAt\(\)/);
   assert.match(appSource, /secondaryStationhead_->NextWakeAt\(\)/);
   assert.match(appSource, /renderer_->NativePlaybackNextWakeAt\(now\)/);
-  assert.match(appSource, /constexpr uint32_t kMaxIdleTickMs = 30'000;/);
+  assert.match(appSource, /constexpr uint32_t kMaxAppTimerMs = 24U \* 60U \* 60U \* 1000U;/);
+  assert.match(appSource, /NextDelayFromDeadline\(int64_t now, int64_t deadline, uint32_t fallbackMs\)/);
+  assert.doesNotMatch(appSource, /constexpr uint32_t kMaxIdleTickMs/);
   assert.doesNotMatch(appSource, /selectedTab_ == WorkspaceTab::Main[\s\S]*kSteadyDashboardTickMs/);
 });
 
