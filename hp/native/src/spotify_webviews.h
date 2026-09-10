@@ -26,16 +26,9 @@ class SpotifyWebViews final {
 
   enum class TimedSpotifyTarget : unsigned char {
     None,
-    BitterBlue,
-    Monshirocho,
-    Munen,
-    OnMyWay,
+    Music,
     TalkAbout,
-    LonesomeRabbit,
-    CatalogTrack,
   };
-
-  static constexpr size_t kNoTimedCatalogIndex = static_cast<size_t>(-1);
 
  private:
   static constexpr size_t kAccountCount = 6;
@@ -54,6 +47,13 @@ class SpotifyWebViews final {
     std::wstring title;
     std::wstring url;
     std::wstring path;
+  };
+
+  struct RotationGroup {
+    enum class Mode : unsigned char { Fixed, Shuffle, Random };
+    Mode mode = Mode::Fixed;
+    std::vector<ManagedTrack> tracks;
+    size_t count = 0;
   };
 
   struct Slot {
@@ -89,15 +89,8 @@ class SpotifyWebViews final {
     ULONGLONG authenticationBadgeTick = 0;
     ULONGLONG podcastDueTick = 0;
     int64_t podcastDueUnixMs = 0;
-    size_t timedCatalogIndex = kNoTimedCatalogIndex;
-    size_t timedRandomFIndex = kNoTimedCatalogIndex;
-    std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
-        TimedSpotifyTarget::BitterBlue,
-        TimedSpotifyTarget::Monshirocho,
-        TimedSpotifyTarget::Munen,
-        TimedSpotifyTarget::OnMyWay,
-    };
-    unsigned char timedRotationPosition = 0;
+    std::vector<ManagedTrack> timedCycleTracks;
+    size_t timedRotationPosition = 0;
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -149,9 +142,6 @@ class SpotifyWebViews final {
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
   void EnsureCloudPlaylistLoaded() noexcept;
-  const ManagedTrack* ManagedFixedTrack(size_t index) const noexcept;
-  const ManagedTrack* ManagedRandomTrack(size_t index) const noexcept;
-  size_t ActiveRandomTrackCount() const noexcept;
   const wchar_t* SpotifyPodcastUrl() const noexcept;
   const wchar_t* SpotifyPodcastPath() const noexcept;
   ULONGLONG SpotifyPodcastIntervalMs() const noexcept;
@@ -160,8 +150,6 @@ class SpotifyWebViews final {
   void NavigatePodcastSlot(Slot& slot) noexcept;
   void ReconcilePodcastSlot(Slot& slot) noexcept;
   ULONGLONG NextTimedRandom() noexcept;
-  size_t PickRecentCatalogIndex(size_t avoidIndex,
-                                size_t secondAvoidIndex) noexcept;
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
@@ -190,8 +178,7 @@ class SpotifyWebViews final {
   HWND parentWindow_ = nullptr;
   fs::path userDataFolder_;
   std::array<Slot, kAccountCount> slots_{};
-  std::array<ManagedTrack, 5> cloudFixedTracks_{};
-  std::vector<ManagedTrack> cloudRandomTracks_;
+  std::vector<RotationGroup> cloudRotationGroups_;
   std::wstring cloudPodcastUrl_;
   std::wstring cloudPodcastPath_;
   ULONGLONG podcastIntervalMs_ = kSpotifyPodcastIntervalMs;
@@ -203,7 +190,6 @@ class SpotifyWebViews final {
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG lastPodcastDispatchTick_ = 0;
-  bool cloudFixedTracksValid_ = false;
   bool cloudPlaylistLoaded_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
@@ -216,10 +202,10 @@ class SpotifyWebViews final {
 };
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
-// starts 40 seconds apart, then loops A, a shuffled B-E block, and F with a
-// native four-minute hard deadline per music target. The playlist and TALKABOUT
-// policy can be supplied by cloud deviceConfig.spotify; safe built-in defaults
-// remain available when cloud data is missing or invalid.
+// starts 40 seconds apart and builds its cycle from cloud deviceConfig.spotify
+// rotation blocks. Block count, track count, fixed/shuffle/random behavior and
+// TALKABOUT policy are cloud-managed; safe built-in defaults remain available
+// when cloud data is missing or invalid.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
