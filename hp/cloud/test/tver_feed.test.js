@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   extractTverEpisodeUrls,
+  filterEpisodesBeforeNextRefresh,
   normalizeTverEpisodeUrl,
+  parseTverExpiration,
   refreshTverFeed,
   shouldRefreshTverFeed,
   tverFeedResponse,
@@ -24,6 +26,29 @@ describe('TVer cloud feed', () => {
     expect(urls).toEqual([
       'https://tver.jp/episodes/epONE',
       'https://tver.jp/episodes/epTWO',
+    ]);
+  });
+
+  it('parses API endAt values and exact Japanese TVer expiry labels', () => {
+    const now = new Date('2026-09-11T00:00:00.000Z');
+    const epochSeconds = Date.parse('2026-09-11T02:00:00.000Z') / 1000;
+    expect(parseTverExpiration(epochSeconds, now)).toBe('2026-09-11T02:00:00.000Z');
+    expect(parseTverExpiration('9月11日10時30分終了予定', now))
+      .toBe('2026-09-11T01:30:00.000Z');
+    expect(parseTverExpiration('9月11日(金) 10:45 終了予定', now))
+      .toBe('2026-09-11T01:45:00.000Z');
+  });
+
+  it('removes episodes that will expire before the next hourly collection', () => {
+    const now = new Date('2026-09-11T00:00:00.000Z');
+    expect(filterEpisodesBeforeNextRefresh([
+      { url: 'https://tver.jp/episodes/epSOON', expiresAt: '2026-09-11T00:30:00.000Z' },
+      { url: 'https://tver.jp/episodes/epEDGE', expiresAt: '2026-09-11T01:00:00.000Z' },
+      { url: 'https://tver.jp/episodes/epLATER', expiresAt: '2026-09-11T01:00:01.000Z' },
+      { url: 'https://tver.jp/episodes/epUNKNOWN' },
+    ], now)).toEqual([
+      { url: 'https://tver.jp/episodes/epLATER', expiresAt: '2026-09-11T01:00:01.000Z' },
+      { url: 'https://tver.jp/episodes/epUNKNOWN' },
     ]);
   });
 
@@ -64,8 +89,29 @@ describe('TVer cloud feed', () => {
     await expect(refreshTverFeed(env, {
       collectTalent: async () => [],
       collectSakamichi: async () => [],
-    })).rejects.toThrow(/zero URLs/);
+    })).rejects.toThrow(/zero playable URLs/);
     expect(writes).toHaveLength(2);
+  });
+
+  it('filters near-expiry TVer results before writing the feed', async () => {
+    const writes = [];
+    const now = new Date('2026-09-11T00:00:00.000Z');
+    const feed = await refreshTverFeed({
+      DATA_BUCKET: { put: async (...args) => writes.push(args) },
+    }, {
+      now,
+      collectTalent: async () => [
+        { url: 'https://tver.jp/episodes/epSOON', expiresAt: '2026-09-11T00:59:59.000Z' },
+        { url: 'https://tver.jp/episodes/epSAFE', expiresAt: '2026-09-11T03:00:00.000Z' },
+        { url: 'https://tver.jp/episodes/epUNKNOWN' },
+      ],
+      collectSakamichi: async () => [],
+    });
+    expect(feed.episodes).toEqual([
+      { url: 'https://tver.jp/episodes/epSAFE', expiresAt: '2026-09-11T03:00:00.000Z' },
+      { url: 'https://tver.jp/episodes/epUNKNOWN' },
+    ]);
+    expect(JSON.parse(writes[0][1]).episodes).toEqual(feed.episodes);
   });
 
   it('refreshes every UTC hour on the hourly cron', () => {
