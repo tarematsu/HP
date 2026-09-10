@@ -26,8 +26,6 @@ constexpr wchar_t kSpotifyLonesomeRabbitUrl[] =
 constexpr wchar_t kSpotifyLonesomeRabbitPath[] =
     L"/track/6Vy6hCA2CZwZalGqaX6Sew";
 constexpr wchar_t kSpotifyLonesomeRabbitTitle[] = L"lonesome rabbit";
-constexpr wchar_t kSpotifyTalkAboutShowPath[] =
-    L"/show/2ZQy2mlwQodabAILwZ02Ed";
 
 }  // namespace
 
@@ -40,7 +38,7 @@ bool SpotifyWebViews::SlotMatchesPodcastTarget(const Slot& slot) const noexcept 
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
   return IsSpotifyOpenSource(source) &&
-         (source.find(kSpotifyTalkAboutShowPath) != std::wstring::npos ||
+         (source.find(SpotifyPodcastPath()) != std::wstring::npos ||
           source.find(L"/episode/") != std::wstring::npos);
 }
 
@@ -53,7 +51,7 @@ void SpotifyWebViews::NavigatePodcastSlot(Slot& slot) noexcept {
   PostSpotifyTargetDescriptorForSlot(slot);
   slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
   RecomputeForeground();
-  const HRESULT result = slot.webview->Navigate(kSpotifyPodcastUrl);
+  const HRESULT result = slot.webview->Navigate(SpotifyPodcastUrl());
   if (FAILED(result)) {
     slot.lastModeNavigateTick = 0;
     MarkSlotRecovering(slot, GetTickCount64());

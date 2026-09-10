@@ -1,21 +1,14 @@
 namespace hp {
 namespace {
 
-struct SpotifyRecentCatalogTrack {
+struct SpotifyFallbackCatalogTrack {
   const wchar_t* title;
   const wchar_t* url;
   const wchar_t* path;
 };
 
-constexpr size_t kSpotifyRecentCatalogTag =
-    size_t{1} << (sizeof(size_t) * 8U - 1U);
-constexpr size_t kSpotifyRecentCatalogMask = ~kSpotifyRecentCatalogTag;
-
-// One source of truth: every candidate carries its title and direct Track URL
-// together, so adding/reordering tracks cannot desynchronize a parallel route
-// table. Fixed A-E songs are intentionally excluded.
-constexpr std::array<SpotifyRecentCatalogTrack, 34>
-    kSpotifyRecentCatalogTracks = {{
+constexpr std::array<SpotifyFallbackCatalogTrack, 34>
+    kSpotifyFallbackCatalogTracks = {{
     {L"UDAGAWA GENERATION", L"https://open.spotify.com/track/4ljk3qMzdU81kWzxcNix3F", L"/track/4ljk3qMzdU81kWzxcNix3F"},
     {L"Nightmare症候群", L"https://open.spotify.com/track/2hi8kIoKC8tRMDajdkoYFL", L"/track/2hi8kIoKC8tRMDajdkoYFL"},
     {L"Nothing special", L"https://open.spotify.com/track/2kiCcs4rC55nlHQ1djMTt6", L"/track/2kiCcs4rC55nlHQ1djMTt6"},
@@ -52,28 +45,6 @@ constexpr std::array<SpotifyRecentCatalogTrack, 34>
     {L"恵まれ過ぎて", L"https://open.spotify.com/track/2meBhRDzQpf0ltQH11HbWG", L"/track/2meBhRDzQpf0ltQH11HbWG"},
 }};
 
-static_assert(kSpotifyRecentCatalogTracks.size() == 34);
-
-bool IsRecentCatalogIndex(size_t value) noexcept {
-  return value != SpotifyWebViews::kNoTimedCatalogIndex &&
-         (value & kSpotifyRecentCatalogTag) != 0;
-}
-
-size_t EncodeRecentCatalogIndex(size_t index) noexcept {
-  return kSpotifyRecentCatalogTag | index;
-}
-
-size_t DecodeRecentCatalogIndex(size_t value) noexcept {
-  return value & kSpotifyRecentCatalogMask;
-}
-
-const SpotifyRecentCatalogTrack* RecentTimedCatalogTrack(size_t value) noexcept {
-  if (!IsRecentCatalogIndex(value)) return nullptr;
-  const size_t index = DecodeRecentCatalogIndex(value);
-  if (index >= kSpotifyRecentCatalogTracks.size()) return nullptr;
-  return &kSpotifyRecentCatalogTracks[index];
-}
-
 }  // namespace
 
 ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
@@ -83,9 +54,7 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
     timedRandomState_ =
         GetTickCount64() ^ static_cast<ULONGLONG>(counter.QuadPart) ^
         static_cast<ULONGLONG>(reinterpret_cast<ULONG_PTR>(this));
-    if (timedRandomState_ == 0) {
-      timedRandomState_ = 0x9E3779B97F4A7C15ULL;
-    }
+    if (timedRandomState_ == 0) timedRandomState_ = 0x9E3779B97F4A7C15ULL;
   }
 
   ULONGLONG x = timedRandomState_;
@@ -96,68 +65,66 @@ ULONGLONG SpotifyWebViews::NextTimedRandom() noexcept {
   return x * 2685821657736338717ULL;
 }
 
-size_t SpotifyWebViews::PickRecentCatalogIndex(
-    size_t avoidIndex, size_t secondAvoidIndex) noexcept {
-  const size_t count = kSpotifyRecentCatalogTracks.size();
-  for (unsigned attempt = 0; attempt < 8; ++attempt) {
-    const size_t index = static_cast<size_t>(NextTimedRandom() % count);
-    const size_t encoded = EncodeRecentCatalogIndex(index);
-    if (encoded != avoidIndex && encoded != secondAvoidIndex) return encoded;
-  }
-
-  for (size_t index = 0; index < count; ++index) {
-    const size_t encoded = EncodeRecentCatalogIndex(index);
-    if (encoded != avoidIndex && encoded != secondAvoidIndex) return encoded;
-  }
-  return kNoTimedCatalogIndex;
-}
-
 void SpotifyWebViews::PrepareTimedRotationCycle(Slot& slot) noexcept {
-  slot.timedMiddleOrder = {
-      TimedSpotifyTarget::BitterBlue,
-      TimedSpotifyTarget::Monshirocho,
-      TimedSpotifyTarget::Munen,
-      TimedSpotifyTarget::OnMyWay,
+  slot.timedCycleTracks.clear();
+
+  const auto appendGroup = [this, &slot](const RotationGroup& group) {
+    if (group.tracks.empty()) return;
+    if (group.mode == RotationGroup::Mode::Fixed) {
+      slot.timedCycleTracks.insert(
+          slot.timedCycleTracks.end(), group.tracks.begin(), group.tracks.end());
+      return;
+    }
+
+    std::vector<size_t> order(group.tracks.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    for (size_t remaining = order.size(); remaining > 1; --remaining) {
+      const size_t swapIndex = static_cast<size_t>(NextTimedRandom() % remaining);
+      std::swap(order[remaining - 1], order[swapIndex]);
+    }
+
+    const size_t take = group.mode == RotationGroup::Mode::Random
+        ? std::min(group.count, order.size())
+        : order.size();
+    for (size_t i = 0; i < take; ++i) {
+      slot.timedCycleTracks.push_back(group.tracks[order[i]]);
+    }
   };
-  for (size_t remaining = slot.timedMiddleOrder.size(); remaining > 1;
-       --remaining) {
-    const size_t swapIndex =
-        static_cast<size_t>(NextTimedRandom() % remaining);
-    std::swap(slot.timedMiddleOrder[remaining - 1],
-              slot.timedMiddleOrder[swapIndex]);
+
+  for (const RotationGroup& group : cloudRotationGroups_) appendGroup(group);
+  if (!slot.timedCycleTracks.empty()) return;
+
+  // Fail-safe preserves the previous A + shuffled B-E + one random F behavior
+  // only when cloud rotation is missing or invalid.
+  slot.timedCycleTracks.push_back(
+      {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
+       kSpotifyLonesomeRabbitPath});
+  std::array<ManagedTrack, 4> middle = {{
+      {kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl, kSpotifyBitterBluePath},
+      {kSpotifyMonshirochoTitle, kSpotifyMonshirochoUrl, kSpotifyMonshirochoPath},
+      {kSpotifyMunenTitle, kSpotifyMunenUrl, kSpotifyMunenPath},
+      {kSpotifyOnMyWayTitle, kSpotifyOnMyWayUrl, kSpotifyOnMyWayPath},
+  }};
+  for (size_t remaining = middle.size(); remaining > 1; --remaining) {
+    const size_t swapIndex = static_cast<size_t>(NextTimedRandom() % remaining);
+    std::swap(middle[remaining - 1], middle[swapIndex]);
   }
-  slot.timedRandomFIndex =
-      PickRecentCatalogIndex(kNoTimedCatalogIndex, kNoTimedCatalogIndex);
+  slot.timedCycleTracks.insert(
+      slot.timedCycleTracks.end(), middle.begin(), middle.end());
+  const auto& randomTrack = kSpotifyFallbackCatalogTracks[
+      static_cast<size_t>(NextTimedRandom() % kSpotifyFallbackCatalogTracks.size())];
+  slot.timedCycleTracks.push_back(
+      {randomTrack.title, randomTrack.url, randomTrack.path});
 }
 
 SpotifyWebViews::MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget(
     const Slot& slot) const noexcept {
-  switch (slot.timedTarget) {
-    case TimedSpotifyTarget::BitterBlue:
-      return {kSpotifyBitterBlueTitle, kSpotifyBitterBlueUrl,
-              kSpotifyBitterBluePath};
-    case TimedSpotifyTarget::Monshirocho:
-      return {kSpotifyMonshirochoTitle, kSpotifyMonshirochoUrl,
-              kSpotifyMonshirochoPath};
-    case TimedSpotifyTarget::Munen:
-      return {kSpotifyMunenTitle, kSpotifyMunenUrl, kSpotifyMunenPath};
-    case TimedSpotifyTarget::OnMyWay:
-      return {kSpotifyOnMyWayTitle, kSpotifyOnMyWayUrl,
-              kSpotifyOnMyWayPath};
-    case TimedSpotifyTarget::LonesomeRabbit:
-      return {kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,
-              kSpotifyLonesomeRabbitPath};
-    case TimedSpotifyTarget::CatalogTrack: {
-      const SpotifyRecentCatalogTrack* track =
-          RecentTimedCatalogTrack(slot.timedCatalogIndex);
-      return track ? MusicTargetDescriptor{track->title, track->url, track->path}
-                   : MusicTargetDescriptor{};
-    }
-    case TimedSpotifyTarget::TalkAbout:
-    case TimedSpotifyTarget::None:
-      return {};
+  if (slot.timedTarget != TimedSpotifyTarget::Music ||
+      slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
+    return {};
   }
-  return {};
+  const ManagedTrack& track = slot.timedCycleTracks[slot.timedRotationPosition];
+  return {track.title.c_str(), track.url.c_str(), track.path.c_str()};
 }
 
 bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
@@ -169,8 +136,7 @@ bool SpotifyWebViews::SlotMatchesMusicTarget(const Slot& slot) const noexcept {
   if (FAILED(slot.webview->get_Source(&rawSource)) || !rawSource) return false;
   const std::wstring source(rawSource);
   CoTaskMemFree(rawSource);
-  return IsSpotifyOpenSource(source) &&
-         source.find(target.path) != std::wstring::npos;
+  return IsSpotifyOpenSource(source) && source.find(target.path) != std::wstring::npos;
 }
 
 void SpotifyWebViews::NavigateMusicTarget(Slot& slot) noexcept {
@@ -325,10 +291,12 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   std::wstring_view trackPath;
   std::wstring_view title;
   std::wstring_view kind = L"none";
+  std::wstring playbackRate;
 
   if (slot.timedTarget == TimedSpotifyTarget::TalkAbout) {
-    pagePath = kSpotifyTalkAboutShowPath;
+    pagePath = SpotifyPodcastPath();
     kind = L"podcast";
+    playbackRate = std::to_wstring(SpotifyPodcastPlaybackRate());
   } else {
     const MusicTargetDescriptor target = ResolveMusicTarget(slot);
     if (target.path) {
@@ -348,11 +316,9 @@ void SpotifyWebViews::PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept {
   appendField(trackPath);
   appendField(title);
   appendField(kind);
+  appendField(playbackRate);
   slot.webview->PostWebMessageAsString(message.c_str());
 
-  // The target is published first so the page bootstrap immediately pauses the
-  // old queue. The generation follows in the same native turn and is attached to
-  // all observer events from the new target.
   std::wstring generationMessage = L"spotify:generation";
   generationMessage.push_back(kSpotifyMessageSeparator);
   generationMessage.append(std::to_wstring(slot.targetGeneration));

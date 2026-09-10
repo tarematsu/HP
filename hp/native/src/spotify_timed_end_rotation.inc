@@ -29,6 +29,7 @@ void SpotifyWebViews::EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept {
   if (podcastScheduleLoaded_) return;
   podcastScheduleLoaded_ = true;
 
+  const ULONGLONG interval = SpotifyPodcastIntervalMs();
   const int64_t wallNow = UnixMillis();
   std::array<int64_t, kAccountCount> persisted{};
   bool complete = false;
@@ -48,19 +49,14 @@ void SpotifyWebViews::EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept {
     Slot& slot = slots_[i];
     int64_t due = complete ? persisted[i] : 0;
     if (due <= 0) {
-      // New installations fail toward replay rather than omission. The first
-      // TALKABOUT wave starts immediately, still respecting the established
-      // 40-second account staggering.
       due = wallNow + static_cast<int64_t>(
           static_cast<ULONGLONG>(i) * kSpotifyAccountStartOffsetMs);
       dirty = true;
     }
 
-    // A corrupt file or a backwards wall-clock adjustment must never postpone
-    // TALKABOUT by more than one interval. Runtime scheduling below uses the
-    // monotonic tick counter after this restart-safe conversion.
-    const int64_t maxFuture =
-        wallNow + static_cast<int64_t>(kSpotifyPodcastIntervalMs);
+    // A corrupt file or backwards wall-clock adjustment must not postpone the
+    // podcast beyond the cloud-configured interval (which is capped at 2h).
+    const int64_t maxFuture = wallNow + static_cast<int64_t>(interval);
     if (due > maxFuture) {
       due = maxFuture;
       dirty = true;
@@ -69,7 +65,7 @@ void SpotifyWebViews::EnsurePodcastScheduleLoaded(ULONGLONG now) noexcept {
     slot.podcastDueUnixMs = due;
     const int64_t remainingWallMs = std::max<int64_t>(0, due - wallNow);
     const ULONGLONG remaining = static_cast<ULONGLONG>(std::min<int64_t>(
-        remainingWallMs, static_cast<int64_t>(kSpotifyPodcastIntervalMs)));
+        remainingWallMs, static_cast<int64_t>(interval)));
     slot.podcastDueTick = now + remaining;
     slot.podcastPlaybackRecorded = false;
   }
@@ -89,9 +85,7 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
     {
       std::ofstream output(temporary, std::ios::trunc);
       if (!output) return;
-      for (const Slot& slot : slots_) {
-        output << slot.podcastDueUnixMs << '\n';
-      }
+      for (const Slot& slot : slots_) output << slot.podcastDueUnixMs << '\n';
       output.flush();
       if (!output) return;
     }
@@ -102,7 +96,7 @@ void SpotifyWebViews::SavePodcastScheduleState() noexcept {
     }
   } catch (...) {
     // Persistence failure may cause an extra replay after restart, but must
-    // never block the in-memory two-hour deadline.
+    // never block the in-memory deadline.
   }
 }
 
@@ -132,10 +126,10 @@ void SpotifyWebViews::MarkPodcastPlaybackStarted(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.podcastBreakActive || slot.podcastPlaybackRecorded) return;
 
+  const ULONGLONG interval = SpotifyPodcastIntervalMs();
   slot.podcastPlaybackRecorded = true;
-  slot.podcastDueTick = now + kSpotifyPodcastIntervalMs;
-  slot.podcastDueUnixMs =
-      UnixMillis() + static_cast<int64_t>(kSpotifyPodcastIntervalMs);
+  slot.podcastDueTick = now + interval;
+  slot.podcastDueUnixMs = UnixMillis() + static_cast<int64_t>(interval);
   SavePodcastScheduleState();
 }
 
@@ -147,25 +141,21 @@ void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
-  const unsigned char position =
-      static_cast<unsigned char>(slot.timedRotationPosition % 6U);
-  if (position == 0U) {
-    slot.timedTarget = TimedSpotifyTarget::LonesomeRabbit;
-  } else if (position <= 4U) {
-    slot.timedTarget = slot.timedMiddleOrder[static_cast<size_t>(position - 1U)];
-  } else {
-    slot.timedTarget = TimedSpotifyTarget::CatalogTrack;
-    slot.timedCatalogIndex = slot.timedRandomFIndex;
+  if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
+  if (slot.timedCycleTracks.empty()) {
+    slot.timedTarget = TimedSpotifyTarget::None;
+    slot.timedPlaybackStartTick = 0;
+    return;
   }
+  slot.timedRotationPosition %= slot.timedCycleTracks.size();
+  slot.timedTarget = TimedSpotifyTarget::Music;
   BumpSpotifyTargetGeneration(slot);
   slot.unhealthySinceTick = 0;
   SetSlotState(slot, SlotState::WaitingTarget);
   slot.lastModeNavigateTick = 0;
   slot.lastTimedReconcileTick = 0;
-  // Hard upper bound: arm the native clock before any Spotify navigation,
-  // DOM lookup, MediaSession metadata, or playback observer can fail. Browser
-  // signals may advance the rotation earlier, but they can never postpone this
-  // four-minute deadline.
+  // Hard upper bound starts before navigation. Browser failures therefore never
+  // make one cloud-configured track occupy a slot for more than four minutes.
   slot.timedPlaybackStartTick = GetTickCount64();
 }
 
@@ -177,6 +167,7 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
   slot.timedRotationPosition = 0;
   slot.timedRotationCycle = 0;
   PrepareTimedRotationCycle(slot);
+  slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -211,10 +202,11 @@ void SpotifyWebViews::CompletePodcastBreak(
   StopTimedOneShotPlayback(slot);
   slot.podcastBreakActive = false;
   slot.podcastPlaybackRecorded = false;
-  // A two-hour deadline may interrupt any A-F position. Restart from A after
-  // the one-shot podcast so the music sequence always resumes deterministically.
+  // A podcast deadline may interrupt any position. Build a fresh cloud-defined
+  // cycle and resume from its first block/track.
   slot.timedRotationPosition = 0;
   PrepareTimedRotationCycle(slot);
+  slot.timedCloudRotationRevision = cloudRotationRevision_;
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
   staggerSlotStartTick_ = now;
@@ -226,11 +218,26 @@ void SpotifyWebViews::CompletePodcastBreak(
 void SpotifyWebViews::AdvanceTimedRotationSlot(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || slot.podcastBreakActive) return;
-  slot.timedRotationPosition =
-      static_cast<unsigned char>((slot.timedRotationPosition + 1U) % 6U);
-  if (slot.timedRotationPosition == 0U) {
-    ++slot.timedRotationCycle;
+
+  // A cloud-sync change never cuts the currently playing song. At its next
+  // normal ended/4-minute boundary, discard the old prebuilt cycle and start
+  // the newly synchronized rotation from its first configured block.
+  if (slot.timedCloudRotationRevision != cloudRotationRevision_) {
+    slot.timedRotationPosition = 0;
     PrepareTimedRotationCycle(slot);
+    slot.timedCloudRotationRevision = cloudRotationRevision_;
+    if (slot.timedCycleTracks.empty()) return;
+  } else {
+    if (slot.timedCycleTracks.empty()) PrepareTimedRotationCycle(slot);
+    if (slot.timedCycleTracks.empty()) return;
+
+    ++slot.timedRotationPosition;
+    if (slot.timedRotationPosition >= slot.timedCycleTracks.size()) {
+      ++slot.timedRotationCycle;
+      slot.timedRotationPosition = 0;
+      PrepareTimedRotationCycle(slot);
+      if (slot.timedCycleTracks.empty()) return;
+    }
   }
   ApplyTimedRotationTarget(slot);
   staggerSlotIndex_ = slot.index;
@@ -241,8 +248,6 @@ void SpotifyWebViews::AdvanceTimedRotationSlot(
 }
 
 bool SpotifyWebViews::AdvanceExpiredTimedRotation(ULONGLONG now) noexcept {
-  // Per-slot native timestamps enforce the hard upper bound independently of
-  // DOM and media events. Podcast breaks deliberately have no music deadline.
   for (Slot& slot : slots_) {
     if (!slot.timedRotationActive || slot.podcastBreakActive ||
         slot.timedPlaybackStartTick == 0 ||
@@ -289,8 +294,6 @@ void SpotifyWebViews::ArmTimedEndObserver(Slot& slot) noexcept {
               CoTaskMemFree(rawMessage);
               if (!started && !ended && !stopped) return S_OK;
 
-              // Delayed WebView messages are harmless once every state-changing
-              // event is tied to the generation that produced it.
               if (eventGeneration == 0 ||
                   eventGeneration != target->targetGeneration) {
                 return S_OK;

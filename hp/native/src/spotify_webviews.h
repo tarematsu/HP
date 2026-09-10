@@ -26,11 +26,14 @@ class SpotifyWebViews final {
 
   enum class TimedSpotifyTarget : unsigned char {
     None,
+    Music,
+    TalkAbout,
+    // Legacy names are retained only so old reset/recovery paths compile while
+    // playback itself is driven exclusively by timedCycleTracks.
     BitterBlue,
     Monshirocho,
     Munen,
     OnMyWay,
-    TalkAbout,
     LonesomeRabbit,
     CatalogTrack,
   };
@@ -48,6 +51,19 @@ class SpotifyWebViews final {
     Playing,
     Recovering,
     Completed,
+  };
+
+  struct ManagedTrack {
+    std::wstring title;
+    std::wstring url;
+    std::wstring path;
+  };
+
+  struct RotationGroup {
+    enum class Mode : unsigned char { Fixed, Shuffle, Random };
+    Mode mode = Mode::Fixed;
+    std::vector<ManagedTrack> tracks;
+    size_t count = 0;
   };
 
   struct Slot {
@@ -83,6 +99,10 @@ class SpotifyWebViews final {
     ULONGLONG authenticationBadgeTick = 0;
     ULONGLONG podcastDueTick = 0;
     int64_t podcastDueUnixMs = 0;
+    std::vector<ManagedTrack> timedCycleTracks;
+    size_t timedRotationPosition = 0;
+    ULONGLONG timedCloudRotationRevision = 0;
+    // Legacy scheduler state is no longer consulted by active playback.
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomFIndex = kNoTimedCatalogIndex;
     std::array<TimedSpotifyTarget, 4> timedMiddleOrder{
@@ -91,7 +111,6 @@ class SpotifyWebViews final {
         TimedSpotifyTarget::Munen,
         TimedSpotifyTarget::OnMyWay,
     };
-    unsigned char timedRotationPosition = 0;
     SlotState state = SlotState::NotCreated;
     bool controllerCreating = false;
     bool reconcileInFlight = false;
@@ -142,12 +161,15 @@ class SpotifyWebViews final {
   void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
+  void EnsureCloudPlaylistLoaded() noexcept;
+  const wchar_t* SpotifyPodcastUrl() const noexcept;
+  const wchar_t* SpotifyPodcastPath() const noexcept;
+  ULONGLONG SpotifyPodcastIntervalMs() const noexcept;
+  double SpotifyPodcastPlaybackRate() const noexcept;
   bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
   void NavigatePodcastSlot(Slot& slot) noexcept;
   void ReconcilePodcastSlot(Slot& slot) noexcept;
   ULONGLONG NextTimedRandom() noexcept;
-  size_t PickRecentCatalogIndex(size_t avoidIndex,
-                                size_t secondAvoidIndex) noexcept;
   void PrepareTimedRotationCycle(Slot& slot) noexcept;
   MusicTargetDescriptor ResolveMusicTarget(const Slot& slot) const noexcept;
   bool SlotMatchesMusicTarget(const Slot& slot) const noexcept;
@@ -176,6 +198,15 @@ class SpotifyWebViews final {
   HWND parentWindow_ = nullptr;
   fs::path userDataFolder_;
   std::array<Slot, kAccountCount> slots_{};
+  std::vector<RotationGroup> cloudRotationGroups_;
+  std::wstring cloudPodcastUrl_;
+  std::wstring cloudPodcastPath_;
+  std::wstring cloudRotationFingerprint_;
+  std::wstring cloudPodcastFingerprint_;
+  fs::file_time_type cloudPlaylistWriteTime_{};
+  ULONGLONG cloudRotationRevision_ = 1;
+  ULONGLONG podcastIntervalMs_ = kSpotifyPodcastIntervalMs;
+  double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   size_t staggerSlotIndex_ = 0;
@@ -183,6 +214,8 @@ class SpotifyWebViews final {
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG lastPodcastDispatchTick_ = 0;
+  bool cloudPlaylistLoaded_ = false;
+  bool cloudPlaylistWriteTimeKnown_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -194,10 +227,10 @@ class SpotifyWebViews final {
 };
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
-// starts 40 seconds apart, then loops A, a shuffled B-E block, and F with a
-// native four-minute hard deadline per music target. TALKABOUT has a separate
-// persisted two-hour deadline per account, survives app restarts, plays at 3x,
-// then restarts the music rotation from A.
+// starts 40 seconds apart and builds its cycle from cloud deviceConfig.spotify
+// rotation blocks. Block count, track count, fixed/shuffle/random behavior and
+// TALKABOUT policy are cloud-managed; safe built-in defaults remain available
+// when cloud data is missing or invalid.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 

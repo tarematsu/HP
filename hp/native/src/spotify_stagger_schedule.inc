@@ -43,6 +43,7 @@ void SpotifyWebViews::StartAutonomousSchedule(ULONGLONG now) noexcept {
   if (!started_ || networkBlocked_ || slots_.empty()) return;
   if (now == 0) now = GetTickCount64();
 
+  EnsureCloudPlaylistLoaded();
   robustSchedulerStarted_ = true;
   staggerSlotIndex_ = 0;
   staggerSlotStartTick_ = now;
@@ -68,6 +69,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
+  // device-config.json is atomically replaced by the existing CloudClient sync.
+  // A timestamp check is cheap and makes Spotify consume the synchronized
+  // settings without restarting HomePanel.
+  EnsureCloudPlaylistLoaded();
+
   // ExecuteScript completion callbacks are not a lifetime guarantee. If WebView2
   // drops one, invalidate that request generation and immediately give the
   // affected account serialized recovery ownership instead of leaving an
@@ -79,9 +85,9 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
     }
   }
 
-  // TALKABOUT owns an independent restart-safe two-hour deadline. Check it
-  // before music expiry so a four-minute track watchdog can never postpone an
-  // already-due podcast break.
+  // TALKABOUT owns an independent restart-safe cloud-configured deadline. It is
+  // capped at two hours and checked before music expiry so the music watchdog
+  // can never postpone an already-due podcast break.
   if (StartOverduePodcastBreak(now)) return;
   if (AdvanceExpiredTimedRotation(now)) return;
 
@@ -120,8 +126,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
 
   // Spotify playback no longer depends on the YouTube/TVer phase. Once an
-  // account reaches its serialized start turn, it owns an autonomous six-song
-  // rotation for the rest of its lifetime (apart from explicit media mute).
+  // account reaches its serialized start turn, it owns an autonomous
+  // cloud-defined rotation for the rest of its lifetime.
   if (!slot.timedRotationActive) {
     if (!slot.webview) {
       BeginControllerCreate(slot);

@@ -3,38 +3,23 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const wrapper = readFileSync(
-  new URL('../../native/src/spotify_webviews.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_webviews.inc', import.meta.url), 'utf8');
 const scoped = readFileSync(
-  new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_scoped_track_reconcile.inc', import.meta.url), 'utf8');
 const runtime = readFileSync(
-  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_media_observer_runtime.inc', import.meta.url), 'utf8');
 const events = readFileSync(
-  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_media_observer_events.inc', import.meta.url), 'utf8');
 const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url), 'utf8');
 const click = readFileSync(
-  new URL('../../native/src/spotify_background_click.inc', import.meta.url),
-  'utf8',
-);
+  new URL('../../native/src/spotify_background_click.inc', import.meta.url), 'utf8');
 
-test('Lonesome rabbit validation uses the shared music descriptor and scoped reconcile implementation', () => {
+test('all configured tracks use the shared music descriptor and scoped reconcile implementation', () => {
   assert.match(wrapper, /#include "spotify_scoped_track_reconcile\.inc"/);
   assert.doesNotMatch(wrapper, /spotify_lonesome_guard\.inc|RewriteSpotify|#define ExecuteScript/);
   assert.match(recent, /MusicTargetDescriptor SpotifyWebViews::ResolveMusicTarget/);
-  assert.match(
-    recent,
-    /case TimedSpotifyTarget::LonesomeRabbit:[\s\S]*return \{kSpotifyLonesomeRabbitTitle, kSpotifyLonesomeRabbitUrl,[\s\S]*kSpotifyLonesomeRabbitPath\};/,
-  );
+  assert.match(recent, /slot\.timedCycleTracks\[slot\.timedRotationPosition\]/);
   assert.match(recent, /kind = L"music"/);
   assert.match(scoped, /now-playing-widget/);
   assert.match(scoped, /now-playing-bar/);
@@ -64,5 +49,5 @@ test('wrong queue items are corrected only from the requested track or direct tr
   assert.match(scoped, /tracklist-row/);
   assert.match(scoped, /onTargetPage\(\)/);
   assert.match(scoped, /spotify:not-playing/);
-  assert.match(recent, /kSpotifyLonesomeRabbitPath/);
+  assert.match(recent, /track\.path\.c_str\(\)/);
 });
