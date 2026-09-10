@@ -69,6 +69,11 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (scheduleStartTick_ == 0) scheduleStartTick_ = now;
   if (staggerSlotStartTick_ == 0) staggerSlotStartTick_ = now;
 
+  // device-config.json is atomically replaced by the existing CloudClient sync.
+  // A timestamp check is cheap and makes Spotify consume the synchronized
+  // settings without restarting HomePanel.
+  EnsureCloudPlaylistLoaded();
+
   // ExecuteScript completion callbacks are not a lifetime guarantee. If WebView2
   // drops one, invalidate that request generation and immediately give the
   // affected account serialized recovery ownership instead of leaving an
@@ -121,8 +126,8 @@ void SpotifyWebViews::RunStaggeredReconcile() noexcept {
   if (elapsed < slotOffset) return;
 
   // Spotify playback no longer depends on the YouTube/TVer phase. Once an
-  // account reaches its serialized start turn, it owns an autonomous six-song
-  // rotation for the rest of its lifetime (apart from explicit media mute).
+  // account reaches its serialized start turn, it owns an autonomous
+  // cloud-defined rotation for the rest of its lifetime.
   if (!slot.timedRotationActive) {
     if (!slot.webview) {
       BeginControllerCreate(slot);
