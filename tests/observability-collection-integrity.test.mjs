@@ -26,30 +26,34 @@ function completeEvidence() {
     liveTailLog: REQUIRED_CLOUDFLARE_WORKERS
       .map((worker) => `LIVE_TAIL_SUMMARY worker=${worker} events=0 error_like=0 max_cpu_field=null`)
       .join('\n'),
-    publicHealthSummary: REQUIRED_PUBLIC_HEALTH_ENDPOINTS
+    publicHealthSummary: `${REQUIRED_PUBLIC_HEALTH_ENDPOINTS
       .map((endpoint) => `| ${endpoint} | success | 200 OK | 10 ms |`)
-      .join('\n'),
+      .join('\n')}\n{\n  "tverFeed": {\n    "ok": true,\n    "status": "fresh",\n    "lastSuccessAt": "2026-09-11T03:00:00.000Z",\n    "ageSeconds": 1200,\n    "episodeCount": 7,\n    "sources": ["tver-talent"]\n  }\n}`,
     observabilityQueryLog: 'query completed without fallback',
   };
 }
 
-test('collection audit requires all four Stationhead Workers, HomePanel, and both public health endpoints', () => {
+test('collection audit requires all four Stationhead Workers, HomePanel, public health, and fresh TVer feed', () => {
   assert.deepEqual(configuredWorkers(REQUIRED_CLOUDFLARE_WORKERS.join(',')), REQUIRED_CLOUDFLARE_WORKERS);
   const result = evaluateCollectionCoverage(completeEvidence());
   assert.equal(result.failures.length, 0);
   const summary = renderCollectionSummary(result);
   assert.match(summary, /Overall: `OK`/);
   assert.match(summary, /HomePanel Cloud health/);
+  assert.match(summary, /TVer feed freshness/);
 });
 
-test('collection audit fails closed for missing Worker, deployment, metrics, telemetry, live tail, public health, or unsafe fallback', () => {
+test('collection audit fails closed for missing Worker, deployment, metrics, telemetry, live tail, public health, TVer freshness, or unsafe fallback', () => {
   const evidence = completeEvidence();
   evidence.configured = evidence.configured.filter((worker) => worker !== 'sh-buddies-recovery');
   delete evidence.deployments['sh-buddies-collector'];
   evidence.observabilitySummary = evidence.observabilitySummary.replace(/^.*sh-sakurazaka46jp.*$/m, '');
   evidence.telemetryLog = evidence.telemetryLog.replace(/^CPU_WORKER worker=homepanel-cloud.*$/m, '');
   evidence.liveTailLog = evidence.liveTailLog.replace(/^LIVE_TAIL_SUMMARY worker=sh-runtime-orchestrator.*$/m, '');
-  evidence.publicHealthSummary = evidence.publicHealthSummary.replace(/^.*HomePanel Cloud health.*$/m, '');
+  evidence.publicHealthSummary = evidence.publicHealthSummary
+    .replace(/^.*HomePanel Cloud health.*$/m, '')
+    .replace('"ok": true', '"ok": false')
+    .replace('"status": "fresh"', '"status": "stale"');
   evidence.observabilityQueryLog = '::warning title=Telemetry filter fallback::filter rejected';
 
   const result = evaluateCollectionCoverage(evidence);
@@ -60,6 +64,7 @@ test('collection audit fails closed for missing Worker, deployment, metrics, tel
     'Telemetry audit: homepanel-cloud',
     'Live tail: sh-runtime-orchestrator',
     'Public health: HomePanel Cloud health',
+    'TVer feed freshness',
     'Persisted diagnostic filter integrity',
   ]) assert.ok(result.failures.some((check) => check.name === name), name);
   assert.match(renderCollectionSummary(result), /Overall: `FAILURE`/);
@@ -72,4 +77,15 @@ test('a generic successful endpoint cannot hide a missing required endpoint', ()
   for (const endpoint of REQUIRED_PUBLIC_HEALTH_ENDPOINTS) {
     assert.ok(result.failures.some((check) => check.name === `Public health: ${endpoint}`));
   }
+  assert.ok(result.failures.some((check) => check.name === 'TVer feed freshness'));
+});
+
+test('a stale TVer feed fails observability even when base HomePanel health stays 200', () => {
+  const evidence = completeEvidence();
+  evidence.publicHealthSummary = evidence.publicHealthSummary
+    .replace('"ok": true', '"ok": false')
+    .replace('"status": "fresh"', '"status": "stale"');
+  const result = evaluateCollectionCoverage(evidence);
+  assert.ok(result.failures.some((check) => check.name === 'TVer feed freshness'));
+  assert.ok(!result.failures.some((check) => check.name === 'Public health: HomePanel Cloud health'));
 });
