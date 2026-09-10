@@ -1,7 +1,6 @@
 import { fetchJson } from "./http";
 import {
   renderRepresentativeRadarFrame,
-  type BrowserRadarCandidate,
   type BrowserRadarPanelRequest,
   type BrowserRadarTile,
 } from "./radar_browser_frame";
@@ -11,10 +10,8 @@ import type { Env, SourceResult } from "./sources";
 const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
 const DEFAULT_RADAR_ZOOM = 10;
 const RADAR_DISPLAY_ZOOM_OFFSET = 1;
-const RADAR_SELECTION_MAX_ZOOM = 8;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
-const RADAR_TERMINAL_WINDOW_MS = 2 * 60 * 60 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/representative/";
 const RADAR_PANEL_SOURCE_WIDTH = 384;
 const RADAR_PANEL_SOURCE_HEIGHT = 512;
@@ -26,7 +23,6 @@ const RADAR_LEGACY_FRAME_PREFIX = "radar/frames/";
 const RADAR_LEGACY_FRAME_PATH = /^\/v1\/radar\/frame\/([a-z0-9-]{1,96})\/(\d{14})\.webp$/;
 const JMA_OBSERVED_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N1.json";
 const JMA_FORECAST_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/nowc/targetTimes_N2.json";
-const JMA_SHORT_TERM_TIMES_URL = "https://www.jma.go.jp/bosai/jmatile/data/rasrf/targetTimes.json";
 
 export type RadarTimeEntry = {
   basetime: string;
@@ -35,7 +31,6 @@ export type RadarTimeEntry = {
   elements?: string[];
 };
 
-type RadarProduct = "jma" | "rasrf";
 type RadarTileLayout = { x: number; y: number; destX: number; destY: number };
 
 function jmaTimestampToMillis(value: string): number {
@@ -86,32 +81,6 @@ export function selectRadarForecastEntries(
   return future.length ? [current, ...future] : [];
 }
 
-export function selectTerminalForecastEntries(entries: RadarTimeEntry[]): RadarTimeEntry[] {
-  const available = entries.filter(entry => (
-    hasElement(entry, "rasrf") && jmaTimestampToMillis(entry.validtime) > 0
-  ));
-  if (!available.length) return [];
-
-  const terminal = available.reduce((best, entry) => {
-    if (entry.validtime !== best.validtime) return entry.validtime > best.validtime ? entry : best;
-    return entry.basetime > best.basetime ? entry : best;
-  });
-  const terminalAt = jmaTimestampToMillis(terminal.validtime);
-  const startAt = terminalAt - RADAR_TERMINAL_WINDOW_MS;
-  const byValidTime = new Map<string, RadarTimeEntry>();
-  for (const entry of available) {
-    const validAt = jmaTimestampToMillis(entry.validtime);
-    if (entry.basetime === terminal.basetime
-        && entry.member === terminal.member
-        && validAt >= startAt
-        && validAt <= terminalAt) {
-      byValidTime.set(entry.validtime, entry);
-    }
-  }
-  return [...byValidTime.values()]
-    .sort((left, right) => left.validtime.localeCompare(right.validtime));
-}
-
 function radarTileLayout(lat: number, lon: number, zoom: number, width: number, height: number): RadarTileLayout[] {
   const scale = 2 ** zoom;
   const worldX = (lon + 180) / 360 * scale * 256;
@@ -147,8 +116,8 @@ function publicWorkerUrl(env: Env): string {
   return `${url.protocol}//${url.host}`;
 }
 
-function radarTilePath(product: RadarProduct, entry: RadarTimeEntry, zoom: number, tile: RadarTileLayout): string {
-  return `/v1/radar/tile/${product}/${entry.basetime}/${entry.validtime}/${zoom}/${tile.x}/${tile.y}.png`;
+function radarTilePath(entry: RadarTimeEntry, zoom: number, tile: RadarTileLayout): string {
+  return `/v1/radar/tile/jma/${entry.basetime}/${entry.validtime}/${zoom}/${tile.x}/${tile.y}.png`;
 }
 
 function representativeFrameKey(): string {
@@ -161,7 +130,6 @@ function representativeFramePath(): string {
 
 async function signedBrowserTiles(
   env: Env,
-  product: RadarProduct,
   entry: RadarTimeEntry,
   zoom: number,
   layout: readonly RadarTileLayout[],
@@ -170,7 +138,7 @@ async function signedBrowserTiles(
   return Promise.all(layout.map(async tile => ({
     destX: tile.destX,
     destY: tile.destY,
-    url: await signedRadarTilePath(env, radarTilePath(product, entry, zoom, tile), expires),
+    url: await signedRadarTilePath(env, radarTilePath(entry, zoom, tile), expires),
   })));
 }
 
@@ -183,31 +151,17 @@ function jstTimeText(entry: RadarTimeEntry): string {
 async function panelRequest(
   env: Env,
   title: string,
-  product: RadarProduct,
-  entries: RadarTimeEntry[],
+  entry: RadarTimeEntry,
   displayZoom: number,
-  selectionZoom: number,
   displayLayout: RadarTileLayout[],
-  selectionLayout: RadarTileLayout[],
-  selectionWidth: number,
-  selectionHeight: number,
   expires: number,
 ): Promise<BrowserRadarPanelRequest> {
-  const candidates: BrowserRadarCandidate[] = await Promise.all(entries.map(async (entry, index) => ({
-    index,
-    tiles: await signedBrowserTiles(env, product, entry, selectionZoom, selectionLayout, expires),
-  })));
   return {
     title,
-    candidates,
-    displayTiles: index => signedBrowserTiles(
-      env, product, entries[index]!, displayZoom, displayLayout, expires,
-    ),
-    selectionWidth,
-    selectionHeight,
+    tiles: await signedBrowserTiles(env, entry, displayZoom, displayLayout, expires),
     sourceWidth: RADAR_PANEL_SOURCE_WIDTH,
     sourceHeight: RADAR_PANEL_SOURCE_HEIGHT,
-    validTimeText: index => jstTimeText(entries[index]!),
+    validTimeText: jstTimeText(entry),
   };
 }
 
@@ -232,23 +186,20 @@ export async function radarFrameResponse(pathname: string, env: Env): Promise<Re
 }
 
 export async function fetchRadar(env: Env): Promise<SourceResult> {
-  const [observed, forecast, shortTerm] = await Promise.all([
+  const [observed, forecast] = await Promise.all([
     fetchJson<RadarTimeEntry[]>(JMA_OBSERVED_TIMES_URL),
     fetchJson<RadarTimeEntry[]>(JMA_FORECAST_TIMES_URL),
-    fetchJson<RadarTimeEntry[]>(JMA_SHORT_TERM_TIMES_URL),
   ]);
-  const currentEntries = selectRadarForecastEntries(observed, forecast);
-  const terminalEntries = selectTerminalForecastEntries(shortTerm);
-  if (currentEntries.length < 2) throw new Error("JMA current-to-60-minute radar frames are unavailable");
-  if (!terminalEntries.length) throw new Error("JMA terminal short-term radar frames are unavailable");
+  const availableEntries = selectRadarForecastEntries(observed, forecast);
+  if (availableEntries.length < 2) {
+    throw new Error("JMA current and latest nowcast radar frames are unavailable");
+  }
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
+  const currentEntry = availableEntries[0]!;
+  const latestEntry = availableEntries[availableEntries.length - 1]!;
   const configuredZoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
   const displayZoom = Math.max(4, configuredZoom - RADAR_DISPLAY_ZOOM_OFFSET);
-  const selectionZoom = Math.min(displayZoom, RADAR_SELECTION_MAX_ZOOM);
-  const selectionScale = 2 ** (displayZoom - selectionZoom);
-  const selectionWidth = Math.max(1, Math.ceil(RADAR_PANEL_SOURCE_WIDTH / selectionScale));
-  const selectionHeight = Math.max(1, Math.ceil(RADAR_PANEL_SOURCE_HEIGHT / selectionScale));
   const center = {
     lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),
     lon: envNumber(env.RADAR_CENTER_LON, DEFAULT_RADAR_CENTER.lon, -180, 180),
@@ -256,19 +207,10 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   const displayLayout = radarTileLayout(
     center.lat, center.lon, displayZoom, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
   );
-  const selectionLayout = radarTileLayout(
-    center.lat, center.lon, selectionZoom, selectionWidth, selectionHeight,
-  );
   const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
   const panels = await Promise.all([
-    panelRequest(
-      env, "現在〜1時間", "jma", currentEntries, displayZoom, selectionZoom,
-      displayLayout, selectionLayout, selectionWidth, selectionHeight, expires,
-    ),
-    panelRequest(
-      env, "予報終端±2時間", "rasrf", terminalEntries, displayZoom, selectionZoom,
-      displayLayout, selectionLayout, selectionWidth, selectionHeight, expires,
-    ),
+    panelRequest(env, "現在", currentEntry, displayZoom, displayLayout, expires),
+    panelRequest(env, "ナウキャスト最終", latestEntry, displayZoom, displayLayout, expires),
   ]) as [BrowserRadarPanelRequest, BrowserRadarPanelRequest];
 
   const rendered = await renderRepresentativeRadarFrame(env, {
@@ -277,7 +219,6 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
     outputHeight: RADAR_OUTPUT_HEIGHT,
     panels,
   });
-  const currentEntry = currentEntries[rendered.panels[0].selectedIndex]!;
   await env.UPDATE_BUCKET.put(representativeFrameKey(), rendered.png, {
     httpMetadata: { contentType: "image/png" },
   });
@@ -290,9 +231,9 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   };
   return {
     source: "radar",
-    observedAt: jmaTimestampToMillis(currentEntries[0]!.validtime),
+    observedAt: jmaTimestampToMillis(currentEntry.validtime),
     payload: {
-      provider: "JMA nowcast and short-term precipitation; one cloud-composited dual-panel frame",
+      provider: "JMA nowcast current and latest available forecast; one cloud-composited dual-panel frame",
       precomposed: true,
       bundleUrl: "",
       width: RADAR_OUTPUT_WIDTH,
