@@ -7,21 +7,12 @@ export interface BrowserRadarTile {
   destY: number;
 }
 
-export interface BrowserRadarCandidate {
-  index: number;
-  tiles: BrowserRadarTile[];
-}
-
 export interface BrowserRadarPanelRequest {
   title: string;
-  candidates: BrowserRadarCandidate[];
-  forcedIndex?: number;
-  displayTiles: (selectedIndex: number) => Promise<BrowserRadarTile[]>;
-  selectionWidth: number;
-  selectionHeight: number;
+  tiles: BrowserRadarTile[];
   sourceWidth: number;
   sourceHeight: number;
-  validTimeText: (selectedIndex: number) => string;
+  validTimeText: string;
 }
 
 export interface BrowserRadarRenderRequest {
@@ -32,11 +23,6 @@ export interface BrowserRadarRenderRequest {
 }
 
 export interface BrowserRadarPanelResult {
-  selectedIndex: number;
-  rainSamples: number;
-  intensityPoints: number;
-  maxIntensityRank: number;
-  score: number;
   validTimeText: string;
 }
 
@@ -47,17 +33,6 @@ export interface BrowserRadarRenderResult {
 
 type BrowserBindingEnv = Env & { BROWSER?: Fetcher };
 
-const PRECIPITATION_COLORS = [
-  [242, 242, 255, 1],
-  [160, 210, 255, 2],
-  [33, 140, 255, 3],
-  [0, 65, 255, 5],
-  [250, 245, 0, 8],
-  [255, 153, 0, 12],
-  [255, 40, 0, 18],
-  [180, 0, 104, 24],
-] as const;
-const COVERAGE_WEIGHT = 32;
 const RENDER_PAGE_PATH = "/radar-cloud/render.html";
 const SATELLITE_ASSET_PATH = "/radar-cloud/radar-satellite.png";
 const MAP_ASSET_PATH = "/radar-cloud/radar-map.png";
@@ -88,137 +63,12 @@ export async function renderRepresentativeRadarFrame(
       timeout: 8_000,
     });
 
-    const scored = await page.evaluate(async (payload) => {
-      const g = globalThis as unknown as {
-        document: { createElement(tag: string): any };
-        createImageBitmap(blob: Blob): Promise<any>;
-      };
-      const colors = payload.colors as readonly (readonly number[])[];
-      const scorePanel = async (panel: {
-        width: number;
-        height: number;
-        forcedIndex?: number;
-        candidates: Array<{ index: number; tiles: Array<{ url: string; destX: number; destY: number }> }>;
-      }) => {
-        if (panel.forcedIndex !== undefined) {
-          return {
-            selectedIndex: panel.forcedIndex,
-            rainSamples: 0,
-            intensityPoints: 0,
-            maxIntensityRank: 0,
-            score: 0,
-          };
-        }
-        if (!panel.candidates.length) {
-          return {
-            selectedIndex: 0,
-            rainSamples: 0,
-            intensityPoints: 0,
-            maxIntensityRank: 0,
-            score: 0,
-          };
-        }
-        const canvas = g.document.createElement("canvas");
-        canvas.width = panel.width;
-        canvas.height = panel.height;
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        if (!context) throw new Error("radar scoring canvas unavailable");
-        const loadTile = async (url: string) => {
-          const response = await fetch(url, { cache: "force-cache" });
-          if (response.status === 404) return null;
-          if (!response.ok) throw new Error(`radar scoring tile HTTP ${response.status}`);
-          return g.createImageBitmap(await response.blob());
-        };
-        let best = {
-          selectedIndex: panel.candidates[0]?.index ?? 0,
-          rainSamples: 0,
-          intensityPoints: 0,
-          maxIntensityRank: 0,
-          score: -1,
-        };
-        for (const candidate of panel.candidates) {
-          context.clearRect(0, 0, panel.width, panel.height);
-          for (const tile of candidate.tiles) {
-            const bitmap = await loadTile(tile.url);
-            if (!bitmap) continue;
-            context.drawImage(bitmap, tile.destX, tile.destY, 256, 256);
-            bitmap.close?.();
-          }
-          const pixels = context.getImageData(0, 0, panel.width, panel.height).data as Uint8ClampedArray;
-          let rainSamples = 0;
-          let intensityPoints = 0;
-          let maxIntensityRank = 0;
-          for (let offset = 0; offset < pixels.length; offset += 4) {
-            if ((pixels[offset + 3] ?? 0) === 0) continue;
-            const red = pixels[offset] ?? 0;
-            const green = pixels[offset + 1] ?? 0;
-            const blue = pixels[offset + 2] ?? 0;
-            let bestColor = 0;
-            let bestDistance = Number.POSITIVE_INFINITY;
-            for (let colorIndex = 0; colorIndex < colors.length; colorIndex += 1) {
-              const color = colors[colorIndex]!;
-              const dr = red - color[0]!;
-              const dg = green - color[1]!;
-              const db = blue - color[2]!;
-              const distance = dr * dr + dg * dg + db * db;
-              if (distance < bestDistance) {
-                bestDistance = distance;
-                bestColor = colorIndex;
-              }
-            }
-            rainSamples += 1;
-            intensityPoints += colors[bestColor]?.[3] ?? 1;
-            maxIntensityRank = Math.max(maxIntensityRank, bestColor + 1);
-          }
-          const score = rainSamples * payload.coverageWeight + intensityPoints;
-          const better = score > best.score
-            || (score === best.score && rainSamples > best.rainSamples)
-            || (score === best.score && rainSamples === best.rainSamples
-              && intensityPoints > best.intensityPoints)
-            || (score === best.score && rainSamples === best.rainSamples
-              && intensityPoints === best.intensityPoints
-              && maxIntensityRank > best.maxIntensityRank);
-          if (better) {
-            best = {
-              selectedIndex: candidate.index,
-              rainSamples,
-              intensityPoints,
-              maxIntensityRank,
-              score,
-            };
-          }
-        }
-        return best;
-      };
-      const results = [];
-      for (const panel of payload.panels) results.push(await scorePanel(panel));
-      return results;
-    }, {
-      panels: request.panels.map(panel => ({
-        width: panel.selectionWidth,
-        height: panel.selectionHeight,
-        candidates: panel.candidates,
-        ...(panel.forcedIndex === undefined ? {} : { forcedIndex: panel.forcedIndex }),
-      })),
-      colors: PRECIPITATION_COLORS,
-      coverageWeight: COVERAGE_WEIGHT,
-    });
-
-    const panelResults = await Promise.all(request.panels.map(async (panel, index) => {
-      const raw = scored[index]!;
-      const selectedIndex = raw.selectedIndex;
-      return {
-        selectedIndex,
-        rainSamples: raw.rainSamples,
-        intensityPoints: raw.intensityPoints,
-        maxIntensityRank: raw.maxIntensityRank,
-        score: raw.score,
-        validTimeText: panel.validTimeText(selectedIndex),
-        tiles: await panel.displayTiles(selectedIndex),
-        title: panel.title,
-        sourceWidth: panel.sourceWidth,
-        sourceHeight: panel.sourceHeight,
-      };
+    const panelResults = request.panels.map(panel => ({
+      title: panel.title,
+      validTimeText: panel.validTimeText,
+      tiles: panel.tiles,
+      sourceWidth: panel.sourceWidth,
+      sourceHeight: panel.sourceHeight,
     }));
 
     await page.evaluate(async (payload) => {
@@ -248,9 +98,6 @@ export async function renderRepresentativeRadarFrame(
       const satellite = await loadRequired(payload.satelliteUrl);
       const map = await loadRequired(payload.mapUrl);
       const drawBase = (bitmap: any, panelX: number) => {
-        // The former full-width view used the centered 40% at z10. Each new
-        // half-width panel keeps that horizontal span and doubles the vertical
-        // span, which preserves aspect ratio at the requested z9-equivalent.
         const cropWidth = Math.max(1, Math.floor(bitmap.width * 0.4));
         const cropHeight = Math.max(1, Math.floor(bitmap.height * 0.8));
         const sourceX = Math.floor((bitmap.width - cropWidth) / 2);
@@ -326,7 +173,10 @@ export async function renderRepresentativeRadarFrame(
     });
     return {
       png: new Uint8Array(screenshot),
-      panels: panelResults.map(({ tiles: _tiles, title: _title, sourceWidth: _sourceWidth, sourceHeight: _sourceHeight, ...result }) => result) as [BrowserRadarPanelResult, BrowserRadarPanelResult],
+      panels: panelResults.map(panel => ({ validTimeText: panel.validTimeText })) as [
+        BrowserRadarPanelResult,
+        BrowserRadarPanelResult,
+      ],
     };
   } finally {
     await browser.close();
