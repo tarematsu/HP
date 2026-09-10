@@ -85,7 +85,8 @@ function collectEpisodeCandidates(text, output) {
 
 async function collectTalentEpisodes(env) {
   if (!env?.BROWSER) throw new Error('TVer feed requires the BROWSER binding');
-  const output = new Set();
+  const domOutput = new Set();
+  const networkFallback = new Set();
   const networkTasks = [];
   let capturedBodies = 0;
   let browser;
@@ -112,10 +113,10 @@ async function collectTalentEpisodes(env) {
         response.text()
           .then((text) => {
             if (text.length > MAX_NETWORK_BODY_BYTES) return;
-            // TVer also loads recommendation/ranking data. Only trust API payloads
-            // tied to the Sakurazaka talent identifier rather than every JSON response.
+            // Recommendation/ranking JSON can contain unrelated episodes. Keep
+            // network extraction as a fallback and require the talent identifier.
             if (!url.includes(TVER_TALENT_ID) && !text.includes(TVER_TALENT_ID)) return;
-            collectEpisodeCandidates(text, output);
+            collectEpisodeCandidates(text, networkFallback);
           })
           .catch(() => {})
       );
@@ -137,10 +138,9 @@ async function collectTalentEpisodes(env) {
       const belongsToExcludedSection = link => {
         let scope = link.parentElement;
         for (let depth = 0; scope && depth < 7 && scope !== document.body; ++depth, scope = scope.parentElement) {
-          for (const child of scope.children || []) {
-            if (!child.matches?.('h1,h2,h3,h4,h5,h6,[role="heading"]')) continue;
-            if (excludedHeading.test(normalize(child.textContent))) return true;
-          }
+          const headings = Array.from(scope.children || [])
+            .filter(child => child.matches?.('h1,h2,h3,h4,h5,h6,[role="heading"]'));
+          if (headings.length === 1 && excludedHeading.test(normalize(headings[0].textContent))) return true;
         }
         return false;
       };
@@ -148,9 +148,12 @@ async function collectTalentEpisodes(env) {
         .filter(link => !belongsToExcludedSection(link))
         .map(element => element.href || element.getAttribute('href') || '');
     });
-    for (const link of links) addEpisodeUrl(output, link);
+    for (const link of links) addEpisodeUrl(domOutput, link);
     await Promise.allSettled(networkTasks);
-    return [...output].slice(0, MAX_EPISODES);
+    if (!domOutput.size) {
+      for (const url of networkFallback) domOutput.add(url);
+    }
+    return [...domOutput].slice(0, MAX_EPISODES);
   } finally {
     if (browser) await browser.close().catch(() => {});
   }
@@ -225,20 +228,12 @@ export function shouldRefreshTverFeed(scheduledTime = Date.now()) {
   return date.getUTCMinutes() === 0 && date.getUTCHours() % 3 === 0;
 }
 
-function scheduleFeedWarmup(env, ctx) {
-  if (!ctx?.waitUntil) return;
-  ctx.waitUntil(refreshTverFeed(env).catch((error) => {
-    console.error('tver-feed-warmup-failed', error instanceof Error ? error.message : String(error));
-  }));
-}
-
-export async function tverFeedResponse(env, ctx) {
+export async function tverFeedResponse(env) {
   if (!env?.DATA_BUCKET) {
     return Response.json({ ok: false, error: 'TVer feed storage unavailable' }, { status: 503 });
   }
   const object = await env.DATA_BUCKET.get(FEED_OBJECT_KEY);
   if (!object) {
-    scheduleFeedWarmup(env, ctx);
     return Response.json({ ok: false, error: 'TVer feed unavailable', retryable: true }, {
       status: 503,
       headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }
@@ -248,7 +243,6 @@ export async function tverFeedResponse(env, ctx) {
   const generatedAtMs = Date.parse(object.customMetadata?.generatedAt || '');
   const ageMs = Date.now() - generatedAtMs;
   if (!Number.isFinite(generatedAtMs) || ageMs > MAX_FEED_AGE_MS || ageMs < -60 * 60 * 1000) {
-    scheduleFeedWarmup(env, ctx);
     return Response.json({ ok: false, error: 'TVer feed stale', retryable: true }, {
       status: 503,
       headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' }
