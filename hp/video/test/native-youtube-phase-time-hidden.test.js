@@ -6,13 +6,13 @@ const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
-const base = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
   'utf8',
 );
 
 test('YouTube and TVer suppress the phase-time badge while preserving cursor hiding', () => {
-  assert.match(base, /__homePanelMediaPhaseTime/);
+  assert.match(host, /__homePanelMediaPhaseTime/);
   assert.match(wrapper, /kNativeMediaPhaseOverlaySuppressionScript/);
   assert.match(
     wrapper,
