@@ -252,7 +252,7 @@ export async function refreshTverFeed(env, dependencies = {}) {
 
 export function shouldRefreshTverFeed(scheduledTime = Date.now()) {
   const date = new Date(Number(scheduledTime) || Date.now());
-  return date.getUTCMinutes() === 0 && date.getUTCHours() % 3 === 0;
+  return date.getUTCMinutes() === 0;
 }
 
 export async function tverFeedResponse(env) {
