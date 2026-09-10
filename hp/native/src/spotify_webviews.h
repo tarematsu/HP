@@ -101,6 +101,7 @@ class SpotifyWebViews final {
     int64_t podcastDueUnixMs = 0;
     std::vector<ManagedTrack> timedCycleTracks;
     size_t timedRotationPosition = 0;
+    ULONGLONG timedCloudRotationRevision = 0;
     // Legacy scheduler state is no longer consulted by active playback.
     size_t timedCatalogIndex = kNoTimedCatalogIndex;
     size_t timedRandomFIndex = kNoTimedCatalogIndex;
@@ -200,6 +201,10 @@ class SpotifyWebViews final {
   std::vector<RotationGroup> cloudRotationGroups_;
   std::wstring cloudPodcastUrl_;
   std::wstring cloudPodcastPath_;
+  std::wstring cloudRotationFingerprint_;
+  std::wstring cloudPodcastFingerprint_;
+  fs::file_time_type cloudPlaylistWriteTime_{};
+  ULONGLONG cloudRotationRevision_ = 1;
   ULONGLONG podcastIntervalMs_ = kSpotifyPodcastIntervalMs;
   double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
@@ -210,6 +215,7 @@ class SpotifyWebViews final {
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG lastPodcastDispatchTick_ = 0;
   bool cloudPlaylistLoaded_ = false;
+  bool cloudPlaylistWriteTimeKnown_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
