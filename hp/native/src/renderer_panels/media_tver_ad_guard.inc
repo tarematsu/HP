@@ -4,7 +4,8 @@ namespace {
 constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     LR"JS(
 (() => {
-  if (window.__homePanelSakuraMeetsLoopTimer) return;
+  if (window.__homePanelSakuraMeetsLoopInstalled) return;
+  window.__homePanelSakuraMeetsLoopInstalled = true;
   const sakuraSeriesPath = '/series/srx97ftk3w';
   const deathGameSeriesPath = '/series/srkzm5wbvp';
   const seriesPathKey = '__homePanelTverSeriesPath';
@@ -377,7 +378,7 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     }
 
     // Playback recovery has exactly one owner: the native trusted-input
-    // watchdog. This four-second loop only maintains media settings/state.
+    // watchdog. This event-driven path only maintains media settings/state.
     // Issuing click()/play() here as well can turn a successful recovery into
     // a pause when the independently scheduled watchdog click arrives later.
   };
@@ -396,8 +397,28 @@ constexpr wchar_t kNativeMediaTverLoopStaticScript[] =
     } catch (_) {
     }
   };
+
+  let ensureTimer = 0;
+  const scheduleEnsure = () => {
+    if (ensureTimer) return;
+    ensureTimer = window.setTimeout(() => {
+      ensureTimer = 0;
+      ensure();
+    }, 250);
+  };
+  const root = document.documentElement || document.body;
+  if (root && typeof MutationObserver === 'function') {
+    const observer = new MutationObserver(scheduleEnsure);
+    observer.observe(root, { childList: true, subtree: true });
+    window.__homePanelSakuraMeetsObserver = observer;
+  }
+  for (const eventName of [
+      'play', 'pause', 'ended', 'ratechange', 'loadedmetadata', 'emptied']) {
+    document.addEventListener(eventName, scheduleEnsure, true);
+  }
+  document.addEventListener('fullscreenchange', scheduleEnsure, true);
+  document.addEventListener('webkitfullscreenchange', scheduleEnsure, true);
   ensure();
-  window.__homePanelSakuraMeetsLoopTimer = window.setInterval(ensure, 4000);
 })()
 )JS";
 
@@ -428,9 +449,9 @@ constexpr wchar_t kNativeMediaTverWatchdogStaticScript[] = LR"JS(
     const rect = element.getBoundingClientRect();
     return [
       Math.max(0, Math.min(10000, Math.round(
-          ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
+        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
       Math.max(0, Math.min(10000, Math.round(
-          ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
+        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
     ];
   };
 

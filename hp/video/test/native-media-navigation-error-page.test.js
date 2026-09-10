@@ -6,8 +6,8 @@ const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
-const base = readFileSync(
-  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
   'utf8',
 );
 
@@ -17,9 +17,9 @@ test('media panel hides the built-in WebView error page while retrying', () => {
     /#define put_IsBuiltInErrorPageEnabled\(value\) put_IsBuiltInErrorPageEnabled\(FALSE\)/,
   );
   assert.match(wrapper, /#undef put_IsBuiltInErrorPageEnabled/);
-  assert.match(base, /if \(FAILED\(args->get_IsSuccess\(&succeeded\)\) \|\| !succeeded\)/);
+  assert.match(host, /if \(FAILED\(args->get_IsSuccess\(&succeeded\)\) \|\| !succeeded\)/);
   assert.match(
-    base,
+    host,
     /StopYoutubeMonitors\(\);[\s\S]*StopTverPlaybackMonitor\(\);[\s\S]*ScheduleNavigationRetry\(\);/,
   );
 });

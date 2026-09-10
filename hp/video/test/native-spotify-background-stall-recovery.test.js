@@ -54,7 +54,7 @@ test('runtime uses one adaptive scheduler instead of parallel background probing
 test('only one recovery-sized Spotify owner is selected at a time', () => {
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.match(schedule, /staggerSlotIndex_ = scheduledIndex/);
   assert.match(schedule, /kSpotifySimpleRecoveryHoldMs = 36ULL \* 1000ULL/);

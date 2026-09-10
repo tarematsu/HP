@@ -2,10 +2,27 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const source = readFileSync(
+const controller = readFileSync(
   new URL('../../native/src/power_saving_controller.cpp', import.meta.url),
   'utf8',
 );
+const brightness = readFileSync(
+  new URL('../../native/src/power_saving_brightness.inc', import.meta.url),
+  'utf8',
+);
+const routing = readFileSync(
+  new URL('../../native/src/power_saving_window_routing.inc', import.meta.url),
+  'utf8',
+);
+const schedule = readFileSync(
+  new URL('../../native/src/power_saving_schedule.inc', import.meta.url),
+  'utf8',
+);
+const overlay = readFileSync(
+  new URL('../../native/src/power_saving_overlay.inc', import.meta.url),
+  'utf8',
+);
+const source = [controller, brightness, routing, schedule, overlay].join('\n');
 const header = readFileSync(
   new URL('../../native/src/power_saving_controller.h', import.meta.url),
   'utf8',
@@ -35,14 +52,27 @@ const layout = readFileSync(
   'utf8',
 );
 
+test('power-saving controller composes focused responsibilities without a thread-wide hook', () => {
+  assert.match(controller, /#include "power_saving_brightness\.inc"/);
+  assert.match(controller, /#include "power_saving_window_routing\.inc"/);
+  assert.match(controller, /#include "power_saving_schedule\.inc"/);
+  assert.match(controller, /#include "power_saving_overlay\.inc"/);
+  assert.match(routing, /::SetWindowSubclass/);
+  assert.match(routing, /::RemoveWindowSubclass/);
+  assert.doesNotMatch(source, /SetWindowsHookExW|WH_CALLWNDPROC|CallWndProc/);
+  assert.match(brightness, /ApplyMinimumBrightness\(\)/);
+  assert.match(schedule, /NextScheduleBoundary\(int64_t nowMs\)/);
+  assert.match(overlay, /void PowerSavingController::PaintOverlay/);
+});
+
 test('power saving and media mute controls share a compact two-row clock footer stack', () => {
-  assert.match(source, /contentHeight \* 790 \/ 1000/);
-  assert.match(source, /contentWidth \* 220 \/ 1000, 78, 112/);
-  assert.match(source, /ParentControlStackRect\(\)/);
-  assert.match(source, /ControlButtonRect\(stack, false\)/);
-  assert.match(source, /ControlButtonRect\(stack, true\)/);
-  assert.match(source, /L"省電力 ON" : L"省電力"/);
-  assert.match(source, /L"ミュート ON" : L"ミュート"/);
+  assert.match(overlay, /contentHeight \* 790 \/ 1000/);
+  assert.match(overlay, /contentWidth \* 220 \/ 1000, 78, 112/);
+  assert.match(overlay, /ParentControlStackRect\(\)/);
+  assert.match(overlay, /ControlButtonRect\(stack, false\)/);
+  assert.match(overlay, /ControlButtonRect\(stack, true\)/);
+  assert.match(overlay, /L"省電力 ON" : L"省電力"/);
+  assert.match(overlay, /L"ミュート ON" : L"ミュート"/);
   assert.match(header, /bool mediaMuted_ = false/);
   assert.match(layout, /SpanY\(hpClockContent, 780\)/);
   assert.match(layout, /SpanY\(hpClockContent, 790\)/);
@@ -50,16 +80,16 @@ test('power saving and media mute controls share a compact two-row clock footer 
 });
 
 test('compact overlay clips the complete two-button control stack', () => {
-  assert.match(source, /const bool compact = !powerSaving_ \|\| mvStartupInputPass_/);
-  assert.match(source, /if \(compact\) target = ParentControlStackRect\(\)/);
-  assert.match(source, /CreateRoundRectRgn\(0, 0, width \+ 1, height \+ 1/);
-  assert.match(source, /SetWindowRgn\(overlay_, region, TRUE\)/);
-  assert.match(source, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
+  assert.match(overlay, /const bool compact = !powerSaving_ \|\| mvStartupInputPass_/);
+  assert.match(overlay, /if \(compact\) target = ParentControlStackRect\(\)/);
+  assert.match(overlay, /CreateRoundRectRgn\(/);
+  assert.match(overlay, /SetWindowRgn\(overlay_, region, TRUE\)/);
+  assert.match(overlay, /SetWindowRgn\(overlay_, nullptr, TRUE\)/);
 });
 
 test('mute destroys media WebViews and unmute recreates and navigates them', () => {
-  assert.match(source, /ApplyMediaMute\(!controller->mediaMuted_\)/);
-  assert.match(source, /SetNativeMediaPanelMuted\(enabled\)/);
+  assert.match(overlay, /ApplyMediaMute\(!controller->mediaMuted_\)/);
+  assert.match(schedule, /SetNativeMediaPanelMuted\(enabled\)/);
   assert.match(composition, /SuspendNativeMediaPanelWebView\(\)/);
   assert.match(composition, /DestroyWindow\(hostWindow\)/);
   assert.match(composition, /CreateNativeMediaPlaceholderHost/);
@@ -84,7 +114,7 @@ test('mute destroys media WebViews and unmute recreates and navigates them', () 
 
 test('MV startup input pass keeps both overlay controls in local coordinates', () => {
   assert.match(
-    source,
+    overlay,
     /if \(powerSaving_ && !mvStartupInputPass_\) \{[\s\S]*stack = ParentControlStackRect\(\);[\s\S]*\} else \{[\s\S]*GetClientRect\(overlay_, &stack\)/,
   );
 });

@@ -14,6 +14,10 @@ const cloudClientSync = readFileSync(
   new URL('../../native/src/cloud_client_sync.cpp', import.meta.url),
   'utf8',
 );
+const radarCache = readFileSync(
+  new URL('../../native/src/cloud_client_radar_cache.cpp', import.meta.url),
+  'utf8',
+);
 const cmake = readFileSync(
   new URL('../../native/CMakeLists.txt', import.meta.url),
   'utf8',
@@ -50,18 +54,21 @@ test('legacy local radar cache is removed before CloudClient version negotiation
   assert.match(migration, /radar-frame\.signature/);
 });
 
+test('radar cache localization is isolated from device version negotiation', () => {
+  assert.match(cloudClientSync, /#include "cloud_client_radar_cache\.cpp"/);
+  assert.doesNotMatch(cloudClientSync, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
+  assert.match(radarCache, /std::vector<uint8_t> CloudClient::LocalizeRadarTiles/);
+  assert.match(radarCache, /HasPngSignature\(response\.body\)/);
+  assert.match(radarCache, /width != 1920 \|\| height != 1280/);
+  assert.match(radarCache, /frames\.Size\(\) != 1/);
+  assert.match(radarCache, /tiles\.Size\(\) != 1/);
+  assert.match(radarCache, /precomposed radar frame unavailable/);
+  assert.match(radarCache, /JsonValue::CreateStringValue\(localUrlFor\(url\)\)/);
+});
+
 test('precomposed radar version is accepted only after a local PNG exists', () => {
-  assert.match(cloudClientSync, /HasPngSignature\(response\.body\)/);
-  assert.match(
-    cloudClientSync,
-    /if \(precomposed\) \{\s*throw std::runtime_error\(\s*"precomposed radar frame unavailable/,
-  );
   assert.match(cloudClientSync, /requestedRadarVersion/);
   assert.match(cloudClientSync, /HasPngSignature\(representativeRadarPath\)/);
-  assert.match(
-    cloudClientSync,
-    /https:\/\/data\.homepanel\/radar-cache\/v1\/radar\/frame\/representative\/latest\.png/,
-  );
   assert.match(cloudClientSync, /radarVersion=" \+ std::to_wstring\(requestedRadarVersion\(\)\)/);
   assert.match(cloudClientSync, /Radar payload withheld until representative PNG is available/);
 });

@@ -38,6 +38,8 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
 test('six Spotify accounts share the WebView2 environment while using isolated profiles', () => {
   assert.match(header, /kAccountCount = 6/);
@@ -47,7 +49,7 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
     /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
   );
   assert.match(spotify, /webview2-youtube-mv/);
-  assert.match(mediaPanel, /webview2-youtube-mv/);
+  assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(spotify, /kSpotifyProfilePrefix\[\] = L"spotify-"/);
   assert.match(spotify, /std::to_wstring\(target->index \+ 1\)/);
@@ -129,14 +131,14 @@ test('YouTube/TVer phase notification cannot mutate Spotify playback state', () 
 test('one adaptive scheduler serializes all six Spotify windows with one shared startup offset', () => {
   assert.match(phaseSync, /kSpotifyRobustReconcileTimer = 0x53505243/);
   assert.match(phaseSync, /kSpotifyRobustUrgentTickMs = 2U \* 1000U/);
-  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 20U \* 1000U/);
+  assert.match(phaseSync, /kSpotifyRobustHealthyTickMs = 40U \* 1000U/);
   assert.match(header, /kSpotifyAccountStartOffsetMs = 40ULL \* 1000ULL/);
   assert.match(phaseSync, /NextRobustSchedulerDelayMs/);
   assert.match(phaseSync, /::SetTimer\(host, kSpotifyRobustReconcileTimer, delay/);
   assert.match(schedule, /SimpleSpotifyScheduledIndex\(elapsed, slots_\.size\(\)\)/);
   assert.match(schedule, /static_cast<ULONGLONG>\(accountCount\) \* kSpotifyAccountStartOffsetMs/);
   assert.match(schedule, /% accountCount/);
-  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 20ULL \* 1000ULL/);
+  assert.match(schedule, /kSpotifySimpleSteadyTurnMs = 40ULL \* 1000ULL/);
   assert.match(schedule, /owner->ArmRobustScheduler\(\)/);
   assert.doesNotMatch(header, /reconcileIndex_|playbackWatchdogIndex_/);
   assert.doesNotMatch(spotify, /RunPlaybackWatchdog|kSpotifyPlaybackWatchdogTimer/);

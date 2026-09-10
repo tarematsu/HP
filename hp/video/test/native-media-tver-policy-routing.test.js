@@ -66,7 +66,7 @@ test('TVer episode loop routing changes only TVer episode pages and preserves Yo
   assert.match(wrapper, /script == kNativeMediaPlayAllScript/);
   assert.match(wrapper, /return kNativeMediaYoutubeReliablePlayAllScript/);
   assert.match(wrapper, /script == kNativeMediaYoutubeWatchdogScript/);
+  assert.match(wrapper, /NativeMediaEnsureYoutubeTrustedAction\(webview\)/);
   assert.match(wrapper, /return kNativeMediaYoutubeControlRecoveryScript/);
-  assert.match(wrapper, /script == kNativeMediaYoutubeHealthScript/);
-  assert.match(wrapper, /return kNativeMediaYoutubeHealthPolicyScript/);
+  assert.doesNotMatch(wrapper, /kNativeMediaYoutubeHealthScript|kNativeMediaYoutubeHealthPolicyScript/);
 });
