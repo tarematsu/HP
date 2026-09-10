@@ -7,9 +7,12 @@ const tverStatic = readFileSync(
   'utf8',
 );
 
-test('TVer program playback settings are state-driven', () => {
+test('TVer program playback settings are state-driven and event-driven', () => {
   assert.match(tverStatic, /const playbackRate = 1\.75/);
-  assert.match(tverStatic, /window\.setInterval\(ensure, 4000\)/);
+  assert.doesNotMatch(tverStatic, /window\.setInterval\(ensure, 4000\)/);
+  assert.match(tverStatic, /new MutationObserver\(scheduleEnsure\)/);
+  assert.match(tverStatic, /window\.setTimeout\([\s\S]*ensure\(\);[\s\S]*250/);
+  assert.match(tverStatic, /'play', 'pause', 'ended', 'ratechange', 'loadedmetadata', 'emptied'/);
   assert.match(tverStatic, /playbackSettingsApplied/);
   assert.match(tverStatic, /if \(!state\.playbackSettingsApplied\)/);
   assert.match(tverStatic, /state\.playbackSettingsApplied = true/);
