@@ -9,6 +9,9 @@ constexpr wchar_t kSpotifyDefaultPodcastPath[] =
 constexpr double kSpotifyDefaultPodcastPlaybackRate = 3.0;
 constexpr int kSpotifyMinPodcastIntervalMinutes = 15;
 constexpr int kSpotifyMaxPodcastIntervalMinutes = 120;
+constexpr size_t kSpotifyMaxRotationGroups = 32;
+constexpr size_t kSpotifyMaxTracksPerGroup = 256;
+constexpr size_t kSpotifyMaxTracksPerCycle = 512;
 
 std::wstring ManagedSpotifyPathFromUrl(
     const std::wstring& url, std::wstring_view segment) {
@@ -17,7 +20,7 @@ std::wstring ManagedSpotifyPathFromUrl(
   const size_t begin = url.find(segment, host.size());
   if (begin == std::wstring::npos) return {};
   const size_t idBegin = begin + segment.size();
-  size_t end = url.find_first_of(L"?#", idBegin);
+  size_t end = url.find_first_of(L"?#/", idBegin);
   if (end == std::wstring::npos) end = url.size();
   if (idBegin >= end) return {};
   for (size_t i = idBegin; i < end; ++i) {
@@ -68,53 +71,71 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
       }
     };
 
-    std::array<ManagedTrack, 5> nextFixed{};
-    bool fixedValid = false;
     try {
-      const auto a = parseTrack(spotify.GetNamedObject(L"aTrack"));
-      const JsonArray shuffle = spotify.GetNamedArray(L"shuffleTracks");
-      if (a && shuffle.Size() == 4) {
-        nextFixed[0] = *a;
-        fixedValid = true;
-        for (uint32_t i = 0; i < 4; ++i) {
-          if (shuffle.GetAt(i).ValueType() != JsonValueType::Object) {
-            fixedValid = false;
-            break;
-          }
-          const auto track = parseTrack(shuffle.GetObjectAt(i));
-          if (!track) {
-            fixedValid = false;
-            break;
-          }
-          nextFixed[static_cast<size_t>(i) + 1] = *track;
-        }
-      }
-    } catch (...) {
-      fixedValid = false;
-    }
-    if (fixedValid) {
-      cloudFixedTracks_ = std::move(nextFixed);
-      cloudFixedTracksValid_ = true;
-    }
+      const JsonArray rotation = spotify.GetNamedArray(L"rotation");
+      std::vector<RotationGroup> groups;
+      groups.reserve(std::min<size_t>(rotation.Size(), kSpotifyMaxRotationGroups));
+      size_t maximumCycleTracks = 0;
 
-    try {
-      const JsonArray random = spotify.GetNamedArray(L"randomPool");
-      std::vector<ManagedTrack> nextRandom;
-      nextRandom.reserve(std::min<uint32_t>(random.Size(), 200));
-      for (uint32_t i = 0; i < random.Size() && nextRandom.size() < 200; ++i) {
-        if (random.GetAt(i).ValueType() != JsonValueType::Object) continue;
-        if (auto track = parseTrack(random.GetObjectAt(i))) {
-          const bool duplicate = std::any_of(
-              nextRandom.begin(), nextRandom.end(),
-              [&track](const ManagedTrack& existing) {
-                return existing.path == track->path;
-              });
-          if (!duplicate) nextRandom.push_back(std::move(*track));
+      for (uint32_t groupIndex = 0;
+           groupIndex < rotation.Size() && groups.size() < kSpotifyMaxRotationGroups;
+           ++groupIndex) {
+        if (rotation.GetAt(groupIndex).ValueType() != JsonValueType::Object) continue;
+        const JsonObject source = rotation.GetObjectAt(groupIndex);
+        const std::wstring mode = source.GetNamedString(L"mode", L"fixed").c_str();
+
+        RotationGroup group;
+        if (_wcsicmp(mode.c_str(), L"shuffle") == 0) {
+          group.mode = RotationGroup::Mode::Shuffle;
+        } else if (_wcsicmp(mode.c_str(), L"random") == 0) {
+          group.mode = RotationGroup::Mode::Random;
+        } else if (_wcsicmp(mode.c_str(), L"fixed") == 0) {
+          group.mode = RotationGroup::Mode::Fixed;
+        } else {
+          continue;
         }
+
+        const JsonArray tracks = source.GetNamedArray(L"tracks", JsonArray{});
+        group.tracks.reserve(
+            std::min<size_t>(tracks.Size(), kSpotifyMaxTracksPerGroup));
+        for (uint32_t trackIndex = 0;
+             trackIndex < tracks.Size() &&
+             group.tracks.size() < kSpotifyMaxTracksPerGroup;
+             ++trackIndex) {
+          if (tracks.GetAt(trackIndex).ValueType() != JsonValueType::Object) continue;
+          if (auto track = parseTrack(tracks.GetObjectAt(trackIndex))) {
+            const bool duplicate = std::any_of(
+                group.tracks.begin(), group.tracks.end(),
+                [&track](const ManagedTrack& existing) {
+                  return existing.path == track->path;
+                });
+            if (!duplicate) group.tracks.push_back(std::move(*track));
+          }
+        }
+        if (group.tracks.empty()) continue;
+
+        if (group.mode == RotationGroup::Mode::Random) {
+          double requested = source.GetNamedNumber(L"count", 1.0);
+          if (!std::isfinite(requested)) requested = 1.0;
+          group.count = std::clamp<size_t>(
+              static_cast<size_t>(std::max(0.0, std::floor(requested))),
+              size_t{0}, group.tracks.size());
+          if (group.count == 0) continue;
+          maximumCycleTracks += group.count;
+        } else {
+          group.count = group.tracks.size();
+          maximumCycleTracks += group.tracks.size();
+        }
+
+        if (maximumCycleTracks > kSpotifyMaxTracksPerCycle) break;
+        groups.push_back(std::move(group));
       }
-      if (!nextRandom.empty()) cloudRandomTracks_ = std::move(nextRandom);
+
+      if (!groups.empty() && maximumCycleTracks <= kSpotifyMaxTracksPerCycle) {
+        cloudRotationGroups_ = std::move(groups);
+      }
     } catch (...) {
-      // An absent/invalid pool keeps the built-in fallback catalog.
+      // Missing/invalid rotation leaves the built-in sequence active.
     }
 
     try {
@@ -142,27 +163,11 @@ void SpotifyWebViews::EnsureCloudPlaylistLoaded() noexcept {
         podcastPlaybackRate_ = std::clamp(rate, 0.5, 4.0);
       }
     } catch (...) {
-      // Podcast defaults remain active when this section is absent or malformed.
+      // TALKABOUT defaults remain active when the section is absent/malformed.
     }
   } catch (...) {
     // Cloud playlist is optional. Built-in defaults always remain usable.
   }
-}
-
-const SpotifyWebViews::ManagedTrack* SpotifyWebViews::ManagedFixedTrack(
-    size_t index) const noexcept {
-  if (!cloudFixedTracksValid_ || index >= cloudFixedTracks_.size()) return nullptr;
-  return &cloudFixedTracks_[index];
-}
-
-const SpotifyWebViews::ManagedTrack* SpotifyWebViews::ManagedRandomTrack(
-    size_t index) const noexcept {
-  if (index >= cloudRandomTracks_.size()) return nullptr;
-  return &cloudRandomTracks_[index];
-}
-
-size_t SpotifyWebViews::ActiveRandomTrackCount() const noexcept {
-  return cloudRandomTracks_.empty() ? 0 : cloudRandomTracks_.size();
 }
 
 const wchar_t* SpotifyWebViews::SpotifyPodcastUrl() const noexcept {
