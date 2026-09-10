@@ -5,6 +5,7 @@
 #undef SetTimer
 #undef SendInput
 #include "media_tver_ad_guard.inc"
+#include "media_tver_cloud_queue_refresh.inc"
 #include "media_tver_episode_loop_policy.inc"
 #include "media_tver_series_dom_policy.inc"
 #include "media_tver_series_policy.inc"
@@ -182,6 +183,9 @@ const wchar_t* ResolveNativeMediaPolicyScript(
       return NativeMediaTverSeriesWatchdogPolicyScript();
     }
     if (NativeMediaWebViewSourceContains(webview, L"tver.jp/episodes/")) {
+      if (webview) {
+        webview->ExecuteScript(kNativeMediaTverCloudQueueRefreshScript, nullptr);
+      }
       return kNativeMediaTverPlaybackWatchdogPolicyScript;
     }
     return kNativeMediaTverWatchdogStaticScript;
