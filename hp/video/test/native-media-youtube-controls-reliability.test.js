@@ -6,6 +6,14 @@ const wrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url),
   'utf8',
 );
+const base = readFileSync(
+  new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url),
+  'utf8',
+);
+const host = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url),
+  'utf8',
+);
 const trustedInput = readFileSync(
   new URL('../../native/src/renderer_panels/media_trusted_input.inc', import.meta.url),
   'utf8',
@@ -15,12 +23,15 @@ const youtubePolicy = readFileSync(
   'utf8',
 );
 
-test('YouTube control watchdog checks once per second without changing base cadence policy', () => {
-  assert.match(wrapper, /kNativeMediaYoutubeControlWatchdogMs = 1000U/);
+test('YouTube uses one adaptive watchdog with healthy and recovery cadence', () => {
+  assert.match(base, /kNativeMediaYoutubeWatchdogHealthyMs = 10U \* 1000U/);
+  assert.match(base, /kNativeMediaYoutubeWatchdogRecoveryMs = 2U \* 1000U/);
   assert.match(
-    wrapper,
-    /kNativeMediaYoutubeWatchdogTimer[\s\S]*kNativeMediaYoutubeControlWatchdogMs/,
+    host,
+    /kNativeMediaYoutubeWatchdogTimer[\s\S]*kNativeMediaYoutubeWatchdogHealthyMs/,
   );
+  assert.match(host, /ProbeYoutubeWatchdog/);
+  assert.doesNotMatch(base + host, /kNativeMediaYoutubeControlWatchdogMs|kNativeMediaYoutubeHealthTimer/);
 });
 
 test('trusted WebView2 clicks convert raw Win32 coordinates to CSS pixels', () => {
