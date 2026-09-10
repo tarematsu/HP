@@ -50,6 +50,12 @@ class SpotifyWebViews final {
     Completed,
   };
 
+  struct ManagedTrack {
+    std::wstring title;
+    std::wstring url;
+    std::wstring path;
+  };
+
   struct Slot {
     SpotifyWebViews* owner = nullptr;
     size_t index = 0;
@@ -142,6 +148,14 @@ class SpotifyWebViews final {
   void PostSpotifyPageContext(Slot& slot) noexcept;
   void PostSpotifyTargetDescriptorForSlot(Slot& slot) noexcept;
   void RefreshSpotifyHostLayout() noexcept;
+  void EnsureCloudPlaylistLoaded() noexcept;
+  const ManagedTrack* ManagedFixedTrack(size_t index) const noexcept;
+  const ManagedTrack* ManagedRandomTrack(size_t index) const noexcept;
+  size_t ActiveRandomTrackCount() const noexcept;
+  const wchar_t* SpotifyPodcastUrl() const noexcept;
+  const wchar_t* SpotifyPodcastPath() const noexcept;
+  ULONGLONG SpotifyPodcastIntervalMs() const noexcept;
+  double SpotifyPodcastPlaybackRate() const noexcept;
   bool SlotMatchesPodcastTarget(const Slot& slot) const noexcept;
   void NavigatePodcastSlot(Slot& slot) noexcept;
   void ReconcilePodcastSlot(Slot& slot) noexcept;
@@ -176,6 +190,12 @@ class SpotifyWebViews final {
   HWND parentWindow_ = nullptr;
   fs::path userDataFolder_;
   std::array<Slot, kAccountCount> slots_{};
+  std::array<ManagedTrack, 5> cloudFixedTracks_{};
+  std::vector<ManagedTrack> cloudRandomTracks_;
+  std::wstring cloudPodcastUrl_;
+  std::wstring cloudPodcastPath_;
+  ULONGLONG podcastIntervalMs_ = kSpotifyPodcastIntervalMs;
+  double podcastPlaybackRate_ = 3.0;
   std::shared_ptr<std::atomic<bool>> alive_ =
       std::make_shared<std::atomic<bool>>(true);
   size_t staggerSlotIndex_ = 0;
@@ -183,6 +203,8 @@ class SpotifyWebViews final {
   ULONGLONG scheduleStartTick_ = 0;
   ULONGLONG timedRandomState_ = 0;
   ULONGLONG lastPodcastDispatchTick_ = 0;
+  bool cloudFixedTracksValid_ = false;
+  bool cloudPlaylistLoaded_ = false;
   bool staggerSlotValidated_ = false;
   unsigned hostLayoutMask_ = ~0u;
   size_t hostLayoutActiveSlot_ = kAccountCount;
@@ -195,9 +217,9 @@ class SpotifyWebViews final {
 
 // Spotify runs independently from the YouTube/TVer media phase. Each account
 // starts 40 seconds apart, then loops A, a shuffled B-E block, and F with a
-// native four-minute hard deadline per music target. TALKABOUT has a separate
-// persisted two-hour deadline per account, survives app restarts, plays at 3x,
-// then restarts the music rotation from A.
+// native four-minute hard deadline per music target. The playlist and TALKABOUT
+// policy can be supplied by cloud deviceConfig.spotify; safe built-in defaults
+// remain available when cloud data is missing or invalid.
 void SetSpotifyMediaPhase(bool tverPhase) noexcept;
 void SetSpotifyMediaNetworkBlocked(bool blocked) noexcept;
 
