@@ -90,9 +90,12 @@ test('cloud radar composition has an explicit public origin for Browser Renderin
 test('cloud radar contract remains one precomposed three-panel representative frame', () => {
   assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1920/);
   assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 1280/);
-  assert.match(cloud, /const RADAR_DISPLAY_ZOOM_OFFSET = 2/);
-  assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 160/);
-  assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 320/);
+  assert.match(cloud, /const RADAR_BASE_ZOOM = 10/);
+  assert.match(cloud, /const RADAR_DISPLAY_ZOOM = 9/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 320/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 640/);
+  assert.match(cloud, /const RADAR_BASE_CROP_WIDTH = 640/);
+  assert.match(cloud, /const RADAR_BASE_CROP_HEIGHT = 1280/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
   assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
   assert.match(cloud, /panelRequest\(env, "現在", "jma"/);
@@ -107,7 +110,7 @@ test('cloud radar contract remains one precomposed three-panel representative fr
 });
 
 test('all three radar labels stay below the top edge and panel dividers are solid black', () => {
-  assert.match(browserFrame, /const chipTop = 52;/);
+  assert.match(browserFrame, /const chipTop = 72;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
   assert.match(browserFrame, /chipTop \+ 33/);

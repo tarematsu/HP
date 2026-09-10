@@ -7,14 +7,16 @@ import {
 import { signedRadarTilePath } from "./radar_tile";
 import type { Env, SourceResult } from "./sources";
 
-const DEFAULT_RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
-const DEFAULT_RADAR_ZOOM = 10;
-const RADAR_DISPLAY_ZOOM_OFFSET = 2;
+const RADAR_CENTER = { lat: 35.8923181, lon: 139.4858691 };
+const RADAR_BASE_ZOOM = 10;
+const RADAR_DISPLAY_ZOOM = 9;
 const RADAR_TILE_URL_LIFETIME_SECONDS = 30 * 60;
 const RADAR_FORECAST_WINDOW_MS = 60 * 60 * 1000;
 const RADAR_FRAME_PREFIX = "radar/frames/representative/";
-const RADAR_PANEL_SOURCE_WIDTH = 160;
-const RADAR_PANEL_SOURCE_HEIGHT = 320;
+const RADAR_PANEL_SOURCE_WIDTH = 320;
+const RADAR_PANEL_SOURCE_HEIGHT = 640;
+const RADAR_BASE_CROP_WIDTH = 640;
+const RADAR_BASE_CROP_HEIGHT = 1280;
 const RADAR_OUTPUT_WIDTH = 1920;
 const RADAR_OUTPUT_HEIGHT = 1280;
 const RADAR_LEGEND = [0, 1, 2, 4, 8, 16, 32, 64] as const;
@@ -123,11 +125,6 @@ function radarTileLayout(lat: number, lon: number, zoom: number, width: number, 
   return output;
 }
 
-function envNumber(value: string | undefined, fallback: number, minimum: number, maximum: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
-}
-
 function publicWorkerUrl(env: Env): string {
   const configured = env.HOMEPANEL_PUBLIC_URL?.trim() ?? "";
   if (!configured) throw new Error("HOMEPANEL_PUBLIC_URL is required for radar cloud composition");
@@ -181,15 +178,16 @@ async function panelRequest(
   title: string,
   product: RadarProduct,
   entry: RadarTimeEntry,
-  displayZoom: number,
   displayLayout: RadarTileLayout[],
   expires: number,
 ): Promise<BrowserRadarPanelRequest> {
   return {
     title,
-    tiles: await signedBrowserTiles(env, product, entry, displayZoom, displayLayout, expires),
+    tiles: await signedBrowserTiles(env, product, entry, RADAR_DISPLAY_ZOOM, displayLayout, expires),
     sourceWidth: RADAR_PANEL_SOURCE_WIDTH,
     sourceHeight: RADAR_PANEL_SOURCE_HEIGHT,
+    baseCropWidth: RADAR_BASE_CROP_WIDTH,
+    baseCropHeight: RADAR_BASE_CROP_HEIGHT,
     validTimeText: jstTimeText(entry),
   };
 }
@@ -229,20 +227,19 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   }
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
-  const configuredZoom = Math.trunc(envNumber(env.RADAR_ZOOM, DEFAULT_RADAR_ZOOM, 4, 14));
-  const displayZoom = Math.max(4, configuredZoom - RADAR_DISPLAY_ZOOM_OFFSET);
-  const center = {
-    lat: envNumber(env.RADAR_CENTER_LAT, DEFAULT_RADAR_CENTER.lat, -85.05112878, 85.05112878),
-    lon: envNumber(env.RADAR_CENTER_LON, DEFAULT_RADAR_CENTER.lon, -180, 180),
-  };
+  // The bundled satellite and pre-generated gray-mask map are fixed z10 assets
+  // centered on Kawagoe. Keep the rain geometry fixed to the same center and use
+  // z9 source pixels so the geographic extent is identical while tile detail is
+  // doubled compared with the previous z8 composition.
+  const center = RADAR_CENTER;
   const displayLayout = radarTileLayout(
-    center.lat, center.lon, displayZoom, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
+    center.lat, center.lon, RADAR_DISPLAY_ZOOM, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
   );
   const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
   const panels = await Promise.all([
-    panelRequest(env, "現在", "jma", currentEntry, displayZoom, displayLayout, expires),
-    panelRequest(env, "1時間後", "jma", oneHourEntry, displayZoom, displayLayout, expires),
-    panelRequest(env, "取得可能な最後", "rasrf", latestEntry, displayZoom, displayLayout, expires),
+    panelRequest(env, "現在", "jma", currentEntry, displayLayout, expires),
+    panelRequest(env, "1時間後", "jma", oneHourEntry, displayLayout, expires),
+    panelRequest(env, "取得可能な最後", "rasrf", latestEntry, displayLayout, expires),
   ]) as [
     BrowserRadarPanelRequest,
     BrowserRadarPanelRequest,
@@ -277,7 +274,7 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
       outputWidth: RADAR_OUTPUT_WIDTH,
       outputHeight: RADAR_OUTPUT_HEIGHT,
       center,
-      zoom: displayZoom,
+      zoom: RADAR_DISPLAY_ZOOM,
       forecastWindowMs: RADAR_FORECAST_WINDOW_MS,
       frames: [frame],
       panels: [
