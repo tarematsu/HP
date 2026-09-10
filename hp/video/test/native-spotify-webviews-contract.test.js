@@ -38,6 +38,8 @@ const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const mediaPanel = readFileSync(
   new URL('../../native/src/renderer_panels/media_section_base.inc', import.meta.url), 'utf8');
+const mediaHost = readFileSync(
+  new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 
 test('six Spotify accounts share the WebView2 environment while using isolated profiles', () => {
   assert.match(header, /kAccountCount = 6/);
@@ -47,7 +49,7 @@ test('six Spotify accounts share the WebView2 environment while using isolated p
     /L"amazon", L"yuukiar", L"ten", L"nagi", L"hinata", L"ozeki"/,
   );
   assert.match(spotify, /webview2-youtube-mv/);
-  assert.match(mediaPanel, /webview2-youtube-mv/);
+  assert.match(mediaHost, /webview2-youtube-mv/);
   assert.match(spotify, /SharedWebViewEnvironment::Instance\(\)\.Acquire/);
   assert.match(spotify, /kSpotifyProfilePrefix\[\] = L"spotify-"/);
   assert.match(spotify, /std::to_wstring\(target->index \+ 1\)/);
