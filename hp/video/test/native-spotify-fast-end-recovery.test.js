@@ -114,7 +114,7 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
   );
   assert.match(
     timed,
-    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(kSpotifyPodcastUrl\)/,
+    /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/,
   );
   assert.match(
     recent,
