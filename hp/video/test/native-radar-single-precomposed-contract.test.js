@@ -26,6 +26,10 @@ const cloud = readFileSync(
   new URL('../../cloud/src/radar_source.ts', import.meta.url),
   'utf8',
 );
+const browserFrame = readFileSync(
+  new URL('../../cloud/src/radar_browser_frame.ts', import.meta.url),
+  'utf8',
+);
 const wrangler = readFileSync(
   new URL('../../cloud/wrangler.jsonc', import.meta.url),
   'utf8',
@@ -48,7 +52,8 @@ test('legacy local radar cache is removed before CloudClient version negotiation
   assert.match(migration, /IsSinglePrecomposedRadarJson/);
   assert.match(migration, /text\.find\("\\"precomposed\\":true"\)/);
   assert.match(migration, /representative\/latest\.png/);
-  assert.match(migration, /one cloud-composited dual-panel frame/);
+  assert.match(migration, /one cloud-composited representative frame/);
+  assert.doesNotMatch(migration, /dualPanelProvider|dual-panel frame/);
   assert.match(migration, /fs::remove\(radarJson/);
   assert.match(migration, /radar-frame\.bmp/);
   assert.match(migration, /radar-frame\.signature/);
@@ -82,11 +87,20 @@ test('cloud radar composition has an explicit public origin for Browser Renderin
   assert.match(wrangler, /"browser": \{\s*"binding": "BROWSER"/);
 });
 
-test('cloud radar contract remains one precomposed representative frame', () => {
+test('cloud radar contract remains one precomposed three-panel representative frame', () => {
   assert.match(cloud, /const RADAR_OUTPUT_WIDTH = 1920/);
   assert.match(cloud, /const RADAR_OUTPUT_HEIGHT = 1280/);
+  assert.match(cloud, /const RADAR_DISPLAY_ZOOM_OFFSET = 2/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_WIDTH = 160/);
+  assert.match(cloud, /const RADAR_PANEL_SOURCE_HEIGHT = 320/);
   assert.match(cloud, /RADAR_FRAME_PATH = "\/v1\/radar\/frame\/representative\/latest\.png"/);
+  assert.match(cloud, /JMA_SHORT_TERM_TIMES_URL/);
+  assert.match(cloud, /panelRequest\(env, "現在", "jma"/);
+  assert.match(cloud, /panelRequest\(env, "1時間後", "jma"/);
+  assert.match(cloud, /panelRequest\(env, "取得可能な最後", "rasrf"/);
   assert.match(cloud, /precomposed: true/);
   assert.match(cloud, /frames: \[frame\]/);
-  assert.match(cloud, /one cloud-composited dual-panel frame/);
+  assert.match(cloud, /one cloud-composited representative frame/);
+  assert.match(browserFrame, /payload\.outputWidth \/ payload\.panels\.length/);
+  assert.match(browserFrame, /divider < payload\.panels\.length/);
 });
