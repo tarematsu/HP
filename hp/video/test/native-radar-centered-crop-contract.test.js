@@ -35,28 +35,33 @@ const buildRadarBase = readFileSync(
   'utf8',
 );
 
-test('cloud radar renders a z9-equivalent 1920x1280 dual-panel image', () => {
-  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM_OFFSET = 1;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 384;/);
-  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 512;/);
+test('cloud radar renders a z8-equivalent 1920x1280 three-panel image', () => {
+  assert.match(cloudRadar, /const RADAR_DISPLAY_ZOOM_OFFSET = 2;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_WIDTH = 160;/);
+  assert.match(cloudRadar, /const RADAR_PANEL_SOURCE_HEIGHT = 320;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_WIDTH = 1920;/);
   assert.match(cloudRadar, /const RADAR_OUTPUT_HEIGHT = 1280;/);
   assert.match(cloudRadar, /renderRepresentativeRadarFrame/);
   assert.match(cloudRadar, /precomposed: true/);
   assert.match(cloudRadar, /frames: \[frame\]/);
-  assert.match(browserRadar, /bitmap\.width \* 0\.4/);
-  assert.match(browserRadar, /bitmap\.height \* 0\.8/);
+  assert.match(browserRadar, /payload\.outputWidth \/ payload\.panels\.length/);
+  assert.match(browserRadar, /const panelAspect = panelWidth \/ payload\.outputHeight/);
+  assert.match(browserRadar, /divider < payload\.panels\.length/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_WIDTH/);
   assert.doesNotMatch(cloudRadar, /envNumber\(env\.RADAR_HEIGHT/);
 });
 
-test('cloud selects current-through-one-hour and terminal-forecast-minus-two-hour panels', () => {
+test('cloud selects current, exact one-hour, and latest short-term panels', () => {
   assert.match(cloudRadar, /const RADAR_FORECAST_WINDOW_MS = 60 \* 60 \* 1000;/);
-  assert.match(cloudRadar, /const RADAR_TERMINAL_WINDOW_MS = 2 \* 60 \* 60 \* 1000;/);
-  assert.match(cloudRadar, /validAt > currentAt && validAt <= forecastEnd/);
-  assert.match(cloudRadar, /validAt >= startAt[\s\S]*validAt <= terminalAt/);
-  assert.match(cloudRadar, /"現在〜1時間"/);
-  assert.match(cloudRadar, /"予報終端±2時間"/);
+  assert.match(cloudRadar, /selectOneHourForecastEntry/);
+  assert.match(cloudRadar, /jmaTimestampToMillis\(entry\.validtime\) === targetAt/);
+  assert.match(cloudRadar, /selectLatestShortTermEntry/);
+  assert.match(cloudRadar, /entry\.member === undefined \|\| entry\.member === "none"/);
+  assert.match(cloudRadar, /panelRequest\(env, "現在", "jma"/);
+  assert.match(cloudRadar, /panelRequest\(env, "1時間後", "jma"/);
+  assert.match(cloudRadar, /panelRequest\(env, "取得可能な最後", "rasrf"/);
+  assert.doesNotMatch(cloudRadar, /RADAR_TERMINAL_WINDOW_MS/);
+  assert.doesNotMatch(cloudRadar, /rainSamples|intensityPoints|maxIntensityRank|coverageWeight/);
   assert.match(radarUi, /frames\.Size\(\) != 1/);
   assert.doesNotMatch(radarUi, /frameIntervalMs|animationIntervalMs|selectedIndex/);
   assert.match(radarCache, /const bool precomposed = root\.GetNamedBoolean\(L"precomposed", false\);/);

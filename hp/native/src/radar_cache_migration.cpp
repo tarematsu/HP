@@ -12,17 +12,19 @@ bool IsSinglePrecomposedRadarJson(const fs::path& path) noexcept {
 
     // Cloud localization rewrites the representative URL to data.homepanel,
     // but keeps the representative path. These markers intentionally describe
-    // only the post-#777 contract and reject every old multi-frame payload.
+    // only the single precomposed representative-frame contract and reject
+    // every old multi-frame payload without depending on the panel count.
     const bool precomposed =
         text.find("\"precomposed\":true") != std::string::npos;
     const bool representative =
         text.find("/v1/radar/frame/representative/latest.png") !=
         std::string::npos;
-    const bool dualPanelProvider =
-        text.find("one cloud-composited dual-panel frame") != std::string::npos;
+    const bool representativeProvider =
+        text.find("one cloud-composited representative frame") !=
+        std::string::npos;
     const bool legacyAnimation =
         text.find("\"frameIntervalMs\"") != std::string::npos;
-    return precomposed && representative && dualPanelProvider &&
+    return precomposed && representative && representativeProvider &&
            !legacyAnimation;
   } catch (...) {
     return false;
