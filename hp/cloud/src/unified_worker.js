@@ -1,6 +1,7 @@
 import homePanelWorker from './worker_core.ts';
 import { requestFamily } from './unified_routes.js';
 import { refreshTverFeed, shouldRefreshTverFeed, tverFeedResponse } from './tver_feed.js';
+import { tverFeedObservability } from './tver_feed_observability.js';
 import videoWorker from '../../video/src/entry.js';
 
 export { SchedulerCoordinator } from './scheduler_coordinator.ts';
@@ -14,6 +15,7 @@ const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
 const INTERNAL_SERVICE_VALUE = 'homepanel-cloud';
 const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
 const TVER_FEED_PATH = '/v1/native/tver-feed';
+const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
 
 function cookieValue(request, name) {
   const header = request.headers.get('cookie');
@@ -98,6 +100,57 @@ function homePanelRuntimeEnv(env, ctx) {
   };
 }
 
+async function tverFeedHealthResponse(env) {
+  const health = await tverFeedObservability(env);
+  return Response.json(health, {
+    status: health.ok ? 200 : 503,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    }
+  });
+}
+
+async function homePanelCloudHealthResponse(request, env, ctx) {
+  const tverPromise = tverFeedObservability(env);
+  try {
+    const [videoResponse, tverFeed] = await Promise.all([
+      integratedVideoFetch(request, undefined, env, ctx),
+      tverPromise,
+    ]);
+    let videoHealth = {};
+    try {
+      videoHealth = await videoResponse.json();
+    } catch {
+    }
+    return Response.json({
+      ...videoHealth,
+      tverFeed,
+    }, {
+      status: videoResponse.status,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  } catch (error) {
+    const tverFeed = await tverPromise;
+    return Response.json({
+      ok: false,
+      service: 'homepanel-video',
+      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
+      checkedAt: new Date().toISOString(),
+      tverFeed,
+    }, {
+      status: 503,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      }
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
@@ -115,7 +168,21 @@ export default {
       return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
 
-    if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
+    if (pathname === TVER_FEED_HEALTH_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return tverFeedHealthResponse(env);
+    }
+
+    if (pathname === '/api/health') {
+      return homePanelCloudHealthResponse(request, env, ctx);
+    }
+
+    if (pathname.startsWith('/api/') && !videoApiAuthorized(request, env)) {
       return unauthorizedVideoResponse();
     }
 
