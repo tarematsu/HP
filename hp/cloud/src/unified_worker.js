@@ -15,6 +15,7 @@ const INTERNAL_SERVICE_HEADER = 'X-HomePanel-Internal-Service';
 const INTERNAL_SERVICE_VALUE = 'homepanel-cloud';
 const ADMIN_TOKEN_COOKIE = 'video_scraper_admin_token';
 const TVER_FEED_PATH = '/v1/native/tver-feed';
+const TVER_FEED_HEALTH_PATH = '/api/health/tver-feed';
 
 function cookieValue(request, name) {
   const header = request.headers.get('cookie');
@@ -99,48 +100,15 @@ function homePanelRuntimeEnv(env, ctx) {
   };
 }
 
-async function unifiedHealthResponse(request, env, ctx) {
-  const tverPromise = tverFeedObservability(env);
-  try {
-    const [videoResponse, tverFeed] = await Promise.all([
-      integratedVideoFetch(request, undefined, env, ctx),
-      tverPromise,
-    ]);
-    let videoHealth = {};
-    try {
-      videoHealth = await videoResponse.json();
-    } catch {
+async function tverFeedHealthResponse(env) {
+  const health = await tverFeedObservability(env);
+  return Response.json(health, {
+    status: health.ok ? 200 : 503,
+    headers: {
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
     }
-    const ok = videoResponse.ok && videoHealth?.ok !== false && tverFeed.ok;
-    return Response.json({
-      ...videoHealth,
-      ok,
-      service: 'homepanel-cloud',
-      checkedAt: new Date().toISOString(),
-      tverFeed,
-    }, {
-      status: ok ? 200 : 503,
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff'
-      }
-    });
-  } catch (error) {
-    const tverFeed = await tverPromise;
-    return Response.json({
-      ok: false,
-      service: 'homepanel-cloud',
-      error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200),
-      checkedAt: new Date().toISOString(),
-      tverFeed,
-    }, {
-      status: 503,
-      headers: {
-        'Cache-Control': 'no-store',
-        'X-Content-Type-Options': 'nosniff'
-      }
-    });
-  }
+  });
 }
 
 export default {
@@ -160,11 +128,17 @@ export default {
       return homePanelWorker.fetch(request, homePanelRuntimeEnv(env, ctx), ctx);
     }
 
-    if (pathname === '/api/health') {
-      return unifiedHealthResponse(request, env, ctx);
+    if (pathname === TVER_FEED_HEALTH_PATH) {
+      if (request.method !== 'GET') {
+        return new Response(null, {
+          status: 405,
+          headers: { Allow: 'GET', 'Cache-Control': 'no-store' }
+        });
+      }
+      return tverFeedHealthResponse(env);
     }
 
-    if (pathname.startsWith('/api/') && !videoApiAuthorized(request, env)) {
+    if (pathname.startsWith('/api/') && pathname !== '/api/health' && !videoApiAuthorized(request, env)) {
       return unauthorizedVideoResponse();
     }
 
