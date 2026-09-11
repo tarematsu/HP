@@ -228,7 +228,6 @@ class Renderer {
   enum class PanelSection {
     Clock,
     ClockTime,
-    PlaybackProgress,
     AirStats,
     AirGraph,
     Weather,

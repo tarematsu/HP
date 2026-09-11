@@ -182,9 +182,6 @@ void Renderer::InvalidatePanelSection(HWND window, PanelSection section) {
     const MainSections sections = SplitMainSections(client);
     switch (section) {
       case PanelSection::Radar: rect = sections.radar; break;
-      case PanelSection::PlaybackProgress:
-        rect = MusicProgressRectFromBody(CardBodyRect(CardContentRect(sections.radar)));
-        break;
       case PanelSection::Energy: rect = sections.energy; break;
       case PanelSection::EnergySwitchBot:
         rect = EnergySwitchBotRectFromCard(

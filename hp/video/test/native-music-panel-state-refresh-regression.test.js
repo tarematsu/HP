@@ -7,7 +7,7 @@ const panelStateSource = readFileSync(
   'utf8',
 );
 
-test('Music panel refreshes for every rendered Stationhead status change', () => {
+test('Stationhead status remains cached without repainting the radar card', () => {
   assert.match(
     panelStateSource,
     /const bool stationheadChanged = nativeStationhead_ != state\.stationhead;/,
@@ -16,10 +16,11 @@ test('Music panel refreshes for every rendered Stationhead status change', () =>
     panelStateSource,
     /if \(stationheadChanged\) nativeStationhead_ = state\.stationhead;/,
   );
-  assert.match(
-    panelStateSource,
-    /if \(!nativeDashboardVisible_ \|\| \(!stationheadChanged && !historyChanged\)\) return;[\s\S]*PanelSection::Music/,
-  );
+  assert.doesNotMatch(panelStateSource, /PanelSection::Music/);
+  const updateFunction = panelStateSource.match(
+    /void Renderer::UpdateNativeStaticPanels\([\s\S]*?\n\}/,
+  )?.[0] ?? '';
+  assert.doesNotMatch(updateFunction, /PanelSection::Radar/);
   assert.doesNotMatch(
     panelStateSource,
     /const bool stationheadChanged =[\s\S]{0,500}nativeStationhead_\.contentRevision !=/,

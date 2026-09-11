@@ -96,7 +96,7 @@ test('SwitchBot-only paint skips Octopus chart execution', () => {
   assert.match(rendererHeader, /DrawEnergySwitchBotSection/);
   assert.match(panelWindows, /const bool switchBotOnly =/);
   assert.match(panelWindows, /if \(!switchBotOnly\) DrawEnergySection/);
-  assert.match(panelWindows, /DrawEnergySwitchBotSection\(scope\.dc, sections\.air\)/);
+  assert.match(panelWindows, /DrawEnergySwitchBotSection\(scope\.dc, sections\.energy\)/);
   assert.match(energy, /void Renderer::DrawEnergySwitchBotSection/);
   assert.match(layout, /RECT EnergySwitchBotRectFromCard/);
 });

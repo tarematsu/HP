@@ -7,7 +7,7 @@ const radarUi = readFileSync(
   'utf8',
 );
 const radarSection = readFileSync(
-  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url),
+  new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url),
   'utf8',
 );
 
@@ -41,7 +41,7 @@ test('native radar has no legacy animation or local weather-layer composition pa
   assert.match(radarUi, /radarTimeText_\.clear\(\)/);
 });
 
-test('native radar still renders in the former MV slot', () => {
+test('native radar renders only in the semantic radar section', () => {
   assert.match(radarSection, /StretchRadarInto\(dc, bounds, radarFrameBitmap_\)/);
-  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Music\)/);
+  assert.match(radarUi, /InvalidatePanelSection\(nativeMainWindow_, PanelSection::Radar\)/);
 });

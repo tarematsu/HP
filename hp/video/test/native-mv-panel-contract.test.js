@@ -8,8 +8,8 @@ const mediaHost = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const mediaWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
-const mediaRadar = readFileSync(
-  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url), 'utf8');
+const radarSection = readFileSync(
+  new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const youtubeClean = readFileSync(
@@ -41,14 +41,15 @@ test('native dashboard keeps one active media controller on the shared WebView2 
   assert.doesNotMatch(mediaHost, /environment_->CreateCoreWebView2Controller\(/);
 });
 
-test('media source composition separates host, HWND plumbing, and radar drawing', () => {
+test('media source composition stays separate from radar drawing', () => {
   assert.match(mediaBase, /#include "media_host\.inc"/);
   assert.match(mediaBase, /#include "media_host_window\.inc"/);
-  assert.match(mediaBase, /#include "media_radar_section\.inc"/);
+  assert.doesNotMatch(mediaBase, /radar_section\.inc/);
+  assert.match(composition, /#include "renderer_panels\/radar_section\.inc"/);
   assert.match(mediaHost, /class NativeMediaPanelHost final/);
   assert.match(mediaWindow, /LRESULT CALLBACK NativeMediaPanelWndProc/);
-  assert.match(mediaRadar, /void Renderer::DrawRadarSection/);
-  assert.doesNotMatch(mediaRadar, /EnsureNativeMvPanel/);
+  assert.match(radarSection, /void Renderer::DrawRadarSection/);
+  assert.doesNotMatch(radarSection, /EnsureNativeMvPanel/);
 });
 
 test('media container never paints the rain radar behind WebView2', () => {

@@ -10,8 +10,8 @@ const mediaHost = readFileSync(
   new URL('../../native/src/renderer_panels/media_host.inc', import.meta.url), 'utf8');
 const mediaWindow = readFileSync(
   new URL('../../native/src/renderer_panels/media_host_window.inc', import.meta.url), 'utf8');
-const mediaRadar = readFileSync(
-  new URL('../../native/src/renderer_panels/media_radar_section.inc', import.meta.url), 'utf8');
+const radarSection = readFileSync(
+  new URL('../../native/src/renderer_panels/radar_section.inc', import.meta.url), 'utf8');
 const mediaWrapper = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 const tverEpisode = readFileSync(
@@ -20,7 +20,7 @@ const youtubeRecovery = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_control_recovery.inc', import.meta.url), 'utf8');
 const youtubeAgent = readFileSync(
   new URL('../../native/src/renderer_panels/media_youtube_event_agent.inc', import.meta.url), 'utf8');
-const mediaPanel = [mediaBase, mediaHost, mediaWindow, mediaRadar].join('\n');
+const mediaPanel = [mediaBase, mediaHost, mediaWindow].join('\n');
 
 test('TVer uses media events plus a player-local observer, never a document-wide loop', () => {
   assert.match(tverEpisode, /const bindPlayerObserver = video =>/);
@@ -63,12 +63,13 @@ test('playlist startup still has one bounded native fallback', () => {
   );
 });
 
-test('media responsibilities remain split without changing the composition unit', () => {
+test('media responsibilities remain separate from radar rendering', () => {
   assert.match(mediaBase, /#include "media_host\.inc"/);
   assert.match(mediaBase, /#include "media_host_window\.inc"/);
-  assert.match(mediaBase, /#include "media_radar_section\.inc"/);
+  assert.doesNotMatch(mediaBase, /radar_section\.inc/);
+  assert.match(composition, /#include "renderer_panels\/radar_section\.inc"/);
   assert.match(mediaHost, /class NativeMediaPanelHost final/);
   assert.match(mediaWindow, /LRESULT CALLBACK NativeMediaPanelWndProc/);
-  assert.match(mediaRadar, /void Renderer::DrawRadarSection/);
+  assert.match(radarSection, /void Renderer::DrawRadarSection/);
   assert.doesNotMatch(composition, /kNativeMediaYoutubeWatchdogOverrideScript/);
 });

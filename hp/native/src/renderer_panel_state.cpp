@@ -106,9 +106,8 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
   }
   if (stationheadChanged) nativeStationhead_ = state.stationhead;
 
-  if (!nativeDashboardVisible_ || (!stationheadChanged && !historyChanged)) return;
-  if (!EnsureNativeStaticWindows()) return;
-  InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
+  // Stationhead data is retained for compatibility, but no active native card
+  // renders it. Do not repaint the unrelated rain-radar card when it changes.
 }
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
@@ -116,8 +115,9 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
 
   StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
   const uint64_t nativeStatsRevision = GlobalStationheadNativeStatsStore().Revision();
-  const bool nativeStatsChanged = revisions.nativeStats != nativeStatsRevision;
-  if (nativeStatsChanged) revisions.nativeStats = nativeStatsRevision;
+  if (revisions.nativeStats != nativeStatsRevision) {
+    revisions.nativeStats = nativeStatsRevision;
+  }
 
   SYSTEMTIME localTime{};
   const bool previousClockReady = nativeClockReady_;
@@ -167,17 +167,8 @@ void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
     InvalidateRect(nativeMainWindow_, nullptr, FALSE);
   }
 
-  if (nativeMainWindow_ && IsWindow(nativeMainWindow_) &&
-      IsWindowVisible(nativeMainWindow_)) {
-    const NativePlaybackTickState playbackState = NativePlaybackTickStateFor(nowMs);
-    const bool playbackChanged = playbackState != nativePlaybackTickState_;
-    nativePlaybackTickState_ = playbackState;
-    if (nativeStatsChanged || playbackChanged) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::Radar);
-    } else if (playbackState.active) {
-      InvalidatePanelSection(nativeMainWindow_, PanelSection::PlaybackProgress);
-    }
-  }
+  // Playback and Stationhead state have no active native card. In particular,
+  // they must never invalidate the semantically separate rain-radar section.
 }
 
 }  // namespace hp
