@@ -38,8 +38,8 @@ const timed = readFileSync(
   new URL('../../native/src/spotify_timed_sequence.inc', import.meta.url),
   'utf8',
 );
-const recent = readFileSync(
-  new URL('../../native/src/spotify_recent_catalog.inc', import.meta.url),
+const music = readFileSync(
+  new URL('../../native/src/spotify_music_target.inc', import.meta.url),
   'utf8',
 );
 const phase = readFileSync(
@@ -114,7 +114,7 @@ test('target changes and ended gaps cannot play an item from the old queue', () 
     /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(SpotifyPodcastUrl\(\)\)/,
   );
   assert.match(
-    recent,
+    music,
     /PostSpotifyTargetDescriptorForSlot\(slot\);[\s\S]*kSpotifyStaticStopPlaybackScript[\s\S]*Navigate\(target\.url\)/,
   );
 });
