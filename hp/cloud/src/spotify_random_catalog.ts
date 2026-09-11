@@ -20,6 +20,7 @@ export const INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
 
 export const OFF_VOCAL_SPOTIFY_RANDOM_TRACKS = [
   ["やるしかないじゃん -OFF VOCAL ver.-", "04nk2Ee7qSnNwn6OG2hl3Q"],
+  ["Nightmare症候群 -OFF VOCAL ver.-", "4hVECXakmpdqigQq1mJwNg"],
 ] as const;
 
 export const MANAGED_SPOTIFY_RANDOM_TRACKS = [
