@@ -36,6 +36,7 @@ export type RadarTimeEntry = {
 
 type RadarProduct = "jma" | "rasrf";
 type RadarTileLayout = { x: number; y: number; destX: number; destY: number };
+type RadarViewport = { worldLeft: number; worldTop: number; zoom: number };
 
 function jmaTimestampToMillis(value: string): number {
   if (!/^\d{14}$/.test(value)) return 0;
@@ -105,13 +106,21 @@ export function selectLatestShortTermEntry(entries: RadarTimeEntry[]): RadarTime
   )).at(-1);
 }
 
-function radarTileLayout(lat: number, lon: number, zoom: number, width: number, height: number): RadarTileLayout[] {
+function radarViewport(lat: number, lon: number, zoom: number, width: number, height: number): RadarViewport {
   const scale = 2 ** zoom;
   const worldX = (lon + 180) / 360 * scale * 256;
   const latitude = Math.max(-85.05112878, Math.min(85.05112878, lat)) * Math.PI / 180;
   const worldY = (1 - Math.asinh(Math.tan(latitude)) / Math.PI) / 2 * scale * 256;
-  const left = worldX - width / 2;
-  const top = worldY - height / 2;
+  return {
+    worldLeft: worldX - width / 2,
+    worldTop: worldY - height / 2,
+    zoom,
+  };
+}
+
+function radarTileLayout(viewport: RadarViewport, width: number, height: number): RadarTileLayout[] {
+  const left = viewport.worldLeft;
+  const top = viewport.worldTop;
   const minX = Math.floor(left / 256);
   const maxX = Math.floor((left + width - 1) / 256);
   const minY = Math.floor(top / 256);
@@ -179,6 +188,7 @@ async function panelRequest(
   product: RadarProduct,
   entry: RadarTimeEntry,
   displayLayout: RadarTileLayout[],
+  viewport: RadarViewport,
   expires: number,
 ): Promise<BrowserRadarPanelRequest> {
   return {
@@ -188,6 +198,9 @@ async function panelRequest(
     sourceHeight: RADAR_PANEL_SOURCE_HEIGHT,
     baseCropWidth: RADAR_BASE_CROP_WIDTH,
     baseCropHeight: RADAR_BASE_CROP_HEIGHT,
+    worldLeft: viewport.worldLeft,
+    worldTop: viewport.worldTop,
+    zoom: viewport.zoom,
     validTimeText: jstTimeText(entry),
   };
 }
@@ -227,19 +240,19 @@ export async function fetchRadar(env: Env): Promise<SourceResult> {
   }
   if (!env.UPDATE_BUCKET) throw new Error("UPDATE_BUCKET is required for radar cloud composition");
 
-  // The bundled satellite and pre-generated gray-mask map are fixed z10 assets
-  // centered on Kawagoe. Keep the rain geometry fixed to the same center and use
-  // z9 source pixels so the geographic extent is identical while tile detail is
-  // doubled compared with the previous z8 composition.
+  // Keep every geospatial layer on one exact z9 world-pixel viewport. The
+  // satellite uses the corresponding centered z10 crop, while rain and the
+  // Kawagoe boundary consume these world bounds directly without tile rounding.
   const center = RADAR_CENTER;
-  const displayLayout = radarTileLayout(
+  const viewport = radarViewport(
     center.lat, center.lon, RADAR_DISPLAY_ZOOM, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT,
   );
+  const displayLayout = radarTileLayout(viewport, RADAR_PANEL_SOURCE_WIDTH, RADAR_PANEL_SOURCE_HEIGHT);
   const expires = Math.floor(Date.now() / 1000) + RADAR_TILE_URL_LIFETIME_SECONDS;
   const panels = await Promise.all([
-    panelRequest(env, "現在", "jma", currentEntry, displayLayout, expires),
-    panelRequest(env, "1時間後", "jma", oneHourEntry, displayLayout, expires),
-    panelRequest(env, "取得可能な最後", "rasrf", latestEntry, displayLayout, expires),
+    panelRequest(env, "現在", "jma", currentEntry, displayLayout, viewport, expires),
+    panelRequest(env, "1時間後", "jma", oneHourEntry, displayLayout, viewport, expires),
+    panelRequest(env, "取得可能な最後", "rasrf", latestEntry, displayLayout, viewport, expires),
   ]) as [
     BrowserRadarPanelRequest,
     BrowserRadarPanelRequest,
