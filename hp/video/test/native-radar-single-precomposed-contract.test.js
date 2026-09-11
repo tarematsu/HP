@@ -123,13 +123,15 @@ test('unchanged cloud radar times reuse the existing representative frame', () =
   assert.match(cloud, /customMetadata: \{ radarCompositionKey: compositionKey \}/);
 });
 
-test('Kawagoe mask is persisted as a static PNG after one boundary projection', () => {
+test('Kawagoe mask is persisted once in R2 and loaded internally as a PNG data URL', () => {
   assert.match(browserFrame, /KAWAGOE_MASK_KEY = "radar\/assets\/kawagoe-mask-v1-480x960\.png"/);
-  assert.match(browserFrame, /UPDATE_BUCKET\.head\(KAWAGOE_MASK_KEY\)/);
+  assert.match(browserFrame, /UPDATE_BUCKET\.get\(KAWAGOE_MASK_KEY\)/);
   assert.match(browserFrame, /storedMask \? null : await fetchKawagoeBoundary\(\)/);
+  assert.match(browserFrame, /encodePngDataUrl\(new Uint8Array\(await storedMask\.arrayBuffer\(\)\)\)/);
+  assert.match(browserFrame, /kawagoeMaskDataUrl: storedMaskDataUrl/);
   assert.match(browserFrame, /generatedMaskDataUrl = maskCanvas\.toDataURL\("image\/png"\)/);
   assert.match(browserFrame, /UPDATE_BUCKET\.put\(\s*KAWAGOE_MASK_KEY/s);
-  assert.match(cloud, /pathname === KAWAGOE_MASK_PATH/);
+  assert.doesNotMatch(cloud, /KAWAGOE_MASK_PATH/);
 });
 
 test('rain presence analysis uses a quarter-size canvas in each dimension', () => {
