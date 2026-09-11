@@ -6,6 +6,7 @@
 namespace hp {
 namespace {
 constexpr int64_t kAirGraphWindowMs = 24LL * 60 * 60 * 1000;
+constexpr int64_t kSwitchBotPanelProbeMs = 10'000;
 constexpr int kAirStatsCo2InvalidateDeltaPpm = 5;
 constexpr double kAirStatsTemperatureInvalidateDeltaC = 0.1;
 constexpr double kAirStatsHumidityInvalidateDeltaPercent = 1.0;
@@ -213,8 +214,20 @@ void Renderer::UpdateNativeStaticPanels(const RenderState& state) {
 }
 
 void Renderer::TickNativePanels(int64_t nowMs, bool timerDriven) {
-  (void)nowMs;
   if (!nativeDashboardVisible_ || (!timerDriven && nativePanelTimerActive_)) return;
+
+  // SwitchBot has its own cache file/version. Probe its file stamp on a coarse
+  // cadence instead of reparsing dashboard.json with every fast SwitchBot update.
+  static const Renderer* switchBotProbeOwner = nullptr;
+  static int64_t nextSwitchBotProbeAt = 0;
+  if (switchBotProbeOwner != this) {
+    switchBotProbeOwner = this;
+    nextSwitchBotProbeAt = 0;
+  }
+  if (nowMs >= nextSwitchBotProbeAt) {
+    LoadSwitchBot(dataDir_ / L"switchbot.json");
+    nextSwitchBotProbeAt = nowMs + kSwitchBotPanelProbeMs;
+  }
 
   StationheadRevisionCache& revisions = StationheadRevisionsFor(this);
   const uint64_t nativeStatsRevision = GlobalStationheadNativeStatsStore().Revision();

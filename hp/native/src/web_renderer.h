@@ -124,6 +124,7 @@ class Renderer {
   void SetBounds(const RECT& bounds);
   void SetVisible(bool visible);
   bool LoadDashboard(const fs::path& jsonPath, bool* changed = nullptr);
+  bool LoadSwitchBot(const fs::path& jsonPath, bool* changed = nullptr);
   void Render();
   void UpdateSensors(const SensorSnapshot& sensors);
   void UpdateAirHistory(const std::vector<AirHistorySample>& history);
@@ -170,6 +171,14 @@ class Renderer {
     int height = 0;
     uint64_t revision = 0;
     bool outage = false;
+  };
+
+  struct EnergyBitmapCache {
+    HBITMAP bitmap = nullptr;
+    int width = 0;
+    int height = 0;
+    uint64_t octopusRevision = 0;
+    size_t plugRows = 0;
   };
 
   struct AirGraphProjection {
@@ -254,6 +263,7 @@ class Renderer {
   void DrawControlsSection(HDC dc, const RECT& card);
   void DrawRadarSection(HDC dc, const RECT& card);
   void DrawEnergySection(HDC dc, const RECT& card);
+  void DrawEnergySectionUncached(HDC dc, const RECT& card);
   void DrawEnergySwitchBotSection(HDC dc, const RECT& card);
   void RebuildNativeAirGraph(int64_t nowMs);
   HBITMAP NativePanelBackBuffer(HWND hwnd, HDC dc, int width, int height);
@@ -321,7 +331,9 @@ class Renderer {
   fs::path dataDir_;
   std::atomic<bool> shuttingDown_{false};
   std::string dashboardUtf8_;
+  std::string switchbotUtf8_;
   DashboardSourceStamp dashboardSourceStamp_{};
+  DashboardSourceStamp switchbotSourceStamp_{};
   uint64_t spotifySourceRevision_ = 0;
   mutable std::mutex actionMutex_;
   UiAction pendingAction_ = UiAction::None;
@@ -338,6 +350,7 @@ class Renderer {
   uint64_t nativeWeatherIconUseCounter_ = 0;
   std::map<HWND, PanelBackBuffer> nativeBackBuffers_;
   WeatherPanelCache weatherPanelCache_{};
+  EnergyBitmapCache energyBitmapCache_{};
   std::atomic<bool> nativePlaybackStarted_{false};
   std::atomic<bool> nativePlaybackStopping_{false};
   mutable std::mutex nativeMinuteFactsMutex_;

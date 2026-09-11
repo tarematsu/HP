@@ -220,6 +220,8 @@ void Renderer::ResetNativeBitmapCaches() noexcept {
   ReleaseNativePanelSurfaces();
   if (weatherPanelCache_.bitmap) DeleteObject(weatherPanelCache_.bitmap);
   weatherPanelCache_ = {};
+  if (energyBitmapCache_.bitmap) DeleteObject(energyBitmapCache_.bitmap);
+  energyBitmapCache_ = {};
   const auto deleteBitmaps = [](auto& entries) {
     for (auto& item : entries) if (item.second.bitmap) DeleteObject(item.second.bitmap);
     entries.clear();

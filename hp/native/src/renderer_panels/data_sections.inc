@@ -1,4 +1,52 @@
 void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
+  const int width = std::max(1L, card.right - card.left);
+  const int height = std::max(1L, card.bottom - card.top);
+  const size_t plugRows = std::min<size_t>(4, nativeDashboard_.switchBotDevices.size()) > 2 ? 2 : 1;
+  const uint64_t revision = nativeDashboard_.revisions.octopus;
+  const bool rebuild = !energyBitmapCache_.bitmap ||
+      energyBitmapCache_.width != width || energyBitmapCache_.height != height ||
+      energyBitmapCache_.octopusRevision != revision ||
+      energyBitmapCache_.plugRows != plugRows;
+
+  if (rebuild) {
+    if (energyBitmapCache_.bitmap) {
+      DeleteObject(energyBitmapCache_.bitmap);
+      energyBitmapCache_ = {};
+    }
+    HDC memoryDc = CreateCompatibleDC(dc);
+    HBITMAP bitmap = memoryDc ? CreateCompatibleBitmap(dc, width, height) : nullptr;
+    if (memoryDc && bitmap) {
+      HGDIOBJ previousBitmap = SelectObject(memoryDc, bitmap);
+      SetBkMode(memoryDc, TRANSPARENT);
+      const RECT localCard{0, 0, width, height};
+      DrawEnergySectionUncached(memoryDc, localCard);
+      SelectObject(memoryDc, previousBitmap);
+      energyBitmapCache_.bitmap = bitmap;
+      energyBitmapCache_.width = width;
+      energyBitmapCache_.height = height;
+      energyBitmapCache_.octopusRevision = revision;
+      energyBitmapCache_.plugRows = plugRows;
+    } else if (bitmap) {
+      DeleteObject(bitmap);
+    }
+    if (memoryDc) DeleteDC(memoryDc);
+  }
+
+  if (energyBitmapCache_.bitmap) {
+    HDC memoryDc = CreateCompatibleDC(dc);
+    if (memoryDc) {
+      HGDIOBJ previousBitmap = SelectObject(memoryDc, energyBitmapCache_.bitmap);
+      BitBlt(dc, card.left, card.top, width, height, memoryDc, 0, 0, SRCCOPY);
+      SelectObject(memoryDc, previousBitmap);
+      DeleteDC(memoryDc);
+      return;
+    }
+  }
+
+  DrawEnergySectionUncached(dc, card);
+}
+
+void Renderer::DrawEnergySectionUncached(HDC dc, const RECT& card) {
   DrawSectionCard(dc, card);
   const RECT content = CardContentRect(card);
   HGDIOBJ previousFont = SelectObject(dc, TierFont(FontTier::Small));
@@ -46,16 +94,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
   RECT chart{body.left, body.top + summaryHeight + SpanY(body, 40),
              body.right, body.bottom - plugHeight - SpanY(body, 25)};
   if (chart.bottom > chart.top + 30 && !nativeDashboard_.octopusProfile.empty()) {
-    double maximum = 0.1;
-    for (const auto& item : nativeDashboard_.octopusProfile) {
-      if (item.currentComplete && std::isfinite(item.currentTotal)) {
-        maximum = std::max(maximum, item.currentTotal);
-      }
-      if (item.previousComplete && std::isfinite(item.previousTotal)) {
-        maximum = std::max(maximum, item.previousTotal);
-      }
-    }
-    maximum *= 1.1;
+    const double maximum = nativeDashboard_.octopusRender.maximum;
 
     const int chartHeight = static_cast<int>(chart.bottom - chart.top);
     const int legendHeight = std::clamp(chartHeight * 20 / 100, 12, 22);
@@ -66,42 +105,18 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
 
     const int swatchWidth = std::max(14, SpanX(body, 45));
     const int swatchHeight = std::max(3, legendHeight * 20 / 100);
+    HPEN dottedPen = CreatePen(PS_DOT, 1, kWidgetSubtle);
     const auto drawPreviousOverlay = [&](const RECT& rect) {
       AlphaBlendSolidColor(dc, rect, kWidgetBlack, 110);
-      HPEN dottedPen = CreatePen(PS_DOT, 1, kWidgetSubtle);
-      HGDIOBJ previousPen = SelectObject(dc, dottedPen);
+      HGDIOBJ previousPen = dottedPen ? SelectObject(dc, dottedPen) : nullptr;
       HGDIOBJ previousBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
       Rectangle(dc, rect.left, rect.top, rect.right, rect.bottom);
       SelectObject(dc, previousBrush);
-      SelectObject(dc, previousPen);
-      DeleteObject(dottedPen);
+      if (previousPen) SelectObject(dc, previousPen);
     };
 
-    double currentWeekUsage = 0.0;
-    double previousWeekUsage = 0.0;
-    bool currentWeekComplete = nativeDashboard_.octopusProfile.size() == 7;
-    bool previousWeekComplete = currentWeekComplete;
-    for (const auto& item : nativeDashboard_.octopusProfile) {
-      if (item.currentComplete && std::isfinite(item.currentTotal)) {
-        currentWeekUsage += item.currentTotal;
-      } else {
-        currentWeekComplete = false;
-      }
-      if (item.previousComplete && std::isfinite(item.previousTotal)) {
-        previousWeekUsage += item.previousTotal;
-      } else {
-        previousWeekComplete = false;
-      }
-    }
-    const auto weeklyUsageText = [](double value, bool complete) {
-      return complete ? Fixed(value, 1) : std::wstring(L"--.-");
-    };
-    const std::wstring currentLegend =
-        nativeDashboard_.currentEnergyLabel + L" " +
-        weeklyUsageText(currentWeekUsage, currentWeekComplete);
-    const std::wstring previousLegend =
-        nativeDashboard_.previousEnergyLabel + L" " +
-        weeklyUsageText(previousWeekUsage, previousWeekComplete);
+    const std::wstring& currentLegend = nativeDashboard_.octopusRender.currentLegend;
+    const std::wstring& previousLegend = nativeDashboard_.octopusRender.previousLegend;
 
     SIZE currentTextSize{};
     SIZE previousTextSize{};
@@ -200,6 +215,7 @@ void Renderer::DrawEnergySection(HDC dc, const RECT& card) {
         DrawTextInRect(dc, point.day, dayLabel, DT_CENTER | DT_SINGLELINE | DT_VCENTER);
       }
     }
+    if (dottedPen) DeleteObject(dottedPen);
   } else if (chart.bottom > chart.top + 30) {
     SelectObject(dc, TierFont(FontTier::Small));
     SetTextColor(dc, kWidgetSubtle);
