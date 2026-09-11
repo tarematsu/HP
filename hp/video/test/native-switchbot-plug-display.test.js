@@ -41,14 +41,14 @@ test('Plug Mini footer shows rounded integer watts without ON/OFF state', () => 
   assert.doesNotMatch(deviceState, /L"ON"|L"OFF"/);
 });
 
-test('Plug Mini footer filters non-plug devices and renders four plugs as a two-by-two grid', () => {
+test('Plug Mini footer filters non-plug devices and parses only the four visible plugs', () => {
   assert.match(
     dashboardParser,
     /if \(type\.find\(L"Plug"\) == std::wstring::npos\) continue;/,
   );
   assert.match(
     dashboardParser,
-    /index < devices\.Size\(\) && next\.switchBotDevices\.size\(\) < 8/,
+    /index < devices\.Size\(\) && next\.size\(\) < 4/,
   );
   assert.match(
     dataSections,
