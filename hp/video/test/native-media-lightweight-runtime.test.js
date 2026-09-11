@@ -69,6 +69,6 @@ test('media responsibilities remain split without changing the composition unit'
   assert.match(mediaBase, /#include "media_radar_section\.inc"/);
   assert.match(mediaHost, /class NativeMediaPanelHost final/);
   assert.match(mediaWindow, /LRESULT CALLBACK NativeMediaPanelWndProc/);
-  assert.match(mediaRadar, /void Renderer::DrawMusicSection/);
+  assert.match(mediaRadar, /void Renderer::DrawRadarSection/);
   assert.doesNotMatch(composition, /kNativeMediaYoutubeWatchdogOverrideScript/);
 });
