@@ -58,32 +58,39 @@ export function selectRadarForecastEntries(
   observed: RadarTimeEntry[],
   forecast: RadarTimeEntry[],
 ): RadarTimeEntry[] {
-  const forecastAvailable = forecast.filter(entry => (
-    hasElement(entry, "hrpns") && jmaTimestampToMillis(entry.validtime) > 0
-  ));
-  const forecastBaseTimes = new Set(forecastAvailable.map(entry => entry.basetime));
-  const current = observed
+  const observedAvailable = observed
     .filter(entry => (
       hasElement(entry, "hrpns")
       && entry.basetime === entry.validtime
-      && forecastBaseTimes.has(entry.basetime)
       && jmaTimestampToMillis(entry.validtime) > 0
     ))
-    .sort((left, right) => right.validtime.localeCompare(left.validtime))[0];
-  if (!current) return [];
+    .sort((left, right) => right.validtime.localeCompare(left.validtime));
+  const forecastAvailable = forecast.filter(entry => (
+    hasElement(entry, "hrpns") && jmaTimestampToMillis(entry.validtime) > 0
+  ));
 
-  const currentAt = jmaTimestampToMillis(current.validtime);
-  const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
-  const futureByValidTime = new Map<string, RadarTimeEntry>();
-  for (const entry of forecastAvailable) {
-    const validAt = jmaTimestampToMillis(entry.validtime);
-    if (entry.basetime === current.basetime && validAt > currentAt && validAt <= forecastEnd) {
-      futureByValidTime.set(entry.validtime, entry);
+  // N1 observations and N2 forecasts can roll over their basetime at slightly
+  // different moments. Match by valid time instead of requiring equal basetimes,
+  // while still requiring a true +60 minute endpoint for the chosen observation.
+  for (const current of observedAvailable) {
+    const currentAt = jmaTimestampToMillis(current.validtime);
+    const forecastEnd = currentAt + RADAR_FORECAST_WINDOW_MS;
+    const futureByValidTime = new Map<string, RadarTimeEntry>();
+    for (const entry of forecastAvailable) {
+      const validAt = jmaTimestampToMillis(entry.validtime);
+      if (validAt <= currentAt || validAt > forecastEnd) continue;
+      const existing = futureByValidTime.get(entry.validtime);
+      if (!existing || existing.basetime.localeCompare(entry.basetime) < 0) {
+        futureByValidTime.set(entry.validtime, entry);
+      }
+    }
+    const future = [...futureByValidTime.values()]
+      .sort((left, right) => left.validtime.localeCompare(right.validtime));
+    if (future.some(entry => jmaTimestampToMillis(entry.validtime) === forecastEnd)) {
+      return [current, ...future];
     }
   }
-  const future = [...futureByValidTime.values()]
-    .sort((left, right) => left.validtime.localeCompare(right.validtime));
-  return future.length ? [current, ...future] : [];
+  return [];
 }
 
 export function selectOneHourForecastEntry(entries: RadarTimeEntry[]): RadarTimeEntry | undefined {

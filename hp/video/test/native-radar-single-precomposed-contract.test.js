@@ -109,8 +109,8 @@ test('cloud radar contract remains one precomposed three-panel representative fr
   assert.match(browserFrame, /divider < payload\.panels\.length/);
 });
 
-test('all three radar labels stay below the top edge and panel dividers are solid black', () => {
-  assert.match(browserFrame, /const chipTop = 72;/);
+test('all three radar labels stay below the native crop edge and panel dividers are solid black', () => {
+  assert.match(browserFrame, /const chipTop = 240;/);
   assert.match(browserFrame, /panelWidth - chipLeft \* 2/);
   assert.match(browserFrame, /context\.roundRect\(panelX \+ chipLeft, chipTop/);
   assert.match(browserFrame, /chipTop \+ 33/);
