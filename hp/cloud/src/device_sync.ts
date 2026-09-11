@@ -83,6 +83,18 @@ const SHORT_SPOTIFY_RANDOM_TRACKS = [
   ["Nightmare症候群", "2hi8kIoKC8tRMDajdkoYFL"],
 ] as const;
 
+const INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS = [
+  ["Interlude #1", "1N339Ccfo6kqPHtS5ueJ0J"],
+  ["Interlude #2", "57MZ2hsDSJMp9nzFIRFd0S"],
+  ["Interlude #4", "4K3nO9hBA3UE62Dspjx19d"],
+  ["Interlude #6", "3IceOend8QYv0mJLCfrxQq"],
+] as const;
+
+const MANAGED_SPOTIFY_RANDOM_TRACKS = [
+  ...SHORT_SPOTIFY_RANDOM_TRACKS,
+  ...INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS,
+] as const;
+
 function spotifyTrackId(value: unknown): string {
   const track = objectOrNull(value);
   const url = typeof track?.url === "string" ? track.url : "";
@@ -96,12 +108,14 @@ function migrateLegacySpotifyRandomPool(config: JsonRecord): boolean {
   const random = objectOrNull(group);
   if (!random) return false;
   const tracks = Array.isArray(random?.tracks) ? random.tracks : [];
-  if (tracks.length !== LEGACY_SPOTIFY_RANDOM_TRACK_IDS.length ||
-      !tracks.every((track, index) =>
-        spotifyTrackId(track) === LEGACY_SPOTIFY_RANDOM_TRACK_IDS[index])) {
+  const ids = tracks.map(spotifyTrackId);
+  const isManagedPool = (expected: readonly string[]) =>
+    ids.length === expected.length && ids.every((id, index) => id === expected[index]);
+  const shortTrackIds = SHORT_SPOTIFY_RANDOM_TRACKS.map(([, id]) => id);
+  if (!isManagedPool(LEGACY_SPOTIFY_RANDOM_TRACK_IDS) && !isManagedPool(shortTrackIds)) {
     return false;
   }
-  random.tracks = SHORT_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
+  random.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS.map(([title, id]) => ({
     title,
     url: `https://open.spotify.com/track/${id}`,
   }));

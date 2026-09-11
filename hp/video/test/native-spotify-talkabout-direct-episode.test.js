@@ -26,12 +26,14 @@ test('cloud resolves TALKABOUT latest episode and persists it into normal device
   assert.match(deviceSync, /WHERE device_id=\?1 AND version=\?5/);
 });
 
-test('device sync migrates only the exact legacy random pool', () => {
+test('device sync migrates only exact managed random pools', () => {
   assert.match(deviceSync, /LEGACY_SPOTIFY_RANDOM_TRACK_IDS/);
   assert.match(deviceSync, /SHORT_SPOTIFY_RANDOM_TRACKS/);
-  assert.match(deviceSync, /tracks\.every\(\(track, index\)/);
+  assert.match(deviceSync, /INSTRUMENTAL_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /MANAGED_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(deviceSync, /ids\.every\(\(id, index\)/);
   assert.match(deviceSync, /migrateLegacySpotifyRandomPool\(config\)/);
-  assert.match(deviceSync, /random\.tracks = SHORT_SPOTIFY_RANDOM_TRACKS\.map/);
+  assert.match(deviceSync, /random\.tracks = MANAGED_SPOTIFY_RANDOM_TRACKS\.map/);
 });
 
 test('native consumes only the cloud-resolved direct episode URL', () => {

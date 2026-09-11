@@ -11,7 +11,7 @@ const cloud = readFileSync(
   'utf8',
 );
 
-test('all nine short fallback catalog entries keep direct Spotify track routes', () => {
+test('all short fallback catalog entries keep direct Spotify track routes', () => {
   assert.doesNotMatch(catalog, /spotify_recent_direct_routes\.inc/);
   const start = catalog.indexOf('kSpotifyFallbackCatalogTracks = {{');
   const end = catalog.indexOf('}};', start);
@@ -19,9 +19,9 @@ test('all nine short fallback catalog entries keep direct Spotify track routes',
   const section = catalog.slice(start, end);
   assert.equal(
     (section.match(/https:\/\/open\.spotify\.com\/track\//g) || []).length,
-    9,
+    13,
   );
-  assert.equal((section.match(/L"\/track\//g) || []).length, 9);
+  assert.equal((section.match(/L"\/track\//g) || []).length, 13);
 
   for (const id of [
     '5xUQGRuP4LPk4ESl1xbmFs',
@@ -33,6 +33,10 @@ test('all nine short fallback catalog entries keep direct Spotify track routes',
     '3HdmFZGqZLNiCAfiNj4N84',
     '5DrxCKjopmd7UL1pJWqBHK',
     '2hi8kIoKC8tRMDajdkoYFL',
+    '1N339Ccfo6kqPHtS5ueJ0J',
+    '57MZ2hsDSJMp9nzFIRFd0S',
+    '4K3nO9hBA3UE62Dspjx19d',
+    '3IceOend8QYv0mJLCfrxQq',
   ]) {
     assert.equal((section.match(new RegExp(id, 'g')) || []).length, 2);
   }

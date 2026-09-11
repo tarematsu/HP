@@ -69,11 +69,14 @@ test('admin describes sync-time application rather than restart-time application
   assert.doesNotMatch(admin, /次回HomePanel再起動時にSpotify設定を適用/);
 });
 
-test('legacy 34-track random pools migrate to the short nine-track catalog', () => {
+test('managed legacy and short random pools migrate to the instrumental catalog', () => {
   assert.match(admin, /const spotifyRandomPool=\[/);
   assert.match(admin, /running time is 3:30 or shorter/);
   assert.match(admin, /legacySpotifyRandomTrackIds/);
+  assert.match(admin, /shortSpotifyRandomTrackIds/);
   assert.match(admin, /random\.tracks=structuredClone\(spotifyRandomPool\)/);
   assert.match(admin, /spotifyTrack\("Sunny side up"/);
   assert.match(admin, /spotifyTrack\("Nightmare症候群"/);
+  assert.match(admin, /spotifyTrack\("Interlude #1"/);
+  assert.match(admin, /spotifyTrack\("Interlude #6"/);
 });
