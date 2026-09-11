@@ -9,19 +9,30 @@ const episodeLoop = readFileSync(
 const mediaSection = readFileSync(
   new URL('../../native/src/renderer_panels/media_section.inc', import.meta.url), 'utf8');
 
-test('TVer playback policy is scoped to episode pages and cloud queue', () => {
+test('TVer playback policy is scoped to episode pages and one cloud queue', () => {
   assert.match(policy, /kNativeMediaTverPlaybackWatchdogPolicyScript/);
   assert.match(policy, /location\.pathname\.startsWith\('\/episodes\/'\)/);
-  assert.match(policy, /__homePanelTverEpisodeQueue:/);
-  assert.doesNotMatch(policy, /callSeriesSeasons|callSeasonEpisodes/);
+  assert.match(policy, /episodeQueueKey = '__homePanelTverEpisodeQueue'/);
+  assert.doesNotMatch(policy, /__homePanelTverEpisodeQueue:/);
+  assert.doesNotMatch(policy, /__homePanelTverSeriesPath|callSeriesSeasons|callSeasonEpisodes/);
 });
 
-test('TVer guard rejects navigation outside the active queue', () => {
-  assert.match(policy, /const guardSeriesEpisode = \(\) =>/);
+test('TVer guard rejects navigation outside the cloud queue', () => {
+  assert.match(policy, /const guardCloudEpisode = \(\) =>/);
   assert.match(policy, /hrefs\.some\(href =>/);
   assert.match(policy, /if \(!directLaunch\) return requestRestart\(\)/);
   assert.match(policy, /return window\[guardRestartKey\] \? 'restart' : null/);
+  assert.doesNotMatch(policy, /__homePanelTverAcceptNextEpisode/);
   assert.doesNotMatch(policy, /location\.replace\('https:\/\/tver\.jp\/series\//);
+});
+
+test('TVer direct launch seeds only the current episode until native refresh expands the queue', () => {
+  assert.match(policy, /launcherParam = 'homepanel_launch'/);
+  assert.match(policy, /const currentHref = normalizeEpisodeHref\(location\.href\)/);
+  assert.match(
+    policy,
+    /sessionStorage\.setItem\(\s*episodeQueueKey, JSON\.stringify\(\{ hrefs: \[currentHref\], index: 0 \}\)\)/,
+  );
 });
 
 test('TVer ad branch runs before survey and program recovery', () => {
