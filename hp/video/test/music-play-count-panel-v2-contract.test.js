@@ -29,7 +29,7 @@ const messagePolicy = readFileSync(
 
 test('the compiled media panel uses the integrated YouTube and TVer surface', () => {
   assert.match(entry, /HomePanelNativeMvPanel/);
-  assert.match(radarSection, /void Renderer::DrawMusicSection/);
+  assert.match(radarSection, /void Renderer::DrawRadarSection/);
   assert.match(entry, /kNativeMediaYoutubeUrl/);
   assert.match(entry, /kNativeMediaTverUrl/);
   assert.match(entry, /#include "media_host\.inc"/);
