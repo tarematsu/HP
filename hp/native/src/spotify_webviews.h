@@ -120,6 +120,7 @@ class SpotifyWebViews final {
     bool timedObserverReady = false;
     bool timedObserverInstallInFlight = false;
     bool timedRotationActive = false;
+    bool timedCycleIncludesTalkAbout = false;
     bool podcastBreakActive = false;
     bool podcastPlaybackRecorded = false;
     bool hostLayoutApplied = false;
@@ -225,7 +226,6 @@ class SpotifyWebViews final {
   bool started_ = false;
   bool robustSchedulerStarted_ = false;
   bool networkBlocked_ = false;
-  bool inlineTalkAboutRotation_ = false;
   bool podcastScheduleLoaded_ = false;
 };
 
