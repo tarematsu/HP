@@ -22,11 +22,6 @@ bool ParseSpotifyGenerationEvent(
 
 }  // namespace
 
-void SpotifyWebViews::StopTimedOneShotPlayback(Slot& slot) noexcept {
-  if (!slot.webview) return;
-  slot.webview->ExecuteScript(kSpotifyStaticStopPlaybackScript, nullptr);
-}
-
 void SpotifyWebViews::ApplyTimedRotationTarget(Slot& slot) noexcept {
   slot.podcastBreakActive = false;
   slot.timedCatalogIndex = kNoTimedCatalogIndex;
@@ -73,7 +68,8 @@ void SpotifyWebViews::InitializeTimedRotationSlot(
 void SpotifyWebViews::CompletePodcastBreak(
     Slot& slot, ULONGLONG now) noexcept {
   if (!slot.timedRotationActive || !slot.podcastBreakActive) return;
-  StopTimedOneShotPlayback(slot);
+  // Completion means the episode has already ended. Do not issue another
+  // generic pause before advancing; navigation owns the next target transition.
   slot.podcastBreakActive = false;
   AdvanceTimedRotationSlot(slot, now);
 }
