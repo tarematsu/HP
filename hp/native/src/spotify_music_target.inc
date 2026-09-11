@@ -109,7 +109,12 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
             }
 
             if (json && std::wstring_view(json) == L"true") {
-              SetSlotState(*target, SlotState::Playing);
+              // The DOM control can briefly report "Pause" before the actual
+              // media clock starts. Only the generation-tagged observer may
+              // promote a slot to Playing after confirmed media playback.
+              if (target->state != SlotState::Playing) {
+                SetSlotState(*target, SlotState::WaitingTarget);
+              }
               RecomputeForeground();
               ArmRobustScheduler();
               return S_OK;
