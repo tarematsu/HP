@@ -124,6 +124,15 @@ void SpotifyWebViews::ReconcileMusicTarget(Slot& slot) noexcept {
               return S_OK;
             }
 
+            if (json && std::wstring_view(json) == L"\"wrong\"") {
+              // A different identifiable track is actively playing. Recovery is
+              // target replacement by navigation, never a pause/toggle click.
+              MarkSlotRecovering(*target, now);
+              target->lastModeNavigateTick = 0;
+              NavigateMusicTarget(*target);
+              return S_OK;
+            }
+
             if (json && std::wstring_view(json) == L"\"settling\"") {
               // Spotify sometimes renders Pause before its media clock starts.
               // This is intentionally non-actionable: never click an ambiguous
