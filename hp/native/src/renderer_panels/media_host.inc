@@ -7,6 +7,15 @@ class NativeMediaPanelHost final {
 
   void Attach(HWND hwnd) noexcept { hostWindow_ = hwnd; }
 
+  void SetMuted(bool muted) noexcept {
+    muted_ = muted;
+    if (!webview_) return;
+    ComPtr<ICoreWebView2_8> audio;
+    if (SUCCEEDED(webview_.As(&audio)) && audio) {
+      audio->put_IsMuted(muted ? TRUE : FALSE);
+    }
+  }
+
   void Start() noexcept {
     if (!hostWindow_ || !IsWindow(hostWindow_)) return;
     const auto alive = alive_;
@@ -283,6 +292,7 @@ class NativeMediaPanelHost final {
 
   void Configure() noexcept {
     try {
+      SetMuted(muted_);
       ComPtr<ICoreWebView2Controller2> controller2;
       if (SUCCEEDED(controller_.As(&controller2)) && controller2) {
         COREWEBVIEW2_COLOR background{255, 0, 0, 0};
@@ -759,5 +769,6 @@ class NativeMediaPanelHost final {
   bool youtubeWatchdogInFlight_ = false;
   bool tverWatchdogInFlight_ = false;
   bool tverRestarting_ = false;
+  bool muted_ = false;
   bool failed_ = false;
 };
