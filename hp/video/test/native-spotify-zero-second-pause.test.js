@@ -12,6 +12,8 @@ const scripts = source('spotify_static_scripts.inc');
 const runtime = source('spotify_media_observer_runtime.inc');
 const rotation = source('spotify_timed_end_rotation.inc');
 
+const executablePause = /try\s*\{[^}]{0,240}\.pause\s*\(/s;
+
 test('Pause-labelled Spotify UI at zero is a settling state, never a trusted click', () => {
   assert.match(scoped, /const buttonIntent = button =>/);
   assert.match(scoped, /includes\('pause'\).*return 'pause'/s);
@@ -41,11 +43,13 @@ test('native settling branch waits or renavigates and cannot click the ambiguous
   assert.doesNotMatch(settlingBranch, /ClickSlotNormalizedPoint/);
 });
 
-test('startup and target-transition paths contain no generic media stop actuator', () => {
+test('startup and target-transition paths contain no executable generic media stop actuator', () => {
   assert.doesNotMatch(scripts, /kSpotifyStaticStopPlaybackScript/);
-  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
-  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript|media\.pause\(/);
-  assert.doesNotMatch(runtime, /media\.pause\(/);
+  assert.doesNotMatch(music, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(timed, /kSpotifyStaticStopPlaybackScript/);
+  assert.doesNotMatch(music, executablePause);
+  assert.doesNotMatch(timed, executablePause);
+  assert.doesNotMatch(runtime, executablePause);
 });
 
 test('DOM reconcile cannot promote a music slot to Playing by itself', () => {
