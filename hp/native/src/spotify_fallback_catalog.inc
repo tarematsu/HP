@@ -1,5 +1,5 @@
 // Official Spotify releases whose running time is 3:30 or shorter.
-constexpr std::array<SpotifyFallbackCatalogTrack, 24>
+constexpr std::array<SpotifyFallbackCatalogTrack, 34>
     kSpotifyFallbackCatalogTracks = {{
     {L"Sunny side up", L"https://open.spotify.com/track/5xUQGRuP4LPk4ESl1xbmFs", L"/track/5xUQGRuP4LPk4ESl1xbmFs"},
     {L"キスが苦い", L"https://open.spotify.com/track/4PaLKbIU8NvguxcrjMvHXh", L"/track/4PaLKbIU8NvguxcrjMvHXh"},
@@ -25,4 +25,14 @@ constexpr std::array<SpotifyFallbackCatalogTrack, 24>
     {L"Interlude #3", L"https://open.spotify.com/track/0LyOFxPXWLw2k0q4y9pFM3", L"/track/0LyOFxPXWLw2k0q4y9pFM3"},
     {L"Interlude #5", L"https://open.spotify.com/track/3rLKZOGLGRwMQ9XX4aECfN", L"/track/3rLKZOGLGRwMQ9XX4aECfN"},
     {L"Interlude #7", L"https://open.spotify.com/track/4OTvaYkw60M6YNZ59vlx0R", L"/track/4OTvaYkw60M6YNZ59vlx0R"},
+    {L"恋は向いてない", L"https://open.spotify.com/track/44sj7vChwZRYQ0Oz9AFyP2", L"/track/44sj7vChwZRYQ0Oz9AFyP2"},
+    {L"摩擦係数", L"https://open.spotify.com/track/5vOABxcejLNdoyLh7JRtjM", L"/track/5vOABxcejLNdoyLh7JRtjM"},
+    {L"もう一曲　欲しいのかい？", L"https://open.spotify.com/track/3CzKqb5U3GlxUhoJGv1BZf", L"/track/3CzKqb5U3GlxUhoJGv1BZf"},
+    {L"一瞬の馬", L"https://open.spotify.com/track/7jLbrfs3YtWO232XEU3iD1", L"/track/7jLbrfs3YtWO232XEU3iD1"},
+    {L"条件反射で泣けて来る", L"https://open.spotify.com/track/5z8xkccoi9bnA8SGf2VQnk", L"/track/5z8xkccoi9bnA8SGf2VQnk"},
+    {L"油を注せ！", L"https://open.spotify.com/track/6oZVLkbhLB3qyikq0eNlEy", L"/track/6oZVLkbhLB3qyikq0eNlEy"},
+    {L"泣かせて　Hold me tight!", L"https://open.spotify.com/track/31vLfN5bNOpasgULiqSbLx", L"/track/31vLfN5bNOpasgULiqSbLx"},
+    {L"ジャマイカビール", L"https://open.spotify.com/track/37h3M4ZYJgSRy0cXArsH59", L"/track/37h3M4ZYJgSRy0cXArsH59"},
+    {L"承認欲求", L"https://open.spotify.com/track/59G1ePHebLtol0u5upRFSZ", L"/track/59G1ePHebLtol0u5upRFSZ"},
+    {L"なぜ　恋をして来なかったんだろう？", L"https://open.spotify.com/track/2K6uY7BaeOfuPwJNOVF3ht", L"/track/2K6uY7BaeOfuPwJNOVF3ht"},
 }};

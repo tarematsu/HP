@@ -72,6 +72,26 @@ test('E/F/G short-song pool includes every verified short OFF VOCAL track', () =
   ]) assert.match(catalog, new RegExp(id));
 });
 
+test('E/F/G short-song pool includes the ten additional verified vocal tracks', () => {
+  assert.match(catalog, /ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS/);
+  assert.match(
+    catalog,
+    /SHORT_SPOTIFY_ROTATION_TRACKS\s*=\s*\[[\s\S]*\.\.\.ADDITIONAL_SHORT_SPOTIFY_RANDOM_TRACKS,/,
+  );
+  for (const id of [
+    '44sj7vChwZRYQ0Oz9AFyP2',
+    '5vOABxcejLNdoyLh7JRtjM',
+    '3CzKqb5U3GlxUhoJGv1BZf',
+    '7jLbrfs3YtWO232XEU3iD1',
+    '5z8xkccoi9bnA8SGf2VQnk',
+    '6oZVLkbhLB3qyikq0eNlEy',
+    '31vLfN5bNOpasgULiqSbLx',
+    '37h3M4ZYJgSRy0cXArsH59',
+    '59G1ePHebLtol0u5upRFSZ',
+    '2K6uY7BaeOfuPwJNOVF3ht',
+  ]) assert.match(catalog, new RegExp(id));
+});
+
 test('native enforces no duplicate Spotify path inside one cycle', () => {
   assert.match(recent, /std::vector<std::wstring> usedPaths/);
   assert.match(recent, /std::find\(usedPaths\.begin\(\), usedPaths\.end\(\), track\.path\)/);
