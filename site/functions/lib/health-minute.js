@@ -32,6 +32,7 @@ WHERE task_name IN ('derive','recovery','rebuild')
 ORDER BY task_name`;
 
 function integer(value, fallback = null) {
+  if (value == null || value === '') return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
