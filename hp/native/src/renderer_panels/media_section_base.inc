@@ -17,7 +17,8 @@ constexpr UINT_PTR kNativeMediaTverWatchdogTimer = 0x4D560007;
 constexpr UINT kNativeMediaPhaseMs = 60U * 60U * 1000U;
 constexpr UINT kNativeMediaPlayAllRetryMs = 500U;
 constexpr UINT kNativeMediaNavigationRetryMs = 3U * 1000U;
-constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 10U * 1000U;
+// Healthy YouTube playback is event-driven; the timer is only a backstop.
+constexpr UINT kNativeMediaYoutubeWatchdogHealthyMs = 30U * 1000U;
 constexpr UINT kNativeMediaYoutubeWatchdogRecoveryMs = 2U * 1000U;
 constexpr UINT kNativeMediaTverWatchdogMs = 30U * 1000U;
 constexpr int kNativeMediaPlayAllRetryLimit = 20;
@@ -96,81 +97,14 @@ constexpr wchar_t kNativeMediaPlayAllScript[] = LR"JS(
 })()
 )JS";
 
+// Legacy symbol retained as a routing key for media_host.inc. The wrapper
+// resolves it to the event-aware policy in media_youtube_control_recovery.inc.
 constexpr wchar_t kNativeMediaYoutubeWatchdogScript[] = LR"JS(
-(() => {
-  const player = document.querySelector('#movie_player');
-  if (!player || window.innerWidth <= 0 || window.innerHeight <= 0) return null;
-  try {
-    if (typeof player.setPlaybackQualityRange === 'function') {
-      player.setPlaybackQualityRange('large', 'large');
-    }
-    if (typeof player.setPlaybackQuality === 'function') {
-      player.setPlaybackQuality('large');
-    }
-  } catch (_) {
-  }
-  const video = document.querySelector('video');
-  const explicitError = player.classList.contains('ytp-error') ||
-      document.querySelector(
-          '.ytp-error, .ytp-error-content-wrap, .ytp-error-content, '
-          + 'yt-player-error-message-renderer, ytd-player-error-message-renderer');
-  if ((video && video.error) || explicitError) return 'reload';
-
-  const isClickable = element => {
-    if (!element || element.disabled ||
-        element.getAttribute('aria-disabled') === 'true' ||
-        element.getAttribute('aria-hidden') === 'true') return false;
-    const style = window.getComputedStyle(element);
-    const rect = element.getBoundingClientRect();
-    return style.display !== 'none' && style.visibility !== 'hidden' &&
-           style.pointerEvents !== 'none' && rect.width > 0 && rect.height > 0;
-  };
-
-  const captionsButton = player.querySelector('.ytp-subtitles-button');
-  if (captionsButton && captionsButton.getAttribute('aria-pressed') === 'true') {
-    try {
-      captionsButton.click();
-    } catch (_) {
-    }
-  } else {
-    try {
-      if (typeof player.setOption === 'function') {
-        player.setOption('captions', 'track', {});
-      }
-    } catch (_) {
-    }
-  }
-
-  const selectors = [
-    '.ytp-ad-skip-button',
-    '.ytp-ad-skip-button-modern',
-    '.ytp-skip-ad-button',
-    '.videoAdUiSkipButton',
-    '.ytp-ad-skip-button-slot button',
-    '.ytp-ad-skip-button-container button'
-  ];
-  let target = Array.from(player.querySelectorAll(selectors.join(',')))
-      .find(isClickable) || null;
-  if (!target) {
-    const fullscreen = document.fullscreenElement ||
-        player.classList.contains('ytp-fullscreen');
-    if (fullscreen) return null;
-    target = player.querySelector('.ytp-fullscreen-button');
-    if (!isClickable(target)) return null;
-  }
-
-  const rect = target.getBoundingClientRect();
-  return [
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.left + rect.width / 2) / window.innerWidth) * 10000))),
-    Math.max(0, Math.min(10000, Math.round(
-        ((rect.top + rect.height / 2) / window.innerHeight) * 10000)))
-  ];
-})()
+(() => null)()
 )JS";
 
-// TVer has one effective implementation. The static scripts are declared in
-// media_tver_ad_guard.inc before this implementation is included.
+// TVer uses one routing key as well; episode pages resolve to the event-driven
+// policy and trusted watchdog in media_section.inc.
 constexpr const wchar_t* kNativeMediaTverLoopScript =
     kNativeMediaTverLoopStaticScript;
 constexpr const wchar_t* kNativeMediaTverWatchdogScript =
