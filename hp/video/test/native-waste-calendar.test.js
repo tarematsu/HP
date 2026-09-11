@@ -39,7 +39,8 @@ test('waste calendar summary is rendered below the clock instead of on the radar
     layout,
     /hpWasteText[\s\S]*TierFont\(FontTier::Medium\)[\s\S]*DrawTextInRect\(\(dc\), hpWasteText, hpWasteRect/,
   );
-  assert.match(layout, /hpVersionText = L"アプリバージョン "/);
+  assert.match(layout, /const std::wstring hpVersionText = kVersion;/);
+  assert.doesNotMatch(layout, /L"アプリバージョン "/);
   assert.match(layout, /TierFont\(FontTier::Small\)/);
 });
 
