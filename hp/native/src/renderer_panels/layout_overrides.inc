@@ -3,10 +3,12 @@ namespace {
 SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   const int height = std::max(1L, client.bottom - client.top);
   const int gap = std::max(6, height * 18 / 1000);
-  // The radar window occupies 60% of the dashboard inner height. The side
-  // window spans that same inner height, so using the same ratio here keeps
-  // the weather card exactly the same pixel height as the radar card.
-  const int weatherHeight = std::max(1, height * 600 / 1000);
+  // NativeDashboardLayout::radar is the upper media/WebView host. The visible
+  // rain-radar card is in the lower main row, whose exact height is the full
+  // side height minus that 60% media host and the inter-row gap.
+  const int upperMediaHeight = height * 600 / 1000;
+  const int weatherHeight =
+      std::max(1, height - upperMediaHeight - gap);
   const int compactAvailable =
       std::max(2, height - weatherHeight - gap * 2);
   const int clockHeight = std::max(1, compactAvailable * 55 / 100);
@@ -17,8 +19,7 @@ SidebarSections SplitRearrangedSidebarSections(const RECT& client) {
   sections.clock = RECT{client.left, top, client.right, top + clockHeight};
   top = sections.clock.bottom + gap;
   // Air and Weather intentionally trade their previous positions. Keep Air in
-  // the compact middle slot and reserve the full radar-height lower slot for
-  // the 12-hour weather forecast.
+  // the middle slot and make Weather exactly as tall as the visible radar card.
   sections.controls = RECT{client.left, top, client.right, top + airHeight};
   top = sections.controls.bottom + gap;
   sections.weather = RECT{client.left, top, client.right, top + weatherHeight};
